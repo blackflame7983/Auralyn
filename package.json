@@ -8,6 +8,7 @@
     "build": "tsc && vite build && node scripts/prepare-sidecar.js && node scripts/generate-nsis-bitmaps.js",
     "preview": "vite preview",
     "tauri": "tauri",
+    "gen-cargo-licenses": "cd src-tauri && cargo about generate about.hbs -o ../src/assets/licenses-cargo.json",
     "rebuild-engine": "node scripts/rebuild-engine.js",
     "test": "vitest"
   },

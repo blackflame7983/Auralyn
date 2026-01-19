@@ -80,7 +80,15 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
                         if (!initializationPromise) {
                             console.log("Auto-starting audio with config:", config);
                             initializationPromise = audioApi.start(config.host, config.input, config.output, bs, sr)
-                                .then(async () => {
+                                .then(async (res) => {
+                                    console.log("Audio Started with config:", res);
+
+                                    // Update state with negotiated values
+                                    setAudioConfig(prev => {
+                                        if (prev.sampleRate === res.sample_rate && prev.bufferSize === res.buffer_size) return prev;
+                                        return { ...prev, sampleRate: res.sample_rate, bufferSize: res.buffer_size };
+                                    });
+
                                     toast.success('オーディオエンジン起動');
                                     // Apply Channel Mapping if exists
                                     if (config.inputChannels) {

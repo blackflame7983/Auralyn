@@ -9,7 +9,6 @@ interface DeviceStatusProps {
 }
 
 // Calculate estimated round-trip latency in ms
-// Calculate estimated round-trip latency in ms
 const calculateLatency = (sampleRate: number, bufferSize: number, isAsio: boolean): number => {
     // Round-trip = 2 buffers (input + output)
     const baseLatency = (bufferSize * 2 / sampleRate) * 1000;

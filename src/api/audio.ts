@@ -23,11 +23,17 @@ export interface VstPlugin {
     id: string;
 }
 
+export interface AudioConfig {
+    sample_rate: number;
+    buffer_size: number;
+    channels: number;
+}
+
 export const audioApi = {
     getDevices: async (forceRefresh: boolean = false): Promise<AudioDeviceList> => {
         return await invoke("get_audio_devices", { forceRefresh });
     },
-    start: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number) => {
+    start: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number): Promise<AudioConfig> => {
         return await invoke("start_audio", {
             host,
             input,
@@ -63,7 +69,7 @@ export const audioApi = {
     setGain: async (id: string, value: number) => {
         return await invoke("set_gain", { id, value });
     },
-    restart: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number) => {
+    restart: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number): Promise<AudioConfig> => {
         return await invoke("restart_audio_engine", {
             host,
             input,

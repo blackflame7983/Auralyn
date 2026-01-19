@@ -314,7 +314,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       // For ASIO, Output must match Input
       const finalOutput = isAsio ? selectedInput : selectedOutput;
 
-      await audioApi.start(
+      const res = await audioApi.start(
         selectedHost,
         selectedInput || undefined,
         finalOutput || undefined,
@@ -331,8 +331,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         selectedHost,
         selectedInput || undefined,
         finalOutput || undefined,
-        selectedSampleRate,
-        selectedBufferSize
+        res.sample_rate,
+        res.buffer_size
       );
       // toast.success('オーディオエンジンを起動しました'); // Assuming toast is available
       onClose();
@@ -350,12 +350,20 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     setLoading(true);
     try {
       const finalOutput = isAsio ? selectedInput : selectedOutput;
-      await audioApi.restart(
+      const res = await audioApi.restart(
         selectedHost,
         selectedInput || undefined,
         finalOutput || undefined,
         selectedBufferSize,
         selectedSampleRate
+      );
+
+      onConfigChange(
+        selectedHost,
+        selectedInput || undefined,
+        finalOutput || undefined,
+        res.sample_rate,
+        res.buffer_size
       );
 
       // The restart kills the sidecar process (plugins are lost), so restore them from session.
@@ -732,8 +740,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
                 {/* Latency Estimate */}
                 <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2 flex justify-between mt-4">
-                  <span>推定レイテンシ:</span>
-                  <span className="font-mono">{((selectedBufferSize * 2 / selectedSampleRate) * 1000).toFixed(1)} ms</span>
+                  <span>推定レイテンシ (理論値 + OS概算):</span>
+                  <span className="font-mono">{(((selectedBufferSize * 2 / selectedSampleRate) * 1000) + (isAsio ? 0 : 20)).toFixed(1)} ms</span>
                 </div>
 
                 {/* Tips Section (Only in Advanced Mode) */}

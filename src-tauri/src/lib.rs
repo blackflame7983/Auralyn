@@ -50,7 +50,7 @@ fn start_audio(
     host: Option<String>,
     buffer_size: Option<u32>,
     sample_rate: Option<u32>,
-) -> Result<(), String> {
+) -> Result<audio::AudioConfig, String> {
     println!(
         "DEBUG: start_audio IPC Args: host={:?}, input={:?}, buffer={:?}, rate={:?}",
         host, input, buffer_size, sample_rate
@@ -112,7 +112,7 @@ fn restart_audio_engine(
     host: Option<String>,
     buffer_size: Option<u32>,
     sample_rate: Option<u32>,
-) -> Result<(), String> {
+) -> Result<audio::AudioConfig, String> {
     println!(
         "DEBUG: restart_audio_engine IPC Args: host={:?}, input={:?}, buffer={:?}, rate={:?}",
         host, input, buffer_size, sample_rate

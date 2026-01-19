@@ -46,6 +46,7 @@ obws = { version = "0.11", features = ["events"] }
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
 winreg = "0.52"
+rubato = "0.14"
 
 
 [dev-dependencies]

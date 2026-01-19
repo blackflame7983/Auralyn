@@ -10,7 +10,7 @@ accepted = [
     "CC0-1.0",
     "Unicode-3.0",
     "Unicode-DFS-2016",
-    "GPL-2.0",
+    # "GPL-2.0", # Deprecated
     "GPL-2.0-only",
     "GPL-2.0-or-later",
     "GPL-3.0", 

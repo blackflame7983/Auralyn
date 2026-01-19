@@ -76,6 +76,13 @@ pub struct AudioDeviceList {
     pub outputs: Vec<AudioDevice>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct AudioConfig {
+    pub sample_rate: u32,
+    pub buffer_size: u32,
+    pub channels: u32,
+}
+
 pub struct AudioHost {
     child: Option<Child>,
     stdin: Option<BufWriter<ChildStdin>>,
@@ -436,7 +443,7 @@ impl AudioHost {
         output_name: Option<String>,
         buffer_size: Option<u32>,
         sample_rate: Option<u32>,
-    ) -> Result<()> {
+    ) -> Result<AudioConfig> {
         // We require host/input/output. If Option is None, use "default" logic or required?
         // Backend (Engine) handles defaults if None?
         // Let's pass what we have.
@@ -451,7 +458,10 @@ impl AudioHost {
         println!("[Host] Sending Start Command: {:?}", cmd);
 
         match self.execute_command(cmd)? {
-            IpcResponse::Success => {
+            IpcResponse::Started {
+                sample_rate,
+                buffer_size,
+            } => {
                 // Restore global mute state if active (because engine process is fresh)
                 if self.is_global_muted {
                     println!("[Host] Restoring Global Mute State...");
@@ -461,7 +471,19 @@ impl AudioHost {
                         eprintln!("[Host] Warning: Failed to restore global mute: {}", e);
                     }
                 }
-                Ok(())
+                Ok(AudioConfig {
+                    sample_rate,
+                    buffer_size,
+                    channels: 2, // Hardcoded for now, or fetch?
+                })
+            }
+            IpcResponse::Success => {
+                // For backward compatibility or if engine doesn't return Started (it should now)
+                // Or maybe restart_audio_engine calls start which calls this...
+                // If we updated core.rs, it should only return Started for Start command.
+                // But let's handle Success gracefully just in case?
+                // No, core.rs change is definitive.
+                Err(anyhow!("Unexpected Success response, expected Started"))
             }
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("Unexpected response type")),

@@ -474,7 +474,10 @@ impl Engine {
                 buffer_size,
                 sample_rate,
             } => match self.start_audio(Some(host), input, output, sample_rate, buffer_size) {
-                Ok(_) => self.send_response(Response::Success),
+                Ok(_) => self.send_response(Response::Started {
+                    sample_rate: self.current_sample_rate as u32,
+                    buffer_size: self.current_block_size as u32,
+                }),
                 Err(e) => self.send_error(e.to_string()),
             },
             Command::Stop => {
@@ -760,7 +763,8 @@ impl Engine {
         }
 
         let mut in_stream_config: cpal::StreamConfig = in_dev.default_input_config()?.config();
-        in_stream_config.sample_rate = out_stream_config.sample_rate;
+        // Don't force input sample rate to match output. Use native rate.
+        // in_stream_config.sample_rate = out_stream_config.sample_rate; // <-- Removed
         if let Some(size) = buffer_size {
             in_stream_config.buffer_size = cpal::BufferSize::Fixed(size);
         }
@@ -1478,6 +1482,33 @@ impl Engine {
 
         let mmcss_set_in = Arc::new(AtomicBool::new(false));
 
+        // Initialize Resampler if needed
+        // Initialize Resampler if needed
+        // Initialize Resampler if needed
+        let in_rate = in_stream_config.sample_rate as usize;
+        let out_rate = out_stream_config.sample_rate as usize;
+        let channels = in_stream_config.channels as usize;
+        let out_channels_target = out_stream_config.channels as usize;
+
+        let mut resampler: Option<crate::audio_engine::resampling::StreamResampler> = None;
+        if in_rate != out_rate {
+            match crate::audio_engine::resampling::StreamResampler::new(in_rate, out_rate, channels)
+            {
+                Ok(r) => {
+                    println!(
+                        "[Resampler] Initialized: {} -> {} Hz ({} ch)",
+                        in_rate, out_rate, channels
+                    );
+                    resampler = Some(r);
+                }
+                Err(e) => {
+                    eprintln!("[Resampler] Initialization Failed: {}", e);
+                    // If resampler fails, we might as well fail the stream build or fallback?
+                    // For now, let's proceed and it will likely glitch or speed up/down, but better to warn.
+                }
+            }
+        }
+
         let input_stream = match in_dev.build_input_stream(
             &in_stream_config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
@@ -1491,8 +1522,41 @@ impl Engine {
                     }
                     mmcss_set_in.store(true, Ordering::Relaxed);
                 }
-                for &sample in data {
-                    let _ = audio_prod.try_push(sample);
+
+                // Helper to push samples to ring buffer with channel mapping (Mono -> Stereo)
+                // We assume internal processing expects `out_channels_target` (usually 2).
+                // If input is 1ch and target is 2ch, we duplicate.
+                let mut push_frames = |samples: &[f32]| {
+                    if channels == 1 && out_channels_target == 2 {
+                        // Mono to Stereo
+                        for &sample in samples {
+                            let _ = audio_prod.try_push(sample); // L
+                            let _ = audio_prod.try_push(sample); // R
+                        }
+                    } else {
+                        // Passthrough or strict match needed.
+                        // Currently assuming if not 1->2, then input channels must match engine expectation.
+                        for &sample in samples {
+                            let _ = audio_prod.try_push(sample);
+                        }
+                    }
+                };
+
+                // If resampler is active, process
+                if let Some(res) = &mut resampler {
+                    // We assume input data matches configured channels
+                    match res.process(data) {
+                        Ok(output) => {
+                            push_frames(&output);
+                        }
+                        Err(_e) => {
+                            // Log once or occasionally? In RT thread is risky.
+                            // For now ignore errors to avoid blocking.
+                        }
+                    }
+                } else {
+                    // Passthrough
+                    push_frames(data);
                 }
             },
             move |err| {

@@ -64,6 +64,10 @@ pub enum Command {
 pub enum Response {
     Devices(Vec<DeviceInfo>),
     Success,
+    Started {
+        sample_rate: u32,
+        buffer_size: u32,
+    },
     Error(String),
     PluginLoaded {
         id: String,
