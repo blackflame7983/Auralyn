@@ -1,0 +1,25 @@
+{
+"licenses": {
+{{#each licenses}}
+"{{name}}": {{{json text}}}{{#unless @last}},{{/unless}}
+{{/each}}
+},
+"libraries": [
+{{#each licenses}}
+{{#each used_by}}
+{
+"name": "{{crate.name}}",
+"version": "{{crate.version}}",
+"authors": "{{#each crate.authors}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}",
+"repository": "{{crate.repository}}",
+"license": "{{../name}}"
+},
+{{/each}}
+{{/each}}
+{
+"name": "vst-host-dummy-end",
+"version": "0.0.0",
+"license": "None"
+}
+]
+}

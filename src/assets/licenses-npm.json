@@ -1,0 +1,682 @@
+{
+  "licenses": {
+    "MIT": "MIT License\n\nCopyright (c) 2021, Claudéric Demers\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+    "MIT-1": "MIT License\n\nCopyright (c) 2021-present Floating UI contributors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of\nthis software and associated documentation files (the \"Software\"), to deal in\nthe Software without restriction, including without limitation the rights to\nuse, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software is furnished to do so,\nsubject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS\nFOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR\nCOPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER\nIN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN\nCONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
+    "MIT-2": "# `number`\n\n## Installation\n\n```sh\n$ yarn add @radix-ui/number\n# or\n$ npm install @radix-ui/number\n```\n\n## Usage\n\nThis is an internal utility, not intended for public usage.",
+    "MIT-3": "MIT License\n\nCopyright (c) 2022 WorkOS\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+    "MIT-4": "# `react-compose-refs`\n\n## Installation\n\n```sh\n$ yarn add @radix-ui/react-compose-refs\n# or\n$ npm install @radix-ui/react-compose-refs\n```\n\n## Usage\n\nThis is an internal utility, not intended for public usage.",
+    "MIT-5": "# `react-context`\n\n## Installation\n\n```sh\n$ yarn add @radix-ui/react-context\n# or\n$ npm install @radix-ui/react-context\n```\n\n## Usage\n\nThis is an internal utility, not intended for public usage.",
+    "MIT-6": "# `react-direction`\n\n## Installation\n\n```sh\n$ yarn add @radix-ui/react-direction\n# or\n$ npm install @radix-ui/react-direction\n```\n\n## Usage\n\nView docs [here](https://radix-ui.com/primitives/docs/utilities/direction).",
+    "MIT-7": "# `react-id`\n\n## Installation\n\n```sh\n$ yarn add @radix-ui/react-id\n# or\n$ npm install @radix-ui/react-id\n```\n\n## Usage\n\nView docs [here](https://radix-ui.com/primitives/docs/utilities/id-provider).",
+    "MIT-8": "# `react-use-callback-ref`\n\n## Installation\n\n```sh\n$ yarn add @radix-ui/react-use-callback-ref\n# or\n$ npm install @radix-ui/react-use-callback-ref\n```\n\n## Usage\n\nThis is an internal utility, not intended for public usage.",
+    "MIT-9": "# `react-use-escape-keydown`\n\n## Installation\n\n```sh\n$ yarn add @radix-ui/react-use-escape-keydown\n# or\n$ npm install @radix-ui/react-use-escape-keydown\n```\n\n## Usage\n\nThis is an internal utility, not intended for public usage.",
+    "MIT-10": "# `react-use-layout-effect`\n\n## Installation\n\n```sh\n$ yarn add @radix-ui/react-use-layout-effect\n# or\n$ npm install @radix-ui/react-use-layout-effect\n```\n\n## Usage\n\nThis is an internal utility, not intended for public usage.",
+    "MIT-11": "# `react-use-previous`\n\n## Installation\n\n```sh\n$ yarn add @radix-ui/react-use-previous\n# or\n$ npm install @radix-ui/react-use-previous\n```\n\n## Usage\n\nThis is an internal utility, not intended for public usage.",
+    "MIT-12": "# `react-use-rect`\n\n## Installation\n\n```sh\n$ yarn add @radix-ui/react-use-rect\n# or\n$ npm install @radix-ui/react-use-rect\n```\n\n## Usage\n\nThis is an internal utility, not intended for public usage.",
+    "MIT-13": "# `react-use-size`\n\n## Installation\n\n```sh\n$ yarn add @radix-ui/react-use-size\n# or\n$ npm install @radix-ui/react-use-size\n```\n\n## Usage\n\nThis is an internal utility, not intended for public usage.",
+    "MIT-14": "# `rect`\n\n## Installation\n\n```sh\n$ yarn add @radix-ui/rect\n# or\n$ npm install @radix-ui/rect\n```\n\n## Usage\n\nThis is an internal utility, not intended for public usage.",
+    "Apache-2.0 OR MIT": "# @tauri-apps/api\n\n <img align=\"right\" src=\"https://github.com/tauri-apps/tauri/raw/dev/.github/icon.png\" height=\"128\" width=\"128\">\n\n[![status](https://img.shields.io/badge/status-stable-blue.svg)](https://github.com/tauri-apps/tauri/tree/dev)\n[![License](https://img.shields.io/badge/License-MIT%20or%20Apache%202-green.svg)](https://opencollective.com/tauri)\n[![lint js](https://img.shields.io/github/actions/workflow/status/tauri-apps/tauri/lint-js.yml?label=lint%20js&logo=github)](https://github.com/tauri-apps/tauri/actions/workflows/lint-js.yml)\n[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Ftauri-apps%2Ftauri.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Ftauri-apps%2Ftauri?ref=badge_shield)\n[![Chat Server](https://img.shields.io/badge/chat-discord-7289da.svg)](https://discord.gg/SpmNs4S)\n[![website](https://img.shields.io/badge/website-tauri.app-purple.svg)](https://tauri.app)\n[![https://good-labs.github.io/greater-good-affirmation/assets/images/badge.svg](https://good-labs.github.io/greater-good-affirmation/assets/images/badge.svg)](https://good-labs.github.io/greater-good-affirmation)\n[![support](https://img.shields.io/badge/sponsor-Open%20Collective-blue.svg)](https://opencollective.com/tauri)\n\n| Component       | Version                                               |\n| --------------- | ----------------------------------------------------- |\n| @tauri-apps/api | ![](https://img.shields.io/npm/v/@tauri-apps/api.svg) |\n\n## About Tauri\n\nTauri is a polyglot and generic system that is very composable and allows engineers to make a wide variety of applications. It is used for building applications for Desktop Computers using a combination of Rust tools and HTML rendered in a Webview. Apps built with Tauri can ship with any number of pieces of an optional JS API / Rust API so that webviews can control the system via message passing. In fact, developers can extend the default API with their own functionality and bridge the Webview and Rust-based backend easily.\n\nTauri apps can have custom menus and have tray-type interfaces. They can be updated, and are managed by the user's operating system as expected. They are very small, because they use the system's webview. They do not ship a runtime, since the final binary is compiled from rust. This makes the reversing of Tauri apps not a trivial task.\n\n## This module\n\nThis is a typescript library that creates `cjs` and `esm` JavaScript endpoints for you to import into your Frontend framework so that the Webview can call and listen to backend activity. We also ship the pure typescript, because for some frameworks this is more optimal. It uses the message passing of webviews to their hosts.\n\nTo learn more about the details of how all of these pieces fit together, please consult this [ARCHITECTURE.md](https://github.com/tauri-apps/tauri/blob/dev/ARCHITECTURE.md) document.\n\n## Installation\n\nThe preferred method is to install this module locally as a dependency:\n\n```\n$ pnpm add @tauri-apps/api\n$ yarn add @tauri-apps/api\n$ npm add @tauri-apps/api\n```\n\n## Semver\n\n**tauri** is following [Semantic Versioning 2.0](https://semver.org/).\n\n## Licenses\n\nCode: (c) 2019 - 2021 - The Tauri Programme within The Commons Conservancy.\n\nMIT or MIT/Apache 2.0 where applicable.\n\nLogo: CC-BY-NC-ND\n\n- Original Tauri Logo Designs by [Daniel Thompson-Yvetot](https://github.com/nothingismagick) and [Guillaume Chau](https://github.com/akryum)",
+    "MIT OR Apache-2.0": "SPDXVersion: SPDX-2.1\nDataLicense: CC0-1.0\nPackageName: tauri\nDataFormat: SPDXRef-1\nPackageSupplier: Organization: The Tauri Programme in the Commons Conservancy\nPackageHomePage: https://tauri.app\nPackageLicenseDeclared: Apache-2.0\nPackageLicenseDeclared: MIT\nPackageCopyrightText: 2019-2022, The Tauri Programme in the Commons Conservancy\nPackageSummary: <text>Tauri is a rust project that enables developers to make secure\nand small desktop applications using a web frontend.\n                </text>\nPackageComment: <text>The package includes the following libraries; see\nRelationship information.\n                </text>\nCreated: 2019-05-20T09:00:00Z\nPackageDownloadLocation: git://github.com/tauri-apps/tauri\nPackageDownloadLocation: git+https://github.com/tauri-apps/tauri.git\nPackageDownloadLocation: git+ssh://github.com/tauri-apps/tauri.git\nCreator: Person: Daniel Thompson-Yvetot",
+    "MIT-15": "MIT License\n\n    Copyright (c) Microsoft Corporation.\n\n    Permission is hereby granted, free of charge, to any person obtaining a copy\n    of this software and associated documentation files (the \"Software\"), to deal\n    in the Software without restriction, including without limitation the rights\n    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n    copies of the Software, and to permit persons to whom the Software is\n    furnished to do so, subject to the following conditions:\n\n    The above copyright notice and this permission notice shall be included in all\n    copies or substantial portions of the Software.\n\n    THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n    SOFTWARE",
+    "MIT-16": "MIT License\n\nCopyright (c) 2017 Anton Korzunov\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+    "UNLICENSED": "# Tauri + React + Typescript\r\n\r\nThis template should help get you started developing with Tauri, React and Typescript in Vite.\r\n\r\n## Recommended IDE Setup\r\n\r\n- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)",
+    "Apache-2.0": "Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License. You may add Your own attribution\n          notices within Derivative Works that You distribute, alongside\n          or as an addendum to the NOTICE text from the Work, provided\n          that such additional attribution notices cannot be construed\n          as modifying the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or\n      for any such Derivative Works as a whole, provided Your use,\n      reproduction, and distribution of the Work otherwise complies with\n      the conditions stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   Copyright 2022 Joe Bell\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.",
+    "MIT-17": "MIT License\n\nCopyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
+    "MIT-18": "Copyright (c) 2017-2018 Fredrik Nicol\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+    "MIT-19": "MIT License\n\nCopyright (c) 2017 Ilya Kantor\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+    "MIT-20": "MIT License\n\nCopyright (c) 2020 Anton Korzunov\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+    "ISC": "ISC License\n\nCopyright (c) for portions of Lucide are held by Cole Bemis 2013-2023 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2025.\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted, provided that the above\ncopyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES\nWITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF\nMERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR\nANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES\nWHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN\nACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF\nOR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.\n\n---\n\nThe MIT License (MIT) (for portions derived from Feather)\n\nCopyright (c) 2013-2023 Cole Bemis\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+    "MIT-21": "MIT License\n\nCopyright (c) Meta Platforms, Inc. and affiliates.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+    "MIT-22": "Copyright 2018 kamijin_fanta <kamijin@live.jp>\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\n---\nIcons are taken from the other projects\nso please check each project licences accordingly.\n\nCircum Icons - https://circumicons.com/\nLicense: MPL-2.0 license https://github.com/Klarr-Agency/Circum-Icons/blob/main/LICENSE\n\nFont Awesome 5 - https://fontawesome.com/\nLicense: CC BY 4.0 License https://creativecommons.org/licenses/by/4.0/\n\nFont Awesome 6 - https://fontawesome.com/\nLicense: CC BY 4.0 License https://creativecommons.org/licenses/by/4.0/\n\nIonicons 4 - https://ionicons.com/\nLicense: MIT https://github.com/ionic-team/ionicons/blob/master/LICENSE\n\nIonicons 5 - https://ionicons.com/\nLicense: MIT https://github.com/ionic-team/ionicons/blob/master/LICENSE\n\nMaterial Design icons - http://google.github.io/material-design-icons/\nLicense: Apache License Version 2.0 https://github.com/google/material-design-icons/blob/master/LICENSE\n\nTypicons - http://s-ings.com/typicons/\nLicense: CC BY-SA 3.0 https://creativecommons.org/licenses/by-sa/3.0/\n\nGithub Octicons icons - https://octicons.github.com/\nLicense: MIT https://github.com/primer/octicons/blob/master/LICENSE\n\nFeather - https://feathericons.com/\nLicense: MIT https://github.com/feathericons/feather/blob/master/LICENSE\n\nLucide - https://lucide.dev/\nLicense: ISC https://github.com/lucide-icons/lucide/blob/main/LICENSE\n\nGame Icons - https://game-icons.net/\nLicense: CC BY 3.0 https://creativecommons.org/licenses/by/3.0/\n\nWeather Icons - https://erikflowers.github.io/weather-icons/\nLicense: SIL OFL 1.1 http://scripts.sil.org/OFL\n\nDevicons - https://vorillaz.github.io/devicons/\nLicense: MIT https://opensource.org/licenses/MIT\n\nAnt Design Icons - https://github.com/ant-design/ant-design-icons\nLicense: MIT https://opensource.org/licenses/MIT\n\nBootstrap Icons - https://github.com/twbs/icons\nLicense: MIT https://opensource.org/licenses/MIT\n\nRemix Icon - https://github.com/Remix-Design/RemixIcon\nLicense: Apache License Version 2.0 http://www.apache.org/licenses/\n\nFlat Color Icons - https://github.com/icons8/flat-color-icons\nLicense: MIT https://opensource.org/licenses/MIT\n\nGrommet-Icons - https://github.com/grommet/grommet-icons\nLicense: Apache License Version 2.0 http://www.apache.org/licenses/\n\nHeroicons - https://github.com/tailwindlabs/heroicons\nLicense: MIT https://opensource.org/licenses/MIT\n\nHeroicons 2 - https://github.com/tailwindlabs/heroicons\nLicense: MIT https://opensource.org/licenses/MIT\n\nSimple Icons - https://simpleicons.org/\nLicense: CC0 1.0 Universal https://creativecommons.org/publicdomain/zero/1.0/\n\nSimple Line Icons - https://thesabbir.github.io/simple-line-icons/\nLicense: MIT https://opensource.org/licenses/MIT\n\nIcoMoon Free - https://github.com/Keyamoon/IcoMoon-Free\nLicense: CC BY 4.0 License https://github.com/Keyamoon/IcoMoon-Free/blob/master/License.txt\n\nBoxIcons - https://github.com/atisawd/boxicons\nLicense: MIT https://github.com/atisawd/boxicons/blob/master/LICENSE\n\ncss.gg - https://github.com/astrit/css.gg\nLicense: MIT https://opensource.org/licenses/MIT\n\nVS Code Icons - https://github.com/microsoft/vscode-codicons\nLicense: CC BY 4.0 https://creativecommons.org/licenses/by/4.0/\n\nTabler Icons - https://github.com/tabler/tabler-icons\nLicense: MIT https://opensource.org/licenses/MIT\n\nThemify Icons - https://github.com/lykmapipo/themify-icons\nLicense: MIT https://github.com/thecreation/standard-icons/blob/master/modules/themify-icons/LICENSE\n\nRadix Icons - https://icons.radix-ui.com\nLicense: MIT https://github.com/radix-ui/icons/blob/master/LICENSE\n\nPhosphor Icons - https://github.com/phosphor-icons/core\nLicense: MIT https://github.com/phosphor-icons/core/blob/main/LICENSE\n\nIcons8 Line Awesome - https://icons8.com/line-awesome\nLicense: MIT https://github.com/icons8/line-awesome/blob/master/LICENSE.md",
+    "MIT-23": "<h1>react-remove-scroll-bar</h1>\n\n[![npm](https://img.shields.io/npm/v/react-remove-scroll-bar.svg)](https://www.npmjs.com/package/react-remove-scroll-bar)\n[![bundle size](https://badgen.net/bundlephobia/minzip/react-remove-scroll-bar)](https://bundlephobia.com/result?p=react-remove-scroll-bar)\n[![downloads](https://badgen.net/npm/dm/react-remove-scroll-bar)](https://www.npmtrends.com/react-remove-scroll-bar)\n\n<hr />\n\n> v1+ for React 15, v2+ requires React 16.8+\n\nRemoves scroll bar (by setting `overflow: hidden` on body), and preserves the scroll bar \"gap\".\n\nRead - it just makes scroll bar invisible.\n\nDoes nothing if scroll bar does not consume any space.\n\n# Usage\n\n```js\nimport {RemoveScrollBar} from 'react-remove-scroll-bar';\n\n<RemoveScrollBar /> -> no scroll bar\n```\n\n### The Right Border\nTo prevent content jumps __position:fixed__ elements with `right:0`  should have additional classname applied.\nIt will just provide a _non-zero_ right, when it needed, to maintain the right \"gap\".\n```js\nimport {zeroRightClassName,fullWidthClassName, noScrollbarsClassName} from 'react-remove-scroll-bar';\n\n// to set `right:0` on an element\n<div className={zeroRightClassName} />\n\n// to set `width:100%` on an element\n<div className={fullWidthClassName} />\n\n// to remove scrollbar from an element\n<div className={noScrollbarsClassName} />\n\n```\n\n# Size\n500b after compression (excluding tslib).\n\n# Scroll-Locky\nAll code is a result of a [react-scroll-locky](https://github.com/theKashey/react-scroll-locky) refactoring.\n\n# Article\nThere is a medium article about preventing the body scroll - [How to fight the <body> scroll](https://medium.com/@antonkorzunov/how-to-fight-the-body-scroll-2b00267b37ac)\n\n# License\nMIT",
+    "MIT-24": "MIT License\n\nCopyright (c) 2023 Emil Kowalski\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+    "MIT-25": "MIT License\n\nCopyright (c) 2021 Dany Castillo\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+    "MIT-26": "MIT License\n\nCopyright (c) 2020 Jamie Kyle\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+    "MIT-27": "MIT License\n\nCopyright (c) Tailwind Labs, Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+    "0BSD": "Copyright (c) Microsoft Corporation.\r\n\r\nPermission to use, copy, modify, and/or distribute this software for any\r\npurpose with or without fee is hereby granted.\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\r\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY\r\nAND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\r\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM\r\nLOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR\r\nOTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR\r\nPERFORMANCE OF THIS SOFTWARE."
+  },
+  "libraries": [
+    {
+      "id": "@dnd-kit/accessibility@3.1.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/clauderic/dnd-kit",
+      "publisher": "Claudéric Demers",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@dnd-kit\\accessibility",
+      "copyright": "Copyright (c) 2021, Claudéric Demers",
+      "license": "MIT"
+    },
+    {
+      "id": "@dnd-kit/core@6.3.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/clauderic/dnd-kit",
+      "publisher": "Claudéric Demers",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@dnd-kit\\core",
+      "copyright": "Copyright (c) 2021, Claudéric Demers",
+      "license": "MIT"
+    },
+    {
+      "id": "@dnd-kit/sortable@10.0.0",
+      "licenses": "MIT",
+      "repository": "https://github.com/clauderic/dnd-kit",
+      "publisher": "Claudéric Demers",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@dnd-kit\\sortable",
+      "copyright": "Copyright (c) 2021, Claudéric Demers",
+      "license": "MIT"
+    },
+    {
+      "id": "@dnd-kit/utilities@3.2.2",
+      "licenses": "MIT",
+      "repository": "https://github.com/clauderic/dnd-kit",
+      "publisher": "Claudéric Demers",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@dnd-kit\\utilities",
+      "copyright": "Copyright (c) 2021, Claudéric Demers",
+      "license": "MIT"
+    },
+    {
+      "id": "@floating-ui/core@1.7.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/floating-ui/floating-ui",
+      "publisher": "atomiks",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@floating-ui\\core",
+      "copyright": "Copyright (c) 2021-present Floating UI contributors",
+      "license": "MIT-1"
+    },
+    {
+      "id": "@floating-ui/dom@1.7.4",
+      "licenses": "MIT",
+      "repository": "https://github.com/floating-ui/floating-ui",
+      "publisher": "atomiks",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@floating-ui\\dom",
+      "copyright": "Copyright (c) 2021-present Floating UI contributors",
+      "license": "MIT-1"
+    },
+    {
+      "id": "@floating-ui/react-dom@2.1.6",
+      "licenses": "MIT",
+      "repository": "https://github.com/floating-ui/floating-ui",
+      "publisher": "atomiks",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@floating-ui\\react-dom",
+      "copyright": "Copyright (c) 2021-present Floating UI contributors",
+      "license": "MIT-1"
+    },
+    {
+      "id": "@floating-ui/utils@0.2.10",
+      "licenses": "MIT",
+      "repository": "https://github.com/floating-ui/floating-ui",
+      "publisher": "atomiks",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@floating-ui\\utils",
+      "copyright": "Copyright (c) 2021-present Floating UI contributors",
+      "license": "MIT-1"
+    },
+    {
+      "id": "@radix-ui/number@1.1.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\number",
+      "license": "MIT-2"
+    },
+    {
+      "id": "@radix-ui/primitive@1.1.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\primitive",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-arrow@1.1.7",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-arrow",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-avatar@1.1.11",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-avatar",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-collection@1.1.7",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-collection",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-compose-refs@1.1.2",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-compose-refs",
+      "license": "MIT-4"
+    },
+    {
+      "id": "@radix-ui/react-context@1.1.2",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-context",
+      "license": "MIT-5"
+    },
+    {
+      "id": "@radix-ui/react-context@1.1.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-avatar\\node_modules\\@radix-ui\\react-context",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-dialog@1.1.15",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-dialog",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-direction@1.1.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-direction",
+      "license": "MIT-6"
+    },
+    {
+      "id": "@radix-ui/react-dismissable-layer@1.1.11",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-dismissable-layer",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-dropdown-menu@2.1.16",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-dropdown-menu",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-focus-guards@1.1.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-focus-guards",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-focus-scope@1.1.7",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-focus-scope",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-id@1.1.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-id",
+      "license": "MIT-7"
+    },
+    {
+      "id": "@radix-ui/react-label@2.1.8",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-label",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-menu@2.1.16",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-menu",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-popover@1.1.15",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-popover",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-popper@1.2.8",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-popper",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-portal@1.1.9",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-portal",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-presence@1.1.5",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-presence",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-primitive@2.1.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-dismissable-layer\\node_modules\\@radix-ui\\react-primitive",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-primitive@2.1.4",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-primitive",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-radio-group@1.3.8",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-radio-group",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-roving-focus@1.1.11",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-roving-focus",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-separator@1.1.8",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-separator",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-slider@1.3.6",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-slider",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-slot@1.2.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-dismissable-layer\\node_modules\\@radix-ui\\react-slot",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-slot@1.2.4",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-slot",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-switch@1.2.6",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-switch",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-tabs@1.1.13",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-tabs",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-tooltip@1.2.8",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-tooltip",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-use-callback-ref@1.1.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-use-callback-ref",
+      "license": "MIT-8"
+    },
+    {
+      "id": "@radix-ui/react-use-controllable-state@1.2.2",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-use-controllable-state",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-use-effect-event@0.0.2",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-use-effect-event",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-use-escape-keydown@1.1.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-use-escape-keydown",
+      "license": "MIT-9"
+    },
+    {
+      "id": "@radix-ui/react-use-is-hydrated@0.1.0",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-use-is-hydrated",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/react-use-layout-effect@1.1.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-use-layout-effect",
+      "license": "MIT-10"
+    },
+    {
+      "id": "@radix-ui/react-use-previous@1.1.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-use-previous",
+      "license": "MIT-11"
+    },
+    {
+      "id": "@radix-ui/react-use-rect@1.1.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-use-rect",
+      "license": "MIT-12"
+    },
+    {
+      "id": "@radix-ui/react-use-size@1.1.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-use-size",
+      "license": "MIT-13"
+    },
+    {
+      "id": "@radix-ui/react-visually-hidden@1.2.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\react-visually-hidden",
+      "copyright": "Copyright (c) 2022 WorkOS",
+      "license": "MIT-3"
+    },
+    {
+      "id": "@radix-ui/rect@1.1.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/radix-ui/primitives",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@radix-ui\\rect",
+      "license": "MIT-14"
+    },
+    {
+      "id": "@tauri-apps/api@2.9.1",
+      "licenses": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/tauri-apps/tauri",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@tauri-apps\\api",
+      "license": "Apache-2.0 OR MIT"
+    },
+    {
+      "id": "@tauri-apps/plugin-opener@2.5.2",
+      "licenses": "MIT OR Apache-2.0",
+      "repository": "https://github.com/tauri-apps/plugins-workspace",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@tauri-apps\\plugin-opener",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "id": "@types/react-dom@19.2.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@types\\react-dom",
+      "license": "MIT-15"
+    },
+    {
+      "id": "@types/react@19.2.7",
+      "licenses": "MIT",
+      "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\@types\\react",
+      "license": "MIT-15"
+    },
+    {
+      "id": "aria-hidden@1.2.6",
+      "licenses": "MIT",
+      "repository": "https://github.com/theKashey/aria-hidden",
+      "publisher": "Anton Korzunov",
+      "email": "thekashey@gmail.com",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\aria-hidden",
+      "copyright": "Copyright (c) 2017 Anton Korzunov",
+      "license": "MIT-16"
+    },
+    {
+      "id": "auralyn@0.1.0",
+      "licenses": "UNLICENSED",
+      "private": true,
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host",
+      "license": "UNLICENSED"
+    },
+    {
+      "id": "class-variance-authority@0.7.1",
+      "licenses": "Apache-2.0",
+      "repository": "https://github.com/joe-bell/cva",
+      "publisher": "Joe Bell",
+      "url": "https://joebell.co.uk",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\class-variance-authority",
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "clsx@2.1.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/lukeed/clsx",
+      "publisher": "Luke Edwards",
+      "email": "luke.edwards05@gmail.com",
+      "url": "https://lukeed.com",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\clsx",
+      "copyright": "Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)",
+      "license": "MIT-17"
+    },
+    {
+      "id": "csstype@3.2.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/frenic/csstype",
+      "publisher": "Fredrik Nicol",
+      "email": "fredrik.nicol@gmail.com",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\csstype",
+      "copyright": "Copyright (c) 2017-2018 Fredrik Nicol",
+      "license": "MIT-18"
+    },
+    {
+      "id": "detect-node-es@1.1.0",
+      "licenses": "MIT",
+      "repository": "https://github.com/thekashey/detect-node",
+      "publisher": "Ilya Kantor",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\detect-node-es",
+      "copyright": "Copyright (c) 2017 Ilya Kantor",
+      "license": "MIT-19"
+    },
+    {
+      "id": "get-nonce@1.0.1",
+      "licenses": "MIT",
+      "repository": "https://github.com/theKashey/get-nonce",
+      "publisher": "Anton Korzunov",
+      "email": "thekashey@gmail.com",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\get-nonce",
+      "copyright": "Copyright (c) 2020 Anton Korzunov",
+      "license": "MIT-20"
+    },
+    {
+      "id": "lucide-react@0.562.0",
+      "licenses": "ISC",
+      "repository": "https://github.com/lucide-icons/lucide",
+      "publisher": "Eric Fennis",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\lucide-react",
+      "copyright": "Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2023 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2025.*",
+      "license": "ISC"
+    },
+    {
+      "id": "react-dom@19.2.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/facebook/react",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\react-dom",
+      "copyright": "Copyright (c) Meta Platforms, Inc. and affiliates.",
+      "license": "MIT-21"
+    },
+    {
+      "id": "react-icons@5.5.0",
+      "licenses": "MIT",
+      "repository": "https://github.com/react-icons/react-icons",
+      "publisher": "Goran Gajic",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\react-icons",
+      "copyright": "Copyright 2018 kamijin_fanta <kamijin@live.jp>",
+      "license": "MIT-22"
+    },
+    {
+      "id": "react-remove-scroll-bar@2.3.8",
+      "licenses": "MIT",
+      "repository": "https://github.com/theKashey/react-remove-scroll-bar",
+      "publisher": "Anton Korzunov",
+      "email": "thekashey@gmail.com",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\react-remove-scroll-bar",
+      "license": "MIT-23"
+    },
+    {
+      "id": "react-remove-scroll@2.7.2",
+      "licenses": "MIT",
+      "repository": "https://github.com/theKashey/react-remove-scroll",
+      "publisher": "Anton Korzunov",
+      "email": "thekashey@gmail.com",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\react-remove-scroll",
+      "copyright": "Copyright (c) 2017 Anton Korzunov",
+      "license": "MIT-16"
+    },
+    {
+      "id": "react-style-singleton@2.2.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/theKashey/react-style-singleton",
+      "publisher": "Anton Korzunov",
+      "url": "thekashey@gmail.com",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\react-style-singleton",
+      "copyright": "Copyright (c) 2017 Anton Korzunov",
+      "license": "MIT-16"
+    },
+    {
+      "id": "react@19.2.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/facebook/react",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\react",
+      "copyright": "Copyright (c) Meta Platforms, Inc. and affiliates.",
+      "license": "MIT-21"
+    },
+    {
+      "id": "scheduler@0.27.0",
+      "licenses": "MIT",
+      "repository": "https://github.com/facebook/react",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\scheduler",
+      "copyright": "Copyright (c) Meta Platforms, Inc. and affiliates.",
+      "license": "MIT-21"
+    },
+    {
+      "id": "sonner@2.0.7",
+      "licenses": "MIT",
+      "repository": "https://github.com/emilkowalski/sonner",
+      "publisher": "Emil Kowalski",
+      "email": "e@emilkowal.ski",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\sonner",
+      "copyright": "Copyright (c) 2023 Emil Kowalski",
+      "license": "MIT-24"
+    },
+    {
+      "id": "tailwind-merge@3.4.0",
+      "licenses": "MIT",
+      "repository": "https://github.com/dcastil/tailwind-merge",
+      "publisher": "Dany Castillo",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\tailwind-merge",
+      "copyright": "Copyright (c) 2021 Dany Castillo",
+      "license": "MIT-25"
+    },
+    {
+      "id": "tailwindcss-animate@1.0.7",
+      "licenses": "MIT",
+      "publisher": "Jamie Kyle",
+      "email": "me@thejameskyle.com",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\tailwindcss-animate",
+      "copyright": "Copyright (c) 2020 Jamie Kyle",
+      "license": "MIT-26"
+    },
+    {
+      "id": "tailwindcss@4.1.18",
+      "licenses": "MIT",
+      "repository": "https://github.com/tailwindlabs/tailwindcss",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\tailwindcss",
+      "copyright": "Copyright (c) Tailwind Labs, Inc.",
+      "license": "MIT-27"
+    },
+    {
+      "id": "tslib@2.8.1",
+      "licenses": "0BSD",
+      "repository": "https://github.com/Microsoft/tslib",
+      "publisher": "Microsoft Corp.",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\tslib",
+      "copyright": "Copyright (c) Microsoft Corporation.",
+      "license": "0BSD"
+    },
+    {
+      "id": "use-callback-ref@1.3.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/theKashey/use-callback-ref",
+      "publisher": "theKashey",
+      "email": "thekashey@gmail.com",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\use-callback-ref",
+      "copyright": "Copyright (c) 2017 Anton Korzunov",
+      "license": "MIT-16"
+    },
+    {
+      "id": "use-sidecar@1.1.3",
+      "licenses": "MIT",
+      "repository": "https://github.com/theKashey/use-sidecar",
+      "publisher": "theKashey",
+      "email": "thekashey@gmail.com",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\use-sidecar",
+      "copyright": "Copyright (c) 2017 Anton Korzunov",
+      "license": "MIT-16"
+    },
+    {
+      "id": "use-sync-external-store@1.6.0",
+      "licenses": "MIT",
+      "repository": "https://github.com/facebook/react",
+      "path": "D:\\Programming\\App\\VSTHost\\vst-host\\node_modules\\use-sync-external-store",
+      "copyright": "Copyright (c) Meta Platforms, Inc. and affiliates.",
+      "license": "MIT-21"
+    }
+  ]
+}
