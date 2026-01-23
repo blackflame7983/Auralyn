@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite } from 'react-icons/md';
+import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage } from 'react-icons/md';
 import { audioApi, AudioDeviceList } from '../../../api/audio';
 import { autostartApi } from '../../../api/autostart';
 import { obsApi } from '../../../api/obs';
@@ -911,12 +911,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
               <div className="text-center">
                 <h3 className="text-lg font-bold text-foreground">Auralyn VST Host</h3>
-                <p className="text-xs text-muted-foreground">Version 0.1.0</p>
+                <p className="text-xs text-muted-foreground">Version 0.2.0</p>
               </div>
 
               <div className="flex gap-4 pt-2">
-                <button onClick={() => window.open('https://github.com/your-repo', '_blank')} className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
-                  GitHub
+                <button onClick={() => window.open('https://www.kuro7983.com/apps/auralyn', '_blank')} className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+                  <MdLanguage className="w-3.5 h-3.5" />
+                  Web Site
                 </button>
                 {onOpenLicense && (
                   <button onClick={onOpenLicense} className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">

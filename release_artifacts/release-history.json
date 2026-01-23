@@ -1,0 +1,48 @@
+[
+    {
+        "version": "v0.2.0",
+        "date": "2026-01-23",
+        "title": "Audio Resampling",
+        "sha256": {
+            "setup": "6ebd2816e80e95589c0cd1390dcf455bc34514df4eb465e7e09d7eed1d40bdc3",
+            "portable": "b74b7b887f8621e399a087ed8de0a2ee333938ade449cead6f111631da8a15a8"
+        },
+        "changes": [
+            {
+                "type": "feature",
+                "text": "オーディオリサンプリング機能を追加"
+            },
+            {
+                "type": "improvement",
+                "text": "一部機能の最適化"
+            }
+        ]
+    },
+    {
+        "version": "v0.1.0",
+        "date": "2026-01-22",
+        "title": "Initial Release",
+        "changes": [
+            {
+                "type": "feature",
+                "text": "Auralyn 初回リリース"
+            },
+            {
+                "type": "feature",
+                "text": "ASIOサポートによる低遅延オーディオ処理"
+            },
+            {
+                "type": "feature",
+                "text": "スマートテンプレート機能（音楽鑑賞・通話・配信）"
+            },
+            {
+                "type": "feature",
+                "text": "インタラクティブなセットアップガイド"
+            },
+            {
+                "type": "improvement",
+                "text": "Windows 11 (64-bit) 完全対応"
+            }
+        ]
+    }
+]
