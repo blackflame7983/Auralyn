@@ -106,6 +106,7 @@ pub struct DeviceInfo {
     pub is_input: bool,
     pub buffer_size_range: Option<(u32, u32)>,
     pub channels: u16,
+    pub is_default: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

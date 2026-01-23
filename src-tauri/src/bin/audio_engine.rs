@@ -228,6 +228,7 @@ fn scan_devices() {
         is_input: bool,
         buffer_size_range: Option<(u32, u32)>,
         channels: u16,
+        is_default: bool,
     }
 
     let mut devices = Vec::new();
@@ -338,11 +339,18 @@ fn scan_devices() {
             }
             .to_string();
 
+            // Get Default Devices
+            #[allow(deprecated)]
+            let default_in_name = host.default_input_device().and_then(|d| d.name().ok());
+            #[allow(deprecated)]
+            let default_out_name = host.default_output_device().and_then(|d| d.name().ok());
+
             // Inputs
             if let Ok(inputs) = host.input_devices() {
                 eprintln!("[Scanner] Checking Inputs for host: {}", host_name);
 
-                let mut raw_items: Vec<(String, String, Option<(u32, u32)>, u16)> = Vec::new();
+                let mut raw_items: Vec<(String, String, Option<(u32, u32)>, u16, bool)> =
+                    Vec::new();
                 for d in inputs {
                     #[allow(deprecated)]
                     if let Ok(n) = d.name() {
@@ -353,17 +361,18 @@ fn scan_devices() {
                         };
                         let buf_range = get_buffer_range(&d, true);
                         let channels = get_max_channels(&d, true);
-                        raw_items.push((n, rates, buf_range, channels));
+                        let is_def = default_in_name.as_ref().map(|dn| dn == &n).unwrap_or(false);
+                        raw_items.push((n, rates, buf_range, channels, is_def));
                     }
                 }
 
                 let mut name_counts = std::collections::HashMap::new();
-                for (n, _, _, _) in &raw_items {
+                for (n, _, _, _, _) in &raw_items {
                     *name_counts.entry(n.clone()).or_insert(0) += 1;
                 }
 
                 let mut current_counts = std::collections::HashMap::new();
-                for (n, rates, buf_range, channels) in raw_items {
+                for (n, rates, buf_range, channels, is_def) in raw_items {
                     let total = *name_counts.get(&n).unwrap_or(&0);
                     let final_name = if total > 1 {
                         let idx = current_counts.entry(n.clone()).or_insert(0);
@@ -372,13 +381,17 @@ fn scan_devices() {
                     } else {
                         format!("{}{}", n, rates)
                     };
-                    eprintln!("[Scanner] Found Input: {}", final_name);
+                    eprintln!(
+                        "[Scanner] Found Input: {} (Default: {})",
+                        final_name, is_def
+                    );
                     devices.push(DeviceInfo {
                         name: final_name,
                         host: host_name.clone(),
                         is_input: true,
                         buffer_size_range: buf_range,
                         channels,
+                        is_default: is_def,
                     });
                 }
             } else {
@@ -392,7 +405,8 @@ fn scan_devices() {
             if let Ok(outputs) = host.output_devices() {
                 eprintln!("[Scanner] Checking Outputs for host: {}", host_name);
 
-                let mut raw_items: Vec<(String, String, Option<(u32, u32)>, u16)> = Vec::new();
+                let mut raw_items: Vec<(String, String, Option<(u32, u32)>, u16, bool)> =
+                    Vec::new();
                 for d in outputs {
                     #[allow(deprecated)]
                     if let Ok(n) = d.name() {
@@ -403,17 +417,21 @@ fn scan_devices() {
                         };
                         let buf_range = get_buffer_range(&d, false);
                         let channels = get_max_channels(&d, false);
-                        raw_items.push((n, rates, buf_range, channels));
+                        let is_def = default_out_name
+                            .as_ref()
+                            .map(|dn| dn == &n)
+                            .unwrap_or(false);
+                        raw_items.push((n, rates, buf_range, channels, is_def));
                     }
                 }
 
                 let mut name_counts = std::collections::HashMap::new();
-                for (n, _, _, _) in &raw_items {
+                for (n, _, _, _, _) in &raw_items {
                     *name_counts.entry(n.clone()).or_insert(0) += 1;
                 }
 
                 let mut current_counts = std::collections::HashMap::new();
-                for (n, rates, buf_range, channels) in raw_items {
+                for (n, rates, buf_range, channels, is_def) in raw_items {
                     let total = *name_counts.get(&n).unwrap_or(&0);
                     let final_name = if total > 1 {
                         let idx = current_counts.entry(n.clone()).or_insert(0);
@@ -422,13 +440,17 @@ fn scan_devices() {
                     } else {
                         format!("{}{}", n, rates)
                     };
-                    eprintln!("[Scanner] Found Output: {}", final_name);
+                    eprintln!(
+                        "[Scanner] Found Output: {} (Default: {})",
+                        final_name, is_def
+                    );
                     devices.push(DeviceInfo {
                         name: final_name,
                         host: host_name.clone(),
                         is_input: false,
                         buffer_size_range: buf_range,
                         channels,
+                        is_default: is_def,
                     });
                 }
             } else {

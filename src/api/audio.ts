@@ -5,6 +5,7 @@ export interface AudioDevice {
     host: string;
     is_input: boolean;
     index: number;
+    is_default: boolean;
     buffer_size_range?: [number, number];
     channels: number;
 }
@@ -101,5 +102,21 @@ export const audioApi = {
     },
     setChannelScan: async (active: boolean) => {
         return await invoke("set_channel_scan", { active });
+    },
+    getAudioState: async (): Promise<AudioStateInfo> => {
+        return await invoke("get_audio_state");
     }
 };
+
+export interface ActiveAudioConfig {
+    host: string;
+    input: string | null;
+    output: string | null;
+    sample_rate: number | null;
+    buffer_size: number | null;
+}
+
+export interface AudioStateInfo {
+    is_running: boolean;
+    config: ActiveAudioConfig | null;
+}

@@ -112,12 +112,9 @@ impl DeviceManager {
     // Extracted from core.rs start_audio_impl
     #[allow(deprecated)]
     pub fn resolve_input_device(host: &cpal::Host, target_name: &str) -> Option<cpal::Device> {
-        // let inputs = host.input_devices().ok()?;
-        // Pass 1: Clone iterator for counting (Can't iterate twice easily with cpal iterator? It returns a Devices iterator)
-        // Actually cpal::Host::input_devices() returns a new iterator each time.
+        eprintln!("DEBUG: resolve_input_device target='{}'", target_name);
 
         let mut name_counts = HashMap::new();
-        // We need to iterate twice.
         if let Ok(devs) = host.input_devices() {
             for d in devs {
                 if let Ok(n) = d.name() {
@@ -138,6 +135,8 @@ impl DeviceManager {
                     } else {
                         n
                     };
+
+                    eprintln!("DEBUG: Checking candidate: '{}'", candidate_base);
 
                     // Exact or Prefix Match "name [driverspecific]"
                     if target_name == candidate_base
@@ -151,13 +150,17 @@ impl DeviceManager {
                     }
                 }
             }
+        } else {
+            eprintln!("DEBUG: host.input_devices() failed or empty");
         }
+        eprintln!("DEBUG: Failed to resolve input device '{}'", target_name);
         None
     }
 
     #[allow(deprecated)]
     pub fn resolve_output_device(host: &cpal::Host, target_name: &str) -> Option<cpal::Device> {
-        // Equivalent Logic for Output
+        eprintln!("DEBUG: resolve_output_device target='{}'", target_name);
+
         let mut name_counts = HashMap::new();
         if let Ok(devs) = host.output_devices() {
             for d in devs {
@@ -180,6 +183,8 @@ impl DeviceManager {
                         n
                     };
 
+                    eprintln!("DEBUG: Checking candidate: '{}'", candidate_base);
+
                     if target_name == candidate_base
                         || target_name.starts_with(&format!("{} [", candidate_base))
                     {
@@ -191,7 +196,10 @@ impl DeviceManager {
                     }
                 }
             }
+        } else {
+            eprintln!("DEBUG: host.output_devices() failed or empty");
         }
+        eprintln!("DEBUG: Failed to resolve output device '{}'", target_name);
         None
     }
 }

@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { AppShell } from './components/layout/AppShell';
 import { PluginList } from './components/features/PluginRack/PluginList';
 import { Toaster } from 'sonner';
@@ -80,6 +80,11 @@ function AppContent() {
   const handleAddClick = () => {
     ui.setIsBrowserOpen(true);
   };
+
+  // Pre-fetch devices in background to speed up setup wizard
+  useEffect(() => {
+    audioApi.getDevices(true).catch(e => console.error("Background device scan failed:", e));
+  }, []);
 
   return (
     <>

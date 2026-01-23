@@ -43,6 +43,12 @@ fn get_audio_devices(
 }
 
 #[tauri::command]
+fn get_audio_state(state: State<'_, audio::AudioState>) -> Result<audio::AudioStateInfo, String> {
+    let host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    Ok(host.get_state())
+}
+
+#[tauri::command]
 fn start_audio(
     state: State<'_, audio::AudioState>,
     input: Option<String>,
@@ -334,6 +340,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_audio_devices,
+            get_audio_state,
             scan_plugins,
             clear_blacklist,
             start_audio,

@@ -1,81 +1,30 @@
-const SCALE = 3;
+const SCALE = 1;
 
 /**
  * Generate BMP images for NSIS installer
- * - Header: 150x57 px (Base) -> 450x171 px (Scaled)
- * - Sidebar: 164x314 px (Base) -> 492x942 px (Scaled)
+ * - Header: 150x57 px
+ * - Sidebar: 164x314 px
  * 
- * High-DPI screens will stretch standard images, causing blurriness.
- * Providing a larger image allows NSIS/Windows to scale it down (or display 1:1 on high DPI),
- * resulting in a much sharper look.
- * 
- * Sharp doesn't support BMP output directly, so we'll create PNG files
- * and convert them using raw pixel data to BMP format manually.
+ * Uses 'sharp' for high-quality resizing and compositing,
+ * and 'jimp' for reliable BMP output.
  */
 import sharp from 'sharp';
+import { Jimp } from 'jimp';
 import path from 'path';
-import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ICONS_DIR = path.join(__dirname, '../src-tauri/icons');
 
-/**
- * Create a BMP file from raw RGB pixel data
- * BMP format: 24-bit BGR, bottom-up row order
- */
-function createBmp(width, height, rgbBuffer) {
-    const rowSize = Math.ceil((width * 3) / 4) * 4; // Row size must be multiple of 4
-    const pixelDataSize = rowSize * height;
-    const fileSize = 54 + pixelDataSize; // 14 (file header) + 40 (info header) + pixel data
-
-    const buffer = Buffer.alloc(fileSize);
-    let offset = 0;
-
-    // BMP File Header (14 bytes)
-    buffer.write('BM', offset); offset += 2;  // Signature
-    buffer.writeUInt32LE(fileSize, offset); offset += 4;  // File size
-    buffer.writeUInt16LE(0, offset); offset += 2;  // Reserved
-    buffer.writeUInt16LE(0, offset); offset += 2;  // Reserved
-    buffer.writeUInt32LE(54, offset); offset += 4;  // Pixel data offset
-
-    // BMP Info Header (40 bytes)
-    buffer.writeUInt32LE(40, offset); offset += 4;  // Info header size
-    buffer.writeInt32LE(width, offset); offset += 4;  // Width
-    buffer.writeInt32LE(height, offset); offset += 4;  // Height (positive = bottom-up)
-    buffer.writeUInt16LE(1, offset); offset += 2;  // Planes
-    buffer.writeUInt16LE(24, offset); offset += 2;  // Bits per pixel
-    buffer.writeUInt32LE(0, offset); offset += 4;  // Compression (none)
-    buffer.writeUInt32LE(pixelDataSize, offset); offset += 4;  // Image size
-    buffer.writeInt32LE(0, offset); offset += 4;  // X pixels per meter (0 = unspecified/default)
-    buffer.writeInt32LE(0, offset); offset += 4;  // Y pixels per meter
-    buffer.writeUInt32LE(0, offset); offset += 4;  // Colors in color table
-    buffer.writeUInt32LE(0, offset); offset += 4;  // Important colors
-
-    // Pixel data (bottom-up, BGR order)
-    for (let y = height - 1; y >= 0; y--) {
-        for (let x = 0; x < width; x++) {
-            const srcOffset = (y * width + x) * 3;
-            const dstOffset = 54 + (height - 1 - y) * rowSize + x * 3;
-            // RGB to BGR
-            buffer[dstOffset] = rgbBuffer[srcOffset + 2];     // B
-            buffer[dstOffset + 1] = rgbBuffer[srcOffset + 1]; // G
-            buffer[dstOffset + 2] = rgbBuffer[srcOffset];     // R
-        }
-    }
-
-    return buffer;
-}
-
 async function generateNsisBitmaps() {
-    const sourceIcon = path.join(ICONS_DIR, '128x128@2x.png');
+    const sourceIcon = path.join(ICONS_DIR, 'icon.png');
 
     console.log(`Generating NSIS bitmaps with scale factor: ${SCALE}x`);
 
     // ==========================================
-    // Header image (150x57 base)
+    // Header image (150x57 base) -> Extended to 188x57 (1.25x width)
     // ==========================================
-    const headerWidth = 150 * SCALE;
+    const headerWidth = 188 * SCALE;
     const headerHeight = 57 * SCALE;
     const headerIconSize = 48 * SCALE;
 
@@ -84,7 +33,7 @@ async function generateNsisBitmaps() {
         .flatten({ background: { r: 255, g: 255, b: 255 } })
         .toBuffer();
 
-    const headerImage = await sharp({
+    const headerImageBuffer = await sharp({
         create: {
             width: headerWidth,
             height: headerHeight,
@@ -95,22 +44,24 @@ async function generateNsisBitmaps() {
         .composite([
             {
                 input: headerIcon,
+                // Keep icon on the right side
                 left: headerWidth - headerIconSize - (4 * SCALE),
                 top: Math.floor((headerHeight - headerIconSize) / 2)
             }
         ])
         .removeAlpha()
-        .raw()
+        .png()
         .toBuffer();
 
-    const headerBmp = createBmp(headerWidth, headerHeight, headerImage);
-    fs.writeFileSync(path.join(ICONS_DIR, 'nsis-header.bmp'), headerBmp);
+    // Convert to BMP using Jimp
+    const headerJimp = await Jimp.read(headerImageBuffer);
+    await headerJimp.write(path.join(ICONS_DIR, 'nsis-header.bmp'));
     console.log(`✓ Generated nsis-header.bmp (${headerWidth}x${headerHeight})`);
 
     // ==========================================
-    // Sidebar image (164x314 base)
+    // Sidebar image (164x314 base) -> Extended to 205x314 (1.25x width)
     // ==========================================
-    const sidebarWidth = 164 * SCALE;
+    const sidebarWidth = 205 * SCALE;
     const sidebarHeight = 314 * SCALE;
     const sidebarIconSize = 100 * SCALE;
 
@@ -131,7 +82,7 @@ async function generateNsisBitmaps() {
       <rect width="${sidebarWidth}" height="${sidebarHeight}" fill="url(#grad)"/>
     </svg>`;
 
-    const sidebarImage = await sharp(Buffer.from(gradientSvg))
+    const sidebarImageBuffer = await sharp(Buffer.from(gradientSvg))
         .composite([
             {
                 input: sidebarIcon,
@@ -140,11 +91,12 @@ async function generateNsisBitmaps() {
             }
         ])
         .removeAlpha()
-        .raw()
+        .png()
         .toBuffer();
 
-    const sidebarBmp = createBmp(sidebarWidth, sidebarHeight, sidebarImage);
-    fs.writeFileSync(path.join(ICONS_DIR, 'nsis-sidebar.bmp'), sidebarBmp);
+    // Convert to BMP using Jimp
+    const sidebarJimp = await Jimp.read(sidebarImageBuffer);
+    await sidebarJimp.write(path.join(ICONS_DIR, 'nsis-sidebar.bmp'));
     console.log(`✓ Generated nsis-sidebar.bmp (${sidebarWidth}x${sidebarHeight})`);
 }
 

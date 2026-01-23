@@ -68,6 +68,7 @@ pub struct AudioDevice {
     pub is_input: bool,
     pub channels: u16,
     pub index: usize,
+    pub is_default: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -83,6 +84,21 @@ pub struct AudioConfig {
     pub channels: u32,
 }
 
+#[derive(Debug, Serialize, Clone, Default)]
+pub struct ActiveAudioConfig {
+    pub host: String,
+    pub input: Option<String>,
+    pub output: Option<String>,
+    pub buffer_size: Option<u32>,
+    pub sample_rate: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct AudioStateInfo {
+    pub is_running: bool,
+    pub config: Option<ActiveAudioConfig>,
+}
+
 pub struct AudioHost {
     child: Option<Child>,
     stdin: Option<BufWriter<ChildStdin>>,
@@ -92,6 +108,7 @@ pub struct AudioHost {
     pending_reply_tx: Arc<Mutex<Option<mpsc::Sender<IpcResponse>>>>,
     emitter: Arc<Mutex<Option<AppHandle>>>,
     cached_devices: Option<AudioDeviceList>,
+    active_config: Option<ActiveAudioConfig>,
     is_global_muted: bool,
     #[cfg(windows)]
     engine_job: Option<win_job::Job>,
@@ -105,6 +122,7 @@ impl AudioHost {
             pending_reply_tx: Arc::new(Mutex::new(None)),
             emitter: Arc::new(Mutex::new(None)),
             cached_devices: None,
+            active_config: None,
             is_global_muted: false,
             #[cfg(windows)]
             engine_job: None,
@@ -420,6 +438,7 @@ impl AudioHost {
                         is_input: d.is_input,
                         channels: d.channels,
                         index: i,
+                        is_default: d.is_default,
                     };
                     if ad.is_input {
                         inputs.push(ad);
@@ -448,9 +467,9 @@ impl AudioHost {
         // Backend (Engine) handles defaults if None?
         // Let's pass what we have.
         let cmd = IpcCommand::Start {
-            host: host_name.unwrap_or("ASIO".to_string()), // Default?
-            input: input_name,
-            output: output_name,
+            host: host_name.clone().unwrap_or("ASIO".to_string()), // Default?
+            input: input_name.clone(),
+            output: output_name.clone(),
             buffer_size,
             sample_rate,
         };
@@ -471,6 +490,16 @@ impl AudioHost {
                         eprintln!("[Host] Warning: Failed to restore global mute: {}", e);
                     }
                 }
+
+                // Update active config
+                self.active_config = Some(ActiveAudioConfig {
+                    host: host_name.clone().unwrap_or("ASIO".to_string()),
+                    input: input_name,
+                    output: output_name,
+                    buffer_size: Some(buffer_size),
+                    sample_rate: Some(sample_rate),
+                });
+
                 Ok(AudioConfig {
                     sample_rate,
                     buffer_size,
@@ -625,6 +654,13 @@ impl AudioHost {
 
     pub fn warmup(&mut self) -> Result<()> {
         self.ensure_engine_running()
+    }
+
+    pub fn get_state(&self) -> AudioStateInfo {
+        AudioStateInfo {
+            is_running: self.child.is_some(),
+            config: self.active_config.clone(),
+        }
     }
 }
 

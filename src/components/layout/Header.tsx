@@ -90,7 +90,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <div className="flex items-center gap-6">
                     {/* Logo Section */}
                     <div className="flex items-center gap-3 select-none">
-                        <img src="/auralyn_icon.png?v=13" alt="Auralyn Logo" className="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
+                        <img src="/auralyn_icon.png?v=17" alt="Auralyn Logo" className="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
                         <h1 className="text-xl font-bold tracking-tight text-foreground">
                             Aura<span className="text-primary">lyn</span>
                         </h1>

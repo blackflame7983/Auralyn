@@ -722,7 +722,7 @@ impl Engine {
             .ok_or_else(|| anyhow!("Host name not specified"))?;
         let host_id_str = match host_name_str {
             "ASIO" => cpal::HostId::Asio,
-            "Wasapi" => cpal::HostId::Wasapi,
+            "Wasapi" | "WASAPI" => cpal::HostId::Wasapi,
             _ => return Err(anyhow!("Unsupported host: {}", host_name_str)),
         };
         let host =
@@ -873,6 +873,7 @@ impl Engine {
                 is_input: true,
                 buffer_size_range: in_buf_range,
                 channels: in_channels,
+                is_default: false,
             });
 
             self.device_manager.set_active_output(DeviceInfo {
@@ -881,6 +882,7 @@ impl Engine {
                 is_input: false,
                 buffer_size_range: out_buf_range,
                 channels: out_channels,
+                is_default: false,
             });
         }
 
