@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette } from 'react-icons/md';
+import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite } from 'react-icons/md';
 import { audioApi, AudioDeviceList } from '../../../api/audio';
 import { autostartApi } from '../../../api/autostart';
 import { obsApi } from '../../../api/obs';
@@ -923,6 +923,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     About / Licenses
                   </button>
                 )}
+                <button onClick={() => window.open('https://ofuse.me/o?uid=149216', '_blank')} className="text-xs text-muted-foreground hover:text-pink-400 transition-colors flex items-center gap-1">
+                  <MdFavorite className="w-3 h-3" />
+                  Support Dev
+                </button>
               </div>
             </div>
 

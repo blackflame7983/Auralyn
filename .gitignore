@@ -23,3 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 *.exe
+
+# Locks
+Cargo.lock
+package-lock.json

@@ -12,7 +12,8 @@ import {
     MdMicOff,
     MdGraphicEq,
     MdEmergency,
-    MdGamepad
+    MdGamepad,
+    MdFavorite
 } from 'react-icons/md';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '../../api/audio';
@@ -233,6 +234,14 @@ export const Header: React.FC<HeaderProps> = ({
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">Discord連携ガイド</span>
                                     <span className="text-[10px] text-muted-foreground">通話/ボイスチャット設定</span>
+                                </div>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onSelect={() => window.open('https://ofuse.me/o?uid=149216', '_blank')} className="gap-3 cursor-pointer p-3">
+                                <span className="w-6 h-6 flex items-center justify-center bg-pink-500 text-white rounded-full shadow-sm"><MdFavorite className="w-3.5 h-3.5" /></span>
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-sm">開発を支援する (OFUSE)</span>
+                                    <span className="text-[10px] text-muted-foreground">寄付・ファンレター</span>
                                 </div>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
