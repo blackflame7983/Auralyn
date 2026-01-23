@@ -323,6 +323,14 @@ pub fn run() {
             {
                 log::error!("Failed to register global shortcut: {}", e);
             }
+
+            // Explicitly set window icon (Fix for taskbar icon issue)
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_icon(
+                    tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))
+                        .expect("Failed to load icon"),
+                );
+            }
             // Clone the handle to pass to the thread
             let handle = app.handle().clone();
 
