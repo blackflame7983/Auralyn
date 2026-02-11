@@ -1,0 +1,2 @@
+export const DEFAULT_SAMPLE_RATE = 48000;
+export const DEFAULT_BUFFER_SIZE = 512;

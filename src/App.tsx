@@ -225,7 +225,7 @@ function AppContent() {
                 localStorage.setItem('vst_host_wizard_done', 'true');
               }}
               onApplyConfig={(host, input, output) => {
-                handleConfigUpdate(host, input, output, 48000, 512);
+                handleConfigUpdate({ host, input, output, sampleRate: 48000, bufferSize: 512 });
                 const config = { host, input, output };
                 localStorage.setItem('vst_host_audio_config', JSON.stringify(config));
                 localStorage.setItem('vst_host_wizard_done', 'true');
