@@ -175,10 +175,18 @@ export function ModalLayer() {
                         error={ui.crashError}
                         onClear={() => {
                             pluginsApi.resetPlugins();
-                            // Re-using the same default constants as in App.tsx/audioConfig
-                            // Ideally these should be constants.
                             import('../../api/audio').then(({ audioApi }) => {
-                                audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000);
+                                import('../../constants/audio').then(({ DEFAULT_BUFFER_SIZE, DEFAULT_SAMPLE_RATE }) => {
+                                    audioApi.start(
+                                        audioConfig.host,
+                                        audioConfig.input,
+                                        audioConfig.output,
+                                        audioConfig.bufferSize || DEFAULT_BUFFER_SIZE,
+                                        audioConfig.sampleRate || DEFAULT_SAMPLE_RATE,
+                                        audioConfig.inputId,
+                                        audioConfig.outputId
+                                    );
+                                });
                             });
                         }}
                         onRecover={async (_safeMode, excludePath) => {
@@ -186,7 +194,16 @@ export function ModalLayer() {
                                 // We need to import audioApi dynamically or pass it in?
                                 // Importing typically fine in React components.
                                 const { audioApi } = await import('../../api/audio');
-                                await audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000);
+                                const { DEFAULT_BUFFER_SIZE, DEFAULT_SAMPLE_RATE } = await import('../../constants/audio');
+                                await audioApi.start(
+                                    audioConfig.host,
+                                    audioConfig.input,
+                                    audioConfig.output,
+                                    audioConfig.bufferSize || DEFAULT_BUFFER_SIZE,
+                                    audioConfig.sampleRate || DEFAULT_SAMPLE_RATE,
+                                    audioConfig.inputId,
+                                    audioConfig.outputId
+                                );
                             } catch (e) {
                                 console.error("Recovery Restart Failed", e);
                             }

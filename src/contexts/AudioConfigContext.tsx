@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
+import { DEFAULT_SAMPLE_RATE, DEFAULT_BUFFER_SIZE } from '../constants/audio';
 import { audioApi } from '../api/audio';
 import { useUIState } from './UIContext';
 
@@ -27,36 +28,33 @@ const AudioConfigContext = createContext<AudioConfigContextType | undefined>(und
 let initializationPromise: Promise<void> | null = null;
 
 export const AudioConfigProvider = ({ children }: { children: ReactNode }) => {
+
     // We can use UI context here because AudioConfigProvider will be inside UIProvider
     const { setIsWizardOpen, setIsSettingsOpen } = useUIState();
 
     const [audioConfig, setAudioConfig] = useState<AudioConfig>({ host: '' });
     const [isInitializing, setIsInitializing] = useState(true);
 
-    const handleConfigUpdate = (config: Partial<AudioConfig> & { host: string }) => {
-        setAudioConfig(prev => ({
-            ...prev,
-            host: config.host,
-            input: config.input ?? prev.input,
-            output: config.output ?? prev.output,
-            sampleRate: config.sampleRate ?? prev.sampleRate,
-            bufferSize: config.bufferSize ?? prev.bufferSize,
-            inputChannels: config.inputChannels ?? prev.inputChannels,
-            inputId: config.inputId ?? prev.inputId,
-            outputId: config.outputId ?? prev.outputId
-        }));
 
-        const newConfig = {
-            host: config.host,
-            input: config.input ?? audioConfig.input,
-            output: config.output ?? audioConfig.output,
-            sampleRate: config.sampleRate ?? audioConfig.sampleRate,
-            bufferSize: config.bufferSize ?? audioConfig.bufferSize,
-            inputChannels: config.inputChannels ?? audioConfig.inputChannels,
-            inputId: config.inputId ?? audioConfig.inputId,
-            outputId: config.outputId ?? audioConfig.outputId
-        };
-        localStorage.setItem('vst_host_audio_config', JSON.stringify(newConfig));
+
+    // ... imports
+
+    const handleConfigUpdate = (config: Partial<AudioConfig> & { host: string }) => {
+        setAudioConfig(prev => {
+            const newConfig = {
+                ...prev,
+                host: config.host,
+                input: config.input ?? prev.input,
+                output: config.output ?? prev.output,
+                sampleRate: config.sampleRate ?? prev.sampleRate,
+                bufferSize: config.bufferSize ?? prev.bufferSize,
+                inputChannels: config.inputChannels ?? prev.inputChannels,
+                inputId: config.inputId ?? prev.inputId,
+                outputId: config.outputId ?? prev.outputId
+            };
+            localStorage.setItem('vst_host_audio_config', JSON.stringify(newConfig));
+            return newConfig;
+        });
     };
 
     useEffect(() => {
@@ -71,12 +69,12 @@ export const AudioConfigProvider = ({ children }: { children: ReactNode }) => {
                 try {
                     const config = JSON.parse(savedConfig);
                     if (config.host) {
-                        const sr = config.sampleRate || 48000;
-                        let bs = config.bufferSize || 512;
+                        const sr = config.sampleRate || DEFAULT_SAMPLE_RATE;
+                        let bs = config.bufferSize || DEFAULT_BUFFER_SIZE;
 
                         if (bs > 4096) {
-                            console.warn(`[Config] Resetting suspicious buffer size ${bs} to 512`);
-                            bs = 512;
+                            console.warn(`[Config] Resetting suspicious buffer size ${bs} to ${DEFAULT_BUFFER_SIZE}`);
+                            bs = DEFAULT_BUFFER_SIZE;
                         }
 
                         setAudioConfig({

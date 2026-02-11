@@ -1,7 +1,7 @@
 {
   "name": "auralyn",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "gen-cargo-licenses": "cd src-tauri && cargo about generate about.hbs -o ../src/assets/licenses-cargo.json",
     "rebuild-engine": "node scripts/rebuild-engine.js",
-    "test": "vitest"
+    "test": "vitest",
+    "set-version": "node scripts/set-version.cjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
