@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage } from 'react-icons/md';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { audioApi, AudioDeviceList } from '../../../api/audio';
 import { autostartApi } from '../../../api/autostart';
 import { obsApi } from '../../../api/obs';
@@ -10,11 +11,12 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from '@/components/ui/label';
 import { useTheme } from '../../../hooks/useTheme';
 import { InputChannelSelector } from './InputChannelSelector';
+import { APP_INFO } from '../../../constants/appInfo';
 
 interface AudioSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfigChange: (host: string, input?: string, output?: string, sampleRate?: number, bufferSize?: number, inputChannels?: [number, number]) => void;
+  onConfigChange: (config: Partial<import('../../../contexts/AudioConfigContext').AudioConfig> & { host: string }) => void;
   onEngineRestarted?: () => Promise<void> | void;
   onOpenWizard?: () => void;
   onOpenLicense?: () => void;
@@ -314,12 +316,20 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       // For ASIO, Output must match Input
       const finalOutput = isAsio ? selectedInput : selectedOutput;
 
+      // Find device IDs
+      const inputDev = filteredInputs.find(d => d.name === selectedInput);
+      const outputDev = filteredOutputs.find(d => d.name === finalOutput);
+      const inputId = inputDev?.id;
+      const outputId = outputDev?.id;
+
       const res = await audioApi.start(
         selectedHost,
         selectedInput || undefined,
         finalOutput || undefined,
         selectedBufferSize,
-        selectedSampleRate
+        selectedSampleRate,
+        inputId,
+        outputId
       );
 
       // Save to localStorage REMOVED (Handled by App.tsx Listener)
@@ -327,13 +337,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       // This prevents overwriting the actual Fallback values with our requested values.
 
       // Notify parent to update persistence with ALL params
-      onConfigChange(
-        selectedHost,
-        selectedInput || undefined,
-        finalOutput || undefined,
-        res.sample_rate,
-        res.buffer_size
-      );
+      onConfigChange({
+        host: selectedHost,
+        input: selectedInput || undefined,
+        output: finalOutput || undefined,
+        sampleRate: res.sample_rate,
+        bufferSize: res.buffer_size,
+        inputId,
+        outputId
+      });
       // toast.success('オーディオエンジンを起動しました'); // Assuming toast is available
       onClose();
     } catch (err) {
@@ -350,21 +362,30 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     setLoading(true);
     try {
       const finalOutput = isAsio ? selectedInput : selectedOutput;
+      const inputDev = filteredInputs.find(d => d.name === selectedInput);
+      const outputDev = filteredOutputs.find(d => d.name === finalOutput);
+      const inputId = inputDev?.id;
+      const outputId = outputDev?.id;
+
       const res = await audioApi.restart(
         selectedHost,
         selectedInput || undefined,
         finalOutput || undefined,
         selectedBufferSize,
-        selectedSampleRate
+        selectedSampleRate,
+        inputId,
+        outputId
       );
 
-      onConfigChange(
-        selectedHost,
-        selectedInput || undefined,
-        finalOutput || undefined,
-        res.sample_rate,
-        res.buffer_size
-      );
+      onConfigChange({
+        host: selectedHost,
+        input: selectedInput || undefined,
+        output: finalOutput || undefined,
+        sampleRate: res.sample_rate,
+        bufferSize: res.buffer_size,
+        inputId,
+        outputId
+      });
 
       // The restart kills the sidecar process (plugins are lost), so restore them from session.
       if (onEngineRestarted) {
@@ -523,7 +544,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {/* Host Selection */}
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <label className="text-sm font-medium text-muted-foreground">オーディオドライバ (Host)</label>
+                    <label className="text-sm font-medium text-muted-foreground">オーディオドライバ</label>
                     <button
                       onClick={() => fetchDevices(true)}
                       className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
@@ -547,7 +568,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {/* Input Device */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-muted-foreground">
-                    {isAsio ? "デバイス (Driver)" : "マイク入力 (Input)"}
+                    {isAsio ? "デバイス" : "マイク入力"}
                   </label>
                   <select
                     value={selectedInput}
@@ -573,7 +594,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       maxChannels={activeDevice?.channels}
                       onChannelMapped={(channels) => {
                         console.log('Mapped Channels:', channels);
-                        onConfigChange(selectedHost, selectedInput, selectedOutput, selectedSampleRate, selectedBufferSize, channels);
+                        onConfigChange({ host: selectedHost, input: selectedInput, output: selectedOutput, sampleRate: selectedSampleRate, bufferSize: selectedBufferSize, inputChannels: channels });
                       }}
                     />
                   </div>
@@ -582,7 +603,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {/* Output Device - Hide for ASIO */}
                 {!isAsio && (
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-muted-foreground">出力先 (Output)</label>
+                    <label className="text-sm font-medium text-muted-foreground">出力先</label>
                     <select
                       value={selectedOutput}
                       onChange={(e) => setSelectedOutput(e.target.value)}
@@ -700,7 +721,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                           className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select"
                         >
                           {supportedBufferSizes.map(size => (
-                            <option key={size} value={size}>{size} samples</option>
+                            <option key={size} value={size}>{size} サンプル</option>
                           ))}
                         </select>
                       </div>
@@ -808,7 +829,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           <TabsContent value="obs" className="space-y-4">
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">ホスト名 (Host)</label>
+                <label className="text-sm font-medium text-muted-foreground">ホスト名</label>
                 <input
                   type="text"
                   value={obsHost}
@@ -818,7 +839,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">ポート (WebSocket)</label>
+                <label className="text-sm font-medium text-muted-foreground">ポート</label>
                 <input
                   type="number"
                   value={obsPort}
@@ -874,21 +895,21 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-all cursor-pointer" onClick={() => setTheme('light')}>
                     <RadioGroupItem value="light" id="theme-light" />
                     <Label htmlFor="theme-light" className="cursor-pointer flex-1">
-                      <span className="font-bold block">ライト (Light)</span>
+                      <span className="font-bold block">ライト</span>
                       <span className="text-xs text-muted-foreground">明るく清潔感のあるデザイン (OS設定に連動)</span>
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-all cursor-pointer" onClick={() => setTheme('dark')}>
                     <RadioGroupItem value="dark" id="theme-dark" />
                     <Label htmlFor="theme-dark" className="cursor-pointer flex-1">
-                      <span className="font-bold block">ダーク (Dark)</span>
+                      <span className="font-bold block">ダーク</span>
                       <span className="text-xs text-muted-foreground">目に優しい、クリエイティブ作業向け</span>
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2 border border-primary/30 bg-primary/5 p-3 rounded-lg hover:bg-primary/10 transition-all cursor-pointer" onClick={() => setTheme('gaming')}>
                     <RadioGroupItem value="gaming" id="theme-gaming" className="text-cyan-400 border-cyan-400" />
                     <Label htmlFor="theme-gaming" className="cursor-pointer flex-1">
-                      <span className="font-bold block text-primary">ゲーミング (Gaming)</span>
+                      <span className="font-bold block text-primary">ゲーミング</span>
                       <span className="text-xs text-muted-foreground">没入感を高めるハイコントラスト & グローエフェクト</span>
                     </Label>
                   </div>
@@ -905,28 +926,27 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           <TabsContent value="system" className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
 
             {/* App Info Card */}
+            {/* App Info Card */}
             <div className="p-6 bg-muted/20 border border-border rounded-xl flex flex-col items-center justify-center space-y-3">
-              <div className="w-16 h-16 bg-primary/20 text-primary rounded-full flex items-center justify-center text-2xl font-bold shadow-sm">
-                A
-              </div>
+              <img src="/auralyn_icon.png" alt="Auralyn Icon" className="w-16 h-16 rounded-full shadow-sm object-contain" />
               <div className="text-center">
-                <h3 className="text-lg font-bold text-foreground">Auralyn VST Host</h3>
-                <p className="text-xs text-muted-foreground">Version 0.2.0</p>
+                <h3 className="text-lg font-bold text-foreground">{APP_INFO.NAME}</h3>
+                <p className="text-xs text-muted-foreground">Version {APP_INFO.VERSION}</p>
               </div>
 
               <div className="flex gap-4 pt-2">
-                <button onClick={() => window.open('https://www.kuro7983.com/apps/auralyn', '_blank')} className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+                <button onClick={() => openUrl('https://www.kuro7983.com/apps/auralyn')} className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
                   <MdLanguage className="w-3.5 h-3.5" />
-                  Web Site
+                  公式サイト
                 </button>
                 {onOpenLicense && (
                   <button onClick={onOpenLicense} className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
-                    About / Licenses
+                    アプリ情報 / ライセンス
                   </button>
                 )}
-                <button onClick={() => window.open('https://ofuse.me/o?uid=149216', '_blank')} className="text-xs text-muted-foreground hover:text-pink-400 transition-colors flex items-center gap-1">
+                <button onClick={() => openUrl('https://ofuse.me/o?uid=149216')} className="text-xs text-muted-foreground hover:text-pink-400 transition-colors flex items-center gap-1">
                   <MdFavorite className="w-3 h-3" />
-                  Support Dev
+                  開発を支援
                 </button>
               </div>
             </div>

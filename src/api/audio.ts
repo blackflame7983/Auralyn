@@ -8,6 +8,7 @@ export interface AudioDevice {
     is_default: boolean;
     buffer_size_range?: [number, number];
     channels: number;
+    id?: string;
 }
 
 export interface AudioDeviceList {
@@ -34,13 +35,15 @@ export const audioApi = {
     getDevices: async (forceRefresh: boolean = false): Promise<AudioDeviceList> => {
         return await invoke("get_audio_devices", { forceRefresh });
     },
-    start: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number): Promise<AudioConfig> => {
+    start: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string): Promise<AudioConfig> => {
         return await invoke("start_audio", {
             host,
             input,
             output,
             bufferSize,
-            sampleRate
+            sampleRate,
+            inputId,
+            outputId
         });
     },
     stop: async () => {
@@ -70,13 +73,15 @@ export const audioApi = {
     setGain: async (id: string, value: number) => {
         return await invoke("set_gain", { id, value });
     },
-    restart: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number): Promise<AudioConfig> => {
+    restart: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string): Promise<AudioConfig> => {
         return await invoke("restart_audio_engine", {
             host,
             input,
             output,
             bufferSize,
-            sampleRate
+            sampleRate,
+            inputId,
+            outputId
         });
     },
     openEditor: async (id: string) => {

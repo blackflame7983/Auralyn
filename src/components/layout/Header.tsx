@@ -181,13 +181,13 @@ export const Header: React.FC<HeaderProps> = ({
                             <DropdownMenuSeparator />
                             <DropdownMenuRadioGroup value={theme} onValueChange={(v) => setTheme(v as any)}>
                                 <DropdownMenuRadioItem value="light" className="gap-2">
-                                    <MdWbSunny className="w-4 h-4" /> ライト (Light)
+                                    <MdWbSunny className="w-4 h-4" /> ライト
                                 </DropdownMenuRadioItem>
                                 <DropdownMenuRadioItem value="dark" className="gap-2">
-                                    <MdDarkMode className="w-4 h-4" /> ダーク (Dark)
+                                    <MdDarkMode className="w-4 h-4" /> ダーク
                                 </DropdownMenuRadioItem>
                                 <DropdownMenuRadioItem value="gaming" className="gap-2">
-                                    <MdGamepad className="w-4 h-4 text-cyan-400" /> ゲーミング (Gaming)
+                                    <MdGamepad className="w-4 h-4 text-cyan-400" /> ゲーミング
                                 </DropdownMenuRadioItem>
                             </DropdownMenuRadioGroup>
                         </DropdownMenuContent>
