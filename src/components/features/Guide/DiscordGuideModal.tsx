@@ -34,24 +34,24 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in duration-200 p-4">
-            <div className="bg-card border border-border rounded-xl w-full max-w-3xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="modal-overlay-base">
+            <div className="modal-surface-base w-full max-w-3xl flex flex-col max-h-[90vh]">
 
                 {/* Header */}
-                <div className="p-6 border-b border-border flex justify-between items-center bg-muted/20 shrink-0">
+                <div className="modal-header-base modal-header-muted shrink-0">
                     <h2 className="text-xl font-bold flex items-center gap-2 text-foreground">
                         <span className="w-8 h-8 rounded-lg bg-[#5865F2] flex items-center justify-center text-white">
                             <DiscordIcon className="w-5 h-5" />
                         </span>
                         Discord連携ガイド
                     </h2>
-                    <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+                    <button onClick={onClose} aria-label="Discord連携ガイドを閉じる" className="text-muted-foreground hover:text-foreground transition-colors">
                         <MdClose className="w-6 h-6" />
                     </button>
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-8">
+                <div className="modal-body-base p-8">
 
                     {/* Progress Bar (Skipped for Step 0) */}
                     {step > 0 && (
@@ -88,6 +88,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                 <div className="grid md:grid-cols-2 gap-6 mt-8">
                                     <button
                                         onClick={() => handleDeviceSelection(true)}
+                                        aria-label="機材を使用している手順を選択"
                                         className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-[#5865F2]/50 transition-all text-left flex flex-col items-center text-center group"
                                     >
                                         <div className="w-16 h-16 rounded-full bg-[#5865F2]/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
@@ -98,12 +99,13 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                             AG03/AG06等のミキサー機能付きインターフェースを使用
                                         </p>
                                         <div className="flex items-center gap-2 text-xs font-bold text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 px-3 py-1 rounded-full">
-                                            <MdWarning /> エコー注意 (Loopback)
+                                            <MdWarning /> エコー注意（ループバック）
                                         </div>
                                     </button>
 
                                     <button
                                         onClick={() => handleDeviceSelection(false)}
+                                        aria-label="機材を使用していない手順を選択"
                                         className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-[#5865F2]/50 transition-all text-left flex flex-col items-center text-center group"
                                     >
                                         <div className="w-16 h-16 rounded-full bg-secondary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
@@ -135,21 +137,22 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                         <MdSettings className="w-6 h-6 text-[#5865F2]" />
                                     </div>
                                     <div>
-                                        <h4 className="font-bold mb-1">出力先 (Output Device)</h4>
+                                        <h4 className="font-bold mb-1">出力先</h4>
                                         <p className="text-sm text-muted-foreground mb-4">
                                             以下のように設定してください
                                         </p>
                                         <button
                                             onClick={onOpenAudioSettings}
+                                            aria-label="オーディオ設定を開く"
                                             className="px-4 py-2 bg-[#5865F2] hover:bg-[#5865F2]/90 text-white font-bold rounded-lg text-sm transition-all"
                                         >
                                             オーディオ設定を開く
                                         </button>
                                     </div>
-                                    <div className="text-xs text-left bg-background p-3 rounded border border-border w-full mt-2 font-mono text-center">
+                                        <div className="text-xs text-left bg-background p-3 rounded border border-border w-full mt-2 font-mono text-center">
                                         {useHardwareMixer
                                             ? "お使いの機器の入力 (AG06/AG03 等)"
-                                            : "CABLE Input (VB-Audio Virtual Cable)"}
+                                            : "CABLE Input（VB-Audio 仮想ケーブル）"}
                                     </div>
                                 </div>
 
@@ -159,10 +162,10 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                         <div className="space-y-1">
                                             <h4 className="font-bold text-destructive">通話相手の声がループする危険性</h4>
                                             <p className="text-sm text-foreground">
-                                                ハードウェアのLoopback機能を使ってDiscord通話をすると、<strong>「相手の声」が自分のマイク音声に乗って相手に跳ね返る（エコー）</strong>リスクが高いです。
+                                                ハードウェアのループバック機能を使ってDiscord通話をすると、<strong>「相手の声」が自分のマイク音声に乗って相手に跳ね返る（エコー）</strong>リスクが高いです。
                                             </p>
                                             <p className="text-xs text-muted-foreground mt-2">
-                                                対策: Discordの「出力デバイス」をLoopbackに含まれない経路（例: PCのヘッドホン端子など）にするか、ミキサー側で調整が必要です。<br />
+                                                対策: Discordの「出力デバイス」をループバックに含まれない経路（例: PCのヘッドホン端子など）にするか、ミキサー側で調整が必要です。<br />
                                                 設定が難しい場合は、あえて「機材を使用していない」手順（VB-CABLE）を使うことをお勧めします。
                                             </p>
                                         </div>
@@ -173,7 +176,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                             <MdHeadphones className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                                             <div>
                                                 <p className="font-bold text-foreground">自分の声を聞くには？</p>
-                                                <p>CABLE Inputを使うと自分の声が消えます。「PCのサウンド設定」で「このデバイスを聴く」をONにすることもできますが、遅延が発生するため推奨しません。</p>
+                                                <p>CABLE Input（VB-Audio 仮想ケーブル）を使うと自分の声が消えます。「PCのサウンド設定」で「このデバイスを聴く」をONにすることもできますが、遅延が発生するため推奨しません。</p>
                                             </div>
                                         </div>
                                     </div>
@@ -196,19 +199,19 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="text-gray-300 text-xs font-bold uppercase">入力デバイス (INPUT DEVICE)</label>
+                                        <label className="text-gray-300 text-xs font-bold uppercase">入力デバイス</label>
                                         <div className="bg-[#111214] p-3 rounded border border-gray-700 flex justify-between items-center text-white cursor-pointer hover:bg-[#2b2d31] transition-colors">
                                             <span className="flex items-center gap-2">
                                                 <MdMic className="text-green-500" />
-                                                {useHardwareMixer ? "Loopback / Stream (お使いの機器)" : "CABLE Output (VB-Audio Virtual Cable)"}
+                                                {useHardwareMixer ? "ループバック / 配信用ストリーム (お使いの機器)" : "CABLE Output（VB-Audio 仮想ケーブル）"}
                                             </span>
                                         </div>
                                     </div>
 
                                     <div className="space-y-2 opacity-50 pointer-events-none">
-                                        <label className="text-gray-300 text-xs font-bold uppercase">出力デバイス (OUTPUT DEVICE)</label>
+                                        <label className="text-gray-300 text-xs font-bold uppercase">出力デバイス</label>
                                         <div className="bg-[#111214] p-3 rounded border border-gray-700 text-white">
-                                            <span>Default / Headphones</span>
+                                            <span>既定 / ヘッドホン</span>
                                         </div>
                                     </div>
 
@@ -249,7 +252,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                     <div className="bg-muted/30 p-4 rounded-lg flex items-center gap-4">
                                         <MdGraphicEq className="w-6 h-6 text-primary shrink-0" />
                                         <div className="text-sm">
-                                            <p className="font-bold">入力感度 (Input Sensitivity)</p>
+                                            <p className="font-bold">入力感度</p>
                                             <p className="text-muted-foreground">
                                                 「自動検出」をOFFにし、バーを左端（最低値）近くに設定することをお勧めします。
                                             </p>
@@ -262,9 +265,10 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                 </div>
 
                 {/* Footer */}
-                <div className="p-6 border-t border-border bg-muted/20 flex justify-between items-center shrink-0">
+                <div className="modal-footer-base flex justify-between items-center shrink-0">
                     <button
                         onClick={prevStep}
+                        aria-label="前の手順へ戻る"
                         disabled={step === 0}
                         className="px-6 py-2 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground transition-colors font-medium flex items-center gap-1"
                     >
@@ -274,6 +278,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                         {step < (totalSteps - 1) ? (
                             <button
                                 onClick={nextStep}
+                                aria-label="次の手順へ進む"
                                 className="px-8 py-2 bg-[#5865F2] hover:bg-[#5865F2]/90 text-white font-bold rounded-full shadow-lg transition-all flex items-center gap-2"
                             >
                                 次へ
@@ -282,6 +287,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                         ) : (
                             <button
                                 onClick={onClose}
+                                aria-label="ガイドを完了する"
                                 className="px-8 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-full shadow-lg transition-all flex items-center gap-2"
                             >
                                 <MdCheckCircle />

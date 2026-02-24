@@ -1,8 +1,7 @@
 import { Suspense, lazy } from 'react';
-import { useUIState } from '../../hooks/useUIState';
-import { useAudioConfig } from '../../hooks/useAudioConfig';
-import { usePlugins } from '../../hooks/usePlugins';
-import { useTutorial } from '../../contexts/TutorialContext';
+import { VstPlugin } from '../../api/audio';
+import { audioApi } from '../../api/audio';
+import type { Plugin } from '../features/PluginRack/PluginCard';
 
 // Lazy load modals
 const AudioSettingsModal = lazy(() => import('../features/AudioSettings/AudioSettingsModal').then(m => ({ default: m.AudioSettingsModal })));
@@ -15,41 +14,77 @@ const PresetManagerModal = lazy(() => import('../features/Presets/PresetManagerM
 const TemplateWizardModal = lazy(() => import('../features/Templates/TemplateWizardModal').then(m => ({ default: m.TemplateWizardModal })));
 const RecoveryModal = lazy(() => import('../features/Recovery/RecoveryModal').then(m => ({ default: m.RecoveryModal })));
 const LargeLevelMeter = lazy(() => import('../features/LevelMeter/LargeLevelMeter').then(m => ({ default: m.LargeLevelMeter })));
+const TroubleshootModal = lazy(() => import('../features/Troubleshoot/TroubleshootModal').then(m => ({ default: m.TroubleshootModal })));
 
-export function ModalLayer() {
-    const ui = useUIState();
-    const {
-        audioConfig,
-        handleConfigUpdate
-    } = useAudioConfig(
-        () => ui.setIsWizardOpen(true),
-        () => ui.setIsSettingsOpen(true)
-    );
+interface UIState {
+    isSettingsOpen: boolean;
+    setIsSettingsOpen: (v: boolean) => void;
+    isBrowserOpen: boolean;
+    setIsBrowserOpen: (v: boolean) => void;
+    isOBSGuideOpen: boolean;
+    setIsOBSGuideOpen: (v: boolean) => void;
+    isDiscordGuideOpen: boolean;
+    setIsDiscordGuideOpen: (v: boolean) => void;
+    isWizardOpen: boolean;
+    setIsWizardOpen: (v: boolean) => void;
+    isTemplateWizardOpen: boolean;
+    setIsTemplateWizardOpen: (v: boolean) => void;
+    isLicenseModalOpen: boolean;
+    setIsLicenseModalOpen: (v: boolean) => void;
+    isRecoveryModalOpen: boolean;
+    setIsRecoveryModalOpen: (v: boolean) => void;
+    crashError: string | null;
+    isPresetManagerOpen: boolean;
+    setIsPresetManagerOpen: (v: boolean) => void;
+    isLargeMeterOpen: boolean;
+    setIsLargeMeterOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
+    isTroubleshootOpen: boolean;
+    setIsTroubleshootOpen: (v: boolean) => void;
+}
 
-    const pluginsApi = usePlugins();
-    const { currentStep, completeStep } = useTutorial();
+interface AudioConfig {
+    host: string;
+    input?: string;
+    output?: string;
+    sampleRate?: number;
+    bufferSize?: number;
+    inputChannels?: [number, number];
+}
 
+interface PluginsApi {
+    plugins: Plugin[];
+    availablePlugins: VstPlugin[];
+    isScanning: boolean;
+    error: string | null;
+    scanPlugins: () => Promise<void>;
+    addPlugin: (vstPlugin: VstPlugin) => Promise<boolean>;
+    loadPreset: (name: string) => Promise<boolean>;
+    savePreset: (name: string) => Promise<boolean>;
+    applyTemplate: (mapping: Record<string, VstPlugin>) => Promise<void | boolean>;
+    resetPlugins: () => void;
+    recoverSession: (excludePath?: string | null) => Promise<void>;
+    restoreSession: () => Promise<void>;
+}
+
+interface ModalLayerProps {
+    ui: UIState;
+    audioConfig: AudioConfig;
+    handleConfigUpdate: (config: Partial<AudioConfig> & { host: string }) => void;
+    pluginsApi: PluginsApi;
+    onPluginAdded: () => void;
+}
+
+export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, onPluginAdded }: ModalLayerProps) {
     const handleEngineRestart = async () => {
         pluginsApi.resetPlugins();
         await pluginsApi.restoreSession();
     };
 
-    const handlePluginSelect = async (vstPlugin: any) => {
+    const handlePluginSelect = async (vstPlugin: VstPlugin) => {
         const success = await pluginsApi.addPlugin(vstPlugin);
         if (success) {
             ui.setIsBrowserOpen(false);
-            // Advance tutorial only when plugin is actually added
-            if (currentStep === 'click_add_effect') {
-                completeStep('click_add_effect');
-            }
-            // Note: Tutorial step completion is handled in App.tsx side effects or via events if needed.
-            // Ideally App.tsx handles the "logic" of tutorial progression, or we move it here?
-            // For now, let's keep the tutorial logic simple or expose an event.
-            // But wait, `handlePluginSelect` in App.tsx had:
-            // if (currentStep === 'click_add_effect') completeStep('click_add_effect');
-            // We need to access tutorial context here if we want to preserve that behavior exactly,
-            // OR we pass `onPluginAdded` callback to this layer.
-            // Let's import useTutorial here to keep it self-contained.
+            onPluginAdded();
         }
     };
 
@@ -63,6 +98,10 @@ export function ModalLayer() {
                         onConfigChange={handleConfigUpdate}
                         onEngineRestarted={handleEngineRestart}
                         onOpenWizard={() => ui.setIsWizardOpen(true)}
+                        onOpenOBSGuide={() => {
+                            ui.setIsSettingsOpen(false);
+                            ui.setIsOBSGuideOpen(true);
+                        }}
                         onOpenLicense={() => ui.setIsLicenseModalOpen(true)}
                         currentSampleRate={audioConfig.sampleRate}
                         currentBufferSize={audioConfig.bufferSize}
@@ -70,7 +109,6 @@ export function ModalLayer() {
                     />
                 </Suspense>
             )}
-
             {ui.isBrowserOpen && (
                 <Suspense fallback={null}>
                     <PluginBrowserModal
@@ -84,7 +122,6 @@ export function ModalLayer() {
                     />
                 </Suspense>
             )}
-
             {ui.isOBSGuideOpen && (
                 <Suspense fallback={null}>
                     <OBSGuideModal
@@ -97,7 +134,6 @@ export function ModalLayer() {
                     />
                 </Suspense>
             )}
-
             {ui.isDiscordGuideOpen && (
                 <Suspense fallback={null}>
                     <DiscordGuideModal
@@ -110,7 +146,6 @@ export function ModalLayer() {
                     />
                 </Suspense>
             )}
-
             {ui.isLicenseModalOpen && (
                 <Suspense fallback={null}>
                     <LicenseModal
@@ -119,7 +154,6 @@ export function ModalLayer() {
                     />
                 </Suspense>
             )}
-
             {ui.isWizardOpen && (
                 <Suspense fallback={null}>
                     <SetupWizardModal
@@ -138,7 +172,6 @@ export function ModalLayer() {
                     />
                 </Suspense>
             )}
-
             {ui.isPresetManagerOpen && (
                 <Suspense fallback={null}>
                     <PresetManagerModal
@@ -153,7 +186,6 @@ export function ModalLayer() {
                     />
                 </Suspense>
             )}
-
             {ui.isTemplateWizardOpen && (
                 <Suspense fallback={null}>
                     <TemplateWizardModal
@@ -166,7 +198,6 @@ export function ModalLayer() {
                     />
                 </Suspense>
             )}
-
             {ui.isRecoveryModalOpen && (
                 <Suspense fallback={null}>
                     <RecoveryModal
@@ -175,35 +206,11 @@ export function ModalLayer() {
                         error={ui.crashError}
                         onClear={() => {
                             pluginsApi.resetPlugins();
-                            import('../../api/audio').then(({ audioApi }) => {
-                                import('../../constants/audio').then(({ DEFAULT_BUFFER_SIZE, DEFAULT_SAMPLE_RATE }) => {
-                                    audioApi.start(
-                                        audioConfig.host,
-                                        audioConfig.input,
-                                        audioConfig.output,
-                                        audioConfig.bufferSize || DEFAULT_BUFFER_SIZE,
-                                        audioConfig.sampleRate || DEFAULT_SAMPLE_RATE,
-                                        audioConfig.inputId,
-                                        audioConfig.outputId
-                                    );
-                                });
-                            });
+                            audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000);
                         }}
                         onRecover={async (_safeMode, excludePath) => {
                             try {
-                                // We need to import audioApi dynamically or pass it in?
-                                // Importing typically fine in React components.
-                                const { audioApi } = await import('../../api/audio');
-                                const { DEFAULT_BUFFER_SIZE, DEFAULT_SAMPLE_RATE } = await import('../../constants/audio');
-                                await audioApi.start(
-                                    audioConfig.host,
-                                    audioConfig.input,
-                                    audioConfig.output,
-                                    audioConfig.bufferSize || DEFAULT_BUFFER_SIZE,
-                                    audioConfig.sampleRate || DEFAULT_SAMPLE_RATE,
-                                    audioConfig.inputId,
-                                    audioConfig.outputId
-                                );
+                                await audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000);
                             } catch (e) {
                                 console.error("Recovery Restart Failed", e);
                             }
@@ -212,10 +219,25 @@ export function ModalLayer() {
                     />
                 </Suspense>
             )}
-
             {ui.isLargeMeterOpen && (
                 <Suspense fallback={null}>
                     <LargeLevelMeter onClose={() => ui.setIsLargeMeterOpen(false)} />
+                </Suspense>
+            )}
+            {ui.isTroubleshootOpen && (
+                <Suspense fallback={null}>
+                    <TroubleshootModal
+                        isOpen={ui.isTroubleshootOpen}
+                        onClose={() => ui.setIsTroubleshootOpen(false)}
+                        onOpenSettings={() => {
+                            ui.setIsTroubleshootOpen(false);
+                            ui.setIsSettingsOpen(true);
+                        }}
+                        onOpenOBSGuide={() => {
+                            ui.setIsTroubleshootOpen(false);
+                            ui.setIsOBSGuideOpen(true);
+                        }}
+                    />
                 </Suspense>
             )}
         </>

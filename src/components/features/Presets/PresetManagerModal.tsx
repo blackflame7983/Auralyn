@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { MdClose, MdSave, MdDelete, MdFolderOpen, MdPlayArrow, MdSearch, MdAutoFixHigh } from 'react-icons/md';
+import React, { useState, useEffect, useCallback } from 'react';
+import { MdClose, MdSave, MdDelete, MdFolderOpen, MdPlayArrow, MdSearch, MdAutoFixHigh, MdFileUpload, MdFileDownload } from 'react-icons/md';
 import { presetApi } from '../../../api/presets';
+import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { toast } from 'sonner';
+import { invoke } from '@tauri-apps/api/core';
 
 interface PresetManagerModalProps {
     isOpen: boolean;
@@ -16,6 +18,18 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ isOpen, 
     const [isLoading, setIsLoading] = useState(false);
     const [saveName, setSaveName] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
+    const [confirmState, setConfirmState] = useState<{
+        isOpen: boolean;
+        title: string;
+        description?: string;
+        confirmLabel?: string;
+        variant?: 'default' | 'destructive';
+        onConfirm: () => void;
+    }>({ isOpen: false, title: '', onConfirm: () => {} });
+
+    const showConfirm = useCallback((opts: Omit<typeof confirmState, 'isOpen'>) => {
+        setConfirmState({ ...opts, isOpen: true });
+    }, []);
 
     const loadPresets = async () => {
         setIsLoading(true);
@@ -42,9 +56,20 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ isOpen, 
             return;
         }
         if (presets.includes(saveName)) {
-            if (!confirm(`プリセット "${saveName}" は既に存在します。上書きしますか？`)) {
-                return;
-            }
+            showConfirm({
+                title: `プリセット「${saveName}」を上書きしますか？`,
+                description: '同じ名前のプリセットが既に存在します。上書きすると元に戻せません。',
+                confirmLabel: '上書き保存',
+                variant: 'default',
+                onConfirm: async () => {
+                    if (await onSavePreset(saveName)) {
+                        setSaveName('');
+                        toast.success("プリセットを保存しました");
+                        loadPresets();
+                    }
+                },
+            });
+            return;
         }
 
         if (await onSavePreset(saveName)) {
@@ -54,25 +79,62 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ isOpen, 
         }
     };
 
-    const handleLoad = async (name: string) => {
-        if (confirm(`現在の設定を破棄して "${name}" を読み込みますか？`)) {
-            if (await onLoadPreset(name)) {
-                toast.success("プリセットを読み込みました");
-                onClose();
-            }
+    const handleLoad = (name: string) => {
+        showConfirm({
+            title: `「${name}」を読み込みますか？`,
+            description: '現在のエフェクト設定は破棄され、プリセットの設定に置き換わります。',
+            confirmLabel: '読み込む',
+            variant: 'default',
+            onConfirm: async () => {
+                if (await onLoadPreset(name)) {
+                    toast.success("プリセットを読み込みました");
+                    onClose();
+                }
+            },
+        });
+    };
+
+    const handleDelete = (name: string) => {
+        showConfirm({
+            title: `「${name}」を削除しますか？`,
+            description: 'この操作は元に戻せません。',
+            confirmLabel: '削除する',
+            variant: 'destructive',
+            onConfirm: async () => {
+                try {
+                    await presetApi.delete(name);
+                    toast.success("削除しました");
+                    loadPresets();
+                } catch (e) {
+                    console.error("Failed to delete preset:", e);
+                    toast.error("削除に失敗しました");
+                }
+            },
+        });
+    };
+
+    // === Export: Save preset as JSON file via Tauri command ===
+    const handleExport = async (name: string) => {
+        try {
+            await invoke("export_preset", { name });
+            toast.success(`「${name}」をエクスポートしました`);
+        } catch (e: any) {
+            if (e === 'cancelled' || (typeof e === 'string' && e.includes('cancel'))) return;
+            console.error("Export failed:", e);
+            toast.error("エクスポートに失敗しました");
         }
     };
 
-    const handleDelete = async (name: string) => {
-        if (confirm(`プリセット "${name}" を削除してもよろしいですか？`)) {
-            try {
-                await presetApi.delete(name);
-                toast.success("削除しました");
-                loadPresets();
-            } catch (e) {
-                console.error("Failed to delete preset:", e);
-                toast.error("削除に失敗しました");
-            }
+    // === Import: Load preset from JSON file via Tauri command ===
+    const handleImport = async () => {
+        try {
+            const importedName = await invoke<string>("import_preset");
+            toast.success(`「${importedName}」をインポートしました`);
+            loadPresets();
+        } catch (e: any) {
+            if (e === 'cancelled' || (typeof e === 'string' && e.includes('cancel'))) return;
+            console.error("Import failed:", e);
+            toast.error("インポートに失敗しました。ファイル形式を確認してください。");
         }
     };
 
@@ -81,13 +143,13 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ isOpen, 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="modal-overlay-base z-50 animate-in fade-in duration-200">
             <div
-                className="w-full max-w-lg bg-background border border-border rounded-xl shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"
+                className="modal-surface-base w-full max-w-lg bg-background flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b border-border">
+                <div className="modal-header-base">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-primary/10 rounded-lg">
                             <MdFolderOpen className="w-5 h-5 text-primary" />
@@ -139,6 +201,18 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ isOpen, 
                     </div>
                 </div>
 
+                {/* Import/Export Bar */}
+                <div className="px-4 py-2 border-b border-border flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground font-mono tracking-wider uppercase">プリセット共有</span>
+                    <button
+                        onClick={handleImport}
+                        className="flex items-center gap-1.5 px-3 py-1 text-xs text-muted-foreground hover:text-primary border border-border hover:border-primary/30 rounded-md transition-all"
+                    >
+                        <MdFileUpload className="w-3.5 h-3.5" />
+                        ファイルからインポート
+                    </button>
+                </div>
+
                 {/* List Section */}
                 <div className="flex-1 overflow-hidden flex flex-col">
                     <div className="p-4 pb-2">
@@ -165,12 +239,13 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ isOpen, 
                                     <MdFolderOpen className="w-6 h-6 opacity-50" />
                                 </div>
                                 <p className="text-sm">プリセットが見つかりません</p>
+                                <p className="text-xs mt-2 opacity-70">まずは現在のエフェクト設定を保存してみましょう</p>
                             </div>
                         ) : (
                             filteredPresets.map(preset => (
                                 <div
                                     key={preset}
-                                    onClick={() => setSaveName(preset)} // Click to select for overwrite
+                                    onClick={() => setSaveName(preset)}
                                     className={`group flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-accent hover:border-accent-foreground/20 transition-all ${preset === saveName ? 'border-primary ring-1 ring-primary/50 bg-primary/5' : 'border-border bg-card'
                                         }`}
                                 >
@@ -183,7 +258,6 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ isOpen, 
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-1">
-                                        {/* Always visible on mobile/selected, otherwise hover */}
                                         <div className={`flex items-center gap-1 ${preset === saveName ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
                                             <button
                                                 onClick={(e) => {
@@ -194,6 +268,16 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ isOpen, 
                                                 title="読み込み"
                                             >
                                                 <MdPlayArrow className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleExport(preset);
+                                                }}
+                                                className="p-2 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 rounded-md transition-colors"
+                                                title="エクスポート"
+                                            >
+                                                <MdFileDownload className="w-4 h-4" />
                                             </button>
                                             <div className="w-px h-4 bg-border mx-1" />
                                             <button
@@ -214,6 +298,19 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({ isOpen, 
                     </div>
                 </div>
             </div>
+
+            <ConfirmDialog
+                isOpen={confirmState.isOpen}
+                title={confirmState.title}
+                description={confirmState.description}
+                confirmLabel={confirmState.confirmLabel}
+                variant={confirmState.variant}
+                onConfirm={() => {
+                    setConfirmState(prev => ({ ...prev, isOpen: false }));
+                    confirmState.onConfirm();
+                }}
+                onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+            />
         </div>
     );
 };

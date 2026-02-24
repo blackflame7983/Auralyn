@@ -117,15 +117,15 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={onClose}>
+        <div className="modal-overlay-base z-50 bg-black/50" onClick={onClose}>
             {/* Modal Content - stop propagation to prevent closing when clicking inside */}
             <div
-                className="max-w-4xl w-full h-[80vh] flex flex-col overflow-hidden bg-background text-foreground rounded-xl shadow-2xl border border-border"
+                className="modal-surface-base max-w-4xl w-full h-[80vh] flex flex-col text-foreground bg-background"
                 onClick={e => e.stopPropagation()}
             >
 
                 {/* Header */}
-                <div className="p-4 border-b border-border flex justify-between items-center bg-muted/20">
+                <div className="modal-header-base modal-header-muted p-4">
                     <h2 className="text-xl font-bold flex items-center gap-2">
                         <MdDescription className="w-6 h-6 text-primary" />
                         ライセンス情報 / OSS Attribution
@@ -150,7 +150,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                     </button>
                 </div>
 
-                <div className="flex flex-1 overflow-hidden">
+                <div className="modal-body-base p-0 overflow-hidden flex">
                     {/* Left: List */}
                     <div className="w-1/3 border-r border-border flex flex-col bg-muted/10">
                         <div className="p-3 border-b border-border">

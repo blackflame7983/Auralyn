@@ -38,8 +38,8 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 p-4">
-            <div className="bg-destructive/10 border-2 border-destructive/50 rounded-xl w-full max-w-lg shadow-2xl relative overflow-hidden bg-background">
+        <div className="modal-overlay-base z-[9999] bg-black/80">
+            <div className="modal-surface-base w-full max-w-lg border-2 border-destructive/50 bg-background">
 
                 <div className="p-6 text-center space-y-4">
                     <div className="inline-flex justify-center items-center w-16 h-16 rounded-full bg-destructive/20 text-destructive mb-2">

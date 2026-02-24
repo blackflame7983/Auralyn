@@ -12,6 +12,7 @@ export const useUIState = () => {
     const [crashError, setCrashError] = useState<string | null>(null);
     const [isPresetManagerOpen, setIsPresetManagerOpen] = useState(false);
     const [isLargeMeterOpen, setIsLargeMeterOpen] = useState(false);
+    const [isTroubleshootOpen, setIsTroubleshootOpen] = useState(false);
 
     return {
         isSettingsOpen, setIsSettingsOpen,
@@ -24,6 +25,7 @@ export const useUIState = () => {
         crashError, setCrashError,
         isPresetManagerOpen, setIsPresetManagerOpen,
         isLargeMeterOpen, setIsLargeMeterOpen,
-        isLicenseModalOpen, setIsLicenseModalOpen
+        isLicenseModalOpen, setIsLicenseModalOpen,
+        isTroubleshootOpen, setIsTroubleshootOpen
     };
 };

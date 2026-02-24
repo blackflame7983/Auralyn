@@ -219,7 +219,7 @@ export const usePlugins = () => {
     const addPlugin = useCallback(async (vstPlugin: VstPlugin) => {
         setIsLoading(true);
         try {
-            console.log(`Loading plugin: ${vstPlugin.name} from ${vstPlugin.path}`);
+            // Track pending plugin for crash recovery
             localStorage.setItem('vst_host_pending_plugin', vstPlugin.path); // Track pending
 
             const instanceId = await audioApi.loadPlugin(vstPlugin.path);
@@ -468,7 +468,7 @@ export const usePlugins = () => {
         setIsLoading(true);
         try {
             const preset = await presetApi.load(name);
-            console.log("Loading preset:", preset);
+            // Loading preset - clear current plugins and apply
 
             // 1. Clear current plugins
             const currentIds = plugins.map(p => p.id);
@@ -567,7 +567,7 @@ export const usePlugins = () => {
                 if (!vst) continue;
 
                 try {
-                    console.log(`Loading plugin for slot ${idx}: ${vst.name}`);
+                    // Load plugin for slot
                     const instanceId = await audioApi.loadPlugin(vst.path);
 
                     loadedPlugins.push({

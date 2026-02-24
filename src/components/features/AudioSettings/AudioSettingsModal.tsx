@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage } from 'react-icons/md';
+import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { audioApi, AudioDeviceList } from '../../../api/audio';
+import { audioApi, AudioDeviceList, EngineRuntimeStats, EngineTuningConfig } from '../../../api/audio';
 import { autostartApi } from '../../../api/autostart';
 import { obsApi } from '../../../api/obs';
 import { toast } from 'sonner';
@@ -19,6 +20,7 @@ interface AudioSettingsModalProps {
   onConfigChange: (config: Partial<import('../../../contexts/AudioConfigContext').AudioConfig> & { host: string }) => void;
   onEngineRestarted?: () => Promise<void> | void;
   onOpenWizard?: () => void;
+  onOpenOBSGuide?: () => void;
   onOpenLicense?: () => void;
   currentSampleRate?: number;
   currentBufferSize?: number;
@@ -27,9 +29,10 @@ interface AudioSettingsModalProps {
 
 export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   isOpen, onClose, onConfigChange, onOpenWizard,
-  onEngineRestarted, onOpenLicense,
+  onEngineRestarted, onOpenLicense, onOpenOBSGuide,
   currentSampleRate, currentBufferSize, currentInputChannels
 }) => {
+  const getBeginnerMode = () => localStorage.getItem('vst_host_beginner_mode') !== 'false';
   const { theme, setTheme } = useTheme();
   const [devices, setDevices] = useState<AudioDeviceList>(() => {
     // Initialize from localStorage
@@ -50,19 +53,53 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     return localStorage.getItem('vst_host_settings_advanced') === 'true';
   });
 
+  // Tab State
+  const [activeTab, setActiveTab] = useState<'audio' | 'obs' | 'appearance' | 'system'>('audio');
+  const [isBeginnerMode, setIsBeginnerMode] = useState(getBeginnerMode);
+  const [isSystemTabEnabled, setIsSystemTabEnabled] = useState(() => {
+    if (!getBeginnerMode()) return true;
+    return localStorage.getItem('vst_host_system_tab_enabled') === 'true';
+  });
+
   // Persist Advanced Mode selection
   useEffect(() => {
     localStorage.setItem('vst_host_settings_advanced', String(isAdvancedMode));
   }, [isAdvancedMode]);
+
+  useEffect(() => {
+    const syncBeginnerMode = (event?: Event) => {
+      const next = (event as CustomEvent<boolean> | undefined)?.detail;
+      const beginnerMode = typeof next === 'boolean' ? next : getBeginnerMode();
+      setIsBeginnerMode(beginnerMode);
+      if (!beginnerMode) {
+        setIsSystemTabEnabled(true);
+      }
+    };
+
+    window.addEventListener('vst_host_beginner_mode_changed', syncBeginnerMode as EventListener);
+    window.addEventListener('storage', syncBeginnerMode);
+    return () => {
+      window.removeEventListener('vst_host_beginner_mode_changed', syncBeginnerMode as EventListener);
+      window.removeEventListener('storage', syncBeginnerMode);
+    };
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('vst_host_system_tab_enabled', String(isSystemTabEnabled));
+  }, [isSystemTabEnabled]);
+
+  useEffect(() => {
+    if (isBeginnerMode && !isSystemTabEnabled && activeTab === 'system') {
+      setActiveTab('audio');
+    }
+  }, [isBeginnerMode, isSystemTabEnabled, activeTab]);
 
   // OBS State
   const [obsHost, setObsHost] = useState('localhost');
   const [obsPort, setObsPort] = useState(4455);
   const [obsPassword, setObsPassword] = useState('');
   const [isObsConnected, setIsObsConnected] = useState(false);
-
-  // Tab State
-  const [activeTab, setActiveTab] = useState<'audio' | 'obs' | 'appearance'>('audio');
+  const [obsConnectionHint, setObsConnectionHint] = useState<string | null>(null);
 
   // Preset State
   const [presets, setPresets] = useState<Record<string, any>>({});
@@ -70,6 +107,29 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
   // Autostart State
   const [autostartEnabled, setAutostartEnabled] = useState(false);
+  const [engineTuningConfig, setEngineTuningConfig] = useState<EngineTuningConfig>({
+    enableAffinityPinning: false,
+    affinityMask: null,
+    enableRealtimePriority: false,
+    enableTimeCriticalAudioThreads: false,
+  });
+  const [engineStats, setEngineStats] = useState<EngineRuntimeStats | null>(null);
+  const [systemSaving, setSystemSaving] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(false);
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    description?: string;
+    confirmLabel?: string;
+    variant?: 'default' | 'destructive';
+    onConfirm: () => void;
+  }>({ isOpen: false, title: '', onConfirm: () => {} });
+
+  const showConfirm = (opts: Omit<typeof confirmDialog, 'isOpen'>) => {
+    setConfirmDialog({ ...opts, isOpen: true });
+  };
 
   // Common sample rates
   const sampleRates = [44100, 48000, 96000];
@@ -117,25 +177,49 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       }
 
       autostartApi.getStatus().then(s => setAutostartEnabled(s.enabled));
+      audioApi.getEngineTuningConfig()
+        .then((config) => setEngineTuningConfig(config))
+        .catch((e) => {
+          console.error('Failed to load engine tuning config', e);
+        });
+      audioApi.getEngineRuntimeStats()
+        .then((stats) => setEngineStats(stats))
+        .catch((e) => {
+          console.error('Failed to load engine runtime stats', e);
+        });
     }
   }, [isOpen, currentSampleRate, currentBufferSize]);
 
-  useEffect(() => {
-    console.log("!!! [AudioSettingsModal] Props Changed !!!");
-    console.log("    Props: ", { currentSampleRate, currentBufferSize });
-    console.log("    State: ", { selectedSampleRate, selectedBufferSize });
-  }, [currentSampleRate, currentBufferSize, selectedSampleRate, selectedBufferSize]);
+  // Debug effect removed (was logging props/state changes)
 
   const handleConnectObs = async () => {
     setLoading(true);
     try {
       await obsApi.connect({ host: obsHost, port: obsPort, password: obsPassword });
       setIsObsConnected(true);
+      setObsConnectionHint(null);
       toast.success("OBSに接続しました");
       localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: obsHost, port: obsPort, password: obsPassword }));
     } catch (e) {
       console.error(e);
-      toast.error("OBSへの接続に失敗しました");
+      const message = `${e}`.toLowerCase();
+      let hint = 'OBS側で「ツール → WebSocketサーバー設定」を開き、サーバー有効化・ポート4455・パスワード一致を確認してください。';
+      if (message.includes('401') || message.includes('auth')) {
+        hint = '認証に失敗しました。OBSのWebSocketパスワードと、この画面のパスワードが一致しているか確認してください。';
+      } else if (message.includes('connection refused') || message.includes('failed to connect')) {
+        hint = 'OBSが起動していないか、WebSocketサーバーが無効の可能性があります。OBSを起動して設定を確認してください。';
+      }
+
+      setObsConnectionHint(hint);
+      toast.error("OBSへの接続に失敗しました", {
+        description: hint,
+        action: onOpenOBSGuide
+          ? {
+            label: 'ガイドを開く',
+            onClick: onOpenOBSGuide,
+          }
+          : undefined,
+      });
       setIsObsConnected(false);
     } finally {
       setLoading(false);
@@ -146,10 +230,70 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     try {
       await obsApi.disconnect();
       setIsObsConnected(false);
+      setObsConnectionHint(null);
       toast.info("切断しました");
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const refreshEngineRuntimeStats = async () => {
+    setStatsLoading(true);
+    try {
+      const stats = await audioApi.getEngineRuntimeStats();
+      setEngineStats(stats);
+    } catch (e) {
+      console.error('Failed to refresh engine runtime stats', e);
+      toast.error('エンジン統計の取得に失敗しました');
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  const saveEngineTuningConfig = async () => {
+    const normalized: EngineTuningConfig = {
+      ...engineTuningConfig,
+      affinityMask: engineTuningConfig.affinityMask?.trim() || null,
+    };
+
+    setSystemSaving(true);
+    try {
+      await audioApi.setEngineTuningConfig(normalized);
+      setEngineTuningConfig(normalized);
+      toast.success('システム設定を保存しました（エンジン再起動後に反映）');
+    } catch (e) {
+      console.error('Failed to save engine tuning config', e);
+      toast.error('システム設定の保存に失敗しました');
+    } finally {
+      setSystemSaving(false);
+    }
+  };
+
+  const enableSystemTab = () => {
+    setIsSystemTabEnabled(true);
+    setActiveTab('system');
+  };
+
+  const handleDangerousToggle = (
+    key: 'enableRealtimePriority' | 'enableTimeCriticalAudioThreads',
+    checked: boolean,
+    title: string,
+    warning: string
+  ) => {
+    if (!checked) {
+      setEngineTuningConfig((prev) => ({ ...prev, [key]: false }));
+      return;
+    }
+
+    showConfirm({
+      title: `${title}を有効化しますか？`,
+      description: `${warning}${isBeginnerMode ? ' かんたん表示では無効のままを推奨します。' : ''}`,
+      confirmLabel: '有効化する',
+      variant: 'destructive',
+      onConfirm: () => {
+        setEngineTuningConfig((prev) => ({ ...prev, [key]: true }));
+      },
+    });
   };
 
   const fetchDevices = async (force: boolean = false) => {
@@ -185,7 +329,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         const effectiveHost = currentHost || selectedHost;
 
         if (!effectiveHost || !hosts.includes(effectiveHost)) {
-          console.log("Selecting default host (Saved invalid or missing):", effectiveHost);
+          // Saved host invalid or missing, selecting default
           // Prioritize ASIO if available, otherwise WASAPI/default (first one)
           const hasAsio = hosts.some(h => h.toLowerCase().includes('asio'));
           const defaultHost = hasAsio ? hosts.find(h => h.toLowerCase().includes('asio'))! : hosts[0];
@@ -267,6 +411,16 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   }, [activeDevice, isAsio, currentBufferSize]);
 
   const canChangeBufferSize = supportedBufferSizes.length > 0;
+  const estimatedLatencyMs = useMemo(
+    () => ((selectedBufferSize * 2) / selectedSampleRate) * 1000 + (isAsio ? 0 : 20),
+    [selectedBufferSize, selectedSampleRate, isAsio]
+  );
+  const latencyStatus = useMemo(() => {
+    if (estimatedLatencyMs <= 10) return { label: '最高', className: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30' };
+    if (estimatedLatencyMs <= 20) return { label: '良好', className: 'text-primary bg-primary/10 border-primary/30' };
+    if (estimatedLatencyMs <= 40) return { label: '普通', className: 'text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 border-yellow-500/30' };
+    return { label: '遅延大', className: 'text-destructive bg-destructive/10 border-destructive/30' };
+  }, [estimatedLatencyMs]);
 
   // Auto-correct selectedBufferSize if it falls out of range
   useEffect(() => {
@@ -279,7 +433,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         const nearest = supportedBufferSizes.reduce((prev, curr) => {
           return (Math.abs(curr - selectedBufferSize) < Math.abs(prev - selectedBufferSize) ? curr : prev);
         });
-        console.log(`Auto-correcting buffer size from ${selectedBufferSize} to ${nearest}`);
+        // Auto-corrected buffer size to nearest supported value
         setSelectedBufferSize(nearest);
       }
     }
@@ -356,8 +510,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     }
   };
 
-  const handleRestart = async () => {
-    if (!window.confirm("オーディオエンジンを強制再起動しますか？")) return;
+  const performRestart = async () => {
 
     setLoading(true);
     try {
@@ -401,6 +554,16 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRestart = () => {
+    showConfirm({
+      title: 'オーディオエンジンを再起動しますか？',
+      description: '再起動すると一時的に音声が途切れます。読み込み済みのプラグインは自動的に復元されます。',
+      confirmLabel: '再起動する',
+      variant: 'default',
+      onConfirm: performRestart,
+    });
   };
 
   // Get Unique Hosts list
@@ -449,38 +612,62 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
   const handleDeletePreset = () => {
     if (!presetName || !presets[presetName]) return;
-    if (!window.confirm(`プリセット '${presetName}' を削除しますか？`)) return;
-    const newPresets = { ...presets };
-    delete newPresets[presetName];
-    setPresets(newPresets);
-    setPresetName('');
-    localStorage.setItem('vst_host_audio_presets', JSON.stringify(newPresets));
+    showConfirm({
+      title: `プリセット「${presetName}」を削除しますか？`,
+      description: 'この操作は元に戻せません。',
+      confirmLabel: '削除する',
+      variant: 'destructive',
+      onConfirm: () => {
+        const newPresets = { ...presets };
+        delete newPresets[presetName];
+        setPresets(newPresets);
+        setPresetName('');
+        localStorage.setItem('vst_host_audio_presets', JSON.stringify(newPresets));
+      },
+    });
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in duration-200 p-4">
-      <div className="bg-card border border-border rounded-xl p-6 w-full max-w-2xl shadow-lg relative max-h-[85vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-600 scrollbar-track-transparent">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <MdClose className="w-5 h-5" />
-        </button>
+    <div className="modal-overlay-base">
+      <div className="modal-surface-base w-full max-w-2xl max-h-[85vh] flex flex-col">
+        <div className="modal-header-base modal-header-muted shrink-0">
+          <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+            <MdSettings className="w-5 h-5 text-primary" />
+            設定
+          </h2>
+          <button
+            onClick={onClose}
+            aria-label="設定画面を閉じる"
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted/50"
+          >
+            <MdClose className="w-5 h-5" />
+          </button>
+        </div>
 
-        <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
-          <MdSettings className="w-5 h-5 text-primary" />
-          設定
-        </h2>
-
+        <div className="modal-body-base scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-600 scrollbar-track-transparent">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-4">
+          <TabsList className={`grid w-full ${isBeginnerMode && !isSystemTabEnabled ? 'grid-cols-3' : 'grid-cols-4'} mb-4`}>
             <TabsTrigger value="audio">オーディオ</TabsTrigger>
             <TabsTrigger value="obs">OBS連携</TabsTrigger>
             <TabsTrigger value="appearance">外観</TabsTrigger>
-            <TabsTrigger value="system">システム</TabsTrigger>
+            {(!isBeginnerMode || isSystemTabEnabled) && <TabsTrigger value="system">システム</TabsTrigger>}
           </TabsList>
+
+          {isBeginnerMode && !isSystemTabEnabled && (
+            <div className="mb-4 p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 flex items-center justify-between gap-3">
+              <p className="text-xs text-amber-600 dark:text-amber-300">
+                かんたん表示では、危険なシステム設定を非表示にしています。
+              </p>
+              <button
+                onClick={enableSystemTab}
+                className="shrink-0 px-3 py-1.5 text-xs font-bold rounded-md border border-amber-500/40 text-amber-700 dark:text-amber-200 hover:bg-amber-500/20 transition-colors"
+              >
+                詳細設定を表示
+              </button>
+            </div>
+          )}
 
           <TabsContent value="audio" className="space-y-4">
 
@@ -593,7 +780,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       initialChannels={currentInputChannels}
                       maxChannels={activeDevice?.channels}
                       onChannelMapped={(channels) => {
-                        console.log('Mapped Channels:', channels);
                         onConfigChange({ host: selectedHost, input: selectedInput, output: selectedOutput, sampleRate: selectedSampleRate, bufferSize: selectedBufferSize, inputChannels: channels });
                       }}
                     />
@@ -760,9 +946,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
 
                 {/* Latency Estimate */}
-                <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2 flex justify-between mt-4">
-                  <span>推定レイテンシ (理論値 + OS概算):</span>
-                  <span className="font-mono">{(((selectedBufferSize * 2 / selectedSampleRate) * 1000) + (isAsio ? 0 : 20)).toFixed(1)} ms</span>
+                <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2 flex items-center justify-between mt-4">
+                  <span>推定レイテンシ（理論値 + OS概算）</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-foreground">{estimatedLatencyMs.toFixed(1)} ms</span>
+                    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${latencyStatus.className}`}>
+                      {latencyStatus.label}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Tips Section (Only in Advanced Mode) */}
@@ -791,35 +982,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       </div>
                     </div>
                   </details>
-                )}
-
-                <div className="pt-4 border-t border-border flex gap-3">
-                  <button
-                    onClick={handleRestart}
-                    className="flex-1 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive border border-input hover:border-destructive/30 rounded-md transition-all text-sm font-medium"
-                  >
-                    エンジン再起動
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    className="flex-[2] py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-md transition-all shadow-sm active:scale-[0.98] cursor-pointer"
-                  >
-                    保存して開始
-                  </button>
-                </div>
-
-                {/* Re-run Wizard Button */}
-                {onOpenWizard && (
-                  <button
-                    onClick={() => {
-                      onClose();
-                      onOpenWizard();
-                    }}
-                    className="mt-2 w-full py-2 text-xs text-muted-foreground hover:text-primary border border-border hover:border-primary/30 rounded-lg transition-all flex items-center justify-center gap-2"
-                  >
-                    <MdExtension className="w-3 h-3" />
-                    セットアップウィザードを再実行
-                  </button>
                 )}
 
               </div>
@@ -879,6 +1041,32 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 )}
               </div>
 
+              {obsConnectionHint && (
+                <div className="text-xs bg-destructive/10 border border-destructive/30 text-destructive rounded-md p-3 space-y-2">
+                  <p className="font-bold">接続に失敗しました。次を確認してください。</p>
+                  <p>{obsConnectionHint}</p>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {onOpenOBSGuide && (
+                      <button
+                        onClick={onOpenOBSGuide}
+                        className="px-2.5 py-1 rounded border border-destructive/40 hover:bg-destructive/10 transition-colors"
+                      >
+                        OBS連携ガイドを開く
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setObsHost('localhost');
+                        setObsPort(4455);
+                      }}
+                      className="px-2.5 py-1 rounded border border-border hover:bg-muted/60 text-foreground transition-colors"
+                    >
+                      ホスト/ポートを既定値に戻す
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md border border-input mt-4">
                 <p>OBS WebSocket v5 (OBS 28+) が必要です。<br />OBS側で「ツール」→「WebSocketサーバー設定」を確認してください。</p>
               </div>
@@ -923,6 +1111,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             </div>
           </TabsContent>
 
+          {(!isBeginnerMode || isSystemTabEnabled) && (
           <TabsContent value="system" className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
 
             {/* App Info Card */}
@@ -931,7 +1120,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <img src="/auralyn_icon.png" alt="Auralyn Icon" className="w-16 h-16 rounded-full shadow-sm object-contain" />
               <div className="text-center">
                 <h3 className="text-lg font-bold text-foreground">{APP_INFO.NAME}</h3>
-                <p className="text-xs text-muted-foreground">Version {APP_INFO.VERSION}</p>
+                <p className="text-xs text-muted-foreground">バージョン {APP_INFO.VERSION}</p>
               </div>
 
               <div className="flex gap-4 pt-2">
@@ -984,6 +1173,154 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
             </div>
 
+            {/* Engine Tuning */}
+            <div className="space-y-2">
+              <h4 className="text-sm font-bold text-foreground flex items-center gap-2 px-1">
+                <MdSettings className="w-4 h-4 text-primary" />
+                オーディオエンジン最適化
+              </h4>
+              <div className="p-4 bg-muted/20 border border-border rounded-xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">CPUアフィニティ固定</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">有効時、エンジンを限定コアで実行します。通常は無効推奨です。</div>
+                  </div>
+                  <Switch
+                    checked={engineTuningConfig.enableAffinityPinning}
+                    onCheckedChange={(checked) =>
+                      setEngineTuningConfig((prev) => ({ ...prev, enableAffinityPinning: checked }))
+                    }
+                    disabled={systemSaving}
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">アフィニティマスク（任意）</label>
+                  <input
+                    type="text"
+                    value={engineTuningConfig.affinityMask ?? ''}
+                    onChange={(e) =>
+                      setEngineTuningConfig((prev) => ({ ...prev, affinityMask: e.target.value || null }))
+                    }
+                    placeholder="例: 0xff または 15"
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                    disabled={systemSaving}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">リアルタイム優先度（危険）</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">有効化するとOS全体の応答性が低下する場合があります。</div>
+                  </div>
+                  <Switch
+                    checked={engineTuningConfig.enableRealtimePriority}
+                    onCheckedChange={(checked) =>
+                      handleDangerousToggle(
+                        'enableRealtimePriority',
+                        checked,
+                        'リアルタイム優先度',
+                        '誤設定するとマウスやキーボード操作まで重くなる可能性があります。'
+                      )
+                    }
+                    disabled={systemSaving}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">時間最優先オーディオスレッド（危険）</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">有効化時はプラグインの不具合が露出しやすくなります。</div>
+                  </div>
+                  <Switch
+                    checked={engineTuningConfig.enableTimeCriticalAudioThreads}
+                    onCheckedChange={(checked) =>
+                      handleDangerousToggle(
+                        'enableTimeCriticalAudioThreads',
+                        checked,
+                        '時間最優先オーディオスレッド',
+                        '一部プラグインが不安定化し、音切れやクラッシュの原因になる場合があります。'
+                      )
+                    }
+                    disabled={systemSaving}
+                  />
+                </div>
+
+                <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded border border-border">
+                  変更内容は次回の「保存して開始」または「エンジン再起動」実行時に反映されます。
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={saveEngineTuningConfig}
+                    disabled={systemSaving}
+                    className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-all"
+                  >
+                    {systemSaving ? '保存中...' : 'システム設定を保存'}
+                  </button>
+                  <button
+                    onClick={refreshEngineRuntimeStats}
+                    disabled={statsLoading}
+                    className="px-3 py-1.5 text-xs border border-input rounded-md text-muted-foreground hover:text-foreground hover:border-primary/40 disabled:opacity-50 transition-all flex items-center gap-1"
+                  >
+                    <MdRefresh className="w-3 h-3" />
+                    {statsLoading ? '更新中...' : '統計を更新'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 md:grid-cols-9 gap-2 text-xs">
+                  <div className="p-2 bg-background border border-input rounded">
+                    <div className="text-muted-foreground">読み込み済み</div>
+                    <div className="text-foreground font-mono mt-1">{engineStats?.activePluginCount ?? '-'}</div>
+                  </div>
+                  <div className="p-2 bg-background border border-input rounded">
+                    <div className="text-muted-foreground">有効中</div>
+                    <div className="text-foreground font-mono mt-1">{engineStats?.enabledPluginCount ?? '-'}</div>
+                  </div>
+                  <div className="p-2 bg-background border border-input rounded">
+                    <div className="text-muted-foreground">解放待ち</div>
+                    <div className="text-foreground font-mono mt-1">{engineStats?.pendingUnloadCount ?? '-'}</div>
+                  </div>
+                  <div className="p-2 bg-background border border-input rounded">
+                    <div className="text-muted-foreground">無効化ライブラリ</div>
+                    <div className="text-foreground font-mono mt-1">{engineStats?.burnedLibraryCount ?? '-'}</div>
+                  </div>
+                  <div className="p-2 bg-background border border-input rounded">
+                    <div className="text-muted-foreground">最大ジッター</div>
+                    <div className="text-foreground font-mono mt-1">
+                      {engineStats ? `${(engineStats.maxJitterUs / 1000).toFixed(2)}ms` : '-'}
+                    </div>
+                  </div>
+                  <div className="p-2 bg-background border border-input rounded">
+                    <div className="text-muted-foreground">グリッチ回数</div>
+                    <div className="text-foreground font-mono mt-1">{engineStats?.glitchCount ?? '-'}</div>
+                  </div>
+                  <div className="p-2 bg-background border border-input rounded">
+                    <div className="text-muted-foreground">NR遅延</div>
+                    <div className="text-foreground font-mono mt-1">
+                      {engineStats ? `${engineStats.noiseReductionLatencyMs.toFixed(2)}ms` : '-'}
+                    </div>
+                  </div>
+                  <div className="p-2 bg-background border border-input rounded">
+                    <div className="text-muted-foreground">VST+ノイズ遅延</div>
+                    <div className="text-foreground font-mono mt-1">
+                      {engineStats ? `${engineStats.totalChainLatencyMs.toFixed(2)}ms` : '-'}
+                    </div>
+                  </div>
+                  <div className="p-2 bg-background border border-input rounded">
+                    <div className="text-muted-foreground">ノイズ抑制</div>
+                    <div className="text-foreground font-mono mt-1">
+                      {engineStats
+                        ? (engineStats.noiseReductionEnabled
+                          ? `${engineStats.noiseReductionMode === 'high' ? '強' : '弱'}${engineStats.noiseReductionActive ? '（動作中）' : '（待機）'}`
+                          : 'OFF')
+                        : '-'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Plugin Management */}
             <div className="space-y-2">
               <h4 className="text-sm font-bold text-foreground flex items-center gap-2 px-1">
@@ -997,18 +1334,25 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <div className="text-xs text-muted-foreground mt-0.5">読み込みエラーで除外されたプラグイン設定をリセットします。</div>
                   </div>
                   <button
-                    onClick={async () => {
-                      if (!window.confirm("ブラックリストを初期化しますか？\n次回起動時またはスキャン時にすべてのプラグインが再チェックされます。")) return;
-                      setLoading(true);
-                      try {
-                        await audioApi.clearBlacklist();
-                        toast.success("ブラックリストをクリアしました");
-                      } catch (e) {
-                        console.error(e);
-                        toast.error("初期化に失敗しました");
-                      } finally {
-                        setLoading(false);
-                      }
+                    onClick={() => {
+                      showConfirm({
+                        title: 'ブラックリストを初期化しますか？',
+                        description: '次回起動時またはスキャン時にすべてのプラグインが再チェックされます。',
+                        confirmLabel: '初期化する',
+                        variant: 'destructive',
+                        onConfirm: async () => {
+                          setLoading(true);
+                          try {
+                            await audioApi.clearBlacklist();
+                            toast.success("ブラックリストをクリアしました");
+                          } catch (e) {
+                            console.error(e);
+                            toast.error("初期化に失敗しました");
+                          } finally {
+                            setLoading(false);
+                          }
+                        },
+                      });
                     }}
                     className="px-3 py-1.5 text-xs text-destructive bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 rounded-md transition-all whitespace-nowrap"
                   >
@@ -1017,9 +1361,106 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Factory Reset */}
+            <div className="space-y-2">
+              <h4 className="text-sm font-bold text-foreground flex items-center gap-2 px-1">
+                <MdRefresh className="w-4 h-4 text-destructive" />
+                データリセット
+              </h4>
+              <div className="p-4 bg-muted/20 border border-border rounded-xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">すべての設定を初期化</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">オーディオ設定、プリセット、外観設定、チュートリアル状態などすべてを初期状態に戻します。</div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      showConfirm({
+                        title: 'すべての設定を初期化しますか？',
+                        description: 'オーディオ設定、保存したプリセット、外観設定、チュートリアル状態など全てが削除されます。この操作は取り消せません。アプリは自動的にリロードされます。',
+                        confirmLabel: '初期化してリロード',
+                        variant: 'destructive',
+                        onConfirm: async () => {
+                          try {
+                            await audioApi.stop().catch(() => {});
+                            // Clear all vst_host_ prefixed localStorage keys
+                            const keysToRemove: string[] = [];
+                            for (let i = 0; i < localStorage.length; i++) {
+                              const key = localStorage.key(i);
+                              if (key && key.startsWith('vst_host_')) {
+                                keysToRemove.push(key);
+                              }
+                            }
+                            keysToRemove.forEach(key => localStorage.removeItem(key));
+                            // Reload the app
+                            window.location.reload();
+                          } catch (e) {
+                            console.error("Reset failed:", e);
+                            toast.error("初期化に失敗しました");
+                          }
+                        },
+                      });
+                    }}
+                    className="px-3 py-1.5 text-xs text-destructive bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 rounded-md transition-all whitespace-nowrap"
+                  >
+                    リセット
+                  </button>
+                </div>
+              </div>
+            </div>
           </TabsContent>
+          )}
         </Tabs>
+        </div>
+        {activeTab === 'audio' && !loading && !error && (
+          <div className="modal-footer-base shrink-0">
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  onClick={handleRestart}
+                  disabled={loading}
+                  className="flex-1 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive border border-input hover:border-destructive/30 rounded-md transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  エンジン再起動
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={loading}
+                  className="flex-[2] py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-md transition-all shadow-sm active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  保存して開始
+                </button>
+              </div>
+
+              {onOpenWizard && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    onOpenWizard();
+                  }}
+                  className="w-full py-2 text-xs text-muted-foreground hover:text-primary border border-border hover:border-primary/30 rounded-lg transition-all flex items-center justify-center gap-2"
+                >
+                  <MdExtension className="w-3 h-3" />
+                  セットアップウィザードを再実行
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmLabel={confirmDialog.confirmLabel}
+        variant={confirmDialog.variant}
+        onConfirm={() => {
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+          confirmDialog.onConfirm();
+        }}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

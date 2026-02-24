@@ -5,7 +5,7 @@ import { MdClose } from 'react-icons/md';
 
 interface Props {
     targetId: string;
-    step: 'click_add_effect' | 'explain_plugin_card';
+    step: 'click_add_effect' | 'explain_plugin_card' | 'try_edit_plugin' | 'try_ab_compare';
     content: React.ReactNode;
     align?: 'start' | 'center' | 'end';
     side?: 'top' | 'right' | 'bottom' | 'left';
@@ -88,13 +88,19 @@ export const TutorialOverlay: React.FC<Props> = ({ targetId, step, content, alig
                         <div className="text-sm">
                             {content}
                         </div>
-                        <div className="mt-3 flex justify-end">
-                            {step === 'explain_plugin_card' && (
+                        <div className="mt-3 flex items-center justify-between">
+                            <button
+                                onClick={skipTutorial}
+                                className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                            >
+                                スキップ
+                            </button>
+                            {(step === 'explain_plugin_card' || step === 'try_edit_plugin' || step === 'try_ab_compare') && (
                                 <button
                                     onClick={() => completeStep(step)}
-                                    className="text-xs bg-primary text-primary-foreground px-3 py-1 rounded hover:bg-primary/90"
+                                    className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:bg-primary/90 font-bold"
                                 >
-                                    OK
+                                    次へ →
                                 </button>
                             )}
                         </div>

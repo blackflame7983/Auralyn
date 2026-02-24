@@ -1,6 +1,7 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { useEffect } from 'react';
 import { AppShell } from './components/layout/AppShell';
 import { PluginList } from './components/features/PluginRack/PluginList';
+import { ModalLayer } from './components/layout/ModalLayer';
 import { Toaster } from 'sonner';
 
 import { usePlugins } from './hooks/usePlugins';
@@ -9,22 +10,12 @@ import { useAudioConfig } from './hooks/useAudioConfig';
 import { useAppEvents } from './hooks/useAppEvents';
 import { useUIState } from './hooks/useUIState';
 import { audioApi } from './api/audio';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { toast } from 'sonner';
 
-// Lazy load modals for better initial bundle size
-// Lazy load modals for better initial bundle size
-const AudioSettingsModal = lazy(() => import('./components/features/AudioSettings/AudioSettingsModal').then(m => ({ default: m.AudioSettingsModal })));
-const PluginBrowserModal = lazy(() => import('./components/features/PluginBrowser/PluginBrowserModal').then(m => ({ default: m.PluginBrowserModal })));
-const OBSGuideModal = lazy(() => import('./components/features/Guide/OBSGuideModal').then(m => ({ default: m.OBSGuideModal })));
-const DiscordGuideModal = lazy(() => import('./components/features/Guide/DiscordGuideModal').then(m => ({ default: m.DiscordGuideModal })));
-const LicenseModal = lazy(() => import('./components/features/Settings/LicenseModal').then(m => ({ default: m.LicenseModal })));
-const SetupWizardModal = lazy(() => import('./components/features/SetupWizard/SetupWizardModal').then(m => ({ default: m.SetupWizardModal })));
-const PresetManagerModal = lazy(() => import('./components/features/Presets/PresetManagerModal').then(m => ({ default: m.PresetManagerModal })));
-const TemplateWizardModal = lazy(() => import('./components/features/Templates/TemplateWizardModal').then(m => ({ default: m.TemplateWizardModal })));
-const RecoveryModal = lazy(() => import('./components/features/Recovery/RecoveryModal').then(m => ({ default: m.RecoveryModal })));
 import { TutorialProvider, useTutorial } from './contexts/TutorialContext';
 import { TutorialOverlay } from './components/features/Tutorial/TutorialOverlay';
-
-const LargeLevelMeter = lazy(() => import('./components/features/LevelMeter/LargeLevelMeter').then(m => ({ default: m.LargeLevelMeter })));
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function AppContent() {
   const { theme } = useTheme();
@@ -35,21 +26,19 @@ function AppContent() {
   const {
     audioConfig,
     handleConfigUpdate,
-    isInitializing
+    isInitializing,
+    isEngineRunning
   } = useAudioConfig(
     () => ui.setIsWizardOpen(true),
     () => ui.setIsSettingsOpen(true)
   );
 
-  const pluginsApi = usePlugins(); // Destructure below or use directly
+  const pluginsApi = usePlugins();
 
   useAppEvents({
     onAddPlugin: pluginsApi.addPlugin,
     onResetPlugins: pluginsApi.resetPlugins,
     onCrash: (err) => {
-      // Logic to save crash state to localStorage is now handled here or in useAppEvents?
-      // useAppEvents just calls onCrash.
-      // App.tsx old logic: saved 'vst_host_detected_crash_plugin'.
       const pending = localStorage.getItem('vst_host_pending_plugin');
       if (pending) {
         localStorage.setItem('vst_host_detected_crash_plugin', pending);
@@ -60,31 +49,48 @@ function AppContent() {
     onLoadPreset: pluginsApi.loadPreset
   });
 
-  const handleEngineRestart = async () => {
-    pluginsApi.resetPlugins();
-    await pluginsApi.restoreSession();
-  };
-
-  const handlePluginSelect = async (vstPlugin: any) => {
-    const success = await pluginsApi.addPlugin(vstPlugin);
-    if (success) {
-      ui.setIsBrowserOpen(false);
-      // Advance tutorial only when plugin is actually added
-      if (currentStep === 'click_add_effect') {
-        completeStep('click_add_effect');
-      }
-    }
-  };
-
-  // Interaction Handlers
-  const handleAddClick = () => {
-    ui.setIsBrowserOpen(true);
-  };
-
   // Pre-fetch devices in background to speed up setup wizard
   useEffect(() => {
     audioApi.getDevices(true).catch(e => console.error("Background device scan failed:", e));
   }, []);
+
+  // Close to tray: hide window instead of quitting
+  useEffect(() => {
+    const setupCloseHandler = async () => {
+      const unlisten = await getCurrentWindow().onCloseRequested(async (event) => {
+        event.preventDefault();
+        await getCurrentWindow().hide();
+      });
+      return unlisten;
+    };
+    let unlisten: (() => void) | undefined;
+    setupCloseHandler().then(fn => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  }, []);
+
+  const handlePluginAdded = () => {
+    if (currentStep === 'click_add_effect') {
+      completeStep('click_add_effect');
+    }
+  };
+
+  // Show next-step guidance when tutorial completes
+  useEffect(() => {
+    if (currentStep === 'complete') {
+      // Small delay to let the last overlay disappear
+      const timer = setTimeout(() => {
+        toast.success('セットアップ完了！', {
+          description: '配信ソフトと連携するには、ヘルプメニューの「OBS連携ガイド」または「Discord連携ガイド」をご覧ください。',
+          duration: 10000,
+          action: {
+            label: 'OBSガイドを開く',
+            onClick: () => ui.setIsOBSGuideOpen(true),
+          },
+        });
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep]);
 
   return (
     <>
@@ -109,15 +115,18 @@ function AppContent() {
         onOpenSettings={() => ui.setIsSettingsOpen(true)}
         onOpenOBSGuide={() => ui.setIsOBSGuideOpen(true)}
         onOpenDiscordGuide={() => ui.setIsDiscordGuideOpen(true)}
+        onOpenTroubleshoot={() => ui.setIsTroubleshootOpen(true)}
+        onOpenWizard={() => ui.setIsWizardOpen(true)}
         onToggleLargeMeter={() => ui.setIsLargeMeterOpen(prev => !prev)}
         isLargeMeterOpen={ui.isLargeMeterOpen}
         currentHost={audioConfig.host}
         currentSampleRate={audioConfig.sampleRate}
         currentBufferSize={audioConfig.bufferSize}
+        isEngineRunning={isEngineRunning}
       >
         <PluginList
           plugins={pluginsApi.plugins}
-          onAddClick={handleAddClick}
+          onAddClick={() => ui.setIsBrowserOpen(true)}
           onToggle={pluginsApi.togglePlugin}
           onMute={pluginsApi.toggleMute}
           onGainChange={pluginsApi.setPluginGain}
@@ -150,142 +159,44 @@ function AppContent() {
           align="start"
           content={
             <div className="space-y-2">
-              <strong className="block text-green-500 font-bold">ステップ 2: 操作方法</strong>
+              <strong className="block text-green-500 font-bold">ステップ 2/4: 操作方法</strong>
               <p>エフェクトが追加されました！<br />電源ボタンでON/OFF、スライダーで音量（ゲイン）を調整できます。</p>
             </div>
           }
         />
+        <TutorialOverlay
+          targetId="first-plugin-card"
+          step="try_edit_plugin"
+          side="bottom"
+          align="start"
+          content={
+            <div className="space-y-2">
+              <strong className="block text-blue-500 font-bold">ステップ 3/4: プラグインを編集</strong>
+              <p>「編集」ボタンを押すと、プラグイン独自の設定画面が開きます。<br />ここで詳細なパラメータを調整できます。</p>
+            </div>
+          }
+        />
+        <TutorialOverlay
+          targetId="ab-compare-btn"
+          step="try_ab_compare"
+          side="top"
+          align="start"
+          content={
+            <div className="space-y-2">
+              <strong className="block text-orange-500 font-bold">ステップ 4/4: エフェクト比較を試そう</strong>
+              <p>フッターの「比較」ボタン（原音比較）で、エフェクトあり/なしの音を瞬時に切り替えて比較できます。</p>
+            </div>
+          }
+        />
 
-        {ui.isSettingsOpen && (
-          <Suspense fallback={null}>
-            <AudioSettingsModal
-              isOpen={ui.isSettingsOpen}
-              onClose={() => ui.setIsSettingsOpen(false)}
-              onConfigChange={handleConfigUpdate}
-              onEngineRestarted={handleEngineRestart}
-              onOpenWizard={() => ui.setIsWizardOpen(true)}
-              onOpenLicense={() => ui.setIsLicenseModalOpen(true)}
-              currentSampleRate={audioConfig.sampleRate}
-              currentBufferSize={audioConfig.bufferSize}
-              currentInputChannels={audioConfig.inputChannels}
-            />
-          </Suspense>
-        )}
-        {ui.isBrowserOpen && (
-          <Suspense fallback={null}>
-            <PluginBrowserModal
-              isOpen={ui.isBrowserOpen}
-              onClose={() => ui.setIsBrowserOpen(false)}
-              onPluginSelect={handlePluginSelect}
-              plugins={pluginsApi.availablePlugins}
-              isLoading={pluginsApi.isScanning}
-              error={pluginsApi.error}
-              onScan={pluginsApi.scanPlugins}
-            />
-          </Suspense>
-        )}
-        {ui.isOBSGuideOpen && (
-          <Suspense fallback={null}>
-            <OBSGuideModal
-              isOpen={ui.isOBSGuideOpen}
-              onClose={() => ui.setIsOBSGuideOpen(false)}
-              onOpenAudioSettings={() => {
-                ui.setIsOBSGuideOpen(false);
-                ui.setIsSettingsOpen(true);
-              }}
-            />
-          </Suspense>
-        )}
-        {ui.isDiscordGuideOpen && (
-          <Suspense fallback={null}>
-            <DiscordGuideModal
-              isOpen={ui.isDiscordGuideOpen}
-              onClose={() => ui.setIsDiscordGuideOpen(false)}
-              onOpenAudioSettings={() => {
-                ui.setIsDiscordGuideOpen(false);
-                ui.setIsSettingsOpen(true);
-              }}
-            />
-          </Suspense>
-        )}
-        {ui.isLicenseModalOpen && (
-          <Suspense fallback={null}>
-            <LicenseModal
-              isOpen={ui.isLicenseModalOpen}
-              onClose={() => ui.setIsLicenseModalOpen(false)}
-            />
-          </Suspense>
-        )}
-        {ui.isWizardOpen && (
-          <Suspense fallback={null}>
-            <SetupWizardModal
-              isOpen={ui.isWizardOpen}
-              onClose={() => {
-                ui.setIsWizardOpen(false);
-                localStorage.setItem('vst_host_wizard_done', 'true');
-              }}
-              onApplyConfig={(host, input, output) => {
-                handleConfigUpdate({ host, input, output, sampleRate: 48000, bufferSize: 512 });
-                const config = { host, input, output };
-                localStorage.setItem('vst_host_audio_config', JSON.stringify(config));
-                localStorage.setItem('vst_host_wizard_done', 'true');
-              }}
-              onOpenSettings={() => ui.setIsSettingsOpen(true)}
-            />
-          </Suspense>
-        )}
-        {ui.isPresetManagerOpen && (
-          <Suspense fallback={null}>
-            <PresetManagerModal
-              isOpen={ui.isPresetManagerOpen}
-              onClose={() => ui.setIsPresetManagerOpen(false)}
-              onLoadPreset={pluginsApi.loadPreset}
-              onSavePreset={pluginsApi.savePreset}
-              onOpenTemplateWizard={() => {
-                ui.setIsPresetManagerOpen(false);
-                ui.setIsTemplateWizardOpen(true);
-              }}
-            />
-          </Suspense>
-        )}
-        {ui.isTemplateWizardOpen && (
-          <Suspense fallback={null}>
-            <TemplateWizardModal
-              isOpen={ui.isTemplateWizardOpen}
-              onClose={() => ui.setIsTemplateWizardOpen(false)}
-              availablePlugins={pluginsApi.availablePlugins}
-              onApplyTemplate={pluginsApi.applyTemplate}
-              onScan={pluginsApi.scanPlugins}
-              isScanning={pluginsApi.isScanning}
-            />
-          </Suspense>
-        )}
-        {ui.isRecoveryModalOpen && (
-          <Suspense fallback={null}>
-            <RecoveryModal
-              isOpen={ui.isRecoveryModalOpen}
-              onClose={() => ui.setIsRecoveryModalOpen(false)}
-              error={ui.crashError}
-              onClear={() => {
-                pluginsApi.resetPlugins();
-                audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000);
-              }}
-              onRecover={async (_safeMode, excludePath) => {
-                try {
-                  await audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000);
-                } catch (e) {
-                  console.error("Recovery Restart Failed", e);
-                }
-                await pluginsApi.recoverSession(excludePath);
-              }}
-            />
-          </Suspense>
-        )}
-        {ui.isLargeMeterOpen && (
-          <Suspense fallback={null}>
-            <LargeLevelMeter onClose={() => ui.setIsLargeMeterOpen(false)} />
-          </Suspense>
-        )}
+        <ModalLayer
+          ui={ui}
+          audioConfig={audioConfig}
+          handleConfigUpdate={handleConfigUpdate}
+          pluginsApi={pluginsApi}
+          onPluginAdded={handlePluginAdded}
+        />
+
         <Toaster position="top-right" theme={theme === 'light' ? 'light' : 'dark'} richColors />
       </AppShell>
     </>
@@ -294,9 +205,11 @@ function AppContent() {
 
 function App() {
   return (
-    <TutorialProvider>
-      <AppContent />
-    </TutorialProvider>
+    <ErrorBoundary>
+      <TutorialProvider>
+        <AppContent />
+      </TutorialProvider>
+    </ErrorBoundary>
   );
 }
 

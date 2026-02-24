@@ -33,34 +33,40 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-card border border-border rounded-xl p-8 w-full max-w-2xl shadow-lg relative overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="modal-overlay-base">
+            <div className="modal-surface-base w-full max-w-2xl flex flex-col max-h-[90vh]">
 
                 {/* Header */}
-                <div className="flex justify-between items-center mb-6 shrink-0">
+                <div className="modal-header-base modal-header-muted shrink-0">
                     <h2 className="text-2xl font-bold text-foreground flex items-center gap-3">
                         <span className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
                             <MdVideocam className="w-5 h-5" />
                         </span>
                         OBS連携セットアップ
                     </h2>
-                    <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted/50">
+                    <button
+                        onClick={onClose}
+                        aria-label="OBS連携ガイドを閉じる"
+                        className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted/50"
+                    >
                         <MdClose className="w-5 h-5" />
                     </button>
                 </div>
 
                 {/* Progress Bar (Skipped for Step 0) */}
                 {step > 0 && (
-                    <div className="w-full h-1 bg-muted rounded-full mb-6 shrink-0 overflow-hidden">
-                        <div
-                            className="h-full bg-primary transition-all duration-500 ease-out shadow-[0_0_10px_rgba(var(--primary),0.5)]"
-                            style={{ width: `${(step / (totalSteps - 1)) * 100}%` }}
-                        />
+                    <div className="px-6 pt-4 shrink-0">
+                        <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-primary transition-all duration-500 ease-out shadow-[0_0_10px_rgba(var(--primary),0.5)]"
+                                style={{ width: `${(step / (totalSteps - 1)) * 100}%` }}
+                            />
+                        </div>
                     </div>
                 )}
 
                 {/* Content Area */}
-                <div className="flex-1 overflow-y-auto pr-2">
+                <div className="modal-body-base pr-4">
                     {step === 0 && (
                         <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
                             <h3 className="text-xl font-bold text-foreground">はじめに: 使用機器の確認</h3>
@@ -71,6 +77,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                             <div className="grid md:grid-cols-2 gap-4 mt-4">
                                 <button
                                     onClick={() => handleDeviceSelection(true)}
+                                    aria-label="機材を使用している手順を選択"
                                     className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/50 transition-all text-left group"
                                 >
                                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
@@ -81,12 +88,13 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                         Yamaha AG03/06, GoXLR, Audientなどのオーディオインターフェース/ミキサーを使用。
                                     </p>
                                     <span className="inline-block mt-4 text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded">
-                                        Loopback機能を利用
+                                        ループバック機能を利用
                                     </span>
                                 </button>
 
                                 <button
                                     onClick={() => handleDeviceSelection(false)}
+                                    aria-label="機材を使用していない手順を選択"
                                     className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/50 transition-all text-left group"
                                 >
                                     <div className="w-12 h-12 rounded-full bg-secondary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
@@ -107,20 +115,20 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                     {step === 1 && (
                         <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
                             <h3 className="text-xl font-bold text-foreground">
-                                {useHardwareMixer ? '手順 1: Loopbackの確認' : '手順 1: 仮想オーディオデバイスの準備'}
+                                {useHardwareMixer ? '手順 1: ループバックの確認' : '手順 1: 仮想オーディオデバイスの準備'}
                             </h3>
 
                             {useHardwareMixer ? (
                                 <div className="space-y-4">
                                     <p className="text-muted-foreground">
-                                        お使いのオーディオインターフェースの <strong>Loopback（ループバック）機能</strong> をONにしてください。
+                                        お使いのオーディオインターフェースの <strong>ループバック機能</strong> をONにしてください。
                                     </p>
                                     <div className="bg-primary/5 border border-primary/20 p-4 rounded-lg">
                                         <h4 className="font-bold text-primary flex items-center gap-2 mb-2">
                                             <MdCheckCircle /> おすすめの設定
                                         </h4>
                                         <p className="text-sm text-muted-foreground">
-                                            Auralynの音声をインターフェースに戻し、それをLoopback機能でOBS等の配信ソフトに送る形になります。<br />
+                                            Auralynの音声をインターフェースに戻し、それをループバック機能でOBS等の配信ソフトに送る形になります。<br />
                                             別途ソフトウェアのインストールは不要です。
                                         </p>
                                     </div>
@@ -163,13 +171,14 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                             <div className="flex flex-col gap-4 py-4">
                                 <div className="bg-card border border-border p-4 rounded-lg flex items-center justify-between">
                                     <div>
-                                        <div className="font-bold text-foreground mb-1">出力先 (Output Device)</div>
+                                        <div className="font-bold text-foreground mb-1">出力先</div>
                                         <div className="text-sm text-primary font-mono">
-                                            {useHardwareMixer ? 'お使いの機器 (例: AG06/03)' : 'CABLE Input (VB-Audio)'}
+                                            {useHardwareMixer ? 'お使いの機器 (例: AG06/03)' : 'CABLE Input（VB-Audio 仮想ケーブル）'}
                                         </div>
                                     </div>
                                     <button
                                         onClick={onOpenAudioSettings}
+                                        aria-label="オーディオ設定を開く"
                                         className="px-4 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-lg border border-border transition-colors flex items-center gap-2 text-sm"
                                     >
                                         <MdSettings className="w-4 h-4" />
@@ -191,13 +200,13 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                         </p>
                                         <ul className="list-disc list-inside text-sm text-muted-foreground pl-2 bg-muted/30 p-3 rounded">
                                             <li>Yamaha AG03/06: <strong>MONITOR MUTE</strong> をOFFにする（モニター有効）</li>
-                                            <li>Audio Interface: <strong>Direct Monitor</strong> またはMixつまみを調整</li>
+                                            <li>オーディオインターフェース: <strong>Direct Monitor</strong> またはMixつまみを調整</li>
                                         </ul>
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
                                         <p className="text-sm text-muted-foreground">
-                                            「CABLE Input」に出力すると、スピーカーから音が出なくなります。<br />
+                                            「CABLE Input（VB-Audio 仮想ケーブル）」に出力すると、スピーカーから音が出なくなります。<br />
                                             自分の声を聞く必要がある場合は、以下のいずれかを行ってください。
                                         </p>
 
@@ -213,7 +222,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                             <div className="font-bold text-foreground mb-1">方法B: Windows機能で聞く (遅延あり)</div>
                                             <p className="text-muted-foreground text-xs leading-relaxed">
                                                 Windows設定 {'>'} システム {'>'} サウンド {'>'} 録音 {'>'}<br />
-                                                <strong>CABLE Output</strong> のプロパティ {'>'} 「聴く」タブ {'>'} <strong>「このデバイスを聴く」</strong>をON<br />
+                                                <strong>CABLE Output（VB-Audio 仮想ケーブル）</strong> のプロパティ {'>'} 「聴く」タブ {'>'} <strong>「このデバイスを聴く」</strong>をON<br />
                                                 <span className="text-destructive/80 mt-1 block font-bold text-[10px]">※ 遅延が発生するため、歌枠などには不向きです。</span>
                                             </p>
                                         </div>
@@ -241,10 +250,10 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                             <div className="mt-2 ml-4 p-2 bg-background border border-border rounded font-mono text-primary">
                                                 {useHardwareMixer ? (
                                                     // Hardware user -> Output of mixer (often depends on driver, usually line/stream)
-                                                    "Loopback / Stream / Line (お使いの機器名)"
+                                                    "ループバック / 配信用ストリーム / ライン (お使いの機器名)"
                                                 ) : (
                                                     // Software user -> Cable Output
-                                                    "CABLE Output (VB-Audio Virtual Cable)"
+                                                    "CABLE Output（VB-Audio 仮想ケーブル）"
                                                 )}
                                             </div>
                                         </li>
@@ -254,7 +263,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                 <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 space-y-2">
                                     <p className="text-primary text-sm font-bold flex items-center gap-2">
                                         <MdCheckCircle className="w-5 h-5" />
-                                        セットアップ完了!
+                                        セットアップ完了！
                                     </p>
                                     <p className="text-muted-foreground text-xs pl-7">
                                         ・エフェクトは自動保存されます。<br />
@@ -267,9 +276,10 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                 </div>
 
                 {/* Footer / Navigation */}
-                <div className="flex justify-between items-center mt-6 pt-4 border-t border-border shrink-0">
+                <div className="modal-footer-base flex justify-between items-center shrink-0">
                     <button
                         onClick={prevStep}
+                        aria-label="前の手順へ戻る"
                         className={`px-4 py-2 text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 ${step === 0 ? 'invisible' : ''}`}
                     >
                         <MdArrowBack className="w-4 h-4" /> 戻る
@@ -277,6 +287,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
 
                     <button
                         onClick={nextStep}
+                        aria-label={step === (totalSteps - 1) ? 'ガイドを完了する' : '次の手順へ進む'}
                         className="px-6 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-md shadow-lg transition-all flex items-center gap-2"
                     >
                         {step === (totalSteps - 1) ? '完了' : <>次へ <MdArrowForward className="w-4 h-4" /></>}

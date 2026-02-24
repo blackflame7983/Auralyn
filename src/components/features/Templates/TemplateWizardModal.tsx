@@ -80,7 +80,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
         // Validation: Check if required slots are filled
         const missingRequired = selectedTemplate.slots.some((slot, i) => slot.required && !mapping[i]);
         if (missingRequired) {
-            toast.error("必須スロット（Required）が未設定です");
+            toast.error("必須スロットが未設定です");
             return;
         }
 
@@ -112,11 +112,11 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in duration-200 p-4">
-            <div className="bg-card border border-border rounded-xl w-full max-w-4xl shadow-2xl relative max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="modal-overlay-base">
+            <div className="modal-surface-base w-full max-w-4xl max-h-[90vh] flex flex-col">
 
                 {/* Header */}
-                <div className="p-6 border-b border-border flex justify-between items-center bg-muted/20">
+                <div className="modal-header-base modal-header-muted">
                     <div>
                         <h2 className="text-2xl font-bold flex items-center gap-2">
                             <MdAutoFixHigh className="text-primary" />
@@ -132,7 +132,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="modal-body-base">
                     {step === 1 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {CHAIN_TEMPLATES.map(t => (
@@ -198,7 +198,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                                             setMapping(prev => ({ ...prev, [index]: p }));
                                                         }}
                                                     >
-                                                        <option value="">{isScanning ? "（スキャン中...）" : "(選択してください)"}</option>
+                                                        <option value="">{isScanning ? "（スキャン中...）" : "（選択してください）"}</option>
                                                         {/* Show recommended first? complex sorting might be overkill */}
                                                         {availablePlugins.map(p => (
                                                             <option key={p.path} value={p.path}>{p.name}</option>
@@ -210,7 +210,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
 
                                                 {assigned && (
                                                     <div className="text-xs text-primary flex items-center gap-1">
-                                                        <MdCheck /> 選択中: {assigned.name} ({assigned.vendor || 'Unknown Vendor'})
+                                                        <MdCheck /> 選択中: {assigned.name} ({assigned.vendor || '不明なメーカー'})
                                                     </div>
                                                 )}
                                             </div>
@@ -224,7 +224,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
 
                 {/* Footer */}
                 {step === 2 && (
-                    <div className="p-6 border-t border-border bg-muted/20 flex justify-end gap-3">
+                    <div className="modal-footer-base flex justify-end gap-3">
                         <button
                             onClick={onClose}
                             className="px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors"

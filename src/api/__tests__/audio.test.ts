@@ -76,4 +76,61 @@ describe('audioApi', () => {
             expect(mockedInvoke).toHaveBeenCalledWith('stop_audio');
         });
     });
+
+    describe('setNoiseReduction', () => {
+        it('ノイズ抑制の状態とモードを送信する', async () => {
+            mockedInvoke.mockResolvedValue(undefined);
+
+            await audioApi.setNoiseReduction(true, 'high');
+
+            expect(mockedInvoke).toHaveBeenCalledWith('set_noise_reduction', {
+                active: true,
+                mode: 'high',
+            });
+        });
+    });
+
+    describe('engine tuning', () => {
+        it('チューニング設定の取得/設定コマンドを送信する', async () => {
+            const cfg = {
+                enableAffinityPinning: true,
+                affinityMask: '0xff',
+                enableRealtimePriority: false,
+                enableTimeCriticalAudioThreads: true,
+            };
+            mockedInvoke.mockResolvedValue(cfg);
+
+            await audioApi.getEngineTuningConfig();
+            expect(mockedInvoke).toHaveBeenCalledWith('get_engine_tuning_config');
+
+            mockedInvoke.mockResolvedValue(undefined);
+            await audioApi.setEngineTuningConfig(cfg);
+            expect(mockedInvoke).toHaveBeenCalledWith('set_engine_tuning_config', { config: cfg });
+        });
+
+        it('エンジン統計の取得コマンドを送信する', async () => {
+            mockedInvoke.mockResolvedValue({
+                activePluginCount: 1,
+                enabledPluginCount: 1,
+                pendingUnloadCount: 0,
+                burnedLibraryCount: 2,
+                globalBypass: false,
+                maxJitterUs: 0,
+                glitchCount: 0,
+                totalPluginLatencySamples: 0,
+                totalPluginLatencyMs: 0,
+                noiseReductionLatencySamples: 0,
+                noiseReductionLatencyMs: 0,
+                totalChainLatencySamples: 0,
+                totalChainLatencyMs: 0,
+                noiseReductionEnabled: false,
+                noiseReductionActive: false,
+                noiseReductionMode: 'low',
+            });
+
+            await audioApi.getEngineRuntimeStats();
+
+            expect(mockedInvoke).toHaveBeenCalledWith('get_engine_runtime_stats');
+        });
+    });
 });

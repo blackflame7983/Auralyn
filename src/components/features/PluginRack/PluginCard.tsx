@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { MdClose, MdDragIndicator } from 'react-icons/md';
 import {
@@ -34,19 +35,117 @@ interface PluginCardProps {
     onRemove: (id: string) => void;
     onEdit: (id: string) => void;
     dragHandleListeners?: any;
+    simpleMode?: boolean;
 }
 
-export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute, onGainChange, onRemove, onEdit, dragHandleListeners }) => {
+export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute, onGainChange, onRemove, onEdit, dragHandleListeners, simpleMode = false }) => {
+    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+
     // Calculate dB value for display
     const dbValue = plugin.gain === 0 ? '-inf' : (20 * Math.log10(plugin.gain)).toFixed(1);
 
     const handleDelete = (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (window.confirm(`プラグイン '${plugin.name}' をラックから削除しますか？`)) {
-            onRemove(plugin.id);
-        }
+        setIsDeleteConfirmOpen(true);
     };
 
+    if (simpleMode) {
+        return (
+            <TooltipProvider>
+                <Card className={cn(
+                    "group relative w-full h-16 transition-all duration-300 select-none overflow-hidden",
+                    plugin.enabled
+                        ? "bg-card shadow-sm border-y border-r border-primary/20"
+                        : "bg-muted/50 opacity-90 border-transparent shadow-none"
+                )}>
+                    {/* Left Status Bar / Drag Handle */}
+                    <div
+                        {...dragHandleListeners}
+                        className={cn(
+                            "absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center cursor-grab hover:bg-black/5 active:cursor-grabbing z-20 transition-colors",
+                            plugin.enabled ? "bg-primary text-primary-foreground" : "bg-muted-foreground/20 text-muted-foreground"
+                        )}
+                        title="ドラッグして並べ替え"
+                    >
+                        <MdDragIndicator className="w-4 h-4 opacity-50 hover:opacity-100" />
+                    </div>
+
+                    {/* Simple Content */}
+                    <div className="absolute inset-0 flex items-center justify-between pl-10 pr-4 z-10">
+                        {/* Name + ON/OFF */}
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <Switch
+                                checked={plugin.enabled}
+                                onCheckedChange={(checked) => onToggle(plugin.id, checked)}
+                            />
+                            <h3 className={cn("font-bold text-sm truncate transition-colors", plugin.enabled ? "text-foreground" : "text-muted-foreground")}>
+                                {plugin.name}
+                            </h3>
+                        </div>
+
+                        {/* Gain Slider */}
+                        <div className="flex items-center gap-3 w-40 shrink-0">
+                            <div className="relative w-full h-4 flex items-center" onPointerDown={(e) => e.stopPropagation()}>
+                                <Slider
+                                    defaultValue={[plugin.gain]}
+                                    max={2}
+                                    step={0.01}
+                                    value={[plugin.gain]}
+                                    onValueChange={(val) => onGainChange(plugin.id, val[0])}
+                                    onDoubleClick={() => onGainChange(plugin.id, 1.0)}
+                                    className="cursor-pointer"
+                                />
+                            </div>
+                            <span className="text-[10px] font-mono text-muted-foreground w-12 text-right">{dbValue}dB</span>
+                        </div>
+
+                        {/* Edit + Delete */}
+                        <div className="flex items-center gap-1 ml-2">
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                disabled={!plugin.hasEditor || !plugin.enabled}
+                                onClick={() => onEdit(plugin.id)}
+                                className="h-7 text-[10px] font-mono"
+                            >
+                                編集
+                            </Button>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
+                                        onClick={handleDelete}
+                                    >
+                                        <MdClose className="w-4 h-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>削除</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </div>
+                    </div>
+                </Card>
+                <ConfirmDialog
+                    isOpen={isDeleteConfirmOpen}
+                    title={`${plugin.name} を削除`}
+                    description="このエフェクトをラックから削除しますか？削除後、5秒以内であれば「元に戻す」で復元できます。"
+                    confirmLabel="削除する"
+                    cancelLabel="キャンセル"
+                    variant="destructive"
+                    onConfirm={() => {
+                        setIsDeleteConfirmOpen(false);
+                        onRemove(plugin.id);
+                    }}
+                    onCancel={() => setIsDeleteConfirmOpen(false)}
+                />
+            </TooltipProvider>
+        );
+    }
+
+    // --- Advanced Mode (Original) ---
     return (
         <TooltipProvider>
             <Card className={cn(
@@ -68,7 +167,13 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                 </div>
 
                 {/* Background Texture (Subtle Noise) */}
-                <div className="absolute inset-0 left-6 opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] pointer-events-none mix-blend-overlay" />
+                <div
+                    className="absolute inset-0 left-6 opacity-[0.03] pointer-events-none mix-blend-overlay"
+                    style={{
+                        backgroundImage: 'radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)',
+                        backgroundSize: '6px 6px',
+                    }}
+                />
 
                 {/* Content Flex */}
                 <div className="absolute inset-0 flex items-center justify-between pl-10 pr-6 z-10">
@@ -93,7 +198,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                         <h3 className={cn("font-bold tracking-tight text-sm truncate pr-4 transition-colors", plugin.enabled ? "text-foreground" : "text-muted-foreground")}>
                             {plugin.name}
                         </h3>
-                        <div className="text-[10px] text-muted-foreground truncate font-mono">{plugin.vendor || 'Unknown Vendor'}</div>
+                        <div className="text-[10px] text-muted-foreground truncate font-mono">{plugin.vendor || '不明なメーカー'}</div>
                     </div>
 
                     {/* 2. Controls Section */}
@@ -184,6 +289,19 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                     </div>
                 </div>
             </Card>
+            <ConfirmDialog
+                isOpen={isDeleteConfirmOpen}
+                title={`${plugin.name} を削除`}
+                description="このエフェクトをラックから削除しますか？削除後、5秒以内であれば「元に戻す」で復元できます。"
+                confirmLabel="削除する"
+                cancelLabel="キャンセル"
+                variant="destructive"
+                onConfirm={() => {
+                    setIsDeleteConfirmOpen(false);
+                    onRemove(plugin.id);
+                }}
+                onCancel={() => setIsDeleteConfirmOpen(false)}
+            />
         </TooltipProvider>
     );
 };

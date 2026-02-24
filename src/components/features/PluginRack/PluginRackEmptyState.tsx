@@ -1,5 +1,5 @@
 import React from 'react';
-import { MdAdd, MdAutoFixHigh, MdRocketLaunch, MdFolderOpen } from 'react-icons/md';
+import { MdAdd, MdAutoFixHigh, MdRocketLaunch } from 'react-icons/md';
 import { Button } from '@/components/ui/button';
 
 interface PluginRackEmptyStateProps {
@@ -30,46 +30,45 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
                     配信の準備を始めましょう
                 </h3>
                 <p className="text-muted-foreground leading-relaxed">
-                    まずは「かんたん設定」で送出先（OBS/Discord）を選んで、<br className="hidden sm:inline" />
-                    テンプレートを使って聴き取りやすい声を作りましょう。
+                    「かんたん設定」を使えば、数ステップで<br className="hidden sm:inline" />
+                    聴き取りやすい声をセットアップできます。
                 </p>
             </div>
 
-            {/* Main CTA */}
-            <div className="flex flex-col w-full max-w-sm gap-4 relative z-10">
+            {/* Main CTA - Single Focused Action */}
+            <div className="flex flex-col w-full max-w-sm gap-6 relative z-10">
                 <Button
+                    id="add-effect-btn"
                     onClick={onOpenWizard}
                     size="lg"
                     className="h-14 text-lg shadow-xl shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 transition-all font-bold gap-3 rounded-xl bg-gradient-to-r from-primary to-primary/80"
                 >
                     <MdRocketLaunch className="w-6 h-6" />
-                    かんたん設定ウィザードを開く
+                    かんたん設定を始める
                 </Button>
 
-                <div className="grid grid-cols-2 gap-3">
-                    <Button
-                        variant="outline"
+                {/* Secondary actions - subtle text links */}
+                <div className="flex items-center justify-center gap-6 text-sm">
+                    <button
                         onClick={onOpenTemplates}
-                        className="h-12 border-primary/20 hover:bg-primary/5 hover:border-primary/50 text-foreground transition-all gap-2"
+                        className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1.5 underline underline-offset-4 decoration-muted-foreground/30 hover:decoration-primary/50"
                     >
-                        <MdAutoFixHigh className="w-5 h-5 text-primary" />
+                        <MdAutoFixHigh className="w-4 h-4" />
                         テンプレートから始める
-                    </Button>
-                    <Button
-                        id="add-effect-btn"
-                        variant="outline"
+                    </button>
+                    <span className="text-muted-foreground/30">|</span>
+                    <button
                         onClick={onAddClick}
-                        className="h-12 border-border hover:bg-muted transition-all gap-2"
+                        className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 underline underline-offset-4 decoration-muted-foreground/30 hover:decoration-foreground/50"
                     >
-                        <MdAdd className="w-5 h-5" />
-                        エフェクトを追加
-                    </Button>
+                        <MdAdd className="w-4 h-4" />
+                        手動で追加
+                    </button>
                 </div>
             </div>
 
             {/* Footer Hint */}
-            <div className="absolute bottom-4 text-[10px] text-muted-foreground/50 font-mono flex items-center gap-2 hidden md:flex">
-                <MdFolderOpen className="w-3 h-3" />
+            <div className="absolute bottom-4 text-[10px] text-muted-foreground/50 font-mono hidden md:flex items-center gap-2">
                 対応形式：VST3 (.vst3)
             </div>
         </div>

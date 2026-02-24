@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { audioApi, AudioDevice, AudioStateInfo } from '../../../api/audio';
 import { DiscordIcon } from '../../ui/DiscordIcon';
+import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { MdAutoFixHigh, MdCheckCircle, MdWarning, MdMic, MdVolumeUp, MdSettings, MdCast, MdHeadphones, MdMusicNote, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
 import { toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
@@ -29,16 +30,22 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
     // State Preservation Logic
     const initialStateRef = useRef<AudioStateInfo | null>(null);
     const hasTouchedEngineRef = useRef(false);
+    const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
 
-    const handleClose = async () => {
+    const handleCloseRequest = () => {
         if (state !== 'welcome' && state !== 'complete') {
-            if (!window.confirm("セットアップ途中ですが終了しますか？")) return;
+            setIsCloseConfirmOpen(true);
+            return;
         }
+        performClose();
+    };
+
+    const performClose = async () => {
 
         // Revert if needed
         if (hasTouchedEngineRef.current && initialStateRef.current) {
             const init = initialStateRef.current;
-            console.log("Reverting to initial state:", init);
+            // Reverting to initial state
             try {
                 if (init.is_running && init.config) {
                     await audioApi.start(
@@ -86,7 +93,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
             loadDevices();
             // Capture initial state
             audioApi.getAudioState().then(s => {
-                console.log("Captured Initial State:", s);
+                // Initial state captured for revert
                 initialStateRef.current = s;
                 hasTouchedEngineRef.current = false;
             }).catch(e => console.error("Failed to capture audio state", e));
@@ -129,32 +136,55 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
         }
     }, [availableInputs, state, config.input]);
 
-    const loadDevices = async () => {
+    const normalizeDevices = (devices: { inputs: AudioDevice[]; outputs: AudioDevice[] }) => {
+        // Filter WASAPI only (Case insensitive)
+        let inputs = devices.inputs.filter(d => d.host.toLowerCase() === 'wasapi');
+        let outputs = devices.outputs.filter(d => d.host.toLowerCase() === 'wasapi');
+
+        // Fallback: If no WASAPI devices found, show everything
+        if (inputs.length === 0 && devices.inputs.length > 0) {
+            inputs = devices.inputs;
+        }
+        if (outputs.length === 0 && devices.outputs.length > 0) {
+            outputs = devices.outputs;
+        }
+
+        return { inputs, outputs };
+    };
+
+    const loadDevices = async (forceRefresh: boolean = false) => {
         setIsLoadingDevices(true);
         try {
-            const devices = await audioApi.getDevices(false);
-
-            // Filter WASAPI only (Case insensitive)
-            let inputs = devices.inputs.filter(d => d.host.toLowerCase() === 'wasapi');
-            let outputs = devices.outputs.filter(d => d.host.toLowerCase() === 'wasapi');
-
-            // Fallback: If no WASAPI devices found, show everything
-            if (inputs.length === 0 && devices.inputs.length > 0) {
-                // console.warn("SetupWizard: No WASAPI inputs found, falling back to all inputs.");
-                inputs = devices.inputs;
-            }
-            if (outputs.length === 0 && devices.outputs.length > 0) {
-                // console.warn("SetupWizard: No WASAPI outputs found, falling back to all outputs.");
-                outputs = devices.outputs;
-            }
+            const devices = await audioApi.getDevices(forceRefresh);
+            const { inputs, outputs } = normalizeDevices(devices);
 
             setAvailableInputs(inputs);
             setAvailableOutputs(outputs);
+            return { inputs, outputs };
         } catch (e) {
             console.error("Failed to load devices", e);
             toast.error("デバイス情報の取得に失敗しました");
+            return null;
         } finally {
             setIsLoadingDevices(false);
+        }
+    };
+
+    const handleRescanVirtualDevices = async () => {
+        const refreshed = await loadDevices(true);
+        if (!refreshed) return;
+
+        const virtualOutputs = refreshed.outputs.filter(d => {
+            const name = d.name.toLowerCase();
+            return name.includes("cable") || name.includes("voicemeeter");
+        });
+
+        if (virtualOutputs.length > 0) {
+            setConfig(prev => ({ ...prev, outputMode: 'broadcast', output: virtualOutputs[0] }));
+            toast.success("仮想オーディオデバイスを検出しました");
+        } else {
+            setConfig(prev => ({ ...prev, output: prev.outputMode === 'broadcast' ? null : prev.output }));
+            toast.warning("まだ仮想オーディオデバイスが見つかりませんでした");
         }
     };
 
@@ -190,8 +220,62 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
 
     const selectGoal = (goal: UserGoal) => {
         setConfig(prev => ({ ...prev, goal }));
+        localStorage.setItem('vst_host_setup_goal', goal);
         setState('input_selection');
         // Auto-select will trigger via useEffect if devices are ready
+    };
+
+    const runQuickStart = async () => {
+        let inputs = availableInputs;
+        let outputs = availableOutputs;
+
+        if (inputs.length === 0 || outputs.length === 0) {
+            const refreshed = await loadDevices(true);
+            if (!refreshed) return;
+            inputs = refreshed.inputs;
+            outputs = refreshed.outputs;
+        }
+
+        if (inputs.length === 0 || outputs.length === 0) {
+            toast.error("推奨設定を作成できませんでした。手動で選択してください。");
+            setState('usage_selection');
+            return;
+        }
+
+        const recommendedInput =
+            inputs.find(d => {
+                const name = d.name.toLowerCase();
+                return !name.includes("cable") && !name.includes("voicemeeter") && !name.includes("stereo mix");
+            }) || inputs[0];
+
+        const virtualOutput = outputs.find(d => {
+            const name = d.name.toLowerCase();
+            return name.includes("cable") || name.includes("voicemeeter");
+        }) || null;
+
+        const nonVirtualOutput =
+            outputs.find(d => d.is_default && !/cable|voicemeeter/i.test(d.name)) ||
+            outputs.find(d => !/cable|voicemeeter/i.test(d.name)) ||
+            outputs[0];
+
+        const recommendedOutput = virtualOutput || nonVirtualOutput;
+
+        if (!recommendedInput || !recommendedOutput) {
+            toast.error("推奨設定を作成できませんでした。手動で選択してください。");
+            setState('usage_selection');
+            return;
+        }
+
+        setConfig(prev => ({
+            ...prev,
+            goal: virtualOutput ? 'obs' : 'discord',
+            host: 'WASAPI',
+            input: recommendedInput,
+            output: recommendedOutput,
+            outputMode: virtualOutput ? 'broadcast' : 'default'
+        }));
+        setState('confirmation');
+        toast.success("推奨設定を自動選択しました");
     };
 
     const confirmInput = () => {
@@ -318,20 +402,35 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-card border border-border rounded-xl p-8 w-full max-w-3xl shadow-lg relative overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="modal-overlay-base">
+            <div className="modal-surface-base w-full max-w-3xl flex flex-col max-h-[90vh]">
 
                 {/* Close Button */}
                 <button
-                    onClick={handleClose}
+                    onClick={handleCloseRequest}
+                    aria-label="セットアップウィザードを閉じる"
                     className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors z-10"
                 >
                     <MdClose className="w-6 h-6" />
                 </button>
 
+                <ConfirmDialog
+                    isOpen={isCloseConfirmOpen}
+                    title="セットアップを中断しますか？"
+                    description="途中で終了しても、「オーディオ設定」からいつでも再開できます。"
+                    confirmLabel="中断する"
+                    cancelLabel="続ける"
+                    variant="default"
+                    onConfirm={() => {
+                        setIsCloseConfirmOpen(false);
+                        performClose();
+                    }}
+                    onCancel={() => setIsCloseConfirmOpen(false)}
+                />
+
                 {/* Header Steps */}
                 {state !== 'welcome' && state !== 'complete' && state !== 'configuring' && (
-                    <div className="flex justify-between items-center mb-8 px-4 relative mt-4">
+                    <div className="modal-header-base modal-header-muted px-4 relative">
                         {/* Progress Bar Background */}
                         <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-muted -z-10" />
 
@@ -359,7 +458,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                     </div>
                 )}
 
-                <div className="flex-1 overflow-y-auto min-h-[400px] flex flex-col">
+                <div className="modal-body-base min-h-[400px] flex flex-col">
 
                     {/* --- STEP 1: WELCOME --- */}
                     {state === 'welcome' && (
@@ -383,6 +482,13 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                             ) : (
                                 <div className="flex flex-col gap-3 items-center">
                                     <button
+                                        onClick={() => void runQuickStart()}
+                                        className="px-8 py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-full shadow-lg transition-all text-lg flex items-center gap-2"
+                                    >
+                                        <MdCheckCircle className="w-5 h-5" />
+                                        推奨でクイックスタート
+                                    </button>
+                                    <button
                                         onClick={() => setState('usage_selection')}
                                         className="px-8 py-3 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-full shadow-lg transition-all text-lg flex items-center gap-2"
                                     >
@@ -390,7 +496,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                         はじめる
                                     </button>
                                     <button
-                                        onClick={handleClose}
+                                        onClick={handleCloseRequest}
                                         className="text-muted-foreground hover:text-foreground transition-colors text-sm underline decoration-muted hover:decoration-muted-foreground underline-offset-4"
                                     >
                                         スキップ（手動設定）
@@ -587,15 +693,27 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                                 )}
                                             </select>
                                             {!config.output && (
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        invoke('open_url', { url: 'https://vb-audio.com/Cable/' }).catch(() => window.open('https://vb-audio.com/Cable/', '_blank'));
-                                                    }}
-                                                    className="mt-2 text-[10px] underline text-purple-300 hover:text-purple-100 block mx-auto"
-                                                >
-                                                    VB-CABLEをダウンロード
-                                                </button>
+                                                <div className="mt-2 flex flex-col items-center gap-1.5">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            invoke('open_url', { url: 'https://vb-audio.com/Cable/' }).catch(() => window.open('https://vb-audio.com/Cable/', '_blank'));
+                                                        }}
+                                                        className="text-[10px] underline text-purple-300 hover:text-purple-100"
+                                                    >
+                                                        VB-CABLEをダウンロード
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            void handleRescanVirtualDevices();
+                                                        }}
+                                                        disabled={isLoadingDevices}
+                                                        className="text-[11px] px-3 py-1 rounded-full border border-purple-400/40 bg-purple-500/10 text-purple-200 hover:bg-purple-500/20 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                                                    >
+                                                        {isLoadingDevices ? '再確認中...' : 'インストールしました → 再スキャン'}
+                                                    </button>
+                                                </div>
                                             )}
                                         </>
                                     )}
@@ -650,7 +768,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                             <div className="flex flex-col items-center gap-3">
                                 {isTestingSound && (
                                     <div className="flex items-center gap-3 bg-secondary/10 px-4 py-2 rounded-full animate-in fade-in slide-in-from-bottom-2">
-                                        <span className="text-xs font-bold text-secondary-foreground">INPUT</span>
+                                        <span className="text-xs font-bold text-secondary-foreground">入力</span>
                                         <div className="w-32 h-3 bg-secondary/30 rounded-full overflow-hidden">
                                             <div
                                                 className="h-full bg-green-500 transition-all duration-75 ease-out shadow-[0_0_8px_rgba(34,197,94,0.6)]"
@@ -750,22 +868,34 @@ const SelectionCard: React.FC<SelectionCardProps> = ({ onClick, icon, title, des
 
     let activeClass = "";
     let activeBg = "";
+    let activeRing = "";
 
     switch (color) {
-        case 'blue': activeClass = "border-blue-500 text-blue-500"; activeBg = "bg-blue-500/5"; break;
-        case 'indigo': activeClass = "border-indigo-500 text-indigo-500"; activeBg = "bg-indigo-500/5"; break;
-        case 'pink': activeClass = "border-pink-500 text-pink-500"; activeBg = "bg-pink-500/5"; break;
-        case 'emerald': activeClass = "border-emerald-500 text-emerald-500"; activeBg = "bg-emerald-500/5"; break;
-        case 'sky': activeClass = "border-sky-500 text-sky-500"; activeBg = "bg-sky-500/5"; break;
-        case 'orange': activeClass = "border-orange-500 text-orange-500"; activeBg = "bg-orange-500/5"; break;
-        case 'purple': activeClass = "border-purple-500 text-purple-500"; activeBg = "bg-purple-500/5"; break;
+        case 'blue': activeClass = "border-blue-500 text-blue-500"; activeBg = "bg-blue-500/5"; activeRing = "ring-1 ring-blue-500/50"; break;
+        case 'indigo': activeClass = "border-indigo-500 text-indigo-500"; activeBg = "bg-indigo-500/5"; activeRing = "ring-1 ring-indigo-500/50"; break;
+        case 'pink': activeClass = "border-pink-500 text-pink-500"; activeBg = "bg-pink-500/5"; activeRing = "ring-1 ring-pink-500/50"; break;
+        case 'emerald': activeClass = "border-emerald-500 text-emerald-500"; activeBg = "bg-emerald-500/5"; activeRing = "ring-1 ring-emerald-500/50"; break;
+        case 'sky': activeClass = "border-sky-500 text-sky-500"; activeBg = "bg-sky-500/5"; activeRing = "ring-1 ring-sky-500/50"; break;
+        case 'orange': activeClass = "border-orange-500 text-orange-500"; activeBg = "bg-orange-500/5"; activeRing = "ring-1 ring-orange-500/50"; break;
+        case 'purple': activeClass = "border-purple-500 text-purple-500"; activeBg = "bg-purple-500/5"; activeRing = "ring-1 ring-purple-500/50"; break;
     }
 
     return (
         <div
             onClick={onClick}
+            role="button"
+            tabIndex={0}
+            aria-pressed={active}
+            aria-label={title}
+            onKeyDown={(e) => {
+                if (e.currentTarget !== e.target) return;
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onClick();
+                }
+            }}
             className={`cursor-pointer flex flex-col items-center p-6 border rounded-xl transition-all group relative overflow-hidden
-                ${active ? `${activeClass} ${activeBg} ring-1 ring-${color}-500/50` : 'border-border hover:border-primary/50 hover:bg-primary/5'}`}
+                ${active ? `${activeClass} ${activeBg} ${activeRing}` : 'border-border hover:border-primary/50 hover:bg-primary/5'}`}
         >
             <div className={`mb-3 transition-transform group-hover:scale-110 duration-300`}>
                 {icon}

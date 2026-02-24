@@ -161,6 +161,32 @@
   }
 }
 
+@layer components {
+  .modal-overlay-base {
+    @apply fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4;
+  }
+
+  .modal-surface-base {
+    @apply bg-card border border-border rounded-xl shadow-2xl relative overflow-hidden;
+  }
+
+  .modal-header-base {
+    @apply p-6 border-b border-border flex items-center justify-between;
+  }
+
+  .modal-header-muted {
+    @apply bg-muted/20;
+  }
+
+  .modal-body-base {
+    @apply flex-1 overflow-y-auto p-6;
+  }
+
+  .modal-footer-base {
+    @apply p-6 border-t border-border bg-muted/20;
+  }
+}
+
 
 
 @keyframes slideUp {

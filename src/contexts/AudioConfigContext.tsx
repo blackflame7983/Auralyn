@@ -87,10 +87,8 @@ export const AudioConfigProvider = ({ children }: { children: ReactNode }) => {
                             outputId: config.outputId
                         });
                         if (!initializationPromise) {
-                            console.log("Auto-starting audio with config:", config);
                             initializationPromise = audioApi.start(config.host, config.input, config.output, bs, sr, config.inputId, config.outputId)
                                 .then(async (res) => {
-                                    console.log("Audio Started with config:", res);
                                     setAudioConfig(prev => {
                                         if (prev.sampleRate === res.sample_rate && prev.bufferSize === res.buffer_size) return prev;
                                         return { ...prev, sampleRate: res.sample_rate, bufferSize: res.buffer_size };
@@ -98,7 +96,6 @@ export const AudioConfigProvider = ({ children }: { children: ReactNode }) => {
 
                                     toast.success('オーディオエンジン起動');
                                     if (config.inputChannels) {
-                                        console.log("Restoring Input Channels:", config.inputChannels);
                                         await audioApi.setInputChannels(config.inputChannels[0], config.inputChannels[1]);
                                     }
                                 })

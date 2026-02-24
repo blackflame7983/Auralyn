@@ -96,6 +96,15 @@ export const audioApi = {
     setInputGain: async (value: number) => {
         return await invoke("set_input_gain", { value });
     },
+    setNoiseReduction: async (active: boolean, mode?: 'low' | 'high') => {
+        return await invoke("set_noise_reduction", { active, mode });
+    },
+    setOutputGain: async (value: number) => {
+        return await invoke("set_output_gain", { value });
+    },
+    setGlobalBypass: async (active: boolean) => {
+        return await invoke("set_global_bypass", { active });
+    },
     getPluginState: async (id: string): Promise<string> => {
         return await invoke("get_plugin_state", { id });
     },
@@ -110,6 +119,15 @@ export const audioApi = {
     },
     getAudioState: async (): Promise<AudioStateInfo> => {
         return await invoke("get_audio_state");
+    },
+    getEngineTuningConfig: async (): Promise<EngineTuningConfig> => {
+        return await invoke("get_engine_tuning_config");
+    },
+    setEngineTuningConfig: async (config: EngineTuningConfig): Promise<void> => {
+        return await invoke("set_engine_tuning_config", { config });
+    },
+    getEngineRuntimeStats: async (): Promise<EngineRuntimeStats> => {
+        return await invoke("get_engine_runtime_stats");
     }
 };
 
@@ -124,4 +142,30 @@ export interface ActiveAudioConfig {
 export interface AudioStateInfo {
     is_running: boolean;
     config: ActiveAudioConfig | null;
+}
+
+export interface EngineTuningConfig {
+    enableAffinityPinning: boolean;
+    affinityMask: string | null;
+    enableRealtimePriority: boolean;
+    enableTimeCriticalAudioThreads: boolean;
+}
+
+export interface EngineRuntimeStats {
+    activePluginCount: number;
+    enabledPluginCount: number;
+    pendingUnloadCount: number;
+    burnedLibraryCount: number;
+    globalBypass: boolean;
+    maxJitterUs: number;
+    glitchCount: number;
+    totalPluginLatencySamples: number;
+    totalPluginLatencyMs: number;
+    noiseReductionLatencySamples: number;
+    noiseReductionLatencyMs: number;
+    totalChainLatencySamples: number;
+    totalChainLatencyMs: number;
+    noiseReductionEnabled: boolean;
+    noiseReductionActive: boolean;
+    noiseReductionMode: string;
 }

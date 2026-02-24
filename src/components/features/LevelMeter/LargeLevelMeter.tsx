@@ -30,12 +30,26 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
     const [peakHold, setPeakHold] = useState<[number, number]>([0, 0]);
     const [hasClipped, setHasClipped] = useState(false);
     const [showTips, setShowTips] = useState(false);
-    const [inputGain, setInputGain] = useState(1.0);
+    const [inputGain, setInputGain] = useState(() => {
+        // Read persisted value (stored as percentage 0-200) and convert to linear 0-2
+        const saved = localStorage.getItem('vst_host_input_gain');
+        return saved ? Number(saved) / 100 : 1.0;
+    });
     const [isMiniMode, setIsMiniMode] = useState(false);
     const targetLevels = useRef<[number, number]>([0, 0]);
     const peakDecayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const clipResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const gainDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Sync input gain from other components (e.g. Header slider)
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const pct = (e as CustomEvent<number>).detail;
+            setInputGain(pct / 100);
+        };
+        window.addEventListener('input-gain-sync', handler);
+        return () => window.removeEventListener('input-gain-sync', handler);
+    }, []);
 
     // ... (Hooks remain same) ...
     useEffect(() => {
@@ -204,16 +218,22 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
                         max="200"
                         value={inputGain * 100}
                         onChange={(e) => {
-                            const value = Number(e.target.value) / 100;
+                            const pct = Number(e.target.value);
+                            const value = pct / 100;
                             setInputGain(value);
                             if (gainDebounce.current) clearTimeout(gainDebounce.current);
                             gainDebounce.current = setTimeout(() => {
                                 audioApi.setInputGain(value).catch(console.error);
+                                localStorage.setItem('vst_host_input_gain', String(pct));
                             }, 50);
+                            // Sync to Header slider
+                            window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: pct }));
                         }}
                         onDoubleClick={() => {
                             setInputGain(1.0);
                             audioApi.setInputGain(1.0).catch(console.error);
+                            localStorage.setItem('vst_host_input_gain', '100');
+                            window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: 100 }));
                         }}
                         className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary"
                         title="ダブルクリックで100%にリセット"

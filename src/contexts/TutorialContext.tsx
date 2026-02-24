@@ -1,16 +1,28 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-type TutorialStep =
+export type TutorialStep =
     | 'none'
     | 'click_add_effect'    // Step 1: Prompt to add effect
     | 'explain_plugin_card' // Step 2: Explain card controls after adding
+    | 'try_edit_plugin'     // Step 3: Try opening the plugin editor
+    | 'try_ab_compare'      // Step 4: Try A/B comparison
     | 'complete';
+
+const STEP_ORDER: TutorialStep[] = [
+    'click_add_effect',
+    'explain_plugin_card',
+    'try_edit_plugin',
+    'try_ab_compare',
+    'complete',
+];
 
 interface TutorialContextType {
     currentStep: TutorialStep;
     completeStep: (step: TutorialStep) => void;
     skipTutorial: () => void;
     isActive: boolean;
+    totalSteps: number;
+    currentStepIndex: number;
 }
 
 const TutorialContext = createContext<TutorialContextType | undefined>(undefined);
@@ -44,7 +56,6 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
 
         window.addEventListener('storage', handleStorage);
-        // Custom event for internal trigger if needed
         window.addEventListener('vst_host_tutorial_start', handleStorage);
 
         return () => {
@@ -54,12 +65,16 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }, [currentStep]);
 
     const completeStep = (step: TutorialStep) => {
-        if (step === 'click_add_effect') {
-            setCurrentStep('explain_plugin_card');
-        } else if (step === 'explain_plugin_card') {
-            setCurrentStep('complete');
-            setIsActive(false);
-            localStorage.setItem('vst_host_tutorial_completed', 'true');
+        const currentIndex = STEP_ORDER.indexOf(step);
+        if (currentIndex === -1) return;
+
+        const nextStep = STEP_ORDER[currentIndex + 1];
+        if (nextStep) {
+            setCurrentStep(nextStep);
+            if (nextStep === 'complete') {
+                setIsActive(false);
+                localStorage.setItem('vst_host_tutorial_completed', 'true');
+            }
         }
     };
 
@@ -69,8 +84,11 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         localStorage.setItem('vst_host_tutorial_completed', 'true');
     };
 
+    const totalSteps = STEP_ORDER.length - 1; // Exclude 'complete'
+    const currentStepIndex = Math.max(0, STEP_ORDER.indexOf(currentStep));
+
     return (
-        <TutorialContext.Provider value={{ currentStep, completeStep, skipTutorial, isActive }}>
+        <TutorialContext.Provider value={{ currentStep, completeStep, skipTutorial, isActive, totalSteps, currentStepIndex }}>
             {children}
         </TutorialContext.Provider>
     );

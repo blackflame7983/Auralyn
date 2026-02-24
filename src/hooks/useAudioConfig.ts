@@ -19,6 +19,7 @@ interface AudioConfig {
 export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: () => void) => {
     const [audioConfig, setAudioConfig] = useState<AudioConfig>({ host: '' });
     const [isInitializing, setIsInitializing] = useState(true);
+    const [isEngineRunning, setIsEngineRunning] = useState(false);
 
     const handleConfigUpdate = (config: Partial<AudioConfig> & { host: string }) => {
         const { host, input, output, sampleRate, bufferSize, inputChannels, inputId, outputId } = config;
@@ -85,27 +86,41 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
                         });
 
                         // Start Engine (Shared Promise Pattern)
+                        // Check if backend already auto-started (fast boot)
                         if (!initializationPromise) {
-                            console.log("Auto-starting audio with config:", config);
-                            initializationPromise = audioApi.start(config.host, config.input, config.output, bs, sr)
-                                .then(async (res) => {
-                                    console.log("Audio Started with config:", res);
-
-                                    // Update state with negotiated values
+                            initializationPromise = audioApi.getAudioState()
+                                .then(async (state) => {
+                                    if (state.is_running && state.config) {
+                                        // Engine already auto-started by backend warmup!
+                                        console.info("[AudioConfig] Engine already running (auto-started)");
+                                        setIsEngineRunning(true);
+                                        setAudioConfig(prev => ({
+                                            ...prev,
+                                            host: state.config!.host || prev.host,
+                                            sampleRate: state.config!.sample_rate ?? prev.sampleRate,
+                                            bufferSize: state.config!.buffer_size ?? prev.bufferSize,
+                                        }));
+                                        toast.success('オーディオエンジン起動');
+                                        if (config.inputChannels) {
+                                            await audioApi.setInputChannels(config.inputChannels[0], config.inputChannels[1]);
+                                        }
+                                        return;
+                                    }
+                                    // Not yet started — send Start command
+                                    const res = await audioApi.start(config.host, config.input, config.output, bs, sr);
+                                    setIsEngineRunning(true);
                                     setAudioConfig(prev => {
                                         if (prev.sampleRate === res.sample_rate && prev.bufferSize === res.buffer_size) return prev;
                                         return { ...prev, sampleRate: res.sample_rate, bufferSize: res.buffer_size };
                                     });
-
                                     toast.success('オーディオエンジン起動');
-                                    // Apply Channel Mapping if exists
                                     if (config.inputChannels) {
-                                        console.log("Restoring Input Channels:", config.inputChannels);
                                         await audioApi.setInputChannels(config.inputChannels[0], config.inputChannels[1]);
                                     }
                                 })
                                 .catch(e => {
                                     console.error("Auto-start failed:", e);
+                                    setIsEngineRunning(false);
                                     toast.error('オーディオエンジンの起動に失敗しました', {
                                         description: '設定を確認してください',
                                         action: onOpenSettings ? {
@@ -128,6 +143,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
             }
 
             // Fallback if no config
+            setIsEngineRunning(false);
             setIsInitializing(false);
         };
 
@@ -152,6 +168,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
             const { sample_rate, buffer_size } = event.payload;
             const actualSr = sample_rate;
             const actualBs = buffer_size;
+            setIsEngineRunning(true);
 
             // Check against requested config (from storage) to detect override
             try {
@@ -184,10 +201,21 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         };
     }, []);
 
+    // Audio Engine Stop / Crash Listener
+    useEffect(() => {
+        const unlisten = listen<string>('audio-error', () => {
+            setIsEngineRunning(false);
+        });
+        return () => {
+            unlisten.then(f => f());
+        };
+    }, []);
+
     return {
         audioConfig,
         setAudioConfig,
         handleConfigUpdate,
-        isInitializing
+        isInitializing,
+        isEngineRunning
     };
 };
