@@ -1,10 +1,43 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::{anyhow, Result};
+use log;
 
 use crate::vst_host::instance::{VstInstance, VstProcessor};
 
 pub const MAX_PLUGINS: usize = 32;
+
+fn burned_library_key(path: &str) -> String {
+    #[cfg(windows)]
+    {
+        path.to_ascii_lowercase()
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::burned_library_key;
+
+    #[test]
+    fn burned_library_key_is_stable() {
+        let path = r"C:\VST3\Plugin.vst3";
+        let key1 = burned_library_key(path);
+        let key2 = burned_library_key(path);
+        assert_eq!(key1, key2);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn burned_library_key_is_case_insensitive_on_windows() {
+        let upper = burned_library_key(r"C:\VST3\PLUGIN.VST3");
+        let lower = burned_library_key(r"c:\vst3\plugin.vst3");
+        assert_eq!(upper, lower);
+    }
+}
 
 pub struct PluginManager {
     pub plugins: HashMap<String, VstInstance>,
@@ -25,6 +58,7 @@ pub struct PluginManager {
 
     // Safely burnt libraries to prevent unload crashes
     pub burned_libraries: Vec<std::sync::Arc<libloading::Library>>, // Fully qualified just in case
+    burned_library_keys: HashSet<String>,
 }
 
 impl PluginManager {
@@ -40,6 +74,7 @@ impl PluginManager {
             bypassed: HashSet::new(),
             gains: HashMap::new(),
             burned_libraries: Vec::new(),
+            burned_library_keys: HashSet::new(),
         }
     }
 
@@ -97,7 +132,7 @@ impl PluginManager {
 
         // Deferred Logic
         if instance.needs_deferred_connection() {
-            eprintln!("Plugin {} queued for deferred initialization", name);
+            log::info!("Plugin {} queued for deferred initialization", name);
             self.pending_init.push(id.clone());
             self.plugins.insert(id.clone(), instance);
             self.order.push(id.clone());
@@ -109,7 +144,7 @@ impl PluginManager {
             if let Err(e) =
                 instance.prepare_processing(sample_rate, block_size as i32, channels as i32)
             {
-                eprintln!("Warning: Failed to prepare plugin {} on load: {}", name, e);
+                log::warn!("Failed to prepare plugin {} on load: {}", name, e);
             }
             processor = instance.create_processor();
         }
@@ -167,9 +202,11 @@ impl PluginManager {
             // Since `LoadLibrary` reuses the module handle for the same path, this doesn't cause
             // memory explosion on repeated load/unload; it just pins the refcount > 0.
 
-            let library_ref = instance._library.clone();
-
-            self.burned_libraries.push(library_ref);
+            let key = burned_library_key(&instance.path);
+            if self.burned_library_keys.insert(key) {
+                let library_ref = instance._library.clone();
+                self.burned_libraries.push(library_ref);
+            }
 
             // Now drop the instance (releases VST3 interfaces)
             drop(instance);
@@ -226,7 +263,7 @@ impl PluginManager {
                     safe_max_block_size as i32,
                     channels as i32,
                 ) {
-                    eprintln!("Failed to prepare plugin {}: {}", instance.name, e);
+                    log::warn!("Failed to prepare plugin {}: {}", instance.name, e);
                 }
                 if let Some(proc) = instance.create_processor() {
                     if let Some(idx) = self.rt_index_of(id) {
@@ -241,5 +278,47 @@ impl PluginManager {
 
     pub fn on_processor_retired(&mut self, index: u8) {
         self.finalize_unload(index);
+    }
+
+    pub fn runtime_stats(&self) -> (u32, u32, u32) {
+        (
+            self.plugins.len().try_into().unwrap_or(u32::MAX),
+            self.pending_drop_by_index
+                .len()
+                .try_into()
+                .unwrap_or(u32::MAX),
+            self.burned_libraries.len().try_into().unwrap_or(u32::MAX),
+        )
+    }
+
+    pub fn enabled_plugin_count(&self, global_bypass: bool) -> u32 {
+        if global_bypass {
+            return 0;
+        }
+
+        self.order
+            .iter()
+            .filter(|id| self.plugins.contains_key(*id) && !self.bypassed.contains(*id))
+            .count()
+            .try_into()
+            .unwrap_or(u32::MAX)
+    }
+
+    pub fn total_latency_samples(&self, global_bypass: bool) -> u32 {
+        if global_bypass {
+            return 0;
+        }
+
+        let mut total: u64 = 0;
+        for id in &self.order {
+            if self.bypassed.contains(id) {
+                continue;
+            }
+            if let Some(instance) = self.plugins.get(id) {
+                total = total.saturating_add(instance.latency_samples() as u64);
+            }
+        }
+
+        total.min(u32::MAX as u64) as u32
     }
 }

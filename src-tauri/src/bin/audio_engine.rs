@@ -17,7 +17,36 @@ fn perf_tweaks_enabled() -> bool {
     })
 }
 
+fn env_flag(name: &str) -> bool {
+    let Some(v) = std::env::var_os(name) else {
+        return false;
+    };
+    let v = v.to_string_lossy().to_ascii_lowercase();
+    v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
+fn affinity_mask_from_env() -> Option<usize> {
+    let raw = std::env::var("AURALYN_AFFINITY_MASK").ok()?;
+    let parsed = if let Some(hex) = raw.strip_prefix("0x").or_else(|| raw.strip_prefix("0X")) {
+        usize::from_str_radix(hex, 16).ok()
+    } else {
+        raw.parse::<usize>().ok()
+    }?;
+    if parsed == 0 {
+        None
+    } else {
+        Some(parsed)
+    }
+}
+
 fn main() {
+    // Initialize logger FIRST so all subsequent code can use log:: macros.
+    // Target stderr so JSON on stdout (IPC) is not corrupted.
+    env_logger::Builder::new()
+        .filter_level(log::LevelFilter::Info)
+        .target(env_logger::Target::Stderr)
+        .init();
+
     // Prevent OS-level crash/error dialogs that can freeze a real-time audio app.
     // (e.g. "DLL load failed" message boxes, GP fault error boxes)
     unsafe {
@@ -36,11 +65,11 @@ fn main() {
         // It enables Drag & Drop, Clipboard, which VSTGUI needs.
         let res = OleInitialize(None);
         if res.is_ok() {
-            eprintln!("[AudioEngine] OleInitialize (STA) Success");
+            log::info!("[AudioEngine] OleInitialize (STA) Success");
             // Note: Keep OleUninitialize for cleanup if efficient, or rely on process exit.
         } else {
             // S_FALSE means already initialized. RPC_E_CHANGED_MODE means wrong thread model.
-            eprintln!("[AudioEngine] WARNING: OleInitialize failed: {:?} (If -2147417850, threading model mismatch)", res);
+            log::warn!("[AudioEngine] OleInitialize failed: {:?} (If -2147417850, threading model mismatch)", res);
         }
     }
 
@@ -48,12 +77,12 @@ fn main() {
     if let Ok(exe) = std::env::current_exe() {
         if let Ok(meta) = std::fs::metadata(&exe) {
             if let Ok(modified) = meta.modified() {
-                eprintln!("[AudioEngine] exe={:?} modified={:?}", exe, modified);
+                log::info!("[AudioEngine] exe={:?} modified={:?}", exe, modified);
             } else {
-                eprintln!("[AudioEngine] exe={:?} modified=<unknown>", exe);
+                log::info!("[AudioEngine] exe={:?} modified=<unknown>", exe);
             }
         } else {
-            eprintln!("[AudioEngine] exe={:?} metadata=<unavailable>", exe);
+            log::info!("[AudioEngine] exe={:?} metadata=<unavailable>", exe);
         }
     }
 
@@ -97,9 +126,9 @@ fn main() {
         let mut output = GdiplusStartupOutput::default();
         let status = GdiplusStartup(&mut token, &input, &mut output);
         if status == windows::Win32::Graphics::GdiPlus::Ok {
-            eprintln!("[AudioEngine] GdiplusStartup Success (Token={})", token);
+            log::info!("[AudioEngine] GdiplusStartup Success (Token={})", token);
         } else {
-            eprintln!("[AudioEngine] GdiplusStartup Failed: {:?}", status);
+            log::error!("[AudioEngine] GdiplusStartup Failed: {:?}", status);
         }
 
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
@@ -107,7 +136,7 @@ fn main() {
 
         let tweaks_enabled = perf_tweaks_enabled();
         if !tweaks_enabled {
-            eprintln!("[AudioEngine] Perf tweaks disabled via AURALYN_DISABLE_PERF_TWEAKS");
+            log::info!("[AudioEngine] Perf tweaks disabled via AURALYN_DISABLE_PERF_TWEAKS");
         }
 
         if tweaks_enabled {
@@ -127,41 +156,39 @@ fn main() {
             );
 
             if ret.is_err() {
-                eprintln!(
-                    "Warning: Failed to disable Power Throttling (EcoQoS + Timer). Cause: {:?}",
+                log::warn!(
+                    "Failed to disable Power Throttling (EcoQoS + Timer). Cause: {:?}",
                     ret
                 );
             } else {
-                eprintln!("Power Throttling (EcoQoS + Timer) disabled successfully.");
+                log::info!("Power Throttling (EcoQoS + Timer) disabled successfully.");
             }
 
-            // 2. CPU Affinity: Restrict to First Half of Cores (likely P-Cores) to avoid E-Cores
-            let mut sys_info = SYSTEM_INFO::default();
-            GetSystemInfo(&mut sys_info);
-            let num_cpus = sys_info.dwNumberOfProcessors as usize;
-
-            if num_cpus > 1 {
-                // E.g., 20 cores -> Use first 10. Mask = 1111111111 (binary)
-                // If num_cpus is large (e.g. 32), usize is 64bit so shift is safe.
-                // Be careful with overflow if num_cpus >= 64, but unlikely for client PC audio.
-                let mask = if num_cpus >= 64 {
-                    usize::MAX
-                } else {
-                    (1usize << (num_cpus / 2)) - 1
-                };
-
-                if mask > 0 {
-                    if let Err(e) = SetProcessAffinityMask(current_process, mask) {
-                        eprintln!("Failed to set Affinity Mask: {:?}", e);
+            // 2. CPU Affinity: opt-in only to avoid topology-dependent regressions.
+            // Set explicit mask with AURALYN_AFFINITY_MASK (e.g. 0xff), or
+            // enable legacy first-half pinning with AURALYN_ENABLE_AFFINITY_PINNING=1.
+            let mut requested_affinity_mask = affinity_mask_from_env();
+            if requested_affinity_mask.is_none() && env_flag("AURALYN_ENABLE_AFFINITY_PINNING") {
+                let mut sys_info = SYSTEM_INFO::default();
+                GetSystemInfo(&mut sys_info);
+                let num_cpus = sys_info.dwNumberOfProcessors as usize;
+                if num_cpus > 1 {
+                    requested_affinity_mask = Some(if num_cpus >= 64 {
+                        usize::MAX
                     } else {
-                        eprintln!(
-                            "Affinity Mask set to: {:#x} (Restricted to first {}/{} logical cores)",
-                            mask,
-                            num_cpus / 2,
-                            num_cpus
-                        );
-                    }
+                        (1usize << (num_cpus / 2)) - 1
+                    });
                 }
+            }
+
+            if let Some(mask) = requested_affinity_mask {
+                if let Err(e) = SetProcessAffinityMask(current_process, mask) {
+                    log::warn!("Failed to set Affinity Mask: {:?}", e);
+                } else {
+                    log::info!("Affinity Mask set to: {:#x}", mask);
+                }
+            } else {
+                log::debug!("Affinity pinning skipped (default).");
             }
 
             // 3. Memory Locking: Reserve Working Set to prevent Paging
@@ -169,21 +196,38 @@ fn main() {
             let min_size = 64 * 1024 * 1024;
             let max_size = 256 * 1024 * 1024;
             if let Err(e) = SetProcessWorkingSetSize(current_process, min_size, max_size) {
-                eprintln!("Failed to set Working Set Size: {:?}", e);
+                log::warn!("Failed to set Working Set Size: {:?}", e);
             } else {
-                eprintln!("Working Set Size reserved (Min: 64MB)");
+                log::info!("Working Set Size reserved (Min: 64MB)");
             }
 
-            // 4. Boost Process Priority with Fallback Chain
-            // Try REALTIME -> HIGH -> ABOVE_NORMAL
-            if SetPriorityClass(current_process, REALTIME_PRIORITY_CLASS).is_ok() {
-                eprintln!("Process priority set to REALTIME_PRIORITY_CLASS (Optimum)");
-            } else if SetPriorityClass(current_process, HIGH_PRIORITY_CLASS).is_ok() {
-                eprintln!("Process priority set to HIGH_PRIORITY_CLASS (Fallback 1)");
-            } else if SetPriorityClass(current_process, ABOVE_NORMAL_PRIORITY_CLASS).is_ok() {
-                eprintln!("Process priority set to ABOVE_NORMAL_PRIORITY_CLASS (Fallback 2)");
+            // 4. Boost Process Priority with safer defaults.
+            // Default: HIGH -> ABOVE_NORMAL
+            // Opt-in: REALTIME first via AURALYN_ENABLE_REALTIME_PRIORITY=1
+            let allow_realtime = env_flag("AURALYN_ENABLE_REALTIME_PRIORITY");
+            let mut priority_set = if allow_realtime {
+                if SetPriorityClass(current_process, REALTIME_PRIORITY_CLASS).is_ok() {
+                    log::info!("Process priority set to REALTIME_PRIORITY_CLASS (opt-in).");
+                    true
+                } else {
+                    false
+                }
             } else {
-                eprintln!("Failed to set process priority. Running at Normal.");
+                false
+            };
+
+            if !priority_set {
+                if SetPriorityClass(current_process, HIGH_PRIORITY_CLASS).is_ok() {
+                    log::info!("Process priority set to HIGH_PRIORITY_CLASS.");
+                    priority_set = true;
+                } else if SetPriorityClass(current_process, ABOVE_NORMAL_PRIORITY_CLASS).is_ok() {
+                    log::info!("Process priority set to ABOVE_NORMAL_PRIORITY_CLASS.");
+                    priority_set = true;
+                }
+            }
+
+            if !priority_set {
+                log::warn!("Failed to set process priority. Running at Normal.");
             }
 
             // Force 1ms Timer Resolution (Standard for Audio Apps on Windows)
@@ -192,17 +236,13 @@ fn main() {
                 type TimeBeginPeriod = unsafe extern "system" fn(u32) -> u32;
                 if let Ok(func) = lib.get::<TimeBeginPeriod>(b"timeBeginPeriod") {
                     let _ = func(1);
-                    eprintln!("Timer resolution set to 1ms via winmm.dll");
+                    log::info!("Timer resolution set to 1ms via winmm.dll");
                 }
             }
         }
     }
 
-    // Redirect log to stderr so JSON on stdout is not corrupted
-    env_logger::Builder::new()
-        .filter_level(log::LevelFilter::Info)
-        .target(env_logger::Target::Stderr)
-        .init();
+    // (Logger already initialized at the top of main())
 
     // Check for --scan flag for OOP device enumeration
     let args: Vec<String> = std::env::args().collect();
@@ -347,7 +387,7 @@ fn scan_devices() {
 
             // Inputs
             if let Ok(inputs) = host.input_devices() {
-                eprintln!("[Scanner] Checking Inputs for host: {}", host_name);
+                log::debug!("[Scanner] Checking Inputs for host: {}", host_name);
 
                 let mut raw_items: Vec<(String, String, Option<(u32, u32)>, u16, bool)> =
                     Vec::new();
@@ -381,7 +421,7 @@ fn scan_devices() {
                     } else {
                         format!("{}{}", n, rates)
                     };
-                    eprintln!(
+                    log::debug!(
                         "[Scanner] Found Input: {} (Default: {})",
                         final_name, is_def
                     );
@@ -395,7 +435,7 @@ fn scan_devices() {
                     });
                 }
             } else {
-                eprintln!(
+                log::warn!(
                     "[Scanner] Failed to get input_devices stream for {}",
                     host_name
                 );
@@ -403,7 +443,7 @@ fn scan_devices() {
 
             // Outputs
             if let Ok(outputs) = host.output_devices() {
-                eprintln!("[Scanner] Checking Outputs for host: {}", host_name);
+                log::debug!("[Scanner] Checking Outputs for host: {}", host_name);
 
                 let mut raw_items: Vec<(String, String, Option<(u32, u32)>, u16, bool)> =
                     Vec::new();
@@ -440,7 +480,7 @@ fn scan_devices() {
                     } else {
                         format!("{}{}", n, rates)
                     };
-                    eprintln!(
+                    log::debug!(
                         "[Scanner] Found Output: {} (Default: {})",
                         final_name, is_def
                     );
@@ -454,7 +494,7 @@ fn scan_devices() {
                     });
                 }
             } else {
-                eprintln!(
+                log::warn!(
                     "[Scanner] Failed to get output_devices stream for {}",
                     host_name
                 );

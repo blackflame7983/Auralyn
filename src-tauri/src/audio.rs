@@ -1,11 +1,29 @@
 use anyhow::{anyhow, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use tauri::{AppHandle, Emitter};
+
+/// Returns the path for the persistent "last audio config" file.
+/// On Windows: %APPDATA%/com.kuro7983.auralynhost/last_audio_config.json
+/// Fallback: next to the executable.
+fn last_config_path() -> PathBuf {
+    #[cfg(windows)]
+    {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let dir = PathBuf::from(appdata).join("com.kuro7983.auralynhost");
+            let _ = std::fs::create_dir_all(&dir);
+            return dir.join("last_audio_config.json");
+        }
+    }
+    // Fallback
+    let mut p = std::env::current_exe().unwrap_or_default();
+    p.set_file_name("last_audio_config.json");
+    p
+}
 
 #[cfg(windows)]
 mod win_job {
@@ -84,7 +102,7 @@ pub struct AudioConfig {
     pub channels: u32,
 }
 
-#[derive(Debug, Serialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct ActiveAudioConfig {
     pub host: String,
     pub input: Option<String>,
@@ -99,6 +117,47 @@ pub struct AudioStateInfo {
     pub config: Option<ActiveAudioConfig>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct EngineTuningConfig {
+    pub enable_affinity_pinning: bool,
+    pub affinity_mask: Option<String>,
+    pub enable_realtime_priority: bool,
+    pub enable_time_critical_audio_threads: bool,
+}
+
+impl Default for EngineTuningConfig {
+    fn default() -> Self {
+        Self {
+            enable_affinity_pinning: false,
+            affinity_mask: None,
+            enable_realtime_priority: false,
+            enable_time_critical_audio_threads: false,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct EngineRuntimeStats {
+    pub active_plugin_count: u32,
+    pub enabled_plugin_count: u32,
+    pub pending_unload_count: u32,
+    pub burned_library_count: u32,
+    pub global_bypass: bool,
+    pub max_jitter_us: u64,
+    pub glitch_count: u64,
+    pub total_plugin_latency_samples: u32,
+    pub total_plugin_latency_ms: f64,
+    pub noise_reduction_latency_samples: u32,
+    pub noise_reduction_latency_ms: f64,
+    pub total_chain_latency_samples: u32,
+    pub total_chain_latency_ms: f64,
+    pub noise_reduction_enabled: bool,
+    pub noise_reduction_active: bool,
+    pub noise_reduction_mode: String,
+}
+
 pub struct AudioHost {
     child: Option<Child>,
     stdin: Option<BufWriter<ChildStdin>>,
@@ -110,6 +169,7 @@ pub struct AudioHost {
     cached_devices: Option<AudioDeviceList>,
     active_config: Option<ActiveAudioConfig>,
     is_global_muted: bool,
+    engine_tuning: EngineTuningConfig,
     #[cfg(windows)]
     engine_job: Option<win_job::Job>,
 }
@@ -124,6 +184,7 @@ impl AudioHost {
             cached_devices: None,
             active_config: None,
             is_global_muted: false,
+            engine_tuning: EngineTuningConfig::default(),
             #[cfg(windows)]
             engine_job: None,
         }
@@ -133,6 +194,48 @@ impl AudioHost {
         *self.emitter.lock().unwrap() = Some(handle);
     }
 
+    fn apply_engine_tuning_env(&self, command: &mut Command) {
+        command.env(
+            "AURALYN_ENABLE_AFFINITY_PINNING",
+            if self.engine_tuning.enable_affinity_pinning {
+                "1"
+            } else {
+                "0"
+            },
+        );
+        command.env(
+            "AURALYN_ENABLE_REALTIME_PRIORITY",
+            if self.engine_tuning.enable_realtime_priority {
+                "1"
+            } else {
+                "0"
+            },
+        );
+        command.env(
+            "AURALYN_TIME_CRITICAL_AUDIO_THREADS",
+            if self.engine_tuning.enable_time_critical_audio_threads {
+                "1"
+            } else {
+                "0"
+            },
+        );
+
+        match self
+            .engine_tuning
+            .affinity_mask
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            Some(mask) => {
+                command.env("AURALYN_AFFINITY_MASK", mask);
+            }
+            None => {
+                command.env("AURALYN_AFFINITY_MASK", "0");
+            }
+        }
+    }
+
     fn ensure_engine_running(&mut self) -> Result<()> {
         // ... (check child logic same as before) ...
         if self.child.is_some() {
@@ -140,11 +243,11 @@ impl AudioHost {
             if let Some(c) = self.child.as_mut() {
                 match c.try_wait() {
                     Ok(Some(status)) => {
-                        println!(
-                            "CRITICAL: Audio Engine exited unexpectedly! Status: {}",
+                        log::error!(
+                            "Audio Engine exited unexpectedly! Status: {}",
                             status
                         );
-                        println!("-- forcing restart with empty state --");
+                        log::warn!("Forcing restart with empty state");
                         self.child = None;
                         self.stdin = None;
                         #[cfg(windows)]
@@ -154,7 +257,7 @@ impl AudioHost {
                     }
                     Ok(None) => return Ok(()), // Running
                     Err(e) => {
-                        println!("CRITICAL: Error waiting on child: {}", e);
+                        log::error!("Error waiting on audio engine child process: {}", e);
                         self.child = None;
                         self.stdin = None;
                         #[cfg(windows)]
@@ -166,12 +269,12 @@ impl AudioHost {
             }
         }
 
-        println!("Spawning Audio Engine Sidecar...");
+        log::info!("Spawning Audio Engine Sidecar...");
         let cwd = std::env::current_dir()?;
-        println!("  CWD: {:?}", cwd);
+        log::debug!("  CWD: {:?}", cwd);
 
         let exe = std::env::current_exe()?;
-        println!("  Exe Path: {:?}", exe);
+        log::debug!("  Exe Path: {:?}", exe);
 
         fn find_sidecar_exe(dir: &std::path::Path, base: &str) -> Option<PathBuf> {
             let exact = dir.join(format!("{}.exe", base));
@@ -240,32 +343,38 @@ impl AudioHost {
             .iter()
             .find(|p| {
                 let exists = p.exists();
-                println!("  Checking: {:?} -> {}", p, exists);
+                log::debug!("  Checking: {:?} -> {}", p, exists);
                 exists
             })
             .cloned()
             .ok_or_else(|| anyhow!("Audio Engine binary not found"))?;
 
-        println!("Found engine at: {:?}", binary_path);
+        log::info!("Found engine at: {:?}", binary_path);
 
         #[cfg(windows)]
         let mut child = {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
-            Command::new(binary_path)
+            let mut command = Command::new(binary_path);
+            command
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::inherit())
-                .creation_flags(CREATE_NO_WINDOW)
-                .spawn()?
+                .creation_flags(CREATE_NO_WINDOW);
+            self.apply_engine_tuning_env(&mut command);
+            command.spawn()?
         };
 
         #[cfg(not(windows))]
-        let mut child = Command::new(binary_path)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()?;
+        let mut child = {
+            let mut command = Command::new(binary_path);
+            command
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::inherit());
+            self.apply_engine_tuning_env(&mut command);
+            command.spawn()?
+        };
 
         // Best-effort: kill process tree (child + grandchildren) on host drop/restart (Windows)
         #[cfg(windows)]
@@ -306,32 +415,31 @@ impl AudioHost {
                                     if let Some(tx) = lock.take() {
                                         let _ = tx.send(resp);
                                     } else {
-                                        println!(
+                                        log::warn!(
                                             "Received Response but no one waiting: {:?}",
                                             resp
                                         );
                                     }
                                 }
                                 OutputMessage::Event(evt) => match evt {
-                                    EngineEvent::Log(s) => println!("[Engine] {}", s),
-                                    EngineEvent::Error(s) => eprintln!("[Engine Error] {}", s),
+                                    EngineEvent::Log(s) => log::info!("[Engine] {}", s),
+                                    EngineEvent::Error(s) => {
+                                        log::error!("[Engine] {}", s);
+                                        if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                            let _ = h.emit("audio-stream-error", &s);
+                                        }
+                                    }
                                     EngineEvent::LevelMeter(levels) => {
                                         if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
                                             if let Err(e) = h.emit("audio-level", levels) {
-                                                eprintln!(
-                                                    "[Host] Failed to emit audio-level: {}",
-                                                    e
-                                                );
+                                                log::warn!("Failed to emit audio-level: {}", e);
                                             }
                                         }
                                     }
                                     EngineEvent::ChannelLevels(levels) => {
                                         if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
                                             if let Err(e) = h.emit("audio-channel-scan", levels) {
-                                                eprintln!(
-                                                    "[Host] Failed to emit audio-channel-scan: {}",
-                                                    e
-                                                );
+                                                log::warn!("Failed to emit audio-channel-scan: {}", e);
                                             }
                                         }
                                     }
@@ -357,17 +465,17 @@ impl AudioHost {
                                 },
                             },
                             Err(e) => {
-                                eprintln!("[Engine IPC Parse Err] {} (Line: {})", e, l);
+                                log::error!("Engine IPC parse error: {} (Line: {})", e, l);
                             }
                         }
                     } else {
                         // Non-IPC line (External Log from VST or simple print)
-                        println!("[Engine Raw] {}", l);
+                        log::trace!("[Engine Raw] {}", l);
                     }
                 }
             }
 
-            println!("Engine stdout closed.");
+            log::warn!("Engine stdout closed.");
             // Notify Frontend of crash/exit
             if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
                 let _ = h.emit("audio-error", "Audio Engine Process Exited (Crash?)");
@@ -377,7 +485,7 @@ impl AudioHost {
             {
                 let mut lock = pending_tx_clone.lock().unwrap();
                 if let Some(tx) = lock.take() {
-                    println!("Aborting pending command due to engine exit.");
+                    log::warn!("Aborting pending command due to engine exit.");
                     let _ = tx.send(IpcResponse::Error("Engine Crashed/Exited".to_string()));
                 }
             }
@@ -422,7 +530,7 @@ impl AudioHost {
     pub fn enumerate_devices(&mut self, force_refresh: bool) -> Result<AudioDeviceList> {
         if !force_refresh {
             if let Some(cache) = &self.cached_devices {
-                println!("Returning cached device list");
+                log::debug!("Returning cached device list");
                 return Ok(cache.clone());
             }
         }
@@ -463,18 +571,15 @@ impl AudioHost {
         buffer_size: Option<u32>,
         sample_rate: Option<u32>,
     ) -> Result<AudioConfig> {
-        // We require host/input/output. If Option is None, use "default" logic or required?
-        // Backend (Engine) handles defaults if None?
-        // Let's pass what we have.
         let cmd = IpcCommand::Start {
-            host: host_name.clone().unwrap_or("ASIO".to_string()), // Default?
+            host: host_name.clone().unwrap_or("ASIO".to_string()),
             input: input_name.clone(),
             output: output_name.clone(),
             buffer_size,
             sample_rate,
         };
 
-        println!("[Host] Sending Start Command: {:?}", cmd);
+        log::info!("Sending Start Command: {:?}", cmd);
 
         match self.execute_command(cmd)? {
             IpcResponse::Started {
@@ -483,22 +588,33 @@ impl AudioHost {
             } => {
                 // Restore global mute state if active (because engine process is fresh)
                 if self.is_global_muted {
-                    println!("[Host] Restoring Global Mute State...");
-                    // We don't fail the entire start if mute restore fails, but we try.
+                    log::info!("Restoring Global Mute State...");
                     if let Err(e) = self.execute_command(IpcCommand::SetGlobalMute { active: true })
                     {
-                        eprintln!("[Host] Warning: Failed to restore global mute: {}", e);
+                        log::warn!("Failed to restore global mute: {}", e);
                     }
                 }
 
                 // Update active config
-                self.active_config = Some(ActiveAudioConfig {
+                let config = ActiveAudioConfig {
                     host: host_name.clone().unwrap_or("ASIO".to_string()),
                     input: input_name,
                     output: output_name,
                     buffer_size: Some(buffer_size),
                     sample_rate: Some(sample_rate),
-                });
+                };
+
+                // Persist for fast auto-start on next launch
+                if let Ok(json) = serde_json::to_string_pretty(&config) {
+                    let path = last_config_path();
+                    if let Err(e) = std::fs::write(&path, json) {
+                        log::warn!("Failed to save last audio config: {}", e);
+                    } else {
+                        log::debug!("Saved last audio config to {:?}", path);
+                    }
+                }
+
+                self.active_config = Some(config);
 
                 Ok(AudioConfig {
                     sample_rate,
@@ -622,6 +738,30 @@ impl AudioHost {
         }
     }
 
+    pub fn set_noise_reduction(&mut self, active: bool, mode: Option<String>) -> Result<()> {
+        match self.execute_command(IpcCommand::SetNoiseReduction { active, mode })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_output_gain(&mut self, value: f32) -> Result<()> {
+        match self.execute_command(IpcCommand::SetOutputGain { value })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_global_bypass(&mut self, active: bool) -> Result<()> {
+        match self.execute_command(IpcCommand::SetGlobalBypass { active })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
     pub fn set_input_channels(&mut self, left: usize, right: usize) -> Result<()> {
         match self.execute_command(IpcCommand::SetInputChannels { left, right })? {
             IpcResponse::Success => Ok(()),
@@ -638,9 +778,83 @@ impl AudioHost {
         }
     }
 
+    pub fn set_engine_tuning_config(&mut self, mut config: EngineTuningConfig) {
+        config.affinity_mask = config
+            .affinity_mask
+            .as_ref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        self.engine_tuning = config;
+    }
+
+    pub fn get_engine_tuning_config(&self) -> EngineTuningConfig {
+        self.engine_tuning.clone()
+    }
+
+    pub fn get_engine_runtime_stats(&mut self) -> Result<EngineRuntimeStats> {
+        if self.child.is_none() {
+            return Ok(EngineRuntimeStats::default());
+        }
+
+        if let Some(child) = self.child.as_mut() {
+            match child.try_wait() {
+                Ok(Some(_)) | Err(_) => {
+                    self.stdin = None;
+                    self.child = None;
+                    #[cfg(windows)]
+                    {
+                        self.engine_job = None;
+                    }
+                    return Ok(EngineRuntimeStats::default());
+                }
+                Ok(None) => {}
+            }
+        }
+
+        match self.execute_command(IpcCommand::GetRuntimeStats)? {
+            IpcResponse::RuntimeStats {
+                active_plugin_count,
+                enabled_plugin_count,
+                pending_unload_count,
+                burned_library_count,
+                global_bypass,
+                max_jitter_us,
+                glitch_count,
+                total_plugin_latency_samples,
+                total_plugin_latency_ms,
+                noise_reduction_latency_samples,
+                noise_reduction_latency_ms,
+                total_chain_latency_samples,
+                total_chain_latency_ms,
+                noise_reduction_enabled,
+                noise_reduction_active,
+                noise_reduction_mode,
+            } => Ok(EngineRuntimeStats {
+                active_plugin_count,
+                enabled_plugin_count,
+                pending_unload_count,
+                burned_library_count,
+                global_bypass,
+                max_jitter_us,
+                glitch_count,
+                total_plugin_latency_samples,
+                total_plugin_latency_ms,
+                noise_reduction_latency_samples,
+                noise_reduction_latency_ms,
+                total_chain_latency_samples,
+                total_chain_latency_ms,
+                noise_reduction_enabled,
+                noise_reduction_active,
+                noise_reduction_mode,
+            }),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
     pub fn kill_engine(&mut self) {
         if let Some(mut child) = self.child.take() {
-            println!("Force Killing Audio Engine...");
+            log::warn!("Force Killing Audio Engine...");
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -653,7 +867,41 @@ impl AudioHost {
     }
 
     pub fn warmup(&mut self) -> Result<()> {
-        self.ensure_engine_running()
+        self.ensure_engine_running()?;
+
+        // Fast auto-start: read last successful config and start immediately
+        // This avoids waiting for the frontend to load and send the Start command.
+        let path = last_config_path();
+        match std::fs::read_to_string(&path) {
+            Ok(json) => match serde_json::from_str::<ActiveAudioConfig>(&json) {
+                Ok(config) if !config.host.is_empty() => {
+                    log::info!("Auto-starting audio with last config: {:?}", config);
+                    match self.start(
+                        Some(config.host),
+                        config.input,
+                        config.output,
+                        config.buffer_size,
+                        config.sample_rate,
+                    ) {
+                        Ok(res) => {
+                            log::info!(
+                                "Auto-start successful (SR={}, Buf={})",
+                                res.sample_rate,
+                                res.buffer_size
+                            );
+                        }
+                        Err(e) => {
+                            log::warn!("Auto-start failed (user can start manually): {}", e);
+                        }
+                    }
+                }
+                Ok(_) => log::debug!("Last config has empty host, skipping auto-start"),
+                Err(e) => log::debug!("Failed to parse last config: {}", e),
+            },
+            Err(_) => log::debug!("No last audio config found, skipping auto-start"),
+        }
+
+        Ok(())
     }
 
     pub fn get_state(&self) -> AudioStateInfo {
@@ -667,7 +915,7 @@ impl AudioHost {
 impl Drop for AudioHost {
     fn drop(&mut self) {
         if let Some(mut child) = self.child.take() {
-            println!("Killing Audio Engine Sidecar (Drop)...");
+            log::info!("Killing Audio Engine Sidecar (Drop)...");
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -680,3 +928,37 @@ impl Drop for AudioHost {
 
 // Global state container
 pub struct AudioState(pub Arc<Mutex<AudioHost>>);
+
+/// Translate common audio engine errors into user-friendly Japanese messages.
+pub fn localize_audio_error(e: String) -> String {
+    let lower = e.to_lowercase();
+
+    if lower.contains("sample clock or rate cannot be determined") {
+        return "オーディオデバイスのサンプルレートを取得できません。\n\n\
+                他のアプリ（Discord・ブラウザなど）がデバイスを使用中の可能性があります。\n\
+                → 他のアプリを閉じてから、もう一度お試しください。\n\
+                → 解決しない場合は「サウンド設定」でサンプルレートを確認してください。"
+            .to_string();
+    }
+    if lower.contains("device not found") {
+        return format!(
+            "オーディオデバイスが見つかりません。\n\n\
+             → デバイスが接続されているか確認してください。\n\
+             → 接続し直した後、「更新」ボタンを押してください。"
+        );
+    }
+    if lower.contains("access is denied") {
+        return "オーディオデバイスへのアクセスが拒否されました。\n\n\
+                → Windows設定 > プライバシー > マイクで、アプリのアクセスを許可してください。\n\
+                → 排他モードを使用中の場合は、他のアプリを閉じてください。"
+            .to_string();
+    }
+    if lower.contains("stream configuration is not supported") {
+        return "選択した設定はこのデバイスに対応していません。\n\n\
+                → バッファサイズを大きくしてみてください（例: 512 → 1024）。\n\
+                → それでも解決しない場合は「かんたん設定」をお試しください。"
+            .to_string();
+    }
+    // Default fallback
+    format!("オーディオエラーが発生しました。\n\n詳細: {}", e)
+}

@@ -3086,6 +3086,16 @@ impl VstInstance {
         Ok(())
     }
 
+    pub fn latency_samples(&self) -> u32 {
+        unsafe {
+            if self.processor.is_null() {
+                return 0;
+            }
+            let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.processor);
+            (vtbl.get_latency_samples)(self.processor)
+        }
+    }
+
     pub fn open_editor(&mut self, parent_window: *mut c_void) -> Result<Option<ViewRect>> {
         unsafe {
             if self.controller.is_null() {

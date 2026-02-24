@@ -1,5 +1,7 @@
 use std::sync::{mpsc, Arc, Mutex};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
+use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 pub mod audio;
@@ -49,6 +51,32 @@ fn get_audio_state(state: State<'_, audio::AudioState>) -> Result<audio::AudioSt
 }
 
 #[tauri::command]
+fn get_engine_tuning_config(
+    state: State<'_, audio::AudioState>,
+) -> Result<audio::EngineTuningConfig, String> {
+    let host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    Ok(host.get_engine_tuning_config())
+}
+
+#[tauri::command]
+fn set_engine_tuning_config(
+    state: State<'_, audio::AudioState>,
+    config: audio::EngineTuningConfig,
+) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.set_engine_tuning_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+fn get_engine_runtime_stats(
+    state: State<'_, audio::AudioState>,
+) -> Result<audio::EngineRuntimeStats, String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.get_engine_runtime_stats().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn start_audio(
     state: State<'_, audio::AudioState>,
     input: Option<String>,
@@ -57,14 +85,14 @@ fn start_audio(
     buffer_size: Option<u32>,
     sample_rate: Option<u32>,
 ) -> Result<audio::AudioConfig, String> {
-    println!(
-        "DEBUG: start_audio IPC Args: host={:?}, input={:?}, buffer={:?}, rate={:?}",
+    log::debug!(
+        "start_audio IPC Args: host={:?}, input={:?}, buffer={:?}, rate={:?}",
         host, input, buffer_size, sample_rate
     );
     let mut host_instance = state.0.lock().map_err(|_| "Failed to lock audio state")?;
     host_instance
         .start(host, input, output, buffer_size, sample_rate)
-        .map_err(|e| localize_audio_error(e.to_string()))
+        .map_err(|e| audio::localize_audio_error(e.to_string()))
 }
 
 #[tauri::command]
@@ -119,8 +147,8 @@ fn restart_audio_engine(
     buffer_size: Option<u32>,
     sample_rate: Option<u32>,
 ) -> Result<audio::AudioConfig, String> {
-    println!(
-        "DEBUG: restart_audio_engine IPC Args: host={:?}, input={:?}, buffer={:?}, rate={:?}",
+    log::debug!(
+        "restart_audio_engine IPC Args: host={:?}, input={:?}, buffer={:?}, rate={:?}",
         host, input, buffer_size, sample_rate
     );
     let mut audio_host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
@@ -129,32 +157,9 @@ fn restart_audio_engine(
     // Re-start
     audio_host
         .start(host, input, output, buffer_size, sample_rate)
-        .map_err(|e| localize_audio_error(e.to_string()))
+        .map_err(|e| audio::localize_audio_error(e.to_string()))
 }
 
-fn localize_audio_error(e: String) -> String {
-    if e.to_lowercase()
-        .contains("sample clock or rate cannot be determined")
-    {
-        return "オーディオデバイスのエラー: サンプルレートまたはクロックソースが取得できません。\nデバイスが他のアプリケーションによって別のレートでロックされている可能性があります。\n(ヒント: 他の音が出るアプリを閉じるか、デバイスのコントロールパネル設定を確認してください)".to_string();
-    }
-    if e.to_lowercase().contains("device not found") {
-        return format!(
-            "デバイスが見つかりません: {}\n再接続して「更新」ボタンを押してください。",
-            e
-        );
-    }
-    if e.to_lowercase().contains("access is denied") {
-        return "デバイスへのアクセスが拒否されました。\nマイクのプライバシー設定や、排他モード設定を確認してください。".to_string();
-    }
-    if e.to_lowercase()
-        .contains("stream configuration is not supported")
-    {
-        return "指定された設定（サンプルレートまたはバッファサイズ）はこのデバイスでサポートされていません。\n(ヒント: バッファサイズを大きくするか、デバイスのコントロールパネルで設定を変更してください)".to_string();
-    }
-    // Default fallback
-    format!("オーディオエラー: {}", e)
-}
 
 #[tauri::command]
 async fn scan_plugins(app: tauri::AppHandle) -> Result<Vec<vst_host::VstPlugin>, String> {
@@ -212,6 +217,49 @@ async fn delete_preset(app: AppHandle, name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn export_preset(app: AppHandle, name: String) -> Result<(), String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let preset = presets::load_preset(&config_dir, &name)?;
+    let json = serde_json::to_string_pretty(&preset).map_err(|e| e.to_string())?;
+
+    let default_name = format!("{}.auralyn-preset.json", name);
+
+    let path = rfd::FileDialog::new()
+        .set_file_name(&default_name)
+        .add_filter("Auralyn Preset", &["json"])
+        .save_file();
+
+    match path {
+        Some(p) => {
+            std::fs::write(&p, json).map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        None => Err("cancelled".to_string()),
+    }
+}
+
+#[tauri::command]
+async fn import_preset(app: AppHandle) -> Result<String, String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+
+    let path = rfd::FileDialog::new()
+        .add_filter("Auralyn Preset", &["json"])
+        .pick_file();
+
+    match path {
+        Some(p) => {
+            let content = std::fs::read_to_string(&p).map_err(|e| e.to_string())?;
+            let preset: Preset = serde_json::from_str(&content)
+                .map_err(|e| format!("無効なプリセットファイルです: {}", e))?;
+            let name = preset.name.clone();
+            presets::save_preset(&config_dir, &name, &preset)?;
+            Ok(name)
+        }
+        None => Err("cancelled".to_string()),
+    }
+}
+
+#[tauri::command]
 fn toggle_global_mute(state: State<'_, audio::AudioState>) -> Result<(), String> {
     let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
     host.toggle_global_mute().map_err(|e| e.to_string())
@@ -227,6 +275,29 @@ fn set_global_mute(state: State<'_, audio::AudioState>, active: bool) -> Result<
 fn set_input_gain(state: State<'_, audio::AudioState>, value: f32) -> Result<(), String> {
     let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
     host.set_input_gain(value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_noise_reduction(
+    state: State<'_, audio::AudioState>,
+    active: bool,
+    mode: Option<String>,
+) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.set_noise_reduction(active, mode)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_output_gain(state: State<'_, audio::AudioState>, value: f32) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.set_output_gain(value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_global_bypass(state: State<'_, audio::AudioState>, active: bool) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.set_global_bypass(active).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -286,6 +357,8 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             let _ = app
@@ -296,10 +369,10 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
-                    println!("Global Shortcut Event: {:?} {:?}", shortcut, event.state);
+                    log::trace!("Global Shortcut Event: {:?} {:?}", shortcut, event.state);
                     if event.state == ShortcutState::Pressed {
                         if shortcut.matches(Modifiers::ALT, Code::KeyM) {
-                            println!("Global Mute Hotkey Pressed!");
+                            log::info!("Global Mute Hotkey Pressed");
                             if let Some(state) = app.try_state::<audio::AudioState>() {
                                 if let Ok(mut host) = state.0.lock() {
                                     let _ = host.toggle_global_mute();
@@ -331,6 +404,61 @@ pub fn run() {
                         .expect("Failed to load icon"),
                 );
             }
+
+            // --- System Tray ---
+            let show_item = MenuItemBuilder::with_id("show", "Auralyn を表示").build(app)?;
+            let mute_item = MenuItemBuilder::with_id("mute_toggle", "ミュート切替 (Alt+M)").build(app)?;
+            let separator = PredefinedMenuItem::separator(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "終了").build(app)?;
+
+            let tray_menu = MenuBuilder::new(app)
+                .items(&[&show_item, &mute_item, &separator, &quit_item])
+                .build()?;
+
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().cloned().unwrap())
+                .tooltip("Auralyn - VST Host")
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "mute_toggle" => {
+                        if let Some(audio_state) = app.try_state::<audio::AudioState>() {
+                            if let Ok(mut host) = audio_state.0.lock() {
+                                let _ = host.toggle_global_mute();
+                            }
+                        }
+                    }
+                    "quit" => {
+                        // Actually quit the application
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    // Left click on tray icon: show/focus window
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
             // Clone the handle to pass to the thread
             let handle = app.handle().clone();
 
@@ -352,9 +480,21 @@ pub fn run() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            // × button: hide to system tray instead of quitting
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+                // Notify user (only once per session) that app is still running in tray
+                let _ = window.emit("minimized-to-tray", ());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_audio_devices,
             get_audio_state,
+            get_engine_tuning_config,
+            set_engine_tuning_config,
+            get_engine_runtime_stats,
             scan_plugins,
             clear_blacklist,
             start_audio,
@@ -371,9 +511,14 @@ pub fn run() {
             save_preset,
             load_preset,
             delete_preset,
+            export_preset,
+            import_preset,
             toggle_global_mute,
             set_global_mute,
             set_input_gain,
+            set_noise_reduction,
+            set_output_gain,
+            set_global_bypass,
             open_url,
             connect_obs,
             disconnect_obs,

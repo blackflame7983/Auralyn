@@ -1,5 +1,6 @@
 use crate::vst_host::instance::VstInstance;
 use anyhow::{anyhow, Result};
+use log;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::collections::HashMap;
 use windows::core::w;
@@ -44,7 +45,7 @@ impl EditorManager {
         }
 
         unsafe {
-            eprintln!(
+            log::debug!(
                 "[EditorManager] ensure_container_class: Checking registration for hinstance={:?}",
                 hinstance
             );
@@ -77,11 +78,11 @@ impl EditorManager {
                         "[EditorManager] RegisterClassExW failed. GetLastError={:?}",
                         err_code
                     );
-                    eprintln!("{}", err_msg);
+                    log::error!("{}", err_msg);
                     return Err(anyhow!(err_msg));
                 }
             }
-            eprintln!("[EditorManager] Window class 'AuralynVstContainer' registered successfully. Atom={}", atom);
+            log::info!("[EditorManager] Window class 'AuralynVstContainer' registered successfully. Atom={}", atom);
 
             Ok(())
         }
@@ -140,7 +141,7 @@ impl EditorManager {
         let win = WindowBuilder::new()
             .with_title(format!("Editor: {}", instance.name))
             .with_inner_size({
-                eprintln!(
+                log::debug!(
                     "[EditorManager] Using 800x600 default (plugin negotiates later). Name='{}'",
                     instance.name
                 );
@@ -149,7 +150,7 @@ impl EditorManager {
             .build(target)
             .map_err(|e| anyhow!("Failed to create window: {}", e))?;
 
-        eprintln!(
+        log::debug!(
             "[EditorManager] Window created. Inner Size: {:?}",
             win.inner_size()
         );
@@ -172,7 +173,7 @@ impl EditorManager {
                         let new_style = current_style | WS_CLIPCHILDREN.0 | WS_CLIPSIBLINGS.0;
                         if current_style != new_style {
                             SetWindowLongPtrA(parent_hwnd, GWL_STYLE, new_style as isize);
-                            eprintln!("[EditorManager] Applied WS_CLIPCHILDREN | WS_CLIPSIBLINGS (Style: {:X} -> {:X})", current_style, new_style);
+                            log::debug!("[EditorManager] Applied WS_CLIPCHILDREN | WS_CLIPSIBLINGS (Style: {:X} -> {:X})", current_style, new_style);
                         }
                     }
 
@@ -199,7 +200,7 @@ impl EditorManager {
             let width = (rect.right - rect.left).abs() as u32; // Use u32 for PhysicalSize
             let height = (rect.bottom - rect.top).abs() as u32;
             if width > 0 && height > 0 {
-                eprintln!(
+                log::debug!(
                     "[EditorManager] Enforcing window size from plugin negotiation: {}x{}",
                     width, height
                 );

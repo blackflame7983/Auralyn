@@ -42,6 +42,16 @@ pub enum Command {
     SetInputGain {
         value: f32, // Linear gain for pre-FX input (0.0 to >1.0)
     },
+    SetNoiseReduction {
+        active: bool,
+        mode: Option<String>, // "low" | "high"
+    },
+    SetOutputGain {
+        value: f32, // Linear gain for master output (0.0 to >1.0)
+    },
+    SetGlobalBypass {
+        active: bool, // Bypass all plugins (A/B comparison: hear dry input)
+    },
     SetInputChannels {
         left: usize,
         right: usize,
@@ -49,6 +59,7 @@ pub enum Command {
     SetChannelScan {
         active: bool,
     },
+    GetRuntimeStats,
     // Parameter Automation
     GetPluginState {
         id: String,
@@ -73,6 +84,24 @@ pub enum Response {
         id: String,
         name: String,
         vendor: String,
+    },
+    RuntimeStats {
+        active_plugin_count: u32,
+        enabled_plugin_count: u32,
+        pending_unload_count: u32,
+        burned_library_count: u32,
+        global_bypass: bool,
+        max_jitter_us: u64,
+        glitch_count: u64,
+        total_plugin_latency_samples: u32,
+        total_plugin_latency_ms: f64,
+        noise_reduction_latency_samples: u32,
+        noise_reduction_latency_ms: f64,
+        total_chain_latency_samples: u32,
+        total_chain_latency_ms: f64,
+        noise_reduction_enabled: bool,
+        noise_reduction_active: bool,
+        noise_reduction_mode: String,
     },
     // ... existing code ...
     PluginState {

@@ -1,12 +1,14 @@
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use log;
+use nnnoiseless::DenoiseState;
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::HeapRb;
 use serde_json;
 use std::io::{self, BufRead, Write};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc,
+    Arc, OnceLock,
 };
 use std::thread;
 use std::time::{Duration, Instant};
@@ -49,7 +51,10 @@ pub enum AudioThreadMessage {
         value: f32,
     },
     SetGlobalMute(bool),
+    SetGlobalBypass(bool),
     SetInputGain(f32),
+    SetNoiseReduction { active: bool, mix: f32 },
+    SetOutputGain(f32),
     SetInputChannels(usize, usize), // (Left, Right)
     SetChannelScan(bool),           // Enable/Disable background scanning
     Stop,
@@ -71,6 +76,17 @@ type CmdProducer = <HeapRb<AudioThreadMessage> as Split>::Prod;
 type LevelConsumer = <HeapRb<MeterLevels> as Split>::Cons;
 type ChannelConsumer = <HeapRb<[f32; 32]> as Split>::Cons;
 type RetireConsumer = <HeapRb<RetiredProcessor> as Split>::Cons;
+
+fn time_critical_audio_threads_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        let Some(v) = std::env::var_os("AURALYN_TIME_CRITICAL_AUDIO_THREADS") else {
+            return false;
+        };
+        let v = v.to_string_lossy().to_ascii_lowercase();
+        v == "1" || v == "true" || v == "yes" || v == "on"
+    })
+}
 
 // Smoother Implementation
 struct Smoother {
@@ -110,6 +126,141 @@ impl Smoother {
     }
 }
 
+const DENOISE_FRAME_SIZE: usize = DenoiseState::FRAME_SIZE;
+const DENOISE_SCALE: f32 = 32768.0;
+const NOISE_REDUCTION_MODE_LOW: &str = "low";
+const NOISE_REDUCTION_MODE_HIGH: &str = "high";
+
+fn normalize_noise_reduction_mode(mode: Option<&str>) -> &'static str {
+    match mode.map(|m| m.trim().to_ascii_lowercase()) {
+        Some(m) if m == NOISE_REDUCTION_MODE_HIGH => NOISE_REDUCTION_MODE_HIGH,
+        _ => NOISE_REDUCTION_MODE_LOW,
+    }
+}
+
+fn noise_reduction_mix_from_mode(mode: &str) -> f32 {
+    if mode == NOISE_REDUCTION_MODE_HIGH {
+        1.0
+    } else {
+        0.6
+    }
+}
+
+struct RtNoiseReducer {
+    states: [Box<DenoiseState<'static>>; 2],
+    input_frame_size: usize,
+    input_frames: [Vec<f32>; 2],
+    output_frames: [Vec<f32>; 2],
+    denoise_input: [[f32; DENOISE_FRAME_SIZE]; 2],
+    denoise_output: [[f32; DENOISE_FRAME_SIZE]; 2],
+    input_pos: usize,
+    output_pos: usize,
+    output_ready: usize,
+}
+
+impl RtNoiseReducer {
+    fn new(sample_rate_hz: u32) -> Self {
+        let frame_size = ((sample_rate_hz.max(8_000) + 50) / 100) as usize;
+        Self {
+            states: std::array::from_fn(|_| DenoiseState::new()),
+            input_frame_size: frame_size,
+            input_frames: [vec![0.0; frame_size], vec![0.0; frame_size]],
+            output_frames: [vec![0.0; frame_size], vec![0.0; frame_size]],
+            denoise_input: [[0.0; DENOISE_FRAME_SIZE]; 2],
+            denoise_output: [[0.0; DENOISE_FRAME_SIZE]; 2],
+            input_pos: 0,
+            output_pos: 0,
+            output_ready: 0,
+        }
+    }
+
+    fn reset_state(&mut self) {
+        self.states = std::array::from_fn(|_| DenoiseState::new());
+        self.input_pos = 0;
+        self.output_pos = 0;
+        self.output_ready = 0;
+        for ch in 0..2 {
+            self.input_frames[ch].fill(0.0);
+            self.output_frames[ch].fill(0.0);
+            self.denoise_input[ch].fill(0.0);
+            self.denoise_output[ch].fill(0.0);
+        }
+    }
+
+    fn resample_linear(input: &[f32], output: &mut [f32]) {
+        if input.is_empty() || output.is_empty() {
+            return;
+        }
+        if input.len() == 1 {
+            output.fill(input[0]);
+            return;
+        }
+        if output.len() == 1 {
+            output[0] = input[0];
+            return;
+        }
+
+        let in_last = (input.len() - 1) as f32;
+        let out_last = (output.len() - 1) as f32;
+        for (i, out) in output.iter_mut().enumerate() {
+            let pos = (i as f32) * in_last / out_last;
+            let idx0 = pos.floor() as usize;
+            let idx1 = (idx0 + 1).min(input.len() - 1);
+            let frac = pos - idx0 as f32;
+            *out = input[idx0] * (1.0 - frac) + input[idx1] * frac;
+        }
+    }
+
+    fn process_sample(&mut self, left: f32, right: f32) -> (f32, f32) {
+        self.input_frames[0][self.input_pos] = (left * DENOISE_SCALE).clamp(-32768.0, 32767.0);
+        self.input_frames[1][self.input_pos] = (right * DENOISE_SCALE).clamp(-32768.0, 32767.0);
+        self.input_pos += 1;
+
+        if self.input_pos >= self.input_frame_size {
+            for ch in 0..2 {
+                if self.input_frame_size == DENOISE_FRAME_SIZE {
+                    self.denoise_input[ch]
+                        .copy_from_slice(&self.input_frames[ch][..DENOISE_FRAME_SIZE]);
+                } else {
+                    Self::resample_linear(
+                        &self.input_frames[ch][..self.input_frame_size],
+                        &mut self.denoise_input[ch],
+                    );
+                }
+            }
+
+            self.states[0].process_frame(&mut self.denoise_output[0], &self.denoise_input[0]);
+            self.states[1].process_frame(&mut self.denoise_output[1], &self.denoise_input[1]);
+
+            for ch in 0..2 {
+                if self.input_frame_size == DENOISE_FRAME_SIZE {
+                    self.output_frames[ch][..DENOISE_FRAME_SIZE]
+                        .copy_from_slice(&self.denoise_output[ch]);
+                } else {
+                    Self::resample_linear(
+                        &self.denoise_output[ch],
+                        &mut self.output_frames[ch][..self.input_frame_size],
+                    );
+                }
+            }
+
+            self.input_pos = 0;
+            self.output_pos = 0;
+            self.output_ready = self.input_frame_size;
+        }
+
+        if self.output_ready == 0 {
+            return (0.0, 0.0);
+        }
+
+        let l = (self.output_frames[0][self.output_pos] / DENOISE_SCALE).clamp(-1.0, 1.0);
+        let r = (self.output_frames[1][self.output_pos] / DENOISE_SCALE).clamp(-1.0, 1.0);
+        self.output_pos += 1;
+        self.output_ready -= 1;
+        (l, r)
+    }
+}
+
 pub struct Engine {
     input_stream: Option<cpal::Stream>,
     output_stream: Option<cpal::Stream>,
@@ -135,6 +286,9 @@ pub struct Engine {
     input_channel_l: usize,
     input_channel_r: usize,
     scan_enabled: bool,
+    global_bypass: bool,
+    noise_reduction_enabled: bool,
+    noise_reduction_mode: String,
 
     // Diagnostics
     stats_max_jitter: Arc<AtomicU64>,
@@ -161,6 +315,9 @@ impl Engine {
             input_channel_l: 0,
             input_channel_r: 1,
             scan_enabled: true, // Auto-enable scan for smart selector
+            global_bypass: false,
+            noise_reduction_enabled: false,
+            noise_reduction_mode: NOISE_REDUCTION_MODE_LOW.to_string(),
             stats_max_jitter: Arc::new(AtomicU64::new(0)),
             stats_glitches: Arc::new(AtomicU64::new(0)),
         }
@@ -194,7 +351,7 @@ impl Engine {
                                     break; // Loop closed
                                 }
                             }
-                            Err(e) => eprintln!("JSON Parse Error: {}", e),
+                            Err(e) => log::error!("JSON Parse Error: {}", e),
                         }
                     }
                     Err(_) => break,
@@ -255,18 +412,18 @@ impl Engine {
                                 let Some(instance) = self.plugin_manager.get_mut(&id) else {
                                     continue;
                                 };
-                                eprintln!(
+                                log::info!(
                                     "Executing Deferred Init (Activate -> Connect) for {}",
                                     instance.name
                                 );
 
                                 if self.output_stream.is_some() {
                                     let sr = self.current_sample_rate;
-                                    let bs = self.current_block_size as i32;
+                                    let bs = 4096usize.max(self.current_block_size) as i32;
                                     let ch = self.current_channels as i32;
 
                                     if let Err(e) = instance.prepare_processing(sr, bs, ch) {
-                                        eprintln!("Deferred Activation Failed: {}", e);
+                                        log::error!("Deferred Activation Failed: {}", e);
                                     }
                                     created_processor = instance.create_processor();
                                 }
@@ -275,9 +432,9 @@ impl Engine {
                             };
 
                             if finalize_ok {
-                                eprintln!("Deferred connection finalized for {}", id);
+                                log::info!("Deferred connection finalized for {}", id);
                             } else {
-                                eprintln!("Error finalizing deferred connection for {}", id);
+                                log::error!("Error finalizing deferred connection for {}", id);
                             }
 
                             if self.output_stream.is_some() {
@@ -308,8 +465,8 @@ impl Engine {
 
                     // Heartbeat (1s) & Diagnostics
                     if last_heartbeat.elapsed() >= Duration::from_secs(1) {
-                        let _max_jitter = self.stats_max_jitter.swap(0, Ordering::Relaxed);
-                        let _glitches = self.stats_glitches.swap(0, Ordering::Relaxed);
+                        let _max_jitter = self.stats_max_jitter.load(Ordering::Relaxed);
+                        let _glitches = self.stats_glitches.load(Ordering::Relaxed);
                         let _frames = self.frames_processed.load(Ordering::Relaxed);
 
                         // Check Priority Class
@@ -407,7 +564,7 @@ impl Engine {
                     if let Some(pid) = plugin_id_opt {
                         if let Some(instance) = self.plugin_manager.get_mut(&pid) {
                             if let Err(e) = instance.on_window_resized(size.width, size.height) {
-                                eprintln!("Error resizing plugin {}: {}", pid, e);
+                                log::error!("Error resizing plugin {}: {}", pid, e);
                             }
                         }
                     }
@@ -435,7 +592,7 @@ impl Engine {
                 println!("IPC:{}", json);
                 let _ = io::stdout().flush();
             }
-            Err(e) => eprintln!("JSON Serialize Error (Response): {}", e),
+            Err(e) => log::error!("JSON Serialize Error (Response): {}", e),
         }
     }
 
@@ -446,7 +603,7 @@ impl Engine {
                 println!("IPC:{}", json);
                 let _ = io::stdout().flush();
             }
-            Err(e) => eprintln!("JSON Serialize Error (Event): {}", e),
+            Err(e) => log::error!("JSON Serialize Error (Event): {}", e),
         }
     }
 
@@ -489,7 +646,7 @@ impl Engine {
                 match self.plugin_manager.load_plugin(
                     &path,
                     self.current_sample_rate,
-                    self.current_block_size,
+                    4096usize.max(self.current_block_size),
                     self.current_channels,
                     self.output_stream.is_some(),
                 ) {
@@ -595,8 +752,27 @@ impl Engine {
                 self.queue_audio_msg(AudioThreadMessage::SetGlobalMute(active));
                 self.send_response(Response::Success);
             }
+            Command::SetGlobalBypass { active } => {
+                self.global_bypass = active;
+                self.queue_audio_msg(AudioThreadMessage::SetGlobalBypass(active));
+                self.send_response(Response::Success);
+            }
             Command::SetInputGain { value } => {
                 self.queue_audio_msg(AudioThreadMessage::SetInputGain(value));
+                self.send_response(Response::Success);
+            }
+            Command::SetNoiseReduction { active, mode } => {
+                let normalized_mode = normalize_noise_reduction_mode(mode.as_deref());
+                self.noise_reduction_mode = normalized_mode.to_string();
+                self.noise_reduction_enabled = active;
+                self.queue_audio_msg(AudioThreadMessage::SetNoiseReduction {
+                    active,
+                    mix: noise_reduction_mix_from_mode(normalized_mode),
+                });
+                self.send_response(Response::Success);
+            }
+            Command::SetOutputGain { value } => {
+                self.queue_audio_msg(AudioThreadMessage::SetOutputGain(value));
                 self.send_response(Response::Success);
             }
             Command::SetInputChannels { left, right } => {
@@ -609,6 +785,54 @@ impl Engine {
                 self.scan_enabled = active;
                 self.queue_audio_msg(AudioThreadMessage::SetChannelScan(active));
                 self.send_response(Response::Success);
+            }
+            Command::GetRuntimeStats => {
+                let (active_plugin_count, pending_unload_count, burned_library_count) =
+                    self.plugin_manager.runtime_stats();
+                let enabled_plugin_count =
+                    self.plugin_manager.enabled_plugin_count(self.global_bypass);
+                let total_plugin_latency_samples =
+                    self.plugin_manager.total_latency_samples(self.global_bypass);
+                let noise_reduction_latency_samples = if self.noise_reduction_enabled {
+                    ((self.current_sample_rate / 100.0).round() as u32).max(1)
+                } else {
+                    0
+                };
+                let total_chain_latency_samples =
+                    total_plugin_latency_samples.saturating_add(noise_reduction_latency_samples);
+                let total_plugin_latency_ms = if self.current_sample_rate > 0.0 {
+                    (total_plugin_latency_samples as f64 * 1000.0) / self.current_sample_rate
+                } else {
+                    0.0
+                };
+                let noise_reduction_latency_ms = if self.current_sample_rate > 0.0 {
+                    (noise_reduction_latency_samples as f64 * 1000.0) / self.current_sample_rate
+                } else {
+                    0.0
+                };
+                let total_chain_latency_ms = if self.current_sample_rate > 0.0 {
+                    (total_chain_latency_samples as f64 * 1000.0) / self.current_sample_rate
+                } else {
+                    0.0
+                };
+                self.send_response(Response::RuntimeStats {
+                    active_plugin_count,
+                    enabled_plugin_count,
+                    pending_unload_count,
+                    burned_library_count,
+                    global_bypass: self.global_bypass,
+                    max_jitter_us: self.stats_max_jitter.load(Ordering::Relaxed),
+                    glitch_count: self.stats_glitches.load(Ordering::Relaxed),
+                    total_plugin_latency_samples,
+                    total_plugin_latency_ms,
+                    noise_reduction_latency_samples,
+                    noise_reduction_latency_ms,
+                    total_chain_latency_samples,
+                    total_chain_latency_ms,
+                    noise_reduction_enabled: self.noise_reduction_enabled,
+                    noise_reduction_active: self.noise_reduction_enabled,
+                    noise_reduction_mode: self.noise_reduction_mode.clone(),
+                });
             }
             Command::GetPluginState { id } => match self.plugin_manager.get(&id) {
                 Some(instance) => match instance.get_state() {
@@ -780,9 +1004,9 @@ impl Engine {
         // Force detection of Locked Buffer Size (ASIO)
         if let Ok(def) = out_dev.default_output_config() {
             if let cpal::SupportedBufferSize::Range { min, max } = def.buffer_size() {
-                eprintln!("[Config] Device Buffer Range: min={}, max={}", min, max);
+                log::debug!("[Config] Device Buffer Range: min={}, max={}", min, max);
                 if *min == *max && *min as usize != self.current_block_size {
-                    eprintln!(
+                    log::info!(
                         "[Config] Detected Locked Buffer Size override: {} -> {}",
                         self.current_block_size, *min
                     );
@@ -957,22 +1181,20 @@ impl Engine {
             }
         }
 
-        // RT State Setup (all fixed-capacity / no resize in callback)
-        let max_len = safe_max_block_size
-            .saturating_mul(self.current_channels)
-            .max(16384);
-        // let mut scratch_buf = vec![0.0; max_len]; // Deprecated
+        let channels_len = out_stream_config.channels as usize;
+        let max_ch = channels_len.max(2);
+        let max_frames_per_callback = 4096.max(safe_max_block_size);
+
+        // RT State Setup (fixed-capacity / no resize in callback)
+        let max_len = max_frames_per_callback.saturating_mul(channels_len.max(1));
         let mut input_buf = vec![0.0; max_len];
 
-        // Planar Buffers (Vector of Vectors)
-        // Pre-allocate for max expected channels (e.g., 8).
-        // Each inner vector is pre-allocated to max block size.
-        let max_ch = 32; // Generous limit
+        // Planar Buffers (fixed-capacity for callback upper bound)
         let mut planar_buf_a: Vec<Vec<f32>> = (0..max_ch)
-            .map(|_| vec![0.0; 4096.max(safe_max_block_size)])
+            .map(|_| vec![0.0; max_frames_per_callback])
             .collect();
         let mut planar_buf_b: Vec<Vec<f32>> = (0..max_ch)
-            .map(|_| vec![0.0; 4096.max(safe_max_block_size)])
+            .map(|_| vec![0.0; max_frames_per_callback])
             .collect();
 
         let mut rt_processors: [Option<VstProcessor>; MAX_PLUGINS] = std::array::from_fn(|_| None);
@@ -988,13 +1210,19 @@ impl Engine {
         }
 
         let mut rt_global_mute = false;
+        let mut rt_global_bypass = self.global_bypass;
         let mut rt_input_gain = 1.0f32;
+        let mut rt_output_gain = Smoother::new(1.0);
         let mut rt_input_l = self.input_channel_l;
         let mut rt_input_r = self.input_channel_r;
         let mut rt_scan_enabled = self.scan_enabled;
+        let rt_sample_rate_hz = self.current_sample_rate.round().clamp(8_000.0, 192_000.0) as u32;
+        let mut rt_noise_reduction_enabled = self.noise_reduction_enabled;
+        let mut rt_noise_reduction_mix =
+            noise_reduction_mix_from_mode(self.noise_reduction_mode.as_str());
+        let mut rt_noise_reducer = RtNoiseReducer::new(rt_sample_rate_hz);
 
         let frames_counter = self.frames_processed.clone();
-        let channels_len = out_stream_config.channels as usize;
 
         let stats_max_jitter = Arc::new(AtomicU64::new(0));
         let stats_glitches = Arc::new(AtomicU64::new(0));
@@ -1065,10 +1293,15 @@ impl Engine {
                 if !mmcss_set_out.load(Ordering::Relaxed) {
                     unsafe {
                         use windows::Win32::System::Threading::{
-                            GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_TIME_CRITICAL,
+                            GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_HIGHEST,
+                            THREAD_PRIORITY_TIME_CRITICAL,
                         };
-                        let _ =
-                            SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+                        let priority = if time_critical_audio_threads_enabled() {
+                            THREAD_PRIORITY_TIME_CRITICAL
+                        } else {
+                            THREAD_PRIORITY_HIGHEST
+                        };
+                        let _ = SetThreadPriority(GetCurrentThread(), priority);
                     }
                     mmcss_set_out.store(true, Ordering::Relaxed);
                 }
@@ -1141,8 +1374,19 @@ impl Engine {
                         AudioThreadMessage::SetGlobalMute(active) => {
                             rt_global_mute = active;
                         }
+                        AudioThreadMessage::SetGlobalBypass(active) => {
+                            rt_global_bypass = active;
+                        }
                         AudioThreadMessage::SetInputGain(val) => {
                             rt_input_gain = val;
+                        }
+                        AudioThreadMessage::SetNoiseReduction { active, mix } => {
+                            rt_noise_reduction_enabled = active;
+                            rt_noise_reduction_mix = mix.clamp(0.0, 1.0);
+                            rt_noise_reducer.reset_state();
+                        }
+                        AudioThreadMessage::SetOutputGain(val) => {
+                            rt_output_gain.set_target(val);
                         }
                         AudioThreadMessage::SetInputChannels(l, r) => {
                             rt_input_l = l;
@@ -1159,22 +1403,21 @@ impl Engine {
                     return;
                 }
                 let channels = channels_len;
-                let frames = data.len() / channels;
+                let requested_frames = data.len() / channels;
+                let frames = requested_frames.min(max_frames_per_callback);
+                if frames == 0 {
+                    data.fill(0.0);
+                    return;
+                }
+                if requested_frames > frames {
+                    // Callback delivered more frames than our fixed RT capacity.
+                    // We keep RT deterministic by truncating this block and counting as a glitch.
+                    stats_glitches.fetch_add(1, Ordering::Relaxed);
+                }
 
                 // --- 1. Efficient Input Data Fetch & De-interleaving ---
-                if planar_buf_a.len() != channels {
-                    planar_buf_a.resize(channels, vec![0.0; max_len]);
-                    planar_buf_b.resize(channels, vec![0.0; max_len]);
-                }
-
                 let available = audio_cons.occupied_len();
                 let to_read = frames * channels;
-
-                if input_buf.len() < to_read {
-                    // Safety: Resize input buffer if callback delivers more frames than negotiated.
-                    // This allocation in RT thread is not ideal, but better than a panic/crash.
-                    input_buf.resize(to_read, 0.0);
-                }
 
                 let read_count = if available >= to_read {
                     audio_cons.pop_slice(&mut input_buf[..to_read])
@@ -1193,17 +1436,6 @@ impl Engine {
                 // Channel Scanning (For UI Smart Selector)
                 let mut channel_peaks = [0.0f32; 32]; // Max 32 channels scan
                 let scan_limit = channels.min(32);
-
-                for ch in 0..channels {
-                    if planar_buf_a[ch].len() < frames {
-                        planar_buf_a[ch].resize(frames, 0.0);
-                    }
-                    // Planar buffers for plugins logic...
-                    // No need to resize B here if we don't assume plugins increase channel count dynamically in this scope
-                    if planar_buf_b[ch].len() < frames {
-                        planar_buf_b[ch].resize(frames, 0.0);
-                    }
-                }
 
                 for i in 0..frames {
                     // Manual de-interleaving and Mapping to Stereo Bus (0/1)
@@ -1274,6 +1506,28 @@ impl Engine {
                     }
                 }
 
+                if rt_noise_reduction_enabled && rt_noise_reduction_mix > 0.0 {
+                    let wet_mix = rt_noise_reduction_mix;
+                    let dry_mix = 1.0 - wet_mix;
+                    if channels >= 2 {
+                        for i in 0..frames {
+                            let dry_left = planar_buf_a[0][i];
+                            let dry_right = planar_buf_a[1][i];
+                            let (wet_left, wet_right) =
+                                rt_noise_reducer.process_sample(dry_left, dry_right);
+                            planar_buf_a[0][i] = dry_left * dry_mix + wet_left * wet_mix;
+                            planar_buf_a[1][i] = dry_right * dry_mix + wet_right * wet_mix;
+                        }
+                    } else if channels == 1 {
+                        for i in 0..frames {
+                            let dry_mono = planar_buf_a[0][i];
+                            let (wet_mono, _) =
+                                rt_noise_reducer.process_sample(dry_mono, dry_mono);
+                            planar_buf_a[0][i] = dry_mono * dry_mix + wet_mono * wet_mix;
+                        }
+                    }
+                }
+
                 // Send Channel Scan Data (throttled)
                 if rt_scan_enabled {
                     // Simple throttling using frames_processed
@@ -1298,7 +1552,9 @@ impl Engine {
 
                 let mut current_source_is_a = true; // True usually implies result is in A
 
-                if rt_active_count > 0 && rt_order_len > 0 {
+                // Global Bypass: Skip all plugin processing (A/B comparison mode)
+                // Input remains in planar_buf_a, so current_source_is_a stays true.
+                if !rt_global_bypass && rt_active_count > 0 && rt_order_len > 0 {
                     for i_order in 0..rt_order_len {
                         let idx = rt_order[i_order] as usize;
                         if idx >= MAX_PLUGINS {
@@ -1409,29 +1665,48 @@ impl Engine {
                     let target_r = rt_input_r;
 
                     for i in 0..frames {
+                        let gain = rt_output_gain.next();
+                        let main_l = final_buf
+                            .first()
+                            .and_then(|buf| buf.get(i))
+                            .copied()
+                            .unwrap_or(0.0)
+                            * gain;
+                        let main_r = final_buf
+                            .get(1)
+                            .and_then(|buf| buf.get(i))
+                            .copied()
+                            .unwrap_or(main_l)
+                            * gain;
+
                         // Left
                         if target_l < channels {
                             let out_idx = i * channels + target_l;
                             if out_idx < data.len() {
-                                data[out_idx] = final_buf[0][i];
+                                data[out_idx] = main_l;
                             }
                         }
                         // Right
                         if target_r < channels {
                             let out_idx = i * channels + target_r;
                             if out_idx < data.len() {
-                                data[out_idx] = final_buf[1][i];
+                                data[out_idx] = main_r;
                             }
                         }
                     }
 
-                    // Metering: Scan final_buf directly (Pre-Routing / "Main Output" level)
-                    let out_max_l = final_buf[0][..frames]
-                        .iter()
-                        .fold(0.0f32, |m, &x| m.max(x.abs()));
-                    let out_max_r = final_buf[1][..frames]
-                        .iter()
-                        .fold(0.0f32, |m, &x| m.max(x.abs()));
+                    // Metering: Reflect actual output level (post-master-gain)
+                    let gain_for_meter = rt_output_gain.current;
+                    let out_max_l = final_buf
+                        .first()
+                        .map(|buf| buf[..frames].iter().fold(0.0f32, |m, &x| m.max(x.abs())))
+                        .unwrap_or(0.0)
+                        * gain_for_meter;
+                    let out_max_r = final_buf
+                        .get(1)
+                        .map(|buf| buf[..frames].iter().fold(0.0f32, |m, &x| m.max(x.abs())))
+                        .unwrap_or(out_max_l)
+                        * gain_for_meter;
 
                     let _ = level_prod.try_push(MeterLevels {
                         input: [in_max_l, in_max_r],
@@ -1452,11 +1727,11 @@ impl Engine {
                     cpal::BuildStreamError::BackendSpecific { .. } => "バックエンドエラー",
                 };
                 let detailed_msg = format!("{} (Original: {})", error_jp, e);
-                eprintln!("Failed to build output stream: {}", detailed_msg);
+                log::error!("Failed to build output stream: {}", detailed_msg);
 
                 if allow_fallback {
                     if let Ok(def) = out_dev.default_output_config() {
-                        eprintln!(
+                        log::warn!(
                             "[Config] Fallback! Retrying with Default: {} Hz",
                             def.sample_rate()
                         );
@@ -1497,14 +1772,14 @@ impl Engine {
             match crate::audio_engine::resampling::StreamResampler::new(in_rate, out_rate, channels)
             {
                 Ok(r) => {
-                    println!(
+                    log::info!(
                         "[Resampler] Initialized: {} -> {} Hz ({} ch)",
                         in_rate, out_rate, channels
                     );
                     resampler = Some(r);
                 }
                 Err(e) => {
-                    eprintln!("[Resampler] Initialization Failed: {}", e);
+                    log::error!("[Resampler] Initialization Failed: {}", e);
                     // If resampler fails, we might as well fail the stream build or fallback?
                     // For now, let's proceed and it will likely glitch or speed up/down, but better to warn.
                 }
@@ -1517,29 +1792,50 @@ impl Engine {
                 if !mmcss_set_in.load(Ordering::Relaxed) {
                     unsafe {
                         use windows::Win32::System::Threading::{
-                            GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_TIME_CRITICAL,
+                            GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_HIGHEST,
+                            THREAD_PRIORITY_TIME_CRITICAL,
                         };
-                        let _ =
-                            SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+                        let priority = if time_critical_audio_threads_enabled() {
+                            THREAD_PRIORITY_TIME_CRITICAL
+                        } else {
+                            THREAD_PRIORITY_HIGHEST
+                        };
+                        let _ = SetThreadPriority(GetCurrentThread(), priority);
                     }
                     mmcss_set_in.store(true, Ordering::Relaxed);
                 }
 
-                // Helper to push samples to ring buffer with channel mapping (Mono -> Stereo)
-                // We assume internal processing expects `out_channels_target` (usually 2).
-                // If input is 1ch and target is 2ch, we duplicate.
-                let mut push_frames = |samples: &[f32]| {
-                    if channels == 1 && out_channels_target == 2 {
-                        // Mono to Stereo
-                        for &sample in samples {
-                            let _ = audio_prod.try_push(sample); // L
-                            let _ = audio_prod.try_push(sample); // R
+                // Push interleaved samples as full frames to preserve channel alignment.
+                // Mapping policy:
+                // - 1ch input -> duplicate to all output channels
+                // - Nch input, Mch output -> copy min(N, M), duplicate last input channel for extras
+                let mut push_frames = |samples: &[f32], in_channels: usize| {
+                    if in_channels == 0 || out_channels_target == 0 {
+                        return;
+                    }
+                    let frames_in = samples.len() / in_channels;
+                    if frames_in == 0 {
+                        return;
+                    }
+
+                    let max_frames_by_capacity = audio_prod.vacant_len() / out_channels_target;
+                    let frames_to_push = frames_in.min(max_frames_by_capacity);
+
+                    'frame_loop: for frame_idx in 0..frames_to_push {
+                        if audio_prod.vacant_len() < out_channels_target {
+                            break;
                         }
-                    } else {
-                        // Passthrough or strict match needed.
-                        // Currently assuming if not 1->2, then input channels must match engine expectation.
-                        for &sample in samples {
-                            let _ = audio_prod.try_push(sample);
+                        let base = frame_idx * in_channels;
+                        for out_ch in 0..out_channels_target {
+                            let src_ch = if in_channels == 1 {
+                                0
+                            } else {
+                                out_ch.min(in_channels - 1)
+                            };
+                            let sample = samples[base + src_ch];
+                            if audio_prod.try_push(sample).is_err() {
+                                break 'frame_loop;
+                            }
                         }
                     }
                 };
@@ -1549,7 +1845,7 @@ impl Engine {
                     // We assume input data matches configured channels
                     match res.process(data) {
                         Ok(output) => {
-                            push_frames(&output);
+                            push_frames(&output, channels);
                         }
                         Err(_e) => {
                             // Log once or occasionally? In RT thread is risky.
@@ -1558,7 +1854,7 @@ impl Engine {
                     }
                 } else {
                     // Passthrough
-                    push_frames(data);
+                    push_frames(data, channels);
                 }
             },
             move |err| {
@@ -1582,14 +1878,14 @@ impl Engine {
                     cpal::BuildStreamError::BackendSpecific { .. } => "バックエンドエラー",
                 };
                 let detailed_msg = format!("{} (Original: {})", error_jp, e);
-                eprintln!("[Engine] Failed to build input stream: {}", detailed_msg);
+                log::error!("[Engine] Failed to build input stream: {}", detailed_msg);
 
                 // Note: Fallback logic here is tricky because Output is already built.
                 // Ideally we drop output and recurse, but for this specific experiment we just error or try simple fallback.
                 // We reuse the retry variables captured at top of function (but we need to clone them again if we use them)
                 // actually we defined retry_host_in above.
                 if allow_fallback {
-                    eprintln!("[Config] Fallback (INPUT post-output)! (Simplified retry strategy)");
+                    log::warn!("[Config] Fallback (INPUT post-output)! (Simplified retry strategy)");
                     // Simply fail complex retry for now to keep experiment clean, or reuse same recurrence
                     if let Ok(def) = out_dev.default_output_config() {
                         return self.start_audio_impl(
