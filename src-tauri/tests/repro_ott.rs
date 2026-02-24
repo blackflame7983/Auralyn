@@ -1,8 +1,9 @@
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use vst_host_lib::ipc::{Command as IpcCommand, OutputMessage, Response};
 
 #[test]
@@ -22,32 +23,39 @@ fn test_ott_editor_loading() {
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     let stdout = child.stdout.take().expect("Failed to open stdout");
     let mut reader = BufReader::new(stdout);
+    let (resp_tx, resp_rx) = mpsc::channel::<Response>();
+
+    thread::spawn(move || {
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {
+                    let trim = line.trim();
+                    if trim.is_empty() {
+                        continue;
+                    }
+                    println!("[Log] {}", trim);
+                    let payload = trim.strip_prefix("IPC:").unwrap_or(trim);
+                    if let Ok(msg) = serde_json::from_str::<OutputMessage>(payload) {
+                        if let OutputMessage::Response(r) = msg {
+                            let _ = resp_tx.send(r);
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
 
     let send_command = |stdin: &mut std::process::ChildStdin, cmd: IpcCommand| {
         let json = serde_json::to_string(&cmd).unwrap();
         writeln!(stdin, "{}", json).expect("Failed to write to stdin");
     };
 
-    let mut read_response = || -> Option<Response> {
-        let mut line = String::new();
-        loop {
-            line.clear();
-            if reader.read_line(&mut line).ok()? == 0 {
-                return None;
-            }
-            let trim = line.trim();
-            if trim.is_empty() {
-                continue;
-            }
-            println!("[Log] {}", trim); // Print all logs to test output
-
-            if let Ok(msg) = serde_json::from_str::<OutputMessage>(trim) {
-                if let OutputMessage::Response(r) = msg {
-                    return Some(r);
-                }
-            }
-        }
-    };
+    let read_response =
+        || -> Option<Response> { resp_rx.recv_timeout(Duration::from_secs(30)).ok() };
 
     // 1. Get Devices (Init)
     send_command(&mut stdin, IpcCommand::GetDevices);
@@ -112,4 +120,21 @@ fn test_ott_editor_loading() {
     // 5. Cleanup
     send_command(&mut stdin, IpcCommand::Stop);
     read_response();
+    drop(stdin);
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => break,
+        }
+    }
 }

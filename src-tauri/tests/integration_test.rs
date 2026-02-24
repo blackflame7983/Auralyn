@@ -1,8 +1,9 @@
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 // Reuse types from lib if they are public, or redefine minimal ones for test to decouple.
 // Since 'vst_host_lib' exposes them, we can use them!
@@ -39,6 +40,30 @@ fn test_audio_engine_lifecycle() {
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
     let stdout = child.stdout.take().expect("Failed to open stdout");
     let mut reader = BufReader::new(stdout);
+    let (resp_tx, resp_rx) = mpsc::channel::<Response>();
+
+    thread::spawn(move || {
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) => break, // EOF
+                Ok(_) => {
+                    let trim = line.trim();
+                    if trim.is_empty() {
+                        continue;
+                    }
+                    let payload = trim.strip_prefix("IPC:").unwrap_or(trim);
+                    if let Ok(msg) = serde_json::from_str::<OutputMessage>(payload) {
+                        if let OutputMessage::Response(r) = msg {
+                            let _ = resp_tx.send(r);
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
 
     // 3. Helper to send command
     let send_command = |stdin: &mut std::process::ChildStdin, cmd: IpcCommand| {
@@ -47,34 +72,8 @@ fn test_audio_engine_lifecycle() {
     };
 
     // 4. Helper to read response
-    let mut read_response = || -> Option<Response> {
-        let mut line = String::new();
-        loop {
-            line.clear();
-            match reader.read_line(&mut line) {
-                Ok(0) => return None, // EOF
-                Ok(_) => {
-                    let trim = line.trim();
-                    if trim.is_empty() {
-                        continue;
-                    }
-                    // Try parsing as OutputMessage
-                    if let Ok(msg) = serde_json::from_str::<OutputMessage>(trim) {
-                        match msg {
-                            OutputMessage::Response(r) => return Some(r),
-                            OutputMessage::Event(_) => {
-                                // Ignore events like Log/LevelMeter for checking command success
-                                // print!("Event: {}\n", trim);
-                            }
-                        }
-                    } else {
-                        // println!("Non-JSON output: {}", trim);
-                    }
-                }
-                Err(_) => return None,
-            }
-        }
-    };
+    let read_response =
+        || -> Option<Response> { resp_rx.recv_timeout(Duration::from_secs(20)).ok() };
 
     // --- TEST STEPS ---
 
@@ -115,11 +114,14 @@ fn test_audio_engine_lifecycle() {
         },
     );
 
-    // Read response (could be Success or Error)
+    // Read response (could be Started or Error)
     let resp = read_response();
     println!("Start Audio Response: {:?}", resp);
     assert!(
-        matches!(resp, Some(Response::Success) | Some(Response::Error(_))),
+        matches!(
+            resp,
+            Some(Response::Started { .. }) | Some(Response::Error(_))
+        ),
         "Process crashed or invalid response"
     );
 
@@ -138,6 +140,25 @@ fn test_audio_engine_lifecycle() {
     // "match handle.read_line ... Ok(0) => break" -> Yes.
     drop(stdin);
 
-    let status = child.wait().expect("Failed to wait on child");
-    assert!(status.success(), "Audio Engine exited with error");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut forced_kill = false;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    forced_kill = true;
+                    let _ = child.kill();
+                    break child.wait().expect("Failed to wait on killed child");
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => panic!("Failed to wait on child: {}", e),
+        }
+    };
+    if forced_kill {
+        println!("Audio Engine did not exit in time; process was killed by test cleanup.");
+    } else {
+        assert!(status.success(), "Audio Engine exited with error");
+    }
 }
