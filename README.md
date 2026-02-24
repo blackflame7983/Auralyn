@@ -1,7 +1,97 @@
-# Tauri + React + Typescript
+# Auralyn
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+Auralyn（オーラリン）は、Tauri + React + Rust (Sidecarアーキテクチャ) で構築された、リアルタイム音声処理特化型の軽量VST3ホストアプリケーションです。配信（OBSやDiscordなど）でのマイク音声の品質向上や、リアルタイムでのエフェクト処理を簡単に行うことを目的としています。
 
-## Recommended IDE Setup
+## 主な機能
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- **VST3 プラグインホスティング**: 標準的なシステムパスにインストールされたVST3エフェクトプラグインをスキャンし、ロード・実行します。
+- **直感的なプラグインラック**: 複数のプラグインを直列に繋ぎ（シグナルチェーン）、順番の変更、ON/OFF切り替え、ゲイン調整をわかりやすいUIで行うことができます。
+- **プラグインエディタ**: プラグインの各パラメータをアプリ内の汎用スライダーUI等で手軽に調整できます（※プラグイン独自のカスタムGUIビューには非対応）。
+- **原音比較機能 (A/B テスト)**: ワンクリックでエフェクト適用前・適用後の音声を切り替えて、かかり具合を瞬時に比較できます。
+- **オーディオデバイス管理**: ASIO および WASAPI に対応。入力機器（マイクなど）から出力機器（スピーカー等）までのルーティングを柔軟に設定できます。オーディオ処理中にデバイスの設定を切り替えることも可能です。
+- **ステート管理・プリセット**: 作成したエフェクトチェーン（ラックの状態）の保存や、プリセット・テンプレートの読み込みに対応。
+- **レベルメーター**: リアルタイムなオーディオピークレベルを視覚的に確認できるメーターを搭載（見やすいラージメーター機能あり）。
+- **堅牢な安定性設計**: オーディオ処理エンジンを独立したプロセス（`audio_engine.exe`）として実行するサイドカーパターンを採用。VSTプラグインがクラッシュしてもメインUIが巻き込まれず、自動リカバリを行う仕組みを備えています。
+- **充実したガイド・機能**: 初回起動時のセットアップウィザードや、OBS・Discordなど主要な配信・通話ソフトと連携するためのガイドメニューをアプリ内に統合。
+
+## こんな用途におすすめ
+
+- 配信や通話時のマイクノイズを除去したい（ゲート、ノイズサプレッサー等）。
+- 自分の声にイコライザー(EQ)やコンプレッサーをかけて、聞き取りやすく・魅力的にしたい。
+- 複雑なDAW等を使わず、シンプルなUIでリアルタイムのエフェクト・音声ルーティングを完結させたい。
+
+## システム要件
+
+- **OS**: Windows 10 / 11 (64ビット版のみ対応)
+- VST3エフェクトプラグイン（事前にお好みのプラグインをインストールしておく必要があります）
+- ※ 現状、macOS、Linux には対応していません。
+
+## 開発・ビルド環境
+
+本プロジェクトは以下の技術で構成されています。
+- [Tauri](https://tauri.app/) (デスクトップアプリケーション基盤)
+- [React](https://reactjs.org/) + [TypeScript](https://www.typescriptlang.org/) (フロントエンドUI)
+- [Rust](https://www.rust-lang.org/) (バックエンドおよびオーディオ処理エンジン)
+- [Vite](https://vitejs.dev/) (フロントエンドビルドツール)
+- [Tailwind CSS](https://tailwindcss.com/) (スタイリング、独自のダークモードテーマ採用)
+
+### ビルドの準備
+- Node.js (npm 付属)
+- Rust ツールチェーン (`rustup`)
+- Microsoft C++ Build Tools (WindowsでのRustコンパイル用)
+- [ASIO SDK](https://www.steinberg.net/asiosdk) (ASIO対応ビルド時に必要)
+  - ダウンロード後、環境変数 `CPAL_ASIO_DIR` にSDKのパスを指定してください
+
+### 開発用コマンド
+```bash
+# パッケージのインストール
+npm install
+
+# 開発用サーバーとTauriウィンドウの起動
+npm run tauri dev
+
+# プロダクションビルド（インストーラー生成等含む）
+npm run build
+```
+
+## 注意事項・現在の制限事項
+
+- **サポート形式**: サポートしているプラグイン形式は **VST3（ステレオ処理対応のもの）のみ** です。VST2やモノラル専用には対応していません。
+- **プラグインUI**: プラグインが標準で提供するカスタムUIパネルの埋め込み表示は行わず、Auralyn内部の汎用パラメータリストのみを操作する形になります。
+- MIDI入力/出力やオートメーション機能はサポート外です。
+- WASAPIは共有モードでのみ動作します（排他モードには対応していません）。
+- 各環境やプラグインごとのレイテンシの完全な自動補正機能は初期リリース時点では含まれていません。
+
+## インストール
+
+一般のユーザーは、[Auralyn 公式配布ページ](https://kuro7983.com/apps/auralyn) から最新版のインストーラーをダウンロードして利用できます。
+
+> **Note:** 署名なしアプリのため、初回起動時に Windows SmartScreen の警告が表示されることがあります。「詳細情報」→「実行」を選択してください。
+
+## コントリビューション
+
+本プロジェクトへの貢献（バグ報告、機能リクエスト、Pull Request）は歓迎します。
+
+- 問題を見つけた場合は、GitHub の [Issues](../../issues) から報告をお願いします。
+- 改善の提案やPRも受け付けています。
+
+## ライセンス
+
+本プロジェクトは [MIT License](LICENSE) のもとで公開されています。
+
+## クレジット・権利表記
+
+VST® は Steinberg Media Technologies GmbH の登録商標です。
+ASIO は Steinberg Media Technologies GmbH のソフトウェアおよび商標です。
+
+本ソフトウェアは以下のオープンソースプロジェクトを利用して構築されています：
+
+- [Tauri](https://tauri.app/) — デスクトップアプリケーション基盤
+- [React](https://reactjs.org/) — フロントエンドUI
+- [Rust](https://www.rust-lang.org/) — バックエンド・オーディオエンジン
+- [vst3-rs](https://crates.io/crates/vst3) — VST3 ホスティング
+- [cpal](https://crates.io/crates/cpal) — クロスプラットフォームオーディオ
+- [nnnoiseless](https://crates.io/crates/nnnoiseless) — ノイズ抑制
+
+利用しているすべてのライブラリのライセンス情報は、アプリ内の「設定 > ライセンス情報」から確認できます。
+
