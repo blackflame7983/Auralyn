@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Auralyn",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "identifier": "com.kuro7983.auralynhost",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -24,8 +24,17 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/blackflame7983/Auralyn/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI1OTkzRUQ4RkU0RUMxQUMKUldTc3dVNysyRDZaSmFMTHZpN3pTNVpNQjlFd0R4bGtrMEkzSUlRSWs2Sk5Rb3NoaWVVRFdRV3cK"
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "externalBin": [
       "bin/audio_engine",

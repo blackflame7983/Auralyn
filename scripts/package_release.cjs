@@ -4,7 +4,9 @@ const archiver = require('archiver');
 
 // Configuration
 const APP_NAME = 'Auralyn';
-const VERSION = '0.2.0';
+// tauri.conf.jsonからバージョンを自動取得
+const tauriConf = JSON.parse(fs.readFileSync(path.join(__dirname, '../src-tauri/tauri.conf.json'), 'utf8'));
+const VERSION = tauriConf.version;
 const RELEASE_DIR = path.join(__dirname, '../release_artifacts');
 // Path to Tauri build output (MSI/Exe from "npm run tauri build")
 const TAURI_TARGET_DIR = path.join(__dirname, '../src-tauri/target/release/bundle/nsis');

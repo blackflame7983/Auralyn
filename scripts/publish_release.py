@@ -13,15 +13,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Configuration
+# 設定
 PROJECT_ROOT = Path("..").resolve()
 ARTIFACTS_DIR = PROJECT_ROOT / "release_artifacts"
-PUBLIC_REPO_DIR = Path("d:/Programming/App/Auralyn-Releases")
 SETUP_FILE = "Auralyn_Setup.exe"
 PORTABLE_FILE = "Auralyn_Portable.zip"
 HISTORY_FILE = "release-history.json"
 REPO_OWNER = "blackflame7983"
-REPO_NAME = "Auralyn-Releases"
+REPO_NAME = "Auralyn"
 
 def calculate_sha256(file_path):
     """Calculates the SHA256 hash of a file."""
@@ -52,10 +51,7 @@ def main():
     setup_path = ARTIFACTS_DIR / SETUP_FILE
     portable_path = ARTIFACTS_DIR / PORTABLE_FILE
     
-    if not PUBLIC_REPO_DIR.exists():
-        print(f"\033[91mError: Public repository not found at {PUBLIC_REPO_DIR}\033[0m")
-        sys.exit(1)
-        
+
     if not setup_path.exists() or not portable_path.exists():
         print(f"\033[91mError: Artifacts not found in {ARTIFACTS_DIR}\033[0m")
         sys.exit(1)
@@ -71,12 +67,11 @@ def main():
     # 3. Update release-history.json
     print(f"\033[93mUpdating {HISTORY_FILE}...\033[0m")
     
-    public_json_path = PUBLIC_REPO_DIR / HISTORY_FILE
     local_json_path = ARTIFACTS_DIR / HISTORY_FILE
 
     # Read existing
     try:
-        with open(public_json_path, 'r', encoding='utf-8') as f:
+        with open(local_json_path, 'r', encoding='utf-8') as f:
             history = json.load(f)
     except Exception as e:
         print(f"Error reading history file: {e}")
@@ -105,22 +100,19 @@ def main():
     # Prepend
     history.insert(0, new_entry)
 
-    # Write back
+    # 書き戻し
     json_content = json.dumps(history, indent=4, ensure_ascii=False)
     
-    with open(public_json_path, 'w', encoding='utf-8') as f:
-        f.write(json_content)
-        
     with open(local_json_path, 'w', encoding='utf-8') as f:
         f.write(json_content)
         
     print("\033[92mJSON updated.\033[0m")
 
-    # 4. Commit and Push
+    # 4. コミットとプッシュ
     print("\033[93mPushing JSON update to GitHub...\033[0m")
-    run_command(["git", "add", HISTORY_FILE], cwd=PUBLIC_REPO_DIR)
-    run_command(["git", "commit", "-m", f"Release {args.version}: {args.title}"], cwd=PUBLIC_REPO_DIR)
-    run_command(["git", "push", "origin", "main"], cwd=PUBLIC_REPO_DIR)
+    run_command(["git", "add", str(local_json_path)], cwd=PROJECT_ROOT)
+    run_command(["git", "commit", "-m", f"release: {args.version} - {args.title}"], cwd=PROJECT_ROOT)
+    run_command(["git", "push", "origin", "main"], cwd=PROJECT_ROOT)
 
     # 5. Create GitHub Release
     print("\033[93mCreating GitHub Release...\033[0m")
