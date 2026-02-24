@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*
@@ -27,3 +30,16 @@ dist-ssr
 # Locks
 Cargo.lock
 package-lock.json
+
+# Build artifacts
+src-tauri/target/
+release_artifacts/*.exe
+release_artifacts/*.zip
+release_artifacts/*.msi
+
+# Review / agent files
+comments.json
+review_comments.json
+implementation_plan.md
+.serena/
+.antigravityignore
