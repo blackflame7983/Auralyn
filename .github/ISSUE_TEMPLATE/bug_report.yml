@@ -1,0 +1,87 @@
+name: "🐛 バグ報告"
+description: "不具合や予期しない動作を報告してください"
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        バグ報告ありがとうございます。できるだけ詳細に記載していただけると、迅速に対応できます。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: バグの内容
+      description: "何が起きましたか？期待される動作と実際の動作を教えてください。"
+      placeholder: "例: プラグインを追加した直後にアプリがクラッシュする"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: "バグを再現するための手順を教えてください。"
+      placeholder: |
+        1. アプリを起動
+        2. 「プラグイン追加」ボタンをクリック
+        3. VSTプラグインを選択
+        4. アプリがクラッシュする
+    validations:
+      required: true
+
+  - type: dropdown
+    id: audio-host
+    attributes:
+      label: オーディオホスト
+      description: "使用しているオーディオホストを選択してください"
+      options:
+        - ASIO
+        - WASAPI（共有モード）
+        - 不明 / 未選択
+    validations:
+      required: true
+
+  - type: input
+    id: audio-device
+    attributes:
+      label: オーディオデバイス
+      description: "使用しているオーディオインターフェース / サウンドカードの名前"
+      placeholder: "例: Focusrite Scarlett 2i2, Realtek HD Audio"
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Auralyn バージョン
+      description: "設定画面で確認できます"
+      placeholder: "例: 1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      description: "Windowsのバージョンを教えてください"
+      placeholder: "例: Windows 11 23H2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: plugin-info
+    attributes:
+      label: 関連するVSTプラグイン
+      description: "問題に関連するプラグインがあれば教えてください"
+      placeholder: "例: OTT (Xfer Records), TDR Nova"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: ログ / スクリーンショット
+      description: "エラーメッセージ、スクリーンショット、またはログがあれば貼り付けてください"
+    validations:
+      required: false

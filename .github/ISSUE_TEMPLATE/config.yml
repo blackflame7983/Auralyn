@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "💬 質問・相談"
+    url: https://github.com/blackflame7983/Auralyn/discussions/categories/q-a
+    about: "使い方の質問やトラブルシューティングはDiscussionsへどうぞ"
+  - name: "💡 アイデア・雑談"
+    url: https://github.com/blackflame7983/Auralyn/discussions/categories/ideas
+    about: "カジュアルなアイデアや意見交換はDiscussionsへどうぞ"

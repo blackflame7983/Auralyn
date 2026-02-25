@@ -1,0 +1,58 @@
+name: "✨ 機能リクエスト"
+description: "新しい機能や改善の提案をしてください"
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        機能リクエストありがとうございます！あなたのアイデアがAuralynをより良くします。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 解決したい課題
+      description: "どんな場面で困っていますか？どんな不便を感じていますか？"
+      placeholder: "例: 配信中にプラグインの設定を素早く切り替えたいが、毎回手動で変更する必要がある"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 提案する解決策
+      description: "どのような機能があれば解決しますか？"
+      placeholder: "例: プリセットをワンクリックで切り替えられるショートカットバーが欲しい"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: カテゴリ
+      description: "最も近いカテゴリを選択してください"
+      options:
+        - UI / 操作性
+        - オーディオ処理
+        - プラグイン管理
+        - プリセット / テンプレート
+        - 外部連携（OBS等）
+        - その他
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 代替案
+      description: "他に検討した方法や、現在の回避策があれば教えてください"
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 補足情報
+      description: "スクリーンショット、参考リンク、関連するユースケースなど"
+    validations:
+      required: false
