@@ -1,5 +1,40 @@
 [
     {
+        "version": "v1.0.0",
+        "date": "2026-02-25",
+        "title": "正式リリース",
+        "sha256": {
+            "setup": "3e6ff8f11967a58c6408b51e2bf152bd24649408fda75378c1b0bc508014bd76",
+            "portable": "5983ec1cdb53353fd3847c315b5af0847f6c7283c3b3753af59fcfda1ba10807"
+        },
+        "changes": [
+            {
+                "type": "feature",
+                "text": "MITライセンスでのオープンソース公開"
+            },
+            {
+                "type": "feature",
+                "text": "フロントエンドUIの大幅改善（設定画面、プラグイン管理、セットアップウィザード等）"
+            },
+            {
+                "type": "feature",
+                "text": "オーディオエンジンの安定性・パフォーマンス向上"
+            },
+            {
+                "type": "feature",
+                "text": "トラブルシューティング機能の追加"
+            },
+            {
+                "type": "feature",
+                "text": "エラーバウンダリによるクラッシュ防止"
+            },
+            {
+                "type": "improvement",
+                "text": "プリセット管理・テンプレート機能の強化"
+            }
+        ]
+    },
+    {
         "version": "v0.2.0",
         "date": "2026-01-23",
         "title": "Audio Resampling",
