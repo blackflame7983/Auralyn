@@ -1,6 +1,6 @@
 # Auralyn リリース計画書
 
-**ドキュメントバージョン**: 1.0.0
+**ドキュメントバージョン**: 1.1.0
 **目的**: Auralynの公開・配布・運用に関する戦略と方針を定義する。
 
 ---
@@ -8,14 +8,14 @@
 ## 1. 配布戦略
 
 ### 1.1 配布場所と更新
-*   **初期リリース**: S3 (または互換静的ストレージ) にインストーラーを配置し、直接ダウンロードさせる。
-*   **将来展望**: GitHub Releases を利用した自動更新 (Tauri Updater) の導入。
-*   **更新方式**: **手動更新 (初期)**。アプリ内で「新しいバージョンがあります」という通知を出し、サイトへ誘導する形を推奨。
-    *   *理由*: 自動更新基盤（署名キー管理やアップデータ用JSONの準備）のコストを初期段階で避けるため。
+*   **開発リポジトリ**: `blackflame7983/Auralyn`は当面Privateで維持できるが、配布した各版の対応ソースは必ず公開する。
+*   **無料版配布**: `blackflame7983/Auralyn-Releases`のGitHub Releasesへ、署名済みインストーラー、Portable版、`latest.json`、同一コミットのSource ZIP、SHA-256、source manifestを配置する。
+*   **更新方式**: Tauri Updaterを使用し、失敗時は`Auralyn-Releases`のRelease一覧へ誘導する。
+*   **収益化**: AuralynはGPL版として配布し、任意支援、公式ビルド、サポート等を候補とする。排他的なソフトウェア販売は別プロダクトで設計する。
 
 ### 1.2 セキュリティとSmartScreen対策
-*   **コード署名証明書**: **なし (初期)**。
-    *   *影響*: Windows SmartScreen により「認識されないアプリ」として警告が出る可能性が高い。
+*   **コード署名証明書**: 公式安定版の必須ゲートとする。未署名の無料検証版を出す場合は、その事実を明示する。
+    *   *影響*: 未署名の場合、Windows SmartScreen により「認識されないアプリ」として警告が出る可能性が高い。
     *   *対策*:
         1.  Webサイトのダウンロードボタン付近に「**SmartScreenの警告が出る場合**」というFAQリンクまたはツールチップを設置する。
         2.  インストーラーのファイルハッシュ (SHA-256) をWebサイトに明記し、改ざんされていないことをユーザーが確認できるようにする。
@@ -31,7 +31,7 @@
     *   *アーキテクチャ*: x64 のみ。ARM64 は対象外。
 
 ### 2.2 オーディオ仕様の正確な表記
-*   **ASIO**: 「対応 (Supported)」。
+*   **ASIO**: Steinberg ASIO SDK 2.3.4のGPLv3選択肢を利用する。SDK ZIPのSHA-256を固定し、同じSDKでビルドするとともに、使用した`common`／`host`ソースとライセンスを対応ソースへ含める。
 *   **WASAPI**: 「対応 (Supported・共有モード)」。※排他モードではないことを注記しておくとトラブル防止になるが、一般ユーザーには「WASAPI対応」で十分。
 *   **DirectSound**: 「非対応」。古い規格のため言及しなくて良い。
 *   **遅延 (Latency)**:
@@ -64,14 +64,16 @@
 ## 4. 権利・ライセンス表記
 
 ### 4.1 必須表記
+*   **Auralyn本体**: 現行版は`GPL-3.0-only`。公式配布物にはルート`LICENSE`と`NOTICE.md`を同梱し、過去のMIT版の権利は遡及変更しない。
 *   **VST3 (Steinberg)**: VST3 SDKを使用しているため、以下の著作権表示が必須（About画面およびWebサイトのフッター/ライセンスページ）。
     > VST is a trademark of Steinberg Media Technologies GmbH, registered in Europe and other countries.
 *   **ASIO (Steinberg)**: ASIO SDKを使用している場合。
-    > ASIO is a software and trademark of Steinberg Media Technologies GmbH.
+    > ASIO is a trademark of Steinberg Media Technologies GmbH, registered in Europe and other countries.
+    *   `config/release-policy.json`にGPL-3.0-only、公式SDK URL、確認日を記録し、対応ソースと同時に公開する。
 
 ### 4.2 サードパーティライセンス (Third Party Notices)
 *   OSSライブラリ（Rustクレート、Reactライブラリ）のライセンスを一覧化したページまたはテキストファイルが必要。
-*   *実装*: `generate-licenses.cjs` で生成したテキストをアプリ内の「ライセンス」モーダルに表示する機能でカバー済み。Webサイトにもリンクがあると尚良い。
+*   *実装*: 生成したnpm/CargoライセンスとAuralyn本体の`NOTICE.md`・GPLv3全文を、アプリ内の「ライセンス」モーダルに表示する。
 
 ---
 
@@ -94,9 +96,10 @@
     *   フォーム項目: OSバージョン、オーディオデバイス名、発生した現象、ログファイル（あれば）。
 
 ### 6.2 法務ドキュメント
-*   **利用規約 (EULA)**:
-    *   「本ソフトウェアは現状有姿(AS-IS)で提供されます」
-    *   「本ソフトウェアの使用による損害（スピーカー破損、難聴、配信事故など）について、作者は一切の責任を負いません」という**免責条項**が最重要。
+*   **GPL・NOTICE**:
+    *   GPLv3全文を`LICENSE`として同梱する。
+    *   アプリ内のライセンス画面で著作権、再配布可能、無保証、ライセンス全文への導線を表示する。
+    *   独自EULAでGPLの権利を追加制限しない。
 *   **プライバシーポリシー**:
     *   個人情報を収集しない場合でも、「収集しない」旨を明記する。
     *   Google Analytics等をサイトに入れるなら、Cookie利用の同意が必要。
@@ -106,16 +109,10 @@
 ## 7. コンテンツ運用
 
 ### 7.1 バージョン表記の運用
-*   サイトのHTMLに `v0.1.0` と直書きすると更新が手間になる。
-*   **推奨案**: S3上に `metadata.json` を置く。
-    ```json
-    {
-      "latest_version": "0.1.0-beta",
-      "download_url": "https://s3.../Auralyn_Setup_0.1.0.exe",
-      "release_date": "2026-01-20"
-    }
-    ```
-*   Webサイト（JavaScript）でこのJSONを取得し、ダウンロードボタンのラベルとリンクを動的に書き換える。これならHTMLを編集せずにリリース可能。
+*   `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`は`npm run set-version -- <version>`で同期する。
+*   Tauri Updaterの`latest.json`とReleaseタグも同じバージョンにする。
+*   公開前に`npm run release:check`を実行し、公開先、GPLメタデータ、ASIO GPL選択、lockfileのGit管理を検証する。
+*   `npm run release:upload -- <version>`はcleanなHEADから署名バイナリを再ビルドした後、同じHEADのSource ZIP・SHA-256・manifestを生成し、同じReleaseへアップロードする。
 
 ---
 

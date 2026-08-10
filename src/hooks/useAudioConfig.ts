@@ -211,6 +211,35 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         };
     }, []);
 
+    // プロファイル適用後のオーディオ設定同期
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const ac = (e as CustomEvent<{
+                host: string;
+                inputDevice?: string;
+                outputDevice?: string;
+                sampleRate: number;
+                bufferSize: number;
+                inputChannels?: number[];
+            }>).detail;
+            if (!ac) return;
+            setAudioConfig(prev => ({
+                ...prev,
+                host: ac.host,
+                input: ac.inputDevice ?? prev.input,
+                output: ac.outputDevice ?? prev.output,
+                sampleRate: ac.sampleRate,
+                bufferSize: ac.bufferSize,
+                inputChannels: ac.inputChannels?.length === 2
+                    ? [ac.inputChannels[0], ac.inputChannels[1]] as [number, number]
+                    : prev.inputChannels,
+            }));
+            setIsEngineRunning(true);
+        };
+        window.addEventListener('profile-audio-applied', handler);
+        return () => window.removeEventListener('profile-audio-applied', handler);
+    }, []);
+
     return {
         audioConfig,
         setAudioConfig,

@@ -5,6 +5,8 @@ import { MdClose, MdDescription, MdCode } from 'react-icons/md';
 
 // Import JSON data directly
 import npmLicensesRaw from '../../../assets/licenses-npm.json';
+import productNotice from '../../../../NOTICE.md?raw';
+import productLicense from '../../../../LICENSE?raw';
 
 interface LicenseModalProps {
     isOpen: boolean;
@@ -72,7 +74,7 @@ const formatNpmData = (data: typeof npmLicensesRaw) => {
 export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedLib, setSelectedLib] = useState<any | null>(null);
-    const [activeTab, setActiveTab] = useState<'npm' | 'cargo'>('npm');
+    const [activeTab, setActiveTab] = useState<'product' | 'npm' | 'cargo'>('product');
 
     // Load Cargo data state
     const [cargoData, setCargoData] = useState<any[]>([]);
@@ -107,7 +109,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
     }, []);
 
     const npmList = formatNpmData(npmLicensesRaw);
-    const displayList = activeTab === 'npm' ? npmList : cargoData;
+    const displayList = activeTab === 'npm' ? npmList : activeTab === 'cargo' ? cargoData : [];
 
     const filteredList = displayList.filter(item =>
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -133,6 +135,12 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                     {/* Tabs */}
                     <div className="flex bg-muted rounded-lg p-1">
                         <button
+                            onClick={() => setActiveTab('product')}
+                            className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'product' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            Auralyn
+                        </button>
+                        <button
                             onClick={() => setActiveTab('npm')}
                             className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'npm' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
@@ -151,76 +159,86 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                 </div>
 
                 <div className="modal-body-base p-0 overflow-hidden flex">
-                    {/* Left: List */}
-                    <div className="w-1/3 border-r border-border flex flex-col bg-muted/10">
-                        <div className="p-3 border-b border-border">
-                            <input
-                                type="text"
-                                placeholder="検索 / Search..."
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                                className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                            />
+                    {activeTab === 'product' ? (
+                        <div className="flex-1 overflow-y-auto p-6 bg-muted/5">
+                            <div className="max-w-3xl mx-auto whitespace-pre-wrap text-sm leading-relaxed select-text">
+                                {`${productNotice}\n\n${productLicense}`}
+                            </div>
                         </div>
-                        <div className="flex-1 overflow-y-auto">
-                            {filteredList.map(item => (
-                                <button
-                                    key={item.id}
-                                    onClick={() => setSelectedLib(item)}
-                                    className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-muted/50 transition-colors ${selectedLib?.id === item.id ? 'bg-primary/10 border-l-4 border-l-primary' : 'border-l-4 border-l-transparent'}`}
-                                >
-                                    <div className="font-bold truncate text-sm">{item.name}</div>
-                                    <div className="flex justify-between items-center mt-1">
-                                        <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{item.version}</span>
-                                        <span className="text-[10px] text-muted-foreground truncate max-w-[50%]">{item.license}</span>
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                    ) : (
+                        <>
+                            {/* Left: List */}
+                            <div className="w-1/3 border-r border-border flex flex-col bg-muted/10">
+                                <div className="p-3 border-b border-border">
+                                    <input
+                                        type="text"
+                                        placeholder="検索 / Search..."
+                                        value={searchTerm}
+                                        onChange={e => setSearchTerm(e.target.value)}
+                                        className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                    />
+                                </div>
+                                <div className="flex-1 overflow-y-auto">
+                                    {filteredList.map(item => (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => setSelectedLib(item)}
+                                            className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-muted/50 transition-colors ${selectedLib?.id === item.id ? 'bg-primary/10 border-l-4 border-l-primary' : 'border-l-4 border-l-transparent'}`}
+                                        >
+                                            <div className="font-bold truncate text-sm">{item.name}</div>
+                                            <div className="flex justify-between items-center mt-1">
+                                                <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{item.version}</span>
+                                                <span className="text-[10px] text-muted-foreground truncate max-w-[50%]">{item.license}</span>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
 
-                    {/* Right: Detail */}
-                    <div className="flex-1 flex flex-col bg-background h-full overflow-hidden">
-                        {selectedLib ? (
-                            <div className="flex flex-col h-full">
-                                <div className="p-6 border-b border-border">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <h3 className="text-2xl font-bold flex items-center gap-2">
-                                            {selectedLib.name}
-                                            <span className="text-sm font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">v{selectedLib.version}</span>
-                                        </h3>
-                                        <div className="flex gap-2">
-                                            {selectedLib.repository && (
-                                                <a
-                                                    href={typeof selectedLib.repository === 'string' ? selectedLib.repository.replace('git+', '').replace('.git', '') : '#'}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="p-2 text-muted-foreground hover:text-primary transition-colors"
-                                                    title="Repository"
-                                                >
-                                                    <MdCode className="w-5 h-5" />
-                                                </a>
-                                            )}
+                            {/* Right: Detail */}
+                            <div className="flex-1 flex flex-col bg-background h-full overflow-hidden">
+                                {selectedLib ? (
+                                    <div className="flex flex-col h-full">
+                                        <div className="p-6 border-b border-border">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <h3 className="text-2xl font-bold flex items-center gap-2">
+                                                    {selectedLib.name}
+                                                    <span className="text-sm font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">v{selectedLib.version}</span>
+                                                </h3>
+                                                <div className="flex gap-2">
+                                                    {selectedLib.repository && (
+                                                        <a
+                                                            href={typeof selectedLib.repository === 'string' ? selectedLib.repository.replace('git+', '').replace('.git', '') : '#'}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="p-2 text-muted-foreground hover:text-primary transition-colors"
+                                                            title="Repository"
+                                                        >
+                                                            <MdCode className="w-5 h-5" />
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-4 text-sm text-muted-foreground">
+                                                <div className="flex items-center gap-1">
+                                                    <span className="font-bold text-foreground">License:</span> {selectedLib.license}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto p-6 bg-muted/5 font-mono text-xs whitespace-pre-wrap leading-relaxed select-text">
+                                            {selectedLib.text}
                                         </div>
                                     </div>
-                                    <div className="flex gap-4 text-sm text-muted-foreground">
-                                        <div className="flex items-center gap-1">
-                                            <span className="font-bold text-foreground">License:</span> {selectedLib.license}
-                                        </div>
+                                ) : (
+                                    <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
+                                        <MdDescription className="w-16 h-16 mb-4 opacity-20" />
+                                        <p>左側のリストからライブラリを選択してください</p>
+                                        <p className="text-sm mt-2 opacity-60">Select a library to view license details</p>
                                     </div>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-6 bg-muted/5 font-mono text-xs whitespace-pre-wrap leading-relaxed select-text">
-                                    {selectedLib.text}
-                                </div>
+                                )}
                             </div>
-                        ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
-                                <MdDescription className="w-16 h-16 mb-4 opacity-20" />
-                                <p>左側のリストからライブラリを選択してください</p>
-                                <p className="text-sm mt-2 opacity-60">Select a library to view license details</p>
-                            </div>
-                        )}
-                    </div>
+                        </>
+                    )}
                 </div>
             </div>
         </div>

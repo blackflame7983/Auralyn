@@ -12,6 +12,7 @@ interface SetupWizardModalProps {
     onClose: () => void;
     onApplyConfig: (host: string, input?: string, output?: string) => void;
     onOpenSettings?: () => void;
+    onOpenTroubleshoot?: () => void;
 }
 
 type WizardState = 'welcome' | 'usage_selection' | 'input_selection' | 'output_selection' | 'confirmation' | 'configuring' | 'complete';
@@ -25,7 +26,7 @@ interface WizardConfig {
     outputMode: 'default' | 'monitor' | 'broadcast';
 }
 
-export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onClose, onApplyConfig }) => {
+export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onClose, onApplyConfig, onOpenTroubleshoot }) => {
 
     // State Preservation Logic
     const initialStateRef = useRef<AudioStateInfo | null>(null);
@@ -467,10 +468,31 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                 <MdAutoFixHigh className="w-10 h-10 text-primary" />
                             </div>
                             <div className="space-y-2">
-                                <h2 className="text-2xl font-bold text-foreground">かんたんセットアップ</h2>
-                                <p className="text-muted-foreground">
-                                    あなたの目的に合わせて、最適なオーディオ設定を案内します。<br />
-                                    複雑な設定はアプリにお任せください。
+                                <h2 className="text-2xl font-bold text-foreground">セットアップウィザード</h2>
+                                <p className="text-muted-foreground text-sm leading-relaxed">
+                                    用途に合わせてマイクと出力先を選びます。<br />
+                                    OBS・Discord へ送る場合は <strong className="text-foreground">VB-CABLE 等の仮想ケーブル</strong> が必要です。
+                                </p>
+                                <p className="text-muted-foreground text-xs">
+                                    音が届かない・設定に迷ったときは、ヘルプの
+                                    {onOpenTroubleshoot ? (
+                                        <>
+                                            {' '}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    onClose();
+                                                    onOpenTroubleshoot();
+                                                }}
+                                                className="underline underline-offset-2 text-primary hover:text-primary/80"
+                                            >
+                                                接続診断
+                                            </button>
+                                        </>
+                                    ) : (
+                                        ' 接続診断'
+                                    )}
+                                    をご利用ください。
                                 </p>
                             </div>
 
@@ -523,7 +545,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                     onClick={() => selectGoal('discord')}
                                     icon={<DiscordIcon className="w-8 h-8 text-indigo-500" />}
                                     title="ボイスチャット"
-                                    description="DiscordやZoomなどで美声を使います。"
+                                    description="DiscordやZoomなどへ、加工した声を届けます。（仮想ケーブルが必要な場合があります）"
                                     active={config.goal === 'discord'}
                                     color="indigo"
                                 />
@@ -829,9 +851,11 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                         <MdCheckCircle className="w-10 h-10 text-green-500" />
                                     </div>
                                     <div className="space-y-2">
-                                        <h2 className="text-2xl font-bold text-foreground">セットアップ完了！</h2>
-                                        <p className="text-muted-foreground">
-                                            準備が整いました。Auralynの世界をお楽しみください。
+                                        <h2 className="text-2xl font-bold text-foreground">セットアップ完了</h2>
+                                        <p className="text-muted-foreground text-sm leading-relaxed">
+                                            基本設定が完了しました。声の変化は
+                                            <strong className="text-foreground"> ボイスチェック</strong>
+                                            で確認するのが確実です。音が届かない場合は接続診断をお試しください。
                                         </p>
                                     </div>
                                     <button

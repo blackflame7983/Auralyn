@@ -1,16 +1,22 @@
 use std::sync::{mpsc, Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 pub mod audio;
+pub mod audio_analysis;
 pub mod audio_engine;
 pub mod autostart;
 pub mod ipc;
 pub mod obs;
+pub mod profile;
+pub mod routing_diag;
 pub mod vst_host;
-use crate::vst_host::presets::{self, Preset, PresetPlugin};
+use crate::vst_host::presets::{
+    self, ApplyProfileSummary, DeviceSubstitutions, Preset, PresetPlugin, ProfileAudioExtras,
+    ProfileBuiltinFx, ProfileMeta, ProfileNoiseControl, ProfileSaveCategories,
+};
 
 #[tauri::command]
 fn get_autostart_status() -> Result<autostart::AutostartStatus, String> {
@@ -87,7 +93,10 @@ fn start_audio(
 ) -> Result<audio::AudioConfig, String> {
     log::debug!(
         "start_audio IPC Args: host={:?}, input={:?}, buffer={:?}, rate={:?}",
-        host, input, buffer_size, sample_rate
+        host,
+        input,
+        buffer_size,
+        sample_rate
     );
     let mut host_instance = state.0.lock().map_err(|_| "Failed to lock audio state")?;
     host_instance
@@ -149,7 +158,10 @@ fn restart_audio_engine(
 ) -> Result<audio::AudioConfig, String> {
     log::debug!(
         "restart_audio_engine IPC Args: host={:?}, input={:?}, buffer={:?}, rate={:?}",
-        host, input, buffer_size, sample_rate
+        host,
+        input,
+        buffer_size,
+        sample_rate
     );
     let mut audio_host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
     audio_host.kill_engine();
@@ -159,7 +171,6 @@ fn restart_audio_engine(
         .start(host, input, output, buffer_size, sample_rate)
         .map_err(|e| audio::localize_audio_error(e.to_string()))
 }
-
 
 #[tauri::command]
 async fn scan_plugins(app: tauri::AppHandle) -> Result<Vec<vst_host::VstPlugin>, String> {
@@ -191,6 +202,12 @@ async fn list_presets(app: AppHandle) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
+async fn list_profiles(app: AppHandle) -> Result<Vec<ProfileMeta>, String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    presets::list_profile_meta(&config_dir)
+}
+
+#[tauri::command]
 async fn save_preset(
     app: AppHandle,
     name: String,
@@ -198,10 +215,130 @@ async fn save_preset(
 ) -> Result<(), String> {
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     let preset = Preset {
+        schema_version: 1,
         name: name.clone(),
         plugins,
+        audio_config: None,
+        noise_control: None,
+        builtin_fx: None,
     };
     presets::save_preset(&config_dir, &name, &preset)
+}
+
+/// フルプロファイル保存（カテゴリ選択付き）
+#[tauri::command]
+async fn save_profile(
+    app: AppHandle,
+    state: State<'_, audio::AudioState>,
+    name: String,
+    categories: ProfileSaveCategories,
+    plugins: Vec<PresetPlugin>,
+    audio_extras: Option<ProfileAudioExtras>,
+    builtin_fx_amount: Option<f32>,
+) -> Result<(), String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+
+    let mut audio_config = None;
+    let mut noise_control = None;
+    let mut builtin_fx = None;
+
+    if categories.include_audio_config {
+        let captured = profile::capture_current_profile(
+            &mut host,
+            name.clone(),
+            plugins.clone(),
+            audio_extras.clone(),
+        )?;
+        audio_config = captured.audio_config;
+    }
+
+    if categories.include_noise_control || categories.include_builtin_fx {
+        let stats = host
+            .get_engine_runtime_stats()
+            .map_err(|e| e.to_string())?;
+        if categories.include_noise_control {
+            noise_control = Some(ProfileNoiseControl {
+                enabled: stats.noise_reduction_enabled,
+                mode: stats.noise_reduction_mode.clone(),
+                strength: stats.noise_control_strength,
+                voice_guard: stats.noise_voice_guard,
+                learned_profile: None,
+            });
+        }
+        if categories.include_builtin_fx {
+            builtin_fx = Some(ProfileBuiltinFx {
+                preset: stats.built_in_effects_preset.clone(),
+                enabled: stats.built_in_effects_enabled,
+                amount: builtin_fx_amount.unwrap_or(stats.built_in_effects_amount),
+            });
+        }
+    }
+
+    let preset = Preset::build_from_parts(
+        name.clone(),
+        &categories,
+        plugins,
+        audio_config,
+        noise_control,
+        builtin_fx,
+    );
+    presets::save_preset(&config_dir, &name, &preset)
+}
+
+#[tauri::command]
+async fn apply_profile(
+    app: AppHandle,
+    state: State<'_, audio::AudioState>,
+    name: String,
+    device_substitutions: Option<DeviceSubstitutions>,
+    current_plugin_ids: Vec<String>,
+    backup_plugins: Vec<PresetPlugin>,
+    backup_audio_extras: Option<ProfileAudioExtras>,
+    skip_backup: Option<bool>,
+) -> Result<ApplyProfileSummary, String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let profile = presets::load_preset(&config_dir, &name)?;
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    profile::apply_profile(
+        &config_dir,
+        &mut host,
+        &profile,
+        device_substitutions,
+        skip_backup.unwrap_or(false),
+        backup_plugins,
+        backup_audio_extras,
+        &current_plugin_ids,
+    )
+}
+
+#[tauri::command]
+async fn has_backup_profile(app: AppHandle) -> Result<bool, String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    Ok(presets::has_backup_profile(&config_dir))
+}
+
+#[tauri::command]
+async fn restore_backup_profile(
+    app: AppHandle,
+    state: State<'_, audio::AudioState>,
+    current_plugin_ids: Vec<String>,
+    backup_plugins: Vec<PresetPlugin>,
+    backup_audio_extras: Option<ProfileAudioExtras>,
+) -> Result<ApplyProfileSummary, String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let profile = presets::load_preset(&config_dir, presets::BACKUP_PROFILE_NAME)?;
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    profile::apply_profile(
+        &config_dir,
+        &mut host,
+        &profile,
+        None,
+        true, // 復元時は再バックアップしない
+        backup_plugins,
+        backup_audio_extras,
+        &current_plugin_ids,
+    )
 }
 
 #[tauri::command]
@@ -217,11 +354,33 @@ async fn delete_preset(app: AppHandle, name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn export_preset(app: AppHandle, name: String) -> Result<(), String> {
+async fn export_preset(
+    app: AppHandle,
+    name: String,
+    categories: Option<ProfileSaveCategories>,
+) -> Result<(), String> {
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    let preset = presets::load_preset(&config_dir, &name)?;
-    let json = serde_json::to_string_pretty(&preset).map_err(|e| e.to_string())?;
+    let mut preset = presets::load_preset(&config_dir, &name)?;
 
+    // 共有用エクスポート: デフォルトで audioConfig を除外
+    if let Some(cats) = categories {
+        if !cats.include_plugins {
+            preset.plugins.clear();
+        }
+        if !cats.include_audio_config {
+            preset.audio_config = None;
+        }
+        if !cats.include_noise_control {
+            preset.noise_control = None;
+        }
+        if !cats.include_builtin_fx {
+            preset.builtin_fx = None;
+        }
+    } else {
+        preset.audio_config = None;
+    }
+
+    let json = serde_json::to_string_pretty(&preset).map_err(|e| e.to_string())?;
     let default_name = format!("{}.auralyn-preset.json", name);
 
     let path = rfd::FileDialog::new()
@@ -236,6 +395,21 @@ async fn export_preset(app: AppHandle, name: String) -> Result<(), String> {
         }
         None => Err("cancelled".to_string()),
     }
+}
+
+#[tauri::command]
+async fn export_profile(
+    app: AppHandle,
+    name: String,
+    categories: Option<ProfileSaveCategories>,
+) -> Result<(), String> {
+    let export_cats = categories.unwrap_or(ProfileSaveCategories {
+        include_plugins: true,
+        include_audio_config: false,
+        include_noise_control: true,
+        include_builtin_fx: true,
+    });
+    export_preset(app, name, Some(export_cats)).await
 }
 
 #[tauri::command]
@@ -257,6 +431,28 @@ async fn import_preset(app: AppHandle) -> Result<String, String> {
         }
         None => Err("cancelled".to_string()),
     }
+}
+
+#[tauri::command]
+async fn import_profile(app: AppHandle) -> Result<String, String> {
+    import_preset(app).await
+}
+
+#[tauri::command]
+fn get_plugin_state(state: State<'_, audio::AudioState>, id: String) -> Result<String, String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.get_plugin_state(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_plugin_state(
+    audio: State<'_, audio::AudioState>,
+    id: String,
+    state: String,
+) -> Result<(), String> {
+    let mut host = audio.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.set_plugin_state(&id, &state)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -285,6 +481,47 @@ fn set_noise_reduction(
 ) -> Result<(), String> {
     let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
     host.set_noise_reduction(active, mode)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn start_noise_learning(
+    state: State<'_, audio::AudioState>,
+    duration_ms: Option<u32>,
+) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.start_noise_learning(duration_ms.unwrap_or(3000))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cancel_noise_learning(state: State<'_, audio::AudioState>) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.cancel_noise_learning().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_noise_control_config(
+    state: State<'_, audio::AudioState>,
+    active: bool,
+    mode: String,
+    strength: f32,
+    voice_guard: bool,
+) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.set_noise_control_config(active, mode, strength, voice_guard)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_built_in_effects(
+    state: State<'_, audio::AudioState>,
+    active: bool,
+    preset: Option<String>,
+    amount: f32,
+) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.set_built_in_effects(active, preset, amount)
         .map_err(|e| e.to_string())
 }
 
@@ -318,6 +555,187 @@ fn set_channel_scan(state: State<'_, audio::AudioState>, active: bool) -> Result
 }
 
 #[tauri::command]
+fn start_voice_check(
+    state: State<'_, audio::AudioState>,
+    max_ms: Option<u32>,
+) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.start_voice_check(max_ms.unwrap_or(10_000))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn stop_voice_check(state: State<'_, audio::AudioState>) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.stop_voice_check().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn play_voice_check(
+    state: State<'_, audio::AudioState>,
+    source: String,
+    loop_playback: Option<bool>,
+) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.play_voice_check(source, loop_playback.unwrap_or(true))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn stop_voice_check_playback(state: State<'_, audio::AudioState>) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.stop_voice_check_playback()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn export_voice_check_wav(
+    state: State<'_, audio::AudioState>,
+    source: String,
+) -> Result<(), String> {
+    let path = rfd::FileDialog::new()
+        .set_file_name("voice-check.wav")
+        .add_filter("WAV", &["wav"])
+        .save_file();
+
+    match path {
+        Some(p) => {
+            let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+            host.export_voice_check(p.to_string_lossy().to_string(), source)
+                .map_err(|e| e.to_string())
+        }
+        None => Err("cancelled".to_string()),
+    }
+}
+
+#[tauri::command]
+fn export_voice_check(
+    state: State<'_, audio::AudioState>,
+    path: String,
+    source: String,
+) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.export_voice_check(path, source)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn play_test_tone(
+    state: State<'_, audio::AudioState>,
+    freq_hz: Option<f32>,
+    duration_ms: Option<u32>,
+    level_db: Option<f32>,
+) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.play_test_tone(
+        freq_hz.unwrap_or(1000.0),
+        duration_ms.unwrap_or(1500),
+        level_db.unwrap_or(-20.0),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn stop_test_tone(state: State<'_, audio::AudioState>) -> Result<(), String> {
+    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    host.stop_test_tone().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn probe_loopback(
+    state: State<'_, audio::AudioState>,
+    input_device: String,
+    duration_ms: Option<u32>,
+    freq_hz: Option<f32>,
+) -> Result<audio::LoopbackProbeResult, String> {
+    // プローブは 1.5〜2 秒ブロックするため、メインスレッドを塞がないよう
+    // ブロッキングスレッドで実行する（AudioState ロックはその間保持される）
+    let state = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut host = state.lock().map_err(|_| "Failed to lock audio state".to_string())?;
+        host.probe_loopback(
+            input_device,
+            duration_ms.unwrap_or(1500),
+            freq_hz.unwrap_or(1000.0),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn get_routing_diagnostics(
+    state: State<'_, audio::AudioState>,
+) -> Result<routing_diag::RoutingDiagnosticsReport, String> {
+    let host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+    let engine_rate = host
+        .get_state()
+        .config
+        .as_ref()
+        .and_then(|c| c.sample_rate);
+    Ok(routing_diag::collect_routing_diagnostics(engine_rate))
+}
+
+#[tauri::command]
+async fn analyze_voice_check(
+    state: State<'_, audio::AudioState>,
+) -> Result<audio_analysis::QualityReport, String> {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "auralyn_vc_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
+    let raw_path = temp_dir.join("raw.wav");
+    let processed_path = temp_dir.join("processed.wav");
+
+    let buffer_size = {
+        let host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+        host.get_state()
+            .config
+            .as_ref()
+            .and_then(|c| c.buffer_size)
+    };
+
+    {
+        let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
+        host.export_voice_check(
+            raw_path.to_string_lossy().to_string(),
+            "raw".to_string(),
+        )
+        .map_err(|e| e.to_string())?;
+        host.export_voice_check(
+            processed_path.to_string_lossy().to_string(),
+            "processed".to_string(),
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    let loaded = audio_analysis::load_wav_interleaved_f32(&raw_path)
+        .and_then(|raw| {
+            audio_analysis::load_wav_interleaved_f32(&processed_path).map(|proc| (raw, proc))
+        });
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    let ((raw_samples, sr_raw), (processed_samples, sr_proc)) =
+        loaded.map_err(|e| e.to_string())?;
+
+    if sr_raw != sr_proc {
+        return Err("Raw/Processed のサンプルレートが一致しません".to_string());
+    }
+
+    let ctx = audio_analysis::AnalysisContext { buffer_size };
+    Ok(audio_analysis::analyze_voice_check_buffers(
+        &raw_samples,
+        &processed_samples,
+        sr_raw,
+        &ctx,
+    ))
+}
+
+#[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     open::that(&url).map_err(|e| e.to_string())
 }
@@ -338,6 +756,36 @@ async fn disconnect_obs(state: State<'_, obs::ObsState>) -> Result<(), String> {
     obs::disconnect_obs(state).await
 }
 
+#[tauri::command]
+async fn obs_setup_auralyn_source(
+    state: State<'_, obs::ObsState>,
+) -> Result<obs::ObsSetupResult, String> {
+    obs::setup_auralyn_source(&state).await
+}
+
+#[tauri::command]
+async fn obs_mute_source(
+    state: State<'_, obs::ObsState>,
+    name: String,
+    muted: bool,
+) -> Result<(), String> {
+    obs::mute_source(&state, name, muted).await
+}
+
+#[tauri::command]
+async fn obs_check_audio_reach(
+    obs_state: State<'_, obs::ObsState>,
+    audio_state: State<'_, audio::AudioState>,
+    duration_ms: Option<u32>,
+) -> Result<obs::ObsAudioReachResult, String> {
+    obs::check_audio_reach(
+        &obs_state,
+        &audio_state,
+        duration_ms.unwrap_or(1500),
+    )
+    .await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Force aggressive logging to capture CPAL traces
@@ -355,7 +803,7 @@ pub fn run() {
     let audio_state = audio::AudioState(Arc::new(Mutex::new(audio::AudioHost::new())));
     let obs_state = obs::ObsState::new();
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -382,7 +830,16 @@ pub fn run() {
                     }
                 })
                 .build(),
-        )
+        );
+
+    #[cfg(debug_assertions)]
+    let builder = builder.plugin(
+        tauri_plugin_mcp_bridge::Builder::new()
+            .bind_address("127.0.0.1")
+            .build(),
+    );
+
+    builder
         .manage(audio_state)
         .manage(obs_state)
         .setup(|app| {
@@ -407,7 +864,8 @@ pub fn run() {
 
             // --- System Tray ---
             let show_item = MenuItemBuilder::with_id("show", "Auralyn を表示").build(app)?;
-            let mute_item = MenuItemBuilder::with_id("mute_toggle", "ミュート切替 (Alt+M)").build(app)?;
+            let mute_item =
+                MenuItemBuilder::with_id("mute_toggle", "ミュート切替 (Alt+M)").build(app)?;
             let separator = PredefinedMenuItem::separator(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "終了").build(app)?;
 
@@ -508,24 +966,51 @@ pub fn run() {
             open_editor,
             restart_audio_engine,
             list_presets,
+            list_profiles,
             save_preset,
+            save_profile,
             load_preset,
+            apply_profile,
+            has_backup_profile,
+            restore_backup_profile,
             delete_preset,
             export_preset,
+            export_profile,
             import_preset,
+            import_profile,
+            get_plugin_state,
+            set_plugin_state,
             toggle_global_mute,
             set_global_mute,
             set_input_gain,
             set_noise_reduction,
+            start_noise_learning,
+            cancel_noise_learning,
+            set_noise_control_config,
+            set_built_in_effects,
             set_output_gain,
             set_global_bypass,
             open_url,
             connect_obs,
             disconnect_obs,
+            obs_setup_auralyn_source,
+            obs_mute_source,
+            obs_check_audio_reach,
             get_autostart_status,
             set_autostart_enabled,
             set_input_channels,
             set_channel_scan,
+            start_voice_check,
+            stop_voice_check,
+            play_voice_check,
+            stop_voice_check_playback,
+            export_voice_check,
+            export_voice_check_wav,
+            analyze_voice_check,
+            play_test_tone,
+            stop_test_tone,
+            probe_loopback,
+            get_routing_diagnostics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

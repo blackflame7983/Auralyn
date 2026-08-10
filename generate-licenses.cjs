@@ -28,6 +28,12 @@ checker.init({
 
     Object.keys(packages).forEach(pkgName => {
         const pkg = packages[pkgName];
+
+        // Auralyn本体は専用タブでGPL本文を表示するため、第三者一覧には含めない。
+        if (pkgName.startsWith('auralyn@') || (pkg.path && path.resolve(pkg.path) === __dirname)) {
+            return;
+        }
+
         let licenseText = pkg.licenseText || '';
 
         // licenseTextが空で、licenseFileが存在する場合、ファイルを読み込む
@@ -69,13 +75,15 @@ checker.init({
 
         licenses[licenseKey] = licenseText;
 
+        const versionSeparator = pkgName.lastIndexOf('@');
         libraries.push({
             id: pkgName,
-            ...pkg,
+            name: versionSeparator > 0 ? pkgName.slice(0, versionSeparator) : pkgName,
+            version: versionSeparator > 0 ? pkgName.slice(versionSeparator + 1) : '',
             license: licenseKey,
-            // Remove huge text fields from the library entry
-            licenseText: undefined,
-            licenseFile: undefined
+            repository: pkg.repository,
+            publisher: pkg.publisher,
+            copyright: pkg.copyright,
         });
     });
 

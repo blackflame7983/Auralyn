@@ -7,7 +7,7 @@ use ringbuf::HeapRb;
 use serde_json;
 use std::io::{self, BufRead, Write};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     Arc, OnceLock,
 };
 use std::thread;
@@ -24,6 +24,49 @@ use super::devices::DeviceManager;
 use super::editors::EditorManager;
 use super::plugins::PluginManager;
 use super::plugins::MAX_PLUGINS;
+use super::loopback_probe::{analyze_loopback, capture_input_mono};
+use super::test_tone::RtTestTone;
+use super::voice_check::{
+    allocate_voice_check_buffers, compute_peak_envelope, export_voice_check_wav,
+    parse_voice_check_source, RtVoiceCheck, VC_STATE_IDLE, VC_STATE_RECORDING,
+    VOICE_CHECK_ENVELOPE_BUCKETS, VoiceCheckBuffers, VoiceCheckShared,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoiseControlMode {
+    Low,
+    High,
+    Smart,
+    Venue,
+}
+
+impl NoiseControlMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => NOISE_REDUCTION_MODE_LOW,
+            Self::High => NOISE_REDUCTION_MODE_HIGH,
+            Self::Smart => NOISE_REDUCTION_MODE_SMART,
+            Self::Venue => NOISE_REDUCTION_MODE_VENUE,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuiltInEffectsPreset {
+    Broadcast,
+    Warm,
+    Bright,
+}
+
+impl BuiltInEffectsPreset {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Broadcast => "broadcast",
+            Self::Warm => "warm",
+            Self::Bright => "bright",
+        }
+    }
+}
 
 pub enum AudioThreadMessage {
     AddProcessor {
@@ -53,16 +96,52 @@ pub enum AudioThreadMessage {
     SetGlobalMute(bool),
     SetGlobalBypass(bool),
     SetInputGain(f32),
-    SetNoiseReduction { active: bool, mix: f32 },
+    StartNoiseLearning {
+        duration_frames: u64,
+    },
+    CancelNoiseLearning,
+    SetNoiseControl {
+        active: bool,
+        mode: NoiseControlMode,
+        strength: f32,
+        voice_guard: bool,
+    },
+    SetBuiltInEffects {
+        active: bool,
+        preset: BuiltInEffectsPreset,
+        amount: f32,
+    },
     SetOutputGain(f32),
     SetInputChannels(usize, usize), // (Left, Right)
     SetChannelScan(bool),           // Enable/Disable background scanning
+    StartVoiceCheckRecording {
+        buffers: Arc<VoiceCheckBuffers>,
+        max_frames: u64,
+    },
+    StopVoiceCheckRecording,
+    PlayVoiceCheck {
+        source: u32,
+        loop_playback: bool,
+    },
+    StopVoiceCheckPlayback,
+    PlayTestTone {
+        freq_hz: f32,
+        duration_ms: u32,
+        level_db: f32,
+    },
+    StopTestTone,
     Stop,
 }
 
 pub struct RetiredProcessor {
     pub index: u8,
     pub processor: VstProcessor,
+}
+
+struct LoopbackProbeOutcome {
+    detected: bool,
+    level_db: f32,
+    unavailable: Option<String>,
 }
 
 // Custom Event for Winit Loop
@@ -130,19 +209,36 @@ const DENOISE_FRAME_SIZE: usize = DenoiseState::FRAME_SIZE;
 const DENOISE_SCALE: f32 = 32768.0;
 const NOISE_REDUCTION_MODE_LOW: &str = "low";
 const NOISE_REDUCTION_MODE_HIGH: &str = "high";
+const NOISE_REDUCTION_MODE_SMART: &str = "smart";
+const NOISE_REDUCTION_MODE_VENUE: &str = "venue";
+const NOISE_LEARNING_IDLE: u32 = 0;
+const NOISE_LEARNING_CAPTURING: u32 = 1;
+const NOISE_LEARNING_READY: u32 = 2;
 
-fn normalize_noise_reduction_mode(mode: Option<&str>) -> &'static str {
+fn normalize_noise_control_mode(mode: Option<&str>) -> NoiseControlMode {
     match mode.map(|m| m.trim().to_ascii_lowercase()) {
-        Some(m) if m == NOISE_REDUCTION_MODE_HIGH => NOISE_REDUCTION_MODE_HIGH,
-        _ => NOISE_REDUCTION_MODE_LOW,
+        Some(m) if m == NOISE_REDUCTION_MODE_HIGH => NoiseControlMode::High,
+        Some(m) if m == NOISE_REDUCTION_MODE_SMART => NoiseControlMode::Smart,
+        Some(m) if m == NOISE_REDUCTION_MODE_VENUE => NoiseControlMode::Venue,
+        _ => NoiseControlMode::Low,
     }
 }
 
-fn noise_reduction_mix_from_mode(mode: &str) -> f32 {
-    if mode == NOISE_REDUCTION_MODE_HIGH {
-        1.0
-    } else {
-        0.6
+fn noise_reduction_mix_from_mode(mode: NoiseControlMode, strength: f32) -> f32 {
+    let base = match mode {
+        NoiseControlMode::Low => 0.6,
+        NoiseControlMode::High => 1.0,
+        NoiseControlMode::Smart => 0.74,
+        NoiseControlMode::Venue => 0.86,
+    };
+    (base * strength.clamp(0.25, 1.25)).clamp(0.0, 1.0)
+}
+
+fn normalize_built_in_effects_preset(preset: Option<&str>) -> BuiltInEffectsPreset {
+    match preset.map(|p| p.trim().to_ascii_lowercase()) {
+        Some(p) if p == "warm" => BuiltInEffectsPreset::Warm,
+        Some(p) if p == "bright" => BuiltInEffectsPreset::Bright,
+        _ => BuiltInEffectsPreset::Broadcast,
     }
 }
 
@@ -261,6 +357,237 @@ impl RtNoiseReducer {
     }
 }
 
+struct NoiseLearningShared {
+    state: AtomicU32,
+    progress_ppm: AtomicU32,
+    profile_rms_ppm: AtomicU32,
+    recommended_mix_ppm: AtomicU32,
+    speech_detected: AtomicBool,
+    profile_available: AtomicBool,
+}
+
+impl NoiseLearningShared {
+    fn new() -> Self {
+        Self {
+            state: AtomicU32::new(NOISE_LEARNING_IDLE),
+            progress_ppm: AtomicU32::new(0),
+            profile_rms_ppm: AtomicU32::new(0),
+            recommended_mix_ppm: AtomicU32::new(600_000),
+            speech_detected: AtomicBool::new(false),
+            profile_available: AtomicBool::new(false),
+        }
+    }
+
+    fn state_label(&self) -> &'static str {
+        match self.state.load(Ordering::Relaxed) {
+            NOISE_LEARNING_CAPTURING => "capturing",
+            NOISE_LEARNING_READY => "ready",
+            _ => "idle",
+        }
+    }
+
+    fn progress(&self) -> f32 {
+        self.progress_ppm.load(Ordering::Relaxed) as f32 / 1_000_000.0
+    }
+
+    fn profile_rms(&self) -> f32 {
+        self.profile_rms_ppm.load(Ordering::Relaxed) as f32 / 1_000_000.0
+    }
+
+    fn recommended_mix(&self) -> f32 {
+        self.recommended_mix_ppm.load(Ordering::Relaxed) as f32 / 1_000_000.0
+    }
+}
+
+struct RtNoiseLearning {
+    shared: Arc<NoiseLearningShared>,
+    total_frames: u64,
+    remaining_frames: u64,
+    sum_sq: f64,
+    count: u64,
+}
+
+impl RtNoiseLearning {
+    fn new(shared: Arc<NoiseLearningShared>) -> Self {
+        Self {
+            shared,
+            total_frames: 0,
+            remaining_frames: 0,
+            sum_sq: 0.0,
+            count: 0,
+        }
+    }
+
+    fn start(&mut self, duration_frames: u64) {
+        self.total_frames = duration_frames.max(1);
+        self.remaining_frames = self.total_frames;
+        self.sum_sq = 0.0;
+        self.count = 0;
+        self.shared
+            .state
+            .store(NOISE_LEARNING_CAPTURING, Ordering::Relaxed);
+        self.shared.progress_ppm.store(0, Ordering::Relaxed);
+        self.shared.speech_detected.store(false, Ordering::Relaxed);
+    }
+
+    fn cancel(&mut self) {
+        self.total_frames = 0;
+        self.remaining_frames = 0;
+        self.sum_sq = 0.0;
+        self.count = 0;
+        self.shared
+            .state
+            .store(NOISE_LEARNING_IDLE, Ordering::Relaxed);
+        self.shared.progress_ppm.store(0, Ordering::Relaxed);
+    }
+
+    fn analyze_block(&mut self, left: &[f32], right: Option<&[f32]>, frames: usize) {
+        let mut sum_sq = 0.0f64;
+        for i in 0..frames {
+            let r = right.map(|ch| ch[i]).unwrap_or(left[i]);
+            let mono = (left[i] + r) * 0.5;
+            sum_sq += (mono as f64) * (mono as f64);
+        }
+
+        let rms = if frames > 0 {
+            (sum_sq / frames as f64).sqrt() as f32
+        } else {
+            0.0
+        };
+        let profile = self.shared.profile_rms();
+        let speech_threshold = (profile * 2.8).max(0.018);
+        self.shared
+            .speech_detected
+            .store(rms > speech_threshold, Ordering::Relaxed);
+
+        if self.remaining_frames == 0 {
+            return;
+        }
+
+        let take = frames.min(self.remaining_frames as usize);
+        for i in 0..take {
+            let r = right.map(|ch| ch[i]).unwrap_or(left[i]);
+            let mono = (left[i] + r) * 0.5;
+            self.sum_sq += (mono as f64) * (mono as f64);
+        }
+        self.count += take as u64;
+        self.remaining_frames = self.remaining_frames.saturating_sub(take as u64);
+        let done = self.total_frames.saturating_sub(self.remaining_frames);
+        let progress = ((done as f64 / self.total_frames as f64) * 1_000_000.0) as u32;
+        self.shared
+            .progress_ppm
+            .store(progress.min(1_000_000), Ordering::Relaxed);
+
+        if self.remaining_frames == 0 {
+            let rms = if self.count > 0 {
+                (self.sum_sq / self.count as f64).sqrt() as f32
+            } else {
+                0.0
+            };
+            let recommended = if rms < 0.004 {
+                0.55
+            } else if rms < 0.012 {
+                0.68
+            } else if rms < 0.03 {
+                0.82
+            } else {
+                0.92
+            };
+            self.shared.profile_rms_ppm.store(
+                (rms.clamp(0.0, 1.0) * 1_000_000.0) as u32,
+                Ordering::Relaxed,
+            );
+            self.shared
+                .recommended_mix_ppm
+                .store((recommended * 1_000_000.0) as u32, Ordering::Relaxed);
+            self.shared.profile_available.store(true, Ordering::Relaxed);
+            self.shared
+                .state
+                .store(NOISE_LEARNING_READY, Ordering::Relaxed);
+            self.shared.progress_ppm.store(1_000_000, Ordering::Relaxed);
+        }
+    }
+}
+
+struct RtBuiltInVoiceChain {
+    hp_last_in: [f32; 2],
+    hp_last_out: [f32; 2],
+    comp_env: f32,
+    sample_rate: f32,
+}
+
+impl RtBuiltInVoiceChain {
+    fn new(sample_rate_hz: u32) -> Self {
+        Self {
+            hp_last_in: [0.0; 2],
+            hp_last_out: [0.0; 2],
+            comp_env: 0.0,
+            sample_rate: sample_rate_hz.max(8_000) as f32,
+        }
+    }
+
+    fn high_pass(&mut self, ch: usize, sample: f32, cutoff_hz: f32) -> f32 {
+        let rc = 1.0 / (std::f32::consts::TAU * cutoff_hz.max(20.0));
+        let dt = 1.0 / self.sample_rate;
+        let alpha = rc / (rc + dt);
+        let out = alpha * (self.hp_last_out[ch] + sample - self.hp_last_in[ch]);
+        self.hp_last_in[ch] = sample;
+        self.hp_last_out[ch] = out;
+        out
+    }
+
+    fn process_sample(
+        &mut self,
+        left: f32,
+        right: f32,
+        preset: BuiltInEffectsPreset,
+        amount: f32,
+    ) -> (f32, f32) {
+        let amount = amount.clamp(0.0, 1.0);
+        let cutoff = match preset {
+            BuiltInEffectsPreset::Warm => 70.0,
+            BuiltInEffectsPreset::Bright => 105.0,
+            BuiltInEffectsPreset::Broadcast => 85.0,
+        };
+        let mut l = self.high_pass(0, left, cutoff);
+        let mut r = self.high_pass(1, right, cutoff);
+
+        let mono_abs = ((l + r) * 0.5).abs();
+        let attack = 0.18;
+        let release = 0.008;
+        if mono_abs > self.comp_env {
+            self.comp_env += (mono_abs - self.comp_env) * attack;
+        } else {
+            self.comp_env += (mono_abs - self.comp_env) * release;
+        }
+
+        let threshold = match preset {
+            BuiltInEffectsPreset::Warm => 0.2,
+            BuiltInEffectsPreset::Bright => 0.16,
+            BuiltInEffectsPreset::Broadcast => 0.18,
+        };
+        let ratio = 2.0 + amount * 2.0;
+        let gain = if self.comp_env > threshold {
+            let over = self.comp_env / threshold;
+            (1.0 / over.powf(1.0 - 1.0 / ratio)).clamp(0.35, 1.0)
+        } else {
+            1.0
+        };
+        let makeup = 1.0 + amount * 0.22;
+        l *= gain * makeup;
+        r *= gain * makeup;
+
+        let tone = match preset {
+            BuiltInEffectsPreset::Warm => -0.03,
+            BuiltInEffectsPreset::Bright => 0.04,
+            BuiltInEffectsPreset::Broadcast => 0.015,
+        } * amount;
+        l = (l + (l - left) * tone).clamp(-0.98, 0.98);
+        r = (r + (r - right) * tone).clamp(-0.98, 0.98);
+        (l, r)
+    }
+}
+
 pub struct Engine {
     input_stream: Option<cpal::Stream>,
     output_stream: Option<cpal::Stream>,
@@ -288,7 +615,16 @@ pub struct Engine {
     scan_enabled: bool,
     global_bypass: bool,
     noise_reduction_enabled: bool,
-    noise_reduction_mode: String,
+    noise_control_mode: NoiseControlMode,
+    noise_control_strength: f32,
+    noise_voice_guard: bool,
+    noise_learning: Arc<NoiseLearningShared>,
+    built_in_effects_enabled: bool,
+    built_in_effects_preset: BuiltInEffectsPreset,
+    built_in_effects_amount: f32,
+
+    voice_check: Arc<VoiceCheckShared>,
+    voice_check_buffers: Option<Arc<VoiceCheckBuffers>>,
 
     // Diagnostics
     stats_max_jitter: Arc<AtomicU64>,
@@ -317,7 +653,15 @@ impl Engine {
             scan_enabled: true, // Auto-enable scan for smart selector
             global_bypass: false,
             noise_reduction_enabled: false,
-            noise_reduction_mode: NOISE_REDUCTION_MODE_LOW.to_string(),
+            noise_control_mode: NoiseControlMode::Low,
+            noise_control_strength: 1.0,
+            noise_voice_guard: true,
+            noise_learning: Arc::new(NoiseLearningShared::new()),
+            built_in_effects_enabled: false,
+            built_in_effects_preset: BuiltInEffectsPreset::Broadcast,
+            built_in_effects_amount: 0.7,
+            voice_check: Arc::new(VoiceCheckShared::new()),
+            voice_check_buffers: None,
             stats_max_jitter: Arc::new(AtomicU64::new(0)),
             stats_glitches: Arc::new(AtomicU64::new(0)),
         }
@@ -364,6 +708,9 @@ impl Engine {
 
         let mut last_meter_time = Instant::now();
         let meter_interval = Duration::from_millis(16); // ~60 FPS
+        let mut last_voice_check_time = Instant::now();
+        let voice_check_interval = Duration::from_millis(100);
+        let mut last_voice_check_state = VC_STATE_IDLE;
 
         let mut current_in_l = 0.0f32;
         let mut current_in_r = 0.0f32;
@@ -373,6 +720,8 @@ impl Engine {
         let mut updates_received = 0;
         let mut last_data_time = Instant::now();
         let mut last_heartbeat = Instant::now();
+        let mut last_meter_was_zero = false;
+        let mut last_channel_scan_was_zero = false;
 
         // Run Event Loop
         let _ = event_loop.run(move |event, target| {
@@ -508,10 +857,16 @@ impl Engine {
                                 let safe_out_l = current_out_l.clamp(0.0, 10.0);
                                 let safe_out_r = current_out_r.clamp(0.0, 10.0);
 
-                                meter_event_to_send = Some(EngineEvent::LevelMeter(MeterLevels {
-                                    input: [safe_in_l, safe_in_r],
-                                    output: [safe_out_l, safe_out_r],
-                                }));
+                                let is_zero = safe_in_l == 0.0
+                                    && safe_in_r == 0.0
+                                    && safe_out_l == 0.0
+                                    && safe_out_r == 0.0;
+                                if !is_zero || !last_meter_was_zero {
+                                    meter_event_to_send = Some(EngineEvent::LevelMeter(MeterLevels {
+                                        input: [safe_in_l, safe_in_r],
+                                        output: [safe_out_l, safe_out_r],
+                                    }));
+                                }
 
                                 current_in_l = 0.0;
                                 current_in_r = 0.0;
@@ -519,11 +874,15 @@ impl Engine {
                                 current_out_r = 0.0;
                                 updates_received = 0;
                                 last_meter_time = Instant::now();
+                                last_meter_was_zero = is_zero;
                             } else if time_since_data > Duration::from_millis(75) {
-                                meter_event_to_send = Some(EngineEvent::LevelMeter(MeterLevels {
-                                    input: [0.0, 0.0],
-                                    output: [0.0, 0.0],
-                                }));
+                                if !last_meter_was_zero {
+                                    meter_event_to_send = Some(EngineEvent::LevelMeter(MeterLevels {
+                                        input: [0.0, 0.0],
+                                        output: [0.0, 0.0],
+                                    }));
+                                    last_meter_was_zero = true;
+                                }
                                 last_meter_time = Instant::now();
                             }
                         }
@@ -547,7 +906,56 @@ impl Engine {
                         }
                     }
                     if let Some(scan_data) = channel_scan_to_send {
-                        self.send_event(EngineEvent::ChannelLevels(scan_data));
+                        let is_zero = scan_data.iter().all(|v| *v == 0.0);
+                        if !is_zero || !last_channel_scan_was_zero {
+                            self.send_event(EngineEvent::ChannelLevels(scan_data));
+                        }
+                        last_channel_scan_was_zero = is_zero;
+                    }
+
+                    // Voice Check 状態イベント
+                    // recording/playing 中は定期送信、それ以外は状態遷移時に 1 回だけ送る
+                    let vc_state = self.voice_check.state.load(Ordering::Relaxed);
+                    let vc_active = vc_state == VC_STATE_RECORDING
+                        || vc_state == super::voice_check::VC_STATE_PLAYING;
+                    let vc_transitioned = vc_state != last_voice_check_state;
+                    if (vc_active && last_voice_check_time.elapsed() >= voice_check_interval)
+                        || vc_transitioned
+                    {
+                        self.send_event(EngineEvent::VoiceCheckState {
+                            state: self.voice_check.state_label().to_string(),
+                            position_ms: self.voice_check.position_ms(),
+                            duration_ms: self.voice_check.duration_ms(),
+                        });
+                        last_voice_check_time = Instant::now();
+                        last_voice_check_state = vc_state;
+                    }
+
+                    // 録音完了後の波形エンベロープ
+                    if self.voice_check.envelope_dirty.load(Ordering::Relaxed) {
+                        if let Some(buffers) = &self.voice_check_buffers {
+                            let frames = self.voice_check.duration_frames.load(Ordering::Relaxed)
+                                as usize;
+                            if frames > 0 {
+                                let raw_peaks = compute_peak_envelope(
+                                    buffers.raw_slice(),
+                                    frames,
+                                    VOICE_CHECK_ENVELOPE_BUCKETS,
+                                );
+                                let processed_peaks = compute_peak_envelope(
+                                    buffers.processed_slice(),
+                                    frames,
+                                    VOICE_CHECK_ENVELOPE_BUCKETS,
+                                );
+                                self.send_event(EngineEvent::VoiceCheckEnvelope {
+                                    raw_peaks,
+                                    processed_peaks,
+                                });
+                            }
+                        }
+                        self.voice_check
+                            .envelope_dirty
+                            .store(false, Ordering::Relaxed);
                     }
                 }
                 Event::WindowEvent {
@@ -762,12 +1170,63 @@ impl Engine {
                 self.send_response(Response::Success);
             }
             Command::SetNoiseReduction { active, mode } => {
-                let normalized_mode = normalize_noise_reduction_mode(mode.as_deref());
-                self.noise_reduction_mode = normalized_mode.to_string();
+                let normalized_mode = normalize_noise_control_mode(mode.as_deref());
+                self.noise_control_mode = normalized_mode;
                 self.noise_reduction_enabled = active;
-                self.queue_audio_msg(AudioThreadMessage::SetNoiseReduction {
+                // レガシー API も SetNoiseControl に集約し、RT 側とモードがずれないようにする
+                // （strength は設定済みの値を維持する）
+                self.queue_audio_msg(AudioThreadMessage::SetNoiseControl {
                     active,
-                    mix: noise_reduction_mix_from_mode(normalized_mode),
+                    mode: normalized_mode,
+                    strength: self.noise_control_strength,
+                    voice_guard: self.noise_voice_guard,
+                });
+                self.send_response(Response::Success);
+            }
+            Command::StartNoiseLearning { duration_ms } => {
+                let duration_frames = ((duration_ms.clamp(500, 10_000) as f64
+                    * self.current_sample_rate.max(8_000.0))
+                    / 1000.0)
+                    .round() as u64;
+                self.queue_audio_msg(AudioThreadMessage::StartNoiseLearning { duration_frames });
+                self.send_response(Response::Success);
+            }
+            Command::CancelNoiseLearning => {
+                self.queue_audio_msg(AudioThreadMessage::CancelNoiseLearning);
+                self.send_response(Response::Success);
+            }
+            Command::SetNoiseControlConfig {
+                active,
+                mode,
+                strength,
+                voice_guard,
+            } => {
+                let normalized_mode = normalize_noise_control_mode(Some(mode.as_str()));
+                self.noise_control_mode = normalized_mode;
+                self.noise_control_strength = strength.clamp(0.25, 1.25);
+                self.noise_voice_guard = voice_guard;
+                self.noise_reduction_enabled = active;
+                self.queue_audio_msg(AudioThreadMessage::SetNoiseControl {
+                    active,
+                    mode: normalized_mode,
+                    strength: self.noise_control_strength,
+                    voice_guard,
+                });
+                self.send_response(Response::Success);
+            }
+            Command::SetBuiltInEffects {
+                active,
+                preset,
+                amount,
+            } => {
+                let normalized_preset = normalize_built_in_effects_preset(preset.as_deref());
+                self.built_in_effects_enabled = active;
+                self.built_in_effects_preset = normalized_preset;
+                self.built_in_effects_amount = amount.clamp(0.0, 1.0);
+                self.queue_audio_msg(AudioThreadMessage::SetBuiltInEffects {
+                    active,
+                    preset: normalized_preset,
+                    amount: self.built_in_effects_amount,
                 });
                 self.send_response(Response::Success);
             }
@@ -786,13 +1245,106 @@ impl Engine {
                 self.queue_audio_msg(AudioThreadMessage::SetChannelScan(active));
                 self.send_response(Response::Success);
             }
+            Command::StartVoiceCheckRecording { max_ms } => {
+                if self.output_stream.is_none() {
+                    self.send_response(Response::Error(
+                        "音声エンジンが起動していません".to_string(),
+                    ));
+                    return;
+                }
+                let max_ms = max_ms.clamp(500, super::voice_check::VOICE_CHECK_MAX_MS);
+                let sample_rate_hz = self.current_sample_rate.round().clamp(8_000.0, 192_000.0) as u32;
+                let max_frames =
+                    ((max_ms as f64 * sample_rate_hz as f64) / 1000.0).round() as u64;
+                let buffers = Arc::new(allocate_voice_check_buffers(max_ms, sample_rate_hz));
+                self.voice_check_buffers = Some(buffers.clone());
+                self.voice_check
+                    .sample_rate_hz
+                    .store(sample_rate_hz, Ordering::Relaxed);
+                self.voice_check
+                    .max_frames
+                    .store(max_frames, Ordering::Relaxed);
+                self.voice_check
+                    .duration_frames
+                    .store(0, Ordering::Relaxed);
+                self.voice_check
+                    .playback_frame
+                    .store(0, Ordering::Relaxed);
+                self.voice_check
+                    .envelope_dirty
+                    .store(false, Ordering::Relaxed);
+                self.voice_check
+                    .state
+                    .store(VC_STATE_RECORDING, Ordering::Relaxed);
+                self.queue_audio_msg(AudioThreadMessage::StartVoiceCheckRecording {
+                    buffers,
+                    max_frames,
+                });
+                self.send_response(Response::Success);
+            }
+            Command::StopVoiceCheckRecording => {
+                self.queue_audio_msg(AudioThreadMessage::StopVoiceCheckRecording);
+                self.send_response(Response::Success);
+            }
+            Command::PlayVoiceCheck {
+                source,
+                loop_playback,
+            } => {
+                let parsed = parse_voice_check_source(&source);
+                self.voice_check
+                    .loop_playback
+                    .store(loop_playback, Ordering::Relaxed);
+                self.queue_audio_msg(AudioThreadMessage::PlayVoiceCheck {
+                    source: parsed,
+                    loop_playback,
+                });
+                self.send_response(Response::Success);
+            }
+            Command::StopVoiceCheckPlayback => {
+                self.queue_audio_msg(AudioThreadMessage::StopVoiceCheckPlayback);
+                self.send_response(Response::Success);
+            }
+            Command::ExportVoiceCheck { path, source } => {
+                if self.voice_check.state.load(Ordering::Relaxed) == VC_STATE_RECORDING {
+                    self.send_response(Response::Error(
+                        "録音中はエクスポートできません".to_string(),
+                    ));
+                    return;
+                }
+                match &self.voice_check_buffers {
+                    Some(buffers) => {
+                        let duration = self.voice_check.duration_frames.load(Ordering::Relaxed);
+                        let sample_rate = self.voice_check.sample_rate_hz.load(Ordering::Relaxed);
+                        if duration == 0 {
+                            self.send_response(Response::Error(
+                                "エクスポートする録音データがありません".to_string(),
+                            ));
+                            return;
+                        }
+                        match export_voice_check_wav(
+                            std::path::Path::new(&path),
+                            buffers,
+                            &source,
+                            sample_rate,
+                            duration,
+                        ) {
+                            Ok(()) => self.send_response(Response::Success),
+                            Err(e) => self.send_response(Response::Error(e.to_string())),
+                        }
+                    }
+                    None => self.send_response(Response::Error(
+                        "録音バッファが初期化されていません".to_string(),
+                    )),
+                }
+            }
             Command::GetRuntimeStats => {
                 let (active_plugin_count, pending_unload_count, burned_library_count) =
                     self.plugin_manager.runtime_stats();
                 let enabled_plugin_count =
                     self.plugin_manager.enabled_plugin_count(self.global_bypass);
-                let total_plugin_latency_samples =
-                    self.plugin_manager.total_latency_samples(self.global_bypass);
+                let total_plugin_latency_samples = self
+                    .plugin_manager
+                    .total_latency_samples(self.global_bypass);
                 let noise_reduction_latency_samples = if self.noise_reduction_enabled {
                     ((self.current_sample_rate / 100.0).round() as u32).max(1)
                 } else {
@@ -831,7 +1383,21 @@ impl Engine {
                     total_chain_latency_ms,
                     noise_reduction_enabled: self.noise_reduction_enabled,
                     noise_reduction_active: self.noise_reduction_enabled,
-                    noise_reduction_mode: self.noise_reduction_mode.clone(),
+                    noise_reduction_mode: self.noise_control_mode.as_str().to_string(),
+                    noise_learning_state: self.noise_learning.state_label().to_string(),
+                    noise_learning_progress: self.noise_learning.progress(),
+                    noise_profile_available: self
+                        .noise_learning
+                        .profile_available
+                        .load(Ordering::Relaxed),
+                    noise_profile_rms: self.noise_learning.profile_rms(),
+                    recommended_noise_mix: self.noise_learning.recommended_mix(),
+                    speech_detected: self.noise_learning.speech_detected.load(Ordering::Relaxed),
+                    noise_voice_guard: self.noise_voice_guard,
+                    noise_control_strength: self.noise_control_strength,
+                    built_in_effects_enabled: self.built_in_effects_enabled,
+                    built_in_effects_preset: self.built_in_effects_preset.as_str().to_string(),
+                    built_in_effects_amount: self.built_in_effects_amount,
                 });
             }
             Command::GetPluginState { id } => match self.plugin_manager.get(&id) {
@@ -847,6 +1413,104 @@ impl Engine {
                     Err(e) => self.send_error(format!("Failed to set state: {}", e)),
                 },
                 None => self.send_error("Plugin not found".to_string()),
+            },
+            Command::PlayTestTone {
+                freq_hz,
+                duration_ms,
+                level_db,
+            } => {
+                if self.output_stream.is_none() {
+                    self.send_error("オーディオエンジンが起動していません".to_string());
+                    return;
+                }
+                self.queue_audio_msg(AudioThreadMessage::StopVoiceCheckPlayback);
+                self.queue_audio_msg(AudioThreadMessage::PlayTestTone {
+                    freq_hz,
+                    duration_ms,
+                    level_db,
+                });
+                self.send_response(Response::Success);
+            }
+            Command::StopTestTone => {
+                self.queue_audio_msg(AudioThreadMessage::StopTestTone);
+                self.send_response(Response::Success);
+            }
+            Command::ProbeLoopback {
+                input_device,
+                duration_ms,
+                freq_hz,
+            } => {
+                let result = self.probe_loopback(&input_device, duration_ms, freq_hz);
+                self.send_response(Response::LoopbackProbe {
+                    detected: result.detected,
+                    level_db: result.level_db,
+                    unavailable: result.unavailable,
+                });
+            }
+        }
+    }
+
+    fn probe_loopback(
+        &mut self,
+        input_device: &str,
+        duration_ms: u32,
+        freq_hz: f32,
+    ) -> LoopbackProbeOutcome {
+        if self.output_stream.is_none() {
+            return LoopbackProbeOutcome {
+                detected: false,
+                level_db: -120.0,
+                unavailable: Some("オーディオエンジンが起動していません".to_string()),
+            };
+        }
+
+        let host_name = self
+            .device_manager
+            .active_output
+            .as_ref()
+            .map(|d| d.host.as_str())
+            .unwrap_or("");
+        if host_name.eq_ignore_ascii_case("asio") {
+            return LoopbackProbeOutcome {
+                detected: false,
+                level_db: -120.0,
+                unavailable: Some(
+                    "ASIO 排他モードではループバックプローブを実行できません。手動で CABLE Output を確認してください"
+                        .to_string(),
+                ),
+            };
+        }
+
+        let tone_ms = duration_ms.saturating_add(200).min(5000);
+        self.queue_audio_msg(AudioThreadMessage::StopVoiceCheckPlayback);
+        self.queue_audio_msg(AudioThreadMessage::PlayTestTone {
+            freq_hz,
+            duration_ms: tone_ms,
+            level_db: super::test_tone::TEST_TONE_DEFAULT_DBFS,
+        });
+        self.flush_pending_audio_msgs();
+        std::thread::sleep(Duration::from_millis(80));
+
+        let capture_result = capture_input_mono(input_device, duration_ms);
+        self.queue_audio_msg(AudioThreadMessage::StopTestTone);
+        self.flush_pending_audio_msgs();
+
+        match capture_result {
+            Ok((samples, sample_rate)) => {
+                let (detected, level_db) = analyze_loopback(&samples, sample_rate, freq_hz);
+                LoopbackProbeOutcome {
+                    detected,
+                    level_db,
+                    unavailable: None,
+                }
+            }
+            Err(e) => LoopbackProbeOutcome {
+                detected: false,
+                level_db: -120.0,
+                unavailable: Some(format!(
+                    "{}。手動で CABLE Output にテスト音が届いているか確認してください",
+                    e
+                )),
             },
         }
     }
@@ -1008,7 +1672,8 @@ impl Engine {
                 if *min == *max && *min as usize != self.current_block_size {
                     log::info!(
                         "[Config] Detected Locked Buffer Size override: {} -> {}",
-                        self.current_block_size, *min
+                        self.current_block_size,
+                        *min
                     );
                     self.current_block_size = *min as usize;
                 }
@@ -1218,9 +1883,22 @@ impl Engine {
         let mut rt_scan_enabled = self.scan_enabled;
         let rt_sample_rate_hz = self.current_sample_rate.round().clamp(8_000.0, 192_000.0) as u32;
         let mut rt_noise_reduction_enabled = self.noise_reduction_enabled;
+        let mut rt_noise_control_mode = self.noise_control_mode;
+        let mut rt_noise_voice_guard = self.noise_voice_guard;
         let mut rt_noise_reduction_mix =
-            noise_reduction_mix_from_mode(self.noise_reduction_mode.as_str());
+            noise_reduction_mix_from_mode(rt_noise_control_mode, self.noise_control_strength);
         let mut rt_noise_reducer = RtNoiseReducer::new(rt_sample_rate_hz);
+        let mut rt_noise_learning = RtNoiseLearning::new(self.noise_learning.clone());
+        let mut rt_built_in_effects_enabled = self.built_in_effects_enabled;
+        let mut rt_built_in_effects_preset = self.built_in_effects_preset;
+        let mut rt_built_in_effects_amount = self.built_in_effects_amount;
+        let mut rt_voice_chain = RtBuiltInVoiceChain::new(rt_sample_rate_hz);
+        let voice_check_shared = self.voice_check.clone();
+        let mut rt_voice_check = RtVoiceCheck::new(voice_check_shared, rt_sample_rate_hz);
+        if let Some(buffers) = self.voice_check_buffers.clone() {
+            rt_voice_check.attach_buffers(buffers);
+        }
+        let mut rt_test_tone = RtTestTone::new(rt_sample_rate_hz);
 
         let frames_counter = self.frames_processed.clone();
 
@@ -1380,10 +2058,33 @@ impl Engine {
                         AudioThreadMessage::SetInputGain(val) => {
                             rt_input_gain = val;
                         }
-                        AudioThreadMessage::SetNoiseReduction { active, mix } => {
+                        AudioThreadMessage::StartNoiseLearning { duration_frames } => {
+                            rt_noise_learning.start(duration_frames);
+                        }
+                        AudioThreadMessage::CancelNoiseLearning => {
+                            rt_noise_learning.cancel();
+                        }
+                        AudioThreadMessage::SetNoiseControl {
+                            active,
+                            mode,
+                            strength,
+                            voice_guard,
+                        } => {
                             rt_noise_reduction_enabled = active;
-                            rt_noise_reduction_mix = mix.clamp(0.0, 1.0);
+                            rt_noise_control_mode = mode;
+                            rt_noise_voice_guard = voice_guard;
+                            rt_noise_reduction_mix =
+                                noise_reduction_mix_from_mode(mode, strength.clamp(0.25, 1.25));
                             rt_noise_reducer.reset_state();
+                        }
+                        AudioThreadMessage::SetBuiltInEffects {
+                            active,
+                            preset,
+                            amount,
+                        } => {
+                            rt_built_in_effects_enabled = active;
+                            rt_built_in_effects_preset = preset;
+                            rt_built_in_effects_amount = amount.clamp(0.0, 1.0);
                         }
                         AudioThreadMessage::SetOutputGain(val) => {
                             rt_output_gain.set_target(val);
@@ -1394,6 +2095,40 @@ impl Engine {
                         }
                         AudioThreadMessage::SetChannelScan(enable) => {
                             rt_scan_enabled = enable;
+                        }
+                        AudioThreadMessage::StartVoiceCheckRecording {
+                            buffers,
+                            max_frames,
+                        } => {
+                            rt_voice_check.start_recording(buffers, max_frames);
+                        }
+                        AudioThreadMessage::StopVoiceCheckRecording => {
+                            rt_voice_check.stop_recording();
+                        }
+                        AudioThreadMessage::PlayVoiceCheck {
+                            source,
+                            loop_playback,
+                        } => {
+                            if rt_voice_check.is_playback_active() {
+                                rt_voice_check.set_playback_source(source);
+                                rt_voice_check.set_loop_playback(loop_playback);
+                            } else {
+                                rt_voice_check.start_playback(source, loop_playback);
+                            }
+                        }
+                        AudioThreadMessage::StopVoiceCheckPlayback => {
+                            rt_voice_check.stop_playback();
+                        }
+                        AudioThreadMessage::PlayTestTone {
+                            freq_hz,
+                            duration_ms,
+                            level_db,
+                        } => {
+                            rt_voice_check.stop_playback();
+                            rt_test_tone.start(freq_hz, duration_ms, level_db);
+                        }
+                        AudioThreadMessage::StopTestTone => {
+                            rt_test_tone.stop();
                         }
                         AudioThreadMessage::Stop => {}
                     }
@@ -1436,6 +2171,7 @@ impl Engine {
                 // Channel Scanning (For UI Smart Selector)
                 let mut channel_peaks = [0.0f32; 32]; // Max 32 channels scan
                 let scan_limit = channels.min(32);
+                let record_block_start = rt_voice_check.block_record_start();
 
                 for i in 0..frames {
                     // Manual de-interleaving and Mapping to Stereo Bus (0/1)
@@ -1504,26 +2240,132 @@ impl Engine {
                     if abs_r > in_max_r {
                         in_max_r = abs_r;
                     }
+
+                    if rt_voice_check.is_recording_active() {
+                        rt_voice_check.record_raw_at(
+                            record_block_start + i as u64,
+                            sample_l,
+                            sample_r,
+                        );
+                    }
+                }
+
+                if rt_voice_check.is_recording_active() {
+                    rt_voice_check.advance_recording(frames);
+                }
+
+                if rt_voice_check.is_playback_active() {
+                    // 再生中はマイク入力をミュート（処理チェーンは無音で継続）
+                    for ch in 0..channels.min(2) {
+                        planar_buf_a[ch][..frames].fill(0.0);
+                    }
+                }
+
+                if rt_test_tone.is_active() {
+                    // テストトーン中はマイク入力をミュート
+                    for ch in 0..channels.min(2) {
+                        planar_buf_a[ch][..frames].fill(0.0);
+                    }
+                }
+
+                if channels >= 2 {
+                    rt_noise_learning.analyze_block(
+                        &planar_buf_a[0][..frames],
+                        Some(&planar_buf_a[1][..frames]),
+                        frames,
+                    );
+                } else if channels == 1 {
+                    rt_noise_learning.analyze_block(&planar_buf_a[0][..frames], None, frames);
                 }
 
                 if rt_noise_reduction_enabled && rt_noise_reduction_mix > 0.0 {
-                    let wet_mix = rt_noise_reduction_mix;
+                    let speech_detected = rt_noise_learning
+                        .shared
+                        .speech_detected
+                        .load(Ordering::Relaxed);
+                    let profile_available = rt_noise_learning
+                        .shared
+                        .profile_available
+                        .load(Ordering::Relaxed);
+                    let profile_rms = rt_noise_learning.shared.profile_rms();
+                    let learned_mix = rt_noise_learning.shared.recommended_mix();
+                    let mut wet_mix = match rt_noise_control_mode {
+                        NoiseControlMode::Smart if profile_available => {
+                            (rt_noise_reduction_mix * 0.55 + learned_mix * 0.45).clamp(0.0, 1.0)
+                        }
+                        NoiseControlMode::Venue if speech_detected && rt_noise_voice_guard => {
+                            (rt_noise_reduction_mix * 0.72).clamp(0.0, 1.0)
+                        }
+                        NoiseControlMode::Venue => (rt_noise_reduction_mix * 1.06).clamp(0.0, 1.0),
+                        _ => rt_noise_reduction_mix,
+                    };
+                    if speech_detected && rt_noise_voice_guard {
+                        wet_mix = wet_mix.min(0.82);
+                    }
                     let dry_mix = 1.0 - wet_mix;
                     if channels >= 2 {
                         for i in 0..frames {
                             let dry_left = planar_buf_a[0][i];
                             let dry_right = planar_buf_a[1][i];
-                            let (wet_left, wet_right) =
-                                rt_noise_reducer.process_sample(dry_left, dry_right);
-                            planar_buf_a[0][i] = dry_left * dry_mix + wet_left * wet_mix;
-                            planar_buf_a[1][i] = dry_right * dry_mix + wet_right * wet_mix;
+                            if profile_available
+                                && !speech_detected
+                                && matches!(
+                                    rt_noise_control_mode,
+                                    NoiseControlMode::Smart | NoiseControlMode::Venue
+                                )
+                            {
+                                let noise_gate = (profile_rms * 2.2).max(0.004);
+                                if dry_left.abs().max(dry_right.abs()) < noise_gate {
+                                    planar_buf_a[0][i] *= 0.72;
+                                    planar_buf_a[1][i] *= 0.72;
+                                }
+                            }
+                            let (wet_left, wet_right) = rt_noise_reducer
+                                .process_sample(planar_buf_a[0][i], planar_buf_a[1][i]);
+                            planar_buf_a[0][i] = planar_buf_a[0][i] * dry_mix + wet_left * wet_mix;
+                            planar_buf_a[1][i] = planar_buf_a[1][i] * dry_mix + wet_right * wet_mix;
                         }
                     } else if channels == 1 {
                         for i in 0..frames {
                             let dry_mono = planar_buf_a[0][i];
-                            let (wet_mono, _) =
-                                rt_noise_reducer.process_sample(dry_mono, dry_mono);
-                            planar_buf_a[0][i] = dry_mono * dry_mix + wet_mono * wet_mix;
+                            if profile_available
+                                && !speech_detected
+                                && matches!(
+                                    rt_noise_control_mode,
+                                    NoiseControlMode::Smart | NoiseControlMode::Venue
+                                )
+                                && dry_mono.abs() < (profile_rms * 2.2).max(0.004)
+                            {
+                                planar_buf_a[0][i] *= 0.72;
+                            }
+                            let (wet_mono, _) = rt_noise_reducer
+                                .process_sample(planar_buf_a[0][i], planar_buf_a[0][i]);
+                            planar_buf_a[0][i] = planar_buf_a[0][i] * dry_mix + wet_mono * wet_mix;
+                        }
+                    }
+                }
+
+                if rt_built_in_effects_enabled {
+                    if channels >= 2 {
+                        for i in 0..frames {
+                            let (l, r) = rt_voice_chain.process_sample(
+                                planar_buf_a[0][i],
+                                planar_buf_a[1][i],
+                                rt_built_in_effects_preset,
+                                rt_built_in_effects_amount,
+                            );
+                            planar_buf_a[0][i] = l;
+                            planar_buf_a[1][i] = r;
+                        }
+                    } else if channels == 1 {
+                        for i in 0..frames {
+                            let (m, _) = rt_voice_chain.process_sample(
+                                planar_buf_a[0][i],
+                                planar_buf_a[0][i],
+                                rt_built_in_effects_preset,
+                                rt_built_in_effects_amount,
+                            );
+                            planar_buf_a[0][i] = m;
                         }
                     }
                 }
@@ -1648,12 +2490,100 @@ impl Engine {
                     &planar_buf_b
                 };
 
+                if rt_voice_check.is_recording_active() {
+                    for i in 0..frames {
+                        let proc_l = final_buf
+                            .first()
+                            .and_then(|buf| buf.get(i))
+                            .copied()
+                            .unwrap_or(0.0);
+                        let proc_r = final_buf
+                            .get(1)
+                            .and_then(|buf| buf.get(i))
+                            .copied()
+                            .unwrap_or(proc_l);
+                        rt_voice_check.record_processed_at(
+                            record_block_start + i as u64,
+                            proc_l,
+                            proc_r,
+                        );
+                    }
+                }
+
                 if rt_global_mute {
                     data.fill(0.0);
                     // Zero metering too implies output is silence
                     let _ = level_prod.try_push(MeterLevels {
                         input: [in_max_l, in_max_r],
                         output: [0.0, 0.0],
+                    });
+                } else if rt_test_tone.is_active() {
+                    data.fill(0.0);
+                    let target_l = rt_input_l;
+                    let target_r = rt_input_r;
+                    let mut out_max_l = 0.0f32;
+                    let mut out_max_r = 0.0f32;
+
+                    for i in 0..frames {
+                        let gain = rt_output_gain.next();
+                        let (tone_l, tone_r) = rt_test_tone.sample();
+                        let main_l = tone_l * gain;
+                        let main_r = tone_r * gain;
+
+                        if target_l < channels {
+                            let out_idx = i * channels + target_l;
+                            if out_idx < data.len() {
+                                data[out_idx] = main_l;
+                            }
+                        }
+                        if target_r < channels {
+                            let out_idx = i * channels + target_r;
+                            if out_idx < data.len() {
+                                data[out_idx] = main_r;
+                            }
+                        }
+
+                        out_max_l = out_max_l.max(main_l.abs());
+                        out_max_r = out_max_r.max(main_r.abs());
+                    }
+
+                    let _ = level_prod.try_push(MeterLevels {
+                        input: [0.0, 0.0],
+                        output: [out_max_l, out_max_r],
+                    });
+                } else if rt_voice_check.is_playback_active() {
+                    data.fill(0.0);
+                    let target_l = rt_input_l;
+                    let target_r = rt_input_r;
+                    let mut out_max_l = 0.0f32;
+                    let mut out_max_r = 0.0f32;
+
+                    for i in 0..frames {
+                        let gain = rt_output_gain.next();
+                        let (main_l, main_r) = rt_voice_check.read_playback_sample();
+                        let main_l = main_l * gain;
+                        let main_r = main_r * gain;
+
+                        if target_l < channels {
+                            let out_idx = i * channels + target_l;
+                            if out_idx < data.len() {
+                                data[out_idx] = main_l;
+                            }
+                        }
+                        if target_r < channels {
+                            let out_idx = i * channels + target_r;
+                            if out_idx < data.len() {
+                                data[out_idx] = main_r;
+                            }
+                        }
+
+                        out_max_l = out_max_l.max(main_l.abs());
+                        out_max_r = out_max_r.max(main_r.abs());
+                    }
+
+                    let _ = level_prod.try_push(MeterLevels {
+                        input: [0.0, 0.0],
+                        output: [out_max_l, out_max_r],
                     });
                 } else {
                     // Initialize output with silence
@@ -1774,7 +2704,9 @@ impl Engine {
                 Ok(r) => {
                     log::info!(
                         "[Resampler] Initialized: {} -> {} Hz ({} ch)",
-                        in_rate, out_rate, channels
+                        in_rate,
+                        out_rate,
+                        channels
                     );
                     resampler = Some(r);
                 }
@@ -1885,7 +2817,9 @@ impl Engine {
                 // We reuse the retry variables captured at top of function (but we need to clone them again if we use them)
                 // actually we defined retry_host_in above.
                 if allow_fallback {
-                    log::warn!("[Config] Fallback (INPUT post-output)! (Simplified retry strategy)");
+                    log::warn!(
+                        "[Config] Fallback (INPUT post-output)! (Simplified retry strategy)"
+                    );
                     // Simply fail complex retry for now to keep experiment clean, or reuse same recurrence
                     if let Ok(def) = out_dev.default_output_config() {
                         return self.start_audio_impl(

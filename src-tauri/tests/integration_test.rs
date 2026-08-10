@@ -1,5 +1,4 @@
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
@@ -7,30 +6,14 @@ use std::time::{Duration, Instant};
 
 // Reuse types from lib if they are public, or redefine minimal ones for test to decouple.
 // Since 'vst_host_lib' exposes them, we can use them!
+use assert_cmd::cargo::CommandCargoExt;
 use vst_host_lib::ipc::{Command as IpcCommand, OutputMessage, Response};
 
 #[test]
 fn test_audio_engine_lifecycle() {
-    // 1. Locate the binary
-    // Cargo manifest dir is src-tauri.
-    // Target dir is usually src-tauri/target/debug
-    let bin_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug/audio_engine.exe");
-
-    // Note: When running 'cargo test', the CWD is the package root (src-tauri).
-
-    // Check if binary exists (it must be built first!)
-    // If not found, panic with helpful message.
-    if !bin_path.exists() {
-        // Fallback or just build it?
-        // Better to fail and ask user to build.
-        // Actually, if we run 'cargo test', it builds the lib. Does it build the bin 'audio_engine' defined in 'bin/audio_engine/main.rs'?
-        // The [bin] target is part of the workspace/package. Cargo SHOULD build it.
-        // Let's assume it does.
-        // On Windows it has .exe extension.
-    }
-
-    // 2. Spawn Process
-    let mut child = Command::new(&bin_path)
+    // 1. Spawn Process (cargo が test 用に audio_engine をビルドする)
+    let mut child = Command::cargo_bin("audio_engine")
+        .expect("Failed to locate audio_engine binary (cargo build --bin audio_engine)")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit()) // See errors in test output
@@ -124,6 +107,31 @@ fn test_audio_engine_lifecycle() {
         ),
         "Process crashed or invalid response"
     );
+
+    if matches!(resp, Some(Response::Started { .. })) {
+        send_command(
+            &mut stdin,
+            IpcCommand::StartVoiceCheckRecording { max_ms: 1000 },
+        );
+        let vc_start = read_response();
+        match &vc_start {
+            Some(Response::Success) => println!("StartVoiceCheckRecording Success"),
+            Some(Response::Error(e)) => println!("StartVoiceCheckRecording Error: {}", e),
+            None => println!(
+                "StartVoiceCheckRecording: no response (engine may not support voice check yet)"
+            ),
+            r => println!("StartVoiceCheckRecording response: {:?}", r),
+        }
+
+        if matches!(vc_start, Some(Response::Success)) {
+            send_command(&mut stdin, IpcCommand::StopVoiceCheckRecording);
+            match read_response() {
+                Some(Response::Success) => println!("StopVoiceCheckRecording Success"),
+                Some(Response::Error(e)) => println!("StopVoiceCheckRecording Error: {}", e),
+                r => println!("StopVoiceCheckRecording response: {:?}", r),
+            }
+        }
+    }
 
     // E. Stop Audio
     send_command(&mut stdin, IpcCommand::Stop);

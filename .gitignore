@@ -27,15 +27,21 @@ dist-ssr
 *.sw?
 *.exe
 
-# Locks
-Cargo.lock
-package-lock.json
+# Lockfiles are tracked so a GPL source archive can reproduce the released dependency graph.
 
 # Build artifacts
 src-tauri/target/
 release_artifacts/*.exe
 release_artifacts/*.zip
 release_artifacts/*.msi
+release_artifacts/*.sha256
+release_artifacts/*_Source.json
+release_artifacts/.source-cache/
+release_artifacts/.source-stage-*/
+release_artifacts/.source-*.tar
+
+# Local repository inventory
+_filelist.txt
 
 # Review / agent files
 comments.json

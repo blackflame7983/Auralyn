@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { MdGraphicEq, MdExtension, MdVolumeUp, MdBolt } from 'react-icons/md';
+import { MdGraphicEq, MdExtension, MdVolumeUp, MdBolt, MdMic } from 'react-icons/md';
 import { cn } from '@/lib/utils';
 import { audioApi, EngineRuntimeStats } from '../../api/audio';
 import { Slider } from '@/components/ui/slider';
@@ -14,9 +14,10 @@ interface MasterBarProps {
     host?: string;
     sampleRate?: number;
     bufferSize?: number;
+    onOpenVoiceCheck?: () => void;
 }
 
-export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize }) => {
+export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, onOpenVoiceCheck }) => {
     const getBeginnerMode = () => localStorage.getItem('vst_host_beginner_mode') !== 'false';
     const [levels, setLevels] = useState<[number, number]>([0, 0]);
     const [isClipping, setIsClipping] = useState(false);
@@ -187,9 +188,12 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     const totalLatencyMs = baseLatencyMs + chainLatencyMs;
     const isFxActive = !!stats && !stats.globalBypass && stats.enabledPluginCount > 0;
     const isNoiseActive = !!stats?.noiseReductionActive;
-    const noiseMode = stats?.noiseReductionMode?.toLowerCase() === 'high' ? 'high' : 'low';
+    const rawNoiseMode = stats?.noiseReductionMode?.toLowerCase();
+    const noiseMode = rawNoiseMode === 'high' || rawNoiseMode === 'smart' || rawNoiseMode === 'venue'
+        ? rawNoiseMode
+        : 'low';
     const noiseModeLabel = stats?.noiseReductionEnabled
-        ? (noiseMode === 'high' ? '強' : '弱')
+        ? (noiseMode === 'high' ? '強' : noiseMode === 'smart' ? '学習' : noiseMode === 'venue' ? '会場' : '弱')
         : 'OFF';
     const isCleanActive = isNoiseActive && !isFxActive;
     const signalLabel = isFxActive ? '処理中' : (isCleanActive ? 'ノイズ抑制' : '原音');
@@ -198,8 +202,8 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
         if (!stats) return;
         const currentMode = !stats.noiseReductionEnabled
             ? 'off'
-            : (stats.noiseReductionMode?.toLowerCase() === 'high' ? 'high' : 'low');
-        const nextMode = currentMode === 'off' ? 'low' : currentMode === 'low' ? 'high' : 'off';
+            : (stats.noiseReductionMode?.toLowerCase() === 'high' ? 'high' : stats.noiseReductionMode?.toLowerCase() === 'smart' ? 'smart' : stats.noiseReductionMode?.toLowerCase() === 'venue' ? 'venue' : 'low');
+        const nextMode = currentMode === 'off' ? 'low' : currentMode === 'low' ? 'smart' : currentMode === 'smart' ? 'venue' : currentMode === 'venue' ? 'high' : 'off';
         const nextEnabled = nextMode !== 'off';
         try {
             await audioApi.setNoiseReduction(nextEnabled, nextEnabled ? nextMode : undefined);
@@ -232,6 +236,17 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 {renderMeter(levels[0], 'L')}
                 {renderMeter(levels[1], 'R')}
             </div>
+
+            {onOpenVoiceCheck && (
+                <button
+                    onClick={onOpenVoiceCheck}
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    title="ボイスチェック（加工前後の比較）"
+                    aria-label="ボイスチェック"
+                >
+                    <MdMic className="w-4 h-4" />
+                </button>
+            )}
 
             {/* Master Output Volume */}
             <div className="flex items-center gap-2 border-l border-border pl-3 ml-1 min-w-0">
@@ -270,14 +285,17 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                         className={cn(
                             "inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold font-mono transition-colors",
                             stats.noiseReductionEnabled
-                                ? noiseMode === "high"
+                                ? noiseMode === "high" || noiseMode === "venue"
                                     ? "text-amber-600 dark:text-amber-300 border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20"
                                     : "text-sky-600 dark:text-sky-300 border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20"
                                 : "text-muted-foreground border-border bg-muted/40 hover:bg-muted"
                         )}
-                        title={`ノイズ抑制: ${noiseModeLabel}（${effectiveSampleRate}Hz / OFF→弱→強）`}
+                        title={`ノイズ低減: ${noiseModeLabel}（持続ノイズ向け。会話・BGMは完全には消えません / ${effectiveSampleRate}Hz / OFF→弱→学習→会場→強）`}
                     >
                         <span className="hidden md:inline">ノイズ </span>{noiseModeLabel}
+                        {stats.speechDetected && stats.noiseReductionEnabled && (
+                            <span className="ml-1 hidden lg:inline text-[9px]">声</span>
+                        )}
                     </button>
                     {!isBeginnerMode && (
                         <>

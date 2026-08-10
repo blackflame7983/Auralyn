@@ -25,14 +25,14 @@ export const CHAIN_TEMPLATES: ChainTemplate[] = [
     {
         id: "chatting",
         name: "雑談 (Just Chatting)",
-        description: "ノイズを消して、声を聴きやすく整える基本セットです。",
+        description: "持続ノイズを抑え、コンプで声を聴き取りやすく整える基本セットです。",
         slots: [
             {
                 role: "noise_gate",
                 label: "ノイズゲート",
                 required: false,
                 preferred: [{ nameIncludes: "gate" }, { nameIncludes: "noise" }],
-                notes: "環境音（PCファンの音など）を消します。閾値（Threshold）を調整して、喋っていない時だけ音が消えるようにします。"
+                notes: "PCファンなどの持続ノイズを、喋っていないときに抑えます。閾値（Threshold）を調整して、無音時だけ効くようにします。"
             },
             {
                 role: "compressor",

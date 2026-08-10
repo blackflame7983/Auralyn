@@ -10,15 +10,21 @@ accepted = [
     "CC0-1.0",
     "Unicode-3.0",
     "Unicode-DFS-2016",
-    # "GPL-2.0", # Deprecated
-    "GPL-2.0-only",
+    "CDLA-Permissive-2.0",
     "GPL-2.0-or-later",
-    "GPL-3.0", 
-    "LGPL-3.0",
+    "GPL-3.0-only",
+    "GPL-3.0-or-later",
+    "LGPL-3.0-only",
+    "LGPL-3.0-or-later",
     "Apache-2.0 WITH LLVM-exception",
 ]
 
-# targets = []
+# Auralyn本体はGPL-3.0-onlyだが、private=trueによりこの一覧から除外し、
+# 本体ライセンスはルートLICENSEとアプリ内のAuralynタブで表示する。
+private = { ignore = true }
+
+# Auralynの公式配布対象だけを列挙し、Linux/macOS専用依存を誤って含めない。
+targets = ["x86_64-pc-windows-msvc"]
 
 # If a crate uses a license not in 'accepted', we can specify it here to allow it anyway
 # [exceptions]

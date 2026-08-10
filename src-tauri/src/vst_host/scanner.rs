@@ -119,17 +119,19 @@ fn get_scanner_path() -> Option<PathBuf> {
         }
     }
 
-    // 2. Try CWD (development fallback)
-    if let Ok(cwd) = env::current_dir() {
-        // Look in target/debug/
-        let debug = cwd.join("target").join("debug").join("plugin_scanner.exe");
-        if debug.exists() {
-            return Some(debug);
-        }
+    #[cfg(debug_assertions)]
+    {
+        // Development fallbacks should not be probed in release builds.
+        if let Ok(cwd) = env::current_dir() {
+            let debug = cwd.join("target").join("debug").join("plugin_scanner.exe");
+            if debug.exists() {
+                return Some(debug);
+            }
 
-        let cwd_bin = cwd.join("bin").join("plugin_scanner.exe");
-        if cwd_bin.exists() {
-            return Some(cwd_bin);
+            let cwd_bin = cwd.join("bin").join("plugin_scanner.exe");
+            if cwd_bin.exists() {
+                return Some(cwd_bin);
+            }
         }
     }
 

@@ -156,6 +156,25 @@ pub struct EngineRuntimeStats {
     pub noise_reduction_enabled: bool,
     pub noise_reduction_active: bool,
     pub noise_reduction_mode: String,
+    pub noise_learning_state: String,
+    pub noise_learning_progress: f32,
+    pub noise_profile_available: bool,
+    pub noise_profile_rms: f32,
+    pub recommended_noise_mix: f32,
+    pub speech_detected: bool,
+    pub noise_voice_guard: bool,
+    pub noise_control_strength: f32,
+    pub built_in_effects_enabled: bool,
+    pub built_in_effects_preset: String,
+    pub built_in_effects_amount: f32,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LoopbackProbeResult {
+    pub detected: bool,
+    pub level_db: f32,
+    pub unavailable: Option<String>,
 }
 
 pub struct AudioHost {
@@ -243,10 +262,7 @@ impl AudioHost {
             if let Some(c) = self.child.as_mut() {
                 match c.try_wait() {
                     Ok(Some(status)) => {
-                        log::error!(
-                            "Audio Engine exited unexpectedly! Status: {}",
-                            status
-                        );
+                        log::error!("Audio Engine exited unexpectedly! Status: {}", status);
                         log::warn!("Forcing restart with empty state");
                         self.child = None;
                         self.stdin = None;
@@ -325,11 +341,14 @@ impl AudioHost {
         candidates.push(exe_dir.join("bin").join("audio_engine.exe"));
         candidates.push(exe_dir.join("bin").join("ns-audio-engine.exe"));
 
-        // Dev build outputs
-        candidates.push(PathBuf::from("target/debug/audio_engine.exe"));
-        candidates.push(PathBuf::from("src-tauri/target/debug/audio_engine.exe"));
-        candidates.push(cwd.join("target/debug/audio_engine.exe"));
-        candidates.push(cwd.join("src-tauri/target/debug/audio_engine.exe"));
+        #[cfg(debug_assertions)]
+        {
+            // Development fallbacks should not be probed in release builds.
+            candidates.push(PathBuf::from("target/debug/audio_engine.exe"));
+            candidates.push(PathBuf::from("src-tauri/target/debug/audio_engine.exe"));
+            candidates.push(cwd.join("target/debug/audio_engine.exe"));
+            candidates.push(cwd.join("src-tauri/target/debug/audio_engine.exe"));
+        }
 
         // Tauri externalBin triple-suffixed fallback (search)
         if let Some(p) = find_sidecar_exe(exe_dir, "audio_engine") {
@@ -439,7 +458,10 @@ impl AudioHost {
                                     EngineEvent::ChannelLevels(levels) => {
                                         if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
                                             if let Err(e) = h.emit("audio-channel-scan", levels) {
-                                                log::warn!("Failed to emit audio-channel-scan: {}", e);
+                                                log::warn!(
+                                                    "Failed to emit audio-channel-scan: {}",
+                                                    e
+                                                );
                                             }
                                         }
                                     }
@@ -458,6 +480,47 @@ impl AudioHost {
                                                 StartedPayload {
                                                     sample_rate,
                                                     buffer_size,
+                                                },
+                                            );
+                                        }
+                                    }
+                                    EngineEvent::VoiceCheckState {
+                                        state,
+                                        position_ms,
+                                        duration_ms,
+                                    } => {
+                                        if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                            #[derive(serde::Serialize, Clone)]
+                                            struct VoiceCheckStatePayload {
+                                                state: String,
+                                                position_ms: u32,
+                                                duration_ms: u32,
+                                            }
+                                            let _ = h.emit(
+                                                "voice-check-state",
+                                                VoiceCheckStatePayload {
+                                                    state,
+                                                    position_ms,
+                                                    duration_ms,
+                                                },
+                                            );
+                                        }
+                                    }
+                                    EngineEvent::VoiceCheckEnvelope {
+                                        raw_peaks,
+                                        processed_peaks,
+                                    } => {
+                                        if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                            #[derive(serde::Serialize, Clone)]
+                                            struct VoiceCheckEnvelopePayload {
+                                                raw_peaks: Vec<f32>,
+                                                processed_peaks: Vec<f32>,
+                                            }
+                                            let _ = h.emit(
+                                                "voice-check-envelope",
+                                                VoiceCheckEnvelopePayload {
+                                                    raw_peaks,
+                                                    processed_peaks,
                                                 },
                                             );
                                         }
@@ -746,6 +809,58 @@ impl AudioHost {
         }
     }
 
+    pub fn start_noise_learning(&mut self, duration_ms: u32) -> Result<()> {
+        match self.execute_command(IpcCommand::StartNoiseLearning { duration_ms })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn cancel_noise_learning(&mut self) -> Result<()> {
+        match self.execute_command(IpcCommand::CancelNoiseLearning)? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_noise_control_config(
+        &mut self,
+        active: bool,
+        mode: String,
+        strength: f32,
+        voice_guard: bool,
+    ) -> Result<()> {
+        match self.execute_command(IpcCommand::SetNoiseControlConfig {
+            active,
+            mode,
+            strength,
+            voice_guard,
+        })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_built_in_effects(
+        &mut self,
+        active: bool,
+        preset: Option<String>,
+        amount: f32,
+    ) -> Result<()> {
+        match self.execute_command(IpcCommand::SetBuiltInEffects {
+            active,
+            preset,
+            amount,
+        })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
     pub fn set_output_gain(&mut self, value: f32) -> Result<()> {
         match self.execute_command(IpcCommand::SetOutputGain { value })? {
             IpcResponse::Success => Ok(()),
@@ -770,9 +885,129 @@ impl AudioHost {
         }
     }
 
+    pub fn get_plugin_state(&mut self, id: &str) -> Result<String> {
+        match self.execute_command(IpcCommand::GetPluginState { id: id.to_string() })? {
+            IpcResponse::PluginState { state, .. } => Ok(state),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn set_plugin_state(&mut self, id: &str, state: &str) -> Result<()> {
+        match self.execute_command(IpcCommand::SetPluginState {
+            id: id.to_string(),
+            state: state.to_string(),
+        })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn unload_all_plugins(&mut self, ids: &[String]) {
+        for id in ids {
+            if let Err(e) = self.remove_plugin(id) {
+                log::warn!("Failed to unload plugin {} during profile apply: {}", id, e);
+            }
+        }
+    }
+
     pub fn set_channel_scan(&mut self, active: bool) -> Result<()> {
         match self.execute_command(IpcCommand::SetChannelScan { active })? {
             IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn start_voice_check(&mut self, max_ms: u32) -> Result<()> {
+        match self.execute_command(IpcCommand::StartVoiceCheckRecording { max_ms })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn stop_voice_check(&mut self) -> Result<()> {
+        match self.execute_command(IpcCommand::StopVoiceCheckRecording)? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn play_voice_check(&mut self, source: String, loop_playback: bool) -> Result<()> {
+        match self.execute_command(IpcCommand::PlayVoiceCheck {
+            source,
+            loop_playback,
+        })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn stop_voice_check_playback(&mut self) -> Result<()> {
+        match self.execute_command(IpcCommand::StopVoiceCheckPlayback)? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn export_voice_check(&mut self, path: String, source: String) -> Result<()> {
+        match self.execute_command(IpcCommand::ExportVoiceCheck { path, source })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn play_test_tone(
+        &mut self,
+        freq_hz: f32,
+        duration_ms: u32,
+        level_db: f32,
+    ) -> Result<()> {
+        match self.execute_command(IpcCommand::PlayTestTone {
+            freq_hz,
+            duration_ms,
+            level_db,
+        })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn stop_test_tone(&mut self) -> Result<()> {
+        match self.execute_command(IpcCommand::StopTestTone)? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn probe_loopback(
+        &mut self,
+        input_device: String,
+        duration_ms: u32,
+        freq_hz: f32,
+    ) -> Result<LoopbackProbeResult> {
+        match self.execute_command(IpcCommand::ProbeLoopback {
+            input_device,
+            duration_ms,
+            freq_hz,
+        })? {
+            IpcResponse::LoopbackProbe {
+                detected,
+                level_db,
+                unavailable,
+            } => Ok(LoopbackProbeResult {
+                detected,
+                level_db,
+                unavailable,
+            }),
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("Unexpected response type")),
         }
@@ -829,6 +1064,17 @@ impl AudioHost {
                 noise_reduction_enabled,
                 noise_reduction_active,
                 noise_reduction_mode,
+                noise_learning_state,
+                noise_learning_progress,
+                noise_profile_available,
+                noise_profile_rms,
+                recommended_noise_mix,
+                speech_detected,
+                noise_voice_guard,
+                noise_control_strength,
+                built_in_effects_enabled,
+                built_in_effects_preset,
+                built_in_effects_amount,
             } => Ok(EngineRuntimeStats {
                 active_plugin_count,
                 enabled_plugin_count,
@@ -846,6 +1092,17 @@ impl AudioHost {
                 noise_reduction_enabled,
                 noise_reduction_active,
                 noise_reduction_mode,
+                noise_learning_state,
+                noise_learning_progress,
+                noise_profile_available,
+                noise_profile_rms,
+                recommended_noise_mix,
+                speech_detected,
+                noise_voice_guard,
+                noise_control_strength,
+                built_in_effects_enabled,
+                built_in_effects_preset,
+                built_in_effects_amount,
             }),
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("Unexpected response type")),

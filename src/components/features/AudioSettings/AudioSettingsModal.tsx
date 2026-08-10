@@ -2,9 +2,9 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage } from 'react-icons/md';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { audioApi, AudioDeviceList, EngineRuntimeStats, EngineTuningConfig } from '../../../api/audio';
+import { audioApi, AudioDeviceList, BuiltInEffectsPreset, EngineRuntimeStats, EngineTuningConfig, NoiseControlMode } from '../../../api/audio';
 import { autostartApi } from '../../../api/autostart';
-import { obsApi } from '../../../api/obs';
+import { obsApi, ObsAudioReachResult, ObsSetupResult } from '../../../api/obs';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -21,6 +21,8 @@ interface AudioSettingsModalProps {
   onEngineRestarted?: () => Promise<void> | void;
   onOpenWizard?: () => void;
   onOpenOBSGuide?: () => void;
+  onOpenTroubleshoot?: () => void;
+  onOpenVoiceCheck?: () => void;
   onOpenLicense?: () => void;
   currentSampleRate?: number;
   currentBufferSize?: number;
@@ -29,7 +31,7 @@ interface AudioSettingsModalProps {
 
 export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   isOpen, onClose, onConfigChange, onOpenWizard,
-  onEngineRestarted, onOpenLicense, onOpenOBSGuide,
+  onEngineRestarted, onOpenLicense, onOpenOBSGuide, onOpenTroubleshoot, onOpenVoiceCheck,
   currentSampleRate, currentBufferSize, currentInputChannels
 }) => {
   const getBeginnerMode = () => localStorage.getItem('vst_host_beginner_mode') !== 'false';
@@ -100,6 +102,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [obsPassword, setObsPassword] = useState('');
   const [isObsConnected, setIsObsConnected] = useState(false);
   const [obsConnectionHint, setObsConnectionHint] = useState<string | null>(null);
+  const [obsSetupLoading, setObsSetupLoading] = useState(false);
+  const [obsReachLoading, setObsReachLoading] = useState(false);
+  const [obsSetupResult, setObsSetupResult] = useState<ObsSetupResult | null>(null);
+  const [obsReachResult, setObsReachResult] = useState<ObsAudioReachResult | null>(null);
 
   // Preset State
   const [presets, setPresets] = useState<Record<string, any>>({});
@@ -116,6 +122,57 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [engineStats, setEngineStats] = useState<EngineRuntimeStats | null>(null);
   const [systemSaving, setSystemSaving] = useState(false);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [noiseMode, setNoiseMode] = useState<NoiseControlMode>('smart');
+  const [noiseStrength, setNoiseStrength] = useState(80);
+  const [noiseVoiceGuard, setNoiseVoiceGuard] = useState(true);
+  const [noiseActionBusy, setNoiseActionBusy] = useState(false);
+  const [builtInEffectsEnabled, setBuiltInEffectsEnabled] = useState(false);
+  const [builtInEffectsPreset, setBuiltInEffectsPreset] = useState<BuiltInEffectsPreset>('broadcast');
+  const [builtInEffectsAmount, setBuiltInEffectsAmount] = useState(70);
+
+  useEffect(() => {
+    if (!engineStats) return;
+    const mode = engineStats.noiseReductionMode as NoiseControlMode;
+    if (['low', 'high', 'smart', 'venue'].includes(mode)) {
+      setNoiseMode(mode);
+    }
+    setNoiseVoiceGuard(engineStats.noiseVoiceGuard ?? true);
+    setBuiltInEffectsEnabled(!!engineStats.builtInEffectsEnabled);
+    if (['broadcast', 'warm', 'bright'].includes(engineStats.builtInEffectsPreset)) {
+      setBuiltInEffectsPreset(engineStats.builtInEffectsPreset as BuiltInEffectsPreset);
+    }
+    if (engineStats.noiseControlStrength > 0) {
+      setNoiseStrength(Math.round(engineStats.noiseControlStrength * 100));
+    }
+  }, [engineStats]);
+
+  // プロファイル適用時にノイズ/内蔵 FX のローカル state を同期
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        noiseControl?: { enabled: boolean; mode: string; strength: number; voiceGuard: boolean };
+        builtinFx?: { preset: string; enabled: boolean; amount: number };
+      } | undefined;
+      if (!detail) return;
+      if (detail.noiseControl) {
+        const nc = detail.noiseControl;
+        if (['low', 'high', 'smart', 'venue'].includes(nc.mode)) {
+          setNoiseMode(nc.mode as NoiseControlMode);
+        }
+        setNoiseStrength(Math.round(nc.strength * 100));
+        setNoiseVoiceGuard(nc.voiceGuard);
+      }
+      if (detail.builtinFx) {
+        const fx = detail.builtinFx;
+        setBuiltInEffectsEnabled(fx.enabled);
+        if (['broadcast', 'warm', 'bright'].includes(fx.preset)) {
+          setBuiltInEffectsPreset(fx.preset as BuiltInEffectsPreset);
+        }
+      }
+    };
+    window.addEventListener('profile-fx-applied', handler);
+    return () => window.removeEventListener('profile-fx-applied', handler);
+  }, []);
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -231,10 +288,89 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       await obsApi.disconnect();
       setIsObsConnected(false);
       setObsConnectionHint(null);
+      setObsSetupResult(null);
+      setObsReachResult(null);
       toast.info("切断しました");
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleObsAutoSetup = async () => {
+    setObsSetupLoading(true);
+    setObsSetupResult(null);
+    try {
+      const result = await obsApi.setupAuralynSource();
+      setObsSetupResult(result);
+      if (result.created) {
+        toast.success("OBS に「Auralyn マイク」ソースを作成しました");
+      } else {
+        toast.success("既存の「Auralyn マイク」ソースを更新しました");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("OBS 自動セットアップに失敗しました", {
+        description: `${e}`,
+      });
+    } finally {
+      setObsSetupLoading(false);
+    }
+  };
+
+  const handleObsMuteDuplicate = (sourceName: string) => {
+    showConfirm({
+      title: `「${sourceName}」をミュートしますか？`,
+      description: '重複マイクによる二重取りを防ぐため、このソースをミュートします。後から OBS で解除できます。',
+      confirmLabel: 'ミュートする',
+      variant: 'default',
+      onConfirm: async () => {
+        try {
+          await obsApi.muteSource(sourceName, true);
+          toast.success(`「${sourceName}」をミュートしました`);
+          if (obsSetupResult) {
+            setObsSetupResult({
+              ...obsSetupResult,
+              duplicateMicSources: obsSetupResult.duplicateMicSources.filter((n) => n !== sourceName),
+            });
+          }
+        } catch (e) {
+          console.error(e);
+          toast.error('ミュートに失敗しました', { description: `${e}` });
+        }
+      },
+    });
+  };
+
+  const handleObsReachCheck = () => {
+    showConfirm({
+      title: '接続テストを実行しますか？',
+      description: 'テストトーンを再生して OBS への到達を確認します。配信中は実行しないでください。',
+      confirmLabel: 'テストを開始',
+      onConfirm: async () => {
+        setObsReachLoading(true);
+        setObsReachResult(null);
+        try {
+          const result = await obsApi.checkAudioReach(2000);
+          setObsReachResult(result);
+          if (result.reached === 'unsupported') {
+            toast.info('メーター取得がサポートされていません', {
+              description: 'OBS の入力メーターを手動で確認してください。',
+            });
+          } else if (result.reached) {
+            toast.success('OBS に音が届いています');
+          } else {
+            toast.error('OBS に音が届いていません', {
+              description: 'ルーティング設定を確認してください。',
+            });
+          }
+        } catch (e) {
+          console.error(e);
+          toast.error('接続テストに失敗しました', { description: `${e}` });
+        } finally {
+          setObsReachLoading(false);
+        }
+      },
+    });
   };
 
   const refreshEngineRuntimeStats = async () => {
@@ -247,6 +383,63 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       toast.error('エンジン統計の取得に失敗しました');
     } finally {
       setStatsLoading(false);
+    }
+  };
+
+  const applyNoiseControlConfig = async (next?: Partial<{ active: boolean; mode: NoiseControlMode; strength: number; voiceGuard: boolean }>) => {
+    const active = next?.active ?? true;
+    const mode = next?.mode ?? noiseMode;
+    const strength = next?.strength ?? noiseStrength;
+    const voiceGuard = next?.voiceGuard ?? noiseVoiceGuard;
+    setNoiseActionBusy(true);
+    try {
+      await audioApi.setNoiseControlConfig({
+        active,
+        mode,
+        strength: Math.max(25, Math.min(125, strength)) / 100,
+        voiceGuard,
+      });
+      const stats = await audioApi.getEngineRuntimeStats();
+      setEngineStats(stats);
+      toast.success(active ? 'ノイズ低減を更新しました' : 'ノイズ低減をOFFにしました');
+    } catch (e) {
+      console.error('Failed to apply noise control config', e);
+      toast.error('ノイズ低減の更新に失敗しました');
+    } finally {
+      setNoiseActionBusy(false);
+    }
+  };
+
+  const handleStartNoiseLearning = async () => {
+    setNoiseActionBusy(true);
+    try {
+      await audioApi.startNoiseLearning(3000);
+      toast.info('3秒間、定常ノイズをプロファイル化しています（この間は話さないでください）');
+      window.setTimeout(refreshEngineRuntimeStats, 3500);
+    } catch (e) {
+      console.error('Failed to start noise learning', e);
+      toast.error('ノイズ学習を開始できませんでした');
+    } finally {
+      setNoiseActionBusy(false);
+    }
+  };
+
+  const applyBuiltInEffects = async (next?: Partial<{ active: boolean; preset: BuiltInEffectsPreset; amount: number }>) => {
+    const active = next?.active ?? builtInEffectsEnabled;
+    const preset = next?.preset ?? builtInEffectsPreset;
+    const amount = next?.amount ?? builtInEffectsAmount;
+    try {
+      await audioApi.setBuiltInEffects({
+        active,
+        preset,
+        amount: Math.max(0, Math.min(100, amount)) / 100,
+      });
+      const stats = await audioApi.getEngineRuntimeStats();
+      setEngineStats(stats);
+      toast.success(active ? '内蔵ボイスチェーンを更新しました' : '内蔵ボイスチェーンをOFFにしました');
+    } catch (e) {
+      console.error('Failed to apply built-in effects', e);
+      toast.error('内蔵ボイスチェーンの更新に失敗しました');
     }
   };
 
@@ -728,6 +921,210 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </div>
                 </div>
 
+                {/* Noise reduction */}
+                <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground">ノイズ低減</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        機械学習ベース（RNNoise 系）で、ファン・空調などの持続ノイズを低減します。
+                      </p>
+                    </div>
+                    <Switch
+                      checked={!!engineStats?.noiseReductionEnabled}
+                      onCheckedChange={(checked) => applyNoiseControlConfig({ active: checked })}
+                      aria-label="ノイズ低減"
+                    />
+                  </div>
+
+                  <div className="text-xs rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 space-y-1.5 text-amber-800 dark:text-amber-200">
+                    <p>
+                      <span className="font-bold">効きやすい:</span> ファン・空調・電源ハムなどの持続的なノイズ
+                    </p>
+                    <p>
+                      <span className="font-bold">効きにくい:</span> 周囲の会話・BGM・突発音（完全には消えません）
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      効果は耳で確認するのがいちばん確実です。
+                      {onOpenVoiceCheck ? (
+                        <>
+                          {' '}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              onOpenVoiceCheck();
+                            }}
+                            className="underline underline-offset-2 hover:text-foreground font-medium"
+                          >
+                            ボイスチェックで加工前後を比較
+                          </button>
+                        </>
+                      ) : (
+                        ' マスターバーのボイスチェックで加工前後を比較できます。'
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {([
+                      ['smart', '学習'],
+                      ['venue', '会場'],
+                      ['low', '弱'],
+                      ['high', '強'],
+                    ] as Array<[NoiseControlMode, string]>).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        onClick={() => {
+                          setNoiseMode(mode);
+                          applyNoiseControlConfig({ active: true, mode });
+                        }}
+                        className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
+                          noiseMode === mode
+                            ? 'border-primary bg-primary/15 text-primary'
+                            : 'border-input bg-background text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {noiseMode === 'smart' && (
+                      <>学習: 3秒間の定常ノイズをプロファイル化し、抑制量を自動調整します（学習中は話さないでください）。</>
+                    )}
+                    {noiseMode === 'venue' && (
+                      <>会場: 騒がしい環境向け。近接マイク前提で、声があるときは抑制を弱めます。会話やBGMを完全に消すものではありません。</>
+                    )}
+                    {noiseMode === 'low' && (
+                      <>弱: 持続ノイズを軽めに低減します。声の欠けが少なめです。</>
+                    )}
+                    {noiseMode === 'high' && (
+                      <>強: 持続ノイズを強めに低減します。声の欠けやロボ声に注意してください。</>
+                    )}
+                  </p>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">抑制強度</span>
+                      <span className="font-mono text-foreground">{noiseStrength}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={25}
+                      max={125}
+                      step={5}
+                      value={noiseStrength}
+                      onChange={(e) => setNoiseStrength(Number(e.target.value))}
+                      onMouseUp={() => applyNoiseControlConfig({ strength: noiseStrength })}
+                      onKeyUp={() => applyNoiseControlConfig({ strength: noiseStrength })}
+                      className="w-full accent-primary"
+                      aria-label="ノイズ低減の抑制強度"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                    <button
+                      onClick={handleStartNoiseLearning}
+                      disabled={noiseActionBusy}
+                      className="px-3 py-2 rounded-md border border-input bg-background text-foreground hover:border-primary/50 disabled:opacity-50 transition-colors"
+                    >
+                      3秒学習
+                    </button>
+                    <button
+                      onClick={() => audioApi.cancelNoiseLearning().then(refreshEngineRuntimeStats)}
+                      className="px-3 py-2 rounded-md border border-input bg-background text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      学習を中止
+                    </button>
+                    <div className="px-3 py-2 rounded-md border border-input bg-background text-muted-foreground">
+                      {engineStats?.noiseLearningState === 'capturing'
+                        ? `学習中 ${Math.round((engineStats.noiseLearningProgress ?? 0) * 100)}%`
+                        : engineStats?.noiseProfileAvailable
+                          ? `学習済み RMS ${Math.round((engineStats.noiseProfileRms ?? 0) * 1000) / 1000}`
+                          : '未学習'}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2">
+                    <div>
+                      <Label className="text-xs font-bold text-foreground">声を守る</Label>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">語頭、笑い、叫びで抑制を自動的に弱めます。</p>
+                    </div>
+                    <Switch
+                      checked={noiseVoiceGuard}
+                      onCheckedChange={(checked) => {
+                        setNoiseVoiceGuard(checked);
+                        applyNoiseControlConfig({ voiceGuard: checked });
+                      }}
+                      aria-label="声を守る"
+                    />
+                  </div>
+                </div>
+
+                {/* Built-in Effects */}
+                <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground">内蔵ボイスチェーン</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        VSTなしでローカット、軽いコンプ、リミッターを適用します。
+                      </p>
+                    </div>
+                    <Switch
+                      checked={builtInEffectsEnabled}
+                      onCheckedChange={(checked) => {
+                        setBuiltInEffectsEnabled(checked);
+                        applyBuiltInEffects({ active: checked });
+                      }}
+                      aria-label="内蔵ボイスチェーン"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      ['broadcast', '配信'],
+                      ['warm', '低め'],
+                      ['bright', '明瞭'],
+                    ] as Array<[BuiltInEffectsPreset, string]>).map(([preset, label]) => (
+                      <button
+                        key={preset}
+                        onClick={() => {
+                          setBuiltInEffectsPreset(preset);
+                          applyBuiltInEffects({ active: true, preset });
+                        }}
+                        className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
+                          builtInEffectsPreset === preset
+                            ? 'border-primary bg-primary/15 text-primary'
+                            : 'border-input bg-background text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">かかり具合</span>
+                      <span className="font-mono text-foreground">{builtInEffectsAmount}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={builtInEffectsAmount}
+                      onChange={(e) => setBuiltInEffectsAmount(Number(e.target.value))}
+                      onMouseUp={() => applyBuiltInEffects({ amount: builtInEffectsAmount })}
+                      onKeyUp={() => applyBuiltInEffects({ amount: builtInEffectsAmount })}
+                      className="w-full accent-primary"
+                      aria-label="内蔵ボイスチェーンのかかり具合"
+                    />
+                  </div>
+                </div>
+
                 {/* Host Selection */}
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
@@ -1070,6 +1467,116 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md border border-input mt-4">
                 <p>OBS WebSocket v5 (OBS 28+) が必要です。<br />OBS側で「ツール」→「WebSocketサーバー設定」を確認してください。</p>
               </div>
+
+              {isObsConnected && (
+                <div className="mt-6 pt-6 border-t border-border space-y-4">
+                  <h3 className="text-sm font-bold text-foreground">OBS 自動セットアップ</h3>
+                  <p className="text-xs text-muted-foreground">
+                    「Auralyn マイク」音声入力キャプチャを自動作成し、CABLE Output へのルーティングを設定します。
+                  </p>
+
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={handleObsAutoSetup}
+                      disabled={obsSetupLoading || obsReachLoading}
+                      className="w-full py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all font-bold disabled:opacity-50"
+                    >
+                      {obsSetupLoading ? 'セットアップ中...' : '1. ソースを自動作成'}
+                    </button>
+
+                    {obsSetupResult && (
+                      <div className="text-xs bg-muted/50 border border-border rounded-md p-3 space-y-2">
+                        <p className="font-medium text-foreground">
+                          {obsSetupResult.created ? '✅ ソースを新規作成しました' : '✅ 既存ソースを更新しました'}
+                        </p>
+                        {obsSetupResult.deviceBound ? (
+                          <p className="text-emerald-500">CABLE Output を自動選択しました</p>
+                        ) : (
+                          <p className="text-yellow-600 dark:text-yellow-400">
+                            手動で CABLE Output を選択してください（OBS のソースプロパティ → デバイス）
+                          </p>
+                        )}
+                        {obsSetupResult.duplicateMicSources.length > 0 && (
+                          <div className="space-y-2 pt-1">
+                            <p className="text-yellow-600 dark:text-yellow-400 font-medium">
+                              他のマイクソースが有効です（二重取りの可能性）:
+                            </p>
+                            <ul className="space-y-1.5">
+                              {obsSetupResult.duplicateMicSources.map((name) => (
+                                <li key={name} className="flex items-center justify-between gap-2">
+                                  <span className="truncate">{name}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleObsMuteDuplicate(name)}
+                                    className="shrink-0 px-2 py-0.5 rounded border border-border hover:bg-muted/80 transition-colors"
+                                  >
+                                    ミュートする
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleObsReachCheck}
+                      disabled={obsSetupLoading || obsReachLoading}
+                      className="w-full py-2 bg-muted border border-border text-foreground rounded-lg hover:bg-muted/80 transition-all font-bold disabled:opacity-50"
+                    >
+                      {obsReachLoading ? 'テスト中...' : '2. 接続テスト'}
+                    </button>
+
+                    {obsReachResult && (
+                      <div className="text-xs bg-muted/50 border border-border rounded-md p-3 space-y-2">
+                        {obsReachResult.reached === 'unsupported' ? (
+                          <p className="text-yellow-600 dark:text-yellow-400">
+                            メーター取得に対応していません。OBS の音声ミキサーで「Auralyn マイク」のレベルが動くか手動で確認してください。
+                          </p>
+                        ) : obsReachResult.reached ? (
+                          <p className="text-emerald-500 font-medium">
+                            ✅ OBS に音が届いています
+                            {obsReachResult.peakDb !== undefined && (
+                              <span className="text-muted-foreground font-normal ml-1">
+                                （ピーク {obsReachResult.peakDb.toFixed(1)} dB）
+                              </span>
+                            )}
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            <p className="text-destructive font-medium">
+                              ❌ OBS に音が届いていません
+                              {obsReachResult.peakDb !== undefined && (
+                                <span className="text-muted-foreground font-normal ml-1">
+                                  （ピーク {obsReachResult.peakDb.toFixed(1)} dB）
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-muted-foreground">
+                              Auralyn の出力先が CABLE Input になっているか、OBS のデバイスが CABLE Output か確認してください。
+                            </p>
+                            {onOpenTroubleshoot && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onClose();
+                                  onOpenTroubleshoot();
+                                }}
+                                className="px-2.5 py-1 rounded border border-border hover:bg-muted/80 transition-colors text-foreground"
+                              >
+                                トラブルシュートを開く
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </TabsContent>
 
@@ -1312,7 +1819,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <div className="text-foreground font-mono mt-1">
                       {engineStats
                         ? (engineStats.noiseReductionEnabled
-                          ? `${engineStats.noiseReductionMode === 'high' ? '強' : '弱'}${engineStats.noiseReductionActive ? '（動作中）' : '（待機）'}`
+                          ? `${engineStats.noiseReductionMode === 'high' ? '強' : engineStats.noiseReductionMode === 'smart' ? '学習' : engineStats.noiseReductionMode === 'venue' ? '会場' : '弱'}${engineStats.noiseReductionActive ? '（動作中）' : '（待機）'}`
                           : 'OFF')
                         : '-'}
                     </div>

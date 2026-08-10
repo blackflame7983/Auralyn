@@ -9,6 +9,7 @@
     "core:default",
     "opener:default",
     "window-state:default",
+    "mcp-bridge:default",
     "core:window:allow-set-theme"
   ]
 }

@@ -1,0 +1,6 @@
+# Keep generated binaries and agent-local material out of GPL source archives.
+release_artifacts export-ignore
+.agent export-ignore
+.gemini export-ignore
+.vscode export-ignore
+_filelist.txt export-ignore

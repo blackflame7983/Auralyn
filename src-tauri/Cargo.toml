@@ -1,9 +1,10 @@
 [package]
 name = "vst-host"
-version = "1.0.0"
+version = "1.1.0"
 description = "リアルタイム音声処理特化型の軽量VST3ホストアプリケーション"
 authors = ["kuro7983"]
-license = "MIT"
+publish = false
+license = "GPL-3.0-only"
 edition = "2021"
 default-run = "AuralynHost"
 
@@ -38,25 +39,30 @@ vst3 = "0.3.0"
 walkdir = "2.5.0"
 ringbuf = "0.4.8"
 libloading = "0.9.0"
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Rpc", "Win32_System_Ole", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_SystemInformation", "Win32_System_Memory", "Win32_System_JobObjects", "Win32_System_Diagnostics_Debug", "Win32_UI_HiDpi", "Win32_Graphics_Gdi", "Win32_Graphics_GdiPlus"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Rpc", "Win32_System_Ole", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_SystemInformation", "Win32_System_Memory", "Win32_System_JobObjects", "Win32_System_Diagnostics_Debug", "Win32_UI_HiDpi", "Win32_Graphics_Gdi", "Win32_Graphics_GdiPlus", "Win32_Media_Audio", "Win32_Media_Audio_Endpoints", "Win32_Devices_FunctionDiscovery", "Win32_Devices_Enumeration", "Win32_UI_Shell_PropertiesSystem", "Win32_System_Com_StructuredStorage"] }
 winit = "0.29.15"
 raw-window-handle = "0.6"
 open = "5.3.3"
 tauri-plugin-window-state = "2.4.1"
 base64 = "0.21"
 obws = { version = "0.11", features = ["events"] }
+time = "0.3"
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
 winreg = "0.52"
 rubato = "0.14"
 nnnoiseless = { version = "0.5.2", default-features = false }
+hound = "3.5.1"
+rustfft = "6.2.0"
 rfd = "0.17.2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-mcp-bridge = "0.11.2"
 
 
 [dev-dependencies]
 serde_json = "1"
+assert_cmd = "2"
 # assert_cmd = "2" # Optional, if we want easier process testing, but std::process is fine for now to avoid extra deps download time
 
 # --- Build Profile Optimizations ---
@@ -68,4 +74,4 @@ opt-level = 3
 [profile.release]
 lto = true        # Link Time Optimization (smaller binary, faster code)
 panic = "abort"   # Remove unwind tables (smaller binary)
-strip = true      # Remove symbols (smaller binary)
+# strip = true    # Windows Defenderの誤検知(トロイの木馬判定)を軽減するためデバッグシンボルを残す

@@ -1,9 +1,9 @@
 /**
- * 公開リポジトリ（Auralyn）に Release アセットをアップロードするスクリプト
+ * 公開リポジトリ（Auralyn-Releases）に Release アセットをアップロードするスクリプト
  *
  * 前提:
- * - 開発リポで npm run tauri build 済み
- * - createUpdaterArtifacts 有効状態で latest.json を生成済み
+ * - createUpdaterArtifactsとTauri署名環境変数を設定済み
+ * - Git worktreeがcleanで、バイナリと同じHEADがcheckoutされている
  * - gh CLI がインストールされ、認証済み
  *
  * 使い方:
@@ -11,16 +11,20 @@
  *   version 省略時は tauri.conf.json の version を使用
  *
  * 環境変数（任意）:
- *   PUBLIC_REPO=blackflame7983/Auralyn
+ *   PUBLIC_REPO=blackflame7983/Auralyn-Releases
  *   BUNDLE_DIR=src-tauri/target/release/bundle
  */
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
+const { runReleaseReadinessCheck } = require('./check-release-readiness.cjs');
+const { writeWindowsManifest } = require('./generate-release-manifest.cjs');
+const { assertCleanWorktree, createSourceArchive } = require('./generate-source-archive.cjs');
+const { prepareAsioSdk } = require('./prepare-asio-sdk.cjs');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const PUBLIC_REPO = process.env.PUBLIC_REPO || 'blackflame7983/Auralyn';
+const PUBLIC_REPO = process.env.PUBLIC_REPO || 'blackflame7983/Auralyn-Releases';
 const BUNDLE_DIR = path.resolve(PROJECT_ROOT, process.env.BUNDLE_DIR || 'src-tauri/target/release/bundle');
 
 function getVersion() {
@@ -48,34 +52,102 @@ function findFile(dir, predicate) {
 const version = getVersion();
 const tag = `v${version}`;
 
+try {
+  runReleaseReadinessCheck({ publicRepo: PUBLIC_REPO });
+  assertCleanWorktree(PROJECT_ROOT);
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
+
 console.log(`Uploading release ${tag} to ${PUBLIC_REPO}`);
 console.log('');
 
-// 1) MSI or NSIS installer
+let asioSdk;
+try {
+  asioSdk = prepareAsioSdk();
+  console.log(`Using pinned ASIO SDK ${asioSdk.sdkVersion}: ${asioSdk.archiveSha256}`);
+} catch (error) {
+  console.error(`ASIO SDKの固定に失敗しました: ${error.message}`);
+  process.exit(1);
+}
+
+// Always rebuild after the clean-tree GPL gate so the binary and source
+// archive originate from the same checked-out commit.
+try {
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  console.log('Building signed release artifacts from the current clean HEAD...');
+  execFileSync(npmCommand, ['run', 'tauri', 'build'], {
+    stdio: 'inherit',
+    cwd: PROJECT_ROOT,
+    env: { ...process.env, CPAL_ASIO_DIR: asioSdk.sdkDir },
+  });
+} catch (error) {
+  console.error(`リリースビルドに失敗しました: ${error.message}`);
+  process.exit(error.status ?? 1);
+}
+
+// 1) Prefer the NSIS installer used by the public download flow, then MSI.
 const msiDir = path.join(BUNDLE_DIR, 'msi');
 const nsisDir = path.join(BUNDLE_DIR, 'nsis');
-const installerPath = findFile(msiDir, (n) => n.endsWith('.msi'))
-  || findFile(nsisDir, (n) => n.endsWith('.exe'));
+const installerPath = findFile(nsisDir, (n) => n.endsWith('.exe'))
+  || findFile(msiDir, (n) => n.endsWith('.msi'));
 
 if (!installerPath) {
   console.error('Installer not found. Run: npm run tauri build');
   process.exit(1);
 }
 
-// 2) latest.json (build で生成されたもの)
-const latestPath = findFile(BUNDLE_DIR, (n) => n === 'latest.json') || path.join(BUNDLE_DIR, 'latest.json');
-const hasLatest = fs.existsSync(latestPath);
-
-if (!hasLatest) {
-  console.error('latest.json not found. Run: npm run tauri build (with bundle.createUpdaterArtifacts = true)');
+// 2) Tauri creates the installer signature, while the static latest.json is
+// generated here in the official Tauri v2 static updater format.
+const signaturePath = `${installerPath}.sig`;
+if (!fs.existsSync(signaturePath)) {
+  console.error(`Signature not found: ${signaturePath}`);
+  console.error('Set TAURI_SIGNING_PRIVATE_KEY and run: npm run tauri build');
   process.exit(1);
 }
 
-const filesToUpload = [installerPath, latestPath].map((p) => path.relative(PROJECT_ROOT, p));
+const latestPath = path.join(BUNDLE_DIR, 'latest.json');
+const signature = fs.readFileSync(signaturePath, 'utf8').trim();
+writeWindowsManifest(latestPath, {
+  version,
+  repo: PUBLIC_REPO,
+  tag,
+  assetName: path.basename(installerPath),
+  signature,
+  notes: process.env.AURALYN_RELEASE_NOTES || '',
+});
+
+// GPLv3 section 6 requires equivalent access to the Corresponding Source.
+// Generate it from the exact clean HEAD and upload it beside the binary.
+let sourceAssets;
+try {
+  sourceAssets = createSourceArchive({ version, asioSdkDir: asioSdk.sdkDir });
+} catch (error) {
+  console.error(`対応ソースの生成に失敗しました: ${error.message}`);
+  process.exit(1);
+}
+
+const filesToUploadAbsolute = [
+  installerPath,
+  signaturePath,
+  latestPath,
+  sourceAssets.archivePath,
+  sourceAssets.checksumPath,
+  sourceAssets.manifestPath,
+  path.join(PROJECT_ROOT, 'LICENSE'),
+  path.join(PROJECT_ROOT, 'NOTICE.md'),
+  path.join(PROJECT_ROOT, 'SOURCE-DISTRIBUTION.md'),
+];
+const portablePath = path.join(PROJECT_ROOT, 'release_artifacts', `Auralyn_v${version}_Portable.zip`);
+if (fs.existsSync(portablePath)) filesToUploadAbsolute.push(portablePath);
+
+const filesToUpload = filesToUploadAbsolute.map((p) => path.relative(PROJECT_ROOT, p));
 console.log('Files to upload:', filesToUpload);
+console.log(`Corresponding Source commit: ${sourceAssets.manifest.commit}`);
 
 try {
-  execSync(`gh release create "${tag}" ${filesToUpload.map((f) => `"${f}"`).join(' ')} --repo "${PUBLIC_REPO}"`, {
+  execFileSync('gh', ['release', 'create', tag, ...filesToUpload, '--repo', PUBLIC_REPO], {
     stdio: 'inherit',
     cwd: PROJECT_ROOT,
   });

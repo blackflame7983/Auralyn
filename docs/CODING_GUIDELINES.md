@@ -41,6 +41,10 @@
     - Good: "音声処理が追いついていません。バッファサイズを大きくしてください。"
 - **Contextual Help**: Explain *why* a setting matters (e.g., "ASIO (Low Latency for Games)" instead of just "ASIO").
 
+### 4. User-Facing Copy & Expectations (文言・期待値)
+- New or changed **Japanese user-facing strings** (UI labels, tooltips, wizard copy, LP spec) MUST follow [COPY_GUIDELINES.md](./COPY_GUIDELINES.md).
+- PR reviews should use the checklist at the end of that document (noise scope, latency claims, Voice Check links, etc.).
+
 ---
 
 ## Technical Guidelines

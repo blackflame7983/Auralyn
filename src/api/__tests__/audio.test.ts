@@ -81,12 +81,141 @@ describe('audioApi', () => {
         it('ノイズ抑制の状態とモードを送信する', async () => {
             mockedInvoke.mockResolvedValue(undefined);
 
-            await audioApi.setNoiseReduction(true, 'high');
+            await audioApi.setNoiseReduction(true, 'smart');
 
             expect(mockedInvoke).toHaveBeenCalledWith('set_noise_reduction', {
                 active: true,
-                mode: 'high',
+                mode: 'smart',
             });
+        });
+
+        it('AIノイズ制御の学習と詳細設定を送信する', async () => {
+            mockedInvoke.mockResolvedValue(undefined);
+
+            await audioApi.startNoiseLearning(3000);
+            expect(mockedInvoke).toHaveBeenCalledWith('start_noise_learning', {
+                durationMs: 3000,
+            });
+
+            await audioApi.setNoiseControlConfig({
+                active: true,
+                mode: 'venue',
+                strength: 0.85,
+                voiceGuard: true,
+            });
+            expect(mockedInvoke).toHaveBeenCalledWith('set_noise_control_config', {
+                active: true,
+                mode: 'venue',
+                strength: 0.85,
+                voiceGuard: true,
+            });
+        });
+
+        it('内蔵エフェクト設定を送信する', async () => {
+            mockedInvoke.mockResolvedValue(undefined);
+
+            await audioApi.setBuiltInEffects({
+                active: true,
+                preset: 'broadcast',
+                amount: 0.7,
+            });
+
+            expect(mockedInvoke).toHaveBeenCalledWith('set_built_in_effects', {
+                active: true,
+                preset: 'broadcast',
+                amount: 0.7,
+            });
+        });
+    });
+
+    describe('voice check', () => {
+        it('ボイスチェック関連コマンドを正しいパラメータで送信する', async () => {
+            mockedInvoke.mockResolvedValue(undefined);
+
+            await audioApi.startVoiceCheck(8000);
+            expect(mockedInvoke).toHaveBeenCalledWith('start_voice_check', { maxMs: 8000 });
+
+            await audioApi.stopVoiceCheck();
+            expect(mockedInvoke).toHaveBeenCalledWith('stop_voice_check');
+
+            await audioApi.playVoiceCheck('raw', false);
+            expect(mockedInvoke).toHaveBeenCalledWith('play_voice_check', {
+                source: 'raw',
+                loopPlayback: false,
+            });
+
+            await audioApi.stopVoiceCheckPlayback();
+            expect(mockedInvoke).toHaveBeenCalledWith('stop_voice_check_playback');
+
+            await audioApi.exportVoiceCheck('C:\\temp\\test.wav', 'processed');
+            expect(mockedInvoke).toHaveBeenCalledWith('export_voice_check', {
+                path: 'C:\\temp\\test.wav',
+                source: 'processed',
+            });
+
+            await audioApi.exportVoiceCheckWav('raw');
+            expect(mockedInvoke).toHaveBeenCalledWith('export_voice_check_wav', {
+                source: 'raw',
+            });
+        });
+
+        it('品質チェック分析コマンドを呼ぶ', async () => {
+            const mockReport = {
+                clip: { count: 0, ratio: 0, positionsMs: [] },
+                dropouts: { count: 0, positionsMs: [] },
+                noiseFloorDb: { raw: -60, processed: -65 },
+                snrImprovementDb: 5,
+                bandDeltaDb: [{ bandHz: 1000, deltaDb: -1 }],
+                loudness: { rmsDb: -18, peakDb: -6 },
+                verdict: 'good',
+                advices: [],
+            };
+            mockedInvoke.mockResolvedValue(mockReport);
+
+            const result = await audioApi.analyzeVoiceCheck();
+
+            expect(mockedInvoke).toHaveBeenCalledWith('analyze_voice_check');
+            expect(result.verdict).toBe('good');
+            expect(result.snrImprovementDb).toBe(5);
+        });
+    });
+
+    describe('routing diagnostics', () => {
+        it('テストトーン/ループバック/ルーティング診断コマンドを送信する', async () => {
+            mockedInvoke.mockResolvedValue(undefined);
+
+            await audioApi.playTestTone(1000, 1500, -20);
+            expect(mockedInvoke).toHaveBeenCalledWith('play_test_tone', {
+                freqHz: 1000,
+                durationMs: 1500,
+                levelDb: -20,
+            });
+
+            await audioApi.stopTestTone();
+            expect(mockedInvoke).toHaveBeenCalledWith('stop_test_tone');
+
+            const probeResult = { detected: true, levelDb: -30, unavailable: null };
+            mockedInvoke.mockResolvedValue(probeResult);
+            const probe = await audioApi.probeLoopback('CABLE Output', 1500, 1000);
+            expect(mockedInvoke).toHaveBeenCalledWith('probe_loopback', {
+                inputDevice: 'CABLE Output',
+                durationMs: 1500,
+                freqHz: 1000,
+            });
+            expect(probe.detected).toBe(true);
+
+            const routingReport = {
+                devices: [],
+                engineSampleRateHz: 48000,
+                sampleRateMismatches: [],
+                defaultCommsRenderIsVirtual: false,
+                defaultCommsRenderName: null,
+                warnings: [],
+            };
+            mockedInvoke.mockResolvedValue(routingReport);
+            const routing = await audioApi.getRoutingDiagnostics();
+            expect(mockedInvoke).toHaveBeenCalledWith('get_routing_diagnostics');
+            expect(routing.engineSampleRateHz).toBe(48000);
         });
     });
 
@@ -126,6 +255,15 @@ describe('audioApi', () => {
                 noiseReductionEnabled: false,
                 noiseReductionActive: false,
                 noiseReductionMode: 'low',
+                noiseLearningState: 'idle',
+                noiseLearningProgress: 0,
+                noiseProfileAvailable: false,
+                noiseProfileRms: 0,
+                recommendedNoiseMix: 0.6,
+                speechDetected: false,
+                noiseVoiceGuard: true,
+                builtInEffectsEnabled: false,
+                builtInEffectsPreset: 'broadcast',
             });
 
             await audioApi.getEngineRuntimeStats();

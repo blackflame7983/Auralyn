@@ -13,6 +13,7 @@ export const useUIState = () => {
     const [isPresetManagerOpen, setIsPresetManagerOpen] = useState(false);
     const [isLargeMeterOpen, setIsLargeMeterOpen] = useState(false);
     const [isTroubleshootOpen, setIsTroubleshootOpen] = useState(false);
+    const [isVoiceCheckOpen, setIsVoiceCheckOpen] = useState(false);
 
     return {
         isSettingsOpen, setIsSettingsOpen,
@@ -26,6 +27,7 @@ export const useUIState = () => {
         isPresetManagerOpen, setIsPresetManagerOpen,
         isLargeMeterOpen, setIsLargeMeterOpen,
         isLicenseModalOpen, setIsLicenseModalOpen,
-        isTroubleshootOpen, setIsTroubleshootOpen
+        isTroubleshootOpen, setIsTroubleshootOpen,
+        isVoiceCheckOpen, setIsVoiceCheckOpen,
     };
 };

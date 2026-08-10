@@ -8,7 +8,7 @@ Auralyn（オーラリン）は、Tauri + React + Rust (Sidecarアーキテク�
 - **直感的なプラグインラック**: 複数のプラグインを直列に繋ぎ（シグナルチェーン）、順番の変更、ON/OFF切り替え、ゲイン調整をわかりやすいUIで行うことができます。
 - **プラグインエディタ**: プラグインの各パラメータをアプリ内の汎用スライダーUI等で手軽に調整できます（※プラグイン独自のカスタムGUIビューには非対応）。
 - **原音比較機能 (A/B テスト)**: ワンクリックでエフェクト適用前・適用後の音声を切り替えて、かかり具合を瞬時に比較できます。
-- **オーディオデバイス管理**: ASIO および WASAPI に対応。入力機器（マイクなど）から出力機器（スピーカー等）までのルーティングを柔軟に設定できます。オーディオ処理中にデバイスの設定を切り替えることも可能です。
+- **オーディオデバイス管理**: WASAPIおよびASIOに対応しています。ASIO SDKはGPLv3の選択肢に基づいて利用します。入力機器（マイクなど）から出力機器（スピーカー等）までのルーティングを柔軟に設定できます。
 - **ステート管理・プリセット**: 作成したエフェクトチェーン（ラックの状態）の保存や、プリセット・テンプレートの読み込みに対応。
 - **レベルメーター**: リアルタイムなオーディオピークレベルを視覚的に確認できるメーターを搭載（見やすいラージメーター機能あり）。
 - **堅牢な安定性設計**: オーディオ処理エンジンを独立したプロセス（`audio_engine.exe`）として実行するサイドカーパターンを採用。VSTプラグインがクラッシュしてもメインUIが巻き込まれず、自動リカバリを行う仕組みを備えています。
@@ -22,7 +22,7 @@ Auralyn（オーラリン）は、Tauri + React + Rust (Sidecarアーキテク�
 
 ## システム要件
 
-- **OS**: Windows 10 / 11 (64ビット版のみ対応)
+- **OS**: Windows 11 (64ビット版のみ対応)
 - VST3エフェクトプラグイン（事前にお好みのプラグインをインストールしておく必要があります）
 - ※ 現状、macOS、Linux には対応していません。
 
@@ -39,19 +39,21 @@ Auralyn（オーラリン）は、Tauri + React + Rust (Sidecarアーキテク�
 - Node.js (npm 付属)
 - Rust ツールチェーン (`rustup`)
 - Microsoft C++ Build Tools (WindowsでのRustコンパイル用)
-- [ASIO SDK](https://www.steinberg.net/asiosdk) (ASIO対応ビルド時に必要)
-  - ダウンロード後、環境変数 `CPAL_ASIO_DIR` にSDKのパスを指定してください
+- LLVM/Clang（`asio-sys`のbindgen用）
+- [ASIO SDK](https://www.steinberg.net/asiosdk)（`asio-sys`がビルド時に取得。固定したSDKを使う場合は`CPAL_ASIO_DIR`を指定）
+
+公式Source ZIPには、公式ビルドで使用したASIO SDK 2.3.4の`common`／`host`ソースとライセンスを含めています。Source ZIPから再ビルドする場合は、同梱SDKを`CPAL_ASIO_DIR`へ指定してください。
 
 ### 開発用コマンド
 ```bash
-# パッケージのインストール
-npm install
+# lockfileどおりにパッケージをインストール
+npm ci
 
 # 開発用サーバーとTauriウィンドウの起動
 npm run tauri dev
 
 # プロダクションビルド（インストーラー生成等含む）
-npm run build
+npm run tauri build
 ```
 
 ## 注意事項・現在の制限事項
@@ -66,7 +68,7 @@ npm run build
 
 一般のユーザーは、[Auralyn 公式配布ページ](https://kuro7983.com/apps/auralyn) から最新版のインストーラーをダウンロードして利用できます。
 
-> **Note:** 署名なしアプリのため、初回起動時に Windows SmartScreen の警告が表示されることがあります。「詳細情報」→「実行」を選択してください。
+公式安定版はコード署名済みインストーラーとして配布します。未署名の検証版を例外的に配布する場合は、Releaseページでその旨とSHA-256を明示します。
 
 ## コントリビューション
 
@@ -77,12 +79,16 @@ npm run build
 
 ## ライセンス
 
-本プロジェクトは [MIT License](LICENSE) のもとで公開されています。
+Auralynの現行バージョンは [GNU General Public License version 3 only](LICENSE)（`GPL-3.0-only`）で公開します。複製、改変、再配布、有料配布が可能ですが、GPLv3の条件と対応ソースの提供義務を引き継ぐ必要があります。
+
+過去にMIT Licenseを添付して配布された版について、すでに付与された権利を本変更が取り消すことはありません。各版には、その配布物に添付されたライセンスが適用されます。
+
+公式バイナリと同一のGitコミットから生成した対応ソースZIP、SHA-256、manifestを、同じGitHub Releaseから無償で取得できます。詳細は [SOURCE-DISTRIBUTION.md](SOURCE-DISTRIBUTION.md) を確認してください。
 
 ## クレジット・権利表記
 
 VST® は Steinberg Media Technologies GmbH の登録商標です。
-ASIO は Steinberg Media Technologies GmbH のソフトウェアおよび商標です。
+ASIO is a trademark of Steinberg Media Technologies GmbH, registered in Europe and other countries.
 
 本ソフトウェアは以下のオープンソースプロジェクトを利用して構築されています：
 
@@ -93,5 +99,4 @@ ASIO は Steinberg Media Technologies GmbH のソフトウェアおよび商標�
 - [cpal](https://crates.io/crates/cpal) — クロスプラットフォームオーディオ
 - [nnnoiseless](https://crates.io/crates/nnnoiseless) — ノイズ抑制
 
-利用しているすべてのライブラリのライセンス情報は、アプリ内の「設定 > ライセンス情報」から確認できます。
-
+利用しているすべてのライブラリのライセンス情報、Auralyn本体のGPLv3全文、権利表示は、アプリ内の「設定 > ライセンス情報」から確認できます。

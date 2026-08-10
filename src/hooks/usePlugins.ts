@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { audioApi, VstPlugin } from '../api/audio';
 import { Plugin } from '../components/features/PluginRack/PluginCard';
-import { presetApi, PresetPlugin as ApiPresetPlugin } from '../api/presets';
+import { presetApi, PresetPlugin as ApiPresetPlugin, ApplyProfileSummary, ProfileSaveCategories, gatherProfileAudioExtras, syncLocalStateFromProfile } from '../api/presets';
 import { toast } from 'sonner';
 
 export const usePlugins = () => {
@@ -432,29 +432,32 @@ export const usePlugins = () => {
         }
     }, [plugins]);
 
+    const gatherPresetPlugins = useCallback(async (): Promise<ApiPresetPlugin[]> => {
+        const presetPlugins: ApiPresetPlugin[] = [];
+        for (const p of plugins) {
+            let state: string | undefined;
+            try {
+                state = await audioApi.getPluginState(p.id);
+            } catch (e) {
+                console.warn(`Could not get state for ${p.name}, saving without state.`);
+            }
+            presetPlugins.push({
+                path: p.path,
+                name: p.name,
+                vendor: p.vendor,
+                version: p.version,
+                enabled: p.enabled,
+                muted: p.muted,
+                gain: p.gain,
+                state: state || undefined,
+            });
+        }
+        return presetPlugins;
+    }, [plugins]);
+
     const savePreset = useCallback(async (name: string) => {
         try {
-            const presetPlugins: ApiPresetPlugin[] = [];
-            for (const p of plugins) {
-                // Fetch state
-                let state: string | undefined;
-                try {
-                    state = await audioApi.getPluginState(p.id);
-                } catch (e) {
-                    console.warn(`Could not get state for ${p.name}, saving without state.`);
-                }
-
-                presetPlugins.push({
-                    path: p.path,
-                    name: p.name,
-                    vendor: p.vendor,
-                    version: p.version,
-                    enabled: p.enabled,
-                    muted: p.muted,
-                    gain: p.gain,
-                    state: state || undefined
-                });
-            }
+            const presetPlugins = await gatherPresetPlugins();
             await presetApi.save(name, presetPlugins);
             return true;
         } catch (e) {
@@ -462,7 +465,97 @@ export const usePlugins = () => {
             setError("プリセットの保存に失敗しました");
             return false;
         }
-    }, [plugins]);
+    }, [gatherPresetPlugins]);
+
+    const saveProfile = useCallback(async (
+        name: string,
+        categories: ProfileSaveCategories,
+        builtinFxAmount?: number,
+    ) => {
+        try {
+            const presetPlugins = categories.includePlugins
+                ? await gatherPresetPlugins()
+                : [];
+            await presetApi.saveProfile(
+                name,
+                categories,
+                presetPlugins,
+                gatherProfileAudioExtras(),
+                builtinFxAmount,
+            );
+            return true;
+        } catch (e) {
+            console.error("Failed to save profile:", e);
+            setError("プロファイルの保存に失敗しました");
+            return false;
+        }
+    }, [gatherPresetPlugins]);
+
+    const syncPluginsFromApplySummary = useCallback((summary: ApplyProfileSummary) => {
+        const instances = summary.loadedPluginInstances ?? [];
+        // プロファイルに plugins カテゴリが含まれていた場合、バックエンドは既存チェーンを
+        // アンロード済み。全滅（missing のみ）でも UI を空チェーンへ同期する。
+        const pluginsCategoryTouched =
+            (summary.appliedCategories ?? []).includes('plugins') ||
+            (summary.skippedCategories ?? []).includes('plugins') ||
+            (summary.missingPlugins ?? []).length > 0;
+        if (instances.length === 0 && !pluginsCategoryTouched) return;
+        const loaded = instances.map(inst => ({
+            id: inst.id,
+            name: inst.name,
+            path: inst.path,
+            vendor: inst.vendor,
+            version: inst.version,
+            enabled: inst.enabled,
+            muted: inst.muted,
+            gain: inst.gain,
+            hasEditor: true,
+        }));
+        setPlugins(loaded);
+    }, []);
+
+    const applyProfile = useCallback(async (
+        name: string,
+        deviceSubstitutions?: { inputDevice?: string; outputDevice?: string },
+        options?: { skipBackup?: boolean },
+    ) => {
+        setIsLoading(true);
+        try {
+            const backupPlugins = await gatherPresetPlugins();
+            const currentIds = plugins.map(p => p.id);
+            const summary = await presetApi.applyProfile(name, currentIds, backupPlugins, {
+                deviceSubstitutions,
+                skipBackup: options?.skipBackup,
+            });
+            syncLocalStateFromProfile(summary);
+            syncPluginsFromApplySummary(summary);
+            return summary;
+        } catch (e) {
+            console.error("Failed to apply profile:", e);
+            setError("プロファイルの適用に失敗しました");
+            return null;
+        } finally {
+            setIsLoading(false);
+        }
+    }, [plugins, gatherPresetPlugins, syncPluginsFromApplySummary]);
+
+    const restoreBackupProfile = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const backupPlugins = await gatherPresetPlugins();
+            const currentIds = plugins.map(p => p.id);
+            const summary = await presetApi.restoreBackup(currentIds, backupPlugins);
+            syncLocalStateFromProfile(summary);
+            syncPluginsFromApplySummary(summary);
+            return summary;
+        } catch (e) {
+            console.error("Failed to restore backup:", e);
+            setError("バックアップの復元に失敗しました");
+            return null;
+        } finally {
+            setIsLoading(false);
+        }
+    }, [plugins, gatherPresetPlugins, syncPluginsFromApplySummary]);
 
     const loadPreset = useCallback(async (name: string) => {
         setIsLoading(true);
@@ -609,7 +702,10 @@ export const usePlugins = () => {
         toggleMute,
         setPluginGain,
         savePreset,
+        saveProfile,
         loadPreset,
+        applyProfile,
+        restoreBackupProfile,
         savePluginState,
         loadPluginState,
         applyTemplate,

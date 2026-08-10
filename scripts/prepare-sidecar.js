@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path, { dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { spawnSync } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -19,8 +20,25 @@ const BINARIES = [
     'plugin_scanner'
 ];
 
+function buildReleaseSidecars() {
+    console.log('Building release sidecar binaries...');
+    const result = spawnSync(
+        'cargo',
+        ['build', '--release', '--bin', 'audio_engine', '--bin', 'plugin_scanner'],
+        {
+            cwd: SRC_TAURI,
+            stdio: 'inherit'
+        }
+    );
+
+    if (result.status !== 0) {
+        throw new Error(`cargo build --release for sidecars failed with exit code ${result.status}`);
+    }
+}
+
 async function main() {
     console.log('Preparing sidecar binaries...');
+    buildReleaseSidecars();
 
     // Ensure bin directory exists
     if (!fs.existsSync(BIN_DIR)) {

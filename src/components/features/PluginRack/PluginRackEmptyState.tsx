@@ -29,9 +29,9 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
                 <h3 className="text-2xl font-bold text-foreground tracking-tight">
                     配信の準備を始めましょう
                 </h3>
-                <p className="text-muted-foreground leading-relaxed">
-                    「かんたん設定」を使えば、数ステップで<br className="hidden sm:inline" />
-                    聴き取りやすい声をセットアップできます。
+                <p className="text-muted-foreground leading-relaxed text-sm">
+                    セットアップウィザードでマイクと出力先を選び、VST やノイズ低減を調整できます。<br className="hidden sm:inline" />
+                    OBS・Discord 連携では仮想ケーブルが必要な場合があります。
                 </p>
             </div>
 
@@ -44,7 +44,7 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
                     className="h-14 text-lg shadow-xl shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 transition-all font-bold gap-3 rounded-xl bg-gradient-to-r from-primary to-primary/80"
                 >
                     <MdRocketLaunch className="w-6 h-6" />
-                    かんたん設定を始める
+                    セットアップを始める
                 </Button>
 
                 {/* Secondary actions - subtle text links */}

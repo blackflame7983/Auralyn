@@ -79,8 +79,8 @@ function AppContent() {
     if (currentStep === 'complete') {
       // Small delay to let the last overlay disappear
       const timer = setTimeout(() => {
-        toast.success('セットアップ完了！', {
-          description: '配信ソフトと連携するには、ヘルプメニューの「OBS連携ガイド」または「Discord連携ガイド」をご覧ください。',
+        toast.success('セットアップ完了', {
+          description: '配信ソフトと連携するにはガイドをご覧ください。音が届かない場合は接続診断、音質はボイスチェックで確認できます。',
           duration: 10000,
           action: {
             label: 'OBSガイドを開く',
@@ -116,6 +116,7 @@ function AppContent() {
         onOpenOBSGuide={() => ui.setIsOBSGuideOpen(true)}
         onOpenDiscordGuide={() => ui.setIsDiscordGuideOpen(true)}
         onOpenTroubleshoot={() => ui.setIsTroubleshootOpen(true)}
+        onOpenVoiceCheck={() => ui.setIsVoiceCheckOpen(true)}
         onOpenWizard={() => ui.setIsWizardOpen(true)}
         onToggleLargeMeter={() => ui.setIsLargeMeterOpen(prev => !prev)}
         isLargeMeterOpen={ui.isLargeMeterOpen}

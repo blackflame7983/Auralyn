@@ -17,6 +17,7 @@ interface AppShellProps {
     onOpenOBSGuide: () => void;
     onOpenDiscordGuide: () => void;
     onOpenTroubleshoot: () => void;
+    onOpenVoiceCheck: () => void;
     onOpenWizard: () => void;
     onToggleLargeMeter: () => void;
     isLargeMeterOpen: boolean;
@@ -34,6 +35,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     onOpenOBSGuide,
     onOpenDiscordGuide,
     onOpenTroubleshoot,
+    onOpenVoiceCheck,
     onOpenWizard,
     onToggleLargeMeter,
     isLargeMeterOpen,
@@ -157,6 +159,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             host={currentHost}
                             sampleRate={currentSampleRate}
                             bufferSize={currentBufferSize}
+                            onOpenVoiceCheck={onOpenVoiceCheck}
                         />
                     </div>
                     </div>

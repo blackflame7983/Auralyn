@@ -394,12 +394,11 @@ export const Header: React.FC<HeaderProps> = ({
                                     }
                                 } catch (e) {
                                     toast.dismiss(toastId);
-                                    // Updater not configured yet (empty pubkey) - graceful fallback
-                                    toast.info('自動更新は今後のリリースで有効になります', {
-                                        description: 'GitHubから最新版をダウンロードできます。',
+                                    toast.info('自動更新情報を取得できませんでした', {
+                                        description: 'ネットワークまたは配布状況を確認し、必要に応じて公式リリースページをご利用ください。',
                                         action: {
                                             label: 'GitHub',
-                                            onClick: () => window.open('https://github.com/blackflame7983/Auralyn/releases', '_blank'),
+                                            onClick: () => window.open('https://github.com/blackflame7983/Auralyn-Releases/releases', '_blank'),
                                         },
                                     });
                                 }

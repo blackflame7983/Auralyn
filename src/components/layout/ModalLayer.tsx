@@ -15,6 +15,7 @@ const TemplateWizardModal = lazy(() => import('../features/Templates/TemplateWiz
 const RecoveryModal = lazy(() => import('../features/Recovery/RecoveryModal').then(m => ({ default: m.RecoveryModal })));
 const LargeLevelMeter = lazy(() => import('../features/LevelMeter/LargeLevelMeter').then(m => ({ default: m.LargeLevelMeter })));
 const TroubleshootModal = lazy(() => import('../features/Troubleshoot/TroubleshootModal').then(m => ({ default: m.TroubleshootModal })));
+const VoiceCheckModal = lazy(() => import('../features/VoiceCheck/VoiceCheckModal').then(m => ({ default: m.VoiceCheckModal })));
 
 interface UIState {
     isSettingsOpen: boolean;
@@ -40,6 +41,8 @@ interface UIState {
     setIsLargeMeterOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
     isTroubleshootOpen: boolean;
     setIsTroubleshootOpen: (v: boolean) => void;
+    isVoiceCheckOpen: boolean;
+    setIsVoiceCheckOpen: (v: boolean) => void;
 }
 
 interface AudioConfig {
@@ -60,6 +63,9 @@ interface PluginsApi {
     addPlugin: (vstPlugin: VstPlugin) => Promise<boolean>;
     loadPreset: (name: string) => Promise<boolean>;
     savePreset: (name: string) => Promise<boolean>;
+    saveProfile: (name: string, categories: import('../../api/presets').ProfileSaveCategories) => Promise<boolean>;
+    applyProfile: (name: string, substitutions?: { inputDevice?: string; outputDevice?: string }) => Promise<import('../../api/presets').ApplyProfileSummary | null>;
+    restoreBackupProfile: () => Promise<import('../../api/presets').ApplyProfileSummary | null>;
     applyTemplate: (mapping: Record<string, VstPlugin>) => Promise<void | boolean>;
     resetPlugins: () => void;
     recoverSession: (excludePath?: string | null) => Promise<void>;
@@ -101,6 +107,14 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onOpenOBSGuide={() => {
                             ui.setIsSettingsOpen(false);
                             ui.setIsOBSGuideOpen(true);
+                        }}
+                        onOpenTroubleshoot={() => {
+                            ui.setIsSettingsOpen(false);
+                            ui.setIsTroubleshootOpen(true);
+                        }}
+                        onOpenVoiceCheck={() => {
+                            ui.setIsSettingsOpen(false);
+                            ui.setIsVoiceCheckOpen(true);
                         }}
                         onOpenLicense={() => ui.setIsLicenseModalOpen(true)}
                         currentSampleRate={audioConfig.sampleRate}
@@ -169,6 +183,10 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                             localStorage.setItem('vst_host_wizard_done', 'true');
                         }}
                         onOpenSettings={() => ui.setIsSettingsOpen(true)}
+                        onOpenTroubleshoot={() => {
+                            ui.setIsWizardOpen(false);
+                            ui.setIsTroubleshootOpen(true);
+                        }}
                     />
                 </Suspense>
             )}
@@ -178,7 +196,9 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         isOpen={ui.isPresetManagerOpen}
                         onClose={() => ui.setIsPresetManagerOpen(false)}
                         onLoadPreset={pluginsApi.loadPreset}
-                        onSavePreset={pluginsApi.savePreset}
+                        onSaveProfile={pluginsApi.saveProfile}
+                        onApplyProfile={pluginsApi.applyProfile}
+                        onRestoreBackup={pluginsApi.restoreBackupProfile}
                         onOpenTemplateWizard={() => {
                             ui.setIsPresetManagerOpen(false);
                             ui.setIsTemplateWizardOpen(true);
@@ -236,6 +256,22 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onOpenOBSGuide={() => {
                             ui.setIsTroubleshootOpen(false);
                             ui.setIsOBSGuideOpen(true);
+                        }}
+                        onOpenDiscordGuide={() => {
+                            ui.setIsTroubleshootOpen(false);
+                            ui.setIsDiscordGuideOpen(true);
+                        }}
+                    />
+                </Suspense>
+            )}
+            {ui.isVoiceCheckOpen && (
+                <Suspense fallback={null}>
+                    <VoiceCheckModal
+                        isOpen={ui.isVoiceCheckOpen}
+                        onClose={() => ui.setIsVoiceCheckOpen(false)}
+                        onOpenAudioSettings={() => {
+                            ui.setIsVoiceCheckOpen(false);
+                            ui.setIsSettingsOpen(true);
                         }}
                     />
                 </Suspense>
