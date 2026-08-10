@@ -101,11 +101,12 @@ try {
 // 1) Prefer the NSIS installer used by the public download flow, then MSI.
 const msiDir = path.join(BUNDLE_DIR, 'msi');
 const nsisDir = path.join(BUNDLE_DIR, 'nsis');
-const installerPath = findFile(nsisDir, (n) => n.endsWith('.exe'))
-  || findFile(msiDir, (n) => n.endsWith('.msi'));
+const versionToken = `_${version}_`;
+const installerPath = findFile(nsisDir, (n) => n.includes(versionToken) && n.endsWith('.exe'))
+  || findFile(msiDir, (n) => n.includes(versionToken) && n.endsWith('.msi'));
 
 if (!installerPath) {
-  console.error('Installer not found. Run: npm run tauri build');
+  console.error(`Installer for v${version} not found. Run: npm run tauri build`);
   process.exit(1);
 }
 
