@@ -56,6 +56,14 @@ function findFile(dir, predicate) {
 
 const version = getVersion();
 const tag = `v${version}`;
+const releaseTitle = process.env.AURALYN_RELEASE_TITLE || `Auralyn v${version}`;
+const releaseNotes = process.env.AURALYN_RELEASE_NOTES || [
+  `Auralyn v${version} official Windows release.`,
+  '',
+  '- License: GPL-3.0-only',
+  '- Signed Windows installer and Tauri updater signature',
+  '- Corresponding Source ZIP, SHA-256, and manifest attached to this Release',
+].join('\n');
 
 try {
   runReleaseReadinessCheck({ publicRepo: PUBLIC_REPO });
@@ -129,7 +137,7 @@ writeWindowsManifest(latestPath, {
   tag,
   assetName: path.basename(installerPath),
   signature,
-  notes: process.env.AURALYN_RELEASE_NOTES || '',
+  notes: releaseNotes,
 });
 
 // GPLv3 section 6 requires equivalent access to the Corresponding Source.
@@ -161,7 +169,12 @@ console.log('Files to upload:', filesToUpload);
 console.log(`Corresponding Source commit: ${sourceAssets.manifest.commit}`);
 
 try {
-  execFileSync('gh', ['release', 'create', tag, ...filesToUpload, '--repo', PUBLIC_REPO], {
+  execFileSync('gh', [
+    'release', 'create', tag, ...filesToUpload,
+    '--repo', PUBLIC_REPO,
+    '--title', releaseTitle,
+    '--notes', releaseNotes,
+  ], {
     stdio: 'inherit',
     cwd: PROJECT_ROOT,
   });

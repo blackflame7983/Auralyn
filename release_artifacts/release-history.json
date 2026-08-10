@@ -1,5 +1,32 @@
 [
     {
+        "version": "v1.1.0",
+        "date": "2026-08-10",
+        "title": "GPL-3.0-only 公開版",
+        "sha256": {
+            "setup": "929bb3563d63e7169da28bccf22d3594ac8a4816b4e7e120d108d9b8c033a9e4",
+            "source": "af76795dba1811dd9524b5a35e0f00d7b4f927e36cf66f5e1ea4b36485a368b5"
+        },
+        "changes": [
+            {
+                "type": "feature",
+                "text": "音声チェック、品質分析、ルーティング診断を追加"
+            },
+            {
+                "type": "feature",
+                "text": "OBS連携とフルプロファイル・プリセット管理を強化"
+            },
+            {
+                "type": "improvement",
+                "text": "セットアップとトラブルシューティング体験を改善"
+            },
+            {
+                "type": "license",
+                "text": "Auralyn 1.1.0以降をGPL-3.0-onlyへ変更し、対応ソースを同一Releaseで配布"
+            }
+        ]
+    },
+    {
         "version": "v1.0.0",
         "date": "2026-02-25",
         "title": "正式リリース",
