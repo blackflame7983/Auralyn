@@ -82,9 +82,13 @@ try {
 // Always rebuild after the clean-tree GPL gate so the binary and source
 // archive originate from the same checked-out commit.
 try {
-  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   console.log('Building signed release artifacts from the current clean HEAD...');
-  execFileSync(npmCommand, ['run', 'tauri', 'build'], {
+  const npmExecPath = process.env.npm_execpath;
+  const command = npmExecPath ? process.execPath : 'npm';
+  const args = npmExecPath
+    ? [npmExecPath, 'run', 'tauri', 'build']
+    : ['run', 'tauri', 'build'];
+  execFileSync(command, args, {
     stdio: 'inherit',
     cwd: PROJECT_ROOT,
     env: { ...process.env, CPAL_ASIO_DIR: asioSdk.sdkDir },
