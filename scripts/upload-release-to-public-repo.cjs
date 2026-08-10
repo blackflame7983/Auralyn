@@ -22,6 +22,11 @@ const { runReleaseReadinessCheck } = require('./check-release-readiness.cjs');
 const { writeWindowsManifest } = require('./generate-release-manifest.cjs');
 const { assertCleanWorktree, createSourceArchive } = require('./generate-source-archive.cjs');
 const { prepareAsioSdk } = require('./prepare-asio-sdk.cjs');
+const {
+  assertFreshSignature,
+  assertSigningEnvironment,
+  clearStaleSignatures,
+} = require('./signing-safety.cjs');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PUBLIC_REPO = process.env.PUBLIC_REPO || 'blackflame7983/Auralyn-Releases';
@@ -55,6 +60,8 @@ const tag = `v${version}`;
 try {
   runReleaseReadinessCheck({ publicRepo: PUBLIC_REPO });
   assertCleanWorktree(PROJECT_ROOT);
+  assertSigningEnvironment(process.env);
+  clearStaleSignatures(BUNDLE_DIR, version);
 } catch (error) {
   console.error(error.message);
   process.exit(1);
@@ -101,8 +108,10 @@ if (!installerPath) {
 // 2) Tauri creates the installer signature, while the static latest.json is
 // generated here in the official Tauri v2 static updater format.
 const signaturePath = `${installerPath}.sig`;
-if (!fs.existsSync(signaturePath)) {
-  console.error(`Signature not found: ${signaturePath}`);
+try {
+  assertFreshSignature(installerPath, signaturePath);
+} catch (error) {
+  console.error(error.message);
   console.error('Set TAURI_SIGNING_PRIVATE_KEY and run: npm run tauri build');
   process.exit(1);
 }
