@@ -2,12 +2,14 @@
 
 このファイルは、AIエージェント（GEMINI）がプロジェクトのコンテキスト、ルール、アーキテクチャ上の決定事項を理解するためのドキュメントです。
 
+共通の作業入口はルート `AGENTS.md` です。モデル名・世代にかかわらず、その参照先の現行方針を適用します。
+
 ## 1. ブランチ運用ルール
 
 - **Main Branch**: `main`
     - `master` ブランチは廃止されました。開発の主軸は `main` です。
 - **Workflow**:
-    - 新機能や修正は `feat/` や `fix/` プレフィックスのついたブランチで作業し、PRを作成して `main` にマージします。
+    - 新機能や修正は `codex/` プレフィックスのついたブランチで作業します。push・PR作成前に差分と検証結果を提示し、明示承認を待ちます。
     - 直接 `main` にコミットすることは避けてください。
 
 ## 2. バージョン管理 (Version Management)
@@ -17,9 +19,10 @@
 - **自動化スクリプト**:
     - バージョンを更新する際は、必ず以下のコマンドを使用してください。
       ```bash
-      npm run set-version <new_version>
+      npm run set-version -- <new_version>
       ```
-      このスクリプトは `package.json` と `src-tauri/tauri.conf.json` を同期させます。
+      このスクリプトは `package.json`、`package-lock.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` を同期させます。
+- **判定・タグの正本**: `docs/VERSIONING.md` を参照します。AIは前回公開版からの全差分・互換性・検証結果から番号を提案し、提案だけでタグ作成や公開は行いません。
 - **フロントエンド使用**:
     - フロントエンドコード内では、`import.meta.env.PACKAGE_VERSION` を使用してバージョンを参照します（`vite.config.ts` で注入）。
 

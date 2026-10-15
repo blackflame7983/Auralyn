@@ -1,5 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync, spawnSync } = require('node:child_process');
 const { validateReleaseReadiness } = require('./check-release-readiness.cjs');
 const { assertAssetMatchesVersion, buildWindowsManifest } = require('./generate-release-manifest.cjs');
 const { assertCleanStatus, buildSourceManifest } = require('./generate-source-archive.cjs');
@@ -200,4 +204,47 @@ test('指定バージョンと古い成果物の組み合わせを拒否する',
     () => assertAssetMatchesVersion('Auralyn_1.0.0_x64-setup.exe', '1.1.0'),
     /指定バージョン 1\.1\.0 と一致しません/,
   );
+});
+
+test('公開前CLIが全同期先の不一致・破損を拒否し、ファイルを書き換えない', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'auralyn-readiness-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const base = fixture();
+  const files = {
+    'package.json': JSON.stringify({ ...base.packageJson, version: '1.1.0' }),
+    'package-lock.json': JSON.stringify({ version: '1.1.0', packages: { '': { version: '1.1.0' } } }),
+    'src-tauri/tauri.conf.json': JSON.stringify({ ...base.tauriConfig, version: '1.1.0' }),
+    'src-tauri/Cargo.toml': base.cargoToml + '\nname = "vst-host"\nversion = "1.1.0"\n',
+    'src-tauri/Cargo.lock': 'version = 4\n\n[[package]]\nname = "vst-host"\nversion = "1.1.0"\n',
+    'config/release-policy.json': JSON.stringify(base.policy),
+    'LICENSE': base.licenseText,
+    'NOTICE.md': base.noticeText,
+    'SOURCE-DISTRIBUTION.md': base.sourceDistributionText,
+    'src/assets/licenses-npm.json': JSON.stringify(base.npmLicenseData),
+  };
+  for (const script of ['check-release-readiness.cjs', 'set-version.cjs']) {
+    files[`scripts/${script}`] = fs.readFileSync(path.join(__dirname, script), 'utf8');
+  }
+  for (const [file, content] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), content);
+  }
+  // 検証専用の一時リポジトリ。本体のindex・作業ファイルは変更しない。
+  execFileSync('git', ['init', '--quiet'], { cwd: root });
+  execFileSync('git', ['add', 'package-lock.json', 'src-tauri/Cargo.lock'], { cwd: root });
+  const check = () => spawnSync(process.execPath, ['scripts/check-release-readiness.cjs'], {
+    cwd: root, encoding: 'utf8', env: { ...process.env, PUBLIC_REPO },
+  });
+  assert.equal(check().status, 0);
+  for (const file of ['package-lock.json', 'src-tauri/tauri.conf.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock']) {
+    const mismatched = files[file].replaceAll('1.1.0', '1.0.0');
+    fs.writeFileSync(path.join(root, file), mismatched);
+    const result = check();
+    assert.equal(result.status, 1, file);
+    assert.match(result.stderr, /バージョン不一致/);
+    assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), mismatched);
+    fs.writeFileSync(path.join(root, file), files[file]);
+  }
+  fs.writeFileSync(path.join(root, 'package-lock.json'), '{invalid');
+  assert.match(check().stderr, /バージョン確認に失敗/);
 });

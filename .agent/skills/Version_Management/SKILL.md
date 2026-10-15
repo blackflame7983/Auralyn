@@ -1,98 +1,20 @@
 ---
 name: version-management
-description: Tauriプロジェクトにおけるバージョン管理のベストプラクティスと自動化手法。
+description: Auralynの変更内容からバージョンとタグを提案し、承認された番号を同期する。
 ---
 
-# Version Management Skill
+# Version Management
 
-このスキルは、Tauriプロジェクトにおいて、`package.json` を「唯一の正解（Single Source of Truth）」とし、`src-tauri/tauri.conf.json` やフロントエンドコードへバージョン情報を自動的に同期させるための手法を提供します。
+作業入口はルート `AGENTS.md`。バージョンの正本は `docs/VERSIONING.md`。
+古い同期コード例やモデルの記憶ではなく、必ず現行の正本・実装を確認する。
 
-## ベストプラクティス
+1. 前回公開安定版と対象SHAを特定し、コミット済み・未コミットを含む全変更を確認する。
+2. 保存データ、音声、VST3、対応環境、OBS連携の互換性からmajor / minor / patch / noneを評価する。
+3. 正本の形式で候補番号・タグ・理由・互換性・検証・未確認事項・ノート案を提示する。コミット接頭辞だけで判断しない。
+4. 反映を依頼された場合に `npm run set-version -- <version> --dry-run`、続いて `npm run set-version -- <version>` を実行する。
+5. `npm run set-version -- --check`、`npm run test:release`、`npm run release:check` と変更範囲の検証を行う。
 
-1.  **Single Source of Truth**: バージョン番号は `package.json` で管理し、他のファイルはそこから読み込むか、スクリプトで同期させます。
-2.  **Frontend Injection**: フロントエンドでは `package.json` を直接インポートせず、ビルドツール（Viteなど）の `define` 機能を使用して、環境変数としてバージョン番号を注入します。これにより、クライアントサイドバンドルに `package.json` 自体が含まれるのを防ぎます。
-3.  **Automation**: `npm version` コマンドやカスタムスクリプトを使用して、手動での書き換えミスを防ぎます。
-
-## 実装手順
-
-### 1. バージョン注入 (Vite)
-
-`vite.config.ts` で `package.json` を読み込み、`import.meta.env` に注入します。
-
-```typescript
-// vite.config.ts
-import { defineConfig } from 'vite';
-// package.jsonを読み込む（assert type="json" はNodeのバージョンによるため、importやfsを使用）
-import packageJson from './package.json';
-
-export default defineConfig({
-  define: {
-    'import.meta.env.PACKAGE_VERSION': JSON.stringify(packageJson.version),
-  },
-  // ...
-});
-```
-
-`src/vite-env.d.ts` に型定義を追加します。
-
-```typescript
-// src/vite-env.d.ts
-/// <reference types="vite/client" />
-
-interface ImportMetaEnv {
-  readonly PACKAGE_VERSION: string;
-}
-
-interface ImportMeta {
-  readonly env: ImportMetaEnv;
-}
-```
-
-### 2. 同期スクリプト
-
-`scripts/set-version.js` を作成し、`package.json` と `tauri.conf.json` を同期させます。
-
-```javascript
-// scripts/set-version.js
-const fs = require('fs');
-const path = require('path');
-
-const version = process.argv[2];
-if (!version) {
-    console.error('Please provide a version number (e.g., 0.4.0)');
-    process.exit(1);
-}
-
-// Update package.json
-const packageJsonPath = path.resolve(__dirname, '../package.json');
-const packageJson = require(packageJsonPath);
-packageJson.version = version;
-fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
-console.log(`Updated package.json to version ${version}`);
-
-// Update tauri.conf.json
-const tauriConfPath = path.resolve(__dirname, '../src-tauri/tauri.conf.json');
-const tauriConf = require(tauriConfPath);
-tauriConf.version = version; // Tauri v1
-if (tauriConf.package) tauriConf.package.version = version; // Tauri v2 beta might use different structure, check doc
-fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n');
-console.log(`Updated tauri.conf.json to version ${version}`);
-```
-
-### 3. npm script の追加
-
-`package.json` にスクリプトを追加します。
-
-```json
-"scripts": {
-  "set-version": "node scripts/set-version.js"
-}
-```
-
-## 使用方法
-
-新しいバージョンに更新する場合：
-
-```bash
-npm run set-version 0.4.0
-```
+同期対象はpackage.json、package-lock.json、src-tauri/tauri.conf.json、src-tauri/Cargo.toml、src-tauri/Cargo.lock。
+フロントの表示は `import.meta.env.PACKAGE_VERSION` を使う。
+同期スクリプトは番号の判断・依存更新・コミット・タグ作成・公開を行わない。
+push・PR・タグ・公開は、ユーザーが許可した対象と範囲でのみ実施する。

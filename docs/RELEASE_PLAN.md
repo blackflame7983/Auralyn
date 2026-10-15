@@ -109,9 +109,10 @@
 ## 7. コンテンツ運用
 
 ### 7.1 バージョン表記の運用
-*   `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`は`npm run set-version -- <version>`で同期する。
+*   改修内容に応じたmajor / minor / patch / noneの判定、AI提案形式、タグ運用は [VERSIONING.md](VERSIONING.md) を正本とする。
+*   `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json`は`npm run set-version -- <version>`で同期する。`--dry-run`で変更予定、`--check`で同期状態を確認できる。
 *   Tauri Updaterの`latest.json`とReleaseタグも同じバージョンにする。
-*   公開前に`npm run release:check`を実行し、公開先、GPLメタデータ、ASIO GPL選択、lockfileのGit管理を検証する。
+*   公開前に`npm run release:check`を実行し、バージョン同期、公開先、GPLメタデータ、ASIO GPL選択、lockfileのGit管理を検証する。これだけで実機動作・署名・更新経路の確認完了とは扱わない。
 *   `npm run release:upload -- <version>`はcleanなHEADから署名バイナリを再ビルドした後、同じHEADのSource ZIP・SHA-256・manifestを生成し、同じReleaseへアップロードする。
 
 ---

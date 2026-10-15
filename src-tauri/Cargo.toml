@@ -22,28 +22,29 @@ name = "vst_host_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.7.3", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["image-png", "image-ico", "tray-icon"] }
-tauri-plugin-opener = "2"
-tauri-plugin-global-shortcut = "2"
-tauri-plugin-single-instance = "2"
+tauri = { version = "2.12.4", features = ["image-png", "image-ico", "tray-icon"] }
+tauri-plugin-opener = "2.7.2"
+tauri-plugin-global-shortcut = "2.4.1"
+tauri-plugin-single-instance = "2.5.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-cpal = { version = "0.17.0", features = ["asio"] }
+cpal = { version = "0.17.3", features = ["asio"] }
 anyhow = "1.0.100"
 log = "0.4.29"
 env_logger = "0.11.8"
 vst3 = "0.3.0"
 walkdir = "2.5.0"
-ringbuf = "0.4.8"
+ringbuf = "0.5.3"
 libloading = "0.9.0"
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Rpc", "Win32_System_Ole", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_SystemInformation", "Win32_System_Memory", "Win32_System_JobObjects", "Win32_System_Diagnostics_Debug", "Win32_UI_HiDpi", "Win32_Graphics_Gdi", "Win32_Graphics_GdiPlus", "Win32_Media_Audio", "Win32_Media_Audio_Endpoints", "Win32_Devices_FunctionDiscovery", "Win32_Devices_Enumeration", "Win32_UI_Shell_PropertiesSystem", "Win32_System_Com_StructuredStorage"] }
-winit = "0.29.15"
+# サポート対象は Windows 11 x64。Linux用の既定描画機能は有効化しない。
+winit = { version = "0.29.15", default-features = false, features = ["rwh_06"] }
 raw-window-handle = "0.6"
 open = "5.3.3"
-tauri-plugin-window-state = "2.4.1"
+tauri-plugin-window-state = "2.5.0"
 base64 = "0.21"
 obws = { version = "0.11", features = ["events"] }
 time = "0.3"
@@ -55,9 +56,9 @@ nnnoiseless = { version = "0.5.2", default-features = false }
 hound = "3.5.1"
 rustfft = "6.2.0"
 rfd = "0.17.2"
-tauri-plugin-updater = "2"
-tauri-plugin-process = "2"
-tauri-plugin-mcp-bridge = "0.11.2"
+tauri-plugin-updater = "2.14.0"
+tauri-plugin-process = "2.4.0"
+tauri-plugin-mcp-bridge = "0.13.1"
 
 
 [dev-dependencies]

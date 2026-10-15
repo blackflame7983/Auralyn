@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { planVersionUpdate } = require('./set-version.cjs');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
@@ -155,6 +156,14 @@ function runReleaseReadinessCheck(options = {}) {
     npmLicenseData,
     trackedFiles,
   });
+
+  // npm経由以外の公開スクリプトから呼ばれた場合も同期を確認する。
+  try {
+    const mismatches = planVersionUpdate(PROJECT_ROOT, packageJson.version).filter((entry) => entry.changed);
+    if (mismatches.length) result.errors.push(`バージョン不一致: ${mismatches.map((entry) => entry.file).join(', ')}`);
+  } catch (error) {
+    result.errors.push(`バージョン確認に失敗しました: ${error.message}`);
+  }
 
   console.log('Auralyn release readiness check');
   console.log(`- 公開先: ${publicRepo}`);
