@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use anyhow::{anyhow, Result};
 use log;
 
-use crate::vst_host::instance::{VstInstance, VstProcessor};
+use crate::vst_host::instance::{PluginLibrary, VstInstance, VstProcessor};
 
 pub const MAX_PLUGINS: usize = 32;
 
@@ -57,7 +57,7 @@ pub struct PluginManager {
     pub gains: HashMap<String, f32>,
 
     // Safely burnt libraries to prevent unload crashes
-    pub burned_libraries: Vec<std::sync::Arc<libloading::Library>>, // Fully qualified just in case
+    pub burned_libraries: Vec<std::sync::Arc<PluginLibrary>>,
     burned_library_keys: HashSet<String>,
 }
 
