@@ -183,10 +183,12 @@ impl EditorManager {
                         size.width as i32,
                         size.height as i32,
                     )?;
-                    self.editor_children.insert(id.clone(), container_hwnd);
-
                     let hwnd_ptr = container_hwnd.0 as *mut std::ffi::c_void;
-                    instance.open_editor(hwnd_ptr)?
+                    // SAFETY: イベントループの UI スレッド上で作成した有効な子 HWND。
+                    // 成功後は win とともに保持し、切断完了後にのみ破棄する。
+                    let rect = unsafe { instance.open_editor(hwnd_ptr) }?;
+                    self.editor_children.insert(id.clone(), container_hwnd);
+                    rect
                 }
                 _ => {
                     return Err(anyhow!(

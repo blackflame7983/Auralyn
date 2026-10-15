@@ -11,7 +11,6 @@ const TARGET_TRIPLE = 'x86_64-pc-windows-msvc';
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const SRC_TAURI = path.join(PROJECT_ROOT, 'src-tauri');
 const RELEASE_DIR_PATH = path.join(SRC_TAURI, 'target', 'release');
-const DEBUG_DIR_PATH = path.join(SRC_TAURI, 'target', 'debug');
 const BIN_DIR = path.join(SRC_TAURI, 'bin');
 
 // Binaries to process
@@ -24,7 +23,7 @@ function buildReleaseSidecars() {
     console.log('Building release sidecar binaries...');
     const result = spawnSync(
         'cargo',
-        ['build', '--release', '--bin', 'audio_engine', '--bin', 'plugin_scanner'],
+        ['build', '--locked', '--release', '--bin', 'audio_engine', '--bin', 'plugin_scanner'],
         {
             cwd: SRC_TAURI,
             stdio: 'inherit'
@@ -40,6 +39,14 @@ async function main() {
     console.log('Preparing sidecar binaries...');
     buildReleaseSidecars();
 
+    // 両方のrelease成果物を確認してからコピーし、古いdebug版の混入を防ぐ。
+    for (const binName of BINARIES) {
+        const sourcePath = path.join(RELEASE_DIR_PATH, `${binName}.exe`);
+        if (!fs.existsSync(sourcePath)) {
+            throw new Error(`Release binary not found: ${sourcePath}`);
+        }
+    }
+
     // Ensure bin directory exists
     if (!fs.existsSync(BIN_DIR)) {
         console.log(`Creating directory: ${BIN_DIR}`);
@@ -47,23 +54,7 @@ async function main() {
     }
 
     for (const binName of BINARIES) {
-        let sourcePath = path.join(RELEASE_DIR_PATH, `${binName}.exe`);
-
-        // Check release first
-        if (!fs.existsSync(sourcePath)) {
-            // Fallback to debug
-            const debugPath = path.join(DEBUG_DIR_PATH, `${binName}.exe`);
-            if (fs.existsSync(debugPath)) {
-                console.log(`Release binary not found, using DEBUG binary for ${binName}`);
-                sourcePath = debugPath;
-            } else {
-                console.warn(`WARNING: Source binary not found at ${sourcePath} OR ${debugPath}`);
-                console.warn('Make sure you have run `cargo build --release` (or `cargo build`) inside src-tauri before packaging.');
-                process.exit(1);
-            }
-        } else {
-            console.log(`Using RELEASE binary for ${binName}`);
-        }
+        const sourcePath = path.join(RELEASE_DIR_PATH, `${binName}.exe`);
 
         const targetName = `${binName}-${TARGET_TRIPLE}.exe`;
         const targetPath = path.join(BIN_DIR, targetName);

@@ -2,6 +2,23 @@
 
 本アプリケーションの品質、安定性、および使いやすさを確認するための手動テスト項目です。
 
+## 現行の検証手順（2026-10-15 改訂）
+
+以下の過去ログ・チェック済み項目は当時の記録です。現在のHEADの動作保証として扱わず、変更に応じて再確認してください。
+
+| 変更範囲 | 必要な確認 |
+| --- | --- |
+| 文書・規約 | 実装との整合、参照リンク、`git diff --check` |
+| バージョン・配布スクリプト | `npm run test:release`、`npm run release:check`、番号変更のdry-run |
+| React / TS / UI依存 | `npm test -- --run`、`npx tsc --noEmit`、`npx vite build`、変更画面の操作確認 |
+| Rust / IPC | `cargo test --locked`、`cargo check --locked --all-targets`、`cargo clippy --locked --all-targets`（`src-tauri`で実行）。対象テストに実機・プラグインが必要か事前確認 |
+| 音声系 / native window依存 | Rust検証に加え、WASAPI / ASIO、44.1k / 48k、異なるバッファ、デバイス切替、VST追加・削除・復元、GUI開閉・DPI、連続運転で音切れ・CPU・遅延・音質を更新前後比較 |
+| インストーラー / updater | 署名ビルド、旧版からの更新、設定・プリセット移行、Source ZIP・SHA-256・manifest整合、公開後の取得確認 |
+
+`npx vite build` はフロントのみです。`npm run build` はrelease sidecarのRustビルドとNSIS画像生成も実行し、`npm run tauri build` がインストーラーまで生成します。
+実行していない実機・インストール・OBS・公開確認は「未確認」と報告してください。
+依存更新時は `npm audit` と必要に応じた RustSec 監査も行います。自動テスト成功だけで音声・配布の互換性を保証しません。
+
 ## 更新履歴
 - 2026-01-17: 既知不具合メモを整理し、検証結果ログを追記（VST3ホスト/Audio Engine改善反映）。
 
@@ -49,7 +66,7 @@
 ## 3. オーディオ品質とパフォーマンス
 
 ### 3-1. レイテンシーとノイズ
-- [x] WASAPI排他モードまたはASIO使用時に、違和感のないレイテンシーでモニタリングできること。
+- [ ] 現行対応のWASAPI共有モードとASIOで、それぞれレイテンシーを再確認する（旧記録のWASAPI排他モード表記は現行の対応範囲と一致しない）。
 - [x] プツプツというノイズ（Dropout）が発生しないこと。
 
 ### 3-2. CPU負荷

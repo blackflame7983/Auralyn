@@ -594,8 +594,9 @@ pub struct Engine {
 
     // Sub-Modules
     pub device_manager: DeviceManager,
-    pub editor_manager: EditorManager,
+    // フィールドの破棄順序: プラグインのエディタ切断を HWND の破棄より先に行う。
     pub plugin_manager: PluginManager,
+    pub editor_manager: EditorManager,
 
     command_tx: Option<CmdProducer>,
     level_rx: Option<LevelConsumer>,
@@ -981,11 +982,12 @@ impl Engine {
                     event: WindowEvent::CloseRequested,
                     window_id,
                 } => {
-                    // Refactored Close Handling
-                    if let Some(plugin_id) = self.editor_manager.handle_close_requested(window_id) {
+                    // 親 HWND が有効な間に IPlugView::removed を呼ぶ。
+                    if let Some(plugin_id) = self.editor_manager.get_plugin_id(window_id) {
                         if let Some(instance) = self.plugin_manager.get_mut(&plugin_id) {
                             instance.close_editor();
                         }
+                        self.editor_manager.handle_close_requested(window_id);
                     }
                 }
                 _ => {}
@@ -1093,7 +1095,10 @@ impl Engine {
                 }
             }
             Command::UnloadPlugin { id } => {
-                // Always close editor if open
+                // 遅延アンロード時も、親 HWND の破棄前にエディタを切断する。
+                if let Some(instance) = self.plugin_manager.get_mut(&id) {
+                    instance.close_editor();
+                }
                 self.editor_manager.close_editor(&id);
 
                 if self.output_stream.is_some() {

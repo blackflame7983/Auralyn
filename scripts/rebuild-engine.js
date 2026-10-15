@@ -36,10 +36,10 @@ async function main() {
 
     try {
         // 1. Build Audio Engine
-        await runCommand('cargo', ['build', '--bin', 'audio_engine'], SRC_TAURI);
+        await runCommand('cargo', ['build', '--locked', '--bin', 'audio_engine'], SRC_TAURI);
 
         // 2. Build Plugin Scanner
-        await runCommand('cargo', ['build', '--bin', 'plugin_scanner'], SRC_TAURI);
+        await runCommand('cargo', ['build', '--locked', '--bin', 'plugin_scanner'], SRC_TAURI);
 
         console.log('✅ Build successful. Updating sidecars...');
 

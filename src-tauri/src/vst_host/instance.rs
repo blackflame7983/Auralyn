@@ -3096,7 +3096,13 @@ impl VstInstance {
         }
     }
 
-    pub fn open_editor(&mut self, parent_window: *mut c_void) -> Result<Option<ViewRect>> {
+    /// プラグインのエディタを Win32 の親ウィンドウに接続する。
+    ///
+    /// # Safety
+    /// `parent_window` は、呼出し中に有効な非 null の HWND でなければならない。
+    /// 接続に成功した場合は、`close_editor` が完了するまで親ウィンドウを保持すること。
+    /// エディタの操作と切断は、親ウィンドウを所有する UI スレッドで行うこと。
+    pub unsafe fn open_editor(&mut self, parent_window: *mut c_void) -> Result<Option<ViewRect>> {
         unsafe {
             if self.controller.is_null() {
                 // If controller null, maybe use component?
