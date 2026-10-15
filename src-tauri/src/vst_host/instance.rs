@@ -2267,10 +2267,79 @@ fn get_mock_unit_handler_ptr() -> *mut c_void {
 }
 // --- End Mock ---
 
+type ModuleEntryPoint = unsafe extern "system" fn() -> bool;
+
+// factoryはロード中のインスタンス生成だけで使用する。失敗時もDLLより先に解放する。
+struct FactoryRef(*mut c_void);
+
+impl Drop for FactoryRef {
+    fn drop(&mut self) {
+        unsafe {
+            let vtbl = get_vtbl::<FUnknownVtbl>(self.0);
+            (vtbl.release)(self.0);
+        }
+    }
+}
+
+struct ModuleEntry {
+    exit: Option<ModuleEntryPoint>,
+}
+
+impl ModuleEntry {
+    // 関数ポインタを所有するDLLは、このガードより長く保持する。
+    unsafe fn start(init: Option<ModuleEntryPoint>, exit: Option<ModuleEntryPoint>) -> Result<Self> {
+        if let Some(init) = init {
+            if !init() {
+                return Err(anyhow!("VST3 InitDll failed"));
+            }
+            Ok(Self { exit })
+        } else {
+            // Windowsでは任意のエクスポート。未初期化のDLLにExitDllを呼ばない。
+            Ok(Self { exit: None })
+        }
+    }
+}
+
+impl Drop for ModuleEntry {
+    fn drop(&mut self) {
+        if let Some(exit) = self.exit {
+            unsafe {
+                exit();
+            }
+        }
+    }
+}
+
+// Instance・Processor・遅延解放用の保持先で、DLLと初期化の寿命を共有する。
+pub struct PluginLibrary {
+    // フィールド順に破棄されるため、ExitDll完了後にLibraryを解放する。
+    _entry: ModuleEntry,
+    library: Library,
+}
+
+impl PluginLibrary {
+    unsafe fn load(path: &str, initialize_module: bool) -> Result<Self> {
+        let library = Library::new(path).context("Failed to load VST3 library")?;
+        let (init, exit) = if initialize_module {
+            (
+                library.get::<ModuleEntryPoint>(b"InitDll").ok().map(|f| *f),
+                library.get::<ModuleEntryPoint>(b"ExitDll").ok().map(|f| *f),
+            )
+        } else {
+            (None, None)
+        };
+        let entry = ModuleEntry::start(init, exit)?;
+        Ok(Self {
+            _entry: entry,
+            library,
+        })
+    }
+}
+
 pub struct VstInstance {
     pub id: String, // Unique ID for management
     pub name: String,
-    pub _library: Arc<Library>,
+    pub _library: Arc<PluginLibrary>,
     component: *mut c_void,
     processor: *mut c_void,
     pub controller: *mut c_void,
@@ -2288,7 +2357,7 @@ unsafe impl Send for VstInstance {}
 
 pub struct VstProcessor {
     ptr: *mut c_void,
-    _library: Arc<Library>,
+    _library: Arc<PluginLibrary>,
     scratch_inputs: Vec<Vec<f32>>,
     scratch_outputs: Vec<Vec<f32>>,
 
@@ -2352,16 +2421,13 @@ impl VstInstance {
         }
 
         unsafe {
-            let lib = Arc::new(
-                Library::new(path)
-                    .map_err(|e| {
-                        println!("Error loading DLL '{}': {}", path, e);
-                        e
-                    })
-                    .context("Failed to load VST3 library")?,
-            );
+            // OTT 1.37はInitDllを省くと描画資源が未初期化になり、getSizeが4x4になる。
+            // 他のプラグインの初期化手順は今回変更しない。
+            let initialize_module = plugin_name.eq_ignore_ascii_case("OTT");
+            let lib = Arc::new(PluginLibrary::load(path, initialize_module)?);
 
             let factory_proc: Symbol<GetPluginFactory> = lib
+                .library
                 .get(b"GetPluginFactory")
                 .context("GetPluginFactory symbol not found")?;
 
@@ -2390,6 +2456,12 @@ impl VstInstance {
             if factory_ptr.is_null() {
                 return Err(anyhow!("GetPluginFactory returned null"));
             }
+            // InitDllを追加したOTTだけで参照を管理し、他VSTの既存動作は維持する。
+            let _factory = if initialize_module {
+                Some(FactoryRef(factory_ptr))
+            } else {
+                None
+            };
 
             // Wrap Factory
             let factory_vtbl = get_vtbl::<IPluginFactoryVtbl>(factory_ptr);
@@ -4025,5 +4097,88 @@ impl Drop for VstInstance {
             }
             self.host_app = std::ptr::null_mut();
         }
+    }
+}
+
+#[cfg(test)]
+mod module_entry_tests {
+    use super::{FactoryRef, ModuleEntry};
+    use crate::vst_host::c_api::{FUnknownVtbl, TUID};
+    use std::ffi::c_void;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::sync::Mutex;
+
+    #[test]
+    fn load_failure_releases_factory_before_module_exit() {
+        static EVENTS: Mutex<Vec<&str>> = Mutex::new(Vec::new());
+        unsafe extern "system" fn init() -> bool {
+            EVENTS.lock().unwrap().push("init");
+            true
+        }
+        unsafe extern "system" fn exit() -> bool {
+            EVENTS.lock().unwrap().push("exit");
+            true
+        }
+        unsafe extern "system" fn query(_: *mut c_void, _: *const TUID, _: *mut *mut c_void) -> i32 {
+            1
+        }
+        unsafe extern "system" fn add_ref(_: *mut c_void) -> u32 {
+            1
+        }
+        unsafe extern "system" fn release(_: *mut c_void) -> u32 {
+            EVENTS.lock().unwrap().push("factory release");
+            0
+        }
+        let vtbl = FUnknownVtbl {
+            query_interface: query,
+            add_ref,
+            release,
+        };
+        let mut factory = &vtbl as *const FUnknownVtbl;
+        let factory_ptr = &mut factory as *mut _ as *mut c_void;
+        let fail_load = || -> Result<(), ()> {
+            let _entry = unsafe { ModuleEntry::start(Some(init), Some(exit)) }.unwrap();
+            let _factory = FactoryRef(factory_ptr);
+            Err(())
+        };
+        assert!(fail_load().is_err());
+        assert_eq!(*EVENTS.lock().unwrap(), ["init", "factory release", "exit"]);
+    }
+
+    #[test]
+    fn module_entry_balances_only_successful_initialization_after_last_owner() {
+        static INIT: AtomicUsize = AtomicUsize::new(0);
+        static EXIT: AtomicUsize = AtomicUsize::new(0);
+        unsafe extern "system" fn init() -> bool {
+            INIT.fetch_add(1, Ordering::SeqCst);
+            true
+        }
+        unsafe extern "system" fn fail() -> bool {
+            INIT.fetch_add(1, Ordering::SeqCst);
+            false
+        }
+        unsafe extern "system" fn exit() -> bool {
+            EXIT.fetch_add(1, Ordering::SeqCst);
+            true
+        }
+
+        // Processorや遅延解放先が保持する間は、Instanceを落としても終了しない。
+        let instance = Arc::new(unsafe { ModuleEntry::start(Some(init), Some(exit)) }.unwrap());
+        let processor = instance.clone();
+        drop(instance);
+        assert_eq!(INIT.load(Ordering::SeqCst), 1);
+        assert_eq!(EXIT.load(Ordering::SeqCst), 0);
+        drop(processor);
+        assert_eq!(EXIT.load(Ordering::SeqCst), 1);
+
+        assert!(unsafe { ModuleEntry::start(Some(fail), Some(exit)) }.is_err());
+        assert_eq!(INIT.load(Ordering::SeqCst), 2);
+        assert_eq!(EXIT.load(Ordering::SeqCst), 1);
+        drop(unsafe { ModuleEntry::start(None, Some(exit)) }.unwrap());
+        assert_eq!(EXIT.load(Ordering::SeqCst), 1);
+        drop(unsafe { ModuleEntry::start(Some(init), None) }.unwrap());
+        assert_eq!(INIT.load(Ordering::SeqCst), 3);
+        assert_eq!(EXIT.load(Ordering::SeqCst), 1);
     }
 }
