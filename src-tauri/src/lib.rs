@@ -287,6 +287,10 @@ async fn save_profile(
 }
 
 #[tauri::command]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "既存invokeの名前付きpayloadとTauri注入引数の契約を維持する"
+)]
 async fn apply_profile(
     app: AppHandle,
     state: State<'_, audio::AudioState>,

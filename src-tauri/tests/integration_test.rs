@@ -37,10 +37,10 @@ fn test_audio_engine_lifecycle() {
                         continue;
                     }
                     let payload = trim.strip_prefix("IPC:").unwrap_or(trim);
-                    if let Ok(msg) = serde_json::from_str::<OutputMessage>(payload) {
-                        if let OutputMessage::Response(r) = msg {
-                            let _ = resp_tx.send(r);
-                        }
+                    if let Ok(OutputMessage::Response(r)) =
+                        serde_json::from_str::<OutputMessage>(payload)
+                    {
+                        let _ = resp_tx.send(r);
                     }
                 }
                 Err(_) => break,
