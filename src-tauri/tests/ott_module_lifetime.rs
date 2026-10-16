@@ -29,6 +29,31 @@ fn ott_processors_survive_other_instance_retirement_and_module_pinning() {
     let state = manager.get(&second).unwrap().get_state().expect("状態保存");
     let retained_module = manager.get(&second).unwrap()._library.clone();
 
+    // 重複追加を拒否した場合と同じく、余分なhandleだけを非RT側で解放する。
+    let original_module_refs = std::sync::Arc::strong_count(&retained_module);
+    let duplicate = manager
+        .get(&second)
+        .unwrap()
+        .create_processor()
+        .expect("重複handle");
+    assert_eq!(
+        std::sync::Arc::strong_count(&retained_module),
+        original_module_refs + 1
+    );
+    drop(duplicate);
+    assert_eq!(
+        std::sync::Arc::strong_count(&retained_module),
+        original_module_refs
+    );
+    assert_eq!(manager.rt_index_of(&second), Some(second_index));
+    assert!(manager
+        .get(&second)
+        .unwrap()
+        .active_flag
+        .load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(manager.get(&second).unwrap().get_state().unwrap(), state);
+    assert_eq!(manager.runtime_stats(), (2, 0, 0));
+
     assert_eq!(manager.begin_unload(&first).unwrap(), first_index);
     assert_eq!(manager.runtime_stats().1, 1);
     assert!(manager.pending_drop_by_index.contains_key(&first_index));

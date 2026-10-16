@@ -1,4 +1,5 @@
 pub mod core;
+mod deferred_drop;
 pub mod devices;
 pub mod editors;
 pub mod loopback_probe;
