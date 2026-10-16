@@ -199,8 +199,16 @@ impl EditorManager {
         };
 
         if let Some(rect) = rect_opt {
-            let width = (rect.right - rect.left).abs() as u32; // Use u32 for PhysicalSize
-            let height = (rect.bottom - rect.top).abs() as u32;
+            let Some((width, height)) = rect.checked_size() else {
+                // 親HWNDを破棄する前に、接続済みviewと子HWNDを後始末する。
+                instance.close_editor();
+                self.close_editor(&id);
+                return Err(anyhow!(
+                    "Plugin returned an invalid editor rectangle: {:?}",
+                    rect
+                ));
+            };
+            let (width, height) = (width as u32, height as u32);
             if width > 0 && height > 0 {
                 log::debug!(
                     "[EditorManager] Enforcing window size from plugin negotiation: {}x{}",
