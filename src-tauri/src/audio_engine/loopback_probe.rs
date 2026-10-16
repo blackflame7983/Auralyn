@@ -97,8 +97,8 @@ mod tests {
         let amp = dbfs_to_amplitude(-20.0);
         let n = 9600usize;
         let mut samples = vec![0.0f32; n];
-        for i in 0..n {
-            samples[i] = (2.0 * std::f32::consts::PI * 1000.0 * i as f32 / sr as f32).sin() * amp;
+        for (i, sample) in samples.iter_mut().enumerate() {
+            *sample = (2.0 * std::f32::consts::PI * 1000.0 * i as f32 / sr as f32).sin() * amp;
         }
         let (detected, _) = goertzel_detect(&samples, sr, 1000.0, -45.0);
         assert!(detected);

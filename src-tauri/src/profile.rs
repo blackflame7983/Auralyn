@@ -79,6 +79,10 @@ pub fn backup_current_profile(
 }
 
 /// プロファイルを適用（カテゴリ欠落 = そのカテゴリは変更しない）
+#[expect(
+    clippy::too_many_arguments,
+    reason = "既存の公開Rust関数の引数契約を維持する"
+)]
 pub fn apply_profile(
     config_dir: &Path,
     host: &mut AudioHost,

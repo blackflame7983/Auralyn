@@ -142,16 +142,16 @@ pub fn analyze_voice_check_buffers(
     let band_delta_db = octave_band_deltas(&raw_mono, &processed_mono, sample_rate_hz);
     let loudness = loudness_report(&processed_mono);
 
-    let mut advices = generate_advices(
-        &clip,
-        &dropouts,
+    let mut advices = generate_advices(AdviceInputs {
+        clip: &clip,
+        dropouts: &dropouts,
         noise_floor_raw,
         noise_floor_processed,
         snr_improvement_db,
-        &band_delta_db,
-        &loudness,
+        band_delta_db: &band_delta_db,
+        loudness: &loudness,
         ctx,
-    );
+    });
 
     let verdict = compute_verdict(&clip, &dropouts, noise_floor_processed, &advices);
     advices.sort_by(|a, b| severity_rank(&b.severity).cmp(&severity_rank(&a.severity)));
@@ -256,12 +256,12 @@ fn detect_dropouts(mono: &[f32], sample_rate_hz: u32) -> DropoutReport {
     let mut last_event = usize::MAX;
 
     for (i, &diff) in diffs.iter().enumerate() {
-        if diff >= threshold {
-            if last_event == usize::MAX || i.saturating_sub(last_event) >= DROPOUT_MIN_GAP_FRAMES {
-                count += 1;
-                positions_ms.push(frame_to_ms(i + 1, sample_rate_hz));
-                last_event = i;
-            }
+        if diff >= threshold
+            && (last_event == usize::MAX || i.saturating_sub(last_event) >= DROPOUT_MIN_GAP_FRAMES)
+        {
+            count += 1;
+            positions_ms.push(frame_to_ms(i + 1, sample_rate_hz));
+            last_event = i;
         }
     }
 
@@ -300,10 +300,9 @@ fn compute_vad_mask(mono: &[f32], sample_rate_hz: u32) -> Vec<bool> {
     }
 
     let mut mask = vec![false; mono.len()];
-    for fi in 0..frame_count {
+    for (fi, &is_speech) in speech_frames.iter().enumerate() {
         let start = fi * frame_len;
         let end = (start + frame_len).min(mono.len());
-        let is_speech = speech_frames[fi];
         for slot in &mut mask[start..end] {
             *slot = is_speech;
         }
@@ -450,22 +449,44 @@ fn band_energy(mag_sqr: &[f32], low_bin: usize, high_bin: usize) -> f32 {
     mag_sqr[low..=high].iter().sum::<f32>().max(MIN_EPS)
 }
 
-fn generate_advices(
-    clip: &ClipReport,
-    dropouts: &DropoutReport,
+struct AdviceInputs<'a> {
+    clip: &'a ClipReport,
+    dropouts: &'a DropoutReport,
     noise_floor_raw: f32,
     noise_floor_processed: f32,
     snr_improvement_db: f32,
-    band_delta_db: &[BandDeltaDb],
-    loudness: &LoudnessReport,
-    ctx: &AnalysisContext,
-) -> Vec<Advice> {
+    band_delta_db: &'a [BandDeltaDb],
+    loudness: &'a LoudnessReport,
+    ctx: &'a AnalysisContext,
+}
+
+fn clip_gain_reduction_db(ratio: f32) -> f32 {
+    let reduction = ratio * 20.0 + 3.0;
+    // min(12).max(3)はNaNを12へ置換する。clamp単独ではこの挙動が変わる。
+    if reduction.is_nan() {
+        12.0
+    } else {
+        reduction.clamp(3.0, 12.0)
+    }
+}
+
+fn generate_advices(inputs: AdviceInputs<'_>) -> Vec<Advice> {
+    let AdviceInputs {
+        clip,
+        dropouts,
+        noise_floor_raw,
+        noise_floor_processed,
+        snr_improvement_db,
+        band_delta_db,
+        loudness,
+        ctx,
+    } = inputs;
     use thresholds::*;
 
     let mut advices = Vec::new();
 
     if clip.count > 0 {
-        let recommended_gain_reduction_db = (clip.ratio * 20.0 + 3.0).min(12.0).max(3.0);
+        let recommended_gain_reduction_db = clip_gain_reduction_db(clip.ratio);
         advices.push(Advice {
             severity: if clip.count >= CLIP_COUNT_BAD {
                 "bad".to_string()
@@ -658,9 +679,9 @@ mod tests {
         let frames = sr as usize * 2;
         let noise_amp = 0.006f32;
         let mut mono = vec![0.0f32; frames];
-        for i in 0..frames {
-            let n = ((i as f32 * 12_989.0).sin() * 43_758.5453).fract() * 2.0 - 1.0;
-            mono[i] = n * noise_amp;
+        for (i, sample) in mono.iter_mut().enumerate() {
+            let n = ((i as f32 * 12_989.0).sin() * 43_758.547).fract() * 2.0 - 1.0;
+            *sample = n * noise_amp;
         }
         let raw: Vec<f32> = mono.iter().flat_map(|&s| [s, s]).collect();
         let processed: Vec<f32> = mono.iter().flat_map(|&s| [s * 0.5, s * 0.5]).collect();
@@ -771,5 +792,25 @@ mod tests {
         let report = analyze_voice_check_buffers(&raw, &processed, sr, &AnalysisContext::default());
         assert_eq!(report.verdict, "good");
         assert!(report.clip.count == 0);
+    }
+
+    #[test]
+    fn clip_advice_preserves_nan_infinities_and_boundary_rounding() {
+        for (ratio, expected) in [
+            (f32::NAN, 12.0_f32),
+            (f32::INFINITY, 12.0),
+            (f32::NEG_INFINITY, 3.0),
+            (-0.0, 3.0),
+            (0.0, 3.0),
+            (-1.0, 3.0),
+            (0.1, 5.0),
+            (0.45, 12.0),
+            (0.450_000_02, 12.0),
+            (1.0, 12.0),
+        ] {
+            assert_eq!(clip_gain_reduction_db(ratio).to_bits(), expected.to_bits());
+        }
+        // ノイズ生成のテスト用定数もf32では同じビット列。
+        assert_eq!(43_758.547_f32.to_bits(), 0x472a_ee8c);
     }
 }

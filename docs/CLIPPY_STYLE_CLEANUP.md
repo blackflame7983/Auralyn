@@ -166,3 +166,56 @@ DSP係数、音声コールバック・変換ループ、制御フローの統�
 - 別名は外部へ公開せず、公開関数・Tauriコマンドのシグネチャと呼出側も変更していない。API関連の保留4箇所はそのままとする。
 
 今回、完全一致のソース照合と `git diff --check` を実行した。照合結果はignoredの `src-tauri/target/clippy-api-types-review-equivalence.log` に保存する。同一Rust差分のテスト41件・check・Clippy・build成功ログを確認し、警告34箇所も再集計した。追加コード修正や新たな懸念がないため、同一テスト・ビルドの反復、新規の実装をなぞるテストは行わない。既存の整形問題と実機等の未検証範囲は上記のとおり。
+
+## 残る警告のまとめ対応（2026-10-16）
+
+基準HEADは `76f5355`（PR #11マージ後）。fetch後にmainとorigin/mainの一致・未コミット変更なしを確認した。依頼に合わせ、`codex/clippy-remaining`の1ブランチ内で段階的に対応した。
+
+### 34箇所から0件への内訳
+
+実装・テストコードの修正で31箇所を解消し、公開契約を維持する3箇所には理由付きの個別 `#[expect]` を付けた。34箇所すべてをAPI変更で解消したわけではない。全体のallowやClippy設定の緩和は行わず、`-D warnings`で個別expectの不成立も検出する。
+
+- 条件分岐は短絡評価の順番を維持して統合した。出力configの検索結果は名前付き束縛に保持し、従来の分岐末尾まで寿命を維持する。IPCテストのResponseパターンも同じ受信処理へ渡す。
+- RTループは借用スライス・iteratorへ置き換え、サンプル順・チャンネル順・各DSPの呼出回数と演算式を維持した。ゲインはフレームを外側に保ち、smoother.nextは1フレーム1回。退役キューは同じ順に走査し、満杯時は同じslotへ戻してbreakする。
+- スライスの範囲は、既存のchannels／max_chと事前確保したバッファ長、framesの上限、rt_order_lenの上限に基づく。zipの両側を同じframesに限定した。内部不変条件が破れた場合のpanic位置まで同一とは主張しない。
+- リサンプル後のinterleaveはフレームを外側・チャンネルを内側に維持した。VST入力のdeinterleaveは元のinput_idxと不足入力のゼロ補完を維持した。
+- jitterの非負減算をsaturating_subへ置換。解析の助言生成は私有AdviceInputsへ引数を束ね、公開レポート・JSON・APIは変更しない。clip助言のclampは元のNaN→12.0を明示して維持した。
+- 過剰精度の定数変更はテストのノイズ生成だけで、f32のビット列は元と同じ `0x472aee8c`。本番DSP係数・DSP実装、依存・lockfile・配布sidecar・アプリ番号は変更しない。
+
+互換性の個別例外は、`Blacklist::new`のptr_arg（公開 `fn(&PathBuf) -> Self`）、公開Rust関数 `profile::apply_profile`のtoo_many_arguments、Tauri `apply_profile`コマンドのtoo_many_arguments（名前付きinvoke payloadと注入引数）の3箇所。既存シグネチャと呼出側をそのまま維持する。以前の限定整理で保留した私有generate_advicesは今回の対象に含めた。
+
+### ローカル検証
+
+- `cargo clippy --locked --all-targets --message-format=json -- -D warnings`: 成功、警告0件。
+- `cargo test --locked --lib --bins --test audio_queue_contract`: lib 42件とqueue 2件成功。NaN・無限大・境界値、多チャンネルの順序と分割入力、VSTの短い入力と割当なしの回帰確認を追加した。
+- `cargo test --locked --test ott_module_lifetime -- --ignored`: 実OTTの寿命・状態保存・メモリ内無音処理1件成功。合計45テスト成功。
+- `cargo check --locked --all-targets`、`cargo build --locked --bins`、`git diff --check`: 成功。実機ストリームを開始するintegration_testとrepro_ottはコンパイルのみで実行しない。
+- ignoredの差分比較probeへ基準HEADと現在ソースの対象ループ、および実DSP・Smootherの定義を抽出した。DSP定義自体が不変であることも照合した。実nnnoiselessを用いた128条件（レート、チャンネル、モード、フラグ、連続ブロック）の出力ビット列と呼出回数が一致し、ウォームアップ後の対象処理の確保・解放は0回だった。clip助言は100万通りのf32ビットパターンでも旧式と一致した。
+- 退役キューは模擬backpressureの198条件を各2回flushし、送信順・保持slot・退役値をDropしないことが一致した。ゲインは16条件で出力ビット列・smootherの進行回数と状態が一致した。両probeで対象処理の確保・解放は0回だった。実CPALコールバック全体の性能計測ではない。
+- 最終ビルドのaudio_engineで実OTT（310×440）とTDR Nova（830×598）の画像を確認した。各3回の開閉、二重ウィンドウ防止、884×661へのサイズ変更、表示中アンロード、応答継続が成功した。音声Startコマンドは送信していない。
+
+### 既存課題と未検証範囲
+
+差分比較中、DSPライブラリの初回処理に遅延初期化による割当を検出した。修正前後を別プロセスで測ると、どちらも確保50回・解放5回、出力ハッシュとnoise／voice各480回の呼出しが一致した。今回の変更で増加はないが、コールド開始時もRT無割当を満たすとは言えない。実処理状態を進めるwarmupは初期音声を変え得るため、今回混ぜず別途検討する。
+
+追記（差分レビュー時）: 入出力レートが異なる場合に入力コールバックから呼ばれるStreamResampler::processにも、以前から出力Vecの確保・解放がある。下記の実ソース比較では修正前後の回数が一致した。ウォームアップ後の無割当という結果は上記のDSP・退役・ゲインの対象処理に限り、音声コールバック全体の無割当を示すものではない。
+
+全体rustfmt検査には従来からの未整形箇所が残るため、変更箇所だけを整えた。実機WASAPI／ASIOのストリーム、実音声の音質・CPU・遅延・長時間動作、高DPI、インストーラ・署名配布は未検証。ライブラリの大幅移行やDSP係数の変更は含めない。
+
+ログ・比較probeはignoredの `src-tauri/target/clippy-remaining-*`、GUIログ・画像は `src-tauri/target/clippy-remaining-editor/` に保存する。この段階ではcommit・push・PR作成を行わない。
+
+### 全差分のレビュー（2026-10-16）
+
+同じ `codex/clippy-remaining` で基準HEAD・現在の全差分と周辺の生成・更新・解放経路を確認した。追加の製品コード修正を要する順序・所有権・出力の変化は見つからなかった。上記の入力リサンプラーの既存割当を、検証範囲の不足として追記した。
+
+- planarバッファはコールバック開始前にchannels.max(2)本を最大frames分確保し、コールバック内でリサイズしていない。ゼロchannels／framesは早期returnする。rt_order_lenは初期化・ReorderProcessorsのどちらもMAX_PLUGINS以下に制限し、削除時は縮める。新しいスライス・zipはこの範囲内で、フレーム順・左右順・プラグイン順と処理回数を維持する。
+- iterator・zip・split_at_mutは既存バッファの借用だけで、所有値を生成・移動・解放しない。退役失敗時のOptionはtake後のNoneへ同じ値を戻す。受理したprocessorの移動先とスコープも同一。なおAddProcessorの無効index／重複slot拒否時は従来からprocessorがRT側でDropされる経路であり、今回その挙動を変更していない。通常のindexはPluginManagerが空きslotから割り当て、アンロード完了まで再利用しない。異常な内部メッセージまでRT Dropなしを保証する変更ではない。
+- AdviceInputsは借用とCopyのf32のみで、ヒープ割当・独自Dropはない。引数構築の評価順も同じ。3つの例外属性を除去すると、lib.rs・profile.rs・blacklist.rsは基準HEADと空白以外も含めたtoken比較で一致した。Tauriのpayload名、公開Rust関数の引数、Blacklistの関数型、各呼出側の変更はない。一般化や引数オブジェクト化は別のAPI変更となるため、今回の理由付きexpectは妥当と判断した。
+
+追加のローカル検証では、基準HEADと現在のaudio_analysis.rs全体を別モジュールとして同時コンパイルし、44.1k／48k、空・短い・端数・長い入力、6種の信号、3種のbuffer設定による216条件でQualityReportのJSON文字列全体が一致した。レートが異なる実StreamResamplerの旧／新実装も同時コンパイルし、1／2／4ch・連続する36ブロックでサンプルのビット列と確保・解放回数が一致した。例として48k→44.1k・2chの当該系列では1024入力フレームで確保4回・解放3回、4096で確保15回・解放14回。戻り値のVecの破棄は計測区間外であり、これらはコールバック全体の回数ではない。
+
+config探索71条件、所有値を含むIPC送信の成功／失敗2条件、AddProcessorの全u8 index×slot空き／使用中の512条件は、実ソースから分岐を抽出して模擬値で比較し、評価とDropのtraceが一致した。実CPAL・実VSTオブジェクトの異常メッセージ検証ではない。
+
+DSP・Smootherの定義と、旧／新のmono／stereoループ・退役・ゲイン処理が既存probeと一致することを再照合してからprobeを再実行した。128条件のDSP出力・回数・warm時無割当、退役198条件とゲイン16条件、100万通りのclamp比較が成功した。独立プロセスのcold比較も確保50回・解放5回、同一出力ハッシュ・呼出回数で一致した。
+
+結果と再現用コードはignoredの `src-tauri/target/clippy-remaining-review*` に保存する。同一製品コードの45テスト・strict Clippy警告0・check・build・GUI成功ログを再確認した。製品コードを追加変更していないため、それらの一括再実行は行っていない。`git diff --check`は今回も成功。DSP係数・音声処理の仕様は変更せず、commit・push・PR作成は行わない。実機音声・性能等の未検証範囲と既存のRT制約は上記のとおり。

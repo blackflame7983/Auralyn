@@ -3824,7 +3824,7 @@ impl VstProcessor {
                 // Bounds check is implicit by using min() above, but we double check for safety
                 if ch < self.scratch_inputs.len() {
                     let scratch_slice = &mut self.scratch_inputs[ch][..num_samples];
-                    for i in 0..num_samples {
+                    for (i, sample) in scratch_slice.iter_mut().enumerate() {
                         // Input buffer bounds check
                         let input_idx = i * channels + ch;
                         let val = if input_idx < input_buffer.len() {
@@ -3832,17 +3832,16 @@ impl VstProcessor {
                         } else {
                             0.0
                         };
-                        scratch_slice[i] = val;
+                        *sample = val;
                     }
                 }
             }
 
             // 2.5 Clear Output Buffers
             for ch in 0..active_channels {
-                if ch < self.scratch_outputs.len() {
-                    if num_samples <= self.scratch_outputs[ch].len() {
-                        self.scratch_outputs[ch][..num_samples].fill(0.0);
-                    }
+                if ch < self.scratch_outputs.len() && num_samples <= self.scratch_outputs[ch].len()
+                {
+                    self.scratch_outputs[ch][..num_samples].fill(0.0);
                 }
             }
 

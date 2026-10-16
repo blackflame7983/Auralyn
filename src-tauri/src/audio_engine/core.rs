@@ -698,7 +698,7 @@ impl Engine {
                         }
                         match serde_json::from_str::<Command>(trim) {
                             Ok(cmd) => {
-                                if let Err(_) = proxy.send_event(UserEvent::Command(cmd)) {
+                                if proxy.send_event(UserEvent::Command(cmd)).is_err() {
                                     break; // Loop closed
                                 }
                             }
@@ -1649,7 +1649,7 @@ impl Engine {
 
         if let Some(rate) = sample_rate {
             if let Ok(configs) = out_dev.supported_output_configs() {
-                if let Some(_) = configs
+                if let Some(_matching_config) = configs
                     .into_iter()
                     .find(|c| c.min_sample_rate() <= rate && c.max_sample_rate() >= rate)
                 {
@@ -1877,11 +1877,9 @@ impl Engine {
         let mut rt_active_count: usize = 0;
         while let Some((idx, proc)) = processors_vec.pop() {
             let slot = idx as usize;
-            if slot < MAX_PLUGINS {
-                if rt_processors[slot].is_none() {
-                    rt_processors[slot] = Some(proc);
-                    rt_active_count += 1;
-                }
+            if slot < MAX_PLUGINS && rt_processors[slot].is_none() {
+                rt_processors[slot] = Some(proc);
+                rt_active_count += 1;
             }
         }
 
@@ -1947,12 +1945,12 @@ impl Engine {
             &out_stream_config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 // Flush any pending retire messages first (never drop VST objects in RT thread)
-                for slot in 0..MAX_PLUGINS {
-                    if let Some(retired) = pending_retire[slot].take() {
+                for slot in &mut pending_retire {
+                    if let Some(retired) = slot.take() {
                         match retire_prod.try_push(retired) {
                             Ok(()) => {}
                             Err(retired) => {
-                                pending_retire[slot] = Some(retired);
+                                *slot = Some(retired);
                                 break;
                             }
                         }
@@ -1965,11 +1963,7 @@ impl Engine {
 
                 // Jitter Calc
                 if delta > 0 && expected_period_micros > 0 {
-                    let jitter = if delta > expected_period_micros {
-                        delta - expected_period_micros
-                    } else {
-                        0
-                    };
+                    let jitter = delta.saturating_sub(expected_period_micros);
                     let current_max = stats_max_jitter.load(Ordering::Relaxed);
                     if jitter > current_max {
                         stats_max_jitter.store(jitter, Ordering::Relaxed);
@@ -2009,12 +2003,10 @@ impl Engine {
                             initial_gain,
                         } => {
                             let slot = index as usize;
-                            if slot < MAX_PLUGINS {
-                                if rt_processors[slot].is_none() {
-                                    rt_processors[slot] = Some(processor);
-                                    rt_active_count += 1;
-                                    rt_gains[slot] = Smoother::new_ramp(0.0, initial_gain);
-                                }
+                            if slot < MAX_PLUGINS && rt_processors[slot].is_none() {
+                                rt_processors[slot] = Some(processor);
+                                rt_active_count += 1;
+                                rt_gains[slot] = Smoother::new_ramp(0.0, initial_gain);
                             }
                         }
                         AudioThreadMessage::RemoveProcessor { index } => {
@@ -2267,15 +2259,15 @@ impl Engine {
 
                 if rt_voice_check.is_playback_active() {
                     // 再生中はマイク入力をミュート（処理チェーンは無音で継続）
-                    for ch in 0..channels.min(2) {
-                        planar_buf_a[ch][..frames].fill(0.0);
+                    for channel in &mut planar_buf_a[..channels.min(2)] {
+                        channel[..frames].fill(0.0);
                     }
                 }
 
                 if rt_test_tone.is_active() {
                     // テストトーン中はマイク入力をミュート
-                    for ch in 0..channels.min(2) {
-                        planar_buf_a[ch][..frames].fill(0.0);
+                    for channel in &mut planar_buf_a[..channels.min(2)] {
+                        channel[..frames].fill(0.0);
                     }
                 }
 
@@ -2315,9 +2307,13 @@ impl Engine {
                     }
                     let dry_mix = 1.0 - wet_mix;
                     if channels >= 2 {
-                        for i in 0..frames {
-                            let dry_left = planar_buf_a[0][i];
-                            let dry_right = planar_buf_a[1][i];
+                        let (left_channels, right_channels) = planar_buf_a.split_at_mut(1);
+                        for (left_sample, right_sample) in left_channels[0][..frames]
+                            .iter_mut()
+                            .zip(&mut right_channels[0][..frames])
+                        {
+                            let dry_left = *left_sample;
+                            let dry_right = *right_sample;
                             if profile_available
                                 && !speech_detected
                                 && matches!(
@@ -2327,18 +2323,18 @@ impl Engine {
                             {
                                 let noise_gate = (profile_rms * 2.2).max(0.004);
                                 if dry_left.abs().max(dry_right.abs()) < noise_gate {
-                                    planar_buf_a[0][i] *= 0.72;
-                                    planar_buf_a[1][i] *= 0.72;
+                                    *left_sample *= 0.72;
+                                    *right_sample *= 0.72;
                                 }
                             }
-                            let (wet_left, wet_right) = rt_noise_reducer
-                                .process_sample(planar_buf_a[0][i], planar_buf_a[1][i]);
-                            planar_buf_a[0][i] = planar_buf_a[0][i] * dry_mix + wet_left * wet_mix;
-                            planar_buf_a[1][i] = planar_buf_a[1][i] * dry_mix + wet_right * wet_mix;
+                            let (wet_left, wet_right) =
+                                rt_noise_reducer.process_sample(*left_sample, *right_sample);
+                            *left_sample = *left_sample * dry_mix + wet_left * wet_mix;
+                            *right_sample = *right_sample * dry_mix + wet_right * wet_mix;
                         }
                     } else if channels == 1 {
-                        for i in 0..frames {
-                            let dry_mono = planar_buf_a[0][i];
+                        for sample in &mut planar_buf_a[0][..frames] {
+                            let dry_mono = *sample;
                             if profile_available
                                 && !speech_detected
                                 && matches!(
@@ -2347,36 +2343,39 @@ impl Engine {
                                 )
                                 && dry_mono.abs() < (profile_rms * 2.2).max(0.004)
                             {
-                                planar_buf_a[0][i] *= 0.72;
+                                *sample *= 0.72;
                             }
-                            let (wet_mono, _) = rt_noise_reducer
-                                .process_sample(planar_buf_a[0][i], planar_buf_a[0][i]);
-                            planar_buf_a[0][i] = planar_buf_a[0][i] * dry_mix + wet_mono * wet_mix;
+                            let (wet_mono, _) = rt_noise_reducer.process_sample(*sample, *sample);
+                            *sample = *sample * dry_mix + wet_mono * wet_mix;
                         }
                     }
                 }
 
                 if rt_built_in_effects_enabled {
                     if channels >= 2 {
-                        for i in 0..frames {
+                        let (left_channels, right_channels) = planar_buf_a.split_at_mut(1);
+                        for (left_sample, right_sample) in left_channels[0][..frames]
+                            .iter_mut()
+                            .zip(&mut right_channels[0][..frames])
+                        {
                             let (l, r) = rt_voice_chain.process_sample(
-                                planar_buf_a[0][i],
-                                planar_buf_a[1][i],
+                                *left_sample,
+                                *right_sample,
                                 rt_built_in_effects_preset,
                                 rt_built_in_effects_amount,
                             );
-                            planar_buf_a[0][i] = l;
-                            planar_buf_a[1][i] = r;
+                            *left_sample = l;
+                            *right_sample = r;
                         }
                     } else if channels == 1 {
-                        for i in 0..frames {
+                        for sample in &mut planar_buf_a[0][..frames] {
                             let (m, _) = rt_voice_chain.process_sample(
-                                planar_buf_a[0][i],
-                                planar_buf_a[0][i],
+                                *sample,
+                                *sample,
                                 rt_built_in_effects_preset,
                                 rt_built_in_effects_amount,
                             );
-                            planar_buf_a[0][i] = m;
+                            *sample = m;
                         }
                     }
                 }
@@ -2408,8 +2407,8 @@ impl Engine {
                 // Global Bypass: Skip all plugin processing (A/B comparison mode)
                 // Input remains in planar_buf_a, so current_source_is_a stays true.
                 if !rt_global_bypass && rt_active_count > 0 && rt_order_len > 0 {
-                    for i_order in 0..rt_order_len {
-                        let idx = rt_order[i_order] as usize;
+                    for &index in &rt_order[..rt_order_len] {
+                        let idx = index as usize;
                         if idx >= MAX_PLUGINS {
                             continue;
                         }
@@ -2427,11 +2426,12 @@ impl Engine {
 
                             for ch in 0..channels {
                                 // Safety bounds check
-                                if ch < in_bufs.len() && ch < out_bufs.len() {
-                                    if in_bufs[ch].len() >= frames && out_bufs[ch].len() >= frames {
-                                        out_bufs[ch][..frames]
-                                            .copy_from_slice(&in_bufs[ch][..frames]);
-                                    }
+                                if ch < in_bufs.len()
+                                    && ch < out_bufs.len()
+                                    && in_bufs[ch].len() >= frames
+                                    && out_bufs[ch].len() >= frames
+                                {
+                                    out_bufs[ch][..frames].copy_from_slice(&in_bufs[ch][..frames]);
                                 }
                             }
 
@@ -2444,12 +2444,12 @@ impl Engine {
                         if rt_muted[idx] {
                             // If muted, we need to zero out the current buffer
                             if current_source_is_a {
-                                for ch in 0..channels {
-                                    planar_buf_a[ch][..frames].fill(0.0);
+                                for channel in &mut planar_buf_a[..channels] {
+                                    channel[..frames].fill(0.0);
                                 }
                             } else {
-                                for ch in 0..channels {
-                                    planar_buf_b[ch][..frames].fill(0.0);
+                                for channel in &mut planar_buf_b[..channels] {
+                                    channel[..frames].fill(0.0);
                                 }
                             }
                             continue;
@@ -2484,8 +2484,8 @@ impl Engine {
                                 let mut frame_idx = 0;
                                 while frame_idx < frames {
                                     let gain = smoother.next();
-                                    for ch in 0..channels {
-                                        target_buf[ch][frame_idx] *= gain;
+                                    for channel in &mut target_buf[..channels] {
+                                        channel[frame_idx] *= gain;
                                     }
                                     frame_idx += 1;
                                 }

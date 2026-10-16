@@ -11,6 +11,10 @@ pub struct Blacklist {
 }
 
 impl Blacklist {
+    #[expect(
+        clippy::ptr_arg,
+        reason = "公開fn(&PathBuf) -> Selfの型互換性を維持する"
+    )]
     pub fn new(config_dir: &PathBuf) -> Self {
         let file_path = config_dir.join("vst_blacklist.json");
         let mut list = if file_path.exists() {

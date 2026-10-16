@@ -92,8 +92,8 @@ impl StreamResampler {
                     processed_output_interleaved.reserve(frames_out * self.channels);
 
                     for i in 0..frames_out {
-                        for ch in 0..self.channels {
-                            processed_output_interleaved.push(waves_out[ch][i]);
+                        for channel in &waves_out[..self.channels] {
+                            processed_output_interleaved.push(channel[i]);
                         }
                     }
                 }
@@ -104,5 +104,57 @@ impl StreamResampler {
         }
 
         Ok(processed_output_interleaved)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::StreamResampler;
+
+    #[test]
+    fn multichannel_output_matches_independent_mono_and_chunk_boundaries() {
+        for (input_rate, output_rate) in [(48_000, 44_100), (44_100, 48_000)] {
+            for channels in [1, 2, 4] {
+                let planar: Vec<Vec<f32>> = (0..channels)
+                    .map(|ch| {
+                        (0..4096)
+                            .map(|i| ((i * (ch + 1) % 101) as f32 - 50.0) * 0.001)
+                            .collect()
+                    })
+                    .collect();
+                let input: Vec<f32> = (0..4096)
+                    .flat_map(|i| planar.iter().map(move |channel| channel[i]))
+                    .collect();
+                let mono: Vec<Vec<f32>> = planar
+                    .iter()
+                    .map(|channel| {
+                        StreamResampler::new(input_rate, output_rate, 1)
+                            .unwrap()
+                            .process(channel)
+                            .unwrap()
+                    })
+                    .collect();
+                let expected: Vec<u32> = (0..mono[0].len())
+                    .flat_map(|i| mono.iter().map(move |channel| channel[i].to_bits()))
+                    .collect();
+                let all = StreamResampler::new(input_rate, output_rate, channels)
+                    .unwrap()
+                    .process(&input)
+                    .unwrap();
+                assert_eq!(
+                    all.iter().map(|s| s.to_bits()).collect::<Vec<_>>(),
+                    expected
+                );
+                let mut streamed = StreamResampler::new(input_rate, output_rate, channels).unwrap();
+                let mut actual = Vec::new();
+                for chunk in input.chunks(127 * channels) {
+                    actual.extend(streamed.process(chunk).unwrap());
+                }
+                assert_eq!(
+                    actual.iter().map(|s| s.to_bits()).collect::<Vec<_>>(),
+                    expected
+                );
+            }
+        }
     }
 }
