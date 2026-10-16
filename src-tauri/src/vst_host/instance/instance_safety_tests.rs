@@ -309,6 +309,33 @@ fn planar_callback_paths_do_not_allocate_or_free() {
 }
 
 #[test]
+fn interleaved_channel_order_short_buffers_and_rt_allocation_are_preserved() {
+    for channels in [1, 2, 4] {
+        for input_len in [0, channels * 4 - 1, channels * 4] {
+            let mut test = fixture();
+            let input: Vec<f32> = (0..input_len).map(|i| i as f32 - 3.0).collect();
+            let mut output = vec![9.0; channels * 4 + 1];
+            assert_eq!(
+                allocation_counts(|| {
+                    test.processor.process(&input, &mut output, channels, 4);
+                }),
+                (0, 0)
+            );
+            for (i, sample) in output[..channels * 4].iter().enumerate() {
+                let expected = if i % channels < channels.min(2) {
+                    input.get(i).copied().unwrap_or(0.0) * 0.5
+                } else {
+                    0.0
+                };
+                assert_eq!(sample.to_bits(), expected.to_bits());
+            }
+            assert_eq!(output[channels * 4], 9.0);
+            assert_eq!(test.calls(), 1);
+        }
+    }
+}
+
+#[test]
 fn native_window_resize_rejects_frame_overflow_and_preserves_normal_client_size() {
     use windows::core::w;
     use windows::Win32::UI::WindowsAndMessaging::{
