@@ -342,7 +342,7 @@ fn compute_plugin_env_dirs(plugin_path: &Path) -> Option<(PathBuf, PathBuf)> {
                 if let Some(Ok(entry)) = it.find(|e| {
                     e.as_ref()
                         .ok()
-                        .map(|x| x.path().extension().map_or(false, |ext| ext == "vst3"))
+                        .map(|x| x.path().extension().is_some_and(|ext| ext == "vst3"))
                         .unwrap_or(false)
                 }) {
                     found = Some(entry.path());
@@ -1147,7 +1147,7 @@ unsafe extern "system" fn stream_write(
     stream.cursor += bytes.len();
 
     if !num_bytes_written.is_null() {
-        *num_bytes_written = num_bytes as i32;
+        *num_bytes_written = num_bytes;
     }
     0 // kResultOk
 }
@@ -3105,7 +3105,7 @@ impl VstInstance {
                 process_mode: crate::vst_host::c_api::K_REALTIME,
                 symbolic_sample_size: crate::vst_host::c_api::K_SAMPLE_32,
                 max_samples_per_block: block_size,
-                sample_rate: sample_rate,
+                sample_rate,
             };
 
             if (proc_vtbl.setup_processing)(self.processor, &mut setup as *mut _ as *mut c_void)
@@ -3581,7 +3581,7 @@ impl VstInstance {
                 let mut obj_ptr: *mut c_void = std::ptr::null_mut();
                 // Use view_vtbl valid in this scope
                 let mut status = (view_vtbl.base.query_interface)(
-                    view_ptr as *mut c_void,
+                    view_ptr,
                     &crate::vst_host::c_api::IID_IPLUGVIEWCONTENTSCALESUPPORT,
                     &mut obj_ptr,
                 );
@@ -3589,7 +3589,7 @@ impl VstInstance {
                 if status != 0 {
                     // Try BE
                     status = (view_vtbl.base.query_interface)(
-                        view_ptr as *mut c_void,
+                        view_ptr,
                         &crate::vst_host::c_api::IID_IPLUGVIEWCONTENTSCALESUPPORT_BE,
                         &mut obj_ptr,
                     );

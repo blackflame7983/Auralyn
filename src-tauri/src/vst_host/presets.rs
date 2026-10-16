@@ -259,7 +259,7 @@ pub fn list_presets(config_dir: &Path) -> Result<Vec<String>, String> {
     if let Ok(entries) = fs::read_dir(presets_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "json") {
+            if path.extension().is_some_and(|ext| ext == "json") {
                 if let Some(stem) = path.file_stem() {
                     names.push(stem.to_string_lossy().to_string());
                 }

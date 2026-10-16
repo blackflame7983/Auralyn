@@ -26,7 +26,7 @@ mod win_job {
                 let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
                 info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
 
-                let _ = SetInformationJobObject(
+                SetInformationJobObject(
                     job,
                     JobObjectExtendedLimitInformation,
                     &info as *const _ as *const std::ffi::c_void,
@@ -169,7 +169,7 @@ pub fn scan_system_vst3(config_dir: &PathBuf) -> Vec<VstPlugin> {
 
                 let entry_path = entry.path();
                 // Check for .vst3 extension
-                if entry_path.extension().map_or(false, |ext| ext == "vst3") {
+                if entry_path.extension().is_some_and(|ext| ext == "vst3") {
                     // CRITICAL FIX: If it's a bundle (directory), do NOT recurse into it.
                     // This prevents finding the inner binary as a separate entry later.
                     if entry_path.is_dir() {
@@ -197,11 +197,11 @@ pub fn scan_system_vst3(config_dir: &PathBuf) -> Vec<VstPlugin> {
                             if arch_dir.exists() {
                                 if let Ok(mut entries) = std::fs::read_dir(arch_dir) {
                                     if let Some(Ok(inner)) = entries.find(|e| {
-                                        e.as_ref().ok().map_or(false, |dir_entry| {
+                                        e.as_ref().ok().is_some_and(|dir_entry| {
                                             dir_entry
                                                 .path()
                                                 .extension()
-                                                .map_or(false, |ext| ext == "vst3")
+                                                .is_some_and(|ext| ext == "vst3")
                                         })
                                     }) {
                                         final_path = inner.path();
