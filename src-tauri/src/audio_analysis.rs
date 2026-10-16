@@ -111,16 +111,9 @@ pub struct QualityReport {
     pub advices: Vec<Advice>,
 }
 
+#[derive(Default)]
 pub struct AnalysisContext {
     pub buffer_size: Option<u32>,
-}
-
-impl Default for AnalysisContext {
-    fn default() -> Self {
-        Self {
-            buffer_size: None,
-        }
-    }
 }
 
 /// インターリーブステレオ f32 バッファから品質レポートを生成

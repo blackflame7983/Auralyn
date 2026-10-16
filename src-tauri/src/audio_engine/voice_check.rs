@@ -30,6 +30,12 @@ pub struct VoiceCheckShared {
     pub envelope_dirty: AtomicBool,
 }
 
+impl Default for VoiceCheckShared {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VoiceCheckShared {
     pub fn new() -> Self {
         Self {

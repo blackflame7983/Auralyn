@@ -30,6 +30,12 @@ pub struct ObsState {
     pub conn_params: Mutex<Option<ObsConnectionParams>>,
 }
 
+impl Default for ObsState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ObsState {
     pub fn new() -> Self {
         Self {
