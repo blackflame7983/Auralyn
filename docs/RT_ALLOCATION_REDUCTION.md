@@ -1,5 +1,7 @@
 # RT割当・Drop制約の段階的対応
 
+後続のDSP初回処理・reset対策は[DSP_RT_ALLOCATION_REDUCTION.md](DSP_RT_ALLOCATION_REDUCTION.md)を参照。本書の未解消事項はPR #13時点の記録。
+
 2026-10-16。基準HEADは`577752e`（PR #12マージ後）、作業ブランチは`codex/rt-allocation-lifecycle`。開始時の作業ツリーはクリーン。DSP係数・演算式・DSP初期状態・依存バージョンは変更しない。
 
 ## 今回の段階

@@ -52,7 +52,7 @@ tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
 winreg = "0.52"
 rubato = "0.14"
-nnnoiseless = { version = "0.5.2", default-features = false }
+nnnoiseless = { version = "=0.5.2", path = "../third_party/nnnoiseless-0.5.2", default-features = false }
 hound = "3.5.1"
 rustfft = "6.2.0"
 rfd = "0.17.2"
@@ -62,6 +62,7 @@ tauri-plugin-mcp-bridge = "0.13.1"
 
 
 [dev-dependencies]
+nnnoiseless_reference = { package = "nnnoiseless", version = "=0.5.2", default-features = false }
 serde_json = "1"
 assert_cmd = "2"
 # assert_cmd = "2" # Optional, if we want easier process testing, but std::process is fine for now to avoid extra deps download time

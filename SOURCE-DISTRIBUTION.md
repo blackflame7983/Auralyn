@@ -43,6 +43,13 @@ npm run tauri build
 `package-lock.json` and `src-tauri/Cargo.lock` are part of the Corresponding
 Source and pin the JavaScript and Rust dependency graphs for each release.
 
+The Rust dependency `nnnoiseless` uses the modified local source at
+`third_party/nnnoiseless-0.5.2`. This directory, including its model data,
+`COPYING`, and `PATCHES.md`, must remain in the same source archive. The
+registry version is also pinned as a development-only comparison dependency;
+it is not selected by the production dependency. No separate download of the
+local modifications is needed to build from the archive.
+
 The release workflow downloads the Steinberg ASIO SDK from
 `https://www.steinberg.net/asiosdk`, verifies the SHA-256 pinned in
 `config/release-policy.json`, sets `CPAL_ASIO_DIR` for the signed build, and
