@@ -3,6 +3,14 @@ use crate::vst_host::instance::allocation_counts;
 use nnnoiseless::DenoiseState;
 use nnnoiseless_reference::DenoiseState as OriginalState;
 
+// 測定区間外だけで呼ぶ。指定時に出力ビット列を保存し、profile間で直接比較する。
+fn write_snapshot(name: &str, bits: &[u32]) {
+    if let Some(dir) = std::env::var_os("AURALYN_DSP_SNAPSHOT_DIR") {
+        let bytes: Vec<_> = bits.iter().flat_map(|bits| bits.to_le_bytes()).collect();
+        std::fs::write(std::path::PathBuf::from(dir).join(name), bytes).unwrap();
+    }
+}
+
 fn frames(kind: usize, count: usize) -> Vec<[f32; DenoiseState::FRAME_SIZE]> {
     (0..count)
         .map(|frame| {
@@ -43,6 +51,7 @@ fn cold_dsp_on_new_thread_matches_registry_version_without_allocating() {
         std::thread::spawn(move || {
             let mut output = [0.0; DenoiseState::FRAME_SIZE];
             let mut expected = output;
+            let mut snapshot = Vec::new();
             for (i, frame) in input.iter().enumerate() {
                 let mut vad = 0.0;
                 assert_eq!(
@@ -66,7 +75,10 @@ fn cold_dsp_on_new_thread_matches_registry_version_without_allocating() {
                         .zip(expected)
                         .all(|(a, b)| a.to_bits() == b.to_bits())
                 );
+                snapshot.push(vad.to_bits());
+                snapshot.extend(output.iter().map(|sample| sample.to_bits()));
             }
+            write_snapshot(&format!("cold-{kind}.bin"), &snapshot);
         })
         .join()
         .unwrap();
@@ -105,6 +117,7 @@ fn in_place_reset_matches_fresh_registry_state_and_retains_owned_model() {
                 OriginalState::new()
             };
             let mut expected = output;
+            let mut snapshot = Vec::new();
             for frame in &input {
                 let mut vad = 0.0;
                 assert_eq!(
@@ -121,7 +134,10 @@ fn in_place_reset_matches_fresh_registry_state_and_retains_owned_model() {
                         .zip(expected)
                         .all(|(a, b)| a.to_bits() == b.to_bits())
                 );
+                snapshot.push(vad.to_bits());
+                snapshot.extend(output.iter().map(|sample| sample.to_bits()));
             }
+            write_snapshot(&format!("reset-{custom}-{dirty_frames}.bin"), &snapshot);
         }
     }
 }
@@ -144,9 +160,10 @@ fn borrowed_custom_model_survives_repeated_reset_without_allocating() {
     let custom_vad = actual.process_frame(&mut output, &input[0]);
     let default_vad = OriginalState::new().process_frame(&mut expected, &input[0]);
     assert_ne!(custom_vad.to_bits(), default_vad.to_bits());
-    for _ in 0..3 {
+    for reset in 0..3 {
         assert_eq!(allocation_counts(|| actual.reset()), (0, 0));
         let mut reference = OriginalState::with_model(&original_model);
+        let mut snapshot = Vec::new();
         for frame in &input {
             let mut vad = 0.0;
             assert_eq!(
@@ -161,7 +178,10 @@ fn borrowed_custom_model_survives_repeated_reset_without_allocating() {
                     .zip(expected)
                     .all(|(a, b)| a.to_bits() == b.to_bits())
             );
+            snapshot.push(vad.to_bits());
+            snapshot.extend(output.iter().map(|sample| sample.to_bits()));
         }
+        write_snapshot(&format!("borrowed-{reset}.bin"), &snapshot);
     }
 }
 
@@ -184,6 +204,7 @@ fn cloned_fft_workspace_keeps_history_after_original_reset_and_drop() {
     }
     drop(actual);
     std::thread::spawn(move || {
+        let mut snapshot = Vec::new();
         for frame in &input[7..] {
             let mut vad = 0.0;
             assert_eq!(
@@ -198,7 +219,10 @@ fn cloned_fft_workspace_keeps_history_after_original_reset_and_drop() {
                     .zip(expected)
                     .all(|(a, b)| a.to_bits() == b.to_bits())
             );
+            snapshot.push(vad.to_bits());
+            snapshot.extend(output.iter().map(|sample| sample.to_bits()));
         }
+        write_snapshot("clone.bin", &snapshot);
     })
     .join()
     .unwrap();
@@ -239,9 +263,14 @@ fn engine_reset_at_partial_frames_matches_fresh_reducer_without_allocating() {
                     }),
                     (0, 0)
                 );
-                for ((a, b), (x, y)) in output.into_iter().zip(expected) {
+                for (&(a, b), (x, y)) in output.iter().zip(expected) {
                     assert_eq!((a.to_bits(), b.to_bits()), (x.to_bits(), y.to_bits()));
                 }
+                let snapshot: Vec<_> = output
+                    .iter()
+                    .flat_map(|(l, r)| [l.to_bits(), r.to_bits()])
+                    .collect();
+                write_snapshot(&format!("engine-{rate}-{dirty_samples}.bin"), &snapshot);
             }
         })
         .join()
