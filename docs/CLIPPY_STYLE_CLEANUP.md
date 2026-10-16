@@ -125,3 +125,44 @@ DSP係数、音声コールバック・変換ループ、制御フローの統�
 ホットキー分岐も現在ソースと基準HEADから抽出し、Pressed／キー一致／state有無／lock成否／mute成否の32通りを模擬オブジェクトで比較した。matches・state・lock・muteの呼出し回数、guard・state・errorのDrop順が一致した。既存のデバイスprobeが現在のclosureを対象としていることも照合した。
 
 結果はignoredの `src-tauri/target/clippy-non-rt-review-{io,hotkey}.{rs,log}` とexeに保存する。`git diff --check`成功。同一Rust差分のテスト42件・check・Clippy・build成功ログと警告36箇所を再確認した。製品コードに追加修正や新たな懸念がないため、同一テスト・ビルドは反復していない。実OBS・実ホットキー・実ドライバ・アプリ全体のIPC等の未検証範囲、既存の整形問題は上記のとおり。
+
+## API・型の限定整理（2026-10-16）
+
+基準HEADは `ffcc02e`（PR #10マージ後）。fetch後にmainとorigin/mainの一致・未コミット変更なしを確認した。作業ブランチは `codex/clippy-api-types`。最新Clippyの36箇所のうち、API・型関連は6箇所だった。
+
+### 修正した2箇所と呼出側への影響
+
+診断CLIのscan_devices内だけで使う `RawDeviceScanEntry` を追加し、入力・出力のraw_itemsの型注釈を共通化した。別名の実体は従来と同じ `(String, String, Option<(u32, u32)>, u16, bool)` で、名前、レート表示、バッファ範囲、チャンネル数、既定フラグの順を維持する。
+
+新しいstructや公開型にはせず、所有権・Drop・メモリ上の型・Vec操作は同一。push、分解、重複番号の付与、DeviceInfoへの変換・serde定義・JSON出力、各APIの評価順は変更しない。型別名の宣言を除き、2つの型注釈を展開するとファイル全体が基準HEADと完全一致することを照合した。外部の呼出側には変更を要求しない。
+
+### 既存契約を維持するため残した4箇所
+
+| 箇所 | 警告 | 保留した理由 |
+| --- | --- | --- |
+| Blacklist::new | ptr_arg | scannerとTauriホストの2呼出側を確認。通常の呼出しではPathへの一般化が可能だが、公開関数の `fn(&PathBuf) -> Self` という型まで同一にはならない。既存シグネチャを維持する条件で今回は変更しない。 |
+| profile::apply_profile | too_many_arguments | Tauriのプロファイル適用・バックアップ復元から呼ばれる公開Rust関数。引数を束ねる場合は既存呼出契約への別判断が必要。 |
+| Tauri apply_profileコマンド | too_many_arguments | フロントのinvokeと既存テストでも名前付きpayloadを使用する。引数オブジェクト化によるJSON契約の変更を混ぜない。 |
+| generate_advices | too_many_arguments | 私有関数で呼出側は解析モジュール内の1箇所だが、解析結果の助言生成に関わる。音声解析側へ今回の整理を広げない。 |
+
+警告の抑制や、型名で警告を隠すだけの公開引数の変更は行わない。DSP係数・音声処理、既存関数のシグネチャ、Tauriコマンドのpayload、依存・アプリ番号・配布sidecarは変更しない。
+
+### ローカル検証
+
+- `cargo test --locked --lib --bins --test audio_queue_contract`: 39 lib + 2 queueテスト成功。
+- `cargo check --locked --all-targets`、`cargo clippy --locked --all-targets --message-format=json`、`cargo build --locked --bins`: 成功。
+- Clippyは最初のprimary spanをコード・ファイル・行で重複除去して36 → 34。type_complexity 2箇所を解消し、コード・ファイル別の警告数にも新規増加なし。残りは条件分岐9、ループ・数値処理21、API・型4。
+- `git diff --check`成功。対象ファイルの全体rustfmt検査は既存の2つのlog::debug書式で失敗する。今回変更した型注釈・宣言には整形差分なし。一括整形は含めない。
+
+ログはignoredの `src-tauri/target/clippy-api-types-*` に保存する。実機デバイス列挙、実ドライバの診断JSON、GUI・実アプリ全体のIPC、実機音声・性能・高DPI・署名配布は未検証。音声/VST実装の差分がないため、実OTT寿命テストの再実行は行わない。commit・push・PR作成は行わない。
+
+### 型別名の差分レビュー（2026-10-16）
+
+`codex/review-clippy-api-types`で差分と使用箇所を確認し、追加修正が必要な型・所有権・Drop・JSON・既存APIの変更は見つからなかった。
+
+- RawDeviceScanEntryはscan_devices内の型別名であり、新しい所有型・struct・ラッパーではない。別名の実体は従来の5要素タプルそのもの。String、Option、Vecの型・所有権は同一で、追加のclone・borrow・変換・割当・Drop処理はない。
+- 型別名の宣言とコメントを除き、2つの型注釈を展開すると、ファイル全体が基準HEADと完全一致した。既存のpush・分解・move・スコープも不変であり、Dropタイミングを変える差分はない。
+- JSONは従来のDeviceInfoを構築してserde_json::to_stringする。DeviceInfoのフィールド型・順序・deriveと、値の設定・重複名処理・最後のJSON出力はすべて同一。型別名を直接シリアライズする変更ではない。実機デバイスを列挙してのJSON比較は行っていない。
+- 別名は外部へ公開せず、公開関数・Tauriコマンドのシグネチャと呼出側も変更していない。API関連の保留4箇所はそのままとする。
+
+今回、完全一致のソース照合と `git diff --check` を実行した。照合結果はignoredの `src-tauri/target/clippy-api-types-review-equivalence.log` に保存する。同一Rust差分のテスト41件・check・Clippy・build成功ログを確認し、警告34箇所も再集計した。追加コード修正や新たな懸念がないため、同一テスト・ビルドの反復、新規の実装をなぞるテストは行わない。既存の整形問題と実機等の未検証範囲は上記のとおり。

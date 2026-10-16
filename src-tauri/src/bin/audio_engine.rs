@@ -271,6 +271,9 @@ fn scan_devices() {
         is_default: bool,
     }
 
+    // 名前、レート表示、バッファ範囲、チャンネル数、既定フラグの順を維持する。
+    type RawDeviceScanEntry = (String, String, Option<(u32, u32)>, u16, bool);
+
     let mut devices = Vec::new();
     let hosts = cpal::available_hosts();
 
@@ -380,8 +383,7 @@ fn scan_devices() {
             if let Ok(inputs) = host.input_devices() {
                 log::debug!("[Scanner] Checking Inputs for host: {}", host_name);
 
-                let mut raw_items: Vec<(String, String, Option<(u32, u32)>, u16, bool)> =
-                    Vec::new();
+                let mut raw_items: Vec<RawDeviceScanEntry> = Vec::new();
                 for d in inputs {
                     #[allow(deprecated)]
                     if let Ok(n) = d.name() {
@@ -436,8 +438,7 @@ fn scan_devices() {
             if let Ok(outputs) = host.output_devices() {
                 log::debug!("[Scanner] Checking Outputs for host: {}", host_name);
 
-                let mut raw_items: Vec<(String, String, Option<(u32, u32)>, u16, bool)> =
-                    Vec::new();
+                let mut raw_items: Vec<RawDeviceScanEntry> = Vec::new();
                 for d in outputs {
                     #[allow(deprecated)]
                     if let Ok(n) = d.name() {
