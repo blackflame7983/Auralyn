@@ -92,10 +92,80 @@ resetの全フィールドとnewの初期値、FFTの960点・481複素数・for
 同梱ファイルのステージ後、通常のdiff --checkは未変更のupstream train/dump_rnn.pyの末尾空行1件を検出した。
 原本ハッシュ一致を保持するため整形せず、この1ファイルを除いた候補全体の差分チェックは成功した。
 
+## release最適化での追加検証
+
+2026-10-16、PR #14マージ後の`4380136`を基準に、`codex/dsp-release-verification`で確認した。
+rustc／cargo 1.92.0、LLVM 21.1.3、x86_64-pc-windows-msvc。
+製品実装・DSP係数・同梱モデル・依存定義は変更していない。
+
+既存5件のDSPテストへ、サンプルとVADの`to_bits()`をlittle-endianのu32列として保存する機能を追加した。
+`AURALYN_DSP_SNAPSHOT_DIR`指定時だけファイルを出力する。記録用Vecへの追加・変換・ファイル書込みはすべてallocation_countsの測定区間外。
+初回処理は記録用Vecの最初の確保よりも前に計測し、測定器は引き続きDSP処理・resetだけを囲む。
+
+- debugのDSP 5件と、releaseの全単体テスト51件が成功した。
+- releaseでも未修正registry版とサンプル・VADがビット一致し、初回・連続処理・reset・Clone後の対象処理は確保・解放0回。
+  参照版の初回確保を検出する陽性対照と、測定器の確保・解放を各1回検出する既存テストも成功した。
+- debugとreleaseの48ファイル、計3,060,836バイトを読み込んで直接比較し、全バイトが一致した。
+  対象は6種類の初回／連続入力、標準／独自ownedモデルのreset 8ケース、借用モデルのreset 3回、Cloneの寿命1ケース、5レート×6位置の部分フレームreset。
+- `cargo test --locked --release --lib -vv`の実行ログでテスト本体の`-C opt-level=3 -C lto`を確認した。
+- `cargo build --locked --release --bin audio_engine -vv`が成功し、製品バイナリの`-C opt-level=3 -C lto -C panic=abort`を確認した。
+  実行時の動作・割当検査は上記テストバイナリで行い、この製品バイナリで音声ストリームは開始していない。
+- `cargo check --locked --all-targets`と`cargo clippy --locked --all-targets -- -D warnings`が成功。自プロジェクトのClippy警告0件。
+  詳細ログの`-vv`ではwindows-sys・hound等の既存依存警告と、比較用registry版nnnoiselessのcargo_c警告が顕在化した。
+  自プロジェクトの警告やビルド失敗はなく、今回の対象外の依存実装は変更していない。
+
+通常のCargoテストは[panic設定を無視してunwindを使う](https://doc.rust-lang.org/cargo/reference/profiles.html#panic)。
+したがってrelease最適化での出力・割当検証と、製品のpanic=abortビルド成功を区別する。
+panic=abortの製品バイナリ内での実行時割当検査まで済んだとは扱わない。
+
+ログ・48ファイルずつの記録・直接比較結果comparison.jsonはignoredの`src-tauri/target/dsp-release-verification/`へ保存した。
+配布用`src-tauri/bin/`のsidecarは変更していない。
+
+再確認するときは`src-tauri`で次を実行する。実行ごとに新しい記録先を作り、Cargoの失敗時には比較へ進まない。
+比較スクリプトは既知の48ケースの名前・各ファイルの正確なサイズ・全バイトを検査し、不一致なら終了コード1を返す。
+同一ディレクトリ同士、両側での欠落や空ファイル、余分な古い記録も拒否する。
+環境変数を指定しなければ記録ファイルは出力しない。設定の上書きがある環境では`-vv`で実際の最適化フラグも再確認する。
+
+```powershell
+$runDir = Join-Path (Get-Location) ('target/dsp-release-' + [guid]::NewGuid().ToString('N'))
+$previousSnapshotDir = [Environment]::GetEnvironmentVariable('AURALYN_DSP_SNAPSHOT_DIR', 'Process')
+try {
+    New-Item -ItemType Directory -Path "$runDir/debug", "$runDir/release" | Out-Null
+    $env:AURALYN_DSP_SNAPSHOT_DIR = "$runDir/debug"
+    cargo test --locked --lib audio_engine::core::dsp_rt_tests
+    if ($LASTEXITCODE -ne 0) { throw 'debugテスト失敗' }
+    $env:AURALYN_DSP_SNAPSHOT_DIR = "$runDir/release"
+    cargo test --locked --release --lib
+    if ($LASTEXITCODE -ne 0) { throw 'releaseテスト失敗' }
+    node ../scripts/compare-dsp-snapshots.cjs "$runDir/debug" "$runDir/release"
+    if ($LASTEXITCODE -ne 0) { throw '出力比較失敗' }
+} finally {
+    [Environment]::SetEnvironmentVariable('AURALYN_DSP_SNAPSHOT_DIR', $previousSnapshotDir, 'Process')
+}
+```
+
+### release検証差分のレビュー
+
+比較記録の追加・変換・書込み・Dropはallocation_countsの外にあり、測定終了時にはTLSのカウンターが無効になることを照合した。
+初回処理を測る前に参照版や記録処理でFFTを実行しないこと、値の比較が`assert`でreleaseでも有効なことを確認した。
+製品コードはこの記録処理を含まない。今回の測定は対象スレッドのRust allocator経由の確保・解放に限定される。
+panic=abortは製品ビルド確認まで、動作・割当検査はunwindの最適化テストまでという境界も適切だった。
+
+再実行手順には機械的な比較判定とCargo失敗時の停止が不足していたため、上記手順とcompare-dsp-snapshots.cjsを追加した。
+スクリプトの6件の回帰テストで、正常一致、両側の欠落・空記録、1ビット差、余分な記録、同一記録先の誤比較を確認した。
+新しい空の記録先でdebug DSP 5件・release全51件を実行し、48ファイル・3,060,836バイトの完全一致を再確認した。
+記録先を指定しないrelease DSP 5件も成功し、記録の有無にかかわらず測定対象の確保・解放は0回だった。
+`npm run test:release`は追加分を含む33件、`npm run release:check`はPASS。
+レビューのログと記録はignoredの`src-tauri/target/dsp-release-review-*`に保存した。
+Rust実装・テストの測定区間・係数は追加変更していないため、製品ビルドとcheck・厳格Clippyは前段の同一ソースの結果を引き継ぐ。
+
+実装・レビュー段階ではcommit・push・PR作成を行わず、提出はユーザーの明示承認後に行う。
+
 ## 適用範囲と未検証事項
 
 成功範囲は上記のDSP初回処理・連続処理・resetで、音声コールバック全体の無割当・無Dropを保証しない。
-実機WASAPI／ASIO、実音声・音質・CPU・遅延・デバイス切替・長時間、他CPU／OS、release最適化、インストーラ・署名配布は未検証。
+実機WASAPI／ASIO、実音声・音質・CPU・遅延・デバイス切替・長時間、他CPU／OS、インストーラ・署名配布は未検証。
+release最適化の検証結果とpanic方式の検証境界は前節を参照する。
 比較はサポート環境上の有限PCMと既存モデルを対象とし、任意モデルや非有限入力の全組合せの証明ではない。
 vendored crateの未使用bin／dasp／train／capi featureは検証対象外。公開crateにはtest_dataが入っていないため、upstream単体テスト一式の成功は主張しない。
 
