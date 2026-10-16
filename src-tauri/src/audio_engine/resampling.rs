@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use rubato::{FftFixedIn, Resampler};
+use rubato::{FftFixedIn, ResampleResult, Resampler};
 
 /// A simpler stream-compatible resampler.
 /// It maintains an internal buffer. You feed it data, and it returns any available resampled data.
@@ -12,6 +12,8 @@ pub struct StreamResampler {
 
     input_chunk_size: usize,
     channels: usize,
+    output_planar: Vec<Vec<f32>>,
+    output_interleaved: Vec<f32>,
 }
 
 impl StreamResampler {
@@ -32,6 +34,9 @@ impl StreamResampler {
         .map_err(|e| anyhow!("Failed to create resampler: {}", e))?;
 
         let input_chunk_size = resampler.input_frames_max();
+        // 最大出力1チャンク分を非RT側で確保し、コールバックでは再利用する。
+        let output_planar = resampler.output_buffer_allocate(true);
+        let output_interleaved = vec![0.0; resampler.output_frames_max() * channels];
 
         Ok(Self {
             resampler,
@@ -40,22 +45,27 @@ impl StreamResampler {
 
             input_chunk_size,
             channels,
+            output_planar,
+            output_interleaved,
         })
     }
 
-    /// Process input frames and return any available output frames.
-    ///
-    /// Note: This function allocates a new Vec for output every time or copies data.
-    /// For a real-time thread, we should ideally use a ring buffer or pre-allocated buffers.
-    /// However, Vector resizing is amortized, so it might be "okay" for MVP validation.
-    /// To be safe, we will try to minimize allocation by reusing the output structure.
+    /// 非RT向けの互換API。RT側は割当のないprocess_intoを使用する。
     pub fn process(&mut self, input: &[f32]) -> Result<Vec<f32>> {
-        // Input is interleaved [L, R, L, R...]
-        // We need to de-interleave into `input_accumulation`
+        let mut output = Vec::new();
+        self.process_into(input, |chunk| output.extend_from_slice(chunk))
+            .map_err(|e| anyhow!("Resampling error: {}", e))?;
+        Ok(output)
+    }
 
-        // Safety: Assume input is consistent with self.channels
+    /// 出力を1チャンクずつ借用して渡す。入力長による再確保・出力VecのDropはない。
+    /// emitも割当・待機しない処理を渡すこと。端数フレームの扱いは従来と同じ。
+    pub fn process_into(
+        &mut self,
+        input: &[f32],
+        mut emit: impl FnMut(&[f32]),
+    ) -> ResampleResult<()> {
         let frames_in = input.len() / self.channels;
-        let mut processed_output_interleaved = Vec::new();
 
         let mut input_cursor = 0;
 
@@ -77,25 +87,18 @@ impl StreamResampler {
 
             // If full, process
             if self.input_frames_collected == self.input_chunk_size {
-                let waves_out = self
-                    .resampler
-                    .process(&self.input_accumulation, None)
-                    .map_err(|e| anyhow!("Resampling error: {}", e))?;
-
-                // Append to output?
-                // Rubato returns `Vec<Vec<f32>>`.
-                // We should interleave it immediately and push to result.
-
-                let frames_out = waves_out[0].len();
+                let (_, frames_out) = self.resampler.process_into_buffer(
+                    &self.input_accumulation,
+                    &mut self.output_planar,
+                    None,
+                )?;
                 if frames_out > 0 {
-                    // Reserve space
-                    processed_output_interleaved.reserve(frames_out * self.channels);
-
                     for i in 0..frames_out {
-                        for channel in &waves_out[..self.channels] {
-                            processed_output_interleaved.push(channel[i]);
+                        for (ch, channel) in self.output_planar.iter().enumerate() {
+                            self.output_interleaved[i * self.channels + ch] = channel[i];
                         }
                     }
+                    emit(&self.output_interleaved[..frames_out * self.channels]);
                 }
 
                 // Reset accumulation
@@ -103,13 +106,97 @@ impl StreamResampler {
             }
         }
 
-        Ok(processed_output_interleaved)
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::StreamResampler;
+    use crate::vst_host::instance::allocation_counts;
+    use rubato::{FftFixedIn, Resampler};
+
+    #[test]
+    fn realtime_chunks_match_original_rubato_path_without_allocating() {
+        for (input_rate, output_rate) in [
+            (48_000, 44_100),
+            (44_100, 48_000),
+            (48_000, 96_000),
+            (192_000, 8_000),
+            (8_000, 192_000),
+        ] {
+            for channels in [1, 2, 4] {
+                let mut actual_resampler =
+                    StreamResampler::new(input_rate, output_rate, channels).unwrap();
+                let mut reference =
+                    FftFixedIn::<f32>::new(input_rate, output_rate, 1024, 2, channels).unwrap();
+                let chunk_size = reference.input_frames_max();
+                let mut accumulated = vec![Vec::new(); channels];
+                for frames in [0, 1, 47, 127, 1024, 9413, 1024] {
+                    // monoのframes=0も空入力とし、多chでは不完全な端数だけを追加する。
+                    let input: Vec<f32> = (0..frames * channels + channels - 1)
+                        .map(|i| ((i * 13 % 107) as f32 - 53.0) * 0.001)
+                        .collect();
+                    let mut expected = Vec::new();
+                    // 旧APIのprocessを使い、同じ入力チャンクで参照出力を作る。
+                    for frame in input.chunks_exact(channels) {
+                        for (channel, &sample) in accumulated.iter_mut().zip(frame) {
+                            channel.push(sample);
+                        }
+                        if accumulated[0].len() == chunk_size {
+                            let output = reference.process(&accumulated, None).unwrap();
+                            for i in 0..output[0].len() {
+                                for channel in &output {
+                                    expected.push(channel[i].to_bits());
+                                }
+                            }
+                            for channel in &mut accumulated {
+                                channel.clear();
+                            }
+                        }
+                    }
+                    let mut actual = Vec::with_capacity(expected.len());
+                    let planar_ptrs: Vec<_> = actual_resampler
+                        .output_planar
+                        .iter()
+                        .map(|channel| (channel.as_ptr(), channel.len(), channel.capacity()))
+                        .collect();
+                    let interleaved_buffer = (
+                        actual_resampler.output_interleaved.as_ptr(),
+                        actual_resampler.output_interleaved.len(),
+                        actual_resampler.output_interleaved.capacity(),
+                    );
+                    assert_eq!(
+                        allocation_counts(|| {
+                            actual_resampler
+                                .process_into(&input, |chunk| {
+                                    actual.extend(chunk.iter().map(|s| s.to_bits()));
+                                })
+                                .unwrap();
+                        }),
+                        (0, 0)
+                    );
+                    assert_eq!(actual, expected);
+                    for (channel, original) in
+                        actual_resampler.output_planar.iter().zip(planar_ptrs)
+                    {
+                        assert_eq!(
+                            (channel.as_ptr(), channel.len(), channel.capacity()),
+                            original
+                        );
+                    }
+                    assert_eq!(
+                        (
+                            actual_resampler.output_interleaved.as_ptr(),
+                            actual_resampler.output_interleaved.len(),
+                            actual_resampler.output_interleaved.capacity(),
+                        ),
+                        interleaved_buffer
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn multichannel_output_matches_independent_mono_and_chunk_boundaries() {

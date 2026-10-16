@@ -4099,6 +4099,9 @@ impl Drop for VstInstance {
 mod instance_safety_tests;
 
 #[cfg(test)]
+pub(crate) use instance_safety_tests::allocation_counts;
+
+#[cfg(test)]
 mod module_entry_tests {
     use super::{FactoryRef, ModuleEntry};
     use crate::vst_host::c_api::{FUnknownVtbl, TUID};
