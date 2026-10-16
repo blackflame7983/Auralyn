@@ -7,6 +7,8 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 pub mod audio;
 pub mod audio_analysis;
 pub mod audio_engine;
+#[cfg(any(test, feature = "dsp-verification"))]
+mod dsp_verification_allocator;
 pub mod autostart;
 pub mod ipc;
 pub mod obs;

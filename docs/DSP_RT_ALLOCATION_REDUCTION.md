@@ -94,6 +94,8 @@ resetの全フィールドとnewの初期値、FFTの960点・481複素数・for
 
 ## release最適化での追加検証
 
+本節はPR #15までのunwind検証の記録。後続のpanic=abort構成の実行検証は[DSP_ABORT_VERIFICATION.md](DSP_ABORT_VERIFICATION.md)を参照する。
+
 2026-10-16、PR #14マージ後の`4380136`を基準に、`codex/dsp-release-verification`で確認した。
 rustc／cargo 1.92.0、LLVM 21.1.3、x86_64-pc-windows-msvc。
 製品実装・DSP係数・同梱モデル・依存定義は変更していない。

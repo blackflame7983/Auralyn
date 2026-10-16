@@ -1,7 +1,21 @@
 use super::RtNoiseReducer;
-use crate::vst_host::instance::allocation_counts;
+use crate::dsp_verification_allocator::allocation_counts;
 use nnnoiseless::DenoiseState;
 use nnnoiseless_reference::DenoiseState as OriginalState;
+
+#[cfg(feature = "dsp-verification")]
+pub(super) fn run_all() {
+    // 最適化された通常バイナリでも計測器が確保・解放を検出することを確認する。
+    assert_eq!(
+        allocation_counts(|| drop(std::hint::black_box(vec![0_u8; 64]))),
+        (1, 1)
+    );
+    cold_dsp_on_new_thread_matches_registry_version_without_allocating();
+    in_place_reset_matches_fresh_registry_state_and_retains_owned_model();
+    borrowed_custom_model_survives_repeated_reset_without_allocating();
+    cloned_fft_workspace_keeps_history_after_original_reset_and_drop();
+    engine_reset_at_partial_frames_matches_fresh_reducer_without_allocating();
+}
 
 // 測定区間外だけで呼ぶ。指定時に出力ビット列を保存し、profile間で直接比較する。
 fn write_snapshot(name: &str, bits: &[u32]) {
@@ -41,7 +55,7 @@ fn frames(kind: usize, count: usize) -> Vec<[f32; DenoiseState::FRAME_SIZE]> {
         .collect()
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn cold_dsp_on_new_thread_matches_registry_version_without_allocating() {
     for kind in 0..6 {
         // 構築は呼出側で済ませ、未使用の状態を新しい処理スレッドへ移す。
@@ -85,7 +99,7 @@ fn cold_dsp_on_new_thread_matches_registry_version_without_allocating() {
     }
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn in_place_reset_matches_fresh_registry_state_and_retains_owned_model() {
     let mut weights = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -142,7 +156,7 @@ fn in_place_reset_matches_fresh_registry_state_and_retains_owned_model() {
     }
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn borrowed_custom_model_survives_repeated_reset_without_allocating() {
     let mut weights = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -185,7 +199,7 @@ fn borrowed_custom_model_survives_repeated_reset_without_allocating() {
     }
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn cloned_fft_workspace_keeps_history_after_original_reset_and_drop() {
     let mut actual = DenoiseState::new();
     let mut reference = OriginalState::new();
@@ -228,7 +242,7 @@ fn cloned_fft_workspace_keeps_history_after_original_reset_and_drop() {
     .unwrap();
 }
 
-#[test]
+#[cfg_attr(test, test)]
 fn engine_reset_at_partial_frames_matches_fresh_reducer_without_allocating() {
     for rate in [8_000, 44_100, 48_000, 96_000, 192_000] {
         let mut actual = RtNoiseReducer::new(rate);

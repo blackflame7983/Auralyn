@@ -19,6 +19,9 @@
 実行していない実機・インストール・OBS・公開確認は「未確認」と報告してください。
 依存更新時は `npm audit` と必要に応じた RustSec 監査も行います。自動テスト成功だけで音声・配布の互換性を保証しません。
 
+DSPの初回処理・resetをpanic=abortで計測する手順は[DSP_ABORT_VERIFICATION.md](DSP_ABORT_VERIFICATION.md)を参照する。
+検証用featureを明示したexampleだけを実行し、音声デバイスやストリームを起動しない。
+
 ### OTTエディタの回帰確認
 
 OTT 1.37 / Windows 11 x64 / 96 DPIで、InitDll未実行時に要求サイズが4×4となり、背景・ノブ画像・ロゴが欠ける症状を再現した。詳細は [OTT_EDITOR_FIX.md](OTT_EDITOR_FIX.md)。
