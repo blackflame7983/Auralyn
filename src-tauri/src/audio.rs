@@ -117,24 +117,13 @@ pub struct AudioStateInfo {
     pub config: Option<ActiveAudioConfig>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct EngineTuningConfig {
     pub enable_affinity_pinning: bool,
     pub affinity_mask: Option<String>,
     pub enable_realtime_priority: bool,
     pub enable_time_critical_audio_threads: bool,
-}
-
-impl Default for EngineTuningConfig {
-    fn default() -> Self {
-        Self {
-            enable_affinity_pinning: false,
-            affinity_mask: None,
-            enable_realtime_priority: false,
-            enable_time_critical_audio_threads: false,
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Clone, Default)]
@@ -191,6 +180,12 @@ pub struct AudioHost {
     engine_tuning: EngineTuningConfig,
     #[cfg(windows)]
     engine_job: Option<win_job::Job>,
+}
+
+impl Default for AudioHost {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AudioHost {
@@ -331,15 +326,14 @@ impl AudioHost {
         }
 
         let exe_dir = exe.parent().unwrap_or_else(|| std::path::Path::new("."));
-        let mut candidates: Vec<PathBuf> = Vec::new();
-
-        // Preferred: Tauri bundle layout candidates
-        candidates.push(exe_dir.join("audio_engine.exe"));
-        candidates.push(exe_dir.join("ns-audio-engine.exe"));
-
-        // Common "bin/" locations for externalBin
-        candidates.push(exe_dir.join("bin").join("audio_engine.exe"));
-        candidates.push(exe_dir.join("bin").join("ns-audio-engine.exe"));
+        let mut candidates: Vec<PathBuf> = vec![
+            // Preferred: Tauri bundle layout candidates
+            exe_dir.join("audio_engine.exe"),
+            exe_dir.join("ns-audio-engine.exe"),
+            // Common "bin/" locations for externalBin
+            exe_dir.join("bin").join("audio_engine.exe"),
+            exe_dir.join("bin").join("ns-audio-engine.exe"),
+        ];
 
         #[cfg(debug_assertions)]
         {
@@ -1198,11 +1192,10 @@ pub fn localize_audio_error(e: String) -> String {
             .to_string();
     }
     if lower.contains("device not found") {
-        return format!(
-            "オーディオデバイスが見つかりません。\n\n\
+        return "オーディオデバイスが見つかりません。\n\n\
              → デバイスが接続されているか確認してください。\n\
              → 接続し直した後、「更新」ボタンを押してください。"
-        );
+            .to_string();
     }
     if lower.contains("access is denied") {
         return "オーディオデバイスへのアクセスが拒否されました。\n\n\

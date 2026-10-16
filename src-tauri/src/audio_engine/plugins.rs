@@ -18,27 +18,6 @@ fn burned_library_key(path: &str) -> String {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::burned_library_key;
-
-    #[test]
-    fn burned_library_key_is_stable() {
-        let path = r"C:\VST3\Plugin.vst3";
-        let key1 = burned_library_key(path);
-        let key2 = burned_library_key(path);
-        assert_eq!(key1, key2);
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn burned_library_key_is_case_insensitive_on_windows() {
-        let upper = burned_library_key(r"C:\VST3\PLUGIN.VST3");
-        let lower = burned_library_key(r"c:\vst3\plugin.vst3");
-        assert_eq!(upper, lower);
-    }
-}
-
 pub struct PluginManager {
     pub plugins: HashMap<String, VstInstance>,
     pub order: Vec<String>,
@@ -59,6 +38,12 @@ pub struct PluginManager {
     // Safely burnt libraries to prevent unload crashes
     pub burned_libraries: Vec<std::sync::Arc<PluginLibrary>>,
     burned_library_keys: HashSet<String>,
+}
+
+impl Default for PluginManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PluginManager {
@@ -320,5 +305,26 @@ impl PluginManager {
         }
 
         total.min(u32::MAX as u64) as u32
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::burned_library_key;
+
+    #[test]
+    fn burned_library_key_is_stable() {
+        let path = r"C:\VST3\Plugin.vst3";
+        let key1 = burned_library_key(path);
+        let key2 = burned_library_key(path);
+        assert_eq!(key1, key2);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn burned_library_key_is_case_insensitive_on_windows() {
+        let upper = burned_library_key(r"C:\VST3\PLUGIN.VST3");
+        let lower = burned_library_key(r"c:\vst3\plugin.vst3");
+        assert_eq!(upper, lower);
     }
 }

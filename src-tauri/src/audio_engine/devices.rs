@@ -13,6 +13,12 @@ pub struct DeviceManager {
     pub active_output: Option<DeviceInfo>,
 }
 
+impl Default for DeviceManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DeviceManager {
     pub fn new() -> Self {
         Self {

@@ -21,6 +21,12 @@ pub struct EditorManager {
     window_id_to_plugin: HashMap<WindowId, String>,
 }
 
+impl Default for EditorManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EditorManager {
     pub fn new() -> Self {
         Self {
