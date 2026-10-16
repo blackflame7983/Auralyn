@@ -138,6 +138,12 @@ pub struct RetiredProcessor {
     pub processor: VstProcessor,
 }
 
+enum DisposedProcessor {
+    Retired(RetiredProcessor),
+    // 現役slotのアンロード完了として通知してはいけない。
+    Rejected(VstProcessor),
+}
+
 struct LoopbackProbeOutcome {
     detected: bool,
     level_db: f32,
@@ -154,7 +160,7 @@ pub enum UserEvent {
 type CmdProducer = <HeapRb<AudioThreadMessage> as Split>::Prod;
 type LevelConsumer = <HeapRb<MeterLevels> as Split>::Cons;
 type ChannelConsumer = <HeapRb<[f32; 32]> as Split>::Cons;
-type RetireConsumer = <HeapRb<RetiredProcessor> as Split>::Cons;
+type RetireConsumer = <HeapRb<DisposedProcessor> as Split>::Cons;
 
 fn time_critical_audio_threads_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
@@ -747,9 +753,14 @@ impl Engine {
 
                     // Retire processors off the audio callback thread (safe place to drop VST objects)
                     if let Some(retire_cons) = &mut self.retire_rx {
-                        while let Some(retired) = retire_cons.try_pop() {
-                            drop(retired.processor);
-                            self.plugin_manager.on_processor_retired(retired.index);
+                        while let Some(disposed) = retire_cons.try_pop() {
+                            match disposed {
+                                DisposedProcessor::Retired(retired) => {
+                                    drop(retired.processor);
+                                    self.plugin_manager.on_processor_retired(retired.index);
+                                }
+                                DisposedProcessor::Rejected(processor) => drop(processor),
+                            }
                         }
                     }
 
@@ -1800,7 +1811,7 @@ impl Engine {
         let (producer, mut consumer) = ring.split();
         self.command_tx = Some(producer);
 
-        let retire_rb = HeapRb::<RetiredProcessor>::new(32);
+        let retire_rb = HeapRb::<DisposedProcessor>::new(32);
         let (mut retire_prod, retire_cons) = retire_rb.split();
         self.retire_rx = Some(retire_cons);
 
@@ -1921,8 +1932,9 @@ impl Engine {
             (self.current_block_size as u64 * 1000000) / self.current_sample_rate as u64;
 
         let mmcss_set_out = Arc::new(AtomicBool::new(false));
-        let mut pending_retire: [Option<RetiredProcessor>; MAX_PLUGINS] =
+        let mut pending_retire: [Option<DisposedProcessor>; MAX_PLUGINS] =
             std::array::from_fn(|_| None);
+        let mut pending_rejected = super::deferred_drop::DeferredDrop::new();
 
         fn remove_from_order(order: &mut [u8; MAX_PLUGINS], len: &mut usize, idx: u8) {
             let mut write = 0usize;
@@ -1995,7 +2007,12 @@ impl Engine {
                 }
 
                 // Process Commands
-                while let Some(msg) = consumer.try_pop() {
+                // 返却待ちの拒否値がある間は次の所有値を受け取らない。
+                // キュー満杯でも保持数を固定し、RT側でprocessorをDropしない。
+                while pending_rejected.flush_to(&mut retire_prod) {
+                    let Some(msg) = consumer.try_pop() else {
+                        break;
+                    };
                     match msg {
                         AudioThreadMessage::AddProcessor {
                             index,
@@ -2007,6 +2024,11 @@ impl Engine {
                                 rt_processors[slot] = Some(processor);
                                 rt_active_count += 1;
                                 rt_gains[slot] = Smoother::new_ramp(0.0, initial_gain);
+                            } else {
+                                pending_rejected.defer(
+                                    DisposedProcessor::Rejected(processor),
+                                    &mut retire_prod,
+                                );
                             }
                         }
                         AudioThreadMessage::RemoveProcessor { index } => {
@@ -2014,10 +2036,11 @@ impl Engine {
                             if slot < MAX_PLUGINS {
                                 if pending_retire[slot].is_none() {
                                     if let Some(proc) = rt_processors[slot].take() {
-                                        let retired = RetiredProcessor {
-                                            index,
-                                            processor: proc,
-                                        };
+                                        let retired =
+                                            DisposedProcessor::Retired(RetiredProcessor {
+                                                index,
+                                                processor: proc,
+                                            });
                                         if let Err(retired) = retire_prod.try_push(retired) {
                                             pending_retire[slot] = Some(retired);
                                         };
@@ -2752,6 +2775,8 @@ impl Engine {
                 // Mapping policy:
                 // - 1ch input -> duplicate to all output channels
                 // - Nch input, Mch output -> copy min(N, M), duplicate last input channel for extras
+                // 分割された出力でも、このコールバックの転送上限は1回だけ決める。
+                let mut remaining_frames = None;
                 let mut push_frames = |samples: &[f32], in_channels: usize| {
                     if in_channels == 0 || out_channels_target == 0 {
                         return;
@@ -2761,8 +2786,10 @@ impl Engine {
                         return;
                     }
 
-                    let max_frames_by_capacity = audio_prod.vacant_len() / out_channels_target;
-                    let frames_to_push = frames_in.min(max_frames_by_capacity);
+                    let remaining = remaining_frames
+                        .get_or_insert_with(|| audio_prod.vacant_len() / out_channels_target);
+                    let frames_to_push = frames_in.min(*remaining);
+                    *remaining -= frames_to_push;
 
                     'frame_loop: for frame_idx in 0..frames_to_push {
                         if audio_prod.vacant_len() < out_channels_target {
@@ -2786,15 +2813,8 @@ impl Engine {
                 // If resampler is active, process
                 if let Some(res) = &mut resampler {
                     // We assume input data matches configured channels
-                    match res.process(data) {
-                        Ok(output) => {
-                            push_frames(&output, channels);
-                        }
-                        Err(_e) => {
-                            // Log once or occasionally? In RT thread is risky.
-                            // For now ignore errors to avoid blocking.
-                        }
-                    }
+                    // エラーは固定サイズのenum。RT側で文字列化・ログ出力しない。
+                    let _ = res.process_into(data, |output| push_frames(output, channels));
                 } else {
                     // Passthrough
                     push_frames(data, channels);
