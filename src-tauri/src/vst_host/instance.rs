@@ -593,8 +593,16 @@ unsafe fn resize_hwnd_client(hwnd: isize, client_w: i32, client_h: i32) -> bool 
         return false;
     }
 
-    let outer_w = rect.right - rect.left;
-    let outer_h = rect.bottom - rect.top;
+    // クライアント寸法が正でも、枠の加算後はi32の範囲を超え得る。
+    let Some((outer_w, outer_h)) = (ViewRect {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+    })
+    .checked_size() else {
+        return false;
+    };
 
     SetWindowPos(
         hwnd,
@@ -1957,8 +1965,9 @@ unsafe extern "system" fn host_resize_view(
         return K_INVALID_ARGUMENT;
     }
 
-    let requested_w = (*new_size).right - (*new_size).left;
-    let requested_h = (*new_size).bottom - (*new_size).top;
+    let Some((requested_w, requested_h)) = (*new_size).checked_size() else {
+        return K_INVALID_ARGUMENT;
+    };
 
     println!(
         "Host::resize_view called. Request: {}x{} (Rect: {:?})",
@@ -3339,8 +3348,7 @@ impl VstInstance {
             let mut pre_rect = rect;
             let pre_get_res = (view_vtbl.get_size)(view_ptr, &mut pre_rect);
             if pre_get_res == K_RESULT_OK {
-                let w = pre_rect.right - pre_rect.left;
-                let h = pre_rect.bottom - pre_rect.top;
+                let (w, h) = pre_rect.checked_size().unwrap_or((0, 0));
                 println!("Plugin initial size (pre-attach): {}x{}", w, h);
             } else {
                 println!("Plugin get_size failed (pre-attach): {}", pre_get_res);
@@ -3476,8 +3484,7 @@ impl VstInstance {
             // --- Size Negotiation (Post-Attach) ---
             let mut wants_default = true;
             if (view_vtbl.get_size)(view_ptr, &mut rect) == K_RESULT_OK {
-                let w = rect.right - rect.left;
-                let h = rect.bottom - rect.top;
+                let (w, h) = rect.checked_size().unwrap_or((0, 0));
                 println!("Plugin initial size (post-attach): {}x{}", w, h);
                 if w >= 50 && h >= 50 {
                     wants_default = false;
@@ -3490,8 +3497,7 @@ impl VstInstance {
                 // まず大きめを投げ、プラグイン側に「正しい固定サイズ」へ丸めてもらう。
                 // ただし OTT のように get_size が 4x4 を返す場合、attach 後だけだと間に合わないことがある。
                 // そのため、ここでは (1) 可能なら pre-attach の値を採用し、それも小さいなら (2) check_size_constraint に委ねる。
-                let pre_w = pre_rect.right - pre_rect.left;
-                let pre_h = pre_rect.bottom - pre_rect.top;
+                let (pre_w, pre_h) = pre_rect.checked_size().unwrap_or((0, 0));
 
                 if pre_get_res == K_RESULT_OK && pre_w >= 50 && pre_h >= 50 {
                     rect = pre_rect;
@@ -3510,7 +3516,7 @@ impl VstInstance {
                         chk_res, rect
                     );
 
-                    if chk_res != K_RESULT_OK {
+                    if chk_res != K_RESULT_OK || rect.checked_size().is_none() {
                         // 未実装/失敗時は汎用の安全値へ
                         rect = ViewRect {
                             left: 0,
@@ -3524,8 +3530,7 @@ impl VstInstance {
 
             // サイズ通知 + 再描画促進
             // 先にコンテナを合わせてから on_size を呼ぶ（サイズ不整合による描画欠けを避ける）
-            let w = rect.right - rect.left;
-            let h = rect.bottom - rect.top;
+            let (w, h) = rect.checked_size().unwrap_or((0, 0));
             let _ = resize_child_hwnd(parent_window as isize, w, h);
 
             let on_size_res = (view_vtbl.on_size)(view_ptr, &mut rect);
@@ -3542,8 +3547,7 @@ impl VstInstance {
             // attach後に正しいサイズが確定するプラグインがあるため、再取得して反映/返却する
             let mut final_rect = rect;
             if (view_vtbl.get_size)(view_ptr, &mut final_rect) == K_RESULT_OK {
-                let w = final_rect.right - final_rect.left;
-                let h = final_rect.bottom - final_rect.top;
+                let (w, h) = final_rect.checked_size().unwrap_or((0, 0));
                 if w >= 50 && h >= 50 {
                     rect = final_rect;
                 }
@@ -3556,8 +3560,7 @@ impl VstInstance {
             if self.name == "OTT" || self.name.contains("OTT") {
                 // Use the robust find_all implementation
                 let children = find_all_plugin_child_hwnds(hwnd);
-                let w = rect.right - rect.left;
-                let h = rect.bottom - rect.top;
+                let (w, h) = rect.checked_size().unwrap_or((0, 0));
 
                 for child in children {
                     if child == hwnd {
@@ -3661,7 +3664,9 @@ impl VstInstance {
 
             // close_editor まで環境を維持
             self.editor_env = Some(env_guard);
-            update_editor_view_last_size(view_ptr, rect.right - rect.left, rect.bottom - rect.top);
+            if let Some((width, height)) = rect.checked_size() {
+                update_editor_view_last_size(view_ptr, width, height);
+            }
 
             Ok(Some(rect))
         }
@@ -3775,6 +3780,13 @@ impl VstInstance {
 }
 
 impl VstProcessor {
+    fn silence_planar(outputs: &mut [Vec<f32>], num_samples: usize) {
+        for channel in outputs {
+            let len = num_samples.min(channel.len());
+            channel[..len].fill(0.0);
+        }
+    }
+
     pub fn process(
         &mut self,
         input_buffer: &[f32],
@@ -3926,47 +3938,41 @@ impl VstProcessor {
         outputs: &mut [Vec<f32>],
         num_samples: usize,
     ) {
+        let ch_count = inputs
+            .len()
+            .min(outputs.len())
+            .min(self.scratch_inputs.len())
+            .min(self.scratch_outputs.len());
+        // FFIへ渡す前に全使用チャンネルの長さを確認する。RT上では割当・ログを行わない。
+        if !self.active_flag.load(Ordering::SeqCst)
+            || self.ptr.is_null()
+            || num_samples == 0
+            || num_samples > self.max_block_size
+            || num_samples > i32::MAX as usize
+            || ch_count == 0
+            || inputs
+                .iter()
+                .take(ch_count)
+                .any(|ch| ch.len() < num_samples)
+            || outputs
+                .iter()
+                .take(ch_count)
+                .any(|ch| ch.len() < num_samples)
+        {
+            Self::silence_planar(outputs, num_samples);
+            return;
+        }
+
         unsafe {
-            // KILL SWITCH check
-            if !self.active_flag.load(Ordering::SeqCst) {
-                // Silence outputs
-                for ch_buf in outputs.iter_mut() {
-                    if num_samples <= ch_buf.len() {
-                        ch_buf[..num_samples].fill(0.0);
-                    }
-                }
-                return;
-            }
-
-            if self.ptr.is_null() {
-                return;
-            }
             let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.ptr);
-
-            // Safety Checks
-            if num_samples > self.max_block_size {
-                eprintln!("VstProcessor: num_samples > max_block_size");
-                return;
-            }
-
-            // Determine active channels (min of provided inputs, provided outputs, and plugin caps)
-            // Plugin caps are implicitly handled by how many pointers we push,
-            // but we should respect what the plugin expects (setup in prepare).
-            // here we assume inputs/outputs match the configured plugin channel count roughly.
-
-            let ch_count = inputs
-                .len()
-                .min(outputs.len())
-                .min(self.scratch_inputs.len()); // Clamp to initialized channel count
 
             // Prepare Pointers directly from arguments
             self.input_ptrs.clear();
             self.output_ptrs.clear();
 
-            for i in 0..ch_count {
-                // We trust the caller that vectors are large enough for num_samples
-                self.input_ptrs.push(inputs[i].as_ptr() as *mut f32);
-                self.output_ptrs.push(outputs[i].as_mut_ptr());
+            for (input, output) in inputs.iter().zip(outputs.iter_mut()).take(ch_count) {
+                self.input_ptrs.push(input.as_ptr() as *mut f32);
+                self.output_ptrs.push(output.as_mut_ptr());
             }
 
             // AudioBusBuffers
@@ -4021,21 +4027,11 @@ impl VstProcessor {
             // (process_planar implies we write directly to outputs, but if outputs has more channels
             // than we processed, we MUST silence them to avoid garbage from previous frames in ring buffer)
             if res == K_RESULT_OK {
-                for i in ch_count..outputs.len() {
-                    // Safety check: Don't panic if outputs is weirdly sized
-                    let buf = &mut outputs[i];
-                    if num_samples <= buf.len() {
-                        buf[..num_samples].fill(0.0);
-                    }
-                }
+                Self::silence_planar(&mut outputs[ch_count..], num_samples);
             } else {
                 // If failed, silence valid channels too?
                 // VST3 spec says if process returns error, outputs are undefined. Best to silence everything.
-                for buf in outputs.iter_mut() {
-                    if num_samples <= buf.len() {
-                        buf[..num_samples].fill(0.0);
-                    }
-                }
+                Self::silence_planar(outputs, num_samples);
             }
         }
     }
@@ -4099,6 +4095,9 @@ impl Drop for VstInstance {
         }
     }
 }
+
+#[cfg(test)]
+mod instance_safety_tests;
 
 #[cfg(test)]
 mod module_entry_tests {

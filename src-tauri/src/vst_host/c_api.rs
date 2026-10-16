@@ -250,6 +250,15 @@ pub struct ViewRect {
     pub bottom: i32,
 }
 
+impl ViewRect {
+    // プラグイン由来の矩形を、減算のoverflowや反転を許さずに解釈する。
+    pub fn checked_size(&self) -> Option<(i32, i32)> {
+        let width = self.right.checked_sub(self.left)?;
+        let height = self.bottom.checked_sub(self.top)?;
+        (width > 0 && height > 0).then_some((width, height))
+    }
+}
+
 #[repr(C)]
 pub struct IPlugViewVtbl {
     pub base: FUnknownVtbl,
