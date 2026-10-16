@@ -32,9 +32,19 @@ use super::voice_check::{
     VOICE_CHECK_ENVELOPE_BUCKETS, VoiceCheckBuffers, VoiceCheckShared,
 };
 
-#[cfg(test)]
+#[cfg(any(test, feature = "dsp-verification"))]
 #[path = "core/dsp_rt_tests.rs"]
 mod dsp_rt_tests;
+
+// 通常の配布には含めない、検証用exampleの入口。
+#[cfg(feature = "dsp-verification")]
+#[doc(hidden)]
+pub fn run_dsp_abort_verification() {
+    if cfg!(debug_assertions) || !cfg!(panic = "abort") {
+        panic!("release・panic=abort構成で実行してください");
+    }
+    dsp_rt_tests::run_all();
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoiseControlMode {
