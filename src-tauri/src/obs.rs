@@ -150,15 +150,12 @@ pub async fn connect_obs(
     tauri::async_runtime::spawn(async move {
         tokio::pin!(events);
         while let Some(event) = events.next().await {
-            match event {
-                obws::events::Event::CurrentProgramSceneChanged { name, .. } => {
-                    log::info!("OBS Scene Changed: {}", name);
-                    let _ = app.emit(
-                        "obs://scene-changed",
-                        ObsSceneChangedEvent { scene_name: name },
-                    );
-                }
-                _ => {}
+            if let obws::events::Event::CurrentProgramSceneChanged { name, .. } = event {
+                log::info!("OBS Scene Changed: {}", name);
+                let _ = app.emit(
+                    "obs://scene-changed",
+                    ObsSceneChangedEvent { scene_name: name },
+                );
             }
         }
         log::info!("OBS Event Loop Ended");
