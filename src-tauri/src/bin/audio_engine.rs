@@ -283,10 +283,8 @@ fn scan_devices() {
             if let Ok(iter) = d.supported_input_configs() {
                 ranges.extend(iter);
             }
-        } else {
-            if let Ok(iter) = d.supported_output_configs() {
-                ranges.extend(iter);
-            }
+        } else if let Ok(iter) = d.supported_output_configs() {
+            ranges.extend(iter);
         }
 
         for &r in &targets {
@@ -321,24 +319,19 @@ fn scan_devices() {
             if let Ok(iter) = d.supported_input_configs() {
                 ranges.extend(iter);
             }
-        } else {
-            if let Ok(iter) = d.supported_output_configs() {
-                ranges.extend(iter);
-            }
+        } else if let Ok(iter) = d.supported_output_configs() {
+            ranges.extend(iter);
         }
 
         for r in ranges {
-            match r.buffer_size() {
-                cpal::SupportedBufferSize::Range { min, max } => {
-                    if *min < min_buf {
-                        min_buf = *min;
-                    }
-                    if *max > max_buf {
-                        max_buf = *max;
-                    }
-                    found = true;
+            if let cpal::SupportedBufferSize::Range { min, max } = r.buffer_size() {
+                if *min < min_buf {
+                    min_buf = *min;
                 }
-                _ => {}
+                if *max > max_buf {
+                    max_buf = *max;
+                }
+                found = true;
             }
         }
 
@@ -357,10 +350,8 @@ fn scan_devices() {
             if let Ok(iter) = d.supported_input_configs() {
                 ranges.extend(iter);
             }
-        } else {
-            if let Ok(iter) = d.supported_output_configs() {
-                ranges.extend(iter);
-            }
+        } else if let Ok(iter) = d.supported_output_configs() {
+            ranges.extend(iter);
         }
 
         for r in ranges {

@@ -818,13 +818,13 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
                     log::trace!("Global Shortcut Event: {:?} {:?}", shortcut, event.state);
-                    if event.state == ShortcutState::Pressed {
-                        if shortcut.matches(Modifiers::ALT, Code::KeyM) {
-                            log::info!("Global Mute Hotkey Pressed");
-                            if let Some(state) = app.try_state::<audio::AudioState>() {
-                                if let Ok(mut host) = state.0.lock() {
-                                    let _ = host.toggle_global_mute();
-                                }
+                    if event.state == ShortcutState::Pressed
+                        && shortcut.matches(Modifiers::ALT, Code::KeyM)
+                    {
+                        log::info!("Global Mute Hotkey Pressed");
+                        if let Some(state) = app.try_state::<audio::AudioState>() {
+                            if let Ok(mut host) = state.0.lock() {
+                                let _ = host.toggle_global_mute();
                             }
                         }
                     }

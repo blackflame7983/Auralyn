@@ -414,121 +414,115 @@ impl AudioHost {
 
         thread::spawn(move || {
             for line in stdout.lines() {
-                if let Ok(l) = line {
-                    if l.trim().is_empty() {
-                        continue;
-                    }
+                let Ok(l) = line else {
+                    continue;
+                };
+                if l.trim().is_empty() {
+                    continue;
+                }
 
-                    if l.starts_with("IPC:") {
-                        let json_str = &l[4..]; // Strip "IPC:"
-                        match serde_json::from_str::<OutputMessage>(json_str) {
-                            Ok(msg) => match msg {
-                                OutputMessage::Response(resp) => {
-                                    let mut lock = pending_tx_clone.lock().unwrap();
-                                    if let Some(tx) = lock.take() {
-                                        let _ = tx.send(resp);
-                                    } else {
-                                        log::warn!(
-                                            "Received Response but no one waiting: {:?}",
-                                            resp
+                if let Some(json_str) = l.strip_prefix("IPC:") {
+                    match serde_json::from_str::<OutputMessage>(json_str) {
+                        Ok(msg) => match msg {
+                            OutputMessage::Response(resp) => {
+                                let mut lock = pending_tx_clone.lock().unwrap();
+                                if let Some(tx) = lock.take() {
+                                    let _ = tx.send(resp);
+                                } else {
+                                    log::warn!("Received Response but no one waiting: {:?}", resp);
+                                }
+                            }
+                            OutputMessage::Event(evt) => match evt {
+                                EngineEvent::Log(s) => log::info!("[Engine] {}", s),
+                                EngineEvent::Error(s) => {
+                                    log::error!("[Engine] {}", s);
+                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                        let _ = h.emit("audio-stream-error", &s);
+                                    }
+                                }
+                                EngineEvent::LevelMeter(levels) => {
+                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                        if let Err(e) = h.emit("audio-level", levels) {
+                                            log::warn!("Failed to emit audio-level: {}", e);
+                                        }
+                                    }
+                                }
+                                EngineEvent::ChannelLevels(levels) => {
+                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                        if let Err(e) = h.emit("audio-channel-scan", levels) {
+                                            log::warn!("Failed to emit audio-channel-scan: {}", e);
+                                        }
+                                    }
+                                }
+                                EngineEvent::Started {
+                                    sample_rate,
+                                    buffer_size,
+                                } => {
+                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                        #[derive(serde::Serialize, Clone)]
+                                        struct StartedPayload {
+                                            sample_rate: u32,
+                                            buffer_size: u32,
+                                        }
+                                        let _ = h.emit(
+                                            "audio-started",
+                                            StartedPayload {
+                                                sample_rate,
+                                                buffer_size,
+                                            },
                                         );
                                     }
                                 }
-                                OutputMessage::Event(evt) => match evt {
-                                    EngineEvent::Log(s) => log::info!("[Engine] {}", s),
-                                    EngineEvent::Error(s) => {
-                                        log::error!("[Engine] {}", s);
-                                        if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                            let _ = h.emit("audio-stream-error", &s);
+                                EngineEvent::VoiceCheckState {
+                                    state,
+                                    position_ms,
+                                    duration_ms,
+                                } => {
+                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                        #[derive(serde::Serialize, Clone)]
+                                        struct VoiceCheckStatePayload {
+                                            state: String,
+                                            position_ms: u32,
+                                            duration_ms: u32,
                                         }
+                                        let _ = h.emit(
+                                            "voice-check-state",
+                                            VoiceCheckStatePayload {
+                                                state,
+                                                position_ms,
+                                                duration_ms,
+                                            },
+                                        );
                                     }
-                                    EngineEvent::LevelMeter(levels) => {
-                                        if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                            if let Err(e) = h.emit("audio-level", levels) {
-                                                log::warn!("Failed to emit audio-level: {}", e);
-                                            }
+                                }
+                                EngineEvent::VoiceCheckEnvelope {
+                                    raw_peaks,
+                                    processed_peaks,
+                                } => {
+                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                        #[derive(serde::Serialize, Clone)]
+                                        struct VoiceCheckEnvelopePayload {
+                                            raw_peaks: Vec<f32>,
+                                            processed_peaks: Vec<f32>,
                                         }
+                                        let _ = h.emit(
+                                            "voice-check-envelope",
+                                            VoiceCheckEnvelopePayload {
+                                                raw_peaks,
+                                                processed_peaks,
+                                            },
+                                        );
                                     }
-                                    EngineEvent::ChannelLevels(levels) => {
-                                        if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                            if let Err(e) = h.emit("audio-channel-scan", levels) {
-                                                log::warn!(
-                                                    "Failed to emit audio-channel-scan: {}",
-                                                    e
-                                                );
-                                            }
-                                        }
-                                    }
-                                    EngineEvent::Started {
-                                        sample_rate,
-                                        buffer_size,
-                                    } => {
-                                        if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                            #[derive(serde::Serialize, Clone)]
-                                            struct StartedPayload {
-                                                sample_rate: u32,
-                                                buffer_size: u32,
-                                            }
-                                            let _ = h.emit(
-                                                "audio-started",
-                                                StartedPayload {
-                                                    sample_rate,
-                                                    buffer_size,
-                                                },
-                                            );
-                                        }
-                                    }
-                                    EngineEvent::VoiceCheckState {
-                                        state,
-                                        position_ms,
-                                        duration_ms,
-                                    } => {
-                                        if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                            #[derive(serde::Serialize, Clone)]
-                                            struct VoiceCheckStatePayload {
-                                                state: String,
-                                                position_ms: u32,
-                                                duration_ms: u32,
-                                            }
-                                            let _ = h.emit(
-                                                "voice-check-state",
-                                                VoiceCheckStatePayload {
-                                                    state,
-                                                    position_ms,
-                                                    duration_ms,
-                                                },
-                                            );
-                                        }
-                                    }
-                                    EngineEvent::VoiceCheckEnvelope {
-                                        raw_peaks,
-                                        processed_peaks,
-                                    } => {
-                                        if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
-                                            #[derive(serde::Serialize, Clone)]
-                                            struct VoiceCheckEnvelopePayload {
-                                                raw_peaks: Vec<f32>,
-                                                processed_peaks: Vec<f32>,
-                                            }
-                                            let _ = h.emit(
-                                                "voice-check-envelope",
-                                                VoiceCheckEnvelopePayload {
-                                                    raw_peaks,
-                                                    processed_peaks,
-                                                },
-                                            );
-                                        }
-                                    }
-                                },
+                                }
                             },
-                            Err(e) => {
-                                log::error!("Engine IPC parse error: {} (Line: {})", e, l);
-                            }
+                        },
+                        Err(e) => {
+                            log::error!("Engine IPC parse error: {} (Line: {})", e, l);
                         }
-                    } else {
-                        // Non-IPC line (External Log from VST or simple print)
-                        log::trace!("[Engine Raw] {}", l);
                     }
+                } else {
+                    // Non-IPC line (External Log from VST or simple print)
+                    log::trace!("[Engine Raw] {}", l);
                 }
             }
 
