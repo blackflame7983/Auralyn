@@ -32,6 +32,10 @@ use super::voice_check::{
     VOICE_CHECK_ENVELOPE_BUCKETS, VoiceCheckBuffers, VoiceCheckShared,
 };
 
+#[cfg(test)]
+#[path = "core/dsp_rt_tests.rs"]
+mod dsp_rt_tests;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoiseControlMode {
     Low,
@@ -277,7 +281,9 @@ impl RtNoiseReducer {
     }
 
     fn reset_state(&mut self) {
-        self.states = std::array::from_fn(|_| DenoiseState::new());
+        for state in &mut self.states {
+            state.reset();
+        }
         self.input_pos = 0;
         self.output_pos = 0;
         self.output_ready = 0;
