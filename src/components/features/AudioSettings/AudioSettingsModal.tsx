@@ -4,7 +4,7 @@ import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { audioApi, AudioDeviceList, BuiltInEffectsPreset, EngineRuntimeStats, EngineTuningConfig, NoiseControlMode } from '../../../api/audio';
 import { autostartApi } from '../../../api/autostart';
-import { obsApi, ObsAudioReachResult, ObsSetupResult } from '../../../api/obs';
+import { obsApi, ObsAudioReachResult } from '../../../api/obs';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from '@/components/ui/label';
 import { useTheme } from '../../../hooks/useTheme';
 import { InputChannelSelector } from './InputChannelSelector';
+import { ObsSafeSetup } from './ObsSafeSetup';
 import { APP_INFO } from '../../../constants/appInfo';
 
 interface AudioSettingsModalProps {
@@ -101,10 +102,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [obsPort, setObsPort] = useState(4455);
   const [obsPassword, setObsPassword] = useState('');
   const [isObsConnected, setIsObsConnected] = useState(false);
+  const [obsStatusLoading, setObsStatusLoading] = useState(true);
   const [obsConnectionHint, setObsConnectionHint] = useState<string | null>(null);
   const [obsSetupLoading, setObsSetupLoading] = useState(false);
   const [obsReachLoading, setObsReachLoading] = useState(false);
-  const [obsSetupResult, setObsSetupResult] = useState<ObsSetupResult | null>(null);
+
   const [obsReachResult, setObsReachResult] = useState<ObsAudioReachResult | null>(null);
 
   // Preset State
@@ -247,7 +249,17 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     }
   }, [isOpen, currentSampleRate, currentBufferSize]);
 
-  // Debug effect removed (was logging props/state changes)
+  // 再表示では接続を作り直さず、バックエンドが保持する接続・履歴へ戻る。
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    setObsStatusLoading(true);
+    obsApi.connectionStatus()
+      .then(connected => { if (active) setIsObsConnected(connected); })
+      .catch(() => { if (active) setObsConnectionHint('接続状態を確認できませんでした。接続先を確認してください。'); })
+      .finally(() => { if (active) setObsStatusLoading(false); });
+    return () => { active = false; };
+  }, [isOpen]);
 
   const handleConnectObs = async () => {
     setLoading(true);
@@ -288,57 +300,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       await obsApi.disconnect();
       setIsObsConnected(false);
       setObsConnectionHint(null);
-      setObsSetupResult(null);
+
       setObsReachResult(null);
       toast.info("切断しました");
     } catch (e) {
       console.error(e);
     }
-  };
-
-  const handleObsAutoSetup = async () => {
-    setObsSetupLoading(true);
-    setObsSetupResult(null);
-    try {
-      const result = await obsApi.setupAuralynSource();
-      setObsSetupResult(result);
-      if (result.created) {
-        toast.success("OBS に「Auralyn マイク」ソースを作成しました");
-      } else {
-        toast.success("既存の「Auralyn マイク」ソースを更新しました");
-      }
-    } catch (e) {
-      console.error(e);
-      toast.error("OBS 自動セットアップに失敗しました", {
-        description: `${e}`,
-      });
-    } finally {
-      setObsSetupLoading(false);
-    }
-  };
-
-  const handleObsMuteDuplicate = (sourceName: string) => {
-    showConfirm({
-      title: `「${sourceName}」をミュートしますか？`,
-      description: '重複マイクによる二重取りを防ぐため、このソースをミュートします。後から OBS で解除できます。',
-      confirmLabel: 'ミュートする',
-      variant: 'default',
-      onConfirm: async () => {
-        try {
-          await obsApi.muteSource(sourceName, true);
-          toast.success(`「${sourceName}」をミュートしました`);
-          if (obsSetupResult) {
-            setObsSetupResult({
-              ...obsSetupResult,
-              duplicateMicSources: obsSetupResult.duplicateMicSources.filter((n) => n !== sourceName),
-            });
-          }
-        } catch (e) {
-          console.error(e);
-          toast.error('ミュートに失敗しました', { description: `${e}` });
-        }
-      },
-    });
   };
 
   const handleObsReachCheck = () => {
@@ -1422,14 +1389,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {!isObsConnected ? (
                   <button
                     onClick={handleConnectObs}
-                    disabled={loading}
+                    disabled={loading || obsStatusLoading}
                     className="w-full py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-all font-bold"
                   >
-                    {loading ? "接続中..." : "接続"}
+                    {obsStatusLoading ? "接続状態を確認中..." : loading ? "接続中..." : "接続"}
                   </button>
                 ) : (
                   <button
                     onClick={handleDisconnectObs}
+                    disabled={obsSetupLoading || obsReachLoading}
                     className="w-full py-2 bg-green-600/20 text-green-400 border border-green-600/50 rounded-lg hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/50 transition-all font-bold group"
                   >
                     <span className="group-hover:hidden">接続済み (クリックで切断)</span>
@@ -1470,56 +1438,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
               {isObsConnected && (
                 <div className="mt-6 pt-6 border-t border-border space-y-4">
-                  <h3 className="text-sm font-bold text-foreground">OBS 自動セットアップ</h3>
-                  <p className="text-xs text-muted-foreground">
-                    「Auralyn マイク」音声入力キャプチャを自動作成し、CABLE Output へのルーティングを設定します。
-                  </p>
-
+                  <h3 className="text-sm font-bold text-foreground">OBS の設定を確認・変更</h3>
                   <div className="space-y-3">
-                    <button
-                      type="button"
-                      onClick={handleObsAutoSetup}
-                      disabled={obsSetupLoading || obsReachLoading}
-                      className="w-full py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all font-bold disabled:opacity-50"
-                    >
-                      {obsSetupLoading ? 'セットアップ中...' : '1. ソースを自動作成'}
-                    </button>
-
-                    {obsSetupResult && (
-                      <div className="text-xs bg-muted/50 border border-border rounded-md p-3 space-y-2">
-                        <p className="font-medium text-foreground">
-                          {obsSetupResult.created ? '✅ ソースを新規作成しました' : '✅ 既存ソースを更新しました'}
-                        </p>
-                        {obsSetupResult.deviceBound ? (
-                          <p className="text-emerald-500">CABLE Output を自動選択しました</p>
-                        ) : (
-                          <p className="text-yellow-600 dark:text-yellow-400">
-                            手動で CABLE Output を選択してください（OBS のソースプロパティ → デバイス）
-                          </p>
-                        )}
-                        {obsSetupResult.duplicateMicSources.length > 0 && (
-                          <div className="space-y-2 pt-1">
-                            <p className="text-yellow-600 dark:text-yellow-400 font-medium">
-                              他のマイクソースが有効です（二重取りの可能性）:
-                            </p>
-                            <ul className="space-y-1.5">
-                              {obsSetupResult.duplicateMicSources.map((name) => (
-                                <li key={name} className="flex items-center justify-between gap-2">
-                                  <span className="truncate">{name}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleObsMuteDuplicate(name)}
-                                    className="shrink-0 px-2 py-0.5 rounded border border-border hover:bg-muted/80 transition-colors"
-                                  >
-                                    ミュートする
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <ObsSafeSetup disabled={obsReachLoading} onBusyChange={setObsSetupLoading} onOpenGuide={onOpenOBSGuide} />
 
                     <button
                       type="button"

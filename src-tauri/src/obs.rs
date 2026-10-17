@@ -1,14 +1,16 @@
 use crate::audio::AudioState;
 use crate::routing_diag;
 use futures_util::StreamExt;
-use obws::common::MonitorType;
-use obws::requests::inputs::{Create, SetSettings};
 use obws::requests::EventSubscription;
 use obws::Client;
 use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 use std::time::Duration as StdDuration;
 use tauri::{AppHandle, Emitter};
-use time::Duration;
 use tokio::sync::Mutex;
 
 pub const AURALYN_OBS_SOURCE_NAME: &str = "Auralyn マイク";
@@ -28,6 +30,9 @@ pub struct ObsState {
     pub client: Mutex<Option<Client>>,
     /// 到達確認用の一時接続に使う接続パラメータ
     pub conn_params: Mutex<Option<ObsConnectionParams>>,
+    pub setup: Mutex<crate::obs_setup::SetupState>,
+    pub setup_generation: Arc<AtomicU64>,
+    pub source_generations: Arc<Mutex<HashMap<String, u64>>>,
 }
 
 impl Default for ObsState {
@@ -41,6 +46,9 @@ impl ObsState {
         Self {
             client: Mutex::new(None),
             conn_params: Mutex::new(None),
+            setup: Mutex::new(crate::obs_setup::SetupState::default()),
+            setup_generation: Arc::new(AtomicU64::new(0)),
+            source_generations: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -48,14 +56,6 @@ impl ObsState {
 #[derive(Serialize, Clone)]
 pub struct ObsSceneChangedEvent {
     pub scene_name: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ObsSetupResult {
-    pub created: bool,
-    pub device_bound: bool,
-    pub duplicate_mic_sources: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -137,19 +137,26 @@ pub async fn connect_obs(
 
     let events = client.events().map_err(|e| e.to_string())?;
 
-    *state.client.lock().await = Some(client);
+    let mut client_guard = state.client.lock().await;
+    *client_guard = Some(client);
+    state.setup.lock().await.reset();
+    state.setup_generation.fetch_add(1, Ordering::SeqCst);
     *state.conn_params.lock().await = Some(ObsConnectionParams {
         host: host.clone(),
         port,
         password,
     });
+    drop(client_guard);
 
     log::info!("Connected to OBS at {}:{}", host, port);
 
     // シーン変更などのイベントを監視
+    let setup_generation = state.setup_generation.clone();
+    let source_generations = state.source_generations.clone();
     tauri::async_runtime::spawn(async move {
         tokio::pin!(events);
         while let Some(event) = events.next().await {
+            invalidate_setup_target(&event, &setup_generation, &source_generations).await;
             if let obws::events::Event::CurrentProgramSceneChanged { name, .. } = event {
                 log::info!("OBS Scene Changed: {}", name);
                 let _ = app.emit(
@@ -165,99 +172,47 @@ pub async fn connect_obs(
 }
 
 pub async fn disconnect_obs(state: tauri::State<'_, ObsState>) -> Result<(), String> {
-    *state.client.lock().await = None;
+    let mut client_guard = state.client.lock().await;
+    *client_guard = None;
+    state.setup.lock().await.reset();
+    state.setup_generation.fetch_add(1, Ordering::SeqCst);
     *state.conn_params.lock().await = None;
     Ok(())
 }
 
-/// 「Auralyn マイク」ソースを検索または作成し、推奨設定を適用する
-pub async fn setup_auralyn_source(state: &ObsState) -> Result<ObsSetupResult, String> {
+/// 接続し直さずに状態を取得し、設定画面の再表示で履歴を維持する。
+pub async fn connection_status(state: &ObsState) -> bool {
     let guard = state.client.lock().await;
-    let client = guard
-        .as_ref()
-        .ok_or_else(|| "OBS に接続されていません".to_string())?;
-
-    let inputs = client
-        .inputs()
-        .list(None)
-        .await
-        .map_err(|e| format!("OBS 入力一覧の取得に失敗: {}", e))?;
-
-    let created = !inputs
-        .iter()
-        .any(|i| i.name == AURALYN_OBS_SOURCE_NAME);
-
-    if created {
-        let scene = client
-            .scenes()
-            .current_program_scene()
-            .await
-            .map_err(|e| format!("現在のシーン取得に失敗: {}", e))?;
-
-        client
-            .inputs()
-            .create::<serde_json::Value>(Create {
-                scene: &scene,
-                input: AURALYN_OBS_SOURCE_NAME,
-                kind: WASAPI_INPUT_KIND,
-                settings: None,
-                enabled: Some(true),
-            })
-            .await
-            .map_err(|e| format!("OBS ソース作成に失敗: {}", e))?;
-    }
-
-    let device_bound = resolve_and_bind_cable_output(client, AURALYN_OBS_SOURCE_NAME)
-        .await
-        .unwrap_or(false);
-
-    apply_recommended_input_settings(client, AURALYN_OBS_SOURCE_NAME).await?;
-
-    let all_inputs = client
-        .inputs()
-        .list(None)
-        .await
-        .map_err(|e| format!("OBS 入力一覧の再取得に失敗: {}", e))?;
-
-    let mut summaries = Vec::new();
-    for input in &all_inputs {
-        if !is_audio_input_capture_kind(&input.kind, &input.unversioned_kind) {
-            continue;
-        }
-        let muted = client
-            .inputs()
-            .muted(&input.name)
-            .await
-            .map_err(|e| format!("ミュート状態の取得に失敗 ({}): {}", input.name, e))?;
-        summaries.push(ObsInputSummary {
-            name: input.name.clone(),
-            kind: input.kind.clone(),
-            unversioned_kind: input.unversioned_kind.clone(),
-            muted,
-        });
-    }
-
-    let duplicate_mic_sources = find_duplicate_mic_sources(&summaries, AURALYN_OBS_SOURCE_NAME);
-
-    Ok(ObsSetupResult {
-        created,
-        device_bound,
-        duplicate_mic_sources,
-    })
+    let Some(client) = guard.as_ref() else {
+        return false;
+    };
+    // ローカルのイベント購読可否ではなく、現在の通信を期限付きで確認する。
+    matches!(
+        tokio::time::timeout(StdDuration::from_secs(2), client.general().version()).await,
+        Ok(Ok(_))
+    )
 }
 
-/// 指定名の OBS 入力をミュート / ミュート解除
-pub async fn mute_source(state: &ObsState, name: String, muted: bool) -> Result<(), String> {
-    let guard = state.client.lock().await;
-    let client = guard
-        .as_ref()
-        .ok_or_else(|| "OBS に接続されていません".to_string())?;
-
-    client
-        .inputs()
-        .set_muted(&name, muted)
-        .await
-        .map_err(|e| format!("ミュート設定に失敗 ({}): {}", name, e))
+async fn invalidate_setup_target(
+    event: &obws::events::Event,
+    generation: &AtomicU64,
+    sources: &Mutex<HashMap<String, u64>>,
+) {
+    use obws::events::Event;
+    match event {
+        Event::CurrentSceneCollectionChanging { .. } => {
+            generation.fetch_add(1, Ordering::SeqCst);
+        }
+        Event::InputRemoved { name } => {
+            *sources.lock().await.entry(name.clone()).or_default() += 1;
+        }
+        Event::InputNameChanged { old_name, new_name } => {
+            let mut sources = sources.lock().await;
+            *sources.entry(old_name.clone()).or_default() += 1;
+            *sources.entry(new_name.clone()).or_default() += 1;
+        }
+        _ => {}
+    }
 }
 
 /// テストトーンを再生し、OBS の入力メーターで到達を確認する
@@ -279,10 +234,7 @@ pub async fn check_audio_reach(
             .await
             .map_err(|e| format!("OBS 入力一覧の取得に失敗: {}", e))?;
 
-        if !inputs
-            .iter()
-            .any(|i| i.name == AURALYN_OBS_SOURCE_NAME)
-        {
+        if !inputs.iter().any(|i| i.name == AURALYN_OBS_SOURCE_NAME) {
             return Err(format!(
                 "「{}」ソースが見つかりません。先に自動セットアップを実行してください。",
                 AURALYN_OBS_SOURCE_NAME
@@ -336,8 +288,7 @@ pub async fn check_audio_reach(
             .map_err(|e| e.to_string())?;
     }
 
-    let deadline =
-        tokio::time::Instant::now() + StdDuration::from_millis(duration_ms as u64 + 500);
+    let deadline = tokio::time::Instant::now() + StdDuration::from_millis(duration_ms as u64 + 500);
     let mut peak_db = -120.0f32;
     let mut reached = false;
 
@@ -381,67 +332,52 @@ pub async fn check_audio_reach(
     })
 }
 
-/// CABLE Output を device_id としてバインド（失敗時は false）
-async fn resolve_and_bind_cable_output(client: &Client, input_name: &str) -> Result<bool, obws::Error> {
-    let items = client
-        .inputs()
-        .properties_list_property_items(input_name, "device_id")
-        .await?;
-
-    let device_id = items
-        .iter()
-        .find(|item| is_cable_output_device_name(&item.name))
-        .and_then(|item| item.value.as_str().map(|s| s.to_string()));
-
-    let Some(device_id) = device_id else {
-        return Ok(false);
-    };
-
-    #[derive(Serialize)]
-    struct WasapiSettings<'a> {
-        device_id: &'a str,
-    }
-
-    client
-        .inputs()
-        .set_settings(SetSettings {
-            input: input_name,
-            settings: &WasapiSettings {
-                device_id: &device_id,
-            },
-            overlay: Some(true),
-        })
-        .await?;
-
-    Ok(true)
-}
-
-/// モニタリング OFF・ミュート解除など推奨設定を適用
-async fn apply_recommended_input_settings(client: &Client, name: &str) -> Result<(), String> {
-    client
-        .inputs()
-        .set_muted(name, false)
-        .await
-        .map_err(|e| format!("ミュート解除に失敗: {}", e))?;
-
-    client
-        .inputs()
-        .set_audio_monitor_type(name, MonitorType::None)
-        .await
-        .map_err(|e| format!("モニタリング設定に失敗: {}", e))?;
-
-    client
-        .inputs()
-        .set_audio_sync_offset(name, Duration::ZERO)
-        .await
-        .map_err(|e| format!("同期オフセット設定に失敗: {}", e))?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn input_events_invalidate_only_affected_names() {
+        use obws::events::Event;
+        let generation = AtomicU64::new(3);
+        let sources = Mutex::new(HashMap::new());
+        invalidate_setup_target(
+            &Event::InputRemoved {
+                name: "created".into(),
+            },
+            &generation,
+            &sources,
+        )
+        .await;
+        invalidate_setup_target(
+            &Event::InputNameChanged {
+                old_name: "old".into(),
+                new_name: "new".into(),
+            },
+            &generation,
+            &sources,
+        )
+        .await;
+        assert_eq!(generation.load(Ordering::SeqCst), 3);
+        assert_eq!(
+            *sources.lock().await,
+            HashMap::from([("created".into(), 1), ("old".into(), 1), ("new".into(), 1)])
+        );
+        invalidate_setup_target(
+            &Event::CurrentSceneCollectionChanging {
+                name: "other".into(),
+            },
+            &generation,
+            &sources,
+        )
+        .await;
+        assert_eq!(generation.load(Ordering::SeqCst), 4);
+    }
+
+    #[tokio::test]
+    async fn disconnected_state_reports_not_connected() {
+        assert!(!connection_status(&ObsState::new()).await);
+    }
 
     fn summary(name: &str, kind: &str, muted: bool) -> ObsInputSummary {
         ObsInputSummary {
@@ -454,8 +390,12 @@ mod tests {
 
     #[test]
     fn cable_output_device_name_detection() {
-        assert!(is_cable_output_device_name("CABLE Output (VB-Audio Virtual Cable)"));
-        assert!(!is_cable_output_device_name("CABLE Input (VB-Audio Virtual Cable)"));
+        assert!(is_cable_output_device_name(
+            "CABLE Output (VB-Audio Virtual Cable)"
+        ));
+        assert!(!is_cable_output_device_name(
+            "CABLE Input (VB-Audio Virtual Cable)"
+        ));
         assert!(!is_cable_output_device_name("Realtek HD Audio"));
     }
 
