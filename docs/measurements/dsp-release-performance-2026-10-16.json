@@ -30,6 +30,13 @@
       "src-tauri/examples/dsp_benchmark/timing.rs": "07974d84f81beeee378e193541bf45b281cbef2d2303b07f547b0f27b8a4714a",
       "src-tauri/examples/dsp_benchmark/memory.rs": "d613921768e2ece8982ef638e78f2bd32cf2ba2a804b5af20c858daa5521e451"
     },
+    "source_sha256_method": "SHA-256 of the original worktree file bytes used for measurement; no newline normalization",
+    "source_sha256_lf": {
+      "src-tauri/examples/dsp_benchmark/common.rs": "941a9a3b64623ab1ff198f5b7492d8c21be6638addbaf1c8f506372d0ce5b6f7",
+      "src-tauri/examples/dsp_benchmark/timing.rs": "07974d84f81beeee378e193541bf45b281cbef2d2303b07f547b0f27b8a4714a",
+      "src-tauri/examples/dsp_benchmark/memory.rs": "77951e91994c5ceda97bab140252c7ae3a2449bbab3d8f42887dee70106573f1"
+    },
+    "source_sha256_lf_method": "Read file bytes, replace every CRLF (0x0D 0x0A) with LF (0x0A), then compute SHA-256; preserve all other bytes, BOM and final newline",
     "binary_sha256": {
       "dsp_performance": "3cca089bffb719d1bb053ffb394b7ef508383d8b3797705dbccb1c92a2a07e29",
       "dsp_retained_memory": "160deb1a34812ef70d2d561033a1dc7d5462f31a930caa2493121d6a76bb59e9"

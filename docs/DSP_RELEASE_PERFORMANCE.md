@@ -83,6 +83,32 @@ if ($LASTEXITCODE -ne 0) { throw "メモリ測定失敗" }
 集計値・各trial中央値・環境・ソース／バイナリSHA-256は[measurements/dsp-release-performance-2026-10-16.json](measurements/dsp-release-performance-2026-10-16.json)。全ns生データ・ログはignoredのsrc-tauri/target/dsp-performance/へ保存した。
 このJSONだけでは生データからの再集計はできない。生データとログはGitの配布対象に含まれず、別環境では再実行が必要となる。
 
+### ソースハッシュの検証
+
+JSONの`source_sha256`は測定時の作業ツリーの実バイト列をそのまま計算した値として保存する。測定時の`memory.rs`はCRLFであり、Gitに保存されたLFのバイト列とはハッシュが異なる。他の2ソースは測定時もLFだった。測定時の値は変更せず、チェックアウトの改行設定によらず照合するための`source_sha256_lf`を追加した。
+
+正規化はバイト列中のCRLF（`0D 0A`）をLF（`0A`）へ置換する処理だけとし、それ以外のバイト、BOM、末尾改行の有無は変更しない。その結果にSHA-256を適用する。`source_sha256_method`と`source_sha256_lf_method`にも計算方法を記録した。バイナリハッシュは正規化しない。
+
+リポジトリルートで次のPythonコードを実行すると、LF・CRLFどちらのチェックアウトでも正規化後の値を照合できる。
+
+```python
+import hashlib
+import json
+from pathlib import Path
+
+metadata = json.loads(Path(
+    "docs/measurements/dsp-release-performance-2026-10-16.json"
+).read_text(encoding="utf-8-sig"))["metadata"]
+for name, expected in metadata["source_sha256_lf"].items():
+    normalized = Path(name).read_bytes().replace(b"\r\n", b"\n")
+    actual = hashlib.sha256(normalized).hexdigest()
+    if actual != expected:
+        raise SystemExit(f"SHA-256不一致: {name}")
+    print(f"一致: {name}")
+```
+
+PR #17の指摘対応では、3ソースそれぞれの測定時ファイル、Gitのコミット内バイト列、LF版とCRLF版を照合し、正規化後の値が一致することを確認した。元の測定時ソースハッシュ・バイナリハッシュ・環境・測定結果は変更していない。
+
 ## ローカル検証
 
 - 6入力の出力比較、全36条件×3 runの件数・分位点を生データから再計算して一致確認。メモリは別プロセスの6条件×2回で一致。
