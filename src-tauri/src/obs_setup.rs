@@ -58,7 +58,12 @@ enum Field {
     Muted,
     Monitor,
     Sync,
-    Create { scene: String, item: Option<i64> },
+    Create {
+        scene: String,
+        item: Option<i64>,
+        token: String,
+        index: usize,
+    },
 }
 
 #[derive(Clone, Serialize)]
@@ -290,6 +295,21 @@ pub async fn preview(state: &ObsState, mute_source: Option<String>) -> Result<Pl
             .current_program_scene()
             .await
             .map_err(error)?;
+        let index = client
+            .scene_items()
+            .list(&scene)
+            .await
+            .map_err(error)?
+            .len();
+        let token = format!(
+            "{}-{}-{}",
+            std::process::id(),
+            setup.next_id,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(error)?
+                .as_nanos()
+        );
         push(
             &mut plan.changes,
             AURALYN_OBS_SOURCE_NAME,
@@ -297,6 +317,8 @@ pub async fn preview(state: &ObsState, mute_source: Option<String>) -> Result<Pl
             Field::Create {
                 scene: scene.clone(),
                 item: None,
+                token,
+                index,
             },
             Value::Null,
             json!({"scene":scene,"device_id":"disabled","enabled":false}),
@@ -345,6 +367,9 @@ trait Access {
     async fn collection(&self) -> Result<String, String>;
     async fn read(&self, change: &Change) -> Result<Value, String>;
     async fn write(&self, change: &mut Change, value: Value) -> Result<(), String>;
+    async fn recover_creation(&self, _change: &mut Change) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 struct Session<'a> {
@@ -377,6 +402,54 @@ impl Access for Session<'_> {
         self.validate()?;
         self.client.write(c, value).await
     }
+    async fn recover_creation(&self, c: &mut Change) -> Result<(), String> {
+        self.validate()?;
+        self.client.recover_creation(c).await
+    }
+}
+
+const CREATION_TOKEN: &str = "auralyn_setup_token";
+
+fn creation_settings(token: &str) -> Value {
+    json!({"device_id":"disabled", CREATION_TOKEN:token})
+}
+
+// 取得できなかった「作成直後の状態」を、後から変更された状態で置き換えない。
+// 不明な項目や既定値との差があれば自動削除せず、手動確認に残す。
+fn pristine_creation(snapshot: &Value, token: &str, index: usize) -> bool {
+    snapshot["settings"]
+        == json!({"inputKind":WASAPI_INPUT_KIND,"inputSettings":creation_settings(token)})
+        && snapshot["item"]["sceneItemIndex"] == json!(index)
+        && snapshot["muted"] == json!(false)
+        && snapshot["monitor"] == json!(MonitorType::None)
+        && snapshot["sync"] == json!(0)
+        && snapshot["volume"] == json!({"inputVolumeMul":1.0,"inputVolumeDb":0.0})
+        && snapshot["balance"] == json!(0.5)
+        && snapshot["tracks"] == json!([true, true, true, true, true, true])
+        && snapshot["filters"] == json!([])
+        && snapshot["enabled"] == json!(false)
+        && snapshot["locked"] == json!(false)
+        && snapshot["transform"]
+            == json!({"sourceWidth":0.0,"sourceHeight":0.0,"positionX":0.0,"positionY":0.0,"rotation":0.0,"scaleX":1.0,"scaleY":1.0,"width":0.0,"height":0.0,"alignment":5,"boundsType":"OBS_BOUNDS_NONE","boundsAlignment":0,"boundsWidth":0.0,"boundsHeight":0.0,"cropLeft":0,"cropRight":0,"cropTop":0,"cropBottom":0})
+}
+
+fn adopt_creation_snapshot(c: &mut Change, id: i64, snapshot: Value) -> Result<(), String> {
+    let Field::Create {
+        item, token, index, ..
+    } = &mut c.field
+    else {
+        return Ok(());
+    };
+    if item.is_some_and(|known| known != id)
+        || snapshot["item"]["sceneItemId"] != json!(id)
+        || snapshot["item"]["sourceName"] != json!(c.source)
+        || !pristine_creation(&snapshot, token, *index)
+    {
+        return Err("作成後に変更された可能性があります。OBS で手動確認してください".into());
+    }
+    *item = Some(id);
+    c.after = snapshot;
+    Ok(())
 }
 
 impl Access for Client {
@@ -387,7 +460,7 @@ impl Access for Client {
         // 種別の異なる同名ソースへの変更を防ぐ。
         let inputs = self.inputs().list(None).await.map_err(error)?;
         let found = inputs.iter().find(|i| i.name == c.source);
-        if let Field::Create { scene, item } = &c.field {
+        if let Field::Create { scene, item, .. } = &c.field {
             return match item {
                 Some(id) => created_snapshot(self, &c.source, scene, *id).await,
                 None => Ok(if found.is_none() {
@@ -452,7 +525,9 @@ impl Access for Client {
                 )
                 .await
                 .map_err(error),
-            Field::Create { scene, item } => {
+            Field::Create {
+                scene, item, token, ..
+            } => {
                 if value.is_null() {
                     self.scene_items()
                         .remove(
@@ -462,7 +537,7 @@ impl Access for Client {
                         .await
                         .map_err(error)
                 } else {
-                    let settings = json!({"device_id":"disabled"});
+                    let settings = creation_settings(token);
                     let id = self
                         .inputs()
                         .create(Create {
@@ -480,6 +555,35 @@ impl Access for Client {
                 }
             }
         }
+    }
+
+    async fn recover_creation(&self, c: &mut Change) -> Result<(), String> {
+        let Field::Create { scene, item, .. } = &mut c.field else {
+            return Ok(());
+        };
+        if c.after.get("item").is_some() {
+            return Ok(());
+        }
+        let items = self.scene_items().list(scene).await.map_err(error)?;
+        let matches: Vec<_> = items.iter().filter(|i| i.source_name == c.source).collect();
+        if matches.is_empty()
+            && self
+                .inputs()
+                .list(None)
+                .await
+                .map_err(error)?
+                .iter()
+                .all(|i| i.name != c.source)
+        {
+            // 作成されなかった／既に取り消された場合は通常のreadで元の不在を確認する。
+            *item = None;
+            return Ok(());
+        }
+        if matches.len() != 1 || item.is_some_and(|id| id != matches[0].id) {
+            return Err("作成した項目を一意に確認できません".into());
+        }
+        let snapshot = created_snapshot(self, &c.source, scene, matches[0].id).await?;
+        adopt_creation_snapshot(c, matches[0].id, snapshot)
     }
 }
 
@@ -535,6 +639,10 @@ async fn restore_history(access: &impl Access, history: &mut History) {
             continue;
         }
         let c = &mut history.changes[index];
+        if let Err(e) = access.recover_creation(c).await {
+            history.results[index] = format!("復元保留: {e}");
+            continue;
+        }
         match access.read(c).await {
             Ok(current) if current == c.before => {
                 history.pending[index] = false;
@@ -793,5 +901,130 @@ mod tests {
         assert!(ensure_restore_order(&histories, 0).is_ok());
         restore_history(&fake, &mut histories[0]).await;
         assert_eq!(fake.values.borrow()[0], json!(true));
+    }
+
+    fn creation_plan() -> Plan {
+        let mut p = plan();
+        p.changes = vec![Change {
+            source: "created".into(),
+            label: "作成".into(),
+            before: Value::Null,
+            after: json!({"scene":"test","device_id":"disabled","enabled":false}),
+            before_display: None,
+            after_display: None,
+            field: Field::Create {
+                scene: "test".into(),
+                item: None,
+                token: "owned-token".into(),
+                index: 0,
+            },
+        }];
+        p
+    }
+
+    fn initial_creation_snapshot() -> Value {
+        json!({"item":{"sceneItemId":7,"sceneItemIndex":0,"sourceName":"created"},
+            "settings":{"inputKind":WASAPI_INPUT_KIND,"inputSettings":{"device_id":"disabled","auralyn_setup_token":"owned-token"}},
+            "muted":false,"monitor":"OBS_MONITORING_TYPE_NONE","sync":0,
+            "volume":{"inputVolumeMul":1.0,"inputVolumeDb":0.0},"balance":0.5,
+            "tracks":[true,true,true,true,true,true],"filters":[],"enabled":false,"locked":false,
+            "transform":{"sourceWidth":0.0,"sourceHeight":0.0,"positionX":0.0,"positionY":0.0,"rotation":0.0,"scaleX":1.0,"scaleY":1.0,"width":0.0,"height":0.0,"alignment":5,"boundsType":"OBS_BOUNDS_NONE","boundsAlignment":0,"boundsWidth":0.0,"boundsHeight":0.0,"cropLeft":0,"cropRight":0,"cropTop":0,"cropBottom":0}})
+    }
+
+    struct CreationFake {
+        remote: RefCell<Value>,
+        returned_id: bool,
+    }
+    impl Access for CreationFake {
+        async fn collection(&self) -> Result<String, String> {
+            Ok("test".into())
+        }
+        async fn read(&self, _: &Change) -> Result<Value, String> {
+            Ok(self.remote.borrow().clone())
+        }
+        async fn write(&self, c: &mut Change, value: Value) -> Result<(), String> {
+            if value.is_null() {
+                *self.remote.borrow_mut() = Value::Null;
+                return Ok(());
+            }
+            *self.remote.borrow_mut() = initial_creation_snapshot();
+            if self.returned_id {
+                if let Field::Create { item, .. } = &mut c.field {
+                    *item = Some(7);
+                }
+            }
+            Err("作成応答／直後の取得が失敗".into())
+        }
+        async fn recover_creation(&self, c: &mut Change) -> Result<(), String> {
+            let snapshot = self.remote.borrow().clone();
+            if snapshot.is_null() {
+                return Ok(());
+            }
+            adopt_creation_snapshot(c, 7, snapshot)
+        }
+    }
+
+    #[tokio::test]
+    async fn lost_create_response_and_failed_initial_snapshot_can_be_restored() {
+        for returned_id in [false, true] {
+            let fake = CreationFake {
+                remote: RefCell::new(Value::Null),
+                returned_id,
+            };
+            let mut history = apply_plan(&fake, creation_plan()).await;
+            assert!(history.results[0].starts_with("失敗"));
+            assert!(history.pending[0]);
+            restore_history(&fake, &mut history).await;
+            assert_eq!(history.results[0], "復元済み");
+            assert!(!history.pending[0]);
+            assert!(fake.remote.borrow().is_null());
+        }
+    }
+
+    #[tokio::test]
+    async fn uncertain_creation_does_not_delete_foreign_or_modified_source() {
+        for (pointer, value) in [
+            (
+                "/settings/inputSettings/auralyn_setup_token",
+                json!("foreign"),
+            ),
+            ("/settings/inputSettings/device_id", json!("user-device")),
+            ("/volume/inputVolumeMul", json!(0.5)),
+            ("/monitor", json!("OBS_MONITORING_TYPE_MONITOR_ONLY")),
+            ("/enabled", json!(true)),
+            ("/filters", json!([{"name":"user filter"}])),
+            ("/transform/positionX", json!(42.0)),
+            ("/item/sceneItemIndex", json!(1)),
+            ("/item/sceneItemId", json!(8)),
+        ] {
+            let fake = CreationFake {
+                remote: RefCell::new(Value::Null),
+                returned_id: false,
+            };
+            let mut history = apply_plan(&fake, creation_plan()).await;
+            *fake
+                .remote
+                .borrow_mut()
+                .pointer_mut(pointer)
+                .expect("fixture field") = value;
+            let modified = fake.remote.borrow().clone();
+            restore_history(&fake, &mut history).await;
+            assert!(history.results[0].starts_with("復元保留"), "{pointer}");
+            assert!(history.pending[0]);
+            assert_eq!(*fake.remote.borrow(), modified);
+        }
+    }
+
+    #[tokio::test]
+    async fn failed_creation_with_no_source_needs_no_removal() {
+        let fake = CreationFake {
+            remote: RefCell::new(Value::Null),
+            returned_id: false,
+        };
+        let mut history = apply_plan(&fake, creation_plan()).await;
+        *fake.remote.borrow_mut() = Value::Null;
+        restore_history(&fake, &mut history).await;
+        assert_eq!(history.results[0], "元の値を確認");
+        assert!(!history.pending[0]);
     }
 }
