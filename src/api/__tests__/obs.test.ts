@@ -12,8 +12,14 @@ describe('obsApi', () => {
         mockedInvoke.mockReset();
     });
 
-    describe('setupAuralynSource', () => {
-        it('obs_setup_auralyn_source を呼ぶ', async () => {
+    it('現在の接続状態を再接続せずに取得する', async () => {
+        mockedInvoke.mockResolvedValue(true);
+        expect(await obsApi.connectionStatus()).toBe(true);
+        expect(mockedInvoke).toHaveBeenCalledExactlyOnceWith('obs_connection_status');
+    });
+
+    describe('previewSetup', () => {
+        it('変更なしで予定だけを取得する', async () => {
             const mockResult = {
                 created: true,
                 deviceBound: true,
@@ -21,23 +27,28 @@ describe('obsApi', () => {
             };
             mockedInvoke.mockResolvedValue(mockResult);
 
-            const result = await obsApi.setupAuralynSource();
+            const result = await obsApi.previewSetup();
 
-            expect(mockedInvoke).toHaveBeenCalledWith('obs_setup_auralyn_source');
+            expect(mockedInvoke).toHaveBeenCalledWith('obs_preview_setup', { muteSource: null });
             expect(result).toEqual(mockResult);
         });
     });
 
-    describe('muteSource', () => {
-        it('名前とミュート状態を渡す', async () => {
+    describe('安全な適用と復元', () => {
+        it('重複マイクも予定の取得から始める', async () => {
             mockedInvoke.mockResolvedValue(undefined);
 
-            await obsApi.muteSource('Desktop Mic', true);
+            await obsApi.previewSetup('Desktop Mic');
 
-            expect(mockedInvoke).toHaveBeenCalledWith('obs_mute_source', {
-                name: 'Desktop Mic',
-                muted: true,
-            });
+            expect(mockedInvoke).toHaveBeenCalledWith('obs_preview_setup', { muteSource: 'Desktop Mic' });
+        });
+        it('適用と復元はサーバー上の予定・履歴のIDだけを渡す', async () => {
+            await obsApi.applySetup(3);
+            expect(mockedInvoke).toHaveBeenLastCalledWith('obs_apply_setup', { id: 3 });
+            await obsApi.restoreSetup(3);
+            expect(mockedInvoke).toHaveBeenLastCalledWith('obs_restore_setup', { id: 3 });
+            await obsApi.setupHistory();
+            expect(mockedInvoke).toHaveBeenLastCalledWith('obs_setup_history');
         });
     });
 

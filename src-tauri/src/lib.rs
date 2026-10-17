@@ -12,6 +12,7 @@ mod dsp_verification_allocator;
 pub mod autostart;
 pub mod ipc;
 pub mod obs;
+pub mod obs_setup;
 pub mod profile;
 pub mod routing_diag;
 pub mod vst_host;
@@ -763,19 +764,39 @@ async fn disconnect_obs(state: State<'_, obs::ObsState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn obs_setup_auralyn_source(
+async fn obs_preview_setup(
     state: State<'_, obs::ObsState>,
-) -> Result<obs::ObsSetupResult, String> {
-    obs::setup_auralyn_source(&state).await
+    mute_source: Option<String>,
+) -> Result<obs_setup::Plan, String> {
+    obs_setup::preview(&state, mute_source).await
 }
 
 #[tauri::command]
-async fn obs_mute_source(
+async fn obs_connection_status(state: State<'_, obs::ObsState>) -> Result<bool, String> {
+    Ok(obs::connection_status(&state).await)
+}
+
+#[tauri::command]
+async fn obs_apply_setup(
     state: State<'_, obs::ObsState>,
-    name: String,
-    muted: bool,
-) -> Result<(), String> {
-    obs::mute_source(&state, name, muted).await
+    id: u64,
+) -> Result<obs_setup::History, String> {
+    obs_setup::apply(&state, id).await
+}
+
+#[tauri::command]
+async fn obs_setup_history(
+    state: State<'_, obs::ObsState>,
+) -> Result<Vec<obs_setup::History>, String> {
+    Ok(obs_setup::history(&state).await)
+}
+
+#[tauri::command]
+async fn obs_restore_setup(
+    state: State<'_, obs::ObsState>,
+    id: u64,
+) -> Result<obs_setup::History, String> {
+    obs_setup::restore(&state, id).await
 }
 
 #[tauri::command]
@@ -999,8 +1020,11 @@ pub fn run() {
             open_url,
             connect_obs,
             disconnect_obs,
-            obs_setup_auralyn_source,
-            obs_mute_source,
+            obs_preview_setup,
+            obs_connection_status,
+            obs_apply_setup,
+            obs_setup_history,
+            obs_restore_setup,
             obs_check_audio_reach,
             get_autostart_status,
             set_autostart_enabled,
