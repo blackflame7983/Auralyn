@@ -174,15 +174,22 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         isOpen={ui.isWizardOpen}
                         onClose={() => {
                             ui.setIsWizardOpen(false);
+                        }}
+                        onSkip={() => {
+                            ui.setIsWizardOpen(false);
                             localStorage.setItem('vst_host_wizard_done', 'true');
                         }}
-                        onApplyConfig={(host, input, output) => {
-                            handleConfigUpdate({ host, input, output, sampleRate: 48000, bufferSize: 512 });
-                            const config = { host, input, output };
+                        onApplyConfig={(host, input, output, actualConfig) => {
+                            // 起動時の自動調整を含む実値を画面と保存設定へ反映する。
+                            const config = { host, input, output, sampleRate: actualConfig.sample_rate, bufferSize: actualConfig.buffer_size };
+                            handleConfigUpdate(config);
                             localStorage.setItem('vst_host_audio_config', JSON.stringify(config));
                             localStorage.setItem('vst_host_wizard_done', 'true');
                         }}
-                        onOpenSettings={() => ui.setIsSettingsOpen(true)}
+                        onOpenSettings={() => {
+                            ui.setIsWizardOpen(false);
+                            ui.setIsSettingsOpen(true);
+                        }}
                         onOpenTroubleshoot={() => {
                             ui.setIsWizardOpen(false);
                             ui.setIsTroubleshootOpen(true);

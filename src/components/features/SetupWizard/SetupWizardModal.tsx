@@ -1,16 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { audioApi, AudioDevice, AudioStateInfo } from '../../../api/audio';
+import { audioApi, AudioDevice, AudioStateInfo, type AudioConfig } from '../../../api/audio';
 import { DiscordIcon } from '../../ui/DiscordIcon';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { MdAutoFixHigh, MdCheckCircle, MdWarning, MdMic, MdVolumeUp, MdSettings, MdCast, MdHeadphones, MdMusicNote, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
 import { toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { ConnectionCheck } from './ConnectionCheck';
+
+const isVirtualOutput = (device: AudioDevice) => /cable|voicemeeter/i.test(device.name);
+
+/** 再生音の取り込みを除外し、マイクと分かる入力を優先する。 */
+const recommendMicrophone = (inputs: AudioDevice[]): AudioDevice | null => {
+    const candidates = inputs.filter(d => !/cable|voicemeeter|stereo\s*mix|ステレオ\s*ミキサー|再生リダイレクト|loopback|ループバック|what\s*u\s*hear|wave\s*out/i.test(d.name));
+    const microphones = candidates.filter(d => /microphone|\bmic\b|マイク|headset|ヘッドセット/i.test(d.name));
+    return microphones.find(d => d.is_default) || microphones[0]
+        || candidates.find(d => d.is_default) || candidates[0] || null;
+};
 
 interface SetupWizardModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onApplyConfig: (host: string, input?: string, output?: string) => void;
+    onSkip?: () => void;
+    onApplyConfig: (host: string, input: string, output: string, actualConfig: AudioConfig) => void;
     onOpenSettings?: () => void;
     onOpenTroubleshoot?: () => void;
 }
@@ -26,14 +38,21 @@ interface WizardConfig {
     outputMode: 'default' | 'monitor' | 'broadcast';
 }
 
-export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onClose, onApplyConfig, onOpenTroubleshoot }) => {
+export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onClose, onSkip, onApplyConfig, onOpenSettings, onOpenTroubleshoot }) => {
 
     // State Preservation Logic
     const initialStateRef = useRef<AudioStateInfo | null>(null);
     const hasTouchedEngineRef = useRef(false);
+    const operationRef = useRef(false);
+    const devicesRequestRef = useRef(0);
+    const [isBusy, setIsBusy] = useState(false);
+    const [isCheckingConnection, setIsCheckingConnection] = useState(false);
+    const [initialStateReady, setInitialStateReady] = useState(false);
+    const [initialStateError, setInitialStateError] = useState(false);
     const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
 
     const handleCloseRequest = () => {
+        if (operationRef.current || isCheckingConnection) return;
         if (state !== 'welcome' && state !== 'complete') {
             setIsCloseConfirmOpen(true);
             return;
@@ -41,7 +60,10 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
         performClose();
     };
 
-    const performClose = async () => {
+    const performClose = async (next = onClose) => {
+        if (operationRef.current || isCheckingConnection) return;
+        operationRef.current = true;
+        setIsBusy(true);
 
         // Revert if needed
         if (hasTouchedEngineRef.current && initialStateRef.current) {
@@ -64,10 +86,15 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
             } catch (e) {
                 console.error("Failed to revert audio state", e);
                 toast.error("設定の復元に失敗しました");
+                operationRef.current = false;
+                setIsBusy(false);
+                return;
             }
         }
 
-        onClose();
+        operationRef.current = false;
+        setIsBusy(false);
+        next();
         if (state !== 'complete') {
             toast.info("セットアップは「オーディオ設定」からいつでも再開できます");
         }
@@ -90,14 +117,21 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
 
     // Initial Fetch when Opened
     useEffect(() => {
+        let active = true;
         if (isOpen) {
+            setInitialStateReady(false);
+            setInitialStateError(false);
             loadDevices();
             // Capture initial state
             audioApi.getAudioState().then(s => {
+                if (!active) return;
                 // Initial state captured for revert
                 initialStateRef.current = s;
                 hasTouchedEngineRef.current = false;
-            }).catch(e => console.error("Failed to capture audio state", e));
+                setInitialStateReady(true);
+            }).catch(() => {
+                if (active) setInitialStateError(true);
+            });
         } else {
             // Reset state on close
             setState('welcome');
@@ -113,6 +147,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
             hasTouchedEngineRef.current = false;
             initialStateRef.current = null;
         }
+        return () => { active = false; devicesRequestRef.current += 1; };
     }, [isOpen]);
 
     // Meter Listener
@@ -124,9 +159,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
             const maxIn = Math.max(event.payload.input[0], event.payload.input[1]);
             setInputLevel(maxIn);
         });
+        const errorListeners = ['audio-error', 'audio-stream-error'].map(name => listen(name, () => {
+            setIsTestingSound(false);
+            setInputLevel(0);
+        }));
 
         return () => {
             unlistenPromise.then(unlisten => unlisten());
+            errorListeners.forEach(promise => { promise.then(unlisten => unlisten()); });
         };
     }, [isOpen]);
 
@@ -139,35 +179,37 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
 
     const normalizeDevices = (devices: { inputs: AudioDevice[]; outputs: AudioDevice[] }) => {
         // Filter WASAPI only (Case insensitive)
-        let inputs = devices.inputs.filter(d => d.host.toLowerCase() === 'wasapi');
-        let outputs = devices.outputs.filter(d => d.host.toLowerCase() === 'wasapi');
+        const inputs = devices.inputs.filter(d => d.host.toLowerCase() === 'wasapi');
+        const outputs = devices.outputs.filter(d => d.host.toLowerCase() === 'wasapi');
 
-        // Fallback: If no WASAPI devices found, show everything
-        if (inputs.length === 0 && devices.inputs.length > 0) {
-            inputs = devices.inputs;
-        }
-        if (outputs.length === 0 && devices.outputs.length > 0) {
-            outputs = devices.outputs;
-        }
+        // このウィザードは WASAPI 用。別ホストのデバイスを誤って起動しない。
 
         return { inputs, outputs };
     };
 
     const loadDevices = async (forceRefresh: boolean = false) => {
+        const request = ++devicesRequestRef.current;
         setIsLoadingDevices(true);
         try {
             const devices = await audioApi.getDevices(forceRefresh);
+            if (request !== devicesRequestRef.current) return null;
             const { inputs, outputs } = normalizeDevices(devices);
 
             setAvailableInputs(inputs);
             setAvailableOutputs(outputs);
+            setConfig(prev => ({
+                ...prev,
+                input: inputs.find(d => d.name === prev.input?.name) || null,
+                output: outputs.find(d => d.name === prev.output?.name) || null,
+            }));
             return { inputs, outputs };
         } catch (e) {
+            if (request !== devicesRequestRef.current) return null;
             console.error("Failed to load devices", e);
             toast.error("デバイス情報の取得に失敗しました");
             return null;
         } finally {
-            setIsLoadingDevices(false);
+            if (request === devicesRequestRef.current) setIsLoadingDevices(false);
         }
     };
 
@@ -175,13 +217,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
         const refreshed = await loadDevices(true);
         if (!refreshed) return;
 
-        const virtualOutputs = refreshed.outputs.filter(d => {
-            const name = d.name.toLowerCase();
-            return name.includes("cable") || name.includes("voicemeeter");
-        });
+        const virtualOutputs = refreshed.outputs.filter(isVirtualOutput);
 
         if (virtualOutputs.length > 0) {
-            setConfig(prev => ({ ...prev, outputMode: 'broadcast', output: virtualOutputs[0] }));
+            setConfig(prev => ({ ...prev, output: prev.outputMode === 'broadcast'
+                ? virtualOutputs.find(d => d.name === prev.output?.name) || virtualOutputs[0]
+                : prev.output }));
             toast.success("仮想オーディオデバイスを検出しました");
         } else {
             setConfig(prev => ({ ...prev, output: prev.outputMode === 'broadcast' ? null : prev.output }));
@@ -205,11 +246,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
             ) || availableInputs[0];
         } else {
             // For Chat/Stream, avoid Stereo Mix and Cables if possible
-            bestMic = availableInputs.find(d =>
-                !d.name.toLowerCase().includes("cable") &&
-                !d.name.toLowerCase().includes("voicemeeter") &&
-                !d.name.toLowerCase().includes("stereo mix")
-            ) || availableInputs[0];
+            bestMic = recommendMicrophone(availableInputs) || undefined;
         }
 
         if (bestMic) {
@@ -237,46 +274,31 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
             outputs = refreshed.outputs;
         }
 
-        if (inputs.length === 0 || outputs.length === 0) {
+        if (inputs.length === 0) {
             toast.error("推奨設定を作成できませんでした。手動で選択してください。");
             setState('usage_selection');
             return;
         }
 
-        const recommendedInput =
-            inputs.find(d => {
-                const name = d.name.toLowerCase();
-                return !name.includes("cable") && !name.includes("voicemeeter") && !name.includes("stereo mix");
-            }) || inputs[0];
+        const recommendedInput = recommendMicrophone(inputs);
 
         const virtualOutput = outputs.find(d => {
             const name = d.name.toLowerCase();
             return name.includes("cable") || name.includes("voicemeeter");
         }) || null;
 
-        const nonVirtualOutput =
-            outputs.find(d => d.is_default && !/cable|voicemeeter/i.test(d.name)) ||
-            outputs.find(d => !/cable|voicemeeter/i.test(d.name)) ||
-            outputs[0];
-
-        const recommendedOutput = virtualOutput || nonVirtualOutput;
-
-        if (!recommendedInput || !recommendedOutput) {
-            toast.error("推奨設定を作成できませんでした。手動で選択してください。");
-            setState('usage_selection');
-            return;
-        }
-
         setConfig(prev => ({
             ...prev,
-            goal: virtualOutput ? 'obs' : 'discord',
+            goal: 'obs',
             host: 'WASAPI',
             input: recommendedInput,
-            output: recommendedOutput,
-            outputMode: virtualOutput ? 'broadcast' : 'default'
+            output: virtualOutput,
+            outputMode: 'broadcast'
         }));
-        setState('confirmation');
-        toast.success("推奨設定を自動選択しました");
+        setState(!recommendedInput ? 'input_selection' : virtualOutput ? 'confirmation' : 'output_selection');
+        localStorage.setItem('vst_host_setup_goal', 'obs');
+        if (recommendedInput) toast.success("推奨設定を自動選択しました");
+        else toast.info('マイクを自動選択できませんでした。入力デバイスを選んでください。');
     };
 
     const confirmInput = () => {
@@ -303,10 +325,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
 
         if (mode === 'broadcast') {
             // Find Virtual Cable
-            targetOutput = availableOutputs.find(d =>
-                d.name.toLowerCase().includes("cable input") ||
-                d.name.toLowerCase().includes("voicemeeter")
-            ) || null;
+            targetOutput = availableOutputs.find(isVirtualOutput) || null;
         } else {
             // Monitor or Default
 
@@ -356,39 +375,71 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
     };
 
     const startSoundTest = async () => {
-        if (!config.input || !config.output) return;
+        if (!config.input || !config.output || !initialStateReady || operationRef.current) return false;
+        if (isTestingSound) return true;
+        operationRef.current = true;
+        setIsBusy(true);
         hasTouchedEngineRef.current = true;
-        setIsTestingSound(true);
         try {
             await audioApi.start(config.host, config.input.name, config.output.name);
             await audioApi.setInputChannels(0, 1); // Reset channels to default to avoid silence from old config
+            setIsTestingSound(true);
             toast.success("テスト開始: 音声を確認してください");
+            return true;
         } catch (e) {
             toast.error("オーディオエンジンの起動に失敗しました");
             console.error(e);
             setIsTestingSound(false);
+            return false;
+        } finally {
+            operationRef.current = false;
+            setIsBusy(false);
         }
     };
 
     const stopSoundTest = async () => {
+        if (operationRef.current) return false;
+        operationRef.current = true;
+        setIsBusy(true);
         try {
             await audioApi.stop();
             setIsTestingSound(false);
+            setInputLevel(0);
+            return true;
         } catch (e) {
             console.error(e);
+            toast.error('音声の停止に失敗しました。もう一度お試しください。');
+            return false;
+        } finally {
+            operationRef.current = false;
+            setIsBusy(false);
         }
     };
 
+    const reselectDevices = async (target: WizardState) => {
+        if (isCheckingConnection || operationRef.current) return;
+        if (hasTouchedEngineRef.current && !await stopSoundTest()) return;
+        setState(target);
+    };
+
     const finalApply = async () => {
-        if (!config.input || !config.output) return;
+        if (!config.input || !config.output || !initialStateReady || operationRef.current || isCheckingConnection) return;
+        operationRef.current = true;
+        setIsBusy(true);
+        hasTouchedEngineRef.current = true;
         setState('configuring');
         try {
             // Ensure stopped before final apply
-            if (isTestingSound) await audioApi.stop();
+            if (isTestingSound) {
+                await audioApi.stop();
+                setIsTestingSound(false);
+                setInputLevel(0);
+            }
 
-            onApplyConfig(config.host, config.input.name, config.output.name);
-            await audioApi.start(config.host, config.input.name, config.output.name);
+            const actualConfig = await audioApi.start(config.host, config.input.name, config.output.name);
             await audioApi.setInputChannels(0, 1); // Reset channels for safety
+            onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
+            hasTouchedEngineRef.current = false;
 
             setState('complete');
             toast.success("セットアップが完了しました！");
@@ -396,6 +447,9 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
             console.error(e);
             toast.error("設定の適用に失敗しました");
             setState('confirmation');
+        } finally {
+            operationRef.current = false;
+            setIsBusy(false);
         }
     };
 
@@ -409,6 +463,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                 {/* Close Button */}
                 <button
                     onClick={handleCloseRequest}
+                    disabled={isBusy || isCheckingConnection}
                     aria-label="セットアップウィザードを閉じる"
                     className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors z-10"
                 >
@@ -431,9 +486,9 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
 
                 {/* Header Steps */}
                 {state !== 'welcome' && state !== 'complete' && state !== 'configuring' && (
-                    <div className="modal-header-base modal-header-muted px-4 relative">
+                    <div aria-label="セットアップの進捗" className="modal-header-base modal-header-muted pl-4 pr-16 relative">
                         {/* Progress Bar Background */}
-                        <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-muted -z-10" />
+                        <div className="absolute top-1/2 left-4 right-16 h-0.5 bg-muted -z-10" />
 
                         {[
                             { id: 'usage_selection', label: '目的' },
@@ -460,6 +515,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                 )}
 
                 <div className="modal-body-base min-h-[400px] flex flex-col">
+                    {initialStateError && <p role="alert" className="text-sm text-amber-500 mb-4">現在の音声設定を取得できませんでした。テストと保存は実行できません。ウィザードを開き直してください。</p>}
 
                     {/* --- STEP 1: WELCOME --- */}
                     {state === 'welcome' && (
@@ -480,10 +536,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                             {' '}
                                             <button
                                                 type="button"
-                                                onClick={() => {
-                                                    onClose();
-                                                    onOpenTroubleshoot();
-                                                }}
+                                                onClick={() => void performClose(onOpenTroubleshoot)}
                                                 className="underline underline-offset-2 text-primary hover:text-primary/80"
                                             >
                                                 接続診断
@@ -508,7 +561,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                         className="px-8 py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-full shadow-lg transition-all text-lg flex items-center gap-2"
                                     >
                                         <MdCheckCircle className="w-5 h-5" />
-                                        推奨でクイックスタート
+                                        OBS 向けの接続を確認する
                                     </button>
                                     <button
                                         onClick={() => setState('usage_selection')}
@@ -518,7 +571,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                         はじめる
                                     </button>
                                     <button
-                                        onClick={handleCloseRequest}
+                                        onClick={() => void performClose(onSkip || onClose)}
+                                        disabled={isBusy}
                                         className="text-muted-foreground hover:text-foreground transition-colors text-sm underline decoration-muted hover:decoration-muted-foreground underline-offset-4"
                                     >
                                         スキップ（手動設定）
@@ -581,6 +635,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                         ? '音声エンジンの入力に使用するデバイスを選択します。'
                                         : 'お使いのマイクをリストから選択してください。'}
                                 </p>
+                                {availableInputs.length === 0 && !isLoadingDevices && onOpenSettings && <button onClick={() => void performClose(onOpenSettings)} className="underline text-primary">WASAPI の入力が見つからない場合はオーディオ設定を開く</button>}
                             </div>
 
                             <div className="max-w-md mx-auto space-y-4">
@@ -593,6 +648,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                                 {config.goal === 'listening' ? '入力デバイス' : '入力デバイス (マイク)'}
                                             </label>
                                             <select
+                                                aria-label="入力デバイス"
                                                 className="w-full p-3 bg-muted/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
                                                 value={config.input?.name || ''}
                                                 onChange={(e) => {
@@ -600,6 +656,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                                     setConfig(prev => ({ ...prev, input: dev || null }));
                                                 }}
                                             >
+                                                <option value="">入力デバイスを選択してください</option>
                                                 {availableInputs.map((d, i) => (
                                                     <option key={`${d.name}-${i}`} value={d.name}>{d.name}</option>
                                                 ))}
@@ -620,11 +677,15 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                 )}
                             </div>
 
+                            <div className="text-center">
+                                <button disabled={isLoadingDevices} onClick={() => void loadDevices(true)} className="px-4 py-2 rounded border border-border disabled:opacity-50">入力デバイスを再検出</button>
+                            </div>
+
                             <div className="flex justify-center gap-4 mt-8">
                                 <button onClick={() => setState('usage_selection')} className="px-6 py-2 text-muted-foreground hover:text-foreground">戻る</button>
                                 <button
                                     onClick={confirmInput}
-                                    disabled={!config.input}
+                                    disabled={!config.input || isLoadingDevices}
                                     className="px-8 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                 >
                                     次へ <MdArrowForward />
@@ -641,6 +702,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                 <p className="text-sm text-muted-foreground">
                                     {config.goal === 'obs' ? '配信の場合は「仮想デバイス」がおすすめです。' : '通常は「Windows既定」または「ヘッドホン」を選びます。'}
                                 </p>
+                                {!config.input && <p role="status" className="text-sm text-amber-500">入力デバイスが未選択か、再検出で見つかりませんでした。「戻る」で入力を選び直してください。</p>}
+                                {availableOutputs.length === 0 && !isLoadingDevices && <p className="text-sm text-amber-500">WASAPI の出力デバイスが見つかりません。接続を確認して再検出してください。</p>}
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-4xl mx-auto">
@@ -671,6 +734,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                 >
                                     {config.outputMode === 'monitor' && (
                                         <select
+                                            aria-label="ヘッドホン・スピーカー"
                                             className="mt-2 w-full p-1 bg-background border border-border rounded text-xs"
                                             value={config.output?.name || ''}
                                             onClick={(e) => e.stopPropagation()}
@@ -679,7 +743,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                                 setConfig(prev => ({ ...prev, output: dev || null }));
                                             }}
                                         >
-                                            {availableOutputs.filter(d => !d.name.includes("CABLE") && !d.name.includes("Voicemeeter")).map((d, i) => (
+                                            <option value="">出力先を選択してください</option>
+                                            {availableOutputs.filter(d => !isVirtualOutput(d)).map((d, i) => (
                                                 <option key={i} value={d.name}>{d.name}</option>
                                             ))}
                                         </select>
@@ -698,6 +763,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                     {config.outputMode === 'broadcast' && (
                                         <>
                                             <select
+                                                aria-label="仮想ケーブルの出力先"
                                                 className="mt-2 w-full p-1 bg-background border border-border rounded text-xs"
                                                 value={config.output?.name || ''}
                                                 onClick={(e) => e.stopPropagation()}
@@ -706,16 +772,18 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                                     setConfig(prev => ({ ...prev, output: dev || null }));
                                                 }}
                                             >
-                                                {availableOutputs.filter(d => d.name.includes("CABLE") || d.name.includes("Voicemeeter")).map((d, i) => (
+                                                <option value="">仮想ケーブルを選択してください</option>
+                                                {availableOutputs.filter(isVirtualOutput).map((d, i) => (
                                                     <option key={i} value={d.name}>{d.name}</option>
                                                 ))}
                                                 {/* Fallback if no cable */}
-                                                {!availableOutputs.some(d => d.name.includes("CABLE") || d.name.includes("Voicemeeter")) && (
+                                                {!availableOutputs.some(isVirtualOutput) && (
                                                     <option value="">仮想デバイス未検出</option>
                                                 )}
                                             </select>
                                             {!config.output && (
                                                 <div className="mt-2 flex flex-col items-center gap-1.5">
+                                                    <p className="text-xs text-center text-amber-500">仮想ケーブルが見つかりません。公式サイトから導入し、必要に応じて Windows を再起動してから再検出してください。ドライバーの自動インストールは行いません。</p>
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -742,11 +810,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                 </SelectionCard>
                             </div>
 
+                            <div className="text-center">
+                                <button disabled={isLoadingDevices} onClick={() => void (config.outputMode === 'broadcast' ? handleRescanVirtualDevices() : loadDevices(true))} className="px-4 py-2 rounded border border-border disabled:opacity-50">{isLoadingDevices ? '再検出中…' : '出力デバイスを再検出'}</button>
+                            </div>
                             <div className="flex justify-center gap-4 mt-8">
                                 <button onClick={() => setState('input_selection')} className="px-6 py-2 text-muted-foreground hover:text-foreground">戻る</button>
                                 <button
                                     onClick={() => setState('confirmation')}
-                                    disabled={!config.output}
+                                    disabled={!config.input || !config.output || isLoadingDevices}
                                     className="px-8 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                 >
                                     次へ <MdArrowForward />
@@ -759,8 +830,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                     {state === 'confirmation' && (
                         <div className="space-y-6 animate-in slide-in-from-right-10 duration-300 my-auto">
                             <div className="text-center mb-6">
-                                <h2 className="text-xl font-bold text-foreground">設定の確認</h2>
-                                <p className="text-sm text-muted-foreground">以下の設定で開始します。「サウンドテスト」で音を確認できます。</p>
+                                <h2 className="text-xl font-bold text-foreground">設定と接続の確認</h2>
+                                <p className="text-sm text-muted-foreground">入力・出力と受け側アプリを順に確認します。確認できない項目は手動で確認できます。</p>
                             </div>
 
                             <div className="bg-muted/30 p-6 rounded-xl border border-border max-w-lg mx-auto space-y-4">
@@ -804,6 +875,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                     {!isTestingSound ? (
                                         <button
                                             onClick={startSoundTest}
+                                            disabled={isBusy || isCheckingConnection || !initialStateReady}
                                             className="px-6 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground font-bold rounded-lg transition-all flex items-center gap-2"
                                         >
                                             <MdPlayArrow /> サウンドテスト (開始)
@@ -811,6 +883,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                     ) : (
                                         <button
                                             onClick={stopSoundTest}
+                                            disabled={isBusy || isCheckingConnection}
                                             className="px-6 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold rounded-lg transition-all flex items-center gap-2 animate-pulse"
                                         >
                                             <MdStop /> サウンドテスト (停止)
@@ -825,13 +898,27 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                 </p>
                             )}
 
+                            <ConnectionCheck
+                                key={`${config.input?.name}-${config.output?.name}`}
+                                goal={config.goal}
+                                outputName={config.output?.name || '未選択'}
+                                isBroadcast={!!config.output && isVirtualOutput(config.output)}
+                                disabled={isBusy || !initialStateReady}
+                                audioRunning={isTestingSound}
+                                onStartAudio={startSoundTest}
+                                onBusyChange={setIsCheckingConnection}
+                            />
+                            <p className="text-center text-xs text-muted-foreground">「設定を保存して開始」は音声設定の保存です。受け側への接続確認を完了したことにはなりません。</p>
+                            {onOpenTroubleshoot && <button disabled={isBusy || isCheckingConnection} onClick={() => void performClose(onOpenTroubleshoot)} className="underline text-primary">接続診断を開く</button>}
                             <div className="flex justify-center gap-4 mt-8 pt-4 border-t border-border/50">
-                                <button onClick={() => { stopSoundTest(); setState('output_selection'); }} className="px-6 py-2 text-muted-foreground hover:text-foreground">戻る</button>
+                                <button disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('input_selection')} className="px-3 py-2 text-muted-foreground hover:text-foreground">入力を選び直す</button>
+                                <button disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('output_selection')} className="px-3 py-2 text-muted-foreground hover:text-foreground">出力先を選び直す</button>
                                 <button
                                     onClick={finalApply}
+                                    disabled={isBusy || isCheckingConnection || !initialStateReady}
                                     className="px-8 py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg shadow-lg hover:shadow-green-500/20 transition-all flex items-center gap-2"
                                 >
-                                    <MdCheckCircle /> 設定を完了する
+                                    <MdCheckCircle /> 設定を保存して開始
                                 </button>
                             </div>
                         </div>
@@ -851,9 +938,9 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                         <MdCheckCircle className="w-10 h-10 text-green-500" />
                                     </div>
                                     <div className="space-y-2">
-                                        <h2 className="text-2xl font-bold text-foreground">セットアップ完了</h2>
+                                        <h2 className="text-2xl font-bold text-foreground">音声設定を保存しました</h2>
                                         <p className="text-muted-foreground text-sm leading-relaxed">
-                                            基本設定が完了しました。声の変化は
+                                            受け側への到達を確認していない場合は、OBS・Discord 側の入力メーターを確認してください。声の変化は
                                             <strong className="text-foreground"> ボイスチェック</strong>
                                             で確認するのが確実です。音が届かない場合は接続診断をお試しください。
                                         </p>
