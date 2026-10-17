@@ -4,6 +4,7 @@ use futures_util::StreamExt;
 use obws::requests::EventSubscription;
 use obws::Client;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
@@ -31,6 +32,7 @@ pub struct ObsState {
     pub conn_params: Mutex<Option<ObsConnectionParams>>,
     pub setup: Mutex<crate::obs_setup::SetupState>,
     pub setup_generation: Arc<AtomicU64>,
+    pub source_generations: Arc<Mutex<HashMap<String, u64>>>,
 }
 
 impl Default for ObsState {
@@ -46,6 +48,7 @@ impl ObsState {
             conn_params: Mutex::new(None),
             setup: Mutex::new(crate::obs_setup::SetupState::default()),
             setup_generation: Arc::new(AtomicU64::new(0)),
+            source_generations: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -149,18 +152,11 @@ pub async fn connect_obs(
 
     // シーン変更などのイベントを監視
     let setup_generation = state.setup_generation.clone();
+    let source_generations = state.source_generations.clone();
     tauri::async_runtime::spawn(async move {
         tokio::pin!(events);
         while let Some(event) = events.next().await {
-            // 削除・改名・コレクション切替後は同名ソースでも同一対象とみなさない。
-            if matches!(
-                &event,
-                obws::events::Event::InputRemoved { .. }
-                    | obws::events::Event::InputNameChanged { .. }
-                    | obws::events::Event::CurrentSceneCollectionChanging { .. }
-            ) {
-                setup_generation.fetch_add(1, Ordering::SeqCst);
-            }
+            invalidate_setup_target(&event, &setup_generation, &source_generations).await;
             if let obws::events::Event::CurrentProgramSceneChanged { name, .. } = event {
                 log::info!("OBS Scene Changed: {}", name);
                 let _ = app.emit(
@@ -186,12 +182,37 @@ pub async fn disconnect_obs(state: tauri::State<'_, ObsState>) -> Result<(), Str
 
 /// 接続し直さずに状態を取得し、設定画面の再表示で履歴を維持する。
 pub async fn connection_status(state: &ObsState) -> bool {
-    state
-        .client
-        .lock()
-        .await
-        .as_ref()
-        .is_some_and(|client| client.events().is_ok())
+    let guard = state.client.lock().await;
+    let Some(client) = guard.as_ref() else {
+        return false;
+    };
+    // ローカルのイベント購読可否ではなく、現在の通信を期限付きで確認する。
+    matches!(
+        tokio::time::timeout(StdDuration::from_secs(2), client.general().version()).await,
+        Ok(Ok(_))
+    )
+}
+
+async fn invalidate_setup_target(
+    event: &obws::events::Event,
+    generation: &AtomicU64,
+    sources: &Mutex<HashMap<String, u64>>,
+) {
+    use obws::events::Event;
+    match event {
+        Event::CurrentSceneCollectionChanging { .. } => {
+            generation.fetch_add(1, Ordering::SeqCst);
+        }
+        Event::InputRemoved { name } => {
+            *sources.lock().await.entry(name.clone()).or_default() += 1;
+        }
+        Event::InputNameChanged { old_name, new_name } => {
+            let mut sources = sources.lock().await;
+            *sources.entry(old_name.clone()).or_default() += 1;
+            *sources.entry(new_name.clone()).or_default() += 1;
+        }
+        _ => {}
+    }
 }
 
 /// テストトーンを再生し、OBS の入力メーターで到達を確認する
@@ -314,6 +335,49 @@ pub async fn check_audio_reach(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn input_events_invalidate_only_affected_names() {
+        use obws::events::Event;
+        let generation = AtomicU64::new(3);
+        let sources = Mutex::new(HashMap::new());
+        invalidate_setup_target(
+            &Event::InputRemoved {
+                name: "created".into(),
+            },
+            &generation,
+            &sources,
+        )
+        .await;
+        invalidate_setup_target(
+            &Event::InputNameChanged {
+                old_name: "old".into(),
+                new_name: "new".into(),
+            },
+            &generation,
+            &sources,
+        )
+        .await;
+        assert_eq!(generation.load(Ordering::SeqCst), 3);
+        assert_eq!(
+            *sources.lock().await,
+            HashMap::from([("created".into(), 1), ("old".into(), 1), ("new".into(), 1)])
+        );
+        invalidate_setup_target(
+            &Event::CurrentSceneCollectionChanging {
+                name: "other".into(),
+            },
+            &generation,
+            &sources,
+        )
+        .await;
+        assert_eq!(generation.load(Ordering::SeqCst), 4);
+    }
+
+    #[tokio::test]
+    async fn disconnected_state_reports_not_connected() {
+        assert!(!connection_status(&ObsState::new()).await);
+    }
 
     fn summary(name: &str, kind: &str, muted: bool) -> ObsInputSummary {
         ObsInputSummary {

@@ -10,8 +10,10 @@ use obws::{
 };
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use time::Duration;
+use tokio::sync::Mutex;
 
 const REQUIRED: &[&str] = &[
     "GetInputList",
@@ -78,6 +80,8 @@ pub struct Plan {
     collection: String,
     #[serde(skip)]
     generation: u64,
+    #[serde(skip)]
+    source_generations: HashMap<String, u64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -90,6 +94,8 @@ pub struct History {
     collection: String,
     #[serde(skip)]
     generation: u64,
+    #[serde(skip)]
+    source_generations: HashMap<String, u64>,
     #[serde(skip)]
     pending: Vec<bool>,
 }
@@ -158,6 +164,7 @@ pub async fn preview(state: &ObsState, mute_source: Option<String>) -> Result<Pl
         duplicate_mic_sources: vec![],
         collection: String::new(),
         generation: state.setup_generation.load(Ordering::SeqCst),
+        source_generations: state.source_generations.lock().await.clone(),
     };
     if !plan.supported {
         plan.message =
@@ -376,8 +383,14 @@ struct Session<'a> {
     client: &'a Client,
     generation: &'a AtomicU64,
     expected: u64,
+    sources: &'a Mutex<HashMap<String, u64>>,
+    expected_sources: HashMap<String, u64>,
 }
 impl Session<'_> {
+    async fn validate_source(&self, source: &str) -> Result<(), String> {
+        self.validate()?;
+        validate_source_generation(&*self.sources.lock().await, &self.expected_sources, source)
+    }
     fn validate(&self) -> Result<(), String> {
         if self.generation.load(Ordering::SeqCst) == self.expected {
             Ok(())
@@ -395,16 +408,28 @@ impl Access for Session<'_> {
         self.client.collection().await
     }
     async fn read(&self, c: &Change) -> Result<Value, String> {
-        self.validate()?;
+        self.validate_source(&c.source).await?;
         self.client.read(c).await
     }
     async fn write(&self, c: &mut Change, value: Value) -> Result<(), String> {
-        self.validate()?;
+        self.validate_source(&c.source).await?;
         self.client.write(c, value).await
     }
     async fn recover_creation(&self, c: &mut Change) -> Result<(), String> {
-        self.validate()?;
+        self.validate_source(&c.source).await?;
         self.client.recover_creation(c).await
+    }
+}
+
+fn validate_source_generation(
+    current: &HashMap<String, u64>,
+    expected: &HashMap<String, u64>,
+    source: &str,
+) -> Result<(), String> {
+    if current.get(source).copied().unwrap_or(0) == expected.get(source).copied().unwrap_or(0) {
+        Ok(())
+    } else {
+        Err("対象ソースが削除・改名されました。OBS で手動確認してください。".into())
     }
 }
 
@@ -592,6 +617,7 @@ async fn apply_plan(access: &impl Access, plan: Plan) -> History {
         id: plan.id,
         collection: plan.collection,
         generation: plan.generation,
+        source_generations: plan.source_generations,
         pending: vec![false; plan.changes.len()],
         results: vec!["未実行".into(); plan.changes.len()],
         changes: plan.changes,
@@ -682,6 +708,8 @@ pub async fn apply(state: &ObsState, id: u64) -> Result<History, String> {
         client,
         generation: &state.setup_generation,
         expected: plan.generation,
+        sources: &state.source_generations,
+        expected_sources: plan.source_generations.clone(),
     };
     session.validate()?;
     let history = apply_plan(&session, plan).await;
@@ -733,6 +761,8 @@ pub async fn restore(state: &ObsState, id: u64) -> Result<History, String> {
         client,
         generation: &state.setup_generation,
         expected: setup.history[index].generation,
+        sources: &state.source_generations,
+        expected_sources: setup.history[index].source_generations.clone(),
     };
     restore_history(&session, &mut setup.history[index]).await;
     Ok(setup.history[index].clone())
@@ -741,6 +771,20 @@ pub async fn restore(state: &ObsState, id: u64) -> Result<History, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_invalidation_preserves_unrelated_history_and_rejects_reused_names() {
+        let original = HashMap::new();
+        let removed = HashMap::from([("created".into(), 1)]);
+        assert!(validate_source_generation(&removed, &original, "mic").is_ok());
+        assert!(validate_source_generation(&removed, &original, "created").is_err());
+        let renamed = HashMap::from([("old".into(), 1), ("new".into(), 1)]);
+        for name in ["old", "new"] {
+            assert!(validate_source_generation(&renamed, &original, name).is_err());
+        }
+        assert!(validate_source_generation(&renamed, &original, "mic").is_ok());
+        assert!(validate_source_generation(&renamed, &renamed, "new").is_ok());
+    }
     use std::cell::RefCell;
     struct Fake {
         values: RefCell<Vec<Value>>,
@@ -784,6 +828,7 @@ mod tests {
             message: String::new(),
             collection: "test".into(),
             generation: 0,
+            source_generations: HashMap::new(),
             duplicate_mic_sources: vec![],
             changes: (0..2)
                 .map(|i| Change {
