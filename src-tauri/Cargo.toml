@@ -81,6 +81,14 @@ optional = true
 name = "dsp_abort_verification"
 required-features = ["dsp-verification"]
 
+[[example]]
+name = "dsp_performance"
+path = "examples/dsp_benchmark/timing.rs"
+
+[[example]]
+name = "dsp_retained_memory"
+path = "examples/dsp_benchmark/memory.rs"
+
 # --- Build Profile Optimizations ---
 
 # Optimize dependencies even in dev builds to speed up engine startup/audio processing

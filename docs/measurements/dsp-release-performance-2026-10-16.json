@@ -1,0 +1,2556 @@
+{
+  "metadata": {
+    "base_commit": "10233aaf4c69bd74c2dbad6bfa574ec2b10f4026",
+    "branch": "codex/dsp-release-performance",
+    "cpu": {
+      "Name": "AMD Ryzen 7 7800X3D 8-Core Processor           ",
+      "NumberOfCores": 8,
+      "NumberOfLogicalProcessors": 16
+    },
+    "os": {
+      "Caption": "Microsoft Windows 11 Pro",
+      "Version": "10.0.26300",
+      "BuildNumber": "26300"
+    },
+    "rustc": "rustc 1.92.0 (ded5c06cf 2025-12-08)\nbinary: rustc\ncommit-hash: ded5c06cf21d2b93bffd5d884aa6e96934ee4234\ncommit-date: 2025-12-08\nhost: x86_64-pc-windows-msvc\nrelease: 1.92.0\nLLVM version: 21.1.3",
+    "cargo": "cargo 1.92.0 (344c4567c 2025-10-21)",
+    "power_plan": "Balanced; unchanged",
+    "profile": {
+      "opt_level": 3,
+      "lto": true,
+      "panic": "abort",
+      "dsp_verification_feature": false
+    },
+    "timing_custom_allocator": false,
+    "quantiles": "nearest rank; no clock-overhead subtraction; no outlier removal",
+    "order": "alternating current/registry by sample or trial; normal OS scheduling; no affinity or priority changes",
+    "memory_metric": "thread-scoped live Rust Layout request bytes; includes boxed state and owned buffers/plans/TLS; excludes fixture, stack, static model, allocator overhead and OS RSS",
+    "source_sha256": {
+      "src-tauri/examples/dsp_benchmark/common.rs": "941a9a3b64623ab1ff198f5b7492d8c21be6638addbaf1c8f506372d0ce5b6f7",
+      "src-tauri/examples/dsp_benchmark/timing.rs": "07974d84f81beeee378e193541bf45b281cbef2d2303b07f547b0f27b8a4714a",
+      "src-tauri/examples/dsp_benchmark/memory.rs": "d613921768e2ece8982ef638e78f2bd32cf2ba2a804b5af20c858daa5521e451"
+    },
+    "source_sha256_method": "SHA-256 of the original worktree file bytes used for measurement; no newline normalization",
+    "source_sha256_lf": {
+      "src-tauri/examples/dsp_benchmark/common.rs": "941a9a3b64623ab1ff198f5b7492d8c21be6638addbaf1c8f506372d0ce5b6f7",
+      "src-tauri/examples/dsp_benchmark/timing.rs": "07974d84f81beeee378e193541bf45b281cbef2d2303b07f547b0f27b8a4714a",
+      "src-tauri/examples/dsp_benchmark/memory.rs": "77951e91994c5ceda97bab140252c7ae3a2449bbab3d8f42887dee70106573f1"
+    },
+    "source_sha256_lf_method": "Read file bytes, replace every CRLF (0x0D 0x0A) with LF (0x0A), then compute SHA-256; preserve all other bytes, BOM and final newline",
+    "binary_sha256": {
+      "dsp_performance": "3cca089bffb719d1bb053ffb394b7ef508383d8b3797705dbccb1c92a2a07e29",
+      "dsp_retained_memory": "160deb1a34812ef70d2d561033a1dc7d5462f31a930caa2493121d6a76bb59e9"
+    },
+    "run_times": [
+      {
+        "run": 1,
+        "start": "2026-10-16T23:46:16.9061979+09:00",
+        "end": "2026-10-16T23:46:30.3246601+09:00"
+      },
+      {
+        "run": 2,
+        "start": "2026-10-16T23:46:30.3264529+09:00",
+        "end": "2026-10-16T23:46:43.8345762+09:00"
+      },
+      {
+        "run": 3,
+        "start": "2026-10-16T23:46:43.8349181+09:00",
+        "end": "2026-10-16T23:46:57.5405381+09:00"
+      }
+    ],
+    "dependency_versions": {
+      "nnnoiseless": [
+        "0.5.2"
+      ],
+      "easyfft": [
+        "0.4.2"
+      ],
+      "realfft": [
+        "3.5.0"
+      ],
+      "rustfft": [
+        "6.4.1"
+      ]
+    },
+    "model_sha256": "e6de5fbfadf7ec91d1b24d6a6ccfd0290cb4d8bf555c5eab3ce41506f67a58b1"
+  },
+  "timing_runs": [
+    {
+      "run": 1,
+      "parameters": {
+        "allocator_instrumentation": false,
+        "clock_pair": {
+          "count": 1024,
+          "max_ns": 100,
+          "mean_ns": 26.07421875,
+          "min_ns": 0,
+          "p50_ns": 0,
+          "p95_ns": 100,
+          "p99_ns": 100
+        },
+        "cold_samples": 31,
+        "output_equal": true,
+        "resets_per_trial": 128,
+        "state_layout_bytes": {
+          "current": 14752,
+          "registry": 14648
+        },
+        "steady_frames_per_trial": 2048,
+        "trials": 7,
+        "warmup_frames": 64
+      },
+      "rows": [
+        {
+          "implementation": "current",
+          "kind": "silence",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 50400,
+            "mean_ns": 36800.0,
+            "min_ns": 32400,
+            "p50_ns": 34500,
+            "p95_ns": 47700,
+            "p99_ns": 50400
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "silence",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 168900,
+            "mean_ns": 105219.35483870968,
+            "min_ns": 84500,
+            "p50_ns": 98000,
+            "p95_ns": 144200,
+            "p99_ns": 168900
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "silence",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 380900,
+            "mean_ns": 20426.569475446428,
+            "min_ns": 18300,
+            "p50_ns": 19200,
+            "p95_ns": 23800,
+            "p99_ns": 39000
+          },
+          "trial_p50_ns": [
+            18600,
+            19500,
+            19300,
+            19000,
+            19100,
+            19300,
+            19300
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "silence",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 344100,
+            "mean_ns": 20783.67745535714,
+            "min_ns": 18700,
+            "p50_ns": 19400,
+            "p95_ns": 24700,
+            "p99_ns": 41700
+          },
+          "trial_p50_ns": [
+            19600,
+            19600,
+            19500,
+            19300,
+            19200,
+            19300,
+            19400
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "silence",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 13900,
+            "mean_ns": 652.1205357142857,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1000,
+            "p99_ns": 1300
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            600,
+            600,
+            600,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "silence",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 46000,
+            "mean_ns": 2344.4196428571427,
+            "min_ns": 1500,
+            "p50_ns": 1800,
+            "p95_ns": 5000,
+            "p99_ns": 15700
+          },
+          "trial_p50_ns": [
+            1700,
+            1700,
+            1800,
+            1700,
+            1700,
+            1700,
+            1800
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "tiny",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 57500,
+            "mean_ns": 36703.22580645161,
+            "min_ns": 31200,
+            "p50_ns": 33800,
+            "p95_ns": 53100,
+            "p99_ns": 57500
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "tiny",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 263500,
+            "mean_ns": 109906.45161290323,
+            "min_ns": 88600,
+            "p50_ns": 97500,
+            "p95_ns": 231100,
+            "p99_ns": 263500
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "tiny",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 381700,
+            "mean_ns": 20389.181082589286,
+            "min_ns": 18600,
+            "p50_ns": 19100,
+            "p95_ns": 23600,
+            "p99_ns": 38600
+          },
+          "trial_p50_ns": [
+            19700,
+            19200,
+            19200,
+            19000,
+            19000,
+            18900,
+            18900
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "tiny",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 640700,
+            "mean_ns": 21546.854073660714,
+            "min_ns": 18600,
+            "p50_ns": 19300,
+            "p95_ns": 28500,
+            "p99_ns": 46200
+          },
+          "trial_p50_ns": [
+            19400,
+            19400,
+            19300,
+            19300,
+            19300,
+            19100,
+            19200
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "tiny",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 1900,
+            "mean_ns": 744.0848214285714,
+            "min_ns": 500,
+            "p50_ns": 700,
+            "p95_ns": 1100,
+            "p99_ns": 1500
+          },
+          "trial_p50_ns": [
+            700,
+            800,
+            700,
+            800,
+            800,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "tiny",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 23600,
+            "mean_ns": 2749.6651785714284,
+            "min_ns": 1400,
+            "p50_ns": 2500,
+            "p95_ns": 5200,
+            "p99_ns": 13000
+          },
+          "trial_p50_ns": [
+            2800,
+            2900,
+            3000,
+            2700,
+            2500,
+            1600,
+            1600
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "sine",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 223800,
+            "mean_ns": 68732.25806451614,
+            "min_ns": 56100,
+            "p50_ns": 59300,
+            "p95_ns": 113700,
+            "p99_ns": 223800
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "sine",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 227300,
+            "mean_ns": 136870.96774193548,
+            "min_ns": 109500,
+            "p50_ns": 123100,
+            "p95_ns": 218000,
+            "p99_ns": 227300
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "sine",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 462200,
+            "mean_ns": 38510.072544642855,
+            "min_ns": 34200,
+            "p50_ns": 35400,
+            "p95_ns": 51700,
+            "p99_ns": 70100
+          },
+          "trial_p50_ns": [
+            35500,
+            35200,
+            35200,
+            35300,
+            35400,
+            35500,
+            35400
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "sine",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 445700,
+            "mean_ns": 39483.837890625,
+            "min_ns": 34300,
+            "p50_ns": 35600,
+            "p95_ns": 50900,
+            "p99_ns": 68200
+          },
+          "trial_p50_ns": [
+            43100,
+            35500,
+            35400,
+            35400,
+            35500,
+            35600,
+            35800
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "sine",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 13200,
+            "mean_ns": 689.3973214285714,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 1400
+          },
+          "trial_p50_ns": [
+            700,
+            600,
+            600,
+            600,
+            600,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "sine",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 28400,
+            "mean_ns": 2085.6026785714284,
+            "min_ns": 1100,
+            "p50_ns": 1400,
+            "p95_ns": 4100,
+            "p99_ns": 12200
+          },
+          "trial_p50_ns": [
+            2900,
+            2400,
+            1300,
+            1300,
+            1300,
+            1200,
+            1300
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "noise",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 123800,
+            "mean_ns": 65483.87096774193,
+            "min_ns": 54400,
+            "p50_ns": 60800,
+            "p95_ns": 91400,
+            "p99_ns": 123800
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "noise",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 546900,
+            "mean_ns": 146129.03225806452,
+            "min_ns": 112500,
+            "p50_ns": 122900,
+            "p95_ns": 232600,
+            "p99_ns": 546900
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "noise",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 2892500,
+            "mean_ns": 39413.69280133928,
+            "min_ns": 34100,
+            "p50_ns": 35900,
+            "p95_ns": 51400,
+            "p99_ns": 66700
+          },
+          "trial_p50_ns": [
+            35300,
+            36600,
+            36800,
+            35800,
+            35600,
+            35500,
+            40600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "noise",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 151700,
+            "mean_ns": 38273.41657366072,
+            "min_ns": 34200,
+            "p50_ns": 35800,
+            "p95_ns": 48700,
+            "p99_ns": 61900
+          },
+          "trial_p50_ns": [
+            35400,
+            35400,
+            36500,
+            36100,
+            35600,
+            35300,
+            36700
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "noise",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 25000,
+            "mean_ns": 709.7098214285714,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 2000
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            600,
+            600,
+            600,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "noise",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 19900,
+            "mean_ns": 1773.549107142857,
+            "min_ns": 1100,
+            "p50_ns": 1300,
+            "p95_ns": 3400,
+            "p99_ns": 8900
+          },
+          "trial_p50_ns": [
+            1300,
+            1300,
+            1400,
+            1900,
+            1300,
+            1200,
+            1300
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "impulse",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 149200,
+            "mean_ns": 71390.32258064517,
+            "min_ns": 55500,
+            "p50_ns": 62400,
+            "p95_ns": 136800,
+            "p99_ns": 149200
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "impulse",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 166600,
+            "mean_ns": 124641.93548387097,
+            "min_ns": 110100,
+            "p50_ns": 119800,
+            "p95_ns": 157200,
+            "p99_ns": 166600
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "impulse",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 139200,
+            "mean_ns": 37954.74330357143,
+            "min_ns": 33300,
+            "p50_ns": 35600,
+            "p95_ns": 49900,
+            "p99_ns": 59600
+          },
+          "trial_p50_ns": [
+            35600,
+            35800,
+            35800,
+            35700,
+            35900,
+            35500,
+            35500
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "impulse",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 143200,
+            "mean_ns": 38892.87109375,
+            "min_ns": 33600,
+            "p50_ns": 36000,
+            "p95_ns": 49200,
+            "p99_ns": 63200
+          },
+          "trial_p50_ns": [
+            35800,
+            36300,
+            35700,
+            36000,
+            43200,
+            35900,
+            35700
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "impulse",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 3300,
+            "mean_ns": 662.3883928571429,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 1400
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            600,
+            600,
+            600,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "impulse",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 23900,
+            "mean_ns": 1667.4107142857142,
+            "min_ns": 1100,
+            "p50_ns": 1300,
+            "p95_ns": 3100,
+            "p99_ns": 8600
+          },
+          "trial_p50_ns": [
+            1300,
+            1200,
+            1300,
+            1300,
+            1300,
+            1300,
+            1300
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "square",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 286600,
+            "mean_ns": 74474.19354838709,
+            "min_ns": 54100,
+            "p50_ns": 61200,
+            "p95_ns": 128800,
+            "p99_ns": 286600
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "square",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 434300,
+            "mean_ns": 156003.2258064516,
+            "min_ns": 112400,
+            "p50_ns": 126900,
+            "p95_ns": 333400,
+            "p99_ns": 434300
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "square",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 488100,
+            "mean_ns": 40496.16350446428,
+            "min_ns": 33700,
+            "p50_ns": 35800,
+            "p95_ns": 52900,
+            "p99_ns": 76600
+          },
+          "trial_p50_ns": [
+            35200,
+            35300,
+            41200,
+            35900,
+            38800,
+            35800,
+            35700
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "square",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 412900,
+            "mean_ns": 39366.26674107143,
+            "min_ns": 34000,
+            "p50_ns": 35700,
+            "p95_ns": 51500,
+            "p99_ns": 76100
+          },
+          "trial_p50_ns": [
+            35500,
+            35500,
+            35200,
+            35700,
+            35800,
+            35900,
+            35700
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "square",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 24300,
+            "mean_ns": 703.5714285714286,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 1600
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            600,
+            600,
+            600,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "square",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 16800,
+            "mean_ns": 1876.3392857142858,
+            "min_ns": 1100,
+            "p50_ns": 1400,
+            "p95_ns": 3500,
+            "p99_ns": 10800
+          },
+          "trial_p50_ns": [
+            1400,
+            1300,
+            1800,
+            1500,
+            1300,
+            1200,
+            1900
+          ]
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "parameters": {
+        "allocator_instrumentation": false,
+        "clock_pair": {
+          "count": 1024,
+          "max_ns": 100,
+          "mean_ns": 24.51171875,
+          "min_ns": 0,
+          "p50_ns": 0,
+          "p95_ns": 100,
+          "p99_ns": 100
+        },
+        "cold_samples": 31,
+        "output_equal": true,
+        "resets_per_trial": 128,
+        "state_layout_bytes": {
+          "current": 14752,
+          "registry": 14648
+        },
+        "steady_frames_per_trial": 2048,
+        "trials": 7,
+        "warmup_frames": 64
+      },
+      "rows": [
+        {
+          "implementation": "current",
+          "kind": "silence",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 86200,
+            "mean_ns": 37596.77419354839,
+            "min_ns": 31700,
+            "p50_ns": 34000,
+            "p95_ns": 46600,
+            "p99_ns": 86200
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "silence",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 126400,
+            "mean_ns": 98335.48387096774,
+            "min_ns": 88600,
+            "p50_ns": 94600,
+            "p95_ns": 124800,
+            "p99_ns": 126400
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "silence",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 376800,
+            "mean_ns": 20426.004464285714,
+            "min_ns": 18400,
+            "p50_ns": 19200,
+            "p95_ns": 24100,
+            "p99_ns": 36100
+          },
+          "trial_p50_ns": [
+            18700,
+            18800,
+            18700,
+            19300,
+            19400,
+            19100,
+            19200
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "silence",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 361900,
+            "mean_ns": 20813.73465401786,
+            "min_ns": 18500,
+            "p50_ns": 19200,
+            "p95_ns": 26600,
+            "p99_ns": 43700
+          },
+          "trial_p50_ns": [
+            18800,
+            18900,
+            18900,
+            18800,
+            19500,
+            19600,
+            19200
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "silence",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 2900,
+            "mean_ns": 656.9196428571429,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 1300
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            600,
+            600,
+            600,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "silence",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 42500,
+            "mean_ns": 2419.53125,
+            "min_ns": 1500,
+            "p50_ns": 1700,
+            "p95_ns": 4800,
+            "p99_ns": 17300
+          },
+          "trial_p50_ns": [
+            1800,
+            1700,
+            1700,
+            1700,
+            1700,
+            1800,
+            1600
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "tiny",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 64100,
+            "mean_ns": 35241.93548387097,
+            "min_ns": 30600,
+            "p50_ns": 33200,
+            "p95_ns": 41400,
+            "p99_ns": 64100
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "tiny",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 144600,
+            "mean_ns": 101006.45161290323,
+            "min_ns": 85800,
+            "p50_ns": 93500,
+            "p95_ns": 132900,
+            "p99_ns": 144600
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "tiny",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 365600,
+            "mean_ns": 20362.102399553572,
+            "min_ns": 18400,
+            "p50_ns": 18800,
+            "p95_ns": 25000,
+            "p99_ns": 38100
+          },
+          "trial_p50_ns": [
+            18800,
+            18800,
+            18800,
+            18800,
+            18900,
+            18800,
+            18900
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "tiny",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 297900,
+            "mean_ns": 21142.08984375,
+            "min_ns": 18600,
+            "p50_ns": 18900,
+            "p95_ns": 27300,
+            "p99_ns": 41300
+          },
+          "trial_p50_ns": [
+            18900,
+            18900,
+            18900,
+            18900,
+            24300,
+            18900,
+            18900
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "tiny",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 12100,
+            "mean_ns": 685.7142857142857,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 1500
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            600,
+            600,
+            600,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "tiny",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 22900,
+            "mean_ns": 2190.625,
+            "min_ns": 1300,
+            "p50_ns": 1500,
+            "p95_ns": 4500,
+            "p99_ns": 11500
+          },
+          "trial_p50_ns": [
+            1800,
+            1500,
+            1600,
+            1500,
+            1500,
+            1700,
+            1500
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "sine",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 197500,
+            "mean_ns": 66709.67741935483,
+            "min_ns": 53200,
+            "p50_ns": 58200,
+            "p95_ns": 121200,
+            "p99_ns": 197500
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "sine",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 269800,
+            "mean_ns": 130770.96774193548,
+            "min_ns": 107500,
+            "p50_ns": 116700,
+            "p95_ns": 166700,
+            "p99_ns": 269800
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "sine",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 383200,
+            "mean_ns": 39633.16127232143,
+            "min_ns": 34200,
+            "p50_ns": 35600,
+            "p95_ns": 52900,
+            "p99_ns": 68300
+          },
+          "trial_p50_ns": [
+            35500,
+            42200,
+            41600,
+            35400,
+            35400,
+            35500,
+            35500
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "sine",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 528300,
+            "mean_ns": 39350.54408482143,
+            "min_ns": 34300,
+            "p50_ns": 35500,
+            "p95_ns": 52000,
+            "p99_ns": 79300
+          },
+          "trial_p50_ns": [
+            35600,
+            35400,
+            35500,
+            35400,
+            35300,
+            35600,
+            35500
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "sine",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 15600,
+            "mean_ns": 689.6205357142857,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 1300
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            600,
+            600,
+            700,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "sine",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 132100,
+            "mean_ns": 2066.8526785714284,
+            "min_ns": 1100,
+            "p50_ns": 1400,
+            "p95_ns": 3800,
+            "p99_ns": 13700
+          },
+          "trial_p50_ns": [
+            1500,
+            1500,
+            1300,
+            1200,
+            1400,
+            1400,
+            1200
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "noise",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 168000,
+            "mean_ns": 65080.645161290326,
+            "min_ns": 55800,
+            "p50_ns": 59100,
+            "p95_ns": 76800,
+            "p99_ns": 168000
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "noise",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 232200,
+            "mean_ns": 140161.29032258064,
+            "min_ns": 114400,
+            "p50_ns": 128300,
+            "p95_ns": 192800,
+            "p99_ns": 232200
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "noise",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 373400,
+            "mean_ns": 38576.157924107145,
+            "min_ns": 33800,
+            "p50_ns": 35300,
+            "p95_ns": 50400,
+            "p99_ns": 70900
+          },
+          "trial_p50_ns": [
+            35400,
+            35300,
+            35300,
+            35200,
+            35100,
+            35100,
+            35300
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "noise",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 501300,
+            "mean_ns": 40342.55719866072,
+            "min_ns": 34000,
+            "p50_ns": 35500,
+            "p95_ns": 53000,
+            "p99_ns": 77400
+          },
+          "trial_p50_ns": [
+            44000,
+            35700,
+            35400,
+            35300,
+            35200,
+            35200,
+            35300
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "noise",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 1900,
+            "mean_ns": 702.6785714285714,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 1300
+          },
+          "trial_p50_ns": [
+            600,
+            800,
+            700,
+            600,
+            600,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "noise",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 16200,
+            "mean_ns": 1897.9910714285713,
+            "min_ns": 1000,
+            "p50_ns": 1400,
+            "p95_ns": 3500,
+            "p99_ns": 10100
+          },
+          "trial_p50_ns": [
+            2200,
+            1700,
+            1900,
+            1200,
+            1200,
+            1300,
+            1300
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "impulse",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 112400,
+            "mean_ns": 63474.1935483871,
+            "min_ns": 54400,
+            "p50_ns": 59900,
+            "p95_ns": 90600,
+            "p99_ns": 112400
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "impulse",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 228800,
+            "mean_ns": 140858.06451612903,
+            "min_ns": 111200,
+            "p50_ns": 124900,
+            "p95_ns": 213200,
+            "p99_ns": 228800
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "impulse",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 397300,
+            "mean_ns": 38751.47181919643,
+            "min_ns": 33400,
+            "p50_ns": 36000,
+            "p95_ns": 50800,
+            "p99_ns": 63100
+          },
+          "trial_p50_ns": [
+            35500,
+            35700,
+            35700,
+            35700,
+            36000,
+            36800,
+            36900
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "impulse",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 160500,
+            "mean_ns": 38535.49107142857,
+            "min_ns": 33500,
+            "p50_ns": 35900,
+            "p95_ns": 49900,
+            "p99_ns": 65900
+          },
+          "trial_p50_ns": [
+            35400,
+            35800,
+            35800,
+            35800,
+            35800,
+            35600,
+            46500
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "impulse",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 2600,
+            "mean_ns": 655.9151785714286,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1000,
+            "p99_ns": 1300
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            600,
+            600,
+            600,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "impulse",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 15000,
+            "mean_ns": 1722.9910714285713,
+            "min_ns": 1100,
+            "p50_ns": 1300,
+            "p95_ns": 3200,
+            "p99_ns": 12100
+          },
+          "trial_p50_ns": [
+            1300,
+            1300,
+            1300,
+            1300,
+            1300,
+            1200,
+            1300
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "square",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 393700,
+            "mean_ns": 75641.93548387097,
+            "min_ns": 55800,
+            "p50_ns": 60600,
+            "p95_ns": 96300,
+            "p99_ns": 393700
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "square",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 173500,
+            "mean_ns": 130648.3870967742,
+            "min_ns": 110700,
+            "p50_ns": 122400,
+            "p95_ns": 173100,
+            "p99_ns": 173500
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "square",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 420700,
+            "mean_ns": 39344.85212053572,
+            "min_ns": 33800,
+            "p50_ns": 35600,
+            "p95_ns": 52100,
+            "p99_ns": 68800
+          },
+          "trial_p50_ns": [
+            35100,
+            43800,
+            35300,
+            35500,
+            35600,
+            36100,
+            35500
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "square",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 386200,
+            "mean_ns": 39104.19224330357,
+            "min_ns": 33900,
+            "p50_ns": 35700,
+            "p95_ns": 51400,
+            "p99_ns": 69400
+          },
+          "trial_p50_ns": [
+            35300,
+            35300,
+            35400,
+            35700,
+            35700,
+            38700,
+            35800
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "square",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 14000,
+            "mean_ns": 678.6830357142857,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 1300
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            600,
+            600,
+            600,
+            600,
+            700
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "square",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 19800,
+            "mean_ns": 1765.0669642857142,
+            "min_ns": 1000,
+            "p50_ns": 1300,
+            "p95_ns": 3400,
+            "p99_ns": 5100
+          },
+          "trial_p50_ns": [
+            1400,
+            1300,
+            1200,
+            1200,
+            1300,
+            1200,
+            1700
+          ]
+        }
+      ]
+    },
+    {
+      "run": 3,
+      "parameters": {
+        "allocator_instrumentation": false,
+        "clock_pair": {
+          "count": 1024,
+          "max_ns": 100,
+          "mean_ns": 24.12109375,
+          "min_ns": 0,
+          "p50_ns": 0,
+          "p95_ns": 100,
+          "p99_ns": 100
+        },
+        "cold_samples": 31,
+        "output_equal": true,
+        "resets_per_trial": 128,
+        "state_layout_bytes": {
+          "current": 14752,
+          "registry": 14648
+        },
+        "steady_frames_per_trial": 2048,
+        "trials": 7,
+        "warmup_frames": 64
+      },
+      "rows": [
+        {
+          "implementation": "current",
+          "kind": "silence",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 126100,
+            "mean_ns": 39783.87096774193,
+            "min_ns": 32000,
+            "p50_ns": 34000,
+            "p95_ns": 60700,
+            "p99_ns": 126100
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "silence",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 136400,
+            "mean_ns": 102987.09677419355,
+            "min_ns": 89700,
+            "p50_ns": 99200,
+            "p95_ns": 132700,
+            "p99_ns": 136400
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "silence",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 348400,
+            "mean_ns": 19989.460100446428,
+            "min_ns": 18400,
+            "p50_ns": 18700,
+            "p95_ns": 24000,
+            "p99_ns": 37700
+          },
+          "trial_p50_ns": [
+            18800,
+            18700,
+            18600,
+            18700,
+            18700,
+            18600,
+            18700
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "silence",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 396900,
+            "mean_ns": 20590.869140625,
+            "min_ns": 18500,
+            "p50_ns": 18900,
+            "p95_ns": 25900,
+            "p99_ns": 41500
+          },
+          "trial_p50_ns": [
+            18900,
+            18900,
+            19100,
+            18800,
+            18800,
+            18800,
+            18800
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "silence",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 1500,
+            "mean_ns": 630.5803571428571,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 1300
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            600,
+            600,
+            600,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "silence",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 151800,
+            "mean_ns": 2432.3660714285716,
+            "min_ns": 1300,
+            "p50_ns": 1700,
+            "p95_ns": 4700,
+            "p99_ns": 14900
+          },
+          "trial_p50_ns": [
+            1700,
+            1600,
+            1500,
+            1700,
+            1700,
+            1700,
+            1700
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "tiny",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 49100,
+            "mean_ns": 35429.032258064515,
+            "min_ns": 30400,
+            "p50_ns": 33900,
+            "p95_ns": 41500,
+            "p99_ns": 49100
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "tiny",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 122300,
+            "mean_ns": 98012.90322580645,
+            "min_ns": 86200,
+            "p50_ns": 96800,
+            "p95_ns": 114000,
+            "p99_ns": 122300
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "tiny",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 374400,
+            "mean_ns": 20755.608258928572,
+            "min_ns": 18500,
+            "p50_ns": 18800,
+            "p95_ns": 26700,
+            "p99_ns": 38200
+          },
+          "trial_p50_ns": [
+            18900,
+            18800,
+            18800,
+            18800,
+            21500,
+            18800,
+            18800
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "tiny",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 318100,
+            "mean_ns": 20596.15652901786,
+            "min_ns": 18600,
+            "p50_ns": 18900,
+            "p95_ns": 25300,
+            "p99_ns": 37600
+          },
+          "trial_p50_ns": [
+            19000,
+            18900,
+            19000,
+            18900,
+            19100,
+            18900,
+            18900
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "tiny",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 2400,
+            "mean_ns": 667.8571428571429,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 1300
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            600,
+            600,
+            600,
+            800,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "tiny",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 21100,
+            "mean_ns": 2161.3839285714284,
+            "min_ns": 1300,
+            "p50_ns": 1500,
+            "p95_ns": 4600,
+            "p99_ns": 12900
+          },
+          "trial_p50_ns": [
+            1400,
+            1600,
+            1500,
+            1500,
+            1500,
+            1600,
+            1600
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "sine",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 99100,
+            "mean_ns": 64235.48387096774,
+            "min_ns": 53400,
+            "p50_ns": 60500,
+            "p95_ns": 96900,
+            "p99_ns": 99100
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "sine",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 279300,
+            "mean_ns": 133796.7741935484,
+            "min_ns": 111400,
+            "p50_ns": 121500,
+            "p95_ns": 187600,
+            "p99_ns": 279300
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "sine",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 362100,
+            "mean_ns": 39275.02790178572,
+            "min_ns": 34200,
+            "p50_ns": 35500,
+            "p95_ns": 51100,
+            "p99_ns": 70200
+          },
+          "trial_p50_ns": [
+            35600,
+            35200,
+            35300,
+            44200,
+            35400,
+            35500,
+            35500
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "sine",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 437600,
+            "mean_ns": 40156.71735491072,
+            "min_ns": 34500,
+            "p50_ns": 35800,
+            "p95_ns": 53500,
+            "p99_ns": 79100
+          },
+          "trial_p50_ns": [
+            35800,
+            35700,
+            35600,
+            43600,
+            35700,
+            35800,
+            35700
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "sine",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 15800,
+            "mean_ns": 684.0401785714286,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 1300
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            600,
+            600,
+            600,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "sine",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 44300,
+            "mean_ns": 2013.392857142857,
+            "min_ns": 1100,
+            "p50_ns": 1400,
+            "p95_ns": 4100,
+            "p99_ns": 13600
+          },
+          "trial_p50_ns": [
+            1700,
+            1500,
+            1300,
+            1300,
+            1300,
+            1300,
+            1200
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "noise",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 86100,
+            "mean_ns": 66974.19354838709,
+            "min_ns": 55100,
+            "p50_ns": 65100,
+            "p95_ns": 84400,
+            "p99_ns": 86100
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "noise",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 292100,
+            "mean_ns": 148003.2258064516,
+            "min_ns": 113400,
+            "p50_ns": 129600,
+            "p95_ns": 227300,
+            "p99_ns": 292100
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "noise",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 491400,
+            "mean_ns": 39910.7421875,
+            "min_ns": 33900,
+            "p50_ns": 35400,
+            "p95_ns": 51900,
+            "p99_ns": 79400
+          },
+          "trial_p50_ns": [
+            43000,
+            35500,
+            35300,
+            35100,
+            35500,
+            35100,
+            35100
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "noise",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 404100,
+            "mean_ns": 40366.636439732145,
+            "min_ns": 34000,
+            "p50_ns": 35600,
+            "p95_ns": 52600,
+            "p99_ns": 83000
+          },
+          "trial_p50_ns": [
+            35800,
+            44000,
+            35700,
+            35200,
+            35100,
+            35300,
+            35200
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "noise",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 3000,
+            "mean_ns": 696.7633928571429,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 1300
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            700,
+            800,
+            600,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "noise",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 13300,
+            "mean_ns": 1721.205357142857,
+            "min_ns": 1100,
+            "p50_ns": 1300,
+            "p95_ns": 3400,
+            "p99_ns": 8800
+          },
+          "trial_p50_ns": [
+            1200,
+            1200,
+            1400,
+            1800,
+            1300,
+            1200,
+            1200
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "impulse",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 91800,
+            "mean_ns": 64393.54838709677,
+            "min_ns": 54800,
+            "p50_ns": 60700,
+            "p95_ns": 81000,
+            "p99_ns": 91800
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "impulse",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 186900,
+            "mean_ns": 128332.25806451614,
+            "min_ns": 110900,
+            "p50_ns": 121900,
+            "p95_ns": 156500,
+            "p99_ns": 186900
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "impulse",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 416500,
+            "mean_ns": 39335.107421875,
+            "min_ns": 33400,
+            "p50_ns": 36000,
+            "p95_ns": 50600,
+            "p99_ns": 71900
+          },
+          "trial_p50_ns": [
+            44600,
+            36200,
+            35800,
+            35900,
+            35800,
+            35400,
+            36200
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "impulse",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 431500,
+            "mean_ns": 40017.35491071428,
+            "min_ns": 33400,
+            "p50_ns": 36100,
+            "p95_ns": 53100,
+            "p99_ns": 76000
+          },
+          "trial_p50_ns": [
+            35700,
+            36100,
+            36000,
+            36100,
+            35900,
+            35500,
+            43200
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "impulse",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 12400,
+            "mean_ns": 722.0982142857143,
+            "min_ns": 500,
+            "p50_ns": 600,
+            "p95_ns": 1100,
+            "p99_ns": 1400
+          },
+          "trial_p50_ns": [
+            900,
+            600,
+            600,
+            600,
+            600,
+            600,
+            600
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "impulse",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 46400,
+            "mean_ns": 1857.700892857143,
+            "min_ns": 1100,
+            "p50_ns": 1300,
+            "p95_ns": 3500,
+            "p99_ns": 9600
+          },
+          "trial_p50_ns": [
+            1900,
+            1300,
+            1300,
+            1300,
+            1300,
+            1200,
+            1400
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "square",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 121900,
+            "mean_ns": 66190.32258064517,
+            "min_ns": 56700,
+            "p50_ns": 60300,
+            "p95_ns": 84700,
+            "p99_ns": 121900
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "registry",
+          "kind": "square",
+          "phase": "cold",
+          "summary": {
+            "count": 31,
+            "max_ns": 295300,
+            "mean_ns": 136151.61290322582,
+            "min_ns": 111000,
+            "p50_ns": 121100,
+            "p95_ns": 237300,
+            "p99_ns": 295300
+          },
+          "trial_p50_ns": []
+        },
+        {
+          "implementation": "current",
+          "kind": "square",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 372800,
+            "mean_ns": 39881.01283482143,
+            "min_ns": 33800,
+            "p50_ns": 35900,
+            "p95_ns": 50800,
+            "p99_ns": 75100
+          },
+          "trial_p50_ns": [
+            35500,
+            35300,
+            35300,
+            38300,
+            35900,
+            43700,
+            36000
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "square",
+          "phase": "steady",
+          "summary": {
+            "count": 14336,
+            "max_ns": 1614400,
+            "mean_ns": 41682.847377232145,
+            "min_ns": 34100,
+            "p50_ns": 36300,
+            "p95_ns": 54100,
+            "p99_ns": 85500
+          },
+          "trial_p50_ns": [
+            35900,
+            35700,
+            36000,
+            44300,
+            36000,
+            37500,
+            36000
+          ]
+        },
+        {
+          "implementation": "current",
+          "kind": "square",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 23000,
+            "mean_ns": 802.5669642857143,
+            "min_ns": 500,
+            "p50_ns": 700,
+            "p95_ns": 1200,
+            "p99_ns": 1600
+          },
+          "trial_p50_ns": [
+            600,
+            600,
+            600,
+            600,
+            600,
+            700,
+            800
+          ]
+        },
+        {
+          "implementation": "registry",
+          "kind": "square",
+          "phase": "reset",
+          "summary": {
+            "count": 896,
+            "max_ns": 152700,
+            "mean_ns": 2436.495535714286,
+            "min_ns": 1100,
+            "p50_ns": 1900,
+            "p95_ns": 3800,
+            "p99_ns": 13800
+          },
+          "trial_p50_ns": [
+            2300,
+            1400,
+            1700,
+            1800,
+            2100,
+            1600,
+            2400
+          ]
+        }
+      ]
+    }
+  ],
+  "memory": {
+    "frames_before_reset": 65,
+    "memory_input": "noise",
+    "metric": "live Rust Layout request bytes; excludes allocator overhead, stack, static model and OS RSS",
+    "rows": [
+      {
+        "after_drop": {
+          "live_bytes": 0,
+          "peak_bytes": 51892
+        },
+        "after_first": {
+          "live_bytes": 51892,
+          "peak_bytes": 51892
+        },
+        "after_new": {
+          "live_bytes": 51892,
+          "peak_bytes": 51892
+        },
+        "after_reset": {
+          "live_bytes": 51892,
+          "peak_bytes": 51892
+        },
+        "after_steady": {
+          "live_bytes": 51892,
+          "peak_bytes": 51892
+        },
+        "implementation": "current",
+        "reset_output_hashes": [
+          3989027749027063035
+        ],
+        "state_layout_bytes": 14752,
+        "states": 1
+      },
+      {
+        "after_drop": {
+          "live_bytes": 23040,
+          "peak_bytes": 86408
+        },
+        "after_first": {
+          "live_bytes": 54724,
+          "peak_bytes": 54724
+        },
+        "after_new": {
+          "live_bytes": 31684,
+          "peak_bytes": 31684
+        },
+        "after_reset": {
+          "live_bytes": 54724,
+          "peak_bytes": 86408
+        },
+        "after_steady": {
+          "live_bytes": 54724,
+          "peak_bytes": 54724
+        },
+        "implementation": "registry",
+        "reset_output_hashes": [
+          3989027749027063035
+        ],
+        "state_layout_bytes": 14648,
+        "states": 1
+      },
+      {
+        "after_drop": {
+          "live_bytes": 0,
+          "peak_bytes": 103784
+        },
+        "after_first": {
+          "live_bytes": 103784,
+          "peak_bytes": 103784
+        },
+        "after_new": {
+          "live_bytes": 103784,
+          "peak_bytes": 103784
+        },
+        "after_reset": {
+          "live_bytes": 103784,
+          "peak_bytes": 103784
+        },
+        "after_steady": {
+          "live_bytes": 103784,
+          "peak_bytes": 103784
+        },
+        "implementation": "current",
+        "reset_output_hashes": [
+          3989027749027063035,
+          3989027749027063035
+        ],
+        "state_layout_bytes": 14752,
+        "states": 2
+      },
+      {
+        "after_drop": {
+          "live_bytes": 23040,
+          "peak_bytes": 118092
+        },
+        "after_first": {
+          "live_bytes": 86408,
+          "peak_bytes": 86408
+        },
+        "after_new": {
+          "live_bytes": 63368,
+          "peak_bytes": 63368
+        },
+        "after_reset": {
+          "live_bytes": 86408,
+          "peak_bytes": 118092
+        },
+        "after_steady": {
+          "live_bytes": 86408,
+          "peak_bytes": 86408
+        },
+        "implementation": "registry",
+        "reset_output_hashes": [
+          3989027749027063035,
+          3989027749027063035
+        ],
+        "state_layout_bytes": 14648,
+        "states": 2
+      },
+      {
+        "after_drop": {
+          "live_bytes": 0,
+          "peak_bytes": 415136
+        },
+        "after_first": {
+          "live_bytes": 415136,
+          "peak_bytes": 415136
+        },
+        "after_new": {
+          "live_bytes": 415136,
+          "peak_bytes": 415136
+        },
+        "after_reset": {
+          "live_bytes": 415136,
+          "peak_bytes": 415136
+        },
+        "after_steady": {
+          "live_bytes": 415136,
+          "peak_bytes": 415136
+        },
+        "implementation": "current",
+        "reset_output_hashes": [
+          3989027749027063035,
+          3989027749027063035,
+          3989027749027063035,
+          3989027749027063035,
+          3989027749027063035,
+          3989027749027063035,
+          3989027749027063035,
+          3989027749027063035
+        ],
+        "state_layout_bytes": 14752,
+        "states": 8
+      },
+      {
+        "after_drop": {
+          "live_bytes": 23040,
+          "peak_bytes": 308196
+        },
+        "after_first": {
+          "live_bytes": 276512,
+          "peak_bytes": 276512
+        },
+        "after_new": {
+          "live_bytes": 253472,
+          "peak_bytes": 253472
+        },
+        "after_reset": {
+          "live_bytes": 276512,
+          "peak_bytes": 308196
+        },
+        "after_steady": {
+          "live_bytes": 276512,
+          "peak_bytes": 276512
+        },
+        "implementation": "registry",
+        "reset_output_hashes": [
+          3989027749027063035,
+          3989027749027063035,
+          3989027749027063035,
+          3989027749027063035,
+          3989027749027063035,
+          3989027749027063035,
+          3989027749027063035,
+          3989027749027063035
+        ],
+        "state_layout_bytes": 14648,
+        "states": 8
+      }
+    ],
+    "validation_inputs": [
+      "silence",
+      "tiny",
+      "sine",
+      "noise",
+      "impulse",
+      "square"
+    ]
+  },
+  "memory_repeat_equal": true
+}

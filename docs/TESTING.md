@@ -22,6 +22,9 @@
 DSPの初回処理・resetをpanic=abortで計測する手順は[DSP_ABORT_VERIFICATION.md](DSP_ABORT_VERIFICATION.md)を参照する。
 検証用featureを明示したexampleだけを実行し、音声デバイスやストリームを起動しない。
 
+割当回数の検査とは分離した、実機ストリームなしの時間・保持メモリ比較は[DSP_RELEASE_PERFORMANCE.md](DSP_RELEASE_PERFORMANCE.md)を参照する。
+性能比較のexampleでは検証用featureを有効にしない。
+
 ### OTTエディタの回帰確認
 
 OTT 1.37 / Windows 11 x64 / 96 DPIで、InitDll未実行時に要求サイズが4×4となり、背景・ノブ画像・ロゴが欠ける症状を再現した。詳細は [OTT_EDITOR_FIX.md](OTT_EDITOR_FIX.md)。
