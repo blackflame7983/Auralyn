@@ -18,6 +18,7 @@ const TroubleshootModal = lazy(() => import('../features/Troubleshoot/Troublesho
 const VoiceCheckModal = lazy(() => import('../features/VoiceCheck/VoiceCheckModal').then(m => ({ default: m.VoiceCheckModal })));
 
 interface UIState {
+    settingsTab?: 'audio' | 'obs';
     isSettingsOpen: boolean;
     setIsSettingsOpen: (v: boolean) => void;
     isBrowserOpen: boolean;
@@ -99,6 +100,7 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
             {ui.isSettingsOpen && (
                 <Suspense fallback={null}>
                     <AudioSettingsModal
+                        initialTab={ui.settingsTab ?? 'audio'}
                         isOpen={ui.isSettingsOpen}
                         onClose={() => ui.setIsSettingsOpen(false)}
                         onConfigChange={handleConfigUpdate}

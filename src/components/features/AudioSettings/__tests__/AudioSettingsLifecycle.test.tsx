@@ -11,11 +11,25 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.f
 
 function AppModals() {
     const ui = useUIState();
-    return <>
-        <button onClick={() => ui.setIsSettingsOpen(true)}>設定を表示</button>
-        <ModalLayer ui={ui} audioConfig={{ host: 'WASAPI', input: '', output: '', sampleRate: 48000, bufferSize: 512 }}
-            handleConfigUpdate={() => {}} pluginsApi={{} as ComponentProps<typeof ModalLayer>['pluginsApi']} onPluginAdded={() => {}} />
-    </>;
+    return (
+        <>
+            <button onClick={() => ui.setIsSettingsOpen(true)}>設定を表示</button>
+            <button onClick={ui.openObsSettings}>OBSを整える</button>
+            <ModalLayer
+                ui={ui}
+                audioConfig={{
+                    host: 'WASAPI',
+                    input: '',
+                    output: '',
+                    sampleRate: 48000,
+                    bufferSize: 512,
+                }}
+                handleConfigUpdate={() => {}}
+                pluginsApi={{} as ComponentProps<typeof ModalLayer>['pluginsApi']}
+                onPluginAdded={() => {}}
+            />
+        </>
+    );
 }
 
 afterEach(() => { cleanup(); localStorage.clear(); });
@@ -59,4 +73,27 @@ it('適用後に設定画面を閉じて再表示しても、再接続なしで�
     await screen.findByText(/復元済み/);
     expect(connections).toBe(1);
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'obs_restore_setup')).toHaveLength(1);
+});
+
+it('OBSの入口からはOBSタブを開き、通常の設定入口はオーディオへ戻る', async () => {
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        if (cmd === 'get_audio_devices') return { inputs: [], outputs: [] };
+        if (cmd === 'get_autostart_status') return { enabled: false };
+        if (cmd === 'obs_connection_status') return false;
+        return null;
+    });
+    render(<AppModals />);
+    fireEvent.click(screen.getByRole('button', { name: 'OBSを整える' }));
+    expect(await screen.findByRole('tab', { name: 'OBS連携' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+    );
+    expect(invoke).not.toHaveBeenCalledWith('connect_obs', expect.anything());
+    fireEvent.click(screen.getByRole('button', { name: '設定画面を閉じる' }));
+    fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
+    expect(await screen.findByRole('tab', { name: 'オーディオ' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+    );
 });

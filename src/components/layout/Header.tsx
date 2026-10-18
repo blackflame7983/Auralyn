@@ -1,3 +1,4 @@
+import { useBeginnerMode } from '../../hooks/useBeginnerMode';
 import React, { useState, useEffect, useRef } from 'react';
 import { LevelMeter } from '../features/LevelMeter/LevelMeter';
 import { DeviceStatus } from '../features/DeviceStatus/DeviceStatus';
@@ -78,9 +79,7 @@ export const Header: React.FC<HeaderProps> = ({
         const saved = localStorage.getItem('vst_host_input_gain');
         return saved ? Number(saved) : 100;
     });
-    const [isBeginnerMode, setIsBeginnerMode] = useState(() => {
-        return localStorage.getItem('vst_host_beginner_mode') !== 'false';
-    });
+    const [isBeginnerMode, setIsBeginnerMode] = useBeginnerMode();
     const gainDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handleInputGainChange = (value: number[], fromExternal = false) => {
@@ -124,10 +123,6 @@ export const Header: React.FC<HeaderProps> = ({
         };
     }, []);
 
-    useEffect(() => {
-        localStorage.setItem('vst_host_beginner_mode', String(isBeginnerMode));
-        window.dispatchEvent(new CustomEvent('vst_host_beginner_mode_changed', { detail: isBeginnerMode }));
-    }, [isBeginnerMode]);
 
     const handleToggleMute = async () => {
         try {

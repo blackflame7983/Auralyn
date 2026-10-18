@@ -13,6 +13,9 @@ import {
 } from "@/components/ui/tooltip";
 
 interface AppShellProps {
+    isBeginnerMode: boolean;
+    onDisplayModeChange: (beginner: boolean) => void;
+    onOpenOBSSettings: () => void;
     children: ReactNode;
     onOpenSettings: () => void;
     onOpenOBSGuide: () => void;
@@ -32,6 +35,9 @@ import { MasterBar } from './MasterBar';
 
 export const AppShell: React.FC<AppShellProps> = ({
     children,
+    isBeginnerMode,
+    onDisplayModeChange,
+    onOpenOBSSettings,
     onOpenSettings,
     onOpenOBSGuide,
     onOpenDiscordGuide,
@@ -116,6 +122,39 @@ export const AppShell: React.FC<AppShellProps> = ({
                     className={`flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent pb-4 transition-all duration-300 ${isLargeMeterOpen ? 'pr-36' : ''}`}
                 >
                     <div className="max-w-4xl mr-auto ml-0">
+                        <div
+                            className="mb-4 flex flex-wrap items-center justify-between gap-3"
+                            aria-label="表示の切替"
+                        >
+                            <div
+                                role="group"
+                                aria-label="用途に合わせた表示"
+                                className="flex flex-wrap gap-2"
+                            >
+                                <button
+                                    aria-pressed={isBeginnerMode}
+                                    onClick={() => onDisplayModeChange(true)}
+                                    className="rounded-md border border-border px-3 py-2 text-sm aria-pressed:bg-primary aria-pressed:text-primary-foreground"
+                                >
+                                    配信向け・かんたん
+                                </button>
+                                <button
+                                    aria-pressed={!isBeginnerMode}
+                                    onClick={() => onDisplayModeChange(false)}
+                                    className="rounded-md border border-border px-3 py-2 text-sm aria-pressed:bg-primary aria-pressed:text-primary-foreground"
+                                >
+                                    VST・詳細
+                                </button>
+                            </div>
+                            {isBeginnerMode && (
+                                <button
+                                    onClick={onOpenOBSSettings}
+                                    className="rounded-md border border-border px-3 py-2 text-sm"
+                                >
+                                    OBSを整える
+                                </button>
+                            )}
+                        </div>
                         <LoudnessCheck running={isEngineRunning} onVoiceCheck={onOpenVoiceCheck} />
                         {children}
                     </div>

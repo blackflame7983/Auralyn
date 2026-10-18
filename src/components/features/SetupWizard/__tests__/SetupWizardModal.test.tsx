@@ -292,3 +292,49 @@ describe('セットアップの接続チェック', () => {
         expect(invoke).not.toHaveBeenCalled();
     });
 });
+
+describe('初回選択と表示設定', () => {
+    it.each([true, false])('音声設定の適用成功後だけ表示を保存する: %s', async (beginner) => {
+        localStorage.setItem('vst_host_beginner_mode', String(!beginner));
+        await openWizard();
+        fireEvent.click(
+            screen.getByRole('radio', {
+                name: beginner
+                    ? '配信をはじめたい（かんたん表示）'
+                    : 'VSTで音を調整したい（詳細表示）',
+            })
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'OBS 向けの接続を確認する' }));
+        await screen.findByRole('heading', { name: '設定と接続の確認' });
+        expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(!beginner));
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('heading', { name: '音声設定を保存しました' });
+        expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(beginner));
+    });
+    it('選択後に閉じても既存の表示設定を変えない', async () => {
+        localStorage.setItem('vst_host_beginner_mode', 'false');
+        await openWizard();
+        fireEvent.click(screen.getByRole('radio', { name: '配信をはじめたい（かんたん表示）' }));
+        fireEvent.click(screen.getByRole('button', { name: 'セットアップウィザードを閉じる' }));
+        expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
+    });
+    it('適用失敗では選んだ表示を確定しない', async () => {
+        localStorage.setItem('vst_host_beginner_mode', 'false');
+        startFails = true;
+        await openWizard();
+        fireEvent.click(screen.getByRole('radio', { name: '配信をはじめたい（かんたん表示）' }));
+        fireEvent.click(screen.getByRole('button', { name: 'OBS 向けの接続を確認する' }));
+        await screen.findByRole('heading', { name: '設定と接続の確認' });
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await waitFor(() =>
+            expect(screen.getByRole('button', { name: '設定を保存して開始' })).toBeEnabled()
+        );
+        expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
+    });
+    it('明示的に手動設定へ進む場合は選択を保存する', async () => {
+        await openWizard();
+        fireEvent.click(screen.getByRole('radio', { name: 'VSTで音を調整したい（詳細表示）' }));
+        fireEvent.click(screen.getByRole('button', { name: 'スキップ（手動設定）' }));
+        await waitFor(() => expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false'));
+    });
+});

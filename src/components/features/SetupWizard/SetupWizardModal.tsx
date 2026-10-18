@@ -1,3 +1,4 @@
+import { getBeginnerMode, saveBeginnerMode } from '../../../hooks/useBeginnerMode';
 import React, { useState, useEffect, useRef } from 'react';
 import { audioApi, AudioDevice, AudioStateInfo, type AudioConfig } from '../../../api/audio';
 import { DiscordIcon } from '../../ui/DiscordIcon';
@@ -39,6 +40,8 @@ interface WizardConfig {
 }
 
 export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onClose, onSkip, onApplyConfig, onOpenSettings, onOpenTroubleshoot }) => {
+
+    const [beginnerChoice, setBeginnerChoice] = useState(getBeginnerMode);
 
     // State Preservation Logic
     const initialStateRef = useRef<AudioStateInfo | null>(null);
@@ -120,6 +123,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
         let active = true;
         if (isOpen) {
             setInitialStateReady(false);
+            setBeginnerChoice(getBeginnerMode());
             setInitialStateError(false);
             loadDevices();
             // Capture initial state
@@ -440,6 +444,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
             await audioApi.setInputChannels(0, 1); // Reset channels for safety
             onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
             hasTouchedEngineRef.current = false;
+            saveBeginnerMode(beginnerChoice);
 
             setState('complete');
             toast.success("セットアップが完了しました！");
@@ -549,6 +554,33 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                 </p>
                             </div>
 
+                            <fieldset className="space-y-2 text-sm">
+                                <legend className="mb-2 font-semibold">
+                                    どの画面からはじめますか？
+                                </legend>
+                                <label className="flex items-center justify-center gap-2">
+                                    <input
+                                        type="radio"
+                                        name="display-choice"
+                                        checked={beginnerChoice}
+                                        onChange={() => setBeginnerChoice(true)}
+                                    />
+                                    配信をはじめたい（かんたん表示）
+                                </label>
+                                <label className="flex items-center justify-center gap-2">
+                                    <input
+                                        type="radio"
+                                        name="display-choice"
+                                        checked={!beginnerChoice}
+                                        onChange={() => setBeginnerChoice(false)}
+                                    />
+                                    VSTで音を調整したい（詳細表示）
+                                </label>
+                                <p className="text-xs text-muted-foreground">
+                                    表示はあとから切り替えられます。音声やエフェクトの設定は変わりません。
+                                </p>
+                            </fieldset>
+
                             {isLoadingDevices ? (
                                 <div className="flex flex-col items-center gap-2 opacity-70">
                                     <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -571,7 +603,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                         はじめる
                                     </button>
                                     <button
-                                        onClick={() => void performClose(onSkip || onClose)}
+                                        onClick={() =>
+                                            void performClose(() => {
+                                                saveBeginnerMode(beginnerChoice);
+                                                (onSkip || onClose)();
+                                            })
+                                        }
                                         disabled={isBusy}
                                         className="text-muted-foreground hover:text-foreground transition-colors text-sm underline decoration-muted hover:decoration-muted-foreground underline-offset-4"
                                     >
