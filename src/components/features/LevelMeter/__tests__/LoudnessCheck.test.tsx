@@ -1,0 +1,303 @@
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { audioApi } from '@/api/audio';
+import { LoudnessCheck } from '../LoudnessCheck';
+import { classifyLoudness, LoudnessReading } from '../loudnessVerdict';
+
+const listeners = vi.hoisted(() => new Map<string, (e: { payload: unknown }) => void>());
+vi.mock('@tauri-apps/api/event', () => ({
+    listen: vi.fn(async (event, cb) => {
+        listeners.set(event, cb);
+        return () => listeners.delete(event);
+    }),
+}));
+vi.mock('@/api/audio', () => ({ audioApi: { setLoudnessMeasurement: vi.fn() } }));
+const reading: LoudnessReading = {
+    id: 1,
+    ready: true,
+    silent: false,
+    supported: true,
+    short_term_lufs: -20,
+    true_peak_dbtp: -8,
+};
+const emit = (event: string, payload: unknown) => act(() => listeners.get(event)?.({ payload }));
+beforeEach(() => {
+    vi.clearAllMocks();
+    listeners.clear();
+    vi.mocked(audioApi.setLoudnessMeasurement).mockResolvedValue(undefined);
+});
+afterEach(async () => {
+    cleanup();
+    // アンマウント時の停止要求まで完了し、次のケースへ持ち越さない。
+    await act(async () => {});
+    vi.useRealTimers();
+});
+
+describe('音量判定の境界', () => {
+    it('短い過大ピークはLUFS準備前・無音区間でも警告する', () => {
+        const short = { ...reading, ready: false, short_term_lufs: null, true_peak_dbtp: 0 };
+        expect(classifyLoudness(short, -20, null)).toBe('high');
+        expect(classifyLoudness({ ...short, silent: true }, -20, null)).toBe('high');
+        expect(classifyLoudness({ ...short, true_peak_dbtp: -8 }, -20, null)).toBeNull();
+        expect(classifyLoudness({ ...short, supported: false }, -20, null)).toBeNull();
+    });
+    it('無音・測定不足・不正値はちょうどいいにしない', () => {
+        for (const patch of [
+            { ready: false },
+            { silent: true },
+            { short_term_lufs: null },
+            { short_term_lufs: NaN },
+            { supported: false },
+            { true_peak_dbtp: Infinity },
+        ]) {
+            expect(classifyLoudness({ ...reading, ...patch }, -20, null)).toBeNull();
+        }
+    });
+    it('目標を変更でき、ヒステリシスと過大ピークを判定する', () => {
+        expect(classifyLoudness(reading, -20, null)).toBe('good');
+        expect(classifyLoudness(reading, -14, null)).toBe('low');
+        expect(classifyLoudness({ ...reading, short_term_lufs: -23.5 }, -20, 'good')).toBe('good');
+        expect(classifyLoudness({ ...reading, short_term_lufs: -24.1 }, -20, 'good')).toBe('low');
+        expect(classifyLoudness({ ...reading, short_term_lufs: -22.5 }, -20, 'low')).toBe('low');
+        expect(classifyLoudness({ ...reading, short_term_lufs: -21.5 }, -20, 'low')).toBe('good');
+        expect(classifyLoudness({ ...reading, true_peak_dbtp: -0.5 }, -20, 'good')).toBe('high');
+    });
+});
+
+describe('出力の音量チェック', () => {
+    async function start() {
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: '測定する' }));
+        });
+        expect(screen.getByRole('button', { name: '測定を止める' })).toBeInTheDocument();
+        const calls = vi.mocked(audioApi.setLoudnessMeasurement).mock.calls;
+        return calls[calls.length - 1][0] as number;
+    }
+    it('初期は追加測定を起動せず、停止中は開始できない', () => {
+        render(<LoudnessCheck running={false} onVoiceCheck={() => {}} />);
+        expect(screen.getByRole('button', { name: '測定する' })).toBeDisabled();
+        expect(audioApi.setLoudnessMeasurement).not.toHaveBeenCalled();
+    });
+    it('継続した測定で判定し、無音・古いID・再起動で成功表示を消す', async () => {
+        vi.useFakeTimers();
+        render(<LoudnessCheck running onVoiceCheck={() => {}} />);
+        const id = await start();
+        emit('audio-loudness', { ...reading, id });
+        act(() => vi.advanceTimersByTime(900));
+        emit('audio-loudness', { ...reading, id });
+        expect(screen.getByRole('status')).toHaveTextContent('ちょうどいい');
+        emit('audio-loudness', {
+            ...reading,
+            id,
+            silent: true,
+            ready: false,
+            short_term_lufs: null,
+        });
+        expect(screen.getByRole('status')).not.toHaveTextContent('ちょうどいい');
+        await act(async () => {
+            emit('audio-started', {});
+        });
+        emit('audio-loudness', { ...reading, id });
+        expect(screen.getByRole('status')).toHaveTextContent('測定は停止中');
+        expect(audioApi.setLoudnessMeasurement).toHaveBeenLastCalledWith(null);
+    });
+    it('データが途絶えたときは過去の判定を表示しない', async () => {
+        vi.useFakeTimers();
+        render(<LoudnessCheck running onVoiceCheck={() => {}} />);
+        const id = await start();
+        emit('audio-loudness', { ...reading, id });
+        act(() => vi.advanceTimersByTime(900));
+        emit('audio-loudness', { ...reading, id });
+        expect(screen.getByRole('status')).toHaveTextContent('ちょうどいい');
+        act(() => vi.advanceTimersByTime(2100));
+        expect(screen.getByRole('status')).toHaveTextContent('音声データを確認できません');
+    });
+    it('3秒未満の過大ピークを800ms待たずに表示する', async () => {
+        render(<LoudnessCheck running onVoiceCheck={() => {}} />);
+        const id = await start();
+        emit('audio-loudness', {
+            ...reading,
+            id,
+            ready: false,
+            short_term_lufs: null,
+            true_peak_dbtp: 0,
+        });
+        expect(screen.getByRole('status')).toHaveTextContent('大きすぎ');
+        emit('audio-loudness', {
+            ...reading,
+            id,
+            ready: false,
+            silent: true,
+            short_term_lufs: null,
+            true_peak_dbtp: 0,
+        });
+        expect(screen.getByRole('status')).toHaveTextContent('大きすぎ');
+        emit('audio-loudness', {
+            ...reading,
+            id,
+            ready: false,
+            silent: true,
+            short_term_lufs: null,
+            true_peak_dbtp: null,
+        });
+        expect(screen.getByRole('status')).not.toHaveTextContent('ちょうどいい');
+        expect(screen.getByRole('status')).not.toHaveTextContent('大きすぎ');
+    });
+    it('目標を変更すると古い成功を消して、新しい目標で判定する', async () => {
+        vi.useFakeTimers();
+        render(<LoudnessCheck running onVoiceCheck={() => {}} />);
+        const id = await start();
+        emit('audio-loudness', { ...reading, id });
+        act(() => vi.advanceTimersByTime(900));
+        emit('audio-loudness', { ...reading, id });
+        expect(screen.getByRole('status')).toHaveTextContent('ちょうどいい');
+        fireEvent.change(screen.getByRole('combobox', { name: '音量の目標', hidden: true }), {
+            target: { value: '-14' },
+        });
+        expect(screen.getByRole('status')).not.toHaveTextContent('ちょうどいい');
+        emit('audio-loudness', { ...reading, id });
+        act(() => vi.advanceTimersByTime(900));
+        emit('audio-loudness', { ...reading, id });
+        expect(screen.getByRole('status')).toHaveTextContent('小さめ');
+    });
+    it('停止失敗で成功表示を消し、停止を再試行してから停止済みにする', async () => {
+        const open = vi.fn();
+        render(<LoudnessCheck running onVoiceCheck={open} />);
+        const id = await start();
+        vi.mocked(audioApi.setLoudnessMeasurement).mockRejectedValueOnce(new Error('closed'));
+        fireEvent.click(screen.getByRole('button', { name: '測定を止める' }));
+        await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+        expect(screen.getByRole('status')).toHaveTextContent('測定の停止を確認できません');
+        emit('audio-loudness', { ...reading, id });
+        expect(screen.getByRole('status')).not.toHaveTextContent('ちょうどいい');
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: '停止を再試行' }));
+        });
+        expect(audioApi.setLoudnessMeasurement).toHaveBeenLastCalledWith(null);
+        expect(screen.getByRole('status')).toHaveTextContent('測定は停止中です');
+        fireEvent.click(screen.getByText('目安と測定について'));
+        fireEvent.click(screen.getByRole('button', { name: 'ボイスチェックで聴いて確認する' }));
+        expect(open).toHaveBeenCalledOnce();
+    });
+    it('入力エラー後の停止失敗も未確認を保ち、停止を再試行できる', async () => {
+        render(<LoudnessCheck running onVoiceCheck={() => {}} />);
+        const id = await start();
+        vi.mocked(audioApi.setLoudnessMeasurement).mockRejectedValueOnce(new Error('closed'));
+        await act(async () => {
+            emit('audio-stream-error', 'Input Stream Error');
+        });
+        expect(screen.getByRole('status')).toHaveTextContent('測定の停止を確認できません');
+        expect(screen.getByRole('button', { name: '停止を再試行' })).toBeEnabled();
+        emit('audio-loudness', { ...reading, id, true_peak_dbtp: 0 });
+        expect(screen.getByRole('status')).not.toHaveTextContent('大きすぎ');
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: '停止を再試行' }));
+        });
+        expect(audioApi.setLoudnessMeasurement).toHaveBeenLastCalledWith(null);
+        expect(screen.getByRole('status')).toHaveTextContent('測定は停止中です');
+    });
+    it('入力エラー後の停止応答を待ってから停止済みにする', async () => {
+        render(<LoudnessCheck running onVoiceCheck={() => {}} />);
+        await start();
+        let resolveStop!: () => void;
+        vi.mocked(audioApi.setLoudnessMeasurement).mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    resolveStop = resolve;
+                })
+        );
+        await act(async () => {
+            emit('audio-stream-error', 'Input Stream Error');
+        });
+        expect(screen.getByRole('status')).toHaveTextContent('測定を停止しています');
+        expect(screen.getByRole('button', { name: '切替中…' })).toBeDisabled();
+        await act(async () => {
+            resolveStop();
+        });
+        expect(screen.getByRole('status')).toHaveTextContent('測定は停止中です');
+    });
+    it('入力エラー後の停止待機中に再起動したら古い失敗を採用しない', async () => {
+        render(<LoudnessCheck running onVoiceCheck={() => {}} />);
+        await start();
+        let rejectStop!: (error: Error) => void;
+        vi.mocked(audioApi.setLoudnessMeasurement).mockImplementationOnce(
+            () =>
+                new Promise((_, reject) => {
+                    rejectStop = reject;
+                })
+        );
+        await act(async () => {
+            emit('audio-stream-error', 'Input Stream Error');
+        });
+        emit('audio-started', {});
+        await act(async () => {
+            rejectStop(new Error('old error cleanup'));
+        });
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(screen.getByRole('status')).toHaveTextContent('測定は停止中です');
+        expect(screen.getByRole('button', { name: '測定する' })).toBeEnabled();
+    });
+    it('開始応答を失った場合も停止で状態を確認できる', async () => {
+        render(<LoudnessCheck running onVoiceCheck={() => {}} />);
+        vi.mocked(audioApi.setLoudnessMeasurement).mockRejectedValueOnce(new Error('timeout'));
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: '測定する' }));
+        });
+        expect(screen.getByRole('button', { name: '停止を再試行' })).toBeInTheDocument();
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: '停止を再試行' }));
+        });
+        expect(audioApi.setLoudnessMeasurement).toHaveBeenLastCalledWith(null);
+        expect(screen.getByRole('status')).toHaveTextContent('測定は停止中です');
+    });
+    it.each(['audio-stopped', 'audio-started'])(
+        '停止待機中の%s後に古い失敗で測定を戻さない',
+        async (event) => {
+            render(<LoudnessCheck running onVoiceCheck={() => {}} />);
+            const id = await start();
+            let rejectStop!: (error: Error) => void;
+            vi.mocked(audioApi.setLoudnessMeasurement).mockImplementationOnce(
+                () =>
+                    new Promise((_, reject) => {
+                        rejectStop = reject;
+                    })
+            );
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: '測定を止める' }));
+            });
+            emit(event, {});
+            await act(async () => {
+                rejectStop(new Error('old stop failed'));
+            });
+            emit('audio-loudness', { ...reading, id });
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+            expect(screen.getByRole('status')).toHaveTextContent('測定は停止中です');
+            expect(screen.getByRole('button', { name: '測定する' })).toBeEnabled();
+        }
+    );
+    it('再起動後の開始は古い停止とリセットの完了後に適用する', async () => {
+        render(<LoudnessCheck running onVoiceCheck={() => {}} />);
+        const previous = await start();
+        let rejectStop!: (error: Error) => void;
+        vi.mocked(audioApi.setLoudnessMeasurement).mockImplementationOnce(
+            () =>
+                new Promise((_, reject) => {
+                    rejectStop = reject;
+                })
+        );
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: '測定を止める' }));
+        });
+        emit('audio-started', {});
+        fireEvent.click(screen.getByRole('button', { name: '測定する' }));
+        expect(audioApi.setLoudnessMeasurement).toHaveBeenCalledTimes(2);
+        await act(async () => {
+            rejectStop(new Error('old stop'));
+        });
+        const ids = vi.mocked(audioApi.setLoudnessMeasurement).mock.calls.map((call) => call[0]);
+        expect(ids.slice(0, 3)).toEqual([previous, null, null]);
+        expect(ids[3]).toBeGreaterThan(previous);
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: '測定を止める' })).toBeEnabled();
+    });
+});

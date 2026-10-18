@@ -32,6 +32,8 @@ export interface AudioConfig {
 }
 
 export const audioApi = {
+    setLoudnessMeasurement: async (id: number | null): Promise<void> =>
+        invoke('set_loudness_measurement', { id }),
     getDevices: async (forceRefresh: boolean = false): Promise<AudioDeviceList> => {
         return await invoke("get_audio_devices", { forceRefresh });
     },
@@ -320,6 +322,13 @@ export interface EngineRuntimeStats {
     pendingUnloadCount: number;
     burnedLibraryCount: number;
     globalBypass: boolean;
+    callbackDiagnostics?: {
+        count: number;
+        minFrames: number;
+        maxFrames: number;
+        totalProcessingUs: number;
+        maxProcessingUs: number;
+    };
     maxJitterUs: number;
     glitchCount: number;
     totalPluginLatencySamples: number;

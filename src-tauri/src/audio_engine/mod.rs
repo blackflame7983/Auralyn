@@ -1,3 +1,4 @@
+pub mod callback_diagnostics;
 pub mod core;
 mod deferred_drop;
 pub mod devices;
@@ -7,3 +8,5 @@ pub mod plugins;
 pub mod resampling;
 pub mod test_tone;
 pub mod voice_check;
+
+pub mod loudness;

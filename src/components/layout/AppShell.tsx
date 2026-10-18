@@ -1,3 +1,4 @@
+import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
 import React, { ReactNode, useState, useCallback, useEffect } from 'react';
 import { Header } from './Header';
 import { audioApi } from '../../api/audio';
@@ -115,6 +116,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     className={`flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent pb-4 transition-all duration-300 ${isLargeMeterOpen ? 'pr-36' : ''}`}
                 >
                     <div className="max-w-4xl mr-auto ml-0">
+                        <LoudnessCheck running={isEngineRunning} onVoiceCheck={onOpenVoiceCheck} />
                         {children}
                     </div>
                 </main>
