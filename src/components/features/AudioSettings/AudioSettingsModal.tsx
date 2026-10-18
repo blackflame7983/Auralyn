@@ -16,6 +16,7 @@ import { ObsSafeSetup } from './ObsSafeSetup';
 import { APP_INFO } from '../../../constants/appInfo';
 
 interface AudioSettingsModalProps {
+  initialTab?: 'audio' | 'obs';
   isOpen: boolean;
   onClose: () => void;
   onConfigChange: (config: Partial<import('../../../contexts/AudioConfigContext').AudioConfig> & { host: string }) => void;
@@ -31,9 +32,19 @@ interface AudioSettingsModalProps {
 }
 
 export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
-  isOpen, onClose, onConfigChange, onOpenWizard,
-  onEngineRestarted, onOpenLicense, onOpenOBSGuide, onOpenTroubleshoot, onOpenVoiceCheck,
-  currentSampleRate, currentBufferSize, currentInputChannels
+  initialTab = 'audio',
+  isOpen,
+  onClose,
+  onConfigChange,
+  onOpenWizard,
+  onEngineRestarted,
+  onOpenLicense,
+  onOpenOBSGuide,
+  onOpenTroubleshoot,
+  onOpenVoiceCheck,
+  currentSampleRate,
+  currentBufferSize,
+  currentInputChannels,
 }) => {
   const getBeginnerMode = () => localStorage.getItem('vst_host_beginner_mode') !== 'false';
   const { theme, setTheme } = useTheme();
@@ -57,7 +68,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   });
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'audio' | 'obs' | 'appearance' | 'system'>('audio');
+  const [activeTab, setActiveTab] = useState<'audio' | 'obs' | 'appearance' | 'system'>(initialTab);
   const [isBeginnerMode, setIsBeginnerMode] = useState(getBeginnerMode);
   const [isSystemTabEnabled, setIsSystemTabEnabled] = useState(() => {
     if (!getBeginnerMode()) return true;

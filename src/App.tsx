@@ -1,3 +1,4 @@
+import { useBeginnerMode } from './hooks/useBeginnerMode';
 import { useEffect } from 'react';
 import { AppShell } from './components/layout/AppShell';
 import { PluginList } from './components/features/PluginRack/PluginList';
@@ -23,12 +24,8 @@ function AppContent() {
 
   // Custom Hooks
   const ui = useUIState();
-  const {
-    audioConfig,
-    handleConfigUpdate,
-    isInitializing,
-    isEngineRunning
-  } = useAudioConfig(
+  const [isBeginnerMode, setIsBeginnerMode] = useBeginnerMode();
+  const { audioConfig, handleConfigUpdate, isInitializing, isEngineRunning } = useAudioConfig(
     () => ui.setIsWizardOpen(true),
     () => ui.setIsSettingsOpen(true)
   );
@@ -46,12 +43,12 @@ function AppContent() {
       ui.setCrashError(err);
       ui.setIsRecoveryModalOpen(true);
     },
-    onLoadPreset: pluginsApi.loadPreset
+    onLoadPreset: pluginsApi.loadPreset,
   });
 
   // Pre-fetch devices in background to speed up setup wizard
   useEffect(() => {
-    audioApi.getDevices(true).catch(e => console.error("Background device scan failed:", e));
+    audioApi.getDevices(true).catch((e) => console.error('Background device scan failed:', e));
   }, []);
 
   // Close to tray: hide window instead of quitting
@@ -64,8 +61,12 @@ function AppContent() {
       return unlisten;
     };
     let unlisten: (() => void) | undefined;
-    setupCloseHandler().then(fn => { unlisten = fn; });
-    return () => { unlisten?.(); };
+    setupCloseHandler().then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
   const handlePluginAdded = () => {
@@ -80,7 +81,8 @@ function AppContent() {
       // Small delay to let the last overlay disappear
       const timer = setTimeout(() => {
         toast.success('セットアップ完了', {
-          description: '配信ソフトと連携するにはガイドをご覧ください。音が届かない場合は接続診断、音質はボイスチェックで確認できます。',
+          description:
+            '配信ソフトと連携するにはガイドをご覧ください。音が届かない場合は接続診断、音質はボイスチェックで確認できます。',
           duration: 10000,
           action: {
             label: 'OBSガイドを開く',
@@ -91,6 +93,22 @@ function AppContent() {
       return () => clearTimeout(timer);
     }
   }, [currentStep]);
+
+  const pluginRack = (
+    <PluginList
+      plugins={pluginsApi.plugins}
+      onAddClick={() => ui.setIsBrowserOpen(true)}
+      onToggle={pluginsApi.togglePlugin}
+      onMute={pluginsApi.toggleMute}
+      onGainChange={pluginsApi.setPluginGain}
+      onRemove={pluginsApi.removePlugin}
+      onEdit={pluginsApi.openEditor}
+      onReorder={pluginsApi.reorderPlugins}
+      onOpenPresets={() => ui.setIsPresetManagerOpen(true)}
+      onOpenWizard={() => ui.setIsWizardOpen(true)}
+      onOpenTemplates={() => ui.setIsTemplateWizardOpen(true)}
+    />
+  );
 
   return (
     <>
@@ -104,91 +122,114 @@ function AppContent() {
           </div>
           <div className="text-center space-y-2">
             <h2 className="text-2xl font-bold tracking-tighter animate-pulse">Auralyn</h2>
-            <p className="text-sm text-muted-foreground font-mono">
-              音声エンジンを起動しています…
-            </p>
+            <p className="text-sm text-muted-foreground font-mono">音声エンジンを起動しています…</p>
           </div>
         </div>
       )}
 
       <AppShell
+        isBeginnerMode={isBeginnerMode}
+        onDisplayModeChange={setIsBeginnerMode}
+        onOpenOBSSettings={ui.openObsSettings}
         onOpenSettings={() => ui.setIsSettingsOpen(true)}
         onOpenOBSGuide={() => ui.setIsOBSGuideOpen(true)}
         onOpenDiscordGuide={() => ui.setIsDiscordGuideOpen(true)}
         onOpenTroubleshoot={() => ui.setIsTroubleshootOpen(true)}
         onOpenVoiceCheck={() => ui.setIsVoiceCheckOpen(true)}
         onOpenWizard={() => ui.setIsWizardOpen(true)}
-        onToggleLargeMeter={() => ui.setIsLargeMeterOpen(prev => !prev)}
+        onToggleLargeMeter={() => ui.setIsLargeMeterOpen((prev) => !prev)}
         isLargeMeterOpen={ui.isLargeMeterOpen}
         currentHost={audioConfig.host}
         currentSampleRate={audioConfig.sampleRate}
         currentBufferSize={audioConfig.bufferSize}
         isEngineRunning={isEngineRunning}
       >
-        <PluginList
-          plugins={pluginsApi.plugins}
-          onAddClick={() => ui.setIsBrowserOpen(true)}
-          onToggle={pluginsApi.togglePlugin}
-          onMute={pluginsApi.toggleMute}
-          onGainChange={pluginsApi.setPluginGain}
-          onRemove={pluginsApi.removePlugin}
-          onEdit={pluginsApi.openEditor}
-          onReorder={pluginsApi.reorderPlugins}
-          onOpenPresets={() => ui.setIsPresetManagerOpen(true)}
-          onOpenWizard={() => ui.setIsWizardOpen(true)}
-          onOpenTemplates={() => ui.setIsTemplateWizardOpen(true)}
-        />
-
-        {!ui.isBrowserOpen && !isInitializing && (
-          <TutorialOverlay
-            targetId="add-effect-btn"
-            step="click_add_effect"
-            side="top"
-            align="center"
-            content={
-              <div className="space-y-2">
-                <strong className="block text-green-500 font-bold">ステップ 1: エフェクトを追加</strong>
-                <p>まずはここをクリックして、最初のエフェクト（VSTプラグイン）を追加してみましょう。</p>
-              </div>
-            }
-          />
+        {isBeginnerMode ? (
+          <details className="mb-4">
+            <summary className="cursor-pointer py-3 text-sm font-semibold">
+              VSTで音を調整する
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                折りたたんでもエフェクト処理は続きます
+              </span>
+            </summary>
+            {pluginRack}
+          </details>
+        ) : (
+          pluginRack
         )}
-        <TutorialOverlay
-          targetId="first-plugin-card"
-          step="explain_plugin_card"
-          side="bottom"
-          align="start"
-          content={
-            <div className="space-y-2">
-              <strong className="block text-green-500 font-bold">ステップ 2/4: 操作方法</strong>
-              <p>エフェクトが追加されました！<br />電源ボタンでON/OFF、スライダーで音量（ゲイン）を調整できます。</p>
-            </div>
-          }
-        />
-        <TutorialOverlay
-          targetId="first-plugin-card"
-          step="try_edit_plugin"
-          side="bottom"
-          align="start"
-          content={
-            <div className="space-y-2">
-              <strong className="block text-blue-500 font-bold">ステップ 3/4: プラグインを編集</strong>
-              <p>「編集」ボタンを押すと、プラグイン独自の設定画面が開きます。<br />ここで詳細なパラメータを調整できます。</p>
-            </div>
-          }
-        />
-        <TutorialOverlay
-          targetId="ab-compare-btn"
-          step="try_ab_compare"
-          side="top"
-          align="start"
-          content={
-            <div className="space-y-2">
-              <strong className="block text-orange-500 font-bold">ステップ 4/4: エフェクト比較を試そう</strong>
-              <p>フッターの「比較」ボタン（原音比較）で、エフェクトあり/なしの音を瞬時に切り替えて比較できます。</p>
-            </div>
-          }
-        />
+
+        {!isBeginnerMode && (
+          <>
+            {!ui.isBrowserOpen && !isInitializing && (
+              <TutorialOverlay
+                targetId="add-effect-btn"
+                step="click_add_effect"
+                side="top"
+                align="center"
+                content={
+                  <div className="space-y-2">
+                    <strong className="block text-green-500 font-bold">
+                      ステップ 1: エフェクトを追加
+                    </strong>
+                    <p>
+                      まずはここをクリックして、最初のエフェクト（VSTプラグイン）を追加してみましょう。
+                    </p>
+                  </div>
+                }
+              />
+            )}
+            <TutorialOverlay
+              targetId="first-plugin-card"
+              step="explain_plugin_card"
+              side="bottom"
+              align="start"
+              content={
+                <div className="space-y-2">
+                  <strong className="block text-green-500 font-bold">ステップ 2/4: 操作方法</strong>
+                  <p>
+                    エフェクトが追加されました！
+                    <br />
+                    電源ボタンでON/OFF、スライダーで音量（ゲイン）を調整できます。
+                  </p>
+                </div>
+              }
+            />
+            <TutorialOverlay
+              targetId="first-plugin-card"
+              step="try_edit_plugin"
+              side="bottom"
+              align="start"
+              content={
+                <div className="space-y-2">
+                  <strong className="block text-blue-500 font-bold">
+                    ステップ 3/4: プラグインを編集
+                  </strong>
+                  <p>
+                    「編集」ボタンを押すと、プラグイン独自の設定画面が開きます。
+                    <br />
+                    ここで詳細なパラメータを調整できます。
+                  </p>
+                </div>
+              }
+            />
+            <TutorialOverlay
+              targetId="ab-compare-btn"
+              step="try_ab_compare"
+              side="top"
+              align="start"
+              content={
+                <div className="space-y-2">
+                  <strong className="block text-orange-500 font-bold">
+                    ステップ 4/4: エフェクト比較を試そう
+                  </strong>
+                  <p>
+                    フッターの「比較」ボタン（原音比較）で、エフェクトあり/なしの音を瞬時に切り替えて比較できます。
+                  </p>
+                </div>
+              }
+            />
+          </>
+        )}
 
         <ModalLayer
           ui={ui}

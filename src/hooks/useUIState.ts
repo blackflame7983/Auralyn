@@ -1,7 +1,16 @@
 import { useState } from 'react';
 
 export const useUIState = () => {
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isSettingsOpen, setSettingsOpen] = useState(false);
+    const [settingsTab, setSettingsTab] = useState<'audio' | 'obs'>('audio');
+    const setIsSettingsOpen = (open: boolean) => {
+        setSettingsTab('audio');
+        setSettingsOpen(open);
+    };
+    const openObsSettings = () => {
+        setSettingsTab('obs');
+        setSettingsOpen(true);
+    };
     const [isBrowserOpen, setIsBrowserOpen] = useState(false);
     const [isOBSGuideOpen, setIsOBSGuideOpen] = useState(false);
     const [isDiscordGuideOpen, setIsDiscordGuideOpen] = useState(false);
@@ -16,18 +25,33 @@ export const useUIState = () => {
     const [isVoiceCheckOpen, setIsVoiceCheckOpen] = useState(false);
 
     return {
-        isSettingsOpen, setIsSettingsOpen,
-        isBrowserOpen, setIsBrowserOpen,
-        isOBSGuideOpen, setIsOBSGuideOpen,
-        isDiscordGuideOpen, setIsDiscordGuideOpen,
-        isWizardOpen, setIsWizardOpen,
-        isTemplateWizardOpen, setIsTemplateWizardOpen,
-        isRecoveryModalOpen, setIsRecoveryModalOpen,
-        crashError, setCrashError,
-        isPresetManagerOpen, setIsPresetManagerOpen,
-        isLargeMeterOpen, setIsLargeMeterOpen,
-        isLicenseModalOpen, setIsLicenseModalOpen,
-        isTroubleshootOpen, setIsTroubleshootOpen,
-        isVoiceCheckOpen, setIsVoiceCheckOpen,
+        isSettingsOpen,
+        setIsSettingsOpen,
+        settingsTab,
+        openObsSettings,
+        isBrowserOpen,
+        setIsBrowserOpen,
+        isOBSGuideOpen,
+        setIsOBSGuideOpen,
+        isDiscordGuideOpen,
+        setIsDiscordGuideOpen,
+        isWizardOpen,
+        setIsWizardOpen,
+        isTemplateWizardOpen,
+        setIsTemplateWizardOpen,
+        isRecoveryModalOpen,
+        setIsRecoveryModalOpen,
+        crashError,
+        setCrashError,
+        isPresetManagerOpen,
+        setIsPresetManagerOpen,
+        isLargeMeterOpen,
+        setIsLargeMeterOpen,
+        isLicenseModalOpen,
+        setIsLicenseModalOpen,
+        isTroubleshootOpen,
+        setIsTroubleshootOpen,
+        isVoiceCheckOpen,
+        setIsVoiceCheckOpen,
     };
 };
