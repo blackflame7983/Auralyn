@@ -1,4 +1,4 @@
-//! OBS の変更予定と履歴は接続中だけ保持する。フロントから任意の設定値は受け取らない。
+//! OBS の変更予定は接続中、履歴はアプリ終了まで保持する。フロントから任意の設定値は受け取らない。
 use crate::obs::{
     is_audio_input_capture_kind, is_cable_output_device_name, ObsState, AURALYN_OBS_SOURCE_NAME,
     WASAPI_INPUT_KIND,
@@ -105,6 +105,10 @@ pub struct History {
 impl History {
     fn same_connection(&self, generation: u64) -> bool {
         self.generation == generation
+    }
+
+    fn refresh_restorable(&mut self, connected: bool, generation: u64) {
+        self.restorable = connected && self.same_connection(generation);
     }
 }
 
@@ -726,6 +730,7 @@ pub async fn apply(state: &ObsState, id: u64) -> Result<History, String> {
     if let Some(params) = state.conn_params.lock().await.as_ref() {
         history.connection_label = format!("{}:{}", params.host, params.port);
     }
+    history.refresh_restorable(true, state.setup_generation.load(Ordering::SeqCst));
     setup.history.push(history.clone());
     Ok(history)
 }
@@ -741,7 +746,7 @@ pub async fn history(state: &ObsState) -> Vec<History> {
         .iter()
         .cloned()
         .map(|mut h| {
-            h.restorable = connected.is_some() && h.same_connection(generation);
+            h.refresh_restorable(connected.is_some(), generation);
             h
         })
         .collect()
@@ -805,12 +810,14 @@ pub async fn restore(state: &ObsState, id: u64) -> Result<History, String> {
         expected_sources: setup.history[index].source_generations.clone(),
     };
     restore_history(&session, &mut setup.history[index]).await;
+    setup.history[index].refresh_restorable(true, state.setup_generation.load(Ordering::SeqCst));
     Ok(setup.history[index].clone())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn disconnect_keeps_history_and_expires_plan_without_reusing_ids() {
@@ -862,6 +869,7 @@ mod tests {
         writes: RefCell<Vec<usize>>,
         fail: Option<usize>,
         collection: String,
+        generation: Option<Arc<AtomicU64>>,
     }
     impl Fake {
         fn new() -> Self {
@@ -870,6 +878,7 @@ mod tests {
                 writes: RefCell::new(vec![]),
                 fail: None,
                 collection: "test".into(),
+                generation: None,
             }
         }
     }
@@ -884,6 +893,9 @@ mod tests {
             let index = c.source.parse::<usize>().map_err(error)?;
             self.writes.borrow_mut().push(index);
             self.values.borrow_mut()[index] = v;
+            if let Some(generation) = &self.generation {
+                generation.fetch_add(1, Ordering::SeqCst);
+            }
             // OBS が変更を受け付けたが応答を失った場合を含む。
             if self.fail == Some(index) {
                 Err("通信切断".into())
@@ -914,6 +926,23 @@ mod tests {
                 .collect(),
         }
     }
+    #[tokio::test]
+    async fn completed_history_reflects_generation_changes_during_apply() {
+        let generation = Arc::new(AtomicU64::new(0));
+        let mut fake = Fake::new();
+        fake.generation = Some(generation.clone());
+        let mut applied = apply_plan(&fake, plan()).await;
+        applied.refresh_restorable(true, generation.load(Ordering::SeqCst));
+        assert!(!applied.restorable);
+        assert!(applied.pending.iter().any(|pending| *pending));
+        let unchanged = Fake::new();
+        let mut current = apply_plan(&unchanged, plan()).await;
+        current.refresh_restorable(true, 0);
+        assert!(current.restorable);
+        current.refresh_restorable(false, 0);
+        assert!(!current.restorable);
+    }
+
     #[tokio::test]
     async fn apply_and_restore_reverse_order() {
         let fake = Fake::new();

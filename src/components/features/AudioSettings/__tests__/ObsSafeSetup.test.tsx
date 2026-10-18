@@ -31,6 +31,20 @@ beforeEach(() => {
 afterEach(cleanup);
 const renderSetup = () => render(<ObsSafeSetup disabled={false} onBusyChange={() => {}} />);
 describe('OBS の変更確認と復元', () => {
+    it('適用中に世代が変わった履歴は、再取得せず復元不可を表示する', async () => {
+        vi.mocked(obsApi.applySetup).mockResolvedValue({
+            ...history,
+            restorable: false,
+            results: ['競合: 適用を中断しました'],
+        });
+        renderSetup();
+        fireEvent.click(screen.getByRole('button', { name: '変更予定を確認する' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'この変更を適用する' }));
+        expect(await screen.findByRole('button', { name: '変更 #7 を元に戻す' })).toBeDisabled();
+        expect(screen.getByText(/現在の接続では安全に復元できません/)).toBeInTheDocument();
+        expect(obsApi.restoreSetup).not.toHaveBeenCalled();
+    });
+
     it('予定を表示し、キャンセルでは適用しない', async () => {
         renderSetup();
         fireEvent.click(screen.getByRole('button', { name: '変更予定を確認する' }));
