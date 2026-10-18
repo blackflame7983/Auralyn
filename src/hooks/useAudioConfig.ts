@@ -24,6 +24,9 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
     const handleConfigUpdate = (config: Partial<AudioConfig> & { host: string }) => {
         const { host, input, output, sampleRate, bufferSize, inputChannels, inputId, outputId } = config;
 
+        const channels: [number, number] | undefined =
+            host.toLowerCase() === 'asio' ? (inputChannels ?? audioConfig.inputChannels) : [0, 1];
+
         setAudioConfig(prev => ({
             ...prev,
             host,
@@ -31,7 +34,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
             output: output ?? prev.output,
             sampleRate: sampleRate ?? prev.sampleRate,
             bufferSize: bufferSize ?? prev.bufferSize,
-            inputChannels: inputChannels ?? prev.inputChannels,
+            inputChannels: channels,
             inputId: inputId ?? prev.inputId,
             outputId: outputId ?? prev.outputId
         }));
@@ -43,7 +46,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
             output: output ?? audioConfig.output,
             sampleRate: sampleRate ?? audioConfig.sampleRate,
             bufferSize: bufferSize ?? audioConfig.bufferSize,
-            inputChannels: inputChannels ?? audioConfig.inputChannels,
+            inputChannels: channels,
             inputId: inputId ?? audioConfig.inputId,
             outputId: outputId ?? audioConfig.outputId
         };
@@ -64,6 +67,8 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
             if (savedConfig) {
                 try {
                     const config = JSON.parse(savedConfig);
+                    if (config.host && config.host.toLowerCase() !== 'asio')
+                        config.inputChannels = [0, 1];
                     if (config.host) {
                         // Restore UI state
                         const sr = config.sampleRate || 48000;
@@ -206,8 +211,10 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         const unlisten = listen<string>('audio-error', () => {
             setIsEngineRunning(false);
         });
+        const unlistenStop = listen('audio-stopped', () => setIsEngineRunning(false));
         return () => {
-            unlisten.then(f => f());
+            unlisten.then((f) => f());
+            unlistenStop.then((f) => f());
         };
     }, []);
 

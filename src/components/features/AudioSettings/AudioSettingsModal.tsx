@@ -651,7 +651,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       // This prevents overwriting the actual Fallback values with our requested values.
 
       // Notify parent to update persistence with ALL params
+      const inputChannels: [number, number] = isAsio ? (currentInputChannels ?? [0, 1]) : [0, 1];
+      await audioApi.setInputChannels(inputChannels[0], inputChannels[1]);
       onConfigChange({
+        inputChannels,
         host: selectedHost,
         input: selectedInput || undefined,
         output: finalOutput || undefined,
@@ -690,7 +693,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         outputId
       );
 
+      const inputChannels: [number, number] = isAsio ? (currentInputChannels ?? [0, 1]) : [0, 1];
+      await audioApi.setInputChannels(inputChannels[0], inputChannels[1]);
       onConfigChange({
+        inputChannels,
         host: selectedHost,
         input: selectedInput || undefined,
         output: finalOutput || undefined,

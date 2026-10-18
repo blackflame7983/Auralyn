@@ -61,6 +61,9 @@ pub enum Command {
         preset: Option<String>,
         amount: f32,
     },
+    SetLoudnessMeasurement {
+        id: Option<u64>,
+    },
     SetOutputGain {
         value: f32, // Linear gain for master output (0.0 to >1.0)
     },
@@ -130,6 +133,8 @@ pub enum Response {
         pending_unload_count: u32,
         burned_library_count: u32,
         global_bypass: bool,
+        #[serde(default)]
+        callback_diagnostics: crate::audio_engine::callback_diagnostics::CallbackSnapshot,
         max_jitter_us: u64,
         glitch_count: u64,
         total_plugin_latency_samples: u32,
@@ -178,6 +183,8 @@ pub enum EngineEvent {
     Error(String),
     // Peak Meters (Input L/R, Output L/R)
     LevelMeter(MeterLevels),
+    Loudness(crate::audio_engine::loudness::LoudnessReading),
+    Stopped,
     // Channel Activity Scan (Up to 32 chans)
     ChannelLevels(Vec<f32>),
     Started { sample_rate: u32, buffer_size: u32 },

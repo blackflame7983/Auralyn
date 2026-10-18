@@ -134,6 +134,7 @@ pub struct EngineRuntimeStats {
     pub pending_unload_count: u32,
     pub burned_library_count: u32,
     pub global_bypass: bool,
+    pub callback_diagnostics: crate::audio_engine::callback_diagnostics::CallbackSnapshot,
     pub max_jitter_us: u64,
     pub glitch_count: u64,
     pub total_plugin_latency_samples: u32,
@@ -445,6 +446,16 @@ impl AudioHost {
                                         if let Err(e) = h.emit("audio-level", levels) {
                                             log::warn!("Failed to emit audio-level: {}", e);
                                         }
+                                    }
+                                }
+                                EngineEvent::Stopped => {
+                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                        let _ = h.emit("audio-stopped", ());
+                                    }
+                                }
+                                EngineEvent::Loudness(reading) => {
+                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                        let _ = h.emit("audio-loudness", reading);
                                     }
                                 }
                                 EngineEvent::ChannelLevels(levels) => {
@@ -849,6 +860,14 @@ impl AudioHost {
         }
     }
 
+    pub fn set_loudness_measurement(&mut self, id: Option<u64>) -> Result<()> {
+        match self.execute_command(IpcCommand::SetLoudnessMeasurement { id })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
     pub fn set_output_gain(&mut self, value: f32) -> Result<()> {
         match self.execute_command(IpcCommand::SetOutputGain { value })? {
             IpcResponse::Success => Ok(()),
@@ -1041,6 +1060,7 @@ impl AudioHost {
                 pending_unload_count,
                 burned_library_count,
                 global_bypass,
+                callback_diagnostics,
                 max_jitter_us,
                 glitch_count,
                 total_plugin_latency_samples,
@@ -1069,6 +1089,7 @@ impl AudioHost {
                 pending_unload_count,
                 burned_library_count,
                 global_bypass,
+                callback_diagnostics,
                 max_jitter_us,
                 glitch_count,
                 total_plugin_latency_samples,

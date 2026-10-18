@@ -1,3 +1,4 @@
+use super::callback_diagnostics::{callback_lateness, normalized_channels, CallbackDiagnostics};
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use log;
@@ -22,14 +23,15 @@ use crate::vst_host::instance::VstProcessor;
 // New Managers
 use super::devices::DeviceManager;
 use super::editors::EditorManager;
+use super::loopback_probe::{analyze_loopback, capture_input_mono};
+use super::loudness::{LoudnessMeter, LoudnessReading};
 use super::plugins::PluginManager;
 use super::plugins::MAX_PLUGINS;
-use super::loopback_probe::{analyze_loopback, capture_input_mono};
 use super::test_tone::RtTestTone;
 use super::voice_check::{
     allocate_voice_check_buffers, compute_peak_envelope, export_voice_check_wav,
-    parse_voice_check_source, RtVoiceCheck, VC_STATE_IDLE, VC_STATE_RECORDING,
-    VOICE_CHECK_ENVELOPE_BUCKETS, VoiceCheckBuffers, VoiceCheckShared,
+    parse_voice_check_source, RtVoiceCheck, VoiceCheckBuffers, VoiceCheckShared, VC_STATE_IDLE,
+    VC_STATE_RECORDING, VOICE_CHECK_ENVELOPE_BUCKETS,
 };
 
 #[cfg(any(test, feature = "dsp-verification"))]
@@ -125,6 +127,7 @@ pub enum AudioThreadMessage {
         preset: BuiltInEffectsPreset,
         amount: f32,
     },
+    SetLoudnessMeasurement(Option<u64>),
     SetOutputGain(f32),
     SetInputChannels(usize, usize), // (Left, Right)
     SetChannelScan(bool),           // Enable/Disable background scanning
@@ -172,6 +175,7 @@ pub enum UserEvent {
 }
 
 type CmdProducer = <HeapRb<AudioThreadMessage> as Split>::Prod;
+type LoudnessConsumer = <HeapRb<LoudnessReading> as Split>::Cons;
 type LevelConsumer = <HeapRb<MeterLevels> as Split>::Cons;
 type ChannelConsumer = <HeapRb<[f32; 32]> as Split>::Cons;
 type RetireConsumer = <HeapRb<DisposedProcessor> as Split>::Cons;
@@ -622,6 +626,7 @@ pub struct Engine {
 
     command_tx: Option<CmdProducer>,
     level_rx: Option<LevelConsumer>,
+    loudness_rx: Option<LoudnessConsumer>,
     channel_rx: Option<ChannelConsumer>,
     retire_rx: Option<RetireConsumer>,
     pending_audio_msgs: Vec<AudioThreadMessage>,
@@ -631,6 +636,8 @@ pub struct Engine {
     current_sample_rate: f64,
     current_block_size: usize,
     current_channels: usize,
+    current_host_is_asio: bool,
+    callback_diagnostics: Arc<CallbackDiagnostics>,
 
     // Channel Mapping (Runtime)
     input_channel_l: usize,
@@ -670,6 +677,7 @@ impl Engine {
             plugin_manager: PluginManager::new(),
             command_tx: None,
             level_rx: None,
+            loudness_rx: None,
             channel_rx: None,
             retire_rx: None,
             pending_audio_msgs: Vec::new(),
@@ -677,6 +685,8 @@ impl Engine {
             current_sample_rate: 0.0,
             current_block_size: 0,
             current_channels: 2,
+            current_host_is_asio: false,
+            callback_diagnostics: Arc::new(CallbackDiagnostics::default()),
             input_channel_l: 0,
             input_channel_r: 1,
             scan_enabled: true, // Auto-enable scan for smart selector
@@ -923,6 +933,16 @@ impl Engine {
                     }
                     if let Some(evt) = meter_event_to_send {
                         self.send_event(evt);
+                    }
+
+                    let mut loudness = None;
+                    if let Some(rx) = &mut self.loudness_rx {
+                        while let Some(reading) = rx.try_pop() {
+                            loudness = Some(reading);
+                        }
+                    }
+                    if let Some(reading) = loudness {
+                        self.send_event(EngineEvent::Loudness(reading));
                     }
 
                     // Channel Scan Processing (32ch)
@@ -1268,11 +1288,26 @@ impl Engine {
                 });
                 self.send_response(Response::Success);
             }
+            Command::SetLoudnessMeasurement { id } => {
+                if self.output_stream.is_none() {
+                    self.send_response(Response::Error(
+                        "音声を開始してから測定してください".into(),
+                    ));
+                } else {
+                    self.queue_audio_msg(AudioThreadMessage::SetLoudnessMeasurement(id));
+                    self.send_response(Response::Success);
+                }
+            }
             Command::SetOutputGain { value } => {
                 self.queue_audio_msg(AudioThreadMessage::SetOutputGain(value));
                 self.send_response(Response::Success);
             }
             Command::SetInputChannels { left, right } => {
+                let [left, right] = normalized_channels(
+                    self.current_host_is_asio,
+                    [left, right],
+                    self.current_channels,
+                );
                 self.input_channel_l = left;
                 self.input_channel_r = right;
                 self.queue_audio_msg(AudioThreadMessage::SetInputChannels(left, right));
@@ -1411,6 +1446,7 @@ impl Engine {
                     pending_unload_count,
                     burned_library_count,
                     global_bypass: self.global_bypass,
+                    callback_diagnostics: self.callback_diagnostics.snapshot(),
                     max_jitter_us: self.stats_max_jitter.load(Ordering::Relaxed),
                     glitch_count: self.stats_glitches.load(Ordering::Relaxed),
                     total_plugin_latency_samples,
@@ -1702,6 +1738,12 @@ impl Engine {
             _ => 512,
         };
         self.current_channels = out_stream_config.channels as usize;
+        self.current_host_is_asio = host_name_str == "ASIO";
+        [self.input_channel_l, self.input_channel_r] = normalized_channels(
+            self.current_host_is_asio,
+            [self.input_channel_l, self.input_channel_r],
+            self.current_channels,
+        );
 
         // Force detection of Locked Buffer Size (ASIO)
         if let Ok(def) = out_dev.default_output_config() {
@@ -1834,6 +1876,10 @@ impl Engine {
         let level_rb = HeapRb::<MeterLevels>::new(4096);
         let (mut level_prod, level_cons) = level_rb.split();
         self.level_rx = Some(level_cons);
+        let loudness_rb = HeapRb::<LoudnessReading>::new(64);
+        let (mut loudness_prod, loudness_cons) = loudness_rb.split();
+        self.loudness_rx = Some(loudness_cons);
+        let mut rt_loudness = LoudnessMeter::new(self.current_sample_rate as u32);
 
         let channel_rb = HeapRb::<[f32; 32]>::new(16); // Small buffer for low-rate scan data
         let (mut channel_prod, channel_cons) = channel_rb.split();
@@ -1943,9 +1989,10 @@ impl Engine {
         self.stats_max_jitter = stats_max_jitter.clone();
         self.stats_glitches = stats_glitches.clone();
 
-        let mut last_callback_inst = Instant::now();
-        let expected_period_micros =
-            (self.current_block_size as u64 * 1000000) / self.current_sample_rate as u64;
+        let mut last_callback: Option<(Instant, usize)> = None;
+        let callback_rate = self.current_sample_rate as u32;
+        let callback_diagnostics = Arc::new(CallbackDiagnostics::default());
+        self.callback_diagnostics = callback_diagnostics.clone();
 
         let mmcss_set_out = Arc::new(AtomicBool::new(false));
         let mut pending_retire: [Option<DisposedProcessor>; MAX_PLUGINS] =
@@ -1986,20 +2033,19 @@ impl Engine {
                 }
 
                 let now = Instant::now();
-                let delta = now.duration_since(last_callback_inst).as_micros() as u64;
-                last_callback_inst = now;
-
-                // Jitter Calc
-                if delta > 0 && expected_period_micros > 0 {
-                    let jitter = delta.saturating_sub(expected_period_micros);
-                    let current_max = stats_max_jitter.load(Ordering::Relaxed);
-                    if jitter > current_max {
-                        stats_max_jitter.store(jitter, Ordering::Relaxed);
-                    }
-                    if jitter > (expected_period_micros / 2) {
+                let actual_frames = data.len() / channels_len.max(1);
+                if let Some((previous, previous_frames)) = last_callback {
+                    let (late, missed) = callback_lateness(
+                        now.duration_since(previous),
+                        previous_frames,
+                        callback_rate,
+                    );
+                    stats_max_jitter.fetch_max(late, Ordering::Relaxed);
+                    if missed {
                         stats_glitches.fetch_add(1, Ordering::Relaxed);
                     }
                 }
+                last_callback = Some((now, actual_frames));
 
                 if !mmcss_set_out.load(Ordering::Relaxed) {
                     unsafe {
@@ -2127,6 +2173,9 @@ impl Engine {
                             rt_built_in_effects_enabled = active;
                             rt_built_in_effects_preset = preset;
                             rt_built_in_effects_amount = amount.clamp(0.0, 1.0);
+                        }
+                        AudioThreadMessage::SetLoudnessMeasurement(id) => {
+                            rt_loudness.reset(id);
                         }
                         AudioThreadMessage::SetOutputGain(val) => {
                             rt_output_gain.set_target(val);
@@ -2693,6 +2742,23 @@ impl Engine {
                         output: [out_max_l, out_max_r],
                     });
                 }
+                // 最終ゲイン・ミュート・試聴を含め、デバイスへ実際に渡す値で測る。
+                // 測定していない間はフィルター・補間・走査を実行しない。
+                if rt_loudness.id.is_some() {
+                    for frame in data.chunks_exact(channels) {
+                        let l = frame.get(rt_input_l).copied().unwrap_or(0.0);
+                        // 同じ物理チャンネルをL/Rへ選んだ場合は二重に加算しない。
+                        let r = if rt_input_r == rt_input_l {
+                            0.0
+                        } else {
+                            frame.get(rt_input_r).copied().unwrap_or(0.0)
+                        };
+                        if let Some(reading) = rt_loudness.sample([l, r]) {
+                            let _ = loudness_prod.try_push(reading);
+                        }
+                    }
+                }
+                callback_diagnostics.record(actual_frames, now.elapsed().as_micros() as u64);
             },
             err_fn_ipc,
             None,
@@ -2936,6 +3002,8 @@ impl Engine {
         self.output_stream = None;
         self.command_tx = None;
         self.level_rx = None;
+        self.loudness_rx = None;
+        self.send_event(EngineEvent::Stopped);
         self.retire_rx = None;
         self.pending_audio_msgs.clear();
     }
