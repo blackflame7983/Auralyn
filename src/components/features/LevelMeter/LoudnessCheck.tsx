@@ -20,11 +20,20 @@ function requestMeasurement(id: number | null) {
 
 export function LoudnessCheck({
     running,
+    enabled = true,
     onVoiceCheck,
 }: {
     running: boolean;
+    enabled?: boolean;
     onVoiceCheck: () => void;
 }) {
+    const [visible, setVisible] = useState(() => !document.hidden);
+    const available = enabled && visible;
+    useEffect(() => {
+        const update = () => setVisible(!document.hidden);
+        document.addEventListener('visibilitychange', update);
+        return () => document.removeEventListener('visibilitychange', update);
+    }, []);
     const [active, setActive] = useState(false);
     const [busy, setBusy] = useState(false);
     const [target, setTarget] = useState(DEFAULT_TARGET);
@@ -126,7 +135,7 @@ export function LoudnessCheck({
                                 if (generation.current !== operation) return;
                                 setStopUnconfirmed(true);
                                 setError(
-                                    '測定状態を確認できませんでした。停止を再試行してください。'
+                                    '測定状態を確認できませんでした。停止を再試行してください。',
                                 );
                             })
                             .finally(() => {
@@ -134,7 +143,7 @@ export function LoudnessCheck({
                                 pending.current = false;
                                 setBusy(false);
                             });
-                    })
+                    }),
             ),
         ];
         return () => {
@@ -150,6 +159,35 @@ export function LoudnessCheck({
     useEffect(() => {
         if (!running) invalidate();
     }, [running]);
+    useEffect(() => {
+        if (available || (id.current === null && !pending.current && !suppressReading.current))
+            return;
+        const operation = ++generation.current;
+        pending.current = true;
+        suppressReading.current = true;
+        setActive(true);
+        setBusy(true);
+        setError('');
+        clear();
+        void requestMeasurement(null)
+            .then(() => {
+                if (generation.current !== operation) return;
+                id.current = null;
+                suppressReading.current = false;
+                setActive(false);
+                setStopUnconfirmed(false);
+            })
+            .catch(() => {
+                if (generation.current !== operation) return;
+                setStopUnconfirmed(true);
+                setError('測定状態を確認できませんでした。停止を再試行してください。');
+            })
+            .finally(() => {
+                if (generation.current !== operation) return;
+                pending.current = false;
+                setBusy(false);
+            });
+    }, [available]);
     useEffect(() => {
         if (!active) return;
         const timer = setInterval(() => {
@@ -203,17 +241,19 @@ export function LoudnessCheck({
           ? '測定の停止を確認できません'
           : busy && active
             ? '測定を停止しています'
-            : !active
-              ? '測定は停止中です'
-              : stale
-                ? '音声データを確認できません'
-                : reading && !reading.supported
-                  ? 'このサンプルレートでは測定できません'
-                  : verdict
-                    ? verdictLabel[verdict]
-                    : reading?.silent
-                      ? '音が小さいか、無音です'
-                      : '測定中です。普段の声で3秒以上話してください';
+            : !available && !active
+              ? '音量チェックは休止中です'
+              : !active
+                ? '測定は停止中です'
+                : stale
+                  ? '音声データを確認できません'
+                  : reading && !reading.supported
+                    ? 'このサンプルレートでは測定できません'
+                    : verdict
+                      ? verdictLabel[verdict]
+                      : reading?.silent
+                        ? '音が小さいか、無音です'
+                        : '測定中です。普段の声で3秒以上話してください';
     const good = verdict === 'good' && active && !stale;
     return (
         <section
@@ -232,7 +272,7 @@ export function LoudnessCheck({
                 </div>
                 <button
                     onClick={() => void toggle()}
-                    disabled={!running || busy}
+                    disabled={!running || busy || (!available && !active)}
                     className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
                 >
                     {busy

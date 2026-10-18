@@ -51,6 +51,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     currentBufferSize,
     isEngineRunning
 }) => {
+    const [loudnessEnabled, setLoudnessEnabled] = useState(false);
+    useEffect(() => setLoudnessEnabled(false), [isBeginnerMode]);
     const [isABBypassed, setIsABBypassed] = useState(false);
     const footerStatusText = !isEngineRunning
         ? '停止中'
@@ -155,7 +157,21 @@ export const AppShell: React.FC<AppShellProps> = ({
                                 </button>
                             )}
                         </div>
-                        <LoudnessCheck running={isEngineRunning} onVoiceCheck={onOpenVoiceCheck} />
+                        {!isBeginnerMode && (
+                            <label className="mb-3 flex items-center gap-2 text-sm">
+                                <input
+                                    type="checkbox"
+                                    checked={loudnessEnabled}
+                                    onChange={(e) => setLoudnessEnabled(e.target.checked)}
+                                />
+                                音量チェックを使う（開始は手動）
+                            </label>
+                        )}
+                        <LoudnessCheck
+                            enabled={isBeginnerMode || loudnessEnabled}
+                            running={isEngineRunning}
+                            onVoiceCheck={onOpenVoiceCheck}
+                        />
                         {children}
                     </div>
                 </main>

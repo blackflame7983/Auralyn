@@ -816,6 +816,11 @@ async fn obs_restore_setup(
 }
 
 #[tauri::command]
+async fn obs_forget_setup_history(state: State<'_, obs::ObsState>, id: u64) -> Result<(), String> {
+    obs_setup::forget_history(&state, id).await
+}
+
+#[tauri::command]
 async fn obs_check_audio_reach(
     obs_state: State<'_, obs::ObsState>,
     audio_state: State<'_, audio::AudioState>,
@@ -1042,6 +1047,7 @@ pub fn run() {
             obs_apply_setup,
             obs_setup_history,
             obs_restore_setup,
+            obs_forget_setup_history,
             obs_check_audio_reach,
             get_autostart_status,
             set_autostart_enabled,

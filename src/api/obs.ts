@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 export interface ObsConfig {
     host: string;
@@ -25,50 +25,68 @@ export interface ObsSetupPlan {
 }
 
 export interface ObsSetupHistory {
+    restorable?: boolean;
+    connectionLabel?: string;
     id: number;
     changes: ObsChange[];
     results: string[];
 }
 
-export type ObsReachStatus = boolean | "unsupported";
+export type ObsReachStatus = boolean | 'unsupported';
 
 export interface ObsAudioReachResult {
     reached: ObsReachStatus;
     peakDb?: number;
 }
 
+// 画面を閉じた時の切断を、接続中の要求より後に適用する。
+let connectionCommands = Promise.resolve();
+function connectionCommand<T>(action: () => Promise<T>) {
+    const request = connectionCommands.then(action);
+    connectionCommands = request.then(
+        () => {},
+        () => {},
+    );
+    return request;
+}
+
 export const obsApi = {
     connectionStatus: async (): Promise<boolean> => {
-        return await invoke("obs_connection_status");
+        return await connectionCommand(() => invoke('obs_connection_status'));
     },
     connect: async (config: ObsConfig): Promise<void> => {
-        return await invoke("connect_obs", {
-            host: config.host,
-            port: config.port,
-            password: config.password || null
-        });
+        return await connectionCommand(() =>
+            invoke('connect_obs', {
+                host: config.host,
+                port: config.port,
+                password: config.password || null,
+            }),
+        );
     },
     disconnect: async (): Promise<void> => {
-        return await invoke("disconnect_obs");
+        return await connectionCommand(() => invoke('disconnect_obs'));
     },
     previewSetup: async (muteSource?: string): Promise<ObsSetupPlan> => {
-        return await invoke("obs_preview_setup", { muteSource: muteSource ?? null });
+        return await invoke('obs_preview_setup', { muteSource: muteSource ?? null });
     },
     applySetup: async (id: number): Promise<ObsSetupHistory> => {
-        return await invoke("obs_apply_setup", { id });
+        return await invoke('obs_apply_setup', { id });
     },
     setupHistory: async (): Promise<ObsSetupHistory[]> => {
-        return await invoke("obs_setup_history");
+        return await invoke('obs_setup_history');
+    },
+    forgetHistory: async (id: number): Promise<void> => {
+        return await invoke('obs_forget_setup_history', { id });
     },
     restoreSetup: async (id: number): Promise<ObsSetupHistory> => {
-        return await invoke("obs_restore_setup", { id });
+        return await invoke('obs_restore_setup', { id });
     },
     checkAudioReach: async (durationMs = 1500): Promise<ObsAudioReachResult> => {
-        return await invoke("obs_check_audio_reach", { durationMs });
+        return await invoke('obs_check_audio_reach', { durationMs });
     },
     onSceneChanged: (callback: (sceneName: string) => void) => {
-        return listen<{ scene_name: string }>("obs://scene-changed", (event) => {
+        return listen<{ scene_name: string }>('obs://scene-changed', (event) => {
             callback(event.payload.scene_name);
         });
-    }
+    },
 };

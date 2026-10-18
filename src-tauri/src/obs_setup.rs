@@ -88,6 +88,8 @@ pub struct Plan {
 #[serde(rename_all = "camelCase")]
 pub struct History {
     pub id: u64,
+    pub restorable: bool,
+    pub connection_label: String,
     pub changes: Vec<Change>,
     pub results: Vec<String>,
     #[serde(skip)]
@@ -100,6 +102,12 @@ pub struct History {
     pending: Vec<bool>,
 }
 
+impl History {
+    fn same_connection(&self, generation: u64) -> bool {
+        self.generation == generation
+    }
+}
+
 #[derive(Default)]
 pub struct SetupState {
     next_id: u64,
@@ -108,9 +116,8 @@ pub struct SetupState {
 }
 
 impl SetupState {
-    pub fn reset(&mut self) {
+    pub fn invalidate_plan(&mut self) {
         self.plan = None;
-        self.history.clear();
     }
 }
 
@@ -172,9 +179,10 @@ pub async fn preview(state: &ObsState, mute_source: Option<String>) -> Result<Pl
                 .into();
         return Ok(plan);
     }
-    setup.history.retain(|h| h.pending.iter().any(|p| *p));
     if setup.history.len() >= 20 {
-        return Err("変更履歴が20件あります。先に元に戻してください。".into());
+        return Err(
+            "変更履歴が20件あります。OBSで状態を確認し、不要な履歴を削除してください。".into(),
+        );
     }
     plan.collection = client.scene_collections().current().await.map_err(error)?;
     let inputs = client.inputs().list(None).await.map_err(error)?;
@@ -615,6 +623,8 @@ impl Access for Client {
 async fn apply_plan(access: &impl Access, plan: Plan) -> History {
     let mut history = History {
         id: plan.id,
+        restorable: true,
+        connection_label: String::new(),
         collection: plan.collection,
         generation: plan.generation,
         source_generations: plan.source_generations,
@@ -712,13 +722,40 @@ pub async fn apply(state: &ObsState, id: u64) -> Result<History, String> {
         expected_sources: plan.source_generations.clone(),
     };
     session.validate()?;
-    let history = apply_plan(&session, plan).await;
+    let mut history = apply_plan(&session, plan).await;
+    if let Some(params) = state.conn_params.lock().await.as_ref() {
+        history.connection_label = format!("{}:{}", params.host, params.port);
+    }
     setup.history.push(history.clone());
     Ok(history)
 }
 
 pub async fn history(state: &ObsState) -> Vec<History> {
-    state.setup.lock().await.history.clone()
+    let connected = state.client.lock().await;
+    let generation = state.setup_generation.load(Ordering::SeqCst);
+    state
+        .setup
+        .lock()
+        .await
+        .history
+        .iter()
+        .cloned()
+        .map(|mut h| {
+            h.restorable = connected.is_some() && h.same_connection(generation);
+            h
+        })
+        .collect()
+}
+
+pub async fn forget_history(state: &ObsState, id: u64) -> Result<(), String> {
+    let mut setup = state.setup.lock().await;
+    let index = setup
+        .history
+        .iter()
+        .position(|h| h.id == id)
+        .ok_or("履歴がありません")?;
+    setup.history.remove(index);
+    Ok(())
 }
 
 fn ensure_restore_order(history: &[History], index: usize) -> Result<(), String> {
@@ -755,6 +792,9 @@ pub async fn restore(state: &ObsState, id: u64) -> Result<History, String> {
         .iter()
         .position(|h| h.id == id)
         .ok_or("履歴がありません")?;
+    if !setup.history[index].same_connection(state.setup_generation.load(Ordering::SeqCst)) {
+        return Err("接続をまたいだ履歴のソース同一性を確認できません。履歴を参照してOBSで手動確認してください。".into());
+    }
     ensure_restore_order(&setup.history, index)?;
     setup.plan = None;
     let session = Session {
@@ -771,6 +811,37 @@ pub async fn restore(state: &ObsState, id: u64) -> Result<History, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn disconnect_keeps_history_and_expires_plan_without_reusing_ids() {
+        let fake = Fake::new();
+        let original = apply_plan(&fake, plan()).await;
+        let state = ObsState::new();
+        {
+            let mut setup = state.setup.lock().await;
+            setup.next_id = 9;
+            setup.plan = Some(plan());
+            setup.history.push(original.clone());
+            setup.invalidate_plan();
+            assert!(setup.plan.is_none());
+            assert_eq!(setup.next_id, 9);
+            assert_eq!(setup.history.len(), 1);
+            assert_eq!(setup.history[0].pending, original.pending);
+        }
+        assert!(original.same_connection(0));
+        state.setup_generation.fetch_add(1, Ordering::SeqCst);
+        assert!(!original.same_connection(1));
+        let items = history(&state).await;
+        assert_eq!(items.len(), 1);
+        assert!(!items[0].restorable);
+        assert_eq!(items[0].results, original.results);
+        assert_eq!(items[0].changes[0].before, original.changes[0].before);
+        forget_history(&state, original.id)
+            .await
+            .expect("明示的な履歴削除");
+        assert!(history(&state).await.is_empty());
+        assert_eq!(*fake.writes.borrow(), vec![0, 1]); // 履歴操作はOBSへ書かない。
+    }
 
     #[test]
     fn source_invalidation_preserves_unrelated_history_and_rejects_reused_names() {

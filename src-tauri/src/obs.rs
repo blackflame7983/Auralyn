@@ -28,6 +28,7 @@ pub struct ObsConnectionParams {
 
 pub struct ObsState {
     pub client: Mutex<Option<Client>>,
+    event_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     /// 到達確認用の一時接続に使う接続パラメータ
     pub conn_params: Mutex<Option<ObsConnectionParams>>,
     pub setup: Mutex<crate::obs_setup::SetupState>,
@@ -45,6 +46,7 @@ impl ObsState {
     pub fn new() -> Self {
         Self {
             client: Mutex::new(None),
+            event_task: Mutex::new(None),
             conn_params: Mutex::new(None),
             setup: Mutex::new(crate::obs_setup::SetupState::default()),
             setup_generation: Arc::new(AtomicU64::new(0)),
@@ -131,29 +133,32 @@ pub async fn connect_obs(
     port: u16,
     password: Option<String>,
 ) -> Result<(), String> {
-    let client = Client::connect(&host, port, password.clone())
-        .await
-        .map_err(|e| format!("Failed to connect to OBS: {}", e))?;
+    // 接続開始と切断を同じロックで直列化し、閉じた画面の遅い接続を残さない。
+    let mut client_guard = state.client.lock().await;
+    stop_connection(&state, &mut client_guard).await;
+    let client = tokio::time::timeout(
+        StdDuration::from_secs(5),
+        Client::connect(&host, port, password.clone()),
+    )
+    .await
+    .map_err(|_| "OBS への接続がタイムアウトしました".to_string())?
+    .map_err(|e| format!("Failed to connect to OBS: {}", e))?;
 
     let events = client.events().map_err(|e| e.to_string())?;
 
-    let mut client_guard = state.client.lock().await;
     *client_guard = Some(client);
-    state.setup.lock().await.reset();
-    state.setup_generation.fetch_add(1, Ordering::SeqCst);
     *state.conn_params.lock().await = Some(ObsConnectionParams {
         host: host.clone(),
         port,
         password,
     });
-    drop(client_guard);
 
     log::info!("Connected to OBS at {}:{}", host, port);
 
     // シーン変更などのイベントを監視
     let setup_generation = state.setup_generation.clone();
     let source_generations = state.source_generations.clone();
-    tauri::async_runtime::spawn(async move {
+    *state.event_task.lock().await = Some(tokio::spawn(async move {
         tokio::pin!(events);
         while let Some(event) = events.next().await {
             invalidate_setup_target(&event, &setup_generation, &source_generations).await;
@@ -166,18 +171,29 @@ pub async fn connect_obs(
             }
         }
         log::info!("OBS Event Loop Ended");
-    });
+    }));
 
     Ok(())
 }
 
 pub async fn disconnect_obs(state: tauri::State<'_, ObsState>) -> Result<(), String> {
     let mut client_guard = state.client.lock().await;
-    *client_guard = None;
-    state.setup.lock().await.reset();
+    stop_connection(&state, &mut client_guard).await;
+    Ok(())
+}
+
+async fn stop_connection(state: &ObsState, client: &mut Option<Client>) {
+    if let Some(task) = state.event_task.lock().await.take() {
+        task.abort();
+        let _ = task.await;
+    }
+    if let Some(mut client) = client.take() {
+        client.disconnect().await;
+    }
+    // 復元情報を捨てずに予定だけ破棄する。購読の空白は世代で区別する。
+    state.setup.lock().await.invalidate_plan();
     state.setup_generation.fetch_add(1, Ordering::SeqCst);
     *state.conn_params.lock().await = None;
-    Ok(())
 }
 
 /// 接続し直さずに状態を取得し、設定画面の再表示で履歴を維持する。
@@ -335,6 +351,36 @@ pub async fn check_audio_reach(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn stopping_connection_joins_event_task_and_clears_credentials() {
+        use std::sync::atomic::AtomicBool;
+        struct Finished(Arc<AtomicBool>);
+        impl Drop for Finished {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+        let state = ObsState::new();
+        let finished = Arc::new(AtomicBool::new(false));
+        let dropped = finished.clone();
+        *state.conn_params.lock().await = Some(ObsConnectionParams {
+            host: "localhost".into(),
+            port: 4455,
+            password: Some("test".into()),
+        });
+        *state.event_task.lock().await = Some(tokio::spawn(async move {
+            let _finished = Finished(dropped);
+            std::future::pending::<()>().await;
+        }));
+        tokio::task::yield_now().await;
+        let mut client = state.client.lock().await;
+        stop_connection(&state, &mut client).await;
+        assert!(finished.load(Ordering::SeqCst));
+        assert!(state.event_task.lock().await.is_none());
+        assert!(state.conn_params.lock().await.is_none());
+        assert_eq!(state.setup_generation.load(Ordering::SeqCst), 1);
+    }
 
     #[tokio::test]
     async fn input_events_invalidate_only_affected_names() {
