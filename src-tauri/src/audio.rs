@@ -870,9 +870,38 @@ impl AudioHost {
 
     pub fn set_output_gain(&mut self, value: f32) -> Result<()> {
         match self.execute_command(IpcCommand::SetOutputGain { value })? {
-            IpcResponse::Success => Ok(()),
+            IpcResponse::Success => {
+                // プリセットからの変更も、RT反映前に成功として保存させない。
+                for _ in 0..100 {
+                    let state = self.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
+                    if state.stream_failed {
+                        return Err(anyhow!("音声ストリームが停止しています。音声を再起動して現在の音量を確認してください"));
+                    }
+                    if state.gain != value {
+                        return Err(anyhow!("出力音量が変更されました"));
+                    }
+                    if state.settled || !state.running {
+                        return Ok(());
+                    }
+                    thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(anyhow!(
+                    "出力音量の反映を確認できません。現在の状態を確認してください"
+                ))
+            }
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
+    pub fn auto_gain(
+        &mut self,
+        request: crate::audio_engine::auto_gain::Request,
+    ) -> Result<crate::audio_engine::auto_gain::Snapshot> {
+        match self.execute_command(IpcCommand::AutoGain { request })? {
+            IpcResponse::AutoGain(state) => Ok(state),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("音量調整の状態を取得できません")),
         }
     }
 

@@ -10,3 +10,6 @@ pub mod test_tone;
 pub mod voice_check;
 
 pub mod loudness;
+
+pub mod auto_gain;
+mod auto_gain_preview;

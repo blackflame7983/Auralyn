@@ -1,3 +1,7 @@
+#[path = "core/auto_gain_commands.rs"]
+mod auto_gain_commands;
+use super::auto_gain::{self, Session as GainSession};
+use super::auto_gain_preview;
 use super::callback_diagnostics::{callback_lateness, normalized_channels, CallbackDiagnostics};
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -128,7 +132,11 @@ pub enum AudioThreadMessage {
         amount: f32,
     },
     SetLoudnessMeasurement(Option<u64>),
-    SetOutputGain(f32),
+    SetOutputGain {
+        value: f32,
+        revision: u64,
+    },
+    StartAutoGainCapture(u64),
     SetInputChannels(usize, usize), // (Left, Right)
     SetChannelScan(bool),           // Enable/Disable background scanning
     StartVoiceCheckRecording {
@@ -615,6 +623,16 @@ impl RtBuiltInVoiceChain {
 }
 
 pub struct Engine {
+    gain_shared: Arc<auto_gain::Shared>,
+    gain_capture_rx: Option<auto_gain::CaptureConsumer>,
+    gain_revision: u64,
+    output_gain: f32,
+    output_gain_revision: u64,
+    output_gain_initialized: bool,
+    gain_session: Option<GainSession>,
+    gain_preview: Option<auto_gain_preview::Preview>,
+    gain_main_device: Option<String>,
+    stream_failed: Arc<AtomicBool>,
     input_stream: Option<cpal::Stream>,
     output_stream: Option<cpal::Stream>,
 
@@ -671,6 +689,19 @@ impl Engine {
     pub fn new() -> Self {
         Self {
             input_stream: None,
+            gain_shared: Arc::new(auto_gain::Shared::default()),
+            gain_capture_rx: None,
+            gain_revision: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64,
+            output_gain: 1.0,
+            output_gain_revision: 0,
+            output_gain_initialized: false,
+            gain_session: None,
+            gain_preview: None,
+            gain_main_device: None,
+            stream_failed: Arc::new(AtomicBool::new(false)),
             output_stream: None,
             device_manager: DeviceManager::new(),
             editor_manager: EditorManager::new(),
@@ -776,6 +807,7 @@ impl Engine {
                 Event::UserEvent(UserEvent::Timer) => {}
                 Event::AboutToWait => {
                     self.flush_pending_audio_msgs();
+                    self.poll_auto_gain();
 
                     // Retire processors off the audio callback thread (safe place to drop VST objects)
                     if let Some(retire_cons) = &mut self.retire_rx {
@@ -1079,7 +1111,25 @@ impl Engine {
         cmd: Command,
         target: &winit::event_loop::EventLoopWindowTarget<T>,
     ) {
+        if !matches!(
+            &cmd,
+            Command::GetDevices
+                | Command::GetRuntimeStats
+                | Command::GetPluginState { .. }
+                | Command::AutoGain { .. }
+                | Command::SetOutputGain { .. }
+                | Command::SetLoudnessMeasurement { .. }
+                | Command::SetChannelScan { .. }
+                | Command::StopVoiceCheckPlayback
+                | Command::StopVoiceCheckRecording
+        ) {
+            self.invalidate_auto_gain();
+        }
         match cmd {
+            Command::AutoGain { request } => match self.auto_gain_command(request) {
+                Ok(state) => self.send_response(Response::AutoGain(state)),
+                Err(e) => self.send_error(e.to_string()),
+            },
             Command::GetDevices => {
                 // Delegated to DeviceManager
                 match self.device_manager.enumerate() {
@@ -1298,10 +1348,10 @@ impl Engine {
                     self.send_response(Response::Success);
                 }
             }
-            Command::SetOutputGain { value } => {
-                self.queue_audio_msg(AudioThreadMessage::SetOutputGain(value));
-                self.send_response(Response::Success);
-            }
+            Command::SetOutputGain { value } => match self.request_output_gain(value) {
+                Ok(()) => self.send_response(Response::Success),
+                Err(e) => self.send_error(e.to_string()),
+            },
             Command::SetInputChannels { left, right } => {
                 let [left, right] = normalized_channels(
                     self.current_host_is_asio,
@@ -1607,6 +1657,10 @@ impl Engine {
     }
 
     fn queue_audio_msg(&mut self, msg: AudioThreadMessage) {
+        if !self.pending_audio_msgs.is_empty() {
+            self.pending_audio_msgs.push(msg);
+            return;
+        }
         if let Some(tx) = &mut self.command_tx {
             match tx.try_push(msg) {
                 Ok(()) => return,
@@ -1856,7 +1910,9 @@ impl Engine {
         }
 
         // Error Handler
-        let err_fn_ipc = |err: cpal::StreamError| {
+        let output_failed = self.stream_failed.clone();
+        let err_fn_ipc = move |err: cpal::StreamError| {
+            output_failed.store(true, Ordering::Release);
             let msg = OutputMessage::Event(EngineEvent::Error(format!("Stream Error: {}", err)));
             if let Ok(json) = serde_json::to_string(&msg) {
                 println!("IPC:{}", json);
@@ -1960,6 +2016,25 @@ impl Engine {
         let mut rt_global_bypass = self.global_bypass;
         let mut rt_input_gain = 1.0f32;
         let mut rt_output_gain = Smoother::new(1.0);
+        self.output_gain = 1.0;
+        self.output_gain_initialized = false;
+        self.output_gain_revision = self.gain_revision;
+        self.gain_shared
+            .applied_revision
+            .store(self.output_gain_revision, Ordering::Release);
+        self.gain_shared
+            .confirmed_gain
+            .store(1.0f32.to_bits(), Ordering::Release);
+        self.gain_shared.settled.store(true, Ordering::Release);
+        self.stream_failed.store(false, Ordering::Release);
+        self.gain_main_device = out_dev.id().ok().map(|id| id.to_string());
+        let (capture_tx, capture_rx) = auto_gain::capture_queue();
+        self.gain_capture_rx = Some(capture_rx);
+        let mut rt_capture = auto_gain::RtCapture::new(
+            self.gain_shared.clone(),
+            capture_tx,
+            self.current_sample_rate as u32,
+        );
         let mut rt_input_l = self.input_channel_l;
         let mut rt_input_r = self.input_channel_r;
         let mut rt_scan_enabled = self.scan_enabled;
@@ -2177,9 +2252,14 @@ impl Engine {
                         AudioThreadMessage::SetLoudnessMeasurement(id) => {
                             rt_loudness.reset(id);
                         }
-                        AudioThreadMessage::SetOutputGain(val) => {
-                            rt_output_gain.set_target(val);
+                        AudioThreadMessage::SetOutputGain { value, revision } => {
+                            rt_output_gain.set_target(value);
+                            rt_capture
+                                .shared
+                                .applied_revision
+                                .store(revision, Ordering::Release);
                         }
+                        AudioThreadMessage::StartAutoGainCapture(id) => rt_capture.start(id),
                         AudioThreadMessage::SetInputChannels(l, r) => {
                             rt_input_l = l;
                             rt_input_r = r;
@@ -2589,6 +2669,29 @@ impl Engine {
                     &planar_buf_b
                 };
 
+                if rt_capture.is_active() {
+                    let invalid = rt_global_mute
+                        || rt_test_tone.is_active()
+                        || rt_voice_check.is_playback_active()
+                        || in_max_l >= 0.999
+                        || in_max_r >= 0.999;
+                    for i in 0..frames {
+                        let l = final_buf
+                            .first()
+                            .and_then(|b| b.get(i))
+                            .copied()
+                            .unwrap_or(0.0);
+                        let r = final_buf
+                            .get(1)
+                            .and_then(|b| b.get(i))
+                            .copied()
+                            .unwrap_or(l);
+                        rt_capture.sample(
+                            auto_gain::capture_channels(l, r, rt_input_l == rt_input_r),
+                            invalid,
+                        );
+                    }
+                }
                 if rt_voice_check.is_recording_active() {
                     for i in 0..frames {
                         let proc_l = final_buf
@@ -2610,6 +2713,10 @@ impl Engine {
                 }
 
                 if rt_global_mute {
+                    // ミュート中もゲインの反映を完了させる。出力は無音のまま。
+                    for _ in 0..frames {
+                        rt_output_gain.next();
+                    }
                     data.fill(0.0);
                     // Zero metering too implies output is silence
                     let _ = level_prod.try_push(MeterLevels {
@@ -2758,6 +2865,14 @@ impl Engine {
                         }
                     }
                 }
+                rt_capture
+                    .shared
+                    .confirmed_gain
+                    .store(rt_output_gain.current.to_bits(), Ordering::Release);
+                rt_capture.shared.settled.store(
+                    rt_output_gain.current == rt_output_gain.target,
+                    Ordering::Release,
+                );
                 callback_diagnostics.record(actual_frames, now.elapsed().as_micros() as u64);
             },
             err_fn_ipc,
@@ -2834,6 +2949,7 @@ impl Engine {
             }
         }
 
+        let input_failed = self.stream_failed.clone();
         let input_stream = match in_dev.build_input_stream(
             &in_stream_config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
@@ -2903,6 +3019,7 @@ impl Engine {
                 }
             },
             move |err| {
+                input_failed.store(true, Ordering::Release);
                 let msg = OutputMessage::Event(EngineEvent::Error(format!(
                     "Input Stream Error: {}",
                     err
@@ -2995,6 +3112,7 @@ impl Engine {
     }
 
     fn stop_audio(&mut self) {
+        self.invalidate_auto_gain();
         if let Some(tx) = &mut self.command_tx {
             let _ = tx.try_push(AudioThreadMessage::Stop);
         }

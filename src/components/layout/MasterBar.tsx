@@ -4,6 +4,11 @@ import { MdGraphicEq, MdExtension, MdVolumeUp, MdBolt, MdMic } from 'react-icons
 import { cn } from '@/lib/utils';
 import { audioApi, EngineRuntimeStats } from '../../api/audio';
 import { Slider } from '@/components/ui/slider';
+import {
+    gainCommand,
+    restoreSavedOutputGain,
+    setOutputGain as applyOutputGain,
+} from '@/api/outputGain';
 
 interface MeterLevels {
     input: [number, number];
@@ -35,36 +40,62 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
         return saved ? parseFloat(saved) : 100;
     });
     const outputGainDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [gainError, setGainError] = useState<string | null>(null);
 
     const handleOutputGainChange = useCallback((values: number[]) => {
         const pct = values[0];
         setOutputGain(pct);
-        localStorage.setItem('vst_host_output_gain', String(pct));
         if (outputGainDebounce.current) clearTimeout(outputGainDebounce.current);
         outputGainDebounce.current = setTimeout(() => {
-            audioApi.setOutputGain(pct / 100).catch(() => {});
+            setGainError(null);
+            applyOutputGain(pct / 100).catch((e) => setGainError(String(e)));
         }, 30);
     }, []);
 
     // Apply saved output gain on mount AND when engine starts/restarts
     useEffect(() => {
-        const applyGain = () => {
+        let disposed = false;
+        let refreshing = false;
+        const applyGain = async () => {
             const saved = localStorage.getItem('vst_host_output_gain');
             const pct = saved ? parseFloat(saved) : 100;
-            if (pct !== 100) {
-                audioApi.setOutputGain(pct / 100).catch(() => {});
+            try {
+                await restoreSavedOutputGain(pct / 100);
+            } catch (e) {
+                if (!disposed) setGainError(String(e));
             }
         };
 
         // Try immediately (engine may already be running)
-        applyGain();
+        void applyGain();
+        const sync = (event: Event) => {
+            if (!disposed) setOutputGain((event as CustomEvent<number>).detail);
+        };
+        window.addEventListener('output-gain-sync', sync);
+        const refresh = async () => {
+            if (refreshing) return;
+            refreshing = true;
+            try {
+                await gainCommand({ action: 'status' });
+            } catch {
+                /* エンジン停止中は保存値を維持する。 */
+            } finally {
+                refreshing = false;
+            }
+        };
+        const timer = setInterval(() => void refresh(), 1000);
 
         // Also apply when engine starts (covers cold boot / restart scenarios)
         const unlisten = listen('audio-started', () => {
-            applyGain();
+            void applyGain();
         });
 
-        return () => { unlisten.then(f => f()); };
+        return () => {
+            disposed = true;
+            clearInterval(timer);
+            window.removeEventListener('output-gain-sync', sync);
+            unlisten.then(f => f());
+        };
     }, []);
 
     // Cleanup debounce timer on unmount
@@ -220,6 +251,15 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
 
     return (
         <div className="h-full flex items-center gap-3 px-3 border-l border-border bg-card/30 backdrop-blur-sm transition-colors duration-300 min-w-0 whitespace-nowrap">
+            {gainError && (
+                <span
+                    role="alert"
+                    className="max-w-48 whitespace-normal text-xs text-amber-500"
+                    title={gainError}
+                >
+                    音量を確認できません。再操作してください。
+                </span>
+            )}
             {/* Label */}
             <div className="hidden sm:flex flex-col items-end justify-center min-w-[60px]">
                 <div className="flex items-center gap-2 text-muted-foreground font-bold font-mono tracking-widest text-xs">
@@ -261,7 +301,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                     onDoubleClick={() => handleOutputGainChange([100])}
                 />
                 <span className="hidden md:inline text-[10px] font-mono tabular-nums text-muted-foreground min-w-[32px] text-right">
-                    {outputGain}%
+                    {Math.round(outputGain * 10) / 10}%
                 </span>
             </div>
 

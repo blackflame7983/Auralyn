@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", content = "payload")]
 pub enum Command {
     GetDevices,
+    AutoGain {
+        request: crate::audio_engine::auto_gain::Request,
+    },
     Start {
         host: String,
         input: Option<String>,
@@ -116,6 +119,7 @@ pub enum Command {
 #[serde(tag = "type", content = "payload")]
 pub enum Response {
     Devices(Vec<DeviceInfo>),
+    AutoGain(crate::audio_engine::auto_gain::Snapshot),
     Success,
     Started {
         sample_rate: u32,
