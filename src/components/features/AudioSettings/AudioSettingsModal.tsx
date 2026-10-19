@@ -1,3 +1,4 @@
+import { useObsUsage } from '../../../hooks/useObsUsage';
 import React, { useEffect, useState, useMemo } from 'react';
 import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage } from 'react-icons/md';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
@@ -113,6 +114,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [obsPort, setObsPort] = useState(4455);
   const [obsPassword, setObsPassword] = useState('');
   const [isObsConnected, setIsObsConnected] = useState(false);
+  const obsInUse = useObsUsage(isOpen && activeTab === 'obs');
   const [obsStatusLoading, setObsStatusLoading] = useState(true);
   const [obsConnectionHint, setObsConnectionHint] = useState<string | null>(null);
   const [obsSetupLoading, setObsSetupLoading] = useState(false);
@@ -262,7 +264,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
   // 再表示では接続を作り直さず、バックエンドが保持する接続・履歴へ戻る。
   useEffect(() => {
-    if (!isOpen) return;
+    if (!obsInUse) return;
     let active = true;
     setObsStatusLoading(true);
     obsApi.connectionStatus()
@@ -270,7 +272,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       .catch(() => { if (active) setObsConnectionHint('接続状態を確認できませんでした。接続先を確認してください。'); })
       .finally(() => { if (active) setObsStatusLoading(false); });
     return () => { active = false; };
-  }, [isOpen]);
+  }, [obsInUse]);
 
   const handleConnectObs = async () => {
     setLoading(true);
@@ -1453,11 +1455,18 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <p>OBS WebSocket v5 (OBS 28+) が必要です。<br />OBS側で「ツール」→「WebSocketサーバー設定」を確認してください。</p>
               </div>
 
+              <div className="mt-4">
+                <ObsSafeSetup
+                  connected={isObsConnected}
+                  disabled={!isObsConnected || obsStatusLoading || obsReachLoading}
+                  onBusyChange={setObsSetupLoading}
+                  onOpenGuide={onOpenOBSGuide}
+                />
+              </div>
               {isObsConnected && (
                 <div className="mt-6 pt-6 border-t border-border space-y-4">
                   <h3 className="text-sm font-bold text-foreground">OBS の設定を確認・変更</h3>
                   <div className="space-y-3">
-                    <ObsSafeSetup disabled={obsReachLoading} onBusyChange={setObsSetupLoading} onOpenGuide={onOpenOBSGuide} />
 
                     <button
                       type="button"

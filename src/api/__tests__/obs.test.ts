@@ -40,7 +40,9 @@ describe('obsApi', () => {
 
             await obsApi.previewSetup('Desktop Mic');
 
-            expect(mockedInvoke).toHaveBeenCalledWith('obs_preview_setup', { muteSource: 'Desktop Mic' });
+            expect(mockedInvoke).toHaveBeenCalledWith('obs_preview_setup', {
+                muteSource: 'Desktop Mic',
+            });
         });
         it('適用と復元はサーバー上の予定・履歴のIDだけを渡す', async () => {
             await obsApi.applySetup(3);
@@ -82,4 +84,27 @@ describe('obsApi', () => {
             expect(result.reached).toBe('unsupported');
         });
     });
+});
+
+it('接続中に閉じても遅い接続の後に切断する', async () => {
+    let finish!: () => void;
+    mockedInvoke.mockImplementationOnce(
+        () =>
+            new Promise<void>((resolve) => {
+                finish = resolve;
+            }),
+    );
+    const connecting = obsApi.connect({ host: 'localhost', port: 4455, password: '' });
+    await Promise.resolve();
+    const closing = obsApi.disconnect();
+    const status = obsApi.connectionStatus();
+    expect(mockedInvoke).toHaveBeenLastCalledWith('connect_obs', expect.anything());
+    finish();
+    await connecting;
+    await closing;
+    await status;
+    expect(mockedInvoke.mock.calls.slice(-2).map((call) => call[0])).toEqual([
+        'disconnect_obs',
+        'obs_connection_status',
+    ]);
 });
