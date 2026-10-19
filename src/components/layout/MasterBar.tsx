@@ -56,7 +56,9 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     useEffect(() => {
         let disposed = false;
         let refreshing = false;
+        let timer: ReturnType<typeof setInterval> | undefined;
         const applyGain = async () => {
+            if (disposed) return;
             const saved = localStorage.getItem('vst_host_output_gain');
             const pct = saved ? parseFloat(saved) : 100;
             try {
@@ -66,8 +68,6 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             }
         };
 
-        // Try immediately (engine may already be running)
-        void applyGain();
         const sync = (event: Event) => {
             if (!disposed) setOutputGain((event as CustomEvent<number>).detail);
         };
@@ -83,18 +83,27 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 refreshing = false;
             }
         };
-        const timer = setInterval(() => void refresh(), 1000);
-
-        // Also apply when engine starts (covers cold boot / restart scenarios)
+        // 購読待ち中の開始は完了後の初期化で拾う。先にstatusで100%を保存しない。
         const unlisten = listen('audio-started', () => {
             void applyGain();
         });
+        const initialize = async () => {
+            try {
+                await unlisten;
+                if (disposed) return;
+                await applyGain();
+                if (!disposed) timer = setInterval(() => void refresh(), 1000);
+            } catch (e) {
+                if (!disposed) setGainError(String(e));
+            }
+        };
+        void initialize();
 
         return () => {
             disposed = true;
             clearInterval(timer);
             window.removeEventListener('output-gain-sync', sync);
-            unlisten.then(f => f());
+            void unlisten.then(f => f()).catch(() => {});
         };
     }, []);
 
