@@ -549,9 +549,32 @@ async fn set_loudness_measurement(
 }
 
 #[tauri::command]
-fn set_output_gain(state: State<'_, audio::AudioState>, value: f32) -> Result<(), String> {
-    let mut host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
-    host.set_output_gain(value).map_err(|e| e.to_string())
+async fn set_output_gain(state: State<'_, audio::AudioState>, value: f32) -> Result<(), String> {
+    let host = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        host.lock()
+            .map_err(|_| "音声状態を取得できません")?
+            .set_output_gain(value)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn auto_gain(
+    state: State<'_, audio::AudioState>,
+    request: audio_engine::auto_gain::Request,
+) -> Result<audio_engine::auto_gain::Snapshot, String> {
+    let host = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        host.lock()
+            .map_err(|_| "音声状態を取得できません")?
+            .auto_gain(request)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1037,6 +1060,7 @@ pub fn run() {
             set_noise_control_config,
             set_built_in_effects,
             set_output_gain,
+            auto_gain,
             set_loudness_measurement,
             set_global_bypass,
             open_url,

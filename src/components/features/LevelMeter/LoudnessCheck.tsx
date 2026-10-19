@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '../../../api/audio';
+import { AutoGainDialog } from './AutoGainDialog';
 import {
     classifyLoudness,
     DEFAULT_TARGET,
@@ -27,8 +28,10 @@ export function LoudnessCheck({
     enabled?: boolean;
     onVoiceCheck: () => void;
 }) {
+    const [autoGainOpen, setAutoGainOpen] = useState(false);
     const [visible, setVisible] = useState(() => !document.hidden);
     const available = enabled && visible;
+    useEffect(() => { if (!available || !running) setAutoGainOpen(false); }, [available, running]);
     useEffect(() => {
         const update = () => setVisible(!document.hidden);
         document.addEventListener('visibilitychange', update);
@@ -287,6 +290,9 @@ export function LoudnessCheck({
             <p className="text-xs text-muted-foreground">
                 Auralynの最終出力だけの目安です。ゲーム音を含む配信全体は判定しません。テスト音・試聴音も測定に含みます。
             </p>
+            <button className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
+                disabled={!running || !available || busy} onClick={() => setAutoGainOpen(true)}>音量を合わせる</button>
+            {autoGainOpen && available && running && <AutoGainDialog onClose={() => setAutoGainOpen(false)} />}
             {active && reading && (
                 <p className="text-xs text-muted-foreground font-mono">
                     短時間（3秒） {reading.short_term_lufs?.toFixed(1) ?? '—'} LUFS ／ true peak推定{' '}
@@ -326,7 +332,7 @@ export function LoudnessCheck({
                     </p>
                     <p>
                         44.1〜192
-                        kHz、ステレオ出力のK-weightingと4倍補間による参考値です。認証済みメーターではありません。自動で音量を変えません。
+                        kHz、ステレオ出力のK-weightingと4倍補間による参考値です。認証済みメーターではありません。測定だけでは音量を変えません。「音量を合わせる」では変更予定を確認して適用できます。
                     </p>
                     <button className="underline underline-offset-2" onClick={onVoiceCheck}>
                         ボイスチェックで聴いて確認する

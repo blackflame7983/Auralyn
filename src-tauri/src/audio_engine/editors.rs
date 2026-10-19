@@ -28,6 +28,9 @@ impl Default for EditorManager {
 }
 
 impl EditorManager {
+    pub fn has_open_editors(&self) -> bool {
+        !self.editor_windows.is_empty()
+    }
     pub fn new() -> Self {
         Self {
             editor_windows: HashMap::new(),

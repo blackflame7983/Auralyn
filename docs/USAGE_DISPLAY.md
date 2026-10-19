@@ -28,4 +28,5 @@ VSTのチュートリアルは詳細表示で利用し、かんたん表示の�
 - OBSへの直接導線と通常の設定入口の戻り先を確認する。
 - 900×600で切替・VST詳細の展開・OBS設定・初回選択を操作し、音声と保存設定を試験後に戻す。
 
-未使用時の測定停止とOBS接続・履歴の扱いは [BROADCAST_LIFECYCLE.md](BROADCAST_LIFECYCLE.md) を参照する。自動ゲインと配信用部品の総合的なCPU・メモリ比較は対象外。
+未使用時の測定停止とOBS接続・履歴の扱いは [BROADCAST_LIFECYCLE.md](BROADCAST_LIFECYCLE.md) を参照する。
+固定ゲインの提案と聞き比べは [AUTO_GAIN.md](AUTO_GAIN.md) を参照する。配信用部品の総合的なCPU・メモリ比較は別途検証する。
