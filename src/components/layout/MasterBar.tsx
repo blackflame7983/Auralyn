@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { MdGraphicEq, MdExtension, MdVolumeUp, MdBolt, MdMic } from 'react-icons/md';
+import { MdGraphicEq, MdVolumeUp, MdBolt, MdMic, MdClose } from 'react-icons/md';
+import { Modal } from '../ui/modal';
 import { cn } from '@/lib/utils';
 import { audioApi, EngineRuntimeStats } from '../../api/audio';
 import { Slider } from '@/components/ui/slider';
@@ -16,19 +17,20 @@ interface MeterLevels {
 }
 
 interface MasterBarProps {
+    isRunning?: boolean;
+    processReady?: boolean | null;
     host?: string;
     sampleRate?: number;
     bufferSize?: number;
     onOpenVoiceCheck?: () => void;
 }
 
-export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, onOpenVoiceCheck }) => {
-    const getBeginnerMode = () => localStorage.getItem('vst_host_beginner_mode') !== 'false';
+export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, onOpenVoiceCheck, isRunning = false, processReady }) => {
     const [levels, setLevels] = useState<[number, number]>([0, 0]);
     const [isClipping, setIsClipping] = useState(false);
     const [stats, setStats] = useState<EngineRuntimeStats | null>(null);
     const [hasRecentGlitch, setHasRecentGlitch] = useState(false);
-    const [isBeginnerMode, setIsBeginnerMode] = useState(getBeginnerMode);
+    const [detailsOpen, setDetailsOpen] = useState(false);
     const targetLevels = useRef<[number, number]>([0, 0]);
     const clipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const glitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -135,19 +137,6 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     }, []);
 
     useEffect(() => {
-        const syncBeginnerMode = (event?: Event) => {
-            const next = (event as CustomEvent<boolean> | undefined)?.detail;
-            setIsBeginnerMode(typeof next === 'boolean' ? next : getBeginnerMode());
-        };
-        window.addEventListener('vst_host_beginner_mode_changed', syncBeginnerMode as EventListener);
-        window.addEventListener('storage', syncBeginnerMode);
-        return () => {
-            window.removeEventListener('vst_host_beginner_mode_changed', syncBeginnerMode as EventListener);
-            window.removeEventListener('storage', syncBeginnerMode);
-        };
-    }, []);
-
-    useEffect(() => {
         const unlisten = listen<MeterLevels>('audio-level', (event) => {
             const data = event.payload.output;
             targetLevels.current = data;
@@ -197,7 +186,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     };
 
     const renderMeter = (val: number, label: string) => {
-        const pct = Math.min(100, Math.max(0, val * 100));
+        const pct = isRunning ? Math.min(100, Math.max(0, val * 100)) : 0;
         return (
             <div className="flex flex-col gap-1 w-3 h-full bg-muted rounded-sm overflow-hidden border border-border relative group transition-colors duration-300">
                 {/* Bar */}
@@ -236,7 +225,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
         ? (noiseMode === 'high' ? '強' : noiseMode === 'smart' ? '学習' : noiseMode === 'venue' ? '会場' : '弱')
         : 'OFF';
     const isCleanActive = isNoiseActive && !isFxActive;
-    const signalLabel = isFxActive ? '処理中' : (isCleanActive ? 'ノイズ抑制' : '原音');
+    const signalLabel = processReady === null ? '状態未確認' : !isRunning ? (host ? '音声停止中' : '音声未設定') : isFxActive ? 'VST有効' : (isCleanActive ? 'ノイズ低減有効' : '原音');
 
     const handleNoiseReductionCycle = useCallback(async () => {
         if (!stats) return;
@@ -275,8 +264,8 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                     <MdGraphicEq className={cn("w-3 h-3", isClipping ? 'text-destructive animate-pulse' : 'text-emerald-500')} />
                     マスター
                 </div>
-                <div className="text-[10px] text-muted-foreground font-mono tracking-tight">
-                    {dbValue(Math.max(levels[0], levels[1]))} dB
+                <div className="text-xs text-muted-foreground font-mono tracking-tight">
+                    {isRunning ? `${dbValue(Math.max(levels[0], levels[1]))} dB` : '停止中'}
                 </div>
             </div>
 
@@ -289,7 +278,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             {onOpenVoiceCheck && (
                 <button
                     onClick={onOpenVoiceCheck}
-                    className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    className="inline-flex items-center justify-center w-9 h-9 rounded-md border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                     title="ボイスチェック（加工前後の比較）"
                     aria-label="ボイスチェック"
                 >
@@ -301,6 +290,8 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             <div className="flex items-center gap-2 border-l border-border pl-3 ml-1 min-w-0">
                 <MdVolumeUp className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 <Slider
+                    aria-label="出力ゲイン"
+                    aria-valuetext={`${outputGain}%`}
                     value={[outputGain]}
                     onValueChange={handleOutputGainChange}
                     min={0}
@@ -309,7 +300,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                     className="w-16 md:w-20"
                     onDoubleClick={() => handleOutputGainChange([100])}
                 />
-                <span className="hidden md:inline text-[10px] font-mono tabular-nums text-muted-foreground min-w-[32px] text-right">
+                <span className="hidden md:inline text-xs font-mono tabular-nums text-muted-foreground min-w-[32px] text-right">
                     {Math.round(outputGain * 10) / 10}%
                 </span>
             </div>
@@ -319,12 +310,12 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 <div className="flex items-center gap-1.5 text-muted-foreground border-l border-border pl-3 ml-1 min-w-0">
                     <span
                         className={cn(
-                            "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold font-mono",
-                            isFxActive
-                                ? "text-amber-600 dark:text-amber-400 border-amber-500/40 bg-amber-500/10"
+                            "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold font-mono",
+                            !isRunning ? "text-muted-foreground border-border bg-muted" : isFxActive
+                                ? "text-amber-800 dark:text-amber-300 border-amber-500/40 bg-amber-500/10"
                                 : isCleanActive
-                                    ? "text-sky-600 dark:text-sky-300 border-sky-500/40 bg-sky-500/10"
-                                    : "text-emerald-600 dark:text-emerald-400 border-emerald-500/40 bg-emerald-500/10"
+                                    ? "text-sky-800 dark:text-sky-300 border-sky-500/40 bg-sky-500/10"
+                                    : "text-emerald-800 dark:text-emerald-300 border-emerald-500/40 bg-emerald-500/10"
                         )}
                     >
                         {signalLabel}
@@ -332,46 +323,58 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                     <button
                         onClick={handleNoiseReductionCycle}
                         className={cn(
-                            "inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold font-mono transition-colors",
+                            "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-bold font-mono transition-colors",
                             stats.noiseReductionEnabled
                                 ? noiseMode === "high" || noiseMode === "venue"
-                                    ? "text-amber-600 dark:text-amber-300 border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20"
-                                    : "text-sky-600 dark:text-sky-300 border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20"
+                                    ? "text-amber-800 dark:text-amber-300 border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20"
+                                    : "text-sky-800 dark:text-sky-300 border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20"
                                 : "text-muted-foreground border-border bg-muted/40 hover:bg-muted"
                         )}
                         title={`ノイズ低減: ${noiseModeLabel}（持続ノイズ向け。会話・BGMは完全には消えません / ${effectiveSampleRate}Hz / OFF→弱→学習→会場→強）`}
                     >
                         <span className="hidden md:inline">ノイズ </span>{noiseModeLabel}
                         {stats.speechDetected && stats.noiseReductionEnabled && (
-                            <span className="ml-1 hidden lg:inline text-[9px]">声</span>
+                            <span className="ml-1 hidden lg:inline text-xs">声</span>
                         )}
                     </button>
-                    {!isBeginnerMode && (
-                        <>
-                            <span className="hidden xl:inline text-[10px] font-mono tabular-nums">入出力 {baseLatencyMs.toFixed(1)}ms</span>
-                            <span className="hidden xl:inline text-[10px] font-mono tabular-nums">ノイズ {nrLatencyMs.toFixed(1)}ms</span>
-                            <span className="hidden xl:inline text-[10px] font-mono tabular-nums">VST {fxLatencyMs.toFixed(1)}ms</span>
-                        </>
-                    )}
-                    <span className="text-[10px] font-mono tabular-nums text-foreground">
-                        <span className="hidden lg:inline">合計 </span>{totalLatencyMs.toFixed(1)}ms
-                    </span>
                     {hasRecentGlitch && (
                         <MdBolt className="w-3.5 h-3.5 text-orange-500 animate-pulse" title="直近でグリッチを検出" />
                     )}
                 </div>
             )}
 
-            {/* Engine Stats */}
-            {stats && !isBeginnerMode && (
-                <div className="flex items-center gap-1.5 text-muted-foreground border-l border-border pl-3 ml-1 min-w-0">
-                    <MdExtension className="w-3 h-3" />
-                    <span className="text-[10px] font-mono tabular-nums whitespace-nowrap" title={`${stats.enabledPluginCount} 有効 / ${stats.activePluginCount} 総数`}>
-                        <span className="xl:hidden">有{stats.enabledPluginCount}/総{stats.activePluginCount}</span>
-                        <span className="hidden xl:inline">{stats.enabledPluginCount} 有効 / {stats.activePluginCount} 総数</span>
-                    </span>
+            <button onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-expanded={detailsOpen}
+                className="rounded-md border border-border px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted">
+                音声の詳細
+            </button>
+            {detailsOpen && <Modal title="音声処理の詳細" onClose={() => setDetailsOpen(false)}>
+                <div className="modal-overlay-base">
+                    <div className="modal-surface-base w-full max-w-md max-h-[90vh] flex flex-col whitespace-normal">
+                        <div className="modal-header-base gap-3">
+                            <h2 className="text-lg font-bold">音声処理の詳細</h2>
+                            <button aria-label="閉じる" onClick={() => setDetailsOpen(false)} className="shrink-0 rounded p-2 hover:bg-muted"><MdClose /></button>
+                        </div>
+                        <div className="modal-body-base space-y-4">
+                            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 text-sm">
+                                {[
+                                    ['状態', signalLabel],
+                                    ['ドライバ', host || '未設定'],
+                                    ['サンプルレート', isRunning && sampleRate ? `${sampleRate.toLocaleString()} Hz` : '—'],
+                                    ['バッファ', isRunning && bufferSize ? `${bufferSize} サンプル` : '—'],
+                                    ['入出力の推定遅延', isRunning ? `${baseLatencyMs.toFixed(1)}ms` : '—'],
+                                    ['ノイズ低減の遅延', isRunning && stats ? `${nrLatencyMs.toFixed(1)}ms` : '—'],
+                                    ['VSTの遅延', isRunning && stats ? `${fxLatencyMs.toFixed(1)}ms` : '—'],
+                                    ['合計の推定遅延', isRunning && stats ? `推定 ${totalLatencyMs.toFixed(1)}ms` : '—'],
+                                    ['VST数', isRunning && stats ? `${stats.enabledPluginCount} 有効 / ${stats.activePluginCount} 総数` : '—'],
+                                ].map(([label, value]) => <React.Fragment key={label}>
+                                    <dt className="text-muted-foreground">{label}</dt><dd className="break-all text-right">{value}</dd>
+                                </React.Fragment>)}
+                            </dl>
+                            <p className="text-xs text-muted-foreground">遅延は入出力のバッファと処理から求めた推定です。実測値ではありません。</p>
+                        </div>
+                    </div>
                 </div>
-            )}
+            </Modal>}
         </div>
     );
 };

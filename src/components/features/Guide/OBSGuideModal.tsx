@@ -1,3 +1,5 @@
+import { buttonVariants } from '@/components/ui/button';
+import { Modal } from '../../ui/modal';
 import React, { useState } from 'react';
 import { MdVideocam, MdClose, MdLightbulb, MdSettings, MdCheckCircle, MdArrowForward, MdArrowBack, MdHeadphones, MdMic } from 'react-icons/md';
 
@@ -5,9 +7,11 @@ interface OBSGuideModalProps {
     isOpen: boolean;
     onClose: () => void;
     onOpenAudioSettings: () => void;
+    onOpenTroubleshoot?: () => void;
+    onOpenVoiceCheck?: () => void;
 }
 
-export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, onOpenAudioSettings }) => {
+export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, onOpenAudioSettings, onOpenTroubleshoot, onOpenVoiceCheck }) => {
     // step 0: Device Type Selection (Hardware Mixer vs Software)
     // step 1: Driver/Software Setup
     // step 2: Output & Monitoring
@@ -33,6 +37,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
     };
 
     return (
+        <Modal title="OBS連携ガイド" onClose={onClose}>
         <div className="modal-overlay-base">
             <div className="modal-surface-base w-full max-w-2xl flex flex-col max-h-[90vh]">
 
@@ -263,7 +268,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                 <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 space-y-2">
                                     <p className="text-primary text-sm font-bold flex items-center gap-2">
                                         <MdCheckCircle className="w-5 h-5" />
-                                        セットアップ完了！
+                                        手順の案内はここまでです
                                     </p>
                                     <p className="text-muted-foreground text-xs pl-7">
                                         ・エフェクトは自動保存されます。<br />
@@ -274,6 +279,16 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                         </div>
                     )}
                 </div>
+
+                {step === totalSteps - 1 && (
+                    <div className="px-4 py-3 border-t border-border space-y-2">
+                        <p role="status" className="text-sm text-foreground">手順の案内のみです。受け側への音声到達は未確認です。受け側のメーターや試聴で確認してください。</p>
+                        <div className="flex flex-wrap gap-3">
+                            {onOpenTroubleshoot && <button onClick={onOpenTroubleshoot} className="text-sm underline text-primary">接続診断を開く</button>}
+                            {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="text-sm underline text-primary">ボイスチェックで聴く</button>}
+                        </div>
+                    </div>
+                )}
 
                 {/* Footer / Navigation */}
                 <div className="modal-footer-base flex justify-between items-center shrink-0">
@@ -287,15 +302,16 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
 
                     <button
                         onClick={nextStep}
-                        aria-label={step === (totalSteps - 1) ? 'ガイドを完了する' : '次の手順へ進む'}
-                        className="px-6 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-md shadow-lg transition-all flex items-center gap-2"
+                        aria-label={step === (totalSteps - 1) ? '案内を閉じる' : '次の手順へ進む'}
+                        className={buttonVariants({ className: "gap-2" })}
                     >
-                        {step === (totalSteps - 1) ? '完了' : <>次へ <MdArrowForward className="w-4 h-4" /></>}
+                        {step === (totalSteps - 1) ? '案内を閉じる' : <>次へ <MdArrowForward className="w-4 h-4" /></>}
                     </button>
                 </div>
 
             </div>
         </div>
+        </Modal>
     );
 };
 

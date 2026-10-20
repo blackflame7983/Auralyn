@@ -1,3 +1,4 @@
+import { receiverDeviceHint } from '../../../lib/audioRouting';
 import { useObsUsage } from '../../../hooks/useObsUsage';
 import React, { useEffect, useRef, useState } from 'react';
 import { obsApi, type ObsAudioReachResult } from '../../../api/obs';
@@ -158,7 +159,7 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
             <h3 className="font-bold">接続チェック：受け側アプリへ</h3>
             <p className="text-sm">
                 Auralyn → {outputName} →{' '}
-                {goal === 'discord' ? 'Discord' : goal === 'obs' ? 'OBS' : '受け側アプリ'}{' '}
+                {receiverDeviceHint(outputName)} → {goal === 'discord' ? 'Discord' : goal === 'obs' ? 'OBS' : '受け側アプリ'}{' '}
                 の順につなぎます。仮想ケーブルへの出力だけでは、受け側への到達確認は完了しません。
             </p>
             {goal === 'obs' ? (
@@ -169,8 +170,7 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                             マイク」にします。既存ソースの設定はこの画面では変更しません。
                         </li>
                         <li>
-                            VB-CABLE の場合、OBS のデバイスを「CABLE
-                            Output」にします。別の仮想ケーブルでは、上の出力先と対になる録音デバイスを選びます。
+                            OBS の入力デバイスは「{receiverDeviceHint(outputName)}」を選びます。
                         </li>
                         <li>OBS の該当ソースのミュートを解除し、配信・録画を停止します。</li>
                     </ol>
@@ -261,8 +261,7 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                         {goal === 'discord'
                             ? 'Discord の「設定 → 音声・ビデオ → 入力デバイス」'
                             : '受け側アプリの入力デバイス'}
-                        で、上の出力先と対になる録音デバイスを選んでください。VB-CABLE では「CABLE
-                        Output」です。
+                        で「{receiverDeviceHint(outputName)}」を選んでください。
                     </p>
                     <p className="text-sm">
                         サウンドテストを開始してマイクに話し、受け側アプリのマイクテストや入力メーターで確認してください。この画面から受け側への到達は自動判定しません。

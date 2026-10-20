@@ -1,9 +1,12 @@
+import { buttonVariants } from '@/components/ui/button';
+import { receiverDeviceHint, deviceDisplayName } from '../../../lib/audioRouting';
+import { Modal } from '../../ui/modal';
 import { getBeginnerMode, saveBeginnerMode } from '../../../hooks/useBeginnerMode';
 import React, { useState, useEffect, useRef } from 'react';
 import { audioApi, AudioDevice, AudioStateInfo, type AudioConfig } from '../../../api/audio';
 import { DiscordIcon } from '../../ui/DiscordIcon';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
-import { MdAutoFixHigh, MdCheckCircle, MdWarning, MdMic, MdVolumeUp, MdSettings, MdCast, MdHeadphones, MdMusicNote, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
+import { MdCheckCircle, MdWarning, MdMic, MdVolumeUp, MdSettings, MdCast, MdHeadphones, MdMusicNote, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
 import { toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -11,12 +14,18 @@ import { ConnectionCheck } from './ConnectionCheck';
 
 const isVirtualOutput = (device: AudioDevice) => /cable|voicemeeter/i.test(device.name);
 
+// 「Windows既定」では名前による推測や先頭候補への代替を行わない。
+const verifiedDefaultOutput = (devices: AudioDevice[]): AudioDevice | null => {
+    const defaults = devices.filter(device => device.is_default && !isVirtualOutput(device));
+    return defaults.length === 1 ? defaults[0] : null;
+};
+
 /** 再生音の取り込みを除外し、マイクと分かる入力を優先する。 */
 const recommendMicrophone = (inputs: AudioDevice[]): AudioDevice | null => {
     const candidates = inputs.filter(d => !/cable|voicemeeter|stereo\s*mix|ステレオ\s*ミキサー|再生リダイレクト|loopback|ループバック|what\s*u\s*hear|wave\s*out/i.test(d.name));
     const microphones = candidates.filter(d => /microphone|\bmic\b|マイク|headset|ヘッドセット/i.test(d.name));
-    return microphones.find(d => d.is_default) || microphones[0]
-        || candidates.find(d => d.is_default) || candidates[0] || null;
+    const choices = microphones.length ? microphones : candidates;
+    return choices.length === 1 ? choices[0] : null;
 };
 
 interface SetupWizardModalProps {
@@ -41,6 +50,8 @@ interface WizardConfig {
 
 export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onClose, onSkip, onApplyConfig, onOpenSettings, onOpenTroubleshoot }) => {
 
+    const bodyRef = useRef<HTMLDivElement>(null);
+    const surfaceRef = useRef<HTMLDivElement>(null);
     const [beginnerChoice, setBeginnerChoice] = useState(getBeginnerMode);
 
     // State Preservation Logic
@@ -111,6 +122,15 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
         output: null,
         outputMode: 'default'
     });
+
+    useEffect(() => {
+        if (!isOpen || !bodyRef.current) return;
+        bodyRef.current.scrollTop = 0;
+        // 短い画面では外側がスクロール主体になるため、両方を戻す。
+        if (surfaceRef.current) surfaceRef.current.scrollTop = 0;
+        const heading = bodyRef.current.querySelector('h2');
+        if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+    }, [isOpen, state]);
 
     const [availableInputs, setAvailableInputs] = useState<AudioDevice[]>([]);
     const [availableOutputs, setAvailableOutputs] = useState<AudioDevice[]>([]);
@@ -204,7 +224,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
             setConfig(prev => ({
                 ...prev,
                 input: inputs.find(d => d.name === prev.input?.name) || null,
-                output: outputs.find(d => d.name === prev.output?.name) || null,
+                output: prev.outputMode === 'default' ? verifiedDefaultOutput(outputs)
+                    : outputs.find(d => d.name === prev.output?.name) || null,
             }));
             return { inputs, outputs };
         } catch (e) {
@@ -225,7 +246,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
 
         if (virtualOutputs.length > 0) {
             setConfig(prev => ({ ...prev, output: prev.outputMode === 'broadcast'
-                ? virtualOutputs.find(d => d.name === prev.output?.name) || virtualOutputs[0]
+                ? virtualOutputs.find(d => d.name === prev.output?.name) || (virtualOutputs.length === 1 ? virtualOutputs[0] : null)
                 : prev.output }));
             toast.success("仮想オーディオデバイスを検出しました");
         } else {
@@ -237,25 +258,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
     const autoSelectInput = () => {
         if (availableInputs.length === 0) return;
 
-        // Smart Default for Input based on Goal
-        let bestMic: AudioDevice | undefined;
-
-        if (config.goal === 'listening') {
-            // For listening, we might prioritize Stereo Mix if available, or just default behavior?
-            // Usually listening doesn't strictly need a mic, but engine needs input.
-            // Let's standard logic but arguably less strict about "Cable".
-            bestMic = availableInputs.find(d =>
-                !d.name.toLowerCase().includes("cable") &&
-                !d.name.toLowerCase().includes("voicemeeter")
-            ) || availableInputs[0];
-        } else {
-            // For Chat/Stream, avoid Stereo Mix and Cables if possible
-            bestMic = recommendMicrophone(availableInputs) || undefined;
-        }
-
-        if (bestMic) {
-            setConfig(prev => ({ ...prev, input: bestMic }));
-        }
+        const input = recommendMicrophone(availableInputs);
+        if (input) setConfig(prev => ({ ...prev, input }));
     };
 
     // --- Actions ---
@@ -286,10 +290,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
 
         const recommendedInput = recommendMicrophone(inputs);
 
-        const virtualOutput = outputs.find(d => {
-            const name = d.name.toLowerCase();
-            return name.includes("cable") || name.includes("voicemeeter");
-        }) || null;
+        const virtualOutputs = outputs.filter(isVirtualOutput);
+        const virtualOutput = virtualOutputs.length === 1 ? virtualOutputs[0] : null;
 
         setConfig(prev => ({
             ...prev,
@@ -301,8 +303,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
         }));
         setState(!recommendedInput ? 'input_selection' : virtualOutput ? 'confirmation' : 'output_selection');
         localStorage.setItem('vst_host_setup_goal', 'obs');
-        if (recommendedInput) toast.success("推奨設定を自動選択しました");
-        else toast.info('マイクを自動選択できませんでした。入力デバイスを選んでください。');
+        toast.info("候補が複数ある場合は、使うマイクと仮想ケーブルを選択してください");
     };
 
     const confirmInput = () => {
@@ -329,50 +330,13 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
 
         if (mode === 'broadcast') {
             // Find Virtual Cable
-            targetOutput = availableOutputs.find(isVirtualOutput) || null;
+            const candidates = availableOutputs.filter(isVirtualOutput);
+            targetOutput = candidates.find(d => d.name === config.output?.name) || (candidates.length === 1 ? candidates[0] : null);
+        } else if (mode === 'monitor') {
+            const candidates = availableOutputs.filter(d => !isVirtualOutput(d));
+            targetOutput = candidates.find(d => d.name === config.output?.name) || (candidates.length === 1 ? candidates[0] : null);
         } else {
-            // Monitor or Default
-
-            // 0. Priority: System Default Device (if detection works)
-            // But verify it's not a Virtual Cable unless we are in broadcast mode (which is handled above)
-            const systemDefault = availableOutputs.find(d => d.is_default);
-            if (systemDefault) {
-                const name = systemDefault.name.toLowerCase();
-                const isVirtual = name.includes("cable") || name.includes("voicemeeter");
-                if (!isVirtual) {
-                    targetOutput = systemDefault;
-                }
-            }
-
-            if (!targetOutput) {
-                // Fallback: Heuristic as before
-                const blacklist = ["cable", "voicemeeter", "steam", "nvidia", "spdif", "digital"];
-                const whitelist = ["speaker", "headphone", "スピーカー", "ヘッドホン"];
-
-                // 1. Try to find a device that matches whitelist AND NOT blacklist
-                targetOutput = availableOutputs.find(d => {
-                    const name = d.name.toLowerCase();
-                    const isWhitelisted = whitelist.some(w => name.includes(w));
-                    const isBlacklisted = blacklist.some(b => name.includes(b));
-                    return isWhitelisted && !isBlacklisted;
-                }) || null;
-
-                // 2. If no "perfect" match, try any that is NOT blacklisted (e.g. "Line Out")
-                if (!targetOutput) {
-                    targetOutput = availableOutputs.find(d => {
-                        const name = d.name.toLowerCase();
-                        return !blacklist.some(b => name.includes(b));
-                    }) || null;
-                }
-
-                // 3. Last resort
-                if (!targetOutput) {
-                    targetOutput = availableOutputs.find(d =>
-                        !d.name.toLowerCase().includes("cable") &&
-                        !d.name.toLowerCase().includes("voicemeeter")
-                    ) || availableOutputs[0] || null;
-                }
-            }
+            targetOutput = verifiedDefaultOutput(availableOutputs);
         }
 
         setConfig(prev => ({ ...prev, outputMode: mode, output: targetOutput }));
@@ -462,9 +426,11 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
     if (!isOpen) return null;
 
     return (
+        <Modal title="セットアップウィザード" onClose={handleCloseRequest} dismissible={!isBusy && !isCheckingConnection}>
         <div className="modal-overlay-base">
-            <div className="modal-surface-base w-full max-w-3xl flex flex-col max-h-[90vh]">
+            <div ref={surfaceRef} className="modal-surface-base w-full max-w-3xl flex flex-col max-h-[90vh]">
 
+                <div className="modal-header-base shrink-0 pr-16 py-3"><p className="font-bold">セットアップウィザード</p></div>
                 {/* Close Button */}
                 <button
                     onClick={handleCloseRequest}
@@ -491,9 +457,9 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
 
                 {/* Header Steps */}
                 {state !== 'welcome' && state !== 'complete' && state !== 'configuring' && (
-                    <div aria-label="セットアップの進捗" className="modal-header-base modal-header-muted pl-4 pr-16 relative">
+                    <div aria-label="セットアップの進捗" className="flex items-center justify-between gap-2 px-4 py-2 border-b border-border relative">
                         {/* Progress Bar Background */}
-                        <div className="absolute top-1/2 left-4 right-16 h-0.5 bg-muted -z-10" />
+                        <div className="hidden" />
 
                         {[
                             { id: 'usage_selection', label: '目的' },
@@ -505,8 +471,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                             const isPast = ['usage_selection', 'input_selection', 'output_selection', 'confirmation'].indexOf(state) > idx;
 
                             return (
-                                <div key={step.id} className="flex flex-col items-center gap-2 bg-card px-2">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors
+                                <div key={step.id} className="flex items-center gap-2">
+                                    <div aria-current={isCurrent ? 'step' : undefined} className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors
                                         ${isCurrent ? 'border-primary bg-primary text-primary-foreground' :
                                             isPast ? 'border-primary bg-primary/20 text-primary' :
                                                 'border-muted text-muted-foreground bg-card'}`}>
@@ -519,17 +485,13 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                     </div>
                 )}
 
-                <div className="modal-body-base min-h-[400px] flex flex-col">
+                <div ref={bodyRef} className="modal-body-base min-h-0 flex flex-col">
                     {initialStateError && <p role="alert" className="text-sm text-amber-500 mb-4">現在の音声設定を取得できませんでした。テストと保存は実行できません。ウィザードを開き直してください。</p>}
 
                     {/* --- STEP 1: WELCOME --- */}
                     {state === 'welcome' && (
-                        <div className="text-center space-y-8 animate-in zoom-in-95 duration-300 my-auto">
-                            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto ring-1 ring-primary/50 shadow-[0_0_30px_rgba(var(--primary),0.2)]">
-                                <MdAutoFixHigh className="w-10 h-10 text-primary" />
-                            </div>
+                        <div className="text-center space-y-4 animate-in zoom-in-95 duration-300 my-auto">
                             <div className="space-y-2">
-                                <h2 className="text-2xl font-bold text-foreground">セットアップウィザード</h2>
                                 <p className="text-muted-foreground text-sm leading-relaxed">
                                     用途に合わせてマイクと出力先を選びます。<br />
                                     OBS・Discord へ送る場合は <strong className="text-foreground">VB-CABLE 等の仮想ケーブル</strong> が必要です。
@@ -556,7 +518,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
 
                             <fieldset className="space-y-2 text-sm">
                                 <legend className="mb-2 font-semibold">
-                                    どの画面からはじめますか？
+                                    設定後の表示（あとから変更できます）
                                 </legend>
                                 <label className="flex items-center justify-center gap-2">
                                     <input
@@ -581,47 +543,13 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                 </p>
                             </fieldset>
 
-                            {isLoadingDevices ? (
-                                <div className="flex flex-col items-center gap-2 opacity-70">
-                                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                                    <span className="text-sm text-muted-foreground">デバイス情報を取得中...</span>
-                                </div>
-                            ) : (
-                                <div className="flex flex-col gap-3 items-center">
-                                    <button
-                                        onClick={() => void runQuickStart()}
-                                        className="px-8 py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-full shadow-lg transition-all text-lg flex items-center gap-2"
-                                    >
-                                        <MdCheckCircle className="w-5 h-5" />
-                                        OBS 向けの接続を確認する
-                                    </button>
-                                    <button
-                                        onClick={() => setState('usage_selection')}
-                                        className="px-8 py-3 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-full shadow-lg transition-all text-lg flex items-center gap-2"
-                                    >
-                                        <MdArrowForward className="w-5 h-5" />
-                                        はじめる
-                                    </button>
-                                    <button
-                                        onClick={() =>
-                                            void performClose(() => {
-                                                saveBeginnerMode(beginnerChoice);
-                                                (onSkip || onClose)();
-                                            })
-                                        }
-                                        disabled={isBusy}
-                                        className="text-muted-foreground hover:text-foreground transition-colors text-sm underline decoration-muted hover:decoration-muted-foreground underline-offset-4"
-                                    >
-                                        スキップ（手動設定）
-                                    </button>
-                                </div>
-                            )}
+
                         </div>
                     )}
 
                     {/* --- STEP 2: USAGE SELECTION --- */}
                     {state === 'usage_selection' && (
-                        <div className="space-y-6 animate-in slide-in-from-right-10 duration-300 my-auto">
+                        <div className="space-y-3 animate-in slide-in-from-right-10 duration-300">
                             <h2 className="text-xl font-bold text-foreground text-center">どのような用途で使用しますか？</h2>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
                                 <SelectionCard
@@ -662,7 +590,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
 
                     {/* --- STEP 3: INPUT SELECTION --- */}
                     {state === 'input_selection' && (
-                        <div className="space-y-6 animate-in slide-in-from-right-10 duration-300 my-auto">
+                        <div className="space-y-3 animate-in slide-in-from-right-10 duration-300">
                             <div className="text-center space-y-2">
                                 <h2 className="text-xl font-bold text-foreground">
                                     {config.goal === 'listening' ? '入力デバイス (ソース) を選択' : 'マイクを選んでください'}
@@ -695,7 +623,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                             >
                                                 <option value="">入力デバイスを選択してください</option>
                                                 {availableInputs.map((d, i) => (
-                                                    <option key={`${d.name}-${i}`} value={d.name}>{d.name}</option>
+                                                    <option key={`${d.name}-${i}`} value={d.name} title={d.name}>{deviceDisplayName(d.name)}</option>
                                                 ))}
                                             </select>
                                         </div>
@@ -718,22 +646,13 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                 <button disabled={isLoadingDevices} onClick={() => void loadDevices(true)} className="px-4 py-2 rounded border border-border disabled:opacity-50">入力デバイスを再検出</button>
                             </div>
 
-                            <div className="flex justify-center gap-4 mt-8">
-                                <button onClick={() => setState('usage_selection')} className="px-6 py-2 text-muted-foreground hover:text-foreground">戻る</button>
-                                <button
-                                    onClick={confirmInput}
-                                    disabled={!config.input || isLoadingDevices}
-                                    className="px-8 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                                >
-                                    次へ <MdArrowForward />
-                                </button>
-                            </div>
+
                         </div>
                     )}
 
                     {/* --- STEP 4: OUTPUT SELECTION --- */}
                     {state === 'output_selection' && (
-                        <div className="space-y-6 animate-in slide-in-from-right-10 duration-300 my-auto">
+                        <div className="space-y-3 animate-in slide-in-from-right-10 duration-300">
                             <div className="text-center space-y-2">
                                 <h2 className="text-xl font-bold text-foreground">音の出力先を選んでください</h2>
                                 <p className="text-sm text-muted-foreground">
@@ -752,13 +671,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                     description="普段PCから音が出ている場所から鳴らします。"
                                     active={config.outputMode === 'default'}
                                     color="sky"
-                                >
-                                    {config.outputMode === 'default' && config.output && (
-                                        <div className="mt-2 p-2 bg-background/50 rounded text-xs text-sky-300">
-                                            {config.output.name}
-                                        </div>
-                                    )}
-                                </SelectionCard>
+                                />
 
                                 {/* Option 2: Headphones */}
                                 <SelectionCard
@@ -768,7 +681,29 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                     description="特定のヘッドホン等を直接指定します。"
                                     active={config.outputMode === 'monitor'}
                                     color="orange"
-                                >
+                                />
+
+                                {/* Option 3: Broadcast */}
+                                <SelectionCard
+                                    onClick={() => selectOutputMode('broadcast')}
+                                    icon={<MdCast className="w-8 h-8 text-purple-500" />}
+                                    title="仮想デバイスへ"
+                                    description="VB-CABLE等へ出力し、OBS等で拾います。"
+                                    active={config.outputMode === 'broadcast'}
+                                    color="purple"
+                                />
+                            </div>
+                            <div className="max-w-xl mx-auto space-y-2" aria-label="選択した方式の出力デバイス">
+                                    {config.outputMode === 'default' && config.output && (
+                                        <div className="mt-2 p-2 bg-background/50 rounded text-xs text-foreground">
+                                            {config.output.name}
+                                        </div>
+                                    )}
+                                    {config.outputMode === 'default' && !config.output && (
+                                        <p role="status" className="mt-2 text-sm text-muted-foreground">
+                                            Windows の既定の物理出力を確認できませんでした。「ヘッドホン/スピーカー」で出力先を選ぶか、再検出してください。
+                                        </p>
+                                    )}
                                     {config.outputMode === 'monitor' && (
                                         <select
                                             aria-label="ヘッドホン・スピーカー"
@@ -782,21 +717,10 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                         >
                                             <option value="">出力先を選択してください</option>
                                             {availableOutputs.filter(d => !isVirtualOutput(d)).map((d, i) => (
-                                                <option key={i} value={d.name}>{d.name}</option>
+                                                <option key={i} value={d.name} title={d.name}>{deviceDisplayName(d.name)}</option>
                                             ))}
                                         </select>
                                     )}
-                                </SelectionCard>
-
-                                {/* Option 3: Broadcast */}
-                                <SelectionCard
-                                    onClick={() => selectOutputMode('broadcast')}
-                                    icon={<MdCast className="w-8 h-8 text-purple-500" />}
-                                    title="仮想デバイスへ"
-                                    description="VB-CABLE等へ出力し、OBS等で拾います。"
-                                    active={config.outputMode === 'broadcast'}
-                                    color="purple"
-                                >
                                     {config.outputMode === 'broadcast' && (
                                         <>
                                             <select
@@ -811,22 +735,24 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                             >
                                                 <option value="">仮想ケーブルを選択してください</option>
                                                 {availableOutputs.filter(isVirtualOutput).map((d, i) => (
-                                                    <option key={i} value={d.name}>{d.name}</option>
+                                                    <option key={i} value={d.name} title={d.name}>{deviceDisplayName(d.name)}</option>
                                                 ))}
                                                 {/* Fallback if no cable */}
                                                 {!availableOutputs.some(isVirtualOutput) && (
                                                     <option value="">仮想デバイス未検出</option>
                                                 )}
                                             </select>
-                                            {!config.output && (
+                                            <p className="mt-2 text-xs text-muted-foreground">Auralyn の出力先です。受け側では {config.output ? receiverDeviceHint(config.output.name) : "選択したケーブルと対になる録音デバイス"} を選びます。</p>
+                                            {availableOutputs.filter(isVirtualOutput).length > 1 && !config.output && <p role="status" className="text-sm text-amber-500">複数の仮想ケーブルから、使う出力先を選択してください。</p>}
+                                            {!availableOutputs.some(isVirtualOutput) && (
                                                 <div className="mt-2 flex flex-col items-center gap-1.5">
-                                                    <p className="text-xs text-center text-amber-500">仮想ケーブルが見つかりません。公式サイトから導入し、必要に応じて Windows を再起動してから再検出してください。ドライバーの自動インストールは行いません。</p>
+                                                    <p className="text-xs text-center text-amber-500">仮想ケーブルが見つかりません。公式サイトから導入し、必要に応じて Windows を再起動してから再検出してください。</p>
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             invoke('open_url', { url: 'https://vb-audio.com/Cable/' }).catch(() => window.open('https://vb-audio.com/Cable/', '_blank'));
                                                         }}
-                                                        className="text-[10px] underline text-purple-300 hover:text-purple-100"
+                                                        className="text-[10px] underline text-primary hover:text-primary/80"
                                                     >
                                                         VB-CABLEをダウンロード
                                                     </button>
@@ -836,7 +762,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                                             void handleRescanVirtualDevices();
                                                         }}
                                                         disabled={isLoadingDevices}
-                                                        className="text-[11px] px-3 py-1 rounded-full border border-purple-400/40 bg-purple-500/10 text-purple-200 hover:bg-purple-500/20 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                                                        className="text-[11px] px-3 py-1 rounded-full border border-purple-400/40 bg-purple-500/10 text-foreground hover:bg-purple-500/20 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                                                     >
                                                         {isLoadingDevices ? '再確認中...' : 'インストールしました → 再スキャン'}
                                                     </button>
@@ -844,28 +770,19 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                             )}
                                         </>
                                     )}
-                                </SelectionCard>
                             </div>
+
 
                             <div className="text-center">
                                 <button disabled={isLoadingDevices} onClick={() => void (config.outputMode === 'broadcast' ? handleRescanVirtualDevices() : loadDevices(true))} className="px-4 py-2 rounded border border-border disabled:opacity-50">{isLoadingDevices ? '再検出中…' : '出力デバイスを再検出'}</button>
                             </div>
-                            <div className="flex justify-center gap-4 mt-8">
-                                <button onClick={() => setState('input_selection')} className="px-6 py-2 text-muted-foreground hover:text-foreground">戻る</button>
-                                <button
-                                    onClick={() => setState('confirmation')}
-                                    disabled={!config.input || !config.output || isLoadingDevices}
-                                    className="px-8 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                                >
-                                    次へ <MdArrowForward />
-                                </button>
-                            </div>
+
                         </div>
                     )}
 
                     {/* --- STEP 5: CONFIRMATION & TEST --- */}
                     {state === 'confirmation' && (
-                        <div className="space-y-6 animate-in slide-in-from-right-10 duration-300 my-auto">
+                        <div className="space-y-3 animate-in slide-in-from-right-10 duration-300">
                             <div className="text-center mb-6">
                                 <h2 className="text-xl font-bold text-foreground">設定と接続の確認</h2>
                                 <p className="text-sm text-muted-foreground">入力・出力と受け側アプリを順に確認します。確認できない項目は手動で確認できます。</p>
@@ -876,7 +793,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                     <MdMic className="w-5 h-5 text-muted-foreground" />
                                     <div>
                                         <div className="text-xs text-muted-foreground">入力 ({config.goal === 'listening' ? 'ソース' : 'マイク'})</div>
-                                        <div className="font-medium text-foreground truncate w-full">{config.input?.name}</div>
+                                        <div className="font-medium text-foreground truncate w-full">{config.input && deviceDisplayName(config.input.name)}</div>
                                     </div>
 
                                     <div className="col-span-2 flex justify-center py-2">
@@ -890,7 +807,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
 
                                     <div>
                                         <div className="text-xs text-muted-foreground">出力 ({config.outputMode === 'broadcast' ? '配信へ' : config.outputMode === 'monitor' ? 'モニター' : 'Windows既定'})</div>
-                                        <div className="font-medium text-foreground truncate w-full">{config.output?.name}</div>
+                                        <div className="font-medium text-foreground truncate w-full">{config.output && deviceDisplayName(config.output.name)}</div>
                                     </div>
                                 </div>
                             </div>
@@ -947,17 +864,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                             />
                             <p className="text-center text-xs text-muted-foreground">「設定を保存して開始」は音声設定の保存です。受け側への接続確認を完了したことにはなりません。</p>
                             {onOpenTroubleshoot && <button disabled={isBusy || isCheckingConnection} onClick={() => void performClose(onOpenTroubleshoot)} className="underline text-primary">接続診断を開く</button>}
-                            <div className="flex justify-center gap-4 mt-8 pt-4 border-t border-border/50">
-                                <button disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('input_selection')} className="px-3 py-2 text-muted-foreground hover:text-foreground">入力を選び直す</button>
-                                <button disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('output_selection')} className="px-3 py-2 text-muted-foreground hover:text-foreground">出力先を選び直す</button>
-                                <button
-                                    onClick={finalApply}
-                                    disabled={isBusy || isCheckingConnection || !initialStateReady}
-                                    className="px-8 py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg shadow-lg hover:shadow-green-500/20 transition-all flex items-center gap-2"
-                                >
-                                    <MdCheckCircle /> 設定を保存して開始
-                                </button>
-                            </div>
+
                         </div>
                     )}
 
@@ -984,7 +891,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                     </div>
                                     <button
                                         onClick={onClose}
-                                        className="px-8 py-3 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-full shadow-lg transition-all text-lg flex items-center gap-2 mx-auto"
+                                        className={buttonVariants({ className: "gap-2" })}
                                     >
                                         閉じる
                                     </button>
@@ -994,8 +901,85 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                     )}
 
                 </div>
+                {state !== 'usage_selection' && <div data-testid="setup-actions" className="modal-footer-base shrink-0 px-4 py-3">
+                    {state === 'welcome' && (<>
+                            {isLoadingDevices ? (
+                                <div className="flex flex-col items-center gap-2 opacity-70">
+                                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                                    <span className="text-sm text-muted-foreground">デバイス情報を取得中...</span>
+                                </div>
+                            ) : (
+                                <div className="flex flex-wrap gap-2 items-center justify-center">
+                                    <button
+                                        onClick={() => setState('usage_selection')}
+                                        className={buttonVariants({ className: "gap-2" })}
+                                    >
+                                        <MdArrowForward className="w-5 h-5" />
+                                        用途を選んで設定する
+                                    </button>
+                                    <button
+                                        onClick={() => void runQuickStart()}
+                                        className={buttonVariants({ variant: "outline", className: "gap-2" })}
+                                    >
+                                        <MdCheckCircle className="w-5 h-5" />
+                                        OBS向けに設定する
+                                    </button>
+                                    <button
+                                        onClick={() =>
+                                            void performClose(() => {
+                                                saveBeginnerMode(beginnerChoice);
+                                                (onSkip || onClose)();
+                                            })
+                                        }
+                                        disabled={isBusy}
+                                        className="text-muted-foreground hover:text-foreground transition-colors text-sm underline decoration-muted hover:decoration-muted-foreground underline-offset-4"
+                                    >
+                                        スキップ（手動設定）
+                                    </button>
+                                </div>
+                            )}
+                    </>)}
+                    {state === 'input_selection' && (<>
+                            <div className="flex justify-center gap-4">
+                                <button onClick={() => setState('usage_selection')} className="px-6 py-2 text-muted-foreground hover:text-foreground">戻る</button>
+                                <button
+                                    onClick={confirmInput}
+                                    disabled={!config.input || isLoadingDevices}
+                                    className={buttonVariants({ className: "gap-2" })}
+                                >
+                                    次へ <MdArrowForward />
+                                </button>
+                            </div>
+                    </>)}
+                    {state === 'output_selection' && (<>
+                            <div className="flex justify-center gap-4">
+                                <button onClick={() => setState('input_selection')} className="px-6 py-2 text-muted-foreground hover:text-foreground">戻る</button>
+                                <button
+                                    onClick={() => setState('confirmation')}
+                                    disabled={!config.input || !config.output || isLoadingDevices}
+                                    className={buttonVariants({ className: "gap-2" })}
+                                >
+                                    次へ <MdArrowForward />
+                                </button>
+                            </div>
+                    </>)}
+                    {state === 'confirmation' && (<>
+                            <div className="flex flex-wrap justify-center gap-3">
+                                <button disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('input_selection')} className="px-3 py-2 text-muted-foreground hover:text-foreground">入力を選び直す</button>
+                                <button disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('output_selection')} className="px-3 py-2 text-muted-foreground hover:text-foreground">出力先を選び直す</button>
+                                <button
+                                    onClick={finalApply}
+                                    disabled={isBusy || isCheckingConnection || !initialStateReady}
+                                    className={buttonVariants({ className: "gap-2" })}
+                                >
+                                    <MdCheckCircle /> 設定を保存して開始
+                                </button>
+                            </div>
+                    </>)}
+                </div>}
             </div>
         </div>
+        </Modal>
     );
 };
 
@@ -1010,23 +994,10 @@ interface SelectionCardProps {
     children?: React.ReactNode;
 }
 
-const SelectionCard: React.FC<SelectionCardProps> = ({ onClick, icon, title, description, active, color, children }) => {
-    // Map color name to template literal classes (Tailwind needs full class names for tree shaking usually, but we use dynamic style or specific map)
-    // Simplified for this specific set: blue, indigo, pink, emerald, sky, orange, purple
-
-    let activeClass = "";
-    let activeBg = "";
-    let activeRing = "";
-
-    switch (color) {
-        case 'blue': activeClass = "border-blue-500 text-blue-500"; activeBg = "bg-blue-500/5"; activeRing = "ring-1 ring-blue-500/50"; break;
-        case 'indigo': activeClass = "border-indigo-500 text-indigo-500"; activeBg = "bg-indigo-500/5"; activeRing = "ring-1 ring-indigo-500/50"; break;
-        case 'pink': activeClass = "border-pink-500 text-pink-500"; activeBg = "bg-pink-500/5"; activeRing = "ring-1 ring-pink-500/50"; break;
-        case 'emerald': activeClass = "border-emerald-500 text-emerald-500"; activeBg = "bg-emerald-500/5"; activeRing = "ring-1 ring-emerald-500/50"; break;
-        case 'sky': activeClass = "border-sky-500 text-sky-500"; activeBg = "bg-sky-500/5"; activeRing = "ring-1 ring-sky-500/50"; break;
-        case 'orange': activeClass = "border-orange-500 text-orange-500"; activeBg = "bg-orange-500/5"; activeRing = "ring-1 ring-orange-500/50"; break;
-        case 'purple': activeClass = "border-purple-500 text-purple-500"; activeBg = "bg-purple-500/5"; activeRing = "ring-1 ring-purple-500/50"; break;
-    }
+const SelectionCard: React.FC<SelectionCardProps> = ({ onClick, icon, title, description, active, children }) => {
+    const activeClass = 'border-primary text-foreground';
+    const activeBg = 'bg-primary/5';
+    const activeRing = 'ring-1 ring-primary/50';
 
     return (
         <div
@@ -1042,10 +1013,10 @@ const SelectionCard: React.FC<SelectionCardProps> = ({ onClick, icon, title, des
                     onClick();
                 }
             }}
-            className={`cursor-pointer flex flex-col items-center p-6 border rounded-xl transition-all group relative overflow-hidden
+            className={`cursor-pointer flex flex-col items-center p-3 border rounded-md transition-colors group relative overflow-hidden
                 ${active ? `${activeClass} ${activeBg} ${activeRing}` : 'border-border hover:border-primary/50 hover:bg-primary/5'}`}
         >
-            <div className={`mb-3 transition-transform group-hover:scale-110 duration-300`}>
+            <div className="mb-2">
                 {icon}
             </div>
             <h3 className={`font-bold mb-1 ${active ? '' : 'text-foreground'}`}>{title}</h3>
@@ -1053,7 +1024,7 @@ const SelectionCard: React.FC<SelectionCardProps> = ({ onClick, icon, title, des
                 {description}
             </p>
             {children && (
-                <div className="mt-4 w-full animate-in fade-in slide-in-from-bottom-2">
+                <div className="mt-2 w-full">
                     {children}
                 </div>
             )}

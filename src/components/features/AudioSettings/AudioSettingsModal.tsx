@@ -1,3 +1,4 @@
+import { Modal } from '../../ui/modal';
 import { useObsUsage } from '../../../hooks/useObsUsage';
 import React, { useEffect, useState, useMemo } from 'react';
 import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage } from 'react-icons/md';
@@ -17,7 +18,7 @@ import { ObsSafeSetup } from './ObsSafeSetup';
 import { APP_INFO } from '../../../constants/appInfo';
 
 interface AudioSettingsModalProps {
-  initialTab?: 'audio' | 'obs';
+  initialTab?: 'audio' | 'obs' | 'sound';
   isOpen: boolean;
   onClose: () => void;
   onConfigChange: (config: Partial<import('../../../contexts/AudioConfigContext').AudioConfig> & { host: string }) => void;
@@ -69,7 +70,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   });
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'audio' | 'obs' | 'appearance' | 'system'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'audio' | 'sound' | 'obs' | 'appearance' | 'system'>(initialTab);
   const [isBeginnerMode, setIsBeginnerMode] = useState(getBeginnerMode);
   const [isSystemTabEnabled, setIsSystemTabEnabled] = useState(() => {
     if (!getBeginnerMode()) return true;
@@ -246,6 +247,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       const hasChannelsField = devices.inputs.length > 0 && devices.inputs[0]?.channels !== undefined;
       if ((devices.inputs.length === 0 && devices.outputs.length === 0) || !hasChannelsField) {
         fetchDevices();
+      } else {
+        // 一覧取得を省略する再表示でも、ホストと入出力を同じ一覧から復元する。
+        restoreDeviceSelection(devices);
       }
 
       autostartApi.getStatus().then(s => setAutostartEnabled(s.enabled));
@@ -469,18 +473,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     });
   };
 
-  const fetchDevices = async (force: boolean = false) => {
-    // Show loading if we don't have devices (and no cache) OR if forced (manual refresh)
-    if (force || (devices.inputs.length === 0 && devices.outputs.length === 0)) {
-      setLoading(true);
-    }
-
-    setError(null);
-    try {
-      const result = await audioApi.getDevices(force);
-      setDevices(result);
-      localStorage.setItem('vst_host_cached_devices', JSON.stringify(result));
-
+  const restoreDeviceSelection = (result: AudioDeviceList) => {
       // Extract available hosts
       const hosts = Array.from(new Set([...result.inputs, ...result.outputs].map(d => d.host)));
 
@@ -521,8 +514,23 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             if (isValidOutput) setSelectedOutput(currentOutput);
           }
         }
+      } else {
+        setSelectedHost('');
+        setSelectedInput('');
+        setSelectedOutput('');
       }
+  };
 
+  const fetchDevices = async (force: boolean = false) => {
+    if (force || (devices.inputs.length === 0 && devices.outputs.length === 0)) {
+      setLoading(true);
+    }
+    setError(null);
+    try {
+      const result = await audioApi.getDevices(force);
+      setDevices(result);
+      localStorage.setItem('vst_host_cached_devices', JSON.stringify(result));
+      restoreDeviceSelection(result);
     } catch (err) {
       console.error('Failed to get devices:', err);
       setError('デバイスの取得に失敗しました');
@@ -809,7 +817,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay-base">
+    <Modal title="設定" onClose={onClose}>
+        <div className="modal-overlay-base">
       <div className="modal-surface-base w-full max-w-2xl max-h-[85vh] flex flex-col">
         <div className="modal-header-base modal-header-muted shrink-0">
           <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
@@ -827,14 +836,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
         <div className="modal-body-base scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-600 scrollbar-track-transparent">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
-          <TabsList className={`grid w-full ${isBeginnerMode && !isSystemTabEnabled ? 'grid-cols-3' : 'grid-cols-4'} mb-4`}>
+          <TabsList className={`grid h-auto w-full grid-cols-2 ${isBeginnerMode && !isSystemTabEnabled ? 'sm:grid-cols-4' : 'sm:grid-cols-5'} mb-4`}>
             <TabsTrigger value="audio">オーディオ</TabsTrigger>
+            <TabsTrigger value="sound">音づくり</TabsTrigger>
             <TabsTrigger value="obs">OBS連携</TabsTrigger>
             <TabsTrigger value="appearance">外観</TabsTrigger>
             {(!isBeginnerMode || isSystemTabEnabled) && <TabsTrigger value="system">システム</TabsTrigger>}
           </TabsList>
 
-          {isBeginnerMode && !isSystemTabEnabled && (
+          {isBeginnerMode && !isSystemTabEnabled && activeTab === 'appearance' && (
             <div className="mb-4 p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 flex items-center justify-between gap-3">
               <p className="text-xs text-amber-600 dark:text-amber-300">
                 かんたん表示では、危険なシステム設定を非表示にしています。
@@ -863,12 +873,276 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <div className="space-y-6">
 
 
+                {/* Host Selection */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-medium text-muted-foreground">オーディオドライバ</label>
+                    <button
+                      onClick={() => fetchDevices(true)}
+                      className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
+                      title="デバイス一覧を再スキャン"
+                    >
+                      <MdRefresh className="w-3 h-3" />
+                      更新
+                    </button>
+                  </div>
+                  <select
+                    aria-label="オーディオドライバ"
+                    value={selectedHost}
+                    onChange={(e) => setSelectedHost(e.target.value)}
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select"
+                  >
+                    {!selectedHost && <option value="">ドライバを選択してください</option>}
+                    {availableHosts.map((host) => (
+                      <option key={host} value={host}>{host}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Input Device */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-muted-foreground">
+                    {isAsio ? "デバイス" : "マイク入力"}
+                  </label>
+                  <select
+                    aria-label="マイク入力・ASIOデバイス"
+                    value={selectedInput}
+                    onChange={(e) => {
+                      setSelectedInput(e.target.value);
+                      if (isAsio) setSelectedOutput(e.target.value);
+                    }}
+                    disabled={filteredInputs.length === 0}
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select disabled:opacity-50"
+                  >
+                    {filteredInputs.length === 0 && <option value="">対応デバイスなし</option>}
+                    {filteredInputs.map((device, i) => (
+                      <option key={`${device.name}-${i}`} value={device.name}>{device.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Smart Input Channel Selector (ASIO Only) */}
+                {isAsio && (
+                  <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                    <InputChannelSelector
+                      initialChannels={currentInputChannels}
+                      maxChannels={activeDevice?.channels}
+                      onChannelMapped={(channels) => {
+                        onConfigChange({ host: selectedHost, input: selectedInput, output: selectedOutput, sampleRate: selectedSampleRate, bufferSize: selectedBufferSize, inputChannels: channels });
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* Output Device - Hide for ASIO */}
+                {!isAsio && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">出力先</label>
+                    <select
+                    aria-label="出力先"
+                      value={selectedOutput}
+                      onChange={(e) => setSelectedOutput(e.target.value)}
+                      disabled={filteredOutputs.length === 0}
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select disabled:opacity-50"
+                    >
+                      {filteredOutputs.length === 0 && <option value="">対応デバイスなし</option>}
+                      {filteredOutputs.map((device, i) => (
+                        <option key={`${device.name}-${i}`} value={device.name}>{device.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {isAsio && (
+                  <div className="text-xs text-muted-foreground mt-2 p-2 bg-muted rounded border border-border">
+                    <p>ASIOモードでは、選択したデバイスが入出力の両方を担当します。</p>
+                  </div>
+                )}
+
+                {/* Simple / Advanced Mode Toggle */}
+                <div className="flex justify-end items-center mb-2">
+                  <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-lg">
+                    <button
+                      onClick={() => setIsAdvancedMode(false)}
+                      className={`text-xs px-3 py-1 rounded transition-all ${!isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
+                    >
+                      かんたん
+                    </button>
+                    <button
+                      onClick={() => setIsAdvancedMode(true)}
+                      className={`text-xs px-3 py-1 rounded transition-all ${isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
+                    >
+                      詳細設定
+                    </button>
+                  </div>
+                </div>
+
+                {/* Simple Mode UI */}
+                {!isAdvancedMode ? (
+                  <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                    {/* Latency Profile */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-muted-foreground">パフォーマンス設定 (遅延)</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { label: '高速', sub: '低遅延', value: 128, desc: '楽器演奏向け' },
+                          { label: '標準', sub: 'バランス', value: 512, desc: '配信・会話向け' },
+                          { label: '安定', sub: '高遅延', value: 1024, desc: 'ノイズ対策' },
+                        ].map((profile) => {
+                          const disabled = canChangeBufferSize && !supportedBufferSizes.includes(profile.value);
+                          return (
+                            <button
+                              key={profile.value}
+                              onClick={() => setSelectedBufferSize(profile.value)}
+                              disabled={disabled}
+                              className={`
+                                        flex flex-col items-center justify-center p-2 rounded-lg border transition-all
+                                        ${selectedBufferSize === profile.value
+                                  ? 'bg-primary/10 border-primary text-primary'
+                                  : 'bg-background border-input text-muted-foreground hover:border-primary/50'
+                                }
+                                        ${disabled ? 'opacity-30 cursor-not-allowed bg-muted' : ''}
+                                    `}
+                            >
+                              <span className="text-sm font-bold">{profile.label}</span>
+                              <span className="text-[10px] opacity-80">{profile.sub}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground text-center">
+                        {selectedBufferSize <= 256 ? '※ PCスペックが必要です。ノイズが出る場合は「標準」にしてください。' :
+                          selectedBufferSize >= 1024 ? '※ 遅延が大きくなりますが、動作は最も安定します。' :
+                            '※ 一般的な配信やWeb会議に最適な設定です。'}
+                      </p>
+                    </div>
+
+                    {/* Quality Profile */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-muted-foreground">音質設定</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { label: '標準 (48kHz)', value: 48000, desc: '配信・動画用' },
+                          { label: '音楽 (44.1kHz)', value: 44100, desc: 'CD制作など' },
+                        ].map((profile) => (
+                          <button
+                            key={profile.value}
+                            onClick={() => setSelectedSampleRate(profile.value)}
+                            className={`
+                                        flex flex-col items-center justify-center p-2 rounded-lg border transition-all
+                                        ${selectedSampleRate === profile.value
+                                ? 'bg-primary/10 border-primary text-primary'
+                                : 'bg-background border-input text-muted-foreground hover:border-primary/50'
+                              }
+                                    `}
+                          >
+                            <span className="text-sm font-bold">{profile.label}</span>
+                            <span className="text-[10px] opacity-80">{profile.desc}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Advanced Mode UI (Buffer Size & Sample Rate) */
+                  <div className="grid grid-cols-2 gap-4 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                    {/* Buffer Size */}
+                    {canChangeBufferSize ? (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-muted-foreground">バッファサイズ</label>
+                        <select
+                    aria-label="バッファサイズ"
+                          value={selectedBufferSize}
+                          onChange={(e) => setSelectedBufferSize(Number(e.target.value))}
+                          className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select"
+                        >
+                          {supportedBufferSizes.map(size => (
+                            <option key={size} value={size}>{size} サンプル</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 opacity-50 pointer-events-none">
+                        <label className="text-sm font-medium text-muted-foreground">バッファサイズ</label>
+                        <div className="w-full bg-muted border border-input rounded-md px-3 py-2 text-sm text-muted-foreground">
+                          自動 / 固定
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sample Rate */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-muted-foreground">サンプルレート</label>
+                      <select
+                    aria-label="サンプルレート"
+                        value={selectedSampleRate}
+                        onChange={(e) => setSelectedSampleRate(Number(e.target.value))}
+                        className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select"
+                      >
+                        {sampleRates.map(rate => (
+                          <option key={rate} value={rate}>{(rate / 1000).toFixed(1)} kHz</option>
+                        ))}
+                      </select>
+                      {!isAsio && (
+                        <div className="text-[10px] text-orange-400/90 flex items-start gap-1.5 bg-orange-900/10 p-1.5 rounded border border-orange-500/20 mt-2">
+                          <MdWarning className="w-3 h-3 mt-0.5 shrink-0" />
+                          <span>
+                            WASAPI共有モードではWindowsのサウンド設定(既定の形式)と同じ値を指定する必要があります。
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+
+                {/* Latency Estimate */}
+                <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2 flex items-center justify-between mt-4">
+                  <span>推定レイテンシ（理論値 + OS概算）</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-foreground">{estimatedLatencyMs.toFixed(1)} ms</span>
+                    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${latencyStatus.className}`}>
+                      {latencyStatus.label}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tips Section (Only in Advanced Mode) */}
+                {isAdvancedMode && (
+                  <details className="text-xs text-muted-foreground bg-muted/50 rounded border border-border mt-2">
+                    <summary className="p-2 cursor-pointer hover:bg-muted/80 transition-colors font-medium flex items-center gap-2">
+                      <MdLightbulb className="w-4 h-4 text-primary" />
+                      詳細設定のヒント
+                    </summary>
+                    <div className="p-3 pt-0 space-y-2 border-t border-border/50">
+                      <div>
+                        <strong className="text-primary">バッファサイズ:</strong>
+                        <ul className="list-disc list-inside ml-2 mt-1 space-y-0.5">
+                          <li><span className="text-emerald-400">低め (64-256)</span>: レイテンシが小さい。リアルタイム演奏向き。CPU負荷高め。</li>
+                          <li><span className="text-yellow-400">中間 (512)</span>: バランス型。配信に推奨。</li>
+                          <li><span className="text-orange-400">高め (1024-2048)</span>: 安定性重視。古いPCに推奨。</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <strong className="text-primary">サンプルレート:</strong>
+                        <ul className="list-disc list-inside ml-2 mt-1 space-y-0.5">
+                          <li><span className="text-cyan-400">44.1 kHz</span>: CD品質。音楽制作の標準。</li>
+                          <li><span className="text-cyan-400">48 kHz</span>: 動画/配信の標準。OBS等と相性◎</li>
+                          <li><span className="text-cyan-400">96 kHz</span>: 高サンプルレート（環境によっては変化が分かりにくい）。CPU負荷が高い。</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </details>
+                )}
+
                 {/* Preset Section */}
                 <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-3">
+                  <p className="text-sm text-muted-foreground">ドライバ・入出力・サンプルレート・バッファサイズだけを保存します。読み込みは選択欄を変更し、「保存して開始」で反映します。VST・ノイズ低減・内蔵FXは含みません。</p>
                   <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-muted-foreground">プリセット</label>
+                    <label className="text-sm font-medium text-muted-foreground">入出力プリセット</label>
                     <div className="flex gap-2">
                       <select
+                  aria-label="入出力プリセット"
                         className="bg-background border border-input rounded px-2 py-1 text-sm text-foreground outline-none focus:border-primary"
                         value={presets[presetName] ? presetName : ''}
                         onChange={(e) => handleLoadPreset(e.target.value)}
@@ -884,7 +1158,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <input
                       type="text"
                       className="flex-1 bg-background border border-input rounded px-3 py-1.5 text-sm text-foreground outline-none focus:border-primary placeholder:text-muted-foreground"
-                      placeholder="プリセット名を入力"
+                      placeholder="入出力プリセット名を入力"
                       value={presetName}
                       onChange={(e) => setPresetName(e.target.value)}
                     />
@@ -907,13 +1181,84 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </div>
                 </div>
 
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="sound" className="space-y-4">
+            <p className="text-sm text-muted-foreground">ノイズ低減と内蔵ボイスチェーンは、その場で音声処理に反映します。調整後はボイスチェックで聴き比べてください。</p>
+            {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="h-10 px-4 rounded-md border border-input text-sm hover:bg-muted">ボイスチェックで聴く</button>}
+            {!engineStats && <p role="status" className="text-sm text-muted-foreground">音声処理の現在の設定を確認できるまで、調整はできません。表示が変わらない場合は設定画面を開き直してください。</p>}
+            <fieldset disabled={!engineStats} className="min-w-0 space-y-4">
+                {/* Built-in Effects */}
+                <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground">内蔵ボイスチェーン</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        外部VSTの追加は不要です。ローカット、軽いコンプ、リミッターをその場で適用します。プリセットと「かかり具合」を調整し、ボイスチェックで聴いて確認してください。
+                      </p>
+                    </div>
+                    <Switch
+                      checked={builtInEffectsEnabled}
+                      onCheckedChange={(checked) => {
+                        setBuiltInEffectsEnabled(checked);
+                        applyBuiltInEffects({ active: checked });
+                      }}
+                      aria-label="内蔵ボイスチェーン"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      ['broadcast', '配信'],
+                      ['warm', '低め'],
+                      ['bright', '明瞭'],
+                    ] as Array<[BuiltInEffectsPreset, string]>).map(([preset, label]) => (
+                      <button
+                        key={preset}
+                        onClick={() => {
+                          setBuiltInEffectsPreset(preset);
+                          applyBuiltInEffects({ active: true, preset });
+                        }}
+                        className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
+                          builtInEffectsPreset === preset
+                            ? 'border-primary bg-primary/15 text-primary'
+                            : 'border-input bg-background text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">かかり具合</span>
+                      <span className="font-mono text-foreground">{builtInEffectsAmount}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={builtInEffectsAmount}
+                      onChange={(e) => setBuiltInEffectsAmount(Number(e.target.value))}
+                      onMouseUp={() => applyBuiltInEffects({ amount: builtInEffectsAmount })}
+                      onKeyUp={() => applyBuiltInEffects({ amount: builtInEffectsAmount })}
+                      className="w-full accent-primary"
+                      aria-label="内蔵ボイスチェーンのかかり具合"
+                    />
+                  </div>
+                </div>
+
                 {/* Noise reduction */}
                 <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h3 className="text-sm font-bold text-foreground">ノイズ低減</h3>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        機械学習ベース（RNNoise 系）で、ファン・空調などの持続ノイズを低減します。
+                        機械学習ベース（RNNoise 系）で、ファン・空調などの持続ノイズを低減します。変更はその場で音声処理に反映します。
                       </p>
                     </div>
                     <Switch
@@ -1049,326 +1394,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </div>
                 </div>
 
-                {/* Built-in Effects */}
-                <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-bold text-foreground">内蔵ボイスチェーン</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        VSTなしでローカット、軽いコンプ、リミッターを適用します。
-                      </p>
-                    </div>
-                    <Switch
-                      checked={builtInEffectsEnabled}
-                      onCheckedChange={(checked) => {
-                        setBuiltInEffectsEnabled(checked);
-                        applyBuiltInEffects({ active: checked });
-                      }}
-                      aria-label="内蔵ボイスチェーン"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    {([
-                      ['broadcast', '配信'],
-                      ['warm', '低め'],
-                      ['bright', '明瞭'],
-                    ] as Array<[BuiltInEffectsPreset, string]>).map(([preset, label]) => (
-                      <button
-                        key={preset}
-                        onClick={() => {
-                          setBuiltInEffectsPreset(preset);
-                          applyBuiltInEffects({ active: true, preset });
-                        }}
-                        className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
-                          builtInEffectsPreset === preset
-                            ? 'border-primary bg-primary/15 text-primary'
-                            : 'border-input bg-background text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">かかり具合</span>
-                      <span className="font-mono text-foreground">{builtInEffectsAmount}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={builtInEffectsAmount}
-                      onChange={(e) => setBuiltInEffectsAmount(Number(e.target.value))}
-                      onMouseUp={() => applyBuiltInEffects({ amount: builtInEffectsAmount })}
-                      onKeyUp={() => applyBuiltInEffects({ amount: builtInEffectsAmount })}
-                      className="w-full accent-primary"
-                      aria-label="内蔵ボイスチェーンのかかり具合"
-                    />
-                  </div>
-                </div>
-
-                {/* Host Selection */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-sm font-medium text-muted-foreground">オーディオドライバ</label>
-                    <button
-                      onClick={() => fetchDevices(true)}
-                      className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
-                      title="デバイス一覧を再スキャン"
-                    >
-                      <MdRefresh className="w-3 h-3" />
-                      更新
-                    </button>
-                  </div>
-                  <select
-                    value={selectedHost}
-                    onChange={(e) => setSelectedHost(e.target.value)}
-                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select"
-                  >
-                    {availableHosts.map((host) => (
-                      <option key={host} value={host}>{host}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Input Device */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-muted-foreground">
-                    {isAsio ? "デバイス" : "マイク入力"}
-                  </label>
-                  <select
-                    value={selectedInput}
-                    onChange={(e) => {
-                      setSelectedInput(e.target.value);
-                      if (isAsio) setSelectedOutput(e.target.value);
-                    }}
-                    disabled={filteredInputs.length === 0}
-                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select disabled:opacity-50"
-                  >
-                    {filteredInputs.length === 0 && <option value="">対応デバイスなし</option>}
-                    {filteredInputs.map((device, i) => (
-                      <option key={`${device.name}-${i}`} value={device.name}>{device.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Smart Input Channel Selector (ASIO Only) */}
-                {isAsio && (
-                  <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                    <InputChannelSelector
-                      initialChannels={currentInputChannels}
-                      maxChannels={activeDevice?.channels}
-                      onChannelMapped={(channels) => {
-                        onConfigChange({ host: selectedHost, input: selectedInput, output: selectedOutput, sampleRate: selectedSampleRate, bufferSize: selectedBufferSize, inputChannels: channels });
-                      }}
-                    />
-                  </div>
-                )}
-
-                {/* Output Device - Hide for ASIO */}
-                {!isAsio && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-muted-foreground">出力先</label>
-                    <select
-                      value={selectedOutput}
-                      onChange={(e) => setSelectedOutput(e.target.value)}
-                      disabled={filteredOutputs.length === 0}
-                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select disabled:opacity-50"
-                    >
-                      {filteredOutputs.length === 0 && <option value="">対応デバイスなし</option>}
-                      {filteredOutputs.map((device, i) => (
-                        <option key={`${device.name}-${i}`} value={device.name}>{device.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {isAsio && (
-                  <div className="text-xs text-muted-foreground mt-2 p-2 bg-muted rounded border border-border">
-                    <p>ASIOモードでは、選択したデバイスが入出力の両方を担当します。</p>
-                  </div>
-                )}
-
-                {/* Simple / Advanced Mode Toggle */}
-                <div className="flex justify-end items-center mb-2">
-                  <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-lg">
-                    <button
-                      onClick={() => setIsAdvancedMode(false)}
-                      className={`text-xs px-3 py-1 rounded transition-all ${!isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
-                    >
-                      かんたん
-                    </button>
-                    <button
-                      onClick={() => setIsAdvancedMode(true)}
-                      className={`text-xs px-3 py-1 rounded transition-all ${isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
-                    >
-                      詳細設定
-                    </button>
-                  </div>
-                </div>
-
-                {/* Simple Mode UI */}
-                {!isAdvancedMode ? (
-                  <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                    {/* Latency Profile */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-muted-foreground">パフォーマンス設定 (遅延)</label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {[
-                          { label: '高速', sub: '低遅延', value: 128, desc: '楽器演奏向け' },
-                          { label: '標準', sub: 'バランス', value: 512, desc: '配信・会話向け' },
-                          { label: '安定', sub: '高遅延', value: 1024, desc: 'ノイズ対策' },
-                        ].map((profile) => {
-                          const disabled = canChangeBufferSize && !supportedBufferSizes.includes(profile.value);
-                          return (
-                            <button
-                              key={profile.value}
-                              onClick={() => setSelectedBufferSize(profile.value)}
-                              disabled={disabled}
-                              className={`
-                                        flex flex-col items-center justify-center p-2 rounded-lg border transition-all
-                                        ${selectedBufferSize === profile.value
-                                  ? 'bg-primary/10 border-primary text-primary'
-                                  : 'bg-background border-input text-muted-foreground hover:border-primary/50'
-                                }
-                                        ${disabled ? 'opacity-30 cursor-not-allowed bg-muted' : ''}
-                                    `}
-                            >
-                              <span className="text-sm font-bold">{profile.label}</span>
-                              <span className="text-[10px] opacity-80">{profile.sub}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                      <p className="text-[10px] text-muted-foreground text-center">
-                        {selectedBufferSize <= 256 ? '※ PCスペックが必要です。ノイズが出る場合は「標準」にしてください。' :
-                          selectedBufferSize >= 1024 ? '※ 遅延が大きくなりますが、動作は最も安定します。' :
-                            '※ 一般的な配信やWeb会議に最適な設定です。'}
-                      </p>
-                    </div>
-
-                    {/* Quality Profile */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-muted-foreground">音質設定</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { label: '標準 (48kHz)', value: 48000, desc: '配信・動画用' },
-                          { label: '音楽 (44.1kHz)', value: 44100, desc: 'CD制作など' },
-                        ].map((profile) => (
-                          <button
-                            key={profile.value}
-                            onClick={() => setSelectedSampleRate(profile.value)}
-                            className={`
-                                        flex flex-col items-center justify-center p-2 rounded-lg border transition-all
-                                        ${selectedSampleRate === profile.value
-                                ? 'bg-primary/10 border-primary text-primary'
-                                : 'bg-background border-input text-muted-foreground hover:border-primary/50'
-                              }
-                                    `}
-                          >
-                            <span className="text-sm font-bold">{profile.label}</span>
-                            <span className="text-[10px] opacity-80">{profile.desc}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  /* Advanced Mode UI (Buffer Size & Sample Rate) */
-                  <div className="grid grid-cols-2 gap-4 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                    {/* Buffer Size */}
-                    {canChangeBufferSize ? (
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-muted-foreground">バッファサイズ</label>
-                        <select
-                          value={selectedBufferSize}
-                          onChange={(e) => setSelectedBufferSize(Number(e.target.value))}
-                          className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select"
-                        >
-                          {supportedBufferSizes.map(size => (
-                            <option key={size} value={size}>{size} サンプル</option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : (
-                      <div className="space-y-2 opacity-50 pointer-events-none">
-                        <label className="text-sm font-medium text-muted-foreground">バッファサイズ</label>
-                        <div className="w-full bg-muted border border-input rounded-md px-3 py-2 text-sm text-muted-foreground">
-                          自動 / 固定
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Sample Rate */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-muted-foreground">サンプルレート</label>
-                      <select
-                        value={selectedSampleRate}
-                        onChange={(e) => setSelectedSampleRate(Number(e.target.value))}
-                        className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select"
-                      >
-                        {sampleRates.map(rate => (
-                          <option key={rate} value={rate}>{(rate / 1000).toFixed(1)} kHz</option>
-                        ))}
-                      </select>
-                      {!isAsio && (
-                        <div className="text-[10px] text-orange-400/90 flex items-start gap-1.5 bg-orange-900/10 p-1.5 rounded border border-orange-500/20 mt-2">
-                          <MdWarning className="w-3 h-3 mt-0.5 shrink-0" />
-                          <span>
-                            WASAPI共有モードではWindowsのサウンド設定(既定の形式)と同じ値を指定する必要があります。
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-
-                {/* Latency Estimate */}
-                <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2 flex items-center justify-between mt-4">
-                  <span>推定レイテンシ（理論値 + OS概算）</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-foreground">{estimatedLatencyMs.toFixed(1)} ms</span>
-                    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${latencyStatus.className}`}>
-                      {latencyStatus.label}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Tips Section (Only in Advanced Mode) */}
-                {isAdvancedMode && (
-                  <details className="text-xs text-muted-foreground bg-muted/50 rounded border border-border mt-2">
-                    <summary className="p-2 cursor-pointer hover:bg-muted/80 transition-colors font-medium flex items-center gap-2">
-                      <MdLightbulb className="w-4 h-4 text-primary" />
-                      詳細設定のヒント
-                    </summary>
-                    <div className="p-3 pt-0 space-y-2 border-t border-border/50">
-                      <div>
-                        <strong className="text-primary">バッファサイズ:</strong>
-                        <ul className="list-disc list-inside ml-2 mt-1 space-y-0.5">
-                          <li><span className="text-emerald-400">低め (64-256)</span>: レイテンシが小さい。リアルタイム演奏向き。CPU負荷高め。</li>
-                          <li><span className="text-yellow-400">中間 (512)</span>: バランス型。配信に推奨。</li>
-                          <li><span className="text-orange-400">高め (1024-2048)</span>: 安定性重視。古いPCに推奨。</li>
-                        </ul>
-                      </div>
-                      <div>
-                        <strong className="text-primary">サンプルレート:</strong>
-                        <ul className="list-disc list-inside ml-2 mt-1 space-y-0.5">
-                          <li><span className="text-cyan-400">44.1 kHz</span>: CD品質。音楽制作の標準。</li>
-                          <li><span className="text-cyan-400">48 kHz</span>: 動画/配信の標準。OBS等と相性◎</li>
-                          <li><span className="text-cyan-400">96 kHz</span>: 高サンプルレート（環境によっては変化が分かりにくい）。CPU負荷が高い。</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </details>
-                )}
-
-              </div>
-            )}
+            </fieldset>
           </TabsContent>
 
           <TabsContent value="obs" className="space-y-4">
@@ -1376,6 +1402,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">ホスト名</label>
                 <input
+                  aria-label="OBSホスト名"
                   type="text"
                   value={obsHost}
                   onChange={(e) => setObsHost(e.target.value)}
@@ -1386,6 +1413,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">ポート</label>
                 <input
+                  aria-label="OBSポート"
                   type="number"
                   value={obsPort}
                   onChange={(e) => setObsPort(Number(e.target.value))}
@@ -1396,6 +1424,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">パスワード</label>
                 <input
+                  aria-label="OBSパスワード"
                   type="password"
                   value={obsPassword}
                   onChange={(e) => setObsPassword(e.target.value)}
@@ -1603,7 +1632,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
               <div className="flex items-center">
                 <Switch
-                  checked={autostartEnabled}
+                  aria-label="Windows起動時に自動起動"
+                    checked={autostartEnabled}
                   onCheckedChange={async (checked) => {
                     setLoading(true);
                     try {
@@ -1640,6 +1670,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <div className="text-xs text-muted-foreground mt-0.5">有効時、エンジンを限定コアで実行します。通常は無効推奨です。</div>
                   </div>
                   <Switch
+                    aria-label="CPUアフィニティ固定"
                     checked={engineTuningConfig.enableAffinityPinning}
                     onCheckedChange={(checked) =>
                       setEngineTuningConfig((prev) => ({ ...prev, enableAffinityPinning: checked }))
@@ -1651,6 +1682,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-muted-foreground">アフィニティマスク（任意）</label>
                   <input
+                    aria-label="アフィニティマスク"
                     type="text"
                     value={engineTuningConfig.affinityMask ?? ''}
                     onChange={(e) =>
@@ -1668,6 +1700,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <div className="text-xs text-muted-foreground mt-0.5">有効化するとOS全体の応答性が低下する場合があります。</div>
                   </div>
                   <Switch
+                    aria-label="リアルタイム優先度"
                     checked={engineTuningConfig.enableRealtimePriority}
                     onCheckedChange={(checked) =>
                       handleDangerousToggle(
@@ -1687,6 +1720,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <div className="text-xs text-muted-foreground mt-0.5">有効化時はプラグインの不具合が露出しやすくなります。</div>
                   </div>
                   <Switch
+                    aria-label="時間最優先オーディオスレッド"
                     checked={engineTuningConfig.enableTimeCriticalAudioThreads}
                     onCheckedChange={(checked) =>
                       handleDangerousToggle(
@@ -1916,5 +1950,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
       />
     </div>
+        </Modal>
   );
 };

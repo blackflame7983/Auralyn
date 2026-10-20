@@ -164,7 +164,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                             サービス公式基準ではありません。声と背景音を識別せず、後の大声による音割れは防げません。
                             配信前に、普段の声で3秒以上話してください。ミュートや出力0%は解除してから録音してください。
                         </p>
-                        <p role="status" className="text-sm text-amber-500">
+                        <p role="status" className="text-sm text-amber-800 dark:text-amber-300">
                             {recording
                                 ? `録音中 ${Math.round((state?.progress ?? 0) * 10)} / 10秒`
                                 : pending
@@ -177,6 +177,10 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                         ? '画面を離れたため中止しました。録り直してください'
                                         : !state
                                           ? '状態を確認してください'
+                                          : state.phase === 'ready' && proposal
+                                            ? state.settled
+                                                ? '提案を確認し、「この音量を使う」で適用するか、試聴先を選んで聞き比べてください'
+                                                : '音量の反映を確認しています'
                                           : '目標を選び、録音してください'}
                         </p>
                         <div className="flex flex-wrap gap-2">
@@ -211,7 +215,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                             </button>
                         </div>
                         {(error || state?.error) && (
-                            <p role="alert" className="text-sm text-amber-500">
+                            <p role="alert" className="text-sm text-amber-800 dark:text-amber-300">
                                 {error ?? state?.error}
                             </p>
                         )}
@@ -226,7 +230,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                     {proposal.peak.toFixed(1)} dBTP
                                 </p>
                                 {proposal.limited && (
-                                    <p className="text-sm text-amber-500">
+                                    <p className="text-sm text-amber-800 dark:text-amber-300">
                                         ピーク・増幅量・出力上限を守るため、目標まで上げていません。
                                     </p>
                                 )}

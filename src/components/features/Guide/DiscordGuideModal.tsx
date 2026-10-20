@@ -1,3 +1,5 @@
+import { buttonVariants } from '@/components/ui/button';
+import { Modal } from '../../ui/modal';
 import React, { useState } from 'react';
 import { DiscordIcon } from '../../ui/DiscordIcon';
 import { MdClose, MdArrowForward, MdArrowBack, MdCheckCircle, MdWarning, MdSettings, MdMic, MdGraphicEq, MdHeadphones } from 'react-icons/md';
@@ -6,9 +8,11 @@ interface DiscordGuideModalProps {
     isOpen: boolean;
     onClose: () => void;
     onOpenAudioSettings: () => void;
+    onOpenTroubleshoot?: () => void;
+    onOpenVoiceCheck?: () => void;
 }
 
-export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, onClose, onOpenAudioSettings }) => {
+export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, onClose, onOpenAudioSettings, onOpenTroubleshoot, onOpenVoiceCheck }) => {
     // step 0: Device Type Selection
     // step 1: Output & Echo Warning
     // step 2: Input Setup
@@ -34,6 +38,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
     };
 
     return (
+        <Modal title="Discord連携ガイド" onClose={onClose}>
         <div className="modal-overlay-base">
             <div className="modal-surface-base w-full max-w-3xl flex flex-col max-h-[90vh]">
 
@@ -144,7 +149,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                         <button
                                             onClick={onOpenAudioSettings}
                                             aria-label="オーディオ設定を開く"
-                                            className="px-4 py-2 bg-[#5865F2] hover:bg-[#5865F2]/90 text-white font-bold rounded-lg text-sm transition-all"
+                                            className={buttonVariants({ className: "gap-2" })}
                                         >
                                             オーディオ設定を開く
                                         </button>
@@ -158,9 +163,9 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
 
                                 {useHardwareMixer ? (
                                     <div className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg flex gap-4 text-left">
-                                        <MdWarning className="w-8 h-8 text-destructive shrink-0" />
+                                        <MdWarning className="w-8 h-8 text-red-700 dark:text-red-300 shrink-0" />
                                         <div className="space-y-1">
-                                            <h4 className="font-bold text-destructive">通話相手の声がループする危険性</h4>
+                                            <h4 className="font-bold text-red-700 dark:text-red-300">通話相手の声がループする危険性</h4>
                                             <p className="text-sm text-foreground">
                                                 ハードウェアのループバック機能を使ってDiscord通話をすると、<strong>「相手の声」が自分のマイク音声に乗って相手に跳ね返る（エコー）</strong>リスクが高いです。
                                             </p>
@@ -216,7 +221,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                     </div>
 
                                     {useHardwareMixer && (
-                                        <p className="text-xs text-red-400 mt-2">
+                                        <p className="text-xs text-red-700 dark:text-red-300 mt-2">
                                             ※ 重要: ここで設定した「入力デバイス」と同じ機材を「出力デバイス」に選ぶと、エコーが発生しやすくなります。
                                         </p>
                                     )}
@@ -227,24 +232,24 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                         {step === 3 && (
                             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                                 <div className="text-center space-y-2">
-                                    <h3 className="text-2xl font-bold">3. 音声処理をOFFにする (重要)</h3>
+                                    <h3 className="text-2xl font-bold">3. 音声処理を比較して調整する</h3>
                                     <p className="text-muted-foreground">
-                                        Discordの高機能なノイズ除去が、VSTで整えた音質を劣化させる原因になります。
+                                        Auralyn と受け側アプリの処理が重なると、声が欠けたり音量が変わったりする場合があります。
                                     </p>
                                 </div>
 
                                 <div className="grid gap-4 max-w-2xl mx-auto">
                                     <div className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg flex items-start gap-4">
-                                        <MdWarning className="w-8 h-8 text-destructive shrink-0" />
+                                        <MdWarning className="w-8 h-8 text-red-700 dark:text-red-300 shrink-0" />
                                         <div>
-                                            <h4 className="font-bold text-destructive mb-1">まずはOFF推奨（音質が崩れる原因になりやすい）</h4>
+                                            <h4 className="font-bold text-red-700 dark:text-red-300 mb-1">一つずつON・OFFを比較してください</h4>
                                             <ul className="list-disc list-inside text-sm space-y-1 text-foreground">
-                                                <li><strong>ノイズ抑制 (Krisp / Standard)</strong> → <span className="text-destructive font-bold">無効化</span></li>
-                                                <li><strong>エコー除去</strong> → <span className="text-destructive font-bold">OFF</span></li>
-                                                <li><strong>音量調節の自動化</strong> → <span className="text-destructive font-bold">OFF</span></li>
+                                                <li><strong>ノイズ抑制 (Krisp / Standard)</strong> → 有無を比較</li>
+                                                <li><strong>エコー除去</strong> → 有無を比較</li>
+                                                <li><strong>音量調節の自動化</strong> → 有無を比較</li>
                                             </ul>
                                             <p className="text-xs text-muted-foreground mt-2">
-                                                これらがONだと、EQで調整した低音やクリアな高音が「ノイズ」と判定されて消されてしまいます。
+                                                ヘッドホン使用時はエコー除去の有無を比較できます。スピーカー使用時は、相手の声がマイクへ戻らないか確認し、必要なエコー除去を残してください。
                                             </p>
                                         </div>
                                     </div>
@@ -254,7 +259,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                         <div className="text-sm">
                                             <p className="font-bold">入力感度</p>
                                             <p className="text-muted-foreground">
-                                                「自動検出」をOFFにし、バーを左端（最低値）近くに設定することをお勧めします。
+                                                声が途切れる場合は自動検出の有無と感度を比較し、息や環境音だけで反応しない範囲に調整してください。
                                             </p>
                                         </div>
                                     </div>
@@ -263,6 +268,16 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                         )}
                     </div>
                 </div>
+
+                {step === totalSteps - 1 && (
+                    <div className="px-4 py-3 border-t border-border space-y-2">
+                        <p role="status" className="text-sm text-foreground">手順の案内のみです。受け側への音声到達は未確認です。受け側のメーターや試聴で確認してください。</p>
+                        <div className="flex flex-wrap gap-3">
+                            {onOpenTroubleshoot && <button onClick={onOpenTroubleshoot} className="text-sm underline text-primary">接続診断を開く</button>}
+                            {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="text-sm underline text-primary">ボイスチェックで聴く</button>}
+                        </div>
+                    </div>
+                )}
 
                 {/* Footer */}
                 <div className="modal-footer-base flex justify-between items-center shrink-0">
@@ -279,7 +294,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                             <button
                                 onClick={nextStep}
                                 aria-label="次の手順へ進む"
-                                className="px-8 py-2 bg-[#5865F2] hover:bg-[#5865F2]/90 text-white font-bold rounded-full shadow-lg transition-all flex items-center gap-2"
+                                className={buttonVariants({ className: "gap-2" })}
                             >
                                 次へ
                                 <MdArrowForward />
@@ -287,16 +302,17 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                         ) : (
                             <button
                                 onClick={onClose}
-                                aria-label="ガイドを完了する"
-                                className="px-8 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-full shadow-lg transition-all flex items-center gap-2"
+                                aria-label="案内を閉じる"
+                                className={buttonVariants({ className: "gap-2" })}
                             >
                                 <MdCheckCircle />
-                                完了
+                                案内を閉じる
                             </button>
                         )}
                     </div>
                 </div>
             </div>
         </div>
+        </Modal>
     );
 };

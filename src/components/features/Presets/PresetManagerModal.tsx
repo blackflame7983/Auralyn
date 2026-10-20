@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Modal } from '../../ui/modal';
 import {
     MdClose, MdSave, MdDelete, MdFolderOpen, MdPlayArrow, MdSearch,
     MdAutoFixHigh, MdFileUpload, MdFileDownload, MdTune, MdMic,
@@ -365,7 +366,8 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="modal-overlay-base z-50 animate-in fade-in duration-200">
+        <Modal title="プロファイル管理" onClose={onClose}>
+        <div className="modal-overlay-base animate-in fade-in duration-200">
             <div
                 className="modal-surface-base w-full max-w-lg bg-background flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"
                 onClick={(e) => e.stopPropagation()}
@@ -377,7 +379,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                         </div>
                         <div>
                             <h2 className="text-xl font-bold tracking-tight text-foreground">プロファイル管理</h2>
-                            <p className="text-xs text-muted-foreground">保存した設定をまとめて切り替え</p>
+                            <p className="text-xs text-muted-foreground">選んだ範囲の設定を保存・切り替え</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -397,10 +399,10 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                 className="px-3 py-1.5 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg hover:bg-secondary/80 flex items-center gap-2"
                             >
                                 <MdAutoFixHigh />
-                                テンプレート
+                                VST構成テンプレート
                             </button>
                         )}
-                        <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted text-muted-foreground">
+                        <button aria-label="閉じる" onClick={onClose} className="p-2 rounded-lg hover:bg-muted text-muted-foreground">
                             <MdClose className="w-5 h-5" />
                         </button>
                     </div>
@@ -408,8 +410,9 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
 
                 <div className="p-4 border-b border-border bg-muted/30 space-y-3">
                     <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                        現在の全設定から作成
+                        現在の設定から保存範囲を選ぶ
                     </h3>
+                    <p className="text-sm text-muted-foreground">チェックした項目だけを保存します。適用するとその範囲の現在の設定を置き換え、デバイス設定を含む場合は音声を再起動することがあります。</p>
                     <CategoryCheckboxes
                         idPrefix="save"
                         categories={saveCategories}
@@ -436,7 +439,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                 </div>
 
                 <div className="px-4 py-2 border-b border-border flex items-center justify-between">
-                    <span className="text-[10px] text-muted-foreground font-mono uppercase">共有・インポート</span>
+                    <span className="text-xs text-muted-foreground font-mono uppercase">共有・インポート</span>
                     <button
                         onClick={handleImport}
                         className="flex items-center gap-1.5 px-3 py-1 text-xs text-muted-foreground hover:text-primary border border-border rounded-md"
@@ -456,7 +459,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     />
                 )}
 
-                <div className="flex-1 overflow-hidden flex flex-col">
+                <div className="profile-list-region flex-1 overflow-hidden flex flex-col">
                     <div className="p-4 pb-2">
                         <div className="relative">
                             <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -505,7 +508,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                         </button>
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleLegacyLoad(profile.name); }}
-                                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md text-[10px] font-bold"
+                                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md text-xs font-bold"
                                             title="VST のみ読み込み"
                                         >
                                             VST
@@ -545,5 +548,6 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                 onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
             />
         </div>
+        </Modal>
     );
 };

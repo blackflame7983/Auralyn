@@ -1,3 +1,4 @@
+import { Modal } from '../../ui/modal';
 import React, { useEffect, useState } from 'react';
 import { MdWarning, MdRestore, MdDeleteSweep, MdRefresh } from 'react-icons/md';
 
@@ -37,7 +38,9 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
 
     if (!isOpen) return null;
 
+    // 再表示できない復旧画面は、待機中もEscで閉じない。
     return (
+        <Modal title="オーディオエンジンが停止しました" onClose={onClose} dismissible={false}>
         <div className="modal-overlay-base z-[9999] bg-black/80">
             <div className="modal-surface-base w-full max-w-lg border-2 border-destructive/50 bg-background">
 
@@ -107,5 +110,6 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
                 </div>
             </div>
         </div>
+        </Modal>
     );
 };

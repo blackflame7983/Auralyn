@@ -1,8 +1,9 @@
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { MasterBar } from '../MasterBar';
+import { audioApi, type EngineRuntimeStats } from '../../../api/audio';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
@@ -60,6 +61,35 @@ afterEach(async () => {
 });
 
 describe('起動時の保存ゲイン復元', () => {
+    it('技術情報は開いたときだけ表示し、停止中の設定値を稼働中の遅延と混同しない', async () => {
+        vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({
+            globalBypass: false, enabledPluginCount: 2, activePluginCount: 2,
+            noiseReductionEnabled: true, noiseReductionActive: true,
+        } as EngineRuntimeStats);
+        const view = render(<MasterBar host="Wasapi" sampleRate={48000} bufferSize={512} isRunning={false} />);
+        await act(async () => { finishListening(); });
+        expect(screen.getByText('音声停止中')).toBeInTheDocument();
+        expect(screen.queryByText('VST有効')).not.toBeInTheDocument();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        const details = screen.getByRole('button', { name: '音声の詳細' });
+        details.focus();
+        fireEvent.click(details);
+        expect(screen.getByRole('dialog', { name: '音声処理の詳細' })).toBeInTheDocument();
+        expect(screen.getByText('Wasapi')).toBeInTheDocument();
+        expect(screen.queryByText('48,000 Hz')).not.toBeInTheDocument();
+        expect(screen.queryByText('推定 41.3ms')).not.toBeInTheDocument();
+        fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+        await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(details).toHaveFocus();
+        view.rerender(<MasterBar host="Wasapi" sampleRate={48000} bufferSize={512} isRunning />);
+        expect(screen.getByText('VST有効')).toBeInTheDocument();
+        expect(screen.queryByText('推定 41.3ms')).not.toBeInTheDocument();
+        fireEvent.click(details);
+        expect(screen.getByText('推定 41.3ms')).toBeInTheDocument();
+        expect(screen.getByText('48,000 Hz')).toBeInTheDocument();
+    });
+
     it('購読待ち中に開始イベントを逃しても保存値を復元し、定期取得で100%を保存しない', async () => {
         render(<MasterBar />);
         await act(async () => {});

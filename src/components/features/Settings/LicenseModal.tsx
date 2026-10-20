@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Modal } from '../../ui/modal';
 import { MdClose, MdDescription, MdCode } from 'react-icons/md';
-// Dialog component replaced by manual div overlay to match local components
-// import { Dialog, DialogContent } from "../../ui/dialog";
 
 // Import JSON data directly
 import npmLicensesRaw from '../../../assets/licenses-npm.json';
@@ -119,7 +118,8 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
     if (!isOpen) return null;
 
     return (
-        <div className="modal-overlay-base z-50 bg-black/50" onClick={onClose}>
+        <Modal title="ライセンス情報 / OSS Attribution" onClose={onClose}>
+        <div className="modal-overlay-base bg-black/50" onClick={onClose}>
             {/* Modal Content - stop propagation to prevent closing when clicking inside */}
             <div
                 className="modal-surface-base max-w-4xl w-full h-[80vh] flex flex-col text-foreground bg-background"
@@ -127,33 +127,36 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
             >
 
                 {/* Header */}
-                <div className="modal-header-base modal-header-muted p-4">
-                    <h2 className="text-xl font-bold flex items-center gap-2">
-                        <MdDescription className="w-6 h-6 text-primary" />
-                        ライセンス情報 / OSS Attribution
+                <div className="modal-header-base modal-header-muted grid grid-cols-[minmax(0,1fr)_auto] gap-3 p-4 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+                    <h2 className="min-w-0 text-xl font-bold flex items-center gap-2">
+                        <MdDescription className="w-6 h-6 shrink-0 text-primary" />
+                        ライセンス情報
                     </h2>
                     {/* Tabs */}
-                    <div className="flex bg-muted rounded-lg p-1">
+                    <div role="group" aria-label="ライセンスの種類" className="col-span-2 row-start-2 flex flex-wrap gap-1 bg-muted rounded-lg p-1 md:col-span-1 md:col-start-2 md:row-start-1">
                         <button
                             onClick={() => setActiveTab('product')}
+                            aria-pressed={activeTab === 'product'}
                             className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'product' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             Auralyn
                         </button>
                         <button
                             onClick={() => setActiveTab('npm')}
+                            aria-pressed={activeTab === 'npm'}
                             className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'npm' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             NPM (Frontend)
                         </button>
                         <button
                             onClick={() => setActiveTab('cargo')}
+                            aria-pressed={activeTab === 'cargo'}
                             className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'cargo' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             Cargo (Backend)
                         </button>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-muted rounded-full transition-colors">
+                    <button aria-label="閉じる" onClick={onClose} className="col-start-2 row-start-1 self-start p-2 hover:bg-muted rounded-full transition-colors md:col-start-3">
                         <MdClose className="w-5 h-5" />
                     </button>
                 </div>
@@ -242,5 +245,6 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                 </div>
             </div>
         </div>
+        </Modal>
     );
 };

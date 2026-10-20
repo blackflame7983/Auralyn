@@ -61,7 +61,7 @@
   --secondary-foreground: 222.2 47.4% 11.2%;
 
   --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
+  --muted-foreground: 215.4 16.3% 40%;
 
   --accent: 210 40% 96.1%;
   --accent-foreground: 222.2 47.4% 11.2%;
@@ -184,6 +184,26 @@
 
   .modal-footer-base {
     @apply p-6 border-t border-border bg-muted/20;
+  }
+}
+
+/* 拡大表示などで高さが足りない場合も、本文と操作を切らずにスクロールする。 */
+@media (max-height: 500px) {
+  .profile-list-region {
+    flex: none;
+    height: 18rem;
+  }
+  .modal-surface-base {
+    max-height: calc(100dvh - 2rem) !important;
+    overflow-y: auto;
+  }
+  .modal-body-base {
+    flex: none;
+    overflow-y: visible;
+  }
+  .modal-header-base, .modal-footer-base {
+    padding: 0.75rem;
+    flex-shrink: 0;
   }
 }
 

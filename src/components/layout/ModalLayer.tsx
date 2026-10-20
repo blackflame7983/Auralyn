@@ -18,9 +18,10 @@ const TroubleshootModal = lazy(() => import('../features/Troubleshoot/Troublesho
 const VoiceCheckModal = lazy(() => import('../features/VoiceCheck/VoiceCheckModal').then(m => ({ default: m.VoiceCheckModal })));
 
 interface UIState {
-    settingsTab?: 'audio' | 'obs';
+    settingsTab?: 'audio' | 'obs' | 'sound';
     isSettingsOpen: boolean;
     setIsSettingsOpen: (v: boolean) => void;
+    openSoundSettings: () => void;
     isBrowserOpen: boolean;
     setIsBrowserOpen: (v: boolean) => void;
     isOBSGuideOpen: boolean;
@@ -147,6 +148,14 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                             ui.setIsOBSGuideOpen(false);
                             ui.setIsSettingsOpen(true);
                         }}
+                        onOpenTroubleshoot={() => {
+                            ui.setIsOBSGuideOpen(false);
+                            ui.setIsTroubleshootOpen(true);
+                        }}
+                        onOpenVoiceCheck={() => {
+                            ui.setIsOBSGuideOpen(false);
+                            ui.setIsVoiceCheckOpen(true);
+                        }}
                     />
                 </Suspense>
             )}
@@ -158,6 +167,14 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onOpenAudioSettings={() => {
                             ui.setIsDiscordGuideOpen(false);
                             ui.setIsSettingsOpen(true);
+                        }}
+                        onOpenTroubleshoot={() => {
+                            ui.setIsDiscordGuideOpen(false);
+                            ui.setIsTroubleshootOpen(true);
+                        }}
+                        onOpenVoiceCheck={() => {
+                            ui.setIsDiscordGuideOpen(false);
+                            ui.setIsVoiceCheckOpen(true);
                         }}
                     />
                 </Suspense>
@@ -224,6 +241,10 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onApplyTemplate={pluginsApi.applyTemplate}
                         onScan={pluginsApi.scanPlugins}
                         isScanning={pluginsApi.isScanning}
+                        onOpenSoundSettings={() => {
+                            ui.setIsTemplateWizardOpen(false);
+                            ui.openSoundSettings();
+                        }}
                     />
                 </Suspense>
             )}
@@ -278,6 +299,10 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                     <VoiceCheckModal
                         isOpen={ui.isVoiceCheckOpen}
                         onClose={() => ui.setIsVoiceCheckOpen(false)}
+                        onOpenSoundSettings={() => {
+                            ui.setIsVoiceCheckOpen(false);
+                            ui.openSoundSettings();
+                        }}
                         onOpenAudioSettings={() => {
                             ui.setIsVoiceCheckOpen(false);
                             ui.setIsSettingsOpen(true);

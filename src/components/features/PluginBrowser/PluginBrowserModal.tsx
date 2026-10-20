@@ -1,3 +1,4 @@
+import { Modal } from '../../ui/modal';
 import React, { useEffect, useState, useMemo } from 'react';
 import { VstPlugin } from '../../../api/audio';
 import { Panel } from '../../ui/Panel/Panel';
@@ -21,6 +22,15 @@ const STORAGE_KEYS = {
 };
 
 const MAX_RECENT = 10;
+
+function readStoredPaths(key: string): string[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
+    return Array.isArray(value) ? value.filter((path): path is string => typeof path === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 // Map VST3 category strings to user-friendly Japanese labels
 const CATEGORY_LABELS: Record<string, string> = {
@@ -78,11 +88,18 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   isOpen,
   onClose,
   onPluginSelect,
-  plugins,
+  plugins: suppliedPlugins,
   isLoading,
   error,
   onScan
 }) => {
+  // スキャナーや旧キャッシュで省略されたメタデータを、すべてのタブで安全に扱う。
+  const plugins = useMemo(() => suppliedPlugins.map(plugin => ({
+    ...plugin,
+    name: typeof plugin.name === 'string' ? plugin.name : '名前不明のプラグイン',
+    vendor: typeof plugin.vendor === 'string' ? plugin.vendor : '',
+    category: typeof plugin.category === 'string' ? plugin.category : '',
+  })), [suppliedPlugins]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -91,10 +108,8 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
 
   // Load from localStorage
   useEffect(() => {
-    const savedFavorites = localStorage.getItem(STORAGE_KEYS.favorites);
-    const savedRecent = localStorage.getItem(STORAGE_KEYS.recent);
-    if (savedFavorites) setFavorites(JSON.parse(savedFavorites));
-    if (savedRecent) setRecentPaths(JSON.parse(savedRecent));
+    setFavorites(readStoredPaths(STORAGE_KEYS.favorites));
+    setRecentPaths(readStoredPaths(STORAGE_KEYS.recent));
   }, []);
 
   // Build category list from plugins
@@ -159,11 +174,10 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
 
   // Filter plugins based on search, tab, and category
   const getFilteredPlugins = () => {
-    let filtered = plugins.filter(p =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.category.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const query = searchQuery.toLowerCase();
+    const matchesSearch = (plugin: VstPlugin) =>
+      [plugin.name, plugin.vendor, plugin.category].some(value => value.toLowerCase().includes(query));
+    let filtered = plugins.filter(matchesSearch);
 
     // Category filter
     if (selectedCategory && activeTab === 'all') {
@@ -176,10 +190,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
       const recentPlugins = recentPaths
         .map(path => plugins.find(p => p.path === path))
         .filter((p): p is VstPlugin => p !== undefined);
-      filtered = recentPlugins.filter(p =>
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.vendor.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+      filtered = recentPlugins.filter(matchesSearch);
     }
 
     return filtered;
@@ -196,7 +207,8 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   ];
 
   return (
-    <div className="modal-overlay-base z-[100]">
+    <Modal title="エフェクトを追加" onClose={onClose}>
+        <div className="modal-overlay-base z-[100]">
       <Panel className="w-[calc(100vw-2rem)] max-w-[700px] h-[calc(100vh-3rem)] max-h-[550px] flex flex-col p-4 sm:p-6 shadow-2xl border border-primary/20 relative overflow-hidden bg-card text-card-foreground">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
@@ -213,11 +225,12 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-4 p-1 bg-muted rounded-lg">
+        <div role="group" aria-label="プラグインの絞り込み" className="flex gap-1 mb-4 p-1 bg-muted rounded-lg">
           {tabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
+              aria-pressed={activeTab === tab.id}
               className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${activeTab === tab.id
                 ? 'bg-background text-primary shadow-sm font-bold'
                 : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
@@ -264,6 +277,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
           <div className="flex gap-1.5 mb-3 flex-wrap">
             <button
               onClick={() => setSelectedCategory(null)}
+              aria-pressed={!selectedCategory}
               className={`px-2.5 py-1 text-[11px] rounded-full border transition-all ${
                 !selectedCategory
                   ? 'bg-primary/10 text-primary border-primary/30 font-bold'
@@ -276,6 +290,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               <button
                 key={cat.name}
                 onClick={() => setSelectedCategory(selectedCategory === cat.name ? null : cat.name)}
+                aria-pressed={selectedCategory === cat.name}
                 className={`px-2.5 py-1 text-[11px] rounded-full border transition-all ${
                   selectedCategory === cat.name
                     ? 'bg-primary/10 text-primary border-primary/30 font-bold'
@@ -305,7 +320,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               <p className="text-sm">{error}</p>
             </div>
           ) : filteredPlugins.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-40 text-muted-foreground opacity-50">
+            <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
               {activeTab === 'favorites' && <p>お気に入りがありません</p>}
               {activeTab === 'recent' && <p>最近使用したプラグインがありません</p>}
               {activeTab === 'all' && selectedCategory && <p>「{selectedCategory}」カテゴリのプラグインが見つかりませんでした</p>}
@@ -363,5 +378,6 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
         </div>
       </Panel>
     </div>
+        </Modal>
   );
 };
