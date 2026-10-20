@@ -1,3 +1,5 @@
+import { Modal } from '../../ui/modal';
+import { deviceDisplayName, findCableReceiver, receiverDeviceHint } from '../../../lib/audioRouting';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     MdClose, MdCheckCircle, MdError, MdWarning, MdRefresh, MdHelpOutline,
@@ -43,9 +45,6 @@ const PURPOSE_OPTIONS: { id: Purpose; label: string; hint: string }[] = [
 const isVirtualCableName = (name: string) =>
     /virtual|vb-|voicemeeter|cable/i.test(name);
 
-const findCableOutputInput = (inputs: { name: string }[]) =>
-    inputs.find(d => /cable\s*output/i.test(d.name));
-
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 const monitorLevels = async (durationMs: number, pick: 'input' | 'output') => {
@@ -60,22 +59,24 @@ const monitorLevels = async (durationMs: number, pick: 'input' | 'output') => {
     return peak;
 };
 
-const RECEIVER_CHECKLISTS: Record<Purpose, string[]> = {
+const receiverChecklists = (receiver: string): Record<Purpose, string[]> => ({
     discord: [
-        'Discord 設定 → 音声とビデオ → 入力デバイスに「CABLE Output (VB-Audio Virtual Cable)」を選択',
-        '「ノイズ抑制（Krisp）」を OFF にする',
-        '「自動で入力感度を調整」を OFF にし、入力音量を適切に調整',
+        `Discord 設定 → 音声とビデオ → 入力デバイスに「${receiver}」を選択`,
+        '「ノイズ抑制（Krisp / Standard）」は ON・OFF を一つずつ切り替え、声の欠けと雑音を試聴して比較',
+        '自動入力感度・入力音量も一つずつ比較し、普段の声が途切れない設定を選ぶ',
+        'エコー除去を変更する場合は、スピーカーからの回り込みが増えないか確認',
         '通話中でないことを確認してから診断のテストトーンを実行する',
     ],
     obs: [
         'OBS のソースに「音声入力キャプチャ」を追加',
-        'デバイスに「CABLE Output (VB-Audio Virtual Cable)」を選択',
+        `デバイスに「${receiver}」を選択`,
         'OBS の音声ミキサーで該当ソースがミュートになっていないか確認',
         '「詳細音声プロパティ」でモニタリングが無効になっていないか確認',
     ],
     other: [
-        '受け側アプリのマイク/入力デバイスに「CABLE Output」を選択',
-        'アプリ内のノイズ抑制・自動ゲインを OFF にする',
+        `受け側アプリのマイク/入力デバイスに「${receiver}」を選択`,
+        'アプリ内のノイズ抑制・自動ゲインを一つずつ ON・OFF で比較し、声と雑音を試聴して選ぶ',
+        'エコー除去を変更する場合は、スピーカーからの回り込みが増えないか確認',
         'Windows のプライバシー設定でマイクアクセスが許可されているか確認',
     ],
     listen: [
@@ -83,7 +84,7 @@ const RECEIVER_CHECKLISTS: Record<Purpose, string[]> = {
         'Windows の音量ミキサーで Auralyn がミュートでないか確認',
         '仮想ケーブルではなく物理出力を選ぶと耳で確認しやすい',
     ],
-};
+});
 
 export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
     isOpen,
@@ -121,7 +122,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
         { id: 'd1', label: 'D1 マイク入力', description: 'マイクに向かって話したとき入力レベルが上がるか', status: 'pending' },
         { id: 'd2', label: 'D2 エンジン出力', description: '処理後の出力レベルまたはテストトーンが出るか', status: 'pending' },
         { id: 'd3', label: 'D3 出力先の種類', description: '仮想ケーブルか物理出力か', status: 'pending' },
-        { id: 'd4', label: 'D4 仮想ケーブル到達', description: 'CABLE Output 側にテストトーンが届くか', status: 'pending' },
+        { id: 'd4', label: 'D4 仮想ケーブル到達', description: '選択した出力と対になる入力へテストトーンが届くか', status: 'pending' },
         { id: 'd5', label: 'D5 サンプルレート', description: 'エンジンと仮想ケーブルのレート一致', status: 'pending' },
         { id: 'd6', label: 'D6 受け側アプリ設定', description: 'Discord/OBS 等の入力デバイス確認リスト', status: 'pending' },
         { id: 'd7', label: 'D7 既定通信デバイス', description: 'Windows の「通信」既定が仮想ケーブルになっていないか', status: 'pending' },
@@ -135,23 +136,41 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
 
         const expectsVirtual = selectedPurpose === 'discord' || selectedPurpose === 'obs' || selectedPurpose === 'other';
 
+        const stopBeforeMeasurement = (detail: string) => {
+            updateCheck('d1', {
+                status: 'error', detail,
+                fixHint: 'オーディオ設定でマイクと出力先を選び、音声を開始してください',
+                action: { label: '設定を開く', onClick: openSettingsAction },
+            });
+            ['d2', 'd3', 'd4', 'd5', 'd6', 'd7'].forEach(id =>
+                updateCheck(id, { status: 'skipped', detail: '音声の開始を確認できないため、未確認です' })
+            );
+            setPhase('results');
+            setIsRunning(false);
+        };
+
         // エンジン起動確認
         let state;
         try {
             state = await audioApi.getAudioState();
         } catch {
-            updateCheck('d1', { status: 'error', detail: 'エンジン状態を取得できませんでした', fixHint: '設定からエンジンを再起動してください' });
-            setPhase('results');
-            setIsRunning(false);
+            stopBeforeMeasurement('音声の状態を取得できませんでした');
             return;
         }
 
-        if (!state?.is_running) {
-            ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7'].forEach(id =>
-                updateCheck(id, { status: 'error', detail: 'エンジンが停止中です', fixHint: '音声設定でエンジンを開始してください', action: { label: '設定を開く', onClick: openSettingsAction } })
-            );
-            setPhase('results');
-            setIsRunning(false);
+        // 常駐プロセスの存在だけでは、音声設定やストリームの開始を確認できない。
+        if (!state?.is_running || !state.config?.host) {
+            stopBeforeMeasurement(state?.config?.host ? '音声処理が停止中です' : '音声設定がまだ完了していません');
+            return;
+        }
+        try {
+            const stream = await audioApi.getAudioStreamState();
+            if (!stream.running || stream.streamFailed) {
+                stopBeforeMeasurement('音声処理が停止中です');
+                return;
+            }
+        } catch {
+            stopBeforeMeasurement('音声処理の稼働状態を確認できませんでした');
             return;
         }
 
@@ -254,22 +273,24 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
         // D4: ループバックプローブ
         updateCheck('d4', { status: 'checking' });
         const devices = await audioApi.getDevices(false).catch(() => null);
-        const cableOutput = devices ? findCableOutputInput(devices.inputs) : undefined;
+        const cableOutput = devices ? findCableReceiver(outputName, hostName, devices.inputs) : undefined;
+        const receiver = cableOutput ? deviceDisplayName(cableOutput.name) : receiverDeviceHint(outputName);
+        const manualHint = `手動確認: 受け側アプリで「${receiver}」を確認し、メーターと試聴で音の到達を確認してください`;
         const outputIsVirtual = isVirtualCableName(outputName);
 
         if (hostName.toUpperCase() === 'ASIO') {
             updateCheck('d4', {
                 status: 'skipped',
-                detail: 'ASIO 排他モードのため自動プローブをスキップ',
-                fixHint: '手動確認: CABLE Output を別アプリの入力に選び、Auralyn からテストトーンを再生して届くか確認',
+                detail: 'ASIO 使用時のため自動プローブをスキップ',
+                fixHint: manualHint,
             });
         } else if (!outputIsVirtual || !cableOutput) {
             updateCheck('d4', {
                 status: 'skipped',
                 detail: outputIsVirtual
-                    ? 'CABLE Output 入力デバイスが見つかりません'
+                    ? '選択した出力と対になる入力を一意に特定できませんでした。自動確認は未実施です'
                     : '仮想ケーブル出力が選択されていないためスキップ',
-                fixHint: 'VB-CABLE をインストールし、出力を CABLE Input に設定してください',
+                fixHint: manualHint,
             });
         } else {
             // D2 の時点でテストトーン再生に同意済みなら再確認しない
@@ -290,18 +311,18 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                     updateCheck('d4', {
                         status: 'warning',
                         detail: probe.unavailable,
-                        fixHint: '手動確認: Discord/OBS の入力に CABLE Output を選び、テストトーンが届くか確認',
+                        fixHint: manualHint,
                     });
                 } else if (probe?.detected) {
                     updateCheck('d4', {
                         status: 'ok',
-                        detail: `CABLE Output でテストトーンを検出（${probe.levelDb.toFixed(1)} dBFS 付近）`,
+                        detail: `${receiver} でテストトーンを検出（${probe.levelDb.toFixed(1)} dBFS 付近）`,
                     });
                 } else {
                     updateCheck('d4', {
                         status: 'error',
-                        detail: 'CABLE Output でテストトーンを検出できませんでした',
-                        fixHint: 'Auralyn の出力が CABLE Input になっているか、VB-CABLE が有効か確認',
+                        detail: `${receiver} でテストトーンを検出できませんでした`,
+                        fixHint: `Auralyn の出力「${deviceDisplayName(outputName)}」と入力「${receiver}」の対応、ミュート状態を確認してください`,
                         action: { label: '設定を開く', onClick: openSettingsAction },
                     });
                 }
@@ -318,21 +339,21 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                 fixHint: 'Windows のサウンド設定で仮想ケーブルとエンジンを同じレート（推奨 48000Hz）に統一',
                 action: { label: '設定を開く', onClick: openSettingsAction },
             });
-        } else if (routing) {
+        } else if (routing?.engineSampleRateHz && routing.devices.some(device =>
+            device.isVirtualCable && device.mixFormatSampleRateHz !== null
+        )) {
             updateCheck('d5', {
                 status: 'ok',
-                detail: routing.engineSampleRateHz
-                    ? `エンジン ${routing.engineSampleRateHz}Hz — 仮想ケーブルと一致`
-                    : 'サンプルレートの不一致は検出されませんでした',
+                detail: `取得できた仮想ケーブルのレートに不一致はありません（エンジン ${routing.engineSampleRateHz}Hz）`,
             });
         } else {
-            updateCheck('d5', { status: 'warning', detail: 'サンプルレート情報を取得できませんでした' });
+            updateCheck('d5', { status: 'warning', detail: '比較に必要なサンプルレート情報を取得できませんでした' });
         }
 
         // D6: 受け側チェックリスト
         updateCheck('d6', {
-            status: 'ok',
-            detail: RECEIVER_CHECKLISTS[selectedPurpose].map((line, i) => `${i + 1}. ${line}`).join('\n'),
+            status: 'skipped',
+            detail: receiverChecklists(receiver)[selectedPurpose].map((line, i) => `${i + 1}. ${line}`).join('\n'),
             fixHint: selectedPurpose === 'discord' && onOpenDiscordGuide
                 ? 'Discord ガイドも参照してください'
                 : selectedPurpose === 'obs'
@@ -353,8 +374,10 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                 detail: `既定の通信デバイス（再生）が「${routing.defaultCommsRenderName ?? '仮想ケーブル'}」です。自分の耳には届きません`,
                 fixHint: 'Windows サウンド設定 → 通信タブで、スピーカー/ヘッドホンを通信デバイスに設定',
             });
-        } else {
+        } else if (routing?.defaultCommsRenderName) {
             updateCheck('d7', { status: 'ok', detail: '既定通信デバイスに問題は見つかりませんでした' });
+        } else {
+            updateCheck('d7', { status: 'warning', detail: '既定通信デバイスを確認できませんでした' });
         }
 
         setPhase('results');
@@ -445,6 +468,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
     const warnCount = checks.filter(c => c.status === 'warning').length;
 
     return (
+        <Modal title="接続診断ウィザード" onClose={onClose}>
         <div className="modal-overlay-base">
             <div className="modal-surface-base w-full max-w-lg max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
                 <div className="modal-header-base shrink-0">
@@ -454,7 +478,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                         </div>
                         <div>
                             <h2 className="text-lg font-bold text-foreground">接続診断ウィザード</h2>
-                            <p className="text-xs text-muted-foreground">音が届かない原因を実測で特定します</p>
+                            <p className="text-xs text-muted-foreground">音声の状態と接続先を、確認できる範囲で調べます</p>
                         </div>
                     </div>
                     <button onClick={onClose} aria-label="閉じる" className="p-2 rounded-lg hover:bg-muted text-muted-foreground">
@@ -540,7 +564,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                         <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{check.detail}</p>
                                     )}
                                     {check.fixHint && (
-                                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 leading-relaxed">
+                                        <p className="text-xs text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
                                             直し方: {check.fixHint}
                                         </p>
                                     )}
@@ -596,5 +620,6 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                 </div>
             </div>
         </div>
+        </Modal>
     );
 };

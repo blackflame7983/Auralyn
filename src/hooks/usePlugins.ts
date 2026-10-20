@@ -642,19 +642,21 @@ export const usePlugins = () => {
 
     const applyTemplate = useCallback(async (mapping: Record<string, VstPlugin>) => {
         setIsLoading(true);
+        setError(null);
         try {
             // 1. Clear current plugins
             const currentIds = plugins.map(p => p.id);
             for (const id of currentIds) {
                 await audioApi.removePlugin(id);
+                // 途中で削除が失敗しても、削除済みのVSTをラックへ残さない。
+                setPlugins(prev => prev.filter(plugin => plugin.id !== id));
             }
-            // Clear state immediately
-            setPlugins([]);
 
             // 2. Load new plugins in order of slots
             const sortedIndexes = Object.keys(mapping).map(Number).sort((a, b) => a - b);
 
             const loadedPlugins: Plugin[] = [];
+            let failedCount = 0;
             for (const idx of sortedIndexes) {
                 const vst = mapping[idx];
                 if (!vst) continue;
@@ -675,11 +677,17 @@ export const usePlugins = () => {
                         gain: 1.0,
                     });
                 } catch (e) {
+                    failedCount += 1;
                     console.error(`Failed to load plugin for slot ${idx}`, e);
                     toast.error(`Slot ${idx + 1} (${vst.name}) の読み込みに失敗しました`);
                 }
             }
             setPlugins(loadedPlugins);
+            // 一部だけ読み込めた場合も、画面を閉じずラックの確認と再試行へつなぐ。
+            if (failedCount > 0) {
+                setError(`${failedCount}件のVSTを読み込めませんでした。現在のラックを確認してください。`);
+                return false;
+            }
             return true;
         } catch (e) {
             console.error("Failed to apply template:", e);

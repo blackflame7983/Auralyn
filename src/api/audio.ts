@@ -32,6 +32,9 @@ export interface AudioConfig {
 }
 
 export const audioApi = {
+    // 既存の状態取得コマンドで実ストリームを確認する。プロセスの常駐とは区別する。
+    getAudioStreamState: async (): Promise<{ running: boolean; streamFailed: boolean }> =>
+        invoke('auto_gain', { request: { action: 'status' } }),
     setLoudnessMeasurement: async (id: number | null): Promise<void> =>
         invoke('set_loudness_measurement', { id }),
     getDevices: async (forceRefresh: boolean = false): Promise<AudioDeviceList> => {

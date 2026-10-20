@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { audioApi } from '../api/audio';
@@ -20,6 +20,10 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
     const [audioConfig, setAudioConfig] = useState<AudioConfig>({ host: '' });
     const [isInitializing, setIsInitializing] = useState(true);
     const [isEngineRunning, setIsEngineRunning] = useState(false);
+    const [engineProcessReady, setEngineProcessReady] = useState<boolean | null>(null);
+    // 初期化と定期取得で共用し、古い応答よりイベント通知を優先する。
+    const engineRevision = useRef(0);
+    const stopRevision = useRef(0);
 
     const handleConfigUpdate = (config: Partial<AudioConfig> & { host: string }) => {
         const { host, input, output, sampleRate, bufferSize, inputChannels, inputId, outputId } = config;
@@ -93,9 +97,14 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
                         // Start Engine (Shared Promise Pattern)
                         // Check if backend already auto-started (fast boot)
                         if (!initializationPromise) {
+                            const request = engineRevision.current;
                             initializationPromise = audioApi.getAudioState()
                                 .then(async (state) => {
-                                    if (state.is_running && state.config) {
+                                    if (request !== engineRevision.current) return;
+                                    const streamRunning = state.is_running && state.config
+                                        && await audioApi.getAudioStreamState().then(s => s.running && !s.streamFailed);
+                                    if (request !== engineRevision.current) return;
+                                    if (streamRunning) {
                                         // Engine already auto-started by backend warmup!
                                         console.info("[AudioConfig] Engine already running (auto-started)");
                                         setIsEngineRunning(true);
@@ -112,7 +121,10 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
                                         return;
                                     }
                                     // Not yet started — send Start command
+                                    const stopAtStart = stopRevision.current;
                                     const res = await audioApi.start(config.host, config.input, config.output, bs, sr);
+                                    // 自分の起動通知は許容し、それ以降の停止・エラー通知は上書きしない。
+                                    if (stopAtStart !== stopRevision.current) return;
                                     setIsEngineRunning(true);
                                     setAudioConfig(prev => {
                                         if (prev.sampleRate === res.sample_rate && prev.bufferSize === res.buffer_size) return prev;
@@ -124,6 +136,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
                                     }
                                 })
                                 .catch(e => {
+                                    if (request !== engineRevision.current) return;
                                     console.error("Auto-start failed:", e);
                                     setIsEngineRunning(false);
                                     toast.error('オーディオエンジンの起動に失敗しました', {
@@ -206,15 +219,43 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         };
     }, []);
 
-    // Audio Engine Stop / Crash Listener
+    // イベント通知と独立した状態取得で、常駐プロセスと実ストリームを区別する。
     useEffect(() => {
-        const unlisten = listen<string>('audio-error', () => {
+        let active = true;
+        let checking = false;
+        const refresh = async () => {
+            if (checking) return;
+            checking = true;
+            const request = engineRevision.current;
+            try {
+                const [process, stream] = await Promise.all([audioApi.getAudioState(), audioApi.getAudioStreamState()]);
+                if (!active || request !== engineRevision.current) return;
+                setEngineProcessReady(!!process.is_running);
+                setIsEngineRunning(!!process.is_running && !!process.config && stream.running && !stream.streamFailed);
+                if (process.config && stream.running && !stream.streamFailed) {
+                    const config = process.config;
+                    setAudioConfig(prev => ({ ...prev, host: config.host, sampleRate: config.sample_rate ?? prev.sampleRate, bufferSize: config.buffer_size ?? prev.bufferSize }));
+                }
+            } catch {
+                if (active && request === engineRevision.current) {
+                    setEngineProcessReady(null);
+                    setIsEngineRunning(false);
+                }
+            } finally { checking = false; }
+        };
+        const stop = () => {
+            engineRevision.current += 1;
+            stopRevision.current += 1;
             setIsEngineRunning(false);
-        });
-        const unlistenStop = listen('audio-stopped', () => setIsEngineRunning(false));
+        };
+        const subscriptions = ['audio-error', 'audio-stream-error', 'audio-stopped'].map(event => listen(event, stop));
+        const started = listen('audio-started', () => { engineRevision.current += 1; setEngineProcessReady(true); });
+        void refresh();
+        const timer = setInterval(() => void refresh(), 2000);
         return () => {
-            unlisten.then((f) => f());
-            unlistenStop.then((f) => f());
+            active = false;
+            clearInterval(timer);
+            [...subscriptions, started].forEach(promise => { void promise.then(unlisten => unlisten()); });
         };
     }, []);
 
@@ -252,6 +293,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         setAudioConfig,
         handleConfigUpdate,
         isInitializing,
-        isEngineRunning
+        isEngineRunning,
+        engineProcessReady
     };
 };

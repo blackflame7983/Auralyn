@@ -1,0 +1,32 @@
+// VB-CABLE の再生側と録音側を案内する。ミキサーの内部ルーティングは推測しない。
+export function receiverDeviceHint(outputName: string): string {
+    outputName = deviceDisplayName(outputName);
+    if (/cable(?:-[ab])?\s+input/i.test(outputName)) {
+        return outputName.replace(/input/i, 'Output');
+    }
+    if (/voicemeeter/i.test(outputName)) {
+        return 'Voicemeeter のバス設定に対応する録音デバイス（手動で確認）';
+    }
+    return '出力先と対になる録音デバイス（受け側アプリで確認）';
+}
+
+// 対応レートはデバイス識別子に残し、選択肢では名前を読み取りやすくする。
+export function deviceDisplayName(name: string): string {
+    return name.replace(/\s*\[[\d/.,\s]+kHz\]$/i, '');
+}
+
+// 自動プローブは名前の対応が既知のVB-CABLEだけに限定する。
+// ミキサーのバス、別ホスト、重複候補を推測して別の入力へ迂回しない。
+export function findCableReceiver<T extends { name: string; host: string }>(
+    outputName: string, host: string, inputs: T[],
+): T | undefined {
+    const output = deviceDisplayName(outputName).trim().match(/^CABLE(-[AB])?\s+Input(?:\s*\([^)]*\))?$/i);
+    if (!output) return undefined;
+    const family = (output[1] ?? '').toUpperCase();
+    const candidates = inputs.filter(input => {
+        if (input.host.toLowerCase() !== host.toLowerCase()) return false;
+        const match = deviceDisplayName(input.name).trim().match(/^CABLE(-[AB])?\s+Output(?:\s*\([^)]*\))?$/i);
+        return match && (match[1] ?? '').toUpperCase() === family;
+    });
+    return candidates.length === 1 ? candidates[0] : undefined;
+}

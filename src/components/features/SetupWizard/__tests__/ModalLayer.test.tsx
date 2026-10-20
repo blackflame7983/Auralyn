@@ -54,7 +54,7 @@ describe('セットアップと親画面の連携', () => {
     it('入力未検出時はウィザードを閉じてオーディオ設定だけを開く', async () => {
         hasInput = false;
         render(<AppModals />);
-        fireEvent.click(await screen.findByRole('button', { name: 'はじめる' }));
+        fireEvent.click(await screen.findByRole('button', { name: '用途を選んで設定する' }));
         fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
         fireEvent.click(await screen.findByRole('button', { name: 'WASAPI の入力が見つからない場合はオーディオ設定を開く' }));
         await screen.findByRole('heading', { name: 'オーディオ設定' });
@@ -67,7 +67,7 @@ describe('セットアップと親画面の連携', () => {
         sampleRate = rate;
         bufferSize = buffer;
         render(<AppModals />);
-        fireEvent.click(await screen.findByRole('button', { name: 'OBS 向けの接続を確認する' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'OBS向けに設定する' }));
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
         await screen.findByRole('heading', { name: '音声設定を保存しました' });
         await waitFor(() => expect(screen.getByTestId('audio-config')).toHaveTextContent(`${rate}/${buffer}`));

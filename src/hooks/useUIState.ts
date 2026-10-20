@@ -2,13 +2,17 @@ import { useState } from 'react';
 
 export const useUIState = () => {
     const [isSettingsOpen, setSettingsOpen] = useState(false);
-    const [settingsTab, setSettingsTab] = useState<'audio' | 'obs'>('audio');
+    const [settingsTab, setSettingsTab] = useState<'audio' | 'obs' | 'sound'>('audio');
     const setIsSettingsOpen = (open: boolean) => {
         setSettingsTab('audio');
         setSettingsOpen(open);
     };
     const openObsSettings = () => {
         setSettingsTab('obs');
+        setSettingsOpen(true);
+    };
+    const openSoundSettings = () => {
+        setSettingsTab('sound');
         setSettingsOpen(true);
     };
     const [isBrowserOpen, setIsBrowserOpen] = useState(false);
@@ -29,6 +33,7 @@ export const useUIState = () => {
         setIsSettingsOpen,
         settingsTab,
         openObsSettings,
+        openSoundSettings,
         isBrowserOpen,
         setIsBrowserOpen,
         isOBSGuideOpen,

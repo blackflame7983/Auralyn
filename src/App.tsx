@@ -25,7 +25,7 @@ function AppContent() {
   // Custom Hooks
   const ui = useUIState();
   const [isBeginnerMode, setIsBeginnerMode] = useBeginnerMode();
-  const { audioConfig, handleConfigUpdate, isInitializing, isEngineRunning } = useAudioConfig(
+  const { audioConfig, handleConfigUpdate, isInitializing, isEngineRunning, engineProcessReady } = useAudioConfig(
     () => ui.setIsWizardOpen(true),
     () => ui.setIsSettingsOpen(true)
   );
@@ -80,9 +80,9 @@ function AppContent() {
     if (currentStep === 'complete') {
       // Small delay to let the last overlay disappear
       const timer = setTimeout(() => {
-        toast.success('セットアップ完了', {
+        toast.info('操作チュートリアルの案内を終了しました', {
           description:
-            '配信ソフトと連携するにはガイドをご覧ください。音が届かない場合は接続診断、音質はボイスチェックで確認できます。',
+            '受け側への音声到達は未確認です。接続手順はガイド、音の到達は接続診断や受け側のメーター、音質はボイスチェックで確認してください。',
           duration: 10000,
           action: {
             label: 'OBSガイドを開く',
@@ -93,6 +93,12 @@ function AppContent() {
       return () => clearTimeout(timer);
     }
   }, [currentStep]);
+
+  const isModalOpen = [
+    ui.isSettingsOpen, ui.isBrowserOpen, ui.isOBSGuideOpen, ui.isDiscordGuideOpen,
+    ui.isWizardOpen, ui.isTemplateWizardOpen, ui.isLicenseModalOpen, ui.isRecoveryModalOpen,
+    ui.isPresetManagerOpen, ui.isTroubleshootOpen, ui.isVoiceCheckOpen,
+  ].some(Boolean);
 
   const pluginRack = (
     <PluginList
@@ -132,6 +138,7 @@ function AppContent() {
         onDisplayModeChange={setIsBeginnerMode}
         onOpenOBSSettings={ui.openObsSettings}
         onOpenSettings={() => ui.setIsSettingsOpen(true)}
+        onOpenSoundSettings={ui.openSoundSettings}
         onOpenOBSGuide={() => ui.setIsOBSGuideOpen(true)}
         onOpenDiscordGuide={() => ui.setIsDiscordGuideOpen(true)}
         onOpenTroubleshoot={() => ui.setIsTroubleshootOpen(true)}
@@ -143,6 +150,7 @@ function AppContent() {
         currentSampleRate={audioConfig.sampleRate}
         currentBufferSize={audioConfig.bufferSize}
         isEngineRunning={isEngineRunning}
+        engineProcessReady={engineProcessReady}
       >
         {isBeginnerMode ? (
           <details className="mb-4">
@@ -158,7 +166,7 @@ function AppContent() {
           pluginRack
         )}
 
-        {!isBeginnerMode && (
+        {!isBeginnerMode && !isModalOpen && (
           <>
             {!ui.isBrowserOpen && !isInitializing && (
               <TutorialOverlay
@@ -168,7 +176,7 @@ function AppContent() {
                 align="center"
                 content={
                   <div className="space-y-2">
-                    <strong className="block text-green-500 font-bold">
+                    <strong className="block text-green-800 dark:text-green-300 font-bold">
                       ステップ 1: エフェクトを追加
                     </strong>
                     <p>
@@ -185,7 +193,7 @@ function AppContent() {
               align="start"
               content={
                 <div className="space-y-2">
-                  <strong className="block text-green-500 font-bold">ステップ 2/4: 操作方法</strong>
+                  <strong className="block text-green-800 dark:text-green-300 font-bold">ステップ 2/4: 操作方法</strong>
                   <p>
                     エフェクトが追加されました！
                     <br />
@@ -201,7 +209,7 @@ function AppContent() {
               align="start"
               content={
                 <div className="space-y-2">
-                  <strong className="block text-blue-500 font-bold">
+                  <strong className="block text-blue-800 dark:text-blue-300 font-bold">
                     ステップ 3/4: プラグインを編集
                   </strong>
                   <p>
@@ -219,7 +227,7 @@ function AppContent() {
               align="start"
               content={
                 <div className="space-y-2">
-                  <strong className="block text-orange-500 font-bold">
+                  <strong className="block text-orange-800 dark:text-orange-300 font-bold">
                     ステップ 4/4: エフェクト比較を試そう
                   </strong>
                   <p>

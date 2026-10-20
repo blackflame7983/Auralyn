@@ -21,10 +21,12 @@ function requestMeasurement(id: number | null) {
 
 export function LoudnessCheck({
     running,
+    stateKnown = true,
     enabled = true,
     onVoiceCheck,
 }: {
     running: boolean;
+    stateKnown?: boolean;
     enabled?: boolean;
     onVoiceCheck: () => void;
 }) {
@@ -160,10 +162,11 @@ export function LoudnessCheck({
     }, []);
 
     useEffect(() => {
-        if (!running) invalidate();
-    }, [running]);
-    useEffect(() => {
-        if (available || (id.current === null && !pending.current && !suppressReading.current))
+        if (available && running) return;
+        clear();
+        // 取得失敗もrunning=falseになる。停止済みとは扱わず、測定の停止応答を確認する。
+        // 既に停止待機中・停止未確認の場合は、その処理と再試行の導線を維持する。
+        if (suppressReading.current || (id.current === null && !pending.current))
             return;
         const operation = ++generation.current;
         pending.current = true;
@@ -171,7 +174,6 @@ export function LoudnessCheck({
         setActive(true);
         setBusy(true);
         setError('');
-        clear();
         void requestMeasurement(null)
             .then(() => {
                 if (generation.current !== operation) return;
@@ -190,7 +192,7 @@ export function LoudnessCheck({
                 pending.current = false;
                 setBusy(false);
             });
-    }, [available]);
+    }, [available, running]);
     useEffect(() => {
         if (!active) return;
         const timer = setInterval(() => {
@@ -238,12 +240,14 @@ export function LoudnessCheck({
             }
         }
     };
-    const message = !running
-        ? '音声は停止中です'
-        : stopUnconfirmed
-          ? '測定の停止を確認できません'
-          : busy && active
-            ? '測定を停止しています'
+    const message = stopUnconfirmed
+        ? '測定の停止を確認できません'
+        : busy && active
+          ? '測定を停止しています'
+          : !running
+            ? stateKnown
+              ? '音声は停止中です'
+              : '音声の稼働状態を確認できません'
             : !available && !active
               ? '音量チェックは休止中です'
               : !active
@@ -258,6 +262,9 @@ export function LoudnessCheck({
                         ? '音が小さいか、無音です'
                         : '測定中です。普段の声で3秒以上話してください';
     const good = verdict === 'good' && active && !stale;
+    // アンマウントせず停止を確認し、停止失敗時の再試行だけは隠さない。
+    if (!enabled && !active && !busy && !stopUnconfirmed) return null;
+
     return (
         <section
             aria-label="出力の音量チェック"
@@ -268,14 +275,15 @@ export function LoudnessCheck({
                     <h2 className="text-sm font-semibold">出力の音量チェック</h2>
                     <p
                         role="status"
-                        className={`text-lg font-bold ${good ? 'text-emerald-500' : 'text-amber-500'}`}
+                        className={`text-lg font-bold ${good ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-800 dark:text-amber-300'}`}
                     >
                         {message}
                     </p>
                 </div>
+                <div className="flex flex-wrap gap-2">
                 <button
                     onClick={() => void toggle()}
-                    disabled={!running || busy || (!available && !active)}
+                    disabled={busy || (!active && (!running || !available))}
                     className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
                 >
                     {busy
@@ -286,12 +294,13 @@ export function LoudnessCheck({
                             ? '測定を止める'
                             : '測定する'}
                 </button>
+                <button className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
+                    disabled={!running || !available || busy} onClick={() => setAutoGainOpen(true)}>音量を合わせる</button>
+                </div>
             </div>
             <p className="text-xs text-muted-foreground">
-                Auralynの最終出力だけの目安です。ゲーム音を含む配信全体は判定しません。テスト音・試聴音も測定に含みます。
+                Auralynの最終出力だけの目安です。ゲーム音を含む配信全体は判定しません。
             </p>
-            <button className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
-                disabled={!running || !available || busy} onClick={() => setAutoGainOpen(true)}>音量を合わせる</button>
             {autoGainOpen && available && running && <AutoGainDialog onClose={() => setAutoGainOpen(false)} />}
             {active && reading && (
                 <p className="text-xs text-muted-foreground font-mono">
@@ -300,13 +309,14 @@ export function LoudnessCheck({
                 </p>
             )}
             {error && (
-                <p role="alert" className="text-sm text-amber-500">
+                <p role="alert" className="text-sm text-amber-800 dark:text-amber-300">
                     {error}
                 </p>
             )}
             <details className="text-xs text-muted-foreground">
                 <summary className="cursor-pointer">目安と測定について</summary>
                 <div className="mt-2 space-y-2">
+                    <p>テスト音・試聴音も測定に含みます。測定の開始は手動です。</p>
                     <label className="flex flex-wrap items-center gap-2">
                         声用の目標（仮の目安）
                         <select

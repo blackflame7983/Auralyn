@@ -1,4 +1,6 @@
+import { buttonVariants } from '@/components/ui/button';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Modal } from '../../ui/modal';
 
 import { listen } from '@tauri-apps/api/event';
 
@@ -32,6 +34,7 @@ interface VoiceCheckModalProps {
     isOpen: boolean;
     onClose: () => void;
     onOpenAudioSettings?: () => void;
+    onOpenSoundSettings?: () => void;
 }
 
 
@@ -118,17 +121,12 @@ function formatAdvice(advice: QualityAdvice): string {
 
 
 
-function adviceOpensSettings(messageKey: string): boolean {
-    return [
-        'clip_detected',
-        'dropout_detected',
-        'high_freq_attenuation',
-        'noise_floor_high',
-        'noise_suppression_weak',
-        'loudness_low',
-        'loudness_high',
-    ].includes(messageKey);
+function adviceSettingsTarget(messageKey: string): 'audio' | 'sound' | null {
+    if (['high_freq_attenuation', 'noise_floor_high', 'noise_suppression_weak'].includes(messageKey)) return 'sound';
+    if (['clip_detected', 'dropout_detected', 'loudness_low', 'loudness_high'].includes(messageKey)) return 'audio';
+    return null;
 }
+
 
 function adviceSeverityClass(severity: string): string {
 
@@ -164,7 +162,7 @@ function BandDeltaChart({ bands }: { bands: QualityReport['bandDeltaDb'] }) {
 
         <div className="space-y-1">
 
-            <p className="text-[11px] text-muted-foreground">帯域バランス（加工後 − 加工前）</p>
+            <p className="text-xs text-muted-foreground">帯域バランス（加工後 − 加工前）</p>
 
             <div className="flex items-end gap-1 h-20">
 
@@ -198,7 +196,7 @@ function BandDeltaChart({ bands }: { bands: QualityReport['bandDeltaDb'] }) {
 
                             </div>
 
-                            <span className="text-[9px] text-muted-foreground truncate w-full text-center">
+                            <span className="text-xs text-muted-foreground truncate w-full text-center">
 
                                 {band.bandHz >= 1000 ? `${band.bandHz / 1000}k` : band.bandHz}
 
@@ -414,7 +412,7 @@ function WaveformCanvas({
 
 
 
-export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClose, onOpenAudioSettings }) => {
+export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClose, onOpenAudioSettings, onOpenSoundSettings }) => {
 
     const [vcState, setVcState] = useState<VoiceCheckState>({
 
@@ -443,6 +441,51 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
     const [analyzing, setAnalyzing] = useState(false);
 
     const [outputIsVirtual, setOutputIsVirtual] = useState(false);
+
+    const [streamStatus, setStreamStatus] = useState<'checking' | 'ready' | 'stopped' | 'unknown'>('checking');
+    const [recordingError, setRecordingError] = useState('');
+    const streamGeneration = useRef(0);
+
+    // 停止通知より古い取得応答で、録音可能な表示へ戻さない。
+    const refreshStream = useCallback(async () => {
+        const generation = ++streamGeneration.current;
+        setStreamStatus('checking');
+        try {
+            const stream = await audioApi.getAudioStreamState();
+            if (generation !== streamGeneration.current) return false;
+            const ready = stream.running && !stream.streamFailed;
+            setStreamStatus(ready ? 'ready' : 'stopped');
+            return ready;
+        } catch {
+            if (generation === streamGeneration.current) setStreamStatus('unknown');
+            return false;
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        let disposed = false;
+        const subscriptions = ['audio-started', 'audio-stopped', 'audio-stream-error', 'audio-error'].map(event =>
+            listen(event, () => {
+                if (disposed) return;
+                if (event === 'audio-started') {
+                    void refreshStream();
+                } else {
+                    streamGeneration.current += 1;
+                    setStreamStatus('stopped');
+                }
+            }),
+        );
+        // 購読の登録後に初期取得し、通知と取得の間の取りこぼしを防ぐ。
+        void Promise.all(subscriptions).then(() => {
+            if (!disposed) void refreshStream();
+        }).catch(() => { if (!disposed) setStreamStatus('unknown'); });
+        return () => {
+            disposed = true;
+            streamGeneration.current += 1;
+            subscriptions.forEach(subscription => void subscription.then(unlisten => unlisten()).catch(() => {}));
+        };
+    }, [isOpen, refreshStream]);
 
     // 出力先が仮想ケーブルの場合、再生音はヘッドホンで聞こえないため警告を出す
     useEffect(() => {
@@ -515,11 +558,13 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
         setBusy(true);
 
-        setQualityReport(null);
+        setRecordingError('');
 
         try {
-
+            // ボタン表示後のデバイス切断・停止も、録音コマンドの直前に再確認する。
+            if (!await refreshStream()) return;
             await audioApi.startVoiceCheck(maxMs);
+            setQualityReport(null);
 
             setVcState({ state: 'recording', position_ms: 0, duration_ms: 0 });
 
@@ -529,7 +574,8 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
         } catch (e) {
 
-            toast.error('録音を開始できませんでした');
+            setRecordingError('録音を開始できませんでした。音声の状態を再確認し、停止中の場合は設定から開始してください。');
+            void refreshStream();
 
             console.error(e);
 
@@ -698,7 +744,8 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
     return (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <Modal title="ボイスチェック" onClose={onClose}>
+        <div className="modal-overlay-base bg-black/60">
 
             <div className="w-full max-w-2xl max-h-[90vh] rounded-xl border border-border bg-card shadow-2xl overflow-hidden flex flex-col">
 
@@ -736,6 +783,19 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
                 <div className="p-5 space-y-5 overflow-y-auto">
 
+                    {(streamStatus !== 'ready' || recordingError) && (
+                        <section aria-label="録音の準備" className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
+                            <p role={recordingError ? 'alert' : 'status'} className="text-sm">
+                                {recordingError || (streamStatus === 'checking' ? '音声の状態を確認中です。' : streamStatus === 'unknown'
+                                    ? '音声の状態を確認できません。再確認してから録音してください。'
+                                    : '音声が停止しています。マイクと出力先を設定し、「保存して開始」を押してください。')}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                <button disabled={busy || streamStatus === 'checking'} onClick={() => void refreshStream()} className="px-3 py-2 rounded-md border border-border text-sm disabled:opacity-50">状態を再確認</button>
+                                {onOpenAudioSettings && <button disabled={busy || isRecording || isPlaying} onClick={onOpenAudioSettings} className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm disabled:opacity-50">マイクと出力先を設定する</button>}
+                            </div>
+                        </section>
+                    )}
                     <div className="flex flex-wrap items-center gap-3">
 
                         {!isRecording ? (
@@ -744,9 +804,9 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
                                 onClick={handleStartRecording}
 
-                                disabled={busy || isPlaying}
+                                disabled={busy || isPlaying || streamStatus !== 'ready'}
 
-                                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50"
+                                className={buttonVariants({ className: "gap-2" })}
 
                             >
 
@@ -764,7 +824,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
                                 disabled={busy}
 
-                                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-destructive hover:bg-destructive/90 text-white text-sm font-semibold"
+                                className={buttonVariants({ variant: "destructive", className: "gap-2" })}
 
                             >
 
@@ -804,6 +864,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                         </div>
                     )}
 
+                    {!hasRecording && !isRecording && <p className="text-sm text-muted-foreground">録音すると、ここに加工前後の波形が表示されます。</p>}
                     <WaveformCanvas
 
                         rawPeaks={rawPeaks}
@@ -833,6 +894,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                                 onClick={() => handleSourceChange(key)}
 
                                 disabled={!hasRecording}
+                                aria-pressed={source === key}
 
                                 className={cn(
 
@@ -878,7 +940,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
                         </div>
 
-                        <div className="flex justify-between text-[11px] font-mono text-muted-foreground">
+                        <div className="flex justify-between text-xs font-mono text-muted-foreground">
 
                             <span>{formatMs(vcState.position_ms)}</span>
 
@@ -898,7 +960,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
                             disabled={!hasRecording || isRecording}
 
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-muted/40 hover:bg-muted text-sm font-semibold disabled:opacity-50"
+                            className={buttonVariants({ variant: "secondary", className: "gap-2" })}
 
                         >
 
@@ -950,7 +1012,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
                             disabled={!hasRecording || isRecording}
 
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border hover:bg-muted text-sm font-semibold disabled:opacity-50 ml-auto"
+                            className={buttonVariants({ variant: "outline", className: "gap-2 ml-auto" })}
 
                         >
 
@@ -1000,7 +1062,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
                             disabled={!hasRecording || isRecording || isPlaying || analyzing}
 
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-50"
+                            className={buttonVariants({ className: "gap-2" })}
 
                         >
 
@@ -1074,7 +1136,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
 
 
-                                <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+                                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
 
                                     <span>
 
@@ -1102,7 +1164,10 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
                                     <ul className="space-y-2">
 
-                                        {qualityReport.advices.map((advice, i) => (
+                                        {qualityReport.advices.map((advice, i) => {
+                                            const target = adviceSettingsTarget(advice.messageKey);
+                                            const openSettings = target === 'sound' ? onOpenSoundSettings : target === 'audio' ? onOpenAudioSettings : undefined;
+                                            return (
 
                                             <li
 
@@ -1118,18 +1183,19 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
                                             >
                                                 <p>{formatAdvice(advice)}</p>
-                                                {onOpenAudioSettings && adviceOpensSettings(advice.messageKey) && (
+                                                {openSettings && (
                                                     <button
                                                         type="button"
-                                                        onClick={onOpenAudioSettings}
-                                                        className="mt-2 text-[11px] font-semibold underline underline-offset-2 hover:opacity-80"
+                                                        onClick={openSettings}
+                                                        className="mt-2 text-xs font-semibold underline underline-offset-2 hover:opacity-80"
                                                     >
-                                                        オーディオ設定を開く
+                                                        {target === 'sound' ? '音づくりを開く' : 'オーディオ設定を開く'}
                                                     </button>
                                                 )}
                                             </li>
 
-                                        ))}
+                                            );
+                                        })}
 
                                     </ul>
 
@@ -1137,7 +1203,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
 
 
 
-                                <p className="text-[10px] text-muted-foreground">
+                                <p className="text-xs text-muted-foreground">
 
                                     ※ 数値は参考情報です。最終的な判断は試聴で確認してください。
 
@@ -1154,6 +1220,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
             </div>
 
         </div>
+        </Modal>
 
     );
 

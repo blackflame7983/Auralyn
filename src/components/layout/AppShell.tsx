@@ -18,6 +18,7 @@ interface AppShellProps {
     onOpenOBSSettings: () => void;
     children: ReactNode;
     onOpenSettings: () => void;
+    onOpenSoundSettings?: () => void;
     onOpenOBSGuide: () => void;
     onOpenDiscordGuide: () => void;
     onOpenTroubleshoot: () => void;
@@ -29,6 +30,7 @@ interface AppShellProps {
     currentSampleRate?: number;
     currentBufferSize?: number;
     isEngineRunning: boolean;
+    engineProcessReady?: boolean | null;
 }
 
 import { MasterBar } from './MasterBar';
@@ -39,6 +41,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     onDisplayModeChange,
     onOpenOBSSettings,
     onOpenSettings,
+    onOpenSoundSettings,
     onOpenOBSGuide,
     onOpenDiscordGuide,
     onOpenTroubleshoot,
@@ -49,16 +52,12 @@ export const AppShell: React.FC<AppShellProps> = ({
     currentHost,
     currentSampleRate,
     currentBufferSize,
-    isEngineRunning
+    isEngineRunning,
+    engineProcessReady
 }) => {
     const [loudnessEnabled, setLoudnessEnabled] = useState(false);
     useEffect(() => setLoudnessEnabled(false), [isBeginnerMode]);
     const [isABBypassed, setIsABBypassed] = useState(false);
-    const footerStatusText = !isEngineRunning
-        ? '停止中'
-        : isABBypassed
-            ? '比較中'
-            : '稼働中';
     const handleABToggle = useCallback(async () => {
         try {
             const next = !isABBypassed;
@@ -119,13 +118,14 @@ export const AppShell: React.FC<AppShellProps> = ({
                     currentSampleRate={currentSampleRate}
                     currentBufferSize={currentBufferSize}
                     isEngineRunning={isEngineRunning}
+                    engineProcessReady={engineProcessReady}
                 />
                 <main
-                    className={`flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent pb-4 transition-all duration-300 ${isLargeMeterOpen ? 'pr-36' : ''}`}
+                    className={`flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent pb-4 transition-all duration-300 ${isLargeMeterOpen ? 'pr-36 lg:pr-36' : ''}`}
                 >
                     <div className="max-w-4xl mr-auto ml-0">
                         <div
-                            className="mb-4 flex flex-wrap items-center justify-between gap-3"
+                            className="mb-3 flex flex-wrap items-center justify-between gap-3"
                             aria-label="表示の切替"
                         >
                             <div
@@ -156,20 +156,36 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     OBSを整える
                                 </button>
                             )}
+                            {!isBeginnerMode && (
+                                <label className="flex items-center gap-2 text-sm" title="開始は手動です。非表示にすると測定を停止します。">
+                                    <input type="checkbox" checked={loudnessEnabled} onChange={e => setLoudnessEnabled(e.target.checked)} />
+                                    音量チェックを表示
+                                </label>
+                            )}
                         </div>
-                        {!isBeginnerMode && (
-                            <label className="mb-3 flex items-center gap-2 text-sm">
-                                <input
-                                    type="checkbox"
-                                    checked={loudnessEnabled}
-                                    onChange={(e) => setLoudnessEnabled(e.target.checked)}
-                                />
-                                音量チェックを使う（開始は手動）
-                            </label>
+                        {!isEngineRunning && (
+                            <section aria-label="音声の開始" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2">
+                                <p role="status" className="text-sm font-semibold">{engineProcessReady === null ? '音声の状態を確認できません' : currentHost ? '音声停止中' : '音声未設定'}</p>
+                                <button onClick={onOpenSettings} className="rounded-md bg-primary px-3 py-1.5 text-sm font-bold text-primary-foreground">マイクと出力先を設定する</button>
+                            </section>
                         )}
+                        {isBeginnerMode && (
+                            <section aria-label="配信前の準備" className="mb-3 grid grid-cols-2 gap-3">
+                                <button onClick={onOpenSoundSettings ?? onOpenSettings} className="text-left rounded-md border border-border bg-card p-3 hover:bg-muted">
+                                    <span className="block text-sm font-semibold">1. 声を整える</span>
+                                    <span className="block text-xs text-muted-foreground mt-1">ノイズ低減・内蔵ボイスチェーン</span>
+                                </button>
+                                <button onClick={onOpenVoiceCheck} className="text-left rounded-md border border-border bg-card p-3 hover:bg-muted">
+                                    <span className="block text-sm font-semibold">2. 録音して聴く</span>
+                                    <span className="block text-xs text-muted-foreground mt-1">加工前後をボイスチェックで比較</span>
+                                </button>
+                            </section>
+                        )}
+                        {isBeginnerMode && <label className="mb-2 flex items-center gap-2 text-sm" title="開始は手動です。非表示にすると測定を停止します。"><input type="checkbox" checked={loudnessEnabled} onChange={e => setLoudnessEnabled(e.target.checked)} />音量チェックを表示</label>}
                         <LoudnessCheck
-                            enabled={isBeginnerMode || loudnessEnabled}
+                            enabled={loudnessEnabled}
                             running={isEngineRunning}
+                            stateKnown={engineProcessReady !== null}
                             onVoiceCheck={onOpenVoiceCheck}
                         />
                         {children}
@@ -177,14 +193,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </main>
 
                 {/* Master Section Footer */}
-                <footer className="h-20 bg-background border-t border-border px-4 z-50 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_-5px_20px_rgba(0,0,0,0.5)] shrink-0 transition-colors duration-300 overflow-hidden">
-                    <div className="h-full w-full flex items-center justify-between gap-3 min-w-0">
+                <footer className="h-16 bg-background border-t border-border px-4 z-50 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_-5px_20px_rgba(0,0,0,0.5)] shrink-0 transition-colors duration-300 overflow-x-auto">
+                    <div className="h-full w-full min-w-max flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex flex-col">
-                            <span className="text-xs font-bold text-zinc-400 dark:text-zinc-500 tracking-widest">AURALYN</span>
-                            <span className="text-[10px] text-zinc-500 dark:text-zinc-700 font-mono">{footerStatusText}</span>
-                        </div>
-
                         {/* Effect Compare Button */}
                         <TooltipProvider>
                             <Tooltip>
@@ -213,6 +224,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                     </div>
                     <div className="h-full py-2 min-w-0">
                         <MasterBar
+                            isRunning={isEngineRunning}
+                            processReady={engineProcessReady}
                             host={currentHost}
                             sampleRate={currentSampleRate}
                             bufferSize={currentBufferSize}

@@ -172,11 +172,14 @@ export const PluginList: React.FC<PluginListProps> = ({
                                         <TooltipTrigger asChild>
                                             <Button
                                                 variant="ghost"
-                                                size="icon"
-                                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                                size="sm"
+                                                className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                                                aria-label="ラックをシンプル表示にする"
+                                                aria-pressed={simpleMode}
                                                 onClick={toggleSimpleMode}
                                             >
                                                 {simpleMode ? <MdViewAgenda className="w-4 h-4" /> : <MdViewCompact className="w-4 h-4" />}
+                                                {simpleMode ? 'シンプル' : '詳細'}
                                             </Button>
                                         </TooltipTrigger>
                                         <TooltipContent>
@@ -186,7 +189,7 @@ export const PluginList: React.FC<PluginListProps> = ({
                                 )}
                                 <Button variant="outline" size="sm" onClick={onOpenPresets} className="h-7 text-xs gap-2">
                                     <MdFolderOpen className="w-3.5 h-3.5" />
-                                    プリセット読込
+                                    プロファイル管理
                                 </Button>
                             </>
                         )}
@@ -230,7 +233,7 @@ export const PluginList: React.FC<PluginListProps> = ({
                         id="add-effect-btn"
                         variant="outline"
                         onClick={onAddClick}
-                        className={`w-full h-16 flex items-center justify-center gap-2 transition-all font-mono tracking-[0.15em] font-medium
+                        className={`w-full h-10 flex items-center justify-center gap-2 transition-colors font-medium
                     ${theme === 'gaming'
                                 ? 'border-2 border-primary/40 bg-primary/5 hover:bg-primary/10 hover:border-primary hover:shadow-[0_0_20px_rgba(34,211,238,0.2)] text-primary'
                                 : theme === 'light'
@@ -243,7 +246,7 @@ export const PluginList: React.FC<PluginListProps> = ({
                     </Button>
                 )}
                 {/* Footer Spacer for AppShell Footer */}
-                {plugins.length > 0 && <div className="h-24" />}
+                {plugins.length > 0 && <div className="h-3" />}
             </div>
         </TooltipProvider>
     );

@@ -56,6 +56,7 @@ interface HeaderProps {
     currentSampleRate?: number;
     currentBufferSize?: number;
     isEngineRunning: boolean;
+    engineProcessReady?: boolean | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -71,7 +72,8 @@ export const Header: React.FC<HeaderProps> = ({
     currentHost,
     currentSampleRate,
     currentBufferSize,
-    isEngineRunning
+    isEngineRunning,
+    engineProcessReady
 }) => {
     const { theme, setTheme } = useTheme();
     const [isGlobalMuted, setIsGlobalMuted] = useState(false);
@@ -133,12 +135,12 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     return (
-        <header className={`h-16 flex items-center justify-between px-6 border-b sticky top-0 z-50 transition-colors duration-300 backdrop-blur-md ${theme === 'light'
+        <header className={`h-16 shrink-0 overflow-x-auto flex items-center justify-between px-4 xl:px-6 border-b sticky top-0 z-50 transition-colors duration-300 backdrop-blur-md ${theme === 'light'
             ? 'bg-white/95 border-border/20 shadow-sm'
             : 'bg-background/80 border-border/40'
             }`}>
             <TooltipProvider>
-                <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="flex items-center gap-3 shrink-0 flex-1">
                     {/* Logo Section */}
                     <div className="flex items-center gap-2 select-none shrink-0">
                         <img src="/auralyn_icon.png?v=17" alt="Auralyn Logo" className="w-7 h-7 object-contain drop-shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
@@ -153,31 +155,33 @@ export const Header: React.FC<HeaderProps> = ({
                         sampleRate={currentSampleRate}
                         bufferSize={currentBufferSize}
                         isRunning={isEngineRunning}
+                        processReady={engineProcessReady}
                         onClick={onOpenSettings}
                     />
                 </div>
 
-                <div className="flex items-center gap-2 lg:gap-4 shrink-0 pl-2">
+                <div className="flex items-center gap-2 xl:gap-4 shrink-0 pl-2">
                     {/* Panic Button (Global Mute) */}
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <button
+                                aria-pressed={isGlobalMuted}
                                 onClick={handleToggleMute}
                                 aria-label={isGlobalMuted ? '緊急ミュートを解除' : '緊急ミュートを有効化'}
                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all font-bold text-sm shadow-sm ${isGlobalMuted
-                                    ? 'bg-destructive text-destructive-foreground border-destructive animate-pulse ring-2 ring-destructive/50'
-                                    : 'bg-background hover:bg-destructive/10 text-destructive border-destructive/30 hover:border-destructive hover:shadow-destructive/20'
+                                    ? 'bg-red-700 text-white border-red-700 ring-2 ring-destructive/50'
+                                    : 'bg-background hover:bg-destructive/10 text-red-800 dark:text-red-300 border-destructive/30 hover:border-destructive hover:shadow-destructive/20'
                                     }`}
                             >
                                 {isGlobalMuted ? (
                                     <>
                                         <MdMicOff className="w-5 h-5" />
-                                        <span className="hidden lg:inline-block">緊急停止中</span>
+                                        <span className="inline-block">ミュート中</span>
                                     </>
                                 ) : (
                                     <>
                                         <MdEmergency className="w-5 h-5" />
-                                        <span className="hidden lg:inline-block">緊急ミュート</span>
+                                        <span className="hidden xl:inline-block">緊急ミュート</span>
                                     </>
                                 )}
                             </button>
@@ -198,7 +202,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     }`}
                             >
                                 <MdCompareArrows className="w-4 h-4" />
-                                <span className="hidden lg:inline-block">
+                                <span className="hidden xl:inline-block">
                                     {isGlobalBypassed ? '原音比較ON' : '原音比較'}
                                 </span>
                             </button>
@@ -215,7 +219,7 @@ export const Header: React.FC<HeaderProps> = ({
                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-bold"
                         >
                             <MdAutoFixHigh className="w-4 h-4" />
-                            <span className="hidden lg:inline">かんたん設定</span>
+                            <span className="hidden xl:inline">かんたん設定</span>
                         </button>
                     )}
 
@@ -232,6 +236,8 @@ export const Header: React.FC<HeaderProps> = ({
                                             <MdMic className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
                                             <div className="w-16 flex items-center" onPointerDown={e => e.stopPropagation()}>
                                                 <Slider
+                                                    aria-label="入力ゲイン"
+                                                    aria-valuetext={`${inputGain}%`}
                                                     value={[inputGain]}
                                                     max={200}
                                                     step={1}
@@ -240,7 +246,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                     className="cursor-pointer"
                                                 />
                                             </div>
-                                            <span className="text-[10px] font-mono text-muted-foreground w-8 text-right tabular-nums">{inputGain}%</span>
+                                            <span className="text-xs font-mono text-muted-foreground w-8 text-right tabular-nums">{inputGain}%</span>
                                         </div>
                                     </TooltipTrigger>
                                     <TooltipContent>
@@ -312,7 +318,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 className="p-2 px-3 text-muted-foreground hover:text-foreground transition-colors hover:bg-muted rounded-lg flex items-center gap-2"
                             >
                                 <MdSettings className="w-5 h-5" />
-                                <span className="text-xs font-bold hidden lg:inline-block">設定</span>
+                                <span className="text-xs font-bold hidden xl:inline-block">設定</span>
                             </button>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -328,32 +334,32 @@ export const Header: React.FC<HeaderProps> = ({
                                 className="p-2 px-3 text-muted-foreground hover:text-foreground transition-colors hover:bg-muted rounded-lg flex items-center gap-2"
                             >
                                 <MdHelpOutline className="w-5 h-5" />
-                                <span className="text-xs font-bold hidden lg:inline-block">ヘルプ</span>
+                                <span className="text-xs font-bold hidden xl:inline-block">ヘルプ</span>
                             </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="min-w-[200px]">
                             <DropdownMenuLabel>ガイド & ヘルプ</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={onOpenOBSGuide} className="gap-3 cursor-pointer p-3">
-                                <span className="w-6 h-6 flex items-center justify-center bg-black text-white rounded-full text-[10px] font-bold shadow-sm">OBS</span>
+                                <span className="w-6 h-6 flex items-center justify-center bg-black text-white rounded-full text-xs font-bold shadow-sm">OBS</span>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">OBS連携ガイド</span>
-                                    <span className="text-[10px] text-muted-foreground">配信ソフトへの音声送出</span>
+                                    <span className="text-xs text-muted-foreground">配信ソフトへの音声送出</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuItem onSelect={onOpenDiscordGuide} className="gap-3 cursor-pointer p-3">
                                 <span className="w-6 h-6 flex items-center justify-center bg-[#5865F2] text-white rounded-full shadow-sm"><DiscordIcon className="w-3.5 h-3.5" /></span>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">Discord連携ガイド</span>
-                                    <span className="text-[10px] text-muted-foreground">通話/ボイスチャット設定</span>
+                                    <span className="text-xs text-muted-foreground">通話/ボイスチャット設定</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={onOpenTroubleshoot} className="gap-3 cursor-pointer p-3">
-                                <span className="w-6 h-6 flex items-center justify-center bg-amber-500 text-white rounded-full shadow-sm text-[10px] font-bold">?</span>
+                                <span className="w-6 h-6 flex items-center justify-center bg-amber-500 text-white rounded-full shadow-sm text-xs font-bold">?</span>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">音が出ない？</span>
-                                    <span className="text-[10px] text-muted-foreground">自動診断で問題を特定</span>
+                                    <span className="text-xs text-muted-foreground">自動診断で問題を特定</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -401,7 +407,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 <span className="w-6 h-6 flex items-center justify-center bg-blue-500 text-white rounded-full shadow-sm"><MdSystemUpdateAlt className="w-3.5 h-3.5" /></span>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">アップデートを確認</span>
-                                    <span className="text-[10px] text-muted-foreground">最新版があるかチェック</span>
+                                    <span className="text-xs text-muted-foreground">最新版があるかチェック</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -409,7 +415,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 <span className="w-6 h-6 flex items-center justify-center bg-pink-500 text-white rounded-full shadow-sm"><MdFavorite className="w-3.5 h-3.5" /></span>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">開発を支援する (OFUSE)</span>
-                                    <span className="text-[10px] text-muted-foreground">寄付・ファンレター</span>
+                                    <span className="text-xs text-muted-foreground">寄付・ファンレター</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -424,7 +430,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     <span className="font-bold text-sm">
                                         {isBeginnerMode ? '詳細表示に切替' : 'かんたん表示に切替'}
                                     </span>
-                                    <span className="text-[10px] text-muted-foreground">
+                                    <span className="text-xs text-muted-foreground">
                                         {isBeginnerMode ? '詳細調整項目を表示します' : '主要操作だけに絞って表示します'}
                                     </span>
                                 </div>

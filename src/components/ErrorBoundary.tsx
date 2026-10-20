@@ -51,7 +51,7 @@ export class ErrorBoundary extends Component<Props, State> {
                                 画面の表示中にエラーが発生しました
                             </h1>
                             <p className="text-muted-foreground leading-relaxed">
-                                音声処理は引き続き動作しています。<br />
+                                この画面から音声処理の継続状態は確認できません。<br />
                                 「復帰を試す」ボタンで元の画面に戻れる場合があります。
                             </p>
                         </div>
@@ -88,8 +88,8 @@ export class ErrorBoundary extends Component<Props, State> {
                         </details>
 
                         {/* Reassurance */}
-                        <p className="text-[10px] text-muted-foreground/50">
-                            ※ オーディオエンジンはバックグラウンドで動作を継続しています。配信中の音声には影響しません。
+                        <p className="text-sm text-muted-foreground">
+                            配信中は、受け側アプリのメーターや試聴で音声が届いているか確認してください。
                         </p>
                     </div>
                 </div>

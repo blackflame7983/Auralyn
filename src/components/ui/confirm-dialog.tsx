@@ -1,5 +1,6 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
+import { Modal } from './modal';
 import { MdWarning } from 'react-icons/md';
 
 interface ConfirmDialogProps {
@@ -23,28 +24,10 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     onConfirm,
     onCancel,
 }) => {
-    const confirmRef = useRef<HTMLButtonElement>(null);
-
-    useEffect(() => {
-        if (isOpen) {
-            // Focus confirm button when dialog opens
-            setTimeout(() => confirmRef.current?.focus(), 100);
-        }
-    }, [isOpen]);
-
-    // Handle Escape key
-    useEffect(() => {
-        if (!isOpen) return;
-        const handler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onCancel();
-        };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
-    }, [isOpen, onCancel]);
-
     if (!isOpen) return null;
 
     return (
+        <Modal title={title} onClose={onCancel}>
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/60 backdrop-blur-sm animate-in fade-in duration-150">
             <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 space-y-4">
                 <div className="flex items-start gap-4">
@@ -69,7 +52,6 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                         {cancelLabel}
                     </button>
                     <button
-                        ref={confirmRef}
                         onClick={onConfirm}
                         className={cn(
                             "px-4 py-2 text-sm font-bold rounded-lg transition-colors",
@@ -83,6 +65,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 </div>
             </div>
         </div>
+        </Modal>
     );
 };
 

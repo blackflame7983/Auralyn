@@ -49,6 +49,30 @@ afterEach(async () => {
     await act(async () => {});
 });
 describe('自動ゲインの操作', () => {
+    it('提案の準備完了後は、変更できない目標選択ではなく適用・聞き比べを案内する', async () => {
+        render(<AutoGainDialog onClose={() => {}} />);
+        const apply = await screen.findByRole('button', { name: 'この音量を使う' });
+        expect(screen.getByRole('status')).toHaveTextContent('提案を確認し、「この音量を使う」で適用するか、試聴先を選んで聞き比べてください');
+        expect(screen.getByRole('status')).not.toHaveTextContent('目標を選び、録音してください');
+        expect(screen.getByLabelText('自動調整の目標')).toBeDisabled();
+        expect(apply).toBeEnabled();
+        expect(screen.getByRole('button', { name: '調整後を聴く' })).toBeDisabled();
+        expect(gainCommand).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'apply' }));
+    });
+    it('提案があっても音量の反映が未確認なら、適用できると案内しない', async () => {
+        current = { ...base, settled: false };
+        render(<AutoGainDialog onClose={() => {}} />);
+        await screen.findByRole('button', { name: 'この音量を使う' });
+        expect(screen.getByRole('status')).toHaveTextContent('音量の反映を確認しています');
+        expect(screen.getByRole('button', { name: 'この音量を使う' })).toBeDisabled();
+    });
+    it('録音前は目標選択と録音を案内する', async () => {
+        current = { ...base, phase: 'idle', proposal: null };
+        render(<AutoGainDialog onClose={() => {}} />);
+        await screen.findByRole('button', { name: '録音して提案する' });
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('目標を選び、録音してください'));
+        expect(screen.getByLabelText('自動調整の目標')).toBeEnabled();
+    });
     it('停止応答を確認できるまで閉じず、失敗時は再試行できる', async () => {
         const onClose = vi.fn();
         render(<AutoGainDialog onClose={onClose} />);

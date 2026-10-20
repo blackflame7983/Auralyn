@@ -46,7 +46,7 @@ export const CHAIN_TEMPLATES: ChainTemplate[] = [
                 label: "リミッター",
                 required: true,
                 preferred: [{ nameIncludes: "limit" }, { nameIncludes: "maximiz" }],
-                notes: "叫んだ時などに音が割れるのを防ぎます。チェーンの最後に置き、Ceilingを-1.0dB程度に設定します。"
+                notes: "大きな声のピークを抑えるための調整例です。チェーンの最後に置き、Ceilingを-1.0dB程度に設定します。"
             }
         ]
     },
@@ -81,14 +81,14 @@ export const CHAIN_TEMPLATES: ChainTemplate[] = [
                 label: "リミッター",
                 required: true,
                 preferred: [{ nameIncludes: "limit" }],
-                notes: "最終的な音割れ防止です。"
+                notes: "ピークを抑えるために、Ceilingと入力レベルを調整します。音割れを必ず防げるものではありません。"
             }
         ]
     },
     {
         id: "ASMR",
         name: "ASMR",
-        description: "微細な音を拾いつつ、過大入力から耳を守る設定です。",
+        description: "ASMR向けにコンプとリミッターを並べる構成例です。音量制限や聴覚保護を保証するものではありません。",
         slots: [
             {
                 role: "compressor",
@@ -102,7 +102,7 @@ export const CHAIN_TEMPLATES: ChainTemplate[] = [
                 label: "リミッター (保護)",
                 required: true,
                 preferred: [{ nameIncludes: "limit" }],
-                notes: "不意の大きな音（耳へのダメージ）を防ぐため、入れることを推奨します。"
+                notes: "Ceilingと入力レベルを確認し、小さい再生音量から試してください。機器の音量や耳の安全を保証するものではありません。"
             }
         ]
     }

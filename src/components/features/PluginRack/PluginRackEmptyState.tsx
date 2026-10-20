@@ -14,62 +14,40 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
     onOpenTemplates
 }) => {
     return (
-        <div className="w-full min-h-[400px] border-3 border-dashed border-muted-foreground/20 rounded-3xl flex flex-col items-center justify-center gap-8 bg-muted/5 animate-in fade-in zoom-in-95 duration-500 hover:bg-muted/10 transition-colors group relative overflow-hidden py-12 px-6">
-
-            {/* Background Decoration */}
-            <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-700">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-primary/5 blur-[100px] rounded-full" />
-            </div>
-
-            {/* Header Content */}
-            <div className="text-center space-y-3 max-w-lg relative z-10">
-                <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary/20 shadow-[0_0_30px_rgba(var(--primary),0.2)] animate-pulse">
-                    <MdRocketLaunch className="w-8 h-8 text-primary" />
-                </div>
-                <h3 className="text-2xl font-bold text-foreground tracking-tight">
-                    配信の準備を始めましょう
+        <div className="w-full rounded-xl border-2 border-dashed border-muted-foreground/30 bg-muted/5 p-4 space-y-4">
+            <div className="space-y-1">
+                <h3 className="text-lg font-bold text-foreground">
+                    VSTエフェクトはまだありません
                 </h3>
                 <p className="text-muted-foreground leading-relaxed text-sm">
-                    セットアップウィザードでマイクと出力先を選び、VST やノイズ低減を調整できます。<br className="hidden sm:inline" />
-                    OBS・Discord 連携では仮想ケーブルが必要な場合があります。
+                    外部VSTを追加できます。内蔵処理と入出力は音声設定で調整します。
                 </p>
             </div>
 
-            {/* Main CTA - Single Focused Action */}
-            <div className="flex flex-col w-full max-w-sm gap-6 relative z-10">
+            <div className="flex flex-wrap items-center gap-3">
                 <Button
                     id="add-effect-btn"
-                    onClick={onOpenWizard}
-                    size="lg"
-                    className="h-14 text-lg shadow-xl shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 transition-all font-bold gap-3 rounded-xl bg-gradient-to-r from-primary to-primary/80"
+                    onClick={onAddClick}
+                    className="gap-2"
                 >
-                    <MdRocketLaunch className="w-6 h-6" />
-                    セットアップを始める
+                    <MdAdd className="w-4 h-4" />
+                    VSTを追加
                 </Button>
 
-                {/* Secondary actions - subtle text links */}
-                <div className="flex items-center justify-center gap-6 text-sm">
                     <button
                         onClick={onOpenTemplates}
-                        className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1.5 underline underline-offset-4 decoration-muted-foreground/30 hover:decoration-primary/50"
+                        className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1.5 underline underline-offset-4"
                     >
                         <MdAutoFixHigh className="w-4 h-4" />
-                        テンプレートから始める
+                        VST構成テンプレート
                     </button>
-                    <span className="text-muted-foreground/30">|</span>
                     <button
-                        onClick={onAddClick}
-                        className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 underline underline-offset-4 decoration-muted-foreground/30 hover:decoration-foreground/50"
+                        onClick={onOpenWizard}
+                        className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1.5 underline underline-offset-4"
                     >
-                        <MdAdd className="w-4 h-4" />
-                        手動で追加
+                        <MdRocketLaunch className="w-4 h-4" />
+                        セットアップを開く
                     </button>
-                </div>
-            </div>
-
-            {/* Footer Hint */}
-            <div className="absolute bottom-4 text-[10px] text-muted-foreground/50 font-mono hidden md:flex items-center gap-2">
-                対応形式：VST3 (.vst3)
             </div>
         </div>
     );

@@ -81,6 +81,7 @@ export const TutorialOverlay: React.FC<Props> = ({ targetId, step, content, alig
                     <div className="relative p-4">
                         <button
                             onClick={skipTutorial}
+                            aria-label="チュートリアルを終了する"
                             className="absolute top-2 right-2 text-muted-foreground hover:text-foreground"
                         >
                             <MdClose />
@@ -91,7 +92,7 @@ export const TutorialOverlay: React.FC<Props> = ({ targetId, step, content, alig
                         <div className="mt-3 flex items-center justify-between">
                             <button
                                 onClick={skipTutorial}
-                                className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
                             >
                                 スキップ
                             </button>

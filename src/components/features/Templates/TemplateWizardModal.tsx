@@ -1,3 +1,4 @@
+import { Modal } from '../../ui/modal';
 import React, { useState, useEffect } from 'react';
 import { MdClose, MdAutoFixHigh, MdCheck, MdArrowForward } from 'react-icons/md';
 import { CHAIN_TEMPLATES, ChainTemplate } from '../../../templates/chainTemplates';
@@ -9,6 +10,7 @@ interface TemplateWizardModalProps {
     onClose: () => void;
     availablePlugins: VstPlugin[];
     onApplyTemplate: (mapping: Record<string, VstPlugin>) => Promise<void | boolean>;
+    onOpenSoundSettings?: () => void;
     onScan: () => void;
     isScanning: boolean;
 }
@@ -18,6 +20,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
     onClose,
     availablePlugins,
     onApplyTemplate,
+    onOpenSoundSettings,
     onScan,
     isScanning
 }) => {
@@ -75,7 +78,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
     }, [selectedTemplate, step, availablePlugins]);
 
     const handleApply = async () => {
-        if (!selectedTemplate) return;
+        if (loading || !selectedTemplate) return;
 
         // Validation: Check if required slots are filled
         const missingRequired = selectedTemplate.slots.some((slot, i) => slot.required && !mapping[i]);
@@ -98,9 +101,10 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                 if (v) finalMapping[k] = v;
             });
 
-            await onApplyTemplate(finalMapping);
+            const applied = await onApplyTemplate(finalMapping);
+            if (applied === false) { toast.error("VST構成を適用できませんでした。現在のラックを確認してください"); return; }
             onClose();
-            toast.success("テンプレートを適用しました");
+            toast.info("VST構成の読み込みを終えました", { description: "ラックの読み込み結果を確認し、各VSTの編集画面で値を調整してください。設定値は自動調整していません。ボイスチェックで聴いて確認できます。", duration: 10000 });
         } catch (e) {
             console.error(e);
             toast.error("テンプレートの適用に失敗しました");
@@ -112,27 +116,34 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
     if (!isOpen) return null;
 
     return (
+        <Modal title="VST構成テンプレート" onClose={onClose} dismissible={!loading}>
         <div className="modal-overlay-base">
-            <div className="modal-surface-base w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div aria-busy={loading} className="modal-surface-base w-full max-w-4xl max-h-[90vh] flex flex-col">
 
                 {/* Header */}
                 <div className="modal-header-base modal-header-muted">
                     <div>
                         <h2 className="text-2xl font-bold flex items-center gap-2">
                             <MdAutoFixHigh className="text-primary" />
-                            チェーン・ウィザード
+                            VST構成テンプレート
                         </h2>
                         <p className="text-muted-foreground text-sm mt-1">
                             {step === 1 ? "目的に合ったテンプレートを選んでください" : "使用するプラグインを確認・変更してください"}
                         </p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-muted rounded-full transition-colors">
+                    <button aria-label="閉じる" onClick={onClose} disabled={loading} className="p-2 hover:bg-muted rounded-full transition-colors disabled:opacity-50">
                         <MdClose size={24} />
                     </button>
                 </div>
 
                 {/* Content */}
                 <div className="modal-body-base">
+                    <div className="mb-4 rounded-lg border border-border p-4 space-y-2">
+                        <p className="text-sm font-semibold">この画面は外部VSTの構成例です</p>
+                        <p className="text-sm text-muted-foreground">VSTを別途用意してスキャンしてください。適用すると現在のVSTチェーンを選んだ順序に置き換えます。各VSTの設定値は自動調整しません。</p>
+                        <p className="text-sm text-muted-foreground">適用後は、各VSTの編集画面で下記の値を調整し、小さい音量からボイスチェックで聴いて確認してください。</p>
+                        {onOpenSoundSettings && <button onClick={onOpenSoundSettings} disabled={loading} className="text-sm underline text-primary disabled:opacity-50">外部VSTを使わず、内蔵処理を設定する</button>}
+                    </div>
                     {step === 1 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {CHAIN_TEMPLATES.map(t => (
@@ -150,7 +161,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                         <div className="font-bold mb-1">構成:</div>
                                         <div className="flex flex-wrap gap-1">
                                             {t.slots.map((s, i) => (
-                                                <span key={i} className="inline-block px-1.5 py-0.5 bg-background border border-border rounded text-[10px]">
+                                                <span key={i} className="inline-block px-1.5 py-0.5 bg-background border border-border rounded text-xs">
                                                     {s.label}
                                                 </span>
                                             ))}
@@ -165,7 +176,8 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                             <div className="flex items-center gap-4 mb-6">
                                 <button
                                     onClick={() => setStep(1)}
-                                    className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+                                    disabled={loading}
+                                    className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 disabled:opacity-50"
                                 >
                                     ← 戻る
                                 </button>
@@ -184,10 +196,12 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                                 <div className="flex justify-between items-center">
                                                     <div className="font-bold text-lg flex items-center gap-2">
                                                         {slot.label}
-                                                        {slot.required && <span className="text-[10px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded border border-red-500/20">必須</span>}
+                                                        {slot.required && <span className="text-xs bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded border border-red-500/20">必須</span>}
                                                     </div>
                                                     {/* Plugin Selector */}
                                                     <select
+                                                        aria-label={`${slot.label}に使うVST`}
+                                                        disabled={loading}
                                                         className={`bg-background border rounded px-3 py-1.5 text-sm outline-none focus:border-primary max-w-[300px] w-full
                                                             ${!assigned && slot.required ? 'border-red-400' : 'border-input'}
                                                         `}
@@ -227,7 +241,8 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                     <div className="modal-footer-base flex justify-end gap-3">
                         <button
                             onClick={onClose}
-                            className="px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
+                            disabled={loading}
+                            className="px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors disabled:opacity-50"
                         >
                             キャンセル
                         </button>
@@ -236,12 +251,13 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                             disabled={loading || (selectedTemplate?.slots.some((s, i) => s.required && !mapping[i]) ?? false)}
                             className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {loading ? "適用中..." : "この構成で適用する"}
+                            {loading ? "適用中..." : "VST構成を置き換える"}
                             {!loading && <MdArrowForward />}
                         </button>
                     </div>
                 )}
             </div>
         </div>
+        </Modal>
     );
 };

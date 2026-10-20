@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -55,7 +54,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                 <Card className={cn(
                     "group relative w-full h-16 transition-all duration-300 select-none overflow-hidden",
                     plugin.enabled
-                        ? "bg-card shadow-sm border-y border-r border-primary/20"
+                        ? "bg-card shadow-sm border-border"
                         : "bg-muted/50 opacity-90 border-transparent shadow-none"
                 )}>
                     {/* Left Status Bar / Drag Handle */}
@@ -63,7 +62,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                         {...dragHandleListeners}
                         className={cn(
                             "absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center cursor-grab hover:bg-black/5 active:cursor-grabbing z-20 transition-colors",
-                            plugin.enabled ? "bg-primary text-primary-foreground" : "bg-muted-foreground/20 text-muted-foreground"
+                            "bg-muted/40 text-muted-foreground"
                         )}
                         title="ドラッグして並べ替え"
                     >
@@ -75,11 +74,13 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                         {/* Name + ON/OFF */}
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                             <Switch
+                                aria-label={`${plugin.name}を有効にする`}
                                 checked={plugin.enabled}
                                 onCheckedChange={(checked) => onToggle(plugin.id, checked)}
                             />
                             <h3 className={cn("font-bold text-sm truncate transition-colors", plugin.enabled ? "text-foreground" : "text-muted-foreground")}>
                                 {plugin.name}
+                                <span className="ml-2 text-xs text-muted-foreground">{plugin.muted ? 'ミュート' : plugin.enabled ? '有効' : '無効'}</span>
                             </h3>
                         </div>
 
@@ -87,6 +88,8 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                         <div className="flex items-center gap-3 w-40 shrink-0">
                             <div className="relative w-full h-4 flex items-center" onPointerDown={(e) => e.stopPropagation()}>
                                 <Slider
+                                    aria-label={`${plugin.name}のゲイン`}
+                                    aria-valuetext={`${dbValue} dB`}
                                     defaultValue={[plugin.gain]}
                                     max={2}
                                     step={0.01}
@@ -96,9 +99,20 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                     className="cursor-pointer"
                                 />
                             </div>
-                            <span className="text-[10px] font-mono text-muted-foreground w-12 text-right">{dbValue}dB</span>
+                            <span className="text-xs font-mono text-muted-foreground w-12 text-right">{dbValue}dB</span>
                         </div>
 
+                        {/* 省スペース表示でも復旧に必要なミュート操作を残す。 */}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 ml-3 text-xs shrink-0 aria-pressed:bg-destructive/10 aria-pressed:text-red-800 dark:aria-pressed:text-red-300 aria-pressed:border-destructive/50"
+                            aria-label={`${plugin.name}をミュート`}
+                            aria-pressed={plugin.muted}
+                            onClick={() => onMute(plugin.id, !plugin.muted)}
+                        >
+                            {plugin.muted ? 'ミュート解除' : 'ミュート'}
+                        </Button>
                         {/* Edit + Delete */}
                         <div className="flex items-center gap-1 ml-2">
                             <Button
@@ -106,7 +120,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                 size="sm"
                                 disabled={!plugin.hasEditor || !plugin.enabled}
                                 onClick={() => onEdit(plugin.id)}
-                                className="h-7 text-[10px] font-mono"
+                                className="h-8 text-xs"
                             >
                                 編集
                             </Button>
@@ -115,7 +129,8 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="h-7 w-7 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
+                                        className="h-7 w-7 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                                        aria-label={`${plugin.name}を削除`}
                                         onClick={handleDelete}
                                     >
                                         <MdClose className="w-4 h-4" />
@@ -149,9 +164,9 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
     return (
         <TooltipProvider>
             <Card className={cn(
-                "group relative w-full h-24 transition-all duration-300 select-none overflow-hidden",
+                "group relative w-full h-20 transition-colors duration-200 select-none overflow-hidden",
                 plugin.enabled
-                    ? "bg-card shadow-[0_0_20px_-12px_hsl(var(--primary)/0.5)] border-y border-r border-primary/20"
+                    ? "bg-card shadow-sm border-border"
                     : "bg-muted/50 opacity-90 border-transparent shadow-none"
             )}>
                 {/* Left Status Bar / Drag Handle */}
@@ -159,62 +174,44 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                     {...dragHandleListeners}
                     className={cn(
                         "absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center cursor-grab hover:bg-black/5 active:cursor-grabbing z-20 transition-colors",
-                        plugin.enabled ? "bg-primary text-primary-foreground" : "bg-muted-foreground/20 text-muted-foreground"
+                        "bg-muted/40 text-muted-foreground"
                     )}
                     title="ドラッグして並べ替え"
                 >
                     <MdDragIndicator className="w-4 h-4 opacity-50 hover:opacity-100" />
                 </div>
 
-                {/* Background Texture (Subtle Noise) */}
-                <div
-                    className="absolute inset-0 left-6 opacity-[0.03] pointer-events-none mix-blend-overlay"
-                    style={{
-                        backgroundImage: 'radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)',
-                        backgroundSize: '6px 6px',
-                    }}
-                />
-
                 {/* Content Flex */}
                 <div className="absolute inset-0 flex items-center justify-between pl-10 pr-6 z-10">
 
                     {/* 1. Identity Section */}
-                    <div className="flex flex-col w-1/3 gap-1">
-                        <div className="flex items-center gap-2">
-                            <Badge variant={plugin.enabled ? "default" : "secondary"} size="sm" className="font-mono tracking-wider text-[10px] h-4 px-1.5 uppercase shadow-sm">
-                                VST
-                            </Badge>
-                            {/* Power LED */}
-                            <div className={cn(
-                                "relative w-2 h-2 rounded-full transition-all duration-500",
-                                plugin.enabled
-                                    ? "bg-primary shadow-[0_0_8px_2px_hsl(var(--primary))]"
-                                    : "bg-destructive/20 shadow-none inner-shadow"
-                            )}>
-                                {plugin.enabled && <div className="absolute inset-0 bg-white/50 rounded-full animate-pulse" />}
-                            </div>
-                        </div>
+                    <div className="flex flex-col min-w-0 flex-1 mr-4 gap-0.5">
+                        <span className={cn("text-xs", plugin.muted ? "text-red-800 dark:text-red-300 font-semibold" : "text-muted-foreground")}>
+                            {plugin.muted ? 'ミュート中' : plugin.enabled ? '有効' : '無効'}
+                        </span>
 
                         <h3 className={cn("font-bold tracking-tight text-sm truncate pr-4 transition-colors", plugin.enabled ? "text-foreground" : "text-muted-foreground")}>
                             {plugin.name}
                         </h3>
-                        <div className="text-[10px] text-muted-foreground truncate font-mono">{plugin.vendor || '不明なメーカー'}</div>
+                        <div className="text-xs text-muted-foreground truncate">{plugin.vendor || '不明なメーカー'}</div>
                     </div>
 
                     {/* 2. Controls Section */}
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-3">
 
                         {/* Gain Fader */}
                         <div className="flex flex-col gap-1.5 w-32 group/fader">
-                            <div className="flex justify-between text-[10px] font-mono text-muted-foreground px-0.5">
+                            <div className="flex justify-between text-xs text-muted-foreground px-0.5">
                                 <span className="tracking-wider">ゲイン</span>
-                                <span className={plugin.enabled ? 'text-primary shadow-[0_0_5px_currentColor] drop-shadow-sm' : ''}>{dbValue} dB</span>
+                                <span className={plugin.enabled ? 'text-foreground font-mono' : 'font-mono'}>{dbValue} dB</span>
                             </div>
 
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <div className="relative w-full h-4 flex items-center" onPointerDown={(e) => e.stopPropagation()}>
                                         <Slider
+                                    aria-label={`${plugin.name}のゲイン`}
+                                    aria-valuetext={`${dbValue} dB`}
                                             defaultValue={[plugin.gain]}
                                             max={2}
                                             step={0.01}
@@ -239,10 +236,12 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                 <Button
                                     variant={plugin.muted ? "destructive" : "outline"}
                                     size="icon"
-                                    className={cn("h-8 w-8", plugin.muted && "bg-destructive/10 text-destructive border-destructive/50 hover:bg-destructive/20 hover:text-destructive shadow-[0_0_10px_inset_currentColor]")}
+                                    className={cn("h-8 w-8", plugin.muted && "bg-destructive/10 text-red-800 dark:text-red-300 border-destructive/50 hover:bg-destructive/20 hover:text-red-800 dark:hover:text-red-300 ")}
+                                    aria-label={`${plugin.name}をミュート`}
+                                    aria-pressed={plugin.muted}
                                     onClick={() => onMute(plugin.id, !plugin.muted)}
                                 >
-                                    <span className="text-[10px] font-bold font-mono">M</span>
+                                    <span className="text-xs font-bold font-mono">M</span>
                                 </Button>
                             </TooltipTrigger>
                             <TooltipContent>
@@ -256,7 +255,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                             size="sm"
                             disabled={!plugin.hasEditor || !plugin.enabled}
                             onClick={() => onEdit(plugin.id)}
-                            className="h-8 text-[10px] font-mono tracking-wider font-medium"
+                            className="h-8 text-xs font-medium"
                         >
                             編集
                         </Button>
@@ -266,6 +265,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                         {/* Power Toggle */}
                         <div className="flex flex-col items-center gap-1">
                             <Switch
+                                aria-label={`${plugin.name}を有効にする`}
                                 checked={plugin.enabled}
                                 onCheckedChange={(checked) => onToggle(plugin.id, checked)}
                             />
@@ -275,8 +275,9 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
-                                    onClick={handleDelete}
+                                    className="h-8 w-8 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                                    aria-label={`${plugin.name}を削除`}
+                                        onClick={handleDelete}
                                 >
                                     <MdClose className="w-5 h-5" />
                                 </Button>

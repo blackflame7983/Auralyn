@@ -110,7 +110,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
 
         return (
             <div className="flex flex-col items-center gap-1 flex-1 h-full min-h-0">
-                {!isMiniMode && <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-mono">{label}</span>}
+                {!isMiniMode && <span className="text-xs text-muted-foreground uppercase tracking-wider font-mono">{label}</span>}
                 <div className={cn("relative w-full bg-card rounded overflow-hidden ring-1 ring-border transition-all", isMiniMode ? "h-full" : "h-full")}>
                     {/* Bar */}
                     <div
@@ -192,7 +192,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
                     isMiniMode ? "p-1" : "px-2 py-1 gap-1"
                 )}>
                     <MdWarning className="w-3 h-3 text-destructive" />
-                    {!isMiniMode && <span className="text-[10px] font-bold text-destructive uppercase">Clip!</span>}
+                    {!isMiniMode && <span className="text-xs font-bold text-destructive uppercase">Clip!</span>}
                 </div>
             )}
 
@@ -208,7 +208,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
             {/* Input Gain Slider */}
             {!isMiniMode && (
                 <div className="space-y-1 shrink-0">
-                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span className="flex items-center gap-1"><MdVolumeUp className="w-3 h-3" /> 入力</span>
                         <span className="font-mono">{(inputGain * 100).toFixed(0)}%</span>
                     </div>
@@ -249,7 +249,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
 
             {/* Grid Labels (Hidden in Mini Mode) */}
             {!isMiniMode && (
-                <div className="flex justify-around text-[10px] text-muted-foreground font-mono shrink-0">
+                <div className="flex justify-around text-xs text-muted-foreground font-mono shrink-0">
                     <span>0</span>
                     <span>-12</span>
                     <span>-24</span>
