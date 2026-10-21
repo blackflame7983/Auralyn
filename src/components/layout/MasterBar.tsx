@@ -43,6 +43,8 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     });
     const outputGainDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [gainError, setGainError] = useState<string | null>(null);
+    const [gainRestoreError, setGainRestoreError] = useState<string | null>(null);
+    const gainMessage = gainError ?? gainRestoreError;
 
     const handleOutputGainChange = useCallback((values: number[]) => {
         const pct = values[0];
@@ -58,15 +60,32 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     useEffect(() => {
         let disposed = false;
         let refreshing = false;
+        let applying = false;
+        let applyAgain = false;
+        let restorePending = false;
         let timer: ReturnType<typeof setInterval> | undefined;
         const applyGain = async () => {
             if (disposed) return;
+            if (applying) {
+                applyAgain = true;
+                return;
+            }
+            applying = true;
             const saved = localStorage.getItem('vst_host_output_gain');
             const pct = saved ? parseFloat(saved) : 100;
             try {
                 await restoreSavedOutputGain(pct / 100);
+                restorePending = false;
+                if (!disposed) setGainRestoreError(null);
             } catch (e) {
-                if (!disposed) setGainError(String(e));
+                restorePending = true;
+                if (!disposed) setGainRestoreError(String(e));
+            } finally {
+                applying = false;
+                if (applyAgain && !disposed) {
+                    applyAgain = false;
+                    void applyGain();
+                }
             }
         };
 
@@ -78,7 +97,8 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             if (refreshing) return;
             refreshing = true;
             try {
-                await gainCommand({ action: 'status' });
+                if (restorePending) await applyGain();
+                else await gainCommand({ action: 'status' });
             } catch {
                 /* エンジン停止中は保存値を維持する。 */
             } finally {
@@ -96,7 +116,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 await applyGain();
                 if (!disposed) timer = setInterval(() => void refresh(), 1000);
             } catch (e) {
-                if (!disposed) setGainError(String(e));
+                if (!disposed) setGainRestoreError(String(e));
             }
         };
         void initialize();
@@ -248,12 +268,12 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     }, [stats]);
 
     return (
-        <div className="h-full flex items-center gap-3 px-3 border-l border-border bg-card/30 backdrop-blur-sm transition-colors duration-300 min-w-0 whitespace-nowrap">
-            {gainError && (
+        <div className={cn("relative h-full flex items-center gap-3 px-3 py-2 border-l border-border bg-card/30 backdrop-blur-sm transition-colors duration-300 min-w-0 whitespace-nowrap", gainMessage && "pt-0 pb-4")}>
+            {gainMessage && (
                 <span
                     role="alert"
-                    className="max-w-48 whitespace-normal text-xs text-amber-500"
-                    title={gainError}
+                    className="absolute bottom-0.5 left-3 right-3 truncate text-xs leading-4 text-amber-700 dark:text-amber-300"
+                    title={gainMessage}
                 >
                     音量を確認できません。再操作してください。
                 </span>

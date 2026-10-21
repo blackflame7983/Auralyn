@@ -183,6 +183,16 @@ export const useAppEvents = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
+    // 通常版・MSIX版を含む二重起動では既存のアプリだけを使う。
+    useEffect(() => {
+        const unlisten = listen('second-instance', () => {
+            toast.info('Auralynはすでに起動しています', {
+                description: '通常版とMSIX版は同時に実行できません。版を切り替える場合は、先にトレイメニューから終了してください。',
+            });
+        });
+        return () => { unlisten.then(f => f()); };
+    }, []);
+
     // Tray minimization notification (show only once per session)
     useEffect(() => {
         let notified = false;

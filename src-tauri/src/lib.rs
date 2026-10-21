@@ -8,6 +8,8 @@ pub mod audio;
 pub mod audio_analysis;
 pub mod audio_engine;
 mod desktop_integration;
+mod storage;
+pub mod coexistence;
 #[cfg(any(test, feature = "dsp-verification"))]
 mod dsp_verification_allocator;
 pub mod autostart;
@@ -23,13 +25,26 @@ use crate::vst_host::presets::{
 };
 
 #[tauri::command]
-fn get_autostart_status() -> Result<autostart::AutostartStatus, String> {
-    autostart::get_autostart_status().map_err(|e| e.to_string())
+async fn get_autostart_status(
+    distribution: State<'_, desktop_integration::Distribution>,
+) -> Result<autostart::AutostartStatus, String> {
+    let distribution = *distribution;
+    tauri::async_runtime::spawn_blocking(move || autostart::get_autostart_status(distribution))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
-    autostart::set_autostart_enabled(enabled).map_err(|e| e.to_string())
+async fn set_autostart_enabled(
+    distribution: State<'_, desktop_integration::Distribution>,
+    enabled: bool,
+) -> Result<(), String> {
+    let distribution = *distribution;
+    tauri::async_runtime::spawn_blocking(move || autostart::set_autostart_enabled(distribution, enabled))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -872,20 +887,25 @@ pub fn run() {
         log::info!("App CWD: {:?}", cwd);
     }
 
-    let audio_state = audio::AudioState(Arc::new(Mutex::new(audio::AudioHost::new())));
     let obs_state = obs::ObsState::new();
     let distribution = desktop_integration::detect_distribution();
+    let mut context = tauri::generate_context!();
+    if let Err(error) = storage::configure(context.config_mut(), distribution) {
+        log::error!("設定保存先の初期化に失敗しました: {error:#}");
+        rfd::MessageDialog::new()
+            .set_title("Auralynを起動できませんでした")
+            .set_description(format!("設定保存先を確認できませんでした。既存の設定は変更していません。\n{error:#}"))
+            .set_level(rfd::MessageLevel::Error)
+            .show();
+        return;
+    }
 
     let builder = tauri::Builder::default()
+        // 他のプラグイン・ウィンドウ・音声エンジンより先に共通IDで二重起動を防ぐ。
+        .plugin(coexistence::plugin())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            let _ = app
-                .get_webview_window("main")
-                .expect("no main window")
-                .set_focus();
-        }))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -920,9 +940,13 @@ pub fn run() {
 
     builder
         .manage(distribution)
-        .manage(audio_state)
         .manage(obs_state)
         .setup(|app| {
+            // app_config_dirはMSIXではpackage専用、通常版では従来のRoaming AppData。
+            let config_dir = app.path().app_config_dir()?;
+            app.manage(audio::AudioState(Arc::new(Mutex::new(
+                audio::AudioHost::new(config_dir),
+            ))));
             let state = app.state::<audio::AudioState>();
 
             // Register Shortcut
@@ -1100,6 +1124,6 @@ pub fn run() {
             probe_loopback,
             get_routing_diagnostics,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }

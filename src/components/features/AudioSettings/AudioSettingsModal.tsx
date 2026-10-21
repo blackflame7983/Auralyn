@@ -130,6 +130,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
   // Autostart State
   const [autostartEnabled, setAutostartEnabled] = useState(false);
+  const [autostartCanChange, setAutostartCanChange] = useState(false);
+  const [autostartReason, setAutostartReason] = useState<string | null>(null);
   const [engineTuningConfig, setEngineTuningConfig] = useState<EngineTuningConfig>({
     enableAffinityPinning: false,
     affinityMask: null,
@@ -253,7 +255,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         restoreDeviceSelection(devices);
       }
 
-      autostartApi.getStatus().then(s => setAutostartEnabled(s.enabled));
+      autostartApi.getStatus().then(s => {
+        setAutostartEnabled(s.enabled);
+        setAutostartCanChange(s.canChange);
+        setAutostartReason(s.reason ?? null);
+      }).catch(() => {
+        setAutostartCanChange(false);
+        setAutostartReason('自動起動の状態を確認できませんでした。設定画面を開き直してください。');
+      });
       audioApi.getEngineTuningConfig()
         .then((config) => setEngineTuningConfig(config))
         .catch((e) => {
@@ -1631,7 +1640,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <div className="p-4 bg-muted/20 border border-border rounded-xl flex items-center justify-between">
               <div>
                 <label className="text-sm font-bold text-foreground block">Windows起動時に自動実行</label>
-                <div className="text-xs text-muted-foreground mt-0.5">ログイン時にアプリを自動的に起動します（前回設定がある場合、音声処理も開始します）</div>
+                <div className="text-xs text-muted-foreground mt-0.5">{autostartReason ?? 'ログイン時にアプリを自動的に起動します（前回設定がある場合、音声処理も開始します）。Windows側でも有効になっている必要があります。'}</div>
               </div>
               <div className="flex items-center">
                 <Switch
@@ -1641,21 +1650,23 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     setLoading(true);
                     try {
                       await autostartApi.setEnabled(checked);
-                      setAutostartEnabled(checked);
                       const s = await autostartApi.getStatus();
-                      if (s.enabled !== checked) {
-                        setAutostartEnabled(s.enabled);
-                      } else {
+                      setAutostartEnabled(s.enabled);
+                      setAutostartCanChange(s.canChange);
+                      setAutostartReason(s.reason ?? null);
+                      if (s.enabled === checked) {
                         toast.success(checked ? "自動起動を有効にしました" : "自動起動を無効にしました");
                       }
                     } catch (e) {
                       console.error(e);
                       toast.error("設定の変更に失敗しました");
+                      setAutostartCanChange(false);
+                      setAutostartReason('自動起動の変更結果を確認できませんでした。設定画面を開き直してください。');
                     } finally {
                       setLoading(false);
                     }
                   }}
-                  disabled={loading}
+                  disabled={loading || !autostartCanChange}
                 />
               </div>
             </div>

@@ -19,7 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { runReleaseReadinessCheck } = require('./check-release-readiness.cjs');
-const { writeWindowsManifest } = require('./generate-release-manifest.cjs');
+const { writeWindowsManifest, findNsisInstaller } = require('./generate-release-manifest.cjs');
 const { assertCleanWorktree, createSourceArchive } = require('./generate-source-archive.cjs');
 const { prepareAsioSdk } = require('./prepare-asio-sdk.cjs');
 const {
@@ -38,20 +38,6 @@ function getVersion() {
   const confPath = path.join(PROJECT_ROOT, 'src-tauri', 'tauri.conf.json');
   const conf = JSON.parse(fs.readFileSync(confPath, 'utf8'));
   return conf.version || '0.0.0';
-}
-
-function findFile(dir, predicate) {
-  if (!fs.existsSync(dir)) return null;
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const e of entries) {
-    const full = path.join(dir, e.name);
-    if (e.isFile() && predicate(e.name)) return full;
-    if (e.isDirectory()) {
-      const found = findFile(full, predicate);
-      if (found) return found;
-    }
-  }
-  return null;
 }
 
 const version = getVersion();
@@ -106,12 +92,8 @@ try {
   process.exit(error.status ?? 1);
 }
 
-// 1) Prefer the NSIS installer used by the public download flow, then MSI.
-const msiDir = path.join(BUNDLE_DIR, 'msi');
-const nsisDir = path.join(BUNDLE_DIR, 'nsis');
-const versionToken = `_${version}_`;
-const installerPath = findFile(nsisDir, (n) => n.includes(versionToken) && n.endsWith('.exe'))
-  || findFile(msiDir, (n) => n.includes(versionToken) && n.endsWith('.msi'));
+// 1) 今後の通常版はNSISのみ。既存の公開済みMSIには触れない。
+const installerPath = findNsisInstaller(BUNDLE_DIR, version);
 
 if (!installerPath) {
   console.error(`Installer for v${version} not found. Run: npm run tauri build`);

@@ -7,22 +7,11 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use tauri::{AppHandle, Emitter};
 
-/// Returns the path for the persistent "last audio config" file.
-/// On Windows: %APPDATA%/com.kuro7983.auralynhost/last_audio_config.json
-/// Fallback: next to the executable.
-fn last_config_path() -> PathBuf {
-    #[cfg(windows)]
-    {
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            let dir = PathBuf::from(appdata).join("com.kuro7983.auralynhost");
-            let _ = std::fs::create_dir_all(&dir);
-            return dir.join("last_audio_config.json");
-        }
-    }
-    // Fallback
-    let mut p = std::env::current_exe().unwrap_or_default();
-    p.set_file_name("last_audio_config.json");
-    p
+fn persist_audio_config(path: &std::path::Path, config: &ActiveAudioConfig) -> Result<()> {
+    let dir = path.parent().ok_or_else(|| anyhow!("設定保存先がありません"))?;
+    std::fs::create_dir_all(dir)?;
+    std::fs::write(path, serde_json::to_string_pretty(config)?)?;
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -168,6 +157,7 @@ pub struct LoopbackProbeResult {
 }
 
 pub struct AudioHost {
+    last_config_path: PathBuf,
     child: Option<Child>,
     stdin: Option<BufWriter<ChildStdin>>,
     // We store a sender to satisfy a waiting command.
@@ -183,15 +173,10 @@ pub struct AudioHost {
     engine_job: Option<win_job::Job>,
 }
 
-impl Default for AudioHost {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl AudioHost {
-    pub fn new() -> Self {
+    pub fn new(config_dir: PathBuf) -> Self {
         Self {
+            last_config_path: config_dir.join("last_audio_config.json"),
             child: None,
             stdin: None,
             pending_reply_tx: Arc::new(Mutex::new(None)),
@@ -633,6 +618,8 @@ impl AudioHost {
         buffer_size: Option<u32>,
         sample_rate: Option<u32>,
     ) -> Result<AudioConfig> {
+        crate::desktop_integration::check_microphone_access(host_name.as_deref())
+            .map_err(|error| anyhow!(error))?;
         let cmd = IpcCommand::Start {
             host: host_name.clone().unwrap_or("ASIO".to_string()),
             input: input_name.clone(),
@@ -667,13 +654,8 @@ impl AudioHost {
                 };
 
                 // Persist for fast auto-start on next launch
-                if let Ok(json) = serde_json::to_string_pretty(&config) {
-                    let path = last_config_path();
-                    if let Err(e) = std::fs::write(&path, json) {
-                        log::warn!("Failed to save last audio config: {}", e);
-                    } else {
-                        log::debug!("Saved last audio config to {:?}", path);
-                    }
+                if let Err(e) = persist_audio_config(&self.last_config_path, &config) {
+                    log::warn!("Failed to save last audio config: {}", e);
                 }
 
                 self.active_config = Some(config);
@@ -1166,8 +1148,8 @@ impl AudioHost {
 
         // Fast auto-start: read last successful config and start immediately
         // This avoids waiting for the frontend to load and send the Start command.
-        let path = last_config_path();
-        match std::fs::read_to_string(&path) {
+        let path = &self.last_config_path;
+        match std::fs::read_to_string(path) {
             Ok(json) => match serde_json::from_str::<ActiveAudioConfig>(&json) {
                 Ok(config) if !config.host.is_empty() => {
                     log::info!("Auto-starting audio with last config: {:?}", config);
@@ -1285,5 +1267,49 @@ mod permission_error_tests {
         let message = localize_audio_error("buffer allocation failed".to_owned());
         assert!(!message.contains("アクセスが拒否"));
         assert!(message.contains("buffer allocation failed"));
+    }
+}
+
+#[cfg(test)]
+mod config_storage_tests {
+    use super::*;
+
+    #[test]
+    fn saving_packaged_audio_config_does_not_read_or_overwrite_standalone() {
+        let root = std::env::temp_dir().join(format!(
+            "auralyn-audio-storage-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let standalone = root.join("legacy/last_audio_config.json");
+        let packaged = root.join("package/LocalState/Auralyn/last_audio_config.json");
+        let legacy = ActiveAudioConfig {
+            host: "ASIO".into(),
+            input: Some("Legacy Input".into()),
+            output: None,
+            sample_rate: Some(96000),
+            buffer_size: Some(512),
+        };
+        persist_audio_config(&standalone, &legacy).unwrap();
+        let before = std::fs::read(&standalone).unwrap();
+        assert!(
+            !packaged.exists(),
+            "既存版から暗黙にコピーしない"
+        );
+        let current = ActiveAudioConfig {
+            host: "Wasapi".into(),
+            ..legacy
+        };
+        persist_audio_config(&packaged, &current).unwrap();
+        assert_eq!(std::fs::read(&standalone).unwrap(), before);
+        let loaded: ActiveAudioConfig =
+            serde_json::from_slice(&std::fs::read(&packaged).unwrap()).unwrap();
+        assert_eq!(loaded.host, "Wasapi");
+        // 削除対象はこのテストが作成した絶対パスの専用ディレクトリだけ。
+        assert!(root.is_absolute() && root.starts_with(std::env::temp_dir()));
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

@@ -1,4 +1,23 @@
 const fs = require('fs');
+const path = require('path');
+
+// 古いMSIがbundleに残っていても、通常版の公開候補には採用しない。
+function findNsisInstaller(bundleDir, version) {
+  const directory = path.join(bundleDir, 'nsis');
+  if (!fs.existsSync(directory)) return null;
+  const find = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isFile() && entry.name.includes(`_${version}_`) && entry.name.endsWith('.exe')) return full;
+      if (entry.isDirectory()) {
+        const found = find(full);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  return find(directory);
+}
 
 function assertAssetMatchesVersion(assetName, version) {
   const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -42,6 +61,7 @@ function writeWindowsManifest(filePath, options) {
 }
 
 module.exports = {
+  findNsisInstaller,
   assertAssetMatchesVersion,
   buildWindowsManifest,
   writeWindowsManifest,
