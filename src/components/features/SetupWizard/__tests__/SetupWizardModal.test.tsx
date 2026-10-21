@@ -16,6 +16,7 @@ let inputs: AudioDevice[];
 let outputs: AudioDevice[];
 let reach: boolean | 'unsupported';
 let startFails: boolean;
+let startError: string;
 let obsFails: boolean;
 
 const openWizard = async () => {
@@ -39,6 +40,7 @@ beforeEach(() => {
     outputs = [cable, device('スピーカー')];
     reach = true;
     startFails = false;
+    startError = '起動失敗';
     obsFails = false;
     vi.mocked(invoke).mockReset();
     vi.mocked(listen).mockClear();
@@ -47,7 +49,7 @@ beforeEach(() => {
             case 'get_audio_devices': return { inputs, outputs };
             case 'get_audio_state': return { is_running: false, config: null };
             case 'start_audio':
-                if (startFails) throw new Error('起動失敗');
+                if (startFails) throw new Error(startError);
                 return { sample_rate: 48000, buffer_size: 512, channels: 2 };
             case 'connect_obs':
                 if (obsFails) throw new Error('接続失敗');
@@ -60,6 +62,19 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('セットアップの接続チェック', () => {
+    it.each(['サウンドテスト (開始)', '設定を保存して開始'])('アクセス拒否時の%sでは権限案内を開き、設定を保存せず再試行できる', async action => {
+        startFails = true;
+        startError = 'Input Stream Build Failed: 0x80070005';
+        const { onApplyConfig } = await quickStart();
+        fireEvent.click(screen.getByRole('button', { name: action }));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Windowsのマイク設定を開く' })).toBeVisible());
+        expect(document.querySelector('details')).toHaveAttribute('open');
+        expect(onApplyConfig).not.toHaveBeenCalled();
+        expect(localStorage.getItem('vst_host_audio_config')).toBeNull();
+        startFails = false;
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await waitFor(() => expect(onApplyConfig).toHaveBeenCalledOnce());
+    });
     it('拡大表示で外側をスクロールしても、手順切替時に先頭へ戻して見出しへフォーカスする', async () => {
         await openWizard();
         const surface = document.querySelector<HTMLElement>('.modal-surface-base')!;

@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ConnectionCheck } from './ConnectionCheck';
+import { MicrophonePermissionGuide } from '../AudioSettings/MicrophonePermissionGuide';
 
 const isVirtualOutput = (device: AudioDevice) => /cable|voicemeeter/i.test(device.name);
 
@@ -51,6 +52,7 @@ interface WizardConfig {
 export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onClose, onSkip, onApplyConfig, onOpenSettings, onOpenTroubleshoot }) => {
 
     const bodyRef = useRef<HTMLDivElement>(null);
+    const [audioStartError, setAudioStartError] = useState('');
     const surfaceRef = useRef<HTMLDivElement>(null);
     const [beginnerChoice, setBeginnerChoice] = useState(getBeginnerMode);
 
@@ -142,6 +144,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
     useEffect(() => {
         let active = true;
         if (isOpen) {
+            setAudioStartError('');
             setInitialStateReady(false);
             setBeginnerChoice(getBeginnerMode());
             setInitialStateError(false);
@@ -347,6 +350,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
         if (isTestingSound) return true;
         operationRef.current = true;
         setIsBusy(true);
+        setAudioStartError('');
         hasTouchedEngineRef.current = true;
         try {
             await audioApi.start(config.host, config.input.name, config.output.name);
@@ -355,6 +359,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
             toast.success("テスト開始: 音声を確認してください");
             return true;
         } catch (e) {
+            setAudioStartError(String(e));
             toast.error("オーディオエンジンの起動に失敗しました");
             console.error(e);
             setIsTestingSound(false);
@@ -394,6 +399,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
         if (!config.input || !config.output || !initialStateReady || operationRef.current || isCheckingConnection) return;
         operationRef.current = true;
         setIsBusy(true);
+        setAudioStartError('');
         hasTouchedEngineRef.current = true;
         setState('configuring');
         try {
@@ -413,6 +419,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
             setState('complete');
             toast.success("セットアップが完了しました！");
         } catch (e) {
+            setAudioStartError(String(e));
             console.error(e);
             toast.error("設定の適用に失敗しました");
             setState('confirmation');
@@ -604,6 +611,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                             </div>
 
                             <div className="max-w-md mx-auto space-y-4">
+                                <MicrophonePermissionGuide expanded={/アクセス.*拒否|0x80070005|access.*denied/i.test(audioStartError)} />
                                 {isLoadingDevices ? (
                                     <div className="py-8 text-center text-muted-foreground animate-pulse">デバイスを検索中...</div>
                                 ) : (
@@ -788,6 +796,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({ isOpen, onCl
                                 <p className="text-sm text-muted-foreground">入力・出力と受け側アプリを順に確認します。確認できない項目は手動で確認できます。</p>
                             </div>
 
+                            <MicrophonePermissionGuide expanded={/アクセス.*拒否|0x80070005|access.*denied/i.test(audioStartError)} />
                             <div className="bg-muted/30 p-6 rounded-xl border border-border max-w-lg mx-auto space-y-4">
                                 <div className="grid grid-cols-[auto_1fr] gap-4 items-center">
                                     <MdMic className="w-5 h-5 text-muted-foreground" />
