@@ -10,7 +10,7 @@
 ### 1.1 配布場所と更新
 *   **開発リポジトリ**: `blackflame7983/Auralyn`は当面Privateで維持できるが、配布した各版の対応ソースは必ず公開する。
 *   **無料版配布**: `blackflame7983/Auralyn-Releases`のGitHub Releasesへ、署名済みインストーラー、Portable版、`latest.json`、同一コミットのSource ZIP、SHA-256、source manifestを配置する。
-*   **更新方式**: Tauri Updaterを使用し、失敗時は`Auralyn-Releases`のRelease一覧へ誘導する。
+*   **更新方式**: 通常配布版はTauri Updaterを使用し、失敗時は`Auralyn-Releases`のRelease一覧へ誘導する。MSIX版ではTauri Updaterを登録せず、Store入手版はStoreの更新画面、直接配布のMSIXは元の配布元から更新する。判定不能時は外部インストーラーによる更新を開始しない。詳細と未検証範囲は[MSIX_PROTOTYPE.md](MSIX_PROTOTYPE.md)を参照する。
 *   **収益化**: AuralynはGPL版として配布し、任意支援、公式ビルド、サポート等を候補とする。排他的なソフトウェア販売は別プロダクトで設計する。
 
 ### 1.2 セキュリティとSmartScreen対策

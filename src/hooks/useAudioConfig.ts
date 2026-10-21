@@ -140,7 +140,9 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
                                     console.error("Auto-start failed:", e);
                                     setIsEngineRunning(false);
                                     toast.error('オーディオエンジンの起動に失敗しました', {
-                                        description: '設定を確認してください',
+                                        description: /アクセス.*拒否|0x80070005|access.*denied/i.test(String(e))
+                                            ? 'Windowsのマイク権限を確認してください。音声設定に確認手順があります。'
+                                            : '設定を確認してください',
                                         action: onOpenSettings ? {
                                             label: '設定',
                                             onClick: () => onOpenSettings()

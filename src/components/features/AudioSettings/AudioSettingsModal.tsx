@@ -1,4 +1,5 @@
 import { Modal } from '../../ui/modal';
+import { MicrophonePermissionGuide } from './MicrophonePermissionGuide';
 import { useObsUsage } from '../../../hooks/useObsUsage';
 import React, { useEffect, useState, useMemo } from 'react';
 import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage } from 'react-icons/md';
@@ -859,6 +860,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           )}
 
           <TabsContent value="audio" className="space-y-4">
+            <MicrophonePermissionGuide expanded={!!error && /アクセス.*拒否|0x80070005|access.*denied/i.test(error)} />
 
             {loading ? (
               <div className="flex justify-center py-8">
@@ -866,7 +868,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
             ) : error ? (
               <div className="space-y-4">
-                <div className="text-destructive text-sm text-center py-4 bg-destructive/10 rounded-lg">{error}</div>
+                <div className="text-foreground text-sm text-center py-4 bg-destructive/10 rounded-lg">{error}</div>
+                <button onClick={() => setError(null)} className="w-full py-2 bg-primary text-primary-foreground rounded-md">設定に戻って再試行</button>
                 <button onClick={onClose} className="w-full py-2 bg-muted text-foreground rounded-md border border-input">閉じる</button>
               </div>
             ) : (

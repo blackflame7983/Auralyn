@@ -1241,9 +1241,14 @@ pub fn localize_audio_error(e: String) -> String {
              → 接続し直した後、「更新」ボタンを押してください。"
             .to_string();
     }
-    if lower.contains("access is denied") {
+    if lower.contains("access is denied")
+        || lower.contains("access denied")
+        || lower.contains("0x80070005")
+        || e.contains("アクセスが拒否")
+    {
         return "オーディオデバイスへのアクセスが拒否されました。\n\n\
-                → Windows設定 > プライバシー > マイクで、アプリのアクセスを許可してください。\n\
+                → Windows設定 > プライバシーとセキュリティ > マイクを確認してください。\n\
+                → Store・MSIX版はアプリ一覧のAuralyn、通常配布版はデスクトップアプリの許可も確認してください。\n\
                 → 排他モードを使用中の場合は、他のアプリを閉じてください。"
             .to_string();
     }
@@ -1255,4 +1260,30 @@ pub fn localize_audio_error(e: String) -> String {
     }
     // Default fallback
     format!("オーディオエラーが発生しました。\n\n詳細: {}", e)
+}
+
+#[cfg(test)]
+mod permission_error_tests {
+    use super::localize_audio_error;
+
+    #[test]
+    fn access_denied_in_both_languages_and_hresult_has_permission_guidance() {
+        for error in [
+            "Input Stream Build Failed: Access is denied.",
+            "アクセスが拒否されました。(0x80070005)",
+            "Input Stream Build Failed: HRESULT 0x80070005",
+        ] {
+            let message = localize_audio_error(error.to_owned());
+            assert!(message.contains("Store・MSIX版"));
+            assert!(message.contains("デスクトップアプリの許可"));
+            assert!(message.contains("他のアプリを閉じて"));
+        }
+    }
+
+    #[test]
+    fn unrelated_audio_errors_do_not_claim_a_permission_denial() {
+        let message = localize_audio_error("buffer allocation failed".to_owned());
+        assert!(!message.contains("アクセスが拒否"));
+        assert!(message.contains("buffer allocation failed"));
+    }
 }

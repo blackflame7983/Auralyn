@@ -23,8 +23,7 @@ import {
 import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '../../api/audio';
 import { toast } from 'sonner';
-import { check } from '@tauri-apps/plugin-updater';
-import { relaunch } from '@tauri-apps/plugin-process';
+import { useAppUpdate, UpdateGuide } from './AppUpdate';
 import {
     Tooltip,
     TooltipContent,
@@ -76,6 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
     engineProcessReady
 }) => {
     const { theme, setTheme } = useTheme();
+    const appUpdate = useAppUpdate();
     const [isGlobalMuted, setIsGlobalMuted] = useState(false);
     const [inputGain, setInputGain] = useState(() => {
         const saved = localStorage.getItem('vst_host_input_gain');
@@ -363,51 +363,11 @@ export const Header: React.FC<HeaderProps> = ({
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onSelect={async () => {
-                                const toastId = toast.loading('アップデートを確認中...');
-                                try {
-                                    const update = await check();
-                                    if (update) {
-                                        toast.dismiss(toastId);
-                                        toast.info(`v${update.version} が利用可能です`, {
-                                            description: '今すぐアップデートしますか？',
-                                            duration: 15000,
-                                            action: {
-                                                label: 'アップデート',
-                                                onClick: async () => {
-                                                    const dlToast = toast.loading('ダウンロード中...');
-                                                    try {
-                                                        await update.downloadAndInstall();
-                                                        toast.dismiss(dlToast);
-                                                        toast.success('インストール完了。再起動します...');
-                                                        await relaunch();
-                                                    } catch (e) {
-                                                        toast.dismiss(dlToast);
-                                                        console.error('Update install failed:', e);
-                                                        toast.error('アップデートに失敗しました');
-                                                    }
-                                                },
-                                            },
-                                        });
-                                    } else {
-                                        toast.dismiss(toastId);
-                                        toast.success('最新バージョンです');
-                                    }
-                                } catch (e) {
-                                    toast.dismiss(toastId);
-                                    toast.info('自動更新情報を取得できませんでした', {
-                                        description: 'ネットワークまたは配布状況を確認し、必要に応じて公式リリースページをご利用ください。',
-                                        action: {
-                                            label: 'GitHub',
-                                            onClick: () => window.open('https://github.com/blackflame7983/Auralyn-Releases/releases', '_blank'),
-                                        },
-                                    });
-                                }
-                            }} className="gap-3 cursor-pointer p-3">
+                            <DropdownMenuItem disabled={appUpdate.busy} onSelect={() => void appUpdate.checkUpdates()} className="gap-3 cursor-pointer p-3">
                                 <span className="w-6 h-6 flex items-center justify-center bg-blue-500 text-white rounded-full shadow-sm"><MdSystemUpdateAlt className="w-3.5 h-3.5" /></span>
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-sm">アップデートを確認</span>
-                                    <span className="text-xs text-muted-foreground">最新版があるかチェック</span>
+                                    <span className="font-bold text-sm">{appUpdate.label}</span>
+                                    <span className="text-xs text-muted-foreground">{appUpdate.description}</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -439,6 +399,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </DropdownMenu>
                 </div>
             </TooltipProvider>
+            {appUpdate.showGuide && <UpdateGuide onClose={appUpdate.closeGuide} />}
         </header>
     );
 };

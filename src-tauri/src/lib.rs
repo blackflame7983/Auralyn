@@ -7,6 +7,7 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 pub mod audio;
 pub mod audio_analysis;
 pub mod audio_engine;
+mod desktop_integration;
 #[cfg(any(test, feature = "dsp-verification"))]
 mod dsp_verification_allocator;
 pub mod autostart;
@@ -873,10 +874,10 @@ pub fn run() {
 
     let audio_state = audio::AudioState(Arc::new(Mutex::new(audio::AudioHost::new())));
     let obs_state = obs::ObsState::new();
+    let distribution = desktop_integration::detect_distribution();
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -903,6 +904,13 @@ pub fn run() {
                 .build(),
         );
 
+    // MSIXはStore等の配布元が更新する。判定失敗時も外部インストーラーを起動しない。
+    let builder = if distribution == desktop_integration::Distribution::Standalone {
+        builder.plugin(tauri_plugin_updater::Builder::new().build())
+    } else {
+        builder
+    };
+
     #[cfg(debug_assertions)]
     let builder = builder.plugin(
         tauri_plugin_mcp_bridge::Builder::new()
@@ -911,6 +919,7 @@ pub fn run() {
     );
 
     builder
+        .manage(distribution)
         .manage(audio_state)
         .manage(obs_state)
         .setup(|app| {
@@ -1019,6 +1028,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            desktop_integration::get_distribution,
+            desktop_integration::open_desktop_settings,
             get_audio_devices,
             get_audio_state,
             get_engine_tuning_config,
