@@ -51,6 +51,9 @@ function validateReleaseReadiness({
   const expectedRepo = policy.publicReleaseRepository;
   const expectedEndpoint = `https://github.com/${expectedRepo}/releases/latest/download/latest.json`;
   const endpoints = tauriConfig?.plugins?.updater?.endpoints || [];
+  if (JSON.stringify(tauriConfig?.bundle?.targets) !== JSON.stringify(['nsis']) || tauriConfig?.bundle?.windows?.wix) {
+    errors.push('通常版のビルド対象はNSISのみです。MSI/WiXは今後のビルド・配布対象に含めないでください。');
+  }
 
   if (policy.schemaVersion !== 2) {
     errors.push('config/release-policy.json の schemaVersion が未対応です。');

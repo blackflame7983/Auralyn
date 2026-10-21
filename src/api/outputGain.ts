@@ -72,8 +72,15 @@ let writes: Promise<unknown> = Promise.resolve();
 export async function restoreSavedOutputGain(value: number): Promise<void> {
     if (!Number.isFinite(value) || value < 0 || value > 2)
         throw new Error('出力音量は0〜200%で指定してください。');
-    const state = await gainCommand({ action: 'initialize', value });
-    if (state.running && !state.settled) await confirmOutputGain(state);
+    // 起動中のストリーム切替や明示操作は正常な世代変更として扱う。
+    // initializeは明示設定済みの実値を上書きしないため、再送しても旧値に戻らない。
+    for (let i = 0; i < 25; i++) {
+        const state = await gainCommand({ action: 'initialize', value });
+        if (state.streamFailed) throw new Error('音声状態を確認できません。再試行してください。');
+        if (!state.running || state.settled) return;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error('音量の反映を確認できません。状態を再取得してください。');
 }
 
 export function setOutputGain(value: number): Promise<void> {

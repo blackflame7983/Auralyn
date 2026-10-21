@@ -61,6 +61,70 @@ afterEach(async () => {
 });
 
 describe('起動時の保存ゲイン復元', () => {
+    it('手動設定の失敗は背景の状態取得が成功しても消さない', async () => {
+        const original = vi.mocked(invoke).getMockImplementation()!;
+        vi.mocked(invoke).mockImplementation(async (command, args) => {
+            if (command === 'set_output_gain') throw new Error('manual request failed');
+            return original(command, args);
+        });
+        running = true;
+        render(<MasterBar isRunning />);
+        await act(async () => { finishListening(); });
+        const slider = screen.getByRole('slider', { name: '出力ゲイン' });
+        slider.focus();
+        fireEvent.keyDown(slider, { key: 'ArrowRight' });
+        await act(async () => { await vi.advanceTimersByTimeAsync(60); });
+        expect(screen.getByRole('alert')).toHaveTextContent('音量を確認できません');
+        await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+        expect(localStorage.getItem('vst_host_output_gain')).toBe('50');
+    });
+
+    it('停止状態の取得中に開始通知が来ても、初期化後に保存値を再送する', async () => {
+        let resolveInitial!: (value: unknown) => void;
+        vi.mocked(invoke).mockImplementationOnce(() => new Promise(resolve => { resolveInitial = resolve; }));
+        render(<MasterBar />);
+        await act(async () => { finishListening(); });
+        await act(async () => {
+            running = true;
+            started();
+            resolveInitial({ revision: 1, gain: 1, confirmedGain: 1, running: false, settled: false, streamFailed: false });
+        });
+        expect(gain).toBe(0.5);
+        expect(localStorage.getItem('vst_host_output_gain')).toBe('50');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('一時的な起動確認失敗を再試行して警告を消し、手動再操作を要求し続けない', async () => {
+        vi.mocked(invoke).mockRejectedValueOnce(new Error('engine warming up'));
+        render(<MasterBar />);
+        await act(async () => { finishListening(); });
+        expect(screen.getByRole('alert')).toHaveTextContent('音量を確認できません');
+        expect(localStorage.getItem('vst_host_output_gain')).toBe('50');
+        await act(async () => {
+            running = true;
+            await vi.advanceTimersByTimeAsync(1100);
+        });
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(gain).toBe(0.5);
+        expect(localStorage.getItem('vst_host_output_gain')).toBe('50');
+    });
+
+    it('復元失敗中に行った明示変更を定期再試行で上書きしない', async () => {
+        vi.mocked(invoke).mockRejectedValueOnce(new Error('engine warming up'));
+        render(<MasterBar />);
+        await act(async () => { finishListening(); });
+        await act(async () => {
+            running = true;
+            initialized = true;
+            gain = 0.7;
+            await vi.advanceTimersByTimeAsync(1100);
+        });
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(gain).toBe(0.7);
+        expect(localStorage.getItem('vst_host_output_gain')).toBe('70');
+    });
+
     it('技術情報は開いたときだけ表示し、停止中の設定値を稼働中の遅延と混同しない', async () => {
         vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({
             globalBypass: false, enabledPluginCount: 2, activePluginCount: 2,

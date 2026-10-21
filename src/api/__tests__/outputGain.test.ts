@@ -30,6 +30,24 @@ beforeEach(() => {
     localStorage.clear();
 });
 describe('出力ゲインの反映確認', () => {
+    it('起動中の世代変更を再確認し、明示変更済みの音量を旧保存値で戻さない', async () => {
+        vi.mocked(invoke)
+            .mockResolvedValueOnce({ ...state, settled: false })
+            .mockResolvedValueOnce({ ...state, revision: 21, gain: 0.5, confirmedGain: 0.5 });
+        await restoreSavedOutputGain(0.8);
+        expect(localStorage.getItem('vst_host_output_gain')).toBe('50');
+        expect(invoke).toHaveBeenCalledTimes(2);
+        expect(invoke).toHaveBeenLastCalledWith('auto_gain', {
+            request: { action: 'initialize', value: 0.8 },
+        });
+    });
+
+    it('起動復元のストリーム障害を成功として保存しない', async () => {
+        vi.mocked(invoke).mockResolvedValue({ ...state, running: false, streamFailed: true, settled: false });
+        await expect(restoreSavedOutputGain(0.8)).rejects.toThrow('音声状態を確認できません');
+        expect(localStorage.getItem('vst_host_output_gain')).toBeNull();
+    });
+
     it('遅い起動時復元はプロファイルの実値を保存し、旧値を再送しない', async () => {
         let finish!: (s: GainSnapshot) => void;
         vi.mocked(invoke).mockImplementationOnce(

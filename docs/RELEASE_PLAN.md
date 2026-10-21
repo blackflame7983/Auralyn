@@ -10,6 +10,7 @@
 ### 1.1 配布場所と更新
 *   **開発リポジトリ**: `blackflame7983/Auralyn`は当面Privateで維持できるが、配布した各版の対応ソースは必ず公開する。
 *   **無料版配布**: `blackflame7983/Auralyn-Releases`のGitHub Releasesへ、署名済みインストーラー、Portable版、`latest.json`、同一コミットのSource ZIP、SHA-256、source manifestを配置する。
+*   **配布形式の今後の方針**: MSIXを主軸とする。通常版EXE（NSIS）はMSIXの数日間の長時間試験と設定移行の確認が完了するまで維持する。MSIは今後のビルド・配布・実機検証の対象から外す。公開済みMSIと過去のReleaseは削除しない。
 *   **更新方式**: 通常配布版はTauri Updaterを使用し、失敗時は`Auralyn-Releases`のRelease一覧へ誘導する。MSIX版ではTauri Updaterを登録せず、Store入手版はStoreの更新画面、直接配布のMSIXは元の配布元から更新する。判定不能時は外部インストーラーによる更新を開始しない。詳細と未検証範囲は[MSIX_PROTOTYPE.md](MSIX_PROTOTYPE.md)を参照する。
 *   **収益化**: AuralynはGPL版として配布し、任意支援、公式ビルド、サポート等を候補とする。排他的なソフトウェア販売は別プロダクトで設計する。
 
@@ -19,7 +20,7 @@
     *   *対策*:
         1.  Webサイトのダウンロードボタン付近に「**SmartScreenの警告が出る場合**」というFAQリンクまたはツールチップを設置する。
         2.  インストーラーのファイルハッシュ (SHA-256) をWebサイトに明記し、改ざんされていないことをユーザーが確認できるようにする。
-*   **インストーラー形式**: `.msi` または `.exe` (NSIS)。現状のNSIS (`.exe`) で問題なし。
+*   **インストーラー形式**: 主軸はMSIX、移行期間は `.exe` (NSIS) を維持する。通常のTauriビルド対象はNSISだけとし、MSIXは専用の梱包手順を使用する。MSIへのフォールバックは行わない。
 
 ---
 

@@ -3,6 +3,9 @@
 Issue [#4](https://github.com/blackflame7983/Auralyn/issues/4) の、外部VST3・サイドカー・設定保存・OBS通信を確認するためのローカル試作。
 Store提出用のパッケージではない。
 
+現在の保存先・通常版との共存と今後の工程は [MSIX_STORAGE.md](MSIX_STORAGE.md) を参照する。
+以下の過去の実機記録では通常版の設定を共有しているが、現在の実装はMSIX専用領域へ分離する。以前の共有動作を新しい保存先の検証済み証拠として扱わない。
+
 ## 構成
 
 - `packaging/msix-prototype/AppxManifest.xml` に試験専用Identityを定義する。
@@ -175,7 +178,7 @@ git diff --check
 - Partner Centerで予約した正式Identity / PublisherとStore署名・審査。`runFullTrust` と外部ドライバー依存の説明。
 - OSの権限要求ダイアログは未実装。今回の権限切替はWindows設定で利用者が実施した。実マイクとクリーン環境での確認は別途必要。
 - 実際のStore更新・再起動・設定保持。MSIX版で通常版updaterが無効であることは実機確認済みだが、ローカル試作の更新案内だけではStore更新を検証できない。
-- 通常版からの設定移行、並行起動の扱い、アンインストール時の設定保持方針。
+- 通常版からの明示的な設定移行、分離後の実MSIXでの更新・削除と共存の検証。仕様・実装範囲は [MSIX_STORAGE.md](MSIX_STORAGE.md) を参照する。
 - WindowsAppsのバージョン付きパスと既存レジストリRun方式の自動起動との整合。
 - クリーン環境のWebView2・ネイティブランタイム、実マイク、異なるVST/ASIOドライバー、VST GUI・DPI・長時間音声。
 - 対応ソースの同時提供と有料配布を含むライセンス条件の確認。

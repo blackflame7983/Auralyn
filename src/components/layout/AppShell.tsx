@@ -222,7 +222,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             </Tooltip>
                         </TooltipProvider>
                     </div>
-                    <div className="h-full py-2 min-w-0">
+                    <div className="h-full min-w-0">
                         <MasterBar
                             isRunning={isEngineRunning}
                             processReady={engineProcessReady}

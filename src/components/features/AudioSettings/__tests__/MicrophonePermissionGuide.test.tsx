@@ -27,7 +27,7 @@ it('設定起動に失敗しても手動の手順と再試行を残す', async (
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
 });
 
-it('アクセス拒否から戻っても選択したデバイスと保存値を保ち、明示操作で再試行する', async () => {
+it.each(['保存して開始', 'エンジン再起動'])('%sのアクセス拒否から戻っても選択したデバイスと保存値を保ち、明示操作で再試行する', async action => {
     const devices = {
         inputs: ['Mic A', 'Mic B'].map(name => ({ name, host: 'Wasapi', channels: 2 })),
         outputs: [{ name: 'Headphones', host: 'Wasapi', channels: 2 }],
@@ -39,17 +39,21 @@ it('アクセス拒否から戻っても選択したデバイスと保存値を�
     vi.mocked(invoke).mockImplementation(async command => {
         if (command === 'get_audio_devices') return devices;
         if (command === 'get_autostart_status') return { enabled: false };
-        if (command === 'start_audio') return start();
+        if (command === 'start_audio' || command === 'restart_audio_engine') return start();
         return null;
     });
     const changed = vi.fn();
-    render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={changed} />);
+    const restarted = vi.fn();
+    render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={changed} onEngineRestarted={restarted} />);
     const input = await screen.findByRole('combobox', { name: 'マイク入力・ASIOデバイス' });
     fireEvent.change(input, { target: { value: 'Mic B' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    fireEvent.click(screen.getByRole('button', { name: action }));
+    if (action === 'エンジン再起動')
+        fireEvent.click(await screen.findByRole('button', { name: '再起動する' }));
     await screen.findByRole('button', { name: '設定に戻って再試行' });
     expect(document.querySelector('details')).toHaveAttribute('open');
     expect(changed).not.toHaveBeenCalled();
+    expect(restarted).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Windowsのマイク設定を開く' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Windowsのマイク設定を開く' })).toBeEnabled());
     expect(start).toHaveBeenCalledTimes(1);

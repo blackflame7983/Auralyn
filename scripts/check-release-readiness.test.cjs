@@ -5,11 +5,35 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
 const { validateReleaseReadiness } = require('./check-release-readiness.cjs');
-const { assertAssetMatchesVersion, buildWindowsManifest } = require('./generate-release-manifest.cjs');
+const { assertAssetMatchesVersion, buildWindowsManifest, findNsisInstaller } = require('./generate-release-manifest.cjs');
 const { assertCleanStatus, buildSourceManifest } = require('./generate-source-archive.cjs');
 
 const PUBLIC_REPO = 'blackflame7983/Auralyn-Releases';
 const ENDPOINT = `https://github.com/${PUBLIC_REPO}/releases/latest/download/latest.json`;
+
+test('MSIやallを今後のビルド対象として許可しない', () => {
+  for (const targets of ['all', ['msi'], ['nsis', 'msi']]) {
+    const base = fixture();
+    base.tauriConfig.bundle.targets = targets;
+    assert.match(validateReleaseReadiness(base).errors.join('\n'), /NSISのみ/);
+  }
+});
+
+test('古いMSIだけが残る場合は通常版インストーラーとして選ばない', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'auralyn-nsis-only-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'msi'));
+  const old = path.join(root, 'msi', 'Auralyn_1.1.0_x64.msi');
+  fs.writeFileSync(old, 'previous artifact');
+  assert.equal(findNsisInstaller(root, '1.1.0'), null);
+  fs.mkdirSync(path.join(root, 'nsis'));
+  fs.writeFileSync(path.join(root, 'nsis', 'Auralyn_1.0.0_x64-setup.exe'), 'old NSIS');
+  assert.equal(findNsisInstaller(root, '1.1.0'), null);
+  const current = path.join(root, 'nsis', 'Auralyn_1.1.0_x64-setup.exe');
+  fs.writeFileSync(current, 'current NSIS');
+  assert.equal(findNsisInstaller(root, '1.1.0'), current);
+  assert.equal(fs.readFileSync(old, 'utf8'), 'previous artifact');
+});
 
 function fixture(overrides = {}) {
   return {
@@ -20,7 +44,7 @@ function fixture(overrides = {}) {
       'license = "GPL-3.0-only"',
       'cpal = { version = "0.17.0", features = ["asio"] }',
     ].join('\n'),
-    tauriConfig: { plugins: { updater: { endpoints: [ENDPOINT] } } },
+    tauriConfig: { bundle: { targets: ['nsis'] }, plugins: { updater: { endpoints: [ENDPOINT] } } },
     policy: {
       schemaVersion: 2,
       applicationLicense: 'GPL-3.0-only',

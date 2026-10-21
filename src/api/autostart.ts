@@ -3,7 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 export interface AutostartStatus {
     enabled: boolean;
     method: string;
-    command?: string;
+    canChange: boolean;
+    reason?: string | null;
 }
 
 export const autostartApi = {
