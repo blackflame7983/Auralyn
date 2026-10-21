@@ -456,6 +456,16 @@ pub async fn apply_settings(
     .map_err(|e| e.to_string())?
 }
 
+// 音声開始・チャンネル適用・利用者確認の完了後にだけ呼ぶ。
+// Start単体では消さず、途中終了後も次の起動で確認を求める。
+#[tauri::command]
+pub async fn migration_complete_review(app: AppHandle) -> Result<(), String> {
+    let root = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || complete_review(&root).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn migration_bootstrap(app: AppHandle, acknowledge: bool) -> Result<Pending, String> {
     let root = app.path().app_config_dir().map_err(|e| e.to_string())?;
@@ -501,6 +511,54 @@ fn bootstrap(root: &Path, acknowledge: bool) -> Result<Pending, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn confirmation_survives_repeated_bootstrap_until_explicit_completion() {
+        let root = std::env::temp_dir().join(format!(
+            "auralyn-confirmation-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        write_json(
+            &root.join(PENDING),
+            &Pending {
+                review_required: true,
+                ui: None,
+                files_applied: true,
+            },
+        )
+        .unwrap();
+        // Start成功後でも、チャンネル適用や完了IPCより前の終了は未確認のまま。
+        for acknowledge in [false, true, false] {
+            assert!(bootstrap(&root, acknowledge).unwrap().review_required);
+            assert!(review_required(&root));
+        }
+        complete_review(&root).unwrap();
+        assert!(!bootstrap(&root, false).unwrap().review_required);
+        complete_review(&root).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn completion_failure_keeps_the_durable_marker() {
+        let root = std::env::temp_dir().join(format!(
+            "auralyn-confirmation-error-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        // 消去に失敗するマーカーを使い、エラーが呼び出し元へ返ることを確認。
+        fs::create_dir_all(root.join(PENDING)).unwrap();
+        assert!(complete_review(&root).is_err());
+        assert!(review_required(&root));
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn interrupted_migration_restores_shortcuts_before_registration_reads_them() {
         for had_shortcuts in [false, true] {

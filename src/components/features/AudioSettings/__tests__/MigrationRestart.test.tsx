@@ -5,7 +5,7 @@ import { ModalLayer } from '@/components/layout/ModalLayer';
 import { useUIState } from '@/hooks/useUIState';
 import { useAudioConfig } from '@/hooks/useAudioConfig';
 import { usePlugins } from '@/hooks/usePlugins';
-import { REVIEW_KEY } from '@/api/migration';
+import { bootstrapMigration, REVIEW_KEY } from '@/api/migration';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -25,14 +25,18 @@ function Harness() {
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 it.each([
-    { operation: '保存して開始', host: 'Wasapi', failFirst: false },
-    { operation: 'エンジン再起動', host: 'Wasapi', failFirst: false },
-    { operation: '通常再起動', host: 'Wasapi', failFirst: false },
-    { operation: '保存して開始', host: 'ASIO', failFirst: false },
-    { operation: 'エンジン再起動', host: 'ASIO', failFirst: false },
-    { operation: '保存して開始', host: 'ASIO', failFirst: true },
-    { operation: 'エンジン再起動', host: 'ASIO', failFirst: true },
-])('$host・$operation・初回失敗=$failFirst: 確認後の開始成功時だけ各VSTを1回復元する', async ({ operation, host, failFirst }) => {
+    { operation: '保存して開始', host: 'Wasapi', failAt: null },
+    { operation: 'エンジン再起動', host: 'Wasapi', failAt: null },
+    { operation: '通常再起動', host: 'Wasapi', failAt: null },
+    { operation: '保存して開始', host: 'ASIO', failAt: null },
+    { operation: 'エンジン再起動', host: 'ASIO', failAt: null },
+    { operation: '保存して開始', host: 'ASIO', failAt: 'start' },
+    { operation: 'エンジン再起動', host: 'ASIO', failAt: 'start' },
+    { operation: '保存して開始', host: 'ASIO', failAt: 'channels' },
+    { operation: 'エンジン再起動', host: 'ASIO', failAt: 'channels' },
+    { operation: '保存して開始', host: 'ASIO', failAt: 'complete' },
+    { operation: 'エンジン再起動', host: 'ASIO', failAt: 'complete' },
+])('$host・$operation・初回失敗=$failAt: 確認後の開始成功時だけ各VSTを1回復元する', async ({ operation, host, failAt }) => {
     localStorage.clear();
     if (operation !== '通常再起動') localStorage.setItem(REVIEW_KEY, 'true');
     localStorage.setItem('vst_host_wizard_done', 'true');
@@ -40,7 +44,10 @@ it.each([
     const paths = ['eq.vst3', 'meter.vst3'];
     localStorage.setItem('vst_host_session_plugins', JSON.stringify(paths.map(path => ({ path, name: path, vendor: '', version: '', enabled: true, muted: false, gain: 1 }))));
     let enginePaths: string[] = [];
-    let rejectStart = failFirst;
+    let rejectOnce = !!failAt;
+    let started = false;
+    let channelsApplied = false;
+    let nativeReview = operation !== '通常再起動';
     vi.mocked(invoke).mockReset();
     vi.mocked(invoke).mockImplementation(async (command, args) => {
         if (command === 'get_audio_devices') return { inputs: [{ name: 'Mic', host, channels: 8 }], outputs: [{ name: host === 'ASIO' ? 'Mic' : 'Output', host, channels: 8 }] };
@@ -48,14 +55,34 @@ it.each([
         if (command === 'auto_gain') return { running: true, streamFailed: false };
         if (command === 'get_autostart_status') return { enabled: false };
         if (command === 'start_audio' || command === 'restart_audio_engine') {
-            if (rejectStart) {
-                rejectStart = false;
-                throw new Error('試験用の起動失敗');
+            if (rejectOnce && failAt === 'start') {
+                rejectOnce = false;
+                throw new Error('試験用のstart失敗');
             }
+            started = true;
+            channelsApplied = false;
             if (command === 'restart_audio_engine') enginePaths = [];
             return { sample_rate: 48000, buffer_size: 512, channels: 2 };
         }
+        if (command === 'set_input_channels' && started) {
+            if (rejectOnce && failAt === 'channels') {
+                rejectOnce = false;
+                throw new Error('試験用のchannels失敗');
+            }
+            channelsApplied = true;
+        }
+        if (command === 'migration_bootstrap') return { reviewRequired: nativeReview, ui: null };
+        if (command === 'migration_complete_review') {
+            expect(started && channelsApplied).toBe(true);
+            if (host === 'ASIO') expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([6, 7]);
+            if (rejectOnce && failAt === 'complete') {
+                rejectOnce = false;
+                throw new Error('試験用のcomplete失敗');
+            }
+            nativeReview = false;
+        }
         if (command === 'load_plugin') {
+            expect(nativeReview).toBe(false);
             enginePaths.push((args as { path: string }).path);
             return `instance-${enginePaths.length}`;
         }
@@ -93,10 +120,14 @@ it.each([
         }
     };
     await start();
-    if (failFirst) {
-        await screen.findByText(/試験用の起動失敗/);
+    if (failAt) {
+        await screen.findByText(/試験用の.*失敗/);
         expect(localStorage.getItem(REVIEW_KEY)).toBe('true');
         expect(enginePaths).toEqual([]);
+        expect(nativeReview).toBe(true);
+        // 次回のbootstrapでも確認待ちが消えず、自動復元を許さない。
+        await bootstrapMigration();
+        expect(localStorage.getItem(REVIEW_KEY)).toBe('true');
         expect(screen.getByTestId('chain')).toBeEmptyDOMElement();
         fireEvent.click(screen.getByRole('button', { name: '設定に戻って再試行' }));
         await screen.findByRole('button', { name: '保存して開始' });
@@ -106,6 +137,9 @@ it.each([
     await waitFor(() => expect(screen.getByTestId('chain')).toHaveTextContent(paths.join(',')));
     expect(localStorage.getItem(REVIEW_KEY)).toBeNull();
     expect(enginePaths).toEqual(paths);
+    expect(nativeReview).toBe(false);
+    const completions = vi.mocked(invoke).mock.calls.filter(([command]) => command === 'migration_complete_review');
+    expect(completions).toHaveLength(operation === '通常再起動' ? 0 : failAt === 'complete' ? 2 : 1);
     if (host === 'ASIO') {
         expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([6, 7]);
         expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 6, right: 7 });

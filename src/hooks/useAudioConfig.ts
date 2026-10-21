@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { audioApi } from '../api/audio';
 import { REVIEW_KEY } from '../api/migration';
@@ -58,8 +59,12 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         localStorage.setItem('vst_host_audio_config', JSON.stringify(newConfig));
         // 入力ペアなどの設定保存だけでは、移行確認とVST復元を開始しない。
         if (options?.audioStarted && localStorage.getItem(REVIEW_KEY) === 'true') {
-            localStorage.removeItem(REVIEW_KEY);
-            window.dispatchEvent(new Event('migration-review-completed'));
+            // 保存済み選択とチャンネル適用が揃った後に、永続マーカーを解除する。
+            // 失敗時は確認待ちを保持し、再試行と次回起動の確認を可能にする。
+            return invoke('migration_complete_review').then(() => {
+                localStorage.removeItem(REVIEW_KEY);
+                window.dispatchEvent(new Event('migration-review-completed'));
+            });
         }
     };
 

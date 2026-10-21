@@ -685,13 +685,6 @@ impl AudioHost {
                 }
 
                 self.active_config = Some(config);
-                if let Err(error) = crate::migration::complete_review(
-                    self.last_config_path
-                        .parent()
-                        .ok_or_else(|| anyhow!("設定保存先がありません"))?,
-                ) {
-                    log::warn!("移行後の確認状態を保存できませんでした: {error}");
-                }
 
                 Ok(AudioConfig {
                     sample_rate,

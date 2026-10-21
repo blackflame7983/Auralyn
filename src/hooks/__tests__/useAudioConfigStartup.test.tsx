@@ -35,7 +35,8 @@ it('移行後は設定確認へ進み、保存されたデバイスで自動開�
     expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
     act(() => result.current.handleConfigUpdate({ host: 'Wasapi' }));
     expect(localStorage.getItem('vst_host_migration_review_required')).toBe('true');
-    act(() => result.current.handleConfigUpdate({ host: 'Wasapi' }, { audioStarted: true }));
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    await act(async () => { await result.current.handleConfigUpdate({ host: 'Wasapi' }, { audioStarted: true }); });
     expect(localStorage.getItem('vst_host_migration_review_required')).toBeNull();
 });
 

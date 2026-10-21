@@ -1054,6 +1054,7 @@ pub fn run() {
             migration::preview_settings,
             migration::apply_settings,
             migration::migration_bootstrap,
+            migration::migration_complete_review,
             shortcuts::get_shortcuts,
             shortcuts::save_shortcuts,
             updates::check_update,

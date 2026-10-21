@@ -26,7 +26,7 @@ interface AudioSettingsModalProps {
   initialTab?: 'audio' | 'obs' | 'sound';
   isOpen: boolean;
   onClose: () => void;
-  onConfigChange: (config: Partial<import('../../../contexts/AudioConfigContext').AudioConfig> & { host: string }, options?: { audioStarted: true }) => void;
+  onConfigChange: (config: Partial<import('../../../contexts/AudioConfigContext').AudioConfig> & { host: string }, options?: { audioStarted: true }) => void | Promise<void>;
   onEngineRestarted?: () => Promise<void> | void;
   onOpenWizard?: () => void;
   onOpenOBSGuide?: () => void;
@@ -694,7 +694,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       // Notify parent to update persistence with ALL params
       const inputChannels: [number, number] = isAsio ? (currentInputChannels ?? [0, 1]) : [0, 1];
       await audioApi.setInputChannels(inputChannels[0], inputChannels[1]);
-      onConfigChange({
+      await onConfigChange({
         inputChannels,
         host: selectedHost,
         input: selectedInput || undefined,
@@ -736,7 +736,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
       const inputChannels: [number, number] = isAsio ? (currentInputChannels ?? [0, 1]) : [0, 1];
       await audioApi.setInputChannels(inputChannels[0], inputChannels[1]);
-      onConfigChange({
+      await onConfigChange({
         inputChannels,
         host: selectedHost,
         input: selectedInput || undefined,
