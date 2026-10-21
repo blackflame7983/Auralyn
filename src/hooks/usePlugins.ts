@@ -3,6 +3,7 @@ import { audioApi, VstPlugin } from '../api/audio';
 import { Plugin } from '../components/features/PluginRack/PluginCard';
 import { presetApi, PresetPlugin as ApiPresetPlugin, ApplyProfileSummary, ProfileSaveCategories, gatherProfileAudioExtras, syncLocalStateFromProfile } from '../api/presets';
 import { toast } from 'sonner';
+import { REVIEW_KEY } from '../api/migration';
 
 export const usePlugins = () => {
     const [plugins, setPlugins] = useState<Plugin[]>([]);
@@ -16,7 +17,8 @@ export const usePlugins = () => {
     useEffect(() => {
         if (!isSessionLoaded) return;
 
-        const saveSession = async () => {
+        const saveSession = async (strict = false) => {
+            if (strict && (isLoading || isScanning)) throw new Error('VSTの読み込み・スキャン完了後に再試行してください。');
             // console.log("Auto-saving session...");
             const sessionData = await Promise.all(plugins.map(async p => {
                 let state: string | undefined;
@@ -24,6 +26,7 @@ export const usePlugins = () => {
                     // Always try to get fresh state from backend
                     state = await audioApi.getPluginState(p.id);
                 } catch (e) {
+                    if (strict) throw e;
                     console.warn(`Session save: Could not get state for ${p.id}`);
                 }
                 return {
@@ -42,16 +45,22 @@ export const usePlugins = () => {
         };
 
         // 1. Debounced save on structure change
-        const timeoutId = setTimeout(saveSession, 2000);
+        const requested = (event: Event) => {
+            const detail = (event as CustomEvent<{ resolve: () => void; reject: (e: unknown) => void }>).detail;
+            void saveSession(true).then(detail.resolve, detail.reject);
+        };
+        window.addEventListener('auralyn-save-session', requested);
+        const timeoutId = setTimeout(() => void saveSession(), 2000);
 
         // 2. Periodic save (every 30s) to capture internal VST parameter changes
-        const intervalId = setInterval(saveSession, 30000);
+        const intervalId = setInterval(() => void saveSession(), 30000);
 
         return () => {
             clearTimeout(timeoutId);
             clearInterval(intervalId);
+            window.removeEventListener('auralyn-save-session', requested);
         };
-    }, [plugins, isSessionLoaded]);
+    }, [plugins, isSessionLoaded, isLoading, isScanning]);
 
     const resetPlugins = useCallback(() => {
         setPlugins([]);
@@ -59,6 +68,7 @@ export const usePlugins = () => {
     }, []);
 
     const restoreSession = useCallback(async () => {
+        if (localStorage.getItem(REVIEW_KEY) === 'true') return;
         const saved = localStorage.getItem('vst_host_session_plugins');
         if (saved) {
             try {
@@ -196,10 +206,13 @@ export const usePlugins = () => {
     const restoreStarted = useRef(false);
 
     useEffect(() => {
+        const confirmed = () => { void restoreSession(); };
+        window.addEventListener('migration-review-completed', confirmed);
         if (!restoreStarted.current) {
             restoreStarted.current = true;
             restoreSession();
         }
+        return () => window.removeEventListener('migration-review-completed', confirmed);
     }, [restoreSession]);
 
     const scanPlugins = useCallback(async () => {

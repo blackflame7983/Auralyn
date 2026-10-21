@@ -77,7 +77,7 @@ interface PluginsApi {
 interface ModalLayerProps {
     ui: UIState;
     audioConfig: AudioConfig;
-    handleConfigUpdate: (config: Partial<AudioConfig> & { host: string }) => void;
+    handleConfigUpdate: (config: Partial<AudioConfig> & { host: string }, options?: { audioStarted: true }) => void;
     pluginsApi: PluginsApi;
     onPluginAdded: () => void;
 }

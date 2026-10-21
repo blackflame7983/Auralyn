@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { audioApi } from '../api/audio';
+import { REVIEW_KEY } from '../api/migration';
 
 let initializationPromise: Promise<void> | null = null;
 
@@ -25,7 +26,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
     const engineRevision = useRef(0);
     const stopRevision = useRef(0);
 
-    const handleConfigUpdate = (config: Partial<AudioConfig> & { host: string }) => {
+    const handleConfigUpdate = (config: Partial<AudioConfig> & { host: string }, options?: { audioStarted: true }) => {
         const { host, input, output, sampleRate, bufferSize, inputChannels, inputId, outputId } = config;
 
         const channels: [number, number] | undefined =
@@ -55,11 +56,28 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
             outputId: outputId ?? audioConfig.outputId
         };
         localStorage.setItem('vst_host_audio_config', JSON.stringify(newConfig));
+        // 入力ペアなどの設定保存だけでは、移行確認とVST復元を開始しない。
+        if (options?.audioStarted && localStorage.getItem(REVIEW_KEY) === 'true') {
+            localStorage.removeItem(REVIEW_KEY);
+            window.dispatchEvent(new Event('migration-review-completed'));
+        }
     };
 
     // Initialization & Auto-Start
     useEffect(() => {
         const init = async () => {
+            if (localStorage.getItem(REVIEW_KEY) === 'true') {
+                try {
+                    const saved = JSON.parse(localStorage.getItem('vst_host_audio_config') ?? 'null');
+                    if (saved && typeof saved.host === 'string') setAudioConfig(saved);
+                } catch (error) {
+                    console.error('移行した音声設定を読み取れませんでした', error);
+                }
+                setIsEngineRunning(false);
+                setIsInitializing(false);
+                onOpenSettings?.();
+                return;
+            }
             // Check Wizard Status
             const wizardDone = localStorage.getItem('vst_host_wizard_done');
             if (!wizardDone) {

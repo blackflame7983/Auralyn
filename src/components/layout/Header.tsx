@@ -24,6 +24,7 @@ import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '../../api/audio';
 import { toast } from 'sonner';
 import { useAppUpdate, UpdateGuide } from './AppUpdate';
+import { AvailableUpdateDialog } from './AvailableUpdateDialog';
 import {
     Tooltip,
     TooltipContent,
@@ -400,6 +401,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
             </TooltipProvider>
             {appUpdate.showGuide && <UpdateGuide onClose={appUpdate.closeGuide} />}
+            {appUpdate.showAvailable && appUpdate.available && <AvailableUpdateDialog update={appUpdate.available} busy={appUpdate.busy} downloaded={appUpdate.downloaded} onClose={appUpdate.closeAvailable} onDownload={appUpdate.download} onInstall={appUpdate.install} />}
         </header>
     );
 };

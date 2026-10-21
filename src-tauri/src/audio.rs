@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use tauri::{AppHandle, Emitter};
@@ -158,6 +159,9 @@ pub struct LoopbackProbeResult {
 
 pub struct AudioHost {
     last_config_path: PathBuf,
+    maintenance: bool,
+    voice_activity: Arc<AtomicBool>,
+    reader_active: Arc<AtomicBool>,
     child: Option<Child>,
     stdin: Option<BufWriter<ChildStdin>>,
     // We store a sender to satisfy a waiting command.
@@ -177,6 +181,9 @@ impl AudioHost {
     pub fn new(config_dir: PathBuf) -> Self {
         Self {
             last_config_path: config_dir.join("last_audio_config.json"),
+            maintenance: false,
+            voice_activity: Arc::new(AtomicBool::new(false)),
+            reader_active: Arc::new(AtomicBool::new(false)),
             child: None,
             stdin: None,
             pending_reply_tx: Arc::new(Mutex::new(None)),
@@ -237,6 +244,9 @@ impl AudioHost {
     }
 
     fn ensure_engine_running(&mut self) -> Result<()> {
+        if self.maintenance {
+            return Err(anyhow!("更新を適用中のため音声操作はできません。"));
+        }
         // ... (check child logic same as before) ...
         if self.child.is_some() {
             // Check if still alive
@@ -395,11 +405,20 @@ impl AudioHost {
         self.child = Some(child);
 
         // Spawn Output Reader Thread
+        // 終了した旧プロセスの応答・終了通知を、新プロセスの待機やUIへ渡さない。
+        self.pending_reply_tx = Arc::new(Mutex::new(None));
+        self.reader_active = Arc::new(AtomicBool::new(true));
+        let reader_active = self.reader_active.clone();
         let pending_tx_clone = self.pending_reply_tx.clone();
         let emitter_clone = self.emitter.clone();
+        self.voice_activity = Arc::new(AtomicBool::new(false));
+        let voice_activity = self.voice_activity.clone();
 
         thread::spawn(move || {
             for line in stdout.lines() {
+                if !reader_active.load(Ordering::Acquire) {
+                    break;
+                }
                 let Ok(l) = line else {
                     continue;
                 };
@@ -474,6 +493,10 @@ impl AudioHost {
                                     position_ms,
                                     duration_ms,
                                 } => {
+                                    voice_activity.store(
+                                        matches!(state.as_str(), "recording" | "playing"),
+                                        Ordering::Release,
+                                    );
                                     if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
                                         #[derive(serde::Serialize, Clone)]
                                         struct VoiceCheckStatePayload {
@@ -523,6 +546,9 @@ impl AudioHost {
             }
 
             log::warn!("Engine stdout closed.");
+            if !reader_active.swap(false, Ordering::AcqRel) {
+                return;
+            }
             // Notify Frontend of crash/exit
             if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
                 let _ = h.emit("audio-error", "Audio Engine Process Exited (Crash?)");
@@ -659,6 +685,13 @@ impl AudioHost {
                 }
 
                 self.active_config = Some(config);
+                if let Err(error) = crate::migration::complete_review(
+                    self.last_config_path
+                        .parent()
+                        .ok_or_else(|| anyhow!("設定保存先がありません"))?,
+                ) {
+                    log::warn!("移行後の確認状態を保存できませんでした: {error}");
+                }
 
                 Ok(AudioConfig {
                     sample_rate,
@@ -889,7 +922,14 @@ impl AudioHost {
 
     pub fn set_global_bypass(&mut self, active: bool) -> Result<()> {
         match self.execute_command(IpcCommand::SetGlobalBypass { active })? {
-            IpcResponse::Success => Ok(()),
+            IpcResponse::Success => {
+                if let Ok(emitter) = self.emitter.lock() {
+                    if let Some(handle) = emitter.as_ref() {
+                        let _ = handle.emit("global-bypass-changed", active);
+                    }
+                }
+                Ok(())
+            }
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("Unexpected response type")),
         }
@@ -940,7 +980,10 @@ impl AudioHost {
 
     pub fn start_voice_check(&mut self, max_ms: u32) -> Result<()> {
         match self.execute_command(IpcCommand::StartVoiceCheckRecording { max_ms })? {
-            IpcResponse::Success => Ok(()),
+            IpcResponse::Success => {
+                self.voice_activity.store(true, Ordering::Release);
+                Ok(())
+            }
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("Unexpected response type")),
         }
@@ -959,7 +1002,10 @@ impl AudioHost {
             source,
             loop_playback,
         })? {
-            IpcResponse::Success => Ok(()),
+            IpcResponse::Success => {
+                self.voice_activity.store(true, Ordering::Release);
+                Ok(())
+            }
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("Unexpected response type")),
         }
@@ -1129,7 +1175,39 @@ impl AudioHost {
         }
     }
 
+    pub fn check_can_interrupt(&mut self) -> Result<()> {
+        if self.maintenance {
+            return Err(anyhow!("変更を反映済みです。再起動してから操作してください。"));
+        }
+        if self.voice_activity.load(Ordering::Acquire) {
+            return Err(anyhow!("ボイスチェックの録音・試聴を終了してから更新してください。"));
+        }
+        if self.child.is_some() {
+            let gain = self.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
+            if gain.phase == "recording" || gain.playing {
+                return Err(anyhow!("音量調整の録音・試聴を終了してから更新してください。"));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn prepare_update(&mut self) -> Result<()> {
+        self.check_can_interrupt()?;
+        if self.child.is_some() {
+            self.stop();
+        }
+        self.maintenance = true;
+        self.kill_engine();
+        Ok(())
+    }
+
+    pub fn finish_update_attempt(&mut self) {
+        self.maintenance = false;
+    }
+
     pub fn kill_engine(&mut self) {
+        // 先に旧readerを無効にし、意図した停止をクラッシュとして通知しない。
+        self.reader_active.store(false, Ordering::Release);
         if let Some(mut child) = self.child.take() {
             log::warn!("Force Killing Audio Engine...");
             let _ = child.kill();
@@ -1137,6 +1215,7 @@ impl AudioHost {
         }
         self.stdin = None;
         self.child = None;
+        self.voice_activity.store(false, Ordering::Release);
         #[cfg(windows)]
         {
             self.engine_job = None;
@@ -1145,6 +1224,10 @@ impl AudioHost {
 
     pub fn warmup(&mut self) -> Result<()> {
         self.ensure_engine_running()?;
+        if self.last_config_path.parent().is_some_and(crate::migration::review_required) {
+            log::info!("移行後の設定確認が済むまで音声を自動開始しません");
+            return Ok(());
+        }
 
         // Fast auto-start: read last successful config and start immediately
         // This avoids waiting for the frontend to load and send the Start command.

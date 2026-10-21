@@ -4,6 +4,10 @@ Issue [#4](https://github.com/blackflame7983/Auralyn/issues/4) の配布・設�
 MSIXを今後の主軸とし、通常版EXE（NSIS）はMSIXの長時間試験と設定移行の確認が完了するまで維持する。
 MSIは今後のビルド・配布・実機検証から外す。公開済みのMSIや過去のReleaseは削除しない。
 
+後続の設定移行・StartupTask・ホットキー・通常版自動更新と個人試験の手順は
+[長時間試験の候補](RELEASE_CANDIDATE_TRIAL.md)を参照する。
+以下の実装範囲・検証記録は、保存先分離と共存を実装した時点の記録を含む。
+
 ## 今回の実装範囲
 
 | データ | 通常版 | MSIX版 |

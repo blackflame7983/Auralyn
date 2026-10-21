@@ -61,6 +61,6 @@ it.each(['保存して開始', 'エンジン再起動'])('%sのアクセス拒�
     fireEvent.click(screen.getByRole('button', { name: '設定に戻って再試行' }));
     expect(screen.getByRole('combobox', { name: 'マイク入力・ASIOデバイス' })).toHaveValue('Mic B');
     fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
-    await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ input: 'Mic B' })));
+    await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ input: 'Mic B' }), { audioStarted: true }));
     expect(start).toHaveBeenCalledTimes(2);
 });

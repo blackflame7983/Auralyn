@@ -5,6 +5,7 @@ import { audioApi } from '../../api/audio';
 import { MdCompareArrows } from 'react-icons/md';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { listen } from '@tauri-apps/api/event';
 import {
     Tooltip,
     TooltipContent,
@@ -75,22 +76,9 @@ export const AppShell: React.FC<AppShellProps> = ({
     }, [isABBypassed]);
 
     useEffect(() => {
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (
-                event.altKey &&
-                !event.shiftKey &&
-                !event.ctrlKey &&
-                !event.metaKey &&
-                event.key.toLowerCase() === 'p'
-            ) {
-                event.preventDefault();
-                void handleABToggle();
-            }
-        };
-
-        window.addEventListener('keydown', onKeyDown);
-        return () => window.removeEventListener('keydown', onKeyDown);
-    }, [handleABToggle]);
+        const unlisten = listen<boolean>('global-bypass-changed', event => setIsABBypassed(event.payload));
+        return () => { void unlisten.then(stop => stop()); };
+    }, []);
 
     return (
         <div className="min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300">

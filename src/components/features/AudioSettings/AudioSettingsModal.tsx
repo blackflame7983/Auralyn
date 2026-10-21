@@ -17,12 +17,16 @@ import { useTheme } from '../../../hooks/useTheme';
 import { InputChannelSelector } from './InputChannelSelector';
 import { ObsSafeSetup } from './ObsSafeSetup';
 import { APP_INFO } from '../../../constants/appInfo';
+import { MigrationPanel } from './MigrationPanel';
+import { ShortcutsPanel } from './ShortcutsPanel';
+import { UpdatePreferences } from './UpdatePreferences';
+import { REVIEW_KEY } from '@/api/migration';
 
 interface AudioSettingsModalProps {
   initialTab?: 'audio' | 'obs' | 'sound';
   isOpen: boolean;
   onClose: () => void;
-  onConfigChange: (config: Partial<import('../../../contexts/AudioConfigContext').AudioConfig> & { host: string }) => void;
+  onConfigChange: (config: Partial<import('../../../contexts/AudioConfigContext').AudioConfig> & { host: string }, options?: { audioStarted: true }) => void;
   onEngineRestarted?: () => Promise<void> | void;
   onOpenWizard?: () => void;
   onOpenOBSGuide?: () => void;
@@ -62,6 +66,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [selectedBufferSize, setSelectedBufferSize] = useState<number>(currentBufferSize || 512);
   const [selectedSampleRate, setSelectedSampleRate] = useState<number>(currentSampleRate || 48000);
   const [loading, setLoading] = useState(false);
+  const reviewRequired = localStorage.getItem(REVIEW_KEY) === 'true';
+  const [migrationConfirmed, setMigrationConfirmed] = useState(false);
+  const importedPlugins = useMemo(() => {
+    try { return (JSON.parse(localStorage.getItem('vst_host_session_plugins') ?? '[]') as { name: string; path: string }[]); }
+    catch { return []; }
+  }, []);
   const [error, setError] = useState<string | null>(null);
 
   // Simple/Advanced Mode
@@ -693,7 +703,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         bufferSize: res.buffer_size,
         inputId,
         outputId
-      });
+      }, { audioStarted: true });
       // toast.success('オーディオエンジンを起動しました'); // Assuming toast is available
       onClose();
     } catch (err) {
@@ -735,10 +745,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         bufferSize: res.buffer_size,
         inputId,
         outputId
-      });
+      }, { audioStarted: true });
 
       // The restart kills the sidecar process (plugins are lost), so restore them from session.
-      if (onEngineRestarted) {
+      // 移行確認完了時はonConfigChangeが復元を開始するため、通常再起動の復元と重ねない。
+      if (onEngineRestarted && !reviewRequired) {
         toast.info("プラグインを復元中...");
         await onEngineRestarted();
         toast.success("プラグインを復元しました");
@@ -869,6 +880,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           )}
 
           <TabsContent value="audio" className="space-y-4">
+            {reviewRequired && <div className="rounded border border-input bg-muted p-3 text-sm space-y-2">
+              <p>設定を移行しました。入力・出力先とVSTを確認してから開始してください。</p>
+              {importedPlugins.length > 0 && <ul className="max-h-24 overflow-auto break-all">{importedPlugins.map((p, i) => <li key={i}>{p.name} — {p.path}</li>)}</ul>}
+              <label className="flex gap-2"><input type="checkbox" checked={migrationConfirmed} onChange={e => setMigrationConfirmed(e.target.checked)} />移行した入力・出力先・VSTを確認しました</label>
+            </div>}
             <MicrophonePermissionGuide expanded={!!error && /アクセス.*拒否|0x80070005|access.*denied/i.test(error)} />
 
             {loading ? (
@@ -1569,6 +1585,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           </TabsContent>
 
           <TabsContent value="appearance" className="space-y-6">
+            <MigrationPanel />
+            <ShortcutsPanel />
+            <UpdatePreferences />
             <div className="space-y-4">
               <div>
                 <h3 className="text-sm font-medium mb-3 flex items-center gap-2 text-foreground">
@@ -1921,14 +1940,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <div className="flex flex-col gap-3 sm:flex-row">
                 <button
                   onClick={handleRestart}
-                  disabled={loading}
+                  disabled={loading || (reviewRequired && !migrationConfirmed)}
                   className="flex-1 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive border border-input hover:border-destructive/30 rounded-md transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   エンジン再起動
                 </button>
                 <button
                   onClick={handleSave}
-                  disabled={loading}
+                  disabled={loading || (reviewRequired && !migrationConfirmed)}
                   className="flex-[2] py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-md transition-all shadow-sm active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   保存して開始
