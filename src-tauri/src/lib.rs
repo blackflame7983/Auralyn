@@ -182,6 +182,9 @@ fn restart_audio_engine(
         buffer_size,
         sample_rate
     );
+    // 未許可・確認不能なら、既存の音声とサイドカー上のVSTを保持する。
+    desktop_integration::check_microphone_access(host.as_deref())
+        .map_err(audio::localize_audio_error)?;
     let mut audio_host = state.0.lock().map_err(|_| "Failed to lock audio state")?;
     audio_host.kill_engine();
     // Short delay to ensure process is dead? Usually synchronous kill is fine on Windows.
