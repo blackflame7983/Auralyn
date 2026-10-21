@@ -15,6 +15,23 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
+it('移行したVSTは確認後までロードせず、未確認のセッションを空で保存しない', async () => {
+    const session = JSON.stringify([{ path: 'eq.vst3', name: 'EQ', vendor: '', version: '', enabled: true, muted: false, gain: 1 }]);
+    localStorage.setItem('vst_host_session_plugins', session);
+    localStorage.setItem('vst_host_migration_review_required', 'true');
+    vi.mocked(invoke).mockResolvedValue('new-id');
+    const { result } = renderHook(() => usePlugins());
+    await act(async () => {});
+    expect(invoke).not.toHaveBeenCalledWith('load_plugin', expect.anything());
+    expect(localStorage.getItem('vst_host_session_plugins')).toBe(session);
+    await act(async () => {
+        localStorage.removeItem('vst_host_migration_review_required');
+        window.dispatchEvent(new Event('migration-review-completed'));
+    });
+    expect(invoke).toHaveBeenCalledWith('load_plugin', { path: 'eq.vst3' });
+    expect(result.current.plugins[0].name).toBe('EQ');
+});
+
 it.each([
     [['comp', 'limit'], false, []],
     [['limit'], false, ['comp']],

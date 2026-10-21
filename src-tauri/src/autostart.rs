@@ -3,6 +3,61 @@ use serde::Serialize;
 use winreg::{enums::*, RegKey};
 
 use crate::desktop_integration::Distribution;
+use windows::ApplicationModel::{StartupTask, StartupTaskState};
+
+const STARTUP_TASK: &str = "AuralynStartup";
+
+fn package_status(state: StartupTaskState) -> AutostartStatus {
+    let (enabled, can_change, reason) = match state {
+        StartupTaskState::Disabled => (false, true, None),
+        StartupTaskState::Enabled => (true, true, None),
+        StartupTaskState::DisabledByUser => (false, false, Some("Windowsのスタートアップ設定で無効になっています。Windowsの設定から変更してください。")),
+        StartupTaskState::DisabledByPolicy => (false, false, Some("管理者のポリシーにより自動起動が無効です。")),
+        StartupTaskState::EnabledByPolicy => (true, false, Some("管理者のポリシーにより自動起動が有効です。")),
+        _ => (false, false, Some("自動起動の状態を確認できませんでした。")),
+    };
+    AutostartStatus {
+        enabled,
+        can_change,
+        method: "startupTask".into(),
+        reason: reason.map(str::to_owned),
+    }
+}
+
+fn package_task() -> Result<StartupTask> {
+    Ok(StartupTask::GetAsync(&windows::core::HSTRING::from(STARTUP_TASK))?.join()?)
+}
+
+pub(crate) async fn set_package_enabled(app: tauri::AppHandle, enabled: bool) -> Result<()> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+        let task = package_task()?;
+        let status = package_status(task.State()?);
+        if !status.can_change {
+            bail!("{}", status.reason.unwrap_or_default());
+        }
+        if status.enabled == enabled {
+            return Ok(());
+        }
+        if !enabled {
+            task.Disable()?;
+            return Ok(());
+        }
+        // 有効化の要求だけをUIスレッドで行い、完了待ちはUIの外へ戻す。
+        let (send, receive) = std::sync::mpsc::sync_channel(1);
+        app.run_on_main_thread(move || {
+            let _ = send.send(task.RequestEnableAsync());
+        })?;
+        let request = receive.recv_timeout(std::time::Duration::from_secs(10))??;
+        let result = package_status(request.join()?);
+        if !result.enabled {
+            bail!(
+                "自動起動を有効にできませんでした。Windowsのスタートアップ設定を確認してください。"
+            );
+        }
+        Ok(())
+    })
+    .await?
+}
 
 const RUN_KEY_PATH: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const APP_VALUE_NAME: &str = "VSTHost";
@@ -43,20 +98,16 @@ fn owns_registration(existing: Option<&str>, own: &str) -> bool {
 }
 
 pub(crate) fn get_autostart_status(distribution: Distribution) -> Result<AutostartStatus> {
-    // StartupTaskは後続で対応する。MSIXから通常版のRunキーを参照・変更しない。
+    if distribution == Distribution::Msix {
+        return Ok(package_status(package_task()?.State()?));
+    }
+    // 判定不能・MSIXから通常版のRunキーを参照・変更しない。
     if distribution != Distribution::Standalone {
         return Ok(AutostartStatus {
             enabled: false,
             method: "unavailable".into(),
             can_change: false,
-            reason: Some(
-                if distribution == Distribution::Msix {
-                    "MSIX版の自動起動は準備中です。通常版の登録は変更しません。"
-                } else {
-                    "インストール形式を確認できないため、自動起動は変更できません。"
-                }
-                .into(),
-            ),
+            reason: Some("インストール形式を確認できないため、自動起動は変更できません。".into()),
         });
     }
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
@@ -115,8 +166,9 @@ mod tests {
     }
 
     #[test]
-    fn msix_and_unknown_never_reach_registry_operations() {
-        for distribution in [Distribution::Msix, Distribution::Unknown] {
+    fn unknown_never_reaches_registry_operations() {
+        {
+            let distribution = Distribution::Unknown;
             let status = get_autostart_status(distribution).unwrap();
             assert!(!status.enabled);
             assert!(!status.can_change);
@@ -124,5 +176,20 @@ mod tests {
             assert!(set_autostart_enabled(distribution, true).is_err());
             assert!(set_autostart_enabled(distribution, false).is_err());
         }
+    }
+
+    #[test]
+    fn package_policy_and_user_choices_are_not_overridden() {
+        for state in [
+            StartupTaskState::DisabledByUser,
+            StartupTaskState::DisabledByPolicy,
+            StartupTaskState::EnabledByPolicy,
+        ] {
+            assert!(!package_status(state).can_change);
+        }
+        assert!(package_status(StartupTaskState::Disabled).can_change);
+        assert!(package_status(StartupTaskState::Enabled).enabled);
+        assert!(!package_status(StartupTaskState(99)).can_change);
+        assert!(set_autostart_enabled(Distribution::Msix, true).is_err());
     }
 }

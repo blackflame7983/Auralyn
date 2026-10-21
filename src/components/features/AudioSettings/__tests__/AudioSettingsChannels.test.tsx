@@ -63,7 +63,7 @@ it.each(['保存して開始', 'エンジン再起動'])(
             fireEvent.click(await screen.findByRole('button', { name: '再起動する' }));
         await waitFor(() =>
             expect(update).toHaveBeenCalledWith(
-                expect.objectContaining({ host: 'Wasapi', inputChannels: [0, 1] })
+                expect.objectContaining({ host: 'Wasapi', inputChannels: [0, 1] }), { audioStarted: true }
             )
         );
         expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 0, right: 1 });
@@ -84,7 +84,7 @@ it('ASIOを維持する保存では6/7を維持する', async () => {
     fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
     await waitFor(() =>
         expect(update).toHaveBeenCalledWith(
-            expect.objectContaining({ host: 'ASIO', inputChannels: [6, 7] })
+            expect.objectContaining({ host: 'ASIO', inputChannels: [6, 7] }), { audioStarted: true }
         )
     );
     expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 6, right: 7 });

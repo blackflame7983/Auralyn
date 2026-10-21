@@ -2,13 +2,16 @@ use std::sync::{mpsc, Arc, Mutex};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::ShortcutState;
 
 pub mod audio;
 pub mod audio_analysis;
 pub mod audio_engine;
 mod desktop_integration;
 mod storage;
+mod migration;
+mod shortcuts;
+mod updates;
 pub mod coexistence;
 #[cfg(any(test, feature = "dsp-verification"))]
 mod dsp_verification_allocator;
@@ -37,10 +40,16 @@ async fn get_autostart_status(
 
 #[tauri::command]
 async fn set_autostart_enabled(
+    app: AppHandle,
     distribution: State<'_, desktop_integration::Distribution>,
     enabled: bool,
 ) -> Result<(), String> {
     let distribution = *distribution;
+    if distribution == desktop_integration::Distribution::Msix {
+        return autostart::set_package_enabled(app, enabled)
+            .await
+            .map_err(|e| e.to_string());
+    }
     tauri::async_runtime::spawn_blocking(move || autostart::set_autostart_enabled(distribution, enabled))
         .await
         .map_err(|e| e.to_string())?
@@ -912,16 +921,8 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
-                    log::trace!("Global Shortcut Event: {:?} {:?}", shortcut, event.state);
-                    if event.state == ShortcutState::Pressed
-                        && shortcut.matches(Modifiers::ALT, Code::KeyM)
-                    {
-                        log::info!("Global Mute Hotkey Pressed");
-                        if let Some(state) = app.try_state::<audio::AudioState>() {
-                            if let Ok(mut host) = state.0.lock() {
-                                let _ = host.toggle_global_mute();
-                            }
-                        }
+                    if event.state == ShortcutState::Pressed {
+                        shortcuts::dispatch(app.clone(), shortcut.id());
                     }
                 })
                 .build(),
@@ -943,6 +944,9 @@ pub fn run() {
 
     builder
         .manage(distribution)
+        .manage(migration::Preview::default())
+        .manage(shortcuts::Shortcuts::default())
+        .manage(updates::Updates::default())
         .manage(obs_state)
         .setup(|app| {
             // app_config_dirはMSIXではpackage専用、通常版では従来のRoaming AppData。
@@ -951,15 +955,6 @@ pub fn run() {
                 audio::AudioHost::new(config_dir),
             ))));
             let state = app.state::<audio::AudioState>();
-
-            // Register Shortcut
-            if let Err(e) = app
-                .handle()
-                .global_shortcut()
-                .register(Shortcut::new(Some(Modifiers::ALT), Code::KeyM))
-            {
-                log::error!("Failed to register global shortcut: {}", e);
-            }
 
             // Explicitly set window icon (Fix for taskbar icon issue)
             if let Some(window) = app.get_webview_window("main") {
@@ -1055,6 +1050,16 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            migration::export_settings,
+            migration::preview_settings,
+            migration::apply_settings,
+            migration::migration_bootstrap,
+            migration::migration_complete_review,
+            shortcuts::get_shortcuts,
+            shortcuts::save_shortcuts,
+            updates::check_update,
+            updates::download_update,
+            updates::install_update,
             desktop_integration::get_distribution,
             desktop_integration::open_desktop_settings,
             get_audio_devices,

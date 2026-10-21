@@ -165,22 +165,15 @@ export const useAppEvents = ({
         };
     }, [onLoadPreset]);
 
-    // Global Shortcuts
+    // キー入力はネイティブへ一本化し、前面で二重に切り替わるのを防ぐ。
     useEffect(() => {
-        const handleKeyDown = async (e: KeyboardEvent) => {
-            // Alt + M: Global Mute
-            if (e.altKey && (e.key === 'm' || e.key === 'M')) {
-                e.preventDefault();
-                try {
-                    await audioApi.toggleGlobalMute();
-                } catch (err) {
-                    console.error("Failed to toggle mute", err);
-                }
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        const error = listen<string>('shortcut-error', event => toast.error('キー操作を適用できませんでした', { description: event.payload }));
+        const gain = listen<number>('shortcut-stopped-gain', event => {
+            if (!Number.isFinite(event.payload) || event.payload < 0 || event.payload > 200) return;
+            localStorage.setItem('vst_host_output_gain', String(event.payload));
+            window.dispatchEvent(new CustomEvent('output-gain-sync', { detail: event.payload }));
+        });
+        return () => { void error.then(stop => stop()); void gain.then(stop => stop()); };
     }, []);
 
     // 通常版・MSIX版を含む二重起動では既存のアプリだけを使う。

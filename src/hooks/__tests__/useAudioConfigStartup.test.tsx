@@ -23,6 +23,23 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); localStorage.clear(); });
 
+it('移行後は設定確認へ進み、保存されたデバイスで自動開始しない', async () => {
+    localStorage.setItem('vst_host_migration_review_required', 'true');
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'selected-asio', output: 'selected-asio', sampleRate: 96000, bufferSize: 512, inputChannels: [6, 7] }));
+    const { useAudioConfig } = await import('../useAudioConfig');
+    const open = vi.fn();
+    const { result } = renderHook(() => useAudioConfig(vi.fn(), open));
+    await waitFor(() => expect(result.current.isInitializing).toBe(false));
+    expect(open).toHaveBeenCalledOnce();
+    expect(result.current.audioConfig).toMatchObject({ host: 'ASIO', inputChannels: [6, 7] });
+    expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
+    act(() => result.current.handleConfigUpdate({ host: 'Wasapi' }));
+    expect(localStorage.getItem('vst_host_migration_review_required')).toBe('true');
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    await act(async () => { await result.current.handleConfigUpdate({ host: 'Wasapi' }, { audioStarted: true }); });
+    expect(localStorage.getItem('vst_host_migration_review_required')).toBeNull();
+});
+
 it.each(['audio-stopped', 'audio-error', 'audio-stream-error'])('起動時の状態取得中に %s が届いたら、古い稼働応答を反映しない', async event => {
     let finish!: (value: unknown) => void;
     const stream = new Promise(resolve => { finish = resolve; });
