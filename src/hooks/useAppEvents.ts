@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
-import { audioApi, VstPlugin } from '../api/audio';
+import { VstPlugin } from '../api/audio';
+import { useAudioRecovery } from './useAudioRecovery';
 import { obsApi } from '../api/obs';
 import { presetApi } from '../api/presets';
 
@@ -83,66 +84,7 @@ export const useAppEvents = ({
         };
     }, [onResetPlugins, onCrash]);
 
-    // Device Hot-Plug / Stream Error Listener (Auto-Recovery)
-    useEffect(() => {
-        let retryTimer: ReturnType<typeof setTimeout> | null = null;
-        let retryCount = 0;
-        let isRetrying = false;
-        const MAX_RETRIES = 3;
-
-        const unlisten = listen<string>('audio-stream-error', async (event) => {
-            const msg = event.payload;
-
-            // Only attempt recovery for device-related errors
-            if (!msg.includes('Stream Error') && !msg.includes('Input Stream Error')) return;
-
-            // Gate: ignore rapid duplicate errors while a retry is already scheduled
-            if (isRetrying) return;
-
-            retryCount++;
-            if (retryCount > MAX_RETRIES) {
-                toast.error('デバイスの再接続に失敗しました', {
-                    description: '設定からオーディオデバイスを確認してください。',
-                });
-                retryCount = 0;
-                return;
-            }
-
-            isRetrying = true;
-            toast.warning('オーディオデバイスの接続が切れました', {
-                description: `自動復帰を試みています... (${retryCount}/${MAX_RETRIES})`,
-                duration: 5000,
-            });
-
-            // Wait for the device to stabilize, then attempt restart (linear backoff: 2s, 4s, 6s)
-            if (retryTimer) clearTimeout(retryTimer);
-            retryTimer = setTimeout(async () => {
-                isRetrying = false;
-                try {
-                    const savedConfig = localStorage.getItem('vst_host_audio_config');
-                    if (savedConfig) {
-                        const config = JSON.parse(savedConfig);
-                        await audioApi.restart(
-                            config.host,
-                            config.input || undefined,
-                            config.output || undefined,
-                            config.bufferSize || undefined,
-                            config.sampleRate || undefined,
-                        );
-                        toast.success('オーディオエンジンを再接続しました');
-                        retryCount = 0;
-                    }
-                } catch {
-                    // Recovery failed - next stream error will trigger another attempt
-                }
-            }, 2000 * retryCount);
-        });
-
-        return () => {
-            unlisten.then(f => f());
-            if (retryTimer) clearTimeout(retryTimer);
-        };
-    }, []);
+    useAudioRecovery();
 
     // OBS Scene Listener
     useEffect(() => {

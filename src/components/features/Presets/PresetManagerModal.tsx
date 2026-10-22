@@ -113,7 +113,7 @@ function ApplyResultSummary({
             )}
             {summary.missingPlugins.length > 0 && (
                 <p className="text-amber-600">
-                    見つからないプラグイン: {summary.missingPlugins.map(p => p.name).join(', ')}
+                    復元できなかったプラグイン: {summary.missingPlugins.map(p => p.name).join(', ')}
                 </p>
             )}
             {summary.missingDevices.length > 0 && devices && (

@@ -1,21 +1,13 @@
-/**
- * UIContext のユニットテスト
- * useReducer パターンへの移行後の動作を検証
- */
 import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { UIProvider, useUIState } from '../../contexts/UIContext';
-import React from 'react';
+import { useUIState } from '../useUIState';
 
-// UIProvider でラップするヘルパー
+// 実際のAppが使うUI状態を検証する。
 function renderUIHook() {
-    return renderHook(() => useUIState(), {
-        wrapper: ({ children }: { children: React.ReactNode }) =>
-            React.createElement(UIProvider, null, children),
-    });
+    return renderHook(() => useUIState());
 }
 
-describe('UIContext', () => {
+describe('useUIState', () => {
     describe('初期状態', () => {
         it('全モーダルが閉じている', () => {
             const { result } = renderUIHook();
@@ -118,12 +110,13 @@ describe('UIContext', () => {
         });
     });
 
-    describe('エラーハンドリング', () => {
-        it('UIProvider 外で useUIState を呼ぶとエラーを投げる', () => {
-            // renderHook は React コンテキスト外で呼ばれるとエラーになることを検証
-            expect(() => {
-                renderHook(() => useUIState());
-            }).toThrow('useUIState must be used within a UIProvider');
-        });
+    it('OBSと音づくりの入口を開いた後でも通常の設定はオーディオに戻る', () => {
+        const { result } = renderUIHook();
+        act(() => result.current.openObsSettings());
+        expect(result.current.settingsTab).toBe('obs');
+        act(() => result.current.openSoundSettings());
+        expect(result.current.settingsTab).toBe('sound');
+        act(() => result.current.setIsSettingsOpen(true));
+        expect(result.current.settingsTab).toBe('audio');
     });
 });

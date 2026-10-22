@@ -4,19 +4,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { audioApi } from '../api/audio';
 import { REVIEW_KEY } from '../api/migration';
+import { readAudioPreferences, type AudioPreferences as AudioConfig } from '../lib/audioPreferences';
 
 let initializationPromise: Promise<void> | null = null;
-
-interface AudioConfig {
-    host: string;
-    input?: string;
-    output?: string;
-    sampleRate?: number;
-    bufferSize?: number;
-    inputChannels?: [number, number];
-    inputId?: string;
-    outputId?: string;
-}
 
 export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: () => void) => {
     const [audioConfig, setAudioConfig] = useState<AudioConfig>({ host: '' });
@@ -73,7 +63,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         const init = async () => {
             if (localStorage.getItem(REVIEW_KEY) === 'true') {
                 try {
-                    const saved = JSON.parse(localStorage.getItem('vst_host_audio_config') ?? 'null');
+                    const saved = readAudioPreferences();
                     if (saved && typeof saved.host === 'string') setAudioConfig(saved);
                 } catch (error) {
                     console.error('移行した音声設定を読み取れませんでした', error);
@@ -90,10 +80,10 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
             }
 
             // Initialize Audio Setup
-            const savedConfig = localStorage.getItem('vst_host_audio_config');
+            const savedConfig = readAudioPreferences();
             if (savedConfig) {
                 try {
-                    const config = JSON.parse(savedConfig);
+                    const config = savedConfig;
                     if (config.host && config.host.toLowerCase() !== 'asio')
                         config.inputChannels = [0, 1];
                     if (config.host) {
@@ -114,7 +104,9 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
                             output: config.output,
                             sampleRate: sr,
                             bufferSize: bs,
-                            inputChannels: config.inputChannels
+                            inputChannels: config.inputChannels,
+                            inputId: config.inputId,
+                            outputId: config.outputId,
                         });
 
                         // Start Engine (Shared Promise Pattern)
@@ -193,17 +185,6 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         init();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Run once
-
-    // Persistence - REMOVED Auto-Save
-    // We only save when handleConfigUpdate is explicitly called (User Action).
-    // This prevents "Automatic Adjustments" (from audio-started event) from corrupting User Preferences.
-    /*
-    useEffect(() => {
-        if (audioConfig.host) {
-            localStorage.setItem('vst_host_audio_config', JSON.stringify(audioConfig));
-        }
-    }, [audioConfig]);
-    */
 
     // Audio Sync Listener (Fallback detection)
     useEffect(() => {

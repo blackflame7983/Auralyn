@@ -1,9 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { audioApi, VstPlugin } from '../api/audio';
 import { Plugin } from '../components/features/PluginRack/PluginCard';
-import { presetApi, PresetPlugin as ApiPresetPlugin, ApplyProfileSummary, ProfileSaveCategories, gatherProfileAudioExtras, syncLocalStateFromProfile } from '../api/presets';
+import { usePluginProfiles } from './usePluginProfiles';
+import { restorePluginSession } from '../lib/restorePluginSession';
 import { toast } from 'sonner';
 import { REVIEW_KEY } from '../api/migration';
+import { usePluginSessionPersistence } from './usePluginSessionPersistence';
 
 export const usePlugins = () => {
     const [plugins, setPlugins] = useState<Plugin[]>([]);
@@ -12,195 +14,41 @@ export const usePlugins = () => {
     const [isScanning, setIsScanning] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isSessionLoaded, setIsSessionLoaded] = useState(false);
+    const sessionRestorePending = useRef(false);
 
-    // Persist Session (Debounced + Periodic)
-    useEffect(() => {
-        if (!isSessionLoaded) return;
-
-        const saveSession = async (strict = false) => {
-            if (strict && (isLoading || isScanning)) throw new Error('VSTの読み込み・スキャン完了後に再試行してください。');
-            // console.log("Auto-saving session...");
-            const sessionData = await Promise.all(plugins.map(async p => {
-                let state: string | undefined;
-                try {
-                    // Always try to get fresh state from backend
-                    state = await audioApi.getPluginState(p.id);
-                } catch (e) {
-                    if (strict) throw e;
-                    console.warn(`Session save: Could not get state for ${p.id}`);
-                }
-                return {
-                    path: p.path,
-                    name: p.name,
-                    vendor: p.vendor,
-                    version: p.version,
-                    enabled: p.enabled,
-                    muted: p.muted,
-                    gain: p.gain,
-                    state
-                };
-            }));
-            localStorage.setItem('vst_host_session_plugins', JSON.stringify(sessionData));
-            // console.log("Session saved.");
-        };
-
-        // 1. Debounced save on structure change
-        const requested = (event: Event) => {
-            const detail = (event as CustomEvent<{ resolve: () => void; reject: (e: unknown) => void }>).detail;
-            void saveSession(true).then(detail.resolve, detail.reject);
-        };
-        window.addEventListener('auralyn-save-session', requested);
-        const timeoutId = setTimeout(() => void saveSession(), 2000);
-
-        // 2. Periodic save (every 30s) to capture internal VST parameter changes
-        const intervalId = setInterval(() => void saveSession(), 30000);
-
-        return () => {
-            clearTimeout(timeoutId);
-            clearInterval(intervalId);
-            window.removeEventListener('auralyn-save-session', requested);
-        };
-    }, [plugins, isSessionLoaded, isLoading, isScanning]);
+    usePluginSessionPersistence(plugins, isSessionLoaded, isLoading || isScanning);
 
     const resetPlugins = useCallback(() => {
         setPlugins([]);
         setIsSessionLoaded(false);
     }, []);
 
+    const restoreSavedSession = useCallback(async (excludePath?: string | null) => {
+        if (sessionRestorePending.current) return;
+        sessionRestorePending.current = true;
+        const saved = localStorage.getItem('vst_host_session_plugins');
+        setIsLoading(true);
+        setError(null);
+        try {
+            if (saved) {
+                const failures = await restorePluginSession(JSON.parse(saved), setPlugins, excludePath);
+                if (failures > 0) setError(`${failures}件のVSTを復元できませんでした。現在のラックを確認してください。`);
+            }
+        } catch (error) {
+            console.error('セッションの復元に失敗しました', error);
+            setError('セッションの復元に失敗しました。現在のラックを確認してください。');
+            toast.error('セッションの復元に失敗しました');
+        } finally {
+            sessionRestorePending.current = false;
+            setIsLoading(false);
+            setIsSessionLoaded(true);
+        }
+    }, []);
+
     const restoreSession = useCallback(async () => {
-        if (localStorage.getItem(REVIEW_KEY) === 'true') return;
-        const saved = localStorage.getItem('vst_host_session_plugins');
-        if (saved) {
-            try {
-                setIsLoading(true);
-                const items = JSON.parse(saved);
-                if (items.length > 0) {
-                    console.time("Parallel Plugin Restore");
-
-                    // Parallel Load
-                    const results = await Promise.allSettled(items.map(async (item: any) => {
-                        // Skip if no path
-                        if (!item.path) return null;
-
-                        localStorage.setItem('vst_host_pending_plugin', item.path);
-                        const id = await audioApi.loadPlugin(item.path);
-                        localStorage.removeItem('vst_host_pending_plugin');
-
-                        // Apply state (fire and forget setting updates to speed up?)
-                        // Better to await to ensure consistency, but we can parallelize these too within the item scope.
-                        const updates: Promise<any>[] = [];
-                        if (!item.enabled) updates.push(audioApi.setBypass(id, true));
-                        if (item.muted) updates.push(audioApi.setMute(id, true));
-                        if (item.gain !== 1.0) updates.push(audioApi.setGain(id, item.gain));
-                        if (item.state) updates.push(audioApi.setPluginState(id, item.state).catch(e => console.error(`Failed to state ${item.name}`, e)));
-
-                        await Promise.all(updates);
-
-                        return {
-                            id,
-                            name: item.name,
-                            path: item.path,
-                            vendor: item.vendor,
-                            version: item.version,
-                            enabled: item.enabled,
-                            muted: item.muted,
-                            gain: item.gain,
-                            hasEditor: true
-                        } as Plugin;
-                    }));
-
-                    const loaded: Plugin[] = [];
-                    results.forEach((res: PromiseSettledResult<Plugin | null>, index: number) => {
-                        if (res.status === 'fulfilled' && res.value) {
-                            loaded.push(res.value);
-                        } else if (res.status === 'rejected') {
-                            const item = items[index];
-                            console.error(`Failed to restore plugin ${item.name}`, res.reason);
-                            toast.error(`${item.name} の復元に失敗しました`);
-                            localStorage.removeItem('vst_host_pending_plugin');
-                        }
-                    });
-
-                    if (loaded.length > 0) setPlugins(loaded);
-                    console.timeEnd("Parallel Plugin Restore");
-                }
-            } catch (e) {
-                console.error("Session restore failed", e);
-            } finally {
-                setIsLoading(false);
-            }
-        }
-        setIsSessionLoaded(true);
-    }, []);
-
-    const recoverSession = useCallback(async (excludePath?: string | null) => {
-        const saved = localStorage.getItem('vst_host_session_plugins');
-        if (saved) {
-            try {
-                // Ensure engine is fresh (resetPlugins should have been called)
-                // We assume start() was called or engine restarted.
-                // Actually we might need to restart engine here? 
-                // App.tsx handles engine lifecycle usually.
-
-                setIsLoading(true);
-                const items = JSON.parse(saved);
-                const loaded: Plugin[] = [];
-
-                for (const item of items) {
-                    // Skip excluded plugin
-                    if (excludePath && item.path === excludePath) {
-                        console.warn(`Skipping problematic plugin: ${item.name}`);
-                        toast.warning(`問題のプラグインをスキップしました: ${item.name}`);
-                        continue;
-                    }
-
-                    try {
-                        localStorage.setItem('vst_host_pending_plugin', item.path);
-                        const id = await audioApi.loadPlugin(item.path);
-                        localStorage.removeItem('vst_host_pending_plugin');
-
-                        // Apply state
-                        if (!item.enabled) await audioApi.setBypass(id, true);
-                        if (item.muted) await audioApi.setMute(id, true);
-                        if (item.gain !== 1.0) await audioApi.setGain(id, item.gain);
-
-                        // Restore Internal State
-                        if (item.state) {
-                            try {
-                                await audioApi.setPluginState(id, item.state);
-                            } catch (e) {
-                                console.error(`Failed to restore state for ${item.name}`, e);
-                            }
-                        }
-
-                        loaded.push({
-                            id, // new ID
-                            name: item.name,
-                            path: item.path,
-                            vendor: item.vendor,
-                            version: item.version,
-                            enabled: item.enabled,
-                            muted: item.muted,
-                            gain: item.gain,
-                            hasEditor: true
-                        });
-                    } catch (e) {
-                        console.error(`Failed to restore plugin ${item.name}`, e);
-                        localStorage.removeItem('vst_host_pending_plugin');
-                        toast.error(`${item.name} の復元に失敗しました`);
-                    }
-                }
-                if (loaded.length > 0) setPlugins(loaded);
-            } catch (e) {
-                console.error("Session recovery failed", e);
-                toast.error("セッションの復元に失敗しました");
-            } finally {
-                localStorage.removeItem('vst_host_pending_plugin'); // Clear pending flag
-                setIsLoading(false);
-            }
-        }
-        setIsSessionLoaded(true);
-    }, []);
+        if (localStorage.getItem(REVIEW_KEY) !== 'true') await restoreSavedSession();
+    }, [restoreSavedSession]);
+    const recoverSession = restoreSavedSession;
 
     // Restore Session (initial load)
     const restoreStarted = useRef(false);
@@ -445,193 +293,8 @@ export const usePlugins = () => {
         }
     }, [plugins]);
 
-    const gatherPresetPlugins = useCallback(async (): Promise<ApiPresetPlugin[]> => {
-        const presetPlugins: ApiPresetPlugin[] = [];
-        for (const p of plugins) {
-            let state: string | undefined;
-            try {
-                state = await audioApi.getPluginState(p.id);
-            } catch (e) {
-                console.warn(`Could not get state for ${p.name}, saving without state.`);
-            }
-            presetPlugins.push({
-                path: p.path,
-                name: p.name,
-                vendor: p.vendor,
-                version: p.version,
-                enabled: p.enabled,
-                muted: p.muted,
-                gain: p.gain,
-                state: state || undefined,
-            });
-        }
-        return presetPlugins;
-    }, [plugins]);
-
-    const savePreset = useCallback(async (name: string) => {
-        try {
-            const presetPlugins = await gatherPresetPlugins();
-            await presetApi.save(name, presetPlugins);
-            return true;
-        } catch (e) {
-            console.error("Failed to save preset:", e);
-            setError("プリセットの保存に失敗しました");
-            return false;
-        }
-    }, [gatherPresetPlugins]);
-
-    const saveProfile = useCallback(async (
-        name: string,
-        categories: ProfileSaveCategories,
-        builtinFxAmount?: number,
-    ) => {
-        try {
-            const presetPlugins = categories.includePlugins
-                ? await gatherPresetPlugins()
-                : [];
-            await presetApi.saveProfile(
-                name,
-                categories,
-                presetPlugins,
-                gatherProfileAudioExtras(),
-                builtinFxAmount,
-            );
-            return true;
-        } catch (e) {
-            console.error("Failed to save profile:", e);
-            setError("プロファイルの保存に失敗しました");
-            return false;
-        }
-    }, [gatherPresetPlugins]);
-
-    const syncPluginsFromApplySummary = useCallback((summary: ApplyProfileSummary) => {
-        const instances = summary.loadedPluginInstances ?? [];
-        // プロファイルに plugins カテゴリが含まれていた場合、バックエンドは既存チェーンを
-        // アンロード済み。全滅（missing のみ）でも UI を空チェーンへ同期する。
-        const pluginsCategoryTouched =
-            (summary.appliedCategories ?? []).includes('plugins') ||
-            (summary.skippedCategories ?? []).includes('plugins') ||
-            (summary.missingPlugins ?? []).length > 0;
-        if (instances.length === 0 && !pluginsCategoryTouched) return;
-        const loaded = instances.map(inst => ({
-            id: inst.id,
-            name: inst.name,
-            path: inst.path,
-            vendor: inst.vendor,
-            version: inst.version,
-            enabled: inst.enabled,
-            muted: inst.muted,
-            gain: inst.gain,
-            hasEditor: true,
-        }));
-        setPlugins(loaded);
-    }, []);
-
-    const applyProfile = useCallback(async (
-        name: string,
-        deviceSubstitutions?: { inputDevice?: string; outputDevice?: string },
-        options?: { skipBackup?: boolean },
-    ) => {
-        setIsLoading(true);
-        try {
-            const backupPlugins = await gatherPresetPlugins();
-            const currentIds = plugins.map(p => p.id);
-            const summary = await presetApi.applyProfile(name, currentIds, backupPlugins, {
-                deviceSubstitutions,
-                skipBackup: options?.skipBackup,
-            });
-            syncLocalStateFromProfile(summary);
-            syncPluginsFromApplySummary(summary);
-            return summary;
-        } catch (e) {
-            console.error("Failed to apply profile:", e);
-            setError("プロファイルの適用に失敗しました");
-            return null;
-        } finally {
-            setIsLoading(false);
-        }
-    }, [plugins, gatherPresetPlugins, syncPluginsFromApplySummary]);
-
-    const restoreBackupProfile = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const backupPlugins = await gatherPresetPlugins();
-            const currentIds = plugins.map(p => p.id);
-            const summary = await presetApi.restoreBackup(currentIds, backupPlugins);
-            syncLocalStateFromProfile(summary);
-            syncPluginsFromApplySummary(summary);
-            return summary;
-        } catch (e) {
-            console.error("Failed to restore backup:", e);
-            setError("バックアップの復元に失敗しました");
-            return null;
-        } finally {
-            setIsLoading(false);
-        }
-    }, [plugins, gatherPresetPlugins, syncPluginsFromApplySummary]);
-
-    const loadPreset = useCallback(async (name: string) => {
-        setIsLoading(true);
-        try {
-            const preset = await presetApi.load(name);
-            // Loading preset - clear current plugins and apply
-
-            // 1. Clear current plugins
-            const currentIds = plugins.map(p => p.id);
-            for (const id of currentIds) {
-                await audioApi.removePlugin(id);
-            }
-            // Clear state immediately to avoid UI mismatch during async load
-            setPlugins([]);
-
-            // 2. Load new plugins
-            let loadedPlugins: Plugin[] = [];
-            for (const p of preset.plugins) {
-                try {
-                    const instanceId = await audioApi.loadPlugin(p.path);
-
-                    // Set attributes
-                    if (!p.enabled) await audioApi.setBypass(instanceId, true);
-                    if (p.muted) await audioApi.setMute(instanceId, true);
-                    if (p.gain !== 1.0) await audioApi.setGain(instanceId, p.gain);
-
-                    // Restore State
-                    if (p.state) {
-                        try {
-                            await audioApi.setPluginState(instanceId, p.state);
-                        } catch (err) {
-                            console.error(`Failed to restore state for ${p.name}`, err);
-                            toast.error(`${p.name} の設定復元に失敗しました`);
-                        }
-                    }
-
-                    loadedPlugins.push({
-                        id: instanceId,
-                        name: p.name,
-                        path: p.path,
-                        vendor: p.vendor,
-                        version: p.version,
-                        enabled: p.enabled,
-                        hasEditor: true,
-                        muted: p.muted,
-                        gain: p.gain
-                    });
-                } catch (err) {
-                    console.error(`Failed to load plugin from preset: ${p.name}`, err);
-                    toast.error(`${p.name} の読み込みに失敗しました`);
-                }
-            }
-            setPlugins(loadedPlugins);
-            // Also update session immediately? The useEffect will catch it.
-            return true;
-        } catch (e) {
-            console.error("Failed to load preset:", e);
-            setError("プリセットの読み込みに失敗しました");
-            return false;
-        } finally {
-            setIsLoading(false);
-        }
-    }, [plugins]);
+    const { savePreset, saveProfile, loadPreset, applyProfile, restoreBackupProfile } =
+        usePluginProfiles(plugins, setPlugins, setIsLoading, setError);
 
     const savePluginState = useCallback(async (id: string) => {
         try {
