@@ -1,6 +1,9 @@
+mod buffers;
 use anyhow::{anyhow, Result};
+use buffers::RecordingWriter;
+pub(crate) use buffers::VoiceCheckBufferStore;
+pub use buffers::{allocate_voice_check_buffers, VoiceCheckBuffers};
 use hound::{SampleFormat, WavSpec, WavWriter};
-use std::cell::UnsafeCell;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -77,58 +80,6 @@ impl VoiceCheckShared {
     }
 }
 
-pub struct VoiceCheckBuffers {
-    raw: UnsafeCell<Box<[f32]>>,
-    processed: UnsafeCell<Box<[f32]>>,
-    pub capacity_frames: usize,
-}
-
-// RT スレッドのみが書き込み、録音停止後にイベントループが読み取る
-unsafe impl Sync for VoiceCheckBuffers {}
-
-impl VoiceCheckBuffers {
-    pub fn raw_slice(&self) -> &[f32] {
-        unsafe { &*self.raw.get() }
-    }
-
-    pub fn processed_slice(&self) -> &[f32] {
-        unsafe { &*self.processed.get() }
-    }
-
-    pub fn write_raw(&self, idx: usize, left: f32, right: f32) {
-        unsafe {
-            let raw = &mut *self.raw.get();
-            if idx + 1 < raw.len() {
-                raw[idx] = left;
-                raw[idx + 1] = right;
-            }
-        }
-    }
-
-    pub fn write_processed(&self, idx: usize, left: f32, right: f32) {
-        unsafe {
-            let processed = &mut *self.processed.get();
-            if idx + 1 < processed.len() {
-                processed[idx] = left;
-                processed[idx + 1] = right;
-            }
-        }
-    }
-}
-
-pub fn allocate_voice_check_buffers(max_ms: u32, sample_rate_hz: u32) -> VoiceCheckBuffers {
-    let max_ms = max_ms.clamp(500, VOICE_CHECK_MAX_MS);
-    let sr = sample_rate_hz.max(8_000);
-    let capacity_frames =
-        ((max_ms as u64 * sr as u64) / 1000).max(1) as usize;
-    let sample_count = capacity_frames * VOICE_CHECK_CHANNELS;
-    VoiceCheckBuffers {
-        raw: UnsafeCell::new(vec![0.0; sample_count].into_boxed_slice()),
-        processed: UnsafeCell::new(vec![0.0; sample_count].into_boxed_slice()),
-        capacity_frames,
-    }
-}
-
 pub fn parse_voice_check_source(source: &str) -> u32 {
     if source.eq_ignore_ascii_case("raw") {
         VC_SOURCE_RAW
@@ -137,11 +88,7 @@ pub fn parse_voice_check_source(source: &str) -> u32 {
     }
 }
 
-pub fn compute_peak_envelope(
-    buffer: &[f32],
-    num_frames: usize,
-    buckets: usize,
-) -> Vec<f32> {
+pub fn compute_peak_envelope(buffer: &[f32], num_frames: usize, buckets: usize) -> Vec<f32> {
     if num_frames == 0 || buckets == 0 {
         return vec![0.0; buckets.max(1)];
     }
@@ -173,23 +120,24 @@ pub fn export_voice_check_wav(
     path: &Path,
     buffers: &VoiceCheckBuffers,
     source: &str,
-    sample_rate_hz: u32,
-    duration_frames: u64,
 ) -> Result<()> {
-    let frames = duration_frames.min(buffers.capacity_frames as u64) as usize;
+    let recording = buffers
+        .recording()
+        .ok_or_else(|| anyhow!("録音の停止がまだ完了していません"))?;
+    let frames = recording.frames;
     if frames == 0 {
         return Err(anyhow!("録音データがありません"));
     }
 
     let interleaved = if parse_voice_check_source(source) == VC_SOURCE_RAW {
-        &buffers.raw_slice()[..frames * VOICE_CHECK_CHANNELS]
+        recording.raw
     } else {
-        &buffers.processed_slice()[..frames * VOICE_CHECK_CHANNELS]
+        recording.processed
     };
 
     let spec = WavSpec {
         channels: VOICE_CHECK_CHANNELS as u16,
-        sample_rate: sample_rate_hz.max(8_000),
+        sample_rate: recording.sample_rate_hz,
         bits_per_sample: 32,
         sample_format: SampleFormat::Float,
     };
@@ -206,6 +154,8 @@ pub fn export_voice_check_wav(
 pub struct RtVoiceCheck {
     shared: Arc<VoiceCheckShared>,
     buffers: Option<Arc<VoiceCheckBuffers>>,
+    writer: Option<RecordingWriter>,
+    record_max_frames: u64,
     record_frame: u64,
     playback_frame: u64,
     playback_active: bool,
@@ -226,6 +176,8 @@ impl RtVoiceCheck {
         Self {
             shared,
             buffers: None,
+            writer: None,
+            record_max_frames: 0,
             record_frame: 0,
             playback_frame: 0,
             playback_active: false,
@@ -269,22 +221,26 @@ impl RtVoiceCheck {
     }
 
     pub fn start_recording(&mut self, buffers: Arc<VoiceCheckBuffers>, max_frames: u64) {
-        self.stop_playback();
+        self.stop_recording();
+        self.playback_active = false;
+        self.playback_gain = 0.0;
+        self.playback_gain_target = 0.0;
+        let Some(writer) = buffers.claim_writer() else {
+            return;
+        };
+        self.record_max_frames = max_frames.min(buffers.capacity_frames as u64);
+        self.writer = Some(writer);
         self.buffers = Some(buffers);
         self.record_frame = 0;
         self.recording_active = true;
-        self.shared
-            .duration_frames
-            .store(0, Ordering::Relaxed);
+        self.shared.duration_frames.store(0, Ordering::Relaxed);
         self.shared
             .max_frames
-            .store(max_frames, Ordering::Relaxed);
+            .store(self.record_max_frames, Ordering::Relaxed);
         self.shared
             .state
             .store(VC_STATE_RECORDING, Ordering::Relaxed);
-        self.shared
-            .envelope_dirty
-            .store(false, Ordering::Relaxed);
+        self.shared.envelope_dirty.store(false, Ordering::Relaxed);
     }
 
     pub fn stop_recording(&mut self) {
@@ -292,13 +248,14 @@ impl RtVoiceCheck {
             return;
         }
         self.recording_active = false;
+        if let Some(writer) = &mut self.writer {
+            writer.seal(self.record_frame);
+        }
         self.shared
             .duration_frames
             .store(self.record_frame, Ordering::Relaxed);
         if self.record_frame > 0 {
-            self.shared
-                .state
-                .store(VC_STATE_READY, Ordering::Relaxed);
+            self.shared.state.store(VC_STATE_READY, Ordering::Relaxed);
             self.shared.envelope_dirty.store(true, Ordering::Relaxed);
         } else {
             self.shared.state.store(VC_STATE_IDLE, Ordering::Relaxed);
@@ -306,7 +263,12 @@ impl RtVoiceCheck {
     }
 
     pub fn start_playback(&mut self, source: u32, loop_playback: bool) {
-        let duration = self.shared.duration_frames.load(Ordering::Relaxed);
+        self.stop_recording();
+        let duration = self
+            .buffers
+            .as_ref()
+            .and_then(|b| b.recording())
+            .map_or(0, |r| r.frames as u64);
         if duration == 0 {
             return;
         }
@@ -318,18 +280,12 @@ impl RtVoiceCheck {
         self.pending_source = None;
         self.playback_gain = 0.0;
         self.begin_fade_to(1.0);
-        self.shared
-            .playback_source
-            .store(source, Ordering::Relaxed);
+        self.shared.playback_source.store(source, Ordering::Relaxed);
         self.shared
             .loop_playback
             .store(loop_playback, Ordering::Relaxed);
-        self.shared
-            .playback_frame
-            .store(0, Ordering::Relaxed);
-        self.shared
-            .state
-            .store(VC_STATE_PLAYING, Ordering::Relaxed);
+        self.shared.playback_frame.store(0, Ordering::Relaxed);
+        self.shared.state.store(VC_STATE_PLAYING, Ordering::Relaxed);
     }
 
     pub fn stop_playback(&mut self) {
@@ -340,14 +296,14 @@ impl RtVoiceCheck {
     }
 
     pub fn finalize_playback_stop(&mut self) {
-        if self.playback_active && self.playback_gain_target <= 0.0001 && self.playback_gain <= 0.0001
+        if self.playback_active
+            && self.playback_gain_target <= 0.0001
+            && self.playback_gain <= 0.0001
         {
             self.playback_active = false;
             let duration = self.shared.duration_frames.load(Ordering::Relaxed);
             if duration > 0 {
-                self.shared
-                    .state
-                    .store(VC_STATE_READY, Ordering::Relaxed);
+                self.shared.state.store(VC_STATE_READY, Ordering::Relaxed);
             } else {
                 self.shared.state.store(VC_STATE_IDLE, Ordering::Relaxed);
             }
@@ -386,36 +342,30 @@ impl RtVoiceCheck {
     }
 
     pub fn record_raw_at(&mut self, absolute_frame: u64, left: f32, right: f32) {
-        let Some(buffers) = &self.buffers else {
-            return;
-        };
-        let max_frames = self.shared.max_frames.load(Ordering::Relaxed);
-        if absolute_frame >= max_frames {
-            self.stop_recording();
-            return;
+        if self.recording_active && absolute_frame < self.record_max_frames {
+            if let Some(writer) = &mut self.writer {
+                writer.write_raw(absolute_frame, left, right);
+            }
         }
-        let idx = (absolute_frame as usize) * VOICE_CHECK_CHANNELS;
-        buffers.write_raw(idx, left, right);
     }
 
     pub fn record_processed_at(&mut self, absolute_frame: u64, left: f32, right: f32) {
-        let Some(buffers) = &self.buffers else {
-            return;
-        };
-        let duration = self.shared.max_frames.load(Ordering::Relaxed);
-        if absolute_frame >= duration {
-            return;
+        if self.recording_active && absolute_frame < self.record_max_frames {
+            if let Some(writer) = &mut self.writer {
+                writer.write_processed(absolute_frame, left, right);
+            }
         }
-        let idx = (absolute_frame as usize) * VOICE_CHECK_CHANNELS;
-        buffers.write_processed(idx, left, right);
     }
 
     pub fn advance_recording(&mut self, frames: usize) {
         if !self.recording_active {
             return;
         }
-        let max_frames = self.shared.max_frames.load(Ordering::Relaxed);
+        let max_frames = self.record_max_frames;
         self.record_frame = self.record_frame.saturating_add(frames as u64);
+        if let Some(writer) = &mut self.writer {
+            writer.commit_frames(self.record_frame.min(max_frames));
+        }
         if self.record_frame >= max_frames {
             self.record_frame = max_frames;
             self.stop_recording();
@@ -435,7 +385,10 @@ impl RtVoiceCheck {
         let Some(buffers) = &self.buffers else {
             return (0.0, 0.0);
         };
-        let duration = self.shared.duration_frames.load(Ordering::Relaxed);
+        let Some(recording) = buffers.recording() else {
+            return (0.0, 0.0);
+        };
+        let duration = recording.frames as u64;
         if duration == 0 {
             return (0.0, 0.0);
         }
@@ -452,9 +405,9 @@ impl RtVoiceCheck {
         let frame = self.playback_frame;
         let idx = (frame as usize) * VOICE_CHECK_CHANNELS;
         let slice = if self.playback_source == VC_SOURCE_RAW {
-            buffers.raw_slice()
+            recording.raw
         } else {
-            buffers.processed_slice()
+            recording.processed
         };
         let left = if idx < slice.len() {
             slice[idx] * gain
@@ -490,6 +443,84 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn final_block_keeps_processed_samples_and_uses_its_own_frame_limit() {
+        let shared = Arc::new(VoiceCheckShared::new());
+        let buffers = Arc::new(allocate_voice_check_buffers(500, 8_000));
+        let mut rt = RtVoiceCheck::new(shared.clone(), 8_000);
+        rt.start_recording(buffers.clone(), 2);
+        // 制御側が次の録音用の表示値を先に更新しても、現在の書き手の上限は変わらない。
+        shared.max_frames.store(99_999, Ordering::Relaxed);
+        for frame in 0..4 {
+            rt.record_raw_at(frame, 1.0, -1.0);
+        }
+        assert!(rt.is_recording_active());
+        assert!(buffers.recording().is_none());
+        for frame in 0..4 {
+            rt.record_processed_at(frame, 0.25, -0.25);
+        }
+        rt.advance_recording(4);
+        let recording = buffers.recording().unwrap();
+        assert_eq!(recording.frames, 2);
+        assert_eq!(recording.processed, [0.25, -0.25, 0.25, -0.25]);
+        assert!(!rt.is_recording_active());
+    }
+
+    #[test]
+    fn recording_switch_playback_and_stop_do_not_allocate_or_release_on_callback() {
+        use crate::vst_host::instance::allocation_counts;
+        let mut store = VoiceCheckBufferStore::default();
+        let first = Arc::new(allocate_voice_check_buffers(500, 8_000));
+        let first_weak = Arc::downgrade(&first);
+        let second = Arc::new(allocate_voice_check_buffers(500, 8_000));
+        store.replace(first.clone());
+        let mut rt = RtVoiceCheck::new(Arc::new(VoiceCheckShared::new()), 8_000);
+        assert_eq!(allocation_counts(|| rt.start_recording(first, 1)), (0, 0));
+        store.replace(second.clone());
+        assert_eq!(
+            allocation_counts(|| {
+                rt.record_raw_at(0, 1.0, 1.0);
+                rt.record_processed_at(0, 0.5, 0.5);
+                rt.advance_recording(1);
+                rt.start_playback(VC_SOURCE_PROCESSED, true);
+                let _ = rt.read_playback_sample();
+                rt.start_recording(second, 1);
+                rt.stop_recording();
+            }),
+            (0, 0)
+        );
+        assert!(first_weak.upgrade().is_some());
+        store.collect();
+        assert!(first_weak.upgrade().is_none());
+    }
+
+    #[test]
+    fn wav_export_rejects_unfinished_recording_without_creating_file() {
+        let buffers = Arc::new(allocate_voice_check_buffers(500, 8_000));
+        let _writer = buffers.claim_writer().unwrap();
+        let path =
+            std::env::temp_dir().join(format!("auralyn-unfinished-{}.wav", std::process::id()));
+        assert!(export_voice_check_wav(&path, &buffers, "raw").is_err());
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn callback_retirement_keeps_only_fully_committed_blocks() {
+        let buffers = Arc::new(allocate_voice_check_buffers(500, 8_000));
+        let mut rt = RtVoiceCheck::new(Arc::new(VoiceCheckShared::new()), 8_000);
+        rt.start_recording(buffers.clone(), 4_000);
+        rt.record_raw_at(0, 1.0, -1.0);
+        rt.record_processed_at(0, 0.5, -0.5);
+        rt.advance_recording(1);
+        // 次ブロックは加工前だけがあるため、callback破棄後にも公開しない。
+        rt.record_raw_at(1, 2.0, -2.0);
+        drop(rt);
+        let recording = buffers.recording().unwrap();
+        assert_eq!(recording.frames, 1);
+        assert_eq!(recording.raw, [1.0, -1.0]);
+        assert_eq!(recording.processed, [0.5, -0.5]);
+    }
+
+    #[test]
     fn peak_envelope_respects_frame_count() {
         let mut buf = vec![0.0; 200];
         for i in 0..100 {
@@ -503,16 +534,25 @@ mod tests {
 
     #[test]
     fn export_wav_round_trip() {
-        let buffers = allocate_voice_check_buffers(1000, 48_000);
-        buffers.write_raw(0, 0.5, -0.5);
-        buffers.write_processed(0, 0.25, -0.25);
+        let buffers = Arc::new(allocate_voice_check_buffers(1000, 48_000));
+        let mut writer = buffers.claim_writer().unwrap();
+        writer.write_raw(0, 0.5, -0.5);
+        writer.write_processed(0, 0.25, -0.25);
+        writer.seal(1);
 
         let path = std::env::temp_dir().join("auralyn_voice_check_test.wav");
-        export_voice_check_wav(&path, &buffers, "raw", 48_000, 1).unwrap();
+        export_voice_check_wav(&path, &buffers, "raw").unwrap();
         assert!(path.exists());
-        let reader = hound::WavReader::open(&path).unwrap();
+        let mut reader = hound::WavReader::open(&path).unwrap();
         assert_eq!(reader.spec().channels, 2);
         assert_eq!(reader.spec().sample_rate, 48_000);
+        assert_eq!(
+            reader
+                .samples::<f32>()
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .unwrap(),
+            [0.5, -0.5]
+        );
         let _ = fs::remove_file(path);
     }
 }

@@ -1,3 +1,13 @@
+#[path = "core/noise_learning.rs"]
+mod noise_learning;
+use noise_learning::{NoiseLearningShared, RtNoiseLearning};
+#[path = "core/dsp.rs"]
+mod dsp;
+use dsp::{
+    noise_reduction_mix_from_mode, normalize_built_in_effects_preset, normalize_noise_control_mode,
+    RtBuiltInVoiceChain, RtNoiseReducer, Smoother, NOISE_REDUCTION_MODE_HIGH,
+    NOISE_REDUCTION_MODE_LOW, NOISE_REDUCTION_MODE_SMART, NOISE_REDUCTION_MODE_VENUE,
+};
 #[path = "core/auto_gain_commands.rs"]
 mod auto_gain_commands;
 use super::auto_gain::{self, Session as GainSession};
@@ -6,13 +16,12 @@ use super::callback_diagnostics::{callback_lateness, normalized_channels, Callba
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use log;
-use nnnoiseless::DenoiseState;
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::HeapRb;
 use serde_json;
 use std::io::{self, BufRead, Write};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, OnceLock,
 };
 use std::thread;
@@ -199,429 +208,6 @@ fn time_critical_audio_threads_enabled() -> bool {
     })
 }
 
-// Smoother Implementation
-struct Smoother {
-    current: f32,
-    target: f32,
-    coeff: f32,
-}
-
-impl Smoother {
-    fn new(initial_value: f32) -> Self {
-        Self {
-            current: initial_value,
-            target: initial_value,
-            coeff: 0.005,
-        }
-    }
-
-    fn new_ramp(start: f32, end: f32) -> Self {
-        Self {
-            current: start,
-            target: end,
-            coeff: 0.005,
-        }
-    }
-
-    fn set_target(&mut self, target: f32) {
-        self.target = target;
-    }
-
-    fn next(&mut self) -> f32 {
-        if (self.current - self.target).abs() < 0.0001 {
-            self.current = self.target;
-        } else {
-            self.current += (self.target - self.current) * self.coeff;
-        }
-        self.current
-    }
-}
-
-const DENOISE_FRAME_SIZE: usize = DenoiseState::FRAME_SIZE;
-const DENOISE_SCALE: f32 = 32768.0;
-const NOISE_REDUCTION_MODE_LOW: &str = "low";
-const NOISE_REDUCTION_MODE_HIGH: &str = "high";
-const NOISE_REDUCTION_MODE_SMART: &str = "smart";
-const NOISE_REDUCTION_MODE_VENUE: &str = "venue";
-const NOISE_LEARNING_IDLE: u32 = 0;
-const NOISE_LEARNING_CAPTURING: u32 = 1;
-const NOISE_LEARNING_READY: u32 = 2;
-
-fn normalize_noise_control_mode(mode: Option<&str>) -> NoiseControlMode {
-    match mode.map(|m| m.trim().to_ascii_lowercase()) {
-        Some(m) if m == NOISE_REDUCTION_MODE_HIGH => NoiseControlMode::High,
-        Some(m) if m == NOISE_REDUCTION_MODE_SMART => NoiseControlMode::Smart,
-        Some(m) if m == NOISE_REDUCTION_MODE_VENUE => NoiseControlMode::Venue,
-        _ => NoiseControlMode::Low,
-    }
-}
-
-fn noise_reduction_mix_from_mode(mode: NoiseControlMode, strength: f32) -> f32 {
-    let base = match mode {
-        NoiseControlMode::Low => 0.6,
-        NoiseControlMode::High => 1.0,
-        NoiseControlMode::Smart => 0.74,
-        NoiseControlMode::Venue => 0.86,
-    };
-    (base * strength.clamp(0.25, 1.25)).clamp(0.0, 1.0)
-}
-
-fn normalize_built_in_effects_preset(preset: Option<&str>) -> BuiltInEffectsPreset {
-    match preset.map(|p| p.trim().to_ascii_lowercase()) {
-        Some(p) if p == "warm" => BuiltInEffectsPreset::Warm,
-        Some(p) if p == "bright" => BuiltInEffectsPreset::Bright,
-        _ => BuiltInEffectsPreset::Broadcast,
-    }
-}
-
-struct RtNoiseReducer {
-    states: [Box<DenoiseState<'static>>; 2],
-    input_frame_size: usize,
-    input_frames: [Vec<f32>; 2],
-    output_frames: [Vec<f32>; 2],
-    denoise_input: [[f32; DENOISE_FRAME_SIZE]; 2],
-    denoise_output: [[f32; DENOISE_FRAME_SIZE]; 2],
-    input_pos: usize,
-    output_pos: usize,
-    output_ready: usize,
-}
-
-impl RtNoiseReducer {
-    fn new(sample_rate_hz: u32) -> Self {
-        let frame_size = ((sample_rate_hz.max(8_000) + 50) / 100) as usize;
-        Self {
-            states: std::array::from_fn(|_| DenoiseState::new()),
-            input_frame_size: frame_size,
-            input_frames: [vec![0.0; frame_size], vec![0.0; frame_size]],
-            output_frames: [vec![0.0; frame_size], vec![0.0; frame_size]],
-            denoise_input: [[0.0; DENOISE_FRAME_SIZE]; 2],
-            denoise_output: [[0.0; DENOISE_FRAME_SIZE]; 2],
-            input_pos: 0,
-            output_pos: 0,
-            output_ready: 0,
-        }
-    }
-
-    fn reset_state(&mut self) {
-        for state in &mut self.states {
-            state.reset();
-        }
-        self.input_pos = 0;
-        self.output_pos = 0;
-        self.output_ready = 0;
-        for ch in 0..2 {
-            self.input_frames[ch].fill(0.0);
-            self.output_frames[ch].fill(0.0);
-            self.denoise_input[ch].fill(0.0);
-            self.denoise_output[ch].fill(0.0);
-        }
-    }
-
-    fn resample_linear(input: &[f32], output: &mut [f32]) {
-        if input.is_empty() || output.is_empty() {
-            return;
-        }
-        if input.len() == 1 {
-            output.fill(input[0]);
-            return;
-        }
-        if output.len() == 1 {
-            output[0] = input[0];
-            return;
-        }
-
-        let in_last = (input.len() - 1) as f32;
-        let out_last = (output.len() - 1) as f32;
-        for (i, out) in output.iter_mut().enumerate() {
-            let pos = (i as f32) * in_last / out_last;
-            let idx0 = pos.floor() as usize;
-            let idx1 = (idx0 + 1).min(input.len() - 1);
-            let frac = pos - idx0 as f32;
-            *out = input[idx0] * (1.0 - frac) + input[idx1] * frac;
-        }
-    }
-
-    fn process_sample(&mut self, left: f32, right: f32) -> (f32, f32) {
-        self.input_frames[0][self.input_pos] = (left * DENOISE_SCALE).clamp(-32768.0, 32767.0);
-        self.input_frames[1][self.input_pos] = (right * DENOISE_SCALE).clamp(-32768.0, 32767.0);
-        self.input_pos += 1;
-
-        if self.input_pos >= self.input_frame_size {
-            for ch in 0..2 {
-                if self.input_frame_size == DENOISE_FRAME_SIZE {
-                    self.denoise_input[ch]
-                        .copy_from_slice(&self.input_frames[ch][..DENOISE_FRAME_SIZE]);
-                } else {
-                    Self::resample_linear(
-                        &self.input_frames[ch][..self.input_frame_size],
-                        &mut self.denoise_input[ch],
-                    );
-                }
-            }
-
-            self.states[0].process_frame(&mut self.denoise_output[0], &self.denoise_input[0]);
-            self.states[1].process_frame(&mut self.denoise_output[1], &self.denoise_input[1]);
-
-            for ch in 0..2 {
-                if self.input_frame_size == DENOISE_FRAME_SIZE {
-                    self.output_frames[ch][..DENOISE_FRAME_SIZE]
-                        .copy_from_slice(&self.denoise_output[ch]);
-                } else {
-                    Self::resample_linear(
-                        &self.denoise_output[ch],
-                        &mut self.output_frames[ch][..self.input_frame_size],
-                    );
-                }
-            }
-
-            self.input_pos = 0;
-            self.output_pos = 0;
-            self.output_ready = self.input_frame_size;
-        }
-
-        if self.output_ready == 0 {
-            return (0.0, 0.0);
-        }
-
-        let l = (self.output_frames[0][self.output_pos] / DENOISE_SCALE).clamp(-1.0, 1.0);
-        let r = (self.output_frames[1][self.output_pos] / DENOISE_SCALE).clamp(-1.0, 1.0);
-        self.output_pos += 1;
-        self.output_ready -= 1;
-        (l, r)
-    }
-}
-
-struct NoiseLearningShared {
-    state: AtomicU32,
-    progress_ppm: AtomicU32,
-    profile_rms_ppm: AtomicU32,
-    recommended_mix_ppm: AtomicU32,
-    speech_detected: AtomicBool,
-    profile_available: AtomicBool,
-}
-
-impl NoiseLearningShared {
-    fn new() -> Self {
-        Self {
-            state: AtomicU32::new(NOISE_LEARNING_IDLE),
-            progress_ppm: AtomicU32::new(0),
-            profile_rms_ppm: AtomicU32::new(0),
-            recommended_mix_ppm: AtomicU32::new(600_000),
-            speech_detected: AtomicBool::new(false),
-            profile_available: AtomicBool::new(false),
-        }
-    }
-
-    fn state_label(&self) -> &'static str {
-        match self.state.load(Ordering::Relaxed) {
-            NOISE_LEARNING_CAPTURING => "capturing",
-            NOISE_LEARNING_READY => "ready",
-            _ => "idle",
-        }
-    }
-
-    fn progress(&self) -> f32 {
-        self.progress_ppm.load(Ordering::Relaxed) as f32 / 1_000_000.0
-    }
-
-    fn profile_rms(&self) -> f32 {
-        self.profile_rms_ppm.load(Ordering::Relaxed) as f32 / 1_000_000.0
-    }
-
-    fn recommended_mix(&self) -> f32 {
-        self.recommended_mix_ppm.load(Ordering::Relaxed) as f32 / 1_000_000.0
-    }
-}
-
-struct RtNoiseLearning {
-    shared: Arc<NoiseLearningShared>,
-    total_frames: u64,
-    remaining_frames: u64,
-    sum_sq: f64,
-    count: u64,
-}
-
-impl RtNoiseLearning {
-    fn new(shared: Arc<NoiseLearningShared>) -> Self {
-        Self {
-            shared,
-            total_frames: 0,
-            remaining_frames: 0,
-            sum_sq: 0.0,
-            count: 0,
-        }
-    }
-
-    fn start(&mut self, duration_frames: u64) {
-        self.total_frames = duration_frames.max(1);
-        self.remaining_frames = self.total_frames;
-        self.sum_sq = 0.0;
-        self.count = 0;
-        self.shared
-            .state
-            .store(NOISE_LEARNING_CAPTURING, Ordering::Relaxed);
-        self.shared.progress_ppm.store(0, Ordering::Relaxed);
-        self.shared.speech_detected.store(false, Ordering::Relaxed);
-    }
-
-    fn cancel(&mut self) {
-        self.total_frames = 0;
-        self.remaining_frames = 0;
-        self.sum_sq = 0.0;
-        self.count = 0;
-        self.shared
-            .state
-            .store(NOISE_LEARNING_IDLE, Ordering::Relaxed);
-        self.shared.progress_ppm.store(0, Ordering::Relaxed);
-    }
-
-    fn analyze_block(&mut self, left: &[f32], right: Option<&[f32]>, frames: usize) {
-        let mut sum_sq = 0.0f64;
-        for i in 0..frames {
-            let r = right.map(|ch| ch[i]).unwrap_or(left[i]);
-            let mono = (left[i] + r) * 0.5;
-            sum_sq += (mono as f64) * (mono as f64);
-        }
-
-        let rms = if frames > 0 {
-            (sum_sq / frames as f64).sqrt() as f32
-        } else {
-            0.0
-        };
-        let profile = self.shared.profile_rms();
-        let speech_threshold = (profile * 2.8).max(0.018);
-        self.shared
-            .speech_detected
-            .store(rms > speech_threshold, Ordering::Relaxed);
-
-        if self.remaining_frames == 0 {
-            return;
-        }
-
-        let take = frames.min(self.remaining_frames as usize);
-        for i in 0..take {
-            let r = right.map(|ch| ch[i]).unwrap_or(left[i]);
-            let mono = (left[i] + r) * 0.5;
-            self.sum_sq += (mono as f64) * (mono as f64);
-        }
-        self.count += take as u64;
-        self.remaining_frames = self.remaining_frames.saturating_sub(take as u64);
-        let done = self.total_frames.saturating_sub(self.remaining_frames);
-        let progress = ((done as f64 / self.total_frames as f64) * 1_000_000.0) as u32;
-        self.shared
-            .progress_ppm
-            .store(progress.min(1_000_000), Ordering::Relaxed);
-
-        if self.remaining_frames == 0 {
-            let rms = if self.count > 0 {
-                (self.sum_sq / self.count as f64).sqrt() as f32
-            } else {
-                0.0
-            };
-            let recommended = if rms < 0.004 {
-                0.55
-            } else if rms < 0.012 {
-                0.68
-            } else if rms < 0.03 {
-                0.82
-            } else {
-                0.92
-            };
-            self.shared.profile_rms_ppm.store(
-                (rms.clamp(0.0, 1.0) * 1_000_000.0) as u32,
-                Ordering::Relaxed,
-            );
-            self.shared
-                .recommended_mix_ppm
-                .store((recommended * 1_000_000.0) as u32, Ordering::Relaxed);
-            self.shared.profile_available.store(true, Ordering::Relaxed);
-            self.shared
-                .state
-                .store(NOISE_LEARNING_READY, Ordering::Relaxed);
-            self.shared.progress_ppm.store(1_000_000, Ordering::Relaxed);
-        }
-    }
-}
-
-struct RtBuiltInVoiceChain {
-    hp_last_in: [f32; 2],
-    hp_last_out: [f32; 2],
-    comp_env: f32,
-    sample_rate: f32,
-}
-
-impl RtBuiltInVoiceChain {
-    fn new(sample_rate_hz: u32) -> Self {
-        Self {
-            hp_last_in: [0.0; 2],
-            hp_last_out: [0.0; 2],
-            comp_env: 0.0,
-            sample_rate: sample_rate_hz.max(8_000) as f32,
-        }
-    }
-
-    fn high_pass(&mut self, ch: usize, sample: f32, cutoff_hz: f32) -> f32 {
-        let rc = 1.0 / (std::f32::consts::TAU * cutoff_hz.max(20.0));
-        let dt = 1.0 / self.sample_rate;
-        let alpha = rc / (rc + dt);
-        let out = alpha * (self.hp_last_out[ch] + sample - self.hp_last_in[ch]);
-        self.hp_last_in[ch] = sample;
-        self.hp_last_out[ch] = out;
-        out
-    }
-
-    fn process_sample(
-        &mut self,
-        left: f32,
-        right: f32,
-        preset: BuiltInEffectsPreset,
-        amount: f32,
-    ) -> (f32, f32) {
-        let amount = amount.clamp(0.0, 1.0);
-        let cutoff = match preset {
-            BuiltInEffectsPreset::Warm => 70.0,
-            BuiltInEffectsPreset::Bright => 105.0,
-            BuiltInEffectsPreset::Broadcast => 85.0,
-        };
-        let mut l = self.high_pass(0, left, cutoff);
-        let mut r = self.high_pass(1, right, cutoff);
-
-        let mono_abs = ((l + r) * 0.5).abs();
-        let attack = 0.18;
-        let release = 0.008;
-        if mono_abs > self.comp_env {
-            self.comp_env += (mono_abs - self.comp_env) * attack;
-        } else {
-            self.comp_env += (mono_abs - self.comp_env) * release;
-        }
-
-        let threshold = match preset {
-            BuiltInEffectsPreset::Warm => 0.2,
-            BuiltInEffectsPreset::Bright => 0.16,
-            BuiltInEffectsPreset::Broadcast => 0.18,
-        };
-        let ratio = 2.0 + amount * 2.0;
-        let gain = if self.comp_env > threshold {
-            let over = self.comp_env / threshold;
-            (1.0 / over.powf(1.0 - 1.0 / ratio)).clamp(0.35, 1.0)
-        } else {
-            1.0
-        };
-        let makeup = 1.0 + amount * 0.22;
-        l *= gain * makeup;
-        r *= gain * makeup;
-
-        let tone = match preset {
-            BuiltInEffectsPreset::Warm => -0.03,
-            BuiltInEffectsPreset::Bright => 0.04,
-            BuiltInEffectsPreset::Broadcast => 0.015,
-        } * amount;
-        l = (l + (l - left) * tone).clamp(-0.98, 0.98);
-        r = (r + (r - right) * tone).clamp(-0.98, 0.98);
-        (l, r)
-    }
-}
-
 pub struct Engine {
     gain_shared: Arc<auto_gain::Shared>,
     gain_capture_rx: Option<auto_gain::CaptureConsumer>,
@@ -672,7 +258,7 @@ pub struct Engine {
     built_in_effects_amount: f32,
 
     voice_check: Arc<VoiceCheckShared>,
-    voice_check_buffers: Option<Arc<VoiceCheckBuffers>>,
+    voice_check_buffers: super::voice_check::VoiceCheckBufferStore,
 
     // Diagnostics
     stats_max_jitter: Arc<AtomicU64>,
@@ -731,7 +317,7 @@ impl Engine {
             built_in_effects_preset: BuiltInEffectsPreset::Broadcast,
             built_in_effects_amount: 0.7,
             voice_check: Arc::new(VoiceCheckShared::new()),
-            voice_check_buffers: None,
+            voice_check_buffers: super::voice_check::VoiceCheckBufferStore::default(),
             stats_max_jitter: Arc::new(AtomicU64::new(0)),
             stats_glitches: Arc::new(AtomicU64::new(0)),
         }
@@ -806,6 +392,7 @@ impl Engine {
                 }
                 Event::UserEvent(UserEvent::Timer) => {}
                 Event::AboutToWait => {
+                    self.voice_check_buffers.collect();
                     self.flush_pending_audio_msgs();
                     self.poll_auto_gain();
 
@@ -938,10 +525,11 @@ impl Engine {
                                     && safe_out_l == 0.0
                                     && safe_out_r == 0.0;
                                 if !is_zero || !last_meter_was_zero {
-                                    meter_event_to_send = Some(EngineEvent::LevelMeter(MeterLevels {
-                                        input: [safe_in_l, safe_in_r],
-                                        output: [safe_out_l, safe_out_r],
-                                    }));
+                                    meter_event_to_send =
+                                        Some(EngineEvent::LevelMeter(MeterLevels {
+                                            input: [safe_in_l, safe_in_r],
+                                            output: [safe_out_l, safe_out_r],
+                                        }));
                                 }
 
                                 current_in_l = 0.0;
@@ -953,10 +541,11 @@ impl Engine {
                                 last_meter_was_zero = is_zero;
                             } else if time_since_data > Duration::from_millis(75) {
                                 if !last_meter_was_zero {
-                                    meter_event_to_send = Some(EngineEvent::LevelMeter(MeterLevels {
-                                        input: [0.0, 0.0],
-                                        output: [0.0, 0.0],
-                                    }));
+                                    meter_event_to_send =
+                                        Some(EngineEvent::LevelMeter(MeterLevels {
+                                            input: [0.0, 0.0],
+                                            output: [0.0, 0.0],
+                                        }));
                                     last_meter_was_zero = true;
                                 }
                                 last_meter_time = Instant::now();
@@ -1017,20 +606,26 @@ impl Engine {
                         last_voice_check_state = vc_state;
                     }
 
-                    // 録音完了後の波形エンベロープ
-                    if self.voice_check.envelope_dirty.load(Ordering::Relaxed) {
-                        if let Some(buffers) = &self.voice_check_buffers {
-                            let frames = self.voice_check.duration_frames.load(Ordering::Relaxed)
-                                as usize;
-                            if frames > 0 {
+                    // バッファ自体の封印を確認してから読む。共有の表示状態を読取権限に使わない。
+                    if self
+                        .voice_check
+                        .envelope_dirty
+                        .swap(false, Ordering::Relaxed)
+                    {
+                        if let Some(recording) = self
+                            .voice_check_buffers
+                            .current()
+                            .and_then(|b| b.recording())
+                        {
+                            if recording.frames > 0 {
                                 let raw_peaks = compute_peak_envelope(
-                                    buffers.raw_slice(),
-                                    frames,
+                                    recording.raw,
+                                    recording.frames,
                                     VOICE_CHECK_ENVELOPE_BUCKETS,
                                 );
                                 let processed_peaks = compute_peak_envelope(
-                                    buffers.processed_slice(),
-                                    frames,
+                                    recording.processed,
+                                    recording.frames,
                                     VOICE_CHECK_ENVELOPE_BUCKETS,
                                 );
                                 self.send_event(EngineEvent::VoiceCheckEnvelope {
@@ -1039,9 +634,6 @@ impl Engine {
                                 });
                             }
                         }
-                        self.voice_check
-                            .envelope_dirty
-                            .store(false, Ordering::Relaxed);
                     }
                 }
                 Event::WindowEvent {
@@ -1220,11 +812,13 @@ impl Engine {
                     }
                 }
             }
-            Command::ReorderPlugins { order } => {
-                self.plugin_manager.order = order.clone();
-                self.queue_audio_msg(self.make_reorder_message());
-                self.send_response(Response::Success);
-            }
+            Command::ReorderPlugins { order } => match self.plugin_manager.reorder_plugins(order) {
+                Ok(()) => {
+                    self.queue_audio_msg(self.make_reorder_message());
+                    self.send_response(Response::Success);
+                }
+                Err(error) => self.send_error(error.to_string()),
+            },
             Command::OpenEditor { id } => {
                 // Delegated to EditorManager, but needs Instance from PluginManager
                 match self.plugin_manager.get_mut(&id) {
@@ -1236,32 +830,38 @@ impl Engine {
                 }
             }
             Command::SetBypass { id, active } => {
+                let Some(index) = self.plugin_manager.rt_index_of(&id) else {
+                    self.send_error("Plugin not found".into());
+                    return;
+                };
                 if active {
                     self.plugin_manager.bypassed.insert(id.clone());
                 } else {
                     self.plugin_manager.bypassed.remove(&id);
                 }
-                if let Some(index) = self.plugin_manager.rt_index_of(&id) {
-                    self.queue_audio_msg(AudioThreadMessage::SetBypass { index, active });
-                }
+                self.queue_audio_msg(AudioThreadMessage::SetBypass { index, active });
                 self.send_response(Response::Success);
             }
             Command::SetMute { id, active } => {
+                let Some(index) = self.plugin_manager.rt_index_of(&id) else {
+                    self.send_error("Plugin not found".into());
+                    return;
+                };
                 if active {
                     self.plugin_manager.muted.insert(id.clone());
                 } else {
                     self.plugin_manager.muted.remove(&id);
                 }
-                if let Some(index) = self.plugin_manager.rt_index_of(&id) {
-                    self.queue_audio_msg(AudioThreadMessage::SetMute { index, active });
-                }
+                self.queue_audio_msg(AudioThreadMessage::SetMute { index, active });
                 self.send_response(Response::Success);
             }
             Command::SetGain { id, value } => {
+                let Some(index) = self.plugin_manager.rt_index_of(&id) else {
+                    self.send_error("Plugin not found".into());
+                    return;
+                };
                 self.plugin_manager.gains.insert(id.clone(), value);
-                if let Some(index) = self.plugin_manager.rt_index_of(&id) {
-                    self.queue_audio_msg(AudioThreadMessage::SetGain { index, value });
-                }
+                self.queue_audio_msg(AudioThreadMessage::SetGain { index, value });
                 self.send_response(Response::Success);
             }
             Command::SetGlobalMute { active } => {
@@ -1292,15 +892,17 @@ impl Engine {
                 self.send_response(Response::Success);
             }
             Command::StartNoiseLearning { duration_ms } => {
-                let duration_frames = ((duration_ms.clamp(500, 10_000) as f64
-                    * self.current_sample_rate.max(8_000.0))
-                    / 1000.0)
-                    .round() as u64;
-                self.queue_audio_msg(AudioThreadMessage::StartNoiseLearning { duration_frames });
-                self.send_response(Response::Success);
+                match self.begin_noise_learning(duration_ms) {
+                    Ok(()) => self.send_response(Response::Success),
+                    Err(error) => self.send_error(error.to_string()),
+                }
             }
             Command::CancelNoiseLearning => {
-                self.queue_audio_msg(AudioThreadMessage::CancelNoiseLearning);
+                if self.output_stream.is_some() {
+                    self.queue_audio_msg(AudioThreadMessage::CancelNoiseLearning);
+                } else {
+                    self.noise_learning.cancel_capture();
+                }
                 self.send_response(Response::Success);
             }
             Command::SetNoiseControlConfig {
@@ -1309,6 +911,10 @@ impl Engine {
                 strength,
                 voice_guard,
             } => {
+                if !strength.is_finite() {
+                    self.send_error("ノイズ低減の抑制強度が不正です".into());
+                    return;
+                }
                 let normalized_mode = normalize_noise_control_mode(Some(mode.as_str()));
                 self.noise_control_mode = normalized_mode;
                 self.noise_control_strength = strength.clamp(0.25, 1.25);
@@ -1376,23 +982,19 @@ impl Engine {
                     return;
                 }
                 let max_ms = max_ms.clamp(500, super::voice_check::VOICE_CHECK_MAX_MS);
-                let sample_rate_hz = self.current_sample_rate.round().clamp(8_000.0, 192_000.0) as u32;
-                let max_frames =
-                    ((max_ms as f64 * sample_rate_hz as f64) / 1000.0).round() as u64;
+                let sample_rate_hz =
+                    self.current_sample_rate.round().clamp(8_000.0, 192_000.0) as u32;
+                let max_frames = ((max_ms as f64 * sample_rate_hz as f64) / 1000.0).round() as u64;
                 let buffers = Arc::new(allocate_voice_check_buffers(max_ms, sample_rate_hz));
-                self.voice_check_buffers = Some(buffers.clone());
+                self.voice_check_buffers.replace(buffers.clone());
                 self.voice_check
                     .sample_rate_hz
                     .store(sample_rate_hz, Ordering::Relaxed);
                 self.voice_check
                     .max_frames
                     .store(max_frames, Ordering::Relaxed);
-                self.voice_check
-                    .duration_frames
-                    .store(0, Ordering::Relaxed);
-                self.voice_check
-                    .playback_frame
-                    .store(0, Ordering::Relaxed);
+                self.voice_check.duration_frames.store(0, Ordering::Relaxed);
+                self.voice_check.playback_frame.store(0, Ordering::Relaxed);
                 self.voice_check
                     .envelope_dirty
                     .store(false, Ordering::Relaxed);
@@ -1428,29 +1030,10 @@ impl Engine {
                 self.send_response(Response::Success);
             }
             Command::ExportVoiceCheck { path, source } => {
-                if self.voice_check.state.load(Ordering::Relaxed) == VC_STATE_RECORDING {
-                    self.send_response(Response::Error(
-                        "録音中はエクスポートできません".to_string(),
-                    ));
-                    return;
-                }
-                match &self.voice_check_buffers {
+                match self.voice_check_buffers.current() {
                     Some(buffers) => {
-                        let duration = self.voice_check.duration_frames.load(Ordering::Relaxed);
-                        let sample_rate = self.voice_check.sample_rate_hz.load(Ordering::Relaxed);
-                        if duration == 0 {
-                            self.send_response(Response::Error(
-                                "エクスポートする録音データがありません".to_string(),
-                            ));
-                            return;
-                        }
-                        match export_voice_check_wav(
-                            std::path::Path::new(&path),
-                            buffers,
-                            &source,
-                            sample_rate,
-                            duration,
-                        ) {
+                        match export_voice_check_wav(std::path::Path::new(&path), buffers, &source)
+                        {
                             Ok(()) => self.send_response(Response::Success),
                             Err(e) => self.send_response(Response::Error(e.to_string())),
                         }
@@ -2045,6 +1628,7 @@ impl Engine {
         let mut rt_noise_reduction_mix =
             noise_reduction_mix_from_mode(rt_noise_control_mode, self.noise_control_strength);
         let mut rt_noise_reducer = RtNoiseReducer::new(rt_sample_rate_hz);
+        rt_noise_reducer.set_enabled(rt_noise_reduction_enabled);
         let mut rt_noise_learning = RtNoiseLearning::new(self.noise_learning.clone());
         let mut rt_built_in_effects_enabled = self.built_in_effects_enabled;
         let mut rt_built_in_effects_preset = self.built_in_effects_preset;
@@ -2052,7 +1636,7 @@ impl Engine {
         let mut rt_voice_chain = RtBuiltInVoiceChain::new(rt_sample_rate_hz);
         let voice_check_shared = self.voice_check.clone();
         let mut rt_voice_check = RtVoiceCheck::new(voice_check_shared, rt_sample_rate_hz);
-        if let Some(buffers) = self.voice_check_buffers.clone() {
+        if let Some(buffers) = self.voice_check_buffers.current().cloned() {
             rt_voice_check.attach_buffers(buffers);
         }
         let mut rt_test_tone = RtTestTone::new(rt_sample_rate_hz);
@@ -2233,12 +1817,12 @@ impl Engine {
                             strength,
                             voice_guard,
                         } => {
+                            rt_noise_reducer.set_enabled(active);
                             rt_noise_reduction_enabled = active;
                             rt_noise_control_mode = mode;
                             rt_noise_voice_guard = voice_guard;
                             rt_noise_reduction_mix =
                                 noise_reduction_mix_from_mode(mode, strength.clamp(0.25, 1.25));
-                            rt_noise_reducer.reset_state();
                         }
                         AudioThreadMessage::SetBuiltInEffects {
                             active,
@@ -2421,10 +2005,6 @@ impl Engine {
                     }
                 }
 
-                if rt_voice_check.is_recording_active() {
-                    rt_voice_check.advance_recording(frames);
-                }
-
                 if rt_voice_check.is_playback_active() {
                     // 再生中はマイク入力をミュート（処理チェーンは無音で継続）
                     for channel in &mut planar_buf_a[..channels.min(2)] {
@@ -2480,6 +2060,8 @@ impl Engine {
                             .iter_mut()
                             .zip(&mut right_channels[0][..frames])
                         {
+                            *left_sample = dsp::finite_audio_sample(*left_sample);
+                            *right_sample = dsp::finite_audio_sample(*right_sample);
                             let dry_left = *left_sample;
                             let dry_right = *right_sample;
                             if profile_available
@@ -2502,6 +2084,7 @@ impl Engine {
                         }
                     } else if channels == 1 {
                         for sample in &mut planar_buf_a[0][..frames] {
+                            *sample = dsp::finite_audio_sample(*sample);
                             let dry_mono = *sample;
                             if profile_available
                                 && !speech_detected
@@ -2640,8 +2223,8 @@ impl Engine {
                             // Apply Gain (Smoother)
                             let smoother = &mut rt_gains[idx];
                             // Optimization: Check if gain is effectively 1.0 (no change needed)
-                            if (smoother.current - 1.0).abs() > 0.0001
-                                || (smoother.target - 1.0).abs() > 0.0001
+                            if (smoother.current() - 1.0).abs() > 0.0001
+                                || (smoother.target() - 1.0).abs() > 0.0001
                             {
                                 let target_buf = if current_source_is_a {
                                     &mut planar_buf_a
@@ -2710,6 +2293,8 @@ impl Engine {
                             proc_r,
                         );
                     }
+                    // 加工前後の最終ブロックが揃ってから公開・完了通知する。
+                    rt_voice_check.advance_recording(frames);
                 }
 
                 if rt_global_mute {
@@ -2832,7 +2417,7 @@ impl Engine {
                     }
 
                     // Metering: Reflect actual output level (post-master-gain)
-                    let gain_for_meter = rt_output_gain.current;
+                    let gain_for_meter = rt_output_gain.current();
                     let out_max_l = final_buf
                         .first()
                         .map(|buf| buf[..frames].iter().fold(0.0f32, |m, &x| m.max(x.abs())))
@@ -2868,9 +2453,9 @@ impl Engine {
                 rt_capture
                     .shared
                     .confirmed_gain
-                    .store(rt_output_gain.current.to_bits(), Ordering::Release);
+                    .store(rt_output_gain.current().to_bits(), Ordering::Release);
                 rt_capture.shared.settled.store(
-                    rt_output_gain.current == rt_output_gain.target,
+                    rt_output_gain.current() == rt_output_gain.target(),
                     Ordering::Release,
                 );
                 callback_diagnostics.record(actual_frames, now.elapsed().as_micros() as u64);
@@ -3118,6 +2703,27 @@ impl Engine {
         }
         self.input_stream = None;
         self.output_stream = None;
+        self.noise_learning.cancel_capture();
+        let recorded_frames = self
+            .voice_check_buffers
+            .current()
+            .and_then(|buffer| buffer.recording())
+            .map_or(0, |recording| recording.frames as u64);
+        self.voice_check
+            .duration_frames
+            .store(recorded_frames, Ordering::Relaxed);
+        self.voice_check.state.store(
+            if recorded_frames > 0 {
+                super::voice_check::VC_STATE_READY
+            } else {
+                VC_STATE_IDLE
+            },
+            Ordering::Relaxed,
+        );
+        self.voice_check
+            .envelope_dirty
+            .store(recorded_frames > 0, Ordering::Relaxed);
+        self.voice_check_buffers.collect();
         self.command_tx = None;
         self.level_rx = None;
         self.loudness_rx = None;

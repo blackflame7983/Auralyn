@@ -348,6 +348,6 @@ mod tests {
         assert_eq!(state.gain, 0.8);
         assert_eq!(engine.gain_shared.active.load(Ordering::Acquire), 0);
         assert!(engine.gain_session.is_none());
-        assert!(engine.voice_check_buffers.is_none());
+        assert!(engine.voice_check_buffers.current().is_none());
     }
 }
