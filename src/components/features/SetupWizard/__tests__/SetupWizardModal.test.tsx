@@ -48,6 +48,7 @@ beforeEach(() => {
         switch (command) {
             case 'get_audio_devices': return { inputs, outputs };
             case 'get_audio_state': return { is_running: false, config: null };
+            case 'auto_gain': return { running: true, streamFailed: false };
             case 'start_audio':
                 if (startFails) throw new Error(startError);
                 return { sample_rate: 48000, buffer_size: 512, channels: 2 };
@@ -62,6 +63,34 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('セットアップの接続チェック', () => {
+    it('プロセスが常駐していても開始前が停止中なら、中断時に音声を開始しない', async () => {
+        const base = vi.mocked(invoke).getMockImplementation()!;
+        vi.mocked(invoke).mockImplementation((command, args, options) => {
+            if (command === 'get_audio_state') return Promise.resolve({ is_running: true, config: { host: 'ASIO', input: 'previous', output: 'previous' } });
+            if (command === 'auto_gain') return Promise.resolve({ running: false, streamFailed: false });
+            return base(command, args, options);
+        });
+        const { onClose } = await quickStart();
+        fireEvent.click(screen.getByRole('button', { name: 'サウンドテスト (開始)' }));
+        await screen.findByRole('button', { name: 'サウンドテスト (停止)' });
+        fireEvent.click(screen.getByRole('button', { name: 'セットアップウィザードを閉じる' }));
+        fireEvent.click(screen.getByRole('button', { name: '中断する' }));
+        await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+        expect(invoke).toHaveBeenLastCalledWith('stop_audio');
+        expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.objectContaining({ host: 'ASIO' }));
+    });
+
+    it('設定の反映に失敗した場合は完了表示や表示モードの保存を行わない', async () => {
+        const onApplyConfig = vi.fn().mockRejectedValue(new Error('save failed'));
+        render(<SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={onApplyConfig} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'OBS向けに設定する' }));
+        fireEvent.click(await screen.findByRole('button', { name: '設定を保存して開始' }));
+        await waitFor(() => expect(onApplyConfig).toHaveBeenCalledOnce());
+        expect(await screen.findByRole('heading', { name: '設定と接続の確認' })).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: '音声設定を保存しました' })).not.toBeInTheDocument();
+        expect(localStorage.getItem('vst_host_beginner_mode')).toBeNull();
+    });
+
     it.each(['サウンドテスト (開始)', '設定を保存して開始'])('アクセス拒否時の%sでは権限案内を開き、設定を保存せず再試行できる', async action => {
         startFails = true;
         startError = 'Input Stream Build Failed: 0x80070005';
