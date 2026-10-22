@@ -1,69 +1,26 @@
+mod replies;
 use anyhow::{anyhow, Result};
+use replies::ReplySlot;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::{AppHandle, Emitter};
 
 fn persist_audio_config(path: &std::path::Path, config: &ActiveAudioConfig) -> Result<()> {
-    let dir = path.parent().ok_or_else(|| anyhow!("設定保存先がありません"))?;
+    let dir = path
+        .parent()
+        .ok_or_else(|| anyhow!("設定保存先がありません"))?;
     std::fs::create_dir_all(dir)?;
     std::fs::write(path, serde_json::to_string_pretty(config)?)?;
     Ok(())
 }
 
 #[cfg(windows)]
-mod win_job {
-    use windows::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    };
-
-    pub struct Job(HANDLE);
-
-    // HANDLE is just an OS handle; it is safe to move/share as an opaque value as long as
-    // we don't use it concurrently in a data-race way (we only close on Drop).
-    unsafe impl Send for Job {}
-    unsafe impl Sync for Job {}
-
-    impl Job {
-        pub fn new_kill_on_drop() -> Option<Self> {
-            unsafe {
-                let job = CreateJobObjectW(None, None).ok()?;
-
-                let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-
-                SetInformationJobObject(
-                    job,
-                    JobObjectExtendedLimitInformation,
-                    &info as *const _ as *const std::ffi::c_void,
-                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-                )
-                .ok()?;
-
-                Some(Self(job))
-            }
-        }
-
-        pub fn assign(&self, process: HANDLE) -> bool {
-            unsafe { AssignProcessToJobObject(self.0, process).is_ok() }
-        }
-    }
-
-    impl Drop for Job {
-        fn drop(&mut self) {
-            unsafe {
-                let _ = CloseHandle(self.0);
-            }
-        }
-    }
-}
+use crate::process_job as win_job;
 
 // Use shared IPC types
 use crate::ipc::{Command as IpcCommand, EngineEvent, OutputMessage, Response as IpcResponse};
@@ -167,7 +124,7 @@ pub struct AudioHost {
     // We store a sender to satisfy a waiting command.
     // Since we assume sequential commands from the UI (mutex locked AudioState),
     // we only have one pending request at a time.
-    pending_reply_tx: Arc<Mutex<Option<mpsc::Sender<IpcResponse>>>>,
+    pending_reply_tx: Arc<ReplySlot>,
     emitter: Arc<Mutex<Option<AppHandle>>>,
     cached_devices: Option<AudioDeviceList>,
     active_config: Option<ActiveAudioConfig>,
@@ -186,7 +143,7 @@ impl AudioHost {
             reader_active: Arc::new(AtomicBool::new(false)),
             child: None,
             stdin: None,
-            pending_reply_tx: Arc::new(Mutex::new(None)),
+            pending_reply_tx: Arc::new(ReplySlot::default()),
             emitter: Arc::new(Mutex::new(None)),
             cached_devices: None,
             active_config: None,
@@ -255,6 +212,7 @@ impl AudioHost {
                     Ok(Some(status)) => {
                         log::error!("Audio Engine exited unexpectedly! Status: {}", status);
                         log::warn!("Forcing restart with empty state");
+                        self.reader_active.store(false, Ordering::Release);
                         self.child = None;
                         self.stdin = None;
                         #[cfg(windows)]
@@ -265,6 +223,7 @@ impl AudioHost {
                     Ok(None) => return Ok(()), // Running
                     Err(e) => {
                         log::error!("Error waiting on audio engine child process: {}", e);
+                        self.reader_active.store(false, Ordering::Release);
                         self.child = None;
                         self.stdin = None;
                         #[cfg(windows)]
@@ -406,7 +365,7 @@ impl AudioHost {
 
         // Spawn Output Reader Thread
         // 終了した旧プロセスの応答・終了通知を、新プロセスの待機やUIへ渡さない。
-        self.pending_reply_tx = Arc::new(Mutex::new(None));
+        self.pending_reply_tx = Arc::new(ReplySlot::default());
         self.reader_active = Arc::new(AtomicBool::new(true));
         let reader_active = self.reader_active.clone();
         let pending_tx_clone = self.pending_reply_tx.clone();
@@ -430,11 +389,8 @@ impl AudioHost {
                     match serde_json::from_str::<OutputMessage>(json_str) {
                         Ok(msg) => match msg {
                             OutputMessage::Response(resp) => {
-                                let mut lock = pending_tx_clone.lock().unwrap();
-                                if let Some(tx) = lock.take() {
-                                    let _ = tx.send(resp);
-                                } else {
-                                    log::warn!("Received Response but no one waiting: {:?}", resp);
+                                if !pending_tx_clone.deliver(resp) {
+                                    log::warn!("Received Response but no one is waiting");
                                 }
                             }
                             OutputMessage::Event(evt) => match evt {
@@ -554,14 +510,8 @@ impl AudioHost {
                 let _ = h.emit("audio-error", "Audio Engine Process Exited (Crash?)");
             }
 
-            // UX FIX: Abort any pending command to prevent 10s timeout
-            {
-                let mut lock = pending_tx_clone.lock().unwrap();
-                if let Some(tx) = lock.take() {
-                    log::warn!("Aborting pending command due to engine exit.");
-                    let _ = tx.send(IpcResponse::Error("Engine Crashed/Exited".to_string()));
-                }
-            }
+            // 終了時は待機中の呼出しを直ちに解放する。
+            pending_tx_clone.deliver(IpcResponse::Error("Engine Crashed/Exited".to_string()));
         });
 
         Ok(())
@@ -572,32 +522,30 @@ impl AudioHost {
 
         let json = serde_json::to_string(&cmd)?;
 
-        // Create Channel
-        let (tx, rx) = mpsc::channel();
-        {
-            let mut lock = self.pending_reply_tx.lock().unwrap();
-            *lock = Some(tx);
-        }
-
-        // Send
-        if let Some(stdin) = &mut self.stdin {
-            writeln!(stdin, "{}", json)?;
-            stdin.flush()?;
-        } else {
-            return Err(anyhow!("Stdin not available"));
-        }
-
-        // Wait
-        // Timeout? 5 seconds?
-        match rx.recv_timeout(std::time::Duration::from_secs(10)) {
-            Ok(resp) => Ok(resp),
-            Err(_) => {
-                // Clear pending
-                let mut lock = self.pending_reply_tx.lock().unwrap();
-                *lock = None;
-                Err(anyhow!("Timeout waiting for engine response"))
+        // IDのない直列プロトコルなので、タイムアウトした応答を受け取るまで
+        // 次の要求を送らない。古い応答を新しい操作の成功と取り違えないため。
+        let rx = self.pending_reply_tx.begin()?;
+        let sent = match &mut self.stdin {
+            Some(stdin) => writeln!(stdin, "{}", json).and_then(|()| stdin.flush()),
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "Stdin not available",
+            )),
+        };
+        if let Err(error) = sent {
+            self.pending_reply_tx.cancel();
+            // 書きかけのJSONや遅い応答が残る接続を再利用しない。
+            self.kill_engine();
+            if let Ok(emitter) = self.emitter.lock() {
+                if let Some(handle) = emitter.as_ref() {
+                    let _ = handle.emit("audio-error", "音声エンジンとの通信が切れました");
+                }
             }
+            return Err(error.into());
         }
+
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .map_err(|e| anyhow!("Timeout or disconnect waiting for engine response: {e}"))
     }
 
     pub fn enumerate_devices(&mut self, force_refresh: bool) -> Result<AudioDeviceList> {
@@ -705,8 +653,12 @@ impl AudioHost {
         }
     }
 
-    pub fn stop(&mut self) {
-        let _ = self.execute_command(IpcCommand::Stop);
+    pub fn stop(&mut self) -> Result<()> {
+        match self.execute_command(IpcCommand::Stop)? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
     }
 
     pub fn load_plugin(&mut self, path: &str) -> Result<String> {
@@ -781,9 +733,9 @@ impl AudioHost {
     }
 
     pub fn set_global_mute(&mut self, active: bool) -> Result<()> {
-        self.is_global_muted = active;
         match self.execute_command(IpcCommand::SetGlobalMute { active })? {
             IpcResponse::Success => {
+                self.is_global_muted = active;
                 // Emit event for UI update
                 if let Some(h) = self.emitter.lock().unwrap().as_ref() {
                     let _ = h.emit("global-mute-changed", active);
@@ -839,6 +791,9 @@ impl AudioHost {
         strength: f32,
         voice_guard: bool,
     ) -> Result<()> {
+        if !strength.is_finite() {
+            return Err(anyhow!("ノイズ低減の抑制強度が不正です"));
+        }
         match self.execute_command(IpcCommand::SetNoiseControlConfig {
             active,
             mode,
@@ -955,12 +910,11 @@ impl AudioHost {
         }
     }
 
-    pub fn unload_all_plugins(&mut self, ids: &[String]) {
+    pub fn unload_all_plugins(&mut self, ids: &[String]) -> Result<()> {
         for id in ids {
-            if let Err(e) = self.remove_plugin(id) {
-                log::warn!("Failed to unload plugin {} during profile apply: {}", id, e);
-            }
+            self.remove_plugin(id)?;
         }
+        Ok(())
     }
 
     pub fn set_channel_scan(&mut self, active: bool) -> Result<()> {
@@ -1020,12 +974,7 @@ impl AudioHost {
         }
     }
 
-    pub fn play_test_tone(
-        &mut self,
-        freq_hz: f32,
-        duration_ms: u32,
-        level_db: f32,
-    ) -> Result<()> {
+    pub fn play_test_tone(&mut self, freq_hz: f32, duration_ms: u32, level_db: f32) -> Result<()> {
         match self.execute_command(IpcCommand::PlayTestTone {
             freq_hz,
             duration_ms,
@@ -1170,15 +1119,21 @@ impl AudioHost {
 
     pub fn check_can_interrupt(&mut self) -> Result<()> {
         if self.maintenance {
-            return Err(anyhow!("変更を反映済みです。再起動してから操作してください。"));
+            return Err(anyhow!(
+                "変更を反映済みです。再起動してから操作してください。"
+            ));
         }
         if self.voice_activity.load(Ordering::Acquire) {
-            return Err(anyhow!("ボイスチェックの録音・試聴を終了してから更新してください。"));
+            return Err(anyhow!(
+                "ボイスチェックの録音・試聴を終了してから更新してください。"
+            ));
         }
         if self.child.is_some() {
             let gain = self.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
             if gain.phase == "recording" || gain.playing {
-                return Err(anyhow!("音量調整の録音・試聴を終了してから更新してください。"));
+                return Err(anyhow!(
+                    "音量調整の録音・試聴を終了してから更新してください。"
+                ));
             }
         }
         Ok(())
@@ -1187,7 +1142,7 @@ impl AudioHost {
     pub fn prepare_update(&mut self) -> Result<()> {
         self.check_can_interrupt()?;
         if self.child.is_some() {
-            self.stop();
+            self.stop()?;
         }
         self.maintenance = true;
         self.kill_engine();
@@ -1217,7 +1172,11 @@ impl AudioHost {
 
     pub fn warmup(&mut self) -> Result<()> {
         self.ensure_engine_running()?;
-        if self.last_config_path.parent().is_some_and(crate::migration::review_required) {
+        if self
+            .last_config_path
+            .parent()
+            .is_some_and(crate::migration::review_required)
+        {
             log::info!("移行後の設定確認が済むまで音声を自動開始しません");
             return Ok(());
         }
@@ -1351,6 +1310,28 @@ mod config_storage_tests {
     use super::*;
 
     #[test]
+    fn invalid_noise_strength_is_rejected_before_starting_or_sending_to_engine() {
+        let mut host = AudioHost::new(std::env::temp_dir());
+        for strength in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert!(host
+                .set_noise_control_config(true, "smart".into(), strength, true)
+                .is_err());
+            assert!(host.child.is_none());
+        }
+    }
+
+    #[test]
+    fn rejected_commands_do_not_claim_stop_or_commit_mute_state() {
+        let mut host = AudioHost::new(std::env::temp_dir());
+        host.maintenance = true;
+        host.is_global_muted = true;
+        assert!(host.stop().is_err());
+        assert!(host.unload_all_plugins(&["plugin".into()]).is_err());
+        assert!(host.set_global_mute(false).is_err());
+        assert!(host.is_global_muted);
+    }
+
+    #[test]
     fn saving_packaged_audio_config_does_not_read_or_overwrite_standalone() {
         let root = std::env::temp_dir().join(format!(
             "auralyn-audio-storage-{}-{}",
@@ -1371,10 +1352,7 @@ mod config_storage_tests {
         };
         persist_audio_config(&standalone, &legacy).unwrap();
         let before = std::fs::read(&standalone).unwrap();
-        assert!(
-            !packaged.exists(),
-            "既存版から暗黙にコピーしない"
-        );
+        assert!(!packaged.exists(), "既存版から暗黙にコピーしない");
         let current = ActiveAudioConfig {
             host: "Wasapi".into(),
             ..legacy

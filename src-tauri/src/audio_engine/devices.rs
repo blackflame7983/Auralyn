@@ -30,10 +30,7 @@ impl DeviceManager {
 
     /// Set the currently active input device info (called when audio starts)
     pub fn set_active_input(&mut self, info: DeviceInfo) {
-        log::debug!(
-            "Setting active input device: {} ({})",
-            info.name, info.host
-        );
+        log::debug!("Setting active input device: {} ({})", info.name, info.host);
         self.active_input = Some(info);
     }
 
@@ -41,7 +38,8 @@ impl DeviceManager {
     pub fn set_active_output(&mut self, info: DeviceInfo) {
         log::debug!(
             "Setting active output device: {} ({})",
-            info.name, info.host
+            info.name,
+            info.host
         );
         self.active_output = Some(info);
     }
@@ -56,10 +54,11 @@ impl DeviceManager {
         log::debug!("Starting OOP Device Enumeration...");
         let exe_path = std::env::current_exe().unwrap_or_else(|_| "audio_engine.exe".into());
 
-        let output = Command::new(&exe_path)
-            .arg("--scan")
-            .output()
-            .context("Failed to spawn scanner process")?;
+        let output = crate::child_process::run(
+            Command::new(&exe_path).arg("--scan"),
+            std::time::Duration::from_secs(30),
+        )
+        .context("Device scanner did not complete")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -116,97 +115,87 @@ impl DeviceManager {
         Ok(dev_list)
     }
 
-    // Extracted from core.rs start_audio_impl
     #[allow(deprecated)]
     pub fn resolve_input_device(host: &cpal::Host, target_name: &str) -> Option<cpal::Device> {
-        log::debug!("resolve_input_device target='{}'", target_name);
-
-        let mut name_counts = HashMap::new();
-        if let Ok(devs) = host.input_devices() {
-            for d in devs {
-                if let Ok(n) = d.name() {
-                    *name_counts.entry(n).or_insert(0) += 1;
-                }
-            }
-        }
-
-        if let Ok(devs) = host.input_devices() {
-            let mut current_counts = HashMap::new();
-            for d in devs {
-                if let Ok(n) = d.name() {
-                    let total = *name_counts.get(&n).unwrap_or(&0);
-                    let candidate_base = if total > 1 {
-                        let idx = current_counts.entry(n.clone()).or_insert(0);
-                        *idx += 1;
-                        format!("{} ({})", n, idx)
-                    } else {
-                        n
-                    };
-
-                    log::debug!("Checking candidate: '{}'", candidate_base);
-
-                    // Exact or Prefix Match "name [driverspecific]"
-                    if target_name == candidate_base
-                        || target_name.starts_with(&format!("{} [", candidate_base))
-                    {
-                        log::info!(
-                            "Found Input Device: '{}' (Matched '{}')",
-                            candidate_base, target_name
-                        );
-                        return Some(d);
-                    }
-                }
-            }
-        } else {
-            log::debug!("host.input_devices() failed or empty");
-        }
-        log::warn!("Failed to resolve input device '{}'", target_name);
-        None
+        let devices = host.input_devices().ok()?;
+        resolve_named_device(
+            devices.filter_map(|device| device.name().ok().map(|name| (device, name))),
+            target_name,
+        )
     }
 
     #[allow(deprecated)]
     pub fn resolve_output_device(host: &cpal::Host, target_name: &str) -> Option<cpal::Device> {
-        log::debug!("resolve_output_device target='{}'", target_name);
+        let devices = host.output_devices().ok()?;
+        resolve_named_device(
+            devices.filter_map(|device| device.name().ok().map(|name| (device, name))),
+            target_name,
+        )
+    }
+}
 
-        let mut name_counts = HashMap::new();
-        if let Ok(devs) = host.output_devices() {
-            for d in devs {
-                if let Ok(n) = d.name() {
-                    *name_counts.entry(n).or_insert(0) += 1;
-                }
-            }
-        }
-
-        if let Ok(devs) = host.output_devices() {
-            let mut current_counts = HashMap::new();
-            for d in devs {
-                if let Ok(n) = d.name() {
-                    let total = *name_counts.get(&n).unwrap_or(&0);
-                    let candidate_base = if total > 1 {
-                        let idx = current_counts.entry(n.clone()).or_insert(0);
-                        *idx += 1;
-                        format!("{} ({})", n, idx)
-                    } else {
-                        n
-                    };
-
-                    log::debug!("Checking candidate: '{}'", candidate_base);
-
-                    if target_name == candidate_base
-                        || target_name.starts_with(&format!("{} [", candidate_base))
-                    {
-                        log::info!(
-                            "Found Output Device: '{}' (Matched '{}')",
-                            candidate_base, target_name
-                        );
-                        return Some(d);
-                    }
-                }
-            }
+// 一度の列挙結果から連番を付け、完全一致を優先する。曖昧な接頭辞一致では選ばない。
+fn resolve_named_device<T>(devices: impl Iterator<Item = (T, String)>, target: &str) -> Option<T> {
+    let devices: Vec<_> = devices.collect();
+    let mut counts = HashMap::new();
+    for (_, name) in &devices {
+        *counts.entry(name.clone()).or_insert(0_usize) += 1;
+    }
+    let mut indices = HashMap::new();
+    let mut fallback = None;
+    let mut ambiguous = false;
+    let mut exact = None;
+    let mut ambiguous_exact = false;
+    for (device, name) in devices {
+        let candidate = if counts[&name] > 1 {
+            let index = indices.entry(name.clone()).or_insert(0_usize);
+            *index += 1;
+            format!("{} ({})", name, index)
         } else {
-            log::debug!("host.output_devices() failed or empty");
+            name
+        };
+        if target == candidate {
+            ambiguous_exact |= exact.is_some();
+            exact = Some(device);
+        } else if target.starts_with(&format!("{} [", candidate)) {
+            ambiguous |= fallback.is_some();
+            fallback = Some(device);
         }
-        log::warn!("Failed to resolve output device '{}'", target_name);
+    }
+    if ambiguous_exact {
         None
+    } else if exact.is_some() {
+        exact
+    } else if ambiguous {
+        None
+    } else {
+        fallback
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn select(names: &[&str], target: &str) -> Option<usize> {
+        resolve_named_device(
+            names
+                .iter()
+                .enumerate()
+                .map(|(index, name)| (index, (*name).into())),
+            target,
+        )
+    }
+    #[test]
+    fn resolves_duplicate_indices_and_rate_suffix_from_one_snapshot() {
+        assert_eq!(select(&["Mic", "Mic", "Out"], "Mic (2) [48kHz]"), Some(1));
+        assert_eq!(select(&["Mic", "Mic"], "Mic"), None);
+        assert_eq!(select(&["Mic"], "Mic [44.1kHz, 48kHz]"), Some(0));
+        assert_eq!(select(&["Mic"], "Microphone"), None);
+    }
+    #[test]
+    fn exact_name_wins_over_a_prefix_and_ambiguous_prefix_is_rejected() {
+        assert_eq!(select(&["Mic", "Mic [USB]"], "Mic [USB]"), Some(1));
+        assert_eq!(select(&["Mic", "Mic [USB]"], "Mic [USB] [48kHz]"), None);
+        assert_eq!(select(&["Mic", "Mic (1)", "Mic"], "Mic (1)"), None);
     }
 }
