@@ -1,6 +1,15 @@
 use super::*;
 pub(crate) use crate::dsp_verification_allocator::allocation_counts;
+use crate::vst_host::c_api::ProcessData;
 use std::cell::UnsafeCell;
+use windows::Win32::UI::WindowsAndMessaging::{AdjustWindowRectEx, GetWindowRect, WINDOW_EX_STYLE};
+
+#[test]
+fn malformed_plugin_paths_fail_before_loading_a_library() {
+    for path in ["", ".", "..", "C:\\"] {
+        assert!(VstInstance::load(path).is_err());
+    }
+}
 
 #[repr(C)]
 struct MockProcessor {
@@ -277,6 +286,40 @@ fn interleaved_channel_order_short_buffers_and_rt_allocation_are_preserved() {
             assert_eq!(test.calls(), 1);
         }
     }
+}
+
+#[test]
+fn invalid_interleaved_blocks_never_reach_plugin_or_leave_stale_audio() {
+    for (channels, frames) in [(0, 4), (2, 0), (2, 5), (usize::MAX, 2), (2, usize::MAX)] {
+        let mut test = fixture();
+        let mut output = [9.0; 8];
+        assert_eq!(
+            allocation_counts(|| test.processor.process(&[], &mut output, channels, frames)),
+            (0, 0)
+        );
+        assert_eq!(test.calls(), 0);
+        assert_eq!(output, [0.0; 8]);
+    }
+    let mut test = fixture();
+    let mut output = [9.0; 8];
+    test.processor.ptr = std::ptr::null_mut();
+    test.processor.process(&[], &mut output, 2, 4);
+    assert_eq!(test.calls(), 0);
+    assert_eq!(output, [0.0; 8]);
+}
+
+#[test]
+fn huge_channel_count_is_bounded_by_available_output() {
+    let mut test = fixture();
+    let mut output = [9.0; 4];
+    assert_eq!(
+        allocation_counts(|| test
+            .processor
+            .process(&[2.0, 4.0], &mut output, usize::MAX, 1)),
+        (0, 0)
+    );
+    assert_eq!(test.calls(), 1);
+    assert_eq!(output, [1.0, 2.0, 0.0, 0.0]);
 }
 
 #[test]

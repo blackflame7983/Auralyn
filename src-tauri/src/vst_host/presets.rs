@@ -237,13 +237,38 @@ pub fn db_to_linear(db: f32) -> f32 {
     10f32.powf(db / 20.0)
 }
 
+fn preset_path(config_dir: &Path, name: &str) -> Result<std::path::PathBuf, String> {
+    // インポート内の名前も外部入力。保存先からの逸脱とWindowsの特殊名を拒否する。
+    let stem = name.split('.').next().unwrap_or("").to_ascii_uppercase();
+    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ["COM", "LPT"].iter().any(|prefix| {
+            stem.strip_prefix(prefix).is_some_and(|suffix| {
+                matches!(
+                    suffix,
+                    "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                )
+            })
+        });
+    if name.is_empty()
+        || name.trim() != name
+        || name.ends_with('.')
+        || name
+            .chars()
+            .any(|c| c.is_control() || "<>:\"/\\|?*".contains(c))
+        || reserved
+    {
+        return Err("プリセット名に使用できない文字または名前が含まれています".into());
+    }
+    Ok(config_dir.join("presets").join(format!("{name}.json")))
+}
+
 pub fn save_preset(config_dir: &Path, name: &str, preset: &Preset) -> Result<(), String> {
+    let file_path = preset_path(config_dir, name)?;
     let presets_dir = config_dir.join("presets");
     if !presets_dir.exists() {
         fs::create_dir_all(&presets_dir).map_err(|e| e.to_string())?;
     }
 
-    let file_path = presets_dir.join(format!("{}.json", name));
     let json = serde_json::to_string_pretty(preset).map_err(|e| e.to_string())?;
     fs::write(file_path, json).map_err(|e| e.to_string())?;
     Ok(())
@@ -290,7 +315,7 @@ pub fn list_profile_meta(config_dir: &Path) -> Result<Vec<ProfileMeta>, String> 
 }
 
 pub fn load_preset(config_dir: &Path, name: &str) -> Result<Preset, String> {
-    let file_path = config_dir.join("presets").join(format!("{}.json", name));
+    let file_path = preset_path(config_dir, name)?;
     if !file_path.exists() {
         return Err(format!("Preset not found: {}", name));
     }
@@ -300,7 +325,7 @@ pub fn load_preset(config_dir: &Path, name: &str) -> Result<Preset, String> {
 }
 
 pub fn delete_preset(config_dir: &Path, name: &str) -> Result<(), String> {
-    let file_path = config_dir.join("presets").join(format!("{}.json", name));
+    let file_path = preset_path(config_dir, name)?;
     if file_path.exists() {
         fs::remove_file(file_path).map_err(|e| e.to_string())?;
     }
@@ -315,12 +340,7 @@ pub fn has_backup_profile(config_dir: &Path) -> bool {
 }
 
 /// デバイス名が一覧に存在するか
-pub fn device_exists(
-    name: &str,
-    is_input: bool,
-    inputs: &[String],
-    outputs: &[String],
-) -> bool {
+pub fn device_exists(name: &str, is_input: bool, inputs: &[String], outputs: &[String]) -> bool {
     if is_input {
         inputs.iter().any(|n| n == name)
     } else {
@@ -348,6 +368,51 @@ pub fn audio_config_differs(
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn invalid_names_never_read_write_or_delete_outside_presets() {
+        let root = temp_config_dir();
+        let preset = Preset::build_from_parts(
+            "safe".into(),
+            &ProfileSaveCategories::default(),
+            vec![],
+            None,
+            None,
+            None,
+        );
+        for name in [
+            "",
+            ".",
+            "..",
+            "../outside",
+            "..\\outside",
+            "C:\\outside",
+            "nested/name",
+            "nested\\name",
+            "stream:part",
+            "CON",
+            "nul.txt",
+            "COM1",
+            "LPT9",
+            "COM¹",
+            "trailing.",
+            " space ",
+            "bad\nname",
+        ] {
+            assert!(save_preset(&root, name, &preset).is_err(), "save: {name:?}");
+            assert!(load_preset(&root, name).is_err(), "load: {name:?}");
+            assert!(delete_preset(&root, name).is_err(), "delete: {name:?}");
+        }
+        assert!(
+            !root.join("presets").exists(),
+            "検証失敗では保存先ディレクトリも作らない"
+        );
+        assert_eq!(
+            preset_path(&root, "配信用 EQ.v2").unwrap(),
+            root.join("presets/配信用 EQ.v2.json")
+        );
+        assert!(preset_path(&root, BACKUP_PROFILE_NAME).is_ok());
+    }
 
     fn temp_config_dir() -> std::path::PathBuf {
         let stamp = SystemTime::now()
@@ -465,11 +530,7 @@ mod tests {
     #[test]
     fn list_and_load_from_disk() {
         let dir = temp_config_dir();
-        write_preset_file(
-            &dir,
-            "disk-test",
-            r#"{"name":"disk-test","plugins":[]}"#,
-        );
+        write_preset_file(&dir, "disk-test", r#"{"name":"disk-test","plugins":[]}"#);
         let names = list_presets(&dir).unwrap();
         assert!(names.contains(&"disk-test".to_string()));
         let loaded = load_preset(&dir, "disk-test").unwrap();

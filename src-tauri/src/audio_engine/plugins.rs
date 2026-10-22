@@ -92,6 +92,21 @@ impl PluginManager {
         self.rt_index_by_id.get(id).copied()
     }
 
+    pub fn reorder_plugins(&mut self, order: Vec<String>) -> Result<()> {
+        // 欠落・重複・古いIDを含む要求では、処理中のチェーンを部分的に消さない。
+        let requested: HashSet<_> = order.iter().collect();
+        if order.len() != self.order.len()
+            || requested.len() != order.len()
+            || self.order.iter().any(|id| !requested.contains(id))
+        {
+            return Err(anyhow!(
+                "Plugin order must contain each loaded plugin exactly once"
+            ));
+        }
+        self.order = order;
+        Ok(())
+    }
+
     pub fn free_rt_index(&mut self, id: &str) {
         let Some(idx) = self.rt_index_by_id.remove(id) else {
             return;
@@ -129,7 +144,8 @@ impl PluginManager {
             if let Err(e) =
                 instance.prepare_processing(sample_rate, block_size as i32, channels as i32)
             {
-                log::warn!("Failed to prepare plugin {} on load: {}", name, e);
+                self.free_rt_index(&id);
+                return Err(e);
             }
             processor = instance.create_processor();
         }
@@ -310,7 +326,29 @@ impl PluginManager {
 
 #[cfg(test)]
 mod tests {
-    use super::burned_library_key;
+    use super::{burned_library_key, PluginManager};
+
+    #[test]
+    fn invalid_reorders_preserve_the_chain_and_valid_reorders_preserve_all_plugins() {
+        let mut manager = PluginManager::new();
+        manager.order = vec!["a".into(), "b".into()];
+        for order in [
+            vec![],
+            vec!["a"],
+            vec!["a", "a"],
+            vec!["a", "other"],
+            vec!["b", "a", "extra"],
+        ] {
+            assert!(manager
+                .reorder_plugins(order.into_iter().map(String::from).collect())
+                .is_err());
+            assert_eq!(manager.order, ["a", "b"]);
+        }
+        manager
+            .reorder_plugins(vec!["b".into(), "a".into()])
+            .unwrap();
+        assert_eq!(manager.order, ["b", "a"]);
+    }
 
     #[test]
     fn burned_library_key_is_stable() {
