@@ -1,13 +1,11 @@
 import { Modal } from '../../ui/modal';
 import { MicrophonePermissionGuide } from './MicrophonePermissionGuide';
-import { useObsUsage } from '../../../hooks/useObsUsage';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage } from 'react-icons/md';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { audioApi, AudioDeviceList, BuiltInEffectsPreset, EngineRuntimeStats, EngineTuningConfig, NoiseControlMode } from '../../../api/audio';
+import { audioApi, BuiltInEffectsPreset, EngineRuntimeStats, EngineTuningConfig, NoiseControlMode } from '../../../api/audio';
 import { autostartApi } from '../../../api/autostart';
-import { obsApi, ObsAudioReachResult } from '../../../api/obs';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -15,18 +13,19 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from '@/components/ui/label';
 import { useTheme } from '../../../hooks/useTheme';
 import { InputChannelSelector } from './InputChannelSelector';
-import { ObsSafeSetup } from './ObsSafeSetup';
+import { ObsConnectionSettings } from './ObsConnectionSettings';
 import { APP_INFO } from '../../../constants/appInfo';
 import { MigrationPanel } from './MigrationPanel';
 import { ShortcutsPanel } from './ShortcutsPanel';
 import { UpdatePreferences } from './UpdatePreferences';
 import { REVIEW_KEY } from '@/api/migration';
+import { useAudioDeviceSelection } from './useAudioDeviceSelection';
 
 interface AudioSettingsModalProps {
   initialTab?: 'audio' | 'obs' | 'sound';
   isOpen: boolean;
   onClose: () => void;
-  onConfigChange: (config: Partial<import('../../../contexts/AudioConfigContext').AudioConfig> & { host: string }, options?: { audioStarted: true }) => void | Promise<void>;
+  onConfigChange: (config: Partial<import('../../../lib/audioPreferences').AudioPreferences> & { host: string }, options?: { audioStarted: true }) => void | Promise<void>;
   onEngineRestarted?: () => Promise<void> | void;
   onOpenWizard?: () => void;
   onOpenOBSGuide?: () => void;
@@ -55,17 +54,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 }) => {
   const getBeginnerMode = () => localStorage.getItem('vst_host_beginner_mode') !== 'false';
   const { theme, setTheme } = useTheme();
-  const [devices, setDevices] = useState<AudioDeviceList>(() => {
-    // Initialize from localStorage
-    const cached = localStorage.getItem('vst_host_cached_devices');
-    return cached ? JSON.parse(cached) : { inputs: [], outputs: [] };
-  });
-  const [selectedHost, setSelectedHost] = useState<string>('');
-  const [selectedInput, setSelectedInput] = useState<string>('');
-  const [selectedOutput, setSelectedOutput] = useState<string>('');
-  const [selectedBufferSize, setSelectedBufferSize] = useState<number>(currentBufferSize || 512);
-  const [selectedSampleRate, setSelectedSampleRate] = useState<number>(currentSampleRate || 48000);
-  const [loading, setLoading] = useState(false);
+  const [isApplying, setLoading] = useState(false);
   const reviewRequired = localStorage.getItem(REVIEW_KEY) === 'true';
   const [migrationConfirmed, setMigrationConfirmed] = useState(false);
   const importedPlugins = useMemo(() => {
@@ -73,6 +62,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     catch { return []; }
   }, []);
   const [error, setError] = useState<string | null>(null);
+  const {
+    devices, selectedHost, setSelectedHost, selectedInput, setSelectedInput,
+    selectedOutput, setSelectedOutput, selectedBufferSize, setSelectedBufferSize,
+    selectedSampleRate, setSelectedSampleRate, fetchDevices, isAsio,
+    filteredInputs, filteredOutputs, activeDevice, supportedBufferSizes,
+    canChangeBufferSize, loading: devicesLoading,
+  } = useAudioDeviceSelection({ isOpen, currentSampleRate, currentBufferSize, onError: setError });
+  const loading = isApplying || devicesLoading;
 
   // Simple/Advanced Mode
   const [isAdvancedMode, setIsAdvancedMode] = useState(() => {
@@ -122,18 +119,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   }, [isBeginnerMode, isSystemTabEnabled, activeTab]);
 
   // OBS State
-  const [obsHost, setObsHost] = useState('localhost');
-  const [obsPort, setObsPort] = useState(4455);
-  const [obsPassword, setObsPassword] = useState('');
-  const [isObsConnected, setIsObsConnected] = useState(false);
-  const obsInUse = useObsUsage(isOpen && activeTab === 'obs');
-  const [obsStatusLoading, setObsStatusLoading] = useState(true);
-  const [obsConnectionHint, setObsConnectionHint] = useState<string | null>(null);
-  const [obsSetupLoading, setObsSetupLoading] = useState(false);
-  const [obsReachLoading, setObsReachLoading] = useState(false);
-
-  const [obsReachResult, setObsReachResult] = useState<ObsAudioReachResult | null>(null);
-
   // Preset State
   const [presets, setPresets] = useState<Record<string, any>>({});
   const [presetName, setPresetName] = useState('');
@@ -155,6 +140,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [noiseStrength, setNoiseStrength] = useState(80);
   const [noiseVoiceGuard, setNoiseVoiceGuard] = useState(true);
   const [noiseActionBusy, setNoiseActionBusy] = useState(false);
+  const noiseStrengthEditing = useRef(false);
   const [builtInEffectsEnabled, setBuiltInEffectsEnabled] = useState(false);
   const [builtInEffectsPreset, setBuiltInEffectsPreset] = useState<BuiltInEffectsPreset>('broadcast');
   const [builtInEffectsAmount, setBuiltInEffectsAmount] = useState(70);
@@ -170,7 +156,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (['broadcast', 'warm', 'bright'].includes(engineStats.builtInEffectsPreset)) {
       setBuiltInEffectsPreset(engineStats.builtInEffectsPreset as BuiltInEffectsPreset);
     }
-    if (engineStats.noiseControlStrength > 0) {
+    if (!noiseStrengthEditing.current && engineStats.noiseControlStrength > 0) {
       setNoiseStrength(Math.round(engineStats.noiseControlStrength * 100));
     }
   }, [engineStats]);
@@ -223,48 +209,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   // Load settings from localStorage on mount/open
   useEffect(() => {
     if (isOpen) {
-      if (currentSampleRate) setSelectedSampleRate(currentSampleRate);
-      if (currentBufferSize) setSelectedBufferSize(currentBufferSize);
-
-      const savedConfig = localStorage.getItem('vst_host_audio_config');
-      if (savedConfig) {
-        try {
-          const config = JSON.parse(savedConfig);
-          if (config.host) setSelectedHost(config.host);
-          if (config.input) setSelectedInput(config.input);
-          if (config.output) setSelectedOutput(config.output);
-          // Only use saved if Props are missing (or logic: Props > Saved)
-          // Actually, if Props are provided (from Active Engine), they are Truth.
-          // Fallback to Saved if Props are undefined (Engine not started?)
-          if (!currentBufferSize && config.bufferSize) setSelectedBufferSize(config.bufferSize);
-          if (!currentSampleRate && config.sampleRate) setSelectedSampleRate(config.sampleRate);
-        } catch (e) {
-          console.error('Failed to parse saved audio config', e);
-        }
-      }
-
-      // Load OBS Config
-      const savedObs = localStorage.getItem('vst_host_obs_config');
-      if (savedObs) {
-        try {
-          const obsConfig = JSON.parse(savedObs);
-          if (obsConfig.host) setObsHost(obsConfig.host);
-          if (obsConfig.port) setObsPort(obsConfig.port);
-          if (obsConfig.password) setObsPassword(obsConfig.password);
-        } catch { }
-      }
-
-      // Optimization: Only fetch if cache is empty OR cache format is outdated (missing channels)
-      // If we have devices (from localStorage), do NOT fetch automatically locally.
-      // This prevents the "Freeze" on open.
-      const hasChannelsField = devices.inputs.length > 0 && devices.inputs[0]?.channels !== undefined;
-      if ((devices.inputs.length === 0 && devices.outputs.length === 0) || !hasChannelsField) {
-        fetchDevices();
-      } else {
-        // 一覧取得を省略する再表示でも、ホストと入出力を同じ一覧から復元する。
-        restoreDeviceSelection(devices);
-      }
-
       autostartApi.getStatus().then(s => {
         setAutostartEnabled(s.enabled);
         setAutostartCanChange(s.canChange);
@@ -286,97 +230,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     }
   }, [isOpen, currentSampleRate, currentBufferSize]);
 
-  // 再表示では接続を作り直さず、バックエンドが保持する接続・履歴へ戻る。
-  useEffect(() => {
-    if (!obsInUse) return;
-    let active = true;
-    setObsStatusLoading(true);
-    obsApi.connectionStatus()
-      .then(connected => { if (active) setIsObsConnected(connected); })
-      .catch(() => { if (active) setObsConnectionHint('接続状態を確認できませんでした。接続先を確認してください。'); })
-      .finally(() => { if (active) setObsStatusLoading(false); });
-    return () => { active = false; };
-  }, [obsInUse]);
-
-  const handleConnectObs = async () => {
-    setLoading(true);
-    try {
-      await obsApi.connect({ host: obsHost, port: obsPort, password: obsPassword });
-      setIsObsConnected(true);
-      setObsConnectionHint(null);
-      toast.success("OBSに接続しました");
-      localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: obsHost, port: obsPort, password: obsPassword }));
-    } catch (e) {
-      console.error(e);
-      const message = `${e}`.toLowerCase();
-      let hint = 'OBS側で「ツール → WebSocketサーバー設定」を開き、サーバー有効化・ポート4455・パスワード一致を確認してください。';
-      if (message.includes('401') || message.includes('auth')) {
-        hint = '認証に失敗しました。OBSのWebSocketパスワードと、この画面のパスワードが一致しているか確認してください。';
-      } else if (message.includes('connection refused') || message.includes('failed to connect')) {
-        hint = 'OBSが起動していないか、WebSocketサーバーが無効の可能性があります。OBSを起動して設定を確認してください。';
-      }
-
-      setObsConnectionHint(hint);
-      toast.error("OBSへの接続に失敗しました", {
-        description: hint,
-        action: onOpenOBSGuide
-          ? {
-            label: 'ガイドを開く',
-            onClick: onOpenOBSGuide,
-          }
-          : undefined,
-      });
-      setIsObsConnected(false);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDisconnectObs = async () => {
-    try {
-      await obsApi.disconnect();
-      setIsObsConnected(false);
-      setObsConnectionHint(null);
-
-      setObsReachResult(null);
-      toast.info("切断しました");
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleObsReachCheck = () => {
-    showConfirm({
-      title: '接続テストを実行しますか？',
-      description: 'テストトーンを再生して OBS への到達を確認します。配信中は実行しないでください。',
-      confirmLabel: 'テストを開始',
-      onConfirm: async () => {
-        setObsReachLoading(true);
-        setObsReachResult(null);
-        try {
-          const result = await obsApi.checkAudioReach(2000);
-          setObsReachResult(result);
-          if (result.reached === 'unsupported') {
-            toast.info('メーター取得がサポートされていません', {
-              description: 'OBS の入力メーターを手動で確認してください。',
-            });
-          } else if (result.reached) {
-            toast.success('OBS に音が届いています');
-          } else {
-            toast.error('OBS に音が届いていません', {
-              description: 'ルーティング設定を確認してください。',
-            });
-          }
-        } catch (e) {
-          console.error(e);
-          toast.error('接続テストに失敗しました', { description: `${e}` });
-        } finally {
-          setObsReachLoading(false);
-        }
-      },
-    });
-  };
-
   const refreshEngineRuntimeStats = async () => {
     setStatsLoading(true);
     try {
@@ -391,7 +244,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   };
 
   const applyNoiseControlConfig = async (next?: Partial<{ active: boolean; mode: NoiseControlMode; strength: number; voiceGuard: boolean }>) => {
-    const active = next?.active ?? true;
+    const active = next?.active ?? !!engineStats?.noiseReductionEnabled;
     const mode = next?.mode ?? noiseMode;
     const strength = next?.strength ?? noiseStrength;
     const voiceGuard = next?.voiceGuard ?? noiseVoiceGuard;
@@ -409,6 +262,25 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     } catch (e) {
       console.error('Failed to apply noise control config', e);
       toast.error('ノイズ低減の更新に失敗しました');
+    } finally {
+      setNoiseActionBusy(false);
+    }
+  };
+
+  const commitNoiseStrength = (value: string) => {
+    if (!noiseStrengthEditing.current) return;
+    noiseStrengthEditing.current = false;
+    void applyNoiseControlConfig({ strength: Number(value) });
+  };
+
+  const handleCancelNoiseLearning = async () => {
+    setNoiseActionBusy(true);
+    try {
+      await audioApi.cancelNoiseLearning();
+      await refreshEngineRuntimeStats();
+    } catch (error) {
+      console.error('Failed to cancel noise learning', error);
+      toast.error('ノイズ学習を中止できませんでした。状態を確認して再試行してください');
     } finally {
       setNoiseActionBusy(false);
     }
@@ -493,125 +365,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     });
   };
 
-  const restoreDeviceSelection = (result: AudioDeviceList) => {
-      // Extract available hosts
-      const hosts = Array.from(new Set([...result.inputs, ...result.outputs].map(d => d.host)));
-
-      const savedConfigStr = localStorage.getItem('vst_host_audio_config');
-      let currentHost = '';
-      let currentInput = '';
-      let currentOutput = '';
-      if (savedConfigStr) {
-        try {
-          const cfg = JSON.parse(savedConfigStr);
-          currentHost = cfg.host;
-          currentInput = cfg.input;
-          currentOutput = cfg.output;
-        } catch { }
-      }
-
-      if (hosts.length > 0) {
-        // If we don't have a host, or the current one is invalid, pick a default
-        const effectiveHost = currentHost || selectedHost;
-
-        if (!effectiveHost || !hosts.includes(effectiveHost)) {
-          // Saved host invalid or missing, selecting default
-          // Prioritize ASIO if available, otherwise WASAPI/default (first one)
-          const hasAsio = hosts.some(h => h.toLowerCase().includes('asio'));
-          const defaultHost = hasAsio ? hosts.find(h => h.toLowerCase().includes('asio'))! : hosts[0];
-          setSelectedHost(defaultHost);
-        } else {
-          // Ensure state is synced with effective host (fixes closure staleness)
-          setSelectedHost(effectiveHost);
-
-          // Restore I/O if valid for this host
-          if (currentInput) {
-            const isValidInput = result.inputs.some(d => d.host === effectiveHost && d.name === currentInput);
-            if (isValidInput) setSelectedInput(currentInput);
-          }
-          if (currentOutput) {
-            const isValidOutput = result.outputs.some(d => d.host === effectiveHost && d.name === currentOutput);
-            if (isValidOutput) setSelectedOutput(currentOutput);
-          }
-        }
-      } else {
-        setSelectedHost('');
-        setSelectedInput('');
-        setSelectedOutput('');
-      }
-  };
-
-  const fetchDevices = async (force: boolean = false) => {
-    if (force || (devices.inputs.length === 0 && devices.outputs.length === 0)) {
-      setLoading(true);
-    }
-    setError(null);
-    try {
-      const result = await audioApi.getDevices(force);
-      setDevices(result);
-      localStorage.setItem('vst_host_cached_devices', JSON.stringify(result));
-      restoreDeviceSelection(result);
-    } catch (err) {
-      console.error('Failed to get devices:', err);
-      setError('デバイスの取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  // Filter devices based on selected host
-  const isAsio = useMemo(() => selectedHost.toLowerCase().includes('asio'), [selectedHost]);
-
-  const filteredInputs = useMemo(() =>
-    devices.inputs.filter(d => d.host === selectedHost),
-    [devices.inputs, selectedHost]);
-
-  const filteredOutputs = useMemo(() =>
-    devices.outputs.filter(d => d.host === selectedHost),
-    [devices.outputs, selectedHost]);
-
-  // Determine active device for capabilities (Buffer Size)
-  const activeDevice = useMemo(() => {
-    if (!selectedHost) return null;
-    // For ASIO, Input and Output are typically same driver properties.
-    // We prefer Input device info if available.
-    return filteredInputs.find(d => d.name === selectedInput)
-      || filteredOutputs.find(d => d.name === selectedOutput)
-      || (filteredInputs.length > 0 ? filteredInputs[0] : null);
-  }, [selectedHost, selectedInput, selectedOutput, filteredInputs, filteredOutputs]);
-
-  // Calculate supported buffer sizes based on active device
-  const supportedBufferSizes = useMemo(() => {
-    // Standard powers of 2 (Fallback / Default)
-    const allCandidates = [64, 128, 256, 512, 1024, 2048, 4096];
-
-    if (!activeDevice || !activeDevice.buffer_size_range) {
-      // If NOT ASIO -> Allow all (Software buffering fallback)
-      // If ASIO and no range -> Assume Fixed/Locked (Return empty)
-      return isAsio ? [] : allCandidates;
-    }
-
-    const [min, max] = activeDevice.buffer_size_range;
-
-    // Find valid candidates
-    const valid = allCandidates.filter(s => s >= min && s <= max);
-
-    // If no standard candidates fit (e.g. range 100-200), fallback to min/max
-    if (valid.length === 0) {
-      valid.push(min);
-      if (max !== min) valid.push(max);
-    }
-
-    // Ensure the CURRENT running buffer size is always an option (Trust the Engine)
-    if (currentBufferSize && !valid.includes(currentBufferSize)) {
-      valid.push(currentBufferSize);
-    }
-
-    return valid.sort((a, b) => a - b);
-  }, [activeDevice, isAsio, currentBufferSize]);
-
-  const canChangeBufferSize = supportedBufferSizes.length > 0;
   const estimatedLatencyMs = useMemo(
     () => ((selectedBufferSize * 2) / selectedSampleRate) * 1000 + (isAsio ? 0 : 20),
     [selectedBufferSize, selectedSampleRate, isAsio]
@@ -622,48 +375,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (estimatedLatencyMs <= 40) return { label: '普通', className: 'text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 border-yellow-500/30' };
     return { label: '遅延大', className: 'text-destructive bg-destructive/10 border-destructive/30' };
   }, [estimatedLatencyMs]);
-
-  // Auto-correct selectedBufferSize if it falls out of range
-  useEffect(() => {
-    if (canChangeBufferSize && supportedBufferSizes.length > 0) {
-      // Trust the engine: If matches active engine config, allow it even if not in list
-      if (currentBufferSize && selectedBufferSize === currentBufferSize) return;
-
-      if (!supportedBufferSizes.includes(selectedBufferSize)) {
-        // Find nearest
-        const nearest = supportedBufferSizes.reduce((prev, curr) => {
-          return (Math.abs(curr - selectedBufferSize) < Math.abs(prev - selectedBufferSize) ? curr : prev);
-        });
-        // Auto-corrected buffer size to nearest supported value
-        setSelectedBufferSize(nearest);
-      }
-    }
-  }, [canChangeBufferSize, supportedBufferSizes, selectedBufferSize, currentBufferSize]);
-
-
-  // Auto-select first device logic needs to be careful not to overwrite saved input/output
-  // ONLY auto-select if selectedInput/Output is empty or invalid for the new host
-  useEffect(() => {
-    if (selectedHost) {
-      if (filteredInputs.length === 0) return; // Devices not loaded yet
-
-      // Check if current selectedInput is valid for this host
-      const isInputValid = filteredInputs.some(d => d.name === selectedInput);
-      if (!isInputValid) {
-        if (filteredInputs.length > 0) setSelectedInput(filteredInputs[0].name);
-        else setSelectedInput('');
-      }
-
-      // For ASIO, sync Output with Input
-      if (!isAsio) {
-        const isOutputValid = filteredOutputs.some(d => d.name === selectedOutput);
-        if (!isOutputValid) {
-          if (filteredOutputs.length > 0) setSelectedOutput(filteredOutputs[0].name);
-          else setSelectedOutput('');
-        }
-      }
-    }
-  }, [selectedHost, filteredInputs, filteredOutputs, isAsio]);
 
   const handleSave = async () => {
     setLoading(true);
@@ -1217,7 +928,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <p className="text-sm text-muted-foreground">ノイズ低減と内蔵ボイスチェーンは、その場で音声処理に反映します。調整後はボイスチェックで聴き比べてください。</p>
             {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="h-10 px-4 rounded-md border border-input text-sm hover:bg-muted">ボイスチェックで聴く</button>}
             {!engineStats && <p role="status" className="text-sm text-muted-foreground">音声処理の現在の設定を確認できるまで、調整はできません。表示が変わらない場合は設定画面を開き直してください。</p>}
-            <fieldset disabled={!engineStats} className="min-w-0 space-y-4">
+            <fieldset disabled={!engineStats || noiseActionBusy} className="min-w-0 space-y-4">
                 {/* Built-in Effects */}
                 <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
                   <div className="flex items-center justify-between gap-3">
@@ -1336,7 +1047,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         key={mode}
                         onClick={() => {
                           setNoiseMode(mode);
-                          applyNoiseControlConfig({ active: true, mode });
+                          applyNoiseControlConfig({ mode });
                         }}
                         className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
                           noiseMode === mode
@@ -1375,9 +1086,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       max={125}
                       step={5}
                       value={noiseStrength}
-                      onChange={(e) => setNoiseStrength(Number(e.target.value))}
-                      onMouseUp={() => applyNoiseControlConfig({ strength: noiseStrength })}
-                      onKeyUp={() => applyNoiseControlConfig({ strength: noiseStrength })}
+                      onChange={(e) => {
+                        noiseStrengthEditing.current = true;
+                        setNoiseStrength(Number(e.target.value));
+                      }}
+                      onPointerUp={(e) => commitNoiseStrength(e.currentTarget.value)}
+                      onKeyUp={(e) => commitNoiseStrength(e.currentTarget.value)}
+                      onBlur={(e) => commitNoiseStrength(e.currentTarget.value)}
                       className="w-full accent-primary"
                       aria-label="ノイズ低減の抑制強度"
                     />
@@ -1392,7 +1107,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       3秒学習
                     </button>
                     <button
-                      onClick={() => audioApi.cancelNoiseLearning().then(refreshEngineRuntimeStats)}
+                      onClick={handleCancelNoiseLearning}
                       className="px-3 py-2 rounded-md border border-input bg-background text-muted-foreground hover:text-foreground transition-colors"
                     >
                       学習を中止
@@ -1400,6 +1115,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <div className="px-3 py-2 rounded-md border border-input bg-background text-muted-foreground">
                       {engineStats?.noiseLearningState === 'capturing'
                         ? `学習中 ${Math.round((engineStats.noiseLearningProgress ?? 0) * 100)}%`
+                        : engineStats?.noiseLearningState === 'invalid'
+                          ? '学習を完了できませんでした。入力を確認して再試行してください'
                         : engineStats?.noiseProfileAvailable
                           ? `学習済み RMS ${Math.round((engineStats.noiseProfileRms ?? 0) * 1000) / 1000}`
                           : '未学習'}
@@ -1409,7 +1126,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <div className="flex items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2">
                     <div>
                       <Label className="text-xs font-bold text-foreground">声を守る</Label>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">語頭、笑い、叫びで抑制を自動的に弱めます。</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">入力の音量を目安に抑制を弱めます。声とノイズを完全に判別する機能ではありません。</p>
                     </div>
                     <Switch
                       checked={noiseVoiceGuard}
@@ -1426,162 +1143,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           </TabsContent>
 
           <TabsContent value="obs" className="space-y-4">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">ホスト名</label>
-                <input
-                  aria-label="OBSホスト名"
-                  type="text"
-                  value={obsHost}
-                  onChange={(e) => setObsHost(e.target.value)}
-                  className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                  placeholder="localhost"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">ポート</label>
-                <input
-                  aria-label="OBSポート"
-                  type="number"
-                  value={obsPort}
-                  onChange={(e) => setObsPort(Number(e.target.value))}
-                  className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                  placeholder="4455"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">パスワード</label>
-                <input
-                  aria-label="OBSパスワード"
-                  type="password"
-                  value={obsPassword}
-                  onChange={(e) => setObsPassword(e.target.value)}
-                  className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                  placeholder="パスワードを入力"
-                />
-              </div>
-
-              <div className="pt-4">
-                {!isObsConnected ? (
-                  <button
-                    onClick={handleConnectObs}
-                    disabled={loading || obsStatusLoading}
-                    className="w-full py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-all font-bold"
-                  >
-                    {obsStatusLoading ? "接続状態を確認中..." : loading ? "接続中..." : "接続"}
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleDisconnectObs}
-                    disabled={obsSetupLoading || obsReachLoading}
-                    className="w-full py-2 bg-green-600/20 text-green-400 border border-green-600/50 rounded-lg hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/50 transition-all font-bold group"
-                  >
-                    <span className="group-hover:hidden">接続済み (クリックで切断)</span>
-                    <span className="hidden group-hover:inline">切断する</span>
-                  </button>
-                )}
-              </div>
-
-              {obsConnectionHint && (
-                <div className="text-xs bg-destructive/10 border border-destructive/30 text-destructive rounded-md p-3 space-y-2">
-                  <p className="font-bold">接続に失敗しました。次を確認してください。</p>
-                  <p>{obsConnectionHint}</p>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {onOpenOBSGuide && (
-                      <button
-                        onClick={onOpenOBSGuide}
-                        className="px-2.5 py-1 rounded border border-destructive/40 hover:bg-destructive/10 transition-colors"
-                      >
-                        OBS連携ガイドを開く
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        setObsHost('localhost');
-                        setObsPort(4455);
-                      }}
-                      className="px-2.5 py-1 rounded border border-border hover:bg-muted/60 text-foreground transition-colors"
-                    >
-                      ホスト/ポートを既定値に戻す
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md border border-input mt-4">
-                <p>OBS WebSocket v5 (OBS 28+) が必要です。<br />OBS側で「ツール」→「WebSocketサーバー設定」を確認してください。</p>
-              </div>
-
-              <div className="mt-4">
-                <ObsSafeSetup
-                  connected={isObsConnected}
-                  disabled={!isObsConnected || obsStatusLoading || obsReachLoading}
-                  onBusyChange={setObsSetupLoading}
-                  onOpenGuide={onOpenOBSGuide}
-                />
-              </div>
-              {isObsConnected && (
-                <div className="mt-6 pt-6 border-t border-border space-y-4">
-                  <h3 className="text-sm font-bold text-foreground">OBS の設定を確認・変更</h3>
-                  <div className="space-y-3">
-
-                    <button
-                      type="button"
-                      onClick={handleObsReachCheck}
-                      disabled={obsSetupLoading || obsReachLoading}
-                      className="w-full py-2 bg-muted border border-border text-foreground rounded-lg hover:bg-muted/80 transition-all font-bold disabled:opacity-50"
-                    >
-                      {obsReachLoading ? 'テスト中...' : '2. 接続テスト'}
-                    </button>
-
-                    {obsReachResult && (
-                      <div className="text-xs bg-muted/50 border border-border rounded-md p-3 space-y-2">
-                        {obsReachResult.reached === 'unsupported' ? (
-                          <p className="text-yellow-600 dark:text-yellow-400">
-                            メーター取得に対応していません。OBS の音声ミキサーで「Auralyn マイク」のレベルが動くか手動で確認してください。
-                          </p>
-                        ) : obsReachResult.reached ? (
-                          <p className="text-emerald-500 font-medium">
-                            ✅ OBS に音が届いています
-                            {obsReachResult.peakDb !== undefined && (
-                              <span className="text-muted-foreground font-normal ml-1">
-                                （ピーク {obsReachResult.peakDb.toFixed(1)} dB）
-                              </span>
-                            )}
-                          </p>
-                        ) : (
-                          <div className="space-y-2">
-                            <p className="text-destructive font-medium">
-                              ❌ OBS に音が届いていません
-                              {obsReachResult.peakDb !== undefined && (
-                                <span className="text-muted-foreground font-normal ml-1">
-                                  （ピーク {obsReachResult.peakDb.toFixed(1)} dB）
-                                </span>
-                              )}
-                            </p>
-                            <p className="text-muted-foreground">
-                              Auralyn の出力先が CABLE Input になっているか、OBS のデバイスが CABLE Output か確認してください。
-                            </p>
-                            {onOpenTroubleshoot && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onClose();
-                                  onOpenTroubleshoot();
-                                }}
-                                className="px-2.5 py-1 rounded border border-border hover:bg-muted/80 transition-colors text-foreground"
-                              >
-                                トラブルシュートを開く
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+            <ObsConnectionSettings
+              showConfirm={showConfirm}
+              onClose={onClose}
+              onOpenOBSGuide={onOpenOBSGuide}
+              onOpenTroubleshoot={onOpenTroubleshoot}
+            />
           </TabsContent>
 
           <TabsContent value="appearance" className="space-y-6">
