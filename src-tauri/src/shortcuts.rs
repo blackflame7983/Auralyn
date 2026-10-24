@@ -38,8 +38,35 @@ pub struct Binding {
 #[serde(rename_all = "camelCase")]
 pub struct Status {
     bindings: Vec<Binding>,
-    errors: Vec<String>,
+    errors: Vec<ShortcutError>,
 }
+
+// 表示文をIPCへ固定せず、画面で現在の言語へ解決する。外部の詳細は別フィールドで保持する。
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(tag = "code", rename_all = "camelCase")]
+pub enum ShortcutError {
+    TooManyBindings,
+    InvalidShortcut { shortcut: String },
+    ModifierRequired,
+    DuplicateBinding,
+    StateUnavailable,
+    LoadFailed { detail: String },
+    RegisterFailed { shortcut: String, detail: String },
+    RegistrationConflict { detail: String },
+    SaveFailed { detail: String },
+    UnregisterFailed { detail: String },
+    OperationFailed { detail: String },
+    AudioStateUnavailable,
+    GainPending,
+    ActionFailed { detail: String },
+}
+
+impl std::fmt::Display for ShortcutError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "Shortcut error: {self:?}")
+    }
+}
+impl std::error::Error for ShortcutError {}
 #[derive(Default)]
 pub struct Shortcuts(pub Mutex<Status>, AtomicBool, AtomicU64);
 
@@ -56,33 +83,39 @@ fn defaults() -> Vec<Binding> {
     ]
 }
 
-pub(crate) fn validate(bindings: &[Binding]) -> Result<Vec<Shortcut>, String> {
+pub(crate) fn validate(bindings: &[Binding]) -> Result<Vec<Shortcut>, ShortcutError> {
     if bindings.len() > 8 {
-        return Err("ショートカットは8操作までです。".into());
+        return Err(ShortcutError::TooManyBindings);
     }
     let mut keys = HashSet::new();
     let mut actions = HashSet::new();
     bindings
         .iter()
         .map(|b| {
-            let key = Shortcut::from_str(&b.shortcut)
-                .map_err(|_| format!("キーの形式を確認してください: {}", b.shortcut))?;
+            let key =
+                Shortcut::from_str(&b.shortcut).map_err(|_| ShortcutError::InvalidShortcut {
+                    shortcut: b.shortcut.clone(),
+                })?;
             if b.shortcut.len() > 80 || !b.shortcut.contains('+') {
-                return Err("Alt・Ctrl・Shiftなどと組み合わせて指定してください。".into());
+                return Err(ShortcutError::ModifierRequired);
             }
             if !keys.insert(key.id()) || !actions.insert(format!("{:?}", b.action)) {
-                return Err("同じキー・操作を重複して登録できません。".into());
+                return Err(ShortcutError::DuplicateBinding);
             }
             Ok(key)
         })
         .collect()
 }
 
-pub(crate) fn read_bindings(root: &Path) -> Result<Vec<Binding>, String> {
+pub(crate) fn read_bindings(root: &Path) -> Result<Vec<Binding>, ShortcutError> {
     let path = root.join("shortcuts.json");
     if path.exists() {
-        serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())
+        let bytes = std::fs::read(path).map_err(|e| ShortcutError::LoadFailed {
+            detail: e.to_string(),
+        })?;
+        serde_json::from_slice(&bytes).map_err(|e| ShortcutError::LoadFailed {
+            detail: e.to_string(),
+        })
     } else {
         Ok(defaults())
     }
@@ -93,17 +126,26 @@ pub fn initialize(app: &AppHandle) {
     if app.state::<Shortcuts>().1.swap(true, Ordering::AcqRel) {
         return;
     }
-    let result = (|| -> Result<(), String> {
-        let root = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let result = (|| -> Result<(), ShortcutError> {
+        let root = app
+            .path()
+            .app_config_dir()
+            .map_err(|e| ShortcutError::LoadFailed {
+                detail: e.to_string(),
+            })?;
         let bindings = read_bindings(&root)?;
         let keys = validate(&bindings)?;
         let state = app.state::<Shortcuts>();
-        let mut state = state.0.lock().map_err(|_| "キー設定を取得できません")?;
+        let mut state = state
+            .0
+            .lock()
+            .map_err(|_| ShortcutError::StateUnavailable)?;
         for (b, key) in bindings.iter().zip(keys) {
             if let Err(error) = app.global_shortcut().register(key) {
-                state
-                    .errors
-                    .push(format!("{} を登録できませんでした: {error}", b.shortcut));
+                state.errors.push(ShortcutError::RegisterFailed {
+                    shortcut: b.shortcut.clone(),
+                    detail: error.to_string(),
+                });
             }
         }
         state.bindings = bindings;
@@ -117,21 +159,27 @@ pub fn initialize(app: &AppHandle) {
 }
 
 #[tauri::command]
-pub fn get_shortcuts(app: AppHandle) -> Result<Status, String> {
+pub fn get_shortcuts(app: AppHandle) -> Result<Status, ShortcutError> {
     Ok(app
         .state::<Shortcuts>()
         .0
         .lock()
-        .map_err(|_| "キー設定を取得できません")?
+        .map_err(|_| ShortcutError::StateUnavailable)?
         .clone())
 }
 
 #[tauri::command]
-pub async fn save_shortcuts(app: AppHandle, bindings: Vec<Binding>) -> Result<Status, String> {
+pub async fn save_shortcuts(
+    app: AppHandle,
+    bindings: Vec<Binding>,
+) -> Result<Status, ShortcutError> {
     let keys = validate(&bindings)?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<Shortcuts>();
-        let mut state = state.0.lock().map_err(|_| "キー設定を取得できません")?;
+        let mut state = state
+            .0
+            .lock()
+            .map_err(|_| ShortcutError::StateUnavailable)?;
         let old_keys = validate(&state.bindings)?;
         let mut added = Vec::new();
         for key in &keys {
@@ -140,9 +188,9 @@ pub async fn save_shortcuts(app: AppHandle, bindings: Vec<Binding>) -> Result<St
                     for registered in added {
                         let _ = app.global_shortcut().unregister(registered);
                     }
-                    return Err(format!(
-                        "キーがほかのアプリと競合しています。変更前の設定を保持しました: {error}"
-                    ));
+                    return Err(ShortcutError::RegistrationConflict {
+                        detail: error.to_string(),
+                    });
                 }
                 added.push(*key);
             }
@@ -150,14 +198,16 @@ pub async fn save_shortcuts(app: AppHandle, bindings: Vec<Binding>) -> Result<St
         let path = app
             .path()
             .app_config_dir()
-            .map_err(|e| e.to_string())?
+            .map_err(|e| ShortcutError::SaveFailed {
+                detail: e.to_string(),
+            })?
             .join("shortcuts.json");
         let persist = crate::migration::write_json(&path, &bindings);
         if let Err(error) = persist {
             for key in added {
                 let _ = app.global_shortcut().unregister(key);
             }
-            return Err(format!("キー設定を保存できませんでした: {error}"));
+            return Err(ShortcutError::SaveFailed { detail: error });
         }
         state.errors.clear();
         for key in old_keys
@@ -165,16 +215,18 @@ pub async fn save_shortcuts(app: AppHandle, bindings: Vec<Binding>) -> Result<St
             .filter(|old| !keys.iter().any(|new| new.id() == old.id()))
         {
             if let Err(error) = app.global_shortcut().unregister(*key) {
-                state
-                    .errors
-                    .push(format!("以前のキーを解除できませんでした: {error}"));
+                state.errors.push(ShortcutError::UnregisterFailed {
+                    detail: error.to_string(),
+                });
             }
         }
         state.bindings = bindings;
         Ok(state.clone())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| ShortcutError::OperationFailed {
+        detail: e.to_string(),
+    })?
 }
 
 pub fn dispatch(app: AppHandle, id: u32) {
@@ -200,7 +252,7 @@ pub fn dispatch(app: AppHandle, id: u32) {
             let mut host = audio
                 .0
                 .lock()
-                .map_err(|_| anyhow::anyhow!("音声状態を取得できません"))?;
+                .map_err(|_| ShortcutError::AudioStateUnavailable)?;
             match action {
                 Action::SingingOn | Action::TalkOn => {
                     if intent_sequence != app.state::<Shortcuts>().2.load(Ordering::Acquire) {
@@ -234,7 +286,7 @@ pub fn dispatch(app: AppHandle, id: u32) {
                 Action::GainUp | Action::GainDown => {
                     let status = host.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
                     if status.stream_failed || (status.running && !status.settled) {
-                        anyhow::bail!("音量の反映を確認中です。もう一度操作してください。");
+                        return Err(ShortcutError::GainPending.into());
                     }
                     let next = (status.gain
                         + if action == Action::GainUp {
@@ -255,7 +307,13 @@ pub fn dispatch(app: AppHandle, id: u32) {
             Ok(())
         })();
         if let Err(error) = result {
-            let _ = app.emit("shortcut-error", error.to_string());
+            let notice = error
+                .downcast_ref::<ShortcutError>()
+                .cloned()
+                .unwrap_or_else(|| ShortcutError::ActionFailed {
+                    detail: error.to_string(),
+                });
+            let _ = app.emit("shortcut-error", notice);
         }
     });
 }
@@ -263,6 +321,104 @@ pub fn dispatch(app: AppHandle, id: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn validation_errors_keep_reason_codes_instead_of_display_text() {
+        let mut bindings = defaults();
+        bindings[1].shortcut = "Unknown+KeyP".into();
+        assert_eq!(
+            validate(&bindings).unwrap_err(),
+            ShortcutError::InvalidShortcut {
+                shortcut: "Unknown+KeyP".into()
+            }
+        );
+        bindings[1].shortcut = "KeyP".into();
+        assert_eq!(
+            validate(&bindings).unwrap_err(),
+            ShortcutError::ModifierRequired
+        );
+        bindings[1].shortcut = bindings[0].shortcut.clone();
+        assert_eq!(
+            validate(&bindings).unwrap_err(),
+            ShortcutError::DuplicateBinding
+        );
+        assert_eq!(
+            validate(&vec![bindings[0].clone(); 9]).unwrap_err(),
+            ShortcutError::TooManyBindings
+        );
+    }
+
+    #[test]
+    fn ipc_status_and_rejections_keep_codes_keys_and_external_details_separate() {
+        let status = Status {
+            bindings: defaults(),
+            errors: vec![ShortcutError::RegisterFailed {
+                shortcut: "Alt+KeyM".into(),
+                detail: "OS 1409: 予約済み".into(),
+            }],
+        };
+        let json = serde_json::to_value(status).unwrap();
+        assert_eq!(
+            json["errors"][0],
+            serde_json::json!({"code": "registerFailed", "shortcut": "Alt+KeyM", "detail": "OS 1409: 予約済み"})
+        );
+        let cases = [
+            (ShortcutError::TooManyBindings, "tooManyBindings"),
+            (
+                ShortcutError::InvalidShortcut {
+                    shortcut: "Alt+KeyM".into(),
+                },
+                "invalidShortcut",
+            ),
+            (ShortcutError::ModifierRequired, "modifierRequired"),
+            (ShortcutError::DuplicateBinding, "duplicateBinding"),
+            (ShortcutError::StateUnavailable, "stateUnavailable"),
+            (
+                ShortcutError::LoadFailed {
+                    detail: "raw".into(),
+                },
+                "loadFailed",
+            ),
+            (
+                ShortcutError::RegistrationConflict {
+                    detail: "raw".into(),
+                },
+                "registrationConflict",
+            ),
+            (
+                ShortcutError::SaveFailed {
+                    detail: "raw".into(),
+                },
+                "saveFailed",
+            ),
+            (
+                ShortcutError::UnregisterFailed {
+                    detail: "raw".into(),
+                },
+                "unregisterFailed",
+            ),
+            (
+                ShortcutError::OperationFailed {
+                    detail: "raw".into(),
+                },
+                "operationFailed",
+            ),
+            (
+                ShortcutError::AudioStateUnavailable,
+                "audioStateUnavailable",
+            ),
+            (ShortcutError::GainPending, "gainPending"),
+            (
+                ShortcutError::ActionFailed {
+                    detail: "raw".into(),
+                },
+                "actionFailed",
+            ),
+        ];
+        for (error, code) in cases {
+            assert_eq!(serde_json::to_value(error).unwrap()["code"], code);
+        }
+    }
+
     #[test]
     fn live_modes_hotkeys_are_explicit_not_auto_registered_and_keep_eight_binding_limit() {
         assert!(defaults()

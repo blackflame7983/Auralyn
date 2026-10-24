@@ -165,7 +165,7 @@ fn validate(bundle: &Bundle) -> Result<(), String> {
         } else if name == "shortcuts.json" {
             let bindings: Vec<crate::shortcuts::Binding> =
                 serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
-            crate::shortcuts::validate(&bindings)?;
+            crate::shortcuts::validate(&bindings).map_err(|error| error.to_string())?;
         } else {
             let preset: crate::vst_host::presets::Preset = serde_json::from_value(value.clone())
                 .map_err(|_| "プロファイルの形式が正しくありません")?;

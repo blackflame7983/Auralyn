@@ -1,4 +1,5 @@
 import { useMessages } from '../i18n/LocaleProvider';
+import { renderShortcutError } from '../lib/shortcutNotice';
 import { useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
@@ -97,7 +98,7 @@ export const useAppEvents = ({
         window.addEventListener('output-gain-intent', cancelGain);
         window.addEventListener('output-gain-sync', cancelGain);
         const lifecycle = ['audio-started', 'audio-stopped', 'audio-error', 'audio-stream-error'].map(name => listen(name, cancelGain));
-        const error = listen<string>('shortcut-error', event => toast.error(t('audioNotices.shortcutFailed'), { description: t('audioNotices.rawDetail', { detail: event.payload }) }));
+        const error = listen<unknown>('shortcut-error', event => toast.error(t('audioNotices.shortcutFailed'), { description: renderShortcutError(t, event.payload) }));
         const gain = listen<number>('shortcut-stopped-gain', event => {
             gainSequence += 1;
             if (!Number.isFinite(event.payload) || event.payload < 0 || event.payload > 200) return;

@@ -64,6 +64,10 @@ it('drop購読と一度だけのtray通知を言語で作り直さず、実名/p
     act(() => drop({payload: {type: 'drop', paths: ['C:/plugins/実名.vst3', 'C:/実名.txt']}}));
     expect(toast.info).toHaveBeenCalledWith('Loading 実名…'); expect(props.onAddPlugin).toHaveBeenCalledWith(expect.objectContaining({name: '実名', path: 'C:/plugins/実名.vst3', category: 'Fx'}));
     notify('shortcut-error', 'Plugin not found: 実名'); expect(toast.error).toHaveBeenCalledWith('Could not apply the shortcut action', {description: 'Original detail (untranslated): Plugin not found: 実名'});
+    notify('shortcut-error', {code: 'gainPending'});
+    expect(toast.error).toHaveBeenLastCalledWith('Could not apply the shortcut action', {description: 'The gain adjustment is still being confirmed. Try the action again.'});
+    notify('shortcut-error', {code: 'audioStateUnavailable'});
+    expect(toast.error).toHaveBeenLastCalledWith('Could not apply the shortcut action', {description: 'Could not retrieve the audio state.'});
     notify('audio-error', 'Stream Error: raw'); expect(props.onCrash).toHaveBeenCalledWith('Stream Error: raw');
 });
 it('言語切替でOBS leaseを解放せず、最後の利用終了後だけ停止し、再試行も明示操作に限る', async () => {
