@@ -143,6 +143,9 @@ export function useVoiceCheck(isOpen: boolean, candidateDraft?: CandidateDraft, 
             if (!document.hidden) return;
             sessionGeneration.current += 1;
             stateRevision.current += 1;
+            analysisGeneration.current += 1;
+            analysisPending.current = false;
+            setAnalyzing(false);
             operation.current = false;
             setBusy(false);
             audioApi.stopVoiceCheck().catch(() => setRecordingError(notice('voice.copy.117')));

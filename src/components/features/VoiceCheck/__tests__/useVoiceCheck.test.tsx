@@ -11,13 +11,15 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi, type QualityReport, type VoiceCheckState } from '@/api/audio';
 import { useVoiceCheck } from '../useVoiceCheck';
+import { toast } from 'sonner';
 
 const running = { running: true, streamFailed: false };
 const report = { verdict: 'good' } as QualityReport;
 function deferred<T>() {
     let resolve!: (value: T) => void;
-    const promise = new Promise<T>(done => { resolve = done; });
-    return { promise, resolve };
+    let reject!: (reason: unknown) => void;
+    const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+    return { promise, resolve, reject };
 }
 const emit = (name: string, payload: unknown) => {
     for (const [event, callback] of vi.mocked(listen).mock.calls) {
@@ -36,6 +38,43 @@ beforeEach(() => {
     vi.spyOn(audioApi, 'analyzeVoiceCheck').mockResolvedValue(report);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+it.each(['success', 'failure'] as const)('解析待ちの非表示後に再実行でき、旧%s応答は新しい解析へ干渉しない', async outcome => {
+    const previous = deferred<QualityReport>();
+    const current = deferred<QualityReport>();
+    const errorToast = vi.spyOn(toast, 'error').mockReturnValue('ignored');
+    vi.mocked(audioApi.analyzeVoiceCheck).mockReturnValueOnce(previous.promise).mockReturnValueOnce(current.promise);
+    const { result } = renderHook(() => useVoiceCheck(true));
+    await waitFor(() => expect(result.current.streamStatus).toBe('ready'));
+    act(() => { void result.current.handleAnalyze(); });
+    expect(result.current.analyzing).toBe(true);
+
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')));
+    hidden.mockReturnValue(false);
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')));
+    expect(result.current.analyzing).toBe(false);
+    act(() => { void result.current.handleAnalyze(); });
+    expect(audioApi.analyzeVoiceCheck).toHaveBeenCalledTimes(2);
+    expect(result.current.analyzing).toBe(true);
+
+    await act(async () => {
+        if (outcome === 'success') previous.resolve(report);
+        else previous.reject(new Error('stale analysis failure'));
+    });
+    expect(result.current.qualityReport).toBeNull();
+    expect(result.current.analyzing).toBe(true);
+    expect(errorToast).not.toHaveBeenCalled();
+    await act(async () => { await result.current.handleAnalyze(); });
+    expect(audioApi.analyzeVoiceCheck).toHaveBeenCalledTimes(2);
+
+    const currentReport = { ...report, verdict: 'warn' } as QualityReport;
+    await act(async () => current.resolve(currentReport));
+    expect(result.current.qualityReport).toEqual(currentReport);
+    expect(result.current.analyzing).toBe(false);
+    await act(async () => { await result.current.handleAnalyze(); });
+    expect(audioApi.analyzeVoiceCheck).toHaveBeenCalledTimes(3);
+});
 
 it('StrictModeの後始末で旧通常再生を停止せず、新しい独立試聴を自己失効させない', async () => {
     vi.mocked(audioApi.stopVoiceCheckPlayback).mockImplementation(async () => {
