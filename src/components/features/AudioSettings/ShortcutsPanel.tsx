@@ -2,6 +2,7 @@ import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { shortcutErrorNotices, type ShortcutError } from '@/lib/shortcutNotice';
 
 const actions = {
     muteToggle: 'settings.ShortcutsPanel.363', muteOn: 'settings.ShortcutsPanel.364', muteOff: 'settings.ShortcutsPanel.365',
@@ -12,7 +13,7 @@ const actions = {
 type Action = keyof typeof actions;
 type Values = Partial<Record<Action, string>>;
 interface Binding { action: Action; shortcut: string }
-interface Status { bindings: Binding[]; errors: string[] }
+interface Status { bindings: Binding[]; errors: ShortcutError[] }
 const modifiers = ['Alt', 'Control', 'Shift', 'Control+Alt', 'Control+Shift', 'Alt+Shift', 'Control+Alt+Shift', 'Super', 'Super+Shift'];
 const keys = [
     ...Array.from({ length: 26 }, (_, i) => [`Key${String.fromCharCode(65 + i)}`, String.fromCharCode(65 + i)]),
@@ -30,31 +31,31 @@ export function ShortcutsPanel() {
     const [saved, setSaved] = useState<Values>({});
     const [ready, setReady] = useState(false);
     const [busy, setBusy] = useState(false);
-    const [message, setMessage] = useState<SettingsNotice>('');
+    const [message, setMessage] = useState<SettingsNotice[]>([]);
     useEffect(() => {
         let active = true;
         invoke<Status>('get_shortcuts').then(status => {
             if (!active || !status) return;
             const loaded = Object.fromEntries(status.bindings.map(b => [b.action, b.shortcut]));
             setValues(loaded); setSaved(loaded);
-            setMessage(status.errors.join('\n')); setReady(true);
-        }).catch(() => { if (active) setMessage(notice('settings.ShortcutsPanel.373')); });
+            setMessage(status.errors.flatMap(error => shortcutErrorNotices(error, 'settings.ShortcutsPanel.373'))); setReady(true);
+        }).catch(error => { if (active) setMessage(shortcutErrorNotices(error, 'settings.ShortcutsPanel.373')); });
         return () => { active = false; };
     }, []);
     const save = async () => {
         const bindings = (Object.entries(values) as [Action, string][]).filter(([, value]) => value.trim()).map(([action, shortcut]) => ({ action, shortcut: shortcut.trim() }));
-        if (bindings.length > 8) { setMessage(notice('settings.ShortcutsPanel.374')); return; }
+        if (bindings.length > 8) { setMessage([notice('settings.ShortcutsPanel.374')]); return; }
         if (bindings.some(binding => { const pair = split(binding.shortcut); return !pair.modifier || !pair.key; })) {
-            setMessage(notice('settings.ShortcutsPanel.375')); return;
+            setMessage([notice('settings.ShortcutsPanel.375')]); return;
         }
-        setBusy(true); setMessage('');
+        setBusy(true); setMessage([]);
         try {
             const status = await invoke<Status>('save_shortcuts', { bindings });
             const applied = Object.fromEntries(status.bindings.map(b => [b.action, b.shortcut]));
             setValues(applied); setSaved(applied);
-            setMessage(status.errors.length ? status.errors.join('\n') : notice('settings.ShortcutsPanel.376'));
-        } catch {
-            setMessage(notice('settings.ShortcutsPanel.377'));
+            setMessage(status.errors.length ? status.errors.flatMap(error => shortcutErrorNotices(error, 'settings.ShortcutsPanel.377')) : [notice('settings.ShortcutsPanel.376')]);
+        } catch (error) {
+            setMessage(shortcutErrorNotices(error, 'settings.ShortcutsPanel.377'));
         } finally { setBusy(false); }
     };
     return <section className="space-y-3 rounded-xl border border-border p-4">
@@ -83,8 +84,8 @@ export function ShortcutsPanel() {
         })}</div>
         <div className="flex flex-wrap gap-2">
             <button type="button" className="rounded border px-3 py-2 text-sm disabled:opacity-50" disabled={!ready || busy} onClick={() => void save()}>{t('settings.ShortcutsPanel.390')}</button>
-            <button type="button" className="rounded border px-3 py-2 text-sm disabled:opacity-50" disabled={!ready || busy} onClick={() => { setValues(saved); setMessage(notice('settings.ShortcutsPanel.391')); }}>{t('settings.ShortcutsPanel.392')}</button>
+            <button type="button" className="rounded border px-3 py-2 text-sm disabled:opacity-50" disabled={!ready || busy} onClick={() => { setValues(saved); setMessage([notice('settings.ShortcutsPanel.391')]); }}>{t('settings.ShortcutsPanel.392')}</button>
         </div>
-        {message && <p role="status" className="whitespace-pre-wrap break-words text-sm">{renderNotice(t, message)}</p>}
+        {message.length > 0 && <p role="status" className="whitespace-pre-wrap break-words text-sm">{message.map(part => renderNotice(t, part)).join('\n')}</p>}
     </section>;
 }

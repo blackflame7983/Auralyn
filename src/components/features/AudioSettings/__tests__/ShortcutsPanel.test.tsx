@@ -1,9 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { ShortcutsPanel } from '../ShortcutsPanel';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 const initial = [{ action: 'muteToggle', shortcut: 'Alt+KeyM' }];
-afterEach(() => { cleanup(); vi.mocked(invoke).mockReset(); });
+afterEach(() => { cleanup(); vi.mocked(invoke).mockReset(); localStorage.clear(); });
 function open(fail = false) {
     vi.mocked(invoke).mockImplementation(async (command, args) => {
         if (command === 'get_shortcuts') return { bindings: initial, errors: [] };
@@ -61,4 +63,63 @@ it('歌と雑談は明示登録できるが自動キーはなく、9件以上は
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
     await screen.findByText('キー設定を保存しました。');
     expect(invoke).toHaveBeenCalledWith('save_shortcuts', expect.objectContaining({ bindings: expect.arrayContaining([{ action: 'singingOn', shortcut: 'Alt+F9' }]) }));
+});
+
+it('起動時の登録エラーは言語切替で再取得せず翻訳し、OS詳細とキー名を原文で保持する', async () => {
+    const store = createLocaleStore(() => 'ja', () => true);
+    vi.mocked(invoke).mockResolvedValue({ bindings: initial, errors: [
+        { code: 'registerFailed', shortcut: 'Alt+KeyM', detail: 'OS 1409: 予約済み' },
+        { code: 'unregisterFailed', detail: 'OS 1419' },
+    ] });
+    render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
+    await screen.findByText(/Alt\+KeyMを登録できませんでした/);
+    fireEvent.change(screen.getByRole('combobox', { name: 'ミュートを切り替えるの通常キー' }), { target: { value: 'KeyN' } });
+    act(() => { store.setLocale('en'); });
+    expect(screen.getByRole('status')).toHaveTextContent('Could not register Alt+KeyM.');
+    expect(screen.getByRole('status')).toHaveTextContent('Could not unregister a previous shortcut.');
+    expect(screen.getByRole('status')).toHaveTextContent('Original detail (untranslated): OS 1409: 予約済み');
+    expect(screen.getByRole('combobox', { name: 'Toggle mute regular key' })).toHaveValue('KeyN');
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('get_shortcuts');
+});
+
+it.each([
+    [{ code: 'invalidShortcut', shortcut: 'Unknown+KeyP' }, 'Check the shortcut format: Unknown+KeyP'],
+    [{ code: 'modifierRequired' }, 'Use a modifier such as Alt, Ctrl, or Shift'],
+    [{ code: 'duplicateBinding' }, 'cannot be registered twice'],
+    [{ code: 'registrationConflict', detail: 'OS 1409' }, 'Check for conflicts with other apps'],
+    [{ code: 'saveFailed', detail: 'disk full' }, 'Could not save shortcut settings'],
+])('保存拒否 %j を英語で表示し、編集値と取り消し先を保つ', async (error, expected) => {
+    const store = createLocaleStore(() => 'en', () => true);
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'get_shortcuts') return { bindings: initial, errors: [] };
+        throw error;
+    });
+    render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
+    const key = screen.getByRole('combobox', { name: 'Toggle mute regular key' });
+    await waitFor(() => expect(key).toBeEnabled());
+    fireEvent.change(key, { target: { value: 'KeyN' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save key settings' }));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(expected));
+    expect(key).toHaveValue('KeyN');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+    expect(key).toHaveValue('KeyM');
+    expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'save_shortcuts')).toHaveLength(1);
+});
+
+it('保存待機中の言語切替でも要求を増やさず、成功後の解除エラーを現在の言語で表示する', async () => {
+    let finish!: (value: unknown) => void;
+    const store = createLocaleStore(() => 'ja', () => true);
+    vi.mocked(invoke).mockImplementation(async command => command === 'get_shortcuts'
+        ? { bindings: initial, errors: [] }
+        : new Promise(resolve => { finish = resolve; }));
+    render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
+    const save = screen.getByRole('button', { name: 'キー設定を保存' });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    act(() => { store.setLocale('en'); });
+    await act(async () => finish({ bindings: [{ action: 'muteToggle', shortcut: 'Alt+KeyN' }], errors: [{ code: 'unregisterFailed', detail: 'OS 1419' }] }));
+    expect(screen.getByRole('status')).toHaveTextContent('Could not unregister a previous shortcut.');
+    expect(screen.getByRole('status')).toHaveTextContent('Original detail (untranslated): OS 1419');
+    expect(screen.getByRole('combobox', { name: 'Toggle mute regular key' })).toHaveValue('KeyN');
+    expect(invoke).toHaveBeenCalledTimes(2);
 });
