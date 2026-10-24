@@ -11,10 +11,14 @@ impl Engine {
         self.output_gain = value;
         self.output_gain_revision = self.gain_revision;
         self.gain_shared.settled.store(false, Ordering::Release);
-        self.queue_audio_msg(AudioThreadMessage::SetOutputGain {
-            value,
-            revision: self.output_gain_revision,
-        });
+        // 停止中は次callbackの初期値として保持する。旧revisionを保留すると、
+        // 開始時に確定した新revisionを後から巻き戻してしまう。
+        if self.command_tx.is_some() {
+            self.queue_audio_msg(AudioThreadMessage::SetOutputGain {
+                value,
+                revision: self.output_gain_revision,
+            });
+        }
         Ok(())
     }
 
@@ -161,6 +165,11 @@ impl Engine {
                 self.gain_preview = None;
             }
             Request::Begin { target, revision } => {
+                if self.voice_preview.active() || self.voice_check.transport_busy() {
+                    return Err(anyhow!(
+                        "ボイスチェックの別出力試聴を停止してから録音してください"
+                    ));
+                }
                 if ![-26.0, -23.0, -20.0, -17.0, -14.0].contains(&target) {
                     return Err(anyhow!("目標値が不正です"));
                 }
@@ -205,6 +214,11 @@ impl Engine {
                 self.queue_audio_msg(AudioThreadMessage::StartAutoGainCapture(self.gain_revision));
             }
             Request::Preview { id, after, device } => {
+                if self.voice_preview.active() || self.voice_check.transport_busy() {
+                    return Err(anyhow!(
+                        "ボイスチェックの録音・試聴を停止してから聞き比べてください"
+                    ));
+                }
                 let s = self
                     .gain_session
                     .as_ref()
@@ -267,6 +281,97 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn stopped_gain_changes_leave_no_old_revision_to_replay_after_start() {
+        for gain in [0.0, 0.8, 2.0] {
+            let mut engine = Engine::new();
+            engine.request_output_gain(0.5).unwrap();
+            engine.request_output_gain(gain).unwrap();
+            let stopped_revision = engine.output_gain_revision;
+            assert!(engine.pending_audio_msgs.is_empty());
+            // cleanupなしの初回開始と同じ順序で、開始準備のrevision更新とqueueを作る。
+            engine.invalidate_auto_gain();
+            let (prod, mut cons) = HeapRb::<AudioThreadMessage>::new(8).split();
+            engine.command_tx = Some(prod);
+            let (_, _, mut output) = engine.initial_callback_levels();
+            assert!(engine.output_gain_revision > stopped_revision);
+            assert_eq!(output.next(), gain);
+            engine.initialize_output_gain(1.0).unwrap();
+            engine.flush_pending_audio_msgs();
+            assert!(cons.try_pop().is_none());
+            assert!(engine.pending_audio_msgs.is_empty());
+            assert_eq!(engine.output_gain, gain);
+            assert_eq!(
+                engine.gain_shared.applied_revision.load(Ordering::Acquire),
+                engine.output_gain_revision
+            );
+            assert_eq!(
+                engine.gain_shared.confirmed_gain.load(Ordering::Acquire),
+                gain.to_bits()
+            );
+            assert!(engine.gain_shared.settled.load(Ordering::Acquire));
+            assert!(engine.output_gain_initialized);
+        }
+    }
+
+    #[test]
+    fn legacy_transport_fence_survives_backpressure_and_blocks_auto_gain_until_ack() {
+        let mut engine = Engine::new();
+        let (prod, mut cons) = HeapRb::<AudioThreadMessage>::new(1).split();
+        engine.command_tx = Some(prod);
+        engine.queue_audio_msg(AudioThreadMessage::PlayVoiceCheck {
+            source: 0,
+            loop_playback: true,
+        });
+        assert!(engine.voice_check.transport_busy());
+        assert!(engine
+            .auto_gain_command(Request::Preview {
+                id: 0,
+                after: false,
+                device: "unused".into()
+            })
+            .unwrap_err()
+            .to_string()
+            .contains("ボイスチェック"));
+        assert!(engine
+            .auto_gain_command(Request::Begin {
+                target: -20.0,
+                revision: 0
+            })
+            .unwrap_err()
+            .to_string()
+            .contains("ボイスチェック"));
+        assert!(matches!(
+            cons.try_pop(),
+            Some(AudioThreadMessage::PlayVoiceCheck { .. })
+        ));
+        engine.flush_pending_audio_msgs();
+        let Some(AudioThreadMessage::VoiceCheckTransportAck(play)) = cons.try_pop() else {
+            panic!("play must be followed by its callback fence");
+        };
+        engine.queue_audio_msg(AudioThreadMessage::StopVoiceCheckPlayback);
+        engine.voice_check.acknowledge_transport(play);
+        assert!(engine.voice_check.transport_busy());
+        assert!(matches!(
+            cons.try_pop(),
+            Some(AudioThreadMessage::StopVoiceCheckPlayback)
+        ));
+        engine.flush_pending_audio_msgs();
+        let Some(AudioThreadMessage::VoiceCheckTransportAck(stop)) = cons.try_pop() else {
+            panic!("stop must be followed by its callback fence");
+        };
+        engine.voice_check.acknowledge_transport(stop);
+        assert!(!engine.voice_check.transport_busy());
+        engine.queue_audio_msg(AudioThreadMessage::StopVoiceCheckPlayback);
+        engine.clear_audio_resources();
+        assert!(!engine.voice_check.transport_busy());
+        assert!(engine.pending_audio_msgs.is_empty());
+        engine.queue_audio_msg(AudioThreadMessage::StopVoiceCheckPlayback);
+        assert!(engine.voice_check.transport_busy());
+        engine.clear_audio_resources();
+        assert!(!engine.voice_check.transport_busy());
+    }
+
     #[test]
     fn late_startup_restore_preserves_explicit_profile_or_manual_gain() {
         for saved in [1.0, 0.8] {

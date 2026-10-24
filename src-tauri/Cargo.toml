@@ -100,3 +100,7 @@ opt-level = 3
 lto = true        # Link Time Optimization (smaller binary, faster code)
 panic = "abort"   # Remove unwind tables (smaller binary)
 # strip = true    # Windows Defenderの誤検知(トロイの木馬判定)を軽減するためデバッグシンボルを残す
+
+[patch.crates-io]
+# 固定版のASIO build失敗時に、data/message callback登録を対で回収する。
+cpal = { path = "../third_party/cpal-0.17.3" }

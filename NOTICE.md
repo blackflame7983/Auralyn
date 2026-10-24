@@ -23,6 +23,11 @@ reset. Original copyright notices and terms are retained in
 `third_party/nnnoiseless-0.5.2/COPYING`; provenance and modifications are
 documented in that directory's `PATCHES.md`.
 
+The source tree also includes CPAL 0.17.3 under Apache-2.0, with Auralyn
+modifications for ASIO stream-build failure cleanup. Its original license and
+upstream provenance are retained in `third_party/cpal-0.17.3`; the local changes
+are described in that directory's `PATCHES.md`.
+
 ## Trademark notices
 
 ASIO is a trademark of Steinberg Media Technologies GmbH, registered in Europe and other countries.

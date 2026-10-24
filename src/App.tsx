@@ -1,8 +1,12 @@
+import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useBeginnerMode } from './hooks/useBeginnerMode';
+import { useLiveModes } from './hooks/useLiveModes';
+import { LiveModeControls } from './components/features/AudioSettings/LiveModeControls';
 import { useEffect } from 'react';
 import { AppShell } from './components/layout/AppShell';
 import { PluginList } from './components/features/PluginRack/PluginList';
 import { ModalLayer } from './components/layout/ModalLayer';
+import { SessionRecoveryNotice } from './components/features/Recovery/SessionRecoveryNotice';
 import { Toaster } from 'sonner';
 
 import { usePlugins } from './hooks/usePlugins';
@@ -19,6 +23,7 @@ import { TutorialOverlay } from './components/features/Tutorial/TutorialOverlay'
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 function AppContent() {
+    const t = useMessages();
   const { theme } = useTheme();
   const { currentStep, completeStep } = useTutorial();
 
@@ -31,6 +36,7 @@ function AppContent() {
   );
 
   const pluginsApi = usePlugins();
+  const liveModel = useLiveModes(pluginsApi.isLoading);
 
   useAppEvents({
     onAddPlugin: pluginsApi.addPlugin,
@@ -80,12 +86,12 @@ function AppContent() {
     if (currentStep === 'complete') {
       // Small delay to let the last overlay disappear
       const timer = setTimeout(() => {
-        toast.info('操作チュートリアルの案内を終了しました', {
+        toast.info(<LocalizedMessage id="guide.copy.424" />, {
           description:
-            '受け側への音声到達は未確認です。接続手順はガイド、音の到達は接続診断や受け側のメーター、音質はボイスチェックで確認してください。',
+            <LocalizedMessage id="guide.copy.425" />,
           duration: 10000,
           action: {
-            label: 'OBSガイドを開く',
+            label: <LocalizedMessage id="guide.copy.426" />,
             onClick: () => ui.setIsOBSGuideOpen(true),
           },
         });
@@ -128,7 +134,7 @@ function AppContent() {
           </div>
           <div className="text-center space-y-2">
             <h2 className="text-2xl font-bold tracking-tighter animate-pulse">Auralyn</h2>
-            <p className="text-sm text-muted-foreground font-mono">音声エンジンを起動しています…</p>
+            <p className="text-sm text-muted-foreground font-mono">{t('app.initializing')}</p>
           </div>
         </div>
       )}
@@ -152,12 +158,20 @@ function AppContent() {
         isEngineRunning={isEngineRunning}
         engineProcessReady={engineProcessReady}
       >
+        <SessionRecoveryNotice
+          status={pluginsApi.sessionRestoreStatus}
+          protectedSession={pluginsApi.sessionPersistenceProtected}
+          reason={pluginsApi.sessionProtectionReason}
+          busy={pluginsApi.isLoading || pluginsApi.isScanning || isInitializing}
+          onRetry={pluginsApi.retrySessionRestore}
+        />
+        <LiveModeControls model={liveModel} />
         {isBeginnerMode ? (
           <details className="mb-4">
             <summary className="cursor-pointer py-3 text-sm font-semibold">
-              VSTで音を調整する
+              {t('app.rack')}
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                折りたたんでもエフェクト処理は続きます
+                {t('app.rackHint')}
               </span>
             </summary>
             {pluginRack}
@@ -177,11 +191,9 @@ function AppContent() {
                 content={
                   <div className="space-y-2">
                     <strong className="block text-green-800 dark:text-green-300 font-bold">
-                      ステップ 1: エフェクトを追加
-                    </strong>
+                      {t('guide.copy.427')}</strong>
                     <p>
-                      まずはここをクリックして、最初のエフェクト（VSTプラグイン）を追加してみましょう。
-                    </p>
+                      {t('guide.copy.428')}</p>
                   </div>
                 }
               />
@@ -193,12 +205,10 @@ function AppContent() {
               align="start"
               content={
                 <div className="space-y-2">
-                  <strong className="block text-green-800 dark:text-green-300 font-bold">ステップ 2/4: 操作方法</strong>
+                  <strong className="block text-green-800 dark:text-green-300 font-bold">{t('guide.copy.429')}</strong>
                   <p>
-                    エフェクトが追加されました！
-                    <br />
-                    電源ボタンでON/OFF、スライダーで音量（ゲイン）を調整できます。
-                  </p>
+                    {t('guide.copy.430')}<br />
+                    {t('guide.copy.431')}</p>
                 </div>
               }
             />
@@ -210,13 +220,10 @@ function AppContent() {
               content={
                 <div className="space-y-2">
                   <strong className="block text-blue-800 dark:text-blue-300 font-bold">
-                    ステップ 3/4: プラグインを編集
-                  </strong>
+                    {t('guide.copy.432')}</strong>
                   <p>
-                    「編集」ボタンを押すと、プラグイン独自の設定画面が開きます。
-                    <br />
-                    ここで詳細なパラメータを調整できます。
-                  </p>
+                    {t('guide.copy.433')}<br />
+                    {t('guide.copy.434')}</p>
                 </div>
               }
             />
@@ -228,11 +235,9 @@ function AppContent() {
               content={
                 <div className="space-y-2">
                   <strong className="block text-orange-800 dark:text-orange-300 font-bold">
-                    ステップ 4/4: エフェクト比較を試そう
-                  </strong>
+                    {t('guide.copy.435')}</strong>
                   <p>
-                    フッターの「比較」ボタン（原音比較）で、エフェクトあり/なしの音を瞬時に切り替えて比較できます。
-                  </p>
+                    {t('guide.copy.436')}</p>
                 </div>
               }
             />
@@ -240,6 +245,8 @@ function AppContent() {
         )}
 
         <ModalLayer
+          isAudioRunning={isEngineRunning}
+          liveModel={liveModel}
           ui={ui}
           audioConfig={audioConfig}
           handleConfigUpdate={handleConfigUpdate}

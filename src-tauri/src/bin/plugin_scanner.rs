@@ -26,7 +26,7 @@ fn main() {
     // Prevent OS-level crash/error dialogs that can freeze scanning indefinitely.
     unsafe {
         use windows::Win32::System::Diagnostics::Debug::{
-            SetErrorMode, SEM_FAILCRITICALERRORS, SEM_NOOPENFILEERRORBOX, SEM_NOGPFAULTERRORBOX,
+            SetErrorMode, SEM_FAILCRITICALERRORS, SEM_NOGPFAULTERRORBOX, SEM_NOOPENFILEERRORBOX,
         };
         SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
     }
@@ -53,7 +53,7 @@ fn main() {
 
     // Attempt to load
     let result = unsafe { load_plugin_info(&path) };
-    
+
     print_json_and_exit(result);
 }
 
@@ -69,31 +69,35 @@ fn print_json_and_exit(result: ScanResult) -> ! {
 
 unsafe fn load_plugin_info(path: &PathBuf) -> ScanResult {
     let path_str = path.to_string_lossy().to_string();
-    
+
     // Attempt library load
     let lib = match Library::new(path) {
         Ok(l) => l,
-        Err(e) => return ScanResult {
-            path: path_str,
-            name: "".to_string(),
-            vendor: "Unknown".to_string(),
-            version: "".to_string(),
-            success: false,
-            error: Some(format!("Failed to load library: {}", e)),
-        },
+        Err(e) => {
+            return ScanResult {
+                path: path_str,
+                name: "".to_string(),
+                vendor: "Unknown".to_string(),
+                version: "".to_string(),
+                success: false,
+                error: Some(format!("Failed to load library: {}", e)),
+            }
+        }
     };
 
     // Attempt GetPluginFactory
     let factory_proc = match lib.get::<GetPluginFactory>(b"GetPluginFactory") {
         Ok(p) => p,
-        Err(e) => return ScanResult {
-            path: path_str,
-            name: "".to_string(),
-            vendor: "Unknown".to_string(),
-            version: "".to_string(),
-            success: false,
-            error: Some(format!("GetPluginFactory not found: {}", e)),
-        },
+        Err(e) => {
+            return ScanResult {
+                path: path_str,
+                name: "".to_string(),
+                vendor: "Unknown".to_string(),
+                version: "".to_string(),
+                success: false,
+                error: Some(format!("GetPluginFactory not found: {}", e)),
+            }
+        }
     };
 
     let factory_ptr = factory_proc();

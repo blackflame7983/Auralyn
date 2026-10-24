@@ -1,3 +1,5 @@
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
@@ -104,4 +106,27 @@ it('音声開始を待つ間に非表示になった場合は到達確認のテ�
     });
     expect(invoke).not.toHaveBeenCalledWith('obs_check_audio_reach', expect.anything());
     expect(screen.getByRole('status')).toHaveTextContent('OBS への接続は終了しました。');
+});
+
+it('接続待ちのlocale切替で接続要求を再送せず、未保存endpoint/passwordと到達未確認を保持する', async () => {
+    const store = createLocaleStore(() => 'ja', () => true); let finish!: () => void;
+    vi.mocked(invoke).mockImplementation(command => command === 'connect_obs' ? new Promise<void>(resolve => { finish = resolve; }) : Promise.resolve());
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+    const start = vi.fn(async () => true);
+    render(<LocaleProvider store={store}><ConnectionCheck goal="obs" outputName="CABLE-A Input" isBroadcast disabled={false} audioRunning onStartAudio={start} onBusyChange={vi.fn()} /></LocaleProvider>);
+    const host = screen.getByRole('textbox', { name: '接続先' });
+    fireEvent.change(host, { target: { value: 'qa-host' } });
+    const password = screen.getByLabelText('パスワード');
+    fireEvent.change(password, { target: { value: 'qa-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'OBS に接続する' }));
+    await act(async () => {});
+    const calls = vi.mocked(invoke).mock.calls.length;
+    act(() => { store.setLocale('en'); });
+    expect(screen.getByRole('textbox', { name: 'Host' })).toBe(host); expect(host).toHaveValue('qa-host');
+    expect(screen.getByLabelText('Password')).toBe(password); expect(password).toHaveValue('qa-password');
+    expect(vi.mocked(invoke).mock.calls).toHaveLength(calls);
+    await act(async () => { finish(); });
+    expect(screen.getByRole('status')).toHaveTextContent('Connected to OBS. Audio arrival is not confirmed yet.');
+    expect(start).not.toHaveBeenCalled();
+    expect(vi.mocked(invoke).mock.calls.some(([name]) => name === 'obs_check_audio_reach')).toBe(false);
 });

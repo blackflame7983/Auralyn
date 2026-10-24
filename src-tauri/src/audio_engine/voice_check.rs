@@ -1,4 +1,8 @@
 mod buffers;
+#[path = "builtin_candidate.rs"]
+pub(crate) mod candidate;
+#[path = "voice_check_preview.rs"]
+pub mod preview;
 use anyhow::{anyhow, Result};
 use buffers::RecordingWriter;
 pub(crate) use buffers::VoiceCheckBufferStore;
@@ -29,6 +33,9 @@ pub struct VoiceCheckShared {
     pub playback_source: AtomicU32,
     pub loop_playback: AtomicBool,
     pub sample_rate_hz: AtomicU32,
+    // 制御側の予約と、callbackが適用した最後のtransport操作を分ける。
+    transport_requested: AtomicU64,
+    transport_applied: AtomicU64,
     /// 録音完了後にエンベロープ再計算が必要
     pub envelope_dirty: AtomicBool,
 }
@@ -49,8 +56,35 @@ impl VoiceCheckShared {
             playback_source: AtomicU32::new(VC_SOURCE_PROCESSED),
             loop_playback: AtomicBool::new(false),
             sample_rate_hz: AtomicU32::new(48_000),
+            transport_requested: AtomicU64::new(0),
+            transport_applied: AtomicU64::new(0),
             envelope_dirty: AtomicBool::new(false),
         }
+    }
+
+    pub(crate) fn reserve_transport(&self) -> u64 {
+        self.transport_requested
+            .fetch_add(1, Ordering::AcqRel)
+            .wrapping_add(1)
+    }
+
+    pub(crate) fn acknowledge_transport(&self, revision: u64) {
+        // state更新後のReleaseを受けてから、制御側がstateを読む。
+        self.transport_applied.store(revision, Ordering::Release);
+    }
+
+    pub(crate) fn transport_busy(&self) -> bool {
+        let applied = self.transport_applied.load(Ordering::Acquire);
+        applied != self.transport_requested.load(Ordering::Acquire)
+            || matches!(
+                self.state.load(Ordering::Acquire),
+                VC_STATE_RECORDING | VC_STATE_PLAYING
+            )
+    }
+
+    pub(crate) fn reset_transport_after_stream_drop(&self) {
+        self.transport_requested.store(0, Ordering::Release);
+        self.transport_applied.store(0, Ordering::Release);
     }
 
     pub fn state_label(&self) -> &'static str {
@@ -171,6 +205,10 @@ pub struct RtVoiceCheck {
 }
 
 impl RtVoiceCheck {
+    pub(crate) fn acknowledge_transport(&self, revision: u64) {
+        self.shared.acknowledge_transport(revision);
+    }
+
     pub fn new(shared: Arc<VoiceCheckShared>, sample_rate_hz: u32) -> Self {
         let fade_samples = ((sample_rate_hz as f64 * 0.005).round() as usize).max(1);
         Self {
@@ -441,6 +479,57 @@ impl RtVoiceCheck {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn legacy_transport_remains_busy_until_ack_and_playback_fade_finish() {
+        use crate::vst_host::instance::allocation_counts;
+        let shared = Arc::new(VoiceCheckShared::new());
+        let buffers = Arc::new(allocate_voice_check_buffers(500, 8_000));
+        let mut writer = buffers.claim_writer().unwrap();
+        writer.write_raw(0, 0.25, 0.25);
+        writer.write_processed(0, 0.5, 0.5);
+        writer.seal(1);
+        let mut rt = RtVoiceCheck::new(shared.clone(), 8_000);
+        rt.attach_buffers(buffers.clone());
+        let play = shared.reserve_transport();
+        assert!(shared.transport_busy());
+        rt.start_playback(VC_SOURCE_RAW, true);
+        rt.acknowledge_transport(play);
+        for _ in 0..100 {
+            rt.read_playback_sample();
+        }
+        let stop = shared.reserve_transport();
+        assert!(shared.transport_busy());
+        assert_eq!(
+            allocation_counts(|| {
+                rt.stop_playback();
+                rt.acknowledge_transport(stop);
+            }),
+            (0, 0)
+        );
+        assert!(shared.transport_busy());
+        assert_eq!(
+            allocation_counts(|| {
+                for _ in 0..100 {
+                    rt.read_playback_sample();
+                    rt.finalize_playback_stop();
+                }
+            }),
+            (0, 0)
+        );
+        assert!(!shared.transport_busy());
+        // 新録音はack後も録音中、停止要求は適用されるまで予約中。
+        let recording = Arc::new(allocate_voice_check_buffers(500, 8_000));
+        let start = shared.reserve_transport();
+        rt.start_recording(recording.clone(), 100);
+        rt.acknowledge_transport(start);
+        assert!(shared.transport_busy());
+        let stop = shared.reserve_transport();
+        rt.stop_recording();
+        assert!(shared.transport_busy());
+        rt.acknowledge_transport(stop);
+        assert!(!shared.transport_busy());
+    }
 
     #[test]
     fn final_block_keeps_processed_samples_and_uses_its_own_frame_limit() {

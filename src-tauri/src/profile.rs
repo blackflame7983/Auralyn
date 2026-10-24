@@ -10,6 +10,8 @@ use crate::vst_host::presets::{
 };
 use std::path::Path;
 
+pub(crate) type StartIntent = crate::ipc::StartControls;
+
 /// 現在のランタイム状態からフルプロファイルを収集する
 pub fn capture_current_profile(
     host: &mut AudioHost,
@@ -50,6 +52,8 @@ pub fn capture_current_profile(
         preset: stats.built_in_effects_preset.clone(),
         enabled: stats.built_in_effects_enabled,
         amount: stats.built_in_effects_amount,
+        singing: stats.built_in_singing,
+        reverb: stats.built_in_reverb,
     };
 
     Ok(Preset::build_from_parts(
@@ -94,6 +98,36 @@ pub fn apply_profile(
     backup_audio_extras: Option<ProfileAudioExtras>,
     current_plugin_ids: &[String],
 ) -> Result<ApplyProfileSummary, String> {
+    apply_profile_with_start_intent(
+        config_dir,
+        host,
+        profile,
+        substitutions,
+        skip_backup,
+        backup_plugins,
+        backup_audio_extras,
+        current_plugin_ids,
+        None,
+    )
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "既存profile境界にbundleの初回callback意図だけを追加する"
+)]
+pub(crate) fn apply_profile_with_start_intent(
+    config_dir: &Path,
+    host: &mut AudioHost,
+    profile: &Preset,
+    substitutions: Option<DeviceSubstitutions>,
+    skip_backup: bool,
+    backup_plugins: Vec<PresetPlugin>,
+    backup_audio_extras: Option<ProfileAudioExtras>,
+    current_plugin_ids: &[String],
+    start_intent: Option<StartIntent>,
+) -> Result<ApplyProfileSummary, String> {
+    host.preflight_live_changes()
+        .map_err(|error| error.to_string())?;
     if !skip_backup {
         backup_current_profile(
             config_dir,
@@ -111,7 +145,14 @@ pub fn apply_profile(
     let pre_stats = host.get_engine_runtime_stats().map_err(|e| e.to_string())?;
 
     // デバイス一覧を取得（欠落チェック用）
-    let devices = host.enumerate_devices(false).map_err(|e| e.to_string())?;
+    let devices = if profile.audio_config.is_some() {
+        host.enumerate_devices(false).map_err(|e| e.to_string())?
+    } else {
+        crate::audio::AudioDeviceList {
+            inputs: vec![],
+            outputs: vec![],
+        }
+    };
 
     let state = host.get_state();
     let current = state.config.as_ref();
@@ -179,15 +220,27 @@ pub fn apply_profile(
 
             if differs {
                 summary.needs_engine_restart = true;
-                host.kill_engine();
-                host.start(
-                    Some(resolved.host.clone()),
-                    resolved.input_device.clone(),
-                    resolved.output_device.clone(),
-                    Some(resolved.buffer_size),
-                    Some(resolved.sample_rate),
-                )
-                .map_err(|e| e.to_string())?;
+                if let Some(intent) = start_intent {
+                    host.start_bundle(
+                        Some(resolved.host.clone()),
+                        resolved.input_device.clone(),
+                        resolved.output_device.clone(),
+                        Some(resolved.buffer_size),
+                        Some(resolved.sample_rate),
+                        intent,
+                    )
+                    .map_err(|e| e.to_string())?;
+                } else {
+                    host.kill_engine();
+                    host.start(
+                        Some(resolved.host.clone()),
+                        resolved.input_device.clone(),
+                        resolved.output_device.clone(),
+                        Some(resolved.buffer_size),
+                        Some(resolved.sample_rate),
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
 
                 // 再起動で消えた設定のうち、プロファイルに含まれない
                 // カテゴリは適用前の状態を復元する（カテゴリ欠落 = 変更しない）
@@ -203,10 +256,12 @@ pub fn apply_profile(
                         .map_err(|e| e.to_string())?;
                     }
                     if profile.builtin_fx.is_none() {
-                        host.set_built_in_effects(
+                        host.set_built_in_effects_with_reverb(
                             stats.built_in_effects_enabled,
                             Some(stats.built_in_effects_preset.clone()),
                             stats.built_in_effects_amount,
+                            stats.built_in_singing,
+                            Some(stats.built_in_reverb.unwrap_or_default()),
                         )
                         .map_err(|e| e.to_string())?;
                     }
@@ -223,10 +278,16 @@ pub fn apply_profile(
                 host.set_input_channels(resolved.input_channels[0], resolved.input_channels[1])
                     .map_err(|e| e.to_string())?;
             }
-            host.set_input_gain(presets::db_to_linear(resolved.input_gain_db))
-                .map_err(|e| e.to_string())?;
-            host.set_output_gain(presets::db_to_linear(resolved.master_gain_db))
-                .map_err(|e| e.to_string())?;
+            host.set_input_gain(start_intent.map_or_else(
+                || presets::db_to_linear(resolved.input_gain_db),
+                |intent| intent.input_gain,
+            ))
+            .map_err(|e| e.to_string())?;
+            host.set_output_gain(start_intent.map_or_else(
+                || presets::db_to_linear(resolved.master_gain_db),
+                |intent| intent.output_gain,
+            ))
+            .map_err(|e| e.to_string())?;
 
             summary.applied_audio_config = Some(resolved);
             summary.applied_categories.push("audioConfig".to_string());
@@ -245,8 +306,14 @@ pub fn apply_profile(
 
     // --- 内蔵 FX ---
     if let Some(ref fx) = profile.builtin_fx {
-        host.set_built_in_effects(fx.enabled, Some(fx.preset.clone()), fx.amount)
-            .map_err(|e| e.to_string())?;
+        host.set_built_in_effects_with_reverb(
+            fx.enabled,
+            Some(fx.preset.clone()),
+            fx.amount,
+            fx.singing,
+            Some(fx.reverb.unwrap_or_default()),
+        )
+        .map_err(|e| e.to_string())?;
         summary.applied_builtin_fx = Some(fx.clone());
         summary.applied_categories.push("builtinFx".to_string());
     }

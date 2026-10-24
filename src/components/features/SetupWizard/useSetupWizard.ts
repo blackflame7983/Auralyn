@@ -1,3 +1,5 @@
+import { createElement } from 'react';
+import { LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useState, useEffect, useRef } from 'react';
 import { audioApi, type AudioDevice, type AudioStateInfo } from '../../../api/audio';
 import { getBeginnerMode, saveBeginnerMode } from '../../../hooks/useBeginnerMode';
@@ -49,14 +51,14 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                         init.config.buffer_size || undefined,
                         init.config.sample_rate || undefined
                     );
-                    toast.info("元の設定に戻しました");
+                    toast.info(createElement(LocalizedMessage, { id: 'guide.copy.241' }));
                 } else {
                     await audioApi.stop();
-                    toast.info("オーディオエンジンを停止しました（初期状態）");
+                    toast.info(createElement(LocalizedMessage, { id: 'guide.copy.242' }));
                 }
             } catch (e) {
                 console.error("Failed to revert audio state", e);
-                toast.error("設定の復元に失敗しました");
+                toast.error(createElement(LocalizedMessage, { id: 'guide.copy.243' }));
                 operationRef.current = false;
                 setIsBusy(false);
                 return;
@@ -67,7 +69,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         setIsBusy(false);
         next();
         if (state !== 'complete') {
-            toast.info("セットアップは「オーディオ設定」からいつでも再開できます");
+            toast.info(createElement(LocalizedMessage, { id: 'guide.copy.244' }));
         }
     };
 
@@ -182,7 +184,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         } catch (e) {
             if (request !== devicesRequestRef.current) return null;
             console.error("Failed to load devices", e);
-            toast.error("デバイス情報の取得に失敗しました");
+            toast.error(createElement(LocalizedMessage, { id: 'guide.copy.245' }));
             return null;
         } finally {
             if (request === devicesRequestRef.current) setIsLoadingDevices(false);
@@ -199,10 +201,10 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
             setConfig(prev => ({ ...prev, output: prev.outputMode === 'broadcast'
                 ? virtualOutputs.find(d => d.name === prev.output?.name) || (virtualOutputs.length === 1 ? virtualOutputs[0] : null)
                 : prev.output }));
-            toast.success("仮想オーディオデバイスを検出しました");
+            toast.success(createElement(LocalizedMessage, { id: 'guide.copy.246' }));
         } else {
             setConfig(prev => ({ ...prev, output: prev.outputMode === 'broadcast' ? null : prev.output }));
-            toast.warning("まだ仮想オーディオデバイスが見つかりませんでした");
+            toast.warning(createElement(LocalizedMessage, { id: 'guide.copy.247' }));
         }
     };
 
@@ -234,7 +236,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         }
 
         if (inputs.length === 0) {
-            toast.error("推奨設定を作成できませんでした。手動で選択してください。");
+            toast.error(createElement(LocalizedMessage, { id: 'guide.copy.248' }));
             setState('usage_selection');
             return;
         }
@@ -254,12 +256,12 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         }));
         setState(!recommendedInput ? 'input_selection' : virtualOutput ? 'confirmation' : 'output_selection');
         localStorage.setItem('vst_host_setup_goal', 'obs');
-        toast.info("候補が複数ある場合は、使うマイクと仮想ケーブルを選択してください");
+        toast.info(createElement(LocalizedMessage, { id: 'guide.copy.249' }));
     };
 
     const confirmInput = () => {
         if (!config.input) {
-            toast.error("入力デバイスを選択してください");
+            toast.error(createElement(LocalizedMessage, { id: 'guide.copy.250' }));
             return;
         }
         setState('output_selection');
@@ -304,11 +306,11 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
             await audioApi.start(config.host, config.input.name, config.output.name);
             await audioApi.setInputChannels(0, 1); // Reset channels to default to avoid silence from old config
             setIsTestingSound(true);
-            toast.success("テスト開始: 音声を確認してください");
+            toast.success(createElement(LocalizedMessage, { id: 'guide.copy.251' }));
             return true;
         } catch (e) {
             setAudioStartError(String(e));
-            toast.error("オーディオエンジンの起動に失敗しました");
+            toast.error(createElement(LocalizedMessage, { id: 'guide.copy.252' }));
             console.error(e);
             setIsTestingSound(false);
             return false;
@@ -329,7 +331,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
             return true;
         } catch (e) {
             console.error(e);
-            toast.error('音声の停止に失敗しました。もう一度お試しください。');
+            toast.error(createElement(LocalizedMessage, { id: 'guide.copy.253' }));
             return false;
         } finally {
             operationRef.current = false;
@@ -365,11 +367,11 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
             saveBeginnerMode(beginnerChoice);
 
             setState('complete');
-            toast.success("セットアップが完了しました！");
+            toast.success(createElement(LocalizedMessage, { id: 'guide.copy.254' }));
         } catch (e) {
             setAudioStartError(String(e));
             console.error(e);
-            toast.error("設定の適用に失敗しました");
+            toast.error(createElement(LocalizedMessage, { id: 'guide.copy.255' }));
             setState('confirmation');
         } finally {
             operationRef.current = false;

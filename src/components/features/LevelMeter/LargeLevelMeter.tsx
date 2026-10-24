@@ -1,16 +1,13 @@
+import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useEffect, useState, useRef } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { useMeterLevels, meterStatusLabel } from '../../../hooks/useMeterLevels';
 import { MdWarning, MdInfo, MdVolumeUp, MdClose, MdOpenInFull, MdCloseFullscreen } from 'react-icons/md';
 import { audioApi } from '../../../api/audio';
 import { cn } from '@/lib/utils';
 
-interface MeterLevels {
-    input: [number, number];
-    output: [number, number];
-}
-
 interface LargeLevelMeterProps {
     onClose: () => void;
+    running?: boolean;
 }
 
 // Helper: Linear peak (0-1) to dB
@@ -25,10 +22,9 @@ const formatDB = (db: number): string => {
     return db.toFixed(1);
 };
 
-export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => {
-    const [levels, setLevels] = useState<[number, number]>([0, 0]);
-    const [peakHold, setPeakHold] = useState<[number, number]>([0, 0]);
-    const [hasClipped, setHasClipped] = useState(false);
+export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, running = false }) => {
+    const t = useMessages();
+    const { levels, peak: peakHold, clipped: hasClipped, state } = useMeterLevels({ running, large: true });
     const [showTips, setShowTips] = useState(false);
     const [inputGain, setInputGain] = useState(() => {
         // Read persisted value (stored as percentage 0-200) and convert to linear 0-2
@@ -36,9 +32,6 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
         return saved ? Number(saved) / 100 : 1.0;
     });
     const [isMiniMode, setIsMiniMode] = useState(false);
-    const targetLevels = useRef<[number, number]>([0, 0]);
-    const peakDecayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const clipResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const gainDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Sync input gain from other components (e.g. Header slider)
@@ -49,56 +42,6 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
         };
         window.addEventListener('input-gain-sync', handler);
         return () => window.removeEventListener('input-gain-sync', handler);
-    }, []);
-
-    // ... (Hooks remain same) ...
-    useEffect(() => {
-        const unlisten = listen<MeterLevels>('audio-level', (event) => {
-            targetLevels.current = event.payload.output;
-        });
-        return () => { unlisten.then(f => f()); };
-    }, []);
-
-    useEffect(() => {
-        const intervalId = setInterval(() => {
-            setLevels(prev => {
-                const [currL, currR] = prev;
-                let [targetL, targetR] = targetLevels.current;
-                if (isNaN(targetL)) targetL = 0;
-                if (isNaN(targetR)) targetR = 0;
-                const smoothL = targetL > currL ? 0.85 : 0.35;
-                const smoothR = targetR > currR ? 0.85 : 0.35;
-                let newL = currL + (targetL - currL) * smoothL;
-                let newR = currR + (targetR - currR) * smoothR;
-                if (isNaN(newL) || !isFinite(newL)) newL = 0;
-                if (isNaN(newR) || !isFinite(newR)) newR = 0;
-
-                // Check for clipping
-                const dbL = toDB(newL);
-                const dbR = toDB(newR);
-                if (dbL >= -3 || dbR >= -3) {
-                    setHasClipped(true);
-                    if (clipResetTimer.current) clearTimeout(clipResetTimer.current);
-                    clipResetTimer.current = setTimeout(() => setHasClipped(false), 3000);
-                }
-                return [newL, newR];
-            });
-
-            setPeakHold(prevPeak => {
-                const [currL, currR] = targetLevels.current;
-                return [Math.max(prevPeak[0], currL), Math.max(prevPeak[1], currR)];
-            });
-        }, 16);
-
-        peakDecayTimer.current = setInterval(() => {
-            setPeakHold(prev => [prev[0] * 0.9, prev[1] * 0.9]);
-        }, 2000);
-
-        return () => {
-            clearInterval(intervalId);
-            if (peakDecayTimer.current) clearInterval(peakDecayTimer.current);
-            if (clipResetTimer.current) clearTimeout(clipResetTimer.current);
-        };
     }, []);
 
     const renderBar = (val: number, peak: number, label: string) => {
@@ -157,12 +100,12 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
         )}>
             {/* Header */}
             <div className="flex items-center justify-between">
-                {!isMiniMode && <span className="text-xs text-muted-foreground font-semibold uppercase tracking-wider truncate">レベル</span>}
+                {!isMiniMode && <span className="text-xs text-muted-foreground font-semibold uppercase tracking-wider truncate">{t('meterBrowser.copy.070')}</span>}
                 <div className={cn("flex items-center gap-1", isMiniMode && "flex-col w-full")}>
                     <button
                         onClick={() => setIsMiniMode(!isMiniMode)}
                         className="text-muted-foreground hover:text-primary transition-colors p-1"
-                        title={isMiniMode ? "詳細表示" : "ミニモード"}
+                        title={isMiniMode ? t('meterBrowser.copy.071') : t('meterBrowser.copy.072')}
                     >
                         {isMiniMode ? <MdOpenInFull className="w-4 h-4" /> : <MdCloseFullscreen className="w-4 h-4" />}
                     </button>
@@ -170,7 +113,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
                         <button
                             onClick={() => setShowTips(prev => !prev)}
                             className={cn("text-muted-foreground hover:text-primary transition-colors p-1", showTips && "text-primary")}
-                            title="dB スケールについて"
+                            title={t('meterBrowser.copy.073')}
                         >
                             <MdInfo className="w-4 h-4" />
                         </button>
@@ -178,12 +121,14 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
                     <button
                         onClick={onClose}
                         className="text-muted-foreground hover:text-destructive p-1 rounded-full hover:bg-white/10 transition-colors"
-                        title="閉じる"
+                        title={t('meterBrowser.copy.074')}
                     >
                         <MdClose className="w-4 h-4" />
                     </button>
                 </div>
             </div>
+
+            <span className="text-[10px] text-muted-foreground" title={t('meterBrowser.copy.075')}>{t(meterStatusLabel(state))}</span>
 
             {/* Clipping Indicator */}
             {hasClipped && (
@@ -199,9 +144,9 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
             {/* Tips Panel */}
             {!isMiniMode && showTips && (
                 <div className="text-[9px] text-muted-foreground bg-popover/95 border border-border rounded-md p-2 space-y-1 animate-in fade-in zoom-in-95 duration-200">
-                    <div><span className="text-emerald-500">緑</span>: -12dB以下</div>
-                    <div><span className="text-yellow-500">黄</span>: -12~-3dB</div>
-                    <div><span className="text-destructive">赤</span>: -3dB以上</div>
+                    <div><span className="text-emerald-500">{t('meterBrowser.copy.076')}</span>{t('meterBrowser.copy.077')}</div>
+                    <div><span className="text-yellow-500">{t('meterBrowser.copy.078')}</span>: -12~-3dB</div>
+                    <div><span className="text-destructive">{t('meterBrowser.copy.079')}</span>{t('meterBrowser.copy.080')}</div>
                 </div>
             )}
 
@@ -209,7 +154,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
             {!isMiniMode && (
                 <div className="space-y-1 shrink-0">
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1"><MdVolumeUp className="w-3 h-3" /> 入力</span>
+                        <span className="flex items-center gap-1"><MdVolumeUp className="w-3 h-3" /> {t('meterBrowser.copy.081')}</span>
                         <span className="font-mono">{(inputGain * 100).toFixed(0)}%</span>
                     </div>
                     <input
@@ -236,7 +181,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose }) => 
                             window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: 100 }));
                         }}
                         className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary"
-                        title="ダブルクリックで100%にリセット"
+                        title={t('meterBrowser.copy.082')}
                     />
                 </div>
             )}

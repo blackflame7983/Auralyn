@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../../ui/modal';
 import { MdClose, MdDescription, MdCode } from 'react-icons/md';
+import { useMessages } from '@/i18n/LocaleProvider';
 
 // Import JSON data directly
 import npmLicensesRaw from '../../../assets/licenses-npm.json';
@@ -45,9 +46,11 @@ const formatNpmData = (data: typeof npmLicensesRaw) => {
                     name: name,
                     version: version,
                     license: typeof val.licenses === 'string' ? val.licenses : (Array.isArray(val.licenses) ? val.licenses.join(', ') : 'Unknown'),
+                    licenseMissing: typeof val.licenses !== 'string' && !Array.isArray(val.licenses),
                     repository: val.repository,
                     source: 'NPM' as const,
-                    text: val.licenseText || 'License text not included.'
+                    text: val.licenseText || 'License text not included.',
+                    textFallback: val.licenseText ? null : 'notIncluded',
                 };
             });
         }
@@ -63,14 +66,17 @@ const formatNpmData = (data: typeof npmLicensesRaw) => {
             // So lib.id is "name@version".
             version: lib.version || lib.id.split('@').pop(),
             license: lib.license || 'Unknown',
+            licenseMissing: !lib.license,
             repository: lib.repository,
             source: 'NPM' as const,
-            text: licenses[lib.license] || 'License text not found.'
+            text: licenses[lib.license] || 'License text not found.',
+            textFallback: licenses[lib.license] ? null : 'notFound',
         };
     });
 };
 
 export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) => {
+    const t = useMessages();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedLib, setSelectedLib] = useState<any | null>(null);
     const [activeTab, setActiveTab] = useState<'product' | 'npm' | 'cargo'>('product');
@@ -95,9 +101,11 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                         name: item.name,
                         version: item.version,
                         license: item.license || 'Unknown',
+                        licenseMissing: !item.license,
                         repository: item.repository,
                         source: 'Cargo' as const,
-                        text: licenses[item.license] || 'License text not found.'
+                        text: licenses[item.license] || 'License text not found.',
+                        textFallback: licenses[item.license] ? null : 'notFound',
                     }));
                 setCargoData(formatted);
             } catch (e) {
@@ -118,7 +126,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
     if (!isOpen) return null;
 
     return (
-        <Modal title="ライセンス情報 / OSS Attribution" onClose={onClose}>
+        <Modal title={t('licenses.title')} onClose={onClose}>
         <div className="modal-overlay-base bg-black/50" onClick={onClose}>
             {/* Modal Content - stop propagation to prevent closing when clicking inside */}
             <div
@@ -130,10 +138,10 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                 <div className="modal-header-base modal-header-muted grid grid-cols-[minmax(0,1fr)_auto] gap-3 p-4 md:grid-cols-[minmax(0,1fr)_auto_auto]">
                     <h2 className="min-w-0 text-xl font-bold flex items-center gap-2">
                         <MdDescription className="w-6 h-6 shrink-0 text-primary" />
-                        ライセンス情報
+                        {t('licenses.heading')}
                     </h2>
                     {/* Tabs */}
-                    <div role="group" aria-label="ライセンスの種類" className="col-span-2 row-start-2 flex flex-wrap gap-1 bg-muted rounded-lg p-1 md:col-span-1 md:col-start-2 md:row-start-1">
+                    <div role="group" aria-label={t('licenses.types')} className="col-span-2 row-start-2 flex flex-wrap gap-1 bg-muted rounded-lg p-1 md:col-span-1 md:col-start-2 md:row-start-1">
                         <button
                             onClick={() => setActiveTab('product')}
                             aria-pressed={activeTab === 'product'}
@@ -146,17 +154,17 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                             aria-pressed={activeTab === 'npm'}
                             className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'npm' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
-                            NPM (Frontend)
+                            {t('licenses.npm')}
                         </button>
                         <button
                             onClick={() => setActiveTab('cargo')}
                             aria-pressed={activeTab === 'cargo'}
                             className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'cargo' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
-                            Cargo (Backend)
+                            {t('licenses.cargo')}
                         </button>
                     </div>
-                    <button aria-label="閉じる" onClick={onClose} className="col-start-2 row-start-1 self-start p-2 hover:bg-muted rounded-full transition-colors md:col-start-3">
+                    <button aria-label={t('licenses.close')} onClick={onClose} className="col-start-2 row-start-1 self-start p-2 hover:bg-muted rounded-full transition-colors md:col-start-3">
                         <MdClose className="w-5 h-5" />
                     </button>
                 </div>
@@ -175,7 +183,8 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                                 <div className="p-3 border-b border-border">
                                     <input
                                         type="text"
-                                        placeholder="検索 / Search..."
+                                        placeholder={t('licenses.searchPlaceholder')}
+                                        aria-label={t('licenses.search')}
                                         value={searchTerm}
                                         onChange={e => setSearchTerm(e.target.value)}
                                         className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
@@ -191,10 +200,11 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                                             <div className="font-bold truncate text-sm">{item.name}</div>
                                             <div className="flex justify-between items-center mt-1">
                                                 <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{item.version}</span>
-                                                <span className="text-[10px] text-muted-foreground truncate max-w-[50%]">{item.license}</span>
+                                                <span className="text-[10px] text-muted-foreground truncate max-w-[50%]">{item.licenseMissing ? t('licenses.unknown') : item.license}</span>
                                             </div>
                                         </button>
                                     ))}
+                                    {filteredList.length === 0 && <p className="p-4 text-sm text-muted-foreground">{t('licenses.empty')}</p>}
                                 </div>
                             </div>
 
@@ -215,7 +225,8 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             className="p-2 text-muted-foreground hover:text-primary transition-colors"
-                                                            title="Repository"
+                                                            title={t('licenses.repository')}
+                                                            aria-label={t('licenses.repository')}
                                                         >
                                                             <MdCode className="w-5 h-5" />
                                                         </a>
@@ -224,19 +235,19 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                                             </div>
                                             <div className="flex gap-4 text-sm text-muted-foreground">
                                                 <div className="flex items-center gap-1">
-                                                    <span className="font-bold text-foreground">License:</span> {selectedLib.license}
+                                                    <span className="font-bold text-foreground">{t('licenses.license')}</span> {selectedLib.licenseMissing ? t('licenses.unknown') : selectedLib.license}
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="flex-1 overflow-y-auto p-6 bg-muted/5 font-mono text-xs whitespace-pre-wrap leading-relaxed select-text">
-                                            {selectedLib.text}
+                                            {selectedLib.textFallback === 'notIncluded' ? t('licenses.notIncluded') : selectedLib.textFallback === 'notFound' ? t('licenses.notFound') : selectedLib.text}
                                         </div>
                                     </div>
                                 ) : (
                                     <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
                                         <MdDescription className="w-16 h-16 mb-4 opacity-20" />
-                                        <p>左側のリストからライブラリを選択してください</p>
-                                        <p className="text-sm mt-2 opacity-60">Select a library to view license details</p>
+                                        <p>{t('licenses.select')}</p>
+                                        <p className="text-sm mt-2 opacity-60">{t('licenses.selectHint')}</p>
                                     </div>
                                 )}
                             </div>

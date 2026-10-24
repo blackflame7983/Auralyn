@@ -1,3 +1,4 @@
+import type { MessageKey } from '@/i18n/messages';
 export interface LoudnessReading {
     id: number;
     ready: boolean;
@@ -7,10 +8,10 @@ export interface LoudnessReading {
     true_peak_dbtp: number | null;
 }
 export type Verdict = 'low' | 'good' | 'high';
-export const verdictLabel: Record<Verdict, string> = {
-    low: '小さめ',
-    good: 'ちょうどいい',
-    high: '大きすぎ',
+export const verdictLabel: Record<Verdict, MessageKey> = {
+    low: 'meterBrowser.copy.083',
+    good: 'meterBrowser.copy.084',
+    high: 'meterBrowser.copy.085',
 };
 
 // 声用の仮の目安。YouTube等の配信全体の基準ではない。

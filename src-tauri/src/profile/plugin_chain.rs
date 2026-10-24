@@ -2,35 +2,22 @@
 use crate::audio::AudioHost;
 use crate::vst_host::presets::{LoadedPluginInstance, MissingPlugin, PresetPlugin};
 
-pub(super) enum Setting<'a> {
-    Bypass,
-    Mute,
-    Gain(f32),
-    State(&'a str),
-}
-
-// IPC境界を狭く保ち、実VSTなしでも途中失敗と後片付けを検証できるようにする。
+// 原子的な復元だけを使い、初期設定の未適用期間を作らない。
 pub(super) trait ChainHost {
-    fn load(&mut self, path: &str) -> Result<String, String>;
-    fn configure(&mut self, id: &str, setting: Setting<'_>) -> Result<(), String>;
-    fn unload(&mut self, id: &str) -> Result<(), String>;
+    fn restore(&mut self, plugin: &PresetPlugin) -> Result<String, String>;
 }
 
 impl ChainHost for AudioHost {
-    fn load(&mut self, path: &str) -> Result<String, String> {
-        self.load_plugin(path).map_err(|e| e.to_string())
-    }
-    fn configure(&mut self, id: &str, setting: Setting<'_>) -> Result<(), String> {
-        match setting {
-            Setting::Bypass => self.set_bypass(id, true),
-            Setting::Mute => self.set_mute(id, true),
-            Setting::Gain(gain) => self.set_gain(id, gain),
-            Setting::State(state) => self.set_plugin_state(id, state),
-        }
-        .map_err(|e| e.to_string())
-    }
-    fn unload(&mut self, id: &str) -> Result<(), String> {
-        self.remove_plugin(id).map_err(|e| e.to_string())
+    fn restore(&mut self, plugin: &PresetPlugin) -> Result<String, String> {
+        self.restore_plugin(crate::ipc::RestorePluginRequest {
+            path: plugin.path.clone(),
+            state: plugin.state.clone(),
+            bypassed: !plugin.enabled,
+            muted: plugin.muted,
+            gain: plugin.gain,
+        })
+        .map(|restored| restored.id)
+        .map_err(|error| error.to_string())
     }
 }
 
@@ -45,36 +32,10 @@ pub(super) fn load_plugin_chain(
             name: plugin.name.clone(),
             path: plugin.path.clone(),
         };
-        let Ok(id) = host.load(&plugin.path) else {
+        let Ok(id) = host.restore(plugin) else {
             missing.push(unavailable());
             continue;
         };
-        let applied = (|| -> Result<(), String> {
-            if !plugin.enabled {
-                host.configure(&id, Setting::Bypass)?;
-            }
-            if plugin.muted {
-                host.configure(&id, Setting::Mute)?;
-            }
-            if (plugin.gain - 1.0).abs() > f32::EPSILON {
-                host.configure(&id, Setting::Gain(plugin.gain))?;
-            }
-            if let Some(state) = &plugin.state {
-                host.configure(&id, Setting::State(state))?;
-            }
-            Ok(())
-        })();
-        if applied.is_err() {
-            // 不完全な設定のVSTを、成功したラック構成として返さない。
-            host.unload(&id).map_err(|error| {
-                format!(
-                    "{} の設定適用と後片付けに失敗しました: {error}",
-                    plugin.name
-                )
-            })?;
-            missing.push(unavailable());
-            continue;
-        }
         loaded.push(LoadedPluginInstance {
             id,
             path: plugin.path.clone(),
@@ -92,37 +53,22 @@ pub(super) fn load_plugin_chain(
 #[cfg(test)]
 mod tests {
     use super::*;
-
     struct Host {
-        fail: &'static str,
-        calls: Vec<String>,
+        fail: bool,
+        requests: Vec<PresetPlugin>,
     }
     impl ChainHost for Host {
-        fn load(&mut self, path: &str) -> Result<String, String> {
-            self.calls.push(path.into());
-            Ok(path.into())
-        }
-        fn configure(&mut self, _: &str, setting: Setting<'_>) -> Result<(), String> {
-            let step = match setting {
-                Setting::Bypass => "bypass",
-                Setting::Mute => "mute",
-                Setting::Gain(_) => "gain",
-                Setting::State(_) => "state",
-            };
-            self.calls.push(step.into());
-            if self.fail == step {
-                Err("failed".into())
+        fn restore(&mut self, plugin: &PresetPlugin) -> Result<String, String> {
+            self.requests.push(plugin.clone());
+            if self.fail {
+                Err("state/prepare failed; backend cleaned up".into())
             } else {
-                Ok(())
+                Ok("restored-id".into())
             }
-        }
-        fn unload(&mut self, id: &str) -> Result<(), String> {
-            self.calls.push(format!("unload:{id}"));
-            Ok(())
         }
     }
     #[test]
-    fn failed_settings_unload_the_instance_and_are_never_reported_as_applied() {
+    fn restoration_sends_complete_initial_state_once_and_partial_failure_is_missing() {
         let plugin = PresetPlugin {
             path: "plugin".into(),
             name: "Plugin".into(),
@@ -131,26 +77,22 @@ mod tests {
             enabled: false,
             muted: true,
             gain: 0.5,
-            state: Some("saved".into()),
+            state: Some(String::new()),
         };
-        for fail in ["bypass", "mute", "gain", "state"] {
+        for fail in [false, true] {
             let mut host = Host {
                 fail,
-                calls: Vec::new(),
+                requests: vec![],
             };
             let (loaded, missing) =
                 load_plugin_chain(&mut host, std::slice::from_ref(&plugin)).unwrap();
-            assert!(loaded.is_empty());
-            assert_eq!(missing.len(), 1);
-            assert_eq!(host.calls.last().unwrap(), "unload:plugin");
+            assert_eq!(host.requests.len(), 1);
+            let request = &host.requests[0];
+            assert!(!request.enabled && request.muted);
+            assert_eq!(request.gain, 0.5);
+            assert_eq!(request.state.as_deref(), Some(""));
+            assert_eq!(loaded.len(), usize::from(!fail));
+            assert_eq!(missing.len(), usize::from(fail));
         }
-        let mut host = Host {
-            fail: "",
-            calls: Vec::new(),
-        };
-        let (loaded, missing) = load_plugin_chain(&mut host, &[plugin]).unwrap();
-        assert_eq!(loaded.len(), 1);
-        assert!(missing.is_empty());
-        assert_eq!(host.calls, ["plugin", "bypass", "mute", "gain", "state"]);
     }
 }

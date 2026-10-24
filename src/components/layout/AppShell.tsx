@@ -1,3 +1,4 @@
+import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
 import React, { ReactNode, useState, useCallback, useEffect } from 'react';
 import { Header } from './Header';
@@ -56,6 +57,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     isEngineRunning,
     engineProcessReady
 }) => {
+    const t = useMessages();
     const [loudnessEnabled, setLoudnessEnabled] = useState(false);
     useEffect(() => setLoudnessEnabled(false), [isBeginnerMode]);
     const [isABBypassed, setIsABBypassed] = useState(false);
@@ -65,13 +67,13 @@ export const AppShell: React.FC<AppShellProps> = ({
             await audioApi.setGlobalBypass(next);
             setIsABBypassed(next);
             if (next) {
-                toast.warning('原音比較を開始しました（エフェクトOFF）');
+                toast.warning(<LocalizedMessage id="shell.compareOn" />);
             } else {
-                toast.success('原音比較を終了しました（エフェクト再開）');
+                toast.success(<LocalizedMessage id="shell.compareOff" />);
             }
         } catch (e) {
             console.error("A/B toggle failed", e);
-            toast.error('原音比較の切替に失敗しました');
+            toast.error(<LocalizedMessage id="shell.compareFailed" />);
         }
     }, [isABBypassed]);
 
@@ -114,11 +116,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                     <div className="max-w-4xl mr-auto ml-0">
                         <div
                             className="mb-3 flex flex-wrap items-center justify-between gap-3"
-                            aria-label="表示の切替"
+                            aria-label={t('shell.view')}
                         >
                             <div
                                 role="group"
-                                aria-label="用途に合わせた表示"
+                                aria-label={t('shell.viewGoal')}
                                 className="flex flex-wrap gap-2"
                             >
                                 <button
@@ -126,14 +128,14 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     onClick={() => onDisplayModeChange(true)}
                                     className="rounded-md border border-border px-3 py-2 text-sm aria-pressed:bg-primary aria-pressed:text-primary-foreground"
                                 >
-                                    配信向け・かんたん
+                                    {t('shell.simple')}
                                 </button>
                                 <button
                                     aria-pressed={!isBeginnerMode}
                                     onClick={() => onDisplayModeChange(false)}
                                     className="rounded-md border border-border px-3 py-2 text-sm aria-pressed:bg-primary aria-pressed:text-primary-foreground"
                                 >
-                                    VST・詳細
+                                    {t('shell.advanced')}
                                 </button>
                             </div>
                             {isBeginnerMode && (
@@ -141,35 +143,35 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     onClick={onOpenOBSSettings}
                                     className="rounded-md border border-border px-3 py-2 text-sm"
                                 >
-                                    OBSを整える
+                                    {t('shell.obs')}
                                 </button>
                             )}
                             {!isBeginnerMode && (
-                                <label className="flex items-center gap-2 text-sm" title="開始は手動です。非表示にすると測定を停止します。">
+                                <label className="flex items-center gap-2 text-sm" title={t('shell.loudnessHint')}>
                                     <input type="checkbox" checked={loudnessEnabled} onChange={e => setLoudnessEnabled(e.target.checked)} />
-                                    音量チェックを表示
+                                    {t('shell.loudness')}
                                 </label>
                             )}
                         </div>
                         {!isEngineRunning && (
-                            <section aria-label="音声の開始" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2">
-                                <p role="status" className="text-sm font-semibold">{engineProcessReady === null ? '音声の状態を確認できません' : currentHost ? '音声停止中' : '音声未設定'}</p>
-                                <button onClick={onOpenSettings} className="rounded-md bg-primary px-3 py-1.5 text-sm font-bold text-primary-foreground">マイクと出力先を設定する</button>
+                            <section aria-label={t('shell.start')} className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2">
+                                <p role="status" className="text-sm font-semibold">{engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}</p>
+                                <button onClick={onOpenSettings} className="rounded-md bg-primary px-3 py-1.5 text-sm font-bold text-primary-foreground">{t('shell.configure')}</button>
                             </section>
                         )}
                         {isBeginnerMode && (
-                            <section aria-label="配信前の準備" className="mb-3 grid grid-cols-2 gap-3">
+                            <section aria-label={t('shell.prepare')} className="mb-3 grid grid-cols-2 gap-3">
                                 <button onClick={onOpenSoundSettings ?? onOpenSettings} className="text-left rounded-md border border-border bg-card p-3 hover:bg-muted">
-                                    <span className="block text-sm font-semibold">1. 声を整える</span>
-                                    <span className="block text-xs text-muted-foreground mt-1">ノイズ低減・内蔵ボイスチェーン</span>
+                                    <span className="block text-sm font-semibold">{t('shell.sound')}</span>
+                                    <span className="block text-xs text-muted-foreground mt-1">{t('shell.soundHint')}</span>
                                 </button>
                                 <button onClick={onOpenVoiceCheck} className="text-left rounded-md border border-border bg-card p-3 hover:bg-muted">
-                                    <span className="block text-sm font-semibold">2. 録音して聴く</span>
-                                    <span className="block text-xs text-muted-foreground mt-1">加工前後をボイスチェックで比較</span>
+                                    <span className="block text-sm font-semibold">{t('shell.listen')}</span>
+                                    <span className="block text-xs text-muted-foreground mt-1">{t('shell.listenHint')}</span>
                                 </button>
                             </section>
                         )}
-                        {isBeginnerMode && <label className="mb-2 flex items-center gap-2 text-sm" title="開始は手動です。非表示にすると測定を停止します。"><input type="checkbox" checked={loudnessEnabled} onChange={e => setLoudnessEnabled(e.target.checked)} />音量チェックを表示</label>}
+                        {isBeginnerMode && <label className="mb-2 flex items-center gap-2 text-sm" title={t('shell.loudnessHint')}><input type="checkbox" checked={loudnessEnabled} onChange={e => setLoudnessEnabled(e.target.checked)} />{t('shell.loudness')}</label>}
                         <LoudnessCheck
                             enabled={loudnessEnabled}
                             running={isEngineRunning}
@@ -191,7 +193,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     <button
                                         id="ab-compare-btn"
                                         onClick={handleABToggle}
-                                        aria-label={isABBypassed ? '原音比較を終了してエフェクト処理を再開する' : '原音比較を開始する（エフェクトOFF）'}
+                                        aria-label={isABBypassed ? t('header.compareEnd') : t('header.compareStart')}
                                         className={cn(
                                             "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold font-mono transition-all whitespace-nowrap shrink-0",
                                             isABBypassed
@@ -200,12 +202,12 @@ export const AppShell: React.FC<AppShellProps> = ({
                                         )}
                                     >
                                         <MdCompareArrows className="w-4 h-4" />
-                                        <span className="hidden xl:inline">{isABBypassed ? '原音比較中（エフェクトOFF）' : '原音比較'}</span>
-                                        <span className="xl:hidden">{isABBypassed ? '比較中' : '比較'}</span>
+                                        <span className="hidden xl:inline">{isABBypassed ? t('shell.comparingEffectsOff') : t('header.compare')}</span>
+                                        <span className="xl:hidden">{isABBypassed ? t('header.comparing') : t('header.compare')}</span>
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                    <p>{isABBypassed ? 'Alt+P またはクリックで原音比較を終了（エフェクト再開）' : 'Alt+P またはクリックで原音比較を開始（エフェクトOFF）'}</p>
+                                    <p>{isABBypassed ? t('header.compareEndHint') : t('header.compareStartHint')}</p>
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>

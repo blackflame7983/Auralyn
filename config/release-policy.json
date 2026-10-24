@@ -7,7 +7,7 @@
     "archiveNamePattern": "Auralyn_v{version}_Source.zip",
     "checksumRequired": true,
     "manifestRequired": true,
-    "notes": "各バイナリと同じReleaseに、同一のcleanなGit HEADから生成した対応ソースを無償で添付する。"
+    "notes": "各バイナリと同じReleaseに、同一のcleanなGit HEADから生成した対応ソースを無償で添付する。third_party/cpal-0.17.3の固定ローカル修正ソース・LICENSE・PATCHES.mdも同梱する。"
   },
   "asio": {
     "distributionLicense": "GPL-3.0-only",

@@ -1,3 +1,6 @@
+import { LocaleContext } from '@/i18n/LocaleProvider';
+import { message, type MessageKey } from '@/i18n/messages';
+import type { ContextType } from 'react';
 import { Component, ErrorInfo, ReactNode } from 'react';
 import { MdError, MdRefresh, MdBugReport } from 'react-icons/md';
 
@@ -12,6 +15,8 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
+    static contextType = LocaleContext;
+    declare context: ContextType<typeof LocaleContext>;
     constructor(props: Props) {
         super(props);
         this.state = { hasError: false, error: null, errorInfo: null };
@@ -36,6 +41,7 @@ export class ErrorBoundary extends Component<Props, State> {
     };
 
     render() {
+        const t = (key: MessageKey) => message(this.context?.locale ?? 'ja', key);
         if (this.state.hasError) {
             return (
                 <div className="fixed inset-0 z-[99999] bg-background flex items-center justify-center p-8">
@@ -48,11 +54,11 @@ export class ErrorBoundary extends Component<Props, State> {
                         {/* Message */}
                         <div className="space-y-2">
                             <h1 className="text-2xl font-bold text-foreground">
-                                画面の表示中にエラーが発生しました
+                                {t('boundary.title')}
                             </h1>
                             <p className="text-muted-foreground leading-relaxed">
-                                この画面から音声処理の継続状態は確認できません。<br />
-                                「復帰を試す」ボタンで元の画面に戻れる場合があります。
+                                {t('boundary.state')}<br />
+                                {t('boundary.recoverHint')}
                             </p>
                         </div>
 
@@ -63,14 +69,14 @@ export class ErrorBoundary extends Component<Props, State> {
                                 className="flex items-center justify-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-lg"
                             >
                                 <MdRefresh className="w-5 h-5" />
-                                復帰を試す
+                                {t('boundary.recover')}
                             </button>
                             <button
                                 onClick={this.handleReload}
                                 className="flex items-center justify-center gap-2 px-6 py-3 bg-muted text-foreground font-bold rounded-xl hover:bg-muted/80 transition-colors border border-border"
                             >
                                 <MdRefresh className="w-5 h-5" />
-                                画面をリロード
+                                {t('boundary.reload')}
                             </button>
                         </div>
 
@@ -78,7 +84,7 @@ export class ErrorBoundary extends Component<Props, State> {
                         <details className="text-left bg-muted/50 rounded-lg border border-border p-4 text-xs">
                             <summary className="cursor-pointer text-muted-foreground font-bold flex items-center gap-2">
                                 <MdBugReport className="w-4 h-4" />
-                                エラーの詳細（開発者向け）
+                                {t('boundary.details')}
                             </summary>
                             <pre className="mt-3 p-3 bg-background rounded-md overflow-auto max-h-40 text-destructive font-mono whitespace-pre-wrap break-words">
                                 {this.state.error?.toString()}
@@ -89,7 +95,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
                         {/* Reassurance */}
                         <p className="text-sm text-muted-foreground">
-                            配信中は、受け側アプリのメーターや試聴で音声が届いているか確認してください。
+                            {t('boundary.receiver')}
                         </p>
                     </div>
                 </div>

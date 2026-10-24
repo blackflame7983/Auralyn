@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Modal } from '../modal';
-import { ConfirmDialog } from '../confirm-dialog';
+import { ConfirmDialog, useConfirmDialog } from '../confirm-dialog';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 
 afterEach(cleanup);
 
@@ -93,4 +95,42 @@ it.each([false, true])('ガイドから設定へ切り替えて閉じても、�
     fireEvent.keyDown(close, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await waitFor(() => expect(launcher).toHaveFocus());
+});
+
+it.each(['confirm', 'cancel', 'escape'])('確認Promiseはlocale変更で再作成せず%sを一度だけ返す', async action => {
+    const resolved = vi.fn();
+    const store = createLocaleStore(() => 'ja', () => true);
+    function ConfirmExample() {
+        const {confirm, ConfirmDialogComponent} = useConfirmDialog();
+        return <><button onClick={() => {void confirm({title:'User title', description:'User detail'}).then(resolved);}}>Open</button><ConfirmDialogComponent /></>;
+    }
+    render(<LocaleProvider store={store}><ConfirmExample /></LocaleProvider>);
+    fireEvent.click(screen.getByRole('button', {name:'Open'}));
+    const dialog = screen.getByRole('dialog', {name:'User title'});
+    const cancel = screen.getByRole('button', {name:'キャンセル'});
+    await waitFor(() => expect(cancel).toHaveFocus());
+    act(() => {store.setLocale('en');});
+    expect(screen.getByRole('dialog', {name:'User title'})).toBe(dialog);
+    expect(screen.getByRole('button', {name:'Cancel'})).toBe(cancel);
+    expect(cancel).toHaveFocus();
+    expect(resolved).not.toHaveBeenCalled();
+    if(action === 'escape') fireEvent.keyDown(cancel, {key:'Escape'});
+    else fireEvent.click(screen.getByRole('button', {name:action === 'confirm' ? 'Confirm' : 'Cancel'}));
+    await waitFor(() => expect(resolved).toHaveBeenCalledExactlyOnceWith(action === 'confirm'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+it('明示labelをlocaleで置き換えず、非表示から表示へ切り替えてもhook順序を保つ', () => {
+    const store = createLocaleStore(() => 'ja', () => true);
+    const confirmed = vi.fn(); const canceled = vi.fn();
+    const view = (isOpen: boolean) => <LocaleProvider store={store}><ConfirmDialog isOpen={isOpen} title="Exact title" confirmLabel="KEEP" cancelLabel="BACK" onConfirm={confirmed} onCancel={canceled}/></LocaleProvider>;
+    const result = render(view(false));
+    result.rerender(view(true));
+    act(() => {store.setLocale('en');});
+    expect(screen.getByRole('button', {name:'KEEP'})).toBeVisible();
+    expect(screen.getByRole('button', {name:'BACK'})).toBeVisible();
+    expect(screen.queryByRole('button', {name:'Confirm'})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', {name:'KEEP'}));
+    expect(confirmed).toHaveBeenCalledTimes(1);
+    expect(canceled).not.toHaveBeenCalled();
 });

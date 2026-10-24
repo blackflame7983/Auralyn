@@ -83,12 +83,10 @@ fn cold_dsp_on_new_thread_matches_registry_version_without_allocating() {
                     assert!(original_counts.0 > 0);
                 }
                 assert_eq!(vad.to_bits(), expected_vad.to_bits());
-                assert!(
-                    output
-                        .iter()
-                        .zip(expected)
-                        .all(|(a, b)| a.to_bits() == b.to_bits())
-                );
+                assert!(output
+                    .iter()
+                    .zip(expected)
+                    .all(|(a, b)| a.to_bits() == b.to_bits()));
                 snapshot.push(vad.to_bits());
                 snapshot.extend(output.iter().map(|sample| sample.to_bits()));
             }
@@ -142,12 +140,10 @@ fn in_place_reset_matches_fresh_registry_state_and_retains_owned_model() {
                 );
                 let expected_vad = reference.process_frame(&mut expected, frame);
                 assert_eq!(vad.to_bits(), expected_vad.to_bits());
-                assert!(
-                    output
-                        .iter()
-                        .zip(expected)
-                        .all(|(a, b)| a.to_bits() == b.to_bits())
-                );
+                assert!(output
+                    .iter()
+                    .zip(expected)
+                    .all(|(a, b)| a.to_bits() == b.to_bits()));
                 snapshot.push(vad.to_bits());
                 snapshot.extend(output.iter().map(|sample| sample.to_bits()));
             }
@@ -186,12 +182,10 @@ fn borrowed_custom_model_survives_repeated_reset_without_allocating() {
             );
             let expected_vad = reference.process_frame(&mut expected, frame);
             assert_eq!(vad.to_bits(), expected_vad.to_bits());
-            assert!(
-                output
-                    .iter()
-                    .zip(expected)
-                    .all(|(a, b)| a.to_bits() == b.to_bits())
-            );
+            assert!(output
+                .iter()
+                .zip(expected)
+                .all(|(a, b)| a.to_bits() == b.to_bits()));
             snapshot.push(vad.to_bits());
             snapshot.extend(output.iter().map(|sample| sample.to_bits()));
         }
@@ -227,12 +221,10 @@ fn cloned_fft_workspace_keeps_history_after_original_reset_and_drop() {
             );
             let expected_vad = reference.process_frame(&mut expected, frame);
             assert_eq!(vad.to_bits(), expected_vad.to_bits());
-            assert!(
-                output
-                    .iter()
-                    .zip(expected)
-                    .all(|(a, b)| a.to_bits() == b.to_bits())
-            );
+            assert!(output
+                .iter()
+                .zip(expected)
+                .all(|(a, b)| a.to_bits() == b.to_bits()));
             snapshot.push(vad.to_bits());
             snapshot.extend(output.iter().map(|sample| sample.to_bits()));
         }

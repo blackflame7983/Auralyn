@@ -1,7 +1,9 @@
+import { FixedClientError } from '@/lib/clientError';
 import { invoke } from '@tauri-apps/api/core';
 
 export const MIGRATION_KEYS = [
     'vst_host_theme', 'vst_host_beginner_mode', 'vst_host_simple_mode',
+    'vst_host_locale',
     'vst_host_audio_config', 'vst_host_audio_presets', 'vst_host_input_gain',
     'vst_host_output_gain', 'vst_host_plugin_favorites', 'vst_host_plugin_recent',
     'vst_host_session_plugins', 'vst_host_setup_goal', 'vst_host_wizard_done',
@@ -24,7 +26,7 @@ export function collectSettings(): Record<string, string> {
 export async function flushSession(): Promise<void> {
     if (localStorage.getItem(REVIEW_KEY) === 'true') return;
     await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('VST状態を保存できませんでした。読み込み完了後に再試行してください。')), 15000);
+        const timer = setTimeout(() => reject(new FixedClientError('migration.flushTimeout')), 15000);
         window.dispatchEvent(new CustomEvent('auralyn-save-session', { detail: {
             resolve: () => { clearTimeout(timer); resolve(); },
             reject: (error: unknown) => { clearTimeout(timer); reject(error); },
@@ -36,6 +38,8 @@ export async function flushSession(): Promise<void> {
 export async function bootstrapMigration(): Promise<void> {
     const pending = await invoke<{ reviewRequired: boolean; ui: Record<string, string> | null }>('migration_bootstrap', { acknowledge: false });
     if (pending.ui) {
+        const importedLocale = pending.ui.vst_host_locale;
+        if (importedLocale !== undefined && importedLocale !== 'ja' && importedLocale !== 'en') throw new FixedClientError('migration.invalidLocale');
         const old = collectSettings();
         try {
             for (const key of MIGRATION_KEYS) {

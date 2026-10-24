@@ -1,3 +1,4 @@
+import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useEffect, useState } from 'react';
 import { Plugin, PluginCard } from './PluginCard';
 import { PluginRackEmptyState } from './PluginRackEmptyState';
@@ -38,7 +39,8 @@ const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, 
     simpleMode: boolean,
     [key: string]: any
 }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: plugin.id });
+    const t = useMessages();
+    const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: plugin.id, attributes: { roleDescription: t('meterBrowser.copy.291') } });
 
     const style: React.CSSProperties = {
         transform: CSS.Transform.toString(transform),
@@ -48,7 +50,7 @@ const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, 
     };
 
     return (
-        <div ref={setNodeRef} style={style} {...attributes} className="mb-1" id={props['data-tutorial-id']}>
+        <div ref={setNodeRef} style={style} className="mb-1" id={props['data-tutorial-id']}>
             <div className="relative z-10 w-full">
                 <PluginCard
                     plugin={plugin}
@@ -58,6 +60,8 @@ const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, 
                     onRemove={onRemove}
                     onEdit={onEdit}
                     dragHandleListeners={listeners}
+                    dragHandleAttributes={attributes}
+                    dragHandleRef={setActivatorNodeRef}
                     simpleMode={simpleMode}
                 />
             </div>
@@ -84,6 +88,7 @@ export const PluginList: React.FC<PluginListProps> = ({
     onOpenWizard,
     onOpenTemplates
 }) => {
+    const t = useMessages();
     const getBeginnerMode = () => localStorage.getItem('vst_host_beginner_mode') !== 'false';
     const { theme } = useTheme();
     const [isBeginnerMode, setIsBeginnerMode] = useState(getBeginnerMode);
@@ -136,10 +141,17 @@ export const PluginList: React.FC<PluginListProps> = ({
         if (over && active.id !== over.id) {
             const oldIndex = plugins.findIndex((i) => i.id === active.id);
             const newIndex = plugins.findIndex((i) => i.id === over.id);
+            if (oldIndex < 0 || newIndex < 0) return;
             const newOrder = arrayMove(plugins, oldIndex, newIndex);
             onReorder(newOrder);
         }
     };
+
+    const describePosition = (id: string | number) => {
+        const index = plugins.findIndex(plugin => plugin.id === id);
+        return index < 0 ? t('meterBrowser.copy.292') : t('meterBrowser.copy.293', { arg0: index + 1, arg1: plugins.length });
+    };
+    const describePlugin = (id: string | number) => plugins.find(plugin => plugin.id === id)?.name ?? t('meterBrowser.copy.294');
 
     return (
         <TooltipProvider>
@@ -151,7 +163,7 @@ export const PluginList: React.FC<PluginListProps> = ({
                             <div className="w-1 h-1 bg-muted-foreground rounded-full" />
                             <div className="w-1 h-1 bg-muted-foreground rounded-full" />
                         </div>
-                        {isBeginnerMode ? 'かんたんエフェクト' : 'エフェクト設定'}
+                        {isBeginnerMode ? t('meterBrowser.copy.295') : t('meterBrowser.copy.296')}
                     </h2>
                     <div className="flex items-center gap-2">
                         {isBeginnerMode ? (
@@ -160,10 +172,9 @@ export const PluginList: React.FC<PluginListProps> = ({
                                 size="sm"
                                 onClick={onOpenWizard}
                                 className="h-7 text-xs"
-                                aria-label="かんたん設定を開く"
+                                aria-label={t('meterBrowser.copy.297')}
                             >
-                                かんたん設定
-                            </Button>
+                                {t('meterBrowser.copy.298')}</Button>
                         ) : (
                             <>
                                 {/* View Mode Toggle */}
@@ -174,29 +185,37 @@ export const PluginList: React.FC<PluginListProps> = ({
                                                 variant="ghost"
                                                 size="sm"
                                                 className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-                                                aria-label="ラックをシンプル表示にする"
+                                                aria-label={t('meterBrowser.copy.299')}
                                                 aria-pressed={simpleMode}
                                                 onClick={toggleSimpleMode}
                                             >
                                                 {simpleMode ? <MdViewAgenda className="w-4 h-4" /> : <MdViewCompact className="w-4 h-4" />}
-                                                {simpleMode ? 'シンプル' : '詳細'}
+                                                {simpleMode ? t('meterBrowser.copy.300') : t('meterBrowser.copy.301')}
                                             </Button>
                                         </TooltipTrigger>
                                         <TooltipContent>
-                                            <p>{simpleMode ? '詳細表示に切替' : 'シンプル表示に切替'}</p>
+                                            <p>{simpleMode ? t('meterBrowser.copy.302') : t('meterBrowser.copy.303')}</p>
                                         </TooltipContent>
                                     </Tooltip>
                                 )}
                                 <Button variant="outline" size="sm" onClick={onOpenPresets} className="h-7 text-xs gap-2">
                                     <MdFolderOpen className="w-3.5 h-3.5" />
-                                    プロファイル管理
-                                </Button>
+                                    {t('meterBrowser.copy.304')}</Button>
                             </>
                         )}
                     </div>
                 </div>
 
                 <DndContext
+                    accessibility={{
+                        screenReaderInstructions: { draggable: t('meterBrowser.copy.305') },
+                        announcements: {
+                            onDragStart: ({ active }) => t('meterBrowser.copy.306', { arg0: describePlugin(active.id), arg1: describePosition(active.id) }),
+                            onDragOver: ({ active, over }) => over?.id === active.id ? undefined : over ? t('meterBrowser.copy.307', { arg0: describePlugin(active.id), arg1: describePosition(over.id) }) : t('meterBrowser.copy.308'),
+                            onDragEnd: ({ active, over }) => over ? t('meterBrowser.copy.309', { arg0: describePlugin(active.id), arg1: describePosition(over.id) }) : t('meterBrowser.copy.310'),
+                            onDragCancel: ({ active }) => t('meterBrowser.copy.311', { arg0: describePlugin(active.id) }),
+                        },
+                    }}
                     sensors={sensors}
                     collisionDetection={closestCenter}
                     onDragEnd={handleDragEnd}
@@ -242,7 +261,7 @@ export const PluginList: React.FC<PluginListProps> = ({
                             }`}
                     >
                         <MdAdd className={`w-5 h-5 ${theme === 'gaming' ? 'animate-pulse' : ''}`} />
-                        <span className="text-sm">エフェクトを追加</span>
+                        <span className="text-sm">{t('meterBrowser.copy.312')}</span>
                     </Button>
                 )}
                 {/* Footer Spacer for AppShell Footer */}

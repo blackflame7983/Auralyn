@@ -61,3 +61,18 @@ it('明示保存の途中で構成が変わったら、成功を通知しない'
     expect(reject).toHaveBeenCalledWith(expect.any(Error));
     expect(localStorage.getItem('vst_host_session_plugins')).toBeNull();
 });
+
+it('状態取得開始後に復元保護が有効になったら、完了した古い保存でも原本を置換しない', async () => {
+    localStorage.setItem('vst_host_session_plugins', 'original-two-plugin-session');
+    let finish!: (state: string) => void;
+    vi.spyOn(audioApi, 'getPluginState').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    renderHook(() => usePluginSessionPersistence([plugin('partial')], true, false));
+    const resolve = vi.fn();
+    const reject = vi.fn();
+    act(() => window.dispatchEvent(new CustomEvent('auralyn-save-session', { detail: { resolve, reject } })));
+    localStorage.setItem('vst_host_session_restore_protected', 'true');
+    await act(async () => finish('late-state'));
+    expect(resolve).not.toHaveBeenCalled();
+    expect(reject).toHaveBeenCalled();
+    expect(localStorage.getItem('vst_host_session_plugins')).toBe('original-two-plugin-session');
+});

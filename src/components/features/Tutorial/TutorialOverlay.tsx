@@ -1,3 +1,4 @@
+import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useEffect, useState } from 'react';
 import { useTutorial } from '../../../contexts/TutorialContext';
 import * as Popover from '@radix-ui/react-popover';
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export const TutorialOverlay: React.FC<Props> = ({ targetId, step, content, align = 'center', side = 'bottom' }) => {
+    const t = useMessages();
     const { currentStep, completeStep, skipTutorial } = useTutorial();
     const [targetElement, setTargetElement] = useState<HTMLElement | null>(null);
     const [isOpen, setIsOpen] = useState(false);
@@ -81,7 +83,7 @@ export const TutorialOverlay: React.FC<Props> = ({ targetId, step, content, alig
                     <div className="relative p-4">
                         <button
                             onClick={skipTutorial}
-                            aria-label="チュートリアルを終了する"
+                            aria-label={t('guide.copy.421')}
                             className="absolute top-2 right-2 text-muted-foreground hover:text-foreground"
                         >
                             <MdClose />
@@ -94,15 +96,13 @@ export const TutorialOverlay: React.FC<Props> = ({ targetId, step, content, alig
                                 onClick={skipTutorial}
                                 className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
                             >
-                                スキップ
-                            </button>
+                                {t('guide.copy.422')}</button>
                             {(step === 'explain_plugin_card' || step === 'try_edit_plugin' || step === 'try_ab_compare') && (
                                 <button
                                     onClick={() => completeStep(step)}
                                     className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:bg-primary/90 font-bold"
                                 >
-                                    次へ →
-                                </button>
+                                    {t('guide.copy.423')}</button>
                             )}
                         </div>
                     </div>

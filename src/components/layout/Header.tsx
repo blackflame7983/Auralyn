@@ -1,3 +1,4 @@
+import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useBeginnerMode } from '../../hooks/useBeginnerMode';
 import React, { useState, useEffect, useRef } from 'react';
 import { LevelMeter } from '../features/LevelMeter/LevelMeter';
@@ -75,6 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
     isEngineRunning,
     engineProcessReady
 }) => {
+    const t = useMessages();
     const { theme, setTheme } = useTheme();
     const appUpdate = useAppUpdate();
     const [isGlobalMuted, setIsGlobalMuted] = useState(false);
@@ -115,9 +117,9 @@ export const Header: React.FC<HeaderProps> = ({
         const unlisten = listen<boolean>('global-mute-changed', (event) => {
             setIsGlobalMuted(event.payload);
             if (event.payload) {
-                toast.warning("緊急ミュートを有効化しました (音声停止)");
+                toast.warning(<LocalizedMessage id="header.muteOn" />);
             } else {
-                toast.success("ミュートを解除しました");
+                toast.success(<LocalizedMessage id="header.muteOff" />);
             }
         });
 
@@ -168,7 +170,7 @@ export const Header: React.FC<HeaderProps> = ({
                             <button
                                 aria-pressed={isGlobalMuted}
                                 onClick={handleToggleMute}
-                                aria-label={isGlobalMuted ? '緊急ミュートを解除' : '緊急ミュートを有効化'}
+                                aria-label={isGlobalMuted ? t('header.unmute') : t('header.mute')}
                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all font-bold text-sm shadow-sm ${isGlobalMuted
                                     ? 'bg-red-700 text-white border-red-700 ring-2 ring-destructive/50'
                                     : 'bg-background hover:bg-destructive/10 text-red-800 dark:text-red-300 border-destructive/30 hover:border-destructive hover:shadow-destructive/20'
@@ -177,18 +179,18 @@ export const Header: React.FC<HeaderProps> = ({
                                 {isGlobalMuted ? (
                                     <>
                                         <MdMicOff className="w-5 h-5" />
-                                        <span className="inline-block">ミュート中</span>
+                                        <span className="inline-block">{t('header.muted')}</span>
                                     </>
                                 ) : (
                                     <>
                                         <MdEmergency className="w-5 h-5" />
-                                        <span className="hidden xl:inline-block">緊急ミュート</span>
+                                        <span className="hidden xl:inline-block">{t('header.emergency')}</span>
                                     </>
                                 )}
                             </button>
                         </TooltipTrigger>
                         <TooltipContent>
-                            <p>{isGlobalMuted ? "ミュート解除 (音声を再開)" : "音声を即ミュート（事故防止）"}</p>
+                            <p>{isGlobalMuted ? t('header.unmuteHint') : t('header.muteHint')}</p>
                         </TooltipContent>
                     </Tooltip>
 
@@ -196,7 +198,7 @@ export const Header: React.FC<HeaderProps> = ({
                         <TooltipTrigger asChild>
                             <button
                                 onClick={onToggleGlobalBypass}
-                                aria-label={isGlobalBypassed ? '原音比較を終了してエフェクト処理を再開する' : '原音比較を開始する（エフェクトOFF）'}
+                                aria-label={isGlobalBypassed ? t('header.compareEnd') : t('header.compareStart')}
                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all font-bold text-xs shadow-sm ${isGlobalBypassed
                                     ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 ring-1 ring-amber-500/30'
                                     : 'bg-background hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:border-amber-500/60'
@@ -204,23 +206,23 @@ export const Header: React.FC<HeaderProps> = ({
                             >
                                 <MdCompareArrows className="w-4 h-4" />
                                 <span className="hidden xl:inline-block">
-                                    {isGlobalBypassed ? '原音比較ON' : '原音比較'}
+                                    {isGlobalBypassed ? t('header.comparing') : t('header.compare')}
                                 </span>
                             </button>
                         </TooltipTrigger>
                         <TooltipContent>
-                            <p>{isGlobalBypassed ? 'Alt+P またはクリックで原音比較を終了（エフェクト再開）' : 'Alt+P またはクリックで原音比較を開始（エフェクトOFF）'}</p>
+                            <p>{isGlobalBypassed ? t('header.compareEndHint') : t('header.compareStartHint')}</p>
                         </TooltipContent>
                     </Tooltip>
 
                     {isBeginnerMode && (
                         <button
                             onClick={onOpenWizard}
-                            aria-label="かんたん設定を開く"
+                            aria-label={t('header.setupOpen')}
                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-bold"
                         >
                             <MdAutoFixHigh className="w-4 h-4" />
-                            <span className="hidden xl:inline">かんたん設定</span>
+                            <span className="hidden xl:inline">{t('header.setup')}</span>
                         </button>
                     )}
 
@@ -237,7 +239,7 @@ export const Header: React.FC<HeaderProps> = ({
                                             <MdMic className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
                                             <div className="w-16 flex items-center" onPointerDown={e => e.stopPropagation()}>
                                                 <Slider
-                                                    aria-label="入力ゲイン"
+                                                    aria-label={t('header.inputGain')}
                                                     aria-valuetext={`${inputGain}%`}
                                                     value={[inputGain]}
                                                     max={200}
@@ -251,13 +253,13 @@ export const Header: React.FC<HeaderProps> = ({
                                         </div>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                        <p>マイク入力ゲイン（ダブルクリックで100%にリセット）</p>
+                                        <p>{t('header.inputGainHint')}</p>
                                     </TooltipContent>
                                 </Tooltip>
 
                                 <div className="h-6 w-px bg-border/30" />
-                                <LevelMeter width={12} height={32} type="input" />
-                                <LevelMeter width={12} height={32} type="output" />
+                                <LevelMeter running={isEngineRunning} width={12} height={32} type="input" />
+                                <LevelMeter running={isEngineRunning} width={12} height={32} type="output" />
                             </div>
 
                             {/* Large Meter Toggle */}
@@ -265,7 +267,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 <TooltipTrigger asChild>
                                     <button
                                         onClick={onToggleLargeMeter}
-                                        aria-label={isLargeMeterOpen ? '大型レベルメーターを閉じる' : '大型レベルメーターを開く'}
+                                        aria-label={isLargeMeterOpen ? t('header.meterClose') : t('header.meterOpen')}
                                         className={`p-2 rounded-lg transition-all border ${isLargeMeterOpen
                                             ? 'bg-primary/10 text-primary border-primary/50'
                                             : 'text-muted-foreground hover:text-foreground hover:bg-muted border-transparent'
@@ -275,7 +277,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                    <p>大型レベルメーター</p>
+                                    <p>{t('header.meter')}</p>
                                 </TooltipContent>
                             </Tooltip>
 
@@ -284,7 +286,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 <DropdownMenuTrigger asChild>
                                     <button
                                         className={`p-2 transition-colors rounded-lg flex items-center gap-2 ${theme === 'gaming' ? 'text-primary hover:text-primary hover:bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
-                                        aria-label="テーマ設定を開く"
+                                        aria-label={t('header.themeOpen')}
                                     >
                                         {theme === 'light' && <MdWbSunny className="w-5 h-5" />}
                                         {theme === 'dark' && <MdDarkMode className="w-5 h-5" />}
@@ -292,17 +294,17 @@ export const Header: React.FC<HeaderProps> = ({
                                     </button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                    <DropdownMenuLabel>テーマ設定</DropdownMenuLabel>
+                                    <DropdownMenuLabel>{t('header.theme')}</DropdownMenuLabel>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuRadioGroup value={theme} onValueChange={(v) => setTheme(v as any)}>
                                         <DropdownMenuRadioItem value="light" className="gap-2">
-                                            <MdWbSunny className="w-4 h-4" /> ライト
+                                            <MdWbSunny className="w-4 h-4" /> {t('header.light')}
                                         </DropdownMenuRadioItem>
                                         <DropdownMenuRadioItem value="dark" className="gap-2">
-                                            <MdDarkMode className="w-4 h-4" /> ダーク
+                                            <MdDarkMode className="w-4 h-4" /> {t('header.dark')}
                                         </DropdownMenuRadioItem>
                                         <DropdownMenuRadioItem value="gaming" className="gap-2">
-                                            <MdGamepad className="w-4 h-4 text-cyan-400" /> ゲーミング
+                                            <MdGamepad className="w-4 h-4 text-cyan-400" /> {t('header.gaming')}
                                         </DropdownMenuRadioItem>
                                     </DropdownMenuRadioGroup>
                                 </DropdownMenuContent>
@@ -315,15 +317,15 @@ export const Header: React.FC<HeaderProps> = ({
                         <TooltipTrigger asChild>
                             <button
                                 onClick={onOpenSettings}
-                                aria-label="オーディオ設定を開く"
+                                aria-label={t('header.audioSettingsOpen')}
                                 className="p-2 px-3 text-muted-foreground hover:text-foreground transition-colors hover:bg-muted rounded-lg flex items-center gap-2"
                             >
                                 <MdSettings className="w-5 h-5" />
-                                <span className="text-xs font-bold hidden xl:inline-block">設定</span>
+                                <span className="text-xs font-bold hidden xl:inline-block">{t('common.settings')}</span>
                             </button>
                         </TooltipTrigger>
                         <TooltipContent>
-                            <p>オーディオ設定</p>
+                            <p>{t('header.audioSettings')}</p>
                         </TooltipContent>
                     </Tooltip>
 
@@ -331,36 +333,36 @@ export const Header: React.FC<HeaderProps> = ({
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button
-                                aria-label="ヘルプメニューを開く"
+                                aria-label={t('header.helpOpen')}
                                 className="p-2 px-3 text-muted-foreground hover:text-foreground transition-colors hover:bg-muted rounded-lg flex items-center gap-2"
                             >
                                 <MdHelpOutline className="w-5 h-5" />
-                                <span className="text-xs font-bold hidden xl:inline-block">ヘルプ</span>
+                                <span className="text-xs font-bold hidden xl:inline-block">{t('header.help')}</span>
                             </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="min-w-[200px]">
-                            <DropdownMenuLabel>ガイド & ヘルプ</DropdownMenuLabel>
+                            <DropdownMenuLabel>{t('header.guides')}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={onOpenOBSGuide} className="gap-3 cursor-pointer p-3">
                                 <span className="w-6 h-6 flex items-center justify-center bg-black text-white rounded-full text-xs font-bold shadow-sm">OBS</span>
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-sm">OBS連携ガイド</span>
-                                    <span className="text-xs text-muted-foreground">配信ソフトへの音声送出</span>
+                                    <span className="font-bold text-sm">{t('header.obs')}</span>
+                                    <span className="text-xs text-muted-foreground">{t('header.obsHint')}</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuItem onSelect={onOpenDiscordGuide} className="gap-3 cursor-pointer p-3">
                                 <span className="w-6 h-6 flex items-center justify-center bg-[#5865F2] text-white rounded-full shadow-sm"><DiscordIcon className="w-3.5 h-3.5" /></span>
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-sm">Discord連携ガイド</span>
-                                    <span className="text-xs text-muted-foreground">通話/ボイスチャット設定</span>
+                                    <span className="font-bold text-sm">{t('header.discord')}</span>
+                                    <span className="text-xs text-muted-foreground">{t('header.discordHint')}</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={onOpenTroubleshoot} className="gap-3 cursor-pointer p-3">
                                 <span className="w-6 h-6 flex items-center justify-center bg-amber-500 text-white rounded-full shadow-sm text-xs font-bold">?</span>
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-sm">音が出ない？</span>
-                                    <span className="text-xs text-muted-foreground">自動診断で問題を特定</span>
+                                    <span className="font-bold text-sm">{t('header.noSound')}</span>
+                                    <span className="text-xs text-muted-foreground">{t('header.diagnostics')}</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -375,8 +377,8 @@ export const Header: React.FC<HeaderProps> = ({
                             <DropdownMenuItem onSelect={() => window.open('https://ofuse.me/o?uid=149216', '_blank')} className="gap-3 cursor-pointer p-3">
                                 <span className="w-6 h-6 flex items-center justify-center bg-pink-500 text-white rounded-full shadow-sm"><MdFavorite className="w-3.5 h-3.5" /></span>
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-sm">開発を支援する (OFUSE)</span>
-                                    <span className="text-xs text-muted-foreground">寄付・ファンレター</span>
+                                    <span className="font-bold text-sm">{t('header.support')}</span>
+                                    <span className="text-xs text-muted-foreground">{t('header.supportHint')}</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -389,10 +391,10 @@ export const Header: React.FC<HeaderProps> = ({
                                 </span>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">
-                                        {isBeginnerMode ? '詳細表示に切替' : 'かんたん表示に切替'}
+                                        {isBeginnerMode ? t('header.advanced') : t('header.simple')}
                                     </span>
                                     <span className="text-xs text-muted-foreground">
-                                        {isBeginnerMode ? '詳細調整項目を表示します' : '主要操作だけに絞って表示します'}
+                                        {isBeginnerMode ? t('header.advancedHint') : t('header.simpleHint')}
                                     </span>
                                 </div>
                             </DropdownMenuItem>

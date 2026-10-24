@@ -1,0 +1,220 @@
+# 対応frameの読出し時間（#28・#45の前提）
+
+初版は `audio_engine/frame_timing.rs` とcoreの同率passthroughへ実装した。音声キューの量の観測は [QUEUE_DIAGNOSTICS.md](QUEUE_DIAGNOSTICS.md)、計算・申告値の境界は [LATENCY_MEASUREMENTS.md](LATENCY_MEASUREMENTS.md) に定める。
+
+## 最初の測定対象
+
+同率・resamplerなしのとき、入力callback到着から、そのframeを含む出力callbackのキュー読出し完了までを測る。
+NR・VST・残響を通った実信号の到達や、機器のcapture／playback、OBS映像同期差は測定しない。
+音声キュー量やVST申告値をこの観測へ加算しない。異率は下記の別形式でbatch-ready callbackだけを観測し、raw frame対応は引き続き未対応とする。
+
+時刻は開始試行ごとに共有するInstant原点からの経過ns。
+入力到着はcallbackの開始、読出完了は完全frameのpop直後に一度だけ取得する。
+同じcallbackの全frameに同じ時刻を付け、sampleごとの時計取得は行わない。
+出力callback開始後に到着したframeを同じcallbackで読むことがあるため、開始時刻との差を負の異常値と扱わない。
+callback開始／読出完了／終了を区別し、到着が読出完了より後なら不正な時刻対応として欠測にする。
+
+## frame位置と数値イベント
+
+source位置は受信した入力frame全体で進め、queue位置は完全frameの受入だけで進める。
+満杯時に破棄したsourceの穴を、queue位置の欠損と混同しない。
+初版の同率passthroughは1callbackの受入prefixが1つなので、到着時刻・source範囲・受入queue範囲を1個の固定長Copyイベントへまとめてよい。
+出力側はqueue読出開始位置・実読出frame数・callback別ordinal・開始／読出完了／終了時刻を記録する。
+無音補填にはsource対応を付けない。イベントへ音声・String・Vecを含めない。
+
+音声publishとmetadataの公開順は原子的ではない。出力metadataが先着しても、非RTでqueueの絶対frame範囲を結合する。
+input／outputそれぞれ専用のSPSCを使い、各1024件を初期上限とする。イベント各96B以内ならpayloadは計192KiB以内。
+実際の型サイズ、ring header、非RT pending cache・histogram・保持Arcは実装時に別計上する。
+event連番・開始試行epoch・絶対frame位置で欠落と世代を判定し、時刻順やcallback数だけで対応を推測しない。
+
+metadata満杯・順序逆転・欠落・pending容量超過・counterの不正は観測の欠測として数える。
+これを理由に音声を待機・追加破棄・並べ替えしない。
+絶対frame位置を含む後続イベントで再同期し、失った区間の遅延を0で埋めない。
+RTは固定回数の時計・数値イベント送信だけとし、割当・lock・ログ・最終Arc解放を行わない。
+制御側が資源を保持し、callback終了後に最後の所有値を回収する。
+
+## 非RT集計と表示
+
+drainはUIのpollではなくEngineの制御ループで行い、tickの処理件数とpending範囲数を制限する。
+重いVST制御などで回収が遅れればcoverageが低下し、音声の動作は変えない。
+分母は実キュー読出frame数。matched／pending／unknownを区別し、metadata欠落数・観測期間・histogramの分解能を併記する。
+p50／p95はcallback数ではなくframe加重のbucket範囲として返す。
+分布は開始試行からの累積と明示し、観測frameがなければ0ms成功としない。
+停止時は両callback終了後に最終drain・封印。未消費の音声は遅延分布へ加えない。
+新しい試行・engineへ古いpendingを結合しない。
+
+表示は既存の音声詳細内とし、新しいpollを増やさない。
+「対応frameを含む読出し完了まで」の観測と、全信号通過時間の未測定を同時に示す。
+旧backend・欠測・停止を稼働中の有効値として表示しない。異率の別観測を同率raw frameの表示へ代入しない。
+OBSの追加遅延へ自動転記しない。
+
+## ASIOの周期比較
+
+各callbackのCPAL callback StreamInstantとordinalも固定Copy値で保持できる。
+opaqueなStreamInstantの内部を読む／transmuteすることや、std Instantとの減算は行わない。
+非RTで公開APIによる比較を行い、同じASIO driverのtimestampが進行し、対応の一意性を確認できた場合だけ同周期／次周期を補助分類する。
+CPAL callback StreamInstantを各Copyイベントへ保持する。通常statsの周期分類は `unknownUnverifiedClock` 固定であり、stream原点や時刻の有効性を推測しない。
+有効性flagはCPALから取得できないため、重複・欠落・異なるdriver・原点不明はUnknown。
+capture／playback timestampの計算モデルを物理的な信号到達として使わない。
+
+現行CPAL／asio-sysはbuild時にdriverを開始し、callback登録順に実行する。play順だけの変更では定常登録順は変わらない。
+入力／出力configと共有driver rateを先に整合させ、固定バイナリで現行順序を観測してから入力先行候補と比較する。
+Device clone共有と入出力rate整合の前提段階は [ASIO_DUPLEX.md](ASIO_DUPLEX.md) に定める。ここでは出力先行build／play順を変えない。
+現在のVoicemeeter Insertでは48k要求がoutput buildで拒否され、既存fallbackで96kへ戻った。これを48kでの動作確認や共有rate競合の再現成功と扱わない。
+
+## 検証
+
+実ringで部分publish／wrap／満杯prefix、output metadata先着、両metadata queue満杯、世代混入、callback途中の入力到着、frame加重分布、異率Unknown、UI非表示のdrain、RTのalloc／freeを確認する。
+観測なし／ありの時間・保持メモリは別の予備計測とし、同じ音声push/pop経路で比較する。
+44.1／48／現環境96k、対応buffer、多ch、VSTあり／なし、停止再開の実機を段階的に確認する。
+成果物のhash・測定区間・欠落率と有限のraw数値metadataを保存し、私的音声は保存しない。
+初版では異率の有理数対応・FFT carry／filter supportと、DSP内部の信号対応は未実装である。
+
+## 実装の上限と公開形式
+
+入力側は到着時刻・受信source範囲・受入queue範囲の統合イベント1個、出力側はcallback ordinal・読出queue範囲・3時刻のイベント1個を送る。
+時計取得は入力callback開始の1回、出力callback開始・読出完了・正常終了の3回以内。異率も同じ回数・1callback1eventとし、FFT emitごとの追加時計取得は行わない。
+早期故障・処理容量超過でqueueを読まなかったcallbackを読出frameへ加算しない。
+queue量の観測をaudioの受入・読出しへ使わず、完全frame単位の既存push/popを維持する。
+
+制御側のAboutToWaitで各ring最大256件をdrainし、pendingは入力・出力各1024範囲まで。
+pending上限では古いmetadataだけを退避対象から除き、保持上限超過件数を残す。
+欠落が確定した読出frameはunknown、入力metadata先着待ちの出力範囲はpendingとする。
+稼働中のpendingには、RT読出cursorから受信済みoutput event終端までの未回収末尾も含む。この時点ではSPSC内の回収待ちと末尾のmetadata欠落を区別できないため、欠測と断定しない。
+後続output eventの終端が進んだ時点で、その途中にある未対応区間はunknownへ確定する。最後のmetadataが欠落し後続がない場合は、停止時の最終drain後にunknownへ確定する。
+稼働中の分母は出力recorderの読出cursorと受信済みoutput event終端の大きい方なので、同時更新時も結合済み数より小さくしない。
+停止時はring各1024件を最大4回のdrainで回収し、未対応pendingをunknownとして封印する。
+入力だけ残っている未消費frameは分母へ入れない。分布・割合は試行開始からの累積で、UIの更新期間ごとの分布ではない。
+
+分布は0.10ms幅の10001bucket。最後は1000ms以上の開区間で上限をnullとし、範囲内へ丸め込んだ上限を保証しない。
+p50／p95はframe加重のnearest rank。対応frameなし・counter異常はnull。
+output callback内に到着したframeは正常なoverlapとして数え、到着が読出完了を超えた対応だけを不正／欠測にする。
+event連番・source／queue終端の逆行やepoch違いも不正件数へ残し、後続の絶対範囲で結合を再開する。
+
+`EngineRuntimeStats.frameTiming` はoptional BoxのJSON透過objectで、旧backendは欠落可能。
+epoch、supported、sealed、counterInvalid、consumed／matched／pending／unknownFrames、coveragePercent、p50／p95の範囲、観測期間、分布幅、metadata欠落件数を公開する。
+同率未対応・停止後・旧応答・counter異常は現在の有効な分布として表示しない。rawイベントは通常statsへ添付しない。
+
+数値イベント各96B以下をテストする。各ring payloadのほかにpending cache各1024件、histogramの80008B、ring header・Observer・Shared／保持Arc・epoch文字列を使う。
+現在のWindows x64実型はInputEvent／OutputEvent各80B、pending cache各81920B、ring payload計163840B、histogram80008B。これらの確保payload合計は407688Bであり、構造体・Arc header・allocatorを含む総保持量ではない。
+従来raw／異率batch-readyの二者は同じring・pending・histogram上限を共用し、両modeを重ねて確保しない。下記phase1のcohortは別の追加領域であり、この旧保持量へ含めない。制御側Observerへ申告descriptor（5個のusizeを持つOption）だけを追加する。allocator header、プロセスRSS、既存音声queueの保存領域はこの数値payloadとは別である。
+両callback終了前は制御側ObserverのconsumerとSharedを破棄しない。RT recorder破棄のalloc／freeはゼロをテストする。
+
+単体検証は実ringの多ch・部分frame・wrap・受入prefixと、metadata先着逆転・overflow・世代／不正時刻・停止封印・frame加重分位を対象にする。
+これは実機のCPU・音切れ・時計品質・ASIO周期順の検証ではなく、実機と観測ON／OFFの性能比較は別途必要である。
+
+## 明示読出しの有限trace（#45比較の準備）
+
+`GetFrameTimingTrace` commandのpayloadは `{ "expectedEpoch": "<frameTiming.epoch>" }`。
+応答は `FrameTimingTrace` のpayload object。通常のRuntimeStatsへrawを加えず、UI/APIのpollも追加しない。
+未開始・異率未対応・epoch違いはErrorとし、旧backendの未知commandや通信失敗も取得不能として扱う。空trace成功で代用しない。
+Hostの内部実行入口でもこのcommandは既存接続だけを使い、engine起動・本番設定同期・音声条件失効を起こさない。
+Engineは取得時にdrainせず、非RT制御ループで既に回収された値のcopyだけを返す。
+
+既存80BのInputEvent／OutputEventとRT record処理・時計回数を変更せず、非RT ingestでcount 0も記録する。
+callbackは入力／出力合計64件を、共有std Instantのcallback開始時刻順で保持する。同値時刻は方向・ordinalの決定的順序で並べるが、同値内の物理的順序を保証しない。
+入力と出力を順にdrainするingest順を、callback実行順と誤認しない。
+queue範囲をjoinしたsegmentも最近64件まで保持し、source開始位置・入力／出力ordinal・到着／出力開始／読出完了／終了時刻を記録する。
+traceのcap evictionはcallback／segment別に数え、histogram・coverage・metadata欠測・pending evictionへ加算しない。seal後は固定し、新しい試行へ引き継がない。
+Windows x64で追加保持するCallbackRecordは176B、SegmentRecordは184Bで、各64件のpayloadは計23040B。TraceStateは256BをObserverへ内包する。trace導入時のObserverは544Bであり、異率descriptor追加後の型サイズは対象テストのlayout出力で別途確認する。
+明示取得時の公開Traceは232B、CallbackTraceは160B、SegmentTraceは152B（いずれもVec／Stringの保存先とallocatorは別）。通常Snapshot208B、RTイベント80B、Shared32B、RT recorder80B／72Bは変わらない。
+公開traceのVec要素は最大64件ずつで、符号付き10進文字列とJSONの長さは実際の数値によって変わる。取得時の一時的なclone・JSON保存量を常時保持payloadへ混ぜない。
+
+CPAL相対nsは、その試行で最初にingestした非Noneのcallback timestampを参照点にし、公開Ordとduration_sinceだけで符号を付けた10進文字列として返す。
+これはstd Instant原点への変換ではない。各方向の直前callbackとの差も別に残す。
+segmentの `inputMinusOutputCpalNs` は入力ラベル−出力ラベルで、比較分類は `equalCallbackTimestamp`／`inputTimestampEarlier`／`inputTimestampLater`／`missing`／`unverified`。
+逆行・同値・None・ordinal欠落数・非増加ordinalは方向別の別counterであり、driver障害や物理的な周期欠落と断定しない。
+比較できない／整数範囲を超える差はnullとunverifiedを返す。
+
+汎用CPAL APIはstream間の共通原点を保証しない。固定ASIOソースでは同じCallbackInfo.system_timeから両方向のcallbackラベルを作るが、valid flagはCPALに公開されず、GetSamplePosition失敗由来のzeroも排除できない。
+このtraceは「callback時刻ラベルの補助比較」であり、同周期処理・capture／playback同期・物理到達を証明しない。
+私的fixtureは固定binary/source hash・epoch・取得期間と一緒に保存し、音声・VST state・機器名・資格情報をtraceへ入れない。
+
+
+## 滞留回復時の失効
+consumerが古い完全frameを除去する前に共有atomicを失効させる。当試行のcounterInvalidを保持し、quantile/coverageを表示せず、明示trace取得も拒否する。失効後の対応観測は更新しないためconsumed等は失効前の観測範囲に限られ、queue diagnosticsの継続累積値と同一ではない。回復破棄をmetadata欠落や物理遅延へ読み替えない。次回開始で新epochを構築する。sealは両callback終了後にだけ実行し、停止後の値を固定する。
+
+
+## 異率のbatch-ready callback観測（#28の限定追加）
+
+`EngineRuntimeStats.resamplerBatchTiming` はoptional objectで、`mode` は `callbackBatchReadiness`。
+異率の場合はこの形式だけを返し、旧 `frameTiming` はnull、旧raw `GetFrameTimingTrace` は取得不能とする。同率の場合は旧形式だけを返し、新形式はnull。
+欠落／nullは旧backendまたは未取得であり、0msや対応成功ではない。新しいpollや取得commandは追加しない。
+
+測定の起点は、FFTへの入力が揃い出力batchを生成できた**最後の入力callbackの開始**。
+終点は、その生成出力frameを実際にqueueから読んだ出力callbackの読出完了である。
+過去callbackからの入力蓄積待ち全体、各入力sampleの中心reference、FIR support内の点対応、capture/playbackやNR/VST後の全通過時間の代用ではない。この追加だけで#28全体完了とはしない。
+
+入力callback内の複数FFT emitは同じ到着stampの1eventへまとめる。
+そのsource位置は受信入力数ではなく、実際に生成した出力frame数で進み、queue満杯で落ちた生成frameも含める。
+queue位置は完全frameの受入prefixだけで進む。最初のemitで固定する転送予算とSPSCの既存方針を変えない。
+受入prefixを閉じた後のemitで再び受け入れた場合は、音声転送を変えず観測だけをatomic失効する。
+生成なしcallbackも連番を1回進め、source/queueは進めない。#28の観測追加そのものはFFT内部carryやstartup出力を変更せず、Stopのzero padding/flushも追加しない。後述の#46の限定chunk変更は別の処理設定変更として区別する。
+
+分母は実読出出力frame数で、無音補填へ対応を捏造しない。
+matched/pending/unknown、metadata drop、pending eviction、停止seal、epoch、frame加重分位は同率と同じ有界結合器を使う。
+受信metadata欠落を音声の追加dropへ読み替えず、後続絶対位置で再同期する。生成prefix不正・変換失敗・回復skipは当epochの観測を失効し、分位/coverageをnullにする。
+停止後は両callbackを回収してsealし、未消費frameや残ったFFT carryを遅延分布へ含めない。
+
+`declaredResampler` は `inputRateHz/outputRateHz/inputChunkFrames/maxOutputChunkFrames/declaredOutputDelayFrames` を持つ。
+rateとrubato公開APIの `input_frames_max/output_frames_max/output_delay` から開始準備中に得る**申告descriptor**である。
+output delayの単位は出力frame。分位へ加算・減算せず、中心reference式や実sample到達として表示しない。
+過去private impulse studyは選定した位相・startup/carry条件での数値比較であり、このruntime観測の信号対応保証ではない。
+
+回帰は実FftFixedInの44.1↔48／48↔96k・128/512/1024/不規則分割、複数emit、carryのみ、満杯prefixとwrap、zero-fill、metadata不足、旧epoch、観測失効、停止封印、RT alloc/free、旧DTO欠落/nullを対象とする。
+これは実機、音切れ、CPU、物理遅延、歌唱聴感の検証ではない。新コードの検証と、固定旧debug engineを使った30分予備運転を混同しない。
+
+
+## 限定したFFT入力batchの512化（#46）
+
+`StreamResampler` は実際の入力/出力設定が44.1→48、48→44.1、48→96、96→48kHzの4組のときだけ入力chunkを512にする。
+それ以外の異率は1024を保持し、同率は引き続きresamplerなし。同じrate比の別の組合せへ512を自動展開しない。
+機器のcallback要求サイズ、音声queue容量、回復閾値、VST処理容量をこの選択で変えない。
+
+`declaredResampler` は選択後の実constructorから得るので、入力chunk・最大生成chunk・申告delayを1024固定で表示しない。
+内部FFT単位とcarryはrate/gcdにも依存する。512入力chunkでも生成なしcallbackがあり得て、全rate・全callbackで待ちやdelayが半減するわけではない。
+192→44.1kは対象外で1024を保持する。私有比較でも512にしても内部単位640→147と申告delay73出力frameが変わらない反例として、別枠のmetadata/countだけを調べた。
+
+batch-ready観測は選択したchunkで生成が可能になった最後のcallbackから読むため、過去入力の蓄積待ち短縮を全て表す指標ではない。
+512と1024の分位差だけで全信号遅延の改善を断定しない。旧same-rate raw traceと異率の別DTO、epoch/skip失効/sealの契約は変更しない。
+回帰fixtureは完全127frame＋端数1slotへ限定して満杯/drop/wrapを確実に起こし、C基準でzero-emitと複数emitを検査する。これは製品queue容量の変更ではない。
+
+採用判断に用いた私有FFT比較は、固定旧wrapperとchunk定数だけ変えたcopyの4pair数値・heap・System計時である。
+新#28の観測instrumentation、全Engine、実driver、最新製品バイナリのCPU、聴感、長時間運転はその性能比較に含まれない。
+今回の製品変更に対するRustテスト・実機検証の成否は、私有比較とは分けて記録する。
+
+## 蓄積入力cohortと同率入力から通常mic出力buffer完了まで（phase2a）
+
+optional `resamplerCohortTiming` は異率の `inputCohortToOutputBufferEnd` と同率の `sameRateInputToOutputBufferEnd` を区別する。schemaVersion=2、signalCorrespondence=notMeasured。旧backendのmissing／null／schemaVersion=1は現在の窓状態が不明であり、新UIでは現在分位にしない。同率の従来rawはqueue読出完了のまま維持し、別の出力buffer完了観測で置換しない。このsliceだけで#28を完了とはしない。
+
+原入力callbackはemitがなくても絶対入力frame範囲と到着時刻を記録する。wrapperの蓄積と固定rubato内部の未処理入力carryを区別し、各emitを内部FFT処理単位へ非RTで分割する。その単位を満たした入力callbackの最早／最遅到着から、受け入れた出力frameを含む通常mic出力bufferの書込み完了までを、出力frame加重の2組のp50／p95として示す。これはcallback timestamp同士ではなく、同じstd Instant原点によるアプリ内の時刻である。
+
+処理単位geometryは固定rubato0.14.1のconstructor式（f32除算→ceil、subchunks2）と公開input最大／output最大／output_delayの整合を非RTで確認する。oddの出力単位ではdelayはfloor(outputUnit/2)であり、delayの2倍から逆算しない。実processの入力消費／出力生成数も照合する。未対応geometry・不整合は新観測だけ失効し、音声を再構成・切詰め・補間し直さない。
+
+これは**処理cohortの対応**であり、FIRの各sampleへの点対応や、前のFFT処理からのfilter overlapを含む全依存履歴ではない。NRの内部分析・合成履歴とdry/wet混合、内蔵filterの位相・コンプ状態・reverb tail、VST内部保持を測定した値ではない。これらが有効でもsignalCorrespondenceはnotMeasuredのまま。申告delayを2分位へ加算／減算しない。
+
+生成出力位置はqueue drop分も進め、queue位置はaccepted prefixだけ進める。部分受入／部分読出し／複数emitを結合する。zero-fillには原入力を割り当てず別カウンターとする。`receivedInputFrames`、`cohortInputFrames`、`unemittedInputFrames`は原入力の受信・処理cohort消費・未生成（wrapper蓄積と内部carry）を区別する。欠落時の未生成数はnullであり、0とはしない。
+
+schemaVersion=2の `consumedFrames = matchedFrames + pendingFrames + unknownFrames` は観測窓内の数であり、stream累積は `streamConsumedFrames` として分離する。原入力received／cohortInputはstream累積のままである。稼働中はまだmetadataを回収していない範囲をpendingとし、Stop時の最終有界drain後は未結合範囲をunknownへ。非対応／失効時のcoverageと分位はnull、現在値として表示しない。metadata gapや上限超過を実音声dropのカウンターに読み替えない。
+
+新観測用SPSCは入力（span／emit）・出力各1024件、pendingはspan／emit／生成segment／output各1024件。1drainで各ring256件、展開／join最大2048step。callbackでのmetadata pushは固定Copy値／try_pushだけであり、String、Vec作成、再確保、待機、ログを追加しない。histogramは2本×10001u64を制御側で準備する。従来raw／batch-readyの保持量に対する追加領域であり、旧性能測定にはこの追加負荷を含まない。
+
+失効理由は固定code（geometryMismatch、inputMetadataGap、outputMetadataGap、pendingCapacity、counterOverflow、timestampOrder、recoverySkip、ordinalMismatch、nonMicOutput、conditionsChanged）。ring欠落・ordinal不整合・時刻逆転・pending上限では当試行の新cohort観測を失効させ、旧raw／batch-readyの既存欠測方針を変更しない。queue回復では破棄前に旧観測と新cohortを失効する。mute、test tone、legacy録音再生への出力差替えはnormalMicOutput=falseのsubstituted窓として分位を隠す。最終tone／playbackのbufferも差替え扱いであり、次の通常mic bufferで新しい窓を開始する。独立物理出力のpreviewは主mic出力の差替えとは異なる。
+
+callback終了後のsealでsnapshotを固定し、後からproducerが操作されても封印済値を変更しない。Startごとに新しいring／epoch／ordinalを構築し、旧producerを次試行へ使い回さない。現在のepochと一致しないUI応答・停止中・未知schema/mode/statusでは分位を現在値として表示しない。UIから新poll／IPCは追加しない。
+
+
+稼働途中のprocessor追加／削除／並べ替え、bypass／mute／plugin gain、LiveMode、全体bypass、入力gain／ch、noise learning／NR、内蔵処理、出力gainは、control側でrequestedRevisionを進め、元の音声制御メッセージの直後へCopyの窓markerを同じFIFOで置く。queue満杯では既存pendingへ保留し、元操作をmarker都合で失敗に変更しない。requestedがcompletedより先の間はpendingで分位を隠す。RTがmarkerへ達した時にcompletedRevisionを進め、受理ならappliedRevision、拒否ならrejectedRevisionへ記録する。古い／未来のACKは採用しない。拒否後も新窓へ切り替えるが、残ったRT状態の観測であって要求の適用成功とは表示しない。
+
+appliedはRTメッセージの受理・状態反映境界であり、gain平滑化、LiveMode補間、processor回収、VST内部処理が完了した保証ではない。入力span、resampler carry、emit ordinal、queue位置は窓を跨いで保持し、出力eventの窓serial境界でCDF／窓カウンターだけを非RTで初期化する。最大2本×10001u64のclearはRTでは行わない。旧窓pendingを処理してから新窓CDFへ切り替え、要求／RT serialに追い付くまで旧分位を現在値へ戻さない。
+
+read／poll／localeは窓を変更しない。metadata gap／overflow／時刻逆転／回復skip等の永久fault bitは設定ACKで解除せず、次Startの新epochまでunknownとする。seal後は窓要求・遅いproducer・snapshotで値を変更しない。同率はgeometry1:1のspan単位で結合し、大きなcallbackもframeごとの展開をしない。固定ring／pending／drain／step上限は上記のまま、窓marker／拡張eventの保持量と現在コードの実機負荷は旧性能比較には含まれない。新poll／IPCや計測再開のための音声再Startは追加しない。
+
+receivedInputFrames／cohortInputFramesは結合器へ正常に届いた原入力／emit metadataからの値であり、失効後も全入力を数えるqueue diagnosticsの累積値とは異なる。invalid時の未生成・carryはnull。表示は「記録済み原入力」とし、欠落後の0を全入力0と断定しない。
+
+
+## DSP段別の申告・計算・unknown（phase2b）
+
+cohort／raw／batch-readyは出力slotの受渡し観測であり、DSP内部信号対応とは別である。latencyMetadata.stageBreakdownを並列表示するが、signalCorrespondence=notMeasuredを維持する。VSTのSDK申告はRuntimeStats取得時の一回のgetter巡回で旧小計と共に生成する。active／bypassed／muted／unavailable、全体bypass、申告0／未取得nullを区別し、mute段を含む旧小計を有効信号遅延和へ読み替えない。停止／異常／旧DTO欠落／未知schema／queue epoch不一致では現在の段別値を表示しない。
+
+NRのactual出力rateに対応する分析frame周期は計算値、モデル480frame@48kもフレーム長だけである。wet履歴／drywet混合／IIR位相／コンプ状態／reverb tailの信号遅延はunknown。申告値やフレーム周期をcohort分位へ加算しない。VST内部状態変化の通知鮮度、実機384k、物理capture/playback、OBS映像同期差、長時間・聴感は本sliceの検証ではない。NR専用factoryと保持量境界は[LATENCY_MEASUREMENTS.md](LATENCY_MEASUREMENTS.md)を参照する。

@@ -1,0 +1,24 @@
+# ASIO開始失敗の回収境界
+
+固定CPAL 0.17.3のローカル修正は`third_party/cpal-0.17.3/PATCHES.md`を参照。
+依存版・ASIO SDK・入出力build順とplay順は変更しない。
+
+入力・出力とも、prepare成功後にmessage callbackを登録する。
+data callback登録後は両IDを持つStreamを構築してからdriverをstartする。
+start失敗でもStreamのDropが両登録を解除し、callbackの所有値を制御側へ返す。
+最終Driver破棄の成否や、他のDevice参照の有無に回収を依存させない。
+
+Engineの再試行では、ローカルStream・未実行closureを破棄した後に
+両Deviceを解放し、その後にcallback返却キューを回収してVST処理を止める。
+返却receiverはこの順序の最後まで保持する。
+終端エラーは`start_audio_attempt`がローカル所有値を破棄して戻った後、
+外側の`start_audio_impl`が同じ制御側cleanupを行う。
+VSTの最終解放はcallbackスレッドで行わない。
+
+非実機回帰は実際のCPAL修正が使用するgeneric境界を直接参照し、
+prepare失敗時の未登録と未実行closure回収、start失敗時の両登録解除、
+Deviceが保持するcallbackの返却、processor回収と次snapshotの順を確認する。
+既存のbuild/play失敗・成功時のみcommit・RT所有値返却テストも維持する。
+
+これは所有権と回収の検証であり、ASIO driverのStop/Dispose/Exit成功や
+実callback順・実機での開始成功を保証するものではない。

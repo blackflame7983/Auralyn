@@ -6,6 +6,20 @@ use tauri::State;
 
 struct AnalysisWorkspace(PathBuf);
 
+#[tauri::command]
+pub(crate) async fn voice_check_preview(
+    state: State<'_, audio::AudioState>,
+    request: crate::audio_engine::voice_check::preview::Request,
+) -> Result<crate::audio_engine::voice_check::preview::Snapshot, String> {
+    let state = state.0.clone();
+    super::run_blocking(move || {
+        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        host.voice_check_preview(request)
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
 impl AnalysisWorkspace {
     fn new() -> std::io::Result<Self> {
         static NEXT: AtomicU64 = AtomicU64::new(0);

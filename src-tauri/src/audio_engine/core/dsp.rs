@@ -78,10 +78,32 @@ pub(super) fn normalize_built_in_effects_preset(preset: Option<&str>) -> BuiltIn
     match preset.map(|p| p.trim().to_ascii_lowercase()) {
         Some(p) if p == "warm" => BuiltInEffectsPreset::Warm,
         Some(p) if p == "bright" => BuiltInEffectsPreset::Bright,
+        Some(p) if p == "singing" => BuiltInEffectsPreset::Singing,
         _ => BuiltInEffectsPreset::Broadcast,
     }
 }
 
+/// NR専用の数値対応範囲。tone/録音のrate制限とは独立。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct NoiseGeometry {
+    pub rate: u32,
+    pub frames: usize,
+}
+impl NoiseGeometry {
+    pub fn checked(rate: u32) -> Option<Self> {
+        (8_000..=384_000).contains(&rate).then(|| Self {
+            rate,
+            frames: ((rate + 50) / 100) as usize,
+        })
+    }
+    pub fn guard(rate: u32, enabled: bool) -> Result<(), &'static str> {
+        if enabled && Self::checked(rate).is_none() {
+            Err("このサンプルレートではノイズ低減を使用できません（8〜384 kHz）")
+        } else {
+            Ok(())
+        }
+    }
+}
 pub(super) struct RtNoiseReducer {
     enabled: bool,
     states: [Box<DenoiseState<'static>>; 2],
@@ -96,9 +118,14 @@ pub(super) struct RtNoiseReducer {
 }
 
 impl RtNoiseReducer {
+    #[cfg(test)]
     pub(super) fn new(sample_rate_hz: u32) -> Self {
-        let frame_size = ((sample_rate_hz.max(8_000) + 50) / 100) as usize;
-        Self {
+        Self::prepare(sample_rate_hz).expect("test NR rate")
+    }
+
+    pub(super) fn prepare(sample_rate_hz: u32) -> Option<Self> {
+        let frame_size = NoiseGeometry::checked(sample_rate_hz)?.frames;
+        Some(Self {
             enabled: false,
             states: std::array::from_fn(|_| DenoiseState::new()),
             input_frame_size: frame_size,
@@ -109,7 +136,7 @@ impl RtNoiseReducer {
             input_pos: 0,
             output_pos: 0,
             output_ready: 0,
-        }
+        })
     }
 
     // 強度・モード変更では履歴を保ち、OFFから再開するときだけ古い音声を捨てる。
@@ -219,7 +246,18 @@ pub(super) fn finite_audio_sample(sample: f32) -> f32 {
     }
 }
 
-pub(super) struct RtBuiltInVoiceChain {
+pub(super) fn sent_sample_levels(frame: &[f32], targets: [usize; 2]) -> [f32; 2] {
+    [
+        frame.get(targets[0]).copied().unwrap_or(0.0).abs(),
+        if targets[0] == targets[1] {
+            0.0
+        } else {
+            frame.get(targets[1]).copied().unwrap_or(0.0).abs()
+        },
+    ]
+}
+
+pub(crate) struct RtBuiltInVoiceChain {
     hp_last_in: [f32; 2],
     hp_last_out: [f32; 2],
     comp_env: f32,
@@ -227,7 +265,7 @@ pub(super) struct RtBuiltInVoiceChain {
 }
 
 impl RtBuiltInVoiceChain {
-    pub(super) fn new(sample_rate_hz: u32) -> Self {
+    pub(crate) fn new(sample_rate_hz: u32) -> Self {
         Self {
             hp_last_in: [0.0; 2],
             hp_last_out: [0.0; 2],
@@ -247,7 +285,7 @@ impl RtBuiltInVoiceChain {
         out
     }
 
-    pub(super) fn process_sample(
+    pub(crate) fn process_sample(
         &mut self,
         left: f32,
         right: f32,
@@ -258,7 +296,7 @@ impl RtBuiltInVoiceChain {
         let alpha = self.hp_alpha[match preset {
             BuiltInEffectsPreset::Warm => 0,
             BuiltInEffectsPreset::Bright => 1,
-            BuiltInEffectsPreset::Broadcast => 2,
+            BuiltInEffectsPreset::Broadcast | BuiltInEffectsPreset::Singing => 2,
         }];
         let mut l = self.high_pass(0, left, alpha);
         let mut r = self.high_pass(1, right, alpha);
@@ -275,7 +313,7 @@ impl RtBuiltInVoiceChain {
         let threshold = match preset {
             BuiltInEffectsPreset::Warm => 0.2,
             BuiltInEffectsPreset::Bright => 0.16,
-            BuiltInEffectsPreset::Broadcast => 0.18,
+            BuiltInEffectsPreset::Broadcast | BuiltInEffectsPreset::Singing => 0.18,
         };
         let ratio = 2.0 + amount * 2.0;
         let gain = if self.comp_env > threshold {
@@ -291,7 +329,7 @@ impl RtBuiltInVoiceChain {
         let tone = match preset {
             BuiltInEffectsPreset::Warm => -0.03,
             BuiltInEffectsPreset::Bright => 0.04,
-            BuiltInEffectsPreset::Broadcast => 0.015,
+            BuiltInEffectsPreset::Broadcast | BuiltInEffectsPreset::Singing => 0.015,
         } * amount;
         l = (l + (l - left) * tone).clamp(-0.98, 0.98);
         r = (r + (r - right) * tone).clamp(-0.98, 0.98);
@@ -303,6 +341,21 @@ impl RtBuiltInVoiceChain {
 mod tests {
     use super::*;
     use crate::dsp_verification_allocator::allocation_counts;
+    #[test]
+    fn sent_meter_uses_written_samples_during_gain_ramp_same_and_invalid_channels() {
+        let frames = [[0.8, -0.4], [0.4, -0.2], [0.0, 0.0]];
+        let mut peak = [0.0f32; 2];
+        for frame in frames {
+            let levels = sent_sample_levels(&frame, [0, 1]);
+            for ch in 0..2 {
+                peak[ch] = peak[ch].max(levels[ch]);
+            }
+        }
+        assert_eq!(peak, [0.8, 0.4]); // block末gain=0でも先頭の実送出peakを失わない。
+        assert_eq!(sent_sample_levels(&[-0.3, 0.7], [1, 1]), [0.7, 0.0]);
+        assert_eq!(sent_sample_levels(&[-0.3, 0.7], [8, 1]), [0.0, 0.7]);
+        assert_eq!(sent_sample_levels(&[0.0, 0.0], [0, 1]), [0.0, 0.0]);
+    }
 
     #[test]
     fn active_setting_updates_keep_denoiser_history_but_reenable_discards_old_audio() {
@@ -413,7 +466,7 @@ mod tests {
             let cutoff = match preset {
                 BuiltInEffectsPreset::Warm => 70.0,
                 BuiltInEffectsPreset::Bright => 105.0,
-                BuiltInEffectsPreset::Broadcast => 85.0,
+                BuiltInEffectsPreset::Broadcast | BuiltInEffectsPreset::Singing => 85.0,
             };
             let mut l = self.high_pass(0, left, cutoff);
             let mut r = self.high_pass(1, right, cutoff);
@@ -430,7 +483,7 @@ mod tests {
             let threshold = match preset {
                 BuiltInEffectsPreset::Warm => 0.2,
                 BuiltInEffectsPreset::Bright => 0.16,
-                BuiltInEffectsPreset::Broadcast => 0.18,
+                BuiltInEffectsPreset::Broadcast | BuiltInEffectsPreset::Singing => 0.18,
             };
             let ratio = 2.0 + amount * 2.0;
             let gain = if self.comp_env > threshold {
@@ -446,7 +499,7 @@ mod tests {
             let tone = match preset {
                 BuiltInEffectsPreset::Warm => -0.03,
                 BuiltInEffectsPreset::Bright => 0.04,
-                BuiltInEffectsPreset::Broadcast => 0.015,
+                BuiltInEffectsPreset::Broadcast | BuiltInEffectsPreset::Singing => 0.015,
             } * amount;
             l = (l + (l - left) * tone).clamp(-0.98, 0.98);
             r = (r + (r - right) * tone).clamp(-0.98, 0.98);
@@ -477,6 +530,67 @@ mod tests {
                 }
             });
             assert_eq!(counts, (0, 0));
+        }
+    }
+}
+
+#[cfg(test)]
+mod checked_noise_tests {
+    use super::*;
+    use crate::dsp_verification_allocator::allocation_counts;
+    #[test]
+    fn runtime_noise_factory_rate_frame_bounds_and_off_to_on_are_allocation_free() {
+        for rate in [8_000, 44_100, 48_000, 96_000, 192_000, 384_000] {
+            let mut n = RtNoiseReducer::prepare(rate).unwrap();
+            assert_eq!(n.input_frame_size, ((rate + 50) / 100) as usize);
+            assert!(n.input_frame_size <= 3840);
+            let (alloc, free) = allocation_counts(|| {
+                n.set_enabled(true);
+                for i in 0..8192 {
+                    let v = if i == 0 { 0.2 } else { 0.0 };
+                    let (l, r) = n.process_sample(v, -v);
+                    assert!(l.is_finite() && r.is_finite());
+                }
+                n.set_enabled(false);
+                n.set_enabled(true);
+            });
+            assert_eq!((alloc, free), (0, 0));
+            assert_eq!(n.input_pos, 0);
+            assert_eq!(n.output_ready, 0);
+        }
+        for rate in [0, 7999, 384001, u32::MAX] {
+            assert!(RtNoiseReducer::prepare(rate).is_none());
+            assert!(NoiseGeometry::guard(rate, true).is_err());
+            assert!(NoiseGeometry::guard(rate, false).is_ok());
+        }
+    }
+    #[test]
+    fn supported_runtime_factory_preserves_legacy_frame_and_samples_below_192k() {
+        for rate in [44_100, 48_000, 96_000, 192_000] {
+            let mut actual = RtNoiseReducer::prepare(rate).unwrap();
+            // 旧constructorの式と初期状態。処理数値は同じ既存processを比較する。
+            let frames = ((rate.max(8_000) + 50) / 100) as usize;
+            let mut reference = RtNoiseReducer {
+                enabled: false,
+                states: std::array::from_fn(|_| DenoiseState::new()),
+                input_frame_size: frames,
+                input_frames: [vec![0.0; frames], vec![0.0; frames]],
+                output_frames: [vec![0.0; frames], vec![0.0; frames]],
+                denoise_input: [[0.0; DENOISE_FRAME_SIZE]; 2],
+                denoise_output: [[0.0; DENOISE_FRAME_SIZE]; 2],
+                input_pos: 0,
+                output_pos: 0,
+                output_ready: 0,
+            };
+            actual.set_enabled(true);
+            reference.set_enabled(true);
+            for i in 0..8192 {
+                let sample = (i as f32 * 0.031).sin() * 0.1;
+                assert_eq!(
+                    actual.process_sample(sample, -sample),
+                    reference.process_sample(sample, -sample)
+                );
+            }
         }
     }
 }

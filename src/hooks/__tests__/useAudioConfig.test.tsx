@@ -3,10 +3,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useAudioConfig } from '../useAudioConfig';
+import { audioApi } from '../../api/audio';
 
 const config = { host: 'Wasapi', sample_rate: 48000, buffer_size: 512 };
 let callbacks: Map<string, (() => void)[]>;
 beforeEach(() => {
+    vi.spyOn(audioApi, 'frontendBootstrap').mockResolvedValue({ outcome: 'attached', initialPage: false, error: null });
     localStorage.clear();
     callbacks = new Map();
     vi.mocked(invoke).mockReset();
@@ -15,7 +17,25 @@ beforeEach(() => {
         return () => {};
     });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
+
+it.each(['cold', 'dead', 'pipe'])('常時状態pollの%sでStartを送らず、coldならstream照会も送らない', async situation => {
+    vi.useFakeTimers();
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'get_audio_state') return { is_running: situation !== 'cold', config };
+        if (command === 'auto_gain') throw new Error('existing connection unavailable');
+        throw new Error(`unexpected ${command}`);
+    });
+    const { result, unmount } = renderHook(() => useAudioConfig(vi.fn()));
+    await act(async () => { await vi.advanceTimersByTimeAsync(6100); });
+    expect(result.current.isEngineRunning).toBe(false);
+    expect(result.current.engineProcessReady).toBe(situation === 'cold' ? false : null);
+    expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
+    expect(invoke).not.toHaveBeenCalledWith('restart_audio_engine', expect.anything());
+    const requests = vi.mocked(invoke).mock.calls.filter(([command]) => command === 'auto_gain');
+    expect(requests.length).toBe(situation === 'cold' ? 0 : 4);
+    unmount(); vi.useRealTimers();
+});
 
 it.each([
     [null, { running: false, streamFailed: false }, false],

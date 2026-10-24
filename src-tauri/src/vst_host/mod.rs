@@ -1,11 +1,11 @@
+pub mod blacklist;
 pub mod c_api;
 pub mod instance;
-pub mod scanner;
 pub mod presets;
-pub mod blacklist;
+pub mod scanner;
 
+pub use blacklist::Blacklist;
 pub use instance::VstInstance;
 pub use instance::VstProcessor;
 pub use scanner::scan_system_vst3;
 pub use scanner::VstPlugin;
-pub use blacklist::Blacklist;

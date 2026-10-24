@@ -136,8 +136,13 @@ pub fn analyze_voice_check_buffers(
 
     let noise_floor_raw = noise_floor_dbfs(&raw_mono, &vad);
     let noise_floor_processed = noise_floor_dbfs(&processed_mono, &vad);
-    let snr_improvement_db =
-        snr_improvement_db(&raw_mono, &processed_mono, &vad, noise_floor_raw, noise_floor_processed);
+    let snr_improvement_db = snr_improvement_db(
+        &raw_mono,
+        &processed_mono,
+        &vad,
+        noise_floor_raw,
+        noise_floor_processed,
+    );
 
     let band_delta_db = octave_band_deltas(&raw_mono, &processed_mono, sample_rate_hz);
     let loudness = loudness_report(&processed_mono);
@@ -265,7 +270,10 @@ fn detect_dropouts(mono: &[f32], sample_rate_hz: u32) -> DropoutReport {
         }
     }
 
-    DropoutReport { count, positions_ms }
+    DropoutReport {
+        count,
+        positions_ms,
+    }
 }
 
 fn frame_to_ms(frame: usize, sample_rate_hz: u32) -> u32 {
@@ -370,7 +378,11 @@ fn loudness_report(mono: &[f32]) -> LoudnessReport {
     }
 }
 
-fn octave_band_deltas(raw_mono: &[f32], processed_mono: &[f32], sample_rate_hz: u32) -> Vec<BandDeltaDb> {
+fn octave_band_deltas(
+    raw_mono: &[f32],
+    processed_mono: &[f32],
+    sample_rate_hz: u32,
+) -> Vec<BandDeltaDb> {
     use thresholds::OCTAVE_CENTER_HZ;
 
     let n = raw_mono.len().max(processed_mono.len());
@@ -393,7 +405,8 @@ fn octave_band_deltas(raw_mono: &[f32], processed_mono: &[f32], sample_rate_hz: 
         .iter()
         .map(|&center_hz| {
             let low = (center_hz as f32 / std::f32::consts::SQRT_2).max(20.0);
-            let high = (center_hz as f32 * std::f32::consts::SQRT_2).min(sample_rate_hz as f32 * 0.49);
+            let high =
+                (center_hz as f32 * std::f32::consts::SQRT_2).min(sample_rate_hz as f32 * 0.49);
             let low_bin = (low / bin_hz).floor() as usize;
             let high_bin = (high / bin_hz).ceil() as usize;
 
@@ -566,7 +579,8 @@ fn generate_advices(inputs: AdviceInputs<'_>) -> Vec<Advice> {
                 "rmsDb": (loudness.rms_db * 10.0).round() / 10.0,
             }),
         });
-    } else if loudness.rms_db > LOUDNESS_RMS_TOO_HIGH_DB || loudness.peak_db > LOUDNESS_PEAK_WARN_DB {
+    } else if loudness.rms_db > LOUDNESS_RMS_TOO_HIGH_DB || loudness.peak_db > LOUDNESS_PEAK_WARN_DB
+    {
         advices.push(Advice {
             severity: "warn".to_string(),
             message_key: "loudness_high".to_string(),
@@ -580,10 +594,17 @@ fn generate_advices(inputs: AdviceInputs<'_>) -> Vec<Advice> {
     advices
 }
 
-fn compute_verdict(clip: &ClipReport, dropouts: &DropoutReport, noise_floor_processed: f32, advices: &[Advice]) -> Verdict {
+fn compute_verdict(
+    clip: &ClipReport,
+    dropouts: &DropoutReport,
+    noise_floor_processed: f32,
+    advices: &[Advice],
+) -> Verdict {
     use thresholds::*;
 
-    let has_significant_advice = advices.iter().any(|a| a.severity == "warn" || a.severity == "bad");
+    let has_significant_advice = advices
+        .iter()
+        .any(|a| a.severity == "warn" || a.severity == "bad");
 
     if advices.iter().any(|a| a.severity == "bad")
         || clip.count >= CLIP_COUNT_BAD
@@ -644,7 +665,13 @@ mod tests {
         buf
     }
 
-    fn inject_speech_burst(mono_base: &mut [f32], start: usize, len: usize, amp: f32, sample_rate: u32) {
+    fn inject_speech_burst(
+        mono_base: &mut [f32],
+        start: usize,
+        len: usize,
+        amp: f32,
+        sample_rate: u32,
+    ) {
         for i in 0..len {
             let idx = start + i;
             if idx >= mono_base.len() {
@@ -711,14 +738,19 @@ mod tests {
                 mono[pos + 1] = -0.85;
             }
         }
-        let interleaved: Vec<f32> = mono
-            .iter()
-            .flat_map(|&s| [s, s])
-            .collect();
+        let interleaved: Vec<f32> = mono.iter().flat_map(|&s| [s, s]).collect();
 
-        let report =
-            analyze_voice_check_buffers(&interleaved, &interleaved, sr, &AnalysisContext::default());
-        assert!(report.dropouts.count >= 2, "dropouts={}", report.dropouts.count);
+        let report = analyze_voice_check_buffers(
+            &interleaved,
+            &interleaved,
+            sr,
+            &AnalysisContext::default(),
+        );
+        assert!(
+            report.dropouts.count >= 2,
+            "dropouts={}",
+            report.dropouts.count
+        );
         assert!(report.dropouts.positions_ms.len() >= 2);
     }
 
@@ -736,11 +768,7 @@ mod tests {
             .iter()
             .find(|b| b.band_hz >= 4000)
             .expect("4k band");
-        assert!(
-            high.delta_db < -3.0,
-            "high band delta={}",
-            high.delta_db
-        );
+        assert!(high.delta_db < -3.0, "high band delta={}", high.delta_db);
         assert!(report
             .advices
             .iter()

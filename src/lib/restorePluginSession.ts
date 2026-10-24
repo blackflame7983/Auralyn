@@ -1,10 +1,11 @@
-import { audioApi } from '../api/audio';
+import { PluginClientError, defaultPluginMessages, type PluginNoticeFormatter } from './pluginNotice';
+import { audioApi, type RestorePluginRequest, type RestoredPlugin } from '../api/audio';
 import type { Plugin } from '../components/features/PluginRack/PluginCard';
 import type { PresetPlugin } from '../api/presets';
 import { toast } from 'sonner';
 
-function parseItems(value: unknown): PresetPlugin[] {
-    if (!Array.isArray(value)) throw new Error('VSTセッションが配列ではありません');
+export function parsePluginSession(value: unknown): PresetPlugin[] {
+    if (!Array.isArray(value) || value.length > 32) throw new PluginClientError('sessionShape');
     return value.map(item => {
         if (!item || typeof item !== 'object' || typeof item.path !== 'string' || !item.path
             || typeof item.name !== 'string'
@@ -12,7 +13,7 @@ function parseItems(value: unknown): PresetPlugin[] {
             || (item.muted !== undefined && typeof item.muted !== 'boolean')
             || (item.gain !== undefined && (typeof item.gain !== 'number' || !Number.isFinite(item.gain)))
             || (item.state !== undefined && typeof item.state !== 'string')) {
-            throw new Error('VSTセッションの項目が不正です');
+            throw new PluginClientError('sessionItem');
         }
         return {
             ...item, vendor: typeof item.vendor === 'string' ? item.vendor : '',
@@ -22,57 +23,71 @@ function parseItems(value: unknown): PresetPlugin[] {
     });
 }
 
+export class SessionRackConflict extends Error {}
+
+export interface PluginSessionRestoreResult {
+    status: 'success' | 'partial' | 'failed' | 'cancelled' | 'retained';
+    total: number;
+    restored: number;
+    failed: number;
+    skipped: number;
+}
+
 // 起動時と障害後で同じ復元手順を使う。順番とクラッシュ対象の記録を対応させる。
 export async function restorePluginSession(
     value: unknown,
     onProgress: (plugins: Plugin[]) => void,
     excludePath?: string | null,
-): Promise<number> {
-    const items = parseItems(value);
+    isCurrent: () => boolean = () => true,
+    conditionalRestore?: (request: RestorePluginRequest) => Promise<RestoredPlugin>,
+    t: PluginNoticeFormatter = defaultPluginMessages,
+): Promise<PluginSessionRestoreResult> {
+    const items = parsePluginSession(value);
     const loaded: Plugin[] = [];
     let failures = 0;
+    let skipped = 0;
+    const result = (cancelled = false): PluginSessionRestoreResult => ({
+        status: cancelled ? 'cancelled' : failures === 0 && skipped === 0 ? 'success' : loaded.length === 0 && failures > 0 ? 'failed' : 'partial',
+        total: items.length, restored: loaded.length, failed: failures, skipped,
+    });
+    const cancelled = new Error('セッション復元を中断しました');
+    const checkCurrent = () => { if (!isCurrent()) throw cancelled; };
     for (const item of items) {
+        if (!isCurrent()) return result(true);
         if (excludePath && item.path === excludePath) {
-            toast.warning(`問題のプラグインをスキップしました: ${item.name}`);
+            skipped += 1;
+            toast.warning(t('pluginNotices.excludedPlugin', { name: item.name }));
             continue;
         }
         let instance: Plugin | null = null;
         try {
             localStorage.setItem('vst_host_pending_plugin', item.path);
-            const id = await audioApi.loadPlugin(item.path);
-            instance = { ...item, id, enabled: true, muted: false, gain: 1, hasEditor: true };
+            const restored = await (conditionalRestore ?? audioApi.restorePlugin)({ path: item.path, state: item.state ?? null,
+                bypassed: !item.enabled, muted: item.muted, gain: item.gain });
+            instance = { ...item, id: restored.id, hasEditor: true };
             loaded.push(instance);
-            if (!item.enabled) {
-                await audioApi.setBypass(id, true);
-                instance.enabled = false;
-            }
-            if (item.muted) {
-                await audioApi.setMute(id, true);
-                instance.muted = true;
-            }
-            if (item.gain !== 1) {
-                await audioApi.setGain(id, item.gain);
-                instance.gain = item.gain;
-            }
-            if (item.state !== undefined) await audioApi.setPluginState(id, item.state);
+            checkCurrent();
         } catch (error) {
-            failures += 1;
-            if (instance) {
+            if (error instanceof SessionRackConflict) throw error;
+            if (error !== cancelled) failures += 1;
+            // 条件付き復元は取消時も実ラックに残す。旧画面から新しいラックを削除しない。
+            if (instance && !conditionalRestore) {
                 try {
                     await audioApi.removePlugin(instance.id);
                     loaded.splice(loaded.indexOf(instance), 1);
                 } catch (cleanupError) {
-                    onProgress([...loaded]);
+                    if (isCurrent()) onProgress([...loaded]);
                     throw cleanupError;
                 }
             }
+            if (error === cancelled || !isCurrent()) return result(true);
             console.error(`VSTの復元に失敗しました: ${item.name}`, error);
-            toast.error(`${item.name} の復元に失敗しました`);
+            toast.error(t('pluginNotices.pluginRestoreNameFailed', { name: item.name }));
         } finally {
             localStorage.removeItem('vst_host_pending_plugin');
         }
-        onProgress([...loaded]);
+        if (isCurrent()) onProgress([...loaded]);
     }
-    onProgress([...loaded]);
-    return failures;
+    if (isCurrent()) onProgress([...loaded]);
+    return result(!isCurrent());
 }

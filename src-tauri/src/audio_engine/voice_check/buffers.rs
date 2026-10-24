@@ -141,6 +141,30 @@ pub fn allocate_voice_check_buffers(max_ms: u32, sample_rate_hz: u32) -> VoiceCh
     let max_ms = max_ms.clamp(500, VOICE_CHECK_MAX_MS);
     let sample_rate_hz = sample_rate_hz.clamp(8_000, 192_000);
     let capacity_frames = ((max_ms as u64 * sample_rate_hz as u64) / 1000).max(1) as usize;
+    allocate_frames(capacity_frames, sample_rate_hz)
+}
+
+// 候補は録音の時間上限と別に、正確なframe数とpayload容量で検証する。
+pub(super) fn candidate_capacity(frames: usize, rate: u32) -> Result<(), String> {
+    if frames == 0
+        || !(8_000..=192_000).contains(&rate)
+        || frames
+            .checked_mul(VOICE_CHECK_CHANNELS)
+            .and_then(|samples| samples.checked_mul(8))
+            .is_none_or(|bytes| bytes > 64 * 1024 * 1024)
+    {
+        return Err("候補データが64MiB上限または対応レートを超えます".into());
+    }
+    Ok(())
+}
+pub(super) fn allocate_candidate_buffers(
+    frames: usize,
+    rate: u32,
+) -> Result<VoiceCheckBuffers, String> {
+    candidate_capacity(frames, rate)?;
+    Ok(allocate_frames(frames, rate))
+}
+fn allocate_frames(capacity_frames: usize, sample_rate_hz: u32) -> VoiceCheckBuffers {
     let sample_count = capacity_frames * VOICE_CHECK_CHANNELS;
     VoiceCheckBuffers {
         raw: UnsafeCell::new(vec![0.0; sample_count].into_boxed_slice()),

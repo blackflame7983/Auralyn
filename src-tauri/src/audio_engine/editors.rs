@@ -221,7 +221,8 @@ impl EditorManager {
             if width > 0 && height > 0 {
                 log::debug!(
                     "[EditorManager] Enforcing window size from plugin negotiation: {}x{}",
-                    width, height
+                    width,
+                    height
                 );
                 // Use PhysicalSize to ensure exact pixel mapping for VSTs
                 let _ = win.request_inner_size(winit::dpi::PhysicalSize::new(width, height));

@@ -63,15 +63,8 @@ impl InstanceResources {
 
     pub(super) fn shutdown(&mut self) {
         self.disconnect();
+        self.stop_processing();
         unsafe {
-            if self.processing {
-                (get_vtbl::<IAudioProcessorVtbl>(self.processor).set_processing)(self.processor, 0);
-                self.processing = false;
-            }
-            if self.component_active {
-                (get_vtbl::<IComponentVtbl>(self.component).set_active)(self.component, 0);
-                self.component_active = false;
-            }
             if self.controller_initialized {
                 (get_vtbl::<IEditControllerVtbl>(self.controller).terminate)(self.controller);
                 self.controller_initialized = false;
@@ -89,6 +82,20 @@ impl InstanceResources {
         }
         self.retained.clear();
         self.host.take();
+    }
+
+    pub(super) fn stop_processing(&mut self) {
+        self.prepared = false;
+        unsafe {
+            if self.processing {
+                (get_vtbl::<IAudioProcessorVtbl>(self.processor).set_processing)(self.processor, 0);
+                self.processing = false;
+            }
+            if self.component_active {
+                (get_vtbl::<IComponentVtbl>(self.component).set_active)(self.component, 0);
+                self.component_active = false;
+            }
+        }
     }
 }
 

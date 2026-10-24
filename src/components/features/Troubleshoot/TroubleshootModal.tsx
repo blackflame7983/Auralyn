@@ -1,5 +1,10 @@
+import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
+import { message as formatMessage, type MessageKey } from '@/i18n/messages';
+import { useLocale } from '@/i18n/LocaleProvider';
+import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
-import { deviceDisplayName, findCableReceiver, receiverDeviceHint } from '../../../lib/audioRouting';
+import { deviceDisplayName, findCableReceiver, receiverDeviceNotice } from '../../../lib/audioRouting';
+import { checkRouteSampleRatesDisplay } from '../../../lib/routingSampleRates';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     MdClose, MdCheckCircle, MdError, MdWarning, MdRefresh, MdHelpOutline,
@@ -27,19 +32,20 @@ type CheckStatus = 'pending' | 'checking' | 'ok' | 'warning' | 'error' | 'skippe
 
 interface DiagnosticItem {
     id: string;
-    label: string;
-    description: string;
+    label: SettingsNotice;
+    description: SettingsNotice;
     status: CheckStatus;
-    detail?: string;
-    fixHint?: string;
-    action?: { label: string; onClick: () => void };
+    detail?: SettingsNotice;
+    lines?: SettingsNotice[];
+    fixHint?: SettingsNotice;
+    action?: { label: SettingsNotice; onClick: () => void };
 }
 
-const PURPOSE_OPTIONS: { id: Purpose; label: string; hint: string }[] = [
-    { id: 'discord', label: 'Discord（通話）', hint: '仮想ケーブル経由で相手に届ける' },
-    { id: 'obs', label: 'OBS（配信・録画）', hint: '仮想ケーブルを OBS の音声入力に' },
-    { id: 'other', label: 'その他アプリ', hint: 'Zoom・ゲームなど別アプリへ送る' },
-    { id: 'listen', label: 'とりあえず聴きたい', hint: 'スピーカー/ヘッドホンで確認' },
+const PURPOSE_OPTIONS: { id: Purpose; label: MessageKey; hint: MessageKey }[] = [
+    { id: 'discord', label: 'guide.copy.301', hint: 'guide.copy.302' },
+    { id: 'obs', label: 'guide.copy.303', hint: 'guide.copy.304' },
+    { id: 'other', label: 'guide.copy.305', hint: 'guide.copy.306' },
+    { id: 'listen', label: 'guide.copy.307', hint: 'guide.copy.308' },
 ];
 
 const isVirtualCableName = (name: string) =>
@@ -59,30 +65,30 @@ const monitorLevels = async (durationMs: number, pick: 'input' | 'output') => {
     return peak;
 };
 
-const receiverChecklists = (receiver: string): Record<Purpose, string[]> => ({
+const receiverChecklists = (receiver: SettingsNotice): Record<Purpose, SettingsNotice[]> => ({
     discord: [
-        `Discord 設定 → 音声とビデオ → 入力デバイスに「${receiver}」を選択`,
-        '「ノイズ抑制（Krisp / Standard）」は ON・OFF を一つずつ切り替え、声の欠けと雑音を試聴して比較',
-        '自動入力感度・入力音量も一つずつ比較し、普段の声が途切れない設定を選ぶ',
-        'エコー除去を変更する場合は、スピーカーからの回り込みが増えないか確認',
-        '通話中でないことを確認してから診断のテストトーンを実行する',
+        notice('guide.copy.309', { arg0: receiver }),
+        notice('guide.copy.310'),
+        notice('guide.copy.311'),
+        notice('guide.copy.312'),
+        notice('guide.copy.313'),
     ],
     obs: [
-        'OBS のソースに「音声入力キャプチャ」を追加',
-        `デバイスに「${receiver}」を選択`,
-        'OBS の音声ミキサーで該当ソースがミュートになっていないか確認',
-        '「詳細音声プロパティ」でモニタリングが無効になっていないか確認',
+        notice('guide.copy.314'),
+        notice('guide.copy.315', { arg0: receiver }),
+        notice('guide.copy.316'),
+        notice('guide.copy.317'),
     ],
     other: [
-        `受け側アプリのマイク/入力デバイスに「${receiver}」を選択`,
-        'アプリ内のノイズ抑制・自動ゲインを一つずつ ON・OFF で比較し、声と雑音を試聴して選ぶ',
-        'エコー除去を変更する場合は、スピーカーからの回り込みが増えないか確認',
-        'Windows のプライバシー設定でマイクアクセスが許可されているか確認',
+        notice('guide.copy.318', { arg0: receiver }),
+        notice('guide.copy.319'),
+        notice('guide.copy.320'),
+        notice('guide.copy.321'),
     ],
     listen: [
-        'Auralyn の出力先をスピーカー/ヘッドホンに設定',
-        'Windows の音量ミキサーで Auralyn がミュートでないか確認',
-        '仮想ケーブルではなく物理出力を選ぶと耳で確認しやすい',
+        notice('guide.copy.322'),
+        notice('guide.copy.323'),
+        notice('guide.copy.324'),
     ],
 });
 
@@ -93,6 +99,8 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
     onOpenOBSGuide,
     onOpenDiscordGuide,
 }) => {
+    const t = useMessages();
+    const { locale } = useLocale();
     const [phase, setPhase] = useState<WizardPhase>('purpose');
     const [purpose, setPurpose] = useState<Purpose | null>(null);
     const [checks, setChecks] = useState<DiagnosticItem[]>([]);
@@ -119,13 +127,13 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
     }, [onClose, onOpenSettings]);
 
     const buildInitialChecks = (): DiagnosticItem[] => [
-        { id: 'd1', label: 'D1 マイク入力', description: 'マイクに向かって話したとき入力レベルが上がるか', status: 'pending' },
-        { id: 'd2', label: 'D2 エンジン出力', description: '処理後の出力レベルまたはテストトーンが出るか', status: 'pending' },
-        { id: 'd3', label: 'D3 出力先の種類', description: '仮想ケーブルか物理出力か', status: 'pending' },
-        { id: 'd4', label: 'D4 仮想ケーブル到達', description: '選択した出力と対になる入力へテストトーンが届くか', status: 'pending' },
-        { id: 'd5', label: 'D5 サンプルレート', description: 'エンジンと仮想ケーブルのレート一致', status: 'pending' },
-        { id: 'd6', label: 'D6 受け側アプリ設定', description: 'Discord/OBS 等の入力デバイス確認リスト', status: 'pending' },
-        { id: 'd7', label: 'D7 既定通信デバイス', description: 'Windows の「通信」既定が仮想ケーブルになっていないか', status: 'pending' },
+        { id: 'd1', label: notice('guide.copy.325'), description: notice('guide.copy.326'), status: 'pending' },
+        { id: 'd2', label: notice('guide.copy.327'), description: notice('guide.copy.328'), status: 'pending' },
+        { id: 'd3', label: notice('guide.copy.329'), description: notice('guide.copy.330'), status: 'pending' },
+        { id: 'd4', label: notice('guide.copy.331'), description: notice('guide.copy.332'), status: 'pending' },
+        { id: 'd5', label: notice('guide.copy.333'), description: notice('guide.copy.334'), status: 'pending' },
+        { id: 'd6', label: notice('guide.copy.335'), description: notice('guide.copy.336'), status: 'pending' },
+        { id: 'd7', label: notice('guide.copy.337'), description: notice('guide.copy.338'), status: 'pending' },
     ];
 
     const runDiagnostics = useCallback(async (selectedPurpose: Purpose) => {
@@ -136,14 +144,14 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
 
         const expectsVirtual = selectedPurpose === 'discord' || selectedPurpose === 'obs' || selectedPurpose === 'other';
 
-        const stopBeforeMeasurement = (detail: string) => {
+        const stopBeforeMeasurement = (detail: SettingsNotice) => {
             updateCheck('d1', {
                 status: 'error', detail,
-                fixHint: 'オーディオ設定でマイクと出力先を選び、音声を開始してください',
-                action: { label: '設定を開く', onClick: openSettingsAction },
+                fixHint: notice('guide.copy.339'),
+                action: { label: notice('guide.copy.340'), onClick: openSettingsAction },
             });
             ['d2', 'd3', 'd4', 'd5', 'd6', 'd7'].forEach(id =>
-                updateCheck(id, { status: 'skipped', detail: '音声の開始を確認できないため、未確認です' })
+                updateCheck(id, { status: 'skipped', detail: notice('guide.copy.341') })
             );
             setPhase('results');
             setIsRunning(false);
@@ -154,23 +162,23 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
         try {
             state = await audioApi.getAudioState();
         } catch {
-            stopBeforeMeasurement('音声の状態を取得できませんでした');
+            stopBeforeMeasurement(notice('guide.copy.342'));
             return;
         }
 
         // 常駐プロセスの存在だけでは、音声設定やストリームの開始を確認できない。
         if (!state?.is_running || !state.config?.host) {
-            stopBeforeMeasurement(state?.config?.host ? '音声処理が停止中です' : '音声設定がまだ完了していません');
+            stopBeforeMeasurement(state?.config?.host ? notice('guide.copy.343') : notice('guide.copy.344'));
             return;
         }
         try {
             const stream = await audioApi.getAudioStreamState();
             if (!stream.running || stream.streamFailed) {
-                stopBeforeMeasurement('音声処理が停止中です');
+                stopBeforeMeasurement(notice('guide.copy.345'));
                 return;
             }
         } catch {
-            stopBeforeMeasurement('音声処理の稼働状態を確認できませんでした');
+            stopBeforeMeasurement(notice('guide.copy.346'));
             return;
         }
 
@@ -178,26 +186,26 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
         const hostName = state.config?.host ?? '';
 
         // D1: マイク入力
-        updateCheck('d1', { status: 'checking', detail: 'マイクに向かって話してください（約3秒）...' });
+        updateCheck('d1', { status: 'checking', detail: notice('guide.copy.347') });
         const inputPeak1 = await monitorLevels(3000, 'input');
         if (abortRef.current) return;
 
         if (inputPeak1 > 0.005) {
-            updateCheck('d1', { status: 'ok', detail: `入力レベルを検出しました（ピーク ${(inputPeak1 * 100).toFixed(1)}%）` });
+            updateCheck('d1', { status: 'ok', detail: notice('guide.copy.348', { arg0: (inputPeak1 * 100).toFixed(1) }) });
         } else {
             updateCheck('d1', {
                 status: 'warning',
-                detail: '入力が無音です。もう一度話してください...',
+                detail: notice('guide.copy.349'),
             });
             const inputPeak2 = await monitorLevels(3000, 'input');
             if (inputPeak2 > 0.005) {
-                updateCheck('d1', { status: 'ok', detail: `入力レベルを検出しました（ピーク ${(inputPeak2 * 100).toFixed(1)}%）` });
+                updateCheck('d1', { status: 'ok', detail: notice('guide.copy.350', { arg0: (inputPeak2 * 100).toFixed(1) }) });
             } else {
                 updateCheck('d1', {
                     status: 'error',
-                    detail: 'マイク入力が検出されませんでした',
-                    fixHint: 'Windows のマイク権限・ミュート・別アプリ占有を確認してください',
-                    action: { label: '設定を開く', onClick: openSettingsAction },
+                    detail: notice('guide.copy.351'),
+                    fixHint: notice('guide.copy.352'),
+                    action: { label: notice('guide.copy.353'), onClick: openSettingsAction },
                 });
             }
         }
@@ -209,28 +217,28 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
         if (!toneConfirmed) {
             updateCheck('d2', {
                 status: 'skipped',
-                detail: 'テストトーンをスキップしました',
-                fixHint: '通話中でないタイミングで再実行すると出力を実測確認できます',
+                detail: notice('guide.copy.354'),
+                fixHint: notice('guide.copy.355'),
             });
         } else {
-        updateCheck('d2', { status: 'checking', detail: 'テストトーンを再生しています...' });
+        updateCheck('d2', { status: 'checking', detail: notice('guide.copy.356') });
         try {
             await audioApi.playTestTone(1000, 1200, -20);
             const outPeak = await monitorLevels(1500, 'output');
             await audioApi.stopTestTone();
             if (abortRef.current) return;
             if (outPeak > 0.001) {
-                updateCheck('d2', { status: 'ok', detail: `出力レベルを検出しました（ピーク ${(outPeak * 100).toFixed(1)}%）` });
+                updateCheck('d2', { status: 'ok', detail: notice('guide.copy.357', { arg0: (outPeak * 100).toFixed(1) }) });
             } else {
                 updateCheck('d2', {
                     status: 'error',
-                    detail: '出力が検出されませんでした',
-                    fixHint: '出力デバイス設定とミュート状態を確認してください',
-                    action: { label: '設定を開く', onClick: openSettingsAction },
+                    detail: notice('guide.copy.358'),
+                    fixHint: notice('guide.copy.359'),
+                    action: { label: notice('guide.copy.360'), onClick: openSettingsAction },
                 });
             }
         } catch {
-            updateCheck('d2', { status: 'error', detail: 'テストトーンの再生に失敗しました', fixHint: 'エンジン再起動をお試しください' });
+            updateCheck('d2', { status: 'error', detail: notice('guide.copy.361'), fixHint: notice('guide.copy.362') });
         }
         }
 
@@ -241,23 +249,23 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
         if (!outputName) {
             updateCheck('d3', {
                 status: 'error',
-                detail: '出力デバイスが未設定です',
-                fixHint: '音声設定で出力先を選んでください',
-                action: { label: '設定を開く', onClick: openSettingsAction },
+                detail: notice('guide.copy.363'),
+                fixHint: notice('guide.copy.364'),
+                action: { label: notice('guide.copy.365'), onClick: openSettingsAction },
             });
         } else {
             const virtual = isVirtualCableName(outputName);
             if (virtual) {
-                updateCheck('d3', { status: 'ok', detail: `出力: ${outputName}（仮想ケーブル ✓）` });
+                updateCheck('d3', { status: 'ok', detail: notice('guide.copy.366', { arg0: outputName }) });
             } else if (expectsVirtual) {
                 updateCheck('d3', {
                     status: 'warning',
-                    detail: `出力: ${outputName}（物理出力）。配信/通話用途では仮想ケーブル推奨`,
-                    fixHint: '出力先を CABLE Input 等の仮想ケーブルに変更してください',
-                    action: { label: '設定を開く', onClick: openSettingsAction },
+                    detail: notice('guide.copy.367', { arg0: outputName }),
+                    fixHint: notice('guide.copy.368'),
+                    action: { label: notice('guide.copy.369'), onClick: openSettingsAction },
                 });
             } else {
-                updateCheck('d3', { status: 'ok', detail: `出力: ${outputName}（ローカル試聴向け）` });
+                updateCheck('d3', { status: 'ok', detail: notice('guide.copy.370', { arg0: outputName }) });
             }
         }
 
@@ -274,22 +282,22 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
         updateCheck('d4', { status: 'checking' });
         const devices = await audioApi.getDevices(false).catch(() => null);
         const cableOutput = devices ? findCableReceiver(outputName, hostName, devices.inputs) : undefined;
-        const receiver = cableOutput ? deviceDisplayName(cableOutput.name) : receiverDeviceHint(outputName);
-        const manualHint = `手動確認: 受け側アプリで「${receiver}」を確認し、メーターと試聴で音の到達を確認してください`;
+        const receiver = cableOutput ? deviceDisplayName(cableOutput.name) : receiverDeviceNotice(outputName);
+        const manualHint = notice('guide.copy.371', { arg0: receiver });
         const outputIsVirtual = isVirtualCableName(outputName);
 
         if (hostName.toUpperCase() === 'ASIO') {
             updateCheck('d4', {
                 status: 'skipped',
-                detail: 'ASIO 使用時のため自動プローブをスキップ',
+                detail: notice('guide.copy.372'),
                 fixHint: manualHint,
             });
         } else if (!outputIsVirtual || !cableOutput) {
             updateCheck('d4', {
                 status: 'skipped',
                 detail: outputIsVirtual
-                    ? '選択した出力と対になる入力を一意に特定できませんでした。自動確認は未実施です'
-                    : '仮想ケーブル出力が選択されていないためスキップ',
+                    ? notice('guide.copy.373')
+                    : notice('guide.copy.374'),
                 fixHint: manualHint,
             });
         } else {
@@ -297,9 +305,9 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
             const confirmed = toneConfirmed || (await askProbeConfirm());
             if (abortRef.current) return;
             if (!confirmed) {
-                updateCheck('d4', { status: 'skipped', detail: 'ループバックプローブをスキップしました' });
+                updateCheck('d4', { status: 'skipped', detail: notice('guide.copy.375') });
             } else {
-                updateCheck('d4', { status: 'checking', detail: '仮想ケーブル経由の到達を確認中...' });
+                updateCheck('d4', { status: 'checking', detail: notice('guide.copy.376') });
                 let probe: LoopbackProbeResult | null = null;
                 try {
                     probe = await audioApi.probeLoopback(cableOutput.name, 1500, 1000);
@@ -316,53 +324,35 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                 } else if (probe?.detected) {
                     updateCheck('d4', {
                         status: 'ok',
-                        detail: `${receiver} でテストトーンを検出（${probe.levelDb.toFixed(1)} dBFS 付近）`,
+                        detail: notice('guide.copy.377', { arg0: receiver, arg1: probe.levelDb.toFixed(1) }),
                     });
                 } else {
                     updateCheck('d4', {
                         status: 'error',
-                        detail: `${receiver} でテストトーンを検出できませんでした`,
-                        fixHint: `Auralyn の出力「${deviceDisplayName(outputName)}」と入力「${receiver}」の対応、ミュート状態を確認してください`,
-                        action: { label: '設定を開く', onClick: openSettingsAction },
+                        detail: notice('guide.copy.378', { arg0: receiver }),
+                        fixHint: notice('guide.copy.379', { arg0: deviceDisplayName(outputName), arg1: receiver }),
+                        action: { label: notice('guide.copy.380'), onClick: openSettingsAction },
                     });
                 }
             }
         }
 
         // D5: サンプルレート
-        updateCheck('d5', { status: 'checking' });
-        if (routing && routing.sampleRateMismatches.length > 0) {
-            const m = routing.sampleRateMismatches[0];
-            updateCheck('d5', {
-                status: 'error',
-                detail: m.message,
-                fixHint: 'Windows のサウンド設定で仮想ケーブルとエンジンを同じレート（推奨 48000Hz）に統一',
-                action: { label: '設定を開く', onClick: openSettingsAction },
-            });
-        } else if (routing?.engineSampleRateHz && routing.devices.some(device =>
-            device.isVirtualCable && device.mixFormatSampleRateHz !== null
-        )) {
-            updateCheck('d5', {
-                status: 'ok',
-                detail: `取得できた仮想ケーブルのレートに不一致はありません（エンジン ${routing.engineSampleRateHz}Hz）`,
-            });
-        } else {
-            updateCheck('d5', { status: 'warning', detail: '比較に必要なサンプルレート情報を取得できませんでした' });
-        }
+        updateCheck('d5', checkRouteSampleRatesDisplay(hostName, outputName, routing));
 
         // D6: 受け側チェックリスト
         updateCheck('d6', {
             status: 'skipped',
-            detail: receiverChecklists(receiver)[selectedPurpose].map((line, i) => `${i + 1}. ${line}`).join('\n'),
+            lines: receiverChecklists(receiver)[selectedPurpose],
             fixHint: selectedPurpose === 'discord' && onOpenDiscordGuide
-                ? 'Discord ガイドも参照してください'
+                ? notice('guide.copy.381')
                 : selectedPurpose === 'obs'
-                    ? 'OBS ガイドも参照してください'
+                    ? notice('guide.copy.382')
                     : undefined,
             action: selectedPurpose === 'discord' && onOpenDiscordGuide
-                ? { label: 'Discord ガイド', onClick: () => { onClose(); onOpenDiscordGuide(); } }
+                ? { label: notice('guide.copy.383'), onClick: () => { onClose(); onOpenDiscordGuide(); } }
                 : selectedPurpose === 'obs'
-                    ? { label: 'OBS ガイド', onClick: () => { onClose(); onOpenOBSGuide(); } }
+                    ? { label: notice('guide.copy.384'), onClick: () => { onClose(); onOpenOBSGuide(); } }
                     : undefined,
         });
 
@@ -371,13 +361,13 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
         if (routing?.defaultCommsRenderIsVirtual) {
             updateCheck('d7', {
                 status: 'warning',
-                detail: `既定の通信デバイス（再生）が「${routing.defaultCommsRenderName ?? '仮想ケーブル'}」です。自分の耳には届きません`,
-                fixHint: 'Windows サウンド設定 → 通信タブで、スピーカー/ヘッドホンを通信デバイスに設定',
+                detail: notice('guide.copy.385', { arg0: routing.defaultCommsRenderName ?? notice('guide.copy.386') }),
+                fixHint: notice('guide.copy.387'),
             });
         } else if (routing?.defaultCommsRenderName) {
-            updateCheck('d7', { status: 'ok', detail: '既定通信デバイスに問題は見つかりませんでした' });
+            updateCheck('d7', { status: 'ok', detail: notice('guide.copy.388') });
         } else {
-            updateCheck('d7', { status: 'warning', detail: '既定通信デバイスを確認できませんでした' });
+            updateCheck('d7', { status: 'warning', detail: notice('guide.copy.389') });
         }
 
         setPhase('results');
@@ -391,37 +381,42 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
     };
 
     const handleCopyReport = async () => {
+        // Copy uses the language selected at the explicit click, including after awaits.
+        const reportT: typeof t = (key, args) => formatMessage(locale, key, args);
+        const reportChecks = checks;
+        const reportRouting = routingRef.current;
+        const reportPurpose = purpose;
         let version = 'unknown';
         try {
             version = await getVersion();
         } catch { /* ignore */ }
 
         const lines: string[] = [
-            '=== Auralyn 接続診断レポート ===',
-            `アプリバージョン: ${version}`,
-            `用途: ${purpose ?? '未選択'}`,
-            `診断日時: ${new Date().toISOString()}`,
+            reportT('guide.copy.390'),
+            reportT('guide.copy.391', { arg0: version }),
+            reportT('guide.copy.392', { arg0: reportPurpose ? reportT(PURPOSE_OPTIONS.find(option => option.id === reportPurpose)!.label) : reportT('guide.copy.393') }),
+            reportT('guide.copy.394', { arg0: new Date().toISOString() }),
             '',
         ];
 
-        if (routingRef.current) {
-            lines.push('--- Windows デバイス ---');
-            for (const d of routingRef.current.devices) {
+        if (reportRouting) {
+            lines.push(reportT('guide.copy.395'));
+            for (const d of reportRouting.devices) {
                 lines.push(
                     `[${d.direction}] ${d.name} | ${d.mixFormatSampleRateHz ?? '?'}Hz` +
-                    `${d.isDefault ? ' (既定)' : ''}` +
-                    `${d.isDefaultCommunications ? ' (通信既定)' : ''}` +
-                    `${d.isVirtualCable ? ' [仮想ケーブル]' : ''}`,
+                    reportT('guide.copy.396', { arg0: d.isDefault ? reportT('guide.copy.397') : '' }) +
+                    reportT('guide.copy.398', { arg0: d.isDefaultCommunications ? reportT('guide.copy.399') : '' }) +
+                    reportT('guide.copy.400', { arg0: d.isVirtualCable ? reportT('guide.copy.401') : '' }),
                 );
             }
             lines.push('');
         }
 
-        lines.push('--- 診断結果 ---');
-        for (const c of checks) {
+        lines.push(reportT('guide.copy.402'));
+        for (const c of reportChecks) {
             const icon = c.status === 'ok' ? '✅' : c.status === 'warning' ? '⚠️' : c.status === 'error' ? '❌' : c.status === 'skipped' ? '⏭' : '…';
-            lines.push(`${icon} ${c.label}: ${c.detail ?? c.description}`);
-            if (c.fixHint) lines.push(`   直し方: ${c.fixHint}`);
+            lines.push(`${icon} ${renderNotice(reportT, c.label)}: ${c.lines ? c.lines.map((line, i) => `${i + 1}. ${renderNotice(reportT, line)}`).join('\n') : typeof c.detail === 'string' ? `${reportT('guide.rawDetail')}: ${c.detail}` : renderNotice(reportT, c.detail ?? c.description)}`);
+            if (c.fixHint) lines.push(reportT('guide.copy.403', { arg0: renderNotice(reportT, c.fixHint) }));
         }
 
         try {
@@ -468,7 +463,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
     const warnCount = checks.filter(c => c.status === 'warning').length;
 
     return (
-        <Modal title="接続診断ウィザード" onClose={onClose}>
+        <Modal title={t('guide.copy.404')} onClose={onClose}>
         <div className="modal-overlay-base">
             <div className="modal-surface-base w-full max-w-lg max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
                 <div className="modal-header-base shrink-0">
@@ -477,11 +472,11 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                             <MdHelpOutline className="w-5 h-5 text-amber-500" />
                         </div>
                         <div>
-                            <h2 className="text-lg font-bold text-foreground">接続診断ウィザード</h2>
-                            <p className="text-xs text-muted-foreground">音声の状態と接続先を、確認できる範囲で調べます</p>
+                            <h2 className="text-lg font-bold text-foreground">{t('guide.copy.405')}</h2>
+                            <p className="text-xs text-muted-foreground">{t('guide.copy.406')}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} aria-label="閉じる" className="p-2 rounded-lg hover:bg-muted text-muted-foreground">
+                    <button onClick={onClose} aria-label={t('guide.copy.407')} className="p-2 rounded-lg hover:bg-muted text-muted-foreground">
                         <MdClose className="w-5 h-5" />
                     </button>
                 </div>
@@ -489,11 +484,9 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                 {showProbeConfirm && (
                     <div className="px-6 py-4 bg-amber-500/10 border-b border-amber-500/20 text-sm space-y-3">
                         <p className="font-bold text-amber-700 dark:text-amber-300">
-                            テストトーンを再生します
-                        </p>
+                            {t('guide.copy.408')}</p>
                         <p className="text-xs text-muted-foreground leading-relaxed">
-                            通話や配信に乗らないよう確認してください。テストトーンは −20dBFS 程度の短い音です。
-                        </p>
+                            {t('guide.copy.409')}</p>
                         <div className="flex gap-2">
                             <button
                                 className="px-3 py-1.5 text-xs font-bold bg-primary text-primary-foreground rounded-md"
@@ -503,8 +496,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                     probeConfirmRef.current = null;
                                 }}
                             >
-                                続行
-                            </button>
+                                {t('guide.copy.410')}</button>
                             <button
                                 className="px-3 py-1.5 text-xs font-bold text-muted-foreground hover:bg-muted rounded-md"
                                 onClick={() => {
@@ -513,15 +505,14 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                     probeConfirmRef.current = null;
                                 }}
                             >
-                                スキップ
-                            </button>
+                                {t('guide.copy.411')}</button>
                         </div>
                     </div>
                 )}
 
                 {phase === 'purpose' && (
                     <div className="p-6 space-y-3 overflow-y-auto">
-                        <p className="text-sm text-muted-foreground mb-2">まず用途を選んでください。用途に合わせた項目をチェックします。</p>
+                        <p className="text-sm text-muted-foreground mb-2">{t('guide.copy.412')}</p>
                         {PURPOSE_OPTIONS.map(opt => (
                             <button
                                 key={opt.id}
@@ -529,8 +520,8 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                 disabled={isRunning}
                                 className="w-full text-left p-4 rounded-lg border border-border hover:border-primary/40 hover:bg-primary/5 transition-colors"
                             >
-                                <div className="font-bold text-sm text-foreground">{opt.label}</div>
-                                <div className="text-xs text-muted-foreground mt-1">{opt.hint}</div>
+                                <div className="font-bold text-sm text-foreground">{t(opt.label)}</div>
+                                <div className="text-xs text-muted-foreground mt-1">{t(opt.hint)}</div>
                             </button>
                         ))}
                     </div>
@@ -538,16 +529,16 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
 
                 {phase !== 'purpose' && !isRunning && checks.length > 0 && (
                     <div className={`px-6 py-3 text-sm font-bold flex items-center gap-2 shrink-0 ${
-                        errorCount > 0 ? 'bg-destructive/10 text-destructive' :
+                        errorCount > 0 ? 'bg-destructive/10 text-red-800 dark:text-red-300' :
                         warnCount > 0 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
                         'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                     }`}>
                         {errorCount > 0 ? (
-                            <><MdError className="w-4 h-4" /> {errorCount}件の問題が見つかりました</>
+                            <><MdError className="w-4 h-4" /> {errorCount}{t('guide.copy.413')}</>
                         ) : warnCount > 0 ? (
-                            <><MdWarning className="w-4 h-4" /> {warnCount}件の注意点があります</>
+                            <><MdWarning className="w-4 h-4" /> {warnCount}{t('guide.copy.414')}</>
                         ) : (
-                            <><MdCheckCircle className="w-4 h-4" /> 確認できた項目に問題はありませんでした</>
+                            <><MdCheckCircle className="w-4 h-4" /> {t('guide.copy.415')}</>
                         )}
                     </div>
                 )}
@@ -558,14 +549,15 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                             <div key={check.id} className="flex items-start gap-4">
                                 <div className="mt-0.5 shrink-0">{statusIcon(check.status)}</div>
                                 <div className="flex-1 min-w-0">
-                                    <h3 className="font-bold text-sm text-foreground">{check.label}</h3>
-                                    <p className="text-[10px] text-muted-foreground">{check.description}</p>
+                                    <h3 className="font-bold text-sm text-foreground">{renderNotice(t, check.label)}</h3>
+                                    <p className="text-[10px] text-muted-foreground">{renderNotice(t, check.description)}</p>
+                                    {check.lines && <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{check.lines.map((line, i) => `${i + 1}. ${renderNotice(t, line)}`).join('\n')}</p>}
                                     {check.detail && (
-                                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{check.detail}</p>
+                                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{typeof check.detail === 'string' ? <>{t('guide.rawDetail')}: {check.detail}</> : renderNotice(t, check.detail)}</p>
                                     )}
                                     {check.fixHint && (
                                         <p className="text-xs text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
-                                            直し方: {check.fixHint}
+                                            {t('guide.diagnostic.fixHint', { hint: renderNotice(t, check.fixHint) })}
                                         </p>
                                     )}
                                     <div className="flex flex-wrap gap-2 mt-2">
@@ -574,7 +566,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                                 onClick={check.action.onClick}
                                                 className="px-3 py-1 text-xs font-bold text-primary bg-primary/10 border border-primary/20 rounded-md hover:bg-primary/20 transition-colors"
                                             >
-                                                {check.action.label}
+                                                {renderNotice(t, check.action.label)}
                                             </button>
                                         )}
                                     </div>
@@ -592,8 +584,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                 disabled={isRunning}
                                 className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
                             >
-                                <MdArrowBack className="w-4 h-4" /> 用途を変更
-                            </button>
+                                <MdArrowBack className="w-4 h-4" /> {t('guide.copy.417')}</button>
                         )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -603,7 +594,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                 className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:bg-muted rounded-md"
                             >
                                 <MdContentCopy className="w-4 h-4" />
-                                {copyDone ? 'コピーしました' : '診断結果をコピー'}
+                                {copyDone ? t('guide.copy.418') : t('guide.copy.419')}
                             </button>
                         )}
                         {purpose && (
@@ -613,8 +604,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/10 rounded-md transition-colors disabled:opacity-50"
                             >
                                 <MdRefresh className={`w-4 h-4 ${isRunning ? 'animate-spin' : ''}`} />
-                                再チェック
-                            </button>
+                                {t('guide.copy.420')}</button>
                         )}
                     </div>
                 </div>

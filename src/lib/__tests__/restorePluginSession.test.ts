@@ -8,6 +8,7 @@ beforeEach(() => {
     localStorage.clear();
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(audioApi, 'loadPlugin').mockImplementation(async path => path);
+    vi.spyOn(audioApi, 'restorePlugin').mockImplementation(async request => ({ id: request.path, name: request.path, prepared: false }));
     vi.spyOn(audioApi, 'removePlugin').mockResolvedValue(undefined);
     vi.spyOn(audioApi, 'setBypass').mockResolvedValue(undefined);
     vi.spyOn(audioApi, 'setMute').mockResolvedValue(undefined);
@@ -16,22 +17,29 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-it('状態適用失敗では不完全なVSTを除去し、次の項目を正しい順番で復元する', async () => {
-    vi.mocked(audioApi.setPluginState).mockImplementation(async id => { if (id === 'bad') throw new Error('bad state'); });
+it('一括復元失敗では不完全なVSTを表示せず、分割APIへfallbackせず次の項目を復元する', async () => {
+    vi.mocked(audioApi.restorePlugin).mockImplementation(async request => { if (request.path === 'bad') throw new Error('bad state'); return { id: request.path, name: request.path, prepared: true }; });
     const progress = vi.fn();
-    expect(await restorePluginSession([item('bad'), item('good')], progress)).toBe(1);
-    expect(audioApi.removePlugin).toHaveBeenCalledWith('bad');
+    expect(await restorePluginSession([item('bad'), item('good')], progress)).toEqual({ status: 'partial', total: 2, restored: 1, failed: 1, skipped: 0 });
+    expect(audioApi.removePlugin).not.toHaveBeenCalled();
     expect(progress).toHaveBeenLastCalledWith([expect.objectContaining({ id: 'good', enabled: false, muted: true, gain: 0.5 })]);
+    expect(audioApi.loadPlugin).not.toHaveBeenCalled();
+    expect(audioApi.setPluginState).not.toHaveBeenCalled();
     expect(localStorage.getItem('vst_host_pending_plugin')).toBeNull();
 });
 
-it('除去も失敗した場合は存在するVSTを通知し、次のロードを開始しない', async () => {
-    vi.mocked(audioApi.setPluginState).mockRejectedValue(new Error('bad state'));
+it('取消後に返ったIDは除去し、後片付け失敗を成功や部分復元で隠さない', async () => {
+    let current = true;
+    vi.mocked(audioApi.restorePlugin).mockImplementation(async request => { current = false; return { id: request.path, name: request.path, prepared: false }; });
     vi.mocked(audioApi.removePlugin).mockRejectedValue(new Error('cleanup failed'));
-    const progress = vi.fn();
-    await expect(restorePluginSession([item('bad'), item('later')], progress)).rejects.toThrow('cleanup failed');
-    expect(progress).toHaveBeenLastCalledWith([expect.objectContaining({ id: 'bad', gain: 0.5 })]);
-    expect(audioApi.loadPlugin).toHaveBeenCalledTimes(1);
+    await expect(restorePluginSession([item('bad'), item('later')], vi.fn(), null, () => current)).rejects.toThrow('cleanup failed');
+    expect(audioApi.restorePlugin).toHaveBeenCalledTimes(1);
+});
+
+it('停止中prepared:falseもstate復元成功で、空文字stateと全設定を維持する', async () => {
+    expect((await restorePluginSession([{ ...item('one'), state: '' }], vi.fn())).status).toBe('success');
+    expect(audioApi.restorePlugin).toHaveBeenCalledWith({ path: 'one', state: '', bypassed: true, muted: true, gain: 0.5 });
+    expect(audioApi.setBypass).not.toHaveBeenCalled();
 });
 
 it('全項目を事前に検証し、不正なJSON構造ではロードも表示変更もしない', async () => {
@@ -39,19 +47,19 @@ it('全項目を事前に検証し、不正なJSON構造ではロードも表示
     for (const value of [{}, [item('valid'), null], [{ ...item('bad'), gain: 'loud' }]]) {
         await expect(restorePluginSession(value, progress)).rejects.toThrow();
     }
-    expect(audioApi.loadPlugin).not.toHaveBeenCalled();
+    expect(audioApi.restorePlugin).not.toHaveBeenCalled();
     expect(progress).not.toHaveBeenCalled();
 });
 
 it('連番の処理中はクラッシュ候補を保持し、既知の問題VSTは読み込まない', async () => {
-    let finish!: (id: string) => void;
-    vi.mocked(audioApi.loadPlugin).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    let finish!: (value: { id: string; name: string; prepared: boolean }) => void;
+    vi.mocked(audioApi.restorePlugin).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
     const progress = vi.fn();
     const restoring = restorePluginSession([item('skip'), item('first'), item('second')], progress, 'skip');
-    expect(audioApi.loadPlugin).toHaveBeenCalledTimes(1);
+    expect(audioApi.restorePlugin).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem('vst_host_pending_plugin')).toBe('first');
-    finish('first');
-    expect(await restoring).toBe(0);
-    expect(audioApi.loadPlugin).toHaveBeenNthCalledWith(2, 'second');
+    finish({ id: 'first', name: 'first', prepared: false });
+    expect(await restoring).toEqual({ status: 'partial', total: 3, restored: 2, failed: 0, skipped: 1 });
+    expect(audioApi.restorePlugin).toHaveBeenNthCalledWith(2, { path: 'second', state: 'saved', bypassed: true, muted: true, gain: 0.5 });
     expect(progress).toHaveBeenLastCalledWith([expect.objectContaining({ id: 'first' }), expect.objectContaining({ id: 'second' })]);
 });

@@ -1,3 +1,4 @@
+import { FixedClientError } from '@/lib/clientError';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -30,6 +31,24 @@ beforeEach(() => {
     localStorage.clear();
 });
 describe('出力ゲインの反映確認', () => {
+    it('不在engineの取消ACKは保存済み音量を既定値で置換しない', async () => {
+        localStorage.setItem('vst_host_output_gain', '50');
+        const sync = vi.fn();
+        window.addEventListener('output-gain-sync', sync);
+        vi.mocked(invoke).mockResolvedValue({ ...state, revision: 0, gain: 1,
+            confirmedGain: 1, settled: false, running: false, id: 0,
+            phase: 'idle', proposal: null, playing: false });
+        try {
+            const cancelled = await gainCommand({ action: 'cancel' });
+            expect(cancelled.playing).toBe(false);
+            expect(cancelled.phase).toBe('idle');
+            expect(localStorage.getItem('vst_host_output_gain')).toBe('50');
+            expect(sync).not.toHaveBeenCalled();
+            expect(invoke).toHaveBeenCalledExactlyOnceWith('auto_gain', { request: { action: 'cancel' } });
+        } finally {
+            window.removeEventListener('output-gain-sync', sync);
+        }
+    });
     it('起動中の世代変更を再確認し、明示変更済みの音量を旧保存値で戻さない', async () => {
         vi.mocked(invoke)
             .mockResolvedValueOnce({ ...state, settled: false })
@@ -139,4 +158,16 @@ describe('出力ゲインの反映確認', () => {
         await expect(setOutputGain(1)).rejects.toThrow('engine unavailable');
         expect(localStorage.getItem('vst_host_output_gain')).toBeNull();
     });
+});
+
+
+it('固定validation/revision失敗にはmetadataだけを追加し、通常SDK拒否identityは保持する', async()=>{
+    const range=await restoreSavedOutputGain(NaN).catch(error=>error);
+    expect(range).toBeInstanceOf(FixedClientError);expect(range.code).toBe('gain.range');
+    expect(invoke).not.toHaveBeenCalled();
+    vi.mocked(invoke).mockResolvedValue({...state, revision:state.revision+1});
+    const changed=await confirmOutputGain(state).catch(error=>error);
+    expect(changed).toBeInstanceOf(FixedClientError);expect(changed.code).toBe('gain.settingsChanged');
+    const sdk=new Error('SDK identity');vi.mocked(invoke).mockRejectedValueOnce(sdk);
+    await expect(gainCommand({action:'status'})).rejects.toBe(sdk);
 });

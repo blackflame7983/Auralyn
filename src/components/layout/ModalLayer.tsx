@@ -1,4 +1,7 @@
-import { Suspense, lazy } from 'react';
+import { useSingingDraft } from '../../hooks/useSingingDraft';
+import type { LiveModesModel } from '../../hooks/useLiveModes';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { useObsUsage } from '../../hooks/useObsUsage';
 import { VstPlugin } from '../../api/audio';
 import { audioApi } from '../../api/audio';
 import type { Plugin } from '../features/PluginRack/PluginCard';
@@ -22,6 +25,7 @@ interface UIState {
     isSettingsOpen: boolean;
     setIsSettingsOpen: (v: boolean) => void;
     openSoundSettings: () => void;
+    openObsSettings: () => void;
     isBrowserOpen: boolean;
     setIsBrowserOpen: (v: boolean) => void;
     isOBSGuideOpen: boolean;
@@ -68,13 +72,18 @@ interface PluginsApi {
     saveProfile: (name: string, categories: import('../../api/presets').ProfileSaveCategories) => Promise<boolean>;
     applyProfile: (name: string, substitutions?: { inputDevice?: string; outputDevice?: string }) => Promise<import('../../api/presets').ApplyProfileSummary | null>;
     restoreBackupProfile: () => Promise<import('../../api/presets').ApplyProfileSummary | null>;
+    runBundle?: (request: import('../../api/bundles').BundleOperation) => Promise<import('../../api/bundles').BundleResult | null>;
     applyTemplate: (mapping: Record<string, VstPlugin>) => Promise<void | boolean>;
     resetPlugins: () => void;
-    recoverSession: (excludePath?: string | null) => Promise<void>;
+    recoverSession: (excludePath?: string | null, start?: () => Promise<unknown>) => Promise<void>;
+    keepSessionStopped: () => Promise<void>;
+    resumeWithoutPlugins: (start: () => Promise<unknown>) => Promise<void>;
     restoreSession: () => Promise<void>;
 }
 
 interface ModalLayerProps {
+    isAudioRunning?: boolean;
+    liveModel?: LiveModesModel;
     ui: UIState;
     audioConfig: AudioConfig;
     handleConfigUpdate: (config: Partial<AudioConfig> & { host: string }, options?: { audioStarted: true }) => void | Promise<void>;
@@ -82,7 +91,17 @@ interface ModalLayerProps {
     onPluginAdded: () => void;
 }
 
-export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, onPluginAdded }: ModalLayerProps) {
+export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, onPluginAdded, liveModel, isAudioRunning = false }: ModalLayerProps) {
+    const singingModel = useSingingDraft();
+    const [singingPreview, setSingingPreview] = useState(false);
+    const [returnToTiming, setReturnToTiming] = useState(false);
+    const [returnToBundle, setReturnToBundle] = useState(false);
+    // lazy画面の読込中も、明示的なガイド↔接続設定の往復だけ接続寿命を引き継ぐ。
+    useObsUsage(ui.isOBSGuideOpen || (returnToTiming && ui.isSettingsOpen) || ui.isPresetManagerOpen || (returnToBundle && ui.isSettingsOpen));
+    useEffect(() => { if (!ui.isSettingsOpen && !ui.isPresetManagerOpen) setReturnToBundle(false); }, [ui.isSettingsOpen, ui.isPresetManagerOpen]);
+    useEffect(() => {
+        if (!ui.isOBSGuideOpen && !ui.isSettingsOpen) setReturnToTiming(false);
+    }, [ui.isOBSGuideOpen, ui.isSettingsOpen]);
     const handleEngineRestart = async () => {
         pluginsApi.resetPlugins();
         await pluginsApi.restoreSession();
@@ -101,9 +120,17 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
             {ui.isSettingsOpen && (
                 <Suspense fallback={null}>
                     <AudioSettingsModal
+                        liveModel={liveModel}
+                        singingModel={singingModel}
+                        onPreviewSinging={() => { setSingingPreview(true); ui.setIsSettingsOpen(false); ui.setIsVoiceCheckOpen(true); }}
+                        onSaveSingingProfile={() => { ui.setIsSettingsOpen(false); ui.setIsPresetManagerOpen(true); }}
                         initialTab={ui.settingsTab ?? 'audio'}
                         isOpen={ui.isSettingsOpen}
-                        onClose={() => ui.setIsSettingsOpen(false)}
+                        onClose={() => {
+                            ui.setIsSettingsOpen(false);
+                            if (returnToTiming) ui.setIsOBSGuideOpen(true);
+                            if (returnToBundle) ui.setIsPresetManagerOpen(true);
+                        }}
                         onConfigChange={handleConfigUpdate}
                         onEngineRestarted={handleEngineRestart}
                         onOpenWizard={() => ui.setIsWizardOpen(true)}
@@ -143,7 +170,13 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                 <Suspense fallback={null}>
                     <OBSGuideModal
                         isOpen={ui.isOBSGuideOpen}
-                        onClose={() => ui.setIsOBSGuideOpen(false)}
+                        initialTimingOpen={returnToTiming}
+                        onClose={() => { setReturnToTiming(false); ui.setIsOBSGuideOpen(false); }}
+                        onOpenObsSettings={() => {
+                            setReturnToTiming(true);
+                            ui.setIsOBSGuideOpen(false);
+                            ui.openObsSettings();
+                        }}
                         onOpenAudioSettings={() => {
                             ui.setIsOBSGuideOpen(false);
                             ui.setIsSettingsOpen(true);
@@ -220,11 +253,14 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                 <Suspense fallback={null}>
                     <PresetManagerModal
                         isOpen={ui.isPresetManagerOpen}
-                        onClose={() => ui.setIsPresetManagerOpen(false)}
+                        onClose={() => { setReturnToBundle(false); ui.setIsPresetManagerOpen(false); }}
                         onLoadPreset={pluginsApi.loadPreset}
                         onSaveProfile={pluginsApi.saveProfile}
                         onApplyProfile={pluginsApi.applyProfile}
                         onRestoreBackup={pluginsApi.restoreBackupProfile}
+                        onBundleOperation={pluginsApi.runBundle}
+                        initialBundleOpen={returnToBundle}
+                        onObsSettings={() => { setReturnToTiming(false); setReturnToBundle(true); ui.setIsPresetManagerOpen(false); ui.openObsSettings(); }}
                         onOpenTemplateWizard={() => {
                             ui.setIsPresetManagerOpen(false);
                             ui.setIsTemplateWizardOpen(true);
@@ -254,24 +290,17 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         isOpen={ui.isRecoveryModalOpen}
                         onClose={() => ui.setIsRecoveryModalOpen(false)}
                         error={ui.crashError}
-                        onClear={() => {
-                            pluginsApi.resetPlugins();
-                            audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000);
-                        }}
+                        onKeepStopped={pluginsApi.keepSessionStopped}
+                        onWithoutPlugins={() => pluginsApi.resumeWithoutPlugins(() => audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000))}
                         onRecover={async (_safeMode, excludePath) => {
-                            try {
-                                await audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000);
-                            } catch (e) {
-                                console.error("Recovery Restart Failed", e);
-                            }
-                            await pluginsApi.recoverSession(excludePath);
+                            await pluginsApi.recoverSession(excludePath, () => audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000));
                         }}
                     />
                 </Suspense>
             )}
             {ui.isLargeMeterOpen && (
                 <Suspense fallback={null}>
-                    <LargeLevelMeter onClose={() => ui.setIsLargeMeterOpen(false)} />
+                    <LargeLevelMeter running={isAudioRunning} onClose={() => ui.setIsLargeMeterOpen(false)} />
                 </Suspense>
             )}
             {ui.isTroubleshootOpen && (
@@ -298,12 +327,17 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                 <Suspense fallback={null}>
                     <VoiceCheckModal
                         isOpen={ui.isVoiceCheckOpen}
-                        onClose={() => ui.setIsVoiceCheckOpen(false)}
+                        singingModel={singingModel}
+                        manualCandidate={singingPreview}
+                        onSaveSingingProfile={() => { setSingingPreview(false); ui.setIsVoiceCheckOpen(false); ui.setIsPresetManagerOpen(true); }}
+                        onClose={() => { ui.setIsVoiceCheckOpen(false); if (singingPreview) { setSingingPreview(false); ui.openSoundSettings(); } }}
                         onOpenSoundSettings={() => {
+                            setSingingPreview(false);
                             ui.setIsVoiceCheckOpen(false);
                             ui.openSoundSettings();
                         }}
                         onOpenAudioSettings={() => {
+                            setSingingPreview(false);
                             ui.setIsVoiceCheckOpen(false);
                             ui.setIsSettingsOpen(true);
                         }}

@@ -1,6 +1,7 @@
 //! 隔離した検出プロセスの寿命と出力回収。子の終了前から両パイプを読み続ける。
 use std::io::{self, Read};
 use std::process::{Command, Output, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -33,6 +34,15 @@ fn drain(mut input: impl Read) -> io::Result<Vec<u8>> {
 }
 
 pub(crate) fn run(command: &mut Command, timeout: Duration) -> io::Result<Output> {
+    run_cancellable(command, timeout, &AtomicBool::new(false))
+}
+
+pub(crate) fn run_cancellable(
+    command: &mut Command,
+    timeout: Duration,
+    cancelled: &AtomicBool,
+) -> io::Result<Output> {
+    check_cancelled(cancelled)?;
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -65,6 +75,9 @@ pub(crate) fn run(command: &mut Command, timeout: Duration) -> io::Result<Output
     });
     let start = Instant::now();
     let status = loop {
+        if let Err(error) = check_cancelled(cancelled) {
+            break Err(error);
+        }
         match child.try_wait() {
             Ok(Some(status)) => break Ok(status),
             Ok(None) if start.elapsed() < timeout => thread::sleep(Duration::from_millis(10)),
@@ -96,6 +109,14 @@ pub(crate) fn run(command: &mut Command, timeout: Duration) -> io::Result<Output
         stdout: stdout??,
         stderr: stderr??,
     })
+}
+
+fn check_cancelled(cancelled: &AtomicBool) -> io::Result<()> {
+    if cancelled.load(Ordering::Acquire) {
+        Err(io::Error::new(io::ErrorKind::Interrupted, "scan cancelled"))
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -151,5 +172,20 @@ mod tests {
             drain(bytes.as_slice()).unwrap_err().kind(),
             io::ErrorKind::InvalidData
         );
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    #[test]
+    fn cancelled_request_never_spawns_even_when_executable_does_not_exist() {
+        let error = run_cancellable(
+            &mut Command::new("auralyn-no-such-scanner"),
+            Duration::from_secs(30),
+            &AtomicBool::new(true),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Interrupted);
     }
 }

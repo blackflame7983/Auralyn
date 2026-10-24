@@ -41,7 +41,7 @@ pub struct RoutingDiagnosticsReport {
     pub warnings: Vec<String>,
 }
 
-/// エンジンレートとデバイス一覧から不一致を検出（純粋ロジック・テスト可能）
+/// 全デバイスの参考情報。稼働経路の判定には選択した出力・対応入力の照合が必要。
 pub fn detect_sample_rate_mismatches(
     engine_rate_hz: u32,
     devices: &[RoutingDeviceInfo],
@@ -72,14 +72,14 @@ pub fn detect_sample_rate_mismatches(
 pub fn collect_routing_diagnostics(engine_sample_rate_hz: Option<u32>) -> RoutingDiagnosticsReport {
     use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
     use windows::Win32::Media::Audio::{
-        eCapture, eCommunications, eConsole, eRender, IAudioClient, IMMDevice,
-        IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
-    };
-    use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_MULTITHREADED, STGM,
+        eCapture, eCommunications, eConsole, eRender, IAudioClient, IMMDevice, IMMDeviceEnumerator,
+        MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
     };
     use windows::Win32::System::Com::StructuredStorage::{
         PropVariantClear, PropVariantToStringAlloc, PROPVARIANT,
+    };
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_MULTITHREADED, STGM,
     };
     use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
 
@@ -118,9 +118,7 @@ pub fn collect_routing_diagnostics(engine_sample_rate_hz: Option<u32>) -> Routin
         default_comms_name: &Option<String>,
         out: &mut Vec<RoutingDeviceInfo>,
     ) {
-        let Ok(collection) =
-            enumerator.EnumAudioEndpoints(data_flow, DEVICE_STATE_ACTIVE)
-        else {
+        let Ok(collection) = enumerator.EnumAudioEndpoints(data_flow, DEVICE_STATE_ACTIVE) else {
             return;
         };
         let Ok(count) = collection.GetCount() else {
@@ -152,24 +150,21 @@ pub fn collect_routing_diagnostics(engine_sample_rate_hz: Option<u32>) -> Routin
 
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-        let enumerator: IMMDeviceEnumerator = match CoCreateInstance(
-            &MMDeviceEnumerator,
-            None,
-            CLSCTX_ALL,
-        ) {
-            Ok(e) => e,
-            Err(_) => {
-                warnings.push("Windows オーディオ列挙を初期化できませんでした".to_string());
-                return RoutingDiagnosticsReport {
-                    devices,
-                    engine_sample_rate_hz,
-                    sample_rate_mismatches: Vec::new(),
-                    default_comms_render_is_virtual: false,
-                    default_comms_render_name: None,
-                    warnings,
-                };
-            }
-        };
+        let enumerator: IMMDeviceEnumerator =
+            match CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) {
+                Ok(e) => e,
+                Err(_) => {
+                    warnings.push("Windows オーディオ列挙を初期化できませんでした".to_string());
+                    return RoutingDiagnosticsReport {
+                        devices,
+                        engine_sample_rate_hz,
+                        sample_rate_mismatches: Vec::new(),
+                        default_comms_render_is_virtual: false,
+                        default_comms_render_name: None,
+                        warnings,
+                    };
+                }
+            };
 
         if let Ok(dev) = enumerator.GetDefaultAudioEndpoint(eRender, eConsole) {
             default_render_name = device_friendly_name(&dev);
@@ -214,13 +209,6 @@ pub fn collect_routing_diagnostics(engine_sample_rate_hz: Option<u32>) -> Routin
     let sample_rate_mismatches = engine_sample_rate_hz
         .map(|rate| detect_sample_rate_mismatches(rate, &devices))
         .unwrap_or_default();
-
-    if !sample_rate_mismatches.is_empty() {
-        warnings.push(
-            "仮想ケーブルとエンジンのサンプルレートが一致していません。Windows サウンド設定で 48000Hz に統一してください"
-                .to_string(),
-        );
-    }
 
     RoutingDiagnosticsReport {
         devices,

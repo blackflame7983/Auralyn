@@ -75,6 +75,7 @@ fn test_ott_editor_loading() {
             output: None,
             buffer_size: None,
             sample_rate: None,
+            initial_controls: None,
         },
     );
     read_response();

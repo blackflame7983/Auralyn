@@ -6,6 +6,7 @@ import { useUIState } from '@/hooks/useUIState';
 import { useAudioConfig } from '@/hooks/useAudioConfig';
 import { usePlugins } from '@/hooks/usePlugins';
 import { bootstrapMigration, REVIEW_KEY } from '@/api/migration';
+import type { SessionRackRequest } from '@/api/audio';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -44,6 +45,10 @@ it.each([
     const paths = ['eq.vst3', 'meter.vst3'];
     localStorage.setItem('vst_host_session_plugins', JSON.stringify(paths.map(path => ({ path, name: path, vendor: '', version: '', enabled: true, muted: false, gain: 1 }))));
     let enginePaths: string[] = [];
+    let engineGeneration = 0;
+    let rackRevision = 0;
+    let sessionToken: string | undefined;
+    let restoreEligible = true;
     let rejectOnce = !!failAt;
     let started = false;
     let channelsApplied = false;
@@ -61,7 +66,10 @@ it.each([
             }
             started = true;
             channelsApplied = false;
-            if (command === 'restart_audio_engine') enginePaths = [];
+            if (command === 'restart_audio_engine') {
+                enginePaths = []; engineGeneration += 1; rackRevision = 0;
+                sessionToken = undefined; restoreEligible = true;
+            }
             return { sample_rate: 48000, buffer_size: 512, channels: 2 };
         }
         if (command === 'set_input_channels' && started) {
@@ -81,10 +89,24 @@ it.each([
             }
             nativeReview = false;
         }
-        if (command === 'load_plugin') {
+        if (command === 'session_rack') {
+            const request = (args as { request: SessionRackRequest }).request;
+            if (request.action === 'snapshot') return { status: 'snapshot', generation: String(engineGeneration), revision: String(rackRevision),
+                present: true, running: started, restoreEligible, plugins: enginePaths.map((path, index) => ({
+                    id: `instance-${engineGeneration}-${index + 1}`, path, name: 'Restored', enabled: true, muted: false, gain: 1,
+                })) };
+            if (request.action === 'begin') {
+                expect(nativeReview).toBe(false);
+                if (sessionToken || request.generation !== String(engineGeneration) || request.revision !== String(rackRevision) || enginePaths.length) return { status: 'conflict' };
+                restoreEligible = false; sessionToken = `session-${engineGeneration}`;
+                return { status: 'ready', generation: String(engineGeneration), token: sessionToken };
+            }
+            if (request.action === 'retain') { restoreEligible = false; return { status: 'finished' }; }
+            if (request.token !== sessionToken) return { status: 'conflict' };
+            if (request.action === 'finish') { sessionToken = undefined; return { status: 'finished' }; }
             expect(nativeReview).toBe(false);
-            enginePaths.push((args as { path: string }).path);
-            return `instance-${enginePaths.length}`;
+            enginePaths.push(request.request.path); rackRevision += 1;
+            return { status: 'restored', plugin: { id: `instance-${engineGeneration}-${enginePaths.length}`, name: 'Restored', prepared: started } };
         }
         return null;
     });
@@ -96,11 +118,12 @@ it.each([
         expect(enginePaths).toEqual([]);
     }
     fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
-    const save = await screen.findByRole('button', { name: '保存して開始' });
+    // 全体並列実行時の初回lazy読込みを待つ。移行・復元の条件や回数は以下で検証する。
+    const save = await screen.findByRole('button', { name: '保存して開始' }, { timeout: 3000 });
     if (operation !== '通常再起動') {
         expect(save).toBeDisabled();
         if (host === 'ASIO') {
-            fireEvent.click(await screen.findByText('In 7/8'));
+            fireEvent.click(await screen.findByRole('radio', { name: '入力チャンネル 7/8' }));
             await waitFor(() => expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([6, 7]));
             expect(localStorage.getItem(REVIEW_KEY)).toBe('true');
             expect(save).toBeDisabled();
@@ -144,6 +167,7 @@ it.each([
         expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([6, 7]);
         expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 6, right: 7 });
     }
-    const loads = vi.mocked(invoke).mock.calls.filter(([command]) => command === 'load_plugin');
-    expect(loads.map(([, args]) => (args as { path: string }).path)).toEqual(paths);
+    const loads = vi.mocked(invoke).mock.calls.filter(([command, args]) => command === 'session_rack' && (args as { request: SessionRackRequest }).request.action === 'add');
+    expect(loads.map(([, args]) => (args as { request: { request: { path: string } } }).request.request.path)).toEqual(paths);
+    expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'restore_plugin')).toBe(false);
 });

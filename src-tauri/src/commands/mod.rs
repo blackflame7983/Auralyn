@@ -1,5 +1,6 @@
 //! Tauriコマンド境界。ブロッキングI/OとIPC待機はUI・async executorから分離する。
 pub(crate) mod audio;
+pub(crate) mod bundles;
 pub(crate) mod profiles;
 pub(crate) mod voice_check;
 

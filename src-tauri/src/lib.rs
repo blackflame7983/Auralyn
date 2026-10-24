@@ -8,10 +8,12 @@ pub mod audio;
 pub mod audio_analysis;
 pub mod audio_engine;
 pub mod autostart;
+pub mod bundle;
 mod child_process;
 pub mod coexistence;
 mod commands;
 mod desktop_integration;
+mod display_locale;
 #[cfg(any(test, feature = "dsp-verification"))]
 mod dsp_verification_allocator;
 pub mod ipc;
@@ -74,8 +76,8 @@ async fn connect_obs(
 }
 
 #[tauri::command]
-async fn disconnect_obs(state: State<'_, obs::ObsState>) -> Result<(), String> {
-    obs::disconnect_obs(state).await
+async fn disconnect_obs(app: AppHandle, state: State<'_, obs::ObsState>) -> Result<(), String> {
+    obs::disconnect_obs(app, state).await
 }
 
 #[tauri::command]
@@ -84,6 +86,27 @@ async fn obs_preview_setup(
     mute_source: Option<String>,
 ) -> Result<obs_setup::Plan, String> {
     obs_setup::preview(&state, mute_source).await
+}
+
+#[tauri::command]
+async fn obs_timing_targets(
+    state: State<'_, obs::ObsState>,
+    audio_conditions: State<'_, audio::conditions::ConditionState>,
+) -> Result<obs_setup::TimingTargets, String> {
+    obs_setup::timing_targets(&state, &audio_conditions.0).await
+}
+
+#[tauri::command]
+async fn obs_preview_timing(
+    state: State<'_, obs::ObsState>,
+    request: obs_setup::TimingPreviewRequest,
+) -> Result<obs_setup::Plan, String> {
+    obs_setup::preview_timing(&state, request).await
+}
+
+#[tauri::command]
+fn obs_live_scene_status(state: State<'_, obs::ObsState>) -> obs::LiveSceneStatus {
+    obs::live_scene_status(&state)
 }
 
 #[tauri::command]
@@ -117,6 +140,14 @@ async fn obs_restore_setup(
 #[tauri::command]
 async fn obs_forget_setup_history(state: State<'_, obs::ObsState>, id: u64) -> Result<(), String> {
     obs_setup::forget_history(&state, id).await
+}
+
+#[tauri::command]
+async fn obs_audio_reach_current(
+    obs_state: State<'_, obs::ObsState>,
+    operation_id: String,
+) -> Result<bool, String> {
+    Ok(obs::audio_reach_current(&obs_state, &operation_id).await)
 }
 
 #[tauri::command]
@@ -193,12 +224,28 @@ pub fn run() {
         .manage(shortcuts::Shortcuts::default())
         .manage(updates::Updates::default())
         .manage(obs_state)
+        .manage(commands::bundles::BundleState::default())
+        .on_page_load(|webview, payload| {
+            if webview.label() == "main"
+                && matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
+            {
+                if let Some(state) = webview.try_state::<display_locale::DisplayLocaleState>() {
+                    state.retire_page();
+                }
+            }
+        })
         .setup(|app| {
             // app_config_dirはMSIXではpackage専用、通常版では従来のRoaming AppData。
             let config_dir = app.path().app_config_dir()?;
-            app.manage(audio::AudioState(Arc::new(Mutex::new(
-                audio::AudioHost::new(config_dir),
-            ))));
+            let locale_path = config_dir.join("display-locale.json");
+            let read_path = locale_path.clone();
+            let locale = tauri::async_runtime::block_on(commands::run_blocking(move || {
+                Ok(display_locale::load(&read_path))
+            }))?;
+            let labels = locale.labels();
+            let audio_host = audio::AudioHost::new(config_dir);
+            app.manage(audio::conditions::ConditionState(audio_host.conditions()));
+            app.manage(audio::AudioState(Arc::new(Mutex::new(audio_host))));
             let state = app.state::<audio::AudioState>();
 
             // Explicitly set window icon (Fix for taskbar icon issue)
@@ -210,11 +257,14 @@ pub fn run() {
             }
 
             // --- System Tray ---
-            let show_item = MenuItemBuilder::with_id("show", "Auralyn を表示").build(app)?;
-            let mute_item =
-                MenuItemBuilder::with_id("mute_toggle", "ミュート切替 (Alt+M)").build(app)?;
+            let show_item = MenuItemBuilder::with_id("show", labels[0]).build(app)?;
+            let mute_item = MenuItemBuilder::with_id("mute_toggle", labels[1]).build(app)?;
             let separator = PredefinedMenuItem::separator(app)?;
-            let quit_item = MenuItemBuilder::with_id("quit", "終了").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", labels[2]).build(app)?;
+            app.manage(display_locale::DisplayLocaleState::new(
+                locale_path,
+                [show_item.clone(), mute_item.clone(), quit_item.clone()],
+            ));
 
             let tray_menu = MenuBuilder::new(app)
                 .items(&[&show_item, &mute_item, &separator, &quit_item])
@@ -296,6 +346,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             migration::export_settings,
+            display_locale::begin_display_locale_session,
+            display_locale::set_display_locale,
             migration::preview_settings,
             migration::apply_settings,
             migration::migration_bootstrap,
@@ -317,6 +369,10 @@ pub fn run() {
             commands::audio::start_audio,
             commands::audio::stop_audio,
             commands::audio::load_plugin,
+            commands::audio::restore_plugin,
+            commands::audio::session_rack,
+            commands::audio::audio_frontend_bootstrap,
+            commands::audio::get_output_gain_observation,
             commands::audio::remove_plugin,
             commands::audio::reorder_plugins,
             commands::audio::set_bypass,
@@ -325,6 +381,7 @@ pub fn run() {
             commands::audio::open_editor,
             commands::audio::restart_audio_engine,
             commands::profiles::list_presets,
+            commands::bundles::broadcast_bundle,
             commands::profiles::list_profiles,
             commands::profiles::save_preset,
             commands::profiles::save_profile,
@@ -347,6 +404,11 @@ pub fn run() {
             commands::audio::cancel_noise_learning,
             commands::audio::set_noise_control_config,
             commands::audio::set_built_in_effects,
+            commands::audio::builtin_effects,
+            commands::audio::live_modes,
+            commands::audio::preflight_live_changes,
+            commands::audio::begin_live_changes,
+            commands::audio::end_live_changes,
             commands::audio::set_output_gain,
             commands::audio::auto_gain,
             commands::audio::set_loudness_measurement,
@@ -355,17 +417,22 @@ pub fn run() {
             connect_obs,
             disconnect_obs,
             obs_preview_setup,
+            obs_timing_targets,
+            obs_preview_timing,
             obs_connection_status,
+            obs_live_scene_status,
             obs_apply_setup,
             obs_setup_history,
             obs_restore_setup,
             obs_forget_setup_history,
             obs_check_audio_reach,
+            obs_audio_reach_current,
             get_autostart_status,
             set_autostart_enabled,
             commands::audio::set_input_channels,
             commands::audio::set_channel_scan,
             commands::voice_check::start_voice_check,
+            commands::voice_check::voice_check_preview,
             commands::voice_check::stop_voice_check,
             commands::voice_check::play_voice_check,
             commands::voice_check::stop_voice_check_playback,

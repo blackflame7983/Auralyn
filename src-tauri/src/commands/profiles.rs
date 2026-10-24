@@ -91,6 +91,8 @@ pub(crate) async fn save_profile(
                     preset: stats.built_in_effects_preset.clone(),
                     enabled: stats.built_in_effects_enabled,
                     amount: builtin_fx_amount.unwrap_or(stats.built_in_effects_amount),
+                    singing: stats.built_in_singing,
+                    reverb: stats.built_in_reverb,
                 });
             }
         }
@@ -124,9 +126,14 @@ pub(crate) async fn apply_profile(
     skip_backup: Option<bool>,
 ) -> Result<ApplyProfileSummary, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    let (config_dir, profile) = super::run_blocking(move || {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
         let profile = presets::load_preset(&config_dir, &name)?;
+        Ok((config_dir, profile))
+    })
+    .await?;
+    super::audio::enumerate_devices_async(state.clone(), false).await?;
+    super::run_blocking(move || {
         let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
         profile::apply_profile(
             &config_dir,
@@ -160,9 +167,14 @@ pub(crate) async fn restore_backup_profile(
     backup_audio_extras: Option<ProfileAudioExtras>,
 ) -> Result<ApplyProfileSummary, String> {
     let state = state.0.clone();
-    super::run_blocking(move || {
+    let (config_dir, profile) = super::run_blocking(move || {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
         let profile = presets::load_preset(&config_dir, presets::BACKUP_PROFILE_NAME)?;
+        Ok((config_dir, profile))
+    })
+    .await?;
+    super::audio::enumerate_devices_async(state.clone(), false).await?;
+    super::run_blocking(move || {
         let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
         profile::apply_profile(
             &config_dir,

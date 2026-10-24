@@ -97,8 +97,7 @@ impl RtTestTone {
 
     fn update_fade(&mut self) -> f32 {
         if self.fade_samples_left > 0 {
-            let step =
-                (self.gain_target - self.gain) / self.fade_samples_left as f32;
+            let step = (self.gain_target - self.gain) / self.fade_samples_left as f32;
             self.gain += step;
             self.fade_samples_left -= 1;
         } else {
@@ -117,8 +116,7 @@ impl RtTestTone {
         let sr = self.sample_rate_hz.max(8_000) as f32;
         self.phase_inc = 2.0 * PI * freq_hz / sr;
         self.amplitude = amplitude;
-        self.remaining_frames =
-            ((duration_ms as u64 * self.sample_rate_hz as u64) / 1000).max(1);
+        self.remaining_frames = ((duration_ms as u64 * self.sample_rate_hz as u64) / 1000).max(1);
         self.phase = 0.0;
         self.active = true;
         self.gain = 0.0;

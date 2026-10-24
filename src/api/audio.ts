@@ -30,8 +30,34 @@ export interface AudioConfig {
     buffer_size: number;
     channels: number;
 }
+export interface FrontendBootstrapRequest {
+    config: { host: string; input?: string; output?: string; sampleRate?: number; bufferSize?: number; inputChannels?: [number, number] } | null;
+    inputGain: number;
+    outputGain: number;
+}
+export interface FrontendBootstrapReply {
+    outcome: 'started' | 'attached' | 'inactive';
+    initialPage: boolean;
+    error: string | null;
+}
+
+export interface RackPlugin {
+    id: string; path: string; name: string; enabled: boolean; muted: boolean; gain: number;
+}
+export type SessionRackRequest = { action: 'snapshot' }
+    | { action: 'retain'; generation: string; revision: string; ids: string[]; inputGain: number | null }
+    | { action: 'begin'; generation: string; revision: string; ids: string[]; inputGain: number; outputGain: number; explicit?: boolean }
+    | { action: 'add'; token: string; request: RestorePluginRequest }
+    | { action: 'finish'; token: string };
+export type SessionRackReply = { status: 'snapshot'; generation: string; revision: string; running: boolean; present: boolean; restoreEligible: boolean; plugins: RackPlugin[] }
+    | { status: 'ready'; token: string; generation: string }
+    | { status: 'restored'; plugin: RestoredPlugin }
+    | { status: 'finished' | 'busy' | 'conflict' }
+    | { status: 'failed'; message: string };
 
 export const audioApi = {
+    frontendBootstrap: async (request: FrontendBootstrapRequest): Promise<FrontendBootstrapReply> => invoke('audio_frontend_bootstrap', { request }),
+    sessionRack: async (request: SessionRackRequest): Promise<SessionRackReply> => invoke('session_rack', { request }),
     // 既存の状態取得コマンドで実ストリームを確認する。プロセスの常駐とは区別する。
     getAudioStreamState: async (): Promise<{ running: boolean; streamFailed: boolean }> =>
         invoke('auto_gain', { request: { action: 'status' } }),
@@ -60,6 +86,7 @@ export const audioApi = {
     clearBlacklist: async (): Promise<void> => {
         return await invoke("clear_blacklist");
     },
+    restorePlugin: async (request: RestorePluginRequest): Promise<RestoredPlugin> => invoke('restore_plugin', { request }),
     loadPlugin: async (path: string): Promise<string> => {
         return await invoke("load_plugin", { path });
     },
@@ -215,7 +242,7 @@ export interface EngineTuningConfig {
 }
 
 export type NoiseControlMode = 'low' | 'high' | 'smart' | 'venue';
-export type BuiltInEffectsPreset = 'broadcast' | 'warm' | 'bright';
+export type BuiltInEffectsPreset = 'broadcast' | 'warm' | 'bright' | 'singing';
 export type VoiceCheckSource = 'raw' | 'processed';
 export type VoiceCheckStateKind = 'idle' | 'recording' | 'ready' | 'playing' | string;
 
@@ -319,12 +346,88 @@ export interface RoutingDiagnosticsReport {
     warnings: string[];
 }
 
+export interface QueueDiagnosticsSnapshot {
+    recoveryDiscardedFrames?: number | null; recoveryCount?: number | null;
+    recoveryStatus?: number | null; recoveryTargetFrames?: number | null; recoveryHighFrames?: number | null;
+    epoch: string;
+    state: 'preparing' | 'running' | 'stopped' | 'failed';
+    inputRateHz: number; outputRateHz: number;
+    inputChannels: number; outputChannels: number;
+    capacitySlots: number; capacityFrames: number; capacityRemainderSlots: number;
+    currentSlots: number | null; currentFrames: number | null; currentPartialSlots: number | null;
+    currentAudioMs: number | null;
+    maxObservedSlots: number; maxObservedFrames: number; maxObservedAudioMs: number | null;
+    queuedSlotsAtStop: number | null; queuedFramesAtStop: number | null;
+    receivedInputFrames: number; generatedOutputFrames: number; offeredOutputFrames: number;
+    acceptedOutputFrames: number; droppedOutputFrames: number;
+    requestedOutputFrames: number; consumedOutputFrames: number; zeroFilledOutputFrames: number;
+    queueReadCallbacks: number; underflowCallbacks: number;
+}
+
+export interface LatencyMetadata {
+    schemaVersion: 1; streamRunning: boolean; nominalSampleRateHz: number | null;
+    fixedBufferRequestFrames: number | null; nrConfiguredEnabled: boolean;
+    nrProcessingRateHz: number | null; nrProcessingFrameSamples: number | null;
+    stageBreakdown?: LatencyStageBreakdown | null;
+    vstReportedLatencySamples: number; signalCorrespondence: 'unmeasured';
+}
+
+export interface LatencyStageBreakdown {
+    schemaVersion: 1; queryBasis: 'queriedAtRuntimeStats'; current: boolean; streamEpoch: string | null;
+    globalBypass: boolean; vstKnownSubtotalSamples: number | null; vstSubtotalOverflow: boolean;
+    vst: { id: string; name: string; state: 'active' | 'bypassed' | 'muted' | 'unavailable'; bypassed: boolean; muted: boolean; declaredSamples: number | null }[];
+    nr: { enabled: boolean; configuredRateHz: number | null; frameSamples: number | null; framePeriodMs: number | null; modelRateHz: number; modelFrameSamples: number; signalDelay: 'unknown' };
+    builtinVoiceEnabled: boolean; builtinReverbEnabled: boolean; builtinSignalDelay: 'unknown';
+}
+
+export interface FrameTimingSnapshot {
+    epoch: string; supported: boolean; sealed: boolean; counterInvalid: boolean;
+    consumedFrames: number; matchedFrames: number; pendingFrames: number; unknownFrames: number;
+    coveragePercent: number | null;
+    p50: { lowerMs: number; upperMs: number | null } | null;
+    p95: { lowerMs: number; upperMs: number | null } | null;
+    histogramResolutionMs: number; observationMs: number;
+    inputMetadataDropped: number; outputMetadataDropped: number;
+    invalidEvents: number; pendingEvictions: number; overlappingCallbackFrames: number;
+    asioCycleClassification: string;
+}
+
+// 異率の生成batchが揃ったcallbackからqueue読出完了まで。raw信号の点対応ではない。
+export interface ResamplerBatchTimingSnapshot extends FrameTimingSnapshot {
+    mode: 'callbackBatchReadiness';
+    declaredResampler: {
+        inputRateHz: number; outputRateHz: number; inputChunkFrames: number;
+        maxOutputChunkFrames: number; declaredOutputDelayFrames: number;
+    };
+}
+
+// 処理に消費された入力cohortの到着区間。FIR/NR/VSTの信号対応ではない。
+export interface ResamplerCohortTimingSnapshot {
+    schemaVersion: 1 | 2; epoch: string; mode: 'inputCohortToOutputBufferEnd' | 'sameRateInputToOutputBufferEnd';
+    // applied = RT受理・状態反映。gain平滑化／VST内部完了のACKではない。
+    windowId?: string; requestedRevision?: string; completedRevision?: string; appliedRevision?: string; rejectedRevision?: string | null; normalMicOutput?: boolean; streamConsumedFrames?: number;
+    status: 'collecting' | 'partial' | 'invalid' | 'sealed' | 'unsupported' | 'pending' | 'substituted';
+    signalCorrespondence: 'notMeasured';
+    geometry: { inputUnitFrames: number; outputUnitFrames: number } | null;
+    receivedInputFrames: number; cohortInputFrames: number; unemittedInputFrames: number | null;
+    consumedFrames: number; matchedFrames: number; pendingFrames: number; unknownFrames: number;
+    zeroFilledFrames: number; coveragePercent: number | null;
+    earliestArrivalToEnd: { p50: FrameTimingSnapshot['p50']; p95: FrameTimingSnapshot['p95'] };
+    latestArrivalToEnd: { p50: FrameTimingSnapshot['p50']; p95: FrameTimingSnapshot['p95'] };
+    invalidReasons: string[];
+}
+
 export interface EngineRuntimeStats {
+    resamplerCohortTiming?: ResamplerCohortTimingSnapshot | null;
+    frameTiming?: FrameTimingSnapshot | null;
+    resamplerBatchTiming?: ResamplerBatchTimingSnapshot | null;
+    latencyMetadata?: LatencyMetadata | null;
     activePluginCount: number;
     enabledPluginCount: number;
     pendingUnloadCount: number;
     burnedLibraryCount: number;
     globalBypass: boolean;
+    queueDiagnostics?: QueueDiagnosticsSnapshot | null;
     callbackDiagnostics?: {
         count: number;
         minFrames: number;
@@ -354,4 +457,17 @@ export interface EngineRuntimeStats {
     builtInEffectsEnabled: boolean;
     builtInEffectsPreset: string;
     builtInEffectsAmount: number;
+    builtInSinging?: import('./builtinEffects').SingingParams | null;
+    builtInReverb?: import('./builtinEffects').ReverbParams | null;
 }
+
+
+export interface RestorePluginRequest {
+    path: string;
+    state: string | null;
+    bypassed: boolean;
+    muted: boolean;
+    gain: number;
+}
+// prepared:falseは停止中の復元成功。次回Startで処理準備される。
+export interface RestoredPlugin { id: string; name: string; prepared: boolean }

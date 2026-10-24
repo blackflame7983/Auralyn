@@ -1,8 +1,13 @@
+import { getVersion } from '@tauri-apps/api/app';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { TroubleshootModal } from '../TroubleshootModal';
+
+vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn(async () => 'test-version') }));
 
 const config = { host: 'Wasapi', input: 'USB mic', output: 'Headphones' };
 const openDiagnosis = () => {
@@ -105,7 +110,7 @@ it('比較情報や通信デバイスが未取得なら成功を表示しない'
     await act(async () => { await vi.advanceTimersByTimeAsync(6100); });
     fireEvent.click(screen.getByRole('button', { name: 'スキップ' }));
     await act(async () => {});
-    expect(screen.getByText('比較に必要なサンプルレート情報を取得できませんでした')).toBeInTheDocument();
+    expect(screen.getByText('選択した出力と対応入力を一意に特定できませんでした。レートは受け側で手動確認してください。')).toBeInTheDocument();
     expect(screen.getByText('既定通信デバイスを確認できませんでした')).toBeInTheDocument();
     expect(screen.queryByText(/仮想ケーブルと一致/)).not.toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalledWith('play_test_tone', expect.anything());
@@ -130,4 +135,33 @@ it.each(['Discord（通話）', 'その他アプリ'])('%s の受け側処理を
     expect(screen.getByText(/一つずつ/)).toHaveTextContent(/試聴/);
     expect(screen.getByText(/回り込みが増えないか確認/)).toBeInTheDocument();
     expect(screen.queryByText(/を OFF にする/)).not.toBeInTheDocument();
+});
+
+it('遅い診断中のlocale切替は再測定せず、結果とコピーはクリック時localeで解決する', async () => {
+    const store = createLocaleStore(() => 'ja', () => true); let finish!: (value: unknown) => void;
+    vi.mocked(invoke).mockImplementation(command => command === 'get_audio_state' ? new Promise(resolve => { finish = resolve; }) : Promise.resolve());
+    const write = vi.fn(async (_value: string) => {});
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: write } });
+    render(<LocaleProvider store={store}><TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} /></LocaleProvider>);
+    fireEvent.click(screen.getByRole('button', { name: /OBS（配信・録画）/ }));
+    await act(async () => {});
+    const dialog = screen.getByRole('dialog'); const calls = vi.mocked(invoke).mock.calls.length;
+    act(() => { store.setLocale('en'); });
+    expect(screen.getByRole('dialog')).toBe(dialog);
+    expect(vi.mocked(invoke).mock.calls).toHaveLength(calls);
+    await act(async () => { finish({ is_running: false, config }); });
+    expect(screen.getByText('Audio processing is stopped')).toBeInTheDocument();
+    expect(screen.getAllByText('Unconfirmed because audio startup is not confirmed')).toHaveLength(6);
+    let finishVersion!: () => void;
+    vi.mocked(getVersion).mockImplementationOnce(() => new Promise<string>(resolve => { finishVersion = () => resolve('test-version'); }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostic results' }));
+    await act(async () => {});
+    act(() => { store.setLocale('ja'); });
+    await act(async () => { finishVersion(); });
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write.mock.calls[0][0]).toContain('Auralyn connection diagnostics report');
+    expect(write.mock.calls[0][0]).toContain('Audio processing is stopped');
+    expect(write.mock.calls[0][0]).not.toContain('音声処理が停止中');
+    expect(screen.getByText('音声処理が停止中です')).toBeInTheDocument();
+    expect(vi.mocked(invoke).mock.calls.some(([name]) => name === 'play_test_tone' || name === 'probe_loopback')).toBe(false);
 });

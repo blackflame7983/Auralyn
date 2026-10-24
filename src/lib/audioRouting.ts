@@ -1,13 +1,15 @@
+import { message } from '@/i18n/messages';
+import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 // VB-CABLE の再生側と録音側を案内する。ミキサーの内部ルーティングは推測しない。
-export function receiverDeviceHint(outputName: string): string {
+export function receiverDeviceNotice(outputName: string): SettingsNotice {
     outputName = deviceDisplayName(outputName);
     if (/cable(?:-[ab])?\s+input/i.test(outputName)) {
         return outputName.replace(/input/i, 'Output');
     }
     if (/voicemeeter/i.test(outputName)) {
-        return 'Voicemeeter のバス設定に対応する録音デバイス（手動で確認）';
+        return notice('guide.copy.437');
     }
-    return '出力先と対になる録音デバイス（受け側アプリで確認）';
+    return notice('guide.copy.438');
 }
 
 // 対応レートはデバイス識別子に残し、選択肢では名前を読み取りやすくする。
@@ -29,4 +31,8 @@ export function findCableReceiver<T extends { name: string; host: string }>(
         return match && (match[1] ?? '').toUpperCase() === family;
     });
     return candidates.length === 1 ? candidates[0] : undefined;
+}
+
+export function receiverDeviceHint(outputName: string): string {
+    return renderNotice((key, args) => message('ja', key, args), receiverDeviceNotice(outputName));
 }

@@ -53,6 +53,10 @@ pub struct ProfileBuiltinFx {
     pub preset: String,
     pub enabled: bool,
     pub amount: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub singing: Option<crate::audio_engine::singing::SingingParams>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reverb: Option<crate::audio_engine::reverb::ReverbParams>,
 }
 
 fn default_schema_version() -> u32 {
@@ -370,6 +374,30 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
+    fn singing_profile_roundtrip_and_legacy_missing_parameters() {
+        let old: ProfileBuiltinFx =
+            serde_json::from_str(r#"{"enabled":true,"preset":"warm","amount":0.7}"#).unwrap();
+        assert!(old.singing.is_none());
+        assert!(old.reverb.is_none());
+        assert!(!old.reverb.unwrap_or_default().enabled);
+        let singing = ProfileBuiltinFx {
+            enabled: true,
+            preset: "singing".into(),
+            amount: 0.7,
+            singing: Some(crate::audio_engine::singing::SingingParams::default()),
+            reverb: Some(crate::audio_engine::reverb::ReverbParams {
+                enabled: true,
+                ..Default::default()
+            }),
+        };
+        let restored: ProfileBuiltinFx =
+            serde_json::from_str(&serde_json::to_string(&singing).unwrap()).unwrap();
+        assert_eq!(restored.singing, singing.singing);
+        assert_eq!(restored.reverb, singing.reverb);
+        assert_eq!(restored.preset, "singing");
+    }
+
+    #[test]
     fn invalid_names_never_read_write_or_delete_outside_presets() {
         let root = temp_config_dir();
         let preset = Preset::build_from_parts(
@@ -482,6 +510,8 @@ mod tests {
                 preset: "broadcast".to_string(),
                 enabled: true,
                 amount: 0.7,
+                singing: None,
+                reverb: None,
             }),
         };
         let json = serde_json::to_string(&preset).unwrap();

@@ -1,3 +1,4 @@
+import { installSessionRackFixture } from './sessionRackFixture';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
@@ -9,6 +10,7 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.f
 const plugin = (path: string): VstPlugin => ({ id: path, name: path, path, vendor: '', version: '', category: 'Fx' });
 
 beforeEach(() => {
+    installSessionRackFixture();
     localStorage.clear();
     vi.mocked(invoke).mockReset();
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -19,7 +21,7 @@ it('移行したVSTは確認後までロードせず、未確認のセッショ�
     const session = JSON.stringify([{ path: 'eq.vst3', name: 'EQ', vendor: '', version: '', enabled: true, muted: false, gain: 1 }]);
     localStorage.setItem('vst_host_session_plugins', session);
     localStorage.setItem('vst_host_migration_review_required', 'true');
-    vi.mocked(invoke).mockResolvedValue('new-id');
+    vi.mocked(invoke).mockImplementation(async command => command === 'restore_plugin' ? { id: 'new-id', name: 'EQ', prepared: false } : 'new-id');
     const { result } = renderHook(() => usePlugins());
     await act(async () => {});
     expect(invoke).not.toHaveBeenCalledWith('load_plugin', expect.anything());
@@ -28,7 +30,7 @@ it('移行したVSTは確認後までロードせず、未確認のセッショ�
         localStorage.removeItem('vst_host_migration_review_required');
         window.dispatchEvent(new Event('migration-review-completed'));
     });
-    expect(invoke).toHaveBeenCalledWith('load_plugin', { path: 'eq.vst3' });
+    expect(invoke).toHaveBeenCalledWith('restore_plugin', { request: { path: 'eq.vst3', state: null, bypassed: false, muted: false, gain: 1 } });
     expect(result.current.plugins[0].name).toBe('EQ');
 });
 

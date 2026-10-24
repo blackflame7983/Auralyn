@@ -50,6 +50,13 @@ registry version is also pinned as a development-only comparison dependency;
 it is not selected by the production dependency. No separate download of the
 local modifications is needed to build from the archive.
 
+CPAL 0.17.3 is selected through Cargo's `[patch.crates-io]` from
+`third_party/cpal-0.17.3`. Its ASIO stream-build failure cleanup is modified;
+include this entire directory, its Apache-2.0 `LICENSE`, upstream provenance,
+and `PATCHES.md` in the same source archive. The existing source archive uses
+the full Git tree, so this tracked local dependency requires no extra download.
+The dependency version and the ASIO SDK selection remain unchanged.
+
 The release workflow downloads the Steinberg ASIO SDK from
 `https://www.steinberg.net/asiosdk`, verifies the SHA-256 pinned in
 `config/release-policy.json`, sets `CPAL_ASIO_DIR` for the signed build, and

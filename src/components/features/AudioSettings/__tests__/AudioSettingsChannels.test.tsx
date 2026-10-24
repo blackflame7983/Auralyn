@@ -1,7 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { AudioSettingsModal } from '../AudioSettingsModal';
+import { InputChannelSelector } from '../InputChannelSelector';
+import { listen } from '@tauri-apps/api/event';
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
 
 const devices = {
@@ -26,6 +28,8 @@ beforeEach(() => {
         })
     );
     vi.mocked(invoke).mockReset();
+    vi.mocked(listen).mockReset();
+    vi.mocked(listen).mockResolvedValue(() => {});
     vi.mocked(invoke).mockImplementation(async (cmd) => {
         if (cmd === 'get_audio_devices') return devices;
         if (cmd === 'start_audio' || cmd === 'restart_audio_engine')
@@ -88,4 +92,101 @@ it('ASIOを維持する保存では6/7を維持する', async () => {
         )
     );
     expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 6, right: 7 });
+});
+
+it('入力ペアは同じ名前の標準ラジオとして選択・復元できる', async () => {
+    const mapped = vi.fn();
+    const view = render(<InputChannelSelector initialChannels={[2, 3]} maxChannels={6} onChannelMapped={mapped} />);
+    const group = screen.getByRole('group', { name: '入力チャンネルの選択' });
+    const radios = within(group).getAllByRole('radio') as HTMLInputElement[];
+    expect(radios).toHaveLength(3);
+    expect(new Set(radios.map(radio => radio.name)).size).toBe(1);
+    expect(screen.getByRole('radio', { name: '入力チャンネル 3/4' })).toBeChecked();
+    const last = screen.getByRole('radio', { name: '入力チャンネル 5/6' });
+    last.focus();
+    fireEvent.click(last);
+    await waitFor(() => expect(mapped).toHaveBeenCalledWith([4, 5]));
+    expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 4, right: 5 });
+    expect(last).toBeChecked();
+    expect(last).toHaveFocus();
+    view.rerender(<InputChannelSelector initialChannels={[0, 1]} maxChannels={6} onChannelMapped={mapped} />);
+    expect(screen.getByRole('radio', { name: '入力チャンネル 1/2' })).toBeChecked();
+});
+
+it('端数のチャンネルでも既存どおり末尾ペアを表示してマッピングする', async () => {
+    const mapped = vi.fn();
+    render(<InputChannelSelector maxChannels={3} onChannelMapped={mapped} />);
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 3/4' }));
+    await waitFor(() => expect(mapped).toHaveBeenCalledWith([2, 3]));
+});
+
+it('マッピング失敗では元の選択を保ち、成功する再試行まで親へ通知しない', async () => {
+    let fail = true;
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'set_input_channels' && fail) throw new Error('mapping failed');
+        return null;
+    });
+    const mapped = vi.fn();
+    render(<InputChannelSelector maxChannels={4} onChannelMapped={mapped} />);
+    const target = screen.getByRole('radio', { name: '入力チャンネル 3/4' });
+    fireEvent.click(target);
+    expect(await screen.findByRole('alert')).toHaveTextContent('入力チャンネルを変更できませんでした');
+    expect(screen.getByRole('radio', { name: '入力チャンネル 1/2' })).toBeChecked();
+    expect(mapped).not.toHaveBeenCalled();
+    fail = false;
+    fireEvent.click(target);
+    await waitFor(() => expect(mapped).toHaveBeenCalledWith([2, 3]));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('監視データ待ちと継続監視を区別し、信号を日本語で示す', async () => {
+    const view = render(<InputChannelSelector maxChannels={4} />);
+    await screen.findByText(/信号データを待っています/);
+    const callback = vi.mocked(listen).mock.calls.find(([name]) => name === 'audio-channel-scan')![1];
+    act(() => callback({ event: 'audio-channel-scan', id: 1, payload: [0, 0, 0.2, 0] }));
+    expect(screen.getByText('信号を継続して監視しています。')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '入力チャンネル 3/4' })).toHaveAccessibleDescription('信号あり');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(view.container.querySelector('.animate-pulse')).toBeNull();
+    view.rerender(<InputChannelSelector maxChannels={6} />);
+    expect(screen.getByText(/信号データを待っています/)).toBeInTheDocument();
+    expect(screen.getAllByText('信号未検出')).toHaveLength(3);
+});
+
+it.each(['set_channel_scan', 'listen'])('監視開始の%s失敗を表示して選択は維持する', async failure => {
+    if (failure === 'listen') vi.mocked(listen).mockRejectedValue(new Error('listen failed'));
+    else vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'set_channel_scan') throw new Error('scan failed');
+        return null;
+    });
+    render(<InputChannelSelector initialChannels={[2, 3]} maxChannels={4} />);
+    await screen.findByText(/信号監視を開始できませんでした/);
+    expect(screen.getByRole('radio', { name: '入力チャンネル 3/4' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: '入力チャンネル 1/2' })).toBeEnabled();
+});
+
+it('遅い購読の完了が画面終了後なら解除し、監視を開始しない', async () => {
+    let resolveListener!: (unsubscribe: () => void) => void;
+    vi.mocked(listen).mockImplementation(() => new Promise(resolve => { resolveListener = resolve; }));
+    const unsubscribe = vi.fn();
+    const view = render(<InputChannelSelector />);
+    view.unmount();
+    await act(async () => resolveListener(unsubscribe));
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(invoke).not.toHaveBeenCalledWith('set_channel_scan', { active: true });
+    expect(invoke).toHaveBeenCalledWith('set_channel_scan', { active: false });
+});
+
+it('監視終了の失敗も回収する', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+        if (command === 'set_channel_scan' && (args as { active: boolean }).active === false) throw new Error('stop failed');
+        return null;
+    });
+    const view = render(<InputChannelSelector />);
+    await screen.findByText(/信号データを待っています/);
+    view.unmount();
+    await waitFor(() => expect(warning).toHaveBeenCalledWith('入力チャンネルの信号監視を停止できませんでした。'));
+    warning.mockRestore();
 });

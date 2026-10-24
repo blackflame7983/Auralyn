@@ -1960,7 +1960,7 @@ impl VstInstance {
         } // Close unsafe
     } // Close load
 
-    pub fn finalize_connection(&self) -> Result<()> {
+    pub fn finalize_connection(&mut self) -> Result<()> {
         println!("[Deferred] Finalizing connection for {}", self.name);
 
         unsafe {
@@ -1976,12 +1976,13 @@ impl VstInstance {
                 "[Deferred]",
             );
         }
+        self.resources.connected = true;
         Ok(())
     }
 
     pub fn needs_deferred_connection(&self) -> bool {
         // Quick check for now, ideally reuse get_plugin_quirks logic
-        if self.name.contains("Insight 2") {
+        if self.name.contains("Insight 2") && !self.resources.connected {
             return true;
         }
         false
@@ -2029,7 +2030,7 @@ impl VstInstance {
         block_size: i32,
         channels: i32,
     ) -> Result<()> {
-        self.resources.prepared = false;
+        self.stop_processing();
         unsafe {
             if self.component.is_null() || self.processor.is_null() {
                 return Err(anyhow!("VST processing interfaces are unavailable"));
@@ -2096,8 +2097,19 @@ impl VstInstance {
 
             // 4. Set Processing Active
             self.resources.processing = true;
-            if (proc_vtbl.set_processing)(self.processor, 1) != K_RESULT_OK {
-                return Err(anyhow!("VST set_processing failed"));
+            let processing_result = (proc_vtbl.set_processing)(self.processor, 1);
+            // SDKのAudioEffectも、この軽量な状態通知を使わない場合は未実装を返す。
+            // 実際の拒否・失敗まで成功扱いにせず、この既定実装だけを許容する。
+            if processing_result != K_RESULT_OK
+                && processing_result != vst3::Steinberg::kNotImplemented
+            {
+                return Err(anyhow!(
+                    "VST set_processing failed (result={:#010X})",
+                    processing_result as u32
+                ));
+            }
+            if processing_result == vst3::Steinberg::kNotImplemented {
+                log::debug!("VST processing-state notification is not implemented");
             }
 
             // eprintln!(
@@ -2113,14 +2125,22 @@ impl VstInstance {
         Ok(())
     }
 
-    pub fn latency_samples(&self) -> u32 {
+    /// callbackとprocessor所有値を回収した制御側だけで呼ぶ。
+    pub fn stop_processing(&mut self) {
+        self.resources.stop_processing();
+    }
+
+    pub fn declared_latency_samples(&self) -> Option<u32> {
         unsafe {
             if self.processor.is_null() {
-                return 0;
+                return None;
             }
             let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.processor);
-            (vtbl.get_latency_samples)(self.processor)
+            Some((vtbl.get_latency_samples)(self.processor))
         }
+    }
+    pub fn latency_samples(&self) -> u32 {
+        self.declared_latency_samples().unwrap_or(0)
     }
 
     /// プラグインのエディタを Win32 の親ウィンドウに接続する。
@@ -2751,6 +2771,8 @@ mod load_failure_tests;
 
 #[cfg(test)]
 pub(crate) use instance_safety_tests::allocation_counts;
+#[cfg(test)]
+pub(crate) use load_failure_tests::with_mock_vst;
 
 #[cfg(test)]
 mod module_entry_tests {

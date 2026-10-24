@@ -1,3 +1,4 @@
+import { notice, type SettingsNotice } from './settingsNotice';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { audioApi, type AudioDeviceList } from '../../../api/audio';
 import { readAudioPreferences, readCachedAudioDevices } from '../../../lib/audioPreferences';
@@ -6,7 +7,7 @@ interface SelectionOptions {
   isOpen: boolean;
   currentSampleRate?: number;
   currentBufferSize?: number;
-  onError: (message: string | null) => void;
+  onError: (message: SettingsNotice | null) => void;
 }
 
 // 一覧の取得・選択復元・バッファ候補を画面の描画と適用処理から分離する。
@@ -75,7 +76,7 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
     } catch (err) {
       if (!active.current || request !== requestRevision.current) return;
       console.error('Failed to get devices:', err);
-      onError('デバイスの取得に失敗しました');
+      onError(notice('settings.useAudioDeviceSelection.439'));
     } finally {
       if (active.current && request === requestRevision.current) setLoading(false);
     }

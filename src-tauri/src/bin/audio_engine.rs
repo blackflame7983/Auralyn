@@ -43,7 +43,7 @@ fn main() {
     // Initialize logger FIRST so all subsequent code can use log:: macros.
     // Target stderr so JSON on stdout (IPC) is not corrupted.
     env_logger::Builder::new()
-        .filter_level(log::LevelFilter::Info)
+        .parse_env(env_logger::Env::default().default_filter_or("info"))
         .target(env_logger::Target::Stderr)
         .init();
 
@@ -416,7 +416,8 @@ fn scan_devices() {
                     };
                     log::debug!(
                         "[Scanner] Found Input: {} (Default: {})",
-                        final_name, is_def
+                        final_name,
+                        is_def
                     );
                     devices.push(DeviceInfo {
                         name: final_name,
@@ -474,7 +475,8 @@ fn scan_devices() {
                     };
                     log::debug!(
                         "[Scanner] Found Output: {} (Default: {})",
-                        final_name, is_def
+                        final_name,
+                        is_def
                     );
                     devices.push(DeviceInfo {
                         name: final_name,
