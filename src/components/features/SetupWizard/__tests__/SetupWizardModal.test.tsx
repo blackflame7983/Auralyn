@@ -4,6 +4,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { SetupWizardModal } from '../SetupWizardModal';
 import type { AudioDevice } from '../../../../api/audio';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), success: vi.fn(), warning: vi.fn(), error: vi.fn() } }));
 
@@ -47,7 +49,10 @@ beforeEach(() => {
     vi.mocked(invoke).mockImplementation(async (command) => {
         switch (command) {
             case 'get_audio_devices': return { inputs, outputs };
+            case 'begin_display_locale_session': return 1;
+            case 'set_display_locale': return true;
             case 'get_audio_state': return { is_running: false, config: null };
+            case 'auto_gain': return { running: true, streamFailed: false };
             case 'start_audio':
                 if (startFails) throw new Error(startError);
                 return { sample_rate: 48000, buffer_size: 512, channels: 2 };
@@ -62,6 +67,51 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('セットアップの接続チェック', () => {
+    it('locale切替は選択中の実デバイスとdialogを保持し、音声操作・保存を行わない', async () => {
+        const store = createLocaleStore(() => 'ja', () => true);
+        inputs = [mic, device('Second microphone', true)];
+        const onApplyConfig = vi.fn(); const onClose = vi.fn();
+        render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={onClose} onApplyConfig={onApplyConfig} /></LocaleProvider>);
+        fireEvent.click(await screen.findByRole('button', {name: '用途を選んで設定する'}));
+        fireEvent.click(screen.getByRole('button', {name: 'OBSで配信'}));
+        const input = screen.getByRole('combobox', {name: '入力デバイス'});
+        fireEvent.change(input, {target: {value: 'Second microphone'}});
+        const dialog = screen.getByRole('dialog');
+        const before = vi.mocked(invoke).mock.calls.filter(([command]) => ['start_audio','stop_audio','voice_check_preview','save_preset'].includes(String(command))).length;
+        fireEvent.change(screen.getByLabelText('表示言語'), {target: {value: 'en'}});
+        await screen.findByRole('heading', {name: 'Choose a microphone'});
+        expect(screen.getByRole('dialog')).toBe(dialog); expect(input).toHaveValue('Second microphone');
+        expect(vi.mocked(invoke).mock.calls.filter(([command]) => ['start_audio','stop_audio','voice_check_preview','save_preset'].includes(String(command)))).toHaveLength(before);
+        expect(onApplyConfig).not.toHaveBeenCalled(); expect(onClose).not.toHaveBeenCalled();
+    });
+    it('プロセスが常駐していても開始前が停止中なら、中断時に音声を開始しない', async () => {
+        const base = vi.mocked(invoke).getMockImplementation()!;
+        vi.mocked(invoke).mockImplementation((command, args, options) => {
+            if (command === 'get_audio_state') return Promise.resolve({ is_running: true, config: { host: 'ASIO', input: 'previous', output: 'previous' } });
+            if (command === 'auto_gain') return Promise.resolve({ running: false, streamFailed: false });
+            return base(command, args, options);
+        });
+        const { onClose } = await quickStart();
+        fireEvent.click(screen.getByRole('button', { name: 'サウンドテスト (開始)' }));
+        await screen.findByRole('button', { name: 'サウンドテスト (停止)' });
+        fireEvent.click(screen.getByRole('button', { name: 'セットアップウィザードを閉じる' }));
+        fireEvent.click(screen.getByRole('button', { name: '中断する' }));
+        await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+        expect(invoke).toHaveBeenLastCalledWith('stop_audio');
+        expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.objectContaining({ host: 'ASIO' }));
+    });
+
+    it('設定の反映に失敗した場合は完了表示や表示モードの保存を行わない', async () => {
+        const onApplyConfig = vi.fn().mockRejectedValue(new Error('save failed'));
+        render(<SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={onApplyConfig} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'OBS向けに設定する' }));
+        fireEvent.click(await screen.findByRole('button', { name: '設定を保存して開始' }));
+        await waitFor(() => expect(onApplyConfig).toHaveBeenCalledOnce());
+        expect(await screen.findByRole('heading', { name: '設定と接続の確認' })).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: '音声設定を保存しました' })).not.toBeInTheDocument();
+        expect(localStorage.getItem('vst_host_beginner_mode')).toBeNull();
+    });
+
     it.each(['サウンドテスト (開始)', '設定を保存して開始'])('アクセス拒否時の%sでは権限案内を開き、設定を保存せず再試行できる', async action => {
         startFails = true;
         startError = 'Input Stream Build Failed: 0x80070005';
@@ -423,4 +473,20 @@ describe('初回選択と表示設定', () => {
         fireEvent.click(screen.getByRole('button', { name: 'スキップ（手動設定）' }));
         await waitFor(() => expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false'));
     });
+});
+
+it('確認stepのlocale切替で入力出力・テスト状態とdialogを保持し設定を再送しない', async () => {
+    const store = createLocaleStore(() => 'ja', () => true); const apply = vi.fn();
+    render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={apply} /></LocaleProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'OBS向けに設定する' }));
+    await screen.findByRole('heading', { name: '設定と接続の確認' });
+    const dialog = screen.getByRole('dialog'); const test = screen.getByRole('button', { name: 'サウンドテスト (開始)' });
+    const calls = vi.mocked(invoke).mock.calls.length;
+    act(() => { store.setLocale('en'); });
+    expect(screen.getByRole('dialog')).toBe(dialog);
+    expect(screen.getByRole('button', { name: 'Sound test (start)' })).toBe(test);
+    expect(screen.getAllByText('USB マイク').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('CABLE Input (VB-Audio)').length).toBeGreaterThan(0);
+    expect(vi.mocked(invoke).mock.calls).toHaveLength(calls);
+    expect(apply).not.toHaveBeenCalled();
 });

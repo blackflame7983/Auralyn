@@ -1,0 +1,2 @@
+import type { LiveModeSnapshot } from '@/api/liveModes';
+export const liveSnapshot = (patch: Partial<LiveModeSnapshot> = {}): LiveModeSnapshot => ({ epoch: 'host1', running: false, revision: '0', acceptedRevision: '0', completedRevision: '0', target: null, applied: null, phase: 'custom', armed: false, naturalTail: false, definitions: { schemaVersion: 1, version: '0', singing: null, talk: null }, error: null, ...patch });

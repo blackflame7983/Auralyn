@@ -1,14 +1,9 @@
+import { formatObsText, obsHistoryResults, originalObsText } from '@/lib/obsUiText';
+import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useRef, useState } from 'react';
 import { obsApi, type ObsSetupPlan, type ObsSetupHistory } from '@/api/obs';
 
-const valueLabel = (value: unknown): string => {
-    if (value === null) return 'なし';
-    if (typeof value === 'boolean') return value ? 'ON' : 'OFF';
-    if (value === 'OBS_MONITORING_TYPE_NONE') return 'モニターOFF';
-    if (value === 'OBS_MONITORING_TYPE_MONITOR_ONLY') return 'モニターのみ';
-    if (value === 'OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT') return 'モニターと出力';
-    return typeof value === 'object' ? JSON.stringify(value) : String(value);
-};
+
 
 export function ObsSafeSetup({
     connected = true,
@@ -21,6 +16,7 @@ export function ObsSafeSetup({
     onBusyChange: (busy: boolean) => void;
     onOpenGuide?: () => void;
 }) {
+    const t = useMessages();
     const [plan, setPlan] = useState<ObsSetupPlan | null>(null);
     const [history, setHistory] = useState<ObsSetupHistory[]>([]);
     const [busy, setBusy] = useState(false);
@@ -70,50 +66,46 @@ export function ObsSafeSetup({
         });
     const buttonClass = 'rounded border border-border px-3 py-2 hover:bg-muted disabled:opacity-50';
     return (
-        <section aria-label="OBS の変更確認と復元" className="space-y-3 text-sm">
+        <section aria-label={t('settings.ObsSafeSetup.335')} className="space-y-3 text-sm">
             <p className="text-xs text-muted-foreground">
-                現在の設定と変更予定を確認してから適用します。配信・録画を停止してご利用ください。音量・フィルターは変更しません。
-            </p>
+                {t('settings.ObsSafeSetup.336')}</p>
             <button
                 type="button"
                 className={buttonClass}
                 disabled={busy || disabled}
                 onClick={() => void preview()}
             >
-                変更予定を確認する
-            </button>
+                {t('settings.ObsSafeSetup.337')}</button>
             {onOpenGuide && (
                 <button type="button" className={buttonClass} disabled={busy} onClick={onOpenGuide}>
-                    手動の接続手順を開く
-                </button>
+                    {t('settings.ObsSafeSetup.338')}</button>
             )}
             {error && (
                 <p role="alert" className="text-amber-500 break-words">
-                    {error} 適用中の通信エラーの場合は、履歴を再取得して状態を確認してください。
-                </p>
+                    {originalObsText(t, error)} {t('settings.ObsSafeSetup.339')}</p>
             )}
             {plan && (
                 <div
                     className="rounded border border-border p-3 space-y-3"
-                    aria-label="OBS の変更予定"
+                    aria-label={t('settings.ObsSafeSetup.340')}
                 >
-                    {plan.message && <p>{plan.message}</p>}
+                    {plan.message && <p>{formatObsText(t, plan.messageText, plan.message)}</p>}
                     {plan.changes.length > 0 ? (
                         <ul className="space-y-2">
                             {plan.changes.map((c, i) => (
                                 <li key={i} className="break-words">
                                     <strong>
-                                        {c.source}：{c.label}
+                                        {c.source}：{formatObsText(t, c.labelText, c.label)}
                                     </strong>
                                     <p className="text-xs text-muted-foreground">
-                                        {c.beforeDisplay ?? valueLabel(c.before)} →{' '}
-                                        {c.afterDisplay ?? valueLabel(c.after)}
+                                        {formatObsText(t, c.beforeText, c.beforeDisplay ?? c.before)} →{' '}
+                                        {formatObsText(t, c.afterText, c.afterDisplay ?? c.after)}
                                     </p>
                                 </li>
                             ))}
                         </ul>
                     ) : (
-                        plan.supported && <p>変更が必要な項目はありません。</p>
+                        plan.supported && <p>{t('settings.ObsSafeSetup.341')}</p>
                     )}
                     {plan.supported && plan.changes.length > 0 && (
                         <button
@@ -128,8 +120,7 @@ export function ObsSafeSetup({
                                 })
                             }
                         >
-                            この変更を適用する
-                        </button>
+                            {t('settings.ObsSafeSetup.342')}</button>
                     )}
                     <button
                         type="button"
@@ -137,11 +128,10 @@ export function ObsSafeSetup({
                         disabled={busy}
                         onClick={() => setPlan(null)}
                     >
-                        キャンセル
-                    </button>
+                        {t('settings.ObsSafeSetup.343')}</button>
                     {plan.supported && plan.duplicateMicSources.length > 0 && (
                         <div className="space-y-2">
-                            <p>他のマイクも有効です。二重取りの可能性があります。</p>
+                            <p>{t('settings.ObsSafeSetup.344')}</p>
                             {plan.duplicateMicSources.map((name) => (
                                 <button
                                     key={name}
@@ -150,16 +140,14 @@ export function ObsSafeSetup({
                                     disabled={busy || disabled}
                                     onClick={() => void preview(name)}
                                 >
-                                    「{name}」のミュート予定を確認
-                                </button>
+                                    {t('settings.obs.mutePreview', { source: name })}</button>
                             ))}
                         </div>
                     )}
                 </div>
             )}
             <p className="text-xs text-muted-foreground">
-                履歴はアプリ終了まで保持します。切断・再接続後はソースの同一性を確認できないため、履歴を参照してOBSで手動確認してください。同じソースは新しい履歴から復元し、後から変更された値は上書きしません。
-            </p>
+                {t('settings.ObsSafeSetup.346')}</p>
             <button
                 type="button"
                 className={buttonClass}
@@ -171,27 +159,26 @@ export function ObsSafeSetup({
                     }, false)
                 }
             >
-                履歴を再取得
-            </button>
+                {t('settings.ObsSafeSetup.347')}</button>
             {history.length > 0 && (
-                <ol className="space-y-3" aria-label="OBS の変更履歴">
+                <ol className="space-y-3" aria-label={t('settings.ObsSafeSetup.348')}>
                     {[...history].reverse().map((h) => (
                         <li key={h.id} className="rounded border border-border p-3 space-y-2">
                             <p>
-                                変更 #{h.id} {h.connectionLabel}
+                                {h.timing ? t('settings.ObsSafeSetup.349') : t('settings.ObsSafeSetup.350')} #{h.id} {h.connectionLabel}
                             </p>
+                            {h.timing && <p className="text-xs text-muted-foreground">{t('settings.obs.timing', { source: h.timing.source, before: h.timing.currentOffsetMs, after: h.timing.resultOffsetMs, delay: h.timing.additionalDelayMs, note: h.timing.measurement.referenceNote })}</p>}
                             {h.restorable === false && (
                                 <p className="text-xs text-amber-500">
-                                    現在の接続では安全に復元できません。OBSで手動確認してください。
-                                </p>
+                                    {t('settings.ObsSafeSetup.355')}</p>
                             )}
                             <ul>
                                 {h.changes.map((c, i) => (
                                     <li key={i} className="break-words">
-                                        {c.source}：{c.label} — {h.results[i]}
+                                        {c.source}：{formatObsText(t, c.labelText, c.label)} — {obsHistoryResults(t, h)[i]}
                                         <p className="text-xs text-muted-foreground">
-                                            {c.beforeDisplay ?? valueLabel(c.before)} →{' '}
-                                            {c.afterDisplay ?? valueLabel(c.after)}
+                                            {formatObsText(t, c.beforeText, c.beforeDisplay ?? c.before)} →{' '}
+                                            {formatObsText(t, c.afterText, c.afterDisplay ?? c.after)}
                                         </p>
                                     </li>
                                 ))}
@@ -212,20 +199,17 @@ export function ObsSafeSetup({
                                     })
                                 }
                             >
-                                変更 #{h.id} を元に戻す
-                            </button>
+                                {t('settings.obs.undo', { id: h.id })}</button>
                             <button
                                 disabled={busy}
                                 className={buttonClass}
                                 onClick={() => setForgetting(h.id)}
                             >
-                                変更 #{h.id} の履歴を削除
-                            </button>
+                                {t('settings.obs.forget', { id: h.id })}</button>
                             {forgetting === h.id && (
                                 <div className="space-y-2">
                                     <p>
-                                        復元用の履歴だけを削除します。OBSの設定は元に戻りません。OBSで確認してから削除してください。
-                                    </p>
+                                        {t('settings.ObsSafeSetup.360')}</p>
                                     <button
                                         disabled={busy}
                                         className={buttonClass}
@@ -239,15 +223,13 @@ export function ObsSafeSetup({
                                             }, false)
                                         }
                                     >
-                                        確認して履歴を削除
-                                    </button>
+                                        {t('settings.ObsSafeSetup.361')}</button>
                                     <button
                                         disabled={busy}
                                         className={buttonClass}
                                         onClick={() => setForgetting(null)}
                                     >
-                                        削除をやめる
-                                    </button>
+                                        {t('settings.ObsSafeSetup.362')}</button>
                                 </div>
                             )}
                         </li>

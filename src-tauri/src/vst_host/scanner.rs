@@ -1,56 +1,11 @@
+use crate::child_process as process;
 use crate::vst_host::blacklist::Blacklist;
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
 use walkdir::WalkDir;
-
-#[cfg(windows)]
-mod win_job {
-    use windows::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    };
-
-    pub struct Job(HANDLE);
-
-    impl Job {
-        pub fn new_kill_on_drop() -> Option<Self> {
-            unsafe {
-                let job = CreateJobObjectW(None, None).ok()?;
-
-                let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-
-                SetInformationJobObject(
-                    job,
-                    JobObjectExtendedLimitInformation,
-                    &info as *const _ as *const std::ffi::c_void,
-                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-                )
-                .ok()?;
-
-                Some(Self(job))
-            }
-        }
-
-        pub fn assign(&self, process: HANDLE) -> bool {
-            unsafe { AssignProcessToJobObject(self.0, process).is_ok() }
-        }
-    }
-
-    impl Drop for Job {
-        fn drop(&mut self) {
-            unsafe {
-                let _ = CloseHandle(self.0);
-            }
-        }
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VstPlugin {
@@ -224,58 +179,8 @@ pub fn scan_system_vst3(config_dir: &PathBuf) -> Vec<VstPlugin> {
 
                         // Per-plugin timeout (hang protection) - Increased to 30s
                         let timeout = Duration::from_secs(30);
-                        let output = (|| {
-                            let mut command = Command::new(&scanner_path);
-                            command.arg(&path_string);
-
-                            #[cfg(windows)]
-                            {
-                                use std::os::windows::process::CommandExt;
-                                const CREATE_NO_WINDOW: u32 = 0x08000000;
-                                command.creation_flags(CREATE_NO_WINDOW);
-                            }
-
-                            let mut child = command
-                                .stdin(Stdio::null())
-                                .stdout(Stdio::piped())
-                                .stderr(Stdio::piped())
-                                .spawn()?;
-
-                            // Best-effort: kill process tree on timeout (Windows)
-                            #[cfg(windows)]
-                            let _job = {
-                                use std::os::windows::io::AsRawHandle;
-                                use windows::Win32::Foundation::HANDLE;
-
-                                let job = win_job::Job::new_kill_on_drop();
-                                if let Some(ref job) = job {
-                                    let handle = HANDLE(child.as_raw_handle());
-                                    let _ = job.assign(handle);
-                                }
-                                job
-                            };
-
-                            let start = Instant::now();
-                            loop {
-                                match child.try_wait() {
-                                    Ok(Some(_status)) => {
-                                        return child.wait_with_output();
-                                    }
-                                    Ok(None) => {
-                                        if start.elapsed() >= timeout {
-                                            let _ = child.kill();
-                                            let _ = child.wait();
-                                            return Err(io::Error::new(
-                                                io::ErrorKind::TimedOut,
-                                                "plugin_scanner timeout",
-                                            ));
-                                        }
-                                        std::thread::sleep(Duration::from_millis(10));
-                                    }
-                                    Err(e) => return Err(e),
-                                }
-                            }
-                        })();
+                        let output =
+                            process::run(Command::new(&scanner_path).arg(&path_string), timeout);
 
                         match output {
                             Ok(out) => {

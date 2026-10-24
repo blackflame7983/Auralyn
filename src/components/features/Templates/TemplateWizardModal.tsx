@@ -1,9 +1,13 @@
+import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
+import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
 import React, { useState, useEffect } from 'react';
 import { MdClose, MdAutoFixHigh, MdCheck, MdArrowForward } from 'react-icons/md';
-import { CHAIN_TEMPLATES, ChainTemplate } from '../../../templates/chainTemplates';
+import { CHAIN_TEMPLATES, CHAIN_TEMPLATE_COPY, ChainTemplate } from '../../../templates/chainTemplates';
 import { VstPlugin } from '../../../api/audio';
 import { toast } from 'sonner';
+
+function NoticeText({ value }: { value: SettingsNotice }) { const t = useMessages(); return <>{renderNotice(t, value)}</>; }
 
 interface TemplateWizardModalProps {
     isOpen: boolean;
@@ -24,6 +28,15 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
     onScan,
     isScanning
 }) => {
+    const t = useMessages();
+    const templateText = (template: ChainTemplate, field: 'name' | 'description') => {
+        const copy = CHAIN_TEMPLATE_COPY[template.id];
+        return copy ? t(copy[field]) : template[field];
+    };
+    const slotText = (template: ChainTemplate, index: number, field: 'label' | 'notes') => {
+        const copy = CHAIN_TEMPLATE_COPY[template.id]?.slots[index];
+        return copy ? t(copy[field]) : template.slots[index][field] ?? '';
+    };
     const [step, setStep] = useState<1 | 2>(1);
     const [selectedTemplate, setSelectedTemplate] = useState<ChainTemplate | null>(null);
     const [mapping, setMapping] = useState<Record<number, VstPlugin | null>>({}); // slot index -> plugin
@@ -83,7 +96,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
         // Validation: Check if required slots are filled
         const missingRequired = selectedTemplate.slots.some((slot, i) => slot.required && !mapping[i]);
         if (missingRequired) {
-            toast.error("必須スロットが未設定です");
+            toast.error(React.createElement(NoticeText, { value: notice('presets.copy.082') }));
             return;
         }
 
@@ -102,12 +115,12 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
             });
 
             const applied = await onApplyTemplate(finalMapping);
-            if (applied === false) { toast.error("VST構成を適用できませんでした。現在のラックを確認してください"); return; }
+            if (applied === false) { toast.error(React.createElement(NoticeText, { value: notice('presets.copy.083') })); return; }
             onClose();
-            toast.info("VST構成の読み込みを終えました", { description: "ラックの読み込み結果を確認し、各VSTの編集画面で値を調整してください。設定値は自動調整していません。ボイスチェックで聴いて確認できます。", duration: 10000 });
+            toast.info(React.createElement(NoticeText, { value: notice('presets.copy.084') }), { description: React.createElement(NoticeText, { value: notice('presets.copy.085') }), duration: 10000 });
         } catch (e) {
             console.error(e);
-            toast.error("テンプレートの適用に失敗しました");
+            toast.error(React.createElement(NoticeText, { value: notice('presets.copy.086') }));
         } finally {
             setLoading(false);
         }
@@ -116,7 +129,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <Modal title="VST構成テンプレート" onClose={onClose} dismissible={!loading}>
+        <Modal title={t('presets.copy.087')} onClose={onClose} dismissible={!loading}>
         <div className="modal-overlay-base">
             <div aria-busy={loading} className="modal-surface-base w-full max-w-4xl max-h-[90vh] flex flex-col">
 
@@ -125,13 +138,12 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                     <div>
                         <h2 className="text-2xl font-bold flex items-center gap-2">
                             <MdAutoFixHigh className="text-primary" />
-                            VST構成テンプレート
-                        </h2>
+                            {t('presets.copy.088')}</h2>
                         <p className="text-muted-foreground text-sm mt-1">
-                            {step === 1 ? "目的に合ったテンプレートを選んでください" : "使用するプラグインを確認・変更してください"}
+                            {step === 1 ? t('presets.copy.089') : t('presets.copy.090')}
                         </p>
                     </div>
-                    <button aria-label="閉じる" onClick={onClose} disabled={loading} className="p-2 hover:bg-muted rounded-full transition-colors disabled:opacity-50">
+                    <button aria-label={t('presets.copy.091')} onClick={onClose} disabled={loading} className="p-2 hover:bg-muted rounded-full transition-colors disabled:opacity-50">
                         <MdClose size={24} />
                     </button>
                 </div>
@@ -139,30 +151,30 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                 {/* Content */}
                 <div className="modal-body-base">
                     <div className="mb-4 rounded-lg border border-border p-4 space-y-2">
-                        <p className="text-sm font-semibold">この画面は外部VSTの構成例です</p>
-                        <p className="text-sm text-muted-foreground">VSTを別途用意してスキャンしてください。適用すると現在のVSTチェーンを選んだ順序に置き換えます。各VSTの設定値は自動調整しません。</p>
-                        <p className="text-sm text-muted-foreground">適用後は、各VSTの編集画面で下記の値を調整し、小さい音量からボイスチェックで聴いて確認してください。</p>
-                        {onOpenSoundSettings && <button onClick={onOpenSoundSettings} disabled={loading} className="text-sm underline text-primary disabled:opacity-50">外部VSTを使わず、内蔵処理を設定する</button>}
+                        <p className="text-sm font-semibold">{t('presets.copy.092')}</p>
+                        <p className="text-sm text-muted-foreground">{t('presets.copy.093')}</p>
+                        <p className="text-sm text-muted-foreground">{t('presets.copy.094')}</p>
+                        {onOpenSoundSettings && <button onClick={onOpenSoundSettings} disabled={loading} className="text-sm underline text-primary disabled:opacity-50">{t('presets.copy.095')}</button>}
                     </div>
                     {step === 1 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {CHAIN_TEMPLATES.map(t => (
+                            {CHAIN_TEMPLATES.map(template => (
                                 <button
-                                    key={t.id}
+                                    key={template.id}
                                     onClick={() => {
-                                        setSelectedTemplate(t);
+                                        setSelectedTemplate(template);
                                         setStep(2);
                                     }}
                                     className="flex flex-col text-left p-6 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all group h-full"
                                 >
-                                    <div className="text-xl font-bold mb-2 group-hover:text-primary transition-colors">{t.name}</div>
-                                    <div className="text-sm text-muted-foreground mb-4 flex-1">{t.description}</div>
+                                    <div className="text-xl font-bold mb-2 group-hover:text-primary transition-colors">{templateText(template, 'name')}</div>
+                                    <div className="text-sm text-muted-foreground mb-4 flex-1">{templateText(template, 'description')}</div>
                                     <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
-                                        <div className="font-bold mb-1">構成:</div>
+                                        <div className="font-bold mb-1">{t('presets.copy.096')}</div>
                                         <div className="flex flex-wrap gap-1">
-                                            {t.slots.map((s, i) => (
+                                            {template.slots.map((_slot, i) => (
                                                 <span key={i} className="inline-block px-1.5 py-0.5 bg-background border border-border rounded text-xs">
-                                                    {s.label}
+                                                    {slotText(template, i, 'label')}
                                                 </span>
                                             ))}
                                         </div>
@@ -179,9 +191,8 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                     disabled={loading}
                                     className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 disabled:opacity-50"
                                 >
-                                    ← 戻る
-                                </button>
-                                <div className="text-xl font-bold">{selectedTemplate?.name}</div>
+                                    {t('presets.copy.097')}</button>
+                                <div className="text-xl font-bold">{selectedTemplate && templateText(selectedTemplate, 'name')}</div>
                             </div>
 
                             <div className="space-y-4">
@@ -195,12 +206,12 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                             <div className="flex-1 space-y-2">
                                                 <div className="flex justify-between items-center">
                                                     <div className="font-bold text-lg flex items-center gap-2">
-                                                        {slot.label}
-                                                        {slot.required && <span className="text-xs bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded border border-red-500/20">必須</span>}
+                                                        {slotText(selectedTemplate!, index, 'label')}
+                                                        {slot.required && <span className="text-xs bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded border border-red-500/20">{t('presets.copy.098')}</span>}
                                                     </div>
                                                     {/* Plugin Selector */}
                                                     <select
-                                                        aria-label={`${slot.label}に使うVST`}
+                                                        aria-label={t('presets.copy.099', { arg0: slotText(selectedTemplate!, index, 'label') })}
                                                         disabled={loading}
                                                         className={`bg-background border rounded px-3 py-1.5 text-sm outline-none focus:border-primary max-w-[300px] w-full
                                                             ${!assigned && slot.required ? 'border-red-400' : 'border-input'}
@@ -212,7 +223,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                                             setMapping(prev => ({ ...prev, [index]: p }));
                                                         }}
                                                     >
-                                                        <option value="">{isScanning ? "（スキャン中...）" : "（選択してください）"}</option>
+                                                        <option value="">{isScanning ? t('presets.copy.100') : t('presets.copy.101')}</option>
                                                         {/* Show recommended first? complex sorting might be overkill */}
                                                         {availablePlugins.map(p => (
                                                             <option key={p.path} value={p.path}>{p.name}</option>
@@ -220,11 +231,11 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                                     </select>
                                                 </div>
 
-                                                <p className="text-sm text-muted-foreground">{slot.notes}</p>
+                                                <p className="text-sm text-muted-foreground">{slotText(selectedTemplate!, index, 'notes')}</p>
 
                                                 {assigned && (
                                                     <div className="text-xs text-primary flex items-center gap-1">
-                                                        <MdCheck /> 選択中: {assigned.name} ({assigned.vendor || '不明なメーカー'})
+                                                        <MdCheck /> {t('presets.copy.102')}{assigned.name} ({assigned.vendor || t('presets.copy.103')})
                                                     </div>
                                                 )}
                                             </div>
@@ -244,14 +255,13 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                             disabled={loading}
                             className="px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors disabled:opacity-50"
                         >
-                            キャンセル
-                        </button>
+                            {t('presets.copy.104')}</button>
                         <button
                             onClick={handleApply}
                             disabled={loading || (selectedTemplate?.slots.some((s, i) => s.required && !mapping[i]) ?? false)}
                             className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {loading ? "適用中..." : "VST構成を置き換える"}
+                            {loading ? t('presets.copy.105') : t('presets.copy.106')}
                             {!loading && <MdArrowForward />}
                         </button>
                     </div>

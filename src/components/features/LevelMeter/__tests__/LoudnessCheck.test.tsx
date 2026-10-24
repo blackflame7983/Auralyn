@@ -1,3 +1,5 @@
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { audioApi } from '@/api/audio';
@@ -65,6 +67,17 @@ describe('音量判定の境界', () => {
 });
 
 describe('出力の音量チェック', () => {
+    it('未測定でも障害・停止通知と破棄は停止だけを要求し、測定を開始しない', async () => {
+        const view = render(<LoudnessCheck running={false} onVoiceCheck={() => {}} />);
+        await act(async () => {});
+        for (const event of ['audio-error', 'audio-stopped', 'audio-started']) {
+            await act(async () => { emit(event, {}); });
+        }
+        view.unmount();
+        await act(async () => {});
+        expect(audioApi.setLoudnessMeasurement).toHaveBeenCalled();
+        expect(vi.mocked(audioApi.setLoudnessMeasurement).mock.calls.every(([id]) => id === null)).toBe(true);
+    });
     async function start() {
         await act(async () => {
             fireEvent.click(screen.getByRole('button', { name: '測定する' }));
@@ -450,4 +463,21 @@ describe('未使用時の音量測定', () => {
         expect(screen.getByRole('status')).toHaveTextContent('測定は停止中');
         hidden.mockRestore();
     });
+});
+
+it('測定中のlocale変更で測定ID・目標・購読を保持し、無音を合格へ変えない', async () => {
+    const store = createLocaleStore(() => 'ja', () => true);
+    render(<LocaleProvider store={store}><LoudnessCheck running onVoiceCheck={vi.fn()} /></LocaleProvider>);
+    fireEvent.click(screen.getByRole('button', { name: '測定する' }));
+    await waitFor(() => expect(audioApi.setLoudnessMeasurement).toHaveBeenCalledWith(expect.any(Number)));
+    const measurementCalls = vi.mocked(audioApi.setLoudnessMeasurement).mock.calls;
+    const id = measurementCalls[measurementCalls.length - 1][0]!;
+    const calls = vi.mocked(audioApi.setLoudnessMeasurement).mock.calls.length;
+    const callback = listeners.get('audio-loudness');
+    emit('audio-loudness', { ...reading, id, silent: true });
+    act(() => { store.setLocale('en'); });
+    expect(vi.mocked(audioApi.setLoudnessMeasurement).mock.calls).toHaveLength(calls);
+    expect(listeners.get('audio-loudness')).toBe(callback);
+    expect(screen.queryByText('About right')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Stop measurement/ })).toBeInTheDocument();
 });

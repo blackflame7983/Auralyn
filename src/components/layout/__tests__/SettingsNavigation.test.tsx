@@ -48,7 +48,9 @@ afterEach(async () => { cleanup(); await act(async () => {}); vi.restoreAllMocks
 it('テンプレートの内蔵処理の入口は音づくりタブを開く', async () => {
     render(<AppModals />);
     fireEvent.click(screen.getByRole('button', { name: 'テンプレートを開く' }));
-    fireEvent.click(await screen.findByRole('button', { name: '外部VSTを使わず、内蔵処理を設定する' }));
+    // 初回の遅延importを待ち、画面内の操作は表示完了後に確認する。
+    await screen.findByRole('dialog', { name: 'VST構成テンプレート' }, { timeout: 3000 });
+    fireEvent.click(screen.getByRole('button', { name: '外部VSTを使わず、内蔵処理を設定する' }));
     await screen.findByRole('heading', { name: '設定タブ: sound' });
     expect(screen.queryByRole('dialog', { name: 'VST構成テンプレート' })).not.toBeInTheDocument();
 });

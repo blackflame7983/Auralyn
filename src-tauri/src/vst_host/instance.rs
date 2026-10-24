@@ -1,36 +1,43 @@
+mod load_resources;
+use load_resources::{InstanceResources, InterfaceRef};
+mod host_objects;
+mod processor;
+use host_objects::{new_mock_attribute_list, new_mock_attribute_list_for_path, new_mock_message};
+mod editor_environment;
+mod editor_window;
+use editor_environment::EditorEnvGuard;
+use editor_window::{
+    debug_dump_hwnd_children, get_editor_view_state, hwnd_class_name, move_resize_child_hwnd,
+    register_editor_view, resize_child_hwnd, resize_hwnd_client, unregister_editor_view,
+    update_editor_view_last_size,
+};
+mod state_stream;
 use anyhow::{anyhow, Context, Result};
 use libloading::{Library, Symbol};
+use state_stream::StateStream;
 use std::ffi::{c_char, c_void};
 use std::path::Path;
-use std::path::PathBuf;
-use std::sync::atomic::AtomicU32;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
-use std::{collections::HashMap, ffi::CStr};
 use vst3::Interface;
 
-use std::os::windows::ffi::OsStrExt;
 use windows::core::{BOOL, PCWSTR};
 use windows::Win32::Foundation::{HMODULE, HWND, LPARAM, RECT};
 use windows::Win32::Graphics::Gdi::{
     RedrawWindow, UpdateWindow, RDW_ALLCHILDREN, RDW_ERASE, RDW_FRAME, RDW_INVALIDATE,
 };
-use windows::Win32::System::LibraryLoader::{GetDllDirectoryW, SetDllDirectoryW};
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
-    AdjustWindowRectEx, EnumChildWindows, FindWindowExW, GetAncestor, GetClassNameW, GetClientRect,
-    GetWindowLongPtrW, GetWindowRect, GetWindowTextW, SetClassLongPtrW, SetWindowLongPtrW,
-    SetWindowPos, GA_ROOT, GCLP_HMODULE, GWLP_HINSTANCE, GWL_EXSTYLE, GWL_STYLE, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOZORDER, WINDOW_EX_STYLE, WINDOW_STYLE,
+    EnumChildWindows, GetClientRect, GetWindowLongPtrW, SetClassLongPtrW, SetWindowLongPtrW,
+    SetWindowPos, GCLP_HMODULE, GWLP_HINSTANCE, GWL_EXSTYLE, SWP_NOACTIVATE, SWP_NOZORDER,
 };
 
 use crate::vst_host::c_api::{
-    AudioBusBuffers, FUnknownVtbl, IAudioProcessorVtbl, IBStreamVtbl, IComponentHandler2Vtbl,
-    IComponentVtbl, IConnectionPointVtbl, IEditControllerVtbl, IHostApplicationVtbl,
-    IPlugFrameVtbl, IPlugViewVtbl, IPluginFactoryVtbl, ITimerHandlerVtbl, PClassInfo, ProcessData,
-    TResult, ViewRect, K_REALTIME, K_RESULT_OK, K_SAMPLE_32, TUID,
+    AudioBusBuffers, FUnknownVtbl, IAudioProcessorVtbl, IComponentHandler2Vtbl, IComponentVtbl,
+    IConnectionPointVtbl, IEditControllerVtbl, IHostApplicationVtbl, IPlugFrameVtbl, IPlugViewVtbl,
+    IPluginFactoryVtbl, ITimerHandlerVtbl, PClassInfo, TResult, ViewRect, K_RESULT_OK, TUID,
 };
 
 const K_NO_INTERFACE: TResult = -2147467262;
@@ -209,486 +216,6 @@ unsafe fn unlink_connection_points(component_ptr: *mut c_void, controller_ptr: *
     (ctrl_cp_vtbl.base.release)(ctrl_cp);
 }
 
-#[derive(Debug)]
-struct EditorEnvGuard {
-    id: u64,
-}
-
-#[derive(Debug, Default)]
-struct EditorEnvManager {
-    baseline_cwd: Option<PathBuf>,
-    baseline_dll_dir: Option<Vec<u16>>,
-    stack: Vec<(u64, PathBuf, PathBuf)>, // (id, cwd_dir, dll_dir)
-    next_id: u64,
-}
-
-fn editor_env_manager() -> &'static Mutex<EditorEnvManager> {
-    static MGR: OnceLock<Mutex<EditorEnvManager>> = OnceLock::new();
-    MGR.get_or_init(|| Mutex::new(EditorEnvManager::default()))
-}
-
-fn apply_editor_env(cwd_dir: &Path, dll_dir: &Path) {
-    // 重要: 一部のプラグインは相対パスでリソース/補助DLLをロードする。
-    // エディタ表示中だけ、CWD と DllDirectory を適切な場所に寄せて互換性を上げる。
-    // - CWD: Bundle型では Contents/Resources を相対参照するケースがあるため、Contents を優先
-    // - DllDirectory: 依存DLLはバイナリ配置ディレクトリ（例: Contents/x86_64-win）にあることが多い
-    let _ = std::env::set_current_dir(cwd_dir);
-    unsafe {
-        let wide = path_to_wide_null(dll_dir);
-        let _ = SetDllDirectoryW(PCWSTR(wide.as_ptr()));
-    }
-}
-
-fn restore_editor_env(baseline_cwd: Option<PathBuf>, baseline_dll_dir: Option<Vec<u16>>) {
-    if let Some(prev) = baseline_cwd {
-        let _ = std::env::set_current_dir(prev);
-    }
-
-    unsafe {
-        match baseline_dll_dir {
-            Some(wide) => {
-                let _ = SetDllDirectoryW(PCWSTR(wide.as_ptr()));
-            }
-            None => {
-                // 空 = リセット
-                let _ = SetDllDirectoryW(PCWSTR::null());
-            }
-        }
-    }
-}
-
-impl EditorEnvGuard {
-    fn enter(cwd_dir: &Path, dll_dir: &Path) -> Self {
-        let (id, cwd_apply, dll_apply) = {
-            let mut mgr = editor_env_manager().lock().unwrap();
-
-            if mgr.stack.is_empty() {
-                mgr.baseline_cwd = std::env::current_dir().ok();
-                mgr.baseline_dll_dir = unsafe { get_dll_directory_wide() };
-            }
-
-            mgr.next_id = mgr.next_id.wrapping_add(1);
-            let id = mgr.next_id;
-            mgr.stack
-                .push((id, cwd_dir.to_path_buf(), dll_dir.to_path_buf()));
-            (id, cwd_dir.to_path_buf(), dll_dir.to_path_buf())
-        };
-
-        apply_editor_env(&cwd_apply, &dll_apply);
-        Self { id }
-    }
-
-    fn enter_for_module(module_path: &Path) -> Option<Self> {
-        let (cwd_dir, dll_dir) = compute_plugin_env_dirs(module_path)?;
-        println!(
-            "[EditorEnv] module={:?} cwd={:?} dll_dir={:?}",
-            module_path, cwd_dir, dll_dir
-        );
-        Some(Self::enter(&cwd_dir, &dll_dir))
-    }
-}
-
-impl Drop for EditorEnvGuard {
-    fn drop(&mut self) {
-        let (next_dir, baseline) = {
-            let mut mgr = editor_env_manager().lock().unwrap();
-            mgr.stack.retain(|(id, _, _)| *id != self.id);
-
-            let next_dir = mgr
-                .stack
-                .last()
-                .map(|(_, cwd, dll)| (cwd.clone(), dll.clone()));
-            let baseline = if next_dir.is_none() {
-                Some((mgr.baseline_cwd.take(), mgr.baseline_dll_dir.take()))
-            } else {
-                None
-            };
-            (next_dir, baseline)
-        };
-
-        if let Some((cwd_dir, dll_dir)) = next_dir {
-            apply_editor_env(&cwd_dir, &dll_dir);
-        } else if let Some((baseline_cwd, baseline_dll_dir)) = baseline {
-            restore_editor_env(baseline_cwd, baseline_dll_dir);
-        }
-    }
-}
-
-fn compute_plugin_env_dirs(plugin_path: &Path) -> Option<(PathBuf, PathBuf)> {
-    // 入力は「実体DLL(.vst3)」または「Bundleディレクトリ(.vst3)」のどちらでも来うる。
-    // Bundle型の場合は .../<Plugin>.vst3/Contents/<arch>/*.vst3 を探して実体DLLへ解決する。
-    let mut module_path = plugin_path.to_path_buf();
-
-    // 1) Bundleディレクトリを実体DLLへ解決
-    if plugin_path.is_dir()
-        && plugin_path
-            .extension()
-            .map(|e| e.to_string_lossy().eq_ignore_ascii_case("vst3"))
-            .unwrap_or(false)
-    {
-        let contents = plugin_path.join("Contents");
-        let candidates = [
-            contents.join("x86_64-win"),
-            contents.join("x86-win"),
-            contents.join("win"),
-        ];
-
-        let mut found: Option<PathBuf> = None;
-        for arch_dir in candidates {
-            if !arch_dir.exists() {
-                continue;
-            }
-            if let Ok(mut it) = std::fs::read_dir(&arch_dir) {
-                if let Some(Ok(entry)) = it.find(|e| {
-                    e.as_ref()
-                        .ok()
-                        .map(|x| x.path().extension().is_some_and(|ext| ext == "vst3"))
-                        .unwrap_or(false)
-                }) {
-                    found = Some(entry.path());
-                    break;
-                }
-            }
-        }
-
-        if let Some(p) = found {
-            module_path = p;
-        }
-    }
-
-    // 2) CWD/DLLDir 推定
-    // - dll_dir: 実体DLLがあるディレクトリ
-    // - cwd_dir: Bundleなら Contents（Resources相対参照の互換性が高い）、単体なら dll_dir
-    let module_dir = module_path.parent()?;
-    let dll_dir = module_dir.to_path_buf();
-
-    // For VST3 bundles, we need to find the Contents directory
-    // Structure: <Bundle>.vst3/Contents/<arch>/<plugin>.vst3
-    // We want cwd_dir = <Bundle>.vst3/Contents
-    let mut cwd_dir = dll_dir.clone();
-    let mut bundle_root: Option<PathBuf> = None;
-
-    // Walk up to find the .vst3 bundle root
-    let mut current = module_dir;
-    while let Some(parent) = current.parent() {
-        if let Some(name) = current.file_name() {
-            let name_str = name.to_string_lossy();
-            if name_str.to_lowercase().ends_with(".vst3") && current.is_dir() {
-                bundle_root = Some(current.to_path_buf());
-                break;
-            }
-        }
-        current = parent;
-    }
-
-    // If we found a bundle root, set cwd_dir to Contents
-    if let Some(ref root) = bundle_root {
-        let contents = root.join("Contents");
-        if contents.exists() {
-            cwd_dir = contents;
-        }
-    }
-
-    // 3) 参考ログ（Resourcesの存在確認）
-    // Check multiple possible locations for resources
-    let resources_candidates = [
-        cwd_dir.join("Resources"), // <bundle>/Contents/Resources
-        bundle_root
-            .as_ref()
-            .map(|r| r.join("Contents").join("Resources"))
-            .unwrap_or_default(),
-        dll_dir.join("Resources"), // Fallback
-    ];
-
-    let mut resources_dir = cwd_dir.join("Resources");
-    for candidate in &resources_candidates {
-        if candidate.exists() && candidate.is_dir() {
-            resources_dir = candidate.clone();
-            break;
-        }
-    }
-
-    println!(
-        "[EditorEnv] resolved_module={:?} resources_exists={} (resources={:?}) bundle_root={:?}",
-        module_path,
-        resources_dir.exists(),
-        resources_dir,
-        bundle_root
-    );
-
-    Some((cwd_dir, dll_dir))
-}
-
-fn path_to_wide_null(path: &Path) -> Vec<u16> {
-    let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
-    wide.push(0);
-    wide
-}
-
-unsafe fn get_dll_directory_wide() -> Option<Vec<u16>> {
-    // GetDllDirectoryW は終端NULを含まない文字数を返す
-    let len = GetDllDirectoryW(None);
-    if len == 0 {
-        return None;
-    }
-    let mut buf = vec![0u16; (len as usize) + 1];
-    let copied = GetDllDirectoryW(Some(buf.as_mut_slice()));
-    if copied == 0 {
-        None
-    } else {
-        // 念のため終端NULを保証
-        if buf.last().copied().unwrap_or(0) != 0 {
-            buf.push(0);
-        }
-        Some(buf)
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct EditorViewState {
-    top_hwnd: isize,
-    container_hwnd: isize,
-    plugin_hwnd: isize,
-    last_good_w: i32,
-    last_good_h: i32,
-}
-
-fn editor_view_state_map() -> &'static Mutex<HashMap<usize, EditorViewState>> {
-    static MAP: OnceLock<Mutex<HashMap<usize, EditorViewState>>> = OnceLock::new();
-    MAP.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn debug_dump_hwnd_children(root: HWND, max: usize) {
-    #[derive(Clone, Copy)]
-    struct Ctx {
-        count: usize,
-        max: usize,
-    }
-
-    unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let ctx = &mut *(lparam.0 as *mut Ctx);
-        if ctx.count >= ctx.max {
-            return BOOL(0);
-        }
-        ctx.count += 1;
-
-        let mut class_buf = [0u16; 128];
-        let class_len = GetClassNameW(hwnd, &mut class_buf);
-        let class_name = String::from_utf16_lossy(&class_buf[..class_len as usize]);
-
-        let mut text_buf = [0u16; 256];
-        let text_len = GetWindowTextW(hwnd, &mut text_buf);
-        let title = if text_len > 0 {
-            String::from_utf16_lossy(&text_buf[..text_len as usize])
-        } else {
-            String::new()
-        };
-
-        let mut rect = RECT::default();
-        let _ = GetWindowRect(hwnd, &mut rect);
-
-        println!(
-            "[HWND] child#{:02} hwnd={:?} class='{}' title='{}' rect=({},{} {}x{})",
-            ctx.count,
-            hwnd,
-            class_name,
-            title,
-            rect.left,
-            rect.top,
-            rect.right - rect.left,
-            rect.bottom - rect.top
-        );
-
-        BOOL(1)
-    }
-
-    unsafe {
-        let mut client = RECT::default();
-        let _ = GetClientRect(root, &mut client);
-        println!(
-            "[HWND] root={:?} client={}x{}",
-            root,
-            client.right - client.left,
-            client.bottom - client.top
-        );
-
-        let mut ctx = Ctx { count: 0, max };
-        let _ = EnumChildWindows(
-            Some(root),
-            Some(enum_proc),
-            LPARAM((&mut ctx as *mut Ctx) as isize),
-        );
-    }
-}
-
-fn register_editor_view(view: *mut c_void, container_hwnd: isize) {
-    let top_hwnd = unsafe {
-        let container = HWND(container_hwnd as *mut c_void);
-        let top = GetAncestor(container, GA_ROOT);
-        if top.0.is_null() {
-            container_hwnd
-        } else {
-            top.0 as isize
-        }
-    };
-
-    let mut map = editor_view_state_map().lock().unwrap();
-    map.insert(
-        view as usize,
-        EditorViewState {
-            top_hwnd,
-            container_hwnd,
-            plugin_hwnd: 0,
-            last_good_w: 0,
-            last_good_h: 0,
-        },
-    );
-}
-
-#[allow(dead_code)]
-fn update_editor_view_plugin_hwnd(view: *mut c_void, plugin_hwnd: isize) {
-    let mut map = editor_view_state_map().lock().unwrap();
-    if let Some(state) = map.get_mut(&(view as usize)) {
-        state.plugin_hwnd = plugin_hwnd;
-    }
-}
-
-fn update_editor_view_last_size(view: *mut c_void, w: i32, h: i32) {
-    let mut map = editor_view_state_map().lock().unwrap();
-    if let Some(state) = map.get_mut(&(view as usize)) {
-        state.last_good_w = w;
-        state.last_good_h = h;
-    }
-}
-
-fn unregister_editor_view(view: *mut c_void) {
-    let mut map = editor_view_state_map().lock().unwrap();
-    map.remove(&(view as usize));
-}
-
-fn get_editor_view_state(view: *mut c_void) -> Option<EditorViewState> {
-    let map = editor_view_state_map().lock().unwrap();
-    map.get(&(view as usize)).copied()
-}
-
-unsafe fn resize_hwnd_client(hwnd: isize, client_w: i32, client_h: i32) -> bool {
-    if client_w <= 0 || client_h <= 0 {
-        return false;
-    }
-
-    let hwnd = HWND(hwnd as *mut c_void);
-    let style = WINDOW_STYLE(GetWindowLongPtrW(hwnd, GWL_STYLE) as u32);
-    let ex_style = WINDOW_EX_STYLE(GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32);
-
-    let mut rect = RECT {
-        left: 0,
-        top: 0,
-        right: client_w,
-        bottom: client_h,
-    };
-
-    // 非クライアント領域を足して「外側サイズ」に変換
-    let ok = AdjustWindowRectEx(&mut rect, style, false, ex_style).is_ok();
-    if !ok {
-        return false;
-    }
-
-    // クライアント寸法が正でも、枠の加算後はi32の範囲を超え得る。
-    let Some((outer_w, outer_h)) = (ViewRect {
-        left: rect.left,
-        top: rect.top,
-        right: rect.right,
-        bottom: rect.bottom,
-    })
-    .checked_size() else {
-        return false;
-    };
-
-    SetWindowPos(
-        hwnd,
-        None,
-        0,
-        0,
-        outer_w,
-        outer_h,
-        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
-    )
-    .is_ok()
-}
-
-unsafe fn resize_child_hwnd(client_hwnd: isize, client_w: i32, client_h: i32) -> bool {
-    if client_w <= 0 || client_h <= 0 {
-        return false;
-    }
-
-    let hwnd = HWND(client_hwnd as *mut c_void);
-    SetWindowPos(
-        hwnd,
-        None,
-        0,
-        0,
-        client_w,
-        client_h,
-        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
-    )
-    .is_ok()
-}
-
-unsafe fn move_resize_child_hwnd(child_hwnd: isize, x: i32, y: i32, w: i32, h: i32) -> bool {
-    if w <= 0 || h <= 0 {
-        return false;
-    }
-    let hwnd = HWND(child_hwnd as *mut c_void);
-    SetWindowPos(hwnd, None, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE).is_ok()
-}
-
-fn hwnd_class_name(hwnd: HWND) -> String {
-    let mut class_buf = [0u16; 128];
-    let class_len = unsafe { GetClassNameW(hwnd, &mut class_buf) };
-    if class_len <= 0 {
-        return String::new();
-    }
-    String::from_utf16_lossy(&class_buf[..class_len as usize])
-}
-
-#[allow(dead_code)]
-fn find_primary_plugin_child_hwnd(container: HWND) -> Option<HWND> {
-    unsafe {
-        let mut current: HWND =
-            FindWindowExW(Some(container), None, PCWSTR::null(), PCWSTR::null())
-                .unwrap_or(HWND(std::ptr::null_mut()));
-        let mut first: Option<HWND> = None;
-        let mut best: Option<HWND> = None;
-
-        for _ in 0..64 {
-            if current.0.is_null() {
-                break;
-            }
-            if first.is_none() {
-                first = Some(current);
-            }
-
-            let class_name = hwnd_class_name(current);
-            if class_name.starts_with("VSTGUI") || class_name.starts_with("JUCE") {
-                best = Some(current);
-                break;
-            }
-
-            current = FindWindowExW(
-                Some(container),
-                Some(current),
-                PCWSTR::null(),
-                PCWSTR::null(),
-            )
-            .unwrap_or(HWND(std::ptr::null_mut()));
-        }
-
-        best.or(first)
-    }
-}
-
-// Constants for IIDs (Little Endian bytes from VST3 SDK)
-// Helper to cast
 unsafe fn get_vtbl<T>(ptr: *mut c_void) -> &'static T {
     &**(ptr as *mut *mut T)
 }
@@ -1033,610 +560,6 @@ fn get_mock_timer_handler_ptr() -> *mut c_void {
     }
 }
 
-// --- Memory Stream ---
-#[repr(C)]
-struct MemoryStream {
-    vtbl: *const IBStreamVtbl,
-    data: Vec<u8>,
-    cursor: usize,
-    ref_count: u32,
-}
-
-impl MemoryStream {
-    fn new() -> Self {
-        Self {
-            vtbl: &raw const MEMORY_STREAM_VTBL,
-            data: Vec::new(),
-            cursor: 0,
-            ref_count: 1,
-        }
-    }
-}
-
-unsafe extern "system" fn stream_query_interface(
-    this: *mut c_void,
-    iid: *const TUID,
-    obj: *mut *mut c_void,
-) -> TResult {
-    let iid_slice = *iid;
-    let i_u = vst3::Steinberg::FUnknown::IID;
-    let i_s = vst3::Steinberg::IBStream::IID;
-
-    if iid_slice == i_u || iid_slice == i_s {
-        println!("Stream::query_interface matched IBStream/FUnknown");
-        stream_add_ref(this);
-        *obj = this;
-        return 0;
-    }
-
-    println!("Stream::query_interface unmatched IID: {:02X?}{:02X?}{:02X?}{:02X?}-{:02X?}{:02X?}-{:02X?}{:02X?}-{:02X?}{:02X?}-{:02X?}{:02X?}{:02X?}{:02X?}{:02X?}{:02X?}",
-        iid_slice[0], iid_slice[1], iid_slice[2], iid_slice[3],
-        iid_slice[4], iid_slice[5],
-        iid_slice[6], iid_slice[7],
-        iid_slice[8], iid_slice[9],
-        iid_slice[10], iid_slice[11], iid_slice[12], iid_slice[13], iid_slice[14], iid_slice[15]
-    );
-
-    if !obj.is_null() {
-        *obj = std::ptr::null_mut();
-    }
-    -2147467262 // kNoInterface
-}
-
-unsafe extern "system" fn stream_add_ref(this: *mut c_void) -> u32 {
-    let stream = &mut *(this as *mut MemoryStream);
-    stream.ref_count += 1;
-    println!("Stream::add_ref -> {}", stream.ref_count);
-    stream.ref_count
-}
-unsafe extern "system" fn stream_release(this: *mut c_void) -> u32 {
-    let stream = &mut *(this as *mut MemoryStream);
-    stream.ref_count -= 1;
-    println!("Stream::release -> {}", stream.ref_count);
-    stream.ref_count
-}
-unsafe extern "system" fn stream_read(
-    this: *mut c_void,
-    buffer: *mut c_void,
-    num_bytes: i32,
-    num_bytes_read: *mut i32,
-) -> TResult {
-    let stream = &mut *(this as *mut MemoryStream);
-    let available = if stream.cursor < stream.data.len() {
-        stream.data.len() - stream.cursor
-    } else {
-        0
-    };
-    let to_read = std::cmp::min(available, num_bytes as usize);
-
-    println!(
-        "Stream::read req={} avail={} actual={}",
-        num_bytes, available, to_read
-    );
-
-    if to_read > 0 {
-        std::ptr::copy_nonoverlapping(
-            stream.data.as_ptr().add(stream.cursor),
-            buffer as *mut u8,
-            to_read,
-        );
-        stream.cursor += to_read;
-    }
-
-    if !num_bytes_read.is_null() {
-        *num_bytes_read = to_read as i32;
-    }
-    0 // kResultOk
-}
-unsafe extern "system" fn stream_write(
-    this: *mut c_void,
-    buffer: *const c_void,
-    num_bytes: i32,
-    num_bytes_written: *mut i32,
-) -> TResult {
-    let stream = &mut *(this as *mut MemoryStream);
-    println!("Stream::write req={}", num_bytes);
-    let bytes = std::slice::from_raw_parts(buffer as *const u8, num_bytes as usize);
-
-    // Write at cursor position
-    let end_pos = stream.cursor + bytes.len();
-    if end_pos > stream.data.len() {
-        stream.data.resize(end_pos, 0);
-    }
-    stream.data[stream.cursor..end_pos].copy_from_slice(bytes);
-    stream.cursor += bytes.len();
-
-    if !num_bytes_written.is_null() {
-        *num_bytes_written = num_bytes;
-    }
-    0 // kResultOk
-}
-unsafe extern "system" fn stream_seek(
-    this: *mut c_void,
-    pos: i64,
-    mode: i32,
-    result_pos: *mut i64,
-) -> TResult {
-    let stream = &mut *(this as *mut MemoryStream);
-    println!("Stream::seek pos={} mode={}", pos, mode);
-    let new_pos = match mode {
-        0 => pos,                            // kIBSeekSet
-        1 => stream.cursor as i64 + pos,     // kIBSeekCur
-        2 => stream.data.len() as i64 + pos, // kIBSeekEnd
-        _ => stream.cursor as i64,
-    };
-
-    if new_pos < 0 {
-        return -1;
-    }
-    stream.cursor = new_pos as usize;
-
-    if !result_pos.is_null() {
-        *result_pos = new_pos;
-    }
-    0
-}
-unsafe extern "system" fn stream_tell(this: *mut c_void, pos: *mut i64) -> TResult {
-    let stream = &mut *(this as *mut MemoryStream);
-    if !pos.is_null() {
-        *pos = stream.cursor as i64;
-    }
-    // println!("Stream::tell -> {}", stream.cursor);
-    0
-}
-
-static mut MEMORY_STREAM_VTBL: IBStreamVtbl = IBStreamVtbl {
-    base: FUnknownVtbl {
-        query_interface: stream_query_interface,
-        add_ref: stream_add_ref,
-        release: stream_release,
-    },
-    read: stream_read,
-    write: stream_write,
-    seek: stream_seek,
-    tell: stream_tell,
-};
-
-// --- Host Created Objects (IMessage / IAttributeList) ---
-// Insight 2 requests IMessage instances from IHostApplication::create_instance during connect/init.
-// If we return kNoInterface, the plugin may crash. Provide minimal working objects.
-
-type AttrID = *const c_char;
-type FIDString = *const c_char;
-type TChar = u16; // VST3: UTF-16 on Windows
-
-#[repr(C)]
-struct IAttributeListVtbl {
-    base: FUnknownVtbl,
-    set_int: unsafe extern "system" fn(this: *mut c_void, id: AttrID, value: i64) -> TResult,
-    get_int: unsafe extern "system" fn(this: *mut c_void, id: AttrID, value: *mut i64) -> TResult,
-    set_float: unsafe extern "system" fn(this: *mut c_void, id: AttrID, value: f64) -> TResult,
-    get_float: unsafe extern "system" fn(this: *mut c_void, id: AttrID, value: *mut f64) -> TResult,
-    set_string:
-        unsafe extern "system" fn(this: *mut c_void, id: AttrID, string: *const TChar) -> TResult,
-    get_string: unsafe extern "system" fn(
-        this: *mut c_void,
-        id: AttrID,
-        string: *mut TChar,
-        size_in_bytes: u32,
-    ) -> TResult,
-    set_binary: unsafe extern "system" fn(
-        this: *mut c_void,
-        id: AttrID,
-        data: *const c_void,
-        size_in_bytes: u32,
-    ) -> TResult,
-    get_binary: unsafe extern "system" fn(
-        this: *mut c_void,
-        id: AttrID,
-        data: *mut *const c_void,
-        size_in_bytes: *mut u32,
-    ) -> TResult,
-}
-
-#[derive(Clone, Debug)]
-enum AttrValue {
-    Int(i64),
-    Float(f64),
-    String(Vec<u16>),
-    Binary(Vec<u8>),
-}
-
-#[repr(C)]
-struct MockAttributeList {
-    vtbl: *const IAttributeListVtbl,
-    ref_count: AtomicU32,
-    map: Mutex<HashMap<String, AttrValue>>,
-}
-
-unsafe impl Send for MockAttributeList {}
-unsafe impl Sync for MockAttributeList {}
-
-unsafe fn attr_key(id: AttrID) -> Option<String> {
-    if id.is_null() {
-        return None;
-    }
-    let s = CStr::from_ptr(id).to_string_lossy().into_owned();
-    Some(s)
-}
-
-unsafe extern "system" fn attr_query_interface(
-    this: *mut c_void,
-    iid: *const TUID,
-    obj: *mut *mut c_void,
-) -> TResult {
-    if obj.is_null() {
-        return K_INVALID_ARGUMENT;
-    }
-    *obj = std::ptr::null_mut();
-    if iid.is_null() {
-        return K_INVALID_ARGUMENT;
-    }
-
-    use vst3::Steinberg::FUnknown;
-    use vst3::Steinberg::Vst::IAttributeList as VstIAttributeList;
-
-    let iid_slice = *iid;
-    if iid_slice == FUnknown::IID || iid_slice == VstIAttributeList::IID {
-        *obj = this;
-        // add_ref
-        let me = this as *mut MockAttributeList;
-        (*me).ref_count.fetch_add(1, Ordering::Relaxed);
-        return K_RESULT_OK;
-    }
-
-    K_NO_INTERFACE
-}
-
-unsafe extern "system" fn attr_add_ref(this: *mut c_void) -> u32 {
-    let me = this as *mut MockAttributeList;
-    (*me).ref_count.fetch_add(1, Ordering::Relaxed) + 1
-}
-
-unsafe extern "system" fn attr_release(this: *mut c_void) -> u32 {
-    let me = this as *mut MockAttributeList;
-    let prev = (*me).ref_count.fetch_sub(1, Ordering::Release);
-    let next = prev.saturating_sub(1);
-    if next == 0 {
-        std::sync::atomic::fence(Ordering::Acquire);
-        drop(Box::from_raw(me));
-    }
-    next
-}
-
-unsafe extern "system" fn attr_set_int(this: *mut c_void, id: AttrID, value: i64) -> TResult {
-    let Some(k) = attr_key(id) else {
-        return K_INVALID_ARGUMENT;
-    };
-    let me = this as *mut MockAttributeList;
-    if let Ok(mut m) = (*me).map.lock() {
-        m.insert(k, AttrValue::Int(value));
-        return K_RESULT_OK;
-    }
-    K_RESULT_FALSE
-}
-
-unsafe extern "system" fn attr_get_int(this: *mut c_void, id: AttrID, value: *mut i64) -> TResult {
-    if value.is_null() {
-        return K_INVALID_ARGUMENT;
-    }
-    let Some(k) = attr_key(id) else {
-        return K_INVALID_ARGUMENT;
-    };
-    println!("[IAttributeList] get_int key=\"{}\"", k);
-    let me = this as *mut MockAttributeList;
-    if let Ok(m) = (*me).map.lock() {
-        if let Some(AttrValue::Int(v)) = m.get(&k) {
-            println!("[IAttributeList]   -> found: {}", v);
-            *value = *v;
-            return K_RESULT_OK;
-        }
-        println!("[IAttributeList]   -> NOT FOUND");
-        return K_RESULT_FALSE;
-    }
-    K_RESULT_FALSE
-}
-
-unsafe extern "system" fn attr_set_float(this: *mut c_void, id: AttrID, value: f64) -> TResult {
-    let Some(k) = attr_key(id) else {
-        return K_INVALID_ARGUMENT;
-    };
-    let me = this as *mut MockAttributeList;
-    if let Ok(mut m) = (*me).map.lock() {
-        m.insert(k, AttrValue::Float(value));
-        return K_RESULT_OK;
-    }
-    K_RESULT_FALSE
-}
-
-unsafe extern "system" fn attr_get_float(
-    this: *mut c_void,
-    id: AttrID,
-    value: *mut f64,
-) -> TResult {
-    if value.is_null() {
-        return K_INVALID_ARGUMENT;
-    }
-    let Some(k) = attr_key(id) else {
-        return K_INVALID_ARGUMENT;
-    };
-    println!("[IAttributeList] get_float key=\"{}\"", k);
-    let me = this as *mut MockAttributeList;
-    if let Ok(m) = (*me).map.lock() {
-        if let Some(AttrValue::Float(v)) = m.get(&k) {
-            println!("[IAttributeList]   -> found: {}", v);
-            *value = *v;
-            return K_RESULT_OK;
-        }
-        println!("[IAttributeList]   -> NOT FOUND");
-        return K_RESULT_FALSE;
-    }
-    K_RESULT_FALSE
-}
-
-unsafe fn read_tchar_z(ptr: *const TChar) -> Vec<u16> {
-    if ptr.is_null() {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    let mut i = 0usize;
-    loop {
-        let ch = *ptr.add(i);
-        if ch == 0 {
-            break;
-        }
-        out.push(ch);
-        i += 1;
-        if i > 16 * 1024 {
-            break;
-        }
-    }
-    out
-}
-
-unsafe extern "system" fn attr_set_string(
-    this: *mut c_void,
-    id: AttrID,
-    string: *const TChar,
-) -> TResult {
-    let Some(k) = attr_key(id) else {
-        return K_INVALID_ARGUMENT;
-    };
-    let me = this as *mut MockAttributeList;
-    let v = read_tchar_z(string);
-    if let Ok(mut m) = (*me).map.lock() {
-        m.insert(k, AttrValue::String(v));
-        return K_RESULT_OK;
-    }
-    K_RESULT_FALSE
-}
-
-unsafe extern "system" fn attr_get_string(
-    this: *mut c_void,
-    id: AttrID,
-    string: *mut TChar,
-    size_in_bytes: u32,
-) -> TResult {
-    if string.is_null() || size_in_bytes < 2 {
-        return K_INVALID_ARGUMENT;
-    }
-    let Some(k) = attr_key(id) else {
-        return K_INVALID_ARGUMENT;
-    };
-    println!("[IAttributeList] get_string key=\"{}\"", k);
-    let max_u16 = (size_in_bytes as usize / 2).saturating_sub(1);
-    let me = this as *mut MockAttributeList;
-    if let Ok(m) = (*me).map.lock() {
-        if let Some(AttrValue::String(v)) = m.get(&k) {
-            println!("[IAttributeList]   -> found (len={})", v.len());
-            let n = v.len().min(max_u16);
-            std::ptr::copy_nonoverlapping(v.as_ptr(), string, n);
-            *string.add(n) = 0;
-            return K_RESULT_OK;
-        }
-        *string = 0;
-        return K_RESULT_FALSE;
-    }
-    K_RESULT_FALSE
-}
-
-unsafe extern "system" fn attr_set_binary(
-    this: *mut c_void,
-    id: AttrID,
-    data: *const c_void,
-    size_in_bytes: u32,
-) -> TResult {
-    let Some(k) = attr_key(id) else {
-        return K_INVALID_ARGUMENT;
-    };
-    let me = this as *mut MockAttributeList;
-    let slice = if data.is_null() || size_in_bytes == 0 {
-        &[]
-    } else {
-        std::slice::from_raw_parts(data as *const u8, size_in_bytes as usize)
-    };
-    if let Ok(mut m) = (*me).map.lock() {
-        m.insert(k, AttrValue::Binary(slice.to_vec()));
-        return K_RESULT_OK;
-    }
-    K_RESULT_FALSE
-}
-
-unsafe extern "system" fn attr_get_binary(
-    this: *mut c_void,
-    id: AttrID,
-    data: *mut *const c_void,
-    size_in_bytes: *mut u32,
-) -> TResult {
-    if data.is_null() || size_in_bytes.is_null() {
-        return K_INVALID_ARGUMENT;
-    }
-    *data = std::ptr::null();
-    *size_in_bytes = 0;
-    let Some(k) = attr_key(id) else {
-        return K_INVALID_ARGUMENT;
-    };
-    println!("[IAttributeList] get_binary key=\"{}\"", k);
-    let me = this as *mut MockAttributeList;
-    if let Ok(m) = (*me).map.lock() {
-        if let Some(AttrValue::Binary(v)) = m.get(&k) {
-            println!("[IAttributeList]   -> found (len={})", v.len());
-            *data = v.as_ptr() as *const c_void;
-            *size_in_bytes = v.len() as u32;
-            return K_RESULT_OK;
-        }
-        println!("[IAttributeList]   -> NOT FOUND");
-        return K_RESULT_FALSE;
-    }
-    K_RESULT_FALSE
-}
-
-static mut MOCK_ATTR_LIST_VTBL: IAttributeListVtbl = IAttributeListVtbl {
-    base: FUnknownVtbl {
-        query_interface: attr_query_interface,
-        add_ref: attr_add_ref,
-        release: attr_release,
-    },
-    set_int: attr_set_int,
-    get_int: attr_get_int,
-    set_float: attr_set_float,
-    get_float: attr_get_float,
-    set_string: attr_set_string,
-    get_string: attr_get_string,
-    set_binary: attr_set_binary,
-    get_binary: attr_get_binary,
-};
-
-fn new_mock_attribute_list() -> *mut c_void {
-    let obj = Box::new(MockAttributeList {
-        vtbl: &raw const MOCK_ATTR_LIST_VTBL,
-        ref_count: AtomicU32::new(1),
-        map: Mutex::new(HashMap::new()),
-    });
-    Box::into_raw(obj) as *mut c_void
-}
-
-#[repr(C)]
-struct IMessageVtbl {
-    base: FUnknownVtbl,
-    get_message_id: unsafe extern "system" fn(this: *mut c_void) -> FIDString,
-    set_message_id: unsafe extern "system" fn(this: *mut c_void, id: FIDString),
-    get_attributes: unsafe extern "system" fn(this: *mut c_void) -> *mut c_void,
-}
-
-#[repr(C)]
-struct MockMessage {
-    vtbl: *const IMessageVtbl,
-    ref_count: AtomicU32,
-    message_id: Mutex<Option<Vec<u8>>>, // CString bytes including NUL
-    attrs: *mut c_void,                 // MockAttributeList
-}
-
-unsafe impl Send for MockMessage {}
-unsafe impl Sync for MockMessage {}
-
-unsafe extern "system" fn msg_query_interface(
-    this: *mut c_void,
-    iid: *const TUID,
-    obj: *mut *mut c_void,
-) -> TResult {
-    if obj.is_null() {
-        return K_INVALID_ARGUMENT;
-    }
-    *obj = std::ptr::null_mut();
-    if iid.is_null() {
-        return K_INVALID_ARGUMENT;
-    }
-
-    use vst3::Steinberg::FUnknown;
-    use vst3::Steinberg::Vst::IMessage as VstIMessage;
-
-    let iid_slice = *iid;
-    if iid_slice == FUnknown::IID || iid_slice == VstIMessage::IID {
-        *obj = this;
-        let me = this as *mut MockMessage;
-        (*me).ref_count.fetch_add(1, Ordering::Relaxed);
-        return K_RESULT_OK;
-    }
-
-    K_NO_INTERFACE
-}
-
-unsafe extern "system" fn msg_add_ref(this: *mut c_void) -> u32 {
-    let me = this as *mut MockMessage;
-    (*me).ref_count.fetch_add(1, Ordering::Relaxed) + 1
-}
-
-unsafe extern "system" fn msg_release(this: *mut c_void) -> u32 {
-    let me = this as *mut MockMessage;
-    let prev = (*me).ref_count.fetch_sub(1, Ordering::Release);
-    let next = prev.saturating_sub(1);
-    if next == 0 {
-        std::sync::atomic::fence(Ordering::Acquire);
-        // Release attributes
-        if !(*me).attrs.is_null() {
-            let attr_obj = (*me).attrs;
-            let _ = attr_release(attr_obj);
-        }
-        drop(Box::from_raw(me));
-    }
-    next
-}
-
-unsafe extern "system" fn msg_get_message_id(this: *mut c_void) -> FIDString {
-    let me = this as *mut MockMessage;
-    if let Ok(guard) = (*me).message_id.lock() {
-        if let Some(bytes) = guard.as_ref() {
-            return bytes.as_ptr() as *const c_char;
-        }
-    }
-    std::ptr::null()
-}
-
-unsafe extern "system" fn msg_set_message_id(this: *mut c_void, id: FIDString) {
-    let me = this as *mut MockMessage;
-    let mut out: Option<Vec<u8>> = None;
-    if !id.is_null() {
-        out = Some(CStr::from_ptr(id).to_bytes_with_nul().to_vec());
-    }
-    if let Ok(mut guard) = (*me).message_id.lock() {
-        *guard = out;
-    }
-}
-
-unsafe extern "system" fn msg_get_attributes(this: *mut c_void) -> *mut c_void {
-    let me = this as *mut MockMessage;
-    if (*me).attrs.is_null() {
-        return std::ptr::null_mut();
-    }
-    // add_ref before returning
-    let attr_obj = (*me).attrs;
-    let _ = attr_add_ref(attr_obj);
-    attr_obj
-}
-
-static mut MOCK_MESSAGE_VTBL: IMessageVtbl = IMessageVtbl {
-    base: FUnknownVtbl {
-        query_interface: msg_query_interface,
-        add_ref: msg_add_ref,
-        release: msg_release,
-    },
-    get_message_id: msg_get_message_id,
-    set_message_id: msg_set_message_id,
-    get_attributes: msg_get_attributes,
-};
-
-fn new_mock_message() -> *mut c_void {
-    let attrs = new_mock_attribute_list();
-    let obj = Box::new(MockMessage {
-        vtbl: &raw const MOCK_MESSAGE_VTBL,
-        ref_count: AtomicU32::new(1),
-        message_id: Mutex::new(None),
-        attrs,
-    });
-    Box::into_raw(obj) as *mut c_void
-}
-
 // --- Mock Host Application ---
 unsafe extern "system" fn host_get_name(_this: *mut c_void, name: *mut c_char) -> i32 {
     if name.is_null() {
@@ -1754,25 +677,11 @@ unsafe extern "system" fn host_create_host_attribute(
     if attr_list.is_null() {
         return K_INVALID_ARGUMENT;
     }
-    let attrs = new_mock_attribute_list();
-    *attr_list = attrs;
-
-    // Some plugins use this to check kIBundlePathKey?
-    // We should populate it if possible?
-    if let Ok(guard) = GLOBAL_CURRENT_PLUGIN_PATH.lock() {
-        if let Some(path_str) = guard.as_ref() {
-            println!(
-                "  -> host_create_host_attribute: Injecting vst3.ibundlepath = {}",
-                path_str
-            );
-            let me = attrs as *mut MockAttributeList;
-            // Convert path to UTF-16
-            let path_u16: Vec<u16> = path_str.encode_utf16().chain(std::iter::once(0)).collect();
-            if let Ok(mut m) = unsafe { (*me).map.lock() } {
-                m.insert("vst3.ibundlepath".to_string(), AttrValue::String(path_u16));
-            }
-        }
-    }
+    let path = GLOBAL_CURRENT_PLUGIN_PATH
+        .lock()
+        .ok()
+        .and_then(|path| path.clone());
+    *attr_list = new_mock_attribute_list_for_path(path.as_deref());
 
     K_RESULT_OK
 }
@@ -1940,12 +849,6 @@ impl HostAppGuard {
 
     fn as_ptr(&self) -> *mut c_void {
         self.0
-    }
-
-    fn into_raw(self) -> *mut c_void {
-        let ptr = self.0;
-        std::mem::forget(self);
-        ptr
     }
 }
 
@@ -2296,7 +1199,10 @@ struct ModuleEntry {
 
 impl ModuleEntry {
     // 関数ポインタを所有するDLLは、このガードより長く保持する。
-    unsafe fn start(init: Option<ModuleEntryPoint>, exit: Option<ModuleEntryPoint>) -> Result<Self> {
+    unsafe fn start(
+        init: Option<ModuleEntryPoint>,
+        exit: Option<ModuleEntryPoint>,
+    ) -> Result<Self> {
         if let Some(init) = init {
             if !init() {
                 return Err(anyhow!("VST3 InitDll failed"));
@@ -2360,6 +1266,7 @@ pub struct VstInstance {
     host_app: *mut c_void,   // IHostApplication context (per-plugin quirks)
     pub path: String,        // Stored for CWD switching during editor open
     module_hmodule: HMODULE, // Plugin DLL module handle (for UI/resource quirks)
+    resources: InstanceResources,
 }
 
 unsafe impl Send for VstInstance {}
@@ -2388,7 +1295,59 @@ unsafe impl Send for VstProcessor {}
 impl VstInstance {
     pub fn load(path: &str) -> Result<Self> {
         let path_obj = Path::new(path);
-        let plugin_name = path_obj.file_stem().unwrap().to_string_lossy().to_string();
+        let plugin_name = path_obj
+            .file_stem()
+            .ok_or_else(|| anyhow!("VST3 path must name a plugin"))?
+            .to_string_lossy()
+            .to_string();
+        unsafe {
+            // OTT 1.37はInitDllを省くと描画資源が未初期化になり、getSizeが4x4になる。
+            // 他のプラグインの初期化手順は今回変更しない。
+            let initialize_module = plugin_name.eq_ignore_ascii_case("OTT");
+            let lib = Arc::new(PluginLibrary::load(path, initialize_module)?);
+
+            let factory_proc: Symbol<GetPluginFactory> = lib
+                .library
+                .get(b"GetPluginFactory")
+                .context("GetPluginFactory symbol not found")?;
+
+            // Resolve HMODULE for resource loading quirks (VSTGUI etc.)
+            // Some plugins rely on a module handle associated with their UI window class.
+            let mut module_hmodule = HMODULE(std::ptr::null_mut());
+            {
+                use windows::Win32::System::LibraryLoader::{
+                    GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+                    GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                };
+
+                let factory_fn: GetPluginFactory = *factory_proc;
+                let addr = factory_fn as *const c_void;
+                let flags = GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+                    | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT;
+                let res =
+                    GetModuleHandleExW(flags, PCWSTR(addr as *const u16), &mut module_hmodule);
+                println!(
+                    "[Module] GetModuleHandleExW(from_address) res={:?} hmodule={:p}",
+                    res, module_hmodule.0
+                );
+            }
+
+            let factory_ptr = factory_proc();
+            if factory_ptr.is_null() {
+                return Err(anyhow!("GetPluginFactory returned null"));
+            }
+            Self::load_from_factory(path, plugin_name, lib, module_hmodule, factory_ptr)
+        }
+    }
+
+    // DLL取得後の実際のロード経路。模擬factoryでも同じ失敗・解放経路を検証する。
+    unsafe fn load_from_factory(
+        path: &str,
+        plugin_name: String,
+        lib: Arc<PluginLibrary>,
+        module_hmodule: HMODULE,
+        factory_ptr: *mut c_void,
+    ) -> Result<Self> {
         let is_insight2 = plugin_name.contains("Insight 2");
 
         // --- Quirk Management ---
@@ -2429,49 +1388,12 @@ impl VstInstance {
             _ => {}
         }
 
+        if factory_ptr.is_null() {
+            return Err(anyhow!("GetPluginFactory returned null"));
+        }
+        let _factory = FactoryRef(factory_ptr);
+        let mut resources = InstanceResources::new(lib.clone());
         unsafe {
-            // OTT 1.37はInitDllを省くと描画資源が未初期化になり、getSizeが4x4になる。
-            // 他のプラグインの初期化手順は今回変更しない。
-            let initialize_module = plugin_name.eq_ignore_ascii_case("OTT");
-            let lib = Arc::new(PluginLibrary::load(path, initialize_module)?);
-
-            let factory_proc: Symbol<GetPluginFactory> = lib
-                .library
-                .get(b"GetPluginFactory")
-                .context("GetPluginFactory symbol not found")?;
-
-            // Resolve HMODULE for resource loading quirks (VSTGUI etc.)
-            // Some plugins rely on a module handle associated with their UI window class.
-            let mut module_hmodule = HMODULE(std::ptr::null_mut());
-            {
-                use windows::Win32::System::LibraryLoader::{
-                    GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
-                    GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                };
-
-                let factory_fn: GetPluginFactory = *factory_proc;
-                let addr = factory_fn as *const c_void;
-                let flags = GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
-                    | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT;
-                let res =
-                    GetModuleHandleExW(flags, PCWSTR(addr as *const u16), &mut module_hmodule);
-                println!(
-                    "[Module] GetModuleHandleExW(from_address) res={:?} hmodule={:p}",
-                    res, module_hmodule.0
-                );
-            }
-
-            let factory_ptr = factory_proc();
-            if factory_ptr.is_null() {
-                return Err(anyhow!("GetPluginFactory returned null"));
-            }
-            // InitDllを追加したOTTだけで参照を管理し、他VSTの既存動作は維持する。
-            let _factory = if initialize_module {
-                Some(FactoryRef(factory_ptr))
-            } else {
-                None
-            };
-
             // Wrap Factory
             let factory_vtbl = get_vtbl::<IPluginFactoryVtbl>(factory_ptr);
 
@@ -2526,6 +1448,7 @@ impl VstInstance {
                                     class_name
                                 );
                                 component_ptr = obj;
+                                resources.component = obj;
                                 break;
                             }
 
@@ -2535,10 +1458,14 @@ impl VstInstance {
                             );
                         } else {
                             println!(
-                                "[Quirk] '{}' -> Skipping direct IComponent instantiation; using FUnknown + leak strategy.",
+                                "[Quirk] '{}' -> Skipping direct IComponent instantiation; using FUnknown keepalive.",
                                 plugin_name
                             );
                         }
+
+                        // 失敗でも出力参照が渡された場合は、次の試行へ進む前に解放する。
+                        load_resources::release(obj);
+                        obj = std::ptr::null_mut();
 
                         // 2. Fallback: Try creating with FUNKNOWN
                         let res_unknown = (factory_vtbl.create_instance)(
@@ -2564,27 +1491,21 @@ impl VstInstance {
                             if query_res == K_RESULT_OK && !comp_ptr.is_null() {
                                 println!("Successfully queried IComponent for '{}'", class_name);
                                 component_ptr = comp_ptr;
+                                resources.component = comp_ptr;
+                                resources.retained.push(InterfaceRef(obj));
 
-                                // INTENTIONAL LEAK STRATEGY (Stability Fix):
-                                // We intentionally DO NOT release 'obj' (the FUnknown interface).
-                                // Detailed analysis suggests that for some plugins (like Insight 2),
-                                // releasing this initial interface causes the underlying object to be destroyed
-                                // or invalidated, even if we hold a valid IComponent pointer obtained via QI.
-                                //
-                                // To guarantee stability, we sacrifice a tiny amount of memory (one object per plugin instance)
-                                // and keep the FUnknown reference alive for the duration of the plugin's life.
-                                //
-                                // println!("Skipping release of FUnknown to ensure object survival.");
-                                // (unknown_vtbl.release)(obj); <--- COMMENTED OUT
+                                // FUnknownは互換性のため保持し、Instance終了時に必ず解放する。
                                 break;
                             } else {
                                 println!(
                                     "Failed to query IComponent from FUnknown (res={})",
                                     query_res
                                 );
+                                load_resources::release(comp_ptr);
                                 (unknown_vtbl.release)(obj);
                             }
                         } else {
+                            load_resources::release(obj);
                             println!(
                                 "Failed to create instance for '{}' (Tried IComponent: {}, FUnknown: {})",
                                 class_name, res_direct, res_unknown
@@ -2621,17 +1542,17 @@ impl VstInstance {
             } else {
                 "Auralyn".to_string()
             };
-            let host_app = HostAppGuard::new(&host_name);
-            let host_ctx = host_app.as_ptr();
+            resources.host = Some(HostAppGuard::new(&host_name));
+            let host_ctx = resources.host.as_ref().unwrap().as_ptr();
 
             // [Resource Fix] Relative paths / helper DLLs compatibility
             let _env_guard = EditorEnvGuard::enter_for_module(std::path::Path::new(&path));
             let init_res = (component_vtbl.initialize)(component_ptr, host_ctx);
 
             if init_res != K_RESULT_OK {
-                (component_vtbl.base.release)(component_ptr);
                 return Err(anyhow!("Failed to initialize component"));
             }
+            resources.component_initialized = true;
 
             // Query processor
             println!("Querying IAudioProcessor...");
@@ -2647,10 +1568,9 @@ impl VstInstance {
                 &mut processor_ptr as *mut *mut c_void,
             );
 
+            resources.processor = processor_ptr;
             if query_res != K_RESULT_OK || processor_ptr.is_null() {
-                println!(
-                    "Warning: Could not query IAudioProcessor interface. Processing disabled."
-                );
+                return Err(anyhow!("Could not query IAudioProcessor interface"));
             } else {
                 println!("Got processor interface: {:p}", processor_ptr);
             }
@@ -2666,7 +1586,11 @@ impl VstInstance {
                 &mut controller_ptr as *mut *mut c_void,
             );
 
+            resources.controller = controller_ptr;
             if query_res_ctrl != K_RESULT_OK || controller_ptr.is_null() {
+                load_resources::release(resources.controller);
+                resources.controller = std::ptr::null_mut();
+                controller_ptr = std::ptr::null_mut();
                 println!("Info: Could not query IEditController from Component. Attempting to create separate Controller...");
 
                 let mut controller_cid: TUID = [0; 16];
@@ -2692,12 +1616,13 @@ impl VstInstance {
                         res_create, raw_ctrl_ptr
                     );
 
+                    resources.controller = raw_ctrl_ptr;
                     if res_create == K_RESULT_OK && !raw_ctrl_ptr.is_null() {
                         if (raw_ctrl_ptr as usize) < 0x1000 {
-                            eprintln!(
-                                "Critical: create_instance returned invalid pointer {:p}",
-                                raw_ctrl_ptr
-                            );
+                            resources.controller = std::ptr::null_mut();
+                            return Err(anyhow!(
+                                "create_instance returned an invalid controller pointer"
+                            ));
                         } else {
                             println!("Successfully created separate Controller instance. Initializing...");
 
@@ -2715,6 +1640,7 @@ impl VstInstance {
                             if init_res_ctrl == K_RESULT_OK {
                                 println!("Controller initialized.");
 
+                                resources.controller_initialized = true;
                                 // Essential: Set Component Handler
                                 let handler = get_mock_handler_ptr();
                                 println!("Setting Component Handler: {:p}", handler);
@@ -2723,17 +1649,17 @@ impl VstInstance {
                                 println!("  -> Result: {}", handler_res);
 
                                 // Synchronize State
-                                let mut stream = MemoryStream::new();
-                                let stream_ptr = &mut stream as *mut MemoryStream as *mut c_void;
+                                let mut stream = StateStream::new(Vec::new());
+                                let stream_ptr = stream.as_ptr();
 
                                 println!("Synchronizing state to controller...");
                                 let get_res = (component_vtbl.get_state)(component_ptr, stream_ptr);
                                 if get_res == K_RESULT_OK {
                                     println!(
                                         "  Got state from component: {} bytes",
-                                        stream.data.len()
+                                        stream.bytes().len()
                                     );
-                                    stream.cursor = 0; // Rewind
+                                    stream.rewind(); // Rewind
                                     let set_res =
                                         (ctrl_vtbl.set_component_state)(raw_ctrl_ptr, stream_ptr);
                                     if set_res == K_RESULT_OK {
@@ -2761,6 +1687,7 @@ impl VstInstance {
                                         println!("  -> [Quirk] Deferred connection selected. Skipping now, will connect later in event loop.");
                                     }
                                     QuirkConnectionStrategy::ControllerFirst => {
+                                        resources.connected = true;
                                         link_connection_points(
                                             component_ptr,
                                             raw_ctrl_ptr,
@@ -2769,6 +1696,7 @@ impl VstInstance {
                                         );
                                     }
                                     _ => {
+                                        resources.connected = true;
                                         link_connection_points(
                                             component_ptr,
                                             raw_ctrl_ptr,
@@ -2779,10 +1707,12 @@ impl VstInstance {
                                 }
                             } else {
                                 eprintln!("Failed to initialize Controller.");
-                                (ctrl_vtbl.base.release)(raw_ctrl_ptr);
+                                return Err(anyhow!("Failed to initialize separate Controller"));
                             }
                         }
                     } else {
+                        load_resources::release(resources.controller);
+                        resources.controller = std::ptr::null_mut();
                         eprintln!("Failed to create Controller instance (res={})", res_create);
                     }
                 } else {
@@ -2828,6 +1758,7 @@ impl VstInstance {
                             res_create, raw_ctrl_ptr
                         );
 
+                        let mut replacement = InterfaceRef(raw_ctrl_ptr);
                         if res_create == K_RESULT_OK && !raw_ctrl_ptr.is_null() {
                             let ctrl_vtbl = get_vtbl::<IEditControllerVtbl>(raw_ctrl_ptr);
                             let _env_guard =
@@ -2851,12 +1782,12 @@ impl VstInstance {
                                 );
 
                                 // Synchronize State (best-effort)
-                                let mut stream = MemoryStream::new();
-                                let stream_ptr = &mut stream as *mut MemoryStream as *mut c_void;
+                                let mut stream = StateStream::new(Vec::new());
+                                let stream_ptr = stream.as_ptr();
                                 let get_res = (component_vtbl.get_state)(component_ptr, stream_ptr);
                                 println!("[Quirk] OTT: component.get_state returned: {}", get_res);
                                 if get_res == K_RESULT_OK {
-                                    stream.cursor = 0;
+                                    stream.rewind();
                                     let set_res =
                                         (ctrl_vtbl.set_component_state)(raw_ctrl_ptr, stream_ptr);
                                     println!(
@@ -2866,6 +1797,7 @@ impl VstInstance {
                                 }
 
                                 // IConnectionPoint (best-effort)
+                                resources.connected = true;
                                 link_connection_points(
                                     component_ptr,
                                     raw_ctrl_ptr,
@@ -2874,7 +1806,11 @@ impl VstInstance {
                                 );
 
                                 // IMPORTANT: Prefer the separate controller for GUI
-                                // NOTE: keepalive safety -> do NOT release the component-provided controller here.
+                                // 元の参照もInstanceResourcesへ保持し、終了時に解放する。
+                                resources.retained.push(InterfaceRef(resources.controller));
+                                resources.controller = raw_ctrl_ptr;
+                                resources.controller_initialized = true;
+                                replacement.0 = std::ptr::null_mut();
                                 controller_ptr = raw_ctrl_ptr;
                                 println!(
                                     "[Quirk] OTT: switched to separate controller {:p}",
@@ -2885,7 +1821,6 @@ impl VstInstance {
                                     "[Quirk] OTT: separate controller initialize failed: {}",
                                     init_res
                                 );
-                                (ctrl_vtbl.base.release)(raw_ctrl_ptr);
                             }
                         }
                     } else {
@@ -2920,6 +1855,7 @@ impl VstInstance {
                             (unknown_vtbl.release)(unknown_ptr);
                             Some(unknown_ptr)
                         } else {
+                            load_resources::release(unknown_ptr);
                             None
                         }
                     }
@@ -2953,14 +1889,12 @@ impl VstInstance {
                         let treat_as_success = is_same_object && init_res == 1;
 
                         if init_res != K_RESULT_OK && !treat_as_success {
-                            eprintln!(
-                                "Warning: Controller initialize (from Component) failed: {}",
-                                init_res
-                            );
+                            return Err(anyhow!("Controller initialize failed: {}", init_res));
                         } else if treat_as_success {
                             println!("[Quirk] OTT: Ignoring Controller initialize failure (same_object=true). Treating as success.");
                         }
                     }
+                    resources.controller_initialized = !is_same_object;
                     let handler = get_mock_handler_ptr();
                     let handler_res = (ctrl_vtbl.set_component_handler)(controller_ptr, handler);
                     if handler_res != K_RESULT_OK {
@@ -2976,15 +1910,15 @@ impl VstInstance {
                     // OTT returns E_FAIL (-2147467263) for this.
                     // We should probably SKIP this if same_object is true, OR if set_component_state fail is harmless.
                     if !is_same_object {
-                        let mut stream = MemoryStream::new();
-                        let stream_ptr = &mut stream as *mut MemoryStream as *mut c_void;
+                        let mut stream = StateStream::new(Vec::new());
+                        let stream_ptr = stream.as_ptr();
                         let get_res = (component_vtbl.get_state)(component_ptr, stream_ptr);
                         println!(
                             "Controller sync (from Component): component.get_state returned: {}",
                             get_res
                         );
                         if get_res == K_RESULT_OK {
-                            stream.cursor = 0;
+                            stream.rewind();
                             let set_res =
                                 (ctrl_vtbl.set_component_state)(controller_ptr, stream_ptr);
                             println!(
@@ -3001,7 +1935,9 @@ impl VstInstance {
 
             // Generate a simple unique ID
             use std::time::{SystemTime, UNIX_EPOCH};
-            let start = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+            let start = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default();
             let id = format!("{}-{}", plugin_name, start.as_nanos());
 
             Ok(VstInstance {
@@ -3016,14 +1952,15 @@ impl VstInstance {
                 editor_env: None,
                 channels: 2,
                 max_block_size: 0,
-                host_app: host_app.into_raw(),
+                host_app: host_ctx,
                 path: path.to_string(),
                 module_hmodule,
+                resources,
             })
         } // Close unsafe
     } // Close load
 
-    pub fn finalize_connection(&self) -> Result<()> {
+    pub fn finalize_connection(&mut self) -> Result<()> {
         println!("[Deferred] Finalizing connection for {}", self.name);
 
         unsafe {
@@ -3039,12 +1976,13 @@ impl VstInstance {
                 "[Deferred]",
             );
         }
+        self.resources.connected = true;
         Ok(())
     }
 
     pub fn needs_deferred_connection(&self) -> bool {
         // Quick check for now, ideally reuse get_plugin_quirks logic
-        if self.name.contains("Insight 2") {
+        if self.name.contains("Insight 2") && !self.resources.connected {
             return true;
         }
         false
@@ -3052,7 +1990,7 @@ impl VstInstance {
 
     // Create a processor handle to be moved to audio thread
     pub fn create_processor(&self) -> Option<VstProcessor> {
-        if self.processor.is_null() {
+        if self.processor.is_null() || !self.resources.prepared {
             return None;
         }
         unsafe {
@@ -3092,9 +2030,13 @@ impl VstInstance {
         block_size: i32,
         channels: i32,
     ) -> Result<()> {
+        self.stop_processing();
         unsafe {
             if self.component.is_null() || self.processor.is_null() {
-                return Ok(());
+                return Err(anyhow!("VST processing interfaces are unavailable"));
+            }
+            if !sample_rate.is_finite() || sample_rate <= 0.0 || block_size <= 0 || channels <= 0 {
+                return Err(anyhow!("Invalid VST processing configuration"));
             }
 
             let proc_vtbl = get_vtbl::<IAudioProcessorVtbl>(self.processor);
@@ -3111,7 +2053,7 @@ impl VstInstance {
             if (proc_vtbl.setup_processing)(self.processor, &mut setup as *mut _ as *mut c_void)
                 != K_RESULT_OK
             {
-                eprintln!("Warning: setup_processing failed");
+                return Err(anyhow!("VST setup_processing failed"));
             }
 
             // 2. Set Bus Arrangements (Stereo -> Stereo usually)
@@ -3147,13 +2089,28 @@ impl VstInstance {
             }
 
             // 3. Activate Component
+            self.resources.component_active = true;
             if (comp_vtbl.set_active)(self.component, 1) != K_RESULT_OK {
                 // 1 = true
                 return Err(anyhow!("Failed to set component active"));
             }
 
             // 4. Set Processing Active
-            let _ = (proc_vtbl.set_processing)(self.processor, 1);
+            self.resources.processing = true;
+            let processing_result = (proc_vtbl.set_processing)(self.processor, 1);
+            // SDKのAudioEffectも、この軽量な状態通知を使わない場合は未実装を返す。
+            // 実際の拒否・失敗まで成功扱いにせず、この既定実装だけを許容する。
+            if processing_result != K_RESULT_OK
+                && processing_result != vst3::Steinberg::kNotImplemented
+            {
+                return Err(anyhow!(
+                    "VST set_processing failed (result={:#010X})",
+                    processing_result as u32
+                ));
+            }
+            if processing_result == vst3::Steinberg::kNotImplemented {
+                log::debug!("VST processing-state notification is not implemented");
+            }
 
             // eprintln!(
             //     "Plugin processing prepared: {}Hz, Block={}, Ch={}",
@@ -3163,18 +2120,27 @@ impl VstInstance {
             // Store for create_processor
             self.channels = plugin_channels as usize;
             self.max_block_size = block_size.max(0) as usize;
+            self.resources.prepared = true;
         }
         Ok(())
     }
 
-    pub fn latency_samples(&self) -> u32 {
+    /// callbackとprocessor所有値を回収した制御側だけで呼ぶ。
+    pub fn stop_processing(&mut self) {
+        self.resources.stop_processing();
+    }
+
+    pub fn declared_latency_samples(&self) -> Option<u32> {
         unsafe {
             if self.processor.is_null() {
-                return 0;
+                return None;
             }
             let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.processor);
-            (vtbl.get_latency_samples)(self.processor)
+            Some((vtbl.get_latency_samples)(self.processor))
         }
+    }
+    pub fn latency_samples(&self) -> u32 {
+        self.declared_latency_samples().unwrap_or(0)
     }
 
     /// プラグインのエディタを Win32 の親ウィンドウに接続する。
@@ -3205,17 +2171,17 @@ impl VstInstance {
                 let comp_vtbl = get_vtbl::<IComponentVtbl>(self.component);
                 let ctrl_vtbl = get_vtbl::<IEditControllerVtbl>(self.controller);
 
-                let mut stream = MemoryStream::new();
-                let stream_ptr = &mut stream as *mut MemoryStream as *mut c_void;
+                let mut stream = StateStream::new(Vec::new());
+                let stream_ptr = stream.as_ptr();
 
                 let get_res = (comp_vtbl.get_state)(self.component, stream_ptr);
                 println!(
                     "BP: pre-editor sync get_state res={} bytes={}",
                     get_res,
-                    stream.data.len()
+                    stream.bytes().len()
                 );
                 if get_res == K_RESULT_OK {
-                    stream.cursor = 0;
+                    stream.rewind();
                     let set_res = (ctrl_vtbl.set_component_state)(self.controller, stream_ptr);
                     println!("BP: pre-editor sync set_component_state res={}", set_res);
                 }
@@ -3725,8 +2691,8 @@ impl VstInstance {
         }
         unsafe {
             let component_vtbl = get_vtbl::<IComponentVtbl>(self.component);
-            let mut stream = MemoryStream::new();
-            let stream_ptr = &mut stream as *mut MemoryStream as *mut c_void;
+            let stream = StateStream::new(Vec::new());
+            let stream_ptr = stream.as_ptr();
 
             let res = (component_vtbl.get_state)(self.component, stream_ptr);
             if res != K_RESULT_OK {
@@ -3735,7 +2701,7 @@ impl VstInstance {
 
             // Encode to Base64
             use base64::{engine::general_purpose, Engine as _};
-            let b64 = general_purpose::STANDARD.encode(&stream.data);
+            let b64 = general_purpose::STANDARD.encode(stream.bytes());
             Ok(b64)
         }
     }
@@ -3749,12 +2715,11 @@ impl VstInstance {
         use base64::{engine::general_purpose, Engine as _};
         let data = general_purpose::STANDARD
             .decode(state_b64)
-            .context("mvn failed to decode state base64")?;
+            .context("Failed to decode VST state base64")?;
 
         unsafe {
-            let mut stream = MemoryStream::new();
-            stream.data = data;
-            let stream_ptr = &mut stream as *mut MemoryStream as *mut c_void;
+            let mut stream = StateStream::new(data);
+            let stream_ptr = stream.as_ptr();
 
             let component_vtbl = get_vtbl::<IComponentVtbl>(self.component);
             let res = (component_vtbl.set_state)(self.component, stream_ptr);
@@ -3766,7 +2731,7 @@ impl VstInstance {
             // Sync Controller if exists
             if !self.controller.is_null() {
                 let ctrl_vtbl = get_vtbl::<IEditControllerVtbl>(self.controller);
-                stream.cursor = 0; // Rewind
+                stream.rewind(); // Rewind
                 let res_ctrl = (ctrl_vtbl.set_component_state)(self.controller, stream_ptr);
                 if res_ctrl != K_RESULT_OK {
                     eprintln!("Warning: Failed to sync controller state: {}", res_ctrl);
@@ -3774,332 +2739,40 @@ impl VstInstance {
                     println!("Controller state synchronized.");
                 }
             }
+            if res != K_RESULT_OK {
+                return Err(anyhow!("Failed to set component state: {}", res));
+            }
         }
         Ok(())
-    }
-}
-
-impl VstProcessor {
-    fn silence_planar(outputs: &mut [Vec<f32>], num_samples: usize) {
-        for channel in outputs {
-            let len = num_samples.min(channel.len());
-            channel[..len].fill(0.0);
-        }
-    }
-
-    pub fn process(
-        &mut self,
-        input_buffer: &[f32],
-        output_buffer: &mut [f32],
-        channels: usize,
-        num_samples: usize,
-    ) {
-        unsafe {
-            // KILL SWITCH check
-            if !self.active_flag.load(Ordering::SeqCst) {
-                output_buffer.fill(0.0);
-                return;
-            }
-
-            if self.ptr.is_null() {
-                return;
-            }
-            let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.ptr);
-
-            // 1. スクラッチバッファの整合性チェック (Consistency check)
-            if num_samples > self.max_block_size {
-                output_buffer.fill(0.0);
-                return;
-            }
-
-            // --- STABILITY GUARD: Channel Clamping ---
-            // Device channels can be 8, but we only have scratch buffers for 2 (or whatever the plugin setup).
-            // We must process only min(device, plugin) channels to avoid panic.
-            let active_input_channels = std::cmp::min(channels, self.scratch_inputs.len());
-            let active_output_channels = std::cmp::min(channels, self.scratch_outputs.len());
-            let active_channels = std::cmp::min(active_input_channels, active_output_channels);
-
-            // 2. 入力データのデインターリーブ (De-interleave)
-            for ch in 0..active_channels {
-                // Bounds check is implicit by using min() above, but we double check for safety
-                if ch < self.scratch_inputs.len() {
-                    let scratch_slice = &mut self.scratch_inputs[ch][..num_samples];
-                    for (i, sample) in scratch_slice.iter_mut().enumerate() {
-                        // Input buffer bounds check
-                        let input_idx = i * channels + ch;
-                        let val = if input_idx < input_buffer.len() {
-                            input_buffer[input_idx]
-                        } else {
-                            0.0
-                        };
-                        *sample = val;
-                    }
-                }
-            }
-
-            // 2.5 Clear Output Buffers
-            for ch in 0..active_channels {
-                if ch < self.scratch_outputs.len() && num_samples <= self.scratch_outputs[ch].len()
-                {
-                    self.scratch_outputs[ch][..num_samples].fill(0.0);
-                }
-            }
-
-            // 3. ポインタ配列の準備 (Prepare Pointers)
-            self.input_ptrs.clear();
-            self.output_ptrs.clear();
-
-            // Only push pointers for active channels
-            for ch in 0..active_channels {
-                self.input_ptrs.push(self.scratch_inputs[ch].as_mut_ptr());
-                self.output_ptrs.push(self.scratch_outputs[ch].as_mut_ptr());
-            }
-
-            // AudioBusBuffers の構築
-            self.bus_inputs.clear();
-            self.bus_outputs.clear();
-
-            // Bus 0: メイン (Main) - Tell plugin the actual processed count
-            self.bus_inputs.push(AudioBusBuffers {
-                num_channels: active_channels as i32,
-                silence_flags: 0, // TODO: calculate silence
-                channel_buffers32: self.input_ptrs.as_mut_ptr(),
-                channel_buffers64: std::ptr::null_mut(),
-            });
-            self.bus_outputs.push(AudioBusBuffers {
-                num_channels: active_channels as i32,
-                silence_flags: 0,
-                channel_buffers32: self.output_ptrs.as_mut_ptr(),
-                channel_buffers64: std::ptr::null_mut(),
-            });
-
-            // Bus 1: ダミー (Dummy)
-            self.bus_inputs.push(AudioBusBuffers {
-                num_channels: 0,
-                silence_flags: 0xffffffffffffffff,
-                channel_buffers32: std::ptr::null_mut(),
-                channel_buffers64: std::ptr::null_mut(),
-            });
-            self.bus_outputs.push(AudioBusBuffers {
-                num_channels: 0,
-                silence_flags: 0xffffffffffffffff,
-                channel_buffers32: std::ptr::null_mut(),
-                channel_buffers64: std::ptr::null_mut(),
-            });
-
-            let mut data = ProcessData {
-                process_mode: K_REALTIME,
-                symbolic_sample_size: K_SAMPLE_32,
-                num_samples: num_samples as i32,
-                num_inputs: 1, // Only main bus
-                num_outputs: 1,
-                inputs: self.bus_inputs.as_mut_ptr(),
-                outputs: self.bus_outputs.as_mut_ptr(),
-                input_events: std::ptr::null_mut(),
-                output_events: std::ptr::null_mut(),
-                input_param_changes: std::ptr::null_mut(),
-                output_param_changes: std::ptr::null_mut(),
-                process_context: std::ptr::null_mut(),
-            };
-
-            // 4. プラグイン処理実行
-            let res = (vtbl.process)(self.ptr, &mut data as *mut _ as *mut c_void);
-
-            // 5. 出力データのインターリーブ (Interleave Output)
-            if res == K_RESULT_OK {
-                for i in 0..num_samples {
-                    // Process Active Channels
-                    for ch in 0..active_channels {
-                        let out_idx = i * channels + ch;
-                        if out_idx < output_buffer.len() {
-                            let val = self.scratch_outputs[ch][i];
-                            output_buffer[out_idx] = val;
-                        }
-                    }
-                    // Handle Remaining Channels (Silence Guard)
-                    // If device has 8 channels but we only processed 2, silence 3-8 to prevent noise/garbage
-                    for ch in active_channels..channels {
-                        let out_idx = i * channels + ch;
-                        if out_idx < output_buffer.len() {
-                            output_buffer[out_idx] = 0.0;
-                        }
-                    }
-                }
-            } else {
-                output_buffer.fill(0.0);
-            }
-        }
-    }
-
-    pub fn process_planar(
-        &mut self,
-        inputs: &[Vec<f32>],
-        outputs: &mut [Vec<f32>],
-        num_samples: usize,
-    ) {
-        let ch_count = inputs
-            .len()
-            .min(outputs.len())
-            .min(self.scratch_inputs.len())
-            .min(self.scratch_outputs.len());
-        // FFIへ渡す前に全使用チャンネルの長さを確認する。RT上では割当・ログを行わない。
-        if !self.active_flag.load(Ordering::SeqCst)
-            || self.ptr.is_null()
-            || num_samples == 0
-            || num_samples > self.max_block_size
-            || num_samples > i32::MAX as usize
-            || ch_count == 0
-            || inputs
-                .iter()
-                .take(ch_count)
-                .any(|ch| ch.len() < num_samples)
-            || outputs
-                .iter()
-                .take(ch_count)
-                .any(|ch| ch.len() < num_samples)
-        {
-            Self::silence_planar(outputs, num_samples);
-            return;
-        }
-
-        unsafe {
-            let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.ptr);
-
-            // Prepare Pointers directly from arguments
-            self.input_ptrs.clear();
-            self.output_ptrs.clear();
-
-            for (input, output) in inputs.iter().zip(outputs.iter_mut()).take(ch_count) {
-                self.input_ptrs.push(input.as_ptr() as *mut f32);
-                self.output_ptrs.push(output.as_mut_ptr());
-            }
-
-            // AudioBusBuffers
-            self.bus_inputs.clear();
-            self.bus_outputs.clear();
-
-            self.bus_inputs.push(AudioBusBuffers {
-                num_channels: ch_count as i32,
-                silence_flags: 0,
-                channel_buffers32: self.input_ptrs.as_mut_ptr(),
-                channel_buffers64: std::ptr::null_mut(),
-            });
-            self.bus_outputs.push(AudioBusBuffers {
-                num_channels: ch_count as i32,
-                silence_flags: 0,
-                channel_buffers32: self.output_ptrs.as_mut_ptr(),
-                channel_buffers64: std::ptr::null_mut(),
-            });
-
-            // Dummy Bus
-            self.bus_inputs.push(AudioBusBuffers {
-                num_channels: 0,
-                silence_flags: 0xffffffffffffffff,
-                channel_buffers32: std::ptr::null_mut(),
-                channel_buffers64: std::ptr::null_mut(),
-            });
-            self.bus_outputs.push(AudioBusBuffers {
-                num_channels: 0,
-                silence_flags: 0xffffffffffffffff,
-                channel_buffers32: std::ptr::null_mut(),
-                channel_buffers64: std::ptr::null_mut(),
-            });
-
-            let mut data = ProcessData {
-                process_mode: K_REALTIME,
-                symbolic_sample_size: K_SAMPLE_32,
-                num_samples: num_samples as i32,
-                num_inputs: 1,
-                num_outputs: 1,
-                inputs: self.bus_inputs.as_mut_ptr(),
-                outputs: self.bus_outputs.as_mut_ptr(),
-                input_events: std::ptr::null_mut(),
-                output_events: std::ptr::null_mut(),
-                input_param_changes: std::ptr::null_mut(),
-                output_param_changes: std::ptr::null_mut(),
-                process_context: std::ptr::null_mut(),
-            };
-
-            let res = (vtbl.process)(self.ptr, &mut data as *mut _ as *mut c_void);
-
-            // 5. Clean up unused channels
-            // (process_planar implies we write directly to outputs, but if outputs has more channels
-            // than we processed, we MUST silence them to avoid garbage from previous frames in ring buffer)
-            if res == K_RESULT_OK {
-                Self::silence_planar(&mut outputs[ch_count..], num_samples);
-            } else {
-                // If failed, silence valid channels too?
-                // VST3 spec says if process returns error, outputs are undefined. Best to silence everything.
-                Self::silence_planar(outputs, num_samples);
-            }
-        }
-    }
-}
-
-impl Drop for VstProcessor {
-    fn drop(&mut self) {
-        // println!("BP: VstProcessor Drop Start {:p}", self.ptr);
-        unsafe {
-            if !self.ptr.is_null() {
-                let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.ptr);
-                (vtbl.base.release)(self.ptr);
-                // println!("BP: VstProcessor Release Called");
-            }
-        }
-        // println!("BP: VstProcessor Drop End");
     }
 }
 
 // Ensure Drop handling cleans up VST objects safely
 impl Drop for VstInstance {
     fn drop(&mut self) {
-        // KILL SWITCH: Signal audio thread to stop ASAP
         self.active_flag.store(false, Ordering::SeqCst);
-
-        unsafe {
-            // Unlink explicitly to prevent circular references / messaging dead objects
-            if !self.component.is_null() && !self.controller.is_null() {
+        // 遅延接続の経路も含め、エディタを切り離す前に相互参照を解除する。
+        if !self.component.is_null() && !self.controller.is_null() {
+            unsafe {
                 unlink_connection_points(self.component, self.controller);
             }
+            self.resources.connected = false;
         }
-
-        // 先にエディタ関連を確実に後始末（環境復元/登録解除含む）
         self.close_editor();
-
-        unsafe {
-            if !self.controller.is_null() {
-                let vtbl = get_vtbl::<IEditControllerVtbl>(self.controller);
-                (vtbl.terminate)(self.controller as *mut _);
-                (vtbl.base.release)(self.controller as *mut _);
-            }
-
-            if !self.processor.is_null() {
-                let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.processor);
-                (vtbl.set_processing)(self.processor as *mut _, 0);
-                (vtbl.base.release)(self.processor as *mut _);
-            }
-
-            if !self.component.is_null() {
-                let vtbl = get_vtbl::<IComponentVtbl>(self.component);
-                (vtbl.set_active)(self.component as *mut _, 0);
-                (vtbl.terminate)(self.component as *mut _);
-                (vtbl.base.release)(self.component as *mut _);
-            }
-
-            // Release per-plugin host context last
-            if is_owned_host_app_ptr(self.host_app) {
-                drop_owned_host_app_ptr(self.host_app);
-            }
-            self.host_app = std::ptr::null_mut();
-        }
+        self.resources.shutdown();
+        self.host_app = std::ptr::null_mut();
     }
 }
 
 #[cfg(test)]
 mod instance_safety_tests;
+#[cfg(test)]
+mod load_failure_tests;
 
 #[cfg(test)]
 pub(crate) use instance_safety_tests::allocation_counts;
+#[cfg(test)]
+pub(crate) use load_failure_tests::with_mock_vst;
 
 #[cfg(test)]
 mod module_entry_tests {
@@ -4121,7 +2794,11 @@ mod module_entry_tests {
             EVENTS.lock().unwrap().push("exit");
             true
         }
-        unsafe extern "system" fn query(_: *mut c_void, _: *const TUID, _: *mut *mut c_void) -> i32 {
+        unsafe extern "system" fn query(
+            _: *mut c_void,
+            _: *const TUID,
+            _: *mut *mut c_void,
+        ) -> i32 {
             1
         }
         unsafe extern "system" fn add_ref(_: *mut c_void) -> u32 {

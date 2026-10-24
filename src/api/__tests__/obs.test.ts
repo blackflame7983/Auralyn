@@ -8,6 +8,11 @@ import { obsApi } from '../../api/obs';
 const mockedInvoke = vi.mocked(invoke);
 
 describe('obsApi', () => {
+    it('到達確認の再照合はoperation IDだけの読取りで、音声や接続の開始を送らない', async () => {
+        mockedInvoke.mockResolvedValue(false);
+        expect(await obsApi.audioReachCurrent('42')).toBe(false);
+        expect(mockedInvoke).toHaveBeenCalledExactlyOnceWith('obs_audio_reach_current', { operationId: '42' });
+    });
     beforeEach(() => {
         mockedInvoke.mockReset();
     });

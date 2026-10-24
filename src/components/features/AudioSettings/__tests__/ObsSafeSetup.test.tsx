@@ -1,3 +1,5 @@
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { obsApi, type ObsSetupPlan, type ObsSetupHistory } from '@/api/obs';
@@ -12,7 +14,7 @@ vi.mock('@/api/obs', () => ({
         restoreSetup: vi.fn(),
     },
 }));
-const change = { source: 'Auralyn マイク', label: 'ミュート', before: true, after: false };
+const change = { source: 'Auralyn マイク', label: 'ミュート', before: true, after: false, labelText: { code: 'obs.field.muted', args: {}, fallbackJa: 'ミュート' }, beforeText: { code: 'obs.value.boolean', args: {value: true}, fallbackJa: 'ON' }, afterText: { code: 'obs.value.boolean', args: {value: false}, fallbackJa: 'OFF' } };
 const plan: ObsSetupPlan = {
     id: 7,
     supported: true,
@@ -75,7 +77,7 @@ describe('OBS の変更確認と復元', () => {
         });
         renderSetup();
         fireEvent.click(screen.getByRole('button', { name: '変更予定を確認する' }));
-        await screen.findByText('手動の手順をご利用ください。');
+        await screen.findByText(/手動の手順をご利用ください。/);
         expect(
             screen.queryByRole('button', { name: 'この変更を適用する' }),
         ).not.toBeInTheDocument();
@@ -162,4 +164,48 @@ it('遅い初期履歴の取得で適用後の新しい履歴を消さない', a
         finish([]);
     });
     expect(screen.getByRole('button', { name: '変更 #7 を元に戻す' })).toBeInTheDocument();
+});
+
+
+it('同期の測定履歴は通常セットアップとは区別して対象・差分・測定条件を表示する', async () => {
+    vi.mocked(obsApi.setupHistory).mockResolvedValue([{ ...history, timing: {
+        targetToken: 'real-target', source: '歌声', currentOffsetMs: 20, additionalDelayMs: 80, resultOffsetMs: 100,
+        measurement: { method: 'manual', comparison: 'voiceAccompaniment', measuredDelayMs: -80, referenceNote: '同時の合図・48k', fps: null, track: 1 },
+    } }]);
+    renderSetup();
+    expect(await screen.findByText(/同期変更 #7/)).toBeInTheDocument();
+    expect(screen.getByText(/同期：歌声/)).toHaveTextContent('20 ms → 100 ms（追加 80 ms）');
+    expect(screen.getByText(/測定条件：同時の合図/)).toBeInTheDocument();
+    expect(obsApi.previewSetup).not.toHaveBeenCalled();
+    expect(obsApi.applySetup).not.toHaveBeenCalled();
+});
+
+it('typed予定・全結果outcomeを翻訳し、確認途中のlocale変更で再取得や書込をしない', async () => {
+    const store = createLocaleStore(() => 'ja', () => true);
+    vi.mocked(obsApi.previewSetup).mockResolvedValue({...plan, message: '原文予定', messageText: {code: 'obs.plan.selectedExisting', args: {}, fallbackJa: '原文予定'}});
+    render(<LocaleProvider store={store}><ObsSafeSetup disabled={false} onBusyChange={() => {}} /></LocaleProvider>);
+    fireEvent.click(screen.getByRole('button', {name: '変更予定を確認する'}));
+    const preview = await screen.findByLabelText('OBS の変更予定');
+    act(() => { store.setLocale('en'); });
+    expect(screen.getByText('Planned changes to the selected existing sources and filters.')).toBeInTheDocument();
+    expect(preview).toBeInTheDocument();
+    expect(screen.getByText('Auralyn マイク：Mute')).toBeVisible();
+    expect(obsApi.previewSetup).toHaveBeenCalledTimes(1);
+    expect(obsApi.setupHistory).toHaveBeenCalledTimes(1);
+    expect(obsApi.applySetup).not.toHaveBeenCalled();
+    expect(obsApi.restoreSetup).not.toHaveBeenCalled();
+});
+
+it('typedの全outcomeは結果を表示するだけで復元を実行しない', async () => {
+    const outcomes = ['notRun', 'applied', 'conflict', 'applyUnknown', 'restoreDeferred', 'restoreUnknown', 'restored', 'alreadyOriginal', 'restoreFailed'] as const;
+    const codes = ['notRun', 'applied', 'valueConflict', 'applyWriteUnknown', 'restoreAudioDeferred', 'restoreReadbackUnknown', 'restored', 'alreadyOriginal', 'restoreWriteFailed'];
+    vi.mocked(obsApi.setupHistory).mockResolvedValue(outcomes.map((outcome, index) => ({...history, id: index + 1, restorable: outcome === 'applied', resultEntries: [{outcome, text:{code:'obs.result.' + codes[index], args:{}, fallbackJa:'個別の原文'}}]})));
+    const store = createLocaleStore(() => 'en', () => true);
+    render(<LocaleProvider store={store}><ObsSafeSetup disabled={false} onBusyChange={() => {}} /></LocaleProvider>);
+    expect(await screen.findByText(/Already at the original value/)).toBeVisible();
+    for(const text of ['Not run','Applied','Restored']) expect(screen.getByText(text, {exact:false})).toBeVisible();
+    expect(screen.getByText(/The write result is unknown/)).toBeVisible();
+    expect(screen.getByText(/Restore failed/)).toHaveTextContent('Original detail (untranslated): 個別の原文');
+    expect(obsApi.restoreSetup).not.toHaveBeenCalled();
+    expect(obsApi.applySetup).not.toHaveBeenCalled();
 });

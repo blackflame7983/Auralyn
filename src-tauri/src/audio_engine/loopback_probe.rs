@@ -7,10 +7,7 @@ use super::devices::DeviceManager;
 use super::test_tone::goertzel_detect;
 
 /// WASAPI 共有モードで一時的に入力デバイスを開き、サンプルを収集する
-pub fn capture_input_mono(
-    device_name: &str,
-    duration_ms: u32,
-) -> Result<(Vec<f32>, u32)> {
+pub fn capture_input_mono(device_name: &str, duration_ms: u32) -> Result<(Vec<f32>, u32)> {
     let host = cpal::default_host();
     let device = DeviceManager::resolve_input_device(&host, device_name)
         .ok_or_else(|| anyhow!("入力デバイス '{}' が見つかりません", device_name))?;
@@ -21,8 +18,7 @@ pub fn capture_input_mono(
     let sample_rate = config.sample_rate();
     let channels = config.channels() as usize;
 
-    let samples_needed =
-        ((duration_ms as u64 * sample_rate as u64) / 1000).max(256) as usize;
+    let samples_needed = ((duration_ms as u64 * sample_rate as u64) / 1000).max(256) as usize;
     let buffer: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::with_capacity(samples_needed)));
     let buffer_cb = buffer.clone();
     let done = Arc::new(Mutex::new(false));
@@ -72,18 +68,16 @@ pub fn capture_input_mono(
     *done_cb.lock().unwrap() = true;
 
     if captured.is_empty() {
-        return Err(anyhow!("サンプルを取得できませんでした（デバイスが占有されている可能性があります）"));
+        return Err(anyhow!(
+            "サンプルを取得できませんでした（デバイスが占有されている可能性があります）"
+        ));
     }
 
     Ok((captured, sample_rate))
 }
 
 /// キャプチャしたサンプルから目標周波数を検出
-pub fn analyze_loopback(
-    samples: &[f32],
-    sample_rate_hz: u32,
-    freq_hz: f32,
-) -> (bool, f32) {
+pub fn analyze_loopback(samples: &[f32], sample_rate_hz: u32, freq_hz: f32) -> (bool, f32) {
     goertzel_detect(samples, sample_rate_hz, freq_hz, -45.0)
 }
 

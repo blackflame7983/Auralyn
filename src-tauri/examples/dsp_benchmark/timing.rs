@@ -1,5 +1,5 @@
 mod common;
-use common::{Current, Dsp, FRAME_SIZE, Frame, KINDS, Registry};
+use common::{Current, Dsp, Frame, Registry, FRAME_SIZE, KINDS};
 use serde::{Deserialize, Serialize};
 use std::{hint::black_box, process::Command, time::Instant};
 

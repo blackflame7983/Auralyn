@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Modal } from './modal';
 import { MdWarning } from 'react-icons/md';
+import { useMessages } from '@/i18n/LocaleProvider';
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -18,12 +19,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     isOpen,
     title,
     description,
-    confirmLabel = '確認',
-    cancelLabel = 'キャンセル',
+    confirmLabel,
+    cancelLabel,
     variant = 'default',
     onConfirm,
     onCancel,
 }) => {
+    const t = useMessages();
     if (!isOpen) return null;
 
     return (
@@ -49,7 +51,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                         onClick={onCancel}
                         className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
                     >
-                        {cancelLabel}
+                        {cancelLabel ?? t('commonDialog.cancel')}
                     </button>
                     <button
                         onClick={onConfirm}
@@ -60,7 +62,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                                 : 'bg-primary text-primary-foreground hover:bg-primary/90'
                         )}
                     >
-                        {confirmLabel}
+                        {confirmLabel ?? t('commonDialog.confirm')}
                     </button>
                 </div>
             </div>

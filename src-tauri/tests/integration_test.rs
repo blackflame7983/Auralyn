@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 // Reuse types from lib if they are public, or redefine minimal ones for test to decouple.
 // Since 'vst_host_lib' exposes them, we can use them!
 use assert_cmd::cargo::CommandCargoExt;
-use vst_host_lib::ipc::{Command as IpcCommand, OutputMessage, Response};
+use vst_host_lib::ipc::{Command as IpcCommand, DeviceScanStatus, OutputMessage, Response};
 
 #[test]
 fn test_audio_engine_lifecycle() {
@@ -63,18 +63,41 @@ fn test_audio_engine_lifecycle() {
     // A. Verify Initial Log or just Wait a bit
     thread::sleep(Duration::from_millis(500));
 
-    // B. Get Devices
-    send_command(&mut stdin, IpcCommand::GetDevices);
-    match read_response() {
-        Some(Response::Devices(devs)) => {
-            println!("Got {} devices", devs.len());
-            assert!(
-                !devs.is_empty(),
-                "Should find at least dummy/system devices"
-            );
+    // B. 再検出は短い要求で開始し、完了までpollする。
+    send_command(&mut stdin, IpcCommand::BeginDeviceScan);
+    let token = match read_response() {
+        Some(Response::DeviceScanStarted { token }) => token,
+        response => panic!("Expected DeviceScanStarted, got {:?}", response),
+    };
+    let scan_deadline = Instant::now() + Duration::from_secs(35);
+    loop {
+        assert!(
+            Instant::now() < scan_deadline,
+            "device scan deadline exceeded"
+        );
+        send_command(&mut stdin, IpcCommand::PollDeviceScan { token });
+        match read_response() {
+            Some(Response::DeviceScanStatus {
+                token: received,
+                status,
+            }) if received == token => match status {
+                DeviceScanStatus::Pending => thread::sleep(Duration::from_millis(100)),
+                DeviceScanStatus::Completed(devices) => {
+                    println!("Got {} devices", devices.len());
+                    assert!(
+                        !devices.is_empty(),
+                        "Should find at least dummy/system devices"
+                    );
+                    break;
+                }
+                status => panic!("Device scan failed: {:?}", status),
+            },
+            response => panic!("Expected DeviceScanStatus, got {:?}", response),
         }
-        r => panic!("Expected Devices response, got {:?}", r),
     }
+    // 旧GetDevicesは取得済みcacheへ短く応答する互換入口。
+    send_command(&mut stdin, IpcCommand::GetDevices);
+    assert!(matches!(read_response(), Some(Response::Devices(_))));
 
     // C. Reorder (Stability Check with empty list)
     send_command(&mut stdin, IpcCommand::ReorderPlugins { order: vec![] });
@@ -94,6 +117,7 @@ fn test_audio_engine_lifecycle() {
             output: None,
             buffer_size: None,
             sample_rate: None,
+            initial_controls: None,
         },
     );
 

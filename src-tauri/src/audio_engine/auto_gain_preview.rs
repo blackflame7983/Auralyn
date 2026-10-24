@@ -18,6 +18,84 @@ fn host() -> Result<cpal::Host> {
     cpal::host_from_id(cpal::HostId::Wasapi).map_err(Into::into)
 }
 
+// 両方の録音試聴で同じ制約を使う。既定出力への代替は行わない。
+#[allow(deprecated)]
+pub(super) fn output_device(
+    device: &str,
+    rate: u32,
+    main_id: Option<&str>,
+) -> Result<(cpal::Device, cpal::StreamConfig)> {
+    if main_id == Some(device) {
+        return Err(anyhow!("通常出力とは別の試聴先を選んでください"));
+    }
+    if !devices()?.iter().any(|candidate| candidate.id == device) {
+        return Err(anyhow!(
+            "選択した試聴先が見つかりません。出力一覧を更新してください"
+        ));
+    }
+    let id = device
+        .parse()
+        .map_err(|_| anyhow!("試聴先の識別情報が不正です"))?;
+    let device = host()?
+        .device_by_id(&id)
+        .ok_or_else(|| anyhow!("試聴先を開けません"))?;
+    let config = select_output_config(
+        rate,
+        || device.default_output_config().map_err(Into::into),
+        || {
+            preview_stage(
+                device.supported_output_configs(),
+                "試聴先の対応形式を確認できません",
+            )
+        },
+    )?;
+    log::info!(
+        "試聴出力設定: rate={}, channels={}, format=F32",
+        config.sample_rate,
+        config.channels
+    );
+    Ok((device, config))
+}
+
+// 非RT専用。UIには段階だけ返し、CPALの詳細は診断ログへ残す。
+pub(super) fn preview_stage<T, E: std::fmt::Display + std::fmt::Debug>(
+    result: std::result::Result<T, E>,
+    stage: &str,
+) -> Result<T> {
+    result.map_err(|error| {
+        log::warn!("{stage}: {error} ({error:?})");
+        anyhow!(stage.to_owned())
+    })
+}
+
+fn select_output_config<I: Iterator<Item = cpal::SupportedStreamConfigRange>>(
+    rate: u32,
+    default: impl FnOnce() -> Result<cpal::SupportedStreamConfig>,
+    supported: impl FnOnce() -> Result<I>,
+) -> Result<cpal::StreamConfig> {
+    match default() {
+        Ok(config) if config.sample_format() == cpal::SampleFormat::F32
+            && config.channels() >= 2 && config.sample_rate() == rate => return Ok(config.config()),
+        Ok(config) => log::info!("試聴先の既定形式が録音条件と異なるため対応一覧を確認: rate={}, channels={}, format={:?}", config.sample_rate(), config.channels(), config.sample_format()),
+        Err(error) => log::warn!("試聴先の既定形式を取得できないため対応一覧を確認: {error} ({error:?})"),
+    }
+    let config = supported()?
+        .find(|config| {
+            config.sample_format() == cpal::SampleFormat::F32
+                && config.channels() >= 2
+                && config.min_sample_rate() <= rate
+                && config.max_sample_rate() >= rate
+        })
+        .ok_or_else(|| {
+            anyhow!(
+                "試聴先が録音のサンプルレート・形式に対応していません。通常出力は変更していません"
+            )
+        })?
+        .with_sample_rate(rate)
+        .config();
+    Ok(config)
+}
+
 fn render(
     output: &mut [f32],
     channels: usize,
@@ -76,35 +154,7 @@ impl Preview {
         gain: f32,
         main_id: Option<&str>,
     ) -> Result<Self> {
-        if main_id == Some(device) {
-            return Err(anyhow!("通常出力とは別の試聴先を選んでください"));
-        }
-        if !devices()?.iter().any(|d| d.id == device) {
-            return Err(anyhow!(
-                "選択した試聴先が見つかりません。出力一覧を更新してください"
-            ));
-        }
-        let id = device
-            .parse()
-            .map_err(|_| anyhow!("試聴先の識別情報が不正です"))?;
-        let dev = host()?
-            .device_by_id(&id)
-            .ok_or_else(|| anyhow!("試聴先を開けません"))?;
-        let config = dev
-            .supported_output_configs()?
-            .find(|c| {
-                c.sample_format() == cpal::SampleFormat::F32
-                    && c.channels() >= 2
-                    && c.min_sample_rate() <= rate
-                    && c.max_sample_rate() >= rate
-            })
-            .ok_or_else(|| {
-                anyhow!(
-                    "試聴先が録音のサンプルレートに対応していません。通常出力は変更していません"
-                )
-            })?
-            .with_sample_rate(rate)
-            .config();
+        let (dev, config) = output_device(device, rate, main_id)?;
         let channels = config.channels as usize;
         let playing = Arc::new(AtomicBool::new(true));
         let failed = Arc::new(AtomicBool::new(false));
@@ -142,6 +192,96 @@ impl Drop for Preview {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn default_config(
+        rate: u32,
+        channels: u16,
+        format: cpal::SampleFormat,
+    ) -> cpal::SupportedStreamConfig {
+        cpal::SupportedStreamConfig::new(channels, rate, cpal::SupportedBufferSize::Unknown, format)
+    }
+
+    #[test]
+    fn matching_default_does_not_enumerate_formats_and_keeps_its_config() {
+        let selected = select_output_config(
+            96_000,
+            || Ok(default_config(96_000, 6, cpal::SampleFormat::F32)),
+            || -> Result<std::vec::IntoIter<cpal::SupportedStreamConfigRange>> {
+                panic!("WASAPI format enumeration must not run")
+            },
+        )
+        .unwrap();
+        assert_eq!(selected.sample_rate, 96_000);
+        assert_eq!(selected.channels, 6);
+    }
+
+    #[test]
+    fn incompatible_or_unavailable_default_uses_only_requested_rate_and_f32_stereo() {
+        for default in [
+            Ok(default_config(48_000, 2, cpal::SampleFormat::F32)),
+            Ok(default_config(96_000, 1, cpal::SampleFormat::F32)),
+            Ok(default_config(96_000, 2, cpal::SampleFormat::I16)),
+            Err(anyhow!("unavailable")),
+        ] {
+            let selected = select_output_config(
+                96_000,
+                || default,
+                || {
+                    Ok([
+                        cpal::SupportedStreamConfigRange::new(
+                            2,
+                            44_100,
+                            48_000,
+                            cpal::SupportedBufferSize::Unknown,
+                            cpal::SampleFormat::F32,
+                        ),
+                        cpal::SupportedStreamConfigRange::new(
+                            2,
+                            44_100,
+                            96_000,
+                            cpal::SupportedBufferSize::Unknown,
+                            cpal::SampleFormat::F32,
+                        ),
+                    ]
+                    .into_iter())
+                },
+            )
+            .unwrap();
+            assert_eq!(selected.sample_rate, 96_000);
+            assert_eq!(selected.channels, 2);
+        }
+        assert!(select_output_config(
+            96_000,
+            || Err(anyhow!("unavailable")),
+            || Ok(std::iter::empty())
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn preview_errors_expose_stage_without_backend_details() {
+        let stage = "試聴先の対応形式を確認できません";
+        let result = select_output_config(
+            96_000,
+            || Err(anyhow!("default unavailable")),
+            || -> Result<std::iter::Empty<cpal::SupportedStreamConfigRange>> {
+                preview_stage(Err::<(), _>("private backend detail"), stage)?;
+                unreachable!()
+            },
+        );
+        assert_eq!(result.unwrap_err().to_string(), stage);
+        for stage in [
+            "試聴先の出力ストリームを作成できません",
+            "試聴先の再生を開始できません",
+        ] {
+            assert_eq!(
+                preview_stage(Err::<(), _>("private backend detail"), stage)
+                    .unwrap_err()
+                    .to_string(),
+                stage
+            );
+        }
+    }
+
     #[test]
     fn comparison_uses_same_position_and_one_gain_without_rt_allocation() {
         let samples = [[0.2, -0.2]; 8];

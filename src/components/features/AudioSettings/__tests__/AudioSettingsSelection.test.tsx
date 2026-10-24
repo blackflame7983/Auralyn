@@ -2,11 +2,19 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { AudioSettingsModal } from '../AudioSettingsModal';
+import { audioApi, type EngineRuntimeStats } from '@/api/audio';
+import { toast } from 'sonner';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
 const devices = {
-    inputs: [{ name: 'ASIO device', host: 'ASIO', channels: 2 }, { name: 'USB mic', host: 'Wasapi', channels: 2 }],
-    outputs: [{ name: 'ASIO device', host: 'ASIO', channels: 2 }, { name: 'Headphones', host: 'Wasapi', channels: 2 }],
+    inputs: [
+        { name: 'ASIO device', host: 'ASIO', channels: 2, index: 0, is_input: true, is_default: true },
+        { name: 'USB mic', host: 'Wasapi', channels: 2, index: 1, is_input: true, is_default: true },
+    ],
+    outputs: [
+        { name: 'ASIO device', host: 'ASIO', channels: 2, index: 0, is_input: false, is_default: true },
+        { name: 'Headphones', host: 'Wasapi', channels: 2, index: 1, is_input: false, is_default: true },
+    ],
 };
 const openSettings = () => render(<AudioSettingsModal isOpen onClose={() => {}} onConfigChange={vi.fn()} />);
 const hostSelect = () => screen.getAllByRole('combobox').find(element =>
@@ -22,7 +30,7 @@ beforeEach(() => {
         return null;
     });
 });
-afterEach(() => { cleanup(); localStorage.clear(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 it('未保存で閉じて再表示してもキャッシュからホストとデバイスを選択する', async () => {
     const first = openSettings();
@@ -80,4 +88,60 @@ it('処理設定の取得前は音づくりを変更しない', async () => {
     expect(await screen.findByRole('switch', { name: '内蔵ボイスチェーン' })).toBeDisabled();
     expect(screen.getByRole('switch', { name: 'ノイズ低減' })).toBeDisabled();
     expect(screen.getByText(/現在の設定を確認できるまで/)).toBeInTheDocument();
+});
+
+it('ノイズ低減OFF中に強度を変更してもONにせず、タッチ・ペンのpointer操作で確定する', async () => {
+    render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const slider = await screen.findByRole('slider', { name: 'ノイズ低減の抑制強度' });
+    await waitFor(() => expect(slider).toBeEnabled());
+    fireEvent.change(slider, { target: { value: '100' } });
+    fireEvent.pointerUp(slider, { pointerType: 'touch' });
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_noise_control_config', {
+        active: false, mode: 'smart', strength: 1, voiceGuard: true,
+    }));
+    await waitFor(() => expect(slider).toBeEnabled());
+    fireEvent.blur(slider);
+    expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'set_noise_control_config')).toHaveLength(1);
+});
+
+it('声を守るの変更でも明示したON/OFF状態を維持する', async () => {
+    render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const guard = await screen.findByRole('switch', { name: '声を守る' });
+    await waitFor(() => expect(guard).toBeEnabled());
+    fireEvent.click(guard);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_noise_control_config', {
+        active: false, mode: 'smart', strength: 0.8, voiceGuard: false,
+    }));
+});
+
+it('モードの選択だけではOFFのノイズ低減を起動しない', async () => {
+    render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const mode = await screen.findByRole('button', { name: '強' });
+    await waitFor(() => expect(mode).toBeEnabled());
+    fireEvent.click(mode);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_noise_control_config', {
+        active: false, mode: 'high', strength: 0.8, voiceGuard: true,
+    }));
+});
+
+it('学習の中止失敗を未処理のPromise拒否にせず、再試行を案内する', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(audioApi, 'cancelNoiseLearning').mockRejectedValue(new Error('offline'));
+    const error = vi.spyOn(toast, 'error');
+    render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const cancel = await screen.findByRole('button', { name: '学習を中止' });
+    await waitFor(() => expect(cancel).toBeEnabled());
+    fireEvent.click(cancel);
+    await waitFor(() => expect(error).toHaveBeenCalledWith('ノイズ学習を中止できませんでした。状態を確認して再試行してください'));
+    expect(cancel).toBeEnabled();
+});
+
+it('不正な入力で学習が失敗したら、以前のプロファイルを今回の成功と表示しない', async () => {
+    vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue({
+        noiseReductionEnabled: true, noiseLearningState: 'invalid', noiseProfileAvailable: true,
+        noiseProfileRms: 0.01,
+    } as EngineRuntimeStats);
+    render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    expect(await screen.findByText('学習を完了できませんでした。入力を確認して再試行してください')).toBeInTheDocument();
+    expect(screen.queryByText(/学習済み RMS/)).not.toBeInTheDocument();
 });

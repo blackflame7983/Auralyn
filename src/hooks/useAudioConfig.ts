@@ -1,24 +1,16 @@
+import { useMessages } from '../i18n/LocaleProvider';
 import { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
-import { audioApi } from '../api/audio';
+import { audioApi, type FrontendBootstrapReply } from '../api/audio';
 import { REVIEW_KEY } from '../api/migration';
+import { readAudioPreferences, type AudioPreferences as AudioConfig } from '../lib/audioPreferences';
 
-let initializationPromise: Promise<void> | null = null;
-
-interface AudioConfig {
-    host: string;
-    input?: string;
-    output?: string;
-    sampleRate?: number;
-    bufferSize?: number;
-    inputChannels?: [number, number];
-    inputId?: string;
-    outputId?: string;
-}
+let initializationPromise: Promise<FrontendBootstrapReply> | null = null;
 
 export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: () => void) => {
+    const t = useMessages();
     const [audioConfig, setAudioConfig] = useState<AudioConfig>({ host: '' });
     const [isInitializing, setIsInitializing] = useState(true);
     const [isEngineRunning, setIsEngineRunning] = useState(false);
@@ -26,6 +18,8 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
     // 初期化と定期取得で共用し、古い応答よりイベント通知を優先する。
     const engineRevision = useRef(0);
     const stopRevision = useRef(0);
+    const initializationStarted = useRef(false);
+    const initializationActive = useRef(true);
 
     const handleConfigUpdate = (config: Partial<AudioConfig> & { host: string }, options?: { audioStarted: true }) => {
         const { host, input, output, sampleRate, bufferSize, inputChannels, inputId, outputId } = config;
@@ -68,142 +62,93 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         }
     };
 
-    // Initialization & Auto-Start
+    // 初回の自動開始はHost寿命gateが調停する。画面は通常Start/pair setterを送らない。
     useEffect(() => {
+        initializationActive.current = true;
+        if (initializationStarted.current) return () => { initializationActive.current = false; };
+        initializationStarted.current = true;
         const init = async () => {
             if (localStorage.getItem(REVIEW_KEY) === 'true') {
                 try {
-                    const saved = JSON.parse(localStorage.getItem('vst_host_audio_config') ?? 'null');
+                    const saved = readAudioPreferences();
                     if (saved && typeof saved.host === 'string') setAudioConfig(saved);
-                } catch (error) {
-                    console.error('移行した音声設定を読み取れませんでした', error);
+                } catch (error) { console.error('移行した音声設定を読み取れませんでした', error); }
+                setIsEngineRunning(false); setIsInitializing(false); onOpenSettings?.(); return;
+            }
+            if (!localStorage.getItem('vst_host_wizard_done')) onWizardRequired();
+            const config = readAudioPreferences();
+            if (config?.host) {
+                if (config.host.toLowerCase() !== 'asio') config.inputChannels = [0, 1];
+                config.sampleRate ||= 48000;
+                config.bufferSize = !config.bufferSize || config.bufferSize > 4096 ? 512 : config.bufferSize;
+                setAudioConfig(config);
+            }
+            let request = engineRevision.current;
+            const stopAtInitialization = stopRevision.current;
+            const current = () => initializationActive.current && stopAtInitialization === stopRevision.current;
+            try {
+                const firstConsumer = initializationPromise === null;
+                if (!initializationPromise) {
+                    initializationPromise = audioApi.frontendBootstrap({
+                        config: config?.host ? { host: config.host, input: config.input, output: config.output,
+                            sampleRate: config.sampleRate, bufferSize: config.bufferSize, inputChannels: config.inputChannels } : null,
+                        inputGain: Number(localStorage.getItem('vst_host_input_gain') ?? '100') / 100,
+                        outputGain: Number(localStorage.getItem('vst_host_output_gain') ?? '100') / 100,
+                    });
                 }
-                setIsEngineRunning(false);
-                setIsInitializing(false);
-                onOpenSettings?.();
-                return;
-            }
-            // Check Wizard Status
-            const wizardDone = localStorage.getItem('vst_host_wizard_done');
-            if (!wizardDone) {
-                onWizardRequired();
-            }
-
-            // Initialize Audio Setup
-            const savedConfig = localStorage.getItem('vst_host_audio_config');
-            if (savedConfig) {
-                try {
-                    const config = JSON.parse(savedConfig);
-                    if (config.host && config.host.toLowerCase() !== 'asio')
-                        config.inputChannels = [0, 1];
-                    if (config.host) {
-                        // Restore UI state
-                        const sr = config.sampleRate || 48000;
-                        let bs = config.bufferSize || 512;
-
-                        // Safety check: If saved buffer size is absurdly large (e.g. 48000), reset it.
-                        // This fixes the issue where a "Locked" buffer size was persisted as user preference.
-                        if (bs > 4096) {
-                            console.warn(`[Config] Resetting suspicious buffer size ${bs} to 512`);
-                            bs = 512;
-                        }
-
-                        setAudioConfig({
-                            host: config.host,
-                            input: config.input,
-                            output: config.output,
-                            sampleRate: sr,
-                            bufferSize: bs,
-                            inputChannels: config.inputChannels
-                        });
-
-                        // Start Engine (Shared Promise Pattern)
-                        // Check if backend already auto-started (fast boot)
-                        if (!initializationPromise) {
-                            const request = engineRevision.current;
-                            initializationPromise = audioApi.getAudioState()
-                                .then(async (state) => {
-                                    if (request !== engineRevision.current) return;
-                                    const streamRunning = state.is_running && state.config
-                                        && await audioApi.getAudioStreamState().then(s => s.running && !s.streamFailed);
-                                    if (request !== engineRevision.current) return;
-                                    if (streamRunning) {
-                                        // Engine already auto-started by backend warmup!
-                                        console.info("[AudioConfig] Engine already running (auto-started)");
-                                        setIsEngineRunning(true);
-                                        setAudioConfig(prev => ({
-                                            ...prev,
-                                            host: state.config!.host || prev.host,
-                                            sampleRate: state.config!.sample_rate ?? prev.sampleRate,
-                                            bufferSize: state.config!.buffer_size ?? prev.bufferSize,
-                                        }));
-                                        toast.success('オーディオエンジン起動');
-                                        if (config.inputChannels) {
-                                            await audioApi.setInputChannels(config.inputChannels[0], config.inputChannels[1]);
-                                        }
-                                        return;
-                                    }
-                                    // Not yet started — send Start command
-                                    const stopAtStart = stopRevision.current;
-                                    const res = await audioApi.start(config.host, config.input, config.output, bs, sr);
-                                    // 自分の起動通知は許容し、それ以降の停止・エラー通知は上書きしない。
-                                    if (stopAtStart !== stopRevision.current) return;
-                                    setIsEngineRunning(true);
-                                    setAudioConfig(prev => {
-                                        if (prev.sampleRate === res.sample_rate && prev.bufferSize === res.buffer_size) return prev;
-                                        return { ...prev, sampleRate: res.sample_rate, bufferSize: res.buffer_size };
-                                    });
-                                    toast.success('オーディオエンジン起動');
-                                    if (config.inputChannels) {
-                                        await audioApi.setInputChannels(config.inputChannels[0], config.inputChannels[1]);
-                                    }
-                                })
-                                .catch(e => {
-                                    if (request !== engineRevision.current) return;
-                                    console.error("Auto-start failed:", e);
-                                    setIsEngineRunning(false);
-                                    toast.error('オーディオエンジンの起動に失敗しました', {
-                                        description: /アクセス.*拒否|0x80070005|access.*denied/i.test(String(e))
-                                            ? 'Windowsのマイク権限を確認してください。音声設定に確認手順があります。'
-                                            : '設定を確認してください',
-                                        action: onOpenSettings ? {
-                                            label: '設定',
-                                            onClick: () => onOpenSettings()
-                                        } : undefined,
-                                        duration: 8000,
-                                    });
-                                });
-                        }
-
-                        initializationPromise.finally(() => {
-                            setTimeout(() => setIsInitializing(false), 500);
-                        });
-                        return;
+                const bootstrap = await initializationPromise;
+                if (!current()) return;
+                if (bootstrap?.error) throw new Error(bootstrap.error);
+                if (!config?.host) return;
+                let snapshot: { state: Awaited<ReturnType<typeof audioApi.getAudioState>>; streamRunning: boolean } | null = null;
+                // warmup通知で古くなったsnapshotだけ最大3回取り直す。bootstrap自体は再送しない。
+                for (let attempt = 0; attempt < 3; attempt += 1) {
+                    if (!current()) return;
+                    request = engineRevision.current;
+                    try {
+                        const state = await audioApi.getAudioState();
+                        if (!current()) return;
+                        if (request !== engineRevision.current) continue;
+                        const streamRunning = state.is_running && !!state.config
+                            && await audioApi.getAudioStreamState().then(value => value.running && !value.streamFailed);
+                        if (!current()) return;
+                        if (request !== engineRevision.current) continue;
+                        snapshot = { state, streamRunning }; break;
+                    } catch (error) {
+                        if (!current()) return;
+                        if (request !== engineRevision.current) continue;
+                        throw error;
                     }
-                } catch (e) {
-                    console.error("Failed to parse saved config:", e);
                 }
+                if (!snapshot) {
+                    console.warn('[AudioConfig] 起動状態の変更が続いたため状態取得を中止しました。設定で現在値を確認してください。');
+                    return;
+                }
+                setIsEngineRunning(snapshot.streamRunning);
+                if (snapshot.streamRunning && snapshot.state.config) {
+                    const actual = snapshot.state.config;
+                    setAudioConfig(previous => ({ ...previous, host: actual.host || previous.host,
+                        sampleRate: actual.sample_rate ?? previous.sampleRate, bufferSize: actual.buffer_size ?? previous.bufferSize }));
+                    if (firstConsumer && bootstrap?.outcome === 'started') toast.success(t('audioNotices.engineStarted'));
+                }
+            } catch (error) {
+                if (!current() || request !== engineRevision.current) return;
+                console.error('Auto-start failed:', error);
+                setIsEngineRunning(false);
+                toast.error(t('audioNotices.startFailed'), {
+                    description: /アクセス.*拒否|0x80070005|access.*denied/i.test(String(error))
+                        ? t('audioNotices.microphonePermission') : t('audioNotices.checkSettings'),
+                    action: onOpenSettings ? { label: t('audioNotices.settings'), onClick: () => onOpenSettings() } : undefined,
+                    duration: 8000,
+                });
+            } finally {
+                if (initializationActive.current) setTimeout(() => { if (initializationActive.current) setIsInitializing(false); }, 500);
             }
-
-            // Fallback if no config
-            setIsEngineRunning(false);
-            setIsInitializing(false);
         };
-
-        init();
+        void init();
+        return () => { initializationActive.current = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Run once
-
-    // Persistence - REMOVED Auto-Save
-    // We only save when handleConfigUpdate is explicitly called (User Action).
-    // This prevents "Automatic Adjustments" (from audio-started event) from corrupting User Preferences.
-    /*
-    useEffect(() => {
-        if (audioConfig.host) {
-            localStorage.setItem('vst_host_audio_config', JSON.stringify(audioConfig));
-        }
-    }, [audioConfig]);
-    */
+    }, []);
 
     // Audio Sync Listener (Fallback detection)
     useEffect(() => {
@@ -226,7 +171,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
                     const bsMismatch = reqBs && reqBs !== actualBs;
 
                     if (srMismatch || bsMismatch) {
-                        toast.info(`設定を自動調整しました（互換性のため安全側に変更）：${actualSr}Hz / ${actualBs}`);
+                        toast.info(t('audioNotices.adjusted', { rate: actualSr, buffer: actualBs }));
                     }
                 }
             } catch (e) {
@@ -253,7 +198,14 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
             checking = true;
             const request = engineRevision.current;
             try {
-                const [process, stream] = await Promise.all([audioApi.getAudioState(), audioApi.getAudioStreamState()]);
+                const process = await audioApi.getAudioState();
+                if (!active || request !== engineRevision.current) return;
+                if (!process.is_running) {
+                    setEngineProcessReady(false);
+                    setIsEngineRunning(false);
+                    return;
+                }
+                const stream = await audioApi.getAudioStreamState();
                 if (!active || request !== engineRevision.current) return;
                 setEngineProcessReady(!!process.is_running);
                 setIsEngineRunning(!!process.is_running && !!process.config && stream.running && !stream.streamFailed);

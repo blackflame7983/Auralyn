@@ -1,3 +1,5 @@
+import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
+import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '../../../api/audio';
@@ -30,6 +32,7 @@ export function LoudnessCheck({
     enabled?: boolean;
     onVoiceCheck: () => void;
 }) {
+    const t = useMessages();
     const [autoGainOpen, setAutoGainOpen] = useState(false);
     const [visible, setVisible] = useState(() => !document.hidden);
     const available = enabled && visible;
@@ -44,7 +47,7 @@ export function LoudnessCheck({
     const [target, setTarget] = useState(DEFAULT_TARGET);
     const [reading, setReading] = useState<LoudnessReading | null>(null);
     const [verdict, setVerdict] = useState<Verdict | null>(null);
-    const [error, setError] = useState('');
+    const [error, setError] = useState<SettingsNotice>('');
     const [stale, setStale] = useState(false);
     const [stopUnconfirmed, setStopUnconfirmed] = useState(false);
     const id = useRef<number | null>(null);
@@ -140,7 +143,7 @@ export function LoudnessCheck({
                                 if (generation.current !== operation) return;
                                 setStopUnconfirmed(true);
                                 setError(
-                                    '測定状態を確認できませんでした。停止を再試行してください。',
+                                    notice('meterBrowser.copy.037'),
                                 );
                             })
                             .finally(() => {
@@ -185,7 +188,7 @@ export function LoudnessCheck({
             .catch(() => {
                 if (generation.current !== operation) return;
                 setStopUnconfirmed(true);
-                setError('測定状態を確認できませんでした。停止を再試行してください。');
+                setError(notice('meterBrowser.copy.038'));
             })
             .finally(() => {
                 if (generation.current !== operation) return;
@@ -232,7 +235,7 @@ export function LoudnessCheck({
             suppressReading.current = true;
             setActive(true);
             setStopUnconfirmed(true);
-            setError('測定状態を確認できませんでした。停止を再試行してください。');
+            setError(notice('meterBrowser.copy.039'));
         } finally {
             if (generation.current === operation) {
                 pending.current = false;
@@ -241,38 +244,38 @@ export function LoudnessCheck({
         }
     };
     const message = stopUnconfirmed
-        ? '測定の停止を確認できません'
+        ? t('meterBrowser.copy.040')
         : busy && active
-          ? '測定を停止しています'
+          ? t('meterBrowser.copy.041')
           : !running
             ? stateKnown
-              ? '音声は停止中です'
-              : '音声の稼働状態を確認できません'
+              ? t('meterBrowser.copy.042')
+              : t('meterBrowser.copy.043')
             : !available && !active
-              ? '音量チェックは休止中です'
+              ? t('meterBrowser.copy.044')
               : !active
-                ? '測定は停止中です'
+                ? t('meterBrowser.copy.045')
                 : stale
-                  ? '音声データを確認できません'
+                  ? t('meterBrowser.copy.046')
                   : reading && !reading.supported
-                    ? 'このサンプルレートでは測定できません'
+                    ? t('meterBrowser.copy.047')
                     : verdict
-                      ? verdictLabel[verdict]
+                      ? t(verdictLabel[verdict])
                       : reading?.silent
-                        ? '音が小さいか、無音です'
-                        : '測定中です。普段の声で3秒以上話してください';
+                        ? t('meterBrowser.copy.048')
+                        : t('meterBrowser.copy.049');
     const good = verdict === 'good' && active && !stale;
     // アンマウントせず停止を確認し、停止失敗時の再試行だけは隠さない。
     if (!enabled && !active && !busy && !stopUnconfirmed) return null;
 
     return (
         <section
-            aria-label="出力の音量チェック"
+            aria-label={t('meterBrowser.copy.050')}
             className="mb-4 rounded-xl border border-border bg-card p-4 space-y-2"
         >
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-sm font-semibold">出力の音量チェック</h2>
+                    <h2 className="text-sm font-semibold">{t('meterBrowser.copy.051')}</h2>
                     <p
                         role="status"
                         className={`text-lg font-bold ${good ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-800 dark:text-amber-300'}`}
@@ -287,40 +290,37 @@ export function LoudnessCheck({
                     className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
                 >
                     {busy
-                        ? '切替中…'
+                        ? t('meterBrowser.copy.052')
                         : stopUnconfirmed
-                          ? '停止を再試行'
+                          ? t('meterBrowser.copy.053')
                           : active
-                            ? '測定を止める'
-                            : '測定する'}
+                            ? t('meterBrowser.copy.054')
+                            : t('meterBrowser.copy.055')}
                 </button>
                 <button className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
-                    disabled={!running || !available || busy} onClick={() => setAutoGainOpen(true)}>音量を合わせる</button>
+                    disabled={!running || !available || busy} onClick={() => setAutoGainOpen(true)}>{t('meterBrowser.copy.056')}</button>
                 </div>
             </div>
             <p className="text-xs text-muted-foreground">
-                Auralynの最終出力だけの目安です。ゲーム音を含む配信全体は判定しません。
-            </p>
+                {t('meterBrowser.copy.057')}</p>
             {autoGainOpen && available && running && <AutoGainDialog onClose={() => setAutoGainOpen(false)} />}
             {active && reading && (
                 <p className="text-xs text-muted-foreground font-mono">
-                    短時間（3秒） {reading.short_term_lufs?.toFixed(1) ?? '—'} LUFS ／ true peak推定{' '}
-                    {reading.true_peak_dbtp?.toFixed(1) ?? '—'} dBTP
+                    {t('meterBrowser.loudness.reading', { lufs: reading.short_term_lufs?.toFixed(1) ?? '—', peak: reading.true_peak_dbtp?.toFixed(1) ?? '—' })}
                 </p>
             )}
             {error && (
                 <p role="alert" className="text-sm text-amber-800 dark:text-amber-300">
-                    {error}
+                    {renderNotice(t, error)}
                 </p>
             )}
             <details className="text-xs text-muted-foreground">
-                <summary className="cursor-pointer">目安と測定について</summary>
+                <summary className="cursor-pointer">{t('meterBrowser.copy.060')}</summary>
                 <div className="mt-2 space-y-2">
-                    <p>テスト音・試聴音も測定に含みます。測定の開始は手動です。</p>
+                    <p>{t('meterBrowser.copy.061')}</p>
                     <label className="flex flex-wrap items-center gap-2">
-                        声用の目標（仮の目安）
-                        <select
-                            aria-label="音量の目標"
+                        {t('meterBrowser.copy.062')}<select
+                            aria-label={t('meterBrowser.copy.063')}
                             value={target}
                             onChange={(e) => {
                                 setTarget(Number(e.target.value));
@@ -336,17 +336,11 @@ export function LoudnessCheck({
                         </select>
                     </label>
                     <p>
-                        初期値は−20 LUFS、目安の幅は±3
-                        LUです。YouTubeなどの公式基準ではありません。true peak推定が−1
-                        dBTPを超える場合は、3秒未満でも「大きすぎ」と表示します。それ以外は音がある区間が不足すると判定しません。
-                    </p>
+                        {t('meterBrowser.copy.064')}</p>
                     <p>
-                        44.1〜192
-                        kHz、ステレオ出力のK-weightingと4倍補間による参考値です。認証済みメーターではありません。測定だけでは音量を変えません。「音量を合わせる」では変更予定を確認して適用できます。
-                    </p>
+                        {t('meterBrowser.copy.065')}</p>
                     <button className="underline underline-offset-2" onClick={onVoiceCheck}>
-                        ボイスチェックで聴いて確認する
-                    </button>
+                        {t('meterBrowser.copy.066')}</button>
                 </div>
             </details>
         </section>

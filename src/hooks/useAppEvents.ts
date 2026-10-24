@@ -1,10 +1,12 @@
+import { useMessages } from '../i18n/LocaleProvider';
 import { useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
-import { audioApi, VstPlugin } from '../api/audio';
-import { obsApi } from '../api/obs';
-import { presetApi } from '../api/presets';
+import { VstPlugin } from '../api/audio';
+import { useAudioRecovery } from './useAudioRecovery';
+import { useLiveSceneRouting } from './useLiveSceneRouting';
+import { confirmShortcutOutputGain, type ShortcutGainIntent } from '../api/outputGain';
 
 interface UseAppEventsProps {
     onAddPlugin: (plugin: VstPlugin) => Promise<boolean>;
@@ -19,6 +21,7 @@ export const useAppEvents = ({
     onCrash,
     onLoadPreset
 }: UseAppEventsProps) => {
+    const t = useMessages();
 
     // File Drop Listener (Tauri V2 API)
     useEffect(() => {
@@ -35,7 +38,7 @@ export const useAppEvents = ({
                         for (const path of paths) {
                             if (path.toLowerCase().endsWith('.vst3')) {
                                 const name = path.split(/[\\/]/).pop()?.replace(/\.vst3$/i, '') || 'Unknown Plugin';
-                                toast.info(`${name} を読み込み中...`);
+                                toast.info(t('audioNotices.loadingPlugin', { name }));
 
                                 onAddPlugin({
                                     path,
@@ -47,7 +50,7 @@ export const useAppEvents = ({
                                 } as VstPlugin);
 
                             } else {
-                                toast.warning(`未対応のファイルです: ${path}`, { description: '.vst3 ファイルのみ対応しています。' });
+                                toast.warning(t('audioNotices.unsupportedFile', { path }), { description: t('audioNotices.vstOnly') });
                             }
                         }
                     }
@@ -83,104 +86,42 @@ export const useAppEvents = ({
         };
     }, [onResetPlugins, onCrash]);
 
-    // Device Hot-Plug / Stream Error Listener (Auto-Recovery)
-    useEffect(() => {
-        let retryTimer: ReturnType<typeof setTimeout> | null = null;
-        let retryCount = 0;
-        let isRetrying = false;
-        const MAX_RETRIES = 3;
-
-        const unlisten = listen<string>('audio-stream-error', async (event) => {
-            const msg = event.payload;
-
-            // Only attempt recovery for device-related errors
-            if (!msg.includes('Stream Error') && !msg.includes('Input Stream Error')) return;
-
-            // Gate: ignore rapid duplicate errors while a retry is already scheduled
-            if (isRetrying) return;
-
-            retryCount++;
-            if (retryCount > MAX_RETRIES) {
-                toast.error('デバイスの再接続に失敗しました', {
-                    description: '設定からオーディオデバイスを確認してください。',
-                });
-                retryCount = 0;
-                return;
-            }
-
-            isRetrying = true;
-            toast.warning('オーディオデバイスの接続が切れました', {
-                description: `自動復帰を試みています... (${retryCount}/${MAX_RETRIES})`,
-                duration: 5000,
-            });
-
-            // Wait for the device to stabilize, then attempt restart (linear backoff: 2s, 4s, 6s)
-            if (retryTimer) clearTimeout(retryTimer);
-            retryTimer = setTimeout(async () => {
-                isRetrying = false;
-                try {
-                    const savedConfig = localStorage.getItem('vst_host_audio_config');
-                    if (savedConfig) {
-                        const config = JSON.parse(savedConfig);
-                        await audioApi.restart(
-                            config.host,
-                            config.input || undefined,
-                            config.output || undefined,
-                            config.bufferSize || undefined,
-                            config.sampleRate || undefined,
-                        );
-                        toast.success('オーディオエンジンを再接続しました');
-                        retryCount = 0;
-                    }
-                } catch {
-                    // Recovery failed - next stream error will trigger another attempt
-                }
-            }, 2000 * retryCount);
-        });
-
-        return () => {
-            unlisten.then(f => f());
-            if (retryTimer) clearTimeout(retryTimer);
-        };
-    }, []);
-
-    // OBS Scene Listener
-    useEffect(() => {
-        const unlisten = obsApi.onSceneChanged(async (sceneName) => {
-            try {
-                const list = await presetApi.list();
-                if (list.includes(sceneName)) {
-                    toast.info(`シーン "${sceneName}" を検知。プリセットを読み込み中...`);
-                    await onLoadPreset(sceneName);
-                } else {
-                    // No preset matching scene name
-                }
-            } catch (e) {
-                console.error("OBS Integration Error:", e);
-            }
-        });
-
-        return () => {
-            unlisten.then(f => f());
-        };
-    }, [onLoadPreset]);
+    useAudioRecovery();
+    useLiveSceneRouting(onLoadPreset);
 
     // キー入力はネイティブへ一本化し、前面で二重に切り替わるのを防ぐ。
     useEffect(() => {
-        const error = listen<string>('shortcut-error', event => toast.error('キー操作を適用できませんでした', { description: event.payload }));
+        let active = true;
+        let gainSequence = 0;
+        const cancelGain = () => { gainSequence += 1; };
+        window.addEventListener('output-gain-intent', cancelGain);
+        window.addEventListener('output-gain-sync', cancelGain);
+        const lifecycle = ['audio-started', 'audio-stopped', 'audio-error', 'audio-stream-error'].map(name => listen(name, cancelGain));
+        const error = listen<string>('shortcut-error', event => toast.error(t('audioNotices.shortcutFailed'), { description: t('audioNotices.rawDetail', { detail: event.payload }) }));
         const gain = listen<number>('shortcut-stopped-gain', event => {
+            gainSequence += 1;
             if (!Number.isFinite(event.payload) || event.payload < 0 || event.payload > 200) return;
             localStorage.setItem('vst_host_output_gain', String(event.payload));
             window.dispatchEvent(new CustomEvent('output-gain-sync', { detail: event.payload }));
         });
-        return () => { void error.then(stop => stop()); void gain.then(stop => stop()); };
+        const runningGain = listen<ShortcutGainIntent>('shortcut-output-gain', event => {
+            const sequence = ++gainSequence;
+            void confirmShortcutOutputGain(event.payload, () => active && gainSequence === sequence)
+                .catch(() => { if (active && gainSequence === sequence) toast.error(t('audioNotices.gainUnconfirmed')); });
+        });
+        return () => {
+            active = false; gainSequence += 1;
+            window.removeEventListener('output-gain-intent', cancelGain);
+            window.removeEventListener('output-gain-sync', cancelGain);
+            [error, gain, runningGain, ...lifecycle].forEach(promise => { void promise.then(stop => stop()); });
+        };
     }, []);
 
     // 通常版・MSIX版を含む二重起動では既存のアプリだけを使う。
     useEffect(() => {
         const unlisten = listen('second-instance', () => {
-            toast.info('Auralynはすでに起動しています', {
-                description: '通常版とMSIX版は同時に実行できません。版を切り替える場合は、先にトレイメニューから終了してください。',
+            toast.info(t('audioNotices.alreadyRunning'), {
+                description: t('audioNotices.oneInstance'),
             });
         });
         return () => { unlisten.then(f => f()); };
@@ -192,7 +133,7 @@ export const useAppEvents = ({
         const unlisten = listen('minimized-to-tray', () => {
             if (!notified) {
                 notified = true;
-                toast.info('システムトレイに最小化しました。トレイアイコンから復帰できます。', {
+                toast.info(t('audioNotices.minimized'), {
                     duration: 4000,
                 });
             }

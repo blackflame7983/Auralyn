@@ -5,7 +5,7 @@ use std::{
     path::Path,
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Mutex,
     },
 };
@@ -23,6 +23,8 @@ pub enum Action {
     BypassOff,
     GainUp,
     GainDown,
+    SingingOn,
+    TalkOn,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -39,7 +41,7 @@ pub struct Status {
     errors: Vec<String>,
 }
 #[derive(Default)]
-pub struct Shortcuts(pub Mutex<Status>, AtomicBool);
+pub struct Shortcuts(pub Mutex<Status>, AtomicBool, AtomicU64);
 
 fn defaults() -> Vec<Binding> {
     vec![
@@ -176,24 +178,48 @@ pub async fn save_shortcuts(app: AppHandle, bindings: Vec<Binding>) -> Result<St
 }
 
 pub fn dispatch(app: AppHandle, id: u32) {
+    let action = app.state::<Shortcuts>().0.lock().ok().and_then(|status| {
+        status
+            .bindings
+            .iter()
+            .find(|binding| Shortcut::from_str(&binding.shortcut).is_ok_and(|key| key.id() == id))
+            .map(|binding| binding.action.clone())
+    });
+    let Some(action) = action else {
+        return;
+    };
+    let is_mode = matches!(action, Action::SingingOn | Action::TalkOn);
+    let intent_sequence = if is_mode {
+        app.state::<Shortcuts>().2.fetch_add(1, Ordering::AcqRel) + 1
+    } else {
+        0
+    };
     tauri::async_runtime::spawn_blocking(move || {
         let result = (|| -> anyhow::Result<()> {
-            let action = app
-                .state::<Shortcuts>()
-                .0
-                .lock()
-                .map_err(|_| anyhow::anyhow!("キー設定を取得できません"))?
-                .bindings
-                .iter()
-                .find(|b| Shortcut::from_str(&b.shortcut).is_ok_and(|k| k.id() == id))
-                .map(|b| b.action.clone());
-            let Some(action) = action else { return Ok(()) };
             let audio = app.state::<crate::audio::AudioState>();
             let mut host = audio
                 .0
                 .lock()
                 .map_err(|_| anyhow::anyhow!("音声状態を取得できません"))?;
             match action {
+                Action::SingingOn | Action::TalkOn => {
+                    if intent_sequence != app.state::<Shortcuts>().2.load(Ordering::Acquire) {
+                        return Ok(());
+                    }
+                    use crate::audio_engine::live_modes::{Intent, Request};
+                    let epoch = host.live_modes(Request::Snapshot)?.epoch;
+                    let intent = Intent {
+                        client_id: "shortcuts".into(),
+                        sequence: intent_sequence,
+                        expected_epoch: epoch,
+                    };
+                    let request = if action == Action::SingingOn {
+                        Request::SingingOn { intent }
+                    } else {
+                        Request::TalkOn { intent }
+                    };
+                    host.live_modes(request)?;
+                }
                 Action::MuteToggle => host.toggle_global_mute()?,
                 Action::MuteOn => host.set_global_mute(true)?,
                 Action::MuteOff => host.set_global_mute(false)?,
@@ -220,6 +246,9 @@ pub fn dispatch(app: AppHandle, id: u32) {
                     host.set_output_gain(next)?;
                     if !status.running {
                         app.emit("shortcut-stopped-gain", next * 100.0)?;
+                    } else {
+                        let intent = host.shortcut_gain_intent(next)?;
+                        app.emit("shortcut-output-gain", intent)?;
                     }
                 }
             }
@@ -234,6 +263,30 @@ pub fn dispatch(app: AppHandle, id: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn live_modes_hotkeys_are_explicit_not_auto_registered_and_keep_eight_binding_limit() {
+        assert!(defaults()
+            .iter()
+            .all(|binding| !matches!(binding.action, Action::SingingOn | Action::TalkOn)));
+        let bindings = vec![
+            Binding {
+                action: Action::SingingOn,
+                shortcut: "Alt+KeyS".into(),
+            },
+            Binding {
+                action: Action::TalkOn,
+                shortcut: "Alt+KeyT".into(),
+            },
+        ];
+        assert!(validate(&bindings).is_ok());
+        let json = serde_json::to_string(&bindings).unwrap();
+        assert!(json.contains("singingOn") && json.contains("talkOn"));
+        let old: Vec<Binding> =
+            serde_json::from_str(r#"[{"action":"muteToggle","shortcut":"Alt+KeyM"}]"#).unwrap();
+        assert!(validate(&old).is_ok());
+        assert!(validate(&vec![bindings[0].clone(); 9]).is_err());
+    }
+
     #[test]
     fn duplicates_plain_keys_and_invalid_shortcuts_do_not_register() {
         assert!(validate(&defaults()).is_ok());

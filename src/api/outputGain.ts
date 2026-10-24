@@ -1,3 +1,4 @@
+import { FixedClientError } from '@/lib/clientError';
 import { invoke } from '@tauri-apps/api/core';
 
 export interface GainProposal {
@@ -52,47 +53,70 @@ function enqueue<T>(run: () => Promise<T>): Promise<T> {
     return next;
 }
 export async function gainCommand(request: GainRequest): Promise<GainSnapshot> {
+    if (request.action === 'initialize' || request.action === 'apply' || request.action === 'restore') {
+        window.dispatchEvent(new Event('output-gain-intent'));
+    }
     const state = await enqueue(() => invoke<GainSnapshot>('auto_gain', { request }));
     publishOutputGain(state);
     return state;
+}
+// 初期表示やreloadの観測では、engine既定値を保存済み意図へ書き戻さない。
+export async function readOutputGainStatus(): Promise<GainSnapshot> {
+    return enqueue(() => invoke<GainSnapshot>('auto_gain', { request: { action: 'status' } }));
+}
+export interface ShortcutGainIntent { generation: string; revision: number; gain: number }
+// 明示hotkeyの同じ要求だけを確認し、途中の再起動や新しい音量を保存へ流用しない。
+export async function confirmShortcutOutputGain(intent: ShortcutGainIntent, isCurrent: () => boolean): Promise<void> {
+    if (!intent || typeof intent.generation !== 'string' || !Number.isSafeInteger(intent.revision)
+        || !Number.isFinite(intent.gain) || intent.gain < 0 || intent.gain > 2) return;
+    for (let attempt = 0; attempt < 25 && isCurrent(); attempt += 1) {
+        const observed = await enqueue(() => invoke<{ generation: string; state: GainSnapshot }>('get_output_gain_observation'));
+        if (!isCurrent()) return;
+        const state = observed.state;
+        if (observed.generation !== intent.generation || state.revision !== intent.revision
+            || state.gain !== intent.gain || state.streamFailed || !state.running) return;
+        if (state.settled && state.confirmedGain === intent.gain) { publishOutputGain(state); return; }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
 }
 export async function confirmOutputGain(expected: GainSnapshot): Promise<GainSnapshot> {
     for (let i = 0; i < 25; i++) {
         const state = await gainCommand({ action: 'status' });
         if (state.revision !== expected.revision || state.gain !== expected.gain) {
-            throw new Error('音声設定が変わりました。現在の音量を確認してください。');
+            throw new FixedClientError('gain.settingsChanged');
         }
         if (state.settled) return state;
         await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    throw new Error('音量の反映を確認できません。状態を再取得してください。');
+    throw new FixedClientError('gain.unconfirmed');
 }
 let writes: Promise<unknown> = Promise.resolve();
 // 明示設定済みならエンジン側で無操作にし、返された実値へ同期する。
 export async function restoreSavedOutputGain(value: number): Promise<void> {
     if (!Number.isFinite(value) || value < 0 || value > 2)
-        throw new Error('出力音量は0〜200%で指定してください。');
+        throw new FixedClientError('gain.range');
     // 起動中のストリーム切替や明示操作は正常な世代変更として扱う。
     // initializeは明示設定済みの実値を上書きしないため、再送しても旧値に戻らない。
     for (let i = 0; i < 25; i++) {
         const state = await gainCommand({ action: 'initialize', value });
-        if (state.streamFailed) throw new Error('音声状態を確認できません。再試行してください。');
+        if (state.streamFailed) throw new FixedClientError('gain.audioUnverified');
         if (!state.running || state.settled) return;
         await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    throw new Error('音量の反映を確認できません。状態を再取得してください。');
+    throw new FixedClientError('gain.unconfirmed');
 }
 
 export function setOutputGain(value: number): Promise<void> {
+    window.dispatchEvent(new Event('output-gain-intent'));
     const run = writes
         .catch(() => {})
         .then(async () => {
             if (!Number.isFinite(value) || value < 0 || value > 2)
-                throw new Error('出力音量は0〜200%で指定してください。');
+                throw new FixedClientError('gain.range');
             await enqueue(() => invoke('set_output_gain', { value }));
             const state = await gainCommand({ action: 'status' });
             if (state.streamFailed || Math.abs(state.gain - value) > 0.000001) {
-                throw new Error('音声状態が変わりました。現在の音量を確認してください。');
+                throw new FixedClientError('gain.audioChanged');
             }
             if (!state.running) {
                 localStorage.setItem('vst_host_output_gain', String(value * 100));

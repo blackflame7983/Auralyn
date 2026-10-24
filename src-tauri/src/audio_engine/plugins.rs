@@ -47,6 +47,39 @@ impl Default for PluginManager {
 }
 
 impl PluginManager {
+    pub(crate) fn reserve_restored_index(
+        &mut self,
+        staged: &super::restoration::StagedRestore,
+    ) -> Result<u8> {
+        staged.check_deadline()?;
+        self.alloc_rt_index(&staged.instance.id)
+    }
+
+    pub(crate) fn commit_restored(
+        &mut self,
+        staged: super::restoration::StagedRestore,
+        index: u8,
+    ) -> (String, String, u8) {
+        let id = staged.instance.id.clone();
+        let name = staged.instance.name.clone();
+        if staged.request.bypassed {
+            self.bypassed.insert(id.clone());
+        }
+        if staged.request.muted {
+            self.muted.insert(id.clone());
+        }
+        self.gains.insert(id.clone(), staged.request.gain);
+        self.order.push(id.clone());
+        self.plugins.insert(id.clone(), staged.instance);
+        (id, name, index)
+    }
+
+    pub(crate) fn stop_processing(&mut self) {
+        for instance in self.plugins.values_mut() {
+            instance.stop_processing();
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             plugins: HashMap::new(),
@@ -92,6 +125,21 @@ impl PluginManager {
         self.rt_index_by_id.get(id).copied()
     }
 
+    pub fn reorder_plugins(&mut self, order: Vec<String>) -> Result<()> {
+        // 欠落・重複・古いIDを含む要求では、処理中のチェーンを部分的に消さない。
+        let requested: HashSet<_> = order.iter().collect();
+        if order.len() != self.order.len()
+            || requested.len() != order.len()
+            || self.order.iter().any(|id| !requested.contains(id))
+        {
+            return Err(anyhow!(
+                "Plugin order must contain each loaded plugin exactly once"
+            ));
+        }
+        self.order = order;
+        Ok(())
+    }
+
     pub fn free_rt_index(&mut self, id: &str) {
         let Some(idx) = self.rt_index_by_id.remove(id) else {
             return;
@@ -129,7 +177,8 @@ impl PluginManager {
             if let Err(e) =
                 instance.prepare_processing(sample_rate, block_size as i32, channels as i32)
             {
-                log::warn!("Failed to prepare plugin {} on load: {}", name, e);
+                self.free_rt_index(&id);
+                return Err(e);
             }
             processor = instance.create_processor();
         }
@@ -235,30 +284,45 @@ impl PluginManager {
         sample_rate: f64,
         channels: usize,
         safe_max_block_size: usize,
-    ) -> Vec<(u8, VstProcessor)> {
-        let mut processors = Vec::new();
-
-        for id in &self.order {
-            if self.pending_init.contains(id) {
-                continue;
-            }
-            if let Some(instance) = self.plugins.get_mut(id) {
-                if let Err(e) = instance.prepare_processing(
-                    sample_rate,
-                    safe_max_block_size as i32,
-                    channels as i32,
-                ) {
-                    log::warn!("Failed to prepare plugin {}: {}", instance.name, e);
-                }
-                if let Some(proc) = instance.create_processor() {
-                    if let Some(idx) = self.rt_index_of(id) {
-                        processors.push((idx, proc));
-                    }
-                }
-            }
+    ) -> Result<Vec<(u8, VstProcessor)>> {
+        if !self.pending_init.is_empty() {
+            return Err(anyhow!("VSTの遅延初期化が完了するまで音声を開始できません"));
         }
+        let mut processors = Vec::new();
+        let prepared = (|| -> Result<()> {
+            for id in &self.order {
+                if let Some(instance) = self.plugins.get_mut(id) {
+                    instance
+                        .prepare_processing(
+                            sample_rate,
+                            safe_max_block_size as i32,
+                            channels as i32,
+                        )
+                        .map_err(|error| {
+                            anyhow!("{} ({id}) の音声準備に失敗しました: {error}", instance.name)
+                        })?;
+                    if instance.needs_deferred_connection() {
+                        instance.finalize_connection()?;
+                    }
+                    let proc = instance
+                        .create_processor()
+                        .ok_or_else(|| anyhow!("{} のprocessorを作成できません", instance.name))?;
+                    let idx = self
+                        .rt_index_of(id)
+                        .ok_or_else(|| anyhow!("VST slotが見つかりません"))?;
+                    processors.push((idx, proc));
+                }
+            }
 
-        processors
+            Ok(())
+        })();
+        if let Err(error) = prepared {
+            // processor参照を先に制御側で解放してから、成功済み・失敗途中の全VSTを停止。
+            drop(processors);
+            self.stop_processing();
+            return Err(error);
+        }
+        Ok(processors)
     }
 
     pub fn on_processor_retired(&mut self, index: u8) {
@@ -289,28 +353,95 @@ impl PluginManager {
             .unwrap_or(u32::MAX)
     }
 
-    pub fn total_latency_samples(&self, global_bypass: bool) -> u32 {
-        if global_bypass {
-            return 0;
-        }
-
-        let mut total: u64 = 0;
-        for id in &self.order {
-            if self.bypassed.contains(id) {
-                continue;
-            }
-            if let Some(instance) = self.plugins.get(id) {
-                total = total.saturating_add(instance.latency_samples() as u64);
-            }
-        }
-
-        total.min(u32::MAX as u64) as u32
+    /// 一回のgetter巡回から旧互換小計と段別申告を得る。
+    pub fn latency_report(
+        &self,
+        global_bypass: bool,
+    ) -> (u32, Option<u32>, bool, Vec<crate::ipc::VstLatencyStage>) {
+        latency_rows(
+            self.order.iter().take(MAX_PLUGINS).filter_map(|id| {
+                self.plugins.get(id).map(|instance| {
+                    (
+                        id.clone(),
+                        instance.name.clone(),
+                        self.bypassed.contains(id),
+                        self.muted.contains(id),
+                        instance.declared_latency_samples(),
+                    )
+                })
+            }),
+            global_bypass,
+        )
     }
+    pub fn total_latency_samples(&self, global_bypass: bool) -> u32 {
+        self.latency_report(global_bypass).0
+    }
+}
+
+fn latency_rows(
+    rows: impl Iterator<Item = (String, String, bool, bool, Option<u32>)>,
+    global: bool,
+) -> (u32, Option<u32>, bool, Vec<crate::ipc::VstLatencyStage>) {
+    let mut total = 0u64;
+    let mut known = true;
+    let mut stages = Vec::with_capacity(MAX_PLUGINS);
+    for (id, name, bypassed, muted, value) in rows.take(MAX_PLUGINS) {
+        if !global && !bypassed {
+            total = total.saturating_add(u64::from(value.unwrap_or(0)));
+            known &= value.is_some();
+        }
+        let state = if global || bypassed {
+            "bypassed"
+        } else if muted {
+            "muted"
+        } else if value.is_none() {
+            "unavailable"
+        } else {
+            "active"
+        };
+        stages.push(crate::ipc::VstLatencyStage {
+            id,
+            name,
+            state: state.into(),
+            bypassed,
+            muted,
+            declared_samples: value,
+        });
+    }
+    let overflow = total > u64::from(u32::MAX);
+    (
+        total.min(u64::from(u32::MAX)) as u32,
+        (known && !overflow).then_some(total as u32),
+        overflow,
+        stages,
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::burned_library_key;
+    use super::{burned_library_key, PluginManager};
+
+    #[test]
+    fn invalid_reorders_preserve_the_chain_and_valid_reorders_preserve_all_plugins() {
+        let mut manager = PluginManager::new();
+        manager.order = vec!["a".into(), "b".into()];
+        for order in [
+            vec![],
+            vec!["a"],
+            vec!["a", "a"],
+            vec!["a", "other"],
+            vec!["b", "a", "extra"],
+        ] {
+            assert!(manager
+                .reorder_plugins(order.into_iter().map(String::from).collect())
+                .is_err());
+            assert_eq!(manager.order, ["a", "b"]);
+        }
+        manager
+            .reorder_plugins(vec!["b".into(), "a".into()])
+            .unwrap();
+        assert_eq!(manager.order, ["b", "a"]);
+    }
 
     #[test]
     fn burned_library_key_is_stable() {
@@ -326,5 +457,28 @@ mod tests {
         let upper = burned_library_key(r"C:\VST3\PLUGIN.VST3");
         let lower = burned_library_key(r"c:\vst3\plugin.vst3");
         assert_eq!(upper, lower);
+    }
+}
+
+#[cfg(test)]
+mod latency_tests {
+    use super::*;
+    #[test]
+    fn latency_unknown_overflow_bypass_and_bound_do_not_create_a_measured_total() {
+        let row = |v| ("id".into(), "Public name".into(), false, false, v);
+        let r = latency_rows([row(None), row(Some(0))].into_iter(), false);
+        assert_eq!(
+            (r.0, r.1, r.2, r.3[0].state.as_str()),
+            (0, None, false, "unavailable")
+        );
+        let r = latency_rows([row(Some(u32::MAX)), row(Some(1))].into_iter(), false);
+        assert_eq!((r.0, r.1, r.2), (u32::MAX, None, true));
+        let r = latency_rows(std::iter::repeat_with(|| row(Some(1))).take(100), true);
+        assert_eq!((r.0, r.1, r.3.len()), (0, Some(0), MAX_PLUGINS));
+        let r = latency_rows(
+            [("id".into(), "Name".into(), true, false, None)].into_iter(),
+            false,
+        );
+        assert_eq!((r.0, r.1, r.3[0].state.as_str()), (0, Some(0), "bypassed"));
     }
 }

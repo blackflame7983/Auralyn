@@ -1,3 +1,6 @@
+import { PluginClientError } from '@/lib/pluginNotice';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
@@ -144,4 +147,115 @@ it('自動確認OFFと長時間試験では定期処理を起動しない', asyn
     await act(async () => {});
     await act(async () => { await vi.advanceTimersByTimeAsync(48 * 60 * 60 * 1000); });
     expect(invoke).not.toHaveBeenCalledWith('check_update');
+});
+
+it.each([false, true])('localeだけで10秒/24hタイマーを再生成せず重複確認・downloadしない（自動取得=%s）', async download => {
+    vi.useFakeTimers(); saveUpdatePolicy({ automatic: true, download });
+    const store = createLocaleStore(() => 'ja', () => true);
+    vi.mocked(invoke).mockImplementation(async command => command === 'get_distribution' ? 'standalone'
+        : command === 'check_update' ? { version: '1.2.0', canInstall: true } : undefined);
+    render(<LocaleProvider store={store}><Harness /></LocaleProvider>);
+    await act(async () => {});
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    act(() => { store.setLocale('en'); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5001); });
+    expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'check_update')).toHaveLength(1);
+    expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'download_update')).toHaveLength(download ? 1 : 0);
+    await act(async () => { await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000 - 10002); });
+    act(() => { store.setLocale('ja'); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2); });
+    expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'check_update')).toHaveLength(download ? 1 : 2);
+    expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'download_update')).toHaveLength(download ? 1 : 0);
+    expect(invoke).not.toHaveBeenCalledWith('install_update', expect.anything());
+});
+
+it('開始localeを非同期toastへ固定し、dialogは現在localeと配布元原文を表示する', async () => {
+    const store = createLocaleStore(() => 'ja', () => true);
+    let finish!: (update: unknown) => void;
+    vi.mocked(invoke).mockImplementation(command => command === 'get_distribution' ? Promise.resolve('standalone')
+        : command === 'check_update' ? new Promise(resolve => { finish = resolve; }) : Promise.resolve());
+    render(<LocaleProvider store={store}><Harness /></LocaleProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'アップデートを確認' }));
+    await act(async () => {});
+    const calls = vi.mocked(invoke).mock.calls.length;
+    act(() => { store.setLocale('en'); });
+    expect(vi.mocked(invoke).mock.calls).toHaveLength(calls);
+    await act(async () => { finish({ version: '2.0.0-beta+001', body: '配布元の原文そのまま', canInstall: true }); });
+    expect(toast.info).toHaveBeenCalledWith('v2.0.0-beta+001 が利用可能です', expect.objectContaining({ action: expect.objectContaining({ label: '更新内容を確認' }) }));
+    expect(screen.getByRole('dialog', { name: 'Update' })).toBeInTheDocument();
+    expect(screen.getByText('Update to v2.0.0-beta+001')).toBeInTheDocument();
+    expect(screen.getByText('配布元の原文そのまま')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open release page' })).toHaveAttribute('href', 'https://github.com/blackflame7983/Auralyn-Releases/releases');
+});
+
+it('確認済みdialogとbusyをlocaleで保持し、保存完了後だけ同versionをinstallする', async () => {
+    const store = createLocaleStore(() => 'en', () => true);
+    const order: string[] = []; let finishSave!: () => void; let finishInstall!: () => void;
+    vi.mocked(invoke).mockImplementation(command => {
+        if (command === 'get_distribution') return Promise.resolve('standalone');
+        if (command === 'check_update') return Promise.resolve({ version: '1.2.0', canInstall: true });
+        if (command === 'install_update') { order.push('install'); return new Promise<void>(resolve => { finishInstall = resolve; }); }
+        return Promise.resolve();
+    });
+    const save = vi.fn((event: Event) => { order.push('save-request'); finishSave = () => { order.push('save-complete'); (event as CustomEvent).detail.resolve(); }; });
+    window.addEventListener('auralyn-save-session', save);
+    try {
+        render(<LocaleProvider store={store}><Harness /></LocaleProvider>);
+        fireEvent.click(await screen.findByRole('button', { name: 'Check for updates' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Update' });
+        fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+        await screen.findByRole('button', { name: 'Save and apply update' });
+        const checkbox = screen.getByRole('checkbox'); fireEvent.click(checkbox);
+        act(() => { store.setLocale('ja'); });
+        expect(screen.getByRole('dialog', { name: 'アップデート' })).toBe(dialog);
+        expect(screen.getByRole('checkbox')).toBe(checkbox); expect(checkbox).toBeChecked();
+        fireEvent.click(screen.getByRole('button', { name: '保存して更新を適用' }));
+        await act(async () => {});
+        const calls = vi.mocked(invoke).mock.calls.length;
+        act(() => { store.setLocale('en'); });
+        expect(vi.mocked(invoke).mock.calls).toHaveLength(calls);
+        expect(checkbox).toBeChecked(); expect(checkbox).toBeDisabled();
+        expect(order).toEqual(['save-request']);
+        expect(screen.getByRole('button', { name: 'Save and apply update' })).toBeDisabled();
+        await act(async () => { finishSave(); });
+        expect(order).toEqual(['save-request', 'save-complete', 'install']);
+        expect(invoke).toHaveBeenCalledWith('install_update', { version: '1.2.0' });
+        await act(async () => { finishInstall(); });
+        expect(save).toHaveBeenCalledOnce();
+        expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'download_update')).toHaveLength(1);
+        expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'install_update')).toHaveLength(1);
+    } finally { window.removeEventListener('auralyn-save-session', save); }
+});
+
+it('Storeを開く待機中のlocale変更でdialogや要求を作り直さず、失敗は現在localeで案内する', async () => {
+    const store = createLocaleStore(() => 'ja', () => true); let fail!: () => void;
+    vi.mocked(invoke).mockImplementation(() => new Promise<void>((_resolve, reject) => { fail = () => reject(new Error('Store unavailable')); }));
+    render(<LocaleProvider store={store}><UpdateGuide onClose={vi.fn()} /></LocaleProvider>);
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Microsoft Storeの更新画面を開く' }));
+    act(() => { store.setLocale('en'); });
+    expect(screen.getByRole('dialog')).toBe(dialog);
+    expect(screen.getByRole('button', { name: 'Open Microsoft Store updates' })).toBeDisabled();
+    expect(invoke).toHaveBeenCalledTimes(1);
+    await act(async () => { fail(); });
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not open the Store');
+    expect(screen.getByRole('button', { name: 'Open Microsoft Store updates' })).toBeEnabled();
+});
+
+
+it('保存失敗のPluginClientErrorは操作開始localeで通知し、更新のinstallへ進まない', async()=>{
+    const store=createLocaleStore(()=> 'ja',()=>true);const error=new PluginClientError('saveProtected');
+    vi.mocked(invoke).mockImplementation(async command=>command==='get_distribution'?'standalone':command==='check_update'?{version:'9.0.0',canInstall:true}:undefined);
+    let fail!:()=>void;const save=(event:Event)=>{fail=()=>(event as CustomEvent).detail.reject(error);};
+    window.addEventListener('auralyn-save-session',save);
+    try{
+        render(<LocaleProvider store={store}><Harness/></LocaleProvider>);
+        fireEvent.click(await screen.findByRole('button',{name:'アップデートを確認'}));
+        fireEvent.click(await screen.findByRole('button',{name:'ダウンロード'}));
+        await screen.findByRole('button',{name:'保存して更新を適用'});fireEvent.click(screen.getByRole('checkbox'));
+        fireEvent.click(screen.getByRole('button',{name:'保存して更新を適用'}));await act(async()=>{});
+        act(()=>{store.setLocale('en');});await act(async()=>{fail();});
+        expect(toast.error).toHaveBeenCalledWith('更新を適用できませんでした',expect.objectContaining({description:error.message}));
+        expect(invoke).not.toHaveBeenCalledWith('install_update',expect.anything());
+    }finally{window.removeEventListener('auralyn-save-session',save);}
 });

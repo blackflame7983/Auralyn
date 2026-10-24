@@ -1,5 +1,5 @@
 mod common;
-use common::{Current, Dsp, FRAME_SIZE, KINDS, Registry};
+use common::{Current, Dsp, Registry, FRAME_SIZE, KINDS};
 use serde::{Deserialize, Serialize};
 use std::{
     alloc::{GlobalAlloc, Layout, System},

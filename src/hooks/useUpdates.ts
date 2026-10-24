@@ -1,3 +1,6 @@
+import { renderClientError } from '@/lib/clientError';
+import { useLocale, useMessages } from '@/i18n/LocaleProvider';
+import { message, type MessageKey } from '@/i18n/messages';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
@@ -18,6 +21,10 @@ export function saveUpdatePolicy(policy: UpdatePolicy) {
     window.dispatchEvent(new Event('update-policy-changed'));
 }
 export function useUpdates() {
+    const t = useMessages();
+    const { locale } = useLocale();
+    const localeRef = useRef(locale);
+    localeRef.current = locale;
     const [distribution, setDistribution] = useState<Distribution>('unknown');
     const [policy, setPolicy] = useState(readUpdatePolicy);
     const [busy, setBusy] = useState(false);
@@ -37,27 +44,30 @@ export function useUpdates() {
 
     const checkUpdates = useCallback(async (automatic = false) => {
         if (busyRef.current || (automatic && downloadedRef.current)) return;
+        // Notifications use the locale at operation start, even if an await finishes after a switch.
+        const startedLocale = localeRef.current;
+        const notify = (key: MessageKey, args?: Record<string, string | number>) => message(startedLocale, key, args);
         busyRef.current = true; setBusy(true);
         try {
             let current: Distribution;
             try { current = await desktopApi.getDistribution(); }
             catch {
-                if (!automatic) toast.error('更新方法を確認できませんでした', { description: 'アプリを再起動してから、もう一度お試しください。' });
+                if (!automatic) toast.error(notify('updates.methodFailed'), { description: notify('updates.retryAfterRestart') });
                 return;
             }
             setDistribution(current);
             if (current === 'msix') { if (!automatic) setShowGuide(true); return; }
             if (current !== 'standalone') {
-                if (!automatic) toast.error('更新方法を確認できませんでした', { description: 'アプリを再起動してから、もう一度お試しください。' });
+                if (!automatic) toast.error(notify('updates.methodFailed'), { description: notify('updates.retryAfterRestart') });
                 return;
             }
             const update = await invoke<AvailableUpdate | null>('check_update');
             setAvailable(update); setDownloaded(false); downloadedRef.current = false;
-            if (!update) { if (!automatic) toast.success('最新バージョンです'); return; }
-            toast.info(`v${update.version} が利用可能です`, {
+            if (!update) { if (!automatic) toast.success(notify('updates.latest')); return; }
+            toast.info(notify('updates.available', { version: update.version }), {
                 id: 'auralyn-update', duration: Infinity,
-                description: '適用するまで現在の版で使い続けられます。',
-                action: { label: '更新内容を確認', onClick: () => setShowAvailable(true) },
+                description: notify('updates.keepCurrent'),
+                action: { label: notify('updates.review'), onClick: () => setShowAvailable(true) },
             });
             if (!automatic) setShowAvailable(true);
             if (automatic && policy.download && update.canInstall) {
@@ -65,9 +75,9 @@ export function useUpdates() {
                 setDownloaded(true); downloadedRef.current = true;
             }
         } catch (error) {
-            if (!automatic) toast.info('自動更新情報を取得できませんでした', {
-                description: String(error),
-                action: { label: '配布ページ', onClick: () => window.open('https://github.com/blackflame7983/Auralyn-Releases/releases', '_blank') },
+            if (!automatic) toast.info(notify('updates.checkFailed'), {
+                description: renderClientError(notify, error),
+                action: { label: notify('updates.distributionPage'), onClick: () => window.open('https://github.com/blackflame7983/Auralyn-Releases/releases', '_blank') },
             });
         } finally { busyRef.current = false; setBusy(false); }
     }, [policy.download]);
@@ -81,6 +91,8 @@ export function useUpdates() {
 
     const perform = async (install: boolean) => {
         if (!available || busyRef.current) return;
+        const startedLocale = localeRef.current;
+        const notify = (key: MessageKey, args?: Record<string, string | number>) => message(startedLocale, key, args);
         busyRef.current = true; setBusy(true);
         try {
             if (install) {
@@ -92,12 +104,12 @@ export function useUpdates() {
             }
         } catch (error) {
             if (install) { setDownloaded(false); downloadedRef.current = false; }
-            toast.error(install ? '更新を適用できませんでした' : '更新を取得できませんでした', { description: String(error) });
+            toast.error(install ? notify('updates.installFailed') : notify('updates.downloadFailed'), { description: renderClientError(notify, error) });
         } finally { busyRef.current = false; setBusy(false); }
     };
     return {
-        label: distribution === 'standalone' ? 'アップデートを確認' : '更新方法を確認',
-        description: distribution === 'msix' ? 'MSIX版は配布元から更新します' : 'インストール形式に合う更新方法',
+        label: distribution === 'standalone' ? t('updates.check') : t('updates.method'),
+        description: distribution === 'msix' ? t('updates.msixDescription') : t('updates.methodDescription'),
         busy, available, downloaded, showAvailable, showGuide,
         checkUpdates: () => checkUpdates(false),
         closeGuide: () => setShowGuide(false), closeAvailable: () => setShowAvailable(false),

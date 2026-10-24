@@ -1,3 +1,5 @@
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { TemplateWizardModal } from '../TemplateWizardModal';
@@ -56,4 +58,24 @@ it('適用中は画面移動・閉じる・構成変更を止め、失敗後に�
     expect(apply).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: blocked[3] }));
     expect(settings).toHaveBeenCalledOnce();
+});
+
+it('localeだけでtemplate元objectと手動割当を保ち、自動割当やscan/applyを再実行しない', async () => {
+    const store = createLocaleStore(() => 'ja', () => true); const scan = vi.fn(); const apply = vi.fn(async () => false);
+    const plugins = [
+        { id: 'auto', name: 'Comp', vendor: '実メーカー', path: 'auto-comp', version: '', category: 'Fx' },
+        { id: 'manual', name: 'My voice tool', vendor: '実メーカー', path: 'manual', version: '', category: 'Fx' },
+        { id: 'limit', name: 'Limiter', vendor: '', path: 'limit', version: '', category: 'Fx' },
+    ];
+    render(<LocaleProvider store={store}><TemplateWizardModal isOpen onClose={vi.fn()} availablePlugins={plugins} onApplyTemplate={apply} onScan={scan} isScanning={false} /></LocaleProvider>);
+    fireEvent.click(screen.getByRole('button', { name: /雑談/ }));
+    const compressor = screen.getByRole('combobox', { name: 'コンプレッサーに使うVST' });
+    fireEvent.change(compressor, { target: { value: 'manual' } });
+    const dialog = screen.getByRole('dialog');
+    act(() => { store.setLocale('en'); });
+    expect(screen.getByRole('dialog')).toBe(dialog);
+    expect(screen.getByRole('combobox', { name: 'VST for Compressor' })).toBe(compressor);
+    expect(compressor).toHaveValue('manual'); expect(scan).not.toHaveBeenCalled(); expect(apply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace the VST chain' }));
+    await waitFor(() => expect(apply).toHaveBeenCalledWith(expect.objectContaining({ '1': plugins[1], '2': plugins[2] })));
 });

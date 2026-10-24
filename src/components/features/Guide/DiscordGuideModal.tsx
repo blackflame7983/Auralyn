@@ -1,3 +1,4 @@
+import { useMessages } from '@/i18n/LocaleProvider';
 import { buttonVariants } from '@/components/ui/button';
 import { Modal } from '../../ui/modal';
 import React, { useState } from 'react';
@@ -17,6 +18,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
     // step 1: Output & Echo Warning
     // step 2: Input Setup
     // step 3: Processing Setting
+    const t = useMessages();
     const [step, setStep] = useState(0);
     const [useHardwareMixer, setUseHardwareMixer] = useState<boolean | null>(null);
     const totalSteps = 4; // 0 to 3
@@ -38,7 +40,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
     };
 
     return (
-        <Modal title="Discord連携ガイド" onClose={onClose}>
+        <Modal title={t('guide.copy.081')} onClose={onClose}>
         <div className="modal-overlay-base">
             <div className="modal-surface-base w-full max-w-3xl flex flex-col max-h-[90vh]">
 
@@ -48,9 +50,8 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                         <span className="w-8 h-8 rounded-lg bg-[#5865F2] flex items-center justify-center text-white">
                             <DiscordIcon className="w-5 h-5" />
                         </span>
-                        Discord連携ガイド
-                    </h2>
-                    <button onClick={onClose} aria-label="Discord連携ガイドを閉じる" className="text-muted-foreground hover:text-foreground transition-colors">
+                        {t('guide.copy.082')}</h2>
+                    <button onClick={onClose} aria-label={t('guide.copy.083')} className="text-muted-foreground hover:text-foreground transition-colors">
                         <MdClose className="w-6 h-6" />
                     </button>
                 </div>
@@ -84,45 +85,42 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                         {step === 0 && (
                             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                                 <div className="text-center space-y-2">
-                                    <h3 className="text-2xl font-bold">使用機器の確認</h3>
+                                    <h3 className="text-2xl font-bold">{t('guide.copy.084')}</h3>
                                     <p className="text-muted-foreground">
-                                        使用している機材によって設定方法と注意点が異なります。
-                                    </p>
+                                        {t('guide.copy.085')}</p>
                                 </div>
 
                                 <div className="grid md:grid-cols-2 gap-6 mt-8">
                                     <button
                                         onClick={() => handleDeviceSelection(true)}
-                                        aria-label="機材を使用している手順を選択"
+                                        aria-label={t('guide.copy.086')}
+                                        aria-pressed={useHardwareMixer === true}
                                         className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-[#5865F2]/50 transition-all text-left flex flex-col items-center text-center group"
                                     >
                                         <div className="w-16 h-16 rounded-full bg-[#5865F2]/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                             <MdMic className="w-8 h-8 text-[#5865F2]" />
                                         </div>
-                                        <h4 className="font-bold text-foreground text-lg mb-2">機材を使用している</h4>
+                                        <h4 className="font-bold text-foreground text-lg mb-2">{t('guide.copy.087')}{useHardwareMixer === true && t('guide.copy.088')}</h4>
                                         <p className="text-sm text-muted-foreground mb-4">
-                                            AG03/AG06等のミキサー機能付きインターフェースを使用
-                                        </p>
+                                            {t('guide.copy.089')}</p>
                                         <div className="flex items-center gap-2 text-xs font-bold text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 px-3 py-1 rounded-full">
-                                            <MdWarning /> エコー注意（ループバック）
-                                        </div>
+                                            <MdWarning /> {t('guide.copy.090')}</div>
                                     </button>
 
                                     <button
                                         onClick={() => handleDeviceSelection(false)}
-                                        aria-label="機材を使用していない手順を選択"
+                                        aria-label={t('guide.copy.091')}
+                                        aria-pressed={useHardwareMixer === false}
                                         className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-[#5865F2]/50 transition-all text-left flex flex-col items-center text-center group"
                                     >
                                         <div className="w-16 h-16 rounded-full bg-secondary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                             <MdHeadphones className="w-8 h-8 text-secondary-foreground" />
                                         </div>
-                                        <h4 className="font-bold text-foreground text-lg mb-2">機材を使用していない</h4>
+                                        <h4 className="font-bold text-foreground text-lg mb-2">{t('guide.copy.092')}{useHardwareMixer === false && t('guide.copy.093')}</h4>
                                         <p className="text-sm text-muted-foreground mb-4">
-                                            PC直結またはUSBマイク単体を使用
-                                        </p>
+                                            {t('guide.copy.094')}</p>
                                         <div className="flex items-center gap-2 text-xs font-bold text-secondary-foreground bg-secondary/10 px-3 py-1 rounded-full">
-                                            <MdCheckCircle /> おすすめ
-                                        </div>
+                                            <MdCheckCircle /> {t('guide.copy.095')}</div>
                                     </button>
                                 </div>
                             </div>
@@ -131,10 +129,9 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                         {step === 1 && (
                             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                                 <div className="text-center space-y-2">
-                                    <h3 className="text-2xl font-bold">1. 出力先とリスク確認</h3>
+                                    <h3 className="text-2xl font-bold">{t('guide.copy.096')}</h3>
                                     <p className="text-muted-foreground">
-                                        Auralynの出力先を設定します。
-                                    </p>
+                                        {t('guide.copy.097')}</p>
                                 </div>
 
                                 <div className="bg-[#5865F2]/5 p-6 rounded-xl border border-[#5865F2]/20 flex flex-col items-center text-center space-y-4">
@@ -142,22 +139,20 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                         <MdSettings className="w-6 h-6 text-[#5865F2]" />
                                     </div>
                                     <div>
-                                        <h4 className="font-bold mb-1">出力先</h4>
+                                        <h4 className="font-bold mb-1">{t('guide.copy.098')}</h4>
                                         <p className="text-sm text-muted-foreground mb-4">
-                                            以下のように設定してください
-                                        </p>
+                                            {t('guide.copy.099')}</p>
                                         <button
                                             onClick={onOpenAudioSettings}
-                                            aria-label="オーディオ設定を開く"
+                                            aria-label={t('guide.copy.100')}
                                             className={buttonVariants({ className: "gap-2" })}
                                         >
-                                            オーディオ設定を開く
-                                        </button>
+                                            {t('guide.copy.101')}</button>
                                     </div>
                                         <div className="text-xs text-left bg-background p-3 rounded border border-border w-full mt-2 font-mono text-center">
                                         {useHardwareMixer
-                                            ? "お使いの機器の入力 (AG06/AG03 等)"
-                                            : "CABLE Input（VB-Audio 仮想ケーブル）"}
+                                            ? t('guide.copy.102')
+                                            : t('guide.copy.103')}
                                     </div>
                                 </div>
 
@@ -165,14 +160,12 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                     <div className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg flex gap-4 text-left">
                                         <MdWarning className="w-8 h-8 text-red-700 dark:text-red-300 shrink-0" />
                                         <div className="space-y-1">
-                                            <h4 className="font-bold text-red-700 dark:text-red-300">通話相手の声がループする危険性</h4>
+                                            <h4 className="font-bold text-red-700 dark:text-red-300">{t('guide.copy.104')}</h4>
                                             <p className="text-sm text-foreground">
-                                                ハードウェアのループバック機能を使ってDiscord通話をすると、<strong>「相手の声」が自分のマイク音声に乗って相手に跳ね返る（エコー）</strong>リスクが高いです。
-                                            </p>
+                                                {t('guide.copy.105')}<strong>{t('guide.copy.106')}</strong>{t('guide.copy.107')}</p>
                                             <p className="text-xs text-muted-foreground mt-2">
-                                                対策: Discordの「出力デバイス」をループバックに含まれない経路（例: PCのヘッドホン端子など）にするか、ミキサー側で調整が必要です。<br />
-                                                設定が難しい場合は、あえて「機材を使用していない」手順（VB-CABLE）を使うことをお勧めします。
-                                            </p>
+                                                {t('guide.copy.108')}<br />
+                                                {t('guide.copy.109')}</p>
                                         </div>
                                     </div>
                                 ) : (
@@ -180,8 +173,8 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                         <div className="flex items-start gap-3 p-3 bg-card border border-border rounded">
                                             <MdHeadphones className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                                             <div>
-                                                <p className="font-bold text-foreground">自分の声を聞くには？</p>
-                                                <p>CABLE Input（VB-Audio 仮想ケーブル）を使うと自分の声が消えます。「PCのサウンド設定」で「このデバイスを聴く」をONにすることもできますが、遅延が発生するため推奨しません。</p>
+                                                <p className="font-bold text-foreground">{t('guide.copy.110')}</p>
+                                                <p>{t('guide.copy.111')}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -192,38 +185,35 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                         {step === 2 && (
                             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                                 <div className="text-center space-y-2">
-                                    <h3 className="text-2xl font-bold">2. Discordの設定 (入力デバイス)</h3>
+                                    <h3 className="text-2xl font-bold">{t('guide.copy.112')}</h3>
                                     <p className="text-muted-foreground">
-                                        Discordのマイクとして、加工後の音声を選びます。
-                                    </p>
+                                        {t('guide.copy.113')}</p>
                                 </div>
 
                                 <div className="bg-[#1e1f22] p-6 rounded-xl border border-border shadow-inner max-w-xl mx-auto space-y-4">
                                     <div className="flex items-center gap-2 text-gray-400 text-xs uppercase font-bold tracking-wider mb-2">
-                                        <MdSettings /> 音声設定
-                                    </div>
+                                        <MdSettings /> {t('guide.copy.114')}</div>
 
                                     <div className="space-y-2">
-                                        <label className="text-gray-300 text-xs font-bold uppercase">入力デバイス</label>
+                                        <label className="text-gray-300 text-xs font-bold uppercase">{t('guide.copy.115')}</label>
                                         <div className="bg-[#111214] p-3 rounded border border-gray-700 flex justify-between items-center text-white cursor-pointer hover:bg-[#2b2d31] transition-colors">
                                             <span className="flex items-center gap-2">
                                                 <MdMic className="text-green-500" />
-                                                {useHardwareMixer ? "ループバック / 配信用ストリーム (お使いの機器)" : "CABLE Output（VB-Audio 仮想ケーブル）"}
+                                                {useHardwareMixer ? t('guide.copy.116') : t('guide.copy.117')}
                                             </span>
                                         </div>
                                     </div>
 
                                     <div className="space-y-2 opacity-50 pointer-events-none">
-                                        <label className="text-gray-300 text-xs font-bold uppercase">出力デバイス</label>
+                                        <label className="text-gray-300 text-xs font-bold uppercase">{t('guide.copy.118')}</label>
                                         <div className="bg-[#111214] p-3 rounded border border-gray-700 text-white">
-                                            <span>既定 / ヘッドホン</span>
+                                            <span>{t('guide.copy.119')}</span>
                                         </div>
                                     </div>
 
                                     {useHardwareMixer && (
                                         <p className="text-xs text-red-700 dark:text-red-300 mt-2">
-                                            ※ 重要: ここで設定した「入力デバイス」と同じ機材を「出力デバイス」に選ぶと、エコーが発生しやすくなります。
-                                        </p>
+                                            {t('guide.copy.120')}</p>
                                     )}
                                 </div>
                             </div>
@@ -232,35 +222,32 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                         {step === 3 && (
                             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                                 <div className="text-center space-y-2">
-                                    <h3 className="text-2xl font-bold">3. 音声処理を比較して調整する</h3>
+                                    <h3 className="text-2xl font-bold">{t('guide.copy.121')}</h3>
                                     <p className="text-muted-foreground">
-                                        Auralyn と受け側アプリの処理が重なると、声が欠けたり音量が変わったりする場合があります。
-                                    </p>
+                                        {t('guide.copy.122')}</p>
                                 </div>
 
                                 <div className="grid gap-4 max-w-2xl mx-auto">
                                     <div className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg flex items-start gap-4">
                                         <MdWarning className="w-8 h-8 text-red-700 dark:text-red-300 shrink-0" />
                                         <div>
-                                            <h4 className="font-bold text-red-700 dark:text-red-300 mb-1">一つずつON・OFFを比較してください</h4>
+                                            <h4 className="font-bold text-red-700 dark:text-red-300 mb-1">{t('guide.copy.123')}</h4>
                                             <ul className="list-disc list-inside text-sm space-y-1 text-foreground">
-                                                <li><strong>ノイズ抑制 (Krisp / Standard)</strong> → 有無を比較</li>
-                                                <li><strong>エコー除去</strong> → 有無を比較</li>
-                                                <li><strong>音量調節の自動化</strong> → 有無を比較</li>
+                                                <li><strong>{t('guide.copy.124')}</strong> {t('guide.copy.125')}</li>
+                                                <li><strong>{t('guide.copy.126')}</strong> {t('guide.copy.127')}</li>
+                                                <li><strong>{t('guide.copy.128')}</strong> {t('guide.copy.129')}</li>
                                             </ul>
                                             <p className="text-xs text-muted-foreground mt-2">
-                                                ヘッドホン使用時はエコー除去の有無を比較できます。スピーカー使用時は、相手の声がマイクへ戻らないか確認し、必要なエコー除去を残してください。
-                                            </p>
+                                                {t('guide.copy.130')}</p>
                                         </div>
                                     </div>
 
                                     <div className="bg-muted/30 p-4 rounded-lg flex items-center gap-4">
                                         <MdGraphicEq className="w-6 h-6 text-primary shrink-0" />
                                         <div className="text-sm">
-                                            <p className="font-bold">入力感度</p>
+                                            <p className="font-bold">{t('guide.copy.131')}</p>
                                             <p className="text-muted-foreground">
-                                                声が途切れる場合は自動検出の有無と感度を比較し、息や環境音だけで反応しない範囲に調整してください。
-                                            </p>
+                                                {t('guide.copy.132')}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -271,10 +258,10 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
 
                 {step === totalSteps - 1 && (
                     <div className="px-4 py-3 border-t border-border space-y-2">
-                        <p role="status" className="text-sm text-foreground">手順の案内のみです。受け側への音声到達は未確認です。受け側のメーターや試聴で確認してください。</p>
+                        <p role="status" className="text-sm text-foreground">{t('guide.copy.133')}</p>
                         <div className="flex flex-wrap gap-3">
-                            {onOpenTroubleshoot && <button onClick={onOpenTroubleshoot} className="text-sm underline text-primary">接続診断を開く</button>}
-                            {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="text-sm underline text-primary">ボイスチェックで聴く</button>}
+                            {onOpenTroubleshoot && <button onClick={onOpenTroubleshoot} className="text-sm underline text-primary">{t('guide.copy.134')}</button>}
+                            {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="text-sm underline text-primary">{t('guide.copy.135')}</button>}
                         </div>
                     </div>
                 )}
@@ -283,31 +270,29 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                 <div className="modal-footer-base flex justify-between items-center shrink-0">
                     <button
                         onClick={prevStep}
-                        aria-label="前の手順へ戻る"
+                        aria-label={t('guide.copy.136')}
                         disabled={step === 0}
                         className="px-6 py-2 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground transition-colors font-medium flex items-center gap-1"
                     >
-                        <MdArrowBack /> 戻る
-                    </button>
+                        <MdArrowBack /> {t('guide.copy.137')}</button>
                     <div className="flex gap-2">
                         {step < (totalSteps - 1) ? (
                             <button
                                 onClick={nextStep}
-                                aria-label="次の手順へ進む"
+                                aria-label={t('guide.copy.138')}
+                                disabled={step === 0 && useHardwareMixer === null}
                                 className={buttonVariants({ className: "gap-2" })}
                             >
-                                次へ
-                                <MdArrowForward />
+                                {t('guide.copy.139')}<MdArrowForward />
                             </button>
                         ) : (
                             <button
                                 onClick={onClose}
-                                aria-label="案内を閉じる"
+                                aria-label={t('guide.copy.140')}
                                 className={buttonVariants({ className: "gap-2" })}
                             >
                                 <MdCheckCircle />
-                                案内を閉じる
-                            </button>
+                                {t('guide.copy.141')}</button>
                         )}
                     </div>
                 </div>

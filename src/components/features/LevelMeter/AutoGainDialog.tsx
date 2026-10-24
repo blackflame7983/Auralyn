@@ -1,3 +1,6 @@
+import { clientErrorNotice } from '@/lib/clientError';
+import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
+import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
@@ -12,13 +15,14 @@ const button = 'rounded-md border border-border px-3 py-2 text-sm disabled:opaci
 const pct = (gain: number) => `${(gain * 100).toFixed(1)}%`;
 
 export function AutoGainDialog({ onClose }: { onClose: () => void }) {
+    const t = useMessages();
     const [state, setState] = useState<GainSnapshot | null>(null);
     const [target, setTarget] = useState(-20);
     const [devices, setDevices] = useState<GainSnapshot['devices']>([]);
     const [device, setDevice] = useState('');
     const [safeOutput, setSafeOutput] = useState(false);
     const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<SettingsNotice | null>(null);
     const [closedForVisibility, setClosedForVisibility] = useState(false);
     const epoch = useRef(0);
     const alive = useRef(true);
@@ -39,7 +43,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
             } catch (e) {
                 if (!stopped && version === epoch.current) {
                     setState(null);
-                    setError(String(e));
+                    setError(clientErrorNotice(e));
                 }
             } finally {
                 inFlight.current = false;
@@ -56,7 +60,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                     if (!stopped) setState(next);
                 })
                 .catch((e) => {
-                    if (!stopped) setError(String(e));
+                    if (!stopped) setError(clientErrorNotice(e));
                 });
         };
         document.addEventListener('visibilitychange', hide);
@@ -68,7 +72,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
             document.removeEventListener('visibilitychange', hide);
             void gainCommand({ action: 'cancel' }).catch(() => {
                 toast.error(
-                    '録音・試聴の停止を確認できません。音量調整を開いて中止を再試行してください。',
+                    t('meterBrowser.copy.000'),
                 );
             });
         };
@@ -91,7 +95,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
             }
         } catch (e) {
             if (alive.current && version === epoch.current) {
-                setError(String(e));
+                setError(clientErrorNotice(e));
                 setState(null);
             }
         } finally {
@@ -110,7 +114,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
             if (alive.current) onClose();
         } catch (e) {
             if (alive.current)
-                setError(`停止を確認できません。閉じる操作を再試行してください。${String(e)}`);
+                setError(notice('meterBrowser.copy.001', { arg0: clientErrorNotice(e) }));
         } finally {
             closing.current = false;
             if (alive.current) setBusy(false);
@@ -120,6 +124,10 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
     const recording = state?.phase === 'recording';
     const pending = state?.phase === 'applying' || state?.phase === 'restoring';
     const canPreview = !!proposal && ['ready', 'applied', 'restored'].includes(state?.phase ?? '');
+    const errorDetail = typeof error === 'object' ? error?.args?.arg0 : undefined;
+    const rawNotice = typeof errorDetail === 'object' ? errorDetail : typeof error === 'object' ? error : undefined;
+    const rawError = typeof error === 'string' ? error : rawNotice?.key === 'clientErrors.rawDetail' && typeof rawNotice.args?.detail === 'string' ? rawNotice.args.detail : state?.error;
+    const translatedDetail = errorDetail && typeof errorDetail === 'object' && errorDetail.key !== 'clientErrors.rawDetail' ? renderNotice(t, errorDetail) : null;
 
     return (
         <Dialog.Root
@@ -133,21 +141,16 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                 <Dialog.Content className="fixed left-1/2 top-1/2 z-[151] flex max-h-[90vh] w-[min(38rem,95vw)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-background text-foreground shadow-xl">
                     <div className="flex items-center justify-between gap-3 border-b border-border p-4">
                         <Dialog.Title className="font-semibold">
-                            音量を合わせる・聞き比べ
-                        </Dialog.Title>
+                            {t('meterBrowser.copy.002')}</Dialog.Title>
                         <button className={button} onClick={() => void close()}>
-                            閉じる
-                        </button>
+                            {t('meterBrowser.copy.003')}</button>
                     </div>
                     <div className="space-y-4 overflow-y-auto p-4">
                         <Dialog.Description className="text-sm text-muted-foreground">
-                            普段の声を10秒録音し、固定の出力音量を提案します。録音はメモリ内だけで扱います。
-                            VSTの加工前後ではなく、音量調整の前後を比べます。
-                        </Dialog.Description>
+                            {t('meterBrowser.copy.004')}</Dialog.Description>
                         <label className="flex flex-wrap items-center gap-2 text-sm">
-                            声用の目標（仮の目安）
-                            <select
-                                aria-label="自動調整の目標"
+                            {t('meterBrowser.copy.005')}<select
+                                aria-label={t('meterBrowser.copy.006')}
                                 value={target}
                                 disabled={busy || recording || pending || !!proposal}
                                 onChange={(e) => setTarget(Number(e.target.value))}
@@ -161,27 +164,25 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                             </select>
                         </label>
                         <p className="text-xs text-muted-foreground">
-                            サービス公式基準ではありません。声と背景音を識別せず、後の大声による音割れは防げません。
-                            配信前に、普段の声で3秒以上話してください。ミュートや出力0%は解除してから録音してください。
-                        </p>
+                            {t('meterBrowser.copy.007')}</p>
                         <p role="status" className="text-sm text-amber-800 dark:text-amber-300">
                             {recording
-                                ? `録音中 ${Math.round((state?.progress ?? 0) * 10)} / 10秒`
+                                ? t('meterBrowser.copy.008', { arg0: Math.round((state?.progress ?? 0) * 10) })
                                 : pending
-                                  ? '音量の反映を確認しています'
+                                  ? t('meterBrowser.copy.009')
                                   : state?.phase === 'applied'
-                                    ? '提案した音量を適用しました'
+                                    ? t('meterBrowser.copy.010')
                                     : state?.phase === 'restored'
-                                      ? '調整前の音量に戻しました'
+                                      ? t('meterBrowser.copy.011')
                                       : closedForVisibility
-                                        ? '画面を離れたため中止しました。録り直してください'
+                                        ? t('meterBrowser.copy.012')
                                         : !state
-                                          ? '状態を確認してください'
+                                          ? t('meterBrowser.copy.013')
                                           : state.phase === 'ready' && proposal
                                             ? state.settled
-                                                ? '提案を確認し、「この音量を使う」で適用するか、試聴先を選んで聞き比べてください'
-                                                : '音量の反映を確認しています'
-                                          : '目標を選び、録音してください'}
+                                                ? t('meterBrowser.copy.014')
+                                                : t('meterBrowser.copy.015')
+                                          : t('meterBrowser.copy.016')}
                         </p>
                         <div className="flex flex-wrap gap-2">
                             <button
@@ -197,42 +198,39 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                     void run({ action: 'begin', target, revision: state!.revision })
                                 }
                             >
-                                {proposal ? '録り直す' : '録音して提案する'}
+                                {proposal ? t('meterBrowser.copy.017') : t('meterBrowser.copy.018')}
                             </button>
                             <button
                                 className={button}
                                 disabled={busy || (!recording && !state?.playing)}
                                 onClick={() => void run({ action: 'cancel' })}
                             >
-                                録音・試聴を中止
-                            </button>
+                                {t('meterBrowser.copy.019')}</button>
                             <button
                                 className={button}
                                 disabled={busy}
                                 onClick={() => void run({ action: 'status' })}
                             >
-                                状態を再取得
-                            </button>
+                                {t('meterBrowser.copy.020')}</button>
                         </div>
                         {(error || state?.error) && (
-                            <p role="alert" className="text-sm text-amber-800 dark:text-amber-300">
-                                {error ?? state?.error}
-                            </p>
+                            <div role="alert" className="text-sm text-amber-800 dark:text-amber-300">
+                                <p>{error && typeof error !== 'string' && error.key !== 'clientErrors.rawDetail' ? renderNotice(t, error) : t('meterBrowser.gainFailed')}</p>
+                                {translatedDetail && <p>{translatedDetail}</p>}
+                                {rawError && <details><summary>{t('meterBrowser.rawDetail')}</summary><p className="break-words">{rawError}</p></details>}
+                            </div>
                         )}
                         {proposal && (
                             <div className="space-y-3 rounded border border-border p-3">
                                 <p className="font-semibold">
-                                    出力音量 {pct(proposal.before)} → {pct(proposal.after)}
+                                    {t('meterBrowser.gain.change', { before: pct(proposal.before), after: pct(proposal.after) })}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                    測定 {proposal.measured.toFixed(1)} → 推定{' '}
-                                    {proposal.predicted.toFixed(1)} LUFS ／ 調整後のtrue peak推定{' '}
-                                    {proposal.peak.toFixed(1)} dBTP
+                                    {t('meterBrowser.gain.estimate', { measured: proposal.measured.toFixed(1), predicted: proposal.predicted.toFixed(1), peak: proposal.peak.toFixed(1) })}
                                 </p>
                                 {proposal.limited && (
                                     <p className="text-sm text-amber-800 dark:text-amber-300">
-                                        ピーク・増幅量・出力上限を守るため、目標まで上げていません。
-                                    </p>
+                                        {t('meterBrowser.copy.025')}</p>
                                 )}
                                 <div className="flex flex-wrap gap-2">
                                     <button
@@ -251,8 +249,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                             })
                                         }
                                     >
-                                        この音量を使う
-                                    </button>
+                                        {t('meterBrowser.copy.026')}</button>
                                     <button
                                         className={button}
                                         disabled={
@@ -269,27 +266,23 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                             })
                                         }
                                     >
-                                        元に戻す
-                                    </button>
+                                        {t('meterBrowser.copy.027')}</button>
                                 </div>
                             </div>
                         )}
                         {canPreview && (
                             <div className="space-y-3 rounded border border-border p-3">
-                                <p className="text-sm font-semibold">同じ録音で聞き比べる</p>
+                                <p className="text-sm font-semibold">{t('meterBrowser.copy.028')}</p>
                                 <p className="text-xs text-muted-foreground">
-                                    通常出力とは別のヘッドホン等を選んでください。OBSがそのデバイスを取得していると試聴音も流れます。
-                                    通常のマイク送出は続きます。再生音量に注意してください。
-                                </p>
+                                    {t('meterBrowser.copy.029')}</p>
                                 <button
                                     className={button}
                                     disabled={busy}
                                     onClick={() => void run({ action: 'devices' })}
                                 >
-                                    試聴先を取得・更新
-                                </button>
+                                    {t('meterBrowser.copy.030')}</button>
                                 <select
-                                    aria-label="聞き比べの試聴先"
+                                    aria-label={t('meterBrowser.copy.031')}
                                     value={device}
                                     disabled={busy || state?.playing}
                                     onChange={(e) => {
@@ -298,7 +291,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                     }}
                                     className="w-full rounded border border-input bg-background p-2 text-sm"
                                 >
-                                    <option value="">試聴先を選択</option>
+                                    <option value="">{t('meterBrowser.copy.032')}</option>
                                     {devices.map((d) => (
                                         <option key={d.id} value={d.id}>
                                             {d.name}
@@ -311,8 +304,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                         checked={safeOutput}
                                         onChange={(e) => setSafeOutput(e.target.checked)}
                                     />
-                                    選んだ出力がOBS・通話アプリへ取り込まれないことを確認しました
-                                </label>
+                                    {t('meterBrowser.copy.033')}</label>
                                 <div className="flex flex-wrap gap-2">
                                     {[false, true].map((after) => (
                                         <button
@@ -328,7 +320,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                                 })
                                             }
                                         >
-                                            {after ? '調整後を聴く' : '調整前を聴く'}
+                                            {after ? t('meterBrowser.copy.034') : t('meterBrowser.copy.035')}
                                         </button>
                                     ))}
                                     <button
@@ -336,8 +328,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                         disabled={busy || !state?.playing}
                                         onClick={() => void run({ action: 'stop_preview' })}
                                     >
-                                        試聴を止める
-                                    </button>
+                                        {t('meterBrowser.copy.036')}</button>
                                 </div>
                             </div>
                         )}

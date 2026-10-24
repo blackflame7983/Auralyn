@@ -1,3 +1,4 @@
+import type { MessageKey } from '@/i18n/messages';
 export type TemplateRole =
     | "noise_gate"
     | "compressor"
@@ -107,3 +108,22 @@ export const CHAIN_TEMPLATES: ChainTemplate[] = [
         ]
     }
 ];
+
+// 表示keyは選択・自動割当用の既存template objectから分離する。
+export const CHAIN_TEMPLATE_COPY: Readonly<Record<string, { name: MessageKey; description: MessageKey; slots: readonly { label: MessageKey; notes: MessageKey }[] }>> = {
+    "chatting": { name: "templates.chatting.name", description: "templates.chatting.description", slots: [
+        { label: "templates.chatting.slot0.label", notes: "templates.chatting.slot0.notes" },
+        { label: "templates.chatting.slot1.label", notes: "templates.chatting.slot1.notes" },
+        { label: "templates.chatting.slot2.label", notes: "templates.chatting.slot2.notes" },
+    ] },
+    "singing": { name: "templates.singing.name", description: "templates.singing.description", slots: [
+        { label: "templates.singing.slot0.label", notes: "templates.singing.slot0.notes" },
+        { label: "templates.singing.slot1.label", notes: "templates.singing.slot1.notes" },
+        { label: "templates.singing.slot2.label", notes: "templates.singing.slot2.notes" },
+        { label: "templates.singing.slot3.label", notes: "templates.singing.slot3.notes" },
+    ] },
+    "ASMR": { name: "templates.ASMR.name", description: "templates.ASMR.description", slots: [
+        { label: "templates.ASMR.slot0.label", notes: "templates.ASMR.slot0.notes" },
+        { label: "templates.ASMR.slot1.label", notes: "templates.ASMR.slot1.notes" },
+    ] },
+};

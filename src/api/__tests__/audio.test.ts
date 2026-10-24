@@ -272,3 +272,19 @@ describe('audioApi', () => {
         });
     });
 });
+
+
+it('restorePluginは状態と全設定を一回で渡しprepared:falseの成功を保持する', async () => {
+    const restored = { id: 'restored-id', name: 'Plugin', prepared: false };
+    vi.mocked(invoke).mockResolvedValueOnce(restored);
+    const request = { path: 'saved.vst3', state: '', bypassed: true, muted: true, gain: 0.4 };
+    expect(await audioApi.restorePlugin(request)).toEqual(restored);
+    expect(invoke).toHaveBeenLastCalledWith('restore_plugin', { request });
+});
+
+it('session restoreのtyped競合・metadata要求を旧restore APIへfallbackしない', async () => {
+    mockedInvoke.mockReset(); mockedInvoke.mockResolvedValue({ status: 'conflict' });
+    const request = { action: 'begin' as const, generation: '3', revision: '8', ids: [], inputGain: .3, outputGain: 0 };
+    expect(await audioApi.sessionRack(request)).toEqual({ status: 'conflict' });
+    expect(mockedInvoke).toHaveBeenCalledExactlyOnceWith('session_rack', { request });
+});

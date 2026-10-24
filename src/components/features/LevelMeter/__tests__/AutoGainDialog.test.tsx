@@ -1,3 +1,6 @@
+import { FixedClientError } from '@/lib/clientError';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutoGainDialog } from '../AutoGainDialog';
@@ -49,6 +52,18 @@ afterEach(async () => {
     await act(async () => {});
 });
 describe('自動ゲインの操作', () => {
+    it('障害後の破棄は取消だけを送り、停止済みACKから開始や音量適用へ進まない', async () => {
+        const view = render(<AutoGainDialog onClose={() => {}} />);
+        await screen.findByRole('button', { name: 'この音量を使う' });
+        vi.mocked(gainCommand).mockResolvedValue({ ...base, revision: 0, id: 0,
+            settled: false, running: false, gain: 1, confirmedGain: 1,
+            phase: 'idle', proposal: null, playing: false });
+        vi.mocked(gainCommand).mockClear();
+        view.unmount();
+        await act(async () => {});
+        expect(gainCommand).toHaveBeenCalledExactlyOnceWith({ action: 'cancel' });
+        expect(confirmOutputGain).not.toHaveBeenCalled();
+    });
     it('提案の準備完了後は、変更できない目標選択ではなく適用・聞き比べを案内する', async () => {
         render(<AutoGainDialog onClose={() => {}} />);
         const apply = await screen.findByRole('button', { name: 'この音量を使う' });
@@ -141,4 +156,71 @@ describe('自動ゲインの操作', () => {
         ).toHaveLength(2);
         expect(vi.mocked(gainCommand).mock.calls.some(([r]) => r.action === 'begin')).toBe(false);
     });
+});
+
+it('言語だけ切り替えても試聴先・安全確認・提案・dialogを保持し同じrequestを送る', async () => {
+    const store = createLocaleStore(() => 'ja', () => true);
+    render(<LocaleProvider store={store}><AutoGainDialog onClose={vi.fn()} /></LocaleProvider>);
+    await screen.findByRole('button', { name: '調整後を聴く' });
+    fireEvent.click(screen.getByRole('button', { name: '試聴先を取得・更新' }));
+    await screen.findByRole('option', { name: 'ヘッドホン' });
+    const output = screen.getByLabelText('聞き比べの試聴先');
+    fireEvent.change(output, { target: { value: 'headphones' } });
+    const safety = screen.getByRole('checkbox');
+    fireEvent.click(safety);
+    const dialog = screen.getByRole('dialog');
+    const calls = vi.mocked(gainCommand).mock.calls.length;
+    act(() => { store.setLocale('en'); });
+    expect(screen.getByRole('dialog')).toBe(dialog);
+    expect(screen.getByLabelText('Gain comparison listening output')).toBe(output);
+    expect(output).toHaveValue('headphones');
+    expect(safety).toBeChecked();
+    expect(screen.getByText('ヘッドホン')).toBeInTheDocument();
+    expect(vi.mocked(gainCommand).mock.calls).toHaveLength(calls);
+    fireEvent.click(screen.getByRole('button', { name: 'Listen after adjustment' }));
+    await waitFor(() => expect(gainCommand).toHaveBeenCalledWith({ action: 'preview', id: 42, after: true, device: 'headphones' }));
+    expect(gainCommand).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'apply' }));
+});
+it('反映待ちも言語切替で再適用や取消へ進まず、元エラーは未翻訳詳細に表示する', async () => {
+    const store = createLocaleStore(() => 'ja', () => true);
+    current = { ...base, settled: false, error: 'Stream Error: original token' };
+    render(<LocaleProvider store={store}><AutoGainDialog onClose={vi.fn()} /></LocaleProvider>);
+    await screen.findByText('Stream Error: original token');
+    const calls = vi.mocked(gainCommand).mock.calls.length;
+    act(() => { store.setLocale('en'); });
+    expect(screen.getByRole('button', { name: 'Use this level' })).toBeDisabled();
+    expect(screen.getByText('Original detail (untranslated)')).toBeInTheDocument();
+    expect(screen.getByText('Stream Error: original token')).toBeInTheDocument();
+    expect(vi.mocked(gainCommand).mock.calls).toHaveLength(calls);
+});
+
+it.each(['recording', 'applying'] as const)('locale変更で%sの状態や目標を再生成しない', async phase => {
+    const store = createLocaleStore(() => 'ja', () => true);
+    current = { ...base, phase, progress: .4 };
+    render(<LocaleProvider store={store}><AutoGainDialog onClose={vi.fn()} /></LocaleProvider>);
+    const target = await screen.findByLabelText('自動調整の目標');
+    await waitFor(() => expect(target).toBeDisabled());
+    const calls = vi.mocked(gainCommand).mock.calls.length;
+    act(() => { store.setLocale('en'); });
+    expect(screen.getByLabelText('Gain adjustment target')).toBe(target);
+    expect(target).toHaveValue('-20');
+    expect(target).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent(phase === 'recording' ? 'Recording 4 / 10 s' : 'Checking output level application');
+    expect(vi.mocked(gainCommand).mock.calls).toHaveLength(calls);
+});
+
+
+it('停止確認の固定失敗を翻訳してもdialog/目標値を保持しclose/cancelを繰り返さない', async()=>{
+    const store=createLocaleStore(()=> 'ja',()=>true);const close=vi.fn();
+    current={...base,settled:false};
+    vi.mocked(confirmOutputGain).mockRejectedValue(new FixedClientError('gain.unconfirmed'));
+    render(<LocaleProvider store={store}><AutoGainDialog onClose={close}/></LocaleProvider>);
+    const dialog=screen.getByRole('dialog');const target=screen.getByRole('combobox',{name:'自動調整の目標'});
+    fireEvent.click(screen.getByRole('button',{name:'閉じる'}));
+    await screen.findByText('音量の反映を確認できません。状態を再取得してください。');
+    const calls=vi.mocked(gainCommand).mock.calls.length;
+    act(()=>{store.setLocale('en');});
+    expect(screen.getByRole('dialog')).toBe(dialog);expect(target).toBeInTheDocument();expect(target).toHaveValue('-20');
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not confirm the gain change. Refresh the status.');
+    expect(close).not.toHaveBeenCalled();expect(gainCommand).toHaveBeenCalledTimes(calls);
 });

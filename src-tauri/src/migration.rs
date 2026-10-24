@@ -18,6 +18,7 @@ const PENDING: &str = "migration-pending.json";
 const BACKUP: &str = "migration-backup.json";
 pub const UI_KEYS: &[&str] = &[
     "vst_host_theme",
+    "vst_host_locale",
     "vst_host_beginner_mode",
     "vst_host_simple_mode",
     "vst_host_audio_config",
@@ -127,6 +128,7 @@ fn validate(bundle: &Bundle) -> Result<(), String> {
             .unwrap_or_else(|_| serde_json::Value::String(value.clone()));
         let valid = match key.as_str() {
             "vst_host_theme" => ["light", "dark", "gaming"].contains(&value.as_str()),
+            "vst_host_locale" => ["ja", "en"].contains(&value.as_str()),
             "vst_host_input_gain" | "vst_host_output_gain" => value
                 .parse::<f64>()
                 .is_ok_and(|n| n.is_finite() && (0.0..=200.0).contains(&n)),
@@ -627,6 +629,15 @@ mod tests {
             files: BTreeMap::new(),
         };
         assert!(validate(&b).is_ok());
+        for locale in ["ja", "en"] {
+            b.ui.insert("vst_host_locale".into(), locale.into());
+            assert!(validate(&b).is_ok());
+        }
+        for locale in ["EN", "fr", "\"en\"", ""] {
+            b.ui.insert("vst_host_locale".into(), locale.into());
+            assert!(validate(&b).is_err());
+        }
+        b.ui.clear();
         b.ui.insert("vst_host_obs_config".into(), "{}".into());
         assert!(validate(&b).is_err());
         b.ui.clear();
