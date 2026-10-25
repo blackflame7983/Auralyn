@@ -25,11 +25,13 @@ export function LiveOutputPanel({ outputs, onBusyChange, disabled = false }: { d
     const stopButton = useRef<HTMLButtonElement>(null);
     const restoreStopFocus = useRef(false);
     useEffect(() => {
-        if (!busy && restoreStopFocus.current) {
-            restoreStopFocus.current = false;
-            stopButton.current?.focus();
+        const button = stopButton.current;
+        // 親のbusy通知が反映され、操作可能になってからフォーカスを戻す。
+        if (!busy && !disabled && restoreStopFocus.current && button && !button.disabled) {
+            button.focus();
+            if (document.activeElement === button) restoreStopFocus.current = false;
         }
-    }, [busy]);
+    }, [busy, disabled]);
     useEffect(() => { if (!busy && status && focusAfterSave.current) { focusAfterSave.current = false; savedStatus.current?.focus(); } }, [busy, status]);
     useEffect(() => {
         if (!status) return;
