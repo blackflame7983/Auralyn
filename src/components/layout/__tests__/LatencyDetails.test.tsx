@@ -45,7 +45,8 @@ it('NR内部rateが異なる場合も時間換算は出力rateを使い、Header
     render(<><LatencyDetails stats={stats({ nominalSampleRateHz: 384000, nrProcessingRateHz: 192000, nrProcessingFrameSamples: 1920 })} /><DeviceStatus host="WASAPI" sampleRate={48000} bufferSize={512} isRunning onClick={vi.fn()} /></>);
     expect(screen.getByText('1920 sample / 5.00 ms')).toBeInTheDocument();
     expect(screen.getByText('192,000 Hz')).toBeInTheDocument();
-    expect(screen.getByText('通過時間は未測定・詳細は設定へ')).toBeInTheDocument();
+    expect(screen.queryByText('通過時間は未測定・詳細は設定へ')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /音声処理中.*WASAPI.*設定を開く/ })).toBeInTheDocument();
     expect(screen.queryByText(/低遅延|推定 /)).not.toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalled();
 });

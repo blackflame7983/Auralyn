@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { audioApi } from '@/api/audio';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
+import { message } from '@/i18n/messages';
 import { liveOutputApi, type LiveOutputStatus } from '@/api/liveOutput';
 import { LiveOutputPanel } from '../LiveOutputPanel';
 vi.mock('@/api/liveOutput', () => ({ liveOutputApi: { request: vi.fn() } }));
@@ -65,4 +69,38 @@ it('モニターの明るさは歌向けDSPが受理する範囲だけを選べ�
         expect(slider).toHaveAttribute('min', '-3');
         expect(slider).toHaveAttribute('max', '3');
     }
+});
+
+it.each(['ja', 'en'] as const)('停止の条件を示し、キャンセルでは停止せず明示確定で一度だけ止める（%s）', async locale => {
+    let finish!: () => void;
+    vi.mocked(audioApi.stop).mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><LiveOutputPanel outputs={outputs} /></LocaleProvider>);
+    const stop = screen.getByRole('button', { name: message(locale, 'liveOutput.stop') });
+    expect(stop).toHaveAccessibleDescription(message(locale, 'liveOutput.stopWarning'));
+    fireEvent.click(stop);
+    expect(audioApi.stop).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: message(locale, 'commonDialog.cancel') }));
+    expect(audioApi.stop).not.toHaveBeenCalled();
+    fireEvent.click(stop);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: message(locale, 'liveOutput.stop') }));
+    expect(audioApi.stop).toHaveBeenCalledOnce();
+    expect(stop).toBeDisabled();
+    fireEvent.click(stop);
+    expect(audioApi.stop).toHaveBeenCalledOnce();
+    await act(async () => finish());
+    await waitFor(() => expect(stop).toBeEnabled());
+    expect(stop).toHaveFocus();
+    expect(liveOutputApi.request).toHaveBeenCalledWith(null);
+});
+
+it('停止に失敗しても再試行でき、停止済みと表示しない', async () => {
+    vi.mocked(audioApi.stop).mockRejectedValue(new Error('stop failed'));
+    render(<LiveOutputPanel outputs={outputs} />);
+    const stop = screen.getByRole('button', { name: '両経路の音声を停止' });
+    fireEvent.click(stop);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '両経路の音声を停止' }));
+    await screen.findByRole('alert');
+    expect(stop).toBeEnabled();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });

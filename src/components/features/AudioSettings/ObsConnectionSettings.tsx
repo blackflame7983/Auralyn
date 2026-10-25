@@ -9,6 +9,7 @@ import { useObsUsage } from '../../../hooks/useObsUsage';
 import { ObsSafeSetup } from './ObsSafeSetup';
 import { readObsEndpoint, obsConnectionFailureNotice } from '../../../lib/obsConnectionPreferences';
 import { ObsModeRoutingSettings } from './ObsModeRoutingSettings';
+import { Button } from '@/components/ui/button';
 
 interface ObsConnectionSettingsProps {
   showConfirm: (request: {
@@ -294,14 +295,17 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                     {obsStatusLoading ? t('settings.ObsConnectionSettings.288') : loading ? t('settings.ObsConnectionSettings.289') : t('settings.ObsConnectionSettings.290')}
                   </button>
                 ) : (
-                  <button
-                    onClick={handleDisconnectObs}
-                    disabled={obsSetupLoading || obsReachLoading}
-                    className="w-full py-2 bg-green-600/20 text-green-400 border border-green-600/50 rounded-lg hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/50 transition-all font-bold group"
-                  >
-                    <span className="group-hover:hidden">{t('settings.ObsConnectionSettings.291')}</span>
-                    <span className="hidden group-hover:inline">{t('settings.ObsConnectionSettings.292')}</span>
-                  </button>
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/50 p-3">
+                    <span role="status" className="text-sm font-medium">{t('settings.ObsConnectionSettings.291')}</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleDisconnectObs}
+                      disabled={obsSetupLoading || obsReachLoading}
+                    >
+                      {t('settings.ObsConnectionSettings.292')}
+                    </Button>
+                  </div>
                 )}
               </div>
 

@@ -4,6 +4,8 @@ import type { AudioDevice } from '@/api/audio';
 import { audioApi } from '@/api/audio';
 import { liveOutputApi, type LiveOutputConfig, type LiveOutputStatus } from '@/api/liveOutput';
 import { useMessages } from '@/i18n/LocaleProvider';
+import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export function LiveOutputPanel({ outputs, onBusyChange, disabled = false }: { disabled?: boolean; outputs: AudioDevice[]; onBusyChange?: (busy: boolean) => void }) {
     const t = useMessages();
@@ -19,6 +21,15 @@ export function LiveOutputPanel({ outputs, onBusyChange, disabled = false }: { d
     useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
     const [error, setError] = useState(false);
     const [confirmed, setConfirmed] = useState(false);
+    const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
+    const stopButton = useRef<HTMLButtonElement>(null);
+    const restoreStopFocus = useRef(false);
+    useEffect(() => {
+        if (!busy && restoreStopFocus.current) {
+            restoreStopFocus.current = false;
+            stopButton.current?.focus();
+        }
+    }, [busy]);
     useEffect(() => { if (!busy && status && focusAfterSave.current) { focusAfterSave.current = false; savedStatus.current?.focus(); } }, [busy, status]);
     useEffect(() => {
         if (!status) return;
@@ -64,7 +75,29 @@ export function LiveOutputPanel({ outputs, onBusyChange, disabled = false }: { d
             <button disabled={busy || disabled} className="underline" onClick={() => { setDraft(status?.config ?? null); setConfirmed(false); }}>{t('monitorTrial.cancel')}</button>
         </div>}
         {previous && <button disabled={busy || disabled} className="underline" onClick={() => { setDraft(previous); setConfirmed(false); }}>{t('liveOutput.undo')}</button>}
-        <button disabled={busy || disabled} className="underline" onClick={async () => { setBusy(true); try { await audioApi.stop(); await request(); } catch { setError(true); } finally { setBusy(false); } }}>{t('liveOutput.stop')}</button>
+        <div className="space-y-2 border-t border-border pt-3">
+            <p id="live-output-stop-warning" className="text-sm">{t('liveOutput.stopWarning')}</p>
+            <Button ref={stopButton} type="button" variant="outline" disabled={busy || disabled} aria-describedby="live-output-stop-warning" className="border-destructive bg-destructive/10 text-foreground hover:bg-destructive/20" onClick={() => setStopConfirmOpen(true)}>{t('liveOutput.stop')}</Button>
+        </div>
+        <ConfirmDialog
+            isOpen={stopConfirmOpen}
+            title={t('liveOutput.stopTitle')}
+            description={t('liveOutput.stopWarning')}
+            confirmLabel={t('liveOutput.stop')}
+            variant="destructive"
+            onCancel={() => setStopConfirmOpen(false)}
+            onConfirm={async () => {
+                setStopConfirmOpen(false);
+                if (busyNow.current || disabled) return;
+                busyNow.current = true;
+                sequence.current++;
+                restoreStopFocus.current = true;
+                setBusy(true);
+                try { await audioApi.stop(); await request(); }
+                catch { setError(true); }
+                finally { setBusy(false); }
+            }}
+        />
         {status && <p ref={savedStatus} tabIndex={-1} role="status" className="text-sm">{t(status.error || status.sink?.failed ? 'liveOutput.failed' : status.sink?.active ? 'liveOutput.active' : 'liveOutput.inactive')}</p>}
         {status?.monitor && <p className="text-xs">{t('liveOutput.monitorCounts', { queued: status.monitor.broadcastQueueFrames, offered: status.monitor.offeredFrames, dropped: status.monitor.droppedFrames, accepted: status.monitor.acceptedRevision, completed: status.monitor.completedRevision })}</p>}
         {status?.sink && <p className="text-xs">{t('liveOutput.counts', { queued: status.sink.queuedFrames, zero: status.sink.zeroFilledFrames, dropped: status.sink.droppedFrames, rate: status.sink.rateHz })}</p>}

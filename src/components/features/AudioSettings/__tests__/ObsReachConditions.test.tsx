@@ -138,7 +138,7 @@ it('StrictModeの遅い購読失敗は確認を許可せず、localeで再購読
 
 it('切断・再接続後も以前のrecordを現在の成功へ戻さない', async () => {
     open(); await check();
-    fireEvent.click(screen.getByRole('button', { name: /接続済み/ }));
+    fireEvent.click(screen.getByRole('button', { name: '切断' }));
     const connect = await screen.findByRole('button', { name: '接続' });
     await waitFor(() => expect(connect).toBeEnabled());
     fireEvent.click(connect);
