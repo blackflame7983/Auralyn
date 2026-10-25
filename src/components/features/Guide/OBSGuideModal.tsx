@@ -3,7 +3,9 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { buttonVariants } from '@/components/ui/button';
 import { Modal } from '../../ui/modal';
 import { ObsMixCheck } from './ObsMixCheck';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import type { ShortcutError } from '@/lib/shortcutNotice';
 import { MdVideocam, MdClose, MdLightbulb, MdSettings, MdCheckCircle, MdArrowForward, MdArrowBack, MdHeadphones, MdMic } from 'react-icons/md';
 
 interface OBSGuideModalProps {
@@ -25,6 +27,21 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
     const [step, setStep] = useState(initialTimingOpen ? 3 : 0);
     const [useHardwareMixer, setUseHardwareMixer] = useState<boolean | null>(null);
     const totalSteps = 4; // 0 to 3
+    const [muteShortcut, setMuteShortcut] = useState<string | null>(null);
+    useEffect(() => {
+        let active = true;
+        setMuteShortcut(null);
+        if (isOpen && step === 3) {
+            void Promise.resolve(invoke<{ bindings: { action: string; shortcut: string }[]; errors: ShortcutError[] }>('get_shortcuts'))
+                .then(status => {
+                    const binding = status.bindings.find(item => item.action === 'muteToggle');
+                    if (active && binding && !status.errors.some(error => error.shortcut === binding.shortcut || !error.shortcut)) {
+                        setMuteShortcut(binding.shortcut.replace(/Key(?=[A-Z])/g, '').replace(/Digit(?=\d)/g, ''));
+                    }
+                }).catch(() => { /* 未取得・未登録のキーは案内しない。 */ });
+        }
+        return () => { active = false; };
+    }, [isOpen, step]);
 
     if (!isOpen) return null;
 
@@ -258,7 +275,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                         {t('guide.copy.069')}</p>
                                     <p className="text-muted-foreground text-xs pl-7">
                                         {t('guide.copy.070')}<br />
-                                        ・<strong>Alt + M</strong> {t('guide.copy.071')}</p>
+                                        {muteShortcut && t('guide.copy.071', { shortcut: muteShortcut })}</p>
                                 </div>
                             </div>
                             <ObsMixCheck initialTimingOpen={initialTimingOpen} onOpenObsSettings={onOpenObsSettings} />

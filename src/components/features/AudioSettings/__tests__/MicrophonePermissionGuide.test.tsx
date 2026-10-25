@@ -45,7 +45,7 @@ it.each(['保存して開始', 'エンジン再起動'])('%sのアクセス拒�
     const changed = vi.fn();
     const restarted = vi.fn();
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={changed} onEngineRestarted={restarted} />);
-    const input = await screen.findByRole('combobox', { name: 'マイク入力・ASIOデバイス' });
+    const input = await screen.findByRole('combobox', { name: 'マイク入力' });
     fireEvent.change(input, { target: { value: 'Mic B' } });
     fireEvent.click(screen.getByRole('button', { name: action }));
     if (action === 'エンジン再起動')
@@ -59,7 +59,7 @@ it.each(['保存して開始', 'エンジン再起動'])('%sのアクセス拒�
     expect(start).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem('vst_host_audio_config')).toBe(saved);
     fireEvent.click(screen.getByRole('button', { name: '設定に戻って再試行' }));
-    expect(screen.getByRole('combobox', { name: 'マイク入力・ASIOデバイス' })).toHaveValue('Mic B');
+    expect(screen.getByRole('combobox', { name: 'マイク入力' })).toHaveValue('Mic B');
     fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
     await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ input: 'Mic B' }), { audioStarted: true }));
     expect(start).toHaveBeenCalledTimes(2);

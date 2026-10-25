@@ -92,9 +92,9 @@ describe('セットアップの接続チェック', () => {
             return base(command, args, options);
         });
         const { onClose } = await quickStart();
-        fireEvent.click(screen.getByRole('button', { name: 'サウンドテスト (開始)' }));
-        await screen.findByRole('button', { name: 'サウンドテスト (停止)' });
-        fireEvent.click(screen.getByRole('button', { name: 'セットアップウィザードを閉じる' }));
+        fireEvent.click(screen.getByRole('button', { name: 'マイクの音を流して確認' }));
+        await screen.findByRole('button', { name: 'マイクの確認を停止' });
+        fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
         fireEvent.click(screen.getByRole('button', { name: '中断する' }));
         await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
         expect(invoke).toHaveBeenLastCalledWith('stop_audio');
@@ -112,7 +112,7 @@ describe('セットアップの接続チェック', () => {
         expect(localStorage.getItem('vst_host_beginner_mode')).toBeNull();
     });
 
-    it.each(['サウンドテスト (開始)', '設定を保存して開始'])('アクセス拒否時の%sでは権限案内を開き、設定を保存せず再試行できる', async action => {
+    it.each(['マイクの音を流して確認', '設定を保存して開始'])('アクセス拒否時の%sでは権限案内を開き、設定を保存せず再試行できる', async action => {
         startFails = true;
         startError = 'Input Stream Build Failed: 0x80070005';
         const { onApplyConfig } = await quickStart();
@@ -168,10 +168,10 @@ describe('セットアップの接続チェック', () => {
         expect(screen.getByText('ヘッドホン')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled();
         outputs = outputs.map(d => ({ ...d, is_default: false }));
-        fireEvent.click(screen.getByRole('button', { name: '出力デバイスを再検出' }));
+        fireEvent.click(screen.getByRole('button', { name: '再検出' }));
         await waitFor(() => expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled());
         outputs = outputs.map(d => ({ ...d, is_default: d.name === 'スピーカー USB' }));
-        fireEvent.click(screen.getByRole('button', { name: '出力デバイスを再検出' }));
+        fireEvent.click(screen.getByRole('button', { name: '再検出' }));
         await waitFor(() => expect(screen.getByText('スピーカー USB')).toBeInTheDocument());
         expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled();
     });
@@ -223,11 +223,11 @@ describe('セットアップの接続チェック', () => {
     it('サウンドテストの開始・停止に音声状態を追従させ、未確認の到達と区別する', async () => {
         await quickStart();
         expect(screen.getByRole('status')).toHaveTextContent('音声は停止中です。');
-        fireEvent.click(screen.getByRole('button', { name: 'サウンドテスト (開始)' }));
+        fireEvent.click(screen.getByRole('button', { name: 'マイクの音を流して確認' }));
         await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('音声は稼働中です。'));
         expect(screen.getByRole('status')).not.toHaveTextContent('音声は停止中です。');
         expect(screen.getByRole('status')).toHaveTextContent('OBS への音の到達は未確認です。');
-        fireEvent.click(screen.getByRole('button', { name: 'サウンドテスト (停止)' }));
+        fireEvent.click(screen.getByRole('button', { name: 'マイクの確認を停止' }));
         await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('音声は停止中です。'));
     });
 
@@ -236,7 +236,7 @@ describe('セットアップの接続チェック', () => {
         await quickStart();
         fireEvent.click(screen.getByRole('button', { name: 'OBS に接続する' }));
         await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('OBS に接続できませんでした。'));
-        fireEvent.click(screen.getByRole('button', { name: 'サウンドテスト (開始)' }));
+        fireEvent.click(screen.getByRole('button', { name: 'マイクの音を流して確認' }));
         await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('音声は稼働中です。'));
         expect(screen.getByRole('status')).toHaveTextContent('OBS に接続できませんでした。');
     });
@@ -256,7 +256,7 @@ describe('セットアップの接続チェック', () => {
         expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
         expect(screen.queryByRole('heading', { name: '設定と接続の確認' })).not.toBeInTheDocument();
         outputs = [cable];
-        fireEvent.click(screen.getByRole('button', { name: '出力デバイスを再検出' }));
+        fireEvent.click(screen.getByRole('button', { name: '再検出' }));
         await waitFor(() => expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled());
         expect(invoke).toHaveBeenCalledWith('get_audio_devices', { forceRefresh: true });
         expect(screen.getByRole('combobox', { name: '仮想ケーブルの出力先' })).toHaveValue(cable.name);
@@ -318,13 +318,13 @@ describe('セットアップの接続チェック', () => {
 
     it('テスト停止後の保存に失敗しても、停止状態から再試行できる', async () => {
         const { onApplyConfig } = await quickStart();
-        fireEvent.click(screen.getByRole('button', { name: 'サウンドテスト (開始)' }));
-        await screen.findByRole('button', { name: 'サウンドテスト (停止)' });
+        fireEvent.click(screen.getByRole('button', { name: 'マイクの音を流して確認' }));
+        await screen.findByRole('button', { name: 'マイクの確認を停止' });
         startFails = true;
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
-        await screen.findByRole('button', { name: 'サウンドテスト (開始)' });
+        await screen.findByRole('button', { name: 'マイクの音を流して確認' });
         expect(onApplyConfig).not.toHaveBeenCalled();
-        expect(screen.queryByRole('button', { name: 'サウンドテスト (停止)' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'マイクの確認を停止' })).not.toBeInTheDocument();
     });
 
     it('Discord は対応する入力の手動確認を案内し、OBS に接続しない', async () => {
@@ -340,8 +340,8 @@ describe('セットアップの接続チェック', () => {
 
     it('音声停止に失敗したときはデバイス選択へ遷移しない', async () => {
         await quickStart();
-        fireEvent.click(screen.getByRole('button', { name: 'サウンドテスト (開始)' }));
-        await screen.findByRole('button', { name: 'サウンドテスト (停止)' });
+        fireEvent.click(screen.getByRole('button', { name: 'マイクの音を流して確認' }));
+        await screen.findByRole('button', { name: 'マイクの確認を停止' });
         const base = vi.mocked(invoke).getMockImplementation()!;
         vi.mocked(invoke).mockImplementation((command, args, options) => command === 'stop_audio'
             ? Promise.reject(new Error('停止失敗')) : base(command, args, options));
@@ -356,9 +356,9 @@ describe('セットアップの接続チェック', () => {
             ? Promise.resolve({ is_running: true, config: { host: 'ASIO', input: '元の入力', output: '元の出力', buffer_size: 256, sample_rate: 44100 } })
             : base(command, args, options));
         const { onClose, onApplyConfig } = await quickStart();
-        fireEvent.click(screen.getByRole('button', { name: 'サウンドテスト (開始)' }));
-        await screen.findByRole('button', { name: 'サウンドテスト (停止)' });
-        fireEvent.click(screen.getByRole('button', { name: 'セットアップウィザードを閉じる' }));
+        fireEvent.click(screen.getByRole('button', { name: 'マイクの音を流して確認' }));
+        await screen.findByRole('button', { name: 'マイクの確認を停止' });
+        fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
         fireEvent.click(screen.getByRole('button', { name: '中断する' }));
         await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
         expect(invoke).toHaveBeenLastCalledWith('start_audio', expect.objectContaining({ host: 'ASIO', input: '元の入力', output: '元の出力', bufferSize: 256, sampleRate: 44100 }));
@@ -371,7 +371,7 @@ describe('セットアップの接続チェック', () => {
         vi.mocked(invoke).mockImplementation((command, args, options) => command === 'get_audio_state'
             ? Promise.reject(new Error('取得失敗')) : base(command, args, options));
         await quickStart();
-        expect(screen.getByRole('button', { name: 'サウンドテスト (開始)' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'マイクの音を流して確認' })).toBeDisabled();
         expect(screen.getByRole('button', { name: '設定を保存して開始' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'OBS に接続する' })).toBeDisabled();
     });
@@ -389,7 +389,7 @@ describe('セットアップの接続チェック', () => {
         await waitFor(() => expect(finish).toBeDefined());
         expect(screen.getByRole('button', { name: '出力先を選び直す' })).toBeDisabled();
         expect(screen.getByRole('button', { name: '設定を保存して開始' })).toBeDisabled();
-        expect(screen.getByRole('button', { name: 'セットアップウィザードを閉じる' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'セットアップを閉じる' })).toBeDisabled();
         const errorListener = vi.mocked(listen).mock.calls.find(([name]) => name === 'audio-stream-error')![1];
         await act(async () => { errorListener({ event: 'audio-stream-error', id: 1, payload: 'device removed' }); });
         await act(async () => { finish({ reached: true }); });
@@ -413,8 +413,8 @@ describe('セットアップの接続チェック', () => {
 
     it('テスト後の選び直しは停止を待ち、保存後は元の停止状態へ戻さない', async () => {
         const { onApplyConfig, onClose } = await quickStart();
-        fireEvent.click(screen.getByRole('button', { name: 'サウンドテスト (開始)' }));
-        await screen.findByRole('button', { name: 'サウンドテスト (停止)' });
+        fireEvent.click(screen.getByRole('button', { name: 'マイクの音を流して確認' }));
+        await screen.findByRole('button', { name: 'マイクの確認を停止' });
         fireEvent.click(screen.getByRole('button', { name: '出力先を選び直す' }));
         await screen.findByRole('heading', { name: '音の出力先を選んでください' });
         expect(invoke).toHaveBeenCalledWith('stop_audio');
@@ -423,7 +423,7 @@ describe('セットアップの接続チェック', () => {
         await screen.findByRole('heading', { name: '音声設定を保存しました' });
         expect(onApplyConfig).toHaveBeenCalledWith('WASAPI', mic.name, cable.name, { sample_rate: 48000, buffer_size: 512, channels: 2 });
         vi.mocked(invoke).mockClear();
-        fireEvent.click(screen.getByRole('button', { name: 'セットアップウィザードを閉じる' }));
+        fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
         expect(onClose).toHaveBeenCalledOnce();
         expect(invoke).not.toHaveBeenCalled();
     });
@@ -451,7 +451,7 @@ describe('初回選択と表示設定', () => {
         localStorage.setItem('vst_host_beginner_mode', 'false');
         await openWizard();
         fireEvent.click(screen.getByRole('radio', { name: '配信をはじめたい（かんたん表示）' }));
-        fireEvent.click(screen.getByRole('button', { name: 'セットアップウィザードを閉じる' }));
+        fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
     });
     it('適用失敗では選んだ表示を確定しない', async () => {
@@ -480,11 +480,11 @@ it('確認stepのlocale切替で入力出力・テスト状態とdialogを保持
     render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={apply} /></LocaleProvider>);
     fireEvent.click(await screen.findByRole('button', { name: 'OBS向けに設定する' }));
     await screen.findByRole('heading', { name: '設定と接続の確認' });
-    const dialog = screen.getByRole('dialog'); const test = screen.getByRole('button', { name: 'サウンドテスト (開始)' });
+    const dialog = screen.getByRole('dialog'); const test = screen.getByRole('button', { name: 'マイクの音を流して確認' });
     const calls = vi.mocked(invoke).mock.calls.length;
     act(() => { store.setLocale('en'); });
     expect(screen.getByRole('dialog')).toBe(dialog);
-    expect(screen.getByRole('button', { name: 'Sound test (start)' })).toBe(test);
+    expect(screen.getByRole('button', { name: 'Check by sending microphone audio' })).toBe(test);
     expect(screen.getAllByText('USB マイク').length).toBeGreaterThan(0);
     expect(screen.getAllByText('CABLE Input (VB-Audio)').length).toBeGreaterThan(0);
     expect(vi.mocked(invoke).mock.calls).toHaveLength(calls);

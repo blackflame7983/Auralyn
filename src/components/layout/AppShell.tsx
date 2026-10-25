@@ -193,7 +193,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     <button
                                         id="ab-compare-btn"
                                         onClick={handleABToggle}
-                                        aria-label={isABBypassed ? t('header.compareEnd') : t('header.compareStart')}
+                                        aria-label={isABBypassed ? `${t('shell.comparingEffectsOff')}：${t('header.compareEnd')}` : t('header.compareStart')}
                                         className={cn(
                                             "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold font-mono transition-all whitespace-nowrap shrink-0",
                                             isABBypassed

@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -42,4 +43,25 @@ it.each([OBSGuideModal, DiscordGuideModal])('localeだけでガイドの機材�
     expect(screen.getByRole('button', { name: 'Choose the steps for audio hardware' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('I use audio hardware (selected)')).toBeInTheDocument();
     expect(close).not.toHaveBeenCalled(); expect(settings).not.toHaveBeenCalled();
+});
+
+
+it.each(['ja', 'en'] as const)('OBSガイドは変更したミュートキーを案内する（%s）', async locale => {
+    vi.mocked(invoke).mockResolvedValue({ bindings: [{ action: 'muteToggle', shortcut: 'Control+Shift+KeyK' }], errors: [] });
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><OBSGuideModal isOpen initialTimingOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} /></LocaleProvider>);
+    expect(await screen.findByText(/Control\+Shift\+K/)).toHaveTextContent('Auralyn');
+    expect(screen.queryByText(/Alt \+ M/)).not.toBeInTheDocument();
+    vi.mocked(invoke).mockReset();
+});
+
+it.each([
+    { bindings: [], errors: [] },
+    { bindings: [{ action: 'muteToggle', shortcut: 'Alt+KeyM' }], errors: [{ code: 'registerFailed', shortcut: 'Alt+KeyM' }] },
+])('OBSガイドは未設定・登録失敗のキーを案内しない', async status => {
+    vi.mocked(invoke).mockResolvedValue(status);
+    render(<OBSGuideModal isOpen initialTimingOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} />);
+    await act(async () => {});
+    expect(screen.queryByText(/で Auralyn の出力をミュートできます/)).not.toBeInTheDocument();
+    vi.mocked(invoke).mockReset();
 });

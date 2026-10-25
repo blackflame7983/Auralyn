@@ -366,16 +366,6 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                                         className="text-[10px] underline text-primary hover:text-primary/80"
                                                     >
                                                         {t('guide.copy.216')}</button>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            void handleRescanVirtualDevices();
-                                                        }}
-                                                        disabled={isLoadingDevices}
-                                                        className="text-[11px] px-3 py-1 rounded-full border border-purple-400/40 bg-purple-500/10 text-foreground hover:bg-purple-500/20 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                                                    >
-                                                        {isLoadingDevices ? t('guide.copy.217') : t('guide.copy.218')}
-                                                    </button>
                                                 </div>
                                             )}
                                         </>

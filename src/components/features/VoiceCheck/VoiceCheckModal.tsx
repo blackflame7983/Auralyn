@@ -6,7 +6,7 @@ import React from 'react';
 import type { VoiceCheckSource } from '../../../api/audio';
 import { buttonVariants } from '@/components/ui/button';
 import { Modal } from '../../ui/modal';
-import { MdClose, MdMic, MdPause, MdPlayArrow, MdSave, MdStop, MdAnalytics } from 'react-icons/md';
+import { MdClose, MdMic, MdPlayArrow, MdSave, MdStop, MdAnalytics } from 'react-icons/md';
 import { cn } from '@/lib/utils';
 import { useVoiceCheck } from './useVoiceCheck';
 import { formatMs, formatAdvice, adviceSettingsTarget, adviceSeverityClass, BandDeltaChart, WaveformCanvas, VERDICT_LABELS, VERDICT_STYLES } from './VoiceCheckVisuals';
@@ -127,7 +127,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                         <SingingControls model={singingModel} compact previewActive={isPlaying || previewBusy || candidateMode === 'proposal'} running={streamStatus === 'ready' ? true : streamStatus === 'stopped' ? false : undefined} onSaveProfile={onSaveSingingProfile} />
                         {onOpenSoundSettings && <button type="button" onClick={onOpenSoundSettings} className="underline">{t('voice.copy.035')}</button>}
                     </section>}
-                    <p role="status">{t(candidateMode === 'proposal' ? 'voice.comparisonProposal' : candidateMode === 'manual' ? 'voice.comparisonManual' : 'voice.comparisonNormal')}</p>
+                    {comparingCandidate && <p role="status">{t(candidateMode === 'proposal' ? 'voice.comparisonProposal' : 'voice.comparisonManual')}</p>}
                     {comparingCandidate && <button type="button" disabled={previewBusy || busy || isRecording} onClick={() => void returnToRecording()} className="rounded border px-3 py-2 disabled:opacity-50">{t('voice.returnToRecording')}</button>}
                     <section aria-label={t('voice.copy.036')} className="rounded-lg border border-border p-3 space-y-3">
                         <h3 className="text-sm font-bold">{t('voice.copy.037')}</h3>
@@ -199,7 +199,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                         >
                             {isPlaying ? (
                                 <>
-                                    <MdPause className="w-4 h-4" /> {t('voice.copy.058')}</>
+                                    <MdStop className="w-4 h-4" /> {t('voice.copy.058')}</>
                             ) : (
                                 <>
                                     <MdPlayArrow className="w-4 h-4" /> {t('voice.copy.059')}</>
@@ -223,6 +223,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             <MdSave className="w-4 h-4" />
                             {t('voice.copy.062')}</button>
                     </div>
+                    {hasRecording && (!safeOutput || !previewDeviceId || !previewDevices.some(device => device.id === previewDeviceId)) && <p className="text-xs text-muted-foreground">{t('voice.playbackRequirements')}</p>}
                     <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={levelMatch} disabled={previewBusy || isRecording || !preview?.levelMatchAvailable || preview?.state === 'stopping'} onChange={event => setLevelMatch(event.target.checked)} className="mt-1" /><span>{t('voice.copy.063')}</span></label>
                     <p className="text-xs text-muted-foreground">{t('voice.copy.064')}{preview?.levelMatchAvailable === false && t('voice.copy.065')} {t('voice.copy.066')}</p>
                     {preview && <p className="text-xs text-muted-foreground">{t('voice.copy.067')}{preview.levelMatchAttenuationDb[0].toFixed(1)} {t('voice.copy.068')}{preview.levelMatchAttenuationDb[1].toFixed(1)} {t('voice.copy.069')}{preview.safetyAttenuationDb.toFixed(1)} dB</p>}

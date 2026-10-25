@@ -118,7 +118,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                             aria-pressed={plugin.muted}
                             onClick={() => onMute(plugin.id, !plugin.muted)}
                         >
-                            {plugin.muted ? t('meterBrowser.copy.262') : t('meterBrowser.copy.263')}
+                            {t('meterBrowser.copy.263')}
                         </Button>
                         {/* Edit + Delete */}
                         <div className="flex items-center gap-1 ml-2">

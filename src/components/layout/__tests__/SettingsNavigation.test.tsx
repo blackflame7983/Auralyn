@@ -68,7 +68,7 @@ it.each(['high_freq_attenuation', 'noise_floor_high', 'noise_suppression_weak', 
         });
         fireEvent.click(screen.getByRole('button', { name: '品質チェックを実行' }));
         const target = key === 'dropout_detected' ? 'audio' : 'sound';
-        fireEvent.click(await screen.findByRole('button', { name: target === 'sound' ? '音づくりを開く' : 'オーディオ設定を開く' }));
+        fireEvent.click(await screen.findByRole('button', { name: target === 'sound' ? '音づくりを開く' : '設定を開く' }));
         await screen.findByRole('heading', { name: `設定タブ: ${target}` });
         expect(screen.queryByRole('dialog', { name: 'ボイスチェック' })).not.toBeInTheDocument();
     },
