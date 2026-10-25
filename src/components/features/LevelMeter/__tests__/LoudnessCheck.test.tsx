@@ -164,7 +164,7 @@ describe('出力の音量チェック', () => {
         act(() => vi.advanceTimersByTime(900));
         emit('audio-loudness', { ...reading, id });
         expect(screen.getByRole('status')).toHaveTextContent('ちょうどいい');
-        fireEvent.change(screen.getByRole('combobox', { name: '音量の目標', hidden: true }), {
+        fireEvent.change(screen.getByRole('combobox', { name: '声用の目標（仮の目安）', hidden: true }), {
             target: { value: '-14' },
         });
         expect(screen.getByRole('status')).not.toHaveTextContent('ちょうどいい');

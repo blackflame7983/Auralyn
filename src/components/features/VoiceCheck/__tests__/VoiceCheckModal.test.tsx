@@ -140,11 +140,13 @@ it('保存した試聴先が消えても代替せず、再選択と取り込み�
     expect(select).toHaveValue('missing-device');
     expect(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeDisabled();
+    expect(screen.getByText(/再生するには、試聴先を選び/)).toBeVisible();
     fireEvent.change(select, { target: { value: 'hp' } });
     expect(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ })).not.toBeChecked();
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeDisabled();
     fireEvent.click(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ }));
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeEnabled();
+    expect(screen.queryByText(/再生するには、試聴先を選び/)).not.toBeInTheDocument();
 });
 
 it('AutoGainの所有と停止操作を区別し、取り込み確認があっても競合時は開始できない', async () => {
@@ -211,4 +213,26 @@ it.each([false, true])('残響だけ=%sの候補も準備でき、比較範囲�
     }
     expect(screen.getByText(/候補作成の完了は、聴いたことや音質改善の判定ではありません/)).toBeInTheDocument();
     expect(audioApi.startVoiceCheck).not.toHaveBeenCalled();
+});
+
+
+it.each(['ja', 'en'] as const)('再生中は一時停止とせず停止・先頭からの再生を案内する（%s）', async locale => {
+    vi.mocked(voicePreviewApi.request).mockImplementation(async request => previewSnapshot(request, {
+        recordingId: 9, durationMs: 1000,
+        state: request.action === 'start' ? 'playing' : 'idle',
+        devices: request.action === 'devices' ? [{ id: 'hp', name: 'Headphones' }] : [],
+    }));
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><VoiceCheckModal isOpen onClose={vi.fn()} /></LocaleProvider>);
+    const refresh = screen.getByRole('button', { name: locale === 'ja' ? '試聴先を取得・更新' : 'Get / refresh listening outputs' });
+    await waitFor(() => expect(refresh).toBeEnabled());
+    fireEvent.click(refresh);
+    await screen.findByRole('option', { name: 'Headphones' });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'hp' } });
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+    fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? '選んだ試聴先で再生' : 'Play through the selected output' }));
+    const stop = await screen.findByRole('button', { name: locale === 'ja' ? '再生を停止（再生は先頭から）' : 'Stop playback (replay starts from the beginning)' });
+    await waitFor(() => expect(stop).toBeEnabled());
+    fireEvent.click(stop);
+    await waitFor(() => expect(voicePreviewApi.request).toHaveBeenCalledWith(expect.objectContaining({ action: 'stop' })));
 });

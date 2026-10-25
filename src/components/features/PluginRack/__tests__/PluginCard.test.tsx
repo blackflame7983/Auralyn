@@ -21,6 +21,8 @@ it.each([false, true])('詳細・かんたん表示で操作名と有効状態�
     {
         const mute = screen.getByRole('button', { name: 'OTTをミュート' });
         expect(mute).toHaveAttribute('aria-pressed', 'true');
+        if (simpleMode) expect(mute).toHaveTextContent('ミュート');
+        expect(mute).not.toHaveTextContent('ミュート解除');
         fireEvent.click(mute);
         expect(onMute).toHaveBeenCalledWith('1', false);
     }

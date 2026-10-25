@@ -56,10 +56,10 @@ describe('セットアップと親画面の連携', () => {
         render(<AppModals />);
         fireEvent.click(await screen.findByRole('button', { name: '用途を選んで設定する' }));
         fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
-        fireEvent.click(await screen.findByRole('button', { name: 'WASAPI の入力が見つからない場合はオーディオ設定を開く' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'WASAPI の入力が見つからない場合は設定を開く' }));
         await screen.findByRole('heading', { name: 'オーディオ設定' });
         expect(screen.queryByRole('heading', { name: 'マイクを選んでください' })).not.toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'セットアップウィザードを閉じる' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'セットアップを閉じる' })).not.toBeInTheDocument();
         expect(localStorage.getItem('vst_host_wizard_done')).toBeNull();
     });
 

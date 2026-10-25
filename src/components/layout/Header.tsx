@@ -147,7 +147,7 @@ export const Header: React.FC<HeaderProps> = ({
                     {/* Logo Section */}
                     <div className="flex items-center gap-2 select-none shrink-0">
                         <img src="/auralyn_icon.png?v=17" alt="Auralyn Logo" className="w-7 h-7 object-contain drop-shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
-                        <h1 className="hidden sm:block text-lg font-bold tracking-tight text-foreground">
+                        <h1 aria-label="Auralyn" className="hidden sm:block text-lg font-bold tracking-tight text-foreground">
                             Aura<span className="text-primary">lyn</span>
                         </h1>
                     </div>
@@ -198,7 +198,7 @@ export const Header: React.FC<HeaderProps> = ({
                         <TooltipTrigger asChild>
                             <button
                                 onClick={onToggleGlobalBypass}
-                                aria-label={isGlobalBypassed ? t('header.compareEnd') : t('header.compareStart')}
+                                aria-label={isGlobalBypassed ? `${t('header.comparing')}：${t('header.compareEnd')}` : t('header.compareStart')}
                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all font-bold text-xs shadow-sm ${isGlobalBypassed
                                     ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 ring-1 ring-amber-500/30'
                                     : 'bg-background hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:border-amber-500/60'

@@ -119,7 +119,7 @@ it('通常版の更新取得失敗を最新版とせず、従来の配布ペー�
     });
     render(<Harness />);
     fireEvent.click(await screen.findByRole('button', { name: 'アップデートを確認' }));
-    await waitFor(() => expect(toast.info).toHaveBeenCalledWith('自動更新情報を取得できませんでした', expect.anything()));
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith('更新情報を取得できませんでした', expect.anything()));
     expect(toast.success).not.toHaveBeenCalled();
 });
 

@@ -458,8 +458,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
                 </div>
 
-                <div className="px-4 py-2 border-b border-border flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground font-mono uppercase">{t('presets.copy.064')}</span>
+                <div className="px-4 py-2 border-b border-border flex items-center justify-end">
                     <button
                         onClick={handleImport}
                         className="flex items-center gap-1.5 px-3 py-1 text-xs text-muted-foreground hover:text-primary border border-border rounded-md"

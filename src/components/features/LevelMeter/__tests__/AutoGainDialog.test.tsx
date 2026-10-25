@@ -69,7 +69,7 @@ describe('自動ゲインの操作', () => {
         const apply = await screen.findByRole('button', { name: 'この音量を使う' });
         expect(screen.getByRole('status')).toHaveTextContent('提案を確認し、「この音量を使う」で適用するか、試聴先を選んで聞き比べてください');
         expect(screen.getByRole('status')).not.toHaveTextContent('目標を選び、録音してください');
-        expect(screen.getByLabelText('自動調整の目標')).toBeDisabled();
+        expect(screen.getByLabelText('声用の目標（仮の目安）')).toBeDisabled();
         expect(apply).toBeEnabled();
         expect(screen.getByRole('button', { name: '調整後を聴く' })).toBeDisabled();
         expect(gainCommand).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'apply' }));
@@ -86,7 +86,7 @@ describe('自動ゲインの操作', () => {
         render(<AutoGainDialog onClose={() => {}} />);
         await screen.findByRole('button', { name: '録音して提案する' });
         await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('目標を選び、録音してください'));
-        expect(screen.getByLabelText('自動調整の目標')).toBeEnabled();
+        expect(screen.getByLabelText('声用の目標（仮の目安）')).toBeEnabled();
     });
     it('停止応答を確認できるまで閉じず、失敗時は再試行できる', async () => {
         const onClose = vi.fn();
@@ -198,11 +198,11 @@ it.each(['recording', 'applying'] as const)('locale変更で%sの状態や目標
     const store = createLocaleStore(() => 'ja', () => true);
     current = { ...base, phase, progress: .4 };
     render(<LocaleProvider store={store}><AutoGainDialog onClose={vi.fn()} /></LocaleProvider>);
-    const target = await screen.findByLabelText('自動調整の目標');
+    const target = await screen.findByLabelText('声用の目標（仮の目安）');
     await waitFor(() => expect(target).toBeDisabled());
     const calls = vi.mocked(gainCommand).mock.calls.length;
     act(() => { store.setLocale('en'); });
-    expect(screen.getByLabelText('Gain adjustment target')).toBe(target);
+    expect(screen.getByLabelText('Voice target (provisional guide)')).toBe(target);
     expect(target).toHaveValue('-20');
     expect(target).toBeDisabled();
     expect(screen.getByRole('status')).toHaveTextContent(phase === 'recording' ? 'Recording 4 / 10 s' : 'Checking output level application');
@@ -215,7 +215,7 @@ it('停止確認の固定失敗を翻訳してもdialog/目標値を保持しclo
     current={...base,settled:false};
     vi.mocked(confirmOutputGain).mockRejectedValue(new FixedClientError('gain.unconfirmed'));
     render(<LocaleProvider store={store}><AutoGainDialog onClose={close}/></LocaleProvider>);
-    const dialog=screen.getByRole('dialog');const target=screen.getByRole('combobox',{name:'自動調整の目標'});
+    const dialog=screen.getByRole('dialog');const target=screen.getByRole('combobox',{name:'声用の目標（仮の目安）'});
     fireEvent.click(screen.getByRole('button',{name:'閉じる'}));
     await screen.findByText('音量の反映を確認できません。状態を再取得してください。');
     const calls=vi.mocked(gainCommand).mock.calls.length;

@@ -46,7 +46,7 @@ it('未保存で閉じて再表示してもキャッシュからホストとデ�
 it('接続設定と即時反映の音づくりを分け、操作名を公開する', async () => {
     openSettings();
     const host = await screen.findByRole('combobox', { name: 'オーディオドライバ' });
-    const input = screen.getByRole('combobox', { name: 'マイク入力・ASIOデバイス' });
+    const input = screen.getByRole('combobox', { name: 'マイク入力' });
     expect(screen.queryByRole('switch', { name: 'ノイズ低減' })).not.toBeInTheDocument();
     fireEvent.mouseDown(screen.getByRole('tab', { name: '音づくり' }), { button: 0, ctrlKey: false });
     expect(screen.getByRole('switch', { name: 'ノイズ低減' })).toBeInTheDocument();
