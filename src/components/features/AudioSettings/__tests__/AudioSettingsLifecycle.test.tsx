@@ -215,7 +215,7 @@ it('実useObsUsageで接続設定からlazyガイドへ引き継ぎ、対象取�
     fireEvent.click(screen.getByRole('button', { name: 'OBSを整える' }));
     const connect = await screen.findByRole('button', { name: '接続' });
     await waitFor(() => expect(connect).toBeEnabled()); fireEvent.click(connect);
-    await screen.findByRole('button', { name: /接続済み/ });
+    await screen.findByRole('button', { name: '切断' });
     fireEvent.click(screen.getByRole('button', { name: '手動の接続手順を開く' }));
     await screen.findByRole('button', { name: '機材を使用していない手順を選択' });
     await act(async () => {});
@@ -259,7 +259,7 @@ it('認証は既存設定へ進み、閉じるとタイミング最終段へ戻�
     await waitFor(() => expect(connect).toBeEnabled());
     fireEvent.change(screen.getByRole('textbox', { name: 'OBSホスト名' }), { target: { value: 'authenticated-host' } });
     fireEvent.change(screen.getByLabelText('OBSパスワード'), { target: { value: 'private-test-value' } });
-    fireEvent.click(connect); await screen.findByRole('button', { name: /接続済み/ });
+    fireEvent.click(connect); await screen.findByRole('button', { name: '切断' });
     fireEvent.click(screen.getByRole('button', { name: '設定画面を閉じる' }));
     await screen.findByText(/現在のOBS接続を利用します/);
     expect(screen.getByRole('combobox', { name: '比較するもの' })).toBeInTheDocument();

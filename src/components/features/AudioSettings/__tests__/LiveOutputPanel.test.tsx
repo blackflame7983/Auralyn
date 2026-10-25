@@ -1,11 +1,20 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { audioApi } from '@/api/audio';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
+import { message } from '@/i18n/messages';
+import { useState } from 'react';
 import { liveOutputApi, type LiveOutputStatus } from '@/api/liveOutput';
 import { LiveOutputPanel } from '../LiveOutputPanel';
 vi.mock('@/api/liveOutput', () => ({ liveOutputApi: { request: vi.fn() } }));
 vi.mock('@/api/audio', () => ({ audioApi: { stop: vi.fn() } }));
 const initial: LiveOutputStatus = { config: { deviceId: null, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, sink: null, error: null };
 const outputs = [{ id: 'cable-id', name: 'CABLE Input', host: 'WASAPI', is_input: false, is_default: false, index: 0, channels: 2 }];
+function ParentLinkedPanel({ holdDisabled = false }: { holdDisabled?: boolean }) {
+    const [loading, setLoading] = useState(false);
+    return <LiveOutputPanel outputs={outputs} disabled={loading || holdDisabled} onBusyChange={setLoading} />;
+}
 beforeEach(() => { vi.resetAllMocks(); vi.mocked(liveOutputApi.request).mockResolvedValue(initial); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 it('明示確認前には構成を変更せず、送出先をstable IDで保存する', async () => {
@@ -65,4 +74,56 @@ it('モニターの明るさは歌向けDSPが受理する範囲だけを選べ�
         expect(slider).toHaveAttribute('min', '-3');
         expect(slider).toHaveAttribute('max', '3');
     }
+});
+
+it.each(['ja', 'en'] as const)('停止の条件を示し、キャンセルでは停止せず明示確定で一度だけ止める（%s）', async locale => {
+    let finish!: () => void;
+    vi.mocked(audioApi.stop).mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><ParentLinkedPanel /></LocaleProvider>);
+    const stop = screen.getByRole('button', { name: message(locale, 'liveOutput.stop') });
+    expect(stop).toHaveAccessibleDescription(message(locale, 'liveOutput.stopWarning'));
+    fireEvent.click(stop);
+    expect(audioApi.stop).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: message(locale, 'commonDialog.cancel') }));
+    expect(audioApi.stop).not.toHaveBeenCalled();
+    fireEvent.click(stop);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: message(locale, 'liveOutput.stop') }));
+    expect(audioApi.stop).toHaveBeenCalledOnce();
+    expect(stop).toBeDisabled();
+    fireEvent.click(stop);
+    expect(audioApi.stop).toHaveBeenCalledOnce();
+    await act(async () => finish());
+    await waitFor(() => expect(stop).toBeEnabled());
+    expect(stop).toHaveFocus();
+    expect(liveOutputApi.request).toHaveBeenCalledWith(null);
+});
+
+it('停止に失敗しても再試行でき、停止済みと表示しない', async () => {
+    vi.mocked(audioApi.stop).mockRejectedValue(new Error('stop failed'));
+    render(<ParentLinkedPanel />);
+    const stop = screen.getByRole('button', { name: '両経路の音声を停止' });
+    fireEvent.click(stop);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '両経路の音声を停止' }));
+    await screen.findByRole('alert');
+    await waitFor(() => expect(stop).toBeEnabled());
+    expect(stop).toHaveFocus();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+});
+
+it('親の無効状態が停止完了後も続く間はフォーカス復帰を保留し、解除後に戻す', async () => {
+    let finish!: () => void;
+    vi.mocked(audioApi.stop).mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+    const view = render(<ParentLinkedPanel />);
+    const stop = screen.getByRole('button', { name: '両経路の音声を停止' });
+    fireEvent.click(stop);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '両経路の音声を停止' }));
+    view.rerender(<ParentLinkedPanel holdDisabled />);
+    await act(async () => finish());
+    expect(stop).toBeDisabled();
+    expect(stop).not.toHaveFocus();
+    view.rerender(<ParentLinkedPanel />);
+    await waitFor(() => expect(stop).toHaveFocus());
+    expect(stop).toBeEnabled();
+    expect(audioApi.stop).toHaveBeenCalledOnce();
 });

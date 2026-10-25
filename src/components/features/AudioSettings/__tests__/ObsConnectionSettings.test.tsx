@@ -41,7 +41,11 @@ it('接続応答待ちと接続中は入力を固定し、切断後に編集で�
     expect(screen.getByRole('spinbutton', { name: 'OBSポート' })).toBeDisabled();
     await act(async () => resolve());
     expect(screen.getByRole('spinbutton', { name: 'OBSポート' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: /接続済み/ }));
+    expect(screen.getByText('接続済み')).toHaveAttribute('role', 'status');
+    expect(screen.queryByRole('button', { name: /接続済み/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('接続済み'));
+    expect(invoke).not.toHaveBeenCalledWith('disconnect_obs');
+    fireEvent.click(screen.getByRole('button', { name: '切断' }));
     await waitFor(() => expect(screen.getByRole('spinbutton', { name: 'OBSポート' })).toBeEnabled());
 });
 

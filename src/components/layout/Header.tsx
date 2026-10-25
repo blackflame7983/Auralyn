@@ -13,7 +13,6 @@ import {
     MdDarkMode,
     MdMicOff,
     MdGraphicEq,
-    MdEmergency,
     MdGamepad,
     MdFavorite,
     MdMic,
@@ -143,11 +142,11 @@ export const Header: React.FC<HeaderProps> = ({
             : 'bg-background/80 border-border/40'
             }`}>
             <TooltipProvider>
-                <div className="flex items-center gap-3 shrink-0 flex-1">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                     {/* Logo Section */}
                     <div className="flex items-center gap-2 select-none shrink-0">
                         <img src="/auralyn_icon.png?v=17" alt="Auralyn Logo" className="w-7 h-7 object-contain drop-shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
-                        <h1 aria-label="Auralyn" className="hidden sm:block text-lg font-bold tracking-tight text-foreground">
+                        <h1 aria-label="Auralyn" className="hidden lg:block text-lg font-bold tracking-tight text-foreground">
                             Aura<span className="text-primary">lyn</span>
                         </h1>
                     </div>
@@ -170,23 +169,18 @@ export const Header: React.FC<HeaderProps> = ({
                             <button
                                 aria-pressed={isGlobalMuted}
                                 onClick={handleToggleMute}
-                                aria-label={isGlobalMuted ? t('header.unmute') : t('header.mute')}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all font-bold text-sm shadow-sm ${isGlobalMuted
-                                    ? 'bg-red-700 text-white border-red-700 ring-2 ring-destructive/50'
-                                    : 'bg-background hover:bg-destructive/10 text-red-800 dark:text-red-300 border-destructive/30 hover:border-destructive hover:shadow-destructive/20'
+                                aria-label={t('header.emergency')}
+                                aria-describedby={isGlobalMuted ? 'header-mute-state' : undefined}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all font-bold text-sm shadow-sm text-foreground ${isGlobalMuted
+                                    ? 'bg-destructive/10 border-destructive ring-2 ring-destructive/50'
+                                    : 'bg-background hover:bg-destructive/10 border-destructive/30 hover:border-destructive hover:shadow-destructive/20'
                                     }`}
                             >
-                                {isGlobalMuted ? (
-                                    <>
-                                        <MdMicOff className="w-5 h-5" />
-                                        <span className="inline-block">{t('header.muted')}</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <MdEmergency className="w-5 h-5" />
-                                        <span className="hidden xl:inline-block">{t('header.emergency')}</span>
-                                    </>
-                                )}
+                                <MdMicOff aria-hidden="true" className="w-5 h-5 shrink-0" />
+                                <span className="flex flex-col items-start whitespace-nowrap">
+                                    <span>{t('header.emergency')}</span>
+                                    {isGlobalMuted && <span id="header-mute-state" className="text-xs font-medium">{t('header.muted')}</span>}
+                                </span>
                             </button>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -198,15 +192,18 @@ export const Header: React.FC<HeaderProps> = ({
                         <TooltipTrigger asChild>
                             <button
                                 onClick={onToggleGlobalBypass}
-                                aria-label={isGlobalBypassed ? `${t('header.comparing')}：${t('header.compareEnd')}` : t('header.compareStart')}
+                                aria-label={t('header.compare')}
+                                aria-pressed={isGlobalBypassed}
+                                aria-describedby={isGlobalBypassed ? 'header-compare-state' : undefined}
                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all font-bold text-xs shadow-sm ${isGlobalBypassed
                                     ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 ring-1 ring-amber-500/30'
                                     : 'bg-background hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:border-amber-500/60'
                                     }`}
                             >
                                 <MdCompareArrows className="w-4 h-4" />
-                                <span className="hidden xl:inline-block">
-                                    {isGlobalBypassed ? t('header.comparing') : t('header.compare')}
+                                <span className="flex flex-col items-start whitespace-nowrap">
+                                    <span>{t('header.compare')}</span>
+                                    {isGlobalBypassed && <span id="header-compare-state" className="text-xs font-medium">{t('header.vstOff')}</span>}
                                 </span>
                             </button>
                         </TooltipTrigger>
@@ -228,10 +225,10 @@ export const Header: React.FC<HeaderProps> = ({
 
                     {!isBeginnerMode && (
                         <>
-                            <div className="h-8 w-px bg-border/50 mx-2" />
+                            <div className="hidden 2xl:block h-8 w-px bg-border/50 mx-2" />
 
                             {/* Input Gain + Visualizers */}
-                            <div className="flex items-center gap-3">
+                            <div className="hidden 2xl:flex items-center gap-3">
                                 {/* Compact Input Gain */}
                                 <Tooltip>
                                     <TooltipTrigger asChild>
@@ -285,7 +282,7 @@ export const Header: React.FC<HeaderProps> = ({
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                     <button
-                                        className={`p-2 transition-colors rounded-lg flex items-center gap-2 ${theme === 'gaming' ? 'text-primary hover:text-primary hover:bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                                        className={`hidden xl:flex p-2 transition-colors rounded-lg items-center gap-2 ${theme === 'gaming' ? 'text-primary hover:text-primary hover:bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
                                         aria-label={t('header.themeOpen')}
                                     >
                                         {theme === 'light' && <MdWbSunny className="w-5 h-5" />}
