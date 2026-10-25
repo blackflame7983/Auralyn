@@ -1,5 +1,5 @@
 import type { EngineRuntimeStats, ResamplerCohortTimingSnapshot } from '@/api/audio';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it } from 'vitest';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
@@ -13,6 +13,16 @@ const packet = (patch: Partial<ResamplerCohortTimingSnapshot> = {}): ResamplerCo
     latestArrivalToEnd: { p50: { lowerMs: 3, upperMs: 3.1 }, p95: { lowerMs: 5, upperMs: 5.1 } }, invalidReasons: [], ...patch,
 });
 afterEach(cleanup);
+it('直近窓を累積と分け、期限切れや逆順packetを古い分位で埋めない', () => {
+    const d = { matchedFrames: 1, earliestArrivalToEnd: { p50: { lowerMs: 40, upperMs: 40.1 }, p95: null }, latestArrivalToEnd: { p50: null, p95: null } };
+    const periods = { windowSeconds: 30, updateIntervalMs: 1000, startupDurationMs: 3000, startNs: '0', endNs: '31000000000', recent: d, startup: d, steady: d };
+    const view = render(<ResamplerCohortTimingDetails snapshot={packet({ periods })} current />);
+    expect(within(screen.getByRole('group', { name: /直近30秒/ })).getByText('40.00〜40.10 ms未満')).toBeInTheDocument();
+    view.rerender(<ResamplerCohortTimingDetails snapshot={packet({ periods: { ...periods, endNs: '62000000000', recent: { ...d, matchedFrames: 0, earliestArrivalToEnd: { p50: null, p95: null } } } })} current />);
+    expect(within(screen.getByRole('group', { name: /直近30秒/ })).queryByText('12.00〜12.10 ms未満')).not.toBeInTheDocument();
+    view.rerender(<ResamplerCohortTimingDetails snapshot={packet({ periods })} current />);
+    expect(screen.queryByRole('group', { name: /直近30秒/ })).not.toBeInTheDocument();
+});
 it('蓄積到着区間とcarryを表示しDSP全信号を観測したとしない', () => {
     render(<ResamplerCohortTimingDetails snapshot={packet()} current />);
     expect(screen.getByText('12.00〜12.10 ms未満')).toBeInTheDocument();

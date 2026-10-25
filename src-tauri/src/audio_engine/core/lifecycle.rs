@@ -51,14 +51,14 @@ impl StartupPolicy {
 }
 
 /// callbackを破棄するスレッドでは所有値を解放せず、制御側へ一度だけ返す。
-pub(super) struct CallbackOwner<T> {
+pub(crate) struct CallbackOwner<T> {
     value: Option<T>,
     returned: ReturnProducer<T>,
 }
 
-pub(super) struct ControlOwner<T>(ReturnConsumer<T>);
+pub(crate) struct ControlOwner<T>(ReturnConsumer<T>);
 
-pub(super) fn callback_owner<T>(value: T) -> (CallbackOwner<T>, ControlOwner<T>) {
+pub(crate) fn callback_owner<T>(value: T) -> (CallbackOwner<T>, ControlOwner<T>) {
     // この専用キューへの送信はCallbackOwner::dropの一回のみ。満杯にならない。
     let (returned, receiver) = HeapRb::new(1).split();
     (
@@ -71,7 +71,7 @@ pub(super) fn callback_owner<T>(value: T) -> (CallbackOwner<T>, ControlOwner<T>)
 }
 
 impl<T> CallbackOwner<T> {
-    pub(super) fn get_mut(&mut self) -> &mut T {
+    pub(crate) fn get_mut(&mut self) -> &mut T {
         self.value
             .as_mut()
             .expect("callbackの所有値はDropまで保持する")
@@ -93,7 +93,7 @@ impl<T> Drop for CallbackOwner<T> {
 }
 
 impl<T> ControlOwner<T> {
-    pub(super) fn take(&mut self) -> Option<T> {
+    pub(crate) fn take(&mut self) -> Option<T> {
         self.0.try_pop()
     }
 }

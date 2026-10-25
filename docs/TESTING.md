@@ -303,3 +303,22 @@ OBS の読み取りと書き込みは別リクエストで、他クライアン�
 - 音量調整の録音・聞き比べが使用中なら競合を示し、ボイスチェックから勝手に奪わない。通常出力で再生する既存APIは主UIから呼ばない。WAV書出し・解析・波形の回帰を確認する。
 
 API／hook／画面のモック試験と、実機の同位置切替・短いフェード・loop境界・音量合わせ・デバイス切断・CPU／音切れ・OBS混入の証拠は分ける。WASAPI通常送出＋別WASAPI試聴、ASIO通常送出＋別WASAPI試聴は実際のデバイス・レート・ドライバーを記録する。900×600で本文をスクロールし、録音・試聴先・確認・A/B・再生／停止・音量合わせへキーボードで到達できることを別途確認する。
+
+
+## #28・#73〜#77のモニター改善
+
+機器を開かないローカル確認は次を使う。実装範囲と実機で残る確認は[SINGING_MONITOR.md](SINGING_MONITOR.md)を参照する。
+
+```powershell
+npm test -- --run --maxWorkers=4
+npx tsc --noEmit
+npx vite build
+# 以下はsrc-tauriで実行
+cargo test --locked --lib --bins --test audio_queue_contract --test msix_coexistence
+cargo check --locked --all-targets
+cargo clippy --locked --all-targets
+# 任意の非RT集計時間計測。実機・Engine全体の比較ではない
+cargo test --locked --lib measure_fixed_period_publication_cost -- --ignored --nocapture
+```
+
+通常のcallback、配信queue満杯、mute世代、モード切替、配信workerの停止注入でRTのalloc/free 0を確認する。clock差の試験は数値列の合成であり、実clockの長時間安定や聴感の合格とは区別する。通常設定やOBS collectionを変更して試験を代用しない。

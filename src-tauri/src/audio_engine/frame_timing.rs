@@ -1,6 +1,7 @@
 //! 同率raw frame／異率batch-ready callbackと実queue読出しを非RTで結合する。
 //! 異率の位置は生成出力frameであり、元の入力sampleとの点対応ではない。
 pub mod cohort;
+mod periods;
 use ringbuf::{
     traits::{Consumer, Producer, Split},
     HeapRb,
@@ -681,6 +682,7 @@ impl Observer {
     pub fn drain(&mut self) {
         if let Some(c) = &mut self.cohort {
             c.drain();
+            c.publish_periods(elapsed_ns(self.origin));
         }
         if self.sealed_ns.is_some() {
             return;

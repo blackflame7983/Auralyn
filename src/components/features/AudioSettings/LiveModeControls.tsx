@@ -9,7 +9,7 @@ function Content({ model }: { model: LiveModesModel }) {
     const { snapshot: value, busy, error } = model;
     return <div className="space-y-3 p-3 text-sm">
         <p>{t('settings.LiveModeControls.215')}</p>
-        <p role="status">{!value ? t('settings.LiveModeControls.216') : value.phase === 'custom' ? t('settings.LiveModeControls.217')
+        <p role="status">{!value ? t('settings.LiveModeControls.216') : value.phase === 'partial' ? t('liveOutput.partial') : value.phase === 'custom' ? t('settings.LiveModeControls.217')
             : !value.running || value.phase === 'stopped' ? t('settings.LiveModeControls.218', { arg0: name(value.target) })
             : value.phase === 'settled' ? t('settings.LiveModeControls.219', { arg0: name(value.target), arg1: name(value.applied) })
             : t('settings.LiveModeControls.220', { arg0: name(value.target), arg1: value.acceptedRevision === value.revision ? t('settings.LiveModeControls.221') : t('settings.LiveModeControls.222') })}</p>

@@ -365,6 +365,7 @@ export interface QueueDiagnosticsSnapshot {
 }
 
 export interface LatencyMetadata {
+    broadcastState?: string | null; processingContext?: string | null; streamEpoch?: string | null; comparisonRevision?: string | null;
     schemaVersion: 1; streamRunning: boolean; nominalSampleRateHz: number | null;
     fixedBufferRequestFrames: number | null; nrConfiguredEnabled: boolean;
     nrProcessingRateHz: number | null; nrProcessingFrameSamples: number | null;
@@ -402,7 +403,13 @@ export interface ResamplerBatchTimingSnapshot extends FrameTimingSnapshot {
 }
 
 // 処理に消費された入力cohortの到着区間。FIR/NR/VSTの信号対応ではない。
+export interface TimingDistribution {
+    matchedFrames: number;
+    earliestArrivalToEnd: { p50: FrameTimingSnapshot['p50']; p95: FrameTimingSnapshot['p95'] };
+    latestArrivalToEnd: { p50: FrameTimingSnapshot['p50']; p95: FrameTimingSnapshot['p95'] };
+}
 export interface ResamplerCohortTimingSnapshot {
+    periods?: { windowSeconds: number; updateIntervalMs: number; startupDurationMs: number; startNs: string | null; endNs: string; recent: TimingDistribution; startup: TimingDistribution; steady: TimingDistribution } | null;
     schemaVersion: 1 | 2; epoch: string; mode: 'inputCohortToOutputBufferEnd' | 'sameRateInputToOutputBufferEnd';
     // applied = RT受理・状態反映。gain平滑化／VST内部完了のACKではない。
     windowId?: string; requestedRevision?: string; completedRevision?: string; appliedRevision?: string; rejectedRevision?: string | null; normalMicOutput?: boolean; streamConsumedFrames?: number;

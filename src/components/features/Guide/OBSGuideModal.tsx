@@ -1,3 +1,4 @@
+import { SingingRouteGuide } from './SingingRouteGuide';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { buttonVariants } from '@/components/ui/button';
 import { Modal } from '../../ui/modal';
@@ -195,10 +196,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                         <p className="text-sm text-muted-foreground">
                                             <strong>{t('guide.copy.038')}</strong>
                                         </p>
-                                        <ul className="list-disc list-inside text-sm text-muted-foreground pl-2 bg-muted/30 p-3 rounded">
-                                            <li>Yamaha AG03/06: <strong>MONITOR MUTE</strong> {t('guide.copy.039')}</li>
-                                            <li>{t('guide.copy.040')}<strong>Direct Monitor</strong> {t('guide.copy.041')}</li>
-                                        </ul>
+                                        <p className="text-sm text-muted-foreground">{t('singingRoute.directWarning')}</p>
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
@@ -227,6 +225,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                         </div>
                     )}
 
+                    {step === 2 && <SingingRouteGuide hardware={useHardwareMixer} />}
                     {step === 3 && (
                         <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
                             <h3 className="text-xl font-bold text-foreground">{t('guide.copy.059')}</h3>

@@ -45,6 +45,7 @@ pub struct ArrivalRange {
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub schema_version: u8,
+    pub periods: Option<super::periods::Snapshot>,
     pub window_id: String,
     pub requested_revision: String,
     pub completed_revision: String,
@@ -305,6 +306,7 @@ impl Output {
     }
 }
 pub struct Observer {
+    periods: super::periods::Periods,
     window: Window,
     window_consumed: u64,
     window_zero_filled: u64,
@@ -363,6 +365,7 @@ impl Observer {
         };
         (
             Self {
+                periods: super::periods::Periods::new(),
                 window: Window::default(),
                 window_consumed: 0,
                 window_zero_filled: 0,
@@ -617,6 +620,7 @@ impl Observer {
             }
             if output.window.serial > self.window.serial {
                 self.window = output.window;
+                self.periods.reset(output.end);
                 self.window_consumed = 0;
                 self.window_zero_filled = 0;
                 self.matched = 0;
@@ -672,6 +676,8 @@ impl Observer {
                 return false;
             };
             self.matched = matched;
+            self.periods
+                .record(output.end, segment.earliest, segment.latest, count);
         }
         if count == segment.count {
             self.segments.pop_front();
@@ -688,6 +694,11 @@ impl Observer {
             o.count -= count;
         }
         true
+    }
+    pub fn publish_periods(&mut self, now: u64) {
+        if !self.sealed {
+            self.periods.publish(now);
+        }
     }
     pub fn seal(&mut self) {
         if self.sealed {
@@ -760,6 +771,8 @@ impl Observer {
         };
         Snapshot {
             schema_version: 2,
+            periods: (invalid == 0 && window_current && self.window.normal)
+                .then(|| self.periods.snapshot()),
             window_id: self.window.serial.to_string(),
             requested_revision: requested_revision.to_string(),
             completed_revision: self.window.completed.to_string(),

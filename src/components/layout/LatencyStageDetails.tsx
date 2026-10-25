@@ -4,7 +4,7 @@ export function LatencyStageDetails({ stats, current }: { stats?: EngineRuntimeS
     const t = useMessages(); const s = stats?.latencyMetadata?.stageBreakdown;
     const uint = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 4294967295;
     const available = current && s?.schemaVersion === 1 && s.current && s.queryBasis === 'queriedAtRuntimeStats'
-        && typeof s.streamEpoch === 'string' && s.streamEpoch === stats?.queueDiagnostics?.epoch && stats.queueDiagnostics.state === 'running'
+        && typeof s.streamEpoch === 'string' && ((stats?.latencyMetadata?.processingContext === 'broadcastWorker' && s.streamEpoch === stats.latencyMetadata.streamEpoch) || (s.streamEpoch === stats?.queueDiagnostics?.epoch && stats.queueDiagnostics.state === 'running'))
         && typeof s.globalBypass === 'boolean' && typeof s.builtinVoiceEnabled === 'boolean' && typeof s.builtinReverbEnabled === 'boolean'
         && s.builtinSignalDelay === 'unknown' && s.nr?.signalDelay === 'unknown' && s.nr.modelRateHz === 48000 && s.nr.modelFrameSamples === 480
         && Array.isArray(s.vst) && s.vst.length <= 32 && s.vst.every(v => typeof v.id === 'string' && typeof v.name === 'string'

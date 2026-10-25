@@ -15,7 +15,7 @@ mod bundle_capture;
 #[path = "core/capabilities.rs"]
 mod capabilities;
 #[path = "core/lifecycle.rs"]
-mod lifecycle;
+pub(super) mod lifecycle;
 #[path = "core/session_rack.rs"]
 mod session_rack;
 use super::auto_gain::{self, Session as GainSession};
@@ -155,6 +155,7 @@ pub enum AudioThreadMessage {
         revision: u64,
     },
     SetLoudnessMeasurement(Option<u64>),
+    MeasurementReservation(u64),
     SetOutputGain {
         value: f32,
         revision: u64,
@@ -268,6 +269,12 @@ pub struct Engine {
     gain_preview: Option<auto_gain_preview::Preview>,
     gain_main_device: Option<String>,
     stream_failed: Arc<AtomicBool>,
+    live_output: Option<super::live_output::Sink>,
+    live_output_config: super::live_output::Config,
+    live_output_error: Option<String>,
+    monitor_levels: Arc<AtomicU64>,
+    split_monitor: Option<super::split_monitor::Controller>,
+    split_worker: Option<super::split_monitor::Worker>,
     input_stream: Option<cpal::Stream>,
     output_stream: Option<cpal::Stream>,
 
@@ -329,6 +336,7 @@ pub struct Engine {
     voice_metadata: Option<voice_preview::Metadata>,
     voice_recording_id: u64,
     voice_revision: u64,
+    comparison_revision: u64,
     voice_input_gain: f32,
 
     // Diagnostics
@@ -348,6 +356,12 @@ impl Engine {
             builtin: super::builtin::Controller::new(),
             live_modes: super::live_modes::Controller::new(),
             pending_restore: None,
+            live_output: None,
+            live_output_config: super::live_output::Config::default(),
+            live_output_error: None,
+            monitor_levels: Arc::new(AtomicU64::new(1.0f32.to_bits() as u64)),
+            split_monitor: None,
+            split_worker: None,
             input_stream: None,
             gain_shared: Arc::new(auto_gain::Shared::default()),
             gain_capture_rx: None,
@@ -411,6 +425,7 @@ impl Engine {
             voice_metadata: None,
             voice_recording_id: 0,
             voice_revision: 0,
+            comparison_revision: 0,
             voice_input_gain: 1.0,
             stats_max_jitter: Arc::new(AtomicU64::new(0)),
             stats_glitches: Arc::new(AtomicU64::new(0)),
@@ -893,6 +908,15 @@ impl Engine {
             }
             other => (other, None),
         };
+        if self.live_output_config.split_processing
+            && matches!(
+                &cmd,
+                Command::PlayVoiceCheck { .. } | Command::PlayTestTone { .. }
+            )
+        {
+            self.send_error("処理分離中は通常出力への録音再生・テスト音に対応していません。録音の別試聴または単一出力を使ってください".into());
+            return;
+        }
         if matches!(
             &cmd,
             Command::LoadPlugin { .. }
@@ -970,7 +994,8 @@ impl Engine {
         }
         if !matches!(
             &cmd,
-            Command::LiveMode { .. }
+            Command::LiveOutput { config: None }
+                | Command::LiveMode { .. }
                 | Command::ConfigureLiveModes { .. }
                 | Command::GetDevices
                 | Command::BeginDeviceScan
@@ -995,6 +1020,60 @@ impl Engine {
             self.invalidate_auto_gain();
         }
         match cmd {
+            Command::LiveOutput { config } => {
+                if let Some(config) = config {
+                    if let Err(error) = config.validate() {
+                        self.send_error(error.to_string());
+                        return;
+                    }
+                    if self.live_modes.armed && !config.same_route(&self.live_output_config) {
+                        self.send_error("本番保護中は出力構成を変更できません".into());
+                        return;
+                    }
+                    if self.output_stream.is_some() && !config.same_route(&self.live_output_config)
+                    {
+                        self.send_error("音声を停止してから出力構成を変更してください".into());
+                        return;
+                    }
+                    if let Some(sink) = &self.live_output {
+                        sink.update(&config);
+                    }
+                    self.monitor_levels.store(
+                        u64::from(config.monitor_trim.to_bits())
+                            | (u64::from(config.monitor_muted) << 32),
+                        Ordering::Release,
+                    );
+                    self.live_output_config = config;
+                    if self.output_stream.is_some() {
+                        if let Some(revision) = self
+                            .frame_timing
+                            .as_ref()
+                            .and_then(|t| t.request_cohort_window())
+                        {
+                            self.push_audio_msg(AudioThreadMessage::CohortWindow { revision });
+                        }
+                    }
+                }
+                self.send_response(Response::LiveOutput(Box::new(super::live_output::Status {
+                    config: self.live_output_config.clone(),
+                    sink: self.live_output.as_ref().map(|s| s.snapshot()),
+                    error: self.live_output_error.clone(),
+                    broadcast_epoch: self.live_output.as_ref().map(|_| {
+                        format!(
+                            "{}:broadcast:{}",
+                            self.builtin.snapshot(false).epoch,
+                            self.queue_attempt
+                        )
+                    }),
+                    monitor: self.split_monitor.as_ref().map(|m| {
+                        m.snapshot(format!(
+                            "{}:monitor:{}",
+                            self.builtin.snapshot(false).epoch,
+                            self.queue_attempt
+                        ))
+                    }),
+                })));
+            }
             Command::GetFrameTimingTrace { expected_epoch } => {
                 match self.frame_timing_trace(&expected_epoch) {
                     Ok(trace) => self.send_response(Response::FrameTimingTrace(Box::new(trace))),
@@ -1443,7 +1522,12 @@ impl Engine {
                         .collect(),
                     changed_during_recording: false,
                     raw_tap: "post_input_gain_and_channel_selection_pre_fx".into(),
-                    processed_tap: "post_fx_pre_output_gain_and_global_mute".into(),
+                    processed_tap: if self.live_output_config.split_processing {
+                        "broadcast_post_fx_pre_common_output_gain_and_global_mute"
+                    } else {
+                        "post_fx_pre_output_gain_and_global_mute"
+                    }
+                    .into(),
                     vst_parameters_verified: false,
                 });
                 let max_ms = max_ms.clamp(500, super::voice_check::VOICE_CHECK_MAX_MS);
@@ -1740,6 +1824,19 @@ impl Engine {
     }
 
     fn queue_audio_msg(&mut self, msg: AudioThreadMessage) {
+        self.comparison_revision = self.comparison_revision.saturating_add(1);
+        let measurement = if let Some(monitor) = &mut self.split_monitor {
+            monitor.message(&msg);
+            matches!(
+                &msg,
+                AudioThreadMessage::StartVoiceCheckRecording { .. }
+                    | AudioThreadMessage::StartAutoGainCapture(_)
+                    | AudioThreadMessage::SetLoudnessMeasurement(Some(_))
+            )
+            .then(|| monitor.shared.measurement_ticket())
+        } else {
+            None
+        };
         // 要求だけでは新CDFへ移らない。実mutation直後のmarkerを同じFIFOへ置く。
         let cohort_revision = msg
             .changes_cohort()
@@ -1758,6 +1855,9 @@ impl Engine {
         )
         .then(|| self.voice_check.reserve_transport());
         self.push_audio_msg(msg);
+        if let Some(ticket) = measurement {
+            self.push_audio_msg(AudioThreadMessage::MeasurementReservation(ticket));
+        }
         if let Some(revision) = cohort_revision {
             self.push_audio_msg(AudioThreadMessage::CohortWindow { revision });
         }
@@ -1767,6 +1867,11 @@ impl Engine {
     }
 
     fn push_audio_msg(&mut self, msg: AudioThreadMessage) {
+        if let AudioThreadMessage::CohortWindow { revision } = &msg {
+            if let Some(monitor) = &mut self.split_monitor {
+                monitor.window(*revision);
+            }
+        }
         if !self.pending_audio_msgs.is_empty() {
             self.pending_audio_msgs.push(msg);
             return;
@@ -2318,14 +2423,128 @@ impl Engine {
             output_timing = output;
         }
 
+        let monitor_levels = self.monitor_levels.clone();
+        let mut live_sender = None;
+        self.live_output_error = None;
+        if let Some(device) = self.live_output_config.device_id.as_deref() {
+            if channels_len != 2 {
+                self.live_output_error = Some("二系統出力はstereo構成だけに対応しています".into());
+            } else {
+                match super::live_output::Sink::start(
+                    device,
+                    self.current_sample_rate as u32,
+                    self.gain_main_device.as_deref(),
+                    &self.live_output_config,
+                    self.stream_failed.clone(),
+                ) {
+                    Ok((sink, sender)) => {
+                        sink.mute(self.global_mute);
+                        self.live_output = Some(sink);
+                        live_sender = Some(sender);
+                    }
+                    Err(error) => {
+                        self.live_output_error = Some(error.to_string());
+                    }
+                }
+            }
+        }
+        let separated = self.live_output_config.split_processing;
+        let mut monitor_renderer = None;
+        let mut broadcast_queue = None;
+        let mut worker_controls = None;
+        let mut broadcast_recovery_gains = None;
+        let mut upstream_recovery = vec![1.0f32; max_frames_per_callback];
+        if separated {
+            anyhow::ensure!(channels_len == 2, "処理分離の出力構成を開始できません");
+            let queue = Arc::new(HeapRb::<f32>::new(
+                (self.current_sample_rate as usize / 5).max(2) * 2,
+            ));
+            let (tx, rx) = queue.clone().split();
+            let original_consumer = std::mem::replace(&mut audio_cons, rx);
+            let mode = self
+                .live_modes
+                .snapshot(self.builtin.snapshot(false).epoch, false)
+                .target;
+            let (controller, renderer, gains) = super::split_monitor::Controller::prepare(
+                original_consumer,
+                tx,
+                output_timing.take(),
+                output_queue_diagnostics.clone(),
+                max_frames_per_callback,
+                &self.live_output_config,
+                self.current_sample_rate as u32,
+                self.voice_input_gain,
+                self.output_gain,
+                [self.input_channel_l, self.input_channel_r],
+                self.global_mute,
+                self.global_bypass,
+                self.monitor_levels.clone(),
+                self.stream_failed.clone(),
+                mode,
+                initial_live_revision,
+            )?;
+            if self.live_output.is_none() {
+                controller.shared.failed.store(true, Ordering::Release);
+            }
+            worker_controls = Some(controller.shared.clone());
+            broadcast_recovery_gains = Some(gains);
+            self.split_monitor = Some(controller);
+            monitor_renderer = Some(renderer);
+            broadcast_queue = Some(queue);
+            rt_input_gain = 1.0;
+            rt_input_l = 0;
+            rt_input_r = 1;
+            // 入力→monitorの観測を維持し、配信workerとは別に集計する。
+            output_timing = None;
+        }
+        let output_queue_diagnostics = if separated {
+            Arc::new(QueueDiagnostics::new(
+                format!("broadcast:{}", self.queue_attempt),
+                self.current_sample_rate as u32,
+                self.current_sample_rate as u32,
+                2,
+                2,
+                (self.current_sample_rate as usize / 5).max(2) * 2,
+            ))
+        } else {
+            output_queue_diagnostics
+        };
+        let output_nr_failed = worker_controls
+            .as_ref()
+            .map_or(output_nr_failed, |s| s.failed.clone());
+        let output_capacity_failed = worker_controls
+            .as_ref()
+            .map_or(output_capacity_failed, |s| s.failed.clone());
+        let output_stream_failed = worker_controls
+            .as_ref()
+            .map_or(output_stream_failed, |s| s.failed.clone());
         let input_failed = self.stream_failed.clone();
         let input_process_failed = input_failed.clone();
         let input_resampling_failed = self.resampling_failed.clone();
+        let mut worker_generation = 0;
+        let mut upstream_consumed = 0u64;
+        let mut measurement_processed = 0;
+        let worker_generation_controls = worker_controls.clone();
         let build_output = || {
             let output_build_started = Instant::now();
-            let output_result = out_dev.build_output_stream(
-                &out_stream_config,
-                move |data: &mut [f32], info: &cpal::OutputCallbackInfo| {
+            let mut process_output =
+                move |data: &mut [f32], info: Option<&cpal::OutputCallbackInfo>| {
+                    if let Some(sender) = &mut live_sender {
+                        sender.get_mut().begin_block();
+                    }
+                    if let Some(controls) = &worker_generation_controls {
+                        let generation = controls.generation.load(Ordering::Acquire);
+                        if generation != worker_generation {
+                            let skipped = audio_cons.skip(audio_cons.occupied_len() / 2 * 2) / 2;
+                            if let Some(gains) = &mut broadcast_recovery_gains {
+                                gains.skip(skipped);
+                            }
+                            upstream_consumed = upstream_consumed.saturating_add(skipped as u64);
+                            worker_generation = generation;
+                            data.fill(0.0);
+                            return;
+                        }
+                    }
                     let timing_begin = output_timing.as_ref().map_or(0, |timing| timing.now_ns());
                     let CallbackProcessors {
                         processors: rt_processors,
@@ -2349,6 +2568,32 @@ impl Engine {
                     ) else {
                         return;
                     };
+                    let measurement_ticket = worker_generation_controls
+                        .as_ref()
+                        .map(|c| c.measurement_ticket());
+                    let upstream_first_frame = upstream_consumed;
+                    if let Some(gains) = &mut broadcast_recovery_gains {
+                        for gain in &mut upstream_recovery[..actual_frames] {
+                            let Some(value) = gains.try_pop() else {
+                                output_stream_failed.store(true, Ordering::Release);
+                                data.fill(0.0);
+                                return;
+                            };
+                            *gain = value;
+                        }
+                        upstream_consumed = upstream_consumed.saturating_add(actual_frames as u64);
+                    }
+                    // Monitorのunity ACKと、このblock自体の回復係数が揃うまで開始要求をFIFOに残す。
+                    // 既に転送済みのfade blockを録音・測定の先頭として扱わない。
+                    let measurement_ready = worker_generation_controls
+                        .as_ref()
+                        .zip(measurement_ticket)
+                        .is_none_or(|(c, ticket)| {
+                            c.measurement_ready_at(ticket, upstream_first_frame)
+                                && upstream_recovery[..actual_frames]
+                                    .iter()
+                                    .all(|gain| *gain == 1.0)
+                        });
                     if !initial_live_ack {
                         live_shared
                             .accepted
@@ -2409,7 +2654,19 @@ impl Engine {
                     // Process Commands
                     // 返却待ちの拒否値がある間は次の所有値を受け取らない。
                     // キュー満杯でも保持数を固定し、RT側でprocessorをDropしない。
-                    while pending_rejected.flush_to(&mut retire_prod) {
+                    while measurement_ready && pending_rejected.flush_to(&mut retire_prod) {
+                        if consumer.try_peek().is_some_and(|msg| {
+                            matches!(
+                                msg,
+                                AudioThreadMessage::StartVoiceCheckRecording { .. }
+                                    | AudioThreadMessage::StartAutoGainCapture(_)
+                                    | AudioThreadMessage::SetLoudnessMeasurement(Some(_))
+                            )
+                        }) && worker_generation_controls.as_ref().is_some_and(|c| {
+                            !c.measurement_ready_at(c.measurement_ticket(), upstream_first_frame)
+                        }) {
+                            break;
+                        }
                         let Some(msg) = consumer.try_pop() else {
                             break;
                         };
@@ -2529,7 +2786,9 @@ impl Engine {
                                 rt_global_bypass = active;
                             }
                             AudioThreadMessage::SetInputGain(val) => {
-                                rt_input_gain = val;
+                                if !separated {
+                                    rt_input_gain = val;
+                                }
                             }
                             AudioThreadMessage::StartNoiseLearning { duration_frames } => {
                                 rt_noise_learning.start(duration_frames);
@@ -2577,6 +2836,9 @@ impl Engine {
                             AudioThreadMessage::SetLoudnessMeasurement(id) => {
                                 rt_loudness.reset(loudness_start.request(id, &queue_recovery));
                             }
+                            AudioThreadMessage::MeasurementReservation(ticket) => {
+                                measurement_processed = ticket;
+                            }
                             AudioThreadMessage::SetOutputGain { value, revision } => {
                                 rt_output_gain.set_target(value);
                                 rt_capture
@@ -2586,8 +2848,10 @@ impl Engine {
                             }
                             AudioThreadMessage::StartAutoGainCapture(id) => rt_capture.start(id),
                             AudioThreadMessage::SetInputChannels(l, r) => {
-                                rt_input_l = l;
-                                rt_input_r = r;
+                                if !separated {
+                                    rt_input_l = l;
+                                    rt_input_r = r;
+                                }
                             }
                             AudioThreadMessage::SetChannelScan(enable) => {
                                 rt_scan_enabled = enable;
@@ -2652,7 +2916,7 @@ impl Engine {
                         audio_cons.occupied_len() / channels,
                         frames,
                         output_queue_diagnostics.max_burst(),
-                        recovery_blocked,
+                        recovery_blocked || separated,
                     );
                     if skip_frames > 0 {
                         if let Some(timing) = &output_timing {
@@ -3090,6 +3354,9 @@ impl Engine {
                     let cohort_normal_mic = !rt_global_mute
                         && !rt_test_tone.is_active()
                         && !rt_voice_check.is_playback_active();
+                    if let Some(sender) = &mut live_sender {
+                        sender.get_mut().normal(cohort_normal_mic);
+                    }
                     if rt_global_mute
                         || rt_test_tone.is_active()
                         || rt_voice_check.is_playback_active()
@@ -3212,10 +3479,23 @@ impl Engine {
                                 * gain;
 
                             // 既存gain/routingの後で、左右へ同一の回復fadeを1回だけ適用。
-                            let recovery_gain = queue_recovery.next_gain();
+                            let recovery_gain = queue_recovery.next_gain() * upstream_recovery[i];
                             let main_l = main_l * recovery_gain;
                             let main_r = main_r * recovery_gain;
 
+                            if let Some(sender) = &mut live_sender {
+                                sender.get_mut().send([main_l, main_r]);
+                            }
+                            let levels = monitor_levels.load(Ordering::Relaxed);
+                            let monitor_gain = if separated {
+                                1.0
+                            } else if levels >> 32 != 0 {
+                                0.0
+                            } else {
+                                f32::from_bits(levels as u32)
+                            };
+                            let main_l = main_l * monitor_gain;
+                            let main_r = main_r * monitor_gain;
                             // Left
                             if target_l < channels {
                                 let out_idx = i * channels + target_l;
@@ -3267,6 +3547,22 @@ impl Engine {
                         rt_output_gain.current() == rt_output_gain.target(),
                         Ordering::Release,
                     );
+                    if measurement_ready
+                        && measurement_ticket
+                            .is_some_and(|ticket| ticket & !3 == measurement_processed & !3)
+                    {
+                        if let Some((controls, ticket)) =
+                            worker_generation_controls.as_ref().zip(measurement_ticket)
+                        {
+                            controls.finish_measurement_block(
+                                ticket,
+                                rt_voice_check.is_recording_active()
+                                    || rt_capture.is_active()
+                                    || rt_loudness.id.is_some()
+                                    || loudness_start.blocks_recovery(),
+                            );
+                        }
+                    }
                     callback_diagnostics.record(actual_frames, now.elapsed().as_micros() as u64);
                     if let Some(timing) = &mut output_timing {
                         timing.record_context(
@@ -3274,14 +3570,43 @@ impl Engine {
                             frames,
                             timing_begin,
                             timing_read,
-                            Some(info.timestamp().callback),
-                            cohort_normal_mic,
+                            info.map(|info| info.timestamp().callback),
+                            cohort_normal_mic
+                                && (separated || monitor_levels.load(Ordering::Acquire) >> 32 == 0),
                         );
                     }
-                },
-                err_fn_ipc,
-                None,
-            );
+                };
+            let output_result = if let (Some(mut monitor), Some(queue), Some(controls)) =
+                (monitor_renderer, broadcast_queue, worker_controls)
+            {
+                match super::split_monitor::Worker::start(
+                    move |data| process_output(data, None),
+                    queue,
+                    controls,
+                    self.stream_failed.clone(),
+                    self.current_block_size.min(max_frames_per_callback).max(1),
+                ) {
+                    Ok(worker) => {
+                        self.split_worker = Some(worker);
+                        out_dev.build_output_stream(
+                            &out_stream_config,
+                            move |data: &mut [f32], info| {
+                                monitor.get_mut().render(data, Some(info))
+                            },
+                            err_fn_ipc,
+                            None,
+                        )
+                    }
+                    Err(_) => Err(cpal::BuildStreamError::DeviceNotAvailable),
+                }
+            } else {
+                out_dev.build_output_stream(
+                    &out_stream_config,
+                    move |data: &mut [f32], info| process_output(data, Some(info)),
+                    err_fn_ipc,
+                    None,
+                )
+            };
             capabilities::report_phase("output_build", output_build_started);
             output_result
         };
@@ -3551,6 +3876,9 @@ impl Engine {
 
     fn set_global_mute_intent(&mut self, active: bool) {
         self.global_mute = active;
+        if let Some(sink) = &self.live_output {
+            sink.mute(active);
+        }
         if self.output_stream.is_some() {
             self.queue_audio_msg(AudioThreadMessage::SetGlobalMute(active));
         }
@@ -3611,7 +3939,11 @@ impl Engine {
             && !self.stream_failed.load(Ordering::Acquire)
             && !self.nr_failed.load(Ordering::Acquire)
             && !self.resampling_failed.load(Ordering::Acquire)
-            && !self.block_capacity_failed.load(Ordering::Acquire);
+            && !self.block_capacity_failed.load(Ordering::Acquire)
+            && !self
+                .split_monitor
+                .as_ref()
+                .is_some_and(|s| s.shared.failed.load(Ordering::Acquire));
         let (vst_reported_latency_samples, known_subtotal, overflow, mut vst) = report;
         if !current {
             for stage in &mut vst {
@@ -3623,7 +3955,15 @@ impl Engine {
             schema_version: 1,
             query_basis: "queriedAtRuntimeStats".into(),
             current,
-            stream_epoch: self.queue_snapshot().map(|q| q.epoch),
+            stream_epoch: if self.live_output_config.split_processing {
+                Some(format!(
+                    "{}:queue:{}",
+                    self.builtin.snapshot(false).epoch,
+                    self.queue_attempt
+                ))
+            } else {
+                self.queue_snapshot().map(|q| q.epoch)
+            },
             global_bypass: self.global_bypass,
             vst,
             vst_known_subtotal_samples: current.then_some(known_subtotal).flatten(),
@@ -3646,9 +3986,38 @@ impl Engine {
             builtin_signal_delay: "unknown".into(),
         };
         crate::ipc::LatencyMetadata {
+            broadcast_state: self.live_output_config.device_id.as_ref().map(|_| {
+                if self.output_stream.is_none() || self.stream_failed.load(Ordering::Acquire) {
+                    "stopped"
+                } else if self.live_output.as_ref().is_none_or(|s| {
+                    let status = s.snapshot();
+                    status.failed || !status.active
+                }) || self
+                    .split_monitor
+                    .as_ref()
+                    .is_some_and(|m| m.shared.failed.load(Ordering::Acquire))
+                {
+                    "failed"
+                } else {
+                    "running"
+                }
+                .into()
+            }),
+            processing_context: Some(
+                if self.live_output_config.split_processing {
+                    "broadcastWorker"
+                } else {
+                    "singleOutput"
+                }
+                .into(),
+            ),
+            comparison_revision: Some(format!(
+                "{}:{}",
+                self.voice_revision, self.comparison_revision
+            )),
+            stream_epoch: stages.stream_epoch.clone(),
             schema_version: 1,
-            stream_running: self.output_stream.is_some()
-                && !self.stream_failed.load(Ordering::Acquire),
+            stream_running: current,
             nominal_sample_rate_hz: nominal,
             fixed_buffer_request_frames: self.fixed_buffer_request_frames,
             nr_configured_enabled: self.noise_reduction_enabled,
@@ -3672,10 +4041,36 @@ impl Engine {
     }
 
     fn live_mode_snapshot(&self) -> super::live_modes::Snapshot {
-        self.live_modes.snapshot(
+        let mut snapshot = self.live_modes.snapshot(
             self.builtin.snapshot(false).epoch,
             self.output_stream.is_some(),
-        )
+        );
+        if let Some(monitor) = &self.split_monitor {
+            snapshot.accepted_revision = snapshot
+                .accepted_revision
+                .parse::<u64>()
+                .unwrap_or(0)
+                .min(monitor.shared.accepted.load(Ordering::Acquire))
+                .to_string();
+            snapshot.completed_revision = snapshot
+                .completed_revision
+                .parse::<u64>()
+                .unwrap_or(0)
+                .min(monitor.shared.completed.load(Ordering::Acquire))
+                .to_string();
+            if monitor.shared.failed.load(Ordering::Acquire) {
+                snapshot.phase = "partial".into();
+                snapshot.applied = None;
+                return snapshot;
+            }
+            if snapshot.completed_revision != snapshot.revision {
+                snapshot.applied = None;
+                if snapshot.running {
+                    snapshot.phase = "transitioning".into();
+                }
+            }
+        }
+        snapshot
     }
     fn select_live_mode(
         &mut self,
@@ -3694,8 +4089,32 @@ impl Engine {
         Ok(())
     }
     fn poll_live_modes(&mut self) {
+        let sink_failed = self
+            .live_output
+            .as_ref()
+            .is_some_and(|s| s.snapshot().failed);
+        if sink_failed {
+            if let Some(monitor) = &self.split_monitor {
+                monitor.shared.failed.store(true, Ordering::Release);
+            }
+        }
+        if let Some(monitor) = &mut self.split_monitor {
+            monitor.flush();
+            if monitor.shared.failed.load(Ordering::Acquire) {
+                if let Some(sink) = &self.live_output {
+                    sink.deactivate();
+                }
+                self.live_output_error =
+                    Some("配信枝が停止しました。自分用は継続しています".into());
+            }
+        }
         if let Some(job) = self.live_modes.next(self.output_stream.is_some()) {
             let rate = self.current_sample_rate.round().clamp(8_000.0, 384_000.0) as u32;
+            if let Some(monitor) = &mut self.split_monitor {
+                if let Err(error) = monitor.mode(job.mode, job.revision) {
+                    self.live_output_error = Some(error.to_string());
+                }
+            }
             self.queue_audio_msg(AudioThreadMessage::LiveMode {
                 voice: super::live_modes::Voice::prepare(&job.config, rate)
                     .expect("検証済み本番内蔵設定"),
@@ -3842,8 +4261,14 @@ impl Engine {
         }
         self.voice_preview.interrupt(true);
         self.invalidate_auto_gain();
+        if let Some(sink) = &self.live_output {
+            sink.deactivate();
+        }
         self.input_stream = None;
         self.output_stream = None;
+        self.split_worker = None;
+        self.split_monitor = None;
+        self.live_output = None;
         if let Some(timing) = &mut self.frame_timing {
             timing.seal();
         }

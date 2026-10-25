@@ -1,3 +1,5 @@
+import { LiveOutputPanel } from './LiveOutputPanel';
+import { MonitorTrial } from './MonitorTrial';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { LanguageSelector } from '@/i18n/LanguageSelector';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -944,6 +946,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
               </div>
             )}
+            <LiveOutputPanel outputs={devices.outputs} disabled={loading} onBusyChange={setLoading} />
+            <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await refreshEngineRuntimeStats(); }} />
           </TabsContent>
 
           <TabsContent value="sound" className="space-y-4">
