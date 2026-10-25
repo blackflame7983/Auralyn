@@ -18,7 +18,8 @@ export function LatencyDetails({ stats, isRunning = true }: { stats?: EngineRunt
     const m = stats?.latencyMetadata;
     const known = m?.schemaVersion === 1;
     const current = isRunning && known && m.streamRunning;
-    const callback = stats?.callbackDiagnostics;
+    const monitorCurrent = m?.processingContext === 'broadcastWorker' ? isRunning && stats?.queueDiagnostics?.state === 'running' : !!current;
+    const callback = m?.processingContext === 'broadcastWorker' ? undefined : stats?.callbackDiagnostics;
     const rows = current ? [
         [t('meterBrowser.copy.092'), positive(m.nominalSampleRateHz) ? `${m.nominalSampleRateHz.toLocaleString()} Hz` : t('meterBrowser.copy.093')],
         [t('meterBrowser.copy.094'), m.fixedBufferRequestFrames === null ? t('meterBrowser.copy.095') : oneFrame(m.fixedBufferRequestFrames, m.nominalSampleRateHz)],
@@ -31,13 +32,14 @@ export function LatencyDetails({ stats, isRunning = true }: { stats?: EngineRunt
     ] : [];
     return <section aria-label={t('meterBrowser.copy.104')} className="space-y-2">
         <h3 className="font-semibold">{t('meterBrowser.copy.105')}</h3>
+        {m?.processingContext === 'broadcastWorker' && <p className="text-sm">{t('liveOutput.statsBroadcast')}</p>}
         <p role="status" className="text-sm">{!isRunning || (known && !m.streamRunning) ? t('meterBrowser.copy.106') : !known ? t('meterBrowser.copy.107') : t('meterBrowser.copy.108')}</p>
         {rows.length > 0 && <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">{rows.map(([label, value]) => <div key={label} className="contents"><dt className="text-muted-foreground">{label}</dt><dd className="break-words text-right">{value}</dd></div>)}</dl>}
         <p className="text-xs text-muted-foreground">{t('meterBrowser.copy.109')}</p>
         <LatencyStageDetails stats={stats} current={!!current} />
-        <FrameTimingDetails snapshot={stats?.frameTiming} current={!!current} />
-        <ResamplerBatchTimingDetails snapshot={stats?.resamplerBatchTiming} current={!!current} />
+        <FrameTimingDetails snapshot={stats?.frameTiming} current={monitorCurrent} />
+        <ResamplerBatchTimingDetails snapshot={stats?.resamplerBatchTiming} current={monitorCurrent} />
         <ResamplerCohortTimingDetails snapshot={stats?.resamplerCohortTiming}
-            current={!!current && stats?.queueDiagnostics?.state === 'running' && stats.queueDiagnostics.epoch === stats.resamplerCohortTiming?.epoch} />
+            current={monitorCurrent && stats?.queueDiagnostics?.state === 'running' && stats.queueDiagnostics.epoch === stats.resamplerCohortTiming?.epoch} />
     </section>;
 }

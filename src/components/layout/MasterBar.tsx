@@ -268,7 +268,8 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
         ? (noiseMode === 'high' ? t('master.nrHigh') : noiseMode === 'smart' ? t('master.nrLearn') : noiseMode === 'venue' ? t('master.nrVenue') : t('master.nrLow'))
         : 'OFF';
     const isCleanActive = isNoiseConfigured && !isFxActive;
-    const signalLabel = processReady === null ? t('master.unverified') : !isRunning ? (host ? t('shell.stopped') : t('shell.unconfigured')) : isFxActive ? t('master.vst') : (isCleanActive ? t('master.nr') : t('master.raw'));
+    const broadcastFailed = isRunning && stats?.latencyMetadata?.broadcastState === 'failed';
+    const signalLabel = processReady === null ? t('master.unverified') : !isRunning ? (host ? t('shell.stopped') : t('shell.unconfigured')) : broadcastFailed ? t('liveOutput.shortFailed') : stats?.latencyMetadata?.processingContext === 'broadcastWorker' ? t('liveOutput.branchLabel') : isFxActive ? t('master.vst') : (isCleanActive ? t('master.nr') : t('master.raw'));
 
     const handleNoiseReductionCycle = useCallback(async () => {
         if (!stats) return;
@@ -354,7 +355,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                     <span
                         className={cn(
                             "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold font-mono",
-                            !isRunning ? "text-muted-foreground border-border bg-muted" : isFxActive
+                            !isRunning ? "text-muted-foreground border-border bg-muted" : broadcastFailed ? "text-destructive border-destructive/50 bg-destructive/10" : isFxActive
                                 ? "text-amber-800 dark:text-amber-300 border-amber-500/40 bg-amber-500/10"
                                 : isCleanActive
                                     ? "text-sky-800 dark:text-sky-300 border-sky-500/40 bg-sky-500/10"
@@ -363,6 +364,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                     >
                         {signalLabel}
                     </span>
+                    {broadcastFailed && <span role="alert" className="sr-only">{t('liveOutput.failed')}</span>}
                     <button
                         onClick={handleNoiseReductionCycle}
                         className={cn(

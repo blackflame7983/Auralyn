@@ -171,6 +171,85 @@ pub struct AudioHost {
 }
 
 impl AudioHost {
+    pub fn live_output(
+        &mut self,
+        config: Option<crate::audio_engine::live_output::Config>,
+    ) -> Result<crate::audio_engine::live_output::Status> {
+        if let Some(value) = &config {
+            value.validate()?;
+            self.preflight_proposal_apply()?;
+        }
+        let path = self.last_config_path.with_file_name("live_output.json");
+        if config.is_none() && (self.child.is_none() || !self.reader_active.load(Ordering::Acquire))
+        {
+            let stored = if path.exists() {
+                serde_json::from_slice(&std::fs::read(&path)?)?
+            } else {
+                crate::audio_engine::live_output::Config::default()
+            };
+            stored.validate()?;
+            return Ok(crate::audio_engine::live_output::Status {
+                config: stored,
+                sink: None,
+                error: None,
+                broadcast_epoch: None,
+                monitor: None,
+            });
+        }
+        let saved = config.clone();
+        let previous = if saved.is_some() {
+            match self.execute_command(IpcCommand::LiveOutput { config: None })? {
+                IpcResponse::LiveOutput(s) => Some(s.config),
+                _ => return Err(anyhow!("変更前の出力構成を確認できません")),
+            }
+        } else {
+            None
+        };
+        if let (Some(next), Some(previous)) = (&saved, &previous) {
+            if !next.same_route(previous) {
+                self.preflight_live_changes()?;
+            }
+        }
+        let response = if saved.is_none() {
+            self.execute_running_command(IpcCommand::LiveOutput { config })?
+        } else {
+            self.execute_command(IpcCommand::LiveOutput { config })?
+        };
+        match response {
+            IpcResponse::LiveOutput(status) => {
+                let mut status = *status;
+                if let Some(config) = saved {
+                    let pending = path.with_file_name("live_output.pending.json");
+                    let persist = serde_json::to_vec(&config)
+                        .map_err(anyhow::Error::from)
+                        .and_then(|bytes| {
+                            std::fs::write(&pending, bytes)?;
+                            std::fs::rename(&pending, &path)?;
+                            Ok(())
+                        });
+                    if persist.is_err() {
+                        let restored = self
+                            .execute_running_command(IpcCommand::LiveOutput { config: previous });
+                        return Err(anyhow!(
+                            if matches!(restored, Ok(IpcResponse::LiveOutput(_))) {
+                                "保存に失敗し、実行中の出力構成を元へ戻しました"
+                            } else {
+                                "保存と出力構成の復元に失敗しました。音声を停止して構成を確認してください"
+                            }
+                        ));
+                    }
+                } else if path.exists() {
+                    let stored: crate::audio_engine::live_output::Config =
+                        serde_json::from_slice(&std::fs::read(&path)?)?;
+                    stored.validate()?;
+                    status.config = stored;
+                }
+                Ok(status)
+            }
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("二系統出力の応答を確認できません")),
+        }
+    }
     pub fn new(config_dir: PathBuf) -> Self {
         Self {
             conditions: Arc::new(conditions::Conditions::default()),
@@ -954,6 +1033,19 @@ impl AudioHost {
         let generation = self.engine_generation;
         self.sync_live_modes()?;
         self.guard_live_command(&cmd)?;
+        let live_path = self.last_config_path.with_file_name("live_output.json");
+        if live_path.exists() {
+            let config: crate::audio_engine::live_output::Config =
+                serde_json::from_slice(&std::fs::read(live_path)?)?;
+            config.validate()?;
+            match self.execute_running_command(IpcCommand::LiveOutput {
+                config: Some(config),
+            })? {
+                IpcResponse::LiveOutput(_) => {}
+                IpcResponse::Error(error) => return Err(anyhow!(error)),
+                _ => return Err(anyhow!("二系統出力の保存構成を反映できません")),
+            }
+        }
         let muted = self.is_global_muted;
         validate_start_generation(generation, self.engine_generation)?;
         let response = if initial_controls.is_some() {
@@ -2066,6 +2158,33 @@ mod permission_error_tests {
 #[cfg(test)]
 mod config_storage_tests {
     use super::*;
+    #[test]
+    fn live_output_read_and_invalid_configuration_never_spawn_or_invalidate_conditions() {
+        let root = std::env::temp_dir().join(format!(
+            "auralyn-readonly-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut host = AudioHost::new(root);
+        let witness = host.conditions.control_snapshot().unwrap();
+        let snapshot = host.live_output(None).unwrap();
+        assert!(snapshot.config.device_id.is_none());
+        assert!(snapshot.sink.is_none());
+        assert!(snapshot.monitor.is_none());
+        assert!(host.child.is_none());
+        assert!(witness.validate().is_ok());
+        assert!(host
+            .live_output(Some(crate::audio_engine::live_output::Config {
+                monitor_trim: f32::NAN,
+                ..Default::default()
+            }))
+            .is_err());
+        assert!(host.child.is_none());
+        assert!(witness.validate().is_ok());
+    }
 
     #[test]
     fn obs_reach_never_spawns_for_stopped_or_missing_stream() {

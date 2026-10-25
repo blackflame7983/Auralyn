@@ -4,7 +4,7 @@ import type { BuiltinConfig } from './builtinEffects';
 export type LiveMode = 'singing' | 'talk';
 export interface LiveModeSnapshot {
     epoch: string; running: boolean; revision: string; acceptedRevision: string; completedRevision: string;
-    target: LiveMode | null; applied: LiveMode | null; phase: 'custom' | 'stopped' | 'queued' | 'transitioning' | 'settled';
+    target: LiveMode | null; applied: LiveMode | null; phase: 'custom' | 'stopped' | 'queued' | 'transitioning' | 'settled' | 'partial';
     armed: boolean; naturalTail: boolean; error: string | null;
     definitions: { schemaVersion: 1; version: string; singing: BuiltinConfig | null; talk: BuiltinConfig | null };
 }

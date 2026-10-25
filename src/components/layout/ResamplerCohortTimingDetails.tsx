@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import type { ResamplerCohortTimingSnapshot } from '@/api/audio';
+import type { ResamplerCohortTimingSnapshot, TimingDistribution } from '@/api/audio';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
 const countValid = (n: number) => Number.isSafeInteger(n) && n >= 0;
@@ -31,6 +31,12 @@ export function ResamplerCohortTimingDetails({ snapshot: s, current }: { snapsho
         if (window >= seen.window && requested >= seen.requested) { seen.window = window; seen.requested = requested; }
         seen.faulted ||= s.status === 'invalid' || s.status === 'unsupported'; seen.sealed ||= s.status === 'sealed';
     }
+    const periodEnd = useRef<{ epoch: string; window: string; end: bigint } | null>(null);
+    if (known && s?.periods && revision(s.periods.endNs) && revision(s.windowId)) {
+        const end = BigInt(s.periods.endNs);
+        if (periodEnd.current?.epoch === s.epoch && periodEnd.current.window === s.windowId) superseded ||= end < periodEnd.current.end;
+        if (!superseded) periodEnd.current = { epoch: s.epoch, window: s.windowId, end };
+    }
     const active = !superseded && s?.normalMicOutput && s.requestedRevision === s.completedRevision && known && counts && geometry && current && s.status === 'partial' && s.invalidReasons.length === 0 && s.matchedFrames > 0;
     const status = !known || !counts || !geometry ? 'cohortTiming.unknown' : s.status === 'invalid' ? 'cohortTiming.invalid'
         : !current || s.status === 'sealed' ? 'cohortTiming.stopped' : superseded ? 'cohortTiming.staleWindow' : s.status === 'pending' ? 'cohortTiming.pending' : s.status === 'substituted' ? 'cohortTiming.substituted' : active ? 'cohortTiming.observing' : 'cohortTiming.unobserved';
@@ -38,18 +44,36 @@ export function ResamplerCohortTimingDetails({ snapshot: s, current }: { snapsho
     const range = (v: { lowerMs: number; upperMs: number | null } | null | undefined) => !v || !Number.isFinite(v.lowerMs) || v.lowerMs < 0
         || (v.upperMs !== null && (!Number.isFinite(v.upperMs) || v.upperMs <= v.lowerMs)) ? t('batchTiming.unobserved')
         : v.upperMs === null ? t('batchTiming.rangeOpen', { lower: v.lowerMs.toFixed(2) }) : t('batchTiming.range', { lower: v.lowerMs.toFixed(2), upper: v.upperMs.toFixed(2) });
+    const periods = s?.periods;
+    const validDistribution = (d: TimingDistribution | undefined) => !!d && countValid(d.matchedFrames) && !!d.earliestArrivalToEnd && !!d.latestArrivalToEnd;
+    const periodKnown = periods?.windowSeconds === 30 && periods.updateIntervalMs === 1000 && periods.startupDurationMs === 3000
+        && revision(periods.endNs) && (periods.startNs === null || (revision(periods.startNs) && BigInt(periods.startNs) <= BigInt(periods.endNs)))
+        && [periods.recent, periods.startup, periods.steady].every(validDistribution);
+    const distribution = (d: TimingDistribution) => <dl className="grid grid-cols-2 gap-2 text-xs">
+        <dt>{t('cohortTiming.earliest50')}</dt><dd>{range(d.earliestArrivalToEnd.p50)}</dd>
+        <dt>{t('cohortTiming.earliest95')}</dt><dd>{range(d.earliestArrivalToEnd.p95)}</dd>
+        <dt>{t('cohortTiming.latest50')}</dt><dd>{range(d.latestArrivalToEnd.p50)}</dd>
+        <dt>{t('cohortTiming.latest95')}</dt><dd>{range(d.latestArrivalToEnd.p95)}</dd>
+        <dt>{t('timingPeriods.frames')}</dt><dd>{count(d.matchedFrames)}</dd>
+    </dl>;
     return <section aria-label={t(s?.mode === 'sameRateInputToOutputBufferEnd' ? 'cohortTiming.directTitle' : 'cohortTiming.title')} className="space-y-2">
         <h3 className="font-semibold">{t(s?.mode === 'sameRateInputToOutputBufferEnd' ? 'cohortTiming.directTitle' : 'cohortTiming.title')}</h3><p className="text-sm">{t(status)}</p><p className="text-xs">{t(s?.mode === 'sameRateInputToOutputBufferEnd' ? 'cohortTiming.directScope' : 'cohortTiming.scope')}</p>
         {known && <p className="text-xs">{t('cohortTiming.window', { window: s.windowId!, requested: s.requestedRevision!, completed: s.completedRevision!, applied: s.appliedRevision! })}</p>}
         {known && <p className="text-xs">{t('cohortTiming.appliedBoundary')}</p>}
         {known && s.rejectedRevision !== null && <p className="text-xs">{t('cohortTiming.rejected', { revision: s.rejectedRevision! })}</p>}
-        {active && <dl className="grid grid-cols-2 gap-2 text-xs">
+        {active && periodKnown && <div className="space-y-2">
+            <div role="group" aria-label={t('timingPeriods.recent')}><h4>{t('timingPeriods.recent')}</h4>{distribution(periods.recent)}</div>
+            <p className="text-xs">{t('timingPeriods.boundary')}</p>
+            <details><summary>{t('timingPeriods.startup')}</summary>{distribution(periods.startup)}</details>
+            <details><summary>{t('timingPeriods.steady')}</summary>{distribution(periods.steady)}</details>
+        </div>}
+        {active && <details><summary>{t('timingPeriods.cumulative')}</summary><dl className="grid grid-cols-2 gap-2 text-xs">
             <dt>{t('cohortTiming.earliest50')}</dt><dd>{range(s.earliestArrivalToEnd?.p50)}</dd>
             <dt>{t('cohortTiming.earliest95')}</dt><dd>{range(s.earliestArrivalToEnd?.p95)}</dd>
             <dt>{t('cohortTiming.latest50')}</dt><dd>{range(s.latestArrivalToEnd?.p50)}</dd>
             <dt>{t('cohortTiming.latest95')}</dt><dd>{range(s.latestArrivalToEnd?.p95)}</dd>
             <dt>{t('batchTiming.coverage')}</dt><dd>{s.coveragePercent !== null && Number.isFinite(s.coveragePercent) && s.coveragePercent >= 0 && s.coveragePercent <= 100 ? `${s.coveragePercent.toFixed(1)}%` : t('batchTiming.unobserved')}</dd>
-        </dl>}
+        </dl></details>}
         {known && counts && <div className="text-xs">
             <p>{t('batchTiming.counts', { consumed: count(s.consumedFrames), matched: count(s.matchedFrames), pending: count(s.pendingFrames), unknown: count(s.unknownFrames) })}</p>
             <p>{t('cohortTiming.streamCounts', { frames: count(s.streamConsumedFrames!) })}</p>

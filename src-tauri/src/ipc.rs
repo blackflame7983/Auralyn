@@ -27,6 +27,14 @@ impl StartControls {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LatencyMetadata {
+    #[serde(default)]
+    pub processing_context: Option<String>,
+    #[serde(default)]
+    pub broadcast_state: Option<String>,
+    #[serde(default)]
+    pub comparison_revision: Option<String>,
+    #[serde(default)]
+    pub stream_epoch: Option<String>,
     pub schema_version: u8,
     pub stream_running: bool,
     pub nominal_sample_rate_hz: Option<u32>,
@@ -195,6 +203,9 @@ pub enum SessionRackReply {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum Command {
+    LiveOutput {
+        config: Option<crate::audio_engine::live_output::Config>,
+    },
     GetPluginRack,
     RestoreSessionPlugin {
         expected_ids: Vec<String>,
@@ -354,6 +365,7 @@ pub enum Command {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum Response {
+    LiveOutput(Box<crate::audio_engine::live_output::Status>),
     PluginRack {
         plugins: Vec<RackPlugin>,
         restore_eligible: bool,

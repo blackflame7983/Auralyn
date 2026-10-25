@@ -180,6 +180,7 @@ pub(super) fn command_changes(command: &Command) -> bool {
         // 同期witnessや新しい独立試聴を自己失効させない。
         | Command::StopVoiceCheckRecording
         | Command::ExportVoiceCheck { .. } => false,
+        Command::LiveOutput { config } => config.is_some(),
         Command::AutoGain { request } => matches!(
             request,
             Request::Initialize { .. } | Request::Apply { .. } | Request::Restore { .. }

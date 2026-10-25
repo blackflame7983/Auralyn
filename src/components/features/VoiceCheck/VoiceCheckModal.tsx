@@ -231,6 +231,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                         {!preview?.metadata ? <p>{t('voice.copy.071')}</p> : <>
                             <p>{preview.recordingStale ? t('voice.copy.072') : t('voice.copy.073')}</p>
                             {preview.metadata.changedDuringRecording && <p>{t('voice.copy.074')}</p>}
+                            {preview.metadata.processedTap.startsWith('broadcast_') && <p>{t('liveOutput.recording')}</p>}
                             <p>{t('voice.copy.075')}</p>
                             <p>{preview.metadata.host}・{preview.metadata.sampleRate} {t('voice.copy.076')}{preview.metadata.bufferSize}{t('voice.copy.077')}{preview.metadata.inputChannels.map(channel => channel + 1).join('/')}{t('voice.copy.078')}{preview.metadata.inputGain}</p>
                             <p>{t('voice.copy.079')}{preview.metadata.noiseEnabled ? preview.metadata.noiseMode : 'OFF'}{t('voice.copy.080')}{preview.metadata.builtInEnabled ? preview.metadata.builtInPreset : 'OFF'}{t('voice.copy.081')}{preview.metadata.globalBypass ? 'ON' : 'OFF'}</p>

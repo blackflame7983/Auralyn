@@ -218,3 +218,18 @@ receivedInputFrames／cohortInputFramesは結合器へ正常に届いた原入�
 cohort／raw／batch-readyは出力slotの受渡し観測であり、DSP内部信号対応とは別である。latencyMetadata.stageBreakdownを並列表示するが、signalCorrespondence=notMeasuredを維持する。VSTのSDK申告はRuntimeStats取得時の一回のgetter巡回で旧小計と共に生成する。active／bypassed／muted／unavailable、全体bypass、申告0／未取得nullを区別し、mute段を含む旧小計を有効信号遅延和へ読み替えない。停止／異常／旧DTO欠落／未知schema／queue epoch不一致では現在の段別値を表示しない。
 
 NRのactual出力rateに対応する分析frame周期は計算値、モデル480frame@48kもフレーム長だけである。wet履歴／drywet混合／IIR位相／コンプ状態／reverb tailの信号遅延はunknown。申告値やフレーム周期をcohort分位へ加算しない。VST内部状態変化の通知鮮度、実機384k、物理capture/playback、OBS映像同期差、長時間・聴感は本sliceの検証ではない。NR専用factoryと保持量境界は[LATENCY_MEASUREMENTS.md](LATENCY_MEASUREMENTS.md)を参照する。
+
+
+## 直近30秒・起動直後・定常時（#28、2026-10-25追加）
+
+cohort snapshotの `periods` に、直近30秒、条件窓開始後3秒、3秒以降の累積を分けて返す。既存の最上位CDFとframe会計は開始／条件変更以降の累積のまま保ち、UIでは詳細へ移す。主表示を累積で代用しない。
+
+集計時刻は同じstream原点の単調時計で、出力buffer完了時刻を使う。直近値は完了した秒の `[floor(now)-30秒, floor(now))` と条件窓開始以降との共通範囲で、公開は制御側drainの1秒境界。既存の1秒stats pollを利用し、新しいpollやRTイベントを追加しない。遅れて結合したmetadataは対象の秒へ入れ、期限外のものを直近枠へ戻さない。metadataが来なくても制御側の時計で失効させる。対応frameがない分位はnullとし、累積値や0msを代入しない。
+
+条件窓開始は新しい通常mic出力窓の最初のoutput event完了。そこから3秒未満を起動直後、3秒以降を定常時とする。これは集計の区分であり、機器や聴感の安定判定ではない。直近30秒には起動直後のframeも含み、別集計と混同しない。設定・出力差替えで窓が変わればすべて再集計し、旧pendingとの結合順と永久fault bitの扱いは既存仕様のまま。失効・停止・未確認の値は現在の分位として表示しない。新snapshot後に到着した古い秒のpacketもUIで現在値に戻さない。
+
+保持する追加ヒストグラムは31秒slot、起動直後、定常時、合算scratchの計34組。数値payloadは `34 × 2 × 10001 × 8 = 5,440,544 B`。既存histogram・ring・pending、構造体、allocator header、プロセスRSSは含まない。clear・合算・分位計算は非RTで行い、1秒ごとの新たなhistogram確保は行わない。
+
+任意実行の `measure_fixed_period_publication_cost` をdebug構成で600回実行し、公開処理のp50 2,699,200ns、p95 3,473,800ns、最大4,324,700nsを観測した。これは600秒分の数値列を高速に渡した単体fixtureであり、実時間600秒やrelease Engine全体のCPU・長時間・音質評価ではない。30秒・1秒の初期値を維持し、Engine全体の観測ON/OFF比較は実機確認へ残す。
+
+処理分離時のframe観測とqueueは自分用の出力を対象にする。配信workerの申告・計算内訳やsink側queueと合算しない。枝の保存・停止境界は[SINGING_MONITOR.md](SINGING_MONITOR.md)を参照する。

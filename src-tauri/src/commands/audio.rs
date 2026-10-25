@@ -3,6 +3,22 @@ use crate::{audio, audio_engine, desktop_integration, routing_diag, vst_host};
 use tauri::{AppHandle, Manager, State};
 
 #[tauri::command]
+pub(crate) async fn live_output(
+    state: State<'_, audio::AudioState>,
+    config: Option<audio_engine::live_output::Config>,
+) -> Result<audio_engine::live_output::Status, String> {
+    let state = state.0.clone();
+    super::run_blocking(move || {
+        state
+            .lock()
+            .map_err(|_| "音声状態を取得できません")?
+            .live_output(config)
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
 pub(crate) async fn get_audio_devices(
     state: State<'_, audio::AudioState>,
     force_refresh: bool,
