@@ -5,7 +5,7 @@ import { saveBeginnerMode } from '../hooks/useBeginnerMode';
 
 const { audioState, modalCallbacks } = vi.hoisted(() => ({
     audioState: { audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: true, engineProcessReady: true as boolean | null },
-    modalCallbacks: { onPluginAdded: undefined as (() => void) | undefined },
+    modalCallbacks: { onPluginAdded: undefined as (() => void) | undefined, setWizardOpen: undefined as ((value: boolean) => void) | undefined },
 }));
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark' }) }));
@@ -31,8 +31,9 @@ vi.mock('@/components/features/PluginRack/PluginList', () => ({
     ),
 }));
 vi.mock('@/components/layout/ModalLayer', () => ({
-    ModalLayer: ({ onPluginAdded }: { onPluginAdded: () => void }) => {
+    ModalLayer: ({ onPluginAdded, ui }: { onPluginAdded: () => void; ui: { setIsWizardOpen: (value: boolean) => void } }) => {
         modalCallbacks.onPluginAdded = onPluginAdded;
+        modalCallbacks.setWizardOpen = ui.setIsWizardOpen;
         return <span data-testid="modals">設定入口</span>;
     },
 }));
@@ -122,5 +123,28 @@ it('停止中の遅い追加完了で進めず、稼働再開時に同じチュ�
     audioState.engineProcessReady = true;
     view.rerender(<App />);
     expect(activeStep()).toBe('explain_plugin_card');
+    expect(localStorage.getItem('vst_host_tutorial_completed')).toBeNull();
+});
+
+
+it('同じウィンドウの完了通知後もモーダル中は隠し、閉じて稼働確認できた時に最初の案内を表示する', () => {
+    localStorage.removeItem('vst_host_wizard_done');
+    localStorage.setItem('vst_host_beginner_mode', 'false');
+    const view = render(<App />);
+    const activeStep = () => screen.queryAllByTestId('tutorial').find(node => node.dataset.active === 'true')?.textContent;
+    expect(activeStep()).toBeUndefined();
+    act(() => modalCallbacks.setWizardOpen?.(true));
+    act(() => {
+        localStorage.setItem('vst_host_wizard_done', 'true');
+        window.dispatchEvent(new Event('vst_host_tutorial_start'));
+    });
+    expect(screen.queryAllByTestId('tutorial')).toHaveLength(0);
+    audioState.engineProcessReady = null;
+    act(() => modalCallbacks.setWizardOpen?.(false));
+    view.rerender(<App />);
+    expect(activeStep()).toBeUndefined();
+    audioState.engineProcessReady = true;
+    view.rerender(<App />);
+    expect(activeStep()).toBe('click_add_effect');
     expect(localStorage.getItem('vst_host_tutorial_completed')).toBeNull();
 });
