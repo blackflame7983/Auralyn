@@ -12,7 +12,7 @@ it.each([false, true])('音声停止中の入口は設定を開き、稼働中�
     render(<AppShell isBeginnerMode onDisplayModeChange={vi.fn()} onOpenOBSSettings={vi.fn()}
         onOpenSettings={onOpenSettings} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
         onOpenTroubleshoot={vi.fn()} onOpenVoiceCheck={vi.fn()} onOpenWizard={vi.fn()}
-        onToggleLargeMeter={vi.fn()} isLargeMeterOpen={false} currentHost="" isEngineRunning={running}>
+        onToggleLargeMeter={vi.fn()} isLargeMeterOpen={false} currentHost="WASAPI" engineProcessReady={true} isEngineRunning={running}>
         <p>エフェクト設定</p>
     </AppShell>);
     const button = screen.queryByRole('button', { name: 'マイクと出力先を設定する' });
@@ -34,4 +34,20 @@ it('かんたん表示の音づくりと試聴を直接開き、音量チェッ�
     expect(sound).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button', { name: /2. 録音して聴く/ }));
     expect(voice).toHaveBeenCalledOnce();
+});
+
+
+it.each([null, false])('古い稼働表示が残っていても状態=%sでは設定を主操作にする', engineProcessReady => {
+    const settings = vi.fn();
+    render(<AppShell isBeginnerMode={false} onDisplayModeChange={vi.fn()} onOpenOBSSettings={vi.fn()}
+        onOpenSettings={settings} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
+        onOpenTroubleshoot={vi.fn()} onOpenVoiceCheck={vi.fn()} onOpenWizard={vi.fn()}
+        onToggleLargeMeter={vi.fn()} isLargeMeterOpen={false} currentHost="WASAPI" isEngineRunning engineProcessReady={engineProcessReady}>
+        <p>エフェクト設定</p>
+    </AppShell>);
+    fireEvent.click(screen.getByRole('button', { name: 'マイクと出力先を設定する' }));
+    expect(settings).toHaveBeenCalledOnce();
+    const selectedView = screen.getByRole('button', { name: 'VST・詳細' });
+    expect(selectedView).toHaveAttribute('aria-pressed', 'true');
+    expect(selectedView.className).not.toContain('aria-pressed:bg-primary');
 });

@@ -216,7 +216,7 @@ export const Header: React.FC<HeaderProps> = ({
                         <button
                             onClick={onOpenWizard}
                             aria-label={t('header.setupOpen')}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-bold"
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-input bg-background text-foreground hover:bg-muted transition-colors text-xs font-bold"
                         >
                             <MdAutoFixHigh className="w-4 h-4" />
                             <span className="hidden xl:inline">{t('header.setup')}</span>
