@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", "Noto Sans JP", "runes", "sans-serif";
+  /* フォントは同梱しない。Windows 11 の UI フォントを明示し、英数字と和文の見え方を揃える。 */
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Meiryo UI", system-ui, sans-serif;
 
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
@@ -236,6 +237,11 @@
 
   .modal-footer-base {
     @apply p-6 border-t border-border bg-muted/20;
+  }
+
+  /* 文字だけの補助操作。未装飾の下線ボタンを使わず、操作だと分かる色と無効表示を揃える。 */
+  .link-button {
+    @apply text-sm font-medium text-primary underline underline-offset-2 hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline;
   }
 }
 

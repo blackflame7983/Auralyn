@@ -253,10 +253,10 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               {tab.icon}
               {tab.label}
               {tab.id === 'favorites' && favorites.length > 0 && (
-                <span className="text-[10px] opacity-70">({favorites.length})</span>
+                <span className="text-xs opacity-70">({favorites.length})</span>
               )}
               {tab.id === 'recent' && recentPaths.length > 0 && (
-                <span className="text-[10px] opacity-70">({recentPaths.length})</span>
+                <span className="text-xs opacity-70">({recentPaths.length})</span>
               )}
             </button>
           ))}
@@ -293,7 +293,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
             <button
               onClick={() => setSelectedCategory(null)}
               aria-pressed={!selectedCategory}
-              className={`px-2.5 py-1 text-[11px] rounded-full border transition-all ${
+              className={`px-2.5 py-1 text-xs rounded-full border transition-all ${
                 !selectedCategory
                   ? 'bg-primary/10 text-primary border-primary/30 font-bold'
                   : 'bg-muted/50 text-muted-foreground border-border hover:border-primary/30 hover:text-foreground'
@@ -306,7 +306,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                 key={cat.name}
                 onClick={() => setSelectedCategory(selectedCategory === cat.name ? null : cat.name)}
                 aria-pressed={selectedCategory === cat.name}
-                className={`px-2.5 py-1 text-[11px] rounded-full border transition-all ${
+                className={`px-2.5 py-1 text-xs rounded-full border transition-all ${
                   selectedCategory === cat.name
                     ? 'bg-primary/10 text-primary border-primary/30 font-bold'
                     : 'bg-muted/50 text-muted-foreground border-border hover:border-primary/30 hover:text-foreground'
@@ -387,7 +387,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                       </div>
                     </div>
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span className="px-2 py-1 text-[10px] bg-primary/10 text-primary rounded border border-primary/20">
+                      <span className="px-2 py-1 text-xs bg-primary/10 text-primary rounded border border-primary/20">
                         {t('pluginBrowser.add')}</span>
                     </div>
                   </div>

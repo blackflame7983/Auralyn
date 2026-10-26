@@ -233,7 +233,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                             <p className="text-muted-foreground text-xs leading-relaxed">
                                                 {t('guide.copy.049')}{'>'} {t('guide.copy.050')}{'>'} {t('guide.copy.051')}{'>'} {t('guide.copy.052')}{'>'}<br />
                                                 <strong>{t('guide.copy.053')}</strong> {t('guide.copy.054')}{'>'} {t('guide.copy.055')}{'>'} <strong>{t('guide.copy.056')}</strong>{t('guide.copy.057')}<br />
-                                                <span className="text-destructive-text/80 mt-1 block font-bold text-[10px]">{t('guide.copy.058')}</span>
+                                                <span className="text-destructive-text/80 mt-1 block font-bold text-xs">{t('guide.copy.058')}</span>
                                             </p>
                                         </div>
                                     </div>

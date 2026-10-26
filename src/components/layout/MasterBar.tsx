@@ -253,7 +253,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 <div className="absolute inset-0 meter-grid pointer-events-none" />
 
                 {/* Label */}
-                <div className="absolute bottom-1 left-0 right-0 text-[8px] text-center text-muted-foreground font-mono pointer-events-none mix-blend-difference opacity-0 group-hover:opacity-100 transition-opacity">{label}</div>
+                <div className="absolute bottom-1 left-0 right-0 text-xs text-center text-muted-foreground font-mono pointer-events-none mix-blend-difference opacity-0 group-hover:opacity-100 transition-opacity">{label}</div>
             </div>
         );
     };

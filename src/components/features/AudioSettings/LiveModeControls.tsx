@@ -19,7 +19,7 @@ function Content({ model }: { model: LiveModesModel }) {
         <label className="flex items-center gap-2"><input type="checkbox" checked={value?.armed ?? false} disabled={busy || !value} onChange={event => void model.protect(event.target.checked)} />{t('settings.LiveModeControls.229')}</label>
         <details><summary>{t('settings.LiveModeControls.230')}</summary><div className="space-y-2 pt-2">
             <p>{t('settings.LiveModeControls.231')}</p>
-            {(['singing', 'talk'] as const).map(mode => <div key={mode}><span>{name(mode)}：{value?.definitions[mode] ? t('settings.LiveModeControls.232') : t('settings.LiveModeControls.233')} </span><button type="button" disabled={busy || !value} onClick={() => void model.saveApplied(mode)} className="underline">{t('settings.mode.save', { mode: name(mode) })}</button></div>)}
+            {(['singing', 'talk'] as const).map(mode => <div key={mode}><span>{name(mode)}：{value?.definitions[mode] ? t('settings.LiveModeControls.232') : t('settings.LiveModeControls.233')} </span><button type="button" disabled={busy || !value} onClick={() => void model.saveApplied(mode)} className="link-button">{t('settings.mode.save', { mode: name(mode) })}</button></div>)}
         </div></details>
         <details><summary className="cursor-pointer text-xs text-muted-foreground">{t('settings.mode.troubleshoot')}</summary>
             <button type="button" disabled={busy} onClick={() => void model.refresh()} className="mt-2 rounded border border-border px-3 py-1.5 text-xs">{t('settings.LiveModeControls.236')}</button>

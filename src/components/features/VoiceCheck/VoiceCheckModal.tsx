@@ -342,7 +342,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                         {manualPreviewCandidate?.state === 'ready' && <p>{t('voice.copy.027')}{manualPreviewCandidate.sourceFrames}{t('voice.copy.028')}{(manualPreviewCandidate.sourceFrames / manualPreviewCandidate.sampleRate).toFixed(2)}{t('voice.copy.029')}{manualPreviewCandidate.renderedFrames}{t('voice.copy.030')}{(manualPreviewCandidate.renderedFrames / manualPreviewCandidate.sampleRate).toFixed(2)}{t('voice.copy.031')}{Math.max(0, manualPreviewCandidate.renderedFrames - manualPreviewCandidate.sourceFrames)}{t('voice.copy.032')}{manualPreviewCandidate.config.reverb?.enabled && t('voice.tail')}{t('voice.copy.033')}</p>}
                         <p>{t('voice.copy.034')}</p>
                         <SingingControls model={singingModel} compact previewActive={isPlaying || previewBusy || candidateMode === 'proposal'} running={streamStatus === 'ready' ? true : streamStatus === 'stopped' ? false : undefined} onSaveProfile={onSaveSingingProfile} />
-                        {onOpenSoundSettings && <button type="button" onClick={onOpenSoundSettings} className="underline">{t('voice.copy.035')}</button>}
+                        {onOpenSoundSettings && <button type="button" onClick={onOpenSoundSettings} className="link-button">{t('voice.copy.035')}</button>}
                     </section>}
                     </details>}
                 </div>

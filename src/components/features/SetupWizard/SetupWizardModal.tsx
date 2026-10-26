@@ -329,7 +329,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                                             e.stopPropagation();
                                                             invoke('open_url', { url: 'https://vb-audio.com/Cable/' }).catch(() => window.open('https://vb-audio.com/Cable/', '_blank'));
                                                         }}
-                                                        className="text-[10px] underline text-primary hover:text-primary/80"
+                                                        className="text-xs underline text-primary hover:text-primary/80"
                                                     >
                                                         {t('guide.copy.216')}</button>
                                                 </div>

@@ -771,13 +771,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                                     `}
                             >
                               <span className="text-sm font-bold">{profile.label}</span>
-                              <span className="text-[10px] opacity-80">{profile.desc}</span>
+                              <span className="text-xs opacity-80">{profile.desc}</span>
                             </button>
                           )
                         })}
                       </div>
                       {(selectedBufferSize <= 256 || selectedBufferSize >= 1024) && (
-                        <p className="text-[10px] text-muted-foreground text-center">
+                        <p className="text-xs text-muted-foreground text-center">
                           {selectedBufferSize <= 256 ? t('settings.AudioSettingsModal.057') : t('settings.AudioSettingsModal.058')}
                         </p>
                       )}
@@ -803,7 +803,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                                     `}
                           >
                             <span className="text-sm font-bold">{profile.label}</span>
-                            <span className="text-[10px] opacity-80">{profile.desc}</span>
+                            <span className="text-xs opacity-80">{profile.desc}</span>
                           </button>
                         ))}
                       </div>
@@ -849,7 +849,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         ))}
                       </select>
                       {!isAsio && (
-                        <div className="text-[10px] text-warning/90 flex items-start gap-1.5 bg-warning/10 p-1.5 rounded border border-warning/20 mt-2">
+                        <div className="text-xs text-warning/90 flex items-start gap-1.5 bg-warning/10 p-1.5 rounded border border-warning/20 mt-2">
                           <MdWarning className="w-3 h-3 mt-0.5 shrink-0" />
                           <span>
                             {t('settings.AudioSettingsModal.070')}</span>
@@ -976,7 +976,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       <span className="font-bold">{t('settings.AudioSettingsModal.108')}</span> {t('settings.AudioSettingsModal.109')}</p>
                     <p>
                       <span className="font-bold">{t('settings.AudioSettingsModal.110')}</span> {t('settings.AudioSettingsModal.111')}</p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {t('settings.AudioSettingsModal.112')}{onOpenVoiceCheck ? (
                         <>
                           {' '}
@@ -1046,7 +1046,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       ))}
                     </div>
                   </fieldset>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
                     {noiseMode === 'smart' && (
                       <>{t('settings.AudioSettingsModal.115')}</>
                     )}
@@ -1110,7 +1110,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <div className="flex items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2">
                     <div>
                       <Label className="text-xs font-bold text-foreground">{t('settings.AudioSettingsModal.127')}</Label>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.128')}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.128')}</p>
                     </div>
                     <Switch
                       checked={noiseVoiceGuard}

@@ -55,7 +55,7 @@ export function LiveOutputPanel({ outputs, onBusyChange, disabled = false }: { d
         <h3 className="font-semibold">{t('liveOutput.title')}</h3>
         <p className="text-sm">{t('liveOutput.scope')}</p>
         <details className="text-xs"><summary>{t('liveOutput.limitsTitle')}</summary><p>{t('liveOutput.limits')}</p><p>{t('liveOutput.saveBoundary')}</p></details>
-        <button disabled={busy || disabled} className="underline" onClick={() => void request()}>{t('liveOutput.refresh')}</button>
+        <button disabled={busy || disabled} className="link-button" onClick={() => void request()}>{t('liveOutput.refresh')}</button>
         {draft && <div className="space-y-3">
             <label className="block text-sm">{t('liveOutput.device')}<select className="w-full p-2 bg-background border rounded" disabled={busy || disabled} value={draft.deviceId ?? ''} onChange={e => { const deviceId = e.target.value || null; setDraft({ ...draft, deviceId, splitProcessing: deviceId ? draft.splitProcessing : false }); setConfirmed(false); }}>
                 <option value="">{t('liveOutput.disabled')}</option>
@@ -74,9 +74,9 @@ export function LiveOutputPanel({ outputs, onBusyChange, disabled = false }: { d
             <p className="text-xs">{t('liveOutput.diff', { before: status?.config.deviceId ? t('liveOutput.enabled') : t('liveOutput.disabled'), after: draft.deviceId ? t('liveOutput.enabled') : t('liveOutput.disabled') })}</p>
             <label className="flex gap-2 text-sm"><input disabled={busy || disabled} type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{t('liveOutput.confirm')}</label>
             <button disabled={busy || disabled || !confirmed} className="border rounded p-2 disabled:opacity-50" onClick={() => void request(true)}>{t('liveOutput.save')}</button>{' '}
-            <button disabled={busy || disabled} className="underline" onClick={() => { setDraft(status?.config ?? null); setConfirmed(false); }}>{t('monitorTrial.cancel')}</button>
+            <button disabled={busy || disabled} className="link-button" onClick={() => { setDraft(status?.config ?? null); setConfirmed(false); }}>{t('monitorTrial.cancel')}</button>
         </div>}
-        {previous && <button disabled={busy || disabled} className="underline" onClick={() => { setDraft(previous); setConfirmed(false); }}>{t('liveOutput.undo')}</button>}
+        {previous && <button disabled={busy || disabled} className="link-button" onClick={() => { setDraft(previous); setConfirmed(false); }}>{t('liveOutput.undo')}</button>}
         <div className="space-y-2 border-t border-border pt-3">
             <p id="live-output-stop-warning" className="text-sm">{t('liveOutput.stopWarning')}</p>
             <Button ref={stopButton} type="button" variant="outline" disabled={busy || disabled} aria-describedby="live-output-stop-warning" className="border-destructive bg-destructive/10 text-foreground hover:bg-destructive/20" onClick={() => setStopConfirmOpen(true)}>{t('liveOutput.stop')}</Button>

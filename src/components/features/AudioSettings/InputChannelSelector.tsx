@@ -118,7 +118,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
                 />
                 <span className="flex-1 text-xs flex flex-col min-w-0">
                     <span className="font-mono">{t('settings.channel.input', { left: left + 1, right: right + 1 })}</span>
-                    <span id={`${groupId}-signal-${left}`} className={`text-[10px] mt-0.5 ${hasSignal ? 'text-success' : 'text-muted-foreground'}`}>
+                    <span id={`${groupId}-signal-${left}`} className={`text-xs mt-0.5 ${hasSignal ? 'text-success' : 'text-muted-foreground'}`}>
                         {hasSignal ? t('settings.InputChannelSelector.203') : t('settings.InputChannelSelector.204')}
                     </span>
                 </span>
