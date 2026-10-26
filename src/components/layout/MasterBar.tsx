@@ -411,8 +411,11 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                                     <dt className="text-muted-foreground">{label}</dt><dd className="break-all text-right">{value}</dd>
                                 </React.Fragment>)}
                             </dl>
+                            <details className="rounded border border-border p-3 space-y-3">
+                              <summary className="cursor-pointer font-semibold">{t('structure.diagnostics')}</summary>
                             <LatencyDetails stats={stats} isRunning={isRunning} />
                             <AudioQueueDetails snapshot={stats?.queueDiagnostics} isRunning={isRunning} />
+                            </details>
                         </div>
                     </div>
                 </div>

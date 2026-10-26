@@ -1,3 +1,4 @@
+import { chooseObsRoute } from './wizardActions';
 import { type ComponentProps } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -54,7 +55,7 @@ describe('セットアップと親画面の連携', () => {
     it('入力未検出時はウィザードを閉じてオーディオ設定だけを開く', async () => {
         hasInput = false;
         render(<AppModals />);
-        fireEvent.click(await screen.findByRole('button', { name: '用途を選んで設定する' }));
+        await screen.findByRole('button', { name: 'OBSで配信' });
         fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
         fireEvent.click(await screen.findByRole('button', { name: 'WASAPI の入力が見つからない場合は設定を開く' }));
         await screen.findByRole('heading', { name: 'オーディオ設定' });
@@ -67,7 +68,7 @@ describe('セットアップと親画面の連携', () => {
         sampleRate = rate;
         bufferSize = buffer;
         render(<AppModals />);
-        fireEvent.click(await screen.findByRole('button', { name: 'OBS向けに設定する' }));
+        await chooseObsRoute();
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
         await screen.findByRole('heading', { name: '音声設定を保存しました' });
         await waitFor(() => expect(screen.getByTestId('audio-config')).toHaveTextContent(`${rate}/${buffer}`));

@@ -225,9 +225,9 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                 <p className="font-semibold">
                                     {t('meterBrowser.gain.change', { before: pct(proposal.before), after: pct(proposal.after) })}
                                 </p>
-                                <p className="text-xs text-muted-foreground">
+                                <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">{t('structure.measurements')}</summary><p className="text-xs text-muted-foreground">
                                     {t('meterBrowser.gain.estimate', { measured: proposal.measured.toFixed(1), predicted: proposal.predicted.toFixed(1), peak: proposal.peak.toFixed(1) })}
-                                </p>
+                                </p></details>
                                 {proposal.limited && (
                                     <p className="text-sm text-amber-800 dark:text-amber-300">
                                         {t('meterBrowser.copy.025')}</p>

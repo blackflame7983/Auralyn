@@ -57,9 +57,10 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     <div>
                         <h2 className="text-lg font-bold text-foreground">{t('voice.copy.001')}</h2>
                         <p className="text-xs text-muted-foreground mt-1">
-                            {t('voice.copy.003')}</p>
+                            {t('voice.copy.002')}</p>
                         <details className="text-xs text-muted-foreground mt-1">
                             <summary className="cursor-pointer">{t('voice.recordingScopeDetails')}</summary>
+                            <p className="mt-1">{t('voice.copy.003')}</p>
                             <p className="mt-1">{t('voice.recordingScopeExplanation')}</p>
                         </details>
                     </div>
@@ -112,21 +113,6 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             </span>
                         )}
                     </div>
-                    {singingModel && <VoiceProposalPanel running={streamStatus === 'ready' ? true : streamStatus === 'stopped' ? false : undefined} model={singingModel} candidate={candidateMode === 'proposal' ? candidate : null} currentRecordingId={preview?.state === 'closed' ? null : preview?.recordingId ?? null} disabled={isRecording || busy || previewBusy || stopUnconfirmed || preview?.state === 'closed' || Boolean(preview?.conflict) || preview?.owner === 'auto_gain'} previewActive={isPlaying || previewBusy || preview?.state === 'stopping'} prepare={prepareProposal} invalidatePreferences={invalidateProposalPreferences} onSave={onSaveSingingProfile} />}
-                    {manualCandidate && singingModel && <section aria-label={t('voice.copy.014')} className="rounded-lg border border-border p-3 space-y-3 text-sm">
-                        <h3 className="font-bold">{t('voice.copy.015')}</h3>
-                        <p>{t('voice.copy.016')}</p>
-                        <p>{t('voice.copy.017')}</p>
-                        <button type="button" disabled={isRecording || busy || previewBusy || !preview?.recordingId || preview.state === 'closed' || singingModel.busy || singingModel.conflict || !singingModel.draft} onClick={() => void prepareCandidate()} className="rounded border px-3 py-2 disabled:opacity-50">{t('voice.copy.018')}</button>
-                        {candidateMode === 'proposal' && <p>{t('voice.proposalSelected')}</p>}
-                        <p role="status">{manualPreviewCandidate?.state === 'ready' ? t('voice.copy.019') : manualPreviewCandidate?.state === 'preparing' ? t('voice.copy.020') : manualPreviewCandidate?.state === 'failed' ? t('voice.copy.021') : t('voice.copy.022')}</p>
-                        {manualPreviewCandidate?.error && <p role="alert">{manualPreviewCandidate.error}</p>}
-                        {manualPreviewCandidate?.state === 'ready' && <p>{t('voice.candidateValues', { rate: manualPreviewCandidate.sampleRate, frames: manualPreviewCandidate.renderedFrames, peak: manualPreviewCandidate.samplePeak === null ? t('voice.copy.025') : manualPreviewCandidate.samplePeak.toFixed(3) })}</p>}
-                        {manualPreviewCandidate?.state === 'ready' && <p>{t('voice.copy.027')}{manualPreviewCandidate.sourceFrames}{t('voice.copy.028')}{(manualPreviewCandidate.sourceFrames / manualPreviewCandidate.sampleRate).toFixed(2)}{t('voice.copy.029')}{manualPreviewCandidate.renderedFrames}{t('voice.copy.030')}{(manualPreviewCandidate.renderedFrames / manualPreviewCandidate.sampleRate).toFixed(2)}{t('voice.copy.031')}{Math.max(0, manualPreviewCandidate.renderedFrames - manualPreviewCandidate.sourceFrames)}{t('voice.copy.032')}{manualPreviewCandidate.config.reverb?.enabled && t('voice.tail')}{t('voice.copy.033')}</p>}
-                        <p>{t('voice.copy.034')}</p>
-                        <SingingControls model={singingModel} compact previewActive={isPlaying || previewBusy || candidateMode === 'proposal'} running={streamStatus === 'ready' ? true : streamStatus === 'stopped' ? false : undefined} onSaveProfile={onSaveSingingProfile} />
-                        {onOpenSoundSettings && <button type="button" onClick={onOpenSoundSettings} className="underline">{t('voice.copy.035')}</button>}
-                    </section>}
                     {comparingCandidate && <p role="status">{t(candidateMode === 'proposal' ? 'voice.comparisonProposal' : 'voice.comparisonManual')}</p>}
                     {comparingCandidate && <button type="button" disabled={previewBusy || busy || isRecording} onClick={() => void returnToRecording()} className="rounded border px-3 py-2 disabled:opacity-50">{t('voice.returnToRecording')}</button>}
                     <section aria-label={t('voice.copy.036')} className="rounded-lg border border-border p-3 space-y-3">
@@ -335,6 +321,24 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             </div>
                         )}
                     </div>}
+                    {singingModel && <details open={manualCandidate || comparingCandidate || undefined} onToggle={event => { if (comparingCandidate || previewBusy) event.currentTarget.open = true; }} className="rounded border border-border p-3 space-y-3">
+                        <summary className="cursor-pointer font-semibold">{t('structure.voiceCandidates')}</summary>
+                    {singingModel && <VoiceProposalPanel running={streamStatus === 'ready' ? true : streamStatus === 'stopped' ? false : undefined} model={singingModel} candidate={candidateMode === 'proposal' ? candidate : null} currentRecordingId={preview?.state === 'closed' ? null : preview?.recordingId ?? null} disabled={isRecording || busy || previewBusy || stopUnconfirmed || preview?.state === 'closed' || Boolean(preview?.conflict) || preview?.owner === 'auto_gain'} previewActive={isPlaying || previewBusy || preview?.state === 'stopping'} prepare={prepareProposal} invalidatePreferences={invalidateProposalPreferences} onSave={onSaveSingingProfile} />}
+                    {manualCandidate && singingModel && <section aria-label={t('voice.copy.014')} className="rounded-lg border border-border p-3 space-y-3 text-sm">
+                        <h3 className="font-bold">{t('voice.copy.015')}</h3>
+                        <p>{t('voice.copy.016')}</p>
+                        <p>{t('voice.copy.017')}</p>
+                        <button type="button" disabled={isRecording || busy || previewBusy || !preview?.recordingId || preview.state === 'closed' || singingModel.busy || singingModel.conflict || !singingModel.draft} onClick={() => void prepareCandidate()} className="rounded border px-3 py-2 disabled:opacity-50">{t('voice.copy.018')}</button>
+                        {candidateMode === 'proposal' && <p>{t('voice.proposalSelected')}</p>}
+                        <p role="status">{manualPreviewCandidate?.state === 'ready' ? t('voice.copy.019') : manualPreviewCandidate?.state === 'preparing' ? t('voice.copy.020') : manualPreviewCandidate?.state === 'failed' ? t('voice.copy.021') : t('voice.copy.022')}</p>
+                        {manualPreviewCandidate?.error && <p role="alert">{manualPreviewCandidate.error}</p>}
+                        {manualPreviewCandidate?.state === 'ready' && <p>{t('voice.candidateValues', { rate: manualPreviewCandidate.sampleRate, frames: manualPreviewCandidate.renderedFrames, peak: manualPreviewCandidate.samplePeak === null ? t('voice.copy.025') : manualPreviewCandidate.samplePeak.toFixed(3) })}</p>}
+                        {manualPreviewCandidate?.state === 'ready' && <p>{t('voice.copy.027')}{manualPreviewCandidate.sourceFrames}{t('voice.copy.028')}{(manualPreviewCandidate.sourceFrames / manualPreviewCandidate.sampleRate).toFixed(2)}{t('voice.copy.029')}{manualPreviewCandidate.renderedFrames}{t('voice.copy.030')}{(manualPreviewCandidate.renderedFrames / manualPreviewCandidate.sampleRate).toFixed(2)}{t('voice.copy.031')}{Math.max(0, manualPreviewCandidate.renderedFrames - manualPreviewCandidate.sourceFrames)}{t('voice.copy.032')}{manualPreviewCandidate.config.reverb?.enabled && t('voice.tail')}{t('voice.copy.033')}</p>}
+                        <p>{t('voice.copy.034')}</p>
+                        <SingingControls model={singingModel} compact previewActive={isPlaying || previewBusy || candidateMode === 'proposal'} running={streamStatus === 'ready' ? true : streamStatus === 'stopped' ? false : undefined} onSaveProfile={onSaveSingingProfile} />
+                        {onOpenSoundSettings && <button type="button" onClick={onOpenSoundSettings} className="underline">{t('voice.copy.035')}</button>}
+                    </section>}
+                    </details>}
                 </div>
             </div>
         </div>

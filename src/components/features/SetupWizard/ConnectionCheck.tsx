@@ -160,6 +160,8 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
             className="rounded-xl border border-border p-4 space-y-4"
         >
             <h3 className="font-bold">{t('guide.copy.275')}</h3>
+            <details className="space-y-3"><summary className="cursor-pointer font-medium">{t(goal === 'obs' ? 'structure.checkObs' : 'structure.checkReceiver')}</summary>
+
             <p className="text-sm">
                 Auralyn → {outputName} →{' '}
                 {renderNotice(t, receiverDeviceNotice(outputName))} → {goal === 'discord' ? 'Discord' : goal === 'obs' ? 'OBS' : t('guide.copy.276')}{' '}
@@ -236,13 +238,7 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                         className="px-4 py-2 rounded bg-primary text-primary-foreground disabled:opacity-50"
                     >
                         {t('guide.copy.292')}</button>
-                    <p
-                        role="status"
-                        className={`text-sm ${result?.reached === true ? 'text-emerald-500' : 'text-muted-foreground'}`}
-                    >
-                        {audioRunning ? t('guide.copy.293') : t('guide.copy.294')}{' '}
-                        {busy ? t('guide.copy.295') : renderNotice(t, message)}
-                    </p>
+
                 </>
             ) : (
                 <>
@@ -255,6 +251,14 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                         {t('guide.copy.300')}</p>
                 </>
             )}
+            </details>
+            {goal === 'obs' ? (                    <p
+                        role="status"
+                        className={`text-sm ${result?.reached === true ? 'text-emerald-500' : 'text-muted-foreground'}`}
+                    >
+                        {audioRunning ? t('guide.copy.293') : t('guide.copy.294')}{' '}
+                        {busy ? t('guide.copy.295') : renderNotice(t, message)}
+                    </p>) : <p role="status" className="text-sm text-muted-foreground">{t('structure.receiverUnverified')}</p>}
         </section>
     );
 };

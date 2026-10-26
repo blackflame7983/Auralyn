@@ -17,11 +17,12 @@ interface ModalProps {
     onClose: () => void;
     children: ReactElement<{ children?: ReactNode }>;
     dismissible?: boolean;
+    initialFocusRef?: { readonly current: HTMLElement | null };
 }
 
 // 既存の見た目を保ち、入れ子の確認画面も含めてフォーカスと背景操作を管理する。
 // 各画面は開いている間だけマウントする。
-export function Modal({ title, onClose, children, dismissible = true }: ModalProps) {
+export function Modal({ title, onClose, children, dismissible = true, initialFocusRef }: ModalProps) {
     const returnFocus = useRef(captureFocusChain());
     const contentRef = useCallback((element: HTMLDivElement | null) => {
         if (element) focusChains.set(element, returnFocus.current);
@@ -39,6 +40,13 @@ export function Modal({ title, onClose, children, dismissible = true }: ModalPro
                     aria-describedby={undefined}
                     onPointerDownOutside={event => event.preventDefault()}
                     onEscapeKeyDown={event => { if (!dismissible) event.preventDefault(); }}
+                    onOpenAutoFocus={event => {
+                        const target = initialFocusRef?.current;
+                        if (target) {
+                            event.preventDefault();
+                            target.focus({ preventScroll: true });
+                        }
+                    }}
                     onCloseAutoFocus={event => {
                         event.preventDefault();
                         const activeDialog = Array.from(document.querySelectorAll('[role="dialog"][data-state="open"]')).pop();

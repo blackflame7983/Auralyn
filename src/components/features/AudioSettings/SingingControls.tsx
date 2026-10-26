@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { audioApi } from '@/api/audio';
 import { defaultReverb } from '@/api/builtinEffects';
@@ -5,8 +6,8 @@ import { listen } from '@tauri-apps/api/event';
 import { useEffect, useRef, useState } from 'react';
 import type { SingingDraft } from '@/hooks/useSingingDraft';
 
-export function SingingControls({ model, onPreview, onSaveProfile, compact = false, running, previewActive = false }: {
-    model: SingingDraft; running?: boolean; previewActive?: boolean; onPreview?: () => void; onSaveProfile?: () => void; compact?: boolean;
+export function SingingControls({ model, onPreview, onSaveProfile, compact = false, running, previewActive = false, showHeading = true }: {
+    model: SingingDraft; running?: boolean; previewActive?: boolean; onPreview?: () => void; onSaveProfile?: () => void; compact?: boolean; showHeading?: boolean;
 }) {
     const t = useMessages();
     const { snapshot, draft, busy, conflict, error } = model;
@@ -58,7 +59,7 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
     const reverb = draft?.reverb ?? defaultReverb;
     const dirty = Boolean(snapshot && draft && JSON.stringify(snapshot.config) !== JSON.stringify(draft));
     return <section aria-label={t('settings.SingingControls.393')} className="rounded-xl border border-border p-4 space-y-3 text-sm">
-        <h3 className="font-bold">{t('settings.SingingControls.394')}</h3>
+        {showHeading && <h3 className="font-bold">{t('settings.SingingControls.394')}</h3>}
         <p className="text-xs text-muted-foreground">{t('settings.SingingControls.395')}</p>
         <p role="status">{!snapshot ? t('settings.SingingControls.396') : activeRunning === false ? t('settings.SingingControls.397') : snapshot.pending ? t('settings.SingingControls.398') : activeRunning === true && snapshot.appliedRevision === snapshot.revision ? t('settings.SingingControls.399') : t('settings.SingingControls.400')}{dirty && t('settings.SingingControls.401')}</p>
         {snapshot && <p>{t('settings.SingingControls.402')}{snapshot.config.preset === 'singing' ? t('settings.SingingControls.403') : t(`obsTyped.preset.${snapshot.config.preset}`)} ／ {snapshot.config.active ? 'ON' : 'OFF'}{snapshot.config.singing && t('settings.SingingControls.404', { arg0: snapshot.config.singing.lowCutHz, arg1: Math.round(snapshot.config.singing.dynamics * 100), arg2: snapshot.config.singing.brightnessDb })}</p>}
@@ -98,7 +99,7 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
             {onPreview && <button type="button" disabled={busy || !draft || conflict} onClick={onPreview} className="rounded border px-3 py-2 disabled:opacity-50">{t('settings.SingingControls.426')}</button>}
             <button type="button" disabled={previewActive || busy || !dirty || snapshot?.pending || conflict} onClick={() => void model.apply()} className="rounded border px-3 py-2 disabled:opacity-50">{t('settings.SingingControls.427')}</button>
             <button type="button" disabled={previewActive || busy || !snapshot?.undoToken || snapshot.pending || dirty} onClick={() => void model.undo()} className="rounded border px-3 py-2 disabled:opacity-50">{t('settings.SingingControls.428')}</button>
-            {!compact && <button type="button" disabled={busy || !dirty} onClick={model.resetDraft} className="underline">{t('settings.SingingControls.429')}</button>}
+            {!compact && <Button type="button" variant="outline" disabled={busy || !dirty} onClick={model.resetDraft}>{t('settings.SingingControls.429')}</Button>}
             {onSaveProfile && <button type="button" disabled={previewActive || busy || !snapshot || snapshot.pending} onClick={onSaveProfile} className="rounded border px-3 py-2 disabled:opacity-50">{t('settings.SingingControls.430')}</button>}
         </div>
         {onSaveProfile && <p className="text-xs text-muted-foreground">{t('settings.SingingControls.431')}</p>}

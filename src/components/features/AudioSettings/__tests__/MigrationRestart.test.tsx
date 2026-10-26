@@ -1,5 +1,7 @@
+import { audioApi } from '@/api/audio';
+import { openSystemTab } from './settingsActions';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { ModalLayer } from '@/components/layout/ModalLayer';
 import { useUIState } from '@/hooks/useUIState';
@@ -119,25 +121,28 @@ it.each([
     }
     fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
     // 全体並列実行時の初回lazy読込みを待つ。移行・復元の条件や回数は以下で検証する。
-    const save = await screen.findByRole('button', { name: '保存して開始' }, { timeout: 3000 });
+    await screen.findByRole('button', { name: '保存して開始' }, { timeout: 3000 });
     if (operation !== '通常再起動') {
-        expect(save).toBeDisabled();
+        expect(screen.getByRole('button', { name: '保存して開始' })).toBeDisabled();
         if (host === 'ASIO') {
             fireEvent.click(await screen.findByRole('radio', { name: '入力チャンネル 7/8' }));
             await waitFor(() => expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([6, 7]));
             expect(localStorage.getItem(REVIEW_KEY)).toBe('true');
-            expect(save).toBeDisabled();
+            expect(screen.getByRole('button', { name: '保存して開始' })).toBeDisabled();
+            await openSystemTab();
             expect(screen.getByRole('button', { name: 'エンジン再起動' })).toBeDisabled();
+            fireEvent.keyDown(screen.getByRole('tab', { name: 'オーディオ' }), { key: 'Enter' });
             expect(enginePaths).toEqual([]);
             expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
             expect(invoke).not.toHaveBeenCalledWith('restart_audio_engine', expect.anything());
         }
         fireEvent.click(screen.getByRole('checkbox', { name: '移行した入力・出力先・VSTを確認しました' }));
     }
-    await waitFor(() => expect(save).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存して開始' })).toBeEnabled());
     const start = async () => {
         if (operation === '保存して開始') fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
         else {
+            await openSystemTab();
             fireEvent.click(screen.getByRole('button', { name: 'エンジン再起動' }));
             fireEvent.click(await screen.findByRole('button', { name: '再起動する' }));
         }
@@ -171,3 +176,5 @@ it.each([
     expect(loads.map(([, args]) => (args as { request: { request: { path: string } } }).request.request.path)).toEqual(paths);
     expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'restore_plugin')).toBe(false);
 });
+
+beforeEach(() => { vi.spyOn(audioApi, 'getEngineTuningConfig').mockResolvedValue({ enableAffinityPinning: false, affinityMask: null, enableRealtimePriority: false, enableTimeCriticalAudioThreads: false }); });

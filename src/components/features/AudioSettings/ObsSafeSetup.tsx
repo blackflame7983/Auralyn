@@ -24,6 +24,14 @@ export function ObsSafeSetup({
     const [error, setError] = useState<string | null>(null);
     const inFlight = useRef(false);
     const historyRevision = useRef(0);
+    const historyDetails = useRef<HTMLDetailsElement>(null);
+    const revealHistory = () => {
+        const details = historyDetails.current;
+        if (!details) return;
+        details.open = true;
+        details.querySelector('summary')?.focus();
+        details.scrollIntoView?.({ block: 'nearest' });
+    };
     useEffect(() => {
         let active = true;
         const revision = ++historyRevision.current;
@@ -117,6 +125,7 @@ export function ObsSafeSetup({
                                     const result = await obsApi.applySetup(plan.id);
                                     setHistory((items) => [...items, result]);
                                     setPlan(null);
+                                    revealHistory();
                                 })
                             }
                         >
@@ -146,6 +155,8 @@ export function ObsSafeSetup({
                     )}
                 </div>
             )}
+            <details ref={historyDetails} className="rounded border border-border p-3 space-y-3">
+              <summary className="cursor-pointer font-medium">{t('structure.history')}</summary>
             <p className="text-xs text-muted-foreground">
                 {t('settings.ObsSafeSetup.346')}</p>
             <button
@@ -196,6 +207,7 @@ export function ObsSafeSetup({
                                                 item.id === result.id ? result : item,
                                             ),
                                         );
+                                        revealHistory();
                                     })
                                 }
                             >
@@ -236,6 +248,7 @@ export function ObsSafeSetup({
                     ))}
                 </ol>
             )}
+            </details>
         </section>
     );
 }

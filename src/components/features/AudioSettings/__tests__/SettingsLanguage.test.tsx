@@ -101,6 +101,7 @@ it.each(['ja', 'en'] as const)('キー操作%sは同じstable IDとキーを保�
 it('OBS履歴の実名と制御tokenは英訳せず、英語の復元操作だけを同じIDへ送る', async () => {
     vi.mocked(invoke).mockImplementation(async command => command === 'obs_setup_history' ? [{ id: 4, changes: [{ source: 'Auralyn マイク', label: 'ミュート', before: false, after: true }], results: ['適用済み'], restorable: true, connectionLabel: 'studio実名' }] : []);
     render(<LocaleProvider store={createLocaleStore(() => 'en', () => true)}><ObsSafeSetup connected disabled={false} onBusyChange={vi.fn()} /></LocaleProvider>);
+    fireEvent.click(screen.getByText('Previous changes'));
     await screen.findByText(/適用済み/);
     expect(screen.getByText(/Auralyn マイク/)).toBeVisible();
     expect(screen.getByText(/studio実名/)).toBeVisible();

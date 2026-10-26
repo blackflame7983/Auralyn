@@ -246,7 +246,6 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
   return (
 
             <div className="space-y-4">
-              <ObsModeRoutingSettings />
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">{t('settings.ObsConnectionSettings.280')}</label>
                 <input
@@ -409,6 +408,10 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                   </div>
                 </div>
               )}
+              <details className="rounded border border-border p-3 space-y-3">
+                <summary className="cursor-pointer font-semibold">{t('structure.sceneRouting')}</summary>
+                <ObsModeRoutingSettings />
+              </details>
             </div>
   );
 }
