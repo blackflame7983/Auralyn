@@ -1,19 +1,17 @@
 import { useMessages } from '@/i18n/LocaleProvider';
 import React from 'react';
-import { MdAdd, MdAutoFixHigh, MdRocketLaunch } from 'react-icons/md';
+import { MdAdd, MdAutoFixHigh } from 'react-icons/md';
 import { Button } from '@/components/ui/button';
 
 interface PluginRackEmptyStateProps {
     audioReady?: boolean;
     onAddClick: () => void;
-    onOpenWizard: () => void;
     onOpenTemplates: () => void;
 }
 
 export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
     audioReady = false,
     onAddClick,
-    onOpenWizard,
     onOpenTemplates
 }) => {
     const t = useMessages();
@@ -36,18 +34,13 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
                     <MdAdd className="w-4 h-4" />
                     {t('rack.empty.addVst')}</Button>
 
-                    <button
-                        onClick={onOpenTemplates}
-                        className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1.5 underline underline-offset-4"
-                    >
-                        <MdAutoFixHigh className="w-4 h-4" />
-                        {t('rack.empty.templates')}</button>
-                    <button
-                        onClick={onOpenWizard}
-                        className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1.5 underline underline-offset-4"
-                    >
-                        <MdRocketLaunch className="w-4 h-4" />
-                        {t('rack.openSetup')}</button>
+                <button
+                    onClick={onOpenTemplates}
+                    className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1.5 underline underline-offset-4"
+                >
+                    <MdAutoFixHigh className="w-4 h-4" />
+                    {t('rack.empty.templates')}
+                </button>
             </div>
         </div>
     );

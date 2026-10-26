@@ -26,7 +26,6 @@ interface PluginListProps {
     onEdit: (id: string) => void;
     onReorder: (plugins: Plugin[]) => void;
     onOpenPresets: () => void;
-    onOpenWizard: () => void;
     onOpenTemplates: () => void;
 }
 
@@ -87,7 +86,6 @@ export const PluginList: React.FC<PluginListProps> = ({
     onEdit,
     onReorder,
     onOpenPresets,
-    onOpenWizard,
     onOpenTemplates
 }) => {
     const t = useMessages();
@@ -168,16 +166,7 @@ export const PluginList: React.FC<PluginListProps> = ({
                         {isBeginnerMode ? t('rack.simpleTitle') : t('rack.title')}
                     </h2>
                     <div className="flex items-center gap-2">
-                        {isBeginnerMode ? (
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={onOpenWizard}
-                                className="h-7 text-xs"
-                                aria-label={t('rack.openSetup')}
-                            >
-                                {t('rack.setup')}</Button>
-                        ) : (
+                        {!isBeginnerMode && (
                             <>
                                 {/* View Mode Toggle */}
                                 {plugins.length > 0 && (
@@ -247,7 +236,6 @@ export const PluginList: React.FC<PluginListProps> = ({
                     <PluginRackEmptyState
                         audioReady={audioReady}
                         onAddClick={onAddClick}
-                        onOpenWizard={onOpenWizard}
                         onOpenTemplates={onOpenTemplates}
                     />
                 ) : (

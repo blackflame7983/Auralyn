@@ -122,7 +122,6 @@ function AppContent() {
       onEdit={pluginsApi.openEditor}
       onReorder={pluginsApi.reorderPlugins}
       onOpenPresets={() => ui.setIsPresetManagerOpen(true)}
-      onOpenWizard={() => ui.setIsWizardOpen(true)}
       onOpenTemplates={() => ui.setIsTemplateWizardOpen(true)}
     />
   );

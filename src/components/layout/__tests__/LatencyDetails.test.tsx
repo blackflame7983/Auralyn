@@ -42,11 +42,12 @@ it('旧形式・未取得・rate不明・NaNを0msや既定48kへ置き換えな
     expect(screen.getByRole('status')).toHaveTextContent('未取得');
 });
 it('NR内部rateが異なる場合も時間換算は出力rateを使い、Headerで総遅延のgradingや新IPCを足さない', () => {
-    render(<><LatencyDetails stats={stats({ nominalSampleRateHz: 384000, nrProcessingRateHz: 192000, nrProcessingFrameSamples: 1920 })} /><DeviceStatus host="WASAPI" sampleRate={48000} bufferSize={512} isRunning onClick={vi.fn()} /></>);
+    render(<><LatencyDetails stats={stats({ nominalSampleRateHz: 384000, nrProcessingRateHz: 192000, nrProcessingFrameSamples: 1920 })} /><DeviceStatus host="WASAPI" sampleRate={48000} bufferSize={512} isRunning /></>);
     expect(screen.getByText('1920 sample / 5.00 ms')).toBeInTheDocument();
     expect(screen.getByText('192,000 Hz')).toBeInTheDocument();
     expect(screen.queryByText('通過時間は未測定・詳細は設定へ')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /音声処理中.*WASAPI.*設定を開く/ })).toBeInTheDocument();
+    expect(screen.getByText('音声処理中')).toHaveAttribute('role', 'status');
+    expect(screen.queryByRole('button', { name: /設定を開く/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/低遅延|推定 /)).not.toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalled();
 });
