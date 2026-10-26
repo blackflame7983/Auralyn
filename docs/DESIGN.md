@@ -207,7 +207,8 @@ UI の構造・文言の置き方・用語・見た目を決めるときの正�
 
 警告は `warning`、正常は `success`、案内は `info` を使います。エラーの本文はテーマごとの可読性を保つ `destructive-text`、危険操作の塗りは `destructive` を使います。メーターの危険域は塗りボタンから独立した `meter-danger` を使います。ブランドは `brand`・`brand-secondary`、波形の比較は `waveform-raw`・`waveform-processed` として状態色から用途を分けます。定義は `src/index.css` に集約します。
 
-- ブランドの基調色（Aurora Cyan など）は [BRANDING.md](./BRANDING.md) に従い、ロゴ・強調・ゲーミングテーマで使う。状態色と混ぜない。
+- ブランドの基調色は [BRANDING.md](./BRANDING.md) に従う。既定のダークテーマ「オーロラ（標準）」（内部 ID は `dark`）は Deep Abyss Blue を地、Aurora Cyan を主色（`primary`）、Mystic Purple を補助色（`brand-secondary`）にする。ゲーミングは発光を強めた派生テーマとする。
+- 主色は選択中の状態と主ボタンに使い、状態色と混ぜない。主ボタンの文字と主色、主色と背景は 4.5:1 以上を保つ（`src/__tests__/themeContrast.test.ts`）。
 
 ### 5.2 ボタンの強さ
 

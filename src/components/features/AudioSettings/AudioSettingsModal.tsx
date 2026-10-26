@@ -1220,12 +1220,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <RadioGroupItem value="dark" id="theme-dark" />
                     <Label htmlFor="theme-dark" className="cursor-pointer flex-1">
                       <span className="font-bold block">{t('header.dark')}</span>
+                      <span className="text-xs text-muted-foreground">{t('settings.AudioSettingsModal.132')}</span>
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2 border border-primary/30 bg-primary/5 p-3 rounded-lg hover:bg-primary/10 transition-all cursor-pointer" onClick={() => setTheme('gaming')}>
+                  <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-all cursor-pointer" onClick={() => setTheme('gaming')}>
                     <RadioGroupItem value="gaming" id="theme-gaming" className="text-brand border-brand" />
                     <Label htmlFor="theme-gaming" className="cursor-pointer flex-1">
-                      <span className="font-bold block text-primary">{t('header.gaming')}</span>
+                      <span className="font-bold block">{t('header.gaming')}</span>
                       <span className="text-xs text-muted-foreground">{t('settings.AudioSettingsModal.133')}</span>
                     </Label>
                   </div>

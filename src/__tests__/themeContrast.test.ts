@@ -26,5 +26,8 @@ it('各テーマで状態文字は4.5:1、メーター危険域は3:1以上を�
             }
         }
         expect(contrast(color('meter-danger'), color('card')), selector).toBeGreaterThanOrEqual(3);
+        // 主ボタンの文字と、主色で示す選択中の文字
+        expect(contrast(color('primary-foreground'), color('primary')), `${selector} primary button`).toBeGreaterThanOrEqual(4.5);
+        for (const background of ['background', 'card']) expect(contrast(color('primary'), color(background)), `${selector} primary/${background}`).toBeGreaterThanOrEqual(4.5);
     }
 });
