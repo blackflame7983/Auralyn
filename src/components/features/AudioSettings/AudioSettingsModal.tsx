@@ -776,11 +776,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                           )
                         })}
                       </div>
-                      <p className="text-[10px] text-muted-foreground text-center">
-                        {selectedBufferSize <= 256 ? t('settings.AudioSettingsModal.057') :
-                          selectedBufferSize >= 1024 ? t('settings.AudioSettingsModal.058') :
-                            t('settings.AudioSettingsModal.059')}
-                      </p>
+                      {(selectedBufferSize <= 256 || selectedBufferSize >= 1024) && (
+                        <p className="text-[10px] text-muted-foreground text-center">
+                          {selectedBufferSize <= 256 ? t('settings.AudioSettingsModal.057') : t('settings.AudioSettingsModal.058')}
+                        </p>
+                      )}
                     </div>
 
                     {/* Quality Profile */}
@@ -1159,7 +1159,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                             : 'border-input bg-background text-muted-foreground hover:text-foreground'
                         }`}
                       >
-                        {label}{t('settings.AudioSettingsModal.101')}</button>
+                        {label}</button>
                     ))}
                   </div>
 
