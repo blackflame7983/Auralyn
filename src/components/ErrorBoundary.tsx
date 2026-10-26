@@ -48,7 +48,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     <div className="max-w-lg w-full space-y-6 text-center">
                         {/* Icon */}
                         <div className="mx-auto w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center">
-                            <MdError className="w-10 h-10 text-destructive" />
+                            <MdError className="w-10 h-10 text-destructive-text" />
                         </div>
 
                         {/* Message */}
@@ -86,7 +86,7 @@ export class ErrorBoundary extends Component<Props, State> {
                                 <MdBugReport className="w-4 h-4" />
                                 {t('boundary.details')}
                             </summary>
-                            <pre className="mt-3 p-3 bg-background rounded-md overflow-auto max-h-40 text-destructive font-mono whitespace-pre-wrap break-words">
+                            <pre className="mt-3 p-3 bg-background rounded-md overflow-auto max-h-40 text-destructive-text font-mono whitespace-pre-wrap break-words">
                                 {this.state.error?.toString()}
                                 {'\n\n'}
                                 {this.state.errorInfo?.componentStack}

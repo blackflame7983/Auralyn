@@ -138,16 +138,16 @@ export const Header: React.FC<HeaderProps> = ({
 
     return (
         <header className={`h-16 shrink-0 overflow-x-auto flex items-center justify-between px-4 xl:px-6 border-b sticky top-0 z-50 transition-colors duration-300 backdrop-blur-md ${theme === 'light'
-            ? 'bg-white/95 border-border/20 shadow-sm'
+            ? 'bg-card/95 border-border/20 shadow-sm'
             : 'bg-background/80 border-border/40'
             }`}>
             <TooltipProvider>
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                     {/* Logo Section */}
                     <div className="flex items-center gap-2 select-none shrink-0">
-                        <img src="/auralyn_icon.png?v=17" alt="Auralyn Logo" className="w-7 h-7 object-contain drop-shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
+                        <img src="/auralyn_icon.png?v=17" alt="Auralyn Logo" className="w-7 h-7 object-contain drop-shadow-[0_0_8px_hsl(var(--brand)/0.5)]" />
                         <h1 aria-label="Auralyn" className="hidden lg:block text-lg font-bold tracking-tight text-foreground">
-                            Aura<span className="text-primary">lyn</span>
+                            Aura<span className="text-brand">lyn</span>
                         </h1>
                     </div>
 
@@ -196,8 +196,8 @@ export const Header: React.FC<HeaderProps> = ({
                                 aria-pressed={isGlobalBypassed}
                                 aria-describedby={isGlobalBypassed ? 'header-compare-state' : undefined}
                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all font-bold text-xs shadow-sm ${isGlobalBypassed
-                                    ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 ring-1 ring-amber-500/30'
-                                    : 'bg-background hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:border-amber-500/60'
+                                    ? 'bg-warning/15 text-warning border-warning/40 ring-1 ring-warning/30'
+                                    : 'bg-background hover:bg-warning/10 text-warning border-warning/30 hover:border-warning/60'
                                     }`}
                             >
                                 <MdCompareArrows className="w-4 h-4" />
@@ -301,7 +301,7 @@ export const Header: React.FC<HeaderProps> = ({
                                             <MdDarkMode className="w-4 h-4" /> {t('header.dark')}
                                         </DropdownMenuRadioItem>
                                         <DropdownMenuRadioItem value="gaming" className="gap-2">
-                                            <MdGamepad className="w-4 h-4 text-cyan-400" /> {t('header.gaming')}
+                                            <MdGamepad className="w-4 h-4 text-brand" /> {t('header.gaming')}
                                         </DropdownMenuRadioItem>
                                     </DropdownMenuRadioGroup>
                                 </DropdownMenuContent>
@@ -341,14 +341,14 @@ export const Header: React.FC<HeaderProps> = ({
                             <DropdownMenuLabel>{t('header.guides')}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={onOpenOBSGuide} className="gap-3 cursor-pointer p-3">
-                                <span className="w-6 h-6 flex items-center justify-center bg-black text-white rounded-full text-xs font-bold shadow-sm">OBS</span>
+                                <span className="w-6 h-6 flex items-center justify-center bg-overlay text-discord-foreground rounded-full text-xs font-bold shadow-sm">OBS</span>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">{t('header.obs')}</span>
                                     <span className="text-xs text-muted-foreground">{t('header.obsHint')}</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuItem onSelect={onOpenDiscordGuide} className="gap-3 cursor-pointer p-3">
-                                <span className="w-6 h-6 flex items-center justify-center bg-[#5865F2] text-white rounded-full shadow-sm"><DiscordIcon className="w-3.5 h-3.5" /></span>
+                                <span className="w-6 h-6 flex items-center justify-center bg-discord text-discord-foreground rounded-full shadow-sm"><DiscordIcon className="w-3.5 h-3.5" /></span>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">{t('header.discord')}</span>
                                     <span className="text-xs text-muted-foreground">{t('header.discordHint')}</span>
@@ -356,7 +356,7 @@ export const Header: React.FC<HeaderProps> = ({
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={onOpenTroubleshoot} className="gap-3 cursor-pointer p-3">
-                                <span className="w-6 h-6 flex items-center justify-center bg-amber-500 text-white rounded-full shadow-sm text-xs font-bold">?</span>
+                                <span className="w-6 h-6 flex items-center justify-center bg-muted text-foreground rounded-full shadow-sm text-xs font-bold">?</span>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">{t('header.noSound')}</span>
                                     <span className="text-xs text-muted-foreground">{t('header.diagnostics')}</span>
@@ -364,7 +364,7 @@ export const Header: React.FC<HeaderProps> = ({
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem disabled={appUpdate.busy} onSelect={() => void appUpdate.checkUpdates()} className="gap-3 cursor-pointer p-3">
-                                <span className="w-6 h-6 flex items-center justify-center bg-blue-500 text-white rounded-full shadow-sm"><MdSystemUpdateAlt className="w-3.5 h-3.5" /></span>
+                                <span className="w-6 h-6 flex items-center justify-center bg-info text-info-foreground rounded-full shadow-sm"><MdSystemUpdateAlt className="w-3.5 h-3.5" /></span>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">{appUpdate.label}</span>
                                     <span className="text-xs text-muted-foreground">{appUpdate.description}</span>
@@ -372,7 +372,7 @@ export const Header: React.FC<HeaderProps> = ({
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={() => window.open('https://ofuse.me/o?uid=149216', '_blank')} className="gap-3 cursor-pointer p-3">
-                                <span className="w-6 h-6 flex items-center justify-center bg-pink-500 text-white rounded-full shadow-sm"><MdFavorite className="w-3.5 h-3.5" /></span>
+                                <span className="w-6 h-6 flex items-center justify-center bg-brand-secondary text-background rounded-full shadow-sm"><MdFavorite className="w-3.5 h-3.5" /></span>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">{t('header.support')}</span>
                                     <span className="text-xs text-muted-foreground">{t('header.supportHint')}</span>

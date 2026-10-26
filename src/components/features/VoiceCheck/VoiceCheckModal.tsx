@@ -51,7 +51,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
         : [];
     return (
         <Modal title={t('voice.copy.000')} onClose={onClose}>
-        <div className="modal-overlay-base bg-black/60">
+        <div className="modal-overlay-base bg-overlay/60">
             <div className="w-full max-w-2xl max-h-[90vh] rounded-xl border border-border bg-card shadow-2xl overflow-hidden flex flex-col">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card/80 shrink-0">
                     <div>
@@ -106,8 +106,8 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                                 {t('voice.copy.012')}</button>
                         )}
                         {isRecording && (
-                            <span className="inline-flex items-center gap-2 text-sm text-amber-500 font-mono">
-                                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                            <span className="inline-flex items-center gap-2 text-sm text-warning font-mono">
+                                <span className="w-2 h-2 rounded-full bg-meter-danger animate-pulse" />
                                 REC {formatMs(vcState.position_ms)}
                                 <span className="text-muted-foreground">{t('voice.copy.013')}{formatMs(remainingMs)}</span>
                             </span>
@@ -130,7 +130,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                         </label>
                         <p className="text-xs text-muted-foreground">{t('voice.copy.044')}</p>
                         <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={safeOutput} disabled={!previewDevices.some(device => device.id === previewDeviceId) || previewBusy || isPlaying} onChange={event => setSafeOutput(event.target.checked)} className="mt-0.5" /><span>{t('voice.copy.045')}</span></label>
-                        {(previewError || preview?.error) && <p role="alert" className="text-sm text-red-800 dark:text-red-300">{previewError || preview?.error}</p>}
+                        {(previewError || preview?.error) && <p role="alert" className="text-sm text-destructive-text">{previewError || preview?.error}</p>}
                         {preview?.conflict && <p className="text-sm">{preview.conflict}{t('voice.copy.046')}</p>}
                         {preview?.owner === 'auto_gain' && <p className="text-xs">{t('voice.copy.047')}</p>}
                         <p className="text-xs text-muted-foreground">{preview?.state === 'stopping' ? t('voice.copy.048') : preview?.state === 'playing' ? t('voice.copy.049') : preview?.state === 'closed' ? t('voice.copy.050') : t('voice.copy.051')}{stopUnconfirmed && t('voice.copy.052')}</p>
@@ -155,8 +155,8 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                                     'py-3 rounded-lg border text-sm font-bold transition-colors',
                                     source === key
                                         ? key === 'raw'
-                                            ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300'
-                                            : 'border-sky-500/60 bg-sky-500/15 text-sky-600 dark:text-sky-300'
+                                            ? 'border-waveform-raw/60 bg-waveform-raw/15 text-waveform-raw'
+                                            : 'border-waveform-processed/60 bg-waveform-processed/15 text-waveform-processed'
                                         : 'border-border bg-muted/30 text-muted-foreground hover:bg-muted/60',
                                     !hasRecording && 'opacity-50 cursor-not-allowed'
                                 )}
@@ -168,7 +168,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     <div className="space-y-2">
                         <div className="h-2 rounded-full bg-muted overflow-hidden">
                             <div
-                                className="h-full bg-sky-500 transition-all duration-100"
+                                className="h-full bg-waveform-processed transition-all duration-100"
                                 style={{ width: `${progressPct}%` }}
                             />
                         </div>

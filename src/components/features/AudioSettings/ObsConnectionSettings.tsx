@@ -309,7 +309,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
               </div>
 
               {obsConnectionHint && (
-                <div className="text-xs bg-destructive/10 border border-destructive/30 text-destructive rounded-md p-3 space-y-2">
+                <div className="text-xs bg-destructive/10 border border-destructive/30 text-destructive-text rounded-md p-3 space-y-2">
                   <p className="font-bold">{t('settings.ObsConnectionSettings.293')}</p>
                   <p>{renderNotice(t, obsConnectionHint)}</p>
                   <div className="flex flex-wrap gap-2 pt-1">
@@ -368,11 +368,11 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                         </div>}
                         <p className="text-muted-foreground">{t('obsReach.scope')}</p>
                         <p className="text-muted-foreground">{t('obsReach.monitorLimits')}</p>
-                        {!reachCurrent && obsReachResult.reached !== 'unsupported' ? <p role="status" className="text-amber-600 dark:text-amber-400">{t('obsReach.stale')}</p> : obsReachResult.reached === 'unsupported' ? (
-                          <p className="text-yellow-600 dark:text-yellow-400">
+                        {!reachCurrent && obsReachResult.reached !== 'unsupported' ? <p role="status" className="text-warning">{t('obsReach.stale')}</p> : obsReachResult.reached === 'unsupported' ? (
+                          <p className="text-warning">
                             {t('settings.ObsConnectionSettings.301')}</p>
                         ) : obsReachResult.reached ? (
-                          <p className="text-emerald-500 font-medium">
+                          <p className="text-success font-medium">
                             {t('obsReach.confirmed')}{obsReachResult.peakDb !== undefined && (
                               <span className="text-muted-foreground font-normal ml-1">
                                 {t('settings.obs.peak', { peak: obsReachResult.peakDb.toFixed(1) })}
@@ -381,7 +381,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                           </p>
                         ) : (
                           <div className="space-y-2">
-                            <p className="text-destructive font-medium">
+                            <p className="text-destructive-text font-medium">
                               {t('settings.ObsConnectionSettings.304')}{obsReachResult.peakDb !== undefined && (
                                 <span className="text-muted-foreground font-normal ml-1">
                                   {t('settings.obs.peak', { peak: obsReachResult.peakDb.toFixed(1) })}

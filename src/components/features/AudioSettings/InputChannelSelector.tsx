@@ -105,7 +105,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
         pairs.push(
             <label key={left} className={`flex items-center gap-2 p-2 rounded-md cursor-pointer border focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background ${isSelected
                 ? 'bg-primary/10 border-primary text-primary dark:bg-primary/20'
-                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 dark:bg-muted/30 dark:border-transparent dark:text-muted-foreground dark:hover:bg-muted/50'}`}>
+                : 'bg-card border-border text-foreground hover:bg-muted dark:bg-muted/30 dark:border-transparent dark:text-muted-foreground dark:hover:bg-muted/50'}`}>
                 <input
                     type="radio"
                     name={groupId}
@@ -118,7 +118,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
                 />
                 <span className="flex-1 text-xs flex flex-col min-w-0">
                     <span className="font-mono">{t('settings.channel.input', { left: left + 1, right: right + 1 })}</span>
-                    <span id={`${groupId}-signal-${left}`} className={`text-[10px] mt-0.5 ${hasSignal ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground'}`}>
+                    <span id={`${groupId}-signal-${left}`} className={`text-[10px] mt-0.5 ${hasSignal ? 'text-success' : 'text-muted-foreground'}`}>
                         {hasSignal ? t('settings.InputChannelSelector.203') : t('settings.InputChannelSelector.204')}
                     </span>
                 </span>
@@ -127,8 +127,8 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
     }
 
     return (
-        <div className="space-y-3 p-4 bg-gray-50 dark:bg-zinc-950/50 rounded-lg border border-gray-200 dark:border-border">
-            <h3 className="text-sm font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+        <div className="space-y-3 p-4 bg-muted dark:bg-background/50 rounded-lg border border-border">
+            <h3 className="text-sm font-bold flex items-center gap-2 text-foreground">
                 <MdGraphicEq className="text-primary" aria-hidden="true" />{t('settings.InputChannelSelector.205')}</h3>
             <p className="text-xs text-muted-foreground">
                 {monitorState === 'error' ? t('settings.InputChannelSelector.206')
@@ -140,11 +140,11 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
                 {t('settings.InputChannelSelector.210')}</p>
             <fieldset aria-describedby={`${groupId}-help`} aria-busy={mapping}>
                 <legend className="sr-only">{t('settings.InputChannelSelector.211')}</legend>
-                <div className={`grid grid-cols-4 gap-2 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-zinc-700 ${maxChannels && maxChannels > 16 ? 'max-h-60' : ''}`}>
+                <div className={`grid grid-cols-4 gap-2 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-muted-foreground ${maxChannels && maxChannels > 16 ? 'max-h-60' : ''}`}>
                     {pairs}
                 </div>
             </fieldset>
-            {mappingError && <p role="alert" className="text-xs text-red-700 dark:text-red-300">{renderNotice(t, mappingError)}</p>}
+            {mappingError && <p role="alert" className="text-xs text-destructive-text">{renderNotice(t, mappingError)}</p>}
         </div>
     );
 };

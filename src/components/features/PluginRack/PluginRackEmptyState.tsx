@@ -19,9 +19,9 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
         <div className="w-full rounded-xl border-2 border-dashed border-muted-foreground/30 bg-muted/5 p-4 space-y-4">
             <div className="space-y-1">
                 <h3 className="text-lg font-bold text-foreground">
-                    {t('meterBrowser.copy.313')}</h3>
+                    {t('rack.empty.title')}</h3>
                 <p className="text-muted-foreground leading-relaxed text-sm">
-                    {t('meterBrowser.copy.314')}</p>
+                    {t('rack.empty.scope')}</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -31,20 +31,20 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
                     className="gap-2"
                 >
                     <MdAdd className="w-4 h-4" />
-                    {t('meterBrowser.copy.315')}</Button>
+                    {t('rack.empty.addVst')}</Button>
 
                     <button
                         onClick={onOpenTemplates}
                         className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1.5 underline underline-offset-4"
                     >
                         <MdAutoFixHigh className="w-4 h-4" />
-                        {t('meterBrowser.copy.316')}</button>
+                        {t('rack.empty.templates')}</button>
                     <button
                         onClick={onOpenWizard}
                         className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1.5 underline underline-offset-4"
                     >
                         <MdRocketLaunch className="w-4 h-4" />
-                        {t('meterBrowser.copy.317')}</button>
+                        {t('rack.openSetup')}</button>
             </div>
         </div>
     );

@@ -40,7 +40,7 @@ const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, 
     [key: string]: any
 }) => {
     const t = useMessages();
-    const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: plugin.id, attributes: { roleDescription: t('meterBrowser.copy.291') } });
+    const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: plugin.id, attributes: { roleDescription: t('rack.reorder.sortable') } });
 
     const style: React.CSSProperties = {
         transform: CSS.Transform.toString(transform),
@@ -149,9 +149,9 @@ export const PluginList: React.FC<PluginListProps> = ({
 
     const describePosition = (id: string | number) => {
         const index = plugins.findIndex(plugin => plugin.id === id);
-        return index < 0 ? t('meterBrowser.copy.292') : t('meterBrowser.copy.293', { arg0: index + 1, arg1: plugins.length });
+        return index < 0 ? t('rack.reorder.unknownPosition') : t('rack.reorder.position', { arg0: index + 1, arg1: plugins.length });
     };
-    const describePlugin = (id: string | number) => plugins.find(plugin => plugin.id === id)?.name ?? t('meterBrowser.copy.294');
+    const describePlugin = (id: string | number) => plugins.find(plugin => plugin.id === id)?.name ?? t('rack.reorder.plugin');
 
     return (
         <TooltipProvider>
@@ -163,7 +163,7 @@ export const PluginList: React.FC<PluginListProps> = ({
                             <div className="w-1 h-1 bg-muted-foreground rounded-full" />
                             <div className="w-1 h-1 bg-muted-foreground rounded-full" />
                         </div>
-                        {isBeginnerMode ? t('meterBrowser.copy.295') : t('meterBrowser.copy.296')}
+                        {isBeginnerMode ? t('rack.simpleTitle') : t('rack.title')}
                     </h2>
                     <div className="flex items-center gap-2">
                         {isBeginnerMode ? (
@@ -172,9 +172,9 @@ export const PluginList: React.FC<PluginListProps> = ({
                                 size="sm"
                                 onClick={onOpenWizard}
                                 className="h-7 text-xs"
-                                aria-label={t('meterBrowser.copy.297')}
+                                aria-label={t('rack.openSetup')}
                             >
-                                {t('meterBrowser.copy.298')}</Button>
+                                {t('rack.setup')}</Button>
                         ) : (
                             <>
                                 {/* View Mode Toggle */}
@@ -185,22 +185,22 @@ export const PluginList: React.FC<PluginListProps> = ({
                                                 variant="ghost"
                                                 size="sm"
                                                 className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-                                                aria-label={t('meterBrowser.copy.299')}
+                                                aria-label={t('rack.showSimpleAccessible')}
                                                 aria-pressed={simpleMode}
                                                 onClick={toggleSimpleMode}
                                             >
                                                 {simpleMode ? <MdViewAgenda className="w-4 h-4" /> : <MdViewCompact className="w-4 h-4" />}
-                                                {simpleMode ? t('meterBrowser.copy.300') : t('meterBrowser.copy.301')}
+                                                {simpleMode ? t('rack.simple') : t('rack.detailed')}
                                             </Button>
                                         </TooltipTrigger>
                                         <TooltipContent>
-                                            <p>{simpleMode ? t('meterBrowser.copy.302') : t('meterBrowser.copy.303')}</p>
+                                            <p>{simpleMode ? t('rack.showDetailedHint') : t('rack.showSimpleHint')}</p>
                                         </TooltipContent>
                                     </Tooltip>
                                 )}
                                 <Button variant="outline" size="sm" onClick={onOpenPresets} className="h-7 text-xs gap-2">
                                     <MdFolderOpen className="w-3.5 h-3.5" />
-                                    {t('meterBrowser.copy.304')}</Button>
+                                    {t('rack.manageProfiles')}</Button>
                             </>
                         )}
                     </div>
@@ -208,12 +208,12 @@ export const PluginList: React.FC<PluginListProps> = ({
 
                 <DndContext
                     accessibility={{
-                        screenReaderInstructions: { draggable: t('meterBrowser.copy.305') },
+                        screenReaderInstructions: { draggable: t('rack.reorder.instructions') },
                         announcements: {
-                            onDragStart: ({ active }) => t('meterBrowser.copy.306', { arg0: describePlugin(active.id), arg1: describePosition(active.id) }),
-                            onDragOver: ({ active, over }) => over?.id === active.id ? undefined : over ? t('meterBrowser.copy.307', { arg0: describePlugin(active.id), arg1: describePosition(over.id) }) : t('meterBrowser.copy.308'),
-                            onDragEnd: ({ active, over }) => over ? t('meterBrowser.copy.309', { arg0: describePlugin(active.id), arg1: describePosition(over.id) }) : t('meterBrowser.copy.310'),
-                            onDragCancel: ({ active }) => t('meterBrowser.copy.311', { arg0: describePlugin(active.id) }),
+                            onDragStart: ({ active }) => t('rack.reorder.started', { arg0: describePlugin(active.id), arg1: describePosition(active.id) }),
+                            onDragOver: ({ active, over }) => over?.id === active.id ? undefined : over ? t('rack.reorder.moving', { arg0: describePlugin(active.id), arg1: describePosition(over.id) }) : t('rack.reorder.noTarget'),
+                            onDragEnd: ({ active, over }) => over ? t('rack.reorder.dropped', { arg0: describePlugin(active.id), arg1: describePosition(over.id) }) : t('rack.reorder.unchanged'),
+                            onDragCancel: ({ active }) => t('rack.reorder.cancelled', { arg0: describePlugin(active.id) }),
                         },
                     }}
                     sensors={sensors}
@@ -254,14 +254,14 @@ export const PluginList: React.FC<PluginListProps> = ({
                         onClick={onAddClick}
                         className={`w-full h-10 flex items-center justify-center gap-2 transition-colors font-medium
                     ${theme === 'gaming'
-                                ? 'border-2 border-primary/40 bg-primary/5 hover:bg-primary/10 hover:border-primary hover:shadow-[0_0_20px_rgba(34,211,238,0.2)] text-primary'
+                                ? 'border-2 border-primary/40 bg-primary/5 hover:bg-primary/10 hover:border-primary hover:shadow-[0_0_20px_hsl(var(--brand)/0.2)] text-primary'
                                 : theme === 'light'
                                     ? 'border-2 border-border shadow-sm hover:shadow-md hover:border-primary hover:bg-primary/5 hover:text-primary text-muted-foreground active:scale-[0.99] active:shadow-inner'
                                     : 'border-dashed border-2 border-muted-foreground/30 hover:border-foreground/50 hover:bg-muted/50 text-muted-foreground hover:text-foreground'
                             }`}
                     >
                         <MdAdd className={`w-5 h-5 ${theme === 'gaming' ? 'animate-pulse' : ''}`} />
-                        <span className="text-sm">{t('meterBrowser.copy.312')}</span>
+                        <span className="text-sm">{t('rack.addEffects')}</span>
                     </Button>
                 )}
                 {/* Footer Spacer for AppShell Footer */}

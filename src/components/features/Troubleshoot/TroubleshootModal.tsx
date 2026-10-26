@@ -450,9 +450,9 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
 
     const statusIcon = (status: CheckStatus) => {
         switch (status) {
-            case 'ok': return <MdCheckCircle className="w-5 h-5 text-emerald-500" />;
-            case 'error': return <MdError className="w-5 h-5 text-destructive" />;
-            case 'warning': return <MdWarning className="w-5 h-5 text-amber-500" />;
+            case 'ok': return <MdCheckCircle className="w-5 h-5 text-success" />;
+            case 'error': return <MdError className="w-5 h-5 text-destructive-text" />;
+            case 'warning': return <MdWarning className="w-5 h-5 text-warning" />;
             case 'skipped': return <MdWarning className="w-5 h-5 text-muted-foreground" />;
             case 'checking': return <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />;
             default: return <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30" />;
@@ -468,8 +468,8 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
             <div className="modal-surface-base w-full max-w-lg max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
                 <div className="modal-header-base shrink-0">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-amber-500/10 rounded-lg">
-                            <MdHelpOutline className="w-5 h-5 text-amber-500" />
+                        <div className="p-2 bg-warning/10 rounded-lg">
+                            <MdHelpOutline className="w-5 h-5 text-warning" />
                         </div>
                         <div>
                             <h2 className="text-lg font-bold text-foreground">{t('guide.copy.405')}</h2>
@@ -482,8 +482,8 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                 </div>
 
                 {showProbeConfirm && (
-                    <div className="px-6 py-4 bg-amber-500/10 border-b border-amber-500/20 text-sm space-y-3">
-                        <p className="font-bold text-amber-700 dark:text-amber-300">
+                    <div className="px-6 py-4 bg-warning/10 border-b border-warning/20 text-sm space-y-3">
+                        <p className="font-bold text-warning">
                             {t('guide.copy.408')}</p>
                         <p className="text-xs text-muted-foreground leading-relaxed">
                             {t('guide.copy.409')}</p>
@@ -529,9 +529,9 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
 
                 {phase !== 'purpose' && !isRunning && checks.length > 0 && (
                     <div className={`px-6 py-3 text-sm font-bold flex items-center gap-2 shrink-0 ${
-                        errorCount > 0 ? 'bg-destructive/10 text-red-800 dark:text-red-300' :
-                        warnCount > 0 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
-                        'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        errorCount > 0 ? 'bg-destructive/10 text-destructive-text' :
+                        warnCount > 0 ? 'bg-warning/10 text-warning' :
+                        'bg-success/10 text-success'
                     }`}>
                         {errorCount > 0 ? (
                             <><MdError className="w-4 h-4" /> {errorCount}{t('guide.copy.413')}</>
@@ -556,7 +556,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                         <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{typeof check.detail === 'string' ? <>{t('guide.rawDetail')}: {check.detail}</> : renderNotice(t, check.detail)}</p>
                                     )}
                                     {check.fixHint && (
-                                        <p className="text-xs text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+                                        <p className="text-xs text-warning mt-1 leading-relaxed">
                                             {t('guide.diagnostic.fixHint', { hint: renderNotice(t, check.fixHint) })}
                                         </p>
                                     )}

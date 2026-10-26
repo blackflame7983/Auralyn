@@ -15,9 +15,9 @@ export const VERDICT_LABELS: Record<QualityVerdict, MessageKey> = {
     bad: 'voice.copy.107',
 };
 export const VERDICT_STYLES: Record<QualityVerdict, string> = {
-    good: 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border-emerald-500/40',
-    warn: 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/40',
-    bad: 'bg-red-500/20 text-red-600 dark:text-red-300 border-red-500/40',
+    good: 'bg-success/20 text-success border-success/40',
+    warn: 'bg-warning/20 text-warning border-warning/40',
+    bad: 'bg-destructive/20 text-destructive-text border-destructive/40',
 };
 export function formatAdvice(advice: QualityAdvice, t: ReturnType<typeof useMessages>): string {
     const p = advice.params;
@@ -48,11 +48,11 @@ export function adviceSettingsTarget(messageKey: string): 'audio' | 'sound' | nu
 export function adviceSeverityClass(severity: string): string {
     switch (severity) {
         case 'bad':
-            return 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300';
+            return 'border-destructive/30 bg-destructive/10 text-destructive-text';
         case 'warn':
-            return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300';
+            return 'border-warning/30 bg-warning/10 text-warning';
         default:
-            return 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300';
+            return 'border-info/30 bg-info/10 text-info';
     }
 }
 export function BandDeltaChart({ bands }: { bands: QualityReport['bandDeltaDb'] }) {
@@ -72,7 +72,7 @@ export function BandDeltaChart({ bands }: { bands: QualityReport['bandDeltaDb'] 
                                 <div
                                     className={cn(
                                         'w-full max-w-[28px] rounded-sm transition-all',
-                                        isNeg ? 'bg-amber-500/70' : 'bg-sky-500/70'
+                                        isNeg ? 'bg-warning/70' : 'bg-info/70'
                                     )}
                                     style={{ height: `${Math.max(4, h)}%` }}
                                     title={`${band.bandHz} Hz: ${band.deltaDb.toFixed(1)} dB`}
@@ -109,70 +109,81 @@ export function WaveformCanvas({
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        const dpr = window.devicePixelRatio || 1;
-        const rect = canvas.getBoundingClientRect();
-        const w = Math.max(1, Math.floor(rect.width * dpr));
-        const h = Math.max(1, Math.floor(rect.height * dpr));
-        if (canvas.width !== w || canvas.height !== h) {
-            canvas.width = w;
-            canvas.height = h;
-        }
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
-        ctx.fillRect(0, 0, w, h);
-        const mid = h / 2;
-        const drawEnvelope = (peaks: number[], color: string, alpha: number) => {
-            if (peaks.length === 0) return;
-            ctx.strokeStyle = color;
-            ctx.globalAlpha = alpha;
-            ctx.lineWidth = 1.5 * dpr;
-            ctx.beginPath();
-            peaks.forEach((peak, i) => {
-                const x = (i / Math.max(1, peaks.length - 1)) * w;
-                const amp = Math.min(1, peak) * (h * 0.42);
-                if (i === 0) ctx.moveTo(x, mid - amp);
-                else ctx.lineTo(x, mid - amp);
-            });
-            for (let i = peaks.length - 1; i >= 0; i--) {
-                const x = (i / Math.max(1, peaks.length - 1)) * w;
-                const amp = Math.min(1, peaks[i]) * (h * 0.42);
-                ctx.lineTo(x, mid + amp);
+        const draw = () => {
+            const colors = getComputedStyle(canvas);
+            const color = (token: string, alpha = 1) => `hsl(${colors.getPropertyValue(`--${token}`).trim()} / ${alpha})`;
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            const w = Math.max(1, Math.floor(rect.width * dpr));
+            const h = Math.max(1, Math.floor(rect.height * dpr));
+            if (canvas.width !== w || canvas.height !== h) {
+                canvas.width = w;
+                canvas.height = h;
             }
-            ctx.closePath();
-            ctx.fillStyle = color.replace('1)', `${alpha * 0.35})`);
-            ctx.fill();
-            ctx.stroke();
-            ctx.globalAlpha = 1;
-        };
-        drawEnvelope(rawPeaks, 'rgba(52, 211, 153, 1)', activeSource === 'raw' ? 1 : 0.45);
-        drawEnvelope(processedPeaks, 'rgba(56, 189, 248, 1)', activeSource === 'processed' ? 1 : 0.45);
-        if (durationMs > 0 && markersMs.length > 0) {
-            markersMs.forEach((ms) => {
-                const posX = (ms / durationMs) * w;
-                ctx.strokeStyle = 'rgba(248, 113, 113, 0.85)';
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = color('muted');
+            ctx.fillRect(0, 0, w, h);
+            const mid = h / 2;
+            const drawEnvelope = (peaks: number[], color: string, alpha: number) => {
+                if (peaks.length === 0) return;
+                ctx.strokeStyle = color;
+                ctx.globalAlpha = alpha;
                 ctx.lineWidth = 1.5 * dpr;
-                ctx.setLineDash([4 * dpr, 3 * dpr]);
+                ctx.beginPath();
+                peaks.forEach((peak, i) => {
+                    const x = (i / Math.max(1, peaks.length - 1)) * w;
+                    const amp = Math.min(1, peak) * (h * 0.42);
+                    if (i === 0) ctx.moveTo(x, mid - amp);
+                    else ctx.lineTo(x, mid - amp);
+                });
+                for (let i = peaks.length - 1; i >= 0; i--) {
+                    const x = (i / Math.max(1, peaks.length - 1)) * w;
+                    const amp = Math.min(1, peaks[i]) * (h * 0.42);
+                    ctx.lineTo(x, mid + amp);
+                }
+                ctx.closePath();
+                ctx.fillStyle = color;
+                ctx.globalAlpha = alpha * alpha * 0.35;
+                ctx.fill();
+                ctx.globalAlpha = alpha;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            };
+            drawEnvelope(rawPeaks, color('waveform-raw'), activeSource === 'raw' ? 1 : 0.45);
+            drawEnvelope(processedPeaks, color('waveform-processed'), activeSource === 'processed' ? 1 : 0.45);
+            if (durationMs > 0 && markersMs.length > 0) {
+                markersMs.forEach((ms) => {
+                    const posX = (ms / durationMs) * w;
+                    ctx.strokeStyle = color('destructive-text', 0.85);
+                    ctx.lineWidth = 1.5 * dpr;
+                    ctx.setLineDash([4 * dpr, 3 * dpr]);
+                    ctx.beginPath();
+                    ctx.moveTo(posX, 0);
+                    ctx.lineTo(posX, h);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                });
+            }
+            if (durationMs > 0) {
+                const posX = (positionMs / durationMs) * w;
+                ctx.strokeStyle = color('foreground', 0.85);
+                ctx.lineWidth = 2 * dpr;
                 ctx.beginPath();
                 ctx.moveTo(posX, 0);
                 ctx.lineTo(posX, h);
                 ctx.stroke();
-                ctx.setLineDash([]);
-            });
-        }
-        if (durationMs > 0) {
-            const posX = (positionMs / durationMs) * w;
-            ctx.strokeStyle = 'rgba(248, 250, 252, 0.85)';
-            ctx.lineWidth = 2 * dpr;
-            ctx.beginPath();
-            ctx.moveTo(posX, 0);
-            ctx.lineTo(posX, h);
-            ctx.stroke();
-        }
+            }
+        };
+        draw();
+        // 表示中のテーマ変更も、Canvasを描き直して配色へ反映する。
+        const observer = new MutationObserver(draw);
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        return () => observer.disconnect();
     }, [rawPeaks, processedPeaks, positionMs, durationMs, activeSource, markersMs]);
     return (
         <canvas
             ref={canvasRef}
-            className="w-full h-28 rounded-lg border border-border bg-slate-950/50"
+            className="w-full h-28 rounded-lg border border-border bg-muted"
         />
     );
 }

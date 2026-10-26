@@ -103,6 +103,6 @@ export function LiveOutputPanel({ outputs, onBusyChange, disabled = false }: { d
         {status && <p ref={savedStatus} tabIndex={-1} role="status" className="text-sm">{t(status.error || status.sink?.failed ? 'liveOutput.failed' : status.sink?.active ? 'liveOutput.active' : 'liveOutput.inactive')}</p>}
         {status?.monitor && <p className="text-xs">{t('liveOutput.monitorCounts', { queued: status.monitor.broadcastQueueFrames, offered: status.monitor.offeredFrames, dropped: status.monitor.droppedFrames, accepted: status.monitor.acceptedRevision, completed: status.monitor.completedRevision })}</p>}
         {status?.sink && <p className="text-xs">{t('liveOutput.counts', { queued: status.sink.queuedFrames, zero: status.sink.zeroFilledFrames, dropped: status.sink.droppedFrames, rate: status.sink.rateHz })}</p>}
-        {error && <p role="alert" className="text-destructive text-sm">{t('liveOutput.error')}</p>}
+        {error && <p role="alert" className="text-destructive-text text-sm">{t('liveOutput.error')}</p>}
     </section>;
 }

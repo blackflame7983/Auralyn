@@ -9,9 +9,9 @@ export interface LoudnessReading {
 }
 export type Verdict = 'low' | 'good' | 'high';
 export const verdictLabel: Record<Verdict, MessageKey> = {
-    low: 'meterBrowser.copy.083',
-    good: 'meterBrowser.copy.084',
-    high: 'meterBrowser.copy.085',
+    low: 'loudness.verdict.quiet',
+    good: 'loudness.verdict.good',
+    high: 'loudness.verdict.loud',
 };
 
 // 声用の仮の目安。YouTube等の配信全体の基準ではない。

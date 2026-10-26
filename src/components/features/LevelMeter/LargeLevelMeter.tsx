@@ -58,15 +58,15 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
                     {/* Bar */}
                     <div
                         className={cn("absolute bottom-0 left-0 right-0 transition-all duration-75 ease-out",
-                            isClipping ? 'bg-gradient-to-t from-red-600 to-red-400' :
-                                isWarning ? 'bg-gradient-to-t from-yellow-600 to-yellow-400' :
-                                    'bg-gradient-to-t from-emerald-600 to-emerald-400'
+                            isClipping ? 'bg-gradient-to-t from-meter-danger to-meter-danger' :
+                                isWarning ? 'bg-gradient-to-t from-warning to-warning' :
+                                    'bg-gradient-to-t from-success to-success'
                         )}
                         style={{ height: `${pct}%` }}
                     />
                     {/* Peak Hold Line */}
                     <div
-                        className="absolute left-0 right-0 h-0.5 bg-white/80 shadow-[0_0_4px_rgba(255,255,255,0.5)]"
+                        className="absolute left-0 right-0 h-0.5 bg-foreground/80 shadow-[0_0_4px_hsl(var(--foreground)/0.5)]"
                         style={{ bottom: `${peakPct}%` }}
                     />
                     {/* Gridlines */}
@@ -76,7 +76,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
                             return (
                                 <div
                                     key={dbMark}
-                                    className="absolute w-full border-t border-black/30"
+                                    className="absolute w-full border-t border-foreground/30"
                                     style={{ bottom: `${markPct}%` }}
                                 />
                             );
@@ -85,7 +85,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
                 </div>
                 {/* dB Value */}
                 {!isMiniMode && (
-                    <span className={cn("text-xs font-mono", isClipping ? 'text-destructive font-bold' : 'text-muted-foreground')}>
+                    <span className={cn("text-xs font-mono", isClipping ? 'text-destructive-text font-bold' : 'text-muted-foreground')}>
                         {formatDB(db)}
                     </span>
                 )}
@@ -100,12 +100,12 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
         )}>
             {/* Header */}
             <div className="flex items-center justify-between">
-                {!isMiniMode && <span className="text-xs text-muted-foreground font-semibold uppercase tracking-wider truncate">{t('meterBrowser.copy.070')}</span>}
+                {!isMiniMode && <span className="text-xs text-muted-foreground font-semibold uppercase tracking-wider truncate">{t('meter.title')}</span>}
                 <div className={cn("flex items-center gap-1", isMiniMode && "flex-col w-full")}>
                     <button
                         onClick={() => setIsMiniMode(!isMiniMode)}
                         className="text-muted-foreground hover:text-primary transition-colors p-1"
-                        title={isMiniMode ? t('meterBrowser.copy.071') : t('meterBrowser.copy.072')}
+                        title={isMiniMode ? t('meter.detailedView') : t('meter.miniView')}
                     >
                         {isMiniMode ? <MdOpenInFull className="w-4 h-4" /> : <MdCloseFullscreen className="w-4 h-4" />}
                     </button>
@@ -113,22 +113,22 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
                         <button
                             onClick={() => setShowTips(prev => !prev)}
                             className={cn("text-muted-foreground hover:text-primary transition-colors p-1", showTips && "text-primary")}
-                            title={t('meterBrowser.copy.073')}
+                            title={t('meter.scaleDetails')}
                         >
                             <MdInfo className="w-4 h-4" />
                         </button>
                     )}
                     <button
                         onClick={onClose}
-                        className="text-muted-foreground hover:text-destructive p-1 rounded-full hover:bg-white/10 transition-colors"
-                        title={t('meterBrowser.copy.074')}
+                        className="text-muted-foreground hover:text-destructive-text p-1 rounded-full hover:bg-card/10 transition-colors"
+                        title={t('common.close')}
                     >
                         <MdClose className="w-4 h-4" />
                     </button>
                 </div>
             </div>
 
-            <span className="text-[10px] text-muted-foreground" title={t('meterBrowser.copy.075')}>{t(meterStatusLabel(state))}</span>
+            <span className="text-[10px] text-muted-foreground" title={t('meter.arrivalUnverified')}>{t(meterStatusLabel(state))}</span>
 
             {/* Clipping Indicator */}
             {hasClipped && (
@@ -136,17 +136,17 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
                     "flex items-center justify-center bg-destructive/20 border border-destructive/50 rounded animate-pulse shrink-0",
                     isMiniMode ? "p-1" : "px-2 py-1 gap-1"
                 )}>
-                    <MdWarning className="w-3 h-3 text-destructive" />
-                    {!isMiniMode && <span className="text-xs font-bold text-destructive uppercase">Clip!</span>}
+                    <MdWarning className="w-3 h-3 text-destructive-text" />
+                    {!isMiniMode && <span className="text-xs font-bold text-destructive-text uppercase">Clip!</span>}
                 </div>
             )}
 
             {/* Tips Panel */}
             {!isMiniMode && showTips && (
                 <div className="text-[9px] text-muted-foreground bg-popover/95 border border-border rounded-md p-2 space-y-1 animate-in fade-in zoom-in-95 duration-200">
-                    <div><span className="text-emerald-500">{t('meterBrowser.copy.076')}</span>{t('meterBrowser.copy.077')}</div>
-                    <div><span className="text-yellow-500">{t('meterBrowser.copy.078')}</span>: -12~-3dB</div>
-                    <div><span className="text-destructive">{t('meterBrowser.copy.079')}</span>{t('meterBrowser.copy.080')}</div>
+                    <div><span className="text-success">{t('meter.scale.green')}</span>{t('meter.scale.low')}</div>
+                    <div><span className="text-warning">{t('meter.scale.yellow')}</span>: -12~-3dB</div>
+                    <div><span className="text-destructive-text">{t('meter.scale.red')}</span>{t('meter.scale.high')}</div>
                 </div>
             )}
 
@@ -154,7 +154,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
             {!isMiniMode && (
                 <div className="space-y-1 shrink-0">
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1"><MdVolumeUp className="w-3 h-3" /> {t('meterBrowser.copy.081')}</span>
+                        <span className="flex items-center gap-1"><MdVolumeUp className="w-3 h-3" /> {t('meter.input')}</span>
                         <span className="font-mono">{(inputGain * 100).toFixed(0)}%</span>
                     </div>
                     <input
@@ -181,7 +181,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
                             window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: 100 }));
                         }}
                         className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary"
-                        title={t('meterBrowser.copy.082')}
+                        title={t('meter.resetGainHint')}
                     />
                 </div>
             )}

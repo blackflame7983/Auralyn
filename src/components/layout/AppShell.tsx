@@ -86,8 +86,8 @@ export const AppShell: React.FC<AppShellProps> = ({
         <div className="min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300">
             {/* Ambient Animated Glows - Visible mainly in Dark Mode */}
             <div className="fixed inset-0 pointer-events-none z-0 opacity-0 dark:opacity-100 transition-opacity duration-500">
-                <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-accent-secondary/5 blur-[130px] rounded-full mix-blend-screen animate-[pulse_8s_ease-in-out_infinite]" />
-                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-accent-primary/10 blur-[100px] rounded-full mix-blend-screen animate-[pulse_10s_ease-in-out_infinite_reverse]" />
+                <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-brand-secondary/5 blur-[130px] rounded-full mix-blend-screen animate-[pulse_8s_ease-in-out_infinite]" />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-brand/10 blur-[100px] rounded-full mix-blend-screen animate-[pulse_10s_ease-in-out_infinite_reverse]" />
             </div>
 
             {/* Subtle Grid overlay - Fades out in center to avoid distraction */}
@@ -111,7 +111,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     engineProcessReady={engineProcessReady}
                 />
                 <main
-                    className={`flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent pb-4 transition-all duration-300 ${isLargeMeterOpen ? 'pr-36 lg:pr-36' : ''}`}
+                    className={`flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent pb-4 transition-all duration-300 ${isLargeMeterOpen ? 'pr-36 lg:pr-36' : ''}`}
                 >
                     <div className="max-w-4xl mr-auto ml-0">
                         <div
@@ -183,7 +183,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </main>
 
                 {/* Master Section Footer */}
-                <footer className="h-16 bg-background border-t border-border px-4 z-50 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_-5px_20px_rgba(0,0,0,0.5)] shrink-0 transition-colors duration-300 overflow-x-auto">
+                <footer className="h-16 bg-background border-t border-border px-4 z-50 footer-shadow shrink-0 transition-colors duration-300 overflow-x-auto">
                     <div className="h-full w-full min-w-max flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                         {/* Effect Compare Button */}
@@ -197,7 +197,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                         className={cn(
                                             "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold font-mono transition-all whitespace-nowrap shrink-0",
                                             isABBypassed
-                                                ? "bg-orange-500/10 text-orange-500 border-orange-500/50 ring-1 ring-orange-500/30 animate-pulse"
+                                                ? "bg-warning/10 text-warning border-warning/50 ring-1 ring-warning/30 animate-pulse"
                                                 : "bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground"
                                         )}
                                     >

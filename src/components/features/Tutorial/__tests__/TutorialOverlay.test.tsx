@@ -16,6 +16,8 @@ it('localeだけで同じTutorial targetとstepを保持しskipや保存完了�
     </TutorialProvider></LocaleProvider>);
     await act(async () => {});
     const end = screen.getByRole('button', { name: 'チュートリアルを終了する' });
+    expect(document.querySelectorAll('.tutorial-spotlight')).toHaveLength(1);
+    expect(end).not.toHaveClass('tutorial-spotlight');
     const target = document.getElementById('add-effect-btn');
     const measure = vi.spyOn(target!, 'getBoundingClientRect');
     act(() => { store.setLocale('en'); });

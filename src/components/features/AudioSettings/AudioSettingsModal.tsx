@@ -610,7 +610,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           </button>
         </div>
 
-        <div ref={settingsBody} className="modal-body-base scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-600 scrollbar-track-transparent">
+        <div ref={settingsBody} className="modal-body-base scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
           <TabsList className={`grid h-auto w-full grid-cols-2 ${isBeginnerMode && !isSystemTabEnabled ? 'sm:grid-cols-4' : 'sm:grid-cols-5'} mb-4`}>
             <TabsTrigger value="audio">{t('settings.audio')}</TabsTrigger>
@@ -630,7 +630,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
             {loading ? (
               <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-primary"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
             ) : error ? (
               <div className="space-y-4">
@@ -849,7 +849,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         ))}
                       </select>
                       {!isAsio && (
-                        <div className="text-[10px] text-orange-400/90 flex items-start gap-1.5 bg-orange-900/10 p-1.5 rounded border border-orange-500/20 mt-2">
+                        <div className="text-[10px] text-warning/90 flex items-start gap-1.5 bg-warning/10 p-1.5 rounded border border-warning/20 mt-2">
                           <MdWarning className="w-3 h-3 mt-0.5 shrink-0" />
                           <span>
                             {t('settings.AudioSettingsModal.070')}</span>
@@ -879,17 +879,17 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       <div>
                         <strong className="text-primary">{t('settings.AudioSettingsModal.074')}</strong>
                         <ul className="list-disc list-inside ml-2 mt-1 space-y-0.5">
-                          <li><span className="text-emerald-400">{t('settings.AudioSettingsModal.075')}</span>{t('settings.AudioSettingsModal.076')}</li>
-                          <li><span className="text-yellow-400">{t('settings.AudioSettingsModal.077')}</span>{t('settings.AudioSettingsModal.078')}</li>
-                          <li><span className="text-orange-400">{t('settings.AudioSettingsModal.079')}</span>{t('settings.AudioSettingsModal.080')}</li>
+                          <li><span className="text-success">{t('settings.AudioSettingsModal.075')}</span>{t('settings.AudioSettingsModal.076')}</li>
+                          <li><span className="text-warning">{t('settings.AudioSettingsModal.077')}</span>{t('settings.AudioSettingsModal.078')}</li>
+                          <li><span className="text-warning">{t('settings.AudioSettingsModal.079')}</span>{t('settings.AudioSettingsModal.080')}</li>
                         </ul>
                       </div>
                       <div>
                         <strong className="text-primary">{t('settings.AudioSettingsModal.081')}</strong>
                         <ul className="list-disc list-inside ml-2 mt-1 space-y-0.5">
-                          <li><span className="text-cyan-400">44.1 kHz</span>{t('settings.AudioSettingsModal.082')}</li>
-                          <li><span className="text-cyan-400">48 kHz</span>{t('settings.AudioSettingsModal.083')}</li>
-                          <li><span className="text-cyan-400">96 kHz</span>{t('settings.AudioSettingsModal.084')}</li>
+                          <li><span className="text-brand">44.1 kHz</span>{t('settings.AudioSettingsModal.082')}</li>
+                          <li><span className="text-brand">48 kHz</span>{t('settings.AudioSettingsModal.083')}</li>
+                          <li><span className="text-brand">96 kHz</span>{t('settings.AudioSettingsModal.084')}</li>
                         </ul>
                       </div>
                     </div>
@@ -935,7 +935,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <button
                       onClick={handleDeletePreset}
                       disabled={!presetName || !presets[presetName]}
-                      className="p-1.5 rounded hover:bg-card text-muted-foreground hover:text-red-400 disabled:opacity-50 transition-colors"
+                      className="p-1.5 rounded hover:bg-card text-muted-foreground hover:text-destructive-text disabled:opacity-50 transition-colors"
                       title={t('settings.AudioSettingsModal.091')}
                     >
                       <MdDelete size={18} />
@@ -971,7 +971,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     />
                   </div>
 
-                  <div className="text-xs rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 space-y-1.5 text-amber-800 dark:text-amber-200">
+                  <div className="text-xs rounded-md border border-warning/30 bg-warning/10 px-3 py-2 space-y-1.5 text-warning">
                     <p>
                       <span className="font-bold">{t('settings.AudioSettingsModal.108')}</span> {t('settings.AudioSettingsModal.109')}</p>
                     <p>
@@ -1223,7 +1223,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2 border border-primary/30 bg-primary/5 p-3 rounded-lg hover:bg-primary/10 transition-all cursor-pointer" onClick={() => setTheme('gaming')}>
-                    <RadioGroupItem value="gaming" id="theme-gaming" className="text-cyan-400 border-cyan-400" />
+                    <RadioGroupItem value="gaming" id="theme-gaming" className="text-brand border-brand" />
                     <Label htmlFor="theme-gaming" className="cursor-pointer flex-1">
                       <span className="font-bold block text-primary">{t('header.gaming')}</span>
                       <span className="text-xs text-muted-foreground">{t('settings.AudioSettingsModal.133')}</span>
@@ -1255,7 +1255,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <button onClick={onOpenLicense} className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
                     {t('settings.AudioSettingsModal.140')}</button>
                 )}
-                <button onClick={() => openUrl('https://ofuse.me/o?uid=149216')} className="text-xs text-muted-foreground hover:text-pink-400 transition-colors flex items-center gap-1">
+                <button onClick={() => openUrl('https://ofuse.me/o?uid=149216')} className="text-xs text-muted-foreground hover:text-brand-secondary transition-colors flex items-center gap-1">
                   <MdFavorite className="w-3 h-3" />
                   {t('settings.AudioSettingsModal.141')}</button>
               </div>
@@ -1309,7 +1309,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <button
                   onClick={handleRestart}
                   disabled={loading || (reviewRequired && !migrationConfirmed)}
-                  className="px-3 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive border border-input hover:border-destructive/30 rounded-md transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive-text border border-input hover:border-destructive/30 rounded-md transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('settings.AudioSettingsModal.196')}</button>
             </section>
@@ -1495,7 +1495,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         },
                       });
                     }}
-                    className="px-3 py-1.5 text-xs text-destructive bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 rounded-md transition-all whitespace-nowrap"
+                    className="px-3 py-1.5 text-xs text-destructive-text bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 rounded-md transition-all whitespace-nowrap"
                   >
                     {t('settings.AudioSettingsModal.187')}</button>
                 </div>
@@ -1505,7 +1505,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             {/* Factory Reset */}
             <div className="space-y-2">
               <h4 className="text-sm font-bold text-foreground flex items-center gap-2 px-1">
-                <MdRefresh className="w-4 h-4 text-destructive" />
+                <MdRefresh className="w-4 h-4 text-destructive-text" />
                 {t('settings.AudioSettingsModal.188')}</h4>
               <div className="p-4 bg-muted/20 border border-border rounded-xl space-y-4">
                 <div className="flex items-center justify-between">
@@ -1541,7 +1541,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         },
                       });
                     }}
-                    className="px-3 py-1.5 text-xs text-destructive bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 rounded-md transition-all whitespace-nowrap"
+                    className="px-3 py-1.5 text-xs text-destructive-text bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 rounded-md transition-all whitespace-nowrap"
                   >
                     {t('settings.AudioSettingsModal.195')}</button>
                 </div>

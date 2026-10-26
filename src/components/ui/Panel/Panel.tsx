@@ -7,7 +7,7 @@ interface PanelProps extends React.HTMLAttributes<HTMLDivElement> {
 export const Panel: React.FC<PanelProps> = ({ children, className = '', ...props }) => {
     return (
         <div
-            className={`glass-panel border border-white/5 shadow-2xl ${className}`}
+            className={`glass-panel border border-border/5 shadow-2xl ${className}`}
             {...props}
         >
             {children}

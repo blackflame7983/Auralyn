@@ -20,7 +20,7 @@ const labels = {
 export function SessionRecoveryNotice({ status, protectedSession, reason, busy, onRetry }: SessionRecoveryNoticeProps) {
     const t = useMessages();
     if (!protectedSession || status === 'pending') return null;
-    return <section aria-label={t('session.label')} className="mb-4 space-y-2 rounded-lg border border-amber-600/50 bg-amber-500/10 p-3 text-sm text-foreground">
+    return <section aria-label={t('session.label')} className="mb-4 space-y-2 rounded-lg border border-warning/50 bg-warning/10 p-3 text-sm text-foreground">
         <h2 className="font-bold">{t(labels[status])}</h2>
         <p>{reason ?? t('session.defaultReason')}</p>
         <p className="text-xs text-muted-foreground">{t('session.explain')}</p>

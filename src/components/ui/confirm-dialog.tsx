@@ -35,7 +35,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 <div className="flex items-start gap-4">
                     <div className={cn(
                         "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
-                        variant === 'destructive' ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
+                        variant === 'destructive' ? 'bg-destructive/10 text-destructive-text' : 'bg-primary/10 text-primary'
                     )}>
                         <MdWarning className="w-5 h-5" />
                     </div>

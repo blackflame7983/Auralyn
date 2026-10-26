@@ -121,6 +121,6 @@ export function MonitorTrial({ devices, onApplied, onBusyChange, disabled = fals
             }}>{t('monitorTrial.recover')}</button>
         </div>}
         {accepted && <p role="status">{t('monitorTrial.accepted')}</p>}
-        {error && <p role="alert" className="text-destructive">{t('monitorTrial.error')}</p>}
+        {error && <p role="alert" className="text-destructive-text">{t('monitorTrial.error')}</p>}
     </section>;
 }

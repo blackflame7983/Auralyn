@@ -31,7 +31,7 @@ beforeEach(() => {
     vi.spyOn(audioApi, 'stopVoiceCheck').mockResolvedValue(undefined);
     vi.spyOn(audioApi, 'stopVoiceCheckPlayback').mockResolvedValue(undefined);
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 it('locale更新による親再描画でも録音とdialogを保持し、previewをclose/cancelしない', async () => {
     const store = createLocaleStore(() => 'ja', () => true);
     const close = vi.fn();
@@ -217,11 +217,21 @@ it.each([false, true])('残響だけ=%sの候補も準備でき、比較範囲�
 
 
 it.each(['ja', 'en'] as const)('再生中は一時停止とせず停止・先頭からの再生を案内する（%s）', async locale => {
-    vi.mocked(voicePreviewApi.request).mockImplementation(async request => previewSnapshot(request, {
-        recordingId: 9, durationMs: 1000,
-        state: request.action === 'start' ? 'playing' : 'idle',
-        devices: request.action === 'devices' ? [{ id: 'hp', name: 'Headphones' }] : [],
-    }));
+    // ポーリングの前後で同じ再生状態を返し、クリックの速さに依存させない。
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    let playbackState: 'idle' | 'playing' | 'stopped' | 'closed' = 'idle';
+    let playingStatusPolls = 0;
+    vi.mocked(voicePreviewApi.request).mockImplementation(async request => {
+        if (request.action === 'open') playbackState = 'idle';
+        if (request.action === 'start') playbackState = 'playing';
+        if (request.action === 'stop') playbackState = 'stopped';
+        if (request.action === 'close') playbackState = 'closed';
+        if (request.action === 'status' && playbackState === 'playing') playingStatusPolls += 1;
+        return previewSnapshot(request, {
+            recordingId: 9, durationMs: 1000, state: playbackState,
+            devices: request.action === 'devices' ? [{ id: 'hp', name: 'Headphones' }] : [],
+        });
+    });
     const store = createLocaleStore(() => locale, () => true);
     render(<LocaleProvider store={store}><VoiceCheckModal isOpen onClose={vi.fn()} /></LocaleProvider>);
     const refresh = screen.getByRole('button', { name: locale === 'ja' ? '試聴先を取得・更新' : 'Get / refresh listening outputs' });
@@ -233,6 +243,12 @@ it.each(['ja', 'en'] as const)('再生中は一時停止とせず停止・先頭
     fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? '選んだ試聴先で再生' : 'Play through the selected output' }));
     const stop = await screen.findByRole('button', { name: locale === 'ja' ? '再生を停止（再生は先頭から）' : 'Stop playback (replay starts from the beginning)' });
     await waitFor(() => expect(stop).toBeEnabled());
-    fireEvent.click(stop);
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(playingStatusPolls).toBe(2);
+    const playingStop = screen.getByRole('button', { name: locale === 'ja' ? '再生を停止（再生は先頭から）' : 'Stop playback (replay starts from the beginning)' });
+    expect(playingStop).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /一時停止|Pause/i })).not.toBeInTheDocument();
+    fireEvent.click(playingStop);
     await waitFor(() => expect(voicePreviewApi.request).toHaveBeenCalledWith(expect.objectContaining({ action: 'stop' })));
+    await waitFor(() => expect(screen.getByRole('button', { name: locale === 'ja' ? '選んだ試聴先で再生' : 'Play through the selected output' })).toBeEnabled());
 });

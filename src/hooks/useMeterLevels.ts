@@ -7,7 +7,7 @@ type MeterState = 'waiting' | 'live' | 'silent' | 'stale' | 'stopped';
 interface Reading { levels: Pair; peak: Pair; clipped: boolean; state: MeterState }
 const empty = (state: MeterState): Reading => ({ levels: [0, 0], peak: [0, 0], clipped: false, state });
 export const METER_TIMEOUT_MS = 1000;
-export const meterStatusLabel = (state: MeterState): MessageKey => state === 'stopped' ? 'meterBrowser.copy.086' : state === 'waiting' || state === 'stale' ? 'meterBrowser.copy.087' : state === 'silent' ? 'meterBrowser.copy.088' : 'meterBrowser.copy.089';
+export const meterStatusLabel = (state: MeterState): MessageKey => state === 'stopped' ? 'meter.state.stopped' : state === 'waiting' || state === 'stale' ? 'meter.state.waiting' : state === 'silent' ? 'meter.state.silent' : 'meter.state.active';
 
 // レベル通知は到達確認ではない。連続するゼロ通知はエンジン側で省略される。
 export function useMeterLevels({ running, type = 'output', large = false }: { running: boolean; type?: 'input' | 'output'; large?: boolean }) {

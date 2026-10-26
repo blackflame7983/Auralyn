@@ -12,8 +12,8 @@ const nonnegative = (value: unknown): value is number => typeof value === 'numbe
 export function LatencyDetails({ stats, isRunning = true }: { stats?: EngineRuntimeStats | null; isRunning?: boolean }) {
     const t = useMessages();
     const oneFrame = (samples: unknown, rate: unknown, allowZero = false) => {
-        if (!nonnegative(samples) || (!allowZero && samples === 0)) return t('meterBrowser.copy.090');
-        return positive(rate) ? `${samples} sample / ${(samples / rate * 1000).toFixed(2)} ms` : t('meterBrowser.copy.091', { arg0: samples });
+        if (!nonnegative(samples) || (!allowZero && samples === 0)) return t('latency.unknown');
+        return positive(rate) ? `${samples} sample / ${(samples / rate * 1000).toFixed(2)} ms` : t('latency.samplesUnknownDuration', { arg0: samples });
     };
     const m = stats?.latencyMetadata;
     const known = m?.schemaVersion === 1;
@@ -21,21 +21,21 @@ export function LatencyDetails({ stats, isRunning = true }: { stats?: EngineRunt
     const monitorCurrent = m?.processingContext === 'broadcastWorker' ? isRunning && stats?.queueDiagnostics?.state === 'running' : !!current;
     const callback = m?.processingContext === 'broadcastWorker' ? undefined : stats?.callbackDiagnostics;
     const rows = current ? [
-        [t('meterBrowser.copy.092'), positive(m.nominalSampleRateHz) ? `${m.nominalSampleRateHz.toLocaleString()} Hz` : t('meterBrowser.copy.093')],
-        [t('meterBrowser.copy.094'), m.fixedBufferRequestFrames === null ? t('meterBrowser.copy.095') : oneFrame(m.fixedBufferRequestFrames, m.nominalSampleRateHz)],
-        [t('meterBrowser.copy.096'), positive(callback?.count) && positive(callback?.minFrames) && positive(callback?.maxFrames)
-            ? `${callback.minFrames}〜${callback.maxFrames} frame` : t('meterBrowser.copy.097')],
-        [t('meterBrowser.copy.098'), m.nrConfiguredEnabled ? t('meterBrowser.copy.099') : 'OFF'],
-        [t('meterBrowser.copy.100'), oneFrame(m.nrProcessingFrameSamples, m.nominalSampleRateHz)],
-        [t('meterBrowser.copy.101'), positive(m.nrProcessingRateHz) ? `${m.nrProcessingRateHz.toLocaleString()} Hz` : t('meterBrowser.copy.102')],
-        [t('meterBrowser.copy.103'), oneFrame(m.vstReportedLatencySamples, m.nominalSampleRateHz, true)],
+        [t('latency.outputRate'), positive(m.nominalSampleRateHz) ? `${m.nominalSampleRateHz.toLocaleString()} Hz` : t('latency.unknown')],
+        [t('latency.requestedBuffer'), m.fixedBufferRequestFrames === null ? t('latency.deviceDefault') : oneFrame(m.fixedBufferRequestFrames, m.nominalSampleRateHz)],
+        [t('latency.callbackFrames'), positive(callback?.count) && positive(callback?.minFrames) && positive(callback?.maxFrames)
+            ? `${callback.minFrames}〜${callback.maxFrames} frame` : t('latency.unobserved')],
+        [t('latency.noiseSetting'), m.nrConfiguredEnabled ? t('latency.noiseConfigured') : 'OFF'],
+        [t('latency.noiseFrameLength'), oneFrame(m.nrProcessingFrameSamples, m.nominalSampleRateHz)],
+        [t('latency.noiseFrameRate'), positive(m.nrProcessingRateHz) ? `${m.nrProcessingRateHz.toLocaleString()} Hz` : t('latency.unknown')],
+        [t('latency.vstReported'), oneFrame(m.vstReportedLatencySamples, m.nominalSampleRateHz, true)],
     ] : [];
-    return <section aria-label={t('meterBrowser.copy.104')} className="space-y-2">
-        <h3 className="font-semibold">{t('meterBrowser.copy.105')}</h3>
+    return <section aria-label={t('latency.title')} className="space-y-2">
+        <h3 className="font-semibold">{t('latency.title')}</h3>
         {m?.processingContext === 'broadcastWorker' && <p className="text-sm">{t('liveOutput.statsBroadcast')}</p>}
-        <p role="status" className="text-sm">{!isRunning || (known && !m.streamRunning) ? t('meterBrowser.copy.106') : !known ? t('meterBrowser.copy.107') : t('meterBrowser.copy.108')}</p>
+        <p role="status" className="text-sm">{!isRunning || (known && !m.streamRunning) ? t('latency.stopped') : !known ? t('latency.metadataMissing') : t('latency.unmeasured')}</p>
         {rows.length > 0 && <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">{rows.map(([label, value]) => <div key={label} className="contents"><dt className="text-muted-foreground">{label}</dt><dd className="break-words text-right">{value}</dd></div>)}</dl>}
-        <p className="text-xs text-muted-foreground">{t('meterBrowser.copy.109')}</p>
+        <p className="text-xs text-muted-foreground">{t('latency.limitations')}</p>
         <LatencyStageDetails stats={stats} current={!!current} />
         <FrameTimingDetails snapshot={stats?.frameTiming} current={monitorCurrent} />
         <ResamplerBatchTimingDetails snapshot={stats?.resamplerBatchTiming} current={monitorCurrent} />

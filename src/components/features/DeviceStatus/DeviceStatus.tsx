@@ -24,7 +24,7 @@ export const DeviceStatus: React.FC<DeviceStatusProps> = ({ host, isRunning, pro
                        transition-all duration-200 group cursor-pointer min-w-0 max-w-[200px] text-left"
         >
             <div className="flex items-center gap-2 min-w-0">
-                <div aria-hidden="true" className={`w-2 h-2 shrink-0 rounded-full ${running ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-destructive'}`} />
+                <div aria-hidden="true" className={`w-2 h-2 shrink-0 rounded-full ${running ? 'bg-success shadow-[0_0_8px_hsl(var(--success)/0.5)]' : 'bg-meter-danger'}`} />
                 <span role="status" className="text-xs text-foreground font-medium">
                     {state}
                 </span>

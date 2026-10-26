@@ -190,7 +190,7 @@ function AppContent() {
                 align="center"
                 content={
                   <div className="space-y-2">
-                    <strong className="block text-green-800 dark:text-green-300 font-bold">
+                    <strong className="block text-info font-bold">
                       {t('guide.copy.427')}</strong>
                     <p>
                       {t('guide.copy.428')}</p>
@@ -205,7 +205,7 @@ function AppContent() {
               align="start"
               content={
                 <div className="space-y-2">
-                  <strong className="block text-green-800 dark:text-green-300 font-bold">{t('guide.copy.429')}</strong>
+                  <strong className="block text-info font-bold">{t('guide.copy.429')}</strong>
                   <p>
                     {t('guide.copy.430')}<br />
                     {t('guide.copy.431')}</p>
@@ -219,7 +219,7 @@ function AppContent() {
               align="start"
               content={
                 <div className="space-y-2">
-                  <strong className="block text-blue-800 dark:text-blue-300 font-bold">
+                  <strong className="block text-info font-bold">
                     {t('guide.copy.432')}</strong>
                   <p>
                     {t('guide.copy.433')}<br />
@@ -234,7 +234,7 @@ function AppContent() {
               align="start"
               content={
                 <div className="space-y-2">
-                  <strong className="block text-orange-800 dark:text-orange-300 font-bold">
+                  <strong className="block text-warning font-bold">
                     {t('guide.copy.435')}</strong>
                   <p>
                     {t('guide.copy.436')}</p>

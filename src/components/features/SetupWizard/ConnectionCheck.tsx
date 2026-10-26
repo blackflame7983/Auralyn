@@ -146,7 +146,7 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                 <p className="text-sm">
                     {t('guide.copy.270')}{outputName}{t('guide.copy.271')}</p>
                 {(goal === 'obs' || goal === 'discord') && (
-                    <p className="text-sm text-amber-500">
+                    <p className="text-sm text-warning">
                         {t('guide.copy.272')}{goal === 'obs' ? 'OBS' : 'Discord'}{' '}
                         {t('guide.copy.273')}</p>
                 )}
@@ -229,7 +229,7 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                         className="px-4 py-2 rounded bg-secondary text-secondary-foreground disabled:opacity-50"
                     >
                         {t('guide.copy.290')}</button>
-                    <p className="text-sm text-amber-500">
+                    <p className="text-sm text-warning">
                         {t('guide.copy.291')}</p>
                     <button
                         type="button"
@@ -254,7 +254,7 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
             </details>
             {goal === 'obs' ? (                    <p
                         role="status"
-                        className={`text-sm ${result?.reached === true ? 'text-emerald-500' : 'text-muted-foreground'}`}
+                        className={`text-sm ${result?.reached === true ? 'text-success' : 'text-muted-foreground'}`}
                     >
                         {audioRunning ? t('guide.copy.293') : t('guide.copy.294')}{' '}
                         {busy ? t('guide.copy.295') : renderNotice(t, message)}
