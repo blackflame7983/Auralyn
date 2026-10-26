@@ -17,6 +17,7 @@ import { useTheme } from '../../../hooks/useTheme';
 
 interface PluginListProps {
     plugins: Plugin[];
+    audioReady?: boolean;
     onAddClick: () => void;
     onToggle: (id: string, enabled: boolean) => void;
     onMute: (id: string, muted: boolean) => void;
@@ -77,6 +78,7 @@ const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, 
 
 export const PluginList: React.FC<PluginListProps> = ({
     plugins,
+    audioReady = false,
     onAddClick,
     onToggle,
     onMute,
@@ -243,6 +245,7 @@ export const PluginList: React.FC<PluginListProps> = ({
                 {/* Empty State or Add Button */}
                 {plugins.length === 0 ? (
                     <PluginRackEmptyState
+                        audioReady={audioReady}
                         onAddClick={onAddClick}
                         onOpenWizard={onOpenWizard}
                         onOpenTemplates={onOpenTemplates}

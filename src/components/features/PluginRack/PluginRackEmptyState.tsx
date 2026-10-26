@@ -4,12 +4,14 @@ import { MdAdd, MdAutoFixHigh, MdRocketLaunch } from 'react-icons/md';
 import { Button } from '@/components/ui/button';
 
 interface PluginRackEmptyStateProps {
+    audioReady?: boolean;
     onAddClick: () => void;
     onOpenWizard: () => void;
     onOpenTemplates: () => void;
 }
 
 export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
+    audioReady = false,
     onAddClick,
     onOpenWizard,
     onOpenTemplates
@@ -27,6 +29,7 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
             <div className="flex flex-wrap items-center gap-3">
                 <Button
                     id="add-effect-btn"
+                    variant={audioReady ? 'default' : 'outline'}
                     onClick={onAddClick}
                     className="gap-2"
                 >

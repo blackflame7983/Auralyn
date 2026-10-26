@@ -2,7 +2,7 @@ import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useBeginnerMode } from './hooks/useBeginnerMode';
 import { useLiveModes } from './hooks/useLiveModes';
 import { LiveModeControls } from './components/features/AudioSettings/LiveModeControls';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppShell } from './components/layout/AppShell';
 import { PluginList } from './components/features/PluginRack/PluginList';
 import { ModalLayer } from './components/layout/ModalLayer';
@@ -34,6 +34,10 @@ function AppContent() {
     () => ui.setIsWizardOpen(true),
     () => ui.setIsSettingsOpen(true)
   );
+
+  const audioReady = !isInitializing && Boolean(audioConfig.host) && isEngineRunning && engineProcessReady === true;
+  const tutorialEligible = useRef(false);
+  tutorialEligible.current = audioReady && !isBeginnerMode;
 
   const pluginsApi = usePlugins();
   const liveModel = useLiveModes(pluginsApi.isLoading);
@@ -76,7 +80,7 @@ function AppContent() {
   }, []);
 
   const handlePluginAdded = () => {
-    if (currentStep === 'click_add_effect') {
+    if (tutorialEligible.current && currentStep === 'click_add_effect') {
       completeStep('click_add_effect');
     }
   };
@@ -109,6 +113,7 @@ function AppContent() {
   const pluginRack = (
     <PluginList
       plugins={pluginsApi.plugins}
+      audioReady={audioReady}
       onAddClick={() => ui.setIsBrowserOpen(true)}
       onToggle={pluginsApi.togglePlugin}
       onMute={pluginsApi.toggleMute}
@@ -180,7 +185,7 @@ function AppContent() {
           pluginRack
         )}
 
-        {!isBeginnerMode && !isModalOpen && (
+        {audioReady && !isBeginnerMode && !isModalOpen && (
           <>
             {!ui.isBrowserOpen && !isInitializing && (
               <TutorialOverlay

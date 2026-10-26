@@ -58,6 +58,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     engineProcessReady
 }) => {
     const t = useMessages();
+    const audioReady = Boolean(currentHost) && isEngineRunning && engineProcessReady === true;
     const [loudnessEnabled, setLoudnessEnabled] = useState(false);
     useEffect(() => setLoudnessEnabled(false), [isBeginnerMode]);
     const [isABBypassed, setIsABBypassed] = useState(false);
@@ -126,14 +127,14 @@ export const AppShell: React.FC<AppShellProps> = ({
                                 <button
                                     aria-pressed={isBeginnerMode}
                                     onClick={() => onDisplayModeChange(true)}
-                                    className="rounded-md border border-border px-3 py-2 text-sm aria-pressed:bg-primary aria-pressed:text-primary-foreground"
+                                    className="rounded-md border border-border px-3 py-2 text-sm aria-pressed:border-primary aria-pressed:bg-muted aria-pressed:text-foreground aria-pressed:ring-1 aria-pressed:ring-primary/40"
                                 >
                                     {t('shell.simple')}
                                 </button>
                                 <button
                                     aria-pressed={!isBeginnerMode}
                                     onClick={() => onDisplayModeChange(false)}
-                                    className="rounded-md border border-border px-3 py-2 text-sm aria-pressed:bg-primary aria-pressed:text-primary-foreground"
+                                    className="rounded-md border border-border px-3 py-2 text-sm aria-pressed:border-primary aria-pressed:bg-muted aria-pressed:text-foreground aria-pressed:ring-1 aria-pressed:ring-primary/40"
                                 >
                                     {t('shell.advanced')}
                                 </button>
@@ -153,7 +154,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                 </label>
                             )}
                         </div>
-                        {!isEngineRunning && (
+                        {!audioReady && (
                             <section aria-label={t('shell.start')} className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2">
                                 <p role="status" className="text-sm font-semibold">{engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}</p>
                                 <button onClick={onOpenSettings} className="rounded-md bg-primary px-3 py-1.5 text-sm font-bold text-primary-foreground">{t('shell.configure')}</button>

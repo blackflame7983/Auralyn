@@ -26,6 +26,11 @@ it.each(['ja', 'en'] as const)('本番操作の名前を固定し、ミュート
     const view = render(<LocaleProvider store={store}><Header {...props} /></LocaleProvider>);
     const muteButton = screen.getByRole('button', { name: message(locale, 'header.emergency') });
     const compare = screen.getByRole('button', { name: message(locale, 'header.compare') });
+    const setup = screen.getByRole('button', { name: message(locale, 'header.setupOpen') });
+    expect(setup).toHaveClass('border-input');
+    expect(setup).not.toHaveClass('bg-primary');
+    fireEvent.click(setup);
+    expect(props.onOpenWizard).toHaveBeenCalledOnce();
     expect(muteButton).toHaveTextContent(message(locale, 'header.emergency'));
     expect(compare).toHaveTextContent(message(locale, 'header.compare'));
     expect(muteButton).toHaveAttribute('aria-pressed', 'false');
