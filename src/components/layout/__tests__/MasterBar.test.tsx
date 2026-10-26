@@ -1,3 +1,4 @@
+import { message } from '@/i18n/messages';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -10,7 +11,7 @@ import { audioApi, type EngineRuntimeStats } from '../../../api/audio';
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
 vi.mock('@/api/audio', () => ({
-    audioApi: { getEngineRuntimeStats: vi.fn().mockRejectedValue(new Error('停止中')), getAudioState: vi.fn() },
+    audioApi: { getEngineRuntimeStats: vi.fn().mockRejectedValue(new Error('停止中')), getAudioState: vi.fn(), setNoiseReduction: vi.fn().mockResolvedValue(undefined) },
 }));
 
 let running: boolean;
@@ -271,4 +272,32 @@ it('gainの固定失敗noticeはlocaleに追従し、購読/初期化/保存を�
     act(()=>{store.setLocale('en');});
     expect(screen.getByRole('alert')).toBe(alert);expect(alert).toHaveAttribute('title','Could not verify the audio state. Try again.');
     expect(invoke).toHaveBeenCalledTimes(calls);expect(listen).toHaveBeenCalledTimes(subscriptions);expect(localStorage.getItem('vst_host_output_gain')).toBe('50');
+});
+
+
+it.each([
+    ['ja', false], ['en', false], ['ja', true], ['en', true],
+] as const)('長い状態・配信側停止でも常設操作と詳細の状態を保持する（%s・停止=%s）', async (locale, failed) => {
+    const stats = {
+        globalBypass: false, enabledPluginCount: 0, activePluginCount: 0,
+        noiseReductionEnabled: true, noiseReductionMode: 'high', speechDetected: true,
+        latencyMetadata: { processingContext: 'broadcastWorker', broadcastState: failed ? 'failed' : 'running' },
+    } as EngineRuntimeStats;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue(stats);
+    const voice = vi.fn();
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <MasterBar isRunning processReady host="WASAPI" onOpenVoiceCheck={voice} />
+    </LocaleProvider>);
+    await act(async () => { finishListening(); });
+    const state = message(locale, failed ? 'liveOutput.shortFailed' : 'liveOutput.branchLabel');
+    expect(screen.getByText(state)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'master.voice') }));
+    expect(voice).toHaveBeenCalledOnce();
+    const noise = screen.getByTitle(message(locale, 'master.nrHint', { mode: message(locale, 'master.nrHigh'), rate: 48000 }));
+    await act(async () => fireEvent.click(noise));
+    expect(audioApi.setNoiseReduction).toHaveBeenCalledWith(false, undefined);
+    expect(screen.getByRole('slider', { name: message(locale, 'master.outputGain') })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'master.details') }));
+    expect(screen.getByRole('dialog', { name: message(locale, 'master.detailsTitle') })).toBeVisible();
+    expect(screen.getAllByText(state)).toHaveLength(2);
 });

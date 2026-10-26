@@ -1,6 +1,6 @@
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
-import React, { ReactNode, useState, useCallback, useEffect } from 'react';
+import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Header } from './Header';
 import { audioApi } from '../../api/audio';
 import { MdCompareArrows } from 'react-icons/md';
@@ -58,6 +58,24 @@ export const AppShell: React.FC<AppShellProps> = ({
     engineProcessReady
 }) => {
     const t = useMessages();
+    const shellRef = useRef<HTMLDivElement>(null);
+    const footerRef = useRef<HTMLElement>(null);
+    // 折り返したフッターが大型メーターを覆わないよう、実高さを共有する。
+    useLayoutEffect(() => {
+        const shell = shellRef.current;
+        const footer = footerRef.current;
+        if (!shell || !footer) return;
+        const updateHeight = () => {
+            const height = footer.getBoundingClientRect().height;
+            if (height > 0) shell.style.setProperty('--app-footer-height', `${height}px`);
+        };
+        updateHeight();
+        if (typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(updateHeight);
+        observer.observe(footer);
+        return () => observer.disconnect();
+    }, []);
+
     const audioReady = Boolean(currentHost) && isEngineRunning && engineProcessReady === true;
     const [loudnessEnabled, setLoudnessEnabled] = useState(false);
     useEffect(() => setLoudnessEnabled(false), [isBeginnerMode]);
@@ -84,7 +102,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     }, []);
 
     return (
-        <div className="min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300">
+        <div ref={shellRef} className="min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300">
             {/* Ambient Animated Glows - Visible mainly in Dark Mode */}
             <div className="fixed inset-0 pointer-events-none z-0 opacity-0 dark:opacity-100 transition-opacity duration-500">
                 <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-brand-secondary/5 blur-[130px] rounded-full mix-blend-screen animate-[pulse_8s_ease-in-out_infinite]" />
@@ -179,9 +197,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </main>
 
                 {/* Master Section Footer */}
-                <footer className="h-16 bg-background border-t border-border px-4 z-50 footer-shadow shrink-0 transition-colors duration-300 overflow-x-auto">
-                    <div className="h-full w-full min-w-max flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
+                <footer ref={footerRef} className="min-h-16 bg-background border-t border-border px-4 z-50 footer-shadow shrink-0 transition-colors duration-300">
+                    <div className="w-full flex items-start gap-3">
+                    <div className="flex shrink-0 items-center py-2">
                         {/* Effect Compare Button */}
                         <TooltipProvider>
                             <Tooltip>
@@ -212,7 +230,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             </Tooltip>
                         </TooltipProvider>
                     </div>
-                    <div className="h-full min-w-0">
+                    <div className="flex-1 min-w-0">
                         <MasterBar
                             isRunning={isEngineRunning}
                             processReady={engineProcessReady}

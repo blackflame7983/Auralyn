@@ -106,3 +106,28 @@ it('音量チェックは両表示で同じ表示切替行に一つだけあり�
     fireEvent.click(toggle);
     expect(toggle).toBeChecked();
 });
+
+
+it('フッターの実高さを大型メーターの余白へ公開し、終了時に監視を解除する', () => {
+    let height = 88;
+    let resize!: () => void;
+    const disconnect = vi.fn();
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(() => ({ height }) as DOMRect);
+    vi.stubGlobal('ResizeObserver', class {
+        constructor(callback: () => void) { resize = callback; }
+        observe() {}
+        disconnect = disconnect;
+    });
+    try {
+        const view = render(<AppShell {...commonProps} isBeginnerMode={false}><p>rack</p></AppShell>);
+        const shell = document.querySelector<HTMLElement>('[style*="--app-footer-height"]')!;
+        expect(shell.style.getPropertyValue('--app-footer-height')).toBe('88px');
+        height = 120;
+        act(resize);
+        expect(shell.style.getPropertyValue('--app-footer-height')).toBe('120px');
+        view.unmount();
+        expect(disconnect).toHaveBeenCalledOnce();
+    } finally {
+        vi.unstubAllGlobals();
+    }
+});
