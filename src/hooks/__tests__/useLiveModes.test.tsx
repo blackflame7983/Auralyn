@@ -75,7 +75,7 @@ it('画面はCustom・停止保持・RT受付・切替完了・自然tailを区�
     function Panel() { return <LiveModeControls model={useLiveModes()} />; }
     render(<Panel />);
     fireEvent.click(screen.getByText('本番の歌・雑談モード'));
-    await screen.findByText(/現在は個別設定/);
+    await screen.findByText(/現在は個別の設定/);
     vi.mocked(liveModesApi.request).mockResolvedValue(liveSnapshot({ target: 'singing', phase: 'stopped' }));
     fireEvent.click(screen.getByText('モードの状態を再取得'));
     await screen.findByText(/停止中の設定として保持/);

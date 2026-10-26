@@ -1,5 +1,6 @@
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
+import { HomePanels } from '../features/Home/HomePanels';
 import React, { ReactNode, useState, useCallback, useEffect } from 'react';
 import { Header } from './Header';
 import { audioApi } from '../../api/audio';
@@ -33,6 +34,8 @@ interface AppShellProps {
     currentBufferSize?: number;
     isEngineRunning: boolean;
     engineProcessReady?: boolean | null;
+    currentInput?: string;
+    currentOutput?: string;
 }
 
 import { MasterBar } from './MasterBar';
@@ -55,7 +58,9 @@ export const AppShell: React.FC<AppShellProps> = ({
     currentSampleRate,
     currentBufferSize,
     isEngineRunning,
-    engineProcessReady
+    engineProcessReady,
+    currentInput,
+    currentOutput
 }) => {
     const t = useMessages();
     const audioReady = Boolean(currentHost) && isEngineRunning && engineProcessReady === true;
@@ -112,7 +117,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <main
                     className={`flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent pb-4 transition-all duration-300 ${isLargeMeterOpen ? 'pr-36 lg:pr-36' : ''}`}
                 >
-                    <div className="max-w-4xl mr-auto ml-0">
+                    <div className="max-w-4xl mx-auto">
                         <div
                             className="mb-3 flex flex-wrap items-center justify-between gap-3"
                             aria-label={t('shell.view')}
@@ -137,36 +142,34 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     {t('shell.advanced')}
                                 </button>
                             </div>
-                            {isBeginnerMode && (
-                                <button
-                                    onClick={onOpenOBSSettings}
-                                    className="rounded-md border border-border px-3 py-2 text-sm"
-                                >
-                                    {t('shell.obs')}
-                                </button>
-                            )}
-                            <label className="flex items-center gap-2 text-sm" title={t('shell.loudnessHint')}>
-                                <input type="checkbox" checked={loudnessEnabled} onChange={e => setLoudnessEnabled(e.target.checked)} />
+                            <button
+                                type="button"
+                                aria-pressed={loudnessEnabled}
+                                onClick={() => setLoudnessEnabled(value => !value)}
+                                title={t('shell.loudnessHint')}
+                                className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted aria-pressed:border-primary aria-pressed:bg-muted aria-pressed:ring-1 aria-pressed:ring-primary/40"
+                            >
                                 {t('shell.loudness')}
-                            </label>
+                            </button>
                         </div>
-                        {!audioReady && (
+                        {!audioReady && !isBeginnerMode && (
                             <section aria-label={t('shell.start')} className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2">
                                 <p role="status" className="text-sm font-semibold">{engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}</p>
                                 <button onClick={onOpenSettings} className="rounded-md bg-primary px-3 py-1.5 text-sm font-bold text-primary-foreground">{t('shell.configure')}</button>
                             </section>
                         )}
                         {isBeginnerMode && (
-                            <section aria-label={t('shell.prepare')} className="mb-3 grid grid-cols-2 gap-3">
-                                <button onClick={onOpenSoundSettings ?? onOpenSettings} className="text-left rounded-md border border-border bg-card p-3 hover:bg-muted">
-                                    <span className="block text-sm font-semibold">{t('shell.sound')}</span>
-                                    <span className="block text-xs text-muted-foreground mt-1">{t('shell.soundHint')}</span>
-                                </button>
-                                <button onClick={onOpenVoiceCheck} className="text-left rounded-md border border-border bg-card p-3 hover:bg-muted">
-                                    <span className="block text-sm font-semibold">{t('shell.listen')}</span>
-                                    <span className="block text-xs text-muted-foreground mt-1">{t('shell.listenHint')}</span>
-                                </button>
-                            </section>
+                            <HomePanels
+                                audioReady={audioReady}
+                                statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
+                                isEngineRunning={isEngineRunning}
+                                inputName={currentInput}
+                                outputName={currentOutput}
+                                onOpenSettings={onOpenSettings}
+                                onOpenOBSSettings={onOpenOBSSettings}
+                                onOpenSoundSettings={onOpenSoundSettings}
+                                onOpenVoiceCheck={onOpenVoiceCheck}
+                            />
                         )}
                         <LoudnessCheck
                             enabled={loudnessEnabled}

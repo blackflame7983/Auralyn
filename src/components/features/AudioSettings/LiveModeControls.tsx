@@ -21,7 +21,9 @@ function Content({ model }: { model: LiveModesModel }) {
             <p>{t('settings.LiveModeControls.231')}</p>
             {(['singing', 'talk'] as const).map(mode => <div key={mode}><span>{name(mode)}：{value?.definitions[mode] ? t('settings.LiveModeControls.232') : t('settings.LiveModeControls.233')} </span><button type="button" disabled={busy || !value} onClick={() => void model.saveApplied(mode)} className="underline">{t('settings.mode.save', { mode: name(mode) })}</button></div>)}
         </div></details>
-        <button type="button" disabled={busy} onClick={() => void model.refresh()} className="underline">{t('settings.LiveModeControls.236')}</button>
+        <details><summary className="cursor-pointer text-xs text-muted-foreground">{t('settings.mode.troubleshoot')}</summary>
+            <button type="button" disabled={busy} onClick={() => void model.refresh()} className="mt-2 rounded border border-border px-3 py-1.5 text-xs">{t('settings.LiveModeControls.236')}</button>
+        </details>
         {(error || value?.error) && <p role="alert">{error || value?.error}</p>}
     </div>;
 }
