@@ -12,7 +12,7 @@ it.each(['true', 'false'])('並べ替えのフォーカスとキー処理が同�
     localStorage.setItem('vst_host_simple_mode', simple);
     const reorder = vi.fn();
     render(<PluginList plugins={[{ id: 'first', name: 'EQ', path: 'eq', vendor: '', version: '', enabled: true, hasEditor: false, muted: false, gain: 1 }]}
-        onAddClick={vi.fn()} onToggle={vi.fn()} onMute={vi.fn()} onGainChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} onReorder={reorder} onOpenPresets={vi.fn()} onOpenWizard={vi.fn()} onOpenTemplates={vi.fn()} />);
+        onAddClick={vi.fn()} onToggle={vi.fn()} onMute={vi.fn()} onGainChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} onReorder={reorder} onOpenPresets={vi.fn()} onOpenTemplates={vi.fn()} />);
     const handle = screen.getByRole('button', { name: 'EQを並べ替え' });
     expect(handle.tagName).toBe('BUTTON');
     expect(handle).toHaveAccessibleDescription(/Spaceキーで開始/);
@@ -28,7 +28,7 @@ it.each(['true', 'false'])('並べ替えのフォーカスとキー処理が同�
 it('キー並べ替え中の言語切替はdragを再開始・確定せず、次の通知を新localeで解決する', async () => {
     const store = createLocaleStore(() => 'ja', () => true); const reorder = vi.fn();
     render(<LocaleProvider store={store}><PluginList plugins={[{ id: 'first', name: 'EQ', path: 'eq', vendor: '', version: '', enabled: true, hasEditor: false, muted: false, gain: 1 }]}
-        onAddClick={vi.fn()} onToggle={vi.fn()} onMute={vi.fn()} onGainChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} onReorder={reorder} onOpenPresets={vi.fn()} onOpenWizard={vi.fn()} onOpenTemplates={vi.fn()} /></LocaleProvider>);
+        onAddClick={vi.fn()} onToggle={vi.fn()} onMute={vi.fn()} onGainChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} onReorder={reorder} onOpenPresets={vi.fn()} onOpenTemplates={vi.fn()} /></LocaleProvider>);
     const handle = screen.getByRole('button', { name: 'EQを並べ替え' });
     handle.focus(); fireEvent.keyDown(handle, { key: ' ', code: 'Space' });
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('EQの並べ替えを開始しました'));

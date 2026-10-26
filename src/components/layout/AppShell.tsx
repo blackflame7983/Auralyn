@@ -101,8 +101,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                     onOpenDiscordGuide={onOpenDiscordGuide}
                     onOpenTroubleshoot={onOpenTroubleshoot}
                     onOpenWizard={onOpenWizard}
-                    onToggleGlobalBypass={handleABToggle}
-                    isGlobalBypassed={isABBypassed}
                     onToggleLargeMeter={onToggleLargeMeter}
                     isLargeMeterOpen={isLargeMeterOpen}
                     currentHost={currentHost}
@@ -147,12 +145,10 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     {t('shell.obs')}
                                 </button>
                             )}
-                            {!isBeginnerMode && (
-                                <label className="flex items-center gap-2 text-sm" title={t('shell.loudnessHint')}>
-                                    <input type="checkbox" checked={loudnessEnabled} onChange={e => setLoudnessEnabled(e.target.checked)} />
-                                    {t('shell.loudness')}
-                                </label>
-                            )}
+                            <label className="flex items-center gap-2 text-sm" title={t('shell.loudnessHint')}>
+                                <input type="checkbox" checked={loudnessEnabled} onChange={e => setLoudnessEnabled(e.target.checked)} />
+                                {t('shell.loudness')}
+                            </label>
                         </div>
                         {!audioReady && (
                             <section aria-label={t('shell.start')} className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2">
@@ -172,7 +168,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                                 </button>
                             </section>
                         )}
-                        {isBeginnerMode && <label className="mb-2 flex items-center gap-2 text-sm" title={t('shell.loudnessHint')}><input type="checkbox" checked={loudnessEnabled} onChange={e => setLoudnessEnabled(e.target.checked)} />{t('shell.loudness')}</label>}
                         <LoudnessCheck
                             enabled={loudnessEnabled}
                             running={isEngineRunning}
@@ -194,7 +189,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     <button
                                         id="ab-compare-btn"
                                         onClick={handleABToggle}
-                                        aria-label={isABBypassed ? `${t('shell.comparingEffectsOff')}：${t('header.compareEnd')}` : t('header.compareStart')}
+                                        aria-label={t('header.compare')}
+                                        aria-pressed={isABBypassed}
+                                        aria-describedby={isABBypassed ? 'footer-compare-state' : undefined}
                                         className={cn(
                                             "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold font-mono transition-all whitespace-nowrap shrink-0",
                                             isABBypassed
@@ -202,9 +199,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                                                 : "bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground"
                                         )}
                                     >
-                                        <MdCompareArrows className="w-4 h-4" />
-                                        <span className="hidden xl:inline">{isABBypassed ? t('shell.comparingEffectsOff') : t('header.compare')}</span>
-                                        <span className="xl:hidden">{isABBypassed ? t('header.comparing') : t('header.compare')}</span>
+                                        <MdCompareArrows aria-hidden="true" className="w-4 h-4" />
+                                        <span className="flex flex-col items-start">
+                                            <span>{t('header.compare')}</span>
+                                            {isABBypassed && <span id="footer-compare-state" className="text-xs font-medium">{t('header.vstOff')}</span>}
+                                        </span>
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent>

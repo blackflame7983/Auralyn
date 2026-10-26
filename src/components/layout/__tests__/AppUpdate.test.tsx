@@ -47,8 +47,8 @@ it('実際のヘルプメニューが閉じた後もMSIX更新案内を操作で
     vi.mocked(invoke).mockImplementation(async command => command === 'get_distribution' ? 'msix' : undefined);
     const noop = () => {};
     render(<Header onOpenSettings={noop} onOpenOBSGuide={noop} onOpenDiscordGuide={noop}
-        onOpenTroubleshoot={noop} onOpenWizard={noop} onToggleGlobalBypass={noop}
-        isGlobalBypassed={false} onToggleLargeMeter={noop} isLargeMeterOpen={false}
+        onOpenTroubleshoot={noop} onOpenWizard={noop}
+        onToggleLargeMeter={noop} isLargeMeterOpen={false}
         currentHost="Wasapi" isEngineRunning={false} />);
     fireEvent.pointerDown(screen.getByRole('button', { name: 'ヘルプメニューを開く' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(await screen.findByRole('menuitem', { name: /更新方法を確認/ }));

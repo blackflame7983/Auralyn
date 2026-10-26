@@ -17,8 +17,7 @@ import {
     MdFavorite,
     MdMic,
     MdSystemUpdateAlt,
-    MdAutoFixHigh,
-    MdCompareArrows
+    MdAutoFixHigh
 } from 'react-icons/md';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '../../api/audio';
@@ -48,8 +47,6 @@ interface HeaderProps {
     onOpenDiscordGuide: () => void;
     onOpenTroubleshoot: () => void;
     onOpenWizard: () => void;
-    onToggleGlobalBypass: () => void;
-    isGlobalBypassed: boolean;
     onToggleLargeMeter: () => void;
     isLargeMeterOpen: boolean;
     currentHost: string;
@@ -65,8 +62,6 @@ export const Header: React.FC<HeaderProps> = ({
     onOpenDiscordGuide,
     onOpenTroubleshoot,
     onOpenWizard,
-    onToggleGlobalBypass,
-    isGlobalBypassed,
     onToggleLargeMeter,
     isLargeMeterOpen,
     currentHost,
@@ -151,14 +146,13 @@ export const Header: React.FC<HeaderProps> = ({
                         </h1>
                     </div>
 
-                    {/* Device Status (Quick Access to Settings) */}
+                    {/* 音声状態は表示専用。設定は共通ボタンから開く。 */}
                     <DeviceStatus
                         host={currentHost}
                         sampleRate={currentSampleRate}
                         bufferSize={currentBufferSize}
                         isRunning={isEngineRunning}
                         processReady={engineProcessReady}
-                        onClick={onOpenSettings}
                     />
                 </div>
 
@@ -188,40 +182,14 @@ export const Header: React.FC<HeaderProps> = ({
                         </TooltipContent>
                     </Tooltip>
 
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <button
-                                onClick={onToggleGlobalBypass}
-                                aria-label={t('header.compare')}
-                                aria-pressed={isGlobalBypassed}
-                                aria-describedby={isGlobalBypassed ? 'header-compare-state' : undefined}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all font-bold text-xs shadow-sm ${isGlobalBypassed
-                                    ? 'bg-warning/15 text-warning border-warning/40 ring-1 ring-warning/30'
-                                    : 'bg-background hover:bg-warning/10 text-warning border-warning/30 hover:border-warning/60'
-                                    }`}
-                            >
-                                <MdCompareArrows className="w-4 h-4" />
-                                <span className="flex flex-col items-start whitespace-nowrap">
-                                    <span>{t('header.compare')}</span>
-                                    {isGlobalBypassed && <span id="header-compare-state" className="text-xs font-medium">{t('header.vstOff')}</span>}
-                                </span>
-                            </button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            <p>{isGlobalBypassed ? t('header.compareEndHint') : t('header.compareStartHint')}</p>
-                        </TooltipContent>
-                    </Tooltip>
-
-                    {isBeginnerMode && (
-                        <button
-                            onClick={onOpenWizard}
-                            aria-label={t('header.setupOpen')}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-input bg-background text-foreground hover:bg-muted transition-colors text-xs font-bold"
-                        >
-                            <MdAutoFixHigh className="w-4 h-4" />
-                            <span className="hidden xl:inline">{t('header.setup')}</span>
-                        </button>
-                    )}
+                    <button
+                        onClick={onOpenWizard}
+                        aria-label={t('header.setupOpen')}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-input bg-background text-foreground hover:bg-muted transition-colors text-xs font-bold"
+                    >
+                        <MdAutoFixHigh className="w-4 h-4" />
+                        <span>{t('header.setup')}</span>
+                    </button>
 
                     {!isBeginnerMode && (
                         <>
