@@ -4,6 +4,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { audioApi, type EngineRuntimeStats } from '@/api/audio';
 import { builtinApi, defaultReverb, type BuiltinSnapshot } from '@/api/builtinEffects';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
+import { message } from '@/i18n/messages';
 import { AudioSettingsModal } from '../AudioSettingsModal';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
@@ -49,21 +52,25 @@ it('通常設定を開くだけでbuiltin snapshotを取得せず、音作りを
     fireEvent.keyDown(screen.getByRole('tab', { name: '音づくり' }), { key: 'Enter' });
     await waitFor(() => expect(builtinApi.request).toHaveBeenCalledWith({ action: 'snapshot' }));
 });
-it('歌向けON/OFFは残響を含む全値を保持し、旧preset即時APIには残響の上書きを送らない', async () => {
+it.each(['ja', 'en'] as const)('歌向けON/OFFは全値を保持し、短いプリセット名でも同じ即時APIへ送る（%s）', async locale => {
     current.config.reverb = { ...defaultReverb, enabled: true };
-    render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    const toggle = await screen.findByRole('switch', { name: '内蔵ボイスチェーン' });
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);
+    const toggle = await screen.findByRole('switch', { name: message(locale, 'settings.AudioSettingsModal.097') });
     await waitFor(() => expect(toggle).toBeEnabled());
-    expect(screen.getByRole('slider', { name: '内蔵ボイスチェーンのかかり具合' })).toBeDisabled();
-    expect(screen.getByText(/歌向けでは従来の/)).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: message(locale, 'settings.AudioSettingsModal.104') })).toBeDisabled();
+    expect(screen.getByText(message(locale, 'settings.AudioSettingsModal.102'))).toBeInTheDocument();
     fireEvent.click(toggle);
     await waitFor(() => expect(builtinApi.request).toHaveBeenCalledWith({ action: 'apply', epoch: 'engine', expectedRevision: '2', config: {
         active: false, preset: 'singing', amount: 0.6, singing: { lowCutHz: 110, dynamics: 0.65, brightnessDb: -1 },
         reverb: { ...defaultReverb, enabled: true },
     } }));
     expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
-    const legacy = screen.getByRole('button', { name: '配信（即時切替）' });
+    const legacy = screen.getByRole('button', { name: message(locale, 'settings.AudioSettingsModal.098') });
     await waitFor(() => expect(legacy).toBeEnabled());
+    expect(screen.getByText(message(locale, 'settings.AudioSettingsModal.092'))).toBeVisible();
+    for (const key of ['settings.AudioSettingsModal.099', 'settings.AudioSettingsModal.100'] as const) {
+        expect(screen.getByRole('button', { name: message(locale, key) })).toBeEnabled();
+    }
     fireEvent.click(legacy);
     await waitFor(() => expect(audioApi.setBuiltInEffects).toHaveBeenCalledWith({ active: true, preset: 'broadcast', amount: 0.6 }));
 });
