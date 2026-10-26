@@ -1,7 +1,9 @@
+import { TutorialProvider, useTutorial } from '@/contexts/TutorialContext';
 import { chooseObsRoute } from './wizardActions';
 import { type ComponentProps } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ModalLayer } from '@/components/layout/ModalLayer';
@@ -21,18 +23,25 @@ let hasInput: boolean;
 let sampleRate: number;
 let bufferSize: number;
 
+function TutorialState() {
+    const { currentStep } = useTutorial();
+    return <output data-testid="tutorial-step">{currentStep}</output>;
+}
+
 function AppModals() {
     const ui = useUIState();
     const { audioConfig, handleConfigUpdate } = useAudioConfig(() => ui.setIsWizardOpen(true));
-    return <>
+    return <TutorialProvider>
+        <TutorialState />
         <output data-testid="audio-config">{audioConfig.sampleRate}/{audioConfig.bufferSize}</output>
         <ModalLayer ui={ui} audioConfig={audioConfig} handleConfigUpdate={handleConfigUpdate}
             pluginsApi={{} as ComponentProps<typeof ModalLayer>['pluginsApi']} onPluginAdded={() => {}} />
-    </>;
+    </TutorialProvider>;
 }
 
 beforeEach(() => {
     localStorage.clear();
+    vi.mocked(toast.error).mockClear();
     hasInput = true;
     sampleRate = 96000;
     bufferSize = 1024;
@@ -55,13 +64,14 @@ describe('セットアップと親画面の連携', () => {
     it('入力未検出時はウィザードを閉じてオーディオ設定だけを開く', async () => {
         hasInput = false;
         render(<AppModals />);
-        await screen.findByRole('button', { name: 'OBSで配信' });
+        await screen.findByRole('button', { name: 'OBSで配信' }, { timeout: 3000 });
         fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
         fireEvent.click(await screen.findByRole('button', { name: 'WASAPI の入力が見つからない場合は設定を開く' }));
         await screen.findByRole('heading', { name: 'オーディオ設定' });
         expect(screen.queryByRole('heading', { name: 'マイクを選んでください' })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'セットアップを閉じる' })).not.toBeInTheDocument();
         expect(localStorage.getItem('vst_host_wizard_done')).toBeNull();
+        expect(screen.getByTestId('tutorial-step')).toHaveTextContent('none');
     });
 
     it.each([[96000, 1024], [44100, 256]])('起動後も実値 %i Hz / %i を親画面と保存設定に維持する', async (rate, buffer) => {
@@ -76,5 +86,51 @@ describe('セットアップと親画面の連携', () => {
             host: 'WASAPI', input: mic.name, output: cable.name, sampleRate: rate, bufferSize: buffer,
         });
         expect(localStorage.getItem('vst_host_wizard_done')).toBe('true');
+        expect(screen.getByTestId('tutorial-step')).toHaveTextContent('click_add_effect');
     });
+});
+
+
+it('スキップでも既存の完了フラグを保存し、同じウィンドウの開始条件を更新する', async () => {
+    render(<AppModals />);
+    await screen.findByRole('button', { name: 'OBSで配信' }, { timeout: 3000 });
+    expect(screen.getByTestId('tutorial-step')).toHaveTextContent('none');
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ（手動設定）' }));
+    await waitFor(() => expect(localStorage.getItem('vst_host_wizard_done')).toBe('true'));
+    expect(screen.getByTestId('tutorial-step')).toHaveTextContent('click_add_effect');
+});
+
+it('単に閉じた場合は完了フラグを保存せず、開始通知を送らない', async () => {
+    render(<AppModals />);
+    await screen.findByRole('button', { name: 'OBSで配信' }, { timeout: 3000 });
+    const notify = vi.fn();
+    window.addEventListener('vst_host_tutorial_start', notify);
+    try {
+        fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
+        await waitFor(() => expect(screen.queryByRole('button', { name: 'OBSで配信' })).not.toBeInTheDocument());
+        expect(localStorage.getItem('vst_host_wizard_done')).toBeNull();
+        expect(screen.getByTestId('tutorial-step')).toHaveTextContent('none');
+        expect(notify).not.toHaveBeenCalled();
+    } finally {
+        window.removeEventListener('vst_host_tutorial_start', notify);
+    }
+});
+
+it('起動失敗では完了フラグを保存せず、開始通知を送らない', async () => {
+    const { audioApi } = await import('@/api/audio');
+    const start = vi.spyOn(audioApi, 'start').mockRejectedValueOnce(new Error('start failed'));
+    const notify = vi.fn();
+    window.addEventListener('vst_host_tutorial_start', notify);
+    try {
+        render(<AppModals />);
+        await chooseObsRoute();
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await waitFor(() => expect(toast.error).toHaveBeenCalled());
+        expect(localStorage.getItem('vst_host_wizard_done')).toBeNull();
+        expect(screen.getByTestId('tutorial-step')).toHaveTextContent('none');
+        expect(notify).not.toHaveBeenCalled();
+    } finally {
+        start.mockRestore();
+        window.removeEventListener('vst_host_tutorial_start', notify);
+    }
 });

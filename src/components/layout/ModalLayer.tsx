@@ -20,6 +20,12 @@ const LargeLevelMeter = lazy(() => import('../features/LevelMeter/LargeLevelMete
 const TroubleshootModal = lazy(() => import('../features/Troubleshoot/TroubleshootModal').then(m => ({ default: m.TroubleshootModal })));
 const VoiceCheckModal = lazy(() => import('../features/VoiceCheck/VoiceCheckModal').then(m => ({ default: m.VoiceCheckModal })));
 
+// 同一ウィンドウではstorageイベントが発生しないため、保存後に開始条件の再確認を通知する。
+const markWizardDone = () => {
+    localStorage.setItem('vst_host_wizard_done', 'true');
+    window.dispatchEvent(new Event('vst_host_tutorial_start'));
+};
+
 interface UIState {
     settingsTab?: 'audio' | 'obs' | 'sound';
     isSettingsOpen: boolean;
@@ -229,14 +235,14 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         }}
                         onSkip={() => {
                             ui.setIsWizardOpen(false);
-                            localStorage.setItem('vst_host_wizard_done', 'true');
+                            markWizardDone();
                         }}
                         onApplyConfig={(host, input, output, actualConfig) => {
                             // 起動時の自動調整を含む実値を画面と保存設定へ反映する。
                             const config = { host, input, output, sampleRate: actualConfig.sample_rate, bufferSize: actualConfig.buffer_size };
                             handleConfigUpdate(config);
                             localStorage.setItem('vst_host_audio_config', JSON.stringify(config));
-                            localStorage.setItem('vst_host_wizard_done', 'true');
+                            markWizardDone();
                         }}
                         onOpenSettings={() => {
                             ui.setIsWizardOpen(false);

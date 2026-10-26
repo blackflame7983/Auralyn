@@ -50,7 +50,8 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const wizardDone = localStorage.getItem('vst_host_wizard_done');
             const isCompleted = localStorage.getItem('vst_host_tutorial_completed');
             if (wizardDone && !isCompleted && currentStep === 'none') {
-                setCurrentStep('click_add_effect');
+                // 同じ更新内の進捗変更より遅い通知でも、先頭へ戻さない。
+                setCurrentStep(step => step === 'none' ? 'click_add_effect' : step);
                 setIsActive(true);
             }
         };
