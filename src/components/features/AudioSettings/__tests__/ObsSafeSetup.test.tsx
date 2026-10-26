@@ -101,9 +101,13 @@ describe('OBS の変更確認と復元', () => {
             results: ['競合: 後から変更されたため復元しません'],
         });
         renderSetup();
+        const historySummary = screen.getByText('過去の変更履歴');
+        expect(historySummary.closest('details')).not.toHaveAttribute('open');
         fireEvent.click(screen.getByRole('button', { name: '変更予定を確認する' }));
         fireEvent.click(await screen.findByRole('button', { name: 'この変更を適用する' }));
-        await screen.findByText(/失敗（適用状態を要確認）/);
+        expect(await screen.findByText(/失敗（適用状態を要確認）/)).toBeVisible();
+        expect(historySummary.closest('details')).toHaveAttribute('open');
+        expect(historySummary).toHaveFocus();
         fireEvent.click(screen.getByRole('button', { name: '変更 #7 を元に戻す' }));
         await screen.findByText(/競合: 後から変更されたため復元しません/);
     });
@@ -202,6 +206,7 @@ it('typedの全outcomeは結果を表示するだけで復元を実行しない'
     vi.mocked(obsApi.setupHistory).mockResolvedValue(outcomes.map((outcome, index) => ({...history, id: index + 1, restorable: outcome === 'applied', resultEntries: [{outcome, text:{code:'obs.result.' + codes[index], args:{}, fallbackJa:'個別の原文'}}]})));
     const store = createLocaleStore(() => 'en', () => true);
     render(<LocaleProvider store={store}><ObsSafeSetup disabled={false} onBusyChange={() => {}} /></LocaleProvider>);
+    fireEvent.click(screen.getByText('Previous changes'));
     expect(await screen.findByText(/Already at the original value/)).toBeVisible();
     for(const text of ['Not run','Applied','Restored']) expect(screen.getByText(text, {exact:false})).toBeVisible();
     expect(screen.getByText(/The write result is unknown/)).toBeVisible();

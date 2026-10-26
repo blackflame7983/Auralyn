@@ -139,6 +139,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     }
   }, [isBeginnerMode, isSystemTabEnabled, activeTab]);
 
+  const settingsBody = useRef<HTMLDivElement>(null);
+  const soundStart = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { settingsBody.current?.scrollTo?.({ top: 0 }); }, [activeTab]);
+  useEffect(() => {
+    if (isOpen && initialTab === 'sound') {
+      soundStart.current?.scrollIntoView?.({ block: 'start' });
+    }
+  }, [isOpen, initialTab]);
+
   // OBS State
   // Preset State
   const [presets, setPresets] = useState<Record<string, any>>({});
@@ -502,6 +511,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       onClose();
       // Optional: formatting toast success
     } catch (err) {
+      setActiveTab('audio');
       console.error('Failed to restart engine:', err);
       setError(notice('settings.AudioSettingsModal.020', { arg0: String(err) }));
     } finally {
@@ -583,7 +593,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <Modal title={t('common.settings')} onClose={onClose}>
+    <Modal title={t('common.settings')} onClose={onClose} initialFocusRef={initialTab === 'sound' ? soundStart : undefined}>
         <div className="modal-overlay-base">
       <div className="modal-surface-base w-full max-w-2xl max-h-[85vh] flex flex-col">
         <div className="modal-header-base modal-header-muted shrink-0">
@@ -600,8 +610,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           </button>
         </div>
 
-        <div className="modal-body-base scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-600 scrollbar-track-transparent">
-        <LanguageSelector />
+        <div ref={settingsBody} className="modal-body-base scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-600 scrollbar-track-transparent">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
           <TabsList className={`grid h-auto w-full grid-cols-2 ${isBeginnerMode && !isSystemTabEnabled ? 'sm:grid-cols-4' : 'sm:grid-cols-5'} mb-4`}>
             <TabsTrigger value="audio">{t('settings.audio')}</TabsTrigger>
@@ -610,18 +619,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <TabsTrigger value="appearance">{t('settings.appearance')}</TabsTrigger>
             {(!isBeginnerMode || isSystemTabEnabled) && <TabsTrigger value="system">{t('settings.system')}</TabsTrigger>}
           </TabsList>
-
-          {isBeginnerMode && !isSystemTabEnabled && activeTab === 'appearance' && (
-            <div className="mb-4 p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 flex items-center justify-between gap-3">
-              <p className="text-xs text-amber-600 dark:text-amber-300">
-                {t('settings.AudioSettingsModal.027')}</p>
-              <button
-                onClick={enableSystemTab}
-                className="shrink-0 px-3 py-1.5 text-xs font-bold rounded-md border border-amber-500/40 text-amber-700 dark:text-amber-200 hover:bg-amber-500/20 transition-colors"
-              >
-                {t('settings.AudioSettingsModal.028')}</button>
-            </div>
-          )}
 
           <TabsContent value="audio" className="space-y-4">
             {reviewRequired && <div className="rounded border border-input bg-muted p-3 text-sm space-y-2">
@@ -754,9 +751,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       <label className="text-sm font-medium text-muted-foreground">{t('settings.AudioSettingsModal.047')}</label>
                       <div className="grid grid-cols-3 gap-2">
                         {[
-                          { label: t('settings.AudioSettingsModal.048'), sub: t('settings.AudioSettingsModal.049'), value: 128, desc: t('settings.AudioSettingsModal.050') },
-                          { label: t('settings.AudioSettingsModal.051'), sub: t('settings.AudioSettingsModal.052'), value: 512, desc: t('settings.AudioSettingsModal.053') },
-                          { label: t('settings.AudioSettingsModal.054'), sub: t('settings.AudioSettingsModal.055'), value: 1024, desc: t('settings.AudioSettingsModal.056') },
+                          { label: t('settings.AudioSettingsModal.048'), value: 128, desc: t('settings.AudioSettingsModal.050') },
+                          { label: t('settings.AudioSettingsModal.051'), value: 512, desc: t('settings.AudioSettingsModal.053') },
+                          { label: t('settings.AudioSettingsModal.054'), value: 1024, desc: t('settings.AudioSettingsModal.056') },
                         ].map((profile) => {
                           const disabled = canChangeBufferSize && !supportedBufferSizes.includes(profile.value);
                           return (
@@ -774,7 +771,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                                     `}
                             >
                               <span className="text-sm font-bold">{profile.label}</span>
-                              <span className="text-[10px] opacity-80">{profile.sub}</span>
+                              <span className="text-[10px] opacity-80">{profile.desc}</span>
                             </button>
                           )
                         })}
@@ -863,6 +860,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 )}
 
 
+                {!isBeginnerMode && <>
                 {/* Latency Estimate */}
                 <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2 flex items-center justify-between mt-4">
                   <span>{t('settings.AudioSettingsModal.071')}</span>
@@ -898,6 +896,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </details>
                 )}
 
+                </>}
                 {/* Preset Section */}
                 <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-3">
                   <p className="text-sm text-muted-foreground">{t('settings.AudioSettingsModal.085')}</p>
@@ -946,17 +945,184 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
               </div>
             )}
+            <details className="rounded border border-border p-3 space-y-3">
+              <summary className="cursor-pointer font-semibold">{t('structure.monitor')}</summary>
             <LiveOutputPanel outputs={devices.outputs} disabled={loading} onBusyChange={setLoading} />
             <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await refreshEngineRuntimeStats(); }} />
+            </details>
           </TabsContent>
 
           <TabsContent value="sound" className="space-y-4">
             <p className="text-sm text-muted-foreground">{t('settings.AudioSettingsModal.092')}</p>
-            {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="h-10 px-4 rounded-md border border-input text-sm hover:bg-muted">{t('settings.AudioSettingsModal.093')}</button>}
-            <SingingControls model={singingModel} onPreview={onPreviewSinging} onSaveProfile={onSaveSingingProfile} />
-            <LiveModeControls model={providedLive ?? localLive} />
             {!engineStats && <p role="status" className="text-sm text-muted-foreground">{t('settings.AudioSettingsModal.094')}</p>}
             <fieldset disabled={!engineStats || noiseActionBusy} className="min-w-0 space-y-4">
+                {/* Noise reduction */}
+                <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 ref={soundStart} tabIndex={-1} className="text-sm font-bold text-foreground">{t('settings.AudioSettingsModal.105')}</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {t('settings.AudioSettingsModal.106')}</p>
+                    </div>
+                    <Switch
+                      checked={!!engineStats?.noiseReductionEnabled}
+                      onCheckedChange={(checked) => applyNoiseControlConfig({ active: checked })}
+                      aria-label={t('settings.AudioSettingsModal.107')}
+                    />
+                  </div>
+
+                  <div className="text-xs rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 space-y-1.5 text-amber-800 dark:text-amber-200">
+                    <p>
+                      <span className="font-bold">{t('settings.AudioSettingsModal.108')}</span> {t('settings.AudioSettingsModal.109')}</p>
+                    <p>
+                      <span className="font-bold">{t('settings.AudioSettingsModal.110')}</span> {t('settings.AudioSettingsModal.111')}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {t('settings.AudioSettingsModal.112')}{onOpenVoiceCheck ? (
+                        <>
+                          {' '}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              onOpenVoiceCheck();
+                            }}
+                            className="underline underline-offset-2 hover:text-foreground font-medium"
+                          >
+                            {t('settings.AudioSettingsModal.113')}</button>
+                        </>
+                      ) : (
+                        t('settings.AudioSettingsModal.114')
+                      )}
+                    </p>
+                  </div>
+
+                  <fieldset className="space-y-2"><legend className="text-xs font-medium">{t('structure.noise.standard')}</legend>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        ['low', t('master.nrLow')],
+                        ['high', t('master.nrHigh')]
+                      ] as Array<[NoiseControlMode, string]>).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        aria-pressed={noiseMode === mode}
+                        onClick={() => {
+                          setNoiseMode(mode);
+                          applyNoiseControlConfig({ mode });
+                        }}
+                        className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
+                          noiseMode === mode
+                            ? 'border-primary bg-primary/15 text-primary'
+                            : 'border-input bg-background text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <fieldset className="space-y-2"><legend className="text-xs font-medium">{t('structure.noise.adaptive')}</legend>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        ['smart', t('master.nrLearn')],
+                        ['venue', t('master.nrVenue')]
+                      ] as Array<[NoiseControlMode, string]>).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        aria-pressed={noiseMode === mode}
+                        onClick={() => {
+                          setNoiseMode(mode);
+                          applyNoiseControlConfig({ mode });
+                        }}
+                        className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
+                          noiseMode === mode
+                            ? 'border-primary bg-primary/15 text-primary'
+                            : 'border-input bg-background text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {noiseMode === 'smart' && (
+                      <>{t('settings.AudioSettingsModal.115')}</>
+                    )}
+                    {noiseMode === 'venue' && (
+                      <>{t('settings.AudioSettingsModal.116')}</>
+                    )}
+                    {noiseMode === 'low' && (
+                      <>{t('settings.AudioSettingsModal.117')}</>
+                    )}
+                    {noiseMode === 'high' && (
+                      <>{t('settings.AudioSettingsModal.118')}</>
+                    )}
+                  </p>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{t('settings.AudioSettingsModal.119')}</span>
+                      <span className="font-mono text-foreground">{noiseStrength}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={25}
+                      max={125}
+                      step={5}
+                      value={noiseStrength}
+                      onChange={(e) => {
+                        noiseStrengthEditing.current = true;
+                        setNoiseStrength(Number(e.target.value));
+                      }}
+                      onPointerUp={(e) => commitNoiseStrength(e.currentTarget.value)}
+                      onKeyUp={(e) => commitNoiseStrength(e.currentTarget.value)}
+                      onBlur={(e) => commitNoiseStrength(e.currentTarget.value)}
+                      className="w-full accent-primary"
+                      aria-label={t('settings.AudioSettingsModal.120')}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                    <button
+                      onClick={handleStartNoiseLearning}
+                      disabled={noiseActionBusy}
+                      className="px-3 py-2 rounded-md border border-input bg-background text-foreground hover:border-primary/50 disabled:opacity-50 transition-colors"
+                    >
+                      {t('settings.AudioSettingsModal.121')}</button>
+                    <button
+                      onClick={handleCancelNoiseLearning}
+                      className="px-3 py-2 rounded-md border border-input bg-background text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {t('settings.AudioSettingsModal.122')}</button>
+                    <div role="status" className="text-muted-foreground self-center">
+                      {engineStats?.noiseLearningState === 'capturing'
+                        ? t('settings.AudioSettingsModal.123', { arg0: Math.round((engineStats.noiseLearningProgress ?? 0) * 100) })
+                        : engineStats?.noiseLearningState === 'invalid'
+                          ? t('settings.AudioSettingsModal.124')
+                        : engineStats?.noiseProfileAvailable
+                          ? t('settings.AudioSettingsModal.125', { arg0: Math.round((engineStats.noiseProfileRms ?? 0) * 1000) / 1000 })
+                          : t('settings.AudioSettingsModal.126')}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2">
+                    <div>
+                      <Label className="text-xs font-bold text-foreground">{t('settings.AudioSettingsModal.127')}</Label>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.128')}</p>
+                    </div>
+                    <Switch
+                      checked={noiseVoiceGuard}
+                      onCheckedChange={(checked) => {
+                        setNoiseVoiceGuard(checked);
+                        applyNoiseControlConfig({ voiceGuard: checked });
+                      }}
+                      aria-label={t('settings.AudioSettingsModal.129')}
+                    />
+                  </div>
+                </div>
+
                 {/* Built-in Effects */}
                 <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
                   <div className="flex items-center justify-between gap-3">
@@ -1019,148 +1185,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </div>
                 </div>
 
-                {/* Noise reduction */}
-                <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-bold text-foreground">{t('settings.AudioSettingsModal.105')}</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {t('settings.AudioSettingsModal.106')}</p>
-                    </div>
-                    <Switch
-                      checked={!!engineStats?.noiseReductionEnabled}
-                      onCheckedChange={(checked) => applyNoiseControlConfig({ active: checked })}
-                      aria-label={t('settings.AudioSettingsModal.107')}
-                    />
-                  </div>
-
-                  <div className="text-xs rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 space-y-1.5 text-amber-800 dark:text-amber-200">
-                    <p>
-                      <span className="font-bold">{t('settings.AudioSettingsModal.108')}</span> {t('settings.AudioSettingsModal.109')}</p>
-                    <p>
-                      <span className="font-bold">{t('settings.AudioSettingsModal.110')}</span> {t('settings.AudioSettingsModal.111')}</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {t('settings.AudioSettingsModal.112')}{onOpenVoiceCheck ? (
-                        <>
-                          {' '}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onClose();
-                              onOpenVoiceCheck();
-                            }}
-                            className="underline underline-offset-2 hover:text-foreground font-medium"
-                          >
-                            {t('settings.AudioSettingsModal.113')}</button>
-                        </>
-                      ) : (
-                        t('settings.AudioSettingsModal.114')
-                      )}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    {([
-                      ['smart', t('master.nrLearn')],
-                      ['venue', t('master.nrVenue')],
-                      ['low', t('master.nrLow')],
-                      ['high', t('master.nrHigh')],
-                    ] as Array<[NoiseControlMode, string]>).map(([mode, label]) => (
-                      <button
-                        key={mode}
-                        onClick={() => {
-                          setNoiseMode(mode);
-                          applyNoiseControlConfig({ mode });
-                        }}
-                        className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
-                          noiseMode === mode
-                            ? 'border-primary bg-primary/15 text-primary'
-                            : 'border-input bg-background text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    {noiseMode === 'smart' && (
-                      <>{t('settings.AudioSettingsModal.115')}</>
-                    )}
-                    {noiseMode === 'venue' && (
-                      <>{t('settings.AudioSettingsModal.116')}</>
-                    )}
-                    {noiseMode === 'low' && (
-                      <>{t('settings.AudioSettingsModal.117')}</>
-                    )}
-                    {noiseMode === 'high' && (
-                      <>{t('settings.AudioSettingsModal.118')}</>
-                    )}
-                  </p>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">{t('settings.AudioSettingsModal.119')}</span>
-                      <span className="font-mono text-foreground">{noiseStrength}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={25}
-                      max={125}
-                      step={5}
-                      value={noiseStrength}
-                      onChange={(e) => {
-                        noiseStrengthEditing.current = true;
-                        setNoiseStrength(Number(e.target.value));
-                      }}
-                      onPointerUp={(e) => commitNoiseStrength(e.currentTarget.value)}
-                      onKeyUp={(e) => commitNoiseStrength(e.currentTarget.value)}
-                      onBlur={(e) => commitNoiseStrength(e.currentTarget.value)}
-                      className="w-full accent-primary"
-                      aria-label={t('settings.AudioSettingsModal.120')}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-                    <button
-                      onClick={handleStartNoiseLearning}
-                      disabled={noiseActionBusy}
-                      className="px-3 py-2 rounded-md border border-input bg-background text-foreground hover:border-primary/50 disabled:opacity-50 transition-colors"
-                    >
-                      {t('settings.AudioSettingsModal.121')}</button>
-                    <button
-                      onClick={handleCancelNoiseLearning}
-                      className="px-3 py-2 rounded-md border border-input bg-background text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      {t('settings.AudioSettingsModal.122')}</button>
-                    <div className="px-3 py-2 rounded-md border border-input bg-background text-muted-foreground">
-                      {engineStats?.noiseLearningState === 'capturing'
-                        ? t('settings.AudioSettingsModal.123', { arg0: Math.round((engineStats.noiseLearningProgress ?? 0) * 100) })
-                        : engineStats?.noiseLearningState === 'invalid'
-                          ? t('settings.AudioSettingsModal.124')
-                        : engineStats?.noiseProfileAvailable
-                          ? t('settings.AudioSettingsModal.125', { arg0: Math.round((engineStats.noiseProfileRms ?? 0) * 1000) / 1000 })
-                          : t('settings.AudioSettingsModal.126')}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2">
-                    <div>
-                      <Label className="text-xs font-bold text-foreground">{t('settings.AudioSettingsModal.127')}</Label>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.128')}</p>
-                    </div>
-                    <Switch
-                      checked={noiseVoiceGuard}
-                      onCheckedChange={(checked) => {
-                        setNoiseVoiceGuard(checked);
-                        applyNoiseControlConfig({ voiceGuard: checked });
-                      }}
-                      aria-label={t('settings.AudioSettingsModal.129')}
-                    />
-                  </div>
-                </div>
-
             </fieldset>
+            {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="h-10 px-4 rounded-md border border-input text-sm hover:bg-muted">{t('settings.AudioSettingsModal.093')}</button>}
+            <LiveModeControls model={providedLive ?? localLive} />
+            <details className="rounded border border-border p-3 space-y-3">
+              <summary className="cursor-pointer font-semibold">{t('structure.singing')}</summary>
+              <SingingControls showHeading={false} model={singingModel} onPreview={onPreviewSinging} onSaveProfile={onSaveSingingProfile} />
+            </details>
           </TabsContent>
 
           <TabsContent value="obs" className="space-y-4">
@@ -1173,6 +1204,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           </TabsContent>
 
           <TabsContent value="appearance" className="space-y-6">
+            <LanguageSelector />
             <div className="space-y-4">
               <div>
                 <h3 className="text-sm font-medium mb-3 flex items-center gap-2 text-foreground">
@@ -1205,15 +1237,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
             </div>
             <p className="text-sm text-muted-foreground">{t('settings.AudioSettingsModal.136')}</p>
-            <button type="button" onClick={() => { setIsSystemTabEnabled(true); setActiveTab('system'); }} className="rounded-md border border-border px-3 py-2 text-sm">{t('settings.AudioSettingsModal.137')}</button>
-          </TabsContent>
-
-          {(!isBeginnerMode || isSystemTabEnabled) && (
-          <TabsContent value="system" className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-            <MigrationPanel />
-            <UpdatePreferences />
-            <ShortcutsPanel />
-
+            <button type="button" onClick={enableSystemTab} className="rounded-md border border-border px-3 py-2 text-sm">{t('settings.AudioSettingsModal.137')}</button>
             {/* App Info Card */}
             {/* App Info Card */}
             <div className="p-6 bg-muted/20 border border-border rounded-xl flex flex-col items-center justify-center space-y-3">
@@ -1237,6 +1261,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
             </div>
 
+
+          </TabsContent>
+
+          {(!isBeginnerMode || isSystemTabEnabled) && (
+          <TabsContent value="system" className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+            <ShortcutsPanel />
 
             {/* Startup Settings */}
             <div className="p-4 bg-muted/20 border border-border rounded-xl flex items-center justify-between">
@@ -1273,6 +1303,18 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
             </div>
 
+            <UpdatePreferences />
+            <section className="space-y-2">
+              <h3 className="font-semibold">{t('structure.restart')}</h3>
+                <button
+                  onClick={handleRestart}
+                  disabled={loading || (reviewRequired && !migrationConfirmed)}
+                  className="px-3 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive border border-input hover:border-destructive/30 rounded-md transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {t('settings.AudioSettingsModal.196')}</button>
+            </section>
+            <details className="rounded border border-border p-3 space-y-3">
+              <summary className="cursor-pointer font-semibold">{t('structure.optimization')}</summary>
             {/* Engine Tuning */}
             <div className="space-y-2">
               <h4 className="text-sm font-bold text-foreground flex items-center gap-2 px-1">
@@ -1360,7 +1402,17 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   >
                     {systemSaving ? t('settings.AudioSettingsModal.167') : t('settings.AudioSettingsModal.168')}
                   </button>
-                  <button
+
+                </div>
+
+
+              </div>
+            </div>
+
+            </details>
+            <details className="rounded border border-border p-3 space-y-3">
+              <summary className="cursor-pointer font-semibold">{t('structure.diagnostics')}</summary>
+              <button
                     onClick={refreshEngineRuntimeStats}
                     disabled={statsLoading}
                     className="px-3 py-1.5 text-xs border border-input rounded-md text-muted-foreground hover:text-foreground hover:border-primary/40 disabled:opacity-50 transition-all flex items-center gap-1"
@@ -1368,50 +1420,49 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <MdRefresh className="w-3 h-3" />
                     {statsLoading ? t('settings.AudioSettingsModal.169') : t('settings.AudioSettingsModal.170')}
                   </button>
-                </div>
-
-                <div className="grid grid-cols-3 md:grid-cols-9 gap-2 text-xs">
-                  <div className="p-2 bg-background border border-input rounded">
-                    <div className="text-muted-foreground">{t('settings.AudioSettingsModal.171')}</div>
-                    <div className="text-foreground font-mono mt-1">{engineStats?.activePluginCount ?? '-'}</div>
-                  </div>
-                  <div className="p-2 bg-background border border-input rounded">
-                    <div className="text-muted-foreground">{t('settings.AudioSettingsModal.172')}</div>
-                    <div className="text-foreground font-mono mt-1">{engineStats?.enabledPluginCount ?? '-'}</div>
-                  </div>
-                  <div className="p-2 bg-background border border-input rounded">
-                    <div className="text-muted-foreground">{t('settings.AudioSettingsModal.173')}</div>
-                    <div className="text-foreground font-mono mt-1">{engineStats?.pendingUnloadCount ?? '-'}</div>
-                  </div>
-                  <div className="p-2 bg-background border border-input rounded">
-                    <div className="text-muted-foreground">{t('settings.AudioSettingsModal.174')}</div>
-                    <div className="text-foreground font-mono mt-1">{engineStats?.burnedLibraryCount ?? '-'}</div>
-                  </div>
-                  <div className="p-2 bg-background border border-input rounded">
-                    <div className="text-muted-foreground">{t('settings.AudioSettingsModal.175')}</div>
-                    <div className="text-foreground font-mono mt-1">
-                      {engineStats ? `${(engineStats.maxJitterUs / 1000).toFixed(2)}ms` : '-'}
-                    </div>
-                  </div>
-                  <div className="p-2 bg-background border border-input rounded">
-                    <div className="text-muted-foreground">{t('settings.AudioSettingsModal.176')}</div>
-                    <div className="text-foreground font-mono mt-1">{engineStats?.glitchCount ?? '-'}</div>
-                  </div>
-                  <div className="p-2 bg-background border border-input rounded">
-                    <div className="text-muted-foreground">{t('settings.AudioSettingsModal.177')}</div>
-                    <div className="text-foreground font-mono mt-1">
-                      {engineStats
+<table className="w-full text-sm">
+                <caption className="sr-only">{t('structure.statistics')}</caption>
+                <tbody>
+                <tr className="border-b border-border">
+                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.171')}</th>
+                <td className="py-2 text-right tabular-nums">{engineStats?.activePluginCount ?? '-'}</td>
+                </tr>
+                <tr className="border-b border-border">
+                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.172')}</th>
+                <td className="py-2 text-right tabular-nums">{engineStats?.enabledPluginCount ?? '-'}</td>
+                </tr>
+                <tr className="border-b border-border">
+                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.173')}</th>
+                <td className="py-2 text-right tabular-nums">{engineStats?.pendingUnloadCount ?? '-'}</td>
+                </tr>
+                <tr className="border-b border-border">
+                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.174')}</th>
+                <td className="py-2 text-right tabular-nums">{engineStats?.burnedLibraryCount ?? '-'}</td>
+                </tr>
+                <tr className="border-b border-border">
+                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.175')}</th>
+                <td className="py-2 text-right tabular-nums">{engineStats ? `${(engineStats.maxJitterUs / 1000).toFixed(2)}ms` : '-'}</td>
+                </tr>
+                <tr className="border-b border-border">
+                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.176')}</th>
+                <td className="py-2 text-right tabular-nums">{engineStats?.glitchCount ?? '-'}</td>
+                </tr>
+                <tr className="border-b border-border">
+                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.177')}</th>
+                <td className="py-2 text-right tabular-nums">{engineStats
                         ? (engineStats.noiseReductionEnabled
                           ? t('settings.AudioSettingsModal.178', { arg0: engineStats.noiseReductionMode === 'high' ? t('master.nrHigh') : engineStats.noiseReductionMode === 'smart' ? t('master.nrLearn') : engineStats.noiseReductionMode === 'venue' ? t('master.nrVenue') : t('master.nrLow') })
                           : 'OFF')
-                        : '-'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
+                        : '-'}</td>
+                </tr>
+                </tbody>
+                </table>
             <LatencyDetails stats={engineStats} />
+            </details>
+            <details className="rounded border border-border p-3 space-y-3">
+              <summary className="cursor-pointer font-semibold">{t('structure.migration')}</summary>
+              <MigrationPanel />
+            </details>
             {/* Plugin Management */}
             <div className="space-y-2">
               <h4 className="text-sm font-bold text-foreground flex items-center gap-2 px-1">
@@ -1504,12 +1555,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           <div className="modal-footer-base shrink-0">
             <div className="flex flex-col gap-2">
               <div className="flex flex-col gap-3 sm:flex-row">
-                <button
-                  onClick={handleRestart}
-                  disabled={loading || (reviewRequired && !migrationConfirmed)}
-                  className="flex-1 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive border border-input hover:border-destructive/30 rounded-md transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {t('settings.AudioSettingsModal.196')}</button>
+
                 <button
                   onClick={handleSave}
                   disabled={loading || (reviewRequired && !migrationConfirmed)}

@@ -1,3 +1,5 @@
+import { audioApi } from '@/api/audio';
+import { openSystemTab } from './settingsActions';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
@@ -62,6 +64,7 @@ it.each(['保存して開始', 'エンジン再起動'])(
                 Array.from((e as HTMLSelectElement).options).some((o) => o.value === 'Wasapi')
             )!;
         fireEvent.change(host, { target: { value: 'Wasapi' } });
+        if (action === 'エンジン再起動') await openSystemTab();
         fireEvent.click(screen.getByRole('button', { name: action }));
         if (action === 'エンジン再起動')
             fireEvent.click(await screen.findByRole('button', { name: '再起動する' }));
@@ -190,3 +193,5 @@ it('監視終了の失敗も回収する', async () => {
     await waitFor(() => expect(warning).toHaveBeenCalledWith('入力チャンネルの信号監視を停止できませんでした。'));
     warning.mockRestore();
 });
+
+beforeEach(() => { vi.spyOn(audioApi, 'getEngineTuningConfig').mockResolvedValue({ enableAffinityPinning: false, affinityMask: null, enableRealtimePriority: false, enableTimeCriticalAudioThreads: false }); });

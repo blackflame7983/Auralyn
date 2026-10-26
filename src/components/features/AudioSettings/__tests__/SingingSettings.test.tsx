@@ -16,6 +16,7 @@ beforeEach(() => {
         if (request.action === 'apply') current = { ...current, revision: '3', config: request.config, undoToken: 'undo' };
         return structuredClone(current);
     });
+    vi.spyOn(audioApi, 'getEngineTuningConfig').mockResolvedValue({ enableAffinityPinning: false, affinityMask: null, enableRealtimePriority: false, enableTimeCriticalAudioThreads: false });
     vi.spyOn(audioApi, 'getDevices').mockResolvedValue({ inputs: [], outputs: [] });
     vi.spyOn(audioApi, 'getAudioStreamState').mockResolvedValue({ running: true, streamFailed: false });
     vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue({ builtInEffectsEnabled: true, builtInEffectsPreset: 'singing', builtInEffectsAmount: 0.6 } as EngineRuntimeStats);
@@ -33,6 +34,7 @@ it('設定画面の遅延根拠は手動停止で失効し、遅い旧stats応�
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const system = await screen.findByRole('tab', { name: 'システム' });
     fireEvent.keyDown(system, { key: 'Enter' });
+    fireEvent.click(screen.getByText('診断情報'));
     await screen.findByText('256 sample / 5.33 ms');
     fireEvent.click(screen.getByRole('button', { name: '統計を更新' }));
     act(() => { for (const [name, callback] of vi.mocked(listen).mock.calls) if (name === 'audio-stopped') callback({ event: name, id: 1, payload: null }); });
@@ -64,4 +66,20 @@ it('歌向けON/OFFは残響を含む全値を保持し、旧preset即時APIに�
     await waitFor(() => expect(legacy).toBeEnabled());
     fireEvent.click(legacy);
     await waitFor(() => expect(audioApi.setBuiltInEffects).toHaveBeenCalledWith({ active: true, preset: 'broadcast', amount: 0.6 }));
+});
+
+
+it.each([true, false])('音づくりの基本を先に置き、歌向けの欄を閉じて直接入口を基本操作へ合わせる（かんたん=%s）', async beginner => {
+    localStorage.setItem('vst_host_beginner_mode', String(beginner));
+    render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const noise = await screen.findByRole('heading', { name: 'ノイズ低減' });
+    const builtIn = screen.getByRole('heading', { name: '内蔵ボイスチェーン' });
+    expect(noise.compareDocumentPosition(builtIn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(noise).toHaveFocus();
+    expect(screen.getByText('歌向けに整える').closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByText('本番の歌・雑談モード').closest('details')).not.toHaveAttribute('open');
+    expect(screen.queryByRole('combobox', { name: '表示言語' })).not.toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('tab', { name: '外観' }), { key: 'Enter' });
+    expect(screen.getByRole('combobox', { name: '表示言語' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'システム設定タブを表示' })).toHaveLength(1);
 });

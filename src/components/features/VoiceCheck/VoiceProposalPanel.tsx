@@ -100,16 +100,19 @@ export function VoiceProposalPanel({ model, candidate, disabled, previewActive, 
         {proposal && <>
             <p>{t('proposal.parameters', { low: proposal.config.singing?.lowCutHz ?? '—', dynamics: Math.round((proposal.config.singing?.dynamics ?? 0) * 100), brightness: proposal.config.singing?.brightnessDb ?? '—' })}</p>
             <p>{proposal.config.reverb?.enabled ? t('proposal.reverbParameters', { mix: number(proposal.config.reverb.mix * 100), decay: number(proposal.config.reverb.decaySeconds) }) : t('proposal.reverbOff')}</p>
-            <ul className="list-disc pl-5">{proposal.reasons.map((value, index) => <li key={`${value.code}-${index}`}><ProposalMessageView value={value} /></li>)}</ul>
-            <details><summary>{t('proposal.metrics')}</summary><dl className="grid grid-cols-2 gap-2 pt-2">
+            <ul className="list-disc pl-5">{proposal.reasons.filter(value => value.code !== 'proposal.measuredGrid').map((value, index) => <li key={`${value.code}-${index}`}><ProposalMessageView value={value} /></li>)}</ul>
+            <details className="space-y-2"><summary className="cursor-pointer">{t('structure.evidence')}</summary>
+              <ul>{proposal.reasons.filter(value => value.code === 'proposal.measuredGrid').map((value, index) => <li key={index}><ProposalMessageView value={value} /></li>)}</ul>
+            <h4 className="font-medium">{t('proposal.metrics')}</h4><dl className="grid grid-cols-2 gap-2 pt-2">
                 <dt>{t('proposal.duration')}</dt><dd>{number(proposal.metrics.durationSeconds)} s / {proposal.metrics.sampleRate} Hz</dd>
                 <dt>{t('proposal.channelPeak')}</dt><dd>{proposal.metrics.channelPeak.map(number).join(' / ')}</dd>
                 <dt>{t('proposal.channelRms')}</dt><dd>{proposal.metrics.channelRmsDb.map(number).join(' / ')} dBFS</dd>
                 <dt>{t('proposal.activity')}</dt><dd>{t('proposal.activityValues', { active: proposal.metrics.activeWindows, total: proposal.metrics.totalWindows, threshold: proposal.metrics.activityThresholdDb, window: proposal.metrics.windowMs })}</dd>
                 <dt>P10 / P50 / P90</dt><dd>{[proposal.metrics.activeRmsP10Db, proposal.metrics.activeRmsP50Db, proposal.metrics.activeRmsP90Db].map(number).join(' / ')} dBFS</dd>
                 <dt>{t('proposal.spread')}</dt><dd>{number(proposal.metrics.activeWindowSpreadDb)} dB</dd>
-            </dl><p>{t('proposal.rule', { version: proposal.ruleVersion })}</p></details>
-            <details><summary>{t('proposal.limits')}</summary><ul className="list-disc pl-5">{proposal.limitations.map((value, index) => <li key={`${value.code}-${index}`}><ProposalMessageView value={value} /></li>)}</ul></details>
+            </dl><p>{t('proposal.rule', { version: proposal.ruleVersion })}</p>
+            <h4 className="font-medium">{t('proposal.limits')}</h4><ul className="list-disc pl-5">{proposal.limitations.map((value, index) => <li key={`${value.code}-${index}`}><ProposalMessageView value={value} /></li>)}</ul>
+            </details>
             {!valid && <p role="status">{t('proposal.stale')}</p>}
             <p>{t('proposal.compare')}</p>
             <button type="button" disabled={!valid || disabled || previewActive || model.busy || model.snapshot?.pending} onClick={() => void model.applyProposal(proposal as VoiceProposal)} className="rounded border px-3 py-2 disabled:opacity-50">{t('proposal.apply')}</button>

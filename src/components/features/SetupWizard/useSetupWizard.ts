@@ -26,7 +26,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
 
     const handleCloseRequest = () => {
         if (operationRef.current || isCheckingConnection) return;
-        if (state !== 'welcome' && state !== 'complete') {
+        if (state !== 'usage_selection' && state !== 'complete') {
             setIsCloseConfirmOpen(true);
             return;
         }
@@ -73,7 +73,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         }
     };
 
-    const [state, setState] = useState<WizardState>('welcome');
+    const [state, setState] = useState<WizardState>('usage_selection');
     const [config, setConfig] = useState<WizardConfig>({
         goal: null,
         host: 'WASAPI',
@@ -111,7 +111,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
             });
         } else {
             // Reset state on close
-            setState('welcome');
+            setState('usage_selection');
             setConfig({
                 goal: null,
                 host: 'WASAPI',
@@ -222,41 +222,6 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         localStorage.setItem('vst_host_setup_goal', goal);
         setState('input_selection');
         // Auto-select will trigger via useEffect if devices are ready
-    };
-
-    const runQuickStart = async () => {
-        let inputs = availableInputs;
-        let outputs = availableOutputs;
-
-        if (inputs.length === 0 || outputs.length === 0) {
-            const refreshed = await loadDevices(true);
-            if (!refreshed) return;
-            inputs = refreshed.inputs;
-            outputs = refreshed.outputs;
-        }
-
-        if (inputs.length === 0) {
-            toast.error(createElement(LocalizedMessage, { id: 'guide.copy.248' }));
-            setState('usage_selection');
-            return;
-        }
-
-        const recommendedInput = recommendMicrophone(inputs);
-
-        const virtualOutputs = outputs.filter(isVirtualOutput);
-        const virtualOutput = virtualOutputs.length === 1 ? virtualOutputs[0] : null;
-
-        setConfig(prev => ({
-            ...prev,
-            goal: 'obs',
-            host: 'WASAPI',
-            input: recommendedInput,
-            output: virtualOutput,
-            outputMode: 'broadcast'
-        }));
-        setState(!recommendedInput ? 'input_selection' : virtualOutput ? 'confirmation' : 'output_selection');
-        localStorage.setItem('vst_host_setup_goal', 'obs');
-        toast.info(createElement(LocalizedMessage, { id: 'guide.copy.249' }));
     };
 
     const confirmInput = () => {
@@ -384,5 +349,5 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, availableInputs, availableOutputs,
         isLoadingDevices, isTestingSound, inputLevel, loadDevices, handleRescanVirtualDevices,
-        selectGoal, runQuickStart, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply };
+        selectGoal, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply };
 }

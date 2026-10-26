@@ -1,3 +1,4 @@
+import { chooseObsRoute } from './wizardActions';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
@@ -26,12 +27,12 @@ const openWizard = async () => {
     const onClose = vi.fn();
     const onSkip = vi.fn();
     render(<SetupWizardModal isOpen onClose={onClose} onSkip={onSkip} onApplyConfig={onApplyConfig} />);
-    await screen.findByRole('button', { name: 'OBS向けに設定する' });
+    await screen.findByRole('button', { name: 'OBSで配信' });
     return { onApplyConfig, onClose, onSkip };
 };
 const quickStart = async () => {
     const callbacks = await openWizard();
-    fireEvent.click(screen.getByRole('button', { name: 'OBS向けに設定する' }));
+    await chooseObsRoute();
     await screen.findByRole('heading', { name: '設定と接続の確認' });
     return callbacks;
 };
@@ -72,7 +73,7 @@ describe('セットアップの接続チェック', () => {
         inputs = [mic, device('Second microphone', true)];
         const onApplyConfig = vi.fn(); const onClose = vi.fn();
         render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={onClose} onApplyConfig={onApplyConfig} /></LocaleProvider>);
-        fireEvent.click(await screen.findByRole('button', {name: '用途を選んで設定する'}));
+        await screen.findByRole('button', { name: 'OBSで配信' });
         fireEvent.click(screen.getByRole('button', {name: 'OBSで配信'}));
         const input = screen.getByRole('combobox', {name: '入力デバイス'});
         fireEvent.change(input, {target: {value: 'Second microphone'}});
@@ -104,7 +105,7 @@ describe('セットアップの接続チェック', () => {
     it('設定の反映に失敗した場合は完了表示や表示モードの保存を行わない', async () => {
         const onApplyConfig = vi.fn().mockRejectedValue(new Error('save failed'));
         render(<SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={onApplyConfig} />);
-        fireEvent.click(await screen.findByRole('button', { name: 'OBS向けに設定する' }));
+        await chooseObsRoute();
         fireEvent.click(await screen.findByRole('button', { name: '設定を保存して開始' }));
         await waitFor(() => expect(onApplyConfig).toHaveBeenCalledOnce());
         expect(await screen.findByRole('heading', { name: '設定と接続の確認' })).toBeInTheDocument();
@@ -131,14 +132,14 @@ describe('セットアップの接続チェック', () => {
         const body = document.querySelector<HTMLElement>('.modal-body-base')!;
         surface.scrollTop = 300;
         body.scrollTop = 120;
-        fireEvent.click(screen.getByRole('button', { name: '用途を選んで設定する' }));
+        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
         expect(surface.scrollTop).toBe(0);
         expect(body.scrollTop).toBe(0);
-        expect(screen.getByRole('heading', { name: 'どのような用途で使用しますか？' })).toHaveFocus();
+        expect(screen.getByRole('heading', { name: 'マイクを選んでください' })).toHaveFocus();
     });
     const openListeningOutput = async () => {
         await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: '用途を選んで設定する' }));
+        await screen.findByRole('button', { name: 'OBSで配信' });
         fireEvent.click(screen.getByRole('button', { name: '音楽鑑賞・テスト' }));
         const next = screen.getByRole('button', { name: /次へ/ });
         await waitFor(() => expect(next).toBeEnabled());
@@ -179,8 +180,8 @@ describe('セットアップの接続チェック', () => {
     it('複数の仮想出力は明示選択し、受け側の対になる名前を案内する', async () => {
         outputs = [cable, device('CABLE-A Input (VB-Audio)'), device('Voicemeeter Input')];
         await openWizard();
-        expect(within(screen.getByTestId('setup-actions')).getByRole('button', { name: '用途を選んで設定する' })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'OBS向けに設定する' }));
+        expect(within(screen.getByTestId('setup-actions')).getByRole('button', { name: 'スキップ（手動設定）' })).toBeInTheDocument();
+        await chooseObsRoute();
         const output = await screen.findByRole('combobox', { name: '仮想ケーブルの出力先' });
         expect(output).toHaveValue('');
         expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
@@ -202,7 +203,7 @@ describe('セットアップの接続チェック', () => {
     it.each(['再生リダイレクト', 'Stereo Mix', 'ステレオ ミキサー', 'Loopback', 'What U Hear', 'CABLE Output', 'Voicemeeter Out B1'])('入力が %s だけなら自動選択せず手動選択へ進む', async name => {
         inputs = [device(name, true)];
         await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: 'OBS向けに設定する' }));
+        await chooseObsRoute();
         await screen.findByRole('heading', { name: 'マイクを選んでください' });
         expect(screen.getByRole('combobox', { name: '入力デバイス' })).toHaveValue('');
         expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
@@ -211,7 +212,7 @@ describe('セットアップの接続チェック', () => {
     it('物理マイクが複数あれば既定の候補でも自動選択せず、明示選択を待つ', async () => {
         inputs = [device('再生リダイレクト', true), { ...device('Microphone USB', true), is_default: false }, mic];
         await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: '用途を選んで設定する' }));
+        await screen.findByRole('button', { name: 'OBSで配信' });
         fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
         const select = screen.getByRole('combobox', { name: '入力デバイス' });
         expect(select).toHaveValue('');
@@ -251,7 +252,7 @@ describe('セットアップの接続チェック', () => {
     it('ケーブル未導入時は物理出力へ迂回せず、導入と再検出を案内する', async () => {
         outputs = [device('スピーカー')];
         await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: 'OBS向けに設定する' }));
+        await chooseObsRoute();
         await screen.findByText(/仮想ケーブルが見つかりません/);
         expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
         expect(screen.queryByRole('heading', { name: '設定と接続の確認' })).not.toBeInTheDocument();
@@ -329,7 +330,7 @@ describe('セットアップの接続チェック', () => {
 
     it('Discord は対応する入力の手動確認を案内し、OBS に接続しない', async () => {
         await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: '用途を選んで設定する' }));
+        await screen.findByRole('button', { name: 'OBSで配信' });
         fireEvent.click(screen.getByRole('button', { name: 'ボイスチャット' }));
         fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
         fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
@@ -430,55 +431,48 @@ describe('セットアップの接続チェック', () => {
 });
 
 describe('初回選択と表示設定', () => {
-    it.each([true, false])('音声設定の適用成功後だけ表示を保存する: %s', async (beginner) => {
+    it.each([true, false])('音声設定の適用成功後だけ表示を保存する: %s', async beginner => {
         localStorage.setItem('vst_host_beginner_mode', String(!beginner));
-        await openWizard();
-        fireEvent.click(
-            screen.getByRole('radio', {
-                name: beginner
-                    ? '配信をはじめたい（かんたん表示）'
-                    : 'VSTで音を調整したい（詳細表示）',
-            })
-        );
-        fireEvent.click(screen.getByRole('button', { name: 'OBS向けに設定する' }));
-        await screen.findByRole('heading', { name: '設定と接続の確認' });
+        await quickStart();
+        fireEvent.click(screen.getByRole('radio', { name: beginner ? '配信をはじめたい（かんたん表示）' : 'VSTで音を調整したい（詳細表示）' }));
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(!beginner));
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
         await screen.findByRole('heading', { name: '音声設定を保存しました' });
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(beginner));
     });
-    it('選択後に閉じても既存の表示設定を変えない', async () => {
+    it('確認画面で表示を選んだ後に中断しても既存の表示設定を変えない', async () => {
         localStorage.setItem('vst_host_beginner_mode', 'false');
-        await openWizard();
+        const { onClose } = await quickStart();
         fireEvent.click(screen.getByRole('radio', { name: '配信をはじめたい（かんたん表示）' }));
         fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
+        fireEvent.click(within(screen.getByRole('dialog', { name: 'セットアップを中断しますか？' })).getByRole('button', { name: '中断する' }));
+        await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
     });
     it('適用失敗では選んだ表示を確定しない', async () => {
         localStorage.setItem('vst_host_beginner_mode', 'false');
         startFails = true;
-        await openWizard();
+        await quickStart();
         fireEvent.click(screen.getByRole('radio', { name: '配信をはじめたい（かんたん表示）' }));
-        fireEvent.click(screen.getByRole('button', { name: 'OBS向けに設定する' }));
-        await screen.findByRole('heading', { name: '設定と接続の確認' });
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
-        await waitFor(() =>
-            expect(screen.getByRole('button', { name: '設定を保存して開始' })).toBeEnabled()
-        );
+        await waitFor(() => expect(screen.getByRole('button', { name: '設定を保存して開始' })).toBeEnabled());
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
     });
-    it('明示的に手動設定へ進む場合は選択を保存する', async () => {
-        await openWizard();
-        fireEvent.click(screen.getByRole('radio', { name: 'VSTで音を調整したい（詳細表示）' }));
+    it('用途選択では表示モードを選ばせず、スキップでも既存表示を保存し直さない', async () => {
+        localStorage.setItem('vst_host_beginner_mode', 'false');
+        const { onSkip } = await openWizard();
+        expect(screen.queryByRole('radio')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'スキップ（手動設定）' }));
-        await waitFor(() => expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false'));
+        await waitFor(() => expect(onSkip).toHaveBeenCalledOnce());
+        expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
+        expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
     });
 });
 
 it('確認stepのlocale切替で入力出力・テスト状態とdialogを保持し設定を再送しない', async () => {
     const store = createLocaleStore(() => 'ja', () => true); const apply = vi.fn();
     render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={apply} /></LocaleProvider>);
-    fireEvent.click(await screen.findByRole('button', { name: 'OBS向けに設定する' }));
+    await chooseObsRoute();
     await screen.findByRole('heading', { name: '設定と接続の確認' });
     const dialog = screen.getByRole('dialog'); const test = screen.getByRole('button', { name: 'マイクの音を流して確認' });
     const calls = vi.mocked(invoke).mock.calls.length;

@@ -305,9 +305,9 @@ export function LoudnessCheck({
                 {t('meterBrowser.copy.057')}</p>
             {autoGainOpen && available && running && <AutoGainDialog onClose={() => setAutoGainOpen(false)} />}
             {active && reading && (
-                <p className="text-xs text-muted-foreground font-mono">
+                <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">{t('structure.measurements')}</summary><p className="text-xs text-muted-foreground font-mono">
                     {t('meterBrowser.loudness.reading', { lufs: reading.short_term_lufs?.toFixed(1) ?? '—', peak: reading.true_peak_dbtp?.toFixed(1) ?? '—' })}
-                </p>
+                </p></details>
             )}
             {error && (
                 <p role="alert" className="text-sm text-amber-800 dark:text-amber-300">

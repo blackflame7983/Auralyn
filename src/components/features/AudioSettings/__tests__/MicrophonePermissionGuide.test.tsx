@@ -1,3 +1,5 @@
+import { audioApi } from '@/api/audio';
+import { openSystemTab } from './settingsActions';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
@@ -6,7 +8,7 @@ import { AudioSettingsModal } from '../AudioSettingsModal';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
 beforeEach(() => { vi.mocked(invoke).mockReset(); localStorage.clear(); });
-afterEach(() => { cleanup(); localStorage.clear(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 it('MSIXと通常配布版の確認場所を示し、固定のマイク設定だけを開く', async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
@@ -47,7 +49,8 @@ it.each(['保存して開始', 'エンジン再起動'])('%sのアクセス拒�
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={changed} onEngineRestarted={restarted} />);
     const input = await screen.findByRole('combobox', { name: 'マイク入力' });
     fireEvent.change(input, { target: { value: 'Mic B' } });
-    fireEvent.click(screen.getByRole('button', { name: action }));
+    if (action === 'エンジン再起動') await openSystemTab();
+        fireEvent.click(screen.getByRole('button', { name: action }));
     if (action === 'エンジン再起動')
         fireEvent.click(await screen.findByRole('button', { name: '再起動する' }));
     await screen.findByRole('button', { name: '設定に戻って再試行' });
@@ -64,3 +67,5 @@ it.each(['保存して開始', 'エンジン再起動'])('%sのアクセス拒�
     await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ input: 'Mic B' }), { audioStarted: true }));
     expect(start).toHaveBeenCalledTimes(2);
 });
+
+beforeEach(() => { vi.spyOn(audioApi, 'getEngineTuningConfig').mockResolvedValue({ enableAffinityPinning: false, affinityMask: null, enableRealtimePriority: false, enableTimeCriticalAudioThreads: false }); });
