@@ -79,7 +79,9 @@ describe('セットアップの接続チェック', () => {
         fireEvent.change(input, {target: {value: 'Second microphone'}});
         const dialog = screen.getByRole('dialog');
         const before = vi.mocked(invoke).mock.calls.filter(([command]) => ['start_audio','stop_audio','voice_check_preview','save_preset'].includes(String(command))).length;
-        fireEvent.change(screen.getByLabelText('表示言語'), {target: {value: 'en'}});
+        // 表示言語の選択は最初の画面だけに置く。途中の切替は外観設定など別経路のlocale変更で確かめる。
+        expect(screen.queryByLabelText('表示言語')).not.toBeInTheDocument();
+        act(() => { store.setLocale('en'); });
         await screen.findByRole('heading', {name: 'Choose a microphone'});
         expect(screen.getByRole('dialog')).toBe(dialog); expect(input).toHaveValue('Second microphone');
         expect(vi.mocked(invoke).mock.calls.filter(([command]) => ['start_audio','stop_audio','voice_check_preview','save_preset'].includes(String(command)))).toHaveLength(before);
@@ -140,7 +142,7 @@ describe('セットアップの接続チェック', () => {
     const openListeningOutput = async () => {
         await openWizard();
         await screen.findByRole('button', { name: 'OBSで配信' });
-        fireEvent.click(screen.getByRole('button', { name: '音楽鑑賞・テスト' }));
+        fireEvent.click(screen.getByRole('button', { name: 'ヘッドホンで試す' }));
         const next = screen.getByRole('button', { name: /次へ/ });
         await waitFor(() => expect(next).toBeEnabled());
         fireEvent.click(next);
@@ -180,7 +182,7 @@ describe('セットアップの接続チェック', () => {
     it('複数の仮想出力は明示選択し、受け側の対になる名前を案内する', async () => {
         outputs = [cable, device('CABLE-A Input (VB-Audio)'), device('Voicemeeter Input')];
         await openWizard();
-        expect(within(screen.getByTestId('setup-actions')).getByRole('button', { name: 'スキップ（手動設定）' })).toBeInTheDocument();
+        expect(within(screen.getByTestId('setup-actions')).getByRole('button', { name: 'セットアップをスキップ' })).toBeInTheDocument();
         await chooseObsRoute();
         const output = await screen.findByRole('combobox', { name: '仮想ケーブルの出力先' });
         expect(output).toHaveValue('');
@@ -244,7 +246,7 @@ describe('セットアップの接続チェック', () => {
 
     it('明示的なスキップを、途中の中断や保存と区別する', async () => {
         const { onSkip, onClose, onApplyConfig } = await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: 'スキップ（手動設定）' }));
+        fireEvent.click(screen.getByRole('button', { name: 'セットアップをスキップ' }));
         expect(onSkip).toHaveBeenCalledOnce();
         expect(onClose).not.toHaveBeenCalled();
         expect(onApplyConfig).not.toHaveBeenCalled();
@@ -462,7 +464,7 @@ describe('初回選択と表示設定', () => {
         localStorage.setItem('vst_host_beginner_mode', 'false');
         const { onSkip } = await openWizard();
         expect(screen.queryByRole('radio')).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'スキップ（手動設定）' }));
+        fireEvent.click(screen.getByRole('button', { name: 'セットアップをスキップ' }));
         await waitFor(() => expect(onSkip).toHaveBeenCalledOnce());
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
         expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
@@ -483,4 +485,24 @@ it('確認stepのlocale切替で入力出力・テスト状態とdialogを保持
     expect(screen.getAllByText('CABLE Input (VB-Audio)').length).toBeGreaterThan(0);
     expect(vi.mocked(invoke).mock.calls).toHaveLength(calls);
     expect(apply).not.toHaveBeenCalled();
+});
+
+describe('入力ステップのレベル表示', () => {
+    it('動作中の入力と同じマイクを選んでいる間だけ、音声を開始せずにレベルを示す', async () => {
+        const base = vi.mocked(invoke).getMockImplementation()!;
+        vi.mocked(invoke).mockImplementation((command, args, options) => {
+            if (command === 'get_audio_state') return Promise.resolve({ is_running: true, config: { host: 'WASAPI', input: 'USB マイク', output: 'CABLE Input (VB-Audio)', sample_rate: 48000, buffer_size: 512 } });
+            return base(command, args, options);
+        });
+        inputs = [mic, device('Second microphone', true)];
+        await openWizard();
+        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        const input = screen.getByRole('combobox', { name: '入力デバイス' });
+        fireEvent.change(input, { target: { value: 'USB マイク' } });
+        expect(await screen.findByRole('meter', { name: 'マイクの入力レベル' })).toBeInTheDocument();
+        fireEvent.change(input, { target: { value: 'Second microphone' } });
+        expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+        expect(screen.getByText(/マイクの音を流して確認/)).toBeInTheDocument();
+        expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'start_audio')).toBe(false);
+    });
 });

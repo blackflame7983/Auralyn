@@ -145,7 +145,7 @@ it('通常VoiceCheckで提案を作りlocaleを替えても候補・device・安
     expect(voicePreviewApi.request).toHaveBeenCalledTimes(calls);
     expect(builtinApi.request).toHaveBeenCalledTimes(builtinCalls);
     expect(builtinApi.request).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'apply_proposal' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Apply this proposal to normal output' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Apply this proposal to your microphone sound' }));
     await waitFor(() => expect(builtinApi.request).toHaveBeenCalledWith({ action: 'apply_proposal', epoch: 'builtin1', expectedRevision: '4', proposalId: 'proposal1', recordingId: 9 }));
     expect(save).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Undo the last application once' })).toBeDisabled();
@@ -223,7 +223,7 @@ it('手動Aと録音提案Bを混同せず、手動再準備後のA/BにはAのc
     await screen.findByText(/低音整理80Hz/);
     expect(screen.queryByText('候補の準備ができました。試聴先を確認して再生してください。')).not.toBeInTheDocument();
     expect(screen.getByText('A/B対象：原音と録音由来の提案（内蔵処理のみ）')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'この下書きを通常送出へ適用' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'この下書きをマイクの音へ適用' })).toBeDisabled();
     fireEvent.click(manual);
     await screen.findByText('候補の準備ができました。試聴先を確認して再生してください。');
     expect(screen.getByText('A/B対象：原音と手動下書きの候補（内蔵処理のみ）')).toBeVisible();
@@ -280,9 +280,9 @@ it('希望変更はApplyを即失効し、locale変更は希望DOMとdraftを保
     function Screen(){const model=useSingingDraft();return <VoiceCheckModal isOpen manualCandidate={false} singingModel={model} onClose={vi.fn()}/>;}
     render(<LocaleProvider store={store}><Screen/></LocaleProvider>);
     const create=await screen.findByRole('button',{name:'録音から比較候補を作る'});await waitFor(()=>expect(create).toBeEnabled());
-    fireEvent.click(create);await waitFor(()=>expect(screen.getByRole('button',{name:'この提案を通常送出へ適用'})).toBeEnabled());
+    fireEvent.click(create);await waitFor(()=>expect(screen.getByRole('button',{name:'この提案をマイクの音へ適用'})).toBeEnabled());
     const select=screen.getByLabelText('明るさの希望');fireEvent.change(select,{target:{value:'softer'}});
-    expect(screen.queryByRole('button',{name:'この提案を通常送出へ適用'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button',{name:'この提案をマイクの音へ適用'})).not.toBeInTheDocument();
     const count=vi.mocked(voicePreviewApi.request).mock.calls.filter(([r])=>r.action==='prepare_proposal').length;
     act(()=>store.setLocale('en'));
     expect(screen.getByLabelText('Brightness preference')).toBe(select);expect(select).toHaveValue('softer');

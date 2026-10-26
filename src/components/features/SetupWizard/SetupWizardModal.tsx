@@ -21,7 +21,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const { audioStartError, beginnerChoice, setBeginnerChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, availableInputs, availableOutputs,
-        isLoadingDevices, isTestingSound, inputLevel, loadDevices, handleRescanVirtualDevices,
+        isLoadingDevices, isTestingSound, inputLevel, runningInput, loadDevices, handleRescanVirtualDevices,
         selectGoal, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply } = useSetupWizard(props);
     const bodyRef = useRef<HTMLDivElement>(null);
     const surfaceRef = useRef<HTMLDivElement>(null);
@@ -97,7 +97,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                 )}
 
                 <div ref={bodyRef} className="modal-body-base min-h-0 flex flex-col">
-                    <LanguageSelector />
+                    {state === 'usage_selection' && <LanguageSelector />}
                     {initialStateError && <p role="alert" className="text-sm text-warning mb-4">{t('guide.copy.180')}</p>}
 
                     {/* --- STEP 2: USAGE SELECTION --- */}
@@ -173,11 +173,6 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 <h2 className="text-xl font-bold text-foreground">
                                     {config.goal === 'listening' ? t('guide.copy.182') : t('wizard.microphone')}
                                 </h2>
-                                <p className="text-sm text-muted-foreground">
-                                    {config.goal === 'listening'
-                                        ? t('guide.copy.183')
-                                        : t('guide.copy.184')}
-                                </p>
                                 {availableInputs.length === 0 && !isLoadingDevices && onOpenSettings && <button onClick={() => void performClose(onOpenSettings)} className="underline text-primary">{t('guide.copy.185')}</button>}
                             </div>
 
@@ -207,6 +202,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                             </select>
                                         </div>
 
+                                        {config.input && (config.input.name === runningInput
+                                            ? <div className="space-y-1">
+                                                <InputLevelBar label={t('wizard.level')} level={inputLevel} />
+                                                <p className="text-xs text-muted-foreground">{t('wizard.levelHint')}</p>
+                                            </div>
+                                            : <p className="text-xs text-muted-foreground">{t('wizard.levelLater')}</p>)}
                                         {!config.input && availableInputs.length > 0 && (
                                             <div className="flex items-center gap-2 text-warning text-sm bg-warning/10 p-3 rounded-lg">
                                                 <MdWarning /> {t('guide.copy.191')}</div>
@@ -365,14 +366,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                             <div className="flex flex-col items-center gap-3">
                                 {isTestingSound && (
-                                    <div className="flex items-center gap-3 bg-secondary/10 px-4 py-2 rounded-full animate-in fade-in slide-in-from-bottom-2">
-                                        <span className="text-xs font-bold text-secondary-foreground">{t('wizard.input')}</span>
-                                        <div className="w-32 h-3 bg-secondary/30 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full bg-success transition-all duration-75 ease-out shadow-[0_0_8px_hsl(var(--success)/0.6)]"
-                                                style={{ width: `${Math.min(inputLevel * 100, 100)}%` }}
-                                            />
-                                        </div>
+                                    <div className="w-full max-w-xs animate-in fade-in slide-in-from-bottom-2">
+                                        <InputLevelBar label={t('wizard.level')} level={inputLevel} />
                                     </div>
                                 )}
 
@@ -522,6 +517,20 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
         </Modal>
     );
 };
+
+// レベル通知は到達確認ではない。選んだマイクの声が届いているかの目安として表示する。
+function InputLevelBar({ label, level }: { label: string; level: number }) {
+    const pct = Math.round(Math.min(Math.max(level, 0) * 100, 100));
+    return (
+        <div className="flex items-center gap-3">
+            <span className="shrink-0 text-xs font-bold text-muted-foreground">{label}</span>
+            <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
+                className="h-3 flex-1 overflow-hidden rounded-full bg-muted ring-1 ring-border">
+                <div className="h-full bg-success transition-all duration-75 ease-out" style={{ width: `${pct}%` }} />
+            </div>
+        </div>
+    );
+}
 
 // --- Helper Component ---
 interface SelectionCardProps {

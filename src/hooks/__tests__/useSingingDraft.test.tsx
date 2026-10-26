@@ -36,7 +36,7 @@ it.each([undefined, null])('旧設定の残響%sはOFFで表示し、操作し�
     expect(current.config.active).toBe(false);
     expect(current.config.preset).toBe('broadcast');
     expect(vi.mocked(builtinApi.request).mock.calls.every(([request]) => request.action === 'snapshot')).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'この下書きを通常送出へ適用' }));
+    fireEvent.click(screen.getByRole('button', { name: 'この下書きをマイクの音へ適用' }));
     await waitFor(() => expect(current.config.reverb).toEqual({ ...defaultReverb, enabled: true, decaySeconds: 1.8 }));
     expect(current.config.active).toBe(false);
     expect(current.config.singing).toBeNull();
