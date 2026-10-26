@@ -52,7 +52,7 @@ it.each(['{broken', '{"not":"an array"}', '[null,12]'])('壊れた履歴 %s で�
     localStorage.setItem('vst_host_plugin_recent', value);
     localStorage.setItem('vst_host_plugin_favorites', value);
     openBrowser();
-    expect(screen.getByRole('heading', { name: 'エフェクトを追加' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'VSTを追加' })).toBeInTheDocument();
 });
 
 it('絞り込みの選択状態を公開し、切替後も更新する', () => {
