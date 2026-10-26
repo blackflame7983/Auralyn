@@ -150,7 +150,7 @@ export const PluginList: React.FC<PluginListProps> = ({
             <div className="w-full space-y-4">
                 {/* Header / Rack Ears */}
                 <div className="flex items-center justify-between mb-4 px-2">
-                    <h2 className="text-sm font-bold text-muted-foreground font-mono uppercase tracking-[0.2em] flex items-center gap-3">
+                    <h2 className="text-sm font-bold text-muted-foreground flex items-center gap-3">
                         <div className="flex gap-1">
                             <div className="w-1 h-1 bg-muted-foreground rounded-full" />
                             <div className="w-1 h-1 bg-muted-foreground rounded-full" />

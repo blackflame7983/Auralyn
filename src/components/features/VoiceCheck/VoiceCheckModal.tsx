@@ -175,7 +175,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                         {preview?.conflict && <p className="text-sm">{preview.conflict}{t('voice.copy.046')}</p>}
                         {preview?.owner === 'auto_gain' && <p className="text-xs">{t('voice.copy.047')}</p>}
                         <p className="text-xs text-muted-foreground">{preview?.state === 'stopping' ? t('voice.copy.048') : preview?.state === 'playing' ? t('voice.copy.049') : preview?.state === 'closed' ? t('voice.copy.050') : t('voice.copy.051')}{stopUnconfirmed && t('voice.copy.052')}</p>
-                        <details className="text-xs text-muted-foreground">
+                        <details open={Boolean(previewError || preview?.error || stopUnconfirmed) || undefined} className="text-xs text-muted-foreground">
                             <summary className="cursor-pointer">{t('voice.previewTrouble')}</summary>
                             <div className="mt-2 space-y-2">
                                 <p>{t('voice.copy.044')}</p>
