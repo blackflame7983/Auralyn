@@ -85,7 +85,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                     <div className="px-6 pt-4 shrink-0">
                         <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
                             <div
-                                className="h-full bg-primary transition-all duration-500 ease-out shadow-[0_0_10px_rgba(var(--primary),0.5)]"
+                                className="h-full bg-primary transition-all duration-500 ease-out shadow-[0_0_10px_hsl(var(--brand)/0.5)]"
                                 style={{ width: `${(step / (totalSteps - 1)) * 100}%` }}
                             />
                         </div>
@@ -169,9 +169,9 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                             </li>
                                         </ul>
                                     </div>
-                                    <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex gap-3">
-                                        <MdLightbulb className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
-                                        <p className="text-yellow-600 dark:text-yellow-400 text-sm">
+                                    <div className="p-4 bg-warning/10 border border-warning/20 rounded-lg flex gap-3">
+                                        <MdLightbulb className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
+                                        <p className="text-warning text-sm">
                                             <strong>{t('guide.copy.028')}</strong> {t('guide.copy.029')}</p>
                                     </div>
                                 </>
@@ -221,8 +221,8 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                             {t('guide.copy.042')}<br />
                                             {t('guide.copy.043')}</p>
 
-                                        <div className="bg-yellow-500/5 border border-yellow-500/20 p-3 rounded text-sm">
-                                            <div className="font-bold text-yellow-600 dark:text-yellow-400 mb-1">{t('guide.copy.044')}</div>
+                                        <div className="bg-warning/5 border border-warning/20 p-3 rounded text-sm">
+                                            <div className="font-bold text-warning mb-1">{t('guide.copy.044')}</div>
                                             <p className="text-muted-foreground text-xs">
                                                 {t('guide.copy.045')}<br />
                                                 <strong>{t('guide.copy.046')}</strong>{t('guide.copy.047')}</p>
@@ -233,7 +233,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                             <p className="text-muted-foreground text-xs leading-relaxed">
                                                 {t('guide.copy.049')}{'>'} {t('guide.copy.050')}{'>'} {t('guide.copy.051')}{'>'} {t('guide.copy.052')}{'>'}<br />
                                                 <strong>{t('guide.copy.053')}</strong> {t('guide.copy.054')}{'>'} {t('guide.copy.055')}{'>'} <strong>{t('guide.copy.056')}</strong>{t('guide.copy.057')}<br />
-                                                <span className="text-destructive/80 mt-1 block font-bold text-[10px]">{t('guide.copy.058')}</span>
+                                                <span className="text-destructive-text/80 mt-1 block font-bold text-[10px]">{t('guide.copy.058')}</span>
                                             </p>
                                         </div>
                                     </div>

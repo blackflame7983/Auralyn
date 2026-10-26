@@ -127,7 +127,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
 
     return (
         <Modal title={t('licenses.title')} onClose={onClose}>
-        <div className="modal-overlay-base bg-black/50" onClick={onClose}>
+        <div className="modal-overlay-base bg-overlay/50" onClick={onClose}>
             {/* Modal Content - stop propagation to prevent closing when clicking inside */}
             <div
                 className="modal-surface-base max-w-4xl w-full h-[80vh] flex flex-col text-foreground bg-background"

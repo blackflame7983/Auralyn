@@ -49,15 +49,15 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
     // 再表示できない復旧画面は、待機中もEscで閉じない。
     return (
         <Modal title={t('recovery.title')} onClose={onClose} dismissible={false}>
-        <div className="modal-overlay-base z-[9999] bg-black/80">
+        <div className="modal-overlay-base z-[9999] bg-overlay/80">
             <div className="modal-surface-base w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto border-2 border-destructive/50 bg-background">
 
                 <div className="p-6 text-center space-y-4">
-                    <div className="inline-flex justify-center items-center w-16 h-16 rounded-full bg-destructive/20 text-destructive mb-2">
+                    <div className="inline-flex justify-center items-center w-16 h-16 rounded-full bg-destructive/20 text-destructive-text mb-2">
                         <MdWarning size={32} />
                     </div>
 
-                    <h2 className="text-2xl font-bold text-destructive">{t('recovery.title')}</h2>
+                    <h2 className="text-2xl font-bold text-destructive-text">{t('recovery.title')}</h2>
                     <p className="text-muted-foreground">
                         {t('recovery.description')}<br />
                         {t('recovery.unknown')}
@@ -65,14 +65,14 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
 
                     {pendingPlugin && (
                         <div className="bg-destructive/10 p-3 rounded-lg text-sm text-left border border-destructive/20 mt-4">
-                            <div className="font-bold text-destructive mb-1 flex items-center gap-2">
+                            <div className="font-bold text-destructive-text mb-1 flex items-center gap-2">
                                 <MdWarning /> {t('recovery.pending')}
                             </div>
                             <div className="font-mono text-xs break-all opacity-80">{pendingPlugin}</div>
                         </div>
                     )}
 
-                    {recoveryError && <p role="alert" className="text-sm text-destructive">{t('recovery.failed')}</p>}
+                    {recoveryError && <p role="alert" className="text-sm text-destructive-text">{t('recovery.failed')}</p>}
                     {error && (
                         <div className="text-xs text-muted-foreground bg-muted p-2 rounded text-left font-mono break-all max-h-24 overflow-y-auto">
                             {error}

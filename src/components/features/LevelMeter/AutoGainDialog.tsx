@@ -72,7 +72,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
             document.removeEventListener('visibilitychange', hide);
             void gainCommand({ action: 'cancel' }).catch(() => {
                 toast.error(
-                    t('meterBrowser.copy.000'),
+                    t('autoGain.stopUnconfirmedNotice'),
                 );
             });
         };
@@ -114,7 +114,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
             if (alive.current) onClose();
         } catch (e) {
             if (alive.current)
-                setError(notice('meterBrowser.copy.001', { arg0: clientErrorNotice(e) }));
+                setError(notice('autoGain.closeUnconfirmed', { arg0: clientErrorNotice(e) }));
         } finally {
             closing.current = false;
             if (alive.current) setBusy(false);
@@ -137,20 +137,20 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
             }}
         >
             <Dialog.Portal>
-                <Dialog.Overlay className="fixed inset-0 z-[150] bg-black/70" />
+                <Dialog.Overlay className="fixed inset-0 z-[150] bg-overlay/70" />
                 <Dialog.Content className="fixed left-1/2 top-1/2 z-[151] flex max-h-[90vh] w-[min(38rem,95vw)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-background text-foreground shadow-xl">
                     <div className="flex items-center justify-between gap-3 border-b border-border p-4">
                         <Dialog.Title className="font-semibold">
-                            {t('meterBrowser.copy.002')}</Dialog.Title>
+                            {t('autoGain.title')}</Dialog.Title>
                         <button className={button} onClick={() => void close()}>
-                            {t('meterBrowser.copy.003')}</button>
+                            {t('common.close')}</button>
                     </div>
                     <div className="space-y-4 overflow-y-auto p-4">
                         <Dialog.Description className="text-sm text-muted-foreground">
-                            {t('meterBrowser.copy.004')}</Dialog.Description>
+                            {t('autoGain.purpose')}</Dialog.Description>
                         <label className="flex flex-wrap items-center gap-2 text-sm">
-                            {t('meterBrowser.copy.005')}<select
-                                aria-label={t('meterBrowser.copy.006')}
+                            {t('autoGain.targetLabel')}<select
+                                aria-label={t('autoGain.targetLabel')}
                                 value={target}
                                 disabled={busy || recording || pending || !!proposal}
                                 onChange={(e) => setTarget(Number(e.target.value))}
@@ -164,25 +164,25 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                             </select>
                         </label>
                         <p className="text-xs text-muted-foreground">
-                            {t('meterBrowser.copy.007')}</p>
-                        <p role="status" className="text-sm text-amber-800 dark:text-amber-300">
+                            {t('autoGain.limitations')}</p>
+                        <p role="status" className="text-sm text-warning">
                             {recording
-                                ? t('meterBrowser.copy.008', { arg0: Math.round((state?.progress ?? 0) * 10) })
+                                ? t('autoGain.recordingProgress', { arg0: Math.round((state?.progress ?? 0) * 10) })
                                 : pending
-                                  ? t('meterBrowser.copy.009')
+                                  ? t('autoGain.confirmingGain')
                                   : state?.phase === 'applied'
-                                    ? t('meterBrowser.copy.010')
+                                    ? t('autoGain.applied')
                                     : state?.phase === 'restored'
-                                      ? t('meterBrowser.copy.011')
+                                      ? t('autoGain.restored')
                                       : closedForVisibility
-                                        ? t('meterBrowser.copy.012')
+                                        ? t('autoGain.interrupted')
                                         : !state
-                                          ? t('meterBrowser.copy.013')
+                                          ? t('autoGain.checkState')
                                           : state.phase === 'ready' && proposal
                                             ? state.settled
-                                                ? t('meterBrowser.copy.014')
-                                                : t('meterBrowser.copy.015')
-                                          : t('meterBrowser.copy.016')}
+                                                ? t('autoGain.readyHint')
+                                                : t('autoGain.confirmingGain')
+                                          : t('autoGain.recordHint')}
                         </p>
                         <div className="flex flex-wrap gap-2">
                             <button
@@ -198,39 +198,39 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                     void run({ action: 'begin', target, revision: state!.revision })
                                 }
                             >
-                                {proposal ? t('meterBrowser.copy.017') : t('meterBrowser.copy.018')}
+                                {proposal ? t('autoGain.recordAgain') : t('autoGain.record')}
                             </button>
                             <button
                                 className={button}
                                 disabled={busy || (!recording && !state?.playing)}
                                 onClick={() => void run({ action: 'cancel' })}
                             >
-                                {t('meterBrowser.copy.019')}</button>
+                                {t('autoGain.cancelRecording')}</button>
                             <button
                                 className={button}
                                 disabled={busy}
                                 onClick={() => void run({ action: 'status' })}
                             >
-                                {t('meterBrowser.copy.020')}</button>
+                                {t('autoGain.refreshState')}</button>
                         </div>
                         {(error || state?.error) && (
-                            <div role="alert" className="text-sm text-amber-800 dark:text-amber-300">
-                                <p>{error && typeof error !== 'string' && error.key !== 'clientErrors.rawDetail' ? renderNotice(t, error) : t('meterBrowser.gainFailed')}</p>
+                            <div role="alert" className="text-sm text-warning">
+                                <p>{error && typeof error !== 'string' && error.key !== 'clientErrors.rawDetail' ? renderNotice(t, error) : t('autoGain.stateFailed')}</p>
                                 {translatedDetail && <p>{translatedDetail}</p>}
-                                {rawError && <details><summary>{t('meterBrowser.rawDetail')}</summary><p className="break-words">{rawError}</p></details>}
+                                {rawError && <details><summary>{t('common.rawDetail')}</summary><p className="break-words">{rawError}</p></details>}
                             </div>
                         )}
                         {proposal && (
                             <div className="space-y-3 rounded border border-border p-3">
                                 <p className="font-semibold">
-                                    {t('meterBrowser.gain.change', { before: pct(proposal.before), after: pct(proposal.after) })}
+                                    {t('autoGain.change', { before: pct(proposal.before), after: pct(proposal.after) })}
                                 </p>
                                 <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">{t('structure.measurements')}</summary><p className="text-xs text-muted-foreground">
-                                    {t('meterBrowser.gain.estimate', { measured: proposal.measured.toFixed(1), predicted: proposal.predicted.toFixed(1), peak: proposal.peak.toFixed(1) })}
+                                    {t('autoGain.estimate', { measured: proposal.measured.toFixed(1), predicted: proposal.predicted.toFixed(1), peak: proposal.peak.toFixed(1) })}
                                 </p></details>
                                 {proposal.limited && (
-                                    <p className="text-sm text-amber-800 dark:text-amber-300">
-                                        {t('meterBrowser.copy.025')}</p>
+                                    <p className="text-sm text-warning">
+                                        {t('autoGain.limitedGain')}</p>
                                 )}
                                 <div className="flex flex-wrap gap-2">
                                     <button
@@ -249,7 +249,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                             })
                                         }
                                     >
-                                        {t('meterBrowser.copy.026')}</button>
+                                        {t('autoGain.apply')}</button>
                                     <button
                                         className={button}
                                         disabled={
@@ -266,23 +266,23 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                             })
                                         }
                                     >
-                                        {t('meterBrowser.copy.027')}</button>
+                                        {t('autoGain.undo')}</button>
                                 </div>
                             </div>
                         )}
                         {canPreview && (
                             <div className="space-y-3 rounded border border-border p-3">
-                                <p className="text-sm font-semibold">{t('meterBrowser.copy.028')}</p>
+                                <p className="text-sm font-semibold">{t('autoGain.compareTitle')}</p>
                                 <p className="text-xs text-muted-foreground">
-                                    {t('meterBrowser.copy.029')}</p>
+                                    {t('autoGain.previewSafety')}</p>
                                 <button
                                     className={button}
                                     disabled={busy}
                                     onClick={() => void run({ action: 'devices' })}
                                 >
-                                    {t('meterBrowser.copy.030')}</button>
+                                    {t('autoGain.refreshOutputs')}</button>
                                 <select
-                                    aria-label={t('meterBrowser.copy.031')}
+                                    aria-label={t('autoGain.previewOutput')}
                                     value={device}
                                     disabled={busy || state?.playing}
                                     onChange={(e) => {
@@ -291,7 +291,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                     }}
                                     className="w-full rounded border border-input bg-background p-2 text-sm"
                                 >
-                                    <option value="">{t('meterBrowser.copy.032')}</option>
+                                    <option value="">{t('autoGain.chooseOutput')}</option>
                                     {devices.map((d) => (
                                         <option key={d.id} value={d.id}>
                                             {d.name}
@@ -304,7 +304,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                         checked={safeOutput}
                                         onChange={(e) => setSafeOutput(e.target.checked)}
                                     />
-                                    {t('meterBrowser.copy.033')}</label>
+                                    {t('autoGain.previewConfirmed')}</label>
                                 <div className="flex flex-wrap gap-2">
                                     {[false, true].map((after) => (
                                         <button
@@ -320,7 +320,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                                 })
                                             }
                                         >
-                                            {after ? t('meterBrowser.copy.034') : t('meterBrowser.copy.035')}
+                                            {after ? t('autoGain.listenAdjusted') : t('autoGain.listenOriginal')}
                                         </button>
                                     ))}
                                     <button
@@ -328,7 +328,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                         disabled={busy || !state?.playing}
                                         onClick={() => void run({ action: 'stop_preview' })}
                                     >
-                                        {t('meterBrowser.copy.036')}</button>
+                                        {t('autoGain.stopPreview')}</button>
                                 </div>
                             </div>
                         )}

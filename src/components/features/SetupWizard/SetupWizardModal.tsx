@@ -98,7 +98,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                 <div ref={bodyRef} className="modal-body-base min-h-0 flex flex-col">
                     <LanguageSelector />
-                    {initialStateError && <p role="alert" className="text-sm text-amber-500 mb-4">{t('guide.copy.180')}</p>}
+                    {initialStateError && <p role="alert" className="text-sm text-warning mb-4">{t('guide.copy.180')}</p>}
 
                     {/* --- STEP 2: USAGE SELECTION --- */}
                     {state === 'usage_selection' && (
@@ -132,7 +132,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
                                 <SelectionCard compact
                                     onClick={() => selectGoal('obs')}
-                                    icon={<MdCast className="w-5 h-5 text-blue-500" />}
+                                    icon={<MdCast className="w-5 h-5 text-primary" />}
                                     title={t('wizard.obs')}
                                     description={t('wizard.obsHint')}
                                     active={config.goal === 'obs'}
@@ -140,7 +140,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 />
                                 <SelectionCard compact
                                     onClick={() => selectGoal('discord')}
-                                    icon={<DiscordIcon className="w-5 h-5 text-indigo-500" />}
+                                    icon={<DiscordIcon className="w-5 h-5 text-primary" />}
                                     title={t('wizard.chat')}
                                     description={t('wizard.chatHint')}
                                     active={config.goal === 'discord'}
@@ -148,7 +148,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 />
                                 <SelectionCard compact
                                     onClick={() => selectGoal('listening')}
-                                    icon={<MdMusicNote className="w-5 h-5 text-pink-500" />}
+                                    icon={<MdMusicNote className="w-5 h-5 text-primary" />}
                                     title={t('wizard.music')}
                                     description={t('wizard.musicHint')}
                                     active={config.goal === 'listening'}
@@ -156,7 +156,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 />
                                 <SelectionCard compact
                                     onClick={() => selectGoal('other')}
-                                    icon={<MdSettings className="w-5 h-5 text-emerald-500" />}
+                                    icon={<MdSettings className="w-5 h-5 text-primary" />}
                                     title={t('wizard.manual')}
                                     description={t('guide.copy.181')}
                                     active={config.goal === 'other'}
@@ -208,11 +208,11 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                         </div>
 
                                         {!config.input && availableInputs.length > 0 && (
-                                            <div className="flex items-center gap-2 text-yellow-500 text-sm bg-yellow-500/10 p-3 rounded-lg">
+                                            <div className="flex items-center gap-2 text-warning text-sm bg-warning/10 p-3 rounded-lg">
                                                 <MdWarning /> {t('guide.copy.191')}</div>
                                         )}
                                         {availableInputs.length === 0 && (
-                                            <div className="flex items-center gap-2 text-destructive text-sm bg-destructive/10 p-3 rounded-lg">
+                                            <div className="flex items-center gap-2 text-destructive-text text-sm bg-destructive/10 p-3 rounded-lg">
                                                 <MdError /> {t('guide.copy.192')}</div>
                                         )}
                                     </>
@@ -235,15 +235,15 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 <p className="text-sm text-muted-foreground">
                                     {config.goal === 'obs' ? t('guide.copy.194') : t('guide.copy.195')}
                                 </p>
-                                {!config.input && <p role="status" className="text-sm text-amber-500">{t('guide.copy.196')}</p>}
-                                {availableOutputs.length === 0 && !isLoadingDevices && <p className="text-sm text-amber-500">{t('guide.copy.197')}</p>}
+                                {!config.input && <p role="status" className="text-sm text-warning">{t('guide.copy.196')}</p>}
+                                {availableOutputs.length === 0 && !isLoadingDevices && <p className="text-sm text-warning">{t('guide.copy.197')}</p>}
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-4xl mx-auto">
                                 {/* Option 1: Default */}
                                 <SelectionCard
                                     onClick={() => selectOutputMode('default')}
-                                    icon={<MdVolumeUp className="w-8 h-8 text-sky-500" />}
+                                    icon={<MdVolumeUp className="w-8 h-8 text-primary" />}
                                     title={t('guide.copy.198')}
                                     description={t('guide.copy.199')}
                                     active={config.outputMode === 'default'}
@@ -253,7 +253,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 {/* Option 2: Headphones */}
                                 <SelectionCard
                                     onClick={() => selectOutputMode('monitor')}
-                                    icon={<MdHeadphones className="w-8 h-8 text-orange-500" />}
+                                    icon={<MdHeadphones className="w-8 h-8 text-primary" />}
                                     title={t('guide.copy.200')}
                                     description={t('guide.copy.201')}
                                     active={config.outputMode === 'monitor'}
@@ -263,7 +263,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 {/* Option 3: Broadcast */}
                                 <SelectionCard
                                     onClick={() => selectOutputMode('broadcast')}
-                                    icon={<MdCast className="w-8 h-8 text-purple-500" />}
+                                    icon={<MdCast className="w-8 h-8 text-primary" />}
                                     title={t('guide.copy.202')}
                                     description={t('guide.copy.203')}
                                     active={config.outputMode === 'broadcast'}
@@ -319,10 +319,10 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                                 )}
                                             </select>
                                             <p className="mt-2 text-xs text-muted-foreground">{t('guide.wizard.receiver', { receiver: config.output ? renderNotice(t, receiverDeviceNotice(config.output.name)) : t('guide.copy.212') })}</p>
-                                            {availableOutputs.filter(isVirtualOutput).length > 1 && !config.output && <p role="status" className="text-sm text-amber-500">{t('guide.copy.214')}</p>}
+                                            {availableOutputs.filter(isVirtualOutput).length > 1 && !config.output && <p role="status" className="text-sm text-warning">{t('guide.copy.214')}</p>}
                                             {!availableOutputs.some(isVirtualOutput) && (
                                                 <div className="mt-2 flex flex-col items-center gap-1.5">
-                                                    <p className="text-xs text-center text-amber-500">{t('guide.copy.215')}</p>
+                                                    <p className="text-xs text-center text-warning">{t('guide.copy.215')}</p>
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -369,7 +369,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                         <span className="text-xs font-bold text-secondary-foreground">{t('wizard.input')}</span>
                                         <div className="w-32 h-3 bg-secondary/30 rounded-full overflow-hidden">
                                             <div
-                                                className="h-full bg-green-500 transition-all duration-75 ease-out shadow-[0_0_8px_rgba(34,197,94,0.6)]"
+                                                className="h-full bg-success transition-all duration-75 ease-out shadow-[0_0_8px_hsl(var(--success)/0.6)]"
                                                 style={{ width: `${Math.min(inputLevel * 100, 100)}%` }}
                                             />
                                         </div>
@@ -448,12 +448,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             {state === 'configuring' ? (
                                 <>
                                     <div className="w-16 h-16 border-4 border-muted border-t-green-500 rounded-full animate-spin mx-auto" />
-                                    <h2 className="text-xl font-medium text-green-500">{t('wizard.applying')}</h2>
+                                    <h2 className="text-xl font-medium text-success">{t('wizard.applying')}</h2>
                                 </>
                             ) : (
                                 <>
-                                    <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto ring-1 ring-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.2)]">
-                                        <MdCheckCircle className="w-10 h-10 text-green-500" />
+                                    <div className="w-20 h-20 bg-success/10 rounded-full flex items-center justify-center mx-auto ring-1 ring-success/50 shadow-[0_0_30px_hsl(var(--success)/0.2)]">
+                                        <MdCheckCircle className="w-10 h-10 text-success" />
                                     </div>
                                     <div className="space-y-2">
                                         <h2 className="text-2xl font-bold text-foreground">{t('wizard.saved')}</h2>

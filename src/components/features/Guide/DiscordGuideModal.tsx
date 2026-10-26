@@ -47,7 +47,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                 {/* Header */}
                 <div className="modal-header-base modal-header-muted shrink-0">
                     <h2 className="text-xl font-bold flex items-center gap-2 text-foreground">
-                        <span className="w-8 h-8 rounded-lg bg-[#5865F2] flex items-center justify-center text-white">
+                        <span className="w-8 h-8 rounded-lg bg-discord flex items-center justify-center text-discord-foreground">
                             <DiscordIcon className="w-5 h-5" />
                         </span>
                         {t('guide.copy.082')}</h2>
@@ -67,13 +67,13 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                 return (
                                     <div key={i} className={`flex items-center ${i < 3 ? 'flex-1' : ''}`}>
                                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-colors
-                                            ${activeStep === i ? 'border-[#5865F2] text-[#5865F2] bg-[#5865F2]/10' :
-                                                activeStep > i ? 'border-[#5865F2] bg-[#5865F2] text-white' :
+                                            ${activeStep === i ? 'border-discord text-discord-text bg-discord/10' :
+                                                activeStep > i ? 'border-discord bg-discord text-discord-foreground' :
                                                     'border-muted text-muted-foreground'}`}>
                                             {activeStep > i ? <MdCheckCircle className="w-5 h-5" /> : i}
                                         </div>
                                         {i < 3 && (
-                                            <div className={`h-1 flex-1 mx-2 rounded-full ${activeStep > i ? 'bg-[#5865F2]' : 'bg-muted'}`} />
+                                            <div className={`h-1 flex-1 mx-2 rounded-full ${activeStep > i ? 'bg-discord' : 'bg-muted'}`} />
                                         )}
                                     </div>
                                 );
@@ -95,15 +95,15 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                         onClick={() => handleDeviceSelection(true)}
                                         aria-label={t('guide.copy.086')}
                                         aria-pressed={useHardwareMixer === true}
-                                        className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-[#5865F2]/50 transition-all text-left flex flex-col items-center text-center group"
+                                        className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-discord/50 transition-all text-left flex flex-col items-center text-center group"
                                     >
-                                        <div className="w-16 h-16 rounded-full bg-[#5865F2]/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                            <MdMic className="w-8 h-8 text-[#5865F2]" />
+                                        <div className="w-16 h-16 rounded-full bg-discord/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                            <MdMic className="w-8 h-8 text-discord-text" />
                                         </div>
                                         <h4 className="font-bold text-foreground text-lg mb-2">{t('guide.copy.087')}{useHardwareMixer === true && t('guide.copy.088')}</h4>
                                         <p className="text-sm text-muted-foreground mb-4">
                                             {t('guide.copy.089')}</p>
-                                        <div className="flex items-center gap-2 text-xs font-bold text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 px-3 py-1 rounded-full">
+                                        <div className="flex items-center gap-2 text-xs font-bold text-warning bg-warning/10 px-3 py-1 rounded-full">
                                             <MdWarning /> {t('guide.copy.090')}</div>
                                     </button>
 
@@ -111,7 +111,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                         onClick={() => handleDeviceSelection(false)}
                                         aria-label={t('guide.copy.091')}
                                         aria-pressed={useHardwareMixer === false}
-                                        className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-[#5865F2]/50 transition-all text-left flex flex-col items-center text-center group"
+                                        className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-discord/50 transition-all text-left flex flex-col items-center text-center group"
                                     >
                                         <div className="w-16 h-16 rounded-full bg-secondary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                             <MdHeadphones className="w-8 h-8 text-secondary-foreground" />
@@ -134,9 +134,9 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                         {t('guide.copy.097')}</p>
                                 </div>
 
-                                <div className="bg-[#5865F2]/5 p-6 rounded-xl border border-[#5865F2]/20 flex flex-col items-center text-center space-y-4">
-                                    <div className="w-12 h-12 bg-[#5865F2]/10 rounded-full flex items-center justify-center">
-                                        <MdSettings className="w-6 h-6 text-[#5865F2]" />
+                                <div className="bg-discord/5 p-6 rounded-xl border border-discord/20 flex flex-col items-center text-center space-y-4">
+                                    <div className="w-12 h-12 bg-discord/10 rounded-full flex items-center justify-center">
+                                        <MdSettings className="w-6 h-6 text-discord-text" />
                                     </div>
                                     <div>
                                         <h4 className="font-bold mb-1">{t('guide.copy.098')}</h4>
@@ -158,9 +158,9 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
 
                                 {useHardwareMixer ? (
                                     <div className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg flex gap-4 text-left">
-                                        <MdWarning className="w-8 h-8 text-red-700 dark:text-red-300 shrink-0" />
+                                        <MdWarning className="w-8 h-8 text-destructive-text shrink-0" />
                                         <div className="space-y-1">
-                                            <h4 className="font-bold text-red-700 dark:text-red-300">{t('guide.copy.104')}</h4>
+                                            <h4 className="font-bold text-destructive-text">{t('guide.copy.104')}</h4>
                                             <p className="text-sm text-foreground">
                                                 {t('guide.copy.105')}<strong>{t('guide.copy.106')}</strong>{t('guide.copy.107')}</p>
                                             <p className="text-xs text-muted-foreground mt-2">
@@ -190,29 +190,29 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                         {t('guide.copy.113')}</p>
                                 </div>
 
-                                <div className="bg-[#1e1f22] p-6 rounded-xl border border-border shadow-inner max-w-xl mx-auto space-y-4">
-                                    <div className="flex items-center gap-2 text-gray-400 text-xs uppercase font-bold tracking-wider mb-2">
+                                <div className="bg-muted p-6 rounded-xl border border-border shadow-inner max-w-xl mx-auto space-y-4">
+                                    <div className="flex items-center gap-2 text-muted-foreground text-xs uppercase font-bold tracking-wider mb-2">
                                         <MdSettings /> {t('guide.copy.114')}</div>
 
                                     <div className="space-y-2">
-                                        <label className="text-gray-300 text-xs font-bold uppercase">{t('guide.copy.115')}</label>
-                                        <div className="bg-[#111214] p-3 rounded border border-gray-700 flex justify-between items-center text-white cursor-pointer hover:bg-[#2b2d31] transition-colors">
+                                        <label className="text-muted-foreground text-xs font-bold uppercase">{t('guide.copy.115')}</label>
+                                        <div className="bg-background p-3 rounded border border-border flex justify-between items-center text-foreground cursor-pointer hover:bg-accent transition-colors">
                                             <span className="flex items-center gap-2">
-                                                <MdMic className="text-green-500" />
+                                                <MdMic className="text-success" />
                                                 {useHardwareMixer ? t('guide.copy.116') : t('guide.copy.117')}
                                             </span>
                                         </div>
                                     </div>
 
                                     <div className="space-y-2 opacity-50 pointer-events-none">
-                                        <label className="text-gray-300 text-xs font-bold uppercase">{t('guide.copy.118')}</label>
-                                        <div className="bg-[#111214] p-3 rounded border border-gray-700 text-white">
+                                        <label className="text-muted-foreground text-xs font-bold uppercase">{t('guide.copy.118')}</label>
+                                        <div className="bg-background p-3 rounded border border-border text-foreground">
                                             <span>{t('guide.copy.119')}</span>
                                         </div>
                                     </div>
 
                                     {useHardwareMixer && (
-                                        <p className="text-xs text-red-700 dark:text-red-300 mt-2">
+                                        <p className="text-xs text-destructive-text mt-2">
                                             {t('guide.copy.120')}</p>
                                     )}
                                 </div>
@@ -229,9 +229,9 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
 
                                 <div className="grid gap-4 max-w-2xl mx-auto">
                                     <div className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg flex items-start gap-4">
-                                        <MdWarning className="w-8 h-8 text-red-700 dark:text-red-300 shrink-0" />
+                                        <MdWarning className="w-8 h-8 text-destructive-text shrink-0" />
                                         <div>
-                                            <h4 className="font-bold text-red-700 dark:text-red-300 mb-1">{t('guide.copy.123')}</h4>
+                                            <h4 className="font-bold text-destructive-text mb-1">{t('guide.copy.123')}</h4>
                                             <ul className="list-disc list-inside text-sm space-y-1 text-foreground">
                                                 <li><strong>{t('guide.copy.124')}</strong> {t('guide.copy.125')}</li>
                                                 <li><strong>{t('guide.copy.126')}</strong> {t('guide.copy.127')}</li>

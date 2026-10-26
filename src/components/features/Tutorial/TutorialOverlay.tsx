@@ -59,14 +59,14 @@ export const TutorialOverlay: React.FC<Props> = ({ targetId, step, content, alig
     return (
         <Popover.Root open={true}>
             <Popover.Anchor asChild>
-                <div style={{
+                <div className="tutorial-spotlight" style={{
                     position: 'absolute',
                     left: rect.left + window.scrollX,
                     top: rect.top + window.scrollY,
                     width: rect.width,
                     height: rect.height,
                     pointerEvents: 'none', // Allow clicks pass through to target
-                    boxShadow: '0 0 0 4px rgba(34, 197, 94, 0.5), 0 0 0 9999px rgba(0,0,0,0.5)', // Spotlight effect
+                    // 色は tutorial-spotlight のテーマトークンを使う。
                     zIndex: 9998,
                     borderRadius: getComputedStyle(targetElement).borderRadius
                 }} />

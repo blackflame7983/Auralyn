@@ -143,7 +143,7 @@ export function LoudnessCheck({
                                 if (generation.current !== operation) return;
                                 setStopUnconfirmed(true);
                                 setError(
-                                    notice('meterBrowser.copy.037'),
+                                    notice('loudness.statusFailed'),
                                 );
                             })
                             .finally(() => {
@@ -188,7 +188,7 @@ export function LoudnessCheck({
             .catch(() => {
                 if (generation.current !== operation) return;
                 setStopUnconfirmed(true);
-                setError(notice('meterBrowser.copy.038'));
+                setError(notice('loudness.statusFailed'));
             })
             .finally(() => {
                 if (generation.current !== operation) return;
@@ -235,7 +235,7 @@ export function LoudnessCheck({
             suppressReading.current = true;
             setActive(true);
             setStopUnconfirmed(true);
-            setError(notice('meterBrowser.copy.039'));
+            setError(notice('loudness.statusFailed'));
         } finally {
             if (generation.current === operation) {
                 pending.current = false;
@@ -244,41 +244,41 @@ export function LoudnessCheck({
         }
     };
     const message = stopUnconfirmed
-        ? t('meterBrowser.copy.040')
+        ? t('loudness.stopUnconfirmed')
         : busy && active
-          ? t('meterBrowser.copy.041')
+          ? t('loudness.stopping')
           : !running
             ? stateKnown
-              ? t('meterBrowser.copy.042')
-              : t('meterBrowser.copy.043')
+              ? t('loudness.audioStopped')
+              : t('loudness.audioUnknown')
             : !available && !active
-              ? t('meterBrowser.copy.044')
+              ? t('loudness.paused')
               : !active
-                ? t('meterBrowser.copy.045')
+                ? t('loudness.stopped')
                 : stale
-                  ? t('meterBrowser.copy.046')
+                  ? t('loudness.invalidData')
                   : reading && !reading.supported
-                    ? t('meterBrowser.copy.047')
+                    ? t('loudness.unsupportedRate')
                     : verdict
                       ? t(verdictLabel[verdict])
                       : reading?.silent
-                        ? t('meterBrowser.copy.048')
-                        : t('meterBrowser.copy.049');
+                        ? t('loudness.quietSignal')
+                        : t('loudness.measuring');
     const good = verdict === 'good' && active && !stale;
     // アンマウントせず停止を確認し、停止失敗時の再試行だけは隠さない。
     if (!enabled && !active && !busy && !stopUnconfirmed) return null;
 
     return (
         <section
-            aria-label={t('meterBrowser.copy.050')}
+            aria-label={t('loudness.title')}
             className="mb-4 rounded-xl border border-border bg-card p-4 space-y-2"
         >
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-sm font-semibold">{t('meterBrowser.copy.051')}</h2>
+                    <h2 className="text-sm font-semibold">{t('loudness.title')}</h2>
                     <p
                         role="status"
-                        className={`text-lg font-bold ${good ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-800 dark:text-amber-300'}`}
+                        className={`text-lg font-bold ${good ? 'text-success' : 'text-warning'}`}
                     >
                         {message}
                     </p>
@@ -290,37 +290,37 @@ export function LoudnessCheck({
                     className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
                 >
                     {busy
-                        ? t('meterBrowser.copy.052')
+                        ? t('loudness.switching')
                         : stopUnconfirmed
-                          ? t('meterBrowser.copy.053')
+                          ? t('loudness.retryStop')
                           : active
-                            ? t('meterBrowser.copy.054')
-                            : t('meterBrowser.copy.055')}
+                            ? t('loudness.stop')
+                            : t('loudness.measure')}
                 </button>
                 <button className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
-                    disabled={!running || !available || busy} onClick={() => setAutoGainOpen(true)}>{t('meterBrowser.copy.056')}</button>
+                    disabled={!running || !available || busy} onClick={() => setAutoGainOpen(true)}>{t('loudness.openAutoGain')}</button>
                 </div>
             </div>
             <p className="text-xs text-muted-foreground">
-                {t('meterBrowser.copy.057')}</p>
+                {t('loudness.scope')}</p>
             {autoGainOpen && available && running && <AutoGainDialog onClose={() => setAutoGainOpen(false)} />}
             {active && reading && (
                 <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">{t('structure.measurements')}</summary><p className="text-xs text-muted-foreground font-mono">
-                    {t('meterBrowser.loudness.reading', { lufs: reading.short_term_lufs?.toFixed(1) ?? '—', peak: reading.true_peak_dbtp?.toFixed(1) ?? '—' })}
+                    {t('loudness.reading', { lufs: reading.short_term_lufs?.toFixed(1) ?? '—', peak: reading.true_peak_dbtp?.toFixed(1) ?? '—' })}
                 </p></details>
             )}
             {error && (
-                <p role="alert" className="text-sm text-amber-800 dark:text-amber-300">
+                <p role="alert" className="text-sm text-warning">
                     {renderNotice(t, error)}
                 </p>
             )}
             <details className="text-xs text-muted-foreground">
-                <summary className="cursor-pointer">{t('meterBrowser.copy.060')}</summary>
+                <summary className="cursor-pointer">{t('loudness.measurementDetails')}</summary>
                 <div className="mt-2 space-y-2">
-                    <p>{t('meterBrowser.copy.061')}</p>
+                    <p>{t('loudness.includesPreview')}</p>
                     <label className="flex flex-wrap items-center gap-2">
-                        {t('meterBrowser.copy.062')}<select
-                            aria-label={t('meterBrowser.copy.063')}
+                        {t('loudness.targetLabel')}<select
+                            aria-label={t('loudness.targetLabel')}
                             value={target}
                             onChange={(e) => {
                                 setTarget(Number(e.target.value));
@@ -336,11 +336,11 @@ export function LoudnessCheck({
                         </select>
                     </label>
                     <p>
-                        {t('meterBrowser.copy.064')}</p>
+                        {t('loudness.targetReference')}</p>
                     <p>
-                        {t('meterBrowser.copy.065')}</p>
+                        {t('loudness.measurementLimitations')}</p>
                     <button className="underline underline-offset-2" onClick={onVoiceCheck}>
-                        {t('meterBrowser.copy.066')}</button>
+                        {t('loudness.openVoiceCheck')}</button>
                 </div>
             </details>
         </section>

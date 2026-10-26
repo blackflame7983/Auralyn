@@ -123,13 +123,13 @@ function ApplyResultSummary({
                 </p>
             )}
             {summary.missingPlugins.length > 0 && (
-                <p className="text-amber-600">
+                <p className="text-warning">
                     {t('presets.copy.009')}{summary.missingPlugins.map(p => p.name).join(', ')}
                 </p>
             )}
             {summary.missingDevices.length > 0 && devices && (
                 <div className="space-y-2 pt-1 border-t border-border">
-                    <p className="text-destructive font-medium">{t('presets.copy.010')}</p>
+                    <p className="text-destructive-text font-medium">{t('presets.copy.010')}</p>
                     {summary.missingDevices.map(md => (
                         <div key={`${md.role}-${md.name}`} className="space-y-1">
                             <p className="text-muted-foreground">
@@ -542,7 +542,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                         </button>
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleExport(profile.name); }}
-                                            className="p-2 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 rounded-md"
+                                            className="p-2 text-muted-foreground hover:text-info hover:bg-info/10 rounded-md"
                                             title={t('presets.copy.078')}
                                             aria-label={t('presets.copy.079', { arg0: profile.name })}
                                         >
@@ -550,7 +550,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                         </button>
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleDelete(profile.name); }}
-                                            className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md"
+                                            className="p-2 text-muted-foreground hover:text-destructive-text hover:bg-destructive/10 rounded-md"
                                             title={t('presets.copy.080')}
                                             aria-label={t('presets.copy.081', { arg0: profile.name })}
                                         >

@@ -243,13 +243,13 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 <div
                     className={cn(
                         "absolute bottom-0 left-0 right-0 transition-all duration-75 ease-out",
-                        isClipping ? "bg-destructive shadow-[0_0_10px_currentColor]" : "bg-emerald-500"
+                        isClipping ? "bg-meter-danger shadow-[0_0_10px_currentColor]" : "bg-success"
                     )}
                     style={{ height: `${pct}%` }}
                 />
 
                 {/* Grid */}
-                <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.1)_1px,transparent_1px)] dark:bg-[linear-gradient(rgba(0,0,0,0.5)_1px,transparent_1px)] bg-[size:100%_4px] pointer-events-none" />
+                <div className="absolute inset-0 meter-grid pointer-events-none" />
 
                 {/* Label */}
                 <div className="absolute bottom-1 left-0 right-0 text-[8px] text-center text-muted-foreground font-mono pointer-events-none mix-blend-difference opacity-0 group-hover:opacity-100 transition-opacity">{label}</div>
@@ -296,7 +296,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             {gainMessage && (
                 <span
                     role="alert"
-                    className="absolute bottom-0.5 left-3 right-3 truncate text-xs leading-4 text-amber-700 dark:text-amber-300"
+                    className="absolute bottom-0.5 left-3 right-3 truncate text-xs leading-4 text-warning"
                     title={gainMessage}
                 >
                     {t('master.gainUnknown')}
@@ -305,7 +305,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             {/* Label */}
             <div className="hidden sm:flex flex-col items-end justify-center min-w-[60px]">
                 <div className="flex items-center gap-2 text-muted-foreground font-bold font-mono tracking-widest text-xs">
-                    <MdGraphicEq className={cn("w-3 h-3", isClipping ? 'text-destructive animate-pulse' : 'text-emerald-500')} />
+                    <MdGraphicEq className={cn("w-3 h-3", isClipping ? 'text-destructive-text animate-pulse' : 'text-success')} />
                     {t('master.label')}
                 </div>
                 <div className="text-xs text-muted-foreground font-mono tracking-tight">
@@ -355,11 +355,11 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                     <span
                         className={cn(
                             "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold font-mono",
-                            !isRunning ? "text-muted-foreground border-border bg-muted" : broadcastFailed ? "text-destructive border-destructive/50 bg-destructive/10" : isFxActive
-                                ? "text-amber-800 dark:text-amber-300 border-amber-500/40 bg-amber-500/10"
+                            !isRunning ? "text-muted-foreground border-border bg-muted" : broadcastFailed ? "text-destructive-text border-destructive/50 bg-destructive/10" : isFxActive
+                                ? "text-warning border-warning/40 bg-warning/10"
                                 : isCleanActive
-                                    ? "text-sky-800 dark:text-sky-300 border-sky-500/40 bg-sky-500/10"
-                                    : "text-emerald-800 dark:text-emerald-300 border-emerald-500/40 bg-emerald-500/10"
+                                    ? "text-info border-info/40 bg-info/10"
+                                    : "text-success border-success/40 bg-success/10"
                         )}
                     >
                         {signalLabel}
@@ -371,8 +371,8 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                             "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-bold font-mono transition-colors",
                             stats.noiseReductionEnabled
                                 ? noiseMode === "high" || noiseMode === "venue"
-                                    ? "text-amber-800 dark:text-amber-300 border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20"
-                                    : "text-sky-800 dark:text-sky-300 border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20"
+                                    ? "text-warning border-warning/40 bg-warning/10 hover:bg-warning/20"
+                                    : "text-info border-info/40 bg-info/10 hover:bg-info/20"
                                 : "text-muted-foreground border-border bg-muted/40 hover:bg-muted"
                         )}
                         title={t('master.nrHint', {mode: noiseModeLabel, rate: effectiveSampleRate})}
@@ -383,7 +383,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                         )}
                     </button>
                     {hasRecentGlitch && (
-                        <MdBolt className="w-3.5 h-3.5 text-orange-500 animate-pulse" title={t('master.glitch')} />
+                        <MdBolt className="w-3.5 h-3.5 text-warning animate-pulse" title={t('master.glitch')} />
                     )}
                 </div>
             )}

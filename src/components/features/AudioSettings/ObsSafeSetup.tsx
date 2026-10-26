@@ -89,7 +89,7 @@ export function ObsSafeSetup({
                     {t('settings.ObsSafeSetup.338')}</button>
             )}
             {error && (
-                <p role="alert" className="text-amber-500 break-words">
+                <p role="alert" className="text-warning break-words">
                     {originalObsText(t, error)} {t('settings.ObsSafeSetup.339')}</p>
             )}
             {plan && (
@@ -180,7 +180,7 @@ export function ObsSafeSetup({
                             </p>
                             {h.timing && <p className="text-xs text-muted-foreground">{t('settings.obs.timing', { source: h.timing.source, before: h.timing.currentOffsetMs, after: h.timing.resultOffsetMs, delay: h.timing.additionalDelayMs, note: h.timing.measurement.referenceNote })}</p>}
                             {h.restorable === false && (
-                                <p className="text-xs text-amber-500">
+                                <p className="text-xs text-warning">
                                     {t('settings.ObsSafeSetup.355')}</p>
                             )}
                             <ul>
