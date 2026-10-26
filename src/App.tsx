@@ -258,7 +258,7 @@ function AppContent() {
           onPluginAdded={handlePluginAdded}
         />
 
-        <Toaster position="top-right" theme={theme === 'light' ? 'light' : 'dark'} richColors />
+        <Toaster position="bottom-right" offset={{ bottom: 80, right: 16 }} theme={theme === 'light' ? 'light' : 'dark'} richColors />
       </AppShell>
     </>
   );

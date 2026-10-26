@@ -1319,10 +1319,10 @@ const ja = {
     "master.stopped": "停止中",
     "master.voiceHint": "ボイスチェック（加工前後の比較）",
     "master.voice": "ボイスチェック",
-    "master.outputGain": "出力ゲイン",
+    "master.outputGain": "出力音量",
     "master.unverified": "状態未確認",
     "master.vst": "VST有効",
-    "master.nr": "ノイズ低減ON（設定）",
+    "master.nr": "ノイズ低減ON",
     "master.raw": "VST・ノイズ低減なし",
     "master.noise": "ノイズ",
     "master.speech": "声",
@@ -1398,7 +1398,7 @@ const ja = {
     "app.rackHint": "折りたたんでもエフェクト処理は続きます",
     "device.running": "{host}・稼働中",
     "device.audio": "音声",
-    "master.nrHint": "ノイズ低減: {mode}（持続ノイズ向け。会話・BGMは完全には消えません / {rate}Hz / OFF→弱→学習→会場→強）",
+    "master.nrHint": "ノイズ低減: {mode}（持続ノイズ向け。会話・BGMは完全には消えません / {rate}Hz）。押すと音づくりを開きます",
     "master.samples": "{frames} サンプル",
     "master.counts": "{enabled} 有効 / {total} 総数",
     "wizard.cableBefore": "OBS・Discord へ送る場合は ",
@@ -2270,7 +2270,7 @@ const ja = {
     "pluginBrowser.category.noiseReduction": "ノイズ除去",
     "common.rawDetail": "元の詳細（未翻訳）",
     "autoGain.stateFailed": "音量調整の状態を確認できません。状態を再取得してから操作してください。",
-    "pluginBrowser.scanFailed": "プラグイン一覧を取得できませんでした。元の詳細を確認し、再スキャンしてください。"
+    "pluginBrowser.scanFailed": "プラグイン一覧を取得できませんでした。元の詳細を確認し、再スキャンしてください。",
 } as const;
 export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
@@ -3592,10 +3592,10 @@ const en: Record<MessageKey, string> = {
     "master.stopped": "Stopped",
     "master.voiceHint": "Voice Check (compare before and after)",
     "master.voice": "Voice Check",
-    "master.outputGain": "Output gain",
+    "master.outputGain": "Output volume",
     "master.unverified": "Status unavailable",
     "master.vst": "VST active",
-    "master.nr": "Noise reduction configured ON",
+    "master.nr": "Noise reduction on",
     "master.raw": "No VST or noise reduction",
     "master.noise": "Noise",
     "master.speech": "Voice",
@@ -3671,7 +3671,7 @@ const en: Record<MessageKey, string> = {
     "app.rackHint": "Effects keep running while this section is collapsed",
     "device.running": "{host} · running",
     "device.audio": "Audio",
-    "master.nrHint": "Noise reduction: {mode} (for steady noise; speech and music may remain / {rate} Hz / OFF → Low → Learned → Venue → High)",
+    "master.nrHint": "Noise reduction: {mode} (for steady noise; speech and music may remain / {rate} Hz). Click to open Sound settings",
     "master.samples": "{frames} samples",
     "master.counts": "{enabled} enabled / {total} total",
     "wizard.cableBefore": "To send audio to OBS or Discord, you need ",
@@ -4543,6 +4543,6 @@ const en: Record<MessageKey, string> = {
     "pluginBrowser.category.noiseReduction": "Noise reduction",
     "common.rawDetail": "Original detail (untranslated)",
     "autoGain.stateFailed": "Could not confirm the gain adjustment state. Refresh it before continuing.",
-    "pluginBrowser.scanFailed": "Could not retrieve the plugin list. Check the original detail and rescan."
+    "pluginBrowser.scanFailed": "Could not retrieve the plugin list. Check the original detail and rescan.",
 };
 export function message(locale: Locale, key: MessageKey, args?: Record<string, string | number>): string { return (locale === 'en' ? en : ja)[key].replace(/\{(\w+)\}/g, (token, name: string) => args?.[name] === undefined ? token : String(args[name])); }

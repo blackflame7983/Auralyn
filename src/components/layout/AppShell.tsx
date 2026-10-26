@@ -220,6 +220,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             sampleRate={currentSampleRate}
                             bufferSize={currentBufferSize}
                             onOpenVoiceCheck={onOpenVoiceCheck}
+                            onOpenSoundSettings={onOpenSoundSettings}
                         />
                     </div>
                     </div>

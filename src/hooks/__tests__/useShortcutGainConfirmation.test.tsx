@@ -61,7 +61,7 @@ it('実slider入力は30msの送信待ち中でも旧hotkey確認を失効させ
     const App = () => { useAppEvents(props); return <MasterBar isRunning />; };
     render(<App />); await act(async () => {});
     notify('shortcut-output-gain', intent); await act(async () => {});
-    const slider = screen.getByRole('slider', { name: '出力ゲイン' });
+    const slider = screen.getByRole('slider', { name: '出力音量' });
     slider.focus(); fireEvent.keyDown(slider, { key: 'ArrowRight' });
     await act(async () => finish(observed()));
     expect(slider).toHaveAttribute('aria-valuenow', '31');
