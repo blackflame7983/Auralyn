@@ -118,6 +118,6 @@ it('かんたん表示の稼働中は入出力・声の簡易調整・試聴を�
     expect(screen.getByText('quick')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'マイクと出力先を設定する' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '録音して聴き比べる' }));
-    fireEvent.click(screen.getByRole('button', { name: 'OBS 連携' }));
+    fireEvent.click(screen.getByRole('button', { name: 'OBS連携' }));
     expect(voice).toHaveBeenCalledOnce(); expect(obs).toHaveBeenCalledOnce();
 });

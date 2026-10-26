@@ -216,7 +216,7 @@ it('実useObsUsageで接続設定からlazyガイドへ引き継ぎ、対象取�
     const connect = await screen.findByRole('button', { name: '接続' });
     await waitFor(() => expect(connect).toBeEnabled()); fireEvent.click(connect);
     await screen.findByRole('button', { name: '切断' });
-    fireEvent.click(screen.getByRole('button', { name: '手動の接続手順を開く' }));
+    fireEvent.click(screen.getByRole('button', { name: 'OBS連携ガイドを開く' }));
     await screen.findByRole('button', { name: '機材を使用していない手順を選択' });
     await act(async () => {});
     expect(backend.calls('disconnect_obs')).toHaveLength(0);

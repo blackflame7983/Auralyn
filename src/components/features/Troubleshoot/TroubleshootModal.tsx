@@ -48,6 +48,15 @@ const PURPOSE_OPTIONS: { id: Purpose; label: MessageKey; hint: MessageKey }[] = 
     { id: 'listen', label: 'guide.copy.307', hint: 'guide.copy.308' },
 ];
 
+// セットアップや前回の診断で選んだ用途。同じ質問を繰り返さず、初期値にする。
+const savedPurpose = (): Purpose | null => {
+    let goal: string | null = null;
+    try { goal = localStorage.getItem('vst_host_setup_goal'); } catch { return null; }
+    return goal === 'obs' || goal === 'discord' || goal === 'other' ? goal : goal === 'listening' || goal === 'local' ? 'listen' : null;
+};
+
+const REPORT_STATUS: Record<CheckStatus, string> = { ok: '[OK]', warning: '[!]', error: '[x]', skipped: '[-]', checking: '[...]', pending: '[...]' };
+
 const isVirtualCableName = (name: string) =>
     /virtual|vb-|voicemeeter|cable/i.test(name);
 
@@ -107,6 +116,8 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
     const [isRunning, setIsRunning] = useState(false);
     const [showProbeConfirm, setShowProbeConfirm] = useState(false);
     const [copyDone, setCopyDone] = useState(false);
+    const [choosePurpose, setChoosePurpose] = useState(false);
+    const rememberedPurpose = isOpen ? savedPurpose() : null;
     const routingRef = useRef<RoutingDiagnosticsReport | null>(null);
     const abortRef = useRef(false);
     const probeConfirmRef = useRef<((ok: boolean) => void) | null>(null);
@@ -414,7 +425,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
 
         lines.push(reportT('guide.copy.402'));
         for (const c of reportChecks) {
-            const icon = c.status === 'ok' ? '✅' : c.status === 'warning' ? '⚠️' : c.status === 'error' ? '❌' : c.status === 'skipped' ? '⏭' : '…';
+            const icon = REPORT_STATUS[c.status];
             lines.push(`${icon} ${renderNotice(reportT, c.label)}: ${c.lines ? c.lines.map((line, i) => `${i + 1}. ${renderNotice(reportT, line)}`).join('\n') : typeof c.detail === 'string' ? `${reportT('guide.rawDetail')}: ${c.detail}` : renderNotice(reportT, c.detail ?? c.description)}`);
             if (c.fixHint) lines.push(reportT('guide.copy.403', { arg0: renderNotice(reportT, c.fixHint) }));
         }
@@ -436,6 +447,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
             setChecks([]);
             setIsRunning(false);
             setShowProbeConfirm(false);
+            setChoosePurpose(false);
         }
         // 条件レンダリングによるアンマウント時も診断を確実に中断し、トーンを停止する
         return () => {
@@ -510,7 +522,21 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                     </div>
                 )}
 
-                {phase === 'purpose' && (
+                {phase === 'purpose' && rememberedPurpose && !choosePurpose && (
+                    <div className="p-6 space-y-3 overflow-y-auto">
+                        <p className="text-sm text-muted-foreground">{t('troubleshoot.savedPurpose')}</p>
+                        <button
+                            onClick={() => handleStart(rememberedPurpose)}
+                            disabled={isRunning}
+                            className="w-full text-left p-4 rounded-lg border border-primary/50 bg-primary/5 hover:bg-primary/10 transition-colors"
+                        >
+                            <div className="font-bold text-sm text-foreground">{t('troubleshoot.runFor', { purpose: t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.label) })}</div>
+                            <div className="text-xs text-muted-foreground mt-1">{t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.hint)}</div>
+                        </button>
+                        <button type="button" onClick={() => setChoosePurpose(true)} className="text-xs font-semibold text-primary underline underline-offset-2 hover:opacity-80">{t('troubleshoot.changePurpose')}</button>
+                    </div>
+                )}
+                {phase === 'purpose' && (!rememberedPurpose || choosePurpose) && (
                     <div className="p-6 space-y-3 overflow-y-auto">
                         <p className="text-sm text-muted-foreground mb-2">{t('guide.copy.412')}</p>
                         {PURPOSE_OPTIONS.map(opt => (
@@ -550,7 +576,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                 <div className="mt-0.5 shrink-0">{statusIcon(check.status)}</div>
                                 <div className="flex-1 min-w-0">
                                     <h3 className="font-bold text-sm text-foreground">{renderNotice(t, check.label)}</h3>
-                                    <p className="text-[10px] text-muted-foreground">{renderNotice(t, check.description)}</p>
+                                    <p className="text-xs text-muted-foreground">{renderNotice(t, check.description)}</p>
                                     {check.lines && <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{check.lines.map((line, i) => `${i + 1}. ${renderNotice(t, line)}`).join('\n')}</p>}
                                     {check.detail && (
                                         <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{typeof check.detail === 'string' ? <>{t('guide.rawDetail')}: {check.detail}</> : renderNotice(t, check.detail)}</p>
