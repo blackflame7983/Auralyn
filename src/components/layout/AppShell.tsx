@@ -143,9 +143,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <main
                     className={`flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent pb-4 transition-all duration-300 ${isLargeMeterOpen ? 'pr-36 lg:pr-36' : ''}`}
                 >
-                    <div className="max-w-4xl mx-auto">
+                    <div className="max-w-4xl mx-auto min-[1440px]:max-w-none min-[1440px]:grid min-[1440px]:grid-cols-2 min-[1440px]:gap-x-6">
                         <div
-                            className="mb-3 flex flex-wrap items-center justify-between gap-3"
+                            className="mb-3 flex flex-wrap items-center justify-between gap-3 min-[1440px]:col-span-2"
                             aria-label={t('shell.view')}
                         >
                             <div
@@ -179,7 +179,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             </button>
                             <span id="loudness-toggle-description" className="sr-only">{t('shell.loudnessHint')}</span>
                         </div>
-                        <HomePanels
+                        <div className="min-w-0"><HomePanels
                             audioReady={audioReady}
                             statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
                             isEngineRunning={isEngineRunning}
@@ -188,7 +188,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                             onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}
                             onOpenSoundSettings={onOpenSoundSettings} onOpenVoiceCheck={onOpenVoiceCheck}
                             onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot}
-                        />
+                        /></div>
+                        <div className="min-w-0">
                         <LoudnessCheck
                             enabled={loudnessEnabled}
                             running={isEngineRunning}
@@ -196,6 +197,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             onVoiceCheck={onOpenVoiceCheck}
                         />
                         {children}
+                        </div>
                     </div>
                 </main>
 

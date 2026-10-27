@@ -16,6 +16,42 @@ function open(fail = false) {
     });
     render(<ShortcutsPanel />);
 }
+it('キー入力で既存形式を作り、重複と OS 予約を検出し保存しない', async () => {
+    open();
+    const input = screen.getByRole('button', { name: 'ミュートONのキーを入力' });
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.click(input);
+    fireEvent.keyDown(input, { key: 'm', code: 'KeyM', altKey: true });
+    expect(screen.getByRole('status')).toHaveTextContent('別の操作に登録');
+    fireEvent.keyDown(input, { key: 'F4', code: 'F4', altKey: true });
+    expect(screen.getByRole('status')).toHaveTextContent('OS の予約操作');
+    fireEvent.keyDown(input, { key: 'z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
+    expect(input).toHaveTextContent('Control+Shift+KeyZ');
+    fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
+    await screen.findByText('キー設定を保存しました。');
+    expect(invoke).toHaveBeenCalledWith('save_shortcuts', { bindings: [
+        { action: 'muteToggle', shortcut: 'Alt+KeyM' }, { action: 'muteOn', shortcut: 'Control+Shift+KeyZ' },
+    ] });
+});
+it('未対応キーと Escape は登録せず、取り消して既存の値を保持する', async () => {
+    open();
+    const input = screen.getByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.click(input); fireEvent.keyDown(input, { key: 'a', code: 'KeyA' });
+    expect(screen.getByRole('status')).toHaveTextContent('対応していません');
+    fireEvent.keyDown(input, { key: 'Escape', code: 'Escape' });
+    expect(input).toHaveTextContent('Alt+KeyM');
+    expect(invoke).not.toHaveBeenCalledWith('save_shortcuts', expect.anything());
+});
+it('保存済みの修飾キー順が異なっても同じ組合せを重複として検出する', async () => {
+    vi.mocked(invoke).mockImplementation(async command => command === 'get_shortcuts' ? { bindings: [{ action: 'muteToggle', shortcut: 'Alt+Control+KeyM' }], errors: [] } : null);
+    render(<ShortcutsPanel />);
+    const input = screen.getByRole('button', { name: 'ミュートONのキーを入力' });
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.click(input); fireEvent.keyDown(input, { key: 'm', code: 'KeyM', ctrlKey: true, altKey: true });
+    expect(screen.getByRole('status')).toHaveTextContent('別の操作に登録');
+    expect(invoke).not.toHaveBeenCalledWith('save_shortcuts', expect.anything());
+});
 it('内部コードを入力せず選択して保存し、解除と未保存の取り消しができる', async () => {
     open();
     const key = await screen.findByRole('combobox', { name: 'ミュートを切り替えるの通常キー' });
@@ -54,7 +90,7 @@ it('歌と雑談は明示登録できるが自動キーはなく、9件以上は
     const labels = ['ミュートを切り替える', 'ミュートON', 'ミュートOFF', '原音比較を切り替える', '原音比較ON', '原音比較OFF', '出力ゲインを1%上げる', '出力ゲインを1%下げる', '歌にする'];
     labels.forEach((label, index) => {
         fireEvent.change(screen.getByRole('combobox', { name: `${label}の修飾キー` }), { target: { value: 'Alt' } });
-        fireEvent.change(screen.getByRole('combobox', { name: `${label}の通常キー` }), { target: { value: `F${index + 1}` } });
+        fireEvent.change(screen.getByRole('combobox', { name: `${label}の通常キー` }), { target: { value: `F${index + 11}` } });
     });
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
     expect(screen.getByRole('status')).toHaveTextContent('8件まで');
@@ -62,7 +98,7 @@ it('歌と雑談は明示登録できるが自動キーはなく、9件以上は
     fireEvent.click(screen.getByRole('button', { name: '登録を解除：出力ゲインを1%下げる' }));
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
     await screen.findByText('キー設定を保存しました。');
-    expect(invoke).toHaveBeenCalledWith('save_shortcuts', expect.objectContaining({ bindings: expect.arrayContaining([{ action: 'singingOn', shortcut: 'Alt+F9' }]) }));
+    expect(invoke).toHaveBeenCalledWith('save_shortcuts', expect.objectContaining({ bindings: expect.arrayContaining([{ action: 'singingOn', shortcut: 'Alt+F19' }]) }));
 });
 
 it('ノイズ低減の切替は既定キーなしで明示登録し、noiseToggleとして保存する', async () => {

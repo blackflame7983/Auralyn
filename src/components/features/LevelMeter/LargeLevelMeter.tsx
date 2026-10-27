@@ -90,6 +90,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
                     </div>
                     <input
                         type="range"
+                        aria-label={t('meter.input')}
                         min="0"
                         max="200"
                         value={inputGain * 100}

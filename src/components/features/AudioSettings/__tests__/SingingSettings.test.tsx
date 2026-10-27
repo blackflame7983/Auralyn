@@ -26,6 +26,20 @@ beforeEach(() => {
     vi.spyOn(audioApi, 'setBuiltInEffects').mockResolvedValue(undefined);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.mocked(invoke).mockReset(); });
+it('ホットキーの入力中に Escape すると入力だけを取り消し、設定は閉じない', async () => {
+    vi.mocked(invoke).mockImplementation(async command => command === 'get_shortcuts' ? { bindings: [{ action: 'muteToggle', shortcut: 'Alt+KeyM' }], errors: [] } : null);
+    const onClose = vi.fn();
+    render(<AudioSettingsModal isOpen onClose={onClose} onConfigChange={vi.fn()} />);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'ホットキー' }), { button: 0, ctrlKey: false });
+    const button = await screen.findByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.keyDown(button, { key: 'Escape', code: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(button).toHaveTextContent('Alt+KeyM');
+});
 it('設定画面の遅延根拠は手動停止で失効し、遅い旧stats応答を受理しない', async () => {
     localStorage.setItem('vst_host_beginner_mode', 'false');
     vi.mocked(invoke).mockResolvedValue(undefined);
@@ -88,7 +102,8 @@ it.each([true, false])('音づくりの基本を先に置き、歌向けの欄�
     expect(screen.queryByRole('combobox', { name: '表示言語' })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('tab', { name: '外観' }), { key: 'Enter' });
     expect(screen.getByRole('combobox', { name: '表示言語' })).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'システム設定タブを表示' })).toHaveLength(1);
+    expect(screen.getByRole('tab', { name: 'システム' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'ホットキー' })).toBeInTheDocument();
 });
 
 it('プロファイル適用でモードが変わっても音づくりの表示を古い統計値へ戻さず、次の操作で新しい設定を送る', async () => {
