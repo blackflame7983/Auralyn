@@ -1,3 +1,4 @@
+import { InfoPopover } from '@/components/ui/InfoPopover';
 import { sessionMode } from './lib/temporarySession';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useBeginnerMode } from './hooks/useBeginnerMode';
@@ -177,15 +178,15 @@ function AppContent() {
         />
         <LiveModeBar model={liveModel} refreshKey={isModalOpen} />
         {isBeginnerMode ? (
-          <details className="mb-4">
+          <div className="relative mb-4">
+          <div className="absolute right-0 top-2"><InfoPopover label={t('info.rack')}>{t('app.rackHint')}</InfoPopover></div>
+          <details>
             <summary className="cursor-pointer py-3 text-sm font-semibold">
               {t('app.rack')}
-              <span className="ml-2 text-xs font-normal text-muted-foreground">
-                {t('app.rackHint')}
-              </span>
             </summary>
             {pluginRack}
           </details>
+          </div>
         ) : (
           pluginRack
         )}

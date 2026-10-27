@@ -19,6 +19,18 @@ function openBrowser() {
     return select;
 }
 
+it('保護と操作の通知があっても一覧を表示し、実際の取得失敗と区別する', () => {
+    const props = { isOpen: true, onClose: vi.fn(), plugins, isLoading: false, onScan: vi.fn(), onPluginSelect: vi.fn(), protectionNotice: '保護中: 追加分は自動保存されません', notice: '復元を再試行してください' };
+    const view = render(<PluginBrowserModal {...props} />);
+    expect(screen.getByText(props.protectionNotice)).toBeInTheDocument();
+    expect(screen.getByText(props.notice)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Legacy EQ を追加' })).toBeInTheDocument();
+    expect(screen.queryByText(/プラグイン一覧を取得できませんでした/)).not.toBeInTheDocument();
+    view.rerender(<PluginBrowserModal {...props} error="scan error" />);
+    expect(screen.getByText(/プラグイン一覧を取得できませんでした/)).toBeInTheDocument();
+    expect(screen.getByText(props.protectionNotice)).toBeInTheDocument();
+});
+
 it('欠損メタデータを含んでも検索不一致・名前・ベンダー・カテゴリを検索できる', () => {
     const select = openBrowser();
     const search = screen.getByRole('textbox', { name: 'プラグイン検索' });

@@ -95,6 +95,7 @@ it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態
 it('音量チェックは両表示で同じ表示切替行に一つだけあり、モード変更時に閉じる', () => {
     const view = render(<AppShell {...commonProps} isBeginnerMode><p>rack</p></AppShell>);
     const toggle = screen.getByRole('button', { name: '音量チェック' });
+    expect(toggle).toHaveAccessibleDescription(message('ja', 'shell.loudnessHint'));
     const row = toggle.parentElement;
     expect(row).toHaveAttribute('aria-label', message('ja', 'shell.view'));
     expect(toggle).toHaveAttribute('aria-pressed', 'false');

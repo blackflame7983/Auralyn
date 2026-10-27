@@ -3,6 +3,7 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { shortcutErrorNotices, type ShortcutError } from '@/lib/shortcutNotice';
+import { InfoPopover } from '@/components/ui/InfoPopover';
 
 const actions = {
     muteToggle: 'settings.ShortcutsPanel.363', muteOn: 'settings.ShortcutsPanel.364', muteOff: 'settings.ShortcutsPanel.365',
@@ -61,8 +62,10 @@ export function ShortcutsPanel() {
     };
     return <section className="space-y-3 rounded-xl border border-border p-4">
         <h3 className="font-bold">{t('settings.ShortcutsPanel.378')}</h3>
-        <p className="text-xs text-muted-foreground">{t('settings.ShortcutsPanel.379')}</p>
-        <p className="text-xs text-muted-foreground">{t('settings.ShortcutsPanel.380')}</p>
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <p>{t('shortcuts.streamDeckHint')}</p>
+            <InfoPopover label={t('shortcuts.details')}><p>{t('settings.ShortcutsPanel.379')}</p><p className="mt-2">{t('settings.ShortcutsPanel.380')}</p></InfoPopover>
+        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{(Object.entries(actions) as [Action, (typeof actions)[Action]][]).map(([action, labelKey]) => {
             const label = t(labelKey);
             const pair = split(values[action] ?? '');

@@ -166,11 +166,12 @@ export const AppShell: React.FC<AppShellProps> = ({
                                 type="button"
                                 aria-pressed={loudnessEnabled}
                                 onClick={() => setLoudnessEnabled(value => !value)}
-                                title={t('shell.loudnessHint')}
+                                aria-describedby="loudness-toggle-description"
                                 className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted aria-pressed:border-primary aria-pressed:bg-muted aria-pressed:ring-1 aria-pressed:ring-primary/40"
                             >
                                 {t('shell.loudness')}
                             </button>
+                            <span id="loudness-toggle-description" className="sr-only">{t('shell.loudnessHint')}</span>
                         </div>
                         <HomePanels
                             audioReady={audioReady}

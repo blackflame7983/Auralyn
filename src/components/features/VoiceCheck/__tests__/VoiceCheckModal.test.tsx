@@ -32,6 +32,30 @@ beforeEach(() => {
     vi.spyOn(audioApi, 'stopVoiceCheckPlayback').mockResolvedValue(undefined);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
+it('録音前は試聴を折りたたみ、録音完了後は開いて再生操作を表示する', async () => {
+    open();
+    const details = screen.getByText('試聴先と再生').closest('details')!;
+    await waitFor(() => expect(details).not.toHaveAttribute('open'));
+    expect(screen.getByText('マイクの音・出力音量・ミュートは変わりません。配信・通話に乗らないヘッドホンなどを選んでください。OBSのデスクトップ音声やループバックが試聴先を拾う場合は、試聴音も配信・通話へ流れます。')).not.toBeVisible();
+    act(() => {
+        for (const [event, callback] of vi.mocked(listen).mock.calls) {
+            if (event === 'voice-check-state') callback({ event, id: 1, payload: { state: 'ready', position_ms: 0, duration_ms: 1000 } });
+        }
+    });
+    await waitFor(() => expect(details).toHaveAttribute('open'));
+    expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeVisible();
+});
+
+it('試聴エラーは録音前でも開き、停止と再試行の操作を表示する', async () => {
+    vi.mocked(voicePreviewApi.request).mockImplementation(async request => previewSnapshot(request, { error: '試聴の停止を確認できません' }));
+    open();
+    const details = screen.getByText('試聴先と再生').closest('details')!;
+    await waitFor(() => expect(details).toHaveAttribute('open'));
+    expect(screen.getByText('試聴の停止を確認できません')).toBeVisible();
+    expect(screen.getByRole('button', { name: '試聴を停止' })).toBeVisible();
+    expect(screen.getByText('再生できないとき')).toBeVisible();
+});
+
 it('locale更新による親再描画でも録音とdialogを保持し、previewをclose/cancelしない', async () => {
     const store = createLocaleStore(() => 'ja', () => true);
     const close = vi.fn();

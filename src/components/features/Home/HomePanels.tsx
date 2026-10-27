@@ -36,7 +36,7 @@ function InputMeterBar({ running }: { running: boolean }) {
                 className="h-3 min-w-0 flex-1 overflow-hidden rounded-full bg-muted ring-1 ring-border">
                 <div className={`h-full transition-all duration-75 ease-out ${clipped ? 'bg-meter-danger' : 'bg-success'}`} style={{ width: `${pct}%` }} />
             </div>
-            <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(meterStatusLabel(state))}</span>
+            {state !== 'live' && <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(meterStatusLabel(state))}</span>}
         </div>
     );
 }

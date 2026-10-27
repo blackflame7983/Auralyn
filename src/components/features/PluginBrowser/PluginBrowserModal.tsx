@@ -13,6 +13,8 @@ interface PluginBrowserModalProps {
   plugins: VstPlugin[];
   isLoading: boolean;
   error?: string | null;
+  notice?: string | null;
+  protectionNotice?: string | null;
   onScan: () => void;
 }
 
@@ -102,6 +104,8 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   plugins: suppliedPlugins,
   isLoading,
   error,
+  notice,
+  protectionNotice,
   onScan
 }) => {
     const t = useMessages();
@@ -317,6 +321,9 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
             ))}
           </div>
         )}
+
+        {protectionNotice && <p role="status" className="mb-3 rounded border border-warning/30 bg-warning/10 p-2 text-xs">{protectionNotice}</p>}
+        {notice && notice !== protectionNotice && <p role="status" className="mb-3 text-xs text-warning">{notice}</p>}
 
         {/* List */}
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">

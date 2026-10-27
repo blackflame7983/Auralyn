@@ -71,6 +71,8 @@ interface PluginsApi {
     availablePlugins: VstPlugin[];
     isScanning: boolean;
     error: string | null;
+    scanError?: string | null;
+    sessionProtectionReason?: string | null;
     scanPlugins: () => Promise<void>;
     addPlugin: (vstPlugin: VstPlugin) => Promise<boolean>;
     loadPreset: (name: string) => Promise<boolean>;
@@ -167,7 +169,9 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onPluginSelect={handlePluginSelect}
                         plugins={pluginsApi.availablePlugins}
                         isLoading={pluginsApi.isScanning}
-                        error={pluginsApi.error}
+                        error={pluginsApi.scanError}
+                        notice={pluginsApi.error}
+                        protectionNotice={pluginsApi.sessionProtectionReason}
                         onScan={pluginsApi.scanPlugins}
                     />
                 </Suspense>

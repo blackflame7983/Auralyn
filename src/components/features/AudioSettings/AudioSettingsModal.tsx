@@ -1,3 +1,4 @@
+import { InfoPopover } from '@/components/ui/InfoPopover';
 import { PeakProtectionPanel } from './PeakProtectionPanel';
 import { NoiseMeasurementPanel } from './NoiseMeasurementPanel';
 import { LiveOutputPanel } from './LiveOutputPanel';
@@ -768,9 +769,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         })}
                       </div>
                       {(selectedBufferSize <= 256 || selectedBufferSize >= 1024) && (
-                        <p className="text-xs text-muted-foreground text-center">
-                          {selectedBufferSize <= 256 ? t('settings.AudioSettingsModal.057') : t('settings.AudioSettingsModal.058')}
-                        </p>
+                        selectedBufferSize <= 256 ? <InfoPopover label={t('info.fast')}>{t('settings.AudioSettingsModal.057')}</InfoPopover> : <p className="text-xs text-muted-foreground text-center">{t('settings.AudioSettingsModal.058')}</p>
                       )}
                     </div>
 
@@ -854,7 +853,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {!isBeginnerMode && <>
                 {/* Latency Estimate */}
                 <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2 flex items-center justify-between mt-4">
-                  <span>{t('settings.AudioSettingsModal.071')}</span>
+                  <span className="flex items-center gap-1">{t('settings.AudioSettingsModal.068')} <InfoPopover label={t('info.buffer')}>{t('settings.AudioSettingsModal.071')}</InfoPopover></span>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-foreground">{selectedBufferMs === null ? t('settings.AudioSettingsModal.072') : `${selectedBufferMs.toFixed(2)} ms`}</span>
                   </div>
@@ -890,7 +889,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 </>}
                 {/* Preset Section */}
                 <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-3">
-                  <p className="text-sm text-muted-foreground">{t('settings.AudioSettingsModal.085')}</p>
+                  <InfoPopover label={t('info.preset')}>{t('settings.AudioSettingsModal.085')}</InfoPopover>
                   <div className="flex items-center justify-between">
                     <label className="text-sm font-medium text-muted-foreground">{t('settings.AudioSettingsModal.086')}</label>
                     <div className="flex gap-2">
@@ -952,8 +951,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h3 ref={soundStart} tabIndex={-1} className="text-sm font-bold text-foreground">{t('settings.AudioSettingsModal.105')}</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {t('settings.AudioSettingsModal.106')}</p>
+
                     </div>
                     <Switch
                       checked={!!engineStats?.noiseReductionEnabled}
@@ -962,7 +960,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     />
                   </div>
 
-                  <div className="text-xs rounded-md border border-warning/30 bg-warning/10 px-3 py-2 space-y-1.5 text-warning">
+                  <InfoPopover label={t('info.noise')}>
+                  <div className="space-y-1.5">
                     <p>
                       <span className="font-bold">{t('settings.AudioSettingsModal.108')}</span> {t('settings.AudioSettingsModal.109')}</p>
                     <p>
@@ -986,6 +985,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       )}
                     </p>
                   </div>
+                  </InfoPopover>
 
                   <fieldset className="space-y-2"><legend className="text-xs font-medium">{t('structure.noise.standard')}</legend>
                     <div className="grid grid-cols-2 gap-2">
@@ -1080,7 +1080,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <div className="flex items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2">
                     <div>
                       <Label className="text-xs font-bold text-foreground">{t('settings.AudioSettingsModal.127')}</Label>
-                      <p className="text-xs text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.128')}</p>
+                      <InfoPopover label={t('info.voiceGuard')}>{t('settings.AudioSettingsModal.128')}</InfoPopover>
                     </div>
                     <Switch
                       checked={noiseVoiceGuard}
@@ -1204,9 +1204,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 </RadioGroup>
               </div>
 
-              <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md border border-border">
-                <p>{t('settings.AudioSettingsModal.134')}</p>
-              </div>
             </div>
             <p className="text-sm text-muted-foreground">{t('settings.AudioSettingsModal.136')}</p>
             <button type="button" onClick={enableSystemTab} className="rounded-md border border-border px-3 py-2 text-sm">{t('settings.AudioSettingsModal.137')}</button>

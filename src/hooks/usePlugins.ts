@@ -29,6 +29,7 @@ export const usePlugins = () => {
     const [isScanning, setIsScanning] = useState(false);
     const t = useMessages();
     const [error, setError] = useState<PluginNotice | null>(null);
+    const [scanError, setScanError] = useState<PluginNotice | null>(null);
     const setLegacyError = useCallback((value: import('react').SetStateAction<string | null>) => {
         setError(previous => typeof value === 'function' ? value(previous === null ? null : renderPluginNotice(defaultPluginMessages, previous)) : value);
     }, []);
@@ -371,13 +372,13 @@ export const usePlugins = () => {
 
     const scanPlugins = useCallback(async () => {
         setIsScanning(true);
-        setError(null);
+        setScanError(null);
         try {
             const result = await audioApi.scanPlugins();
             setAvailablePlugins(result);
         } catch (err) {
             console.error("Failed to scan plugins:", err);
-            setError(pluginNotice('pluginNotices.scanFailed'));
+            setScanError(pluginNotice('pluginNotices.scanFailed'));
         } finally {
             setIsScanning(false);
         }
@@ -755,9 +756,8 @@ export const usePlugins = () => {
         applyTemplate,
         isLoading,
         isScanning,
-        error: sessionProtectionReason && !(typeof error === 'object' && error?.includesProtectionExplanation)
-            ? `${error ? `${renderPluginNotice(t, error)} ` : ''}${sessionProtectionReason}`
-            : error === null ? null : renderPluginNotice(t, error),
+        error: error === null ? null : renderPluginNotice(t, error),
+        scanError: scanError === null ? null : renderPluginNotice(t, scanError),
         restoreSession,
         recoverSession,
         keepSessionStopped,
