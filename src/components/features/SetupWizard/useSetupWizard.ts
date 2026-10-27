@@ -224,6 +224,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
     const selectGoal = (goal: UserGoal) => {
         setConfig(prev => ({ ...prev, goal }));
         localStorage.setItem('vst_host_setup_goal', goal);
+        window.dispatchEvent(new Event('preparation-purpose-changed'));
         setState('input_selection');
         // Auto-select will trigger via useEffect if devices are ready
     };

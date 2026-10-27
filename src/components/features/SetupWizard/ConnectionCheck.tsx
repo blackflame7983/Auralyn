@@ -1,3 +1,4 @@
+import { preparationReach } from '@/lib/preparation';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { receiverDeviceNotice } from '../../../lib/audioRouting';
@@ -114,6 +115,7 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                     return;
                 }
                 setResult(next);
+                preparationReach.record(next);
                 if (next.reached === true) {
                     setMessage(
                         notice('guide.copy.264'),

@@ -174,3 +174,20 @@ it('セットアップで選んだ用途を初期値にし、別の用途にも�
     fireEvent.click(screen.getByRole('button', { name: '用途を変える' }));
     expect(screen.getByRole('button', { name: /OBS（配信・録画）/ })).toBeInTheDocument();
 });
+
+it('診断から用途を切り替えると、保存後に準備欄へ共用の変更通知を送る', async () => {
+    localStorage.setItem('vst_host_setup_goal', 'listening');
+    vi.mocked(invoke).mockResolvedValue({ is_running: false, config: null });
+    const observed: (string | null)[] = [];
+    const onPurpose = () => { observed.push(localStorage.getItem('vst_host_setup_goal')); };
+    window.addEventListener('preparation-purpose-changed', onPurpose);
+    try {
+        render(<TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: '用途を変える' }));
+        fireEvent.click(screen.getByRole('button', { name: /OBS（配信・録画）/ }));
+        await screen.findByRole('button', { name: '設定を開く' });
+        expect(observed).toEqual(['obs']);
+    } finally {
+        window.removeEventListener('preparation-purpose-changed', onPurpose);
+    }
+});

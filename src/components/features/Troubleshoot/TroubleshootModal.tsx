@@ -388,6 +388,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
     const handleStart = (p: Purpose) => {
         setPurpose(p);
         localStorage.setItem('vst_host_setup_goal', p === 'listen' ? 'local' : p);
+        window.dispatchEvent(new Event('preparation-purpose-changed'));
         void runDiagnostics(p);
     };
 

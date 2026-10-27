@@ -29,6 +29,7 @@ pub const UI_KEYS: &[&str] = &[
     "vst_host_plugin_recent",
     "vst_host_session_plugins",
     "vst_host_setup_goal",
+    "auralyn_preparation_context",
     "vst_host_wizard_done",
     "vst_host_tutorial_completed",
     "vst_host_settings_advanced",
@@ -150,7 +151,28 @@ fn validate(bundle: &Bundle) -> Result<(), String> {
                             .all(|v| v.as_str().is_some_and(|s| s.len() <= 32768))
                 })
             }
-            "vst_host_setup_goal" => ["obs", "discord", "local"].contains(&value.as_str()),
+            "vst_host_setup_goal" => {
+                ["obs", "discord", "local", "listening", "other"].contains(&value.as_str())
+            }
+            "auralyn_preparation_context" => parsed.as_object().is_some_and(|context| {
+                context.len() == 4
+                    && context
+                        .get("location")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|v| ["home", "venue"].contains(&v))
+                    && context
+                        .get("usage")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|v| ["", "obs", "discord", "listening", "other"].contains(&v))
+                    && context
+                        .get("signal")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|v| ["unknown", "separate", "mixed"].contains(&v))
+                    && context
+                        .get("receiver")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|v| v.chars().count() <= 200)
+            }),
             _ => ["true", "false"].contains(&value.as_str()),
         };
         if !valid {
@@ -654,6 +676,31 @@ mod tests {
         b.version = 2;
         assert!(validate(&b).is_err());
     }
+    #[test]
+    fn preparation_migration_preserves_conditions_but_rejects_confirmation_records() {
+        let mut b = Bundle {
+            format: "auralyn-settings".into(),
+            version: 1,
+            app_version: "1".into(),
+            ui: BTreeMap::new(),
+            files: BTreeMap::new(),
+        };
+        for goal in ["obs", "discord", "listening", "other", "local"] {
+            b.ui.insert("vst_host_setup_goal".into(), goal.into());
+            assert!(validate(&b).is_ok());
+        }
+        let mut conditions = serde_json::json!({"location":"venue","usage":"other","signal":"mixed","receiver":"Custom input"});
+        b.ui.insert("auralyn_preparation_context".into(), conditions.to_string());
+        assert!(validate(&b).is_ok());
+        conditions["confirmed"] = serde_json::json!(true);
+        b.ui.insert("auralyn_preparation_context".into(), conditions.to_string());
+        assert!(validate(&b).is_err());
+        conditions.as_object_mut().unwrap().remove("confirmed");
+        conditions["location"] = serde_json::json!("invalid");
+        b.ui.insert("auralyn_preparation_context".into(), conditions.to_string());
+        assert!(validate(&b).is_err());
+    }
+
     #[test]
     fn invalid_gain_and_json_are_rejected() {
         let mut b = Bundle {

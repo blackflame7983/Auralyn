@@ -1,5 +1,22 @@
 use serde::{Deserialize, Serialize};
 
+/// 準備画面の確認を結び付ける制御側の状態。音声の到達や聴感を保証しない。
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparationSnapshot {
+    pub engine_epoch: String,
+    pub processing_revision: String,
+    pub routing_revision: String,
+    pub input_gain: f32,
+    pub input_channels: [usize; 2],
+    pub output_gain: f32,
+    pub output_revision: String,
+    pub muted: bool,
+    pub controls_pending: bool,
+    pub nr_backend: String,
+    pub nr_model: String,
+}
+
 /// Startの同じ要求で初回callbackへ渡す制御意図。旧Startでは省略する。
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -404,6 +421,8 @@ pub enum Response {
         vendor: String,
     },
     RuntimeStats {
+        #[serde(default)]
+        preparation: Option<Box<PreparationSnapshot>>,
         active_plugin_count: u32,
         enabled_plugin_count: u32,
         pending_unload_count: u32,
@@ -597,12 +616,14 @@ mod cohort_compatibility_tests {
             .unwrap();
             let super::Response::RuntimeStats {
                 resampler_cohort_timing,
+                preparation,
                 ..
             } = response
             else {
                 panic!()
             };
             assert!(resampler_cohort_timing.is_none());
+            assert!(preparation.is_none());
         }
     }
 }

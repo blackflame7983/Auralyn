@@ -94,6 +94,7 @@ pub struct EngineTuningConfig {
 #[derive(Debug, Serialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct EngineRuntimeStats {
+    pub preparation: Option<Box<crate::ipc::PreparationSnapshot>>,
     pub active_plugin_count: u32,
     pub enabled_plugin_count: u32,
     pub pending_unload_count: u32,
@@ -1820,6 +1821,7 @@ impl AudioHost {
 
         match self.execute_running_command(IpcCommand::GetRuntimeStats)? {
             IpcResponse::RuntimeStats {
+                preparation,
                 active_plugin_count,
                 enabled_plugin_count,
                 pending_unload_count,
@@ -1856,6 +1858,7 @@ impl AudioHost {
                 built_in_singing,
                 built_in_reverb,
             } => Ok(EngineRuntimeStats {
+                preparation,
                 active_plugin_count,
                 enabled_plugin_count,
                 pending_unload_count,

@@ -159,6 +159,7 @@ function AppContent() {
         currentHost={audioConfig.host}
         currentSampleRate={audioConfig.sampleRate}
         currentBufferSize={audioConfig.bufferSize}
+        preparationBlocked={isModalOpen || isInitializing}
         currentInput={audioConfig.input}
         currentOutput={audioConfig.output}
         isEngineRunning={isEngineRunning}

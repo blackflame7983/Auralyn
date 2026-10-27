@@ -1,3 +1,4 @@
+import { preparationReach } from '@/lib/preparation';
 import { message, type MessageKey } from '@/i18n/messages';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
@@ -223,6 +224,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
           setObsReachResult(result);
           const current = await revalidateReach(result);
           if (!reachAlive.current || request !== reachRequest.current || document.hidden) return;
+          if (current || result.reached === 'unsupported') preparationReach.record(result);
           if (result.reached === 'unsupported') {
             toast.info(t('settings.ObsConnectionSettings.274'), {
               description: t('settings.ObsConnectionSettings.275'),

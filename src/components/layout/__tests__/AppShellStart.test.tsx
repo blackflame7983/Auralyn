@@ -11,8 +11,8 @@ vi.mock('../Header', () => ({ Header: () => null }));
 vi.mock('../MasterBar', () => ({ MasterBar: () => null }));
 vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: () => null }));
 vi.mock('../../features/Home/VoiceQuickControls', () => ({ VoiceQuickControls: () => <p>quick</p> }));
-beforeEach(() => vi.mocked(listen).mockClear());
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+beforeEach(() => { vi.mocked(listen).mockClear(); localStorage.clear(); });
+afterEach(async () => { await act(async () => {}); cleanup(); vi.restoreAllMocks(); });
 
 it.each([false, true])('音声停止中の入口は設定を開き、稼働中には表示しない（稼働=%s）', running => {
     const onOpenSettings = vi.fn();
@@ -27,7 +27,7 @@ it.each([false, true])('音声停止中の入口は設定を開き、稼働中�
     else { fireEvent.click(button!); expect(onOpenSettings).toHaveBeenCalledOnce(); }
 });
 
-it('かんたん表示はつなぐ・整える・確かめるの3段で、未設定時は設定を唯一の主操作にする', () => {
+it('未設定時は状態帯・調整・準備を示し、音声を自動変更しない', () => {
     const sound = vi.fn();
     const voice = vi.fn();
     render(<AppShell isBeginnerMode onDisplayModeChange={vi.fn()} onOpenOBSSettings={vi.fn()}
@@ -37,7 +37,7 @@ it('かんたん表示はつなぐ・整える・確かめるの3段で、未設
         <p>エフェクト設定</p>
     </AppShell>);
     expect(screen.getByRole('button', { name: '音量チェック' })).toHaveAttribute('aria-pressed', 'false');
-    for (const name of ['マイクと送り先', '声を整える', '聴いて確かめる']) expect(screen.getByRole('region', { name })).toBeInTheDocument();
+    for (const name of ['入力・処理・出力', '声を整える', '準備状況']) expect(screen.getByRole('region', { name })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'マイクと出力先を設定する' })).toHaveLength(1);
     expect(screen.queryByText('quick')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '録音して聴き比べる' })).toBeDisabled();
@@ -83,8 +83,8 @@ it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態
     await act(async () => fireEvent.click(compare));
     expect(bypass).toHaveBeenLastCalledWith(false);
     expect(compare).toHaveAttribute('aria-pressed', 'false');
-    const callback = vi.mocked(listen).mock.calls.find(([event]) => event === 'global-bypass-changed')![1];
-    act(() => callback({ event: 'global-bypass-changed', id: 1, payload: true }));
+    const callbacks = vi.mocked(listen).mock.calls.filter(([event]) => event === 'global-bypass-changed').map(([, cb]) => cb);
+    act(() => callbacks.forEach(cb => cb({ event: 'global-bypass-changed', id: 1, payload: true })));
     expect(compare).toHaveAttribute('aria-pressed', 'true');
     bypass.mockRejectedValueOnce(new Error('test failure'));
     await act(async () => fireEvent.click(compare));
@@ -109,9 +109,10 @@ it('音量チェックは両表示で同じ表示切替行に一つだけあり�
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
 });
 
-it('かんたん表示の稼働中は入出力・声の簡易調整・試聴をメインで扱い、詳しい調整は音づくりを開く', () => {
+it.each([true, false])('両表示で入出力・声の調整・試聴を保持する（かんたん=%s）', isBeginnerMode => {
+    localStorage.setItem('vst_host_setup_goal', 'obs');
     const sound = vi.fn(); const voice = vi.fn(); const obs = vi.fn();
-    render(<AppShell {...commonProps} isBeginnerMode onOpenSoundSettings={sound} onOpenVoiceCheck={voice} onOpenOBSSettings={obs}
+    render(<AppShell {...commonProps} isBeginnerMode={isBeginnerMode} onOpenSoundSettings={sound} onOpenVoiceCheck={voice} onOpenOBSSettings={obs}
         currentInput="USB マイク" currentOutput="CABLE Input (VB-Audio Virtual Cable)"><p>rack</p></AppShell>);
     expect(screen.getByText('USB マイク')).toBeInTheDocument();
     expect(screen.getByRole('meter', { name: 'マイクの入力レベル' })).toBeInTheDocument();
