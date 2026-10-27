@@ -88,6 +88,7 @@ pub async fn check_update(
     distribution: State<'_, Distribution>,
     updates: State<'_, Updates>,
 ) -> Result<Option<Available>, String> {
+    crate::temporary_session::require_regular(&app)?;
     require_standalone(*distribution)?;
     let mut candidate = updates.0.lock().await;
     let update = app
@@ -108,10 +109,12 @@ pub async fn check_update(
 
 #[tauri::command]
 pub async fn download_update(
+    app: AppHandle,
     distribution: State<'_, Distribution>,
     updates: State<'_, Updates>,
     version: String,
 ) -> Result<(), String> {
+    crate::temporary_session::require_regular(&app)?;
     require_standalone(*distribution)?;
     if !can_install() {
         return Err(
@@ -139,6 +142,7 @@ pub async fn install_update(
     updates: State<'_, Updates>,
     version: String,
 ) -> Result<(), String> {
+    crate::temporary_session::require_regular(&app)?;
     require_standalone(*distribution)?;
     if !can_install() {
         return Err("インストール先を確認できないため自動適用しません。".into());

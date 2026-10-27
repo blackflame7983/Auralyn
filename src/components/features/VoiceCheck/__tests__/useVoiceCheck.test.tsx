@@ -462,3 +462,48 @@ it('固定preview失敗のlocaleだけを解決し、stop未確認/device/安全
     expect(result.current.stopUnconfirmed).toBe(true);expect(result.current.previewDeviceId).toBe('exact-device');expect(result.current.safeOutput).toBe(true);
     expect(voicePreviewApi.request).toHaveBeenCalledTimes(calls);expect(listen).toHaveBeenCalledTimes(subscriptions);
 });
+
+const noiseSettings = { enabled: true, mode: 'smart', strength: 0.8, voiceGuard: true,
+    learnedMix: 0.6, hasLearnedMix: false, profileRms: null, backend: 'nnnoiseless-0.5.2', model: 'bundled-e6de5fbfadf7ec91' };
+it('NR候補の生成と試聴では本番設定を変えず、明示採用と条件付きUndoだけを送る', async () => {
+    let candidate: BuiltinCandidate | null = null;
+    let basis = 'nr-basis'; let token: string | null = null;
+    vi.mocked(voicePreviewApi.request).mockImplementation(async request => {
+        if (request.action === 'prepare_noise') candidate = { ...candidateFor(singingDraft()), baseRevision: basis, state: 'ready', noise: { ...noiseSettings, strength: 0.6 } };
+        if (request.action === 'apply_noise') { emit('audio-conditions-changed', null); basis = 'nr-after-apply'; token = 'nr-undo'; candidate = null; }
+        if (request.action === 'undo_noise') { emit('audio-conditions-changed', null); basis = 'nr-after-undo'; token = null; }
+        return previewSnapshot(request, { recordingId: 9, noiseBasis: basis, noiseSettings, noiseUndoToken: token, noisePending: false, candidate });
+    });
+    const legacy = vi.spyOn(audioApi, 'setNoiseControlConfig');
+    const { result } = renderHook(() => useVoiceCheck(true));
+    await waitFor(() => expect(result.current.preview?.noiseBasis).toBe('nr-basis'));
+    await act(async () => { await result.current.prepareNoise('weaker'); });
+    expect(result.current.candidate?.noise?.strength).toBe(0.6);
+    expect(result.current.candidateMode).toBe('noise');
+    expect(legacy).not.toHaveBeenCalled();
+    expect(vi.mocked(voicePreviewApi.request).mock.calls.some(([r]) => r.action === 'apply_noise')).toBe(false);
+    await act(async () => { await result.current.applyNoise(); });
+    expect(voicePreviewApi.request).toHaveBeenCalledWith(expect.objectContaining({ action: 'apply_noise', expectedBasis: 'nr-basis', candidateId: 'candidate-1' }));
+    expect(result.current.preview?.noiseUndoToken).toBe('nr-undo');
+    await act(async () => { await result.current.undoNoise(); });
+    expect(voicePreviewApi.request).toHaveBeenCalledWith(expect.objectContaining({ action: 'undo_noise', token: 'nr-undo' }));
+    expect(result.current.preview?.noiseUndoToken).toBeNull();
+    expect(legacy).not.toHaveBeenCalled();
+});
+it('画面非表示後の遅いNR候補を採用せず、その候補だけを取消する', async () => {
+    const pending = deferred<ReturnType<typeof previewSnapshot>>();
+    let prepare: Parameters<typeof previewSnapshot>[0] | undefined;
+    vi.mocked(voicePreviewApi.request).mockImplementation(async request => {
+        if (request.action === 'prepare_noise') { prepare = request; return pending.promise; }
+        return previewSnapshot(request, { recordingId: 9, noiseBasis: 'nr-basis', noiseSettings, noisePending: false });
+    });
+    const { result } = renderHook(() => useVoiceCheck(true));
+    await waitFor(() => expect(result.current.preview?.noiseBasis).toBe('nr-basis'));
+    act(() => { void result.current.prepareNoise('stronger'); });
+    await waitFor(() => expect(prepare).toBeDefined());
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')));
+    await act(async () => pending.resolve(previewSnapshot(prepare!, { recordingId: 9, noiseBasis: 'nr-basis', candidate: { ...candidateFor(singingDraft()), baseRevision: 'nr-basis', state: 'ready', noise: noiseSettings } })));
+    expect(result.current.candidate).toBeNull();
+    expect(vi.mocked(voicePreviewApi.request).mock.calls.some(([r]) => r.action === 'apply_noise' || r.action === 'start')).toBe(false);
+});

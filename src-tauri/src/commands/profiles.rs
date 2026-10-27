@@ -124,15 +124,21 @@ pub(crate) async fn apply_profile(
     backup_plugins: Vec<PresetPlugin>,
     backup_audio_extras: Option<ProfileAudioExtras>,
     skip_backup: Option<bool>,
+    sound_only: Option<bool>,
 ) -> Result<ApplyProfileSummary, String> {
     let state = state.0.clone();
     let (config_dir, profile) = super::run_blocking(move || {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-        let profile = presets::load_preset(&config_dir, &name)?;
+        let mut profile = presets::load_preset(&config_dir, &name)?;
+        if sound_only.unwrap_or(false) {
+            profile.audio_config = None;
+        }
         Ok((config_dir, profile))
     })
     .await?;
-    super::audio::enumerate_devices_async(state.clone(), false).await?;
+    if profile.audio_config.is_some() {
+        super::audio::enumerate_devices_async(state.clone(), false).await?;
+    }
     super::run_blocking(move || {
         let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
         profile::apply_profile(

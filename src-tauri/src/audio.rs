@@ -162,6 +162,7 @@ pub struct AudioHost {
     next_restore_operation: u64,
     session_restore: Option<session_rack::Lease>,
     session_restore_generation: Option<u64>,
+    peak_intent: Option<crate::audio_engine::peak_protection::Config>,
     frontend_bootstrap: frontend_bootstrap::Startup,
     device_scan: Option<DeviceScanTicket>,
     active_config: Option<ActiveAudioConfig>,
@@ -172,6 +173,26 @@ pub struct AudioHost {
 }
 
 impl AudioHost {
+    pub(crate) fn checked_snapshot_supported(&mut self) -> Result<()> {
+        self.preflight_live_changes()?;
+        anyhow::ensure!(self.live_modes.target.is_none() && self.live_output(None)?.config == Default::default(), "確認済み保存・復帰は単一出力・カスタム音作りが対象です。モニター分離や歌/雑談は各設定で管理してください");
+        Ok(())
+    }
+    pub fn peak_protection(
+        &mut self,
+        config: Option<crate::audio_engine::peak_protection::Config>,
+    ) -> Result<crate::audio_engine::peak_protection::Snapshot> {
+        match self.execute_running_command(IpcCommand::PeakProtection { config })? {
+            IpcResponse::PeakProtection(snapshot) => {
+                if config.is_some() {
+                    self.peak_intent = Some(snapshot.config);
+                }
+                Ok(snapshot)
+            }
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("ピーク保護の状態を読み戻せません")),
+        }
+    }
     pub fn live_output(
         &mut self,
         config: Option<crate::audio_engine::live_output::Config>,
@@ -269,6 +290,7 @@ impl AudioHost {
             next_restore_operation: 0,
             session_restore: None,
             session_restore_generation: None,
+            peak_intent: None,
             frontend_bootstrap: frontend_bootstrap::Startup::default(),
             device_scan: None,
             active_config: None,
@@ -668,6 +690,18 @@ impl AudioHost {
             pending_tx_clone.deliver(IpcResponse::Error("Engine Crashed/Exited".to_string()));
         });
 
+        if let Some(config) = self.peak_intent {
+            let result = self.execute_running_command(IpcCommand::PeakProtection {
+                config: Some(config),
+            });
+            if !matches!(&result, Ok(IpcResponse::PeakProtection(snapshot)) if snapshot.config == config)
+            {
+                self.kill_engine();
+                return Err(anyhow!(
+                    "ピーク保護を新しいEngineへ引き継げません。音声を開始していません"
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -1263,6 +1297,17 @@ impl AudioHost {
         }
     }
 
+    pub fn noise_measurement(
+        &mut self,
+        request: crate::audio_engine::core::noise_learning::Request,
+    ) -> Result<crate::audio_engine::core::noise_learning::Snapshot> {
+        match self.execute_running_command(IpcCommand::NoiseMeasurement { request })? {
+            IpcResponse::NoiseMeasurement(snapshot) => Ok(*snapshot),
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("測定状態を確認できません")),
+        }
+    }
+
     pub fn start_noise_learning(&mut self, duration_ms: u32) -> Result<()> {
         match self.execute_command(IpcCommand::StartNoiseLearning { duration_ms })? {
             IpcResponse::Success => Ok(()),
@@ -1627,6 +1672,9 @@ impl AudioHost {
         let response = if matches!(
             &request.action,
             crate::audio_engine::voice_check::preview::Action::PrepareProposal { .. }
+                | crate::audio_engine::voice_check::preview::Action::PrepareNoise { .. }
+                | crate::audio_engine::voice_check::preview::Action::ApplyNoise { .. }
+                | crate::audio_engine::voice_check::preview::Action::UndoNoise { .. }
         ) {
             let generation = self.engine_generation;
             self.require_proposal_connection(generation)?;
@@ -2025,6 +2073,11 @@ impl AudioHost {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn require_explicit_start(&mut self) {
+        self.frontend_bootstrap.cancel();
+        self.frontend_bootstrap.session_claimed = true;
     }
 
     pub fn get_state(&self) -> AudioStateInfo {

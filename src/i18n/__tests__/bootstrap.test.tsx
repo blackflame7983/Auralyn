@@ -1,13 +1,14 @@
 import { act, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Root } from 'react-dom/client';
-const mocks = vi.hoisted(() => ({render: vi.fn(), migration: vi.fn(), bridge: vi.fn()}));
+const mocks = vi.hoisted(() => ({render: vi.fn(), migration: vi.fn(), bridge: vi.fn(), session: vi.fn()}));
 vi.mock('react-dom/client', () => ({default: {createRoot: () => ({render: mocks.render})}}));
 vi.mock('../../api/migration', () => ({bootstrapMigration: mocks.migration}));
 vi.mock('../nativeLocale', () => ({initializeLocaleBridge: mocks.bridge}));
+vi.mock('../../lib/temporarySession', () => ({initializeTemporarySession: mocks.session}));
 vi.mock('../../App', () => ({default: () => <div>App content</div>}));
 let root: Root | undefined;
-beforeEach(() => {vi.resetModules(); vi.clearAllMocks(); localStorage.clear(); document.body.innerHTML = '<div id="root"></div>'; document.documentElement.lang = 'ja';});
+beforeEach(() => {vi.resetModules(); vi.clearAllMocks(); mocks.session.mockResolvedValue(undefined); localStorage.clear(); document.body.innerHTML = '<div id="root"></div>'; document.documentElement.lang = 'ja';});
 afterEach(async () => {if (root) {await act(async () => root?.unmount()); root = undefined;} vi.restoreAllMocks();});
 it('移行完了までlocale初期化・描画・native同期を始めず、完了後に保存言語を読む', async () => {
     let finish!: () => void;
@@ -47,4 +48,10 @@ it('移行固定errorは表示時localeで解決し、切替でbootstrap/native�
     const {localeStore}=await import('../locale');act(()=>{localeStore.setLocale('ja');});
     expect(screen.getByRole('alert')).toBe(alert);expect(alert).toHaveTextContent('表示言語の設定が不正です');
     expect(error.message).toBe('表示言語の設定が不正です');expect(mocks.migration).toHaveBeenCalledOnce();expect(mocks.bridge).not.toHaveBeenCalled();
+});
+
+it('保存領域の判定が失敗したら移行・アプリ描画・音声初期化へ進まない', async () => {
+    mocks.session.mockRejectedValueOnce(new Error('isolation unavailable'));
+    await import('../../main'); await waitFor(() => expect(mocks.render).toHaveBeenCalledOnce());
+    expect(mocks.migration).not.toHaveBeenCalled(); expect(mocks.bridge).not.toHaveBeenCalled();
 });

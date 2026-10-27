@@ -1,3 +1,4 @@
+import { explicitSessionStartRequired, acknowledgeSessionStart } from '@/lib/temporarySession';
 import { useMessages } from '../i18n/LocaleProvider';
 import { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
@@ -51,15 +52,17 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
             outputId: outputId ?? audioConfig.outputId
         };
         localStorage.setItem('vst_host_audio_config', JSON.stringify(newConfig));
+        const acknowledge = options?.audioStarted ? acknowledgeSessionStart() : Promise.resolve();
         // 入力ペアなどの設定保存だけでは、移行確認とVST復元を開始しない。
         if (options?.audioStarted && localStorage.getItem(REVIEW_KEY) === 'true') {
             // 保存済み選択とチャンネル適用が揃った後に、永続マーカーを解除する。
             // 失敗時は確認待ちを保持し、再試行と次回起動の確認を可能にする。
-            return invoke('migration_complete_review').then(() => {
+            return acknowledge.then(() => invoke('migration_complete_review')).then(() => {
                 localStorage.removeItem(REVIEW_KEY);
                 window.dispatchEvent(new Event('migration-review-completed'));
             });
         }
+        return acknowledge;
     };
 
     // 初回の自動開始はHost寿命gateが調停する。画面は通常Start/pair setterを送らない。
@@ -68,7 +71,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         if (initializationStarted.current) return () => { initializationActive.current = false; };
         initializationStarted.current = true;
         const init = async () => {
-            if (localStorage.getItem(REVIEW_KEY) === 'true') {
+            if (explicitSessionStartRequired() || localStorage.getItem(REVIEW_KEY) === 'true') {
                 try {
                     const saved = readAudioPreferences();
                     if (saved && typeof saved.host === 'string') setAudioConfig(saved);

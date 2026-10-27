@@ -122,6 +122,8 @@ pub struct Monitor {
     main_failed: Arc<AtomicBool>,
     voice: RtVoice,
     reverb: reverb::Reverb,
+    peak: super::peak_protection::Rt,
+    peak_shared: Arc<super::peak_protection::Shared>,
     output_gain: f32,
     generation: u64,
 }
@@ -144,6 +146,10 @@ impl Controller {
         main_failed: Arc<AtomicBool>,
         mode: Option<Mode>,
         revision: u64,
+        peak: (
+            super::peak_protection::Config,
+            Arc<super::peak_protection::Shared>,
+        ),
     ) -> Result<(Self, CallbackOwner<Monitor>, GainRx)> {
         let selected = if mode == Some(Mode::Talk) {
             &config.monitor_talk
@@ -189,6 +195,8 @@ impl Controller {
             main_failed,
             voice,
             reverb,
+            peak: super::peak_protection::Rt::new(peak.0, rate),
+            peak_shared: peak.1,
             output_gain,
             generation: 0,
         });
@@ -294,6 +302,7 @@ impl Monitor {
     pub fn render(&mut self, data: &mut [f32], info: Option<&cpal::OutputCallbackInfo>) {
         let begin = self.timing.as_ref().map_or(0, |t| t.now_ns());
         data.fill(0.0);
+        self.peak.sync(&self.peak_shared);
         if data.len() > self.input_buffer.len() {
             self.main_failed.store(true, Ordering::Release);
             return;
@@ -422,7 +431,10 @@ impl Monitor {
                     };
                 }
             }
+            let protected = self.peak.process([output[0], output[1]]);
+            output[..2].copy_from_slice(&protected);
         }
+        self.peak.report(&self.peak_shared, 1);
         self.shared.queued.store(
             (self.broadcast.occupied_len() / 2) as u64,
             Ordering::Relaxed,
@@ -533,6 +545,7 @@ mod tests {
             Arc::new(AtomicBool::new(false)),
             None,
             1,
+            Default::default(),
         )
         .unwrap();
         (
@@ -845,6 +858,7 @@ mod tests {
             Arc::new(AtomicBool::new(false)),
             None,
             1,
+            Default::default(),
         )
         .unwrap();
         let revision = observer.request_cohort_window().unwrap();

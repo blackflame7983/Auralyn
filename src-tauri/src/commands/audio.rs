@@ -3,6 +3,22 @@ use crate::{audio, audio_engine, desktop_integration, routing_diag, vst_host};
 use tauri::{AppHandle, Manager, State};
 
 #[tauri::command]
+pub(crate) async fn peak_protection(
+    state: State<'_, audio::AudioState>,
+    config: Option<audio_engine::peak_protection::Config>,
+) -> Result<audio_engine::peak_protection::Snapshot, String> {
+    let state = state.0.clone();
+    super::run_blocking(move || {
+        state
+            .lock()
+            .map_err(|_| "音声状態を取得できません")?
+            .peak_protection(config)
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
 pub(crate) async fn live_output(
     state: State<'_, audio::AudioState>,
     config: Option<audio_engine::live_output::Config>,
@@ -745,6 +761,22 @@ pub(crate) async fn end_live_changes(
             .map_err(|_| "音声状態を取得できません")?
             .end_live_changes(token)
             .map_err(|error| error.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn noise_measurement(
+    state: State<'_, audio::AudioState>,
+    request: crate::audio_engine::core::noise_learning::Request,
+) -> Result<crate::audio_engine::core::noise_learning::Snapshot, String> {
+    let state = state.0.clone();
+    super::run_blocking(move || {
+        state
+            .lock()
+            .map_err(|_| "音声の状態を取得できません")?
+            .noise_measurement(request)
+            .map_err(|e| e.to_string())
     })
     .await
 }

@@ -66,6 +66,18 @@ pub enum Action {
         #[serde(flatten)]
         options: Options,
     },
+    PrepareNoise {
+        recording_id: u64,
+        expected_basis: String,
+        variant: crate::audio_engine::noise_candidate::Variant,
+    },
+    ApplyNoise {
+        candidate_id: String,
+        expected_basis: String,
+    },
+    UndoNoise {
+        token: String,
+    },
     PrepareCandidate {
         recording_id: u64,
         expected_revision: String,
@@ -144,6 +156,14 @@ pub struct Metadata {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
+    #[serde(default)]
+    pub noise_basis: String,
+    #[serde(default)]
+    pub noise_undo_token: Option<String>,
+    #[serde(default)]
+    pub noise_settings: Option<crate::audio_engine::noise_candidate::Config>,
+    #[serde(default)]
+    pub noise_pending: bool,
     pub candidate: Option<crate::audio_engine::voice_check::candidate::Snapshot>,
     pub epoch: String,
     pub session_id: u64,
@@ -168,6 +188,10 @@ pub struct Snapshot {
 
 #[derive(Clone)]
 pub(in crate::audio_engine) struct Context {
+    pub noise: crate::audio_engine::noise_candidate::Config,
+    pub noise_basis: String,
+    pub noise_undo_token: Option<String>,
+    pub noise_pending: bool,
     pub builtin_revision: String,
     pub builtin_epoch: String,
     pub builtin_config: crate::audio_engine::builtin::Config,
@@ -394,6 +418,36 @@ fn validate_request(request: &Request) -> Result<()> {
                     .as_ref()
                     .is_none_or(|id| !id.is_empty() && id.len() <= 128),
                 "候補IDが不正です"
+            );
+        }
+        Action::PrepareNoise {
+            recording_id,
+            expected_basis,
+            ..
+        } => {
+            ensure!(
+                (1..=MAX_SAFE_ID).contains(recording_id)
+                    && !expected_basis.is_empty()
+                    && expected_basis.len() <= 4096,
+                "NR比較の識別情報が不正です"
+            );
+        }
+        Action::ApplyNoise {
+            candidate_id,
+            expected_basis,
+        } => {
+            ensure!(
+                !candidate_id.is_empty()
+                    && candidate_id.len() <= 128
+                    && !expected_basis.is_empty()
+                    && expected_basis.len() <= 4096,
+                "NR採用の識別情報が不正です"
+            );
+        }
+        Action::UndoNoise { token } => {
+            ensure!(
+                !token.is_empty() && token.len() <= 128,
+                "NR復元の識別情報が不正です"
             );
         }
         Action::PrepareCandidate {
@@ -821,6 +875,10 @@ impl Controller {
             },
         );
         Snapshot {
+            noise_basis: context.noise_basis.clone(),
+            noise_settings: Some(context.noise.clone()),
+            noise_pending: context.noise_pending,
+            noise_undo_token: context.noise_undo_token.clone(),
             candidate: self.candidate.snapshot.clone(),
             epoch: self.sessions.epoch.clone(),
             session_id: request.session_id,
@@ -894,7 +952,16 @@ impl Controller {
                 .metadata
                 .as_ref()
                 .map(|metadata| metadata.recording_id),
-            &context.builtin_revision,
+            if self
+                .candidate
+                .snapshot
+                .as_ref()
+                .is_some_and(|s| s.noise.is_some())
+            {
+                &context.noise_basis
+            } else {
+                &context.builtin_revision
+            },
             context.current_revision,
         );
         if self
@@ -950,6 +1017,74 @@ impl Controller {
         }
         let mut devices = Vec::new();
         match &request.action {
+            Action::PrepareNoise {
+                recording_id,
+                expected_basis,
+                variant,
+            } => {
+                let buffers = proposal_source(&context)?;
+                ensure!(
+                    self.preview.is_none()
+                        && !context.noise_pending
+                        && expected_basis == &context.noise_basis
+                        && !expected_basis.is_empty(),
+                    "試聴を停止し、現在のNR条件を取り直してください"
+                );
+                ensure!(
+                    context
+                        .metadata
+                        .as_ref()
+                        .is_some_and(|m| m.recording_id == *recording_id),
+                    "録音が変わりました"
+                );
+                self.invalidate_candidate();
+                self.candidate
+                    .prepare_noise(
+                        buffers.clone(),
+                        *recording_id,
+                        expected_basis.clone(),
+                        context.current_revision,
+                        context.noise.variant(*variant),
+                    )
+                    .map_err(|e| anyhow!(e))?;
+            }
+            Action::ApplyNoise {
+                candidate_id,
+                expected_basis,
+            } => {
+                proposal_source(&context)?;
+                ensure!(
+                    self.preview.is_none()
+                        && !context.noise_pending
+                        && expected_basis == &context.noise_basis,
+                    "試聴を停止し、現在の条件を確認してください"
+                );
+                ensure!(
+                    context
+                        .buffers
+                        .as_ref()
+                        .is_some_and(|b| self.candidate.source_matches(b)),
+                    "録音が変わりました"
+                );
+                ensure!(
+                    self.candidate
+                        .snapshot
+                        .as_ref()
+                        .is_some_and(|s| s.id == *candidate_id
+                            && s.state == "ready"
+                            && s.noise.is_some()),
+                    "NR候補が準備されていません"
+                );
+            }
+            Action::UndoNoise { token } => {
+                ensure!(
+                    !context.busy
+                        && !context.noise_pending
+                        && self.preview.is_none()
+                        && context.noise_undo_token.as_ref() == Some(token),
+                    "復元条件が変わったか、試聴が使用中です"
+                );
+            }
             Action::PrepareProposal {
                 rule_version: _,
                 preferences,
@@ -1157,6 +1292,10 @@ pub(in crate::audio_engine) mod tests {
         }
         writer.seal(8);
         Context {
+            noise: Default::default(),
+            noise_basis: "noise-fixture".into(),
+            noise_undo_token: None,
+            noise_pending: false,
             builtin_revision: "1".into(),
             builtin_epoch: "builtin-test".into(),
             builtin_config: Default::default(),
@@ -1243,6 +1382,89 @@ pub(in crate::audio_engine) mod tests {
             std::thread::sleep(Duration::from_millis(2));
         }
         panic!("提案workerの完了待機が期限切れ");
+    }
+    #[test]
+    fn noise_candidate_requires_current_source_basis_and_pending_free_controls() {
+        for invalid in 0..6 {
+            let mut controller = Controller::new();
+            let mut context = proposal_context();
+            let opened = controller
+                .command(request(1, 1, Action::Open), context.clone())
+                .unwrap();
+            match invalid {
+                0 => context.metadata.as_mut().unwrap().changed_during_recording = true,
+                1 => context.metadata.as_mut().unwrap().revision -= 1,
+                2 => context.noise_pending = true,
+                3 => context.busy = true,
+                4 => context.noise_basis = "changed".into(),
+                _ => context.metadata.as_mut().unwrap().recording_id = 2,
+            }
+            let mut req = request(
+                1,
+                2,
+                Action::PrepareNoise {
+                    recording_id: 1,
+                    expected_basis: "noise-fixture".into(),
+                    variant: crate::audio_engine::noise_candidate::Variant::Weaker,
+                },
+            );
+            req.epoch = Some(opened.epoch);
+            assert!(controller.command(req, context).is_err());
+            assert!(controller.candidate.snapshot.is_none());
+        }
+    }
+    #[test]
+    fn noise_candidate_apply_and_undo_are_bound_to_session_source_and_basis() {
+        let mut controller = Controller::new();
+        let mut context = proposal_context();
+        let original = context.noise.clone();
+        let opened = controller
+            .command(request(1, 1, Action::Open), context.clone())
+            .unwrap();
+        let mut prepare = request(
+            1,
+            2,
+            Action::PrepareNoise {
+                recording_id: 1,
+                expected_basis: context.noise_basis.clone(),
+                variant: crate::audio_engine::noise_candidate::Variant::Stronger,
+            },
+        );
+        prepare.epoch = Some(opened.epoch.clone());
+        controller.command(prepare, context.clone()).unwrap();
+        let ready = await_proposal(&mut controller, &context, &opened.epoch);
+        let candidate = ready.candidate.unwrap();
+        assert_eq!(candidate.state, "ready");
+        assert!(candidate.noise.as_ref().unwrap().enabled);
+        assert_eq!(context.noise, original); // validation and rendering never apply to the live state
+        let mut apply = request(
+            1,
+            3,
+            Action::ApplyNoise {
+                candidate_id: candidate.id,
+                expected_basis: context.noise_basis.clone(),
+            },
+        );
+        apply.epoch = Some(opened.epoch.clone());
+        assert!(controller.command(apply.clone(), context.clone()).is_ok());
+        context.noise_basis = "later-edit".into();
+        apply.operation_id += 1;
+        assert!(controller.command(apply, context.clone()).is_err());
+        context.noise_undo_token = Some("current-token".into());
+        let mut undo = request(
+            1,
+            5,
+            Action::UndoNoise {
+                token: "old-token".into(),
+            },
+        );
+        undo.epoch = Some(opened.epoch);
+        assert!(controller.command(undo.clone(), context.clone()).is_err());
+        undo.operation_id += 1;
+        undo.action = Action::UndoNoise {
+            token: "current-token".into(),
+        };
+        assert!(controller.command(undo, context).is_ok());
     }
     #[test]
     fn proposal_rejects_recording_conditions_without_changing_manual_candidate_contract() {

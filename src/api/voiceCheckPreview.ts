@@ -14,7 +14,12 @@ export interface VoiceRecordingMetadata {
     plugins: { id: string; name: string; enabled: boolean; muted: boolean; gain: number }[];
     changedDuringRecording: boolean; rawTap: string; processedTap: string; vstParametersVerified: boolean;
 }
+export interface NoiseCandidateConfig {
+    enabled: boolean; mode: string; strength: number; voiceGuard: boolean;
+    learnedMix: number; hasLearnedMix: boolean; profileRms: number | null; backend: string; model: string;
+}
 export interface BuiltinCandidate {
+    noise?: NoiseCandidateConfig | null;
     id: string; recordingId: number; baseRevision: string; state: string; config: BuiltinConfig;
     sampleRate: number; sourceFrames: number; renderedFrames: number; algorithmicLatencyFrames: number;
     filterPhase: string; samplePeak: number | null; error: string | null;
@@ -38,6 +43,7 @@ export interface VoiceProposal {
     reasons: ProposalMessage[]; limitations: ProposalMessage[];
 }
 export interface VoicePreviewSnapshot extends VoicePreviewOptions {
+    noiseBasis?: string; noiseUndoToken?: string | null; noiseSettings?: NoiseCandidateConfig | null; noisePending?: boolean;
     candidate?: BuiltinCandidate | null;
     epoch: string; sessionId: number; operationId: number; recordingId: number | null;
     state: 'idle' | 'playing' | 'stopping' | 'stopped' | 'failed' | 'closed';
@@ -50,6 +56,9 @@ export interface VoicePreviewSnapshot extends VoicePreviewOptions {
 export type VoicePreviewAction = { action: 'open' | 'status' | 'devices' | 'stop' | 'close' }
     | ({ action: 'start'; recordingId: number; deviceId: string; candidateId?: string | null } & VoicePreviewOptions)
     | ({ action: 'update' } & VoicePreviewOptions)
+    | { action: 'prepare_noise'; recordingId: number; expectedBasis: string; variant: 'current' | 'weaker' | 'stronger' }
+    | { action: 'apply_noise'; candidateId: string; expectedBasis: string }
+    | { action: 'undo_noise'; token: string }
     | { action: 'prepare_candidate'; recordingId: number; expectedRevision: string; config: BuiltinConfig }
     | ({ action: 'prepare_proposal'; recordingId: number; builtinEpoch: string; expectedRevision: string; ruleVersion?: 'singing-rules-v2' } & Partial<ProposalPreferenceRequest>)
     | { action: 'candidate_status' | 'cancel_candidate'; candidateId: string };

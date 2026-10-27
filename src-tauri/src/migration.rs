@@ -354,6 +354,7 @@ pub async fn export_settings(
     preview: State<'_, Preview>,
     ui: BTreeMap<String, String>,
 ) -> Result<bool, String> {
+    crate::temporary_session::require_regular(&app)?;
     if preview.applying.swap(true, Ordering::AcqRel) {
         return Err("設定の操作中です。完了後に再試行してください。".into());
     }
@@ -434,6 +435,7 @@ pub async fn apply_settings(
     ui: BTreeMap<String, String>,
     restore: bool,
 ) -> Result<(), String> {
+    crate::temporary_session::require_regular(&app)?;
     if preview.applying.swap(true, Ordering::AcqRel) {
         return Err("設定を移行中です。".into());
     }

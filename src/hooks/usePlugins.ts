@@ -1,3 +1,4 @@
+import { explicitSessionStartRequired } from '@/lib/temporarySession';
 import { useMessages } from '../i18n/LocaleProvider';
 import { pluginNotice, renderPluginNotice, defaultPluginMessages, type PluginNotice } from '../lib/pluginNotice';
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -65,6 +66,7 @@ export const usePlugins = () => {
     const restoreSavedSession = useCallback(async (excludePath?: string | null, explicit = false) => {
         if (sessionRestorePending.current || (manualRecoveryPending.current && !retryPending.current)) return;
         sessionRestorePending.current = true;
+        const confirmationRequired = !explicit && (explicitSessionStartRequired() || localStorage.getItem(REVIEW_KEY) === 'true');
         const generation = ++restoreGeneration.current;
         const isCurrent = () => mounted.current && generation === restoreGeneration.current;
         let token: string | undefined;
@@ -86,7 +88,7 @@ export const usePlugins = () => {
                 setError(pluginNotice('pluginNotices.retained', undefined, true));
                 return;
             }
-            if (!explicit && localStorage.getItem(REVIEW_KEY) === 'true') return;
+            if (!explicit && (confirmationRequired || explicitSessionStartRequired() || localStorage.getItem(REVIEW_KEY) === 'true')) return;
             const items = saved === null ? [] : parsePluginSession(JSON.parse(saved));
             if (items.length === 0) {
                 const savedInput = localStorage.getItem('vst_host_input_gain');
@@ -332,18 +334,30 @@ export const usePlugins = () => {
 
     // Restore Session (initial load)
     const restoreStarted = useRef(false);
+    const initialRestore = useRef<Promise<void> | null>(null);
+    const reviewRestoreStarted = useRef(false);
 
     useEffect(() => {
         mounted.current = true;
-        const confirmed = () => { void restoreSession(); };
+        const confirmed = () => {
+            // 両方の確認が揃ってから一度だけ復元する。初回snapshot待ちの通知も失わない。
+            if (explicitSessionStartRequired() || localStorage.getItem(REVIEW_KEY) === 'true' || reviewRestoreStarted.current) return;
+            reviewRestoreStarted.current = true;
+            const generation = restoreGeneration.current;
+            void initialRestore.current?.then(() => {
+                if (mounted.current && generation === restoreGeneration.current) return restoreSession();
+            });
+        };
         window.addEventListener('migration-review-completed', confirmed);
+        window.addEventListener('session-review-completed', confirmed);
         if (!restoreStarted.current) {
             restoreStarted.current = true;
-            restoreSession(false);
+            initialRestore.current = restoreSession(false);
         }
         return () => {
             mounted.current = false;
             window.removeEventListener('migration-review-completed', confirmed);
+            window.removeEventListener('session-review-completed', confirmed);
             // StrictModeの同一hook再接続ではpending readを共有し、真のunmountだけを失効する。
             queueMicrotask(() => { if (!mounted.current) restoreGeneration.current += 1; });
         };

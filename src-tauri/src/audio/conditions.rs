@@ -175,11 +175,13 @@ pub(super) fn command_changes(command: &Command) -> bool {
         | Command::GetPluginRack
         | Command::SetLoudnessMeasurement { .. }
         | Command::SetChannelScan { .. }
-        | Command::VoiceCheckPreview { .. }
         // 録音tapの停止は通常送出の処理・経路を変えない。画面の後始末で
         // 同期witnessや新しい独立試聴を自己失効させない。
         | Command::StopVoiceCheckRecording
         | Command::ExportVoiceCheck { .. } => false,
+        Command::PeakProtection { config } => config.is_some(),
+        Command::NoiseMeasurement { request } => !matches!(request, crate::audio_engine::core::noise_learning::Request::Snapshot),
+        Command::VoiceCheckPreview { request } => matches!(request.action, crate::audio_engine::voice_check::preview::Action::ApplyNoise { .. } | crate::audio_engine::voice_check::preview::Action::UndoNoise { .. }),
         Command::LiveOutput { config } => config.is_some(),
         Command::AutoGain { request } => matches!(
             request,
@@ -192,6 +194,31 @@ pub(super) fn command_changes(command: &Command) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn nr_measurement_and_peak_reads_preserve_witness_but_explicit_adoption_invalidates_it() {
+        use crate::audio_engine::core::noise_learning::Request as Noise;
+        assert!(!command_changes(&Command::NoiseMeasurement {
+            request: Noise::Snapshot
+        }));
+        assert!(!command_changes(&Command::PeakProtection { config: None }));
+        assert!(command_changes(&Command::NoiseMeasurement {
+            request: Noise::Invalidate
+        }));
+        assert!(command_changes(&Command::PeakProtection {
+            config: Some(Default::default())
+        }));
+        let request = crate::audio_engine::voice_check::preview::Request {
+            client_id: "test".into(),
+            session_id: 1,
+            operation_id: 1,
+            epoch: Some("epoch".into()),
+            action: crate::audio_engine::voice_check::preview::Action::ApplyNoise {
+                candidate_id: "candidate".into(),
+                expected_basis: "basis".into(),
+            },
+        };
+        assert!(command_changes(&Command::VoiceCheckPreview { request }));
+    }
     #[test]
     fn bundle_read_does_not_invalidate_stopped_control_witness_but_mutation_and_epoch_do() {
         let conditions = Arc::new(Conditions::default());

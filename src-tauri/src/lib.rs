@@ -26,6 +26,7 @@ pub mod profile;
 pub mod routing_diag;
 mod shortcuts;
 mod storage;
+mod temporary_session;
 mod updates;
 pub mod vst_host;
 #[tauri::command]
@@ -45,6 +46,7 @@ async fn set_autostart_enabled(
     distribution: State<'_, desktop_integration::Distribution>,
     enabled: bool,
 ) -> Result<(), String> {
+    temporary_session::require_regular(&app)?;
     let distribution = *distribution;
     if distribution == desktop_integration::Distribution::Msix {
         return autostart::set_package_enabled(app, enabled)
@@ -188,6 +190,18 @@ pub fn run() {
         return;
     }
 
+    let mode = match temporary_session::initialize(context.config_mut()) {
+        Ok(mode) => mode,
+        Err(error) => {
+            rfd::MessageDialog::new()
+                .set_title("Auralyn")
+                .set_description(error)
+                .set_level(rfd::MessageLevel::Error)
+                .show();
+            return;
+        }
+    };
+
     let builder = tauri::Builder::default()
         // 他のプラグイン・ウィンドウ・音声エンジンより先に共通IDで二重起動を防ぐ。
         .plugin(coexistence::plugin())
@@ -219,6 +233,7 @@ pub fn run() {
     );
 
     builder
+        .manage(mode)
         .manage(distribution)
         .manage(migration::Preview::default())
         .manage(shortcuts::Shortcuts::default())
@@ -243,7 +258,10 @@ pub fn run() {
                 Ok(display_locale::load(&read_path))
             }))?;
             let labels = locale.labels();
-            let audio_host = audio::AudioHost::new(config_dir);
+            let mut audio_host = audio::AudioHost::new(config_dir);
+            if app.state::<temporary_session::Mode>().review_only {
+                audio_host.require_explicit_start();
+            }
             app.manage(audio::conditions::ConditionState(audio_host.conditions()));
             app.manage(audio::AudioState(Arc::new(Mutex::new(audio_host))));
             let state = app.state::<audio::AudioState>();
@@ -345,6 +363,10 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::audio::peak_protection,
+            temporary_session::temporary_session_status,
+            temporary_session::acknowledge_session_review,
+            temporary_session::restart_temporary_session,
             migration::export_settings,
             display_locale::begin_display_locale_session,
             display_locale::set_display_locale,
@@ -401,6 +423,7 @@ pub fn run() {
             commands::audio::set_global_mute,
             commands::audio::set_input_gain,
             commands::audio::set_noise_reduction,
+            commands::audio::noise_measurement,
             commands::audio::start_noise_learning,
             commands::audio::cancel_noise_learning,
             commands::audio::set_noise_control_config,

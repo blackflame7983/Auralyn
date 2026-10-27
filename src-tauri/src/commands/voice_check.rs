@@ -2,9 +2,9 @@
 use crate::{audio, audio_analysis};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
-struct AnalysisWorkspace(PathBuf);
+struct AnalysisWorkspace(PathBuf, PathBuf);
 
 #[tauri::command]
 pub(crate) async fn voice_check_preview(
@@ -21,14 +21,15 @@ pub(crate) async fn voice_check_preview(
 }
 
 impl AnalysisWorkspace {
-    fn new() -> std::io::Result<Self> {
+    fn new(root: PathBuf) -> std::io::Result<Self> {
+        std::fs::create_dir_all(&root)?;
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
         loop {
-            let path = std::env::temp_dir().join(format!(
+            let path = root.join(format!(
                 "auralyn_vc_{}_{}_{}",
                 std::process::id(),
                 stamp,
@@ -36,7 +37,7 @@ impl AnalysisWorkspace {
             ));
             // 既存ディレクトリを共有しない。失敗途中でもこの所有者が作った音声だけを削除する。
             match std::fs::create_dir(&path) {
-                Ok(()) => return Ok(Self(path)),
+                Ok(()) => return Ok(Self(path, root)),
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(error) => return Err(error),
             }
@@ -46,8 +47,8 @@ impl AnalysisWorkspace {
 
 impl Drop for AnalysisWorkspace {
     fn drop(&mut self) {
-        // newで作成した一時ディレクトリ直下の専用領域に対象を限定する。
-        if self.0.parent() == Some(std::env::temp_dir().as_path()) {
+        // newで作成した専用領域だけを削除する。一時利用ではapp_cache_dirも隔離される。
+        if self.0.parent() == Some(self.1.as_path()) {
             if let Err(error) = std::fs::remove_dir_all(&self.0) {
                 log::warn!("ボイスチェックの一時音声を削除できませんでした: {error}");
             }
@@ -147,11 +148,17 @@ pub(crate) async fn export_voice_check(
 
 #[tauri::command]
 pub(crate) async fn analyze_voice_check(
+    app: AppHandle,
     state: State<'_, audio::AudioState>,
 ) -> Result<audio_analysis::QualityReport, String> {
     let state = state.0.clone();
+    let root = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("voice-analysis");
     super::run_blocking(move || {
-        let workspace = AnalysisWorkspace::new().map_err(|e| e.to_string())?;
+        let workspace = AnalysisWorkspace::new(root).map_err(|e| e.to_string())?;
         let temp_dir = &workspace.0;
         let raw_path = temp_dir.join("raw.wav");
         let processed_path = temp_dir.join("processed.wav");
@@ -196,8 +203,8 @@ mod tests {
 
     #[test]
     fn failed_export_cleans_only_its_workspace() {
-        let first = AnalysisWorkspace::new().unwrap();
-        let second = AnalysisWorkspace::new().unwrap();
+        let first = AnalysisWorkspace::new(std::env::temp_dir()).unwrap();
+        let second = AnalysisWorkspace::new(std::env::temp_dir()).unwrap();
         assert_ne!(first.0, second.0);
         let failed_path = first.0.clone();
         let fail = move || -> Result<(), std::io::Error> {

@@ -1,9 +1,10 @@
+import { noiseMeasurementApi } from '@/api/noiseMeasurement';
+import { noiseMeasurementFixture } from '@/__tests__/fixtures/noiseMeasurement';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { AudioSettingsModal } from '../AudioSettingsModal';
 import { audioApi, type EngineRuntimeStats } from '@/api/audio';
-import { toast } from 'sonner';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
 const devices = {
@@ -124,24 +125,26 @@ it('モードの選択だけではOFFのノイズ低減を起動しない', asyn
     }));
 });
 
-it('学習の中止失敗を未処理のPromise拒否にせず、再試行を案内する', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.spyOn(audioApi, 'cancelNoiseLearning').mockRejectedValue(new Error('offline'));
-    const error = vi.spyOn(toast, 'error');
+it('学習の中止失敗を未処理のPromise拒否にせず、状態再取得から再試行できる', async () => {
+    vi.spyOn(noiseMeasurementApi, 'request').mockImplementation(async request => {
+        if (request.action === 'cancel') throw new Error('offline');
+        return noiseMeasurementFixture('capturing', '2');
+    });
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const cancel = await screen.findByRole('button', { name: '学習を中止' });
     await waitFor(() => expect(cancel).toBeEnabled());
     fireEvent.click(cancel);
-    await waitFor(() => expect(error).toHaveBeenCalledWith('ノイズ学習を中止できませんでした。状態を確認して再試行してください'));
-    expect(cancel).toBeEnabled();
+    expect(await screen.findByText('測定状態を取得できません。再取得してください。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '状態を再取得' })).toBeEnabled();
 });
 
 it('不正な入力で学習が失敗したら、以前のプロファイルを今回の成功と表示しない', async () => {
+    vi.spyOn(noiseMeasurementApi, 'request').mockResolvedValue({ ...noiseMeasurementFixture('invalid', '2'), quality: ['nonFinite'], previousAvailable: true });
     vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue({
         noiseReductionEnabled: true, noiseLearningState: 'invalid', noiseProfileAvailable: true,
         noiseProfileRms: 0.01,
     } as EngineRuntimeStats);
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    expect(await screen.findByText('学習を完了できませんでした。入力を確認して再試行してください')).toBeInTheDocument();
+    expect(await screen.findByText('この測定は利用できません。条件を確認して測り直してください。')).toBeInTheDocument();
     expect(screen.queryByText(/学習済み RMS/)).not.toBeInTheDocument();
 });

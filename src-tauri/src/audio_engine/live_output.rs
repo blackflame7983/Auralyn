@@ -181,6 +181,8 @@ impl Sender {
     }
 }
 struct Receiver {
+    peak: super::peak_protection::Rt,
+    peak_shared: Arc<super::peak_protection::Shared>,
     main_failed: Arc<AtomicBool>,
     rx: Rx,
     shared: Arc<Shared>,
@@ -201,6 +203,7 @@ impl Receiver {
     }
     fn render(&mut self, data: &mut [f32]) {
         data.fill(0.0);
+        self.peak.sync(&self.peak_shared);
         if self.main_failed.load(Ordering::Acquire) {
             self.shared.active.store(false, Ordering::Release);
         }
@@ -260,9 +263,12 @@ impl Receiver {
                     .clamp(-f64::from(f32::MAX), f64::from(f32::MAX))
                     as f32;
             }
+            let protected = self.peak.process([output[0], output[1]]);
+            output.copy_from_slice(&protected);
             self.phase += step;
             while self.phase >= 1.0 {
                 let Some(next) = self.next() else {
+                    self.peak.report(&self.peak_shared, 2);
                     self.primed = false;
                     self.phase = 0.0;
                     self.shared
@@ -275,6 +281,7 @@ impl Receiver {
                 self.phase -= 1.0;
             }
         }
+        self.peak.report(&self.peak_shared, 2);
     }
 }
 pub struct Sink {
@@ -291,6 +298,10 @@ impl Sink {
         main_id: Option<&str>,
         config: &Config,
         main_failed: Arc<AtomicBool>,
+        peak: (
+            super::peak_protection::Config,
+            Arc<super::peak_protection::Shared>,
+        ),
     ) -> Result<(Self, CallbackOwner<Sender>)> {
         config.validate()?;
         ensure!(
@@ -326,6 +337,8 @@ impl Sink {
             shared: shared.clone(),
         });
         let (mut receiver, receiver_owner) = callback_owner(Receiver {
+            peak: super::peak_protection::Rt::new(peak.0, rate),
+            peak_shared: peak.1,
             main_failed,
             rx,
             shared: shared.clone(),
@@ -415,6 +428,8 @@ mod tests {
                 shared: shared.clone(),
             },
             Receiver {
+                peak: crate::audio_engine::peak_protection::Rt::new(Default::default(), 48000),
+                peak_shared: Default::default(),
                 main_failed: Arc::new(AtomicBool::new(false)),
                 rx,
                 shared: shared.clone(),
@@ -426,6 +441,28 @@ mod tests {
             },
             shared,
         )
+    }
+    #[test]
+    fn peak_protection_also_limits_old_queued_audio_after_switching_or_lowering_the_ceiling() {
+        let (mut tx, mut rx, _) = fixture(1024, 128);
+        for _ in 0..512 {
+            tx.send([2.0, -1.0]);
+        }
+        let config = super::super::peak_protection::Config {
+            enabled: true,
+            ceiling_db: -6.0,
+            release_ms: 100.0,
+        };
+        rx.peak_shared.publish(config.prepare(48000));
+        let mut output = [0.0; 256];
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| rx.render(&mut output)),
+            (0, 0)
+        );
+        assert!(output
+            .iter()
+            .all(|s| s.abs() <= 10.0f32.powf(-6.0 / 20.0) + 1e-6));
+        assert!(output.iter().any(|s| *s != 0.0));
     }
     #[test]
     fn frame_alignment_trim_and_render_are_rt_allocation_free() {

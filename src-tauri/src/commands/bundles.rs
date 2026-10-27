@@ -51,6 +51,7 @@ pub(crate) struct PreviewView {
     pub obs: Vec<obs_setup::Change>,
     pub running: bool,
     pub auralyn: Vec<DiffRow>,
+    pub confirmation: Option<bundle::Confirmation>,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -157,6 +158,7 @@ fn current_dto(captured: &Captured) -> SummaryDto {
 )]
 pub(crate) enum Request {
     List,
+    CheckedList,
     Sources,
     Filters {
         source: String,
@@ -167,6 +169,8 @@ pub(crate) enum Request {
         overwrite: bool,
         categories: ProfileSaveCategories,
         obs: Option<Vec<obs_setup::bundle::Selection>>,
+        #[serde(default)]
+        checked: Option<Box<CheckedClaim>>,
     },
     Preview {
         name: String,
@@ -179,13 +183,58 @@ pub(crate) enum Request {
     },
     History,
 }
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CheckedClaim {
+    pub expected: crate::ipc::PreparationSnapshot,
+    pub usage: String,
+    pub location: String,
+}
+fn validate_checked_conditions(
+    running: bool,
+    actual: Option<&crate::ipc::PreparationSnapshot>,
+    expected: &crate::ipc::PreparationSnapshot,
+) -> Result<(), String> {
+    if !running
+        || actual != Some(expected)
+        || expected.controls_pending
+        || expected.muted
+        || expected.output_gain == 0.0
+    {
+        return Err("音声処理が停止・不明・反映待ち、または確認後に条件が変わりました。音を確認し直してください".into());
+    }
+    Ok(())
+}
+async fn validate_checked(
+    host: Arc<Mutex<audio::AudioHost>>,
+    claim: &CheckedClaim,
+) -> Result<(), String> {
+    let expected = claim.expected.clone();
+    super::run_blocking(move || {
+        let mut host = host.lock().map_err(|_| "音声状態を取得できません")?;
+        host.preflight_live_changes().map_err(|e| e.to_string())?;
+        let stats = host.get_engine_runtime_stats().map_err(|e| e.to_string())?;
+        validate_checked_conditions(
+            stats
+                .latency_metadata
+                .as_ref()
+                .is_some_and(|m| m.stream_running),
+            stats.preparation.as_deref(),
+            &expected,
+        )?;
+        host.checked_snapshot_supported()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+}
 #[derive(Serialize)]
 #[serde(tag = "type", content = "value", rename_all = "camelCase")]
 pub(crate) enum Response {
     Names(Vec<String>),
     Filters(Vec<obs_setup::bundle::FilterChoice>),
     Saved,
-    Preview(PreviewView),
+    Preview(Box<PreviewView>),
     Result(Option<Box<ResultView>>),
 }
 
@@ -940,6 +989,12 @@ pub(crate) async fn broadcast_bundle(
     let mut session = state.0.lock().await;
     match request {
         Request::List => Ok(Response::Names(bundle::list(&root)?)),
+        Request::CheckedList => Ok(Response::Names(
+            bundle::list(&root)?
+                .into_iter()
+                .filter(|name| bundle::load(&root, name).is_ok_and(|b| b.confirmation.is_some()))
+                .collect(),
+        )),
         Request::Sources => Ok(Response::Names(obs_setup::bundle::sources(&obs).await?)),
         Request::Filters { source } => Ok(Response::Filters(
             obs_setup::bundle::filters(&obs, &source).await?,
@@ -952,9 +1007,23 @@ pub(crate) async fn broadcast_bundle(
             overwrite,
             categories,
             obs: selection,
+            checked,
         } => {
             bundle::validate_name(&name)?;
             bundle::ensure_save_allowed(&root, &name, overwrite)?;
+            if let Some(claim) = &checked {
+                if !categories.include_plugins
+                    || !categories.include_audio_config
+                    || !categories.include_noise_control
+                    || !categories.include_builtin_fx
+                    || selection.is_some()
+                {
+                    return Err(
+                        "確認済み保存にはAuralynの全カテゴリを選び、OBSを外してください".into(),
+                    );
+                }
+                validate_checked(host.clone(), claim).await?;
+            }
             let (captured, witness) = capture_async(host.clone()).await?;
             let saved_obs = if let Some(selection) = selection {
                 Some(obs_setup::bundle::capture(&obs, &selection).await?)
@@ -963,13 +1032,27 @@ pub(crate) async fn broadcast_bundle(
             };
             witness.validate()?;
             // OBS await中のtokenless編集やVST GUI変更を成功保存にしない。
-            let (after, _) = capture_async(host).await?;
+            let (after, _) = capture_async(host.clone()).await?;
             if !unchanged(&captured, &after) {
                 return Err(
                     "取得中にAuralyn/VST状態が変わりました。元の配信状態を保持しています".into(),
                 );
             }
+            if let Some(claim) = &checked {
+                validate_checked(host, claim).await?;
+            }
+            let confirmation = checked.map(|claim| bundle::Confirmation {
+                checked_at_unix_ms: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+                    .min(u64::MAX as u128) as u64,
+                usage: claim.usage,
+                location: claim.location,
+                preparation: claim.expected,
+            });
             let bundle = BundleV1 {
+                confirmation,
                 schema_version: 1,
                 revision: bundle::revision(),
                 name,
@@ -1005,6 +1088,7 @@ pub(crate) async fn broadcast_bundle(
                 obs: obs_plan.as_ref().map_or(vec![], |p| p.changes.clone()),
                 running: before.engine.running,
                 auralyn: preview_diff(&before, &bundle),
+                confirmation: bundle.confirmation.clone(),
             };
             session.preview = Some(Preview {
                 id: view.id.clone(),
@@ -1013,7 +1097,7 @@ pub(crate) async fn broadcast_bundle(
                 witness,
                 obs: obs_plan,
             });
-            Ok(Response::Preview(view))
+            Ok(Response::Preview(Box::new(view)))
         }
         Request::Apply { id } => {
             if session
@@ -1030,6 +1114,20 @@ pub(crate) async fn broadcast_bundle(
                 return Err("保存内容または変更予定が変わりました。再確認してください".into());
             }
             plan.witness.validate()?;
+            if plan.bundle.confirmation.is_some() {
+                let checked_host = host.clone();
+                super::run_blocking(move || {
+                    checked_host
+                        .lock()
+                        .map_err(|_| "音声状態を取得できません")?
+                        .checked_snapshot_supported()
+                        .map_err(|e| e.to_string())
+                })
+                .await?;
+            }
+            if plan.bundle.confirmation.is_some() && !plan.before.engine.global_mute {
+                return Err("確認済み構成を呼び戻す前に緊急ミュートを有効にし、差分を取り直してください。復元後も確認するまでミュートを維持します".into());
+            }
             if plan.bundle.categories.include_audio_config {
                 super::audio::enumerate_devices_async(host.clone(), false).await?;
             }
@@ -1131,6 +1229,7 @@ async fn apply_owned(
             revision: bundle::revision(),
             name: plan.id.clone(),
             categories: plan.bundle.categories.clone(),
+            confirmation: None,
             level_intent: plan.bundle.categories.include_audio_config.then_some(
                 bundle::LevelIntent {
                     input_gain: before.engine.input_gain,
@@ -1511,6 +1610,37 @@ mod tests {
         assert!(!complete(&summary));
     }
     #[test]
+    fn checked_save_requires_a_running_unmuted_settled_stream_and_the_exact_observed_conditions() {
+        let p = crate::ipc::PreparationSnapshot {
+            engine_epoch: "engine".into(),
+            processing_revision: "4".into(),
+            routing_revision: "2".into(),
+            input_gain: 1.0,
+            input_channels: [0, 1],
+            output_gain: 1.0,
+            output_revision: "3".into(),
+            muted: false,
+            controls_pending: false,
+            nr_backend: "nnnoiseless-0.5.2".into(),
+            nr_model: "bundled".into(),
+        };
+        assert!(validate_checked_conditions(true, Some(&p), &p).is_ok());
+        assert!(validate_checked_conditions(false, Some(&p), &p).is_err());
+        assert!(validate_checked_conditions(true, None, &p).is_err());
+        let mut changed = p.clone();
+        changed.processing_revision = "6".into();
+        assert!(validate_checked_conditions(true, Some(&changed), &p).is_err());
+        for kind in 0..3 {
+            let mut current = p.clone();
+            match kind {
+                0 => current.muted = true,
+                1 => current.controls_pending = true,
+                _ => current.output_gain = 0.0,
+            };
+            assert!(validate_checked_conditions(true, Some(&current), &current).is_err());
+        }
+    }
+    #[test]
     fn preview_and_result_expose_differences_without_opaque_state_or_default_buffer_claim() {
         let before = captured();
         let target = BundleV1 {
@@ -1530,6 +1660,7 @@ mod tests {
             )
             .unwrap(),
             obs: None,
+            confirmation: None,
             level_intent: None,
         };
         let rows = preview_diff(&before, &target);
@@ -1620,6 +1751,7 @@ mod tests {
             categories,
             embedded_auralyn_preset: backup,
             obs: None,
+            confirmation: None,
             level_intent: None,
         };
         assert!(selected_matches(&target, &before));

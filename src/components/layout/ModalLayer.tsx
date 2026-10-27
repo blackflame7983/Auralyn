@@ -262,6 +262,8 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onClose={() => { setReturnToBundle(false); ui.setIsPresetManagerOpen(false); }}
                         onLoadPreset={pluginsApi.loadPreset}
                         onSaveProfile={pluginsApi.saveProfile}
+                        onOpenVoiceCheck={() => { ui.setIsPresetManagerOpen(false); ui.setIsVoiceCheckOpen(true); }}
+                        onOpenAudioSettings={() => { ui.setIsPresetManagerOpen(false); ui.setIsSettingsOpen(true); }}
                         onApplyProfile={pluginsApi.applyProfile}
                         onRestoreBackup={pluginsApi.restoreBackupProfile}
                         onBundleOperation={pluginsApi.runBundle}

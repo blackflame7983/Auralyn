@@ -1,3 +1,5 @@
+import { RecoveryActionsPanel } from './RecoveryActionsPanel';
+import { TemporarySessionPanel } from './TemporarySessionPanel';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useState, useEffect, useCallback } from 'react';
@@ -33,10 +35,12 @@ interface PresetManagerModalProps {
     onApplyProfile: (
         name: string,
         substitutions?: { inputDevice?: string; outputDevice?: string },
-        options?: { skipBackup?: boolean },
+        options?: { skipBackup?: boolean; soundOnly?: boolean },
     ) => Promise<ApplyProfileSummary | null>;
     onRestoreBackup: () => Promise<ApplyProfileSummary | null>;
     onOpenTemplateWizard?: () => void;
+    onOpenVoiceCheck?: () => void;
+    onOpenAudioSettings?: () => void;
     onBundleOperation?: (request: BundleOperation) => Promise<BundleResult | null>;
     onObsSettings?: () => void;
     initialBundleOpen?: boolean;
@@ -176,15 +180,19 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
     onBundleOperation,
     onObsSettings,
     initialBundleOpen = false,
+    onOpenVoiceCheck,
+    onOpenAudioSettings,
 }) => {
     const t = useMessages();
+    const [recoveryOpen, setRecoveryOpen] = useState(false);
     const [bundleOpen, setBundleOpen] = useState(initialBundleOpen);
     const [profiles, setProfiles] = useState<ProfileMeta[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [loadError, setLoadError] = useState<SettingsNotice>('');
     const [saveName, setSaveName] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
-    const [saveCategories, setSaveCategories] = useState<ProfileSaveCategories>({ ...DEFAULT_SAVE_CATEGORIES });
+    const [saveCategories, setSaveCategories] = useState<ProfileSaveCategories>({ ...DEFAULT_SAVE_CATEGORIES, includeAudioConfig: false });
+    const [soundOnly, setSoundOnly] = useState(true);
     const [hasBackup, setHasBackup] = useState(false);
     const [applySummary, setApplySummary] = useState<ApplyProfileSummary | null>(null);
     const [devices, setDevices] = useState<AudioDeviceList | null>(null);
@@ -265,6 +273,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
         // 代替デバイスでの再適用時は、1回目適用前のバックアップを上書きしない
         const summary = await onApplyProfile(name, substitutions, {
             skipBackup: !!substitutions,
+            soundOnly,
         });
         if (!summary) return;
         setApplySummary(summary);
@@ -283,16 +292,17 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
         try {
             presetDetail = await presetApi.load(name);
         } catch {
-            presetDetail = null;
+            toast.error(t('profilePurpose.readFailed'));
+            return;
         }
 
-        const needsRestart = !!presetDetail?.audioConfig;
+        const needsRestart = !soundOnly && !!presetDetail?.audioConfig;
         const confirmApply = () => runApply(name);
 
         if (needsRestart) {
             showConfirm({
                 title: notice('presets.copy.026', { arg0: name }),
-                description: notice('presets.copy.027'),
+                description: notice('profilePurpose.impact'),
                 confirmLabel: notice('presets.copy.028'),
                 onConfirm: confirmApply,
             });
@@ -390,7 +400,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                 className="modal-surface-base w-full max-w-lg bg-background flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="modal-header-base">
+                <div className="modal-header-base shrink-0">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-primary/10 rounded-lg">
                             <MdFolderOpen className="w-5 h-5 text-primary" />
@@ -423,15 +433,23 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                         </button>
                     </div>
                 </div>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="px-4 pt-3"><TemporarySessionPanel /></div>
                 <div className="flex gap-2 border-b p-2" role="group" aria-label={t('presets.copy.056')}>
-                    <button type="button" className="border rounded p-2" aria-pressed={!bundleOpen} onClick={() => setBundleOpen(false)}>{t('presets.copy.057')}</button>
-                    <button type="button" className="border rounded p-2" aria-pressed={bundleOpen} onClick={() => setBundleOpen(true)}>{t('presets.copy.058')}</button>
+                    <button type="button" className="border rounded p-2" aria-pressed={!bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(false); }}>{t('presets.copy.057')}</button>
+                    <button type="button" className="border rounded p-2" aria-pressed={bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(true); }}>{t('presets.copy.058')}</button>
+                    <button type="button" className="border rounded p-2" aria-pressed={recoveryOpen} onClick={() => setRecoveryOpen(true)}>{t('recoveryHub.title')}</button>
                 </div>
-                {bundleOpen ? <BroadcastBundlePanel onOperation={onBundleOperation} onObsSettings={onObsSettings} /> : <>
+                {recoveryOpen ? <RecoveryActionsPanel onOperation={onBundleOperation} onVoiceCheck={onOpenVoiceCheck} onSettings={onOpenAudioSettings} /> : bundleOpen ? <BroadcastBundlePanel onOperation={onBundleOperation} onObsSettings={onObsSettings} /> : <>
                 <div className="p-4 border-b border-border bg-muted/30 space-y-3">
                     <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
                         {t('presets.copy.059')}</h3>
                     <p className="text-sm text-muted-foreground">{t('presets.copy.060')}</p>
+                    <div role="group" aria-label={t('profilePurpose.title')} className="flex flex-wrap gap-2">
+                        <button type="button" aria-pressed={!saveCategories.includeAudioConfig} className="border rounded p-2 text-sm" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: false }))}>{t('profilePurpose.sound')}</button>
+                        <button type="button" aria-pressed={saveCategories.includeAudioConfig} className="border rounded p-2 text-sm" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: true }))}>{t('profilePurpose.equipment')}</button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{t(saveCategories.includeAudioConfig ? 'profilePurpose.impact' : 'profilePurpose.portable')}</p>
                     <CategoryCheckboxes
                         idPrefix="save"
                         categories={saveCategories}
@@ -458,6 +476,11 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
                 </div>
 
+                <fieldset className="px-4 py-3 border-b text-sm">
+                    <legend>{t('profilePurpose.apply')}</legend>
+                    <label className="flex gap-2"><input type="checkbox" checked={soundOnly} onChange={e => setSoundOnly(e.target.checked)} />{t('profilePurpose.applySound')}</label>
+                    {!soundOnly && <p className="text-xs text-muted-foreground mt-2">{t('profilePurpose.impact')}</p>}
+                </fieldset>
                 <div className="px-4 py-2 border-b border-border flex items-center justify-end">
                     <button
                         onClick={handleImport}
@@ -477,7 +500,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     />
                 )}
 
-                <div className="profile-list-region flex-1 overflow-hidden flex flex-col">
+                <div className="profile-list-region flex-none overflow-hidden flex flex-col">
                     <div className="p-4 pb-2">
                         <label htmlFor="profile-search" className="block text-xs font-medium mb-1">{t('presets.copy.066')}</label>
                         <div className="relative">
@@ -493,7 +516,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-4 pt-0 space-y-2 custom-scrollbar">
+                    <div className="max-h-64 overflow-y-auto p-4 pt-0 space-y-2 custom-scrollbar">
                         {loadError && <div role="alert" className="rounded border border-border p-3 text-sm">
                             <p>{renderNotice(t, loadError)}</p>
                             <button type="button" disabled={isLoading} onClick={() => void loadProfiles()} className="mt-2 underline">{t('presets.copy.068')}</button>
@@ -563,6 +586,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
                 </div>
                 </>}
+                </div>
             </div>
 
             <ConfirmDialog

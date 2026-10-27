@@ -1,3 +1,4 @@
+import { NoiseComparisonPanel } from './NoiseComparisonPanel';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { SingingDraft } from '../../../hooks/useSingingDraft';
 import { SingingControls } from '../AudioSettings/SingingControls';
@@ -28,7 +29,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
         handleSourceChange, handleExport, handleAnalyze,
         preview, previewDevices, previewDeviceId, setPreviewDeviceId, safeOutput, setSafeOutput,
         previewBusy, previewError, stopUnconfirmed, preparePreview, refreshPreviewDevices, handleStopPreview,
-        levelMatch, setLevelMatch, candidate, candidateMode, prepareCandidate, prepareProposal, invalidateProposalPreferences, returnToRecording } = useVoiceCheck(isOpen, manualCandidate && singingModel?.draft && singingModel.snapshot ? {
+        levelMatch, setLevelMatch, candidate, candidateMode, prepareNoise, applyNoise, undoNoise, prepareCandidate, prepareProposal, invalidateProposalPreferences, returnToRecording } = useVoiceCheck(isOpen, manualCandidate && singingModel?.draft && singingModel.snapshot ? {
             config: singingModel.draft, revision: singingModel.snapshot.revision, epoch: singingModel.snapshot.epoch, draftRevision: singingModel.draftRevision,
         } : undefined, singingModel?.snapshot ? { epoch: singingModel.snapshot.epoch, revision: singingModel.snapshot.revision, draftRevision: singingModel.draftRevision } : undefined, manualCandidate);
 
@@ -113,7 +114,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             </span>
                         )}
                     </div>
-                    {comparingCandidate && <p role="status">{t(candidateMode === 'proposal' ? 'voice.comparisonProposal' : 'voice.comparisonManual')}</p>}
+                    {comparingCandidate && <p role="status">{t(candidateMode === 'noise' ? 'noiseCompare.comparing' : candidateMode === 'proposal' ? 'voice.comparisonProposal' : 'voice.comparisonManual')}</p>}
                     {comparingCandidate && <button type="button" disabled={previewBusy || busy || isRecording} onClick={() => void returnToRecording()} className="rounded border px-3 py-2 disabled:opacity-50">{t('voice.returnToRecording')}</button>}
                     {!hasRecording && !isRecording && <p className="text-sm text-muted-foreground">{t('voice.copy.053')}</p>}
                     {!comparingCandidate && <WaveformCanvas
@@ -141,7 +142,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                                     !hasRecording && 'opacity-50 cursor-not-allowed'
                                 )}
                             >
-                                {comparingCandidate ? (key === 'raw' ? t('voice.copy.054') : t('voice.copy.055')) : key === 'raw' ? t('voice.copy.056') : t('voice.copy.057')}
+                                {comparingCandidate ? (key === 'raw' ? t('voice.copy.054') : t(candidateMode === 'noise' ? 'noiseCompare.source' : 'voice.copy.055')) : key === 'raw' ? t('voice.copy.056') : t('voice.copy.057')}
                             </button>
                         ))}
                     </div>
@@ -157,6 +158,9 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             <span>{formatMs(displayDurationMs)}</span>
                         </div>
                     </div>
+                    <NoiseComparisonPanel preview={preview} candidate={candidateMode === 'noise' ? candidate : null}
+                        disabled={busy || previewBusy || isRecording || isPlaying || preview?.state === 'stopping' || stopUnconfirmed || streamStatus !== 'ready' || Boolean(preview?.conflict)}
+                        prepare={prepareNoise} apply={applyNoise} undo={undoNoise} />
                     {/* 録音 → 波形 → 聴き比べの順に置き、試聴先は再生操作の直前で選ぶ。 */}
                     <section aria-label={t('voice.copy.036')} className="rounded-lg border border-border p-3 space-y-3">
                         <h3 className="text-sm font-bold">{t('voice.copy.037')}</h3>

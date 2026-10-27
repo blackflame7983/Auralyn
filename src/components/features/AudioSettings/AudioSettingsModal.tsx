@@ -1,3 +1,5 @@
+import { PeakProtectionPanel } from './PeakProtectionPanel';
+import { NoiseMeasurementPanel } from './NoiseMeasurementPanel';
 import { LiveOutputPanel } from './LiveOutputPanel';
 import { MonitorTrial } from './MonitorTrial';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
@@ -332,33 +334,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (!noiseStrengthEditing.current) return;
     noiseStrengthEditing.current = false;
     void applyNoiseControlConfig({ strength: Number(value) });
-  };
-
-  const handleCancelNoiseLearning = async () => {
-    setNoiseActionBusy(true);
-    try {
-      await audioApi.cancelNoiseLearning();
-      await refreshEngineRuntimeStats();
-    } catch (error) {
-      console.error('Failed to cancel noise learning', error);
-      toast.error(t('settings.AudioSettingsModal.005'));
-    } finally {
-      setNoiseActionBusy(false);
-    }
-  };
-
-  const handleStartNoiseLearning = async () => {
-    setNoiseActionBusy(true);
-    try {
-      await audioApi.startNoiseLearning(3000);
-      toast.info(t('settings.AudioSettingsModal.006'));
-      window.setTimeout(refreshEngineRuntimeStats, 3500);
-    } catch (e) {
-      console.error('Failed to start noise learning', e);
-      toast.error(t('settings.AudioSettingsModal.007'));
-    } finally {
-      setNoiseActionBusy(false);
-    }
   };
 
   const applyBuiltInEffects = async (next?: Partial<{ active: boolean; preset: BuiltInEffectsPreset; amount: number }>) => {
@@ -1100,28 +1075,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-                    <button
-                      onClick={handleStartNoiseLearning}
-                      disabled={noiseActionBusy}
-                      className="px-3 py-2 rounded-md border border-input bg-background text-foreground hover:border-primary/50 disabled:opacity-50 transition-colors"
-                    >
-                      {t('settings.AudioSettingsModal.121')}</button>
-                    <button
-                      onClick={handleCancelNoiseLearning}
-                      className="px-3 py-2 rounded-md border border-input bg-background text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      {t('settings.AudioSettingsModal.122')}</button>
-                    <div role="status" className="text-muted-foreground self-center">
-                      {engineStats?.noiseLearningState === 'capturing'
-                        ? t('settings.AudioSettingsModal.123', { arg0: Math.round((engineStats.noiseLearningProgress ?? 0) * 100) })
-                        : engineStats?.noiseLearningState === 'invalid'
-                          ? t('settings.AudioSettingsModal.124')
-                        : engineStats?.noiseProfileAvailable
-                          ? t('settings.AudioSettingsModal.125', { arg0: Math.round((engineStats.noiseProfileRms ?? 0) * 1000) / 1000 })
-                          : t('settings.AudioSettingsModal.126')}
-                    </div>
-                  </div>
+                  <NoiseMeasurementPanel />
 
                   <div className="flex items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2">
                     <div>
@@ -1139,6 +1093,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </div>
                 </div>
 
+                <PeakProtectionPanel />
                 {/* Built-in Effects */}
                 <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
                   <div className="flex items-center justify-between gap-3">

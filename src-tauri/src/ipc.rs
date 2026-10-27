@@ -302,6 +302,12 @@ pub enum Command {
         duration_ms: u32,
     },
     CancelNoiseLearning,
+    PeakProtection {
+        config: Option<crate::audio_engine::peak_protection::Config>,
+    },
+    NoiseMeasurement {
+        request: crate::audio_engine::core::noise_learning::Request,
+    },
     SetNoiseControlConfig {
         active: bool,
         mode: String,
@@ -382,6 +388,8 @@ pub enum Command {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum Response {
+    PeakProtection(crate::audio_engine::peak_protection::Snapshot),
+    NoiseMeasurement(Box<crate::audio_engine::core::noise_learning::Snapshot>),
     LiveOutput(Box<crate::audio_engine::live_output::Status>),
     PluginRack {
         plugins: Vec<RackPlugin>,

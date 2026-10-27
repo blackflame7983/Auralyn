@@ -1,3 +1,4 @@
+import { sessionMode } from '@/lib/temporarySession';
 import { renderClientError } from '@/lib/clientError';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import { message, type MessageKey } from '@/i18n/messages';
@@ -43,7 +44,7 @@ export function useUpdates() {
     }, []);
 
     const checkUpdates = useCallback(async (automatic = false) => {
-        if (busyRef.current || (automatic && downloadedRef.current)) return;
+        if (busyRef.current || (automatic && (downloadedRef.current || sessionMode().temporary))) return;
         // Notifications use the locale at operation start, even if an await finishes after a switch.
         const startedLocale = localeRef.current;
         const notify = (key: MessageKey, args?: Record<string, string | number>) => message(startedLocale, key, args);

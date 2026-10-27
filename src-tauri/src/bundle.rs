@@ -31,6 +31,9 @@ pub struct EngineCapture {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BundleV1 {
+    /// 利用者による確認の履歴。現在の信号到達・復元後の合格を意味しない。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirmation: Option<Confirmation>,
     pub schema_version: u32,
     pub revision: String,
     pub name: String,
@@ -39,6 +42,14 @@ pub struct BundleV1 {
     pub obs: Option<crate::obs_setup::bundle::Saved>,
     /// dB形式では表せない完全な0も、入出力カテゴリだけで保持する。
     pub level_intent: Option<LevelIntent>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Confirmation {
+    pub checked_at_unix_ms: u64,
+    pub usage: String,
+    pub location: String,
+    pub preparation: crate::ipc::PreparationSnapshot,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -68,6 +79,23 @@ pub fn validate(bundle: &BundleV1) -> Result<(), String> {
     }
     if bundle.embedded_auralyn_preset.plugins.len() > crate::audio_engine::plugins::MAX_PLUGINS {
         return Err("VST数の上限を超えています".into());
+    }
+    if let Some(receipt) = &bundle.confirmation {
+        if receipt.checked_at_unix_ms == 0
+            || !["obs", "discord", "other", "listening"].contains(&receipt.usage.as_str())
+            || !["home", "venue"].contains(&receipt.location.as_str())
+            || receipt.preparation.engine_epoch.is_empty()
+            || receipt.preparation.controls_pending
+            || receipt.preparation.muted
+            || ![
+                receipt.preparation.input_gain,
+                receipt.preparation.output_gain,
+            ]
+            .iter()
+            .all(|g| g.is_finite() && (0.0..=2.0).contains(g))
+        {
+            return Err("確認履歴の形式が不正です".into());
+        }
     }
     let c = &bundle.categories;
     let preset = &bundle.embedded_auralyn_preset;
@@ -105,7 +133,7 @@ pub fn validate(bundle: &BundleV1) -> Result<(), String> {
     }
     if let Some(noise) = &preset.noise_control {
         if !noise.strength.is_finite()
-            || !(0.0..=1.0).contains(&noise.strength)
+            || !(0.0..=1.25).contains(&noise.strength)
             || noise.learned_profile.is_some()
             || !["low", "high", "smart", "venue"].contains(&noise.mode.as_str())
         {
@@ -274,6 +302,7 @@ mod tests {
                 builtin_fx: None,
             },
             obs: None,
+            confirmation: None,
             level_intent: None,
         }
     }

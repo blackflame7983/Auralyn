@@ -1,3 +1,4 @@
+import { explicitSessionStartRequired } from '@/lib/temporarySession';
 import { useMessages } from '../i18n/LocaleProvider';
 import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
@@ -25,7 +26,7 @@ export function useAudioRecovery() {
 
         const errors = listen<string>('audio-stream-error', event => {
             if (!active || recovering || exhausted || !event.payload.includes('Stream Error')) return;
-            if (localStorage.getItem(REVIEW_KEY) === 'true') return;
+            if (explicitSessionStartRequired() || localStorage.getItem(REVIEW_KEY) === 'true') return;
             const config = readAudioPreferences();
             if (!config) return;
             const snapshot = JSON.stringify(config);
@@ -38,7 +39,7 @@ export function useAudioRecovery() {
             };
             const retry = async (attempt: number) => {
                 if (!valid()) return;
-                if (localStorage.getItem(REVIEW_KEY) === 'true'
+                if (explicitSessionStartRequired() || localStorage.getItem(REVIEW_KEY) === 'true'
                     || JSON.stringify(readAudioPreferences()) !== snapshot) {
                     cancel();
                     return;

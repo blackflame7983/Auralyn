@@ -1,3 +1,5 @@
+import { audioApi, type PreparationSnapshot } from '@/api/audio';
+import { type PreparationContext, readPreparationContext } from '@/lib/preparation';
 import { formatObsText } from '@/lib/obsUiText';
 import type { MessageKey } from '@/i18n/messages';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
@@ -7,19 +9,23 @@ import { listen } from '@tauri-apps/api/event';
 import { bundleApi, BundleClientError, type BundleFilter, type BundleOperation, type BundleObsSelection, type BundlePreview, type BundleResult } from '../../../api/bundles';
 import type { ProfileSaveCategories } from '../../../api/presets';
 
-interface Props { onOperation?: (request: BundleOperation) => Promise<BundleResult | null>; onObsSettings?: () => void }
+interface Props { checkedOnly?: boolean; onOperation?: (request: BundleOperation) => Promise<BundleResult | null>; onObsSettings?: () => void }
 const categoryLabels: [keyof ProfileSaveCategories, MessageKey][] = [['includePlugins', 'presets.copy.107'], ['includeAudioConfig', 'presets.copy.108'], ['includeNoiseControl', 'presets.copy.109'], ['includeBuiltinFx', 'presets.copy.110']];
 const categoryKeys: Record<string, MessageKey> = { plugins: 'presets.copy.113', audioConfig: 'presets.copy.114', noiseControl: 'presets.copy.115', builtinFx: 'presets.copy.116' };
 type PanelMessage = { kind: 'success' | 'error'; notice: SettingsNotice; rawDetail?: string };
 
-export function BroadcastBundlePanel({ onOperation, onObsSettings }: Props) {
+export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly = false }: Props) {
     const t = useMessages();
     const categoryName = (value: string) => Object.prototype.hasOwnProperty.call(categoryKeys, value) ? t(categoryKeys[value]) : value;
+    const [checkedExpected, setCheckedExpected] = useState<PreparationSnapshot | null>(null);
+    const [checkedContext, setCheckedContext] = useState<PreparationContext | null>(null);
+    const [checkedAcknowledged, setCheckedAcknowledged] = useState(false);
+    const list = () => checkedOnly ? bundleApi.checkedList() : bundleApi.list();
     const [names, setNames] = useState<string[]>([]);
     const [listReady, setListReady] = useState(false);
     const [name, setName] = useState('');
     const [selected, setSelected] = useState('');
-    const [categories, setCategories] = useState<ProfileSaveCategories>({ includePlugins: true, includeAudioConfig: false, includeNoiseControl: true, includeBuiltinFx: true });
+    const [categories, setCategories] = useState<ProfileSaveCategories>({ includePlugins: true, includeAudioConfig: checkedOnly, includeNoiseControl: true, includeBuiltinFx: true });
     const [includeObs, setIncludeObs] = useState(false);
     const [sources, setSources] = useState<string[]>([]);
     const [obs, setObs] = useState<BundleObsSelection[]>([]);
@@ -33,24 +39,29 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings }: Props) {
     const listVersion = useRef(0);
     const alive = useRef(true);
     const pending = useRef(false);
-    const invalidate = () => { version.current += 1; setPlan(null); setOverwrite(false); };
+    const invalidate = () => { version.current += 1; setPlan(null); setCheckedExpected(null); setCheckedAcknowledged(false); setOverwrite(false); };
     useEffect(() => {
         alive.current = true;
         const current = ++listVersion.current;
-        void Promise.all([bundleApi.list(), bundleApi.history()]).then(([items, history]) => {
+        void Promise.all([list(), bundleApi.history()]).then(([items, history]) => {
             if (!alive.current || current !== listVersion.current) return;
             setNames(items); setResult(history); setListReady(true);
         }).catch(() => { if (alive.current && current === listVersion.current) setMessage({ kind: 'error', notice: notice('presets.copy.117') }); });
         const subscriptions = ['audio-conditions-changed', 'audio-stopped', 'audio-stream-error', 'audio-error', 'obs://timing-invalidated'].map(event => listen(event, () => {
             if (!alive.current) return;
-            version.current += 1; setPlan(null);
+            version.current += 1; setPlan(null); setCheckedExpected(null); setCheckedAcknowledged(false);
             // 自分の適用通知でも変更予定は失効するが、操作結果・Undo履歴は捨てない。
         }));
-        const hidden = () => { if (document.hidden) { version.current += 1; setPlan(null); } };
+        const contextChanged = () => { version.current++; setCheckedExpected(null); setCheckedContext(null); setCheckedAcknowledged(false); setPlan(null); };
+        window.addEventListener('preparation-purpose-changed', contextChanged);
+        window.addEventListener('preparation-external-change', contextChanged);
+        const hidden = () => { if (document.hidden) { version.current += 1; setPlan(null); setCheckedExpected(null); setCheckedAcknowledged(false); } };
         document.addEventListener('visibilitychange', hidden);
         return () => {
             alive.current = false; version.current += 1; listVersion.current += 1;
             document.removeEventListener('visibilitychange', hidden);
+            window.removeEventListener('preparation-purpose-changed', contextChanged);
+            window.removeEventListener('preparation-external-change', contextChanged);
             subscriptions.forEach(p => { void p.then(unlisten => unlisten()).catch(() => {}); });
         };
     }, []);
@@ -63,7 +74,7 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings }: Props) {
             : { kind: 'error', notice: notice('presets.copy.118'), rawDetail: typeof error === 'string' ? error : error instanceof Error ? error.message : undefined }); }
         finally { pending.current = false; if (alive.current) setBusy(false); }
     };
-    const refresh = () => run(async () => { invalidate(); setListReady(false); const current = ++listVersion.current; const [items, history] = await Promise.all([bundleApi.list(), bundleApi.history()]); if (alive.current && current === listVersion.current) { setNames(items); setResult(history); setListReady(true); } });
+    const refresh = () => run(async () => { invalidate(); setListReady(false); const current = ++listVersion.current; const [items, history] = await Promise.all([list(), bundleApi.history()]); if (alive.current && current === listVersion.current) { setNames(items); setResult(history); setListReady(true); } });
     const preview = () => run(async () => {
         invalidate(); const current = version.current;
         const next = await bundleApi.preview(selected);
@@ -83,9 +94,9 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings }: Props) {
         <p className="text-xs text-muted-foreground">{t('presets.copy.123')}</p>
         <fieldset disabled={busy} className="space-y-2 border rounded p-3"><legend>{t('presets.copy.124')}</legend>
             <label className="block">{t('presets.copy.125')}<input className="block w-full border rounded bg-background p-2" value={name} onChange={e => { invalidate(); setName(e.target.value); }} maxLength={120} /></label>
-            <div className="grid grid-cols-2 gap-2">{categoryLabels.map(([key, label]) => <label key={key}><input type="checkbox" checked={categories[key]} onChange={e => { invalidate(); setCategories(c => ({ ...c, [key]: e.target.checked })); }} /> {t(label)}</label>)}</div>
+            <div className="grid grid-cols-2 gap-2">{categoryLabels.map(([key, label]) => <label key={key}><input type="checkbox" disabled={checkedOnly} checked={categories[key]} onChange={e => { invalidate(); setCategories(c => ({ ...c, [key]: e.target.checked })); }} /> {t(label)}</label>)}</div>
             <p className="text-xs">{t('presets.copy.126')}</p>
-            <label className="block"><input type="checkbox" checked={includeObs} onChange={e => { invalidate(); setIncludeObs(e.target.checked); }} /> {t('presets.copy.127')}</label>
+            <label className="block"><input type="checkbox" checked={includeObs} disabled={checkedOnly} onChange={e => { invalidate(); setIncludeObs(e.target.checked); }} /> {t('presets.copy.127')}</label>
             {includeObs && <div className="space-y-2">
                 <p className="text-xs">{t('presets.copy.128')}</p>
                 {onObsSettings && <button type="button" className="border rounded p-2" onClick={onObsSettings}>{t('presets.copy.129')}</button>}
@@ -100,10 +111,20 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings }: Props) {
                     </div>;
                 })}
             </div>}
+            {checkedOnly && <div className="space-y-2">
+                <p className="text-xs">{t('recovery.checkedScope')}</p>
+                <button type="button" className="border rounded p-2" onClick={() => void run(async () => {
+                    const current = version.current; const context = readPreparationContext();
+                    const stats = await audioApi.getEngineRuntimeStats(); const expected = stats.preparation;
+                    if (stats.latencyMetadata?.streamRunning !== true || !expected || expected.controlsPending || expected.muted || expected.outputGain === 0 || !context.usage) throw new Error(t('recovery.readFailed'));
+                    if (alive.current && current === version.current) { setCheckedExpected(expected); setCheckedContext(context); setCheckedAcknowledged(false); }
+                })}>{t('recovery.readConditions')}</button>
+                <label className="flex gap-2"><input type="checkbox" disabled={!checkedExpected} checked={checkedAcknowledged} onChange={e => setCheckedAcknowledged(e.target.checked)} />{t('recovery.checkedAck')}</label>
+            </div>}
             {existingName !== undefined && <label className="block"><input type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)} /> {t('presets.copy.141')}</label>}
-            <button type="button" className="border rounded p-2" disabled={!listReady || !name.trim() || !Object.values(categories).some(Boolean) || (includeObs && obs.length === 0) || (existingName !== undefined && !overwrite)} onClick={() => void run(async () => {
-                if (!listReady) return; const saveName = existingName ?? name.trim(); const confirmedOverwrite = existingName !== undefined && overwrite; invalidate(); await bundleApi.save(saveName, categories, includeObs ? obs : null, confirmedOverwrite);
-                const items = await bundleApi.list(); if (alive.current) { setNames(items); setMessage({ kind: 'success', notice: notice('presets.copy.142') }); }
+            <button type="button" className="border rounded p-2" disabled={(checkedOnly && (!checkedExpected || !checkedAcknowledged)) || !listReady || !name.trim() || !Object.values(categories).some(Boolean) || (includeObs && obs.length === 0) || (existingName !== undefined && !overwrite)} onClick={() => void run(async () => {
+                if (!listReady) return; const saveName = existingName ?? name.trim(); const confirmedOverwrite = existingName !== undefined && overwrite; if (checkedOnly && JSON.stringify(readPreparationContext()) !== JSON.stringify(checkedContext)) throw new Error(t('recovery.readFailed')); const checked = checkedOnly && checkedExpected && checkedContext ? { expected: checkedExpected, usage: checkedContext.usage, location: checkedContext.location } : undefined; invalidate(); if (checked) await bundleApi.save(saveName, categories, null, confirmedOverwrite, checked); else await bundleApi.save(saveName, categories, includeObs ? obs : null, confirmedOverwrite);
+                const items = await list(); if (alive.current) { setNames(items); setMessage({ kind: 'success', notice: notice('presets.copy.142') }); }
             })}>{t('presets.copy.143')}</button>
         </fieldset>
         <fieldset disabled={busy} className="space-y-2 border rounded p-3"><legend>{t('presets.copy.144')}</legend>
@@ -111,7 +132,7 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings }: Props) {
             <button type="button" className="border rounded p-2 mr-2" onClick={() => void refresh()}>{t('presets.copy.147')}</button>
             <button type="button" className="border rounded p-2" disabled={!selected} onClick={() => void preview()}>{t('presets.copy.148')}</button>
         </fieldset>
-        {plan && <div className="border rounded p-3 space-y-2" aria-label={t('presets.copy.149')}><p>{plan.name}：{plan.categories.join('・')}{t('presets.copy.150')}</p><p className="text-xs">{t('presets.copy.151')}</p>
+        {plan && <div className="border rounded p-3 space-y-2" aria-label={t('presets.copy.149')}>{plan.confirmation && <p className="text-xs">{t('recovery.historical', { time: new Date(plan.confirmation.checkedAtUnixMs).toLocaleString() })}</p>}<p>{plan.name}：{plan.categories.join('・')}{t('presets.copy.150')}</p><p className="text-xs">{t('presets.copy.151')}</p>
             <table className="w-full text-xs text-left"><caption>{t('presets.copy.152')}</caption><thead><tr><th>{t('presets.copy.153')}</th><th>{t('presets.copy.154')}</th><th>{t('presets.copy.155')}</th><th>{t('presets.copy.156')}</th></tr></thead><tbody>{plan.auralyn.map((row,i) => <tr key={i}><th scope="row">{formatObsText(t, row.labelText, row.label)}</th><td className="break-all">{formatObsText(t, row.beforeText, row.before)}</td><td className="break-all">{formatObsText(t, row.afterText, row.after)}</td><td>{{same: t('presets.copy.157'), changed: t('presets.copy.158'), notSelected: t('presets.copy.159'), unknown: t('presets.copy.160')}[row.status]}</td></tr>)}</tbody></table>
 
             {plan.obs.length > 0 && <ul>{plan.obs.map((c,i) => <li key={i}>{c.source}：{formatObsText(t, c.labelText, c.label)} {formatObsText(t, c.beforeText, c.beforeDisplay ?? c.before)} → {formatObsText(t, c.afterText, c.afterDisplay ?? c.after)}</li>)}</ul>}

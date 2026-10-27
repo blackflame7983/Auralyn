@@ -4,6 +4,7 @@ import { PluginClientError } from './pluginNotice';
 type Formatter = (key: MessageKey, args?: Record<string, string | number>) => string;
 export interface ClientErrorNotice { key: MessageKey; args?: Record<string, string | number> }
 const keys = {
+    "session.isolation": "clientErrors.sessionIsolation",
     "migration.flushTimeout": "clientErrors.flushTimeout",
     "migration.invalidLocale": "clientErrors.invalidLocale",
     "gain.settingsChanged": "clientErrors.gainSettingsChanged",
