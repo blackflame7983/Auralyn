@@ -211,23 +211,37 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         builtinFx?: { preset: string; enabled: boolean; amount: number };
       } | undefined;
       if (!detail) return;
+      // engineStatsの同期effectが古い値で表示を戻さないよう、通知された設定をまとめて統計値へも反映する。
+      const patch: Partial<EngineRuntimeStats> = {};
       if (detail.noiseControl) {
         const nc = detail.noiseControl;
         if (['low', 'high', 'smart', 'venue'].includes(nc.mode)) {
           setNoiseMode(nc.mode as NoiseControlMode);
+          patch.noiseReductionMode = nc.mode;
         }
         setNoiseStrength(Math.round(nc.strength * 100));
         setNoiseVoiceGuard(nc.voiceGuard);
-        // ON/OFFの表示はengineStatsを参照するため、外部からの切替も同じ値へそろえる。
-        setEngineStats(current => current ? { ...current, noiseReductionEnabled: nc.enabled, noiseReductionActive: nc.enabled } : current);
+        Object.assign(patch, {
+          noiseReductionEnabled: nc.enabled,
+          noiseReductionActive: nc.enabled,
+          noiseControlStrength: nc.strength,
+          noiseVoiceGuard: nc.voiceGuard,
+        });
       }
       if (detail.builtinFx) {
         const fx = detail.builtinFx;
         setBuiltInEffectsEnabled(fx.enabled);
+        patch.builtInEffectsEnabled = fx.enabled;
         if (['broadcast', 'warm', 'bright', 'singing'].includes(fx.preset)) {
           setBuiltInEffectsPreset(fx.preset as BuiltInEffectsPreset);
+          patch.builtInEffectsPreset = fx.preset;
+        }
+        if (Number.isFinite(fx.amount)) {
+          setBuiltInEffectsAmount(Math.round(fx.amount * 100));
+          patch.builtInEffectsAmount = fx.amount;
         }
       }
+      setEngineStats(current => current ? { ...current, ...patch } : current);
     };
     window.addEventListener('profile-fx-applied', handler);
     return () => window.removeEventListener('profile-fx-applied', handler);

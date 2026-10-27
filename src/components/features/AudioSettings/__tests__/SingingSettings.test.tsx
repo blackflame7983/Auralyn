@@ -90,3 +90,22 @@ it.each([true, false])('音づくりの基本を先に置き、歌向けの欄�
     expect(screen.getByRole('combobox', { name: '表示言語' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'システム設定タブを表示' })).toHaveLength(1);
 });
+
+it('プロファイル適用でモードが変わっても音づくりの表示を古い統計値へ戻さず、次の操作で新しい設定を送る', async () => {
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({ noiseReductionEnabled: false, noiseReductionActive: false, noiseReductionMode: 'low', noiseControlStrength: 0.6, noiseVoiceGuard: false, builtInEffectsEnabled: true, builtInEffectsPreset: 'singing', builtInEffectsAmount: 0.6 } as EngineRuntimeStats);
+    const setNoise = vi.spyOn(audioApi, 'setNoiseControlConfig').mockResolvedValue(undefined);
+    render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const noise = await screen.findByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.107') });
+    await waitFor(() => expect(noise).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: message('ja', 'master.nrLow') })).toHaveAttribute('aria-pressed', 'true'));
+    act(() => { window.dispatchEvent(new CustomEvent('profile-fx-applied', { detail: {
+        noiseControl: { enabled: true, mode: 'venue', strength: 1.1, voiceGuard: true },
+        builtinFx: { preset: 'warm', enabled: false, amount: 0.4 },
+    } })); });
+    await act(async () => {});
+    expect(screen.getByRole('button', { name: message('ja', 'master.nrVenue') })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: message('ja', 'master.nrLow') })).toHaveAttribute('aria-pressed', 'false');
+    expect(noise).toBeChecked();
+    fireEvent.click(noise);
+    await waitFor(() => expect(setNoise).toHaveBeenCalledWith({ active: false, mode: 'venue', strength: 1.1, voiceGuard: true }));
+});
