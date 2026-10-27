@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { LevelMeter } from '../LevelMeter';
 import { LargeLevelMeter } from '../LargeLevelMeter';
 import { MeterProvider } from '../MeterContext';
+import { MeterVisual } from '../MeterVisual';
 
 const handlers = new Map<string, Set<(event: { payload: unknown }) => void>>();
 const emit = (name: string, payload?: unknown) => act(() => handlers.get(name)?.forEach(fn => fn({ payload })));
@@ -17,6 +18,11 @@ beforeEach(() => {
     });
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.mocked(listen).mockReset(); });
+it('フッター用の小表示は数値とクリップがあっても固定のバー高さを保つ', () => {
+    render(<MeterVisual label="出力" height={28} width={12} showValues reading={{ levels: [1, 1], peak: [1, 1], clipped: true, state: 'live', resetClip: () => {} }} />);
+    expect(screen.getByRole('meter', { name: '出力' })).toHaveStyle({ height: '28px' });
+    expect(screen.getByRole('button', { name: /クリップ表示を消す/ })).toBeInTheDocument();
+});
 it('小メーターは入力を選び、停止後は旧値を表示しない', () => {
     render(<LevelMeter running type="input" />);
     emit('audio-level', { input: [1.2, 1.2], output: [0, 0] });
