@@ -50,6 +50,9 @@ export function RecoveryActionsPanel({ onOperation, onVoiceCheck, onSettings }: 
     return <section className="min-h-0 overflow-y-auto p-4 space-y-4 text-sm" aria-label={t('recoveryHub.title')}>
         <details className="border rounded p-3"><summary className="cursor-pointer font-medium">{t('recovery.undoTitle')}</summary>
             <p className="my-2 text-xs">{t('recovery.undoScope')}</p>
+            <ul className="my-3 list-disc space-y-2 pl-5 text-xs">
+                {(['nr', 'builtin', 'gain', 'profile', 'bundle', 'monitor'] as const).map(item => <li key={item}>{t(`recovery.undo.${item}`)}</li>)}
+            </ul>
             {onVoiceCheck && <button type="button" className="border rounded p-2" onClick={onVoiceCheck}>{t('recovery.openVoice')}</button>}
         </details>
         <details className="border rounded p-3"><summary className="cursor-pointer font-medium">{t('recovery.checkedTitle')}</summary>

@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '@/api/audio';
 import { message } from '@/i18n/messages';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 import { RecoveryActionsPanel } from '../RecoveryActionsPanel';
 
 vi.mock('../BroadcastBundlePanel', () => ({ BroadcastBundlePanel: () => null }));
@@ -73,4 +75,19 @@ it('停止通知の購読を確認できない場合は現在状態として表�
     expect(screen.getByRole('button', { name: message('ja', 'recovery.inspect') })).toBeDisabled();
     expect(screen.getByRole('status')).toHaveTextContent(message('ja', 'recovery.state.unknown'));
     expect(request).not.toHaveBeenCalled();
+});
+
+
+it.each(['ja', 'en'] as const)('%sで各復元先を一覧表示し、現在のUndo可否を取得しない', locale => {
+    const inspect = vi.spyOn(audioApi, 'getAudioStreamState');
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><RecoveryActionsPanel /></LocaleProvider>);
+    fireEvent.click(screen.getByText(message(locale, 'recovery.undoTitle')));
+    const list = screen.getByRole('list');
+    expect(list.querySelectorAll('li')).toHaveLength(6);
+    for (const item of ['nr', 'builtin', 'gain', 'profile', 'bundle', 'monitor'] as const) {
+        expect(list).toHaveTextContent(message(locale, `recovery.undo.${item}`));
+    }
+    expect(screen.getByText(message(locale, 'recovery.undoScope'))).toBeVisible();
+    expect(inspect).not.toHaveBeenCalled();
 });
