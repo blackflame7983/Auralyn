@@ -72,3 +72,13 @@ it('実slider入力は30msの送信待ち中でも旧hotkey確認を失効させ
     expect(slider).toHaveAttribute('aria-valuenow', '31');
     vi.unstubAllGlobals();
 });
+
+it('ノイズ低減hotkeyの切替結果を音づくりとメインの声の調整へ同じ通知で伝える', async () => {
+    const applied = vi.fn();
+    window.addEventListener('profile-fx-applied', applied);
+    const hook = renderHook(() => useAppEvents(props)); await act(async () => {});
+    const payload = { enabled: false, mode: 'venue', strength: 1.1, voiceGuard: false };
+    notify('shortcut-noise-toggled', payload);
+    expect((applied.mock.calls[0][0] as CustomEvent).detail).toEqual({ noiseControl: payload });
+    hook.unmount(); window.removeEventListener('profile-fx-applied', applied);
+});
