@@ -57,8 +57,6 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                 <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card/80 shrink-0">
                     <div>
                         <h2 className="text-lg font-bold text-foreground">{t('voice.copy.001')}</h2>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            {t('voice.copy.002')}</p>
                         <details className="text-xs text-muted-foreground mt-1">
                             <summary className="cursor-pointer">{t('voice.recordingScopeDetails')}</summary>
                             <p className="mt-1">{t('voice.copy.003')}</p>
@@ -161,6 +159,9 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     <NoiseComparisonPanel preview={preview} candidate={candidateMode === 'noise' ? candidate : null}
                         disabled={busy || previewBusy || isRecording || isPlaying || preview?.state === 'stopping' || stopUnconfirmed || streamStatus !== 'ready' || Boolean(preview?.conflict)}
                         prepare={prepareNoise} apply={applyNoise} undo={undoNoise} />
+                    {/* 状態が未確定・失敗した際は停止と再試行を隠さない。 */}
+                    <details open={hasRecording || previewBusy || stopUnconfirmed || Boolean(previewError || preview?.error || preview?.conflict) || isPlaying || preview?.state === 'stopping' || preview?.owner === 'auto_gain' || undefined}>
+                    <summary className="cursor-pointer text-sm font-semibold">{t('voice.playbackSection')}</summary>
                     {/* 録音 → 波形 → 聴き比べの順に置き、試聴先は再生操作の直前で選ぶ。 */}
                     <section aria-label={t('voice.copy.036')} className="rounded-lg border border-border p-3 space-y-3">
                         <h3 className="text-sm font-bold">{t('voice.copy.037')}</h3>
@@ -223,6 +224,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={levelMatch} disabled={previewBusy || isRecording || !preview?.levelMatchAvailable || preview?.state === 'stopping'} onChange={event => setLevelMatch(event.target.checked)} className="mt-1" /><span>{t('voice.copy.063')}</span></label>
                     <p className="text-xs text-muted-foreground">{t('voice.copy.064')}{preview?.levelMatchAvailable === false && t('voice.copy.065')} {t('voice.copy.066')}</p>
                     {preview && <p className="text-xs text-muted-foreground">{t('voice.copy.067')}{preview.levelMatchAttenuationDb[0].toFixed(1)} {t('voice.copy.068')}{preview.levelMatchAttenuationDb[1].toFixed(1)} {t('voice.copy.069')}{preview.safetyAttenuationDb.toFixed(1)} dB</p>}
+                    </details>
                     <details className="rounded border border-border p-3 text-xs space-y-2">
                         <summary className="cursor-pointer font-semibold">{t('voice.copy.070')}</summary>
                         {!preview?.metadata ? <p>{t('voice.copy.071')}</p> : <>

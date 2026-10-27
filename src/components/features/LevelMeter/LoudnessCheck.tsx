@@ -1,3 +1,4 @@
+import { InfoPopover } from '@/components/ui/InfoPopover';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useRef, useState } from 'react';
@@ -301,8 +302,7 @@ export function LoudnessCheck({
                     disabled={!running || !available || busy} onClick={() => setAutoGainOpen(true)}>{t('loudness.openAutoGain')}</button>
                 </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-                {t('loudness.scope')}</p>
+            <InfoPopover label={t('info.loudness')}>{t('loudness.scope')}</InfoPopover>
             {autoGainOpen && available && running && <AutoGainDialog onClose={() => setAutoGainOpen(false)} />}
             {active && reading && (
                 <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">{t('structure.measurements')}</summary><p className="text-xs text-muted-foreground font-mono">

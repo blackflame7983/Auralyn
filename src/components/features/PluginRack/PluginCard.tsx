@@ -87,7 +87,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                             />
                             <h3 className={cn("font-bold text-sm truncate transition-colors", plugin.enabled ? "text-foreground" : "text-muted-foreground")}>
                                 {plugin.name}
-                                <span className="ml-2 text-xs text-muted-foreground">{plugin.muted ? t('rack.card.simpleMuted') : plugin.enabled ? t('rack.card.enabled') : t('rack.card.disabled')}</span>
+                                {plugin.muted && <span className="ml-2 text-xs text-muted-foreground">{t('rack.card.simpleMuted')}</span>}
                             </h3>
                         </div>
 
@@ -201,14 +201,12 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                     />
                     {/* 1. Identity Section */}
                     <div className="flex flex-col min-w-0 flex-1 mr-4 gap-0.5">
-                        <span className={cn("text-xs", plugin.muted ? "text-destructive-text font-semibold" : "text-muted-foreground")}>
-                            {plugin.muted ? t('rack.card.muted') : plugin.enabled ? t('rack.card.enabled') : t('rack.card.disabled')}
-                        </span>
+                        {plugin.muted && <span className="text-xs text-destructive-text font-semibold">{t('rack.card.muted')}</span>}
 
                         <h3 className={cn("font-bold tracking-tight text-sm truncate pr-4 transition-colors", plugin.enabled ? "text-foreground" : "text-muted-foreground")}>
                             {plugin.name}
                         </h3>
-                        <div className="text-xs text-muted-foreground truncate">{plugin.vendor || t('rack.card.unknownMaker')}</div>
+                        {plugin.vendor && <div className="text-xs text-muted-foreground truncate">{plugin.vendor}</div>}
                     </div>
 
                     {/* 2. Controls Section */}

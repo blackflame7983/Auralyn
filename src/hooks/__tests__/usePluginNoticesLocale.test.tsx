@@ -71,3 +71,20 @@ it('profile保存の遅い失敗もkeyで保持し、locale変更で保存要求
     await act(async () => {fail(new Error('raw SDK')); expect(await pending).toBe(false);}); expect(result.current.error).toBe('Could not save the preset');
     act(() => {store.setLocale('ja');}); expect(result.current.error).toBe('プリセットの保存に失敗しました'); expect(save).toHaveBeenCalledExactlyOnceWith('My 実名', []);
 });
+
+it('スキャン失敗は復元通知と別に保持し、再スキャン成功で一覧のエラーだけを消す', async () => {
+    localStorage.setItem(KEY, '{corrupt saved JSON');
+    vi.mocked(audioApi.sessionRack).mockResolvedValue({status: 'snapshot', generation: 'g', revision: '7', running: false, present: true, restoreEligible: false,
+        plugins: [{id: 'actual-a', path: 'same', name: 'Actual A', enabled: true, muted: false, gain: .3}]});
+    const { result } = renderHook(() => usePlugins()); await act(async () => {});
+    const notice = result.current.error;
+    expect(result.current.sessionProtectionReason).toContain('自動保存');
+    vi.mocked(audioApi.scanPlugins).mockRejectedValueOnce(new Error('scan failed'));
+    await act(async () => { await result.current.scanPlugins(); });
+    expect(result.current.error).toBe(notice);
+    expect(result.current.scanError).toContain('スキャンに失敗');
+    await act(async () => { await result.current.scanPlugins(); });
+    expect(result.current.scanError).toBeNull();
+    expect(result.current.error).toBe(notice);
+    expect(result.current.sessionProtectionReason).toContain('自動保存');
+});

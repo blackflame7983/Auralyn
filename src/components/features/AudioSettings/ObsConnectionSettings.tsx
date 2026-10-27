@@ -305,7 +305,8 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                     />
                   </div>
 
-                    <p className="text-xs text-muted-foreground">{t('settings.ObsConnectionSettings.287')}</p>
+                    {isObsConnected && <p className="text-xs text-muted-foreground">{t('settings.ObsConnectionSettings.287')}</p>}
+                    {!isObsConnected && <p className="text-xs text-muted-foreground">{t('obs.passwordScope')}</p>}
                   </div>
                 </details>
                 {!isObsConnected && (

@@ -1,3 +1,4 @@
+import { InfoPopover } from '@/components/ui/InfoPopover';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
@@ -111,7 +112,7 @@ export function VoiceQuickControls({ running, onOpenSoundSettings }: { running: 
                             ))}
                         </div>
                     )}
-                    <p className="text-xs text-muted-foreground">{t('home.noiseScope')}</p>
+                    <InfoPopover label={t('info.noise')}>{t('home.noiseScope')}</InfoPopover>
                 </div>
                 <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
                     <div className="flex items-center justify-between gap-2">
