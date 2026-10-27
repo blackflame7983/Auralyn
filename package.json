@@ -57,17 +57,17 @@
     "@types/node": "^25.0.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^4.6.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "archiver": "^7.0.1",
     "autoprefixer": "^10.4.23",
-    "jimp": "^1.6.0",
+    "bmp-ts": "1.0.9",
     "jsdom": "^27.4.0",
     "license-checker": "^25.0.1",
     "postcss": "^8.5.6",
     "sharp": "^0.35.5",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4",
-    "vitest": "^4.1.11"
+    "vite": "^8.3.5",
+    "vitest": "^4.1.12"
   }
 }

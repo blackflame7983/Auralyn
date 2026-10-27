@@ -5,11 +5,11 @@ const SCALE = 1;
  * - Header: 150x57 px
  * - Sidebar: 164x314 px
  * 
- * Uses 'sharp' for high-quality resizing and compositing,
- * and 'jimp' for reliable BMP output.
+ * sharpでリサイズ・合成し、既存のbmp-tsエンコーダーでBMPを書き出す。
  */
 import sharp from 'sharp';
-import { Jimp } from 'jimp';
+import { writeFile } from 'node:fs/promises';
+import { encodeNsisBitmap } from './encode-nsis-bitmap.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -53,9 +53,7 @@ async function generateNsisBitmaps() {
         .png()
         .toBuffer();
 
-    // Convert to BMP using Jimp
-    const headerJimp = await Jimp.read(headerImageBuffer);
-    await headerJimp.write(path.join(ICONS_DIR, 'nsis-header.bmp'));
+    await writeFile(path.join(ICONS_DIR, 'nsis-header.bmp'), await encodeNsisBitmap(headerImageBuffer));
     console.log(`✓ Generated nsis-header.bmp (${headerWidth}x${headerHeight})`);
 
     // ==========================================
@@ -94,10 +92,11 @@ async function generateNsisBitmaps() {
         .png()
         .toBuffer();
 
-    // Convert to BMP using Jimp
-    const sidebarJimp = await Jimp.read(sidebarImageBuffer);
-    await sidebarJimp.write(path.join(ICONS_DIR, 'nsis-sidebar.bmp'));
+    await writeFile(path.join(ICONS_DIR, 'nsis-sidebar.bmp'), await encodeNsisBitmap(sidebarImageBuffer));
     console.log(`✓ Generated nsis-sidebar.bmp (${sidebarWidth}x${sidebarHeight})`);
 }
 
-generateNsisBitmaps().catch(console.error);
+generateNsisBitmaps().catch(error => {
+    console.error(error);
+    process.exitCode = 1;
+});

@@ -5,7 +5,7 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => {
-  const packageJson = await import('./package.json');
+  const { default: packageJson } = await import('./package.json', { with: { type: 'json' } });
   return {
     plugins: [react()],
     define: {
@@ -13,31 +13,21 @@ export default defineConfig(async () => {
     },
     resolve: {
       alias: {
-        "@": path.resolve(__dirname, "./src"),
+        "@": path.resolve(import.meta.dirname, "./src"),
       },
     },
 
-    // Bundle optimization: split vendor chunks
+    // Vite 8 / Rolldownのグループ指定でvendor分割を維持する。
     build: {
-      rollupOptions: {
+      rolldownOptions: {
         output: {
-          manualChunks: {
-            'vendor-react': ['react', 'react-dom'],
-            'vendor-radix': [
-              '@radix-ui/react-dialog',
-              '@radix-ui/react-dropdown-menu',
-              '@radix-ui/react-popover',
-              '@radix-ui/react-tabs',
-              '@radix-ui/react-tooltip',
-              '@radix-ui/react-slider',
-              '@radix-ui/react-switch',
-              '@radix-ui/react-label',
-              '@radix-ui/react-separator',
-              '@radix-ui/react-radio-group',
-              '@radix-ui/react-avatar',
+          codeSplitting: {
+            groups: [
+              { name: 'vendor-react', test: /[\\/]node_modules[\\/](?:react|react-dom|scheduler)[\\/]/ },
+              { name: 'vendor-radix', test: /[\\/]node_modules[\\/]@radix-ui[\\/]/ },
+              { name: 'vendor-dnd', test: /[\\/]node_modules[\\/]@dnd-kit[\\/]/ },
+              { name: 'vendor-icons', test: /[\\/]node_modules[\\/](?:lucide-react|react-icons)[\\/]/ },
             ],
-            'vendor-dnd': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
-            'vendor-icons': ['lucide-react', 'react-icons'],
           }
         }
       }
