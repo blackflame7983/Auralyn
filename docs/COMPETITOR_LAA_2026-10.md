@@ -1,6 +1,6 @@
 # 競合比較: Live Audio Assist（2026-10）
 
-Stream Gear MixerとPR #105後のAuralynを含む現在の評価・改善順序は、[競合比較と改善順序](COMPETITOR_STRATEGY_2026-10.md)を参照する。本書はLAAの公開資料を調べた記録であり、単独の機能差を現在の競争優位として扱わない。
+Stream Gear MixerとPR #105後のAuralynを含む現在の評価・改善順序は、[競合比較と改善順序](COMPETITOR_STRATEGY_2026-10.md)を参照する。画面の作りと音楽鑑賞の位置づけは[競合比較の補遺](COMPETITOR_SGM_2026-10.md)を参照する。本書はLAAの公開資料を調べた記録であり、単独の機能差を現在の競争優位として扱わない。
 
 2026-10-27 時点の調査記録。Live Audio Assist（以下 LAA）は実機で動作確認しておらず、記述は公開資料からの読み取りである。Auralyn 側は当日の main（README、`docs/`、`src-tauri/src/audio_engine` の構成）を基準にした。この文書は製品方針の検討材料であり、実装・検証済みの証拠として扱わない。
 
