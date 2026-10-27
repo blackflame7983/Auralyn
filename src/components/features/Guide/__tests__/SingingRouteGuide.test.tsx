@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { SingingRouteGuide } from '../SingingRouteGuide';
+import { listen } from '@tauri-apps/api/event';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 afterEach(cleanup);
 beforeEach(() => { localStorage.clear(); });
@@ -41,4 +44,47 @@ it('同じ機器でも入力チャンネルの変更後は経路確認を持ち�
     view.rerender(<SingingRouteGuide hardware />);
     expect(screen.queryByText(/手動確認を記録しました/)).not.toBeInTheDocument();
     expect(screen.getByText('この接続で手動確認した経路を記録')).toBeDisabled();
+});
+it.each(['ja', 'en'] as const)('直接モニターと加工後経路は確認と記録を分ける (%s)', locale => {
+    const config = { host: 'ASIO', input: 'mic', output: 'cable', inputId: 'i', outputId: 'o' };
+    const old = JSON.stringify({ schemaVersion: 1, kind: 'hardwareLoopback', fingerprint: 'old', checkedAt: 1 });
+    localStorage.setItem('vst_host_audio_config', JSON.stringify(config));
+    localStorage.setItem('auralyn_singing_route', old);
+    const timing = vi.fn();
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><SingingRouteGuide hardware={null} onOpenTiming={timing} /></LocaleProvider>);
+    const direct = screen.getByRole('radio', { name: locale === 'ja' ? /機器の直接モニターで聴く/ : /Use hardware direct monitoring/ });
+    fireEvent.click(direct);
+    expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+    expect(localStorage.getItem('auralyn_singing_route')).toBe(old);
+    expect(localStorage.getItem('auralyn_singing_route_direct')).toBeNull();
+    for (const checkbox of screen.getAllByRole('checkbox')) fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? 'この接続で手動確認した経路を記録' : 'Record manual checks for this connection' }));
+    expect(localStorage.getItem('auralyn_singing_route')).toBe(old);
+    expect(JSON.parse(localStorage.getItem('auralyn_singing_route_direct')!).kind).toBe('directMonitor');
+    fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? 'OBS の声と伴奏のタイミングを調整' : 'Adjust voice and accompaniment timing in OBS' }));
+    expect(timing).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('radio', { name: locale === 'ja' ? '加工した声を Auralyn から聴く' : 'Hear processed voice from Auralyn' }));
+    expect(screen.getAllByRole('checkbox').every(c => !(c as HTMLInputElement).checked)).toBe(true);
+    expect(screen.getByRole('button', { name: locale === 'ja' ? 'この接続で手動確認した経路を記録' : 'Record manual checks for this connection' })).toBeDisabled();
+    fireEvent.click(direct);
+    expect(screen.getAllByRole('checkbox').every(c => !(c as HTMLInputElement).checked)).toBe(true);
+    expect(screen.getByRole('button', { name: locale === 'ja' ? 'この接続で手動確認した経路を記録' : 'Record manual checks for this connection' })).toBeDisabled();
+});
+it('直接モニターの二重音では Auralyn と OBS の返しを確認し、条件変更で記録を失効する', () => {
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'mic', output: 'cable', inputId: 'i', outputId: 'o' }));
+    let invalidate!: () => void;
+    vi.mocked(listen).mockImplementation(async (name, callback) => {
+        if (name === 'audio-conditions-changed') invalidate = () => callback({ event: name, id: 1, payload: null });
+        return () => {};
+    });
+    render(<SingingRouteGuide hardware={false} />);
+    fireEvent.click(screen.getByRole('radio', { name: /機器の直接モニターで聴く/ }));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'double' } });
+    expect(screen.getByText(/Auralyn のモニター出力、OBS の音声モニター/)).toBeInTheDocument();
+    for (const checkbox of screen.getAllByRole('checkbox')) fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole('button', { name: 'この接続で手動確認した経路を記録' }));
+    act(() => invalidate());
+    expect(screen.getByRole('button', { name: 'この接続で手動確認した経路を記録' })).toBeDisabled();
+    expect(screen.getByText(/未確認です/)).toBeInTheDocument();
+    vi.mocked(listen).mockReset().mockResolvedValue(() => {});
 });
