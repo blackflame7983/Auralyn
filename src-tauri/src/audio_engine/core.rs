@@ -3,11 +3,16 @@ mod noise_learning;
 use noise_learning::{NoiseLearningShared, RtNoiseLearning};
 #[path = "core/dsp.rs"]
 pub(crate) mod dsp;
+#[cfg(any(test, feature = "dsp-verification"))]
+use dsp::RtNoiseReducer;
 use dsp::{
-    noise_reduction_mix_from_mode, normalize_built_in_effects_preset, normalize_noise_control_mode,
-    RtNoiseReducer, Smoother, NOISE_REDUCTION_MODE_HIGH, NOISE_REDUCTION_MODE_LOW,
-    NOISE_REDUCTION_MODE_SMART, NOISE_REDUCTION_MODE_VENUE,
+    normalize_built_in_effects_preset, normalize_noise_control_mode, Smoother,
+    NOISE_REDUCTION_MODE_HIGH, NOISE_REDUCTION_MODE_LOW, NOISE_REDUCTION_MODE_SMART,
+    NOISE_REDUCTION_MODE_VENUE,
 };
+#[path = "core/noise_control.rs"]
+mod noise_control;
+use noise_control::{Analysis as NoiseAnalysis, RtNoiseControl, Settings as NoiseSettings};
 #[path = "core/auto_gain_commands.rs"]
 mod auto_gain_commands;
 #[path = "core/bundle_capture.rs"]
@@ -2314,15 +2319,15 @@ impl Engine {
         let mut rt_input_r = self.input_channel_r;
         let mut rt_scan_enabled = self.scan_enabled;
         let rt_sample_rate_hz = self.current_sample_rate.round().clamp(8_000.0, 192_000.0) as u32;
-        let mut rt_noise_reduction_enabled = self.noise_reduction_enabled;
-        let mut rt_noise_control_mode = self.noise_control_mode;
-        let mut rt_noise_voice_guard = self.noise_voice_guard;
-        let mut rt_noise_reduction_mix =
-            noise_reduction_mix_from_mode(rt_noise_control_mode, self.noise_control_strength);
-        let mut rt_noise_reducer = RtNoiseReducer::prepare(self.current_sample_rate as u32);
-        if let Some(reducer) = &mut rt_noise_reducer {
-            reducer.set_enabled(rt_noise_reduction_enabled);
-        }
+        let mut rt_noise_control = RtNoiseControl::prepare(
+            self.current_sample_rate as u32,
+            NoiseSettings {
+                enabled: self.noise_reduction_enabled,
+                mode: self.noise_control_mode,
+                strength: self.noise_control_strength,
+                voice_guard: self.noise_voice_guard,
+            },
+        );
         let mut rt_noise_learning = RtNoiseLearning::new(self.noise_learning.clone());
         let (initial_builtin, _) = self.initial_builtin()?;
         let mut rt_voice = super::live_modes::RtVoice::new(
@@ -2777,6 +2782,11 @@ impl Engine {
                                 live_shared.accepted.fetch_max(revision, Ordering::Release);
                             }
                             AudioThreadMessage::SetGlobalMute(active) => {
+                                if rt_global_mute != active {
+                                    if let Some(control) = &mut rt_noise_control {
+                                        control.reset_state();
+                                    }
+                                }
                                 rt_global_mute = active;
                                 if active {
                                     rt_reverb.reset();
@@ -2802,19 +2812,19 @@ impl Engine {
                                 strength,
                                 voice_guard,
                             } => {
-                                if active && rt_noise_reducer.is_none() {
+                                if active && rt_noise_control.is_none() {
                                     output_nr_failed.store(true, Ordering::Release);
                                     data.fill(0.0);
                                     return;
                                 }
-                                if let Some(reducer) = &mut rt_noise_reducer {
-                                    reducer.set_enabled(active);
+                                if let Some(control) = &mut rt_noise_control {
+                                    control.configure(NoiseSettings {
+                                        enabled: active,
+                                        mode,
+                                        strength: strength.clamp(0.25, 1.25),
+                                        voice_guard,
+                                    });
                                 }
-                                rt_noise_reduction_enabled = active;
-                                rt_noise_control_mode = mode;
-                                rt_noise_voice_guard = voice_guard;
-                                rt_noise_reduction_mix =
-                                    noise_reduction_mix_from_mode(mode, strength.clamp(0.25, 1.25));
                             }
                             AudioThreadMessage::SetBuiltInEffects {
                                 active,
@@ -3068,81 +3078,32 @@ impl Engine {
                         rt_noise_learning.analyze_block(&planar_buf_a[0][..frames], None, frames);
                     }
 
-                    if let Some(rt_noise_reducer) = rt_noise_reducer
-                        .as_mut()
-                        .filter(|_| rt_noise_reduction_enabled && rt_noise_reduction_mix > 0.0)
-                    {
-                        let speech_detected = rt_noise_learning
-                            .shared
-                            .speech_detected
-                            .load(Ordering::Relaxed);
+                    if let Some(control) = &mut rt_noise_control {
                         let profile_available = rt_noise_learning
                             .shared
                             .profile_available
                             .load(Ordering::Relaxed);
-                        let profile_rms = rt_noise_learning.shared.profile_rms();
-                        let learned_mix = rt_noise_learning.shared.recommended_mix();
-                        let mut wet_mix = match rt_noise_control_mode {
-                            NoiseControlMode::Smart if profile_available => {
-                                (rt_noise_reduction_mix * 0.55 + learned_mix * 0.45).clamp(0.0, 1.0)
-                            }
-                            NoiseControlMode::Venue if speech_detected && rt_noise_voice_guard => {
-                                (rt_noise_reduction_mix * 0.72).clamp(0.0, 1.0)
-                            }
-                            NoiseControlMode::Venue => {
-                                (rt_noise_reduction_mix * 1.06).clamp(0.0, 1.0)
-                            }
-                            _ => rt_noise_reduction_mix,
-                        };
-                        if speech_detected && rt_noise_voice_guard {
-                            wet_mix = wet_mix.min(0.82);
-                        }
-                        let dry_mix = 1.0 - wet_mix;
+                        control.begin_block(NoiseAnalysis {
+                            speech: rt_noise_learning
+                                .shared
+                                .speech_detected
+                                .load(Ordering::Relaxed),
+                            profile_rms: profile_available
+                                .then(|| rt_noise_learning.shared.profile_rms()),
+                            learned_mix: rt_noise_learning.shared.recommended_mix(),
+                        });
                         if channels >= 2 {
-                            let (left_channels, right_channels) = planar_buf_a.split_at_mut(1);
-                            for (left_sample, right_sample) in left_channels[0][..frames]
-                                .iter_mut()
-                                .zip(&mut right_channels[0][..frames])
+                            let (left, right) = planar_buf_a.split_at_mut(1);
+                            for (left, right) in
+                                left[0][..frames].iter_mut().zip(&mut right[0][..frames])
                             {
-                                *left_sample = dsp::finite_audio_sample(*left_sample);
-                                *right_sample = dsp::finite_audio_sample(*right_sample);
-                                let dry_left = *left_sample;
-                                let dry_right = *right_sample;
-                                if profile_available
-                                    && !speech_detected
-                                    && matches!(
-                                        rt_noise_control_mode,
-                                        NoiseControlMode::Smart | NoiseControlMode::Venue
-                                    )
-                                {
-                                    let noise_gate = (profile_rms * 2.2).max(0.004);
-                                    if dry_left.abs().max(dry_right.abs()) < noise_gate {
-                                        *left_sample *= 0.72;
-                                        *right_sample *= 0.72;
-                                    }
-                                }
-                                let (wet_left, wet_right) =
-                                    rt_noise_reducer.process_sample(*left_sample, *right_sample);
-                                *left_sample = *left_sample * dry_mix + wet_left * wet_mix;
-                                *right_sample = *right_sample * dry_mix + wet_right * wet_mix;
+                                let output = control.process_sample(*left, *right);
+                                *left = output[0];
+                                *right = output[1];
                             }
                         } else if channels == 1 {
                             for sample in &mut planar_buf_a[0][..frames] {
-                                *sample = dsp::finite_audio_sample(*sample);
-                                let dry_mono = *sample;
-                                if profile_available
-                                    && !speech_detected
-                                    && matches!(
-                                        rt_noise_control_mode,
-                                        NoiseControlMode::Smart | NoiseControlMode::Venue
-                                    )
-                                    && dry_mono.abs() < (profile_rms * 2.2).max(0.004)
-                                {
-                                    *sample *= 0.72;
-                                }
-                                let (wet_mono, _) =
-                                    rt_noise_reducer.process_sample(*sample, *sample);
-                                *sample = *sample * dry_mix + wet_mono * wet_mix;
+                                *sample = control.process_sample(*sample, *sample)[0];
                             }
                         }
                     }
