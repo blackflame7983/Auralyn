@@ -218,6 +218,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         }
         setNoiseStrength(Math.round(nc.strength * 100));
         setNoiseVoiceGuard(nc.voiceGuard);
+        // ON/OFFの表示はengineStatsを参照するため、外部からの切替も同じ値へそろえる。
+        setEngineStats(current => current ? { ...current, noiseReductionEnabled: nc.enabled, noiseReductionActive: nc.enabled } : current);
       }
       if (detail.builtinFx) {
         const fx = detail.builtinFx;

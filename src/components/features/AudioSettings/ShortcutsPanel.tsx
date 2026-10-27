@@ -9,6 +9,7 @@ const actions = {
     bypassToggle: 'settings.ShortcutsPanel.366', bypassOn: 'settings.ShortcutsPanel.367', bypassOff: 'settings.ShortcutsPanel.368',
     gainUp: 'settings.ShortcutsPanel.369', gainDown: 'settings.ShortcutsPanel.370',
     singingOn: 'settings.ShortcutsPanel.371', talkOn: 'settings.ShortcutsPanel.372',
+    noiseToggle: 'settings.ShortcutsPanel.393',
 } as const;
 type Action = keyof typeof actions;
 type Values = Partial<Record<Action, string>>;

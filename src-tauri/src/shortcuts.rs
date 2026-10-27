@@ -25,6 +25,7 @@ pub enum Action {
     GainDown,
     SingingOn,
     TalkOn,
+    NoiseToggle,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -81,6 +82,35 @@ fn defaults() -> Vec<Binding> {
             shortcut: "Alt+KeyP".into(),
         },
     ]
+}
+
+/// 画面の音づくりへ伝える、切替後のノイズ低減設定。
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NoiseToggle {
+    enabled: bool,
+    mode: String,
+    strength: f32,
+    voice_guard: bool,
+}
+
+// ON/OFFだけを反転し、モード・強度・声を守るは現在値を引き継ぐ（未設定の強度は画面と同じ既定値）。
+pub(crate) fn noise_toggle(stats: &crate::audio::EngineRuntimeStats) -> NoiseToggle {
+    NoiseToggle {
+        enabled: !stats.noise_reduction_enabled,
+        mode: if stats.noise_reduction_mode.is_empty() {
+            "low".into()
+        } else {
+            stats.noise_reduction_mode.to_lowercase()
+        },
+        strength: if stats.noise_control_strength.is_finite() && stats.noise_control_strength > 0.0
+        {
+            stats.noise_control_strength
+        } else {
+            0.8
+        },
+        voice_guard: stats.noise_voice_guard,
+    }
 }
 
 pub(crate) fn validate(bindings: &[Binding]) -> Result<Vec<Shortcut>, ShortcutError> {
@@ -283,6 +313,16 @@ pub fn dispatch(app: AppHandle, id: u32) {
                     };
                     host.set_global_bypass(active)?;
                 }
+                Action::NoiseToggle => {
+                    let next = noise_toggle(&host.get_engine_runtime_stats()?);
+                    host.set_noise_control_config(
+                        next.enabled,
+                        next.mode.clone(),
+                        next.strength,
+                        next.voice_guard,
+                    )?;
+                    app.emit("shortcut-noise-toggled", next)?;
+                }
                 Action::GainUp | Action::GainDown => {
                     let status = host.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
                     if status.stream_failed || (status.running && !status.settled) {
@@ -441,6 +481,66 @@ mod tests {
             serde_json::from_str(r#"[{"action":"muteToggle","shortcut":"Alt+KeyM"}]"#).unwrap();
         assert!(validate(&old).is_ok());
         assert!(validate(&vec![bindings[0].clone(); 9]).is_err());
+    }
+
+    #[test]
+    fn noise_toggle_is_explicit_and_only_flips_enabled_keeping_mode_strength_and_voice_guard() {
+        assert!(defaults()
+            .iter()
+            .all(|binding| binding.action != Action::NoiseToggle));
+        let old: Vec<Binding> =
+            serde_json::from_str(r#"[{"action":"noiseToggle","shortcut":"Alt+KeyN"}]"#).unwrap();
+        assert!(validate(&old).is_ok());
+        let mut full: Vec<Binding> = [
+            Action::MuteToggle,
+            Action::BypassToggle,
+            Action::GainUp,
+            Action::GainDown,
+            Action::SingingOn,
+            Action::TalkOn,
+            Action::MuteOn,
+            Action::NoiseToggle,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, action)| Binding {
+            action,
+            shortcut: format!("Alt+F{}", index + 1),
+        })
+        .collect();
+        assert!(validate(&full).is_ok());
+        full.push(Binding {
+            action: Action::MuteOff,
+            shortcut: "Alt+F9".into(),
+        });
+        assert_eq!(validate(&full).unwrap_err(), ShortcutError::TooManyBindings);
+
+        let stats = crate::audio::EngineRuntimeStats {
+            noise_reduction_enabled: true,
+            noise_reduction_mode: "venue".into(),
+            noise_control_strength: 1.1,
+            noise_voice_guard: false,
+            ..Default::default()
+        };
+        let off = noise_toggle(&stats);
+        assert_eq!(
+            off,
+            NoiseToggle {
+                enabled: false,
+                mode: "venue".into(),
+                strength: 1.1,
+                voice_guard: false,
+            }
+        );
+        let on = noise_toggle(&crate::audio::EngineRuntimeStats {
+            noise_reduction_enabled: false,
+            noise_voice_guard: true,
+            ..Default::default()
+        });
+        assert_eq!(
+            serde_json::to_value(on).unwrap(),
+            serde_json::json!({"enabled": true, "mode": "low", "strength": 0.8f32, "voiceGuard": true})
+        );
     }
 
     #[test]

@@ -65,6 +65,21 @@ it('歌と雑談は明示登録できるが自動キーはなく、9件以上は
     expect(invoke).toHaveBeenCalledWith('save_shortcuts', expect.objectContaining({ bindings: expect.arrayContaining([{ action: 'singingOn', shortcut: 'Alt+F9' }]) }));
 });
 
+it('ノイズ低減の切替は既定キーなしで明示登録し、noiseToggleとして保存する', async () => {
+    open();
+    const key = await screen.findByRole('combobox', { name: 'ノイズ低減を切り替えるの通常キー' });
+    await waitFor(() => expect(key).toBeEnabled());
+    expect(key).toHaveValue('');
+    fireEvent.change(screen.getByRole('combobox', { name: 'ノイズ低減を切り替えるの修飾キー' }), { target: { value: 'Alt' } });
+    fireEvent.change(key, { target: { value: 'KeyN' } });
+    fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
+    await screen.findByText('キー設定を保存しました。');
+    expect(invoke).toHaveBeenCalledWith('save_shortcuts', { bindings: [
+        { action: 'muteToggle', shortcut: 'Alt+KeyM' },
+        { action: 'noiseToggle', shortcut: 'Alt+KeyN' },
+    ] });
+});
+
 it('起動時の登録エラーは言語切替で再取得せず翻訳し、OS詳細とキー名を原文で保持する', async () => {
     const store = createLocaleStore(() => 'ja', () => true);
     vi.mocked(invoke).mockResolvedValue({ bindings: initial, errors: [

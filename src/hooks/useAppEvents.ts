@@ -105,6 +105,10 @@ export const useAppEvents = ({
             localStorage.setItem('vst_host_output_gain', String(event.payload));
             window.dispatchEvent(new CustomEvent('output-gain-sync', { detail: event.payload }));
         });
+        // ネイティブで切り替えたノイズ低減を、メインの声の調整と設定の音づくりへ反映する。
+        const noise = listen<{ enabled: boolean; mode: string; strength: number; voiceGuard: boolean }>('shortcut-noise-toggled', event => {
+            window.dispatchEvent(new CustomEvent('profile-fx-applied', { detail: { noiseControl: event.payload } }));
+        });
         const runningGain = listen<ShortcutGainIntent>('shortcut-output-gain', event => {
             const sequence = ++gainSequence;
             void confirmShortcutOutputGain(event.payload, () => active && gainSequence === sequence)
@@ -114,7 +118,7 @@ export const useAppEvents = ({
             active = false; gainSequence += 1;
             window.removeEventListener('output-gain-intent', cancelGain);
             window.removeEventListener('output-gain-sync', cancelGain);
-            [error, gain, runningGain, ...lifecycle].forEach(promise => { void promise.then(stop => stop()); });
+            [error, gain, noise, runningGain, ...lifecycle].forEach(promise => { void promise.then(stop => stop()); });
         };
     }, []);
 
