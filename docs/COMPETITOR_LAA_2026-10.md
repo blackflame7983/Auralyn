@@ -1,5 +1,7 @@
 # 競合比較: Live Audio Assist（2026-10）
 
+Stream Gear MixerとPR #105後のAuralynを含む現在の評価・改善順序は、[競合比較と改善順序](COMPETITOR_STRATEGY_2026-10.md)を参照する。本書はLAAの公開資料を調べた記録であり、単独の機能差を現在の競争優位として扱わない。
+
 2026-10-27 時点の調査記録。Live Audio Assist（以下 LAA）は実機で動作確認しておらず、記述は公開資料からの読み取りである。Auralyn 側は当日の main（README、`docs/`、`src-tauri/src/audio_engine` の構成）を基準にした。この文書は製品方針の検討材料であり、実装・検証済みの証拠として扱わない。
 
 ## 調査対象
@@ -32,33 +34,28 @@
 - **歌枠・ASMR**: Timing Check（BGM とマイクのずれ測定、Player の OBS 同期オフセットへ反映）、ASMR Dock（単一マイクの L/C/R 配置、Ear Motion、Opposite Ear Blend、Depth Delay）。
 - **配信中操作**: 専用 Stream Deck プラグイン（BGM 操作、Ducking／Reverb トグル、Stream Deck+ のダイヤル、ASMR 操作）。Show Control（Scene Collection／Profile の preflight 付き適用）、セッションレポート。
 
-### Auralyn が上回る領域（現時点）
+### Auralynの特徴（性能・品質の優位性は未検証）
 
 - **VST3 ホスト**: ラック、独自 GUI、状態保存・復元、プリセット。※LAA の次期構想で追随される見込み。
 - **ASIO**: ※同上。
 - **OBS 以外での利用**: Discord、ゲーム内 VC、通話アプリなど、OBS を起動しない用途にも届く。
-- **プロセス分離**: エンジンとスキャナーを UI から分離。OBS 内で VST3 を読み込む構成では、プラグインの異常がそのまま配信中の OBS の異常になる。LAA v1.0.5 の修正内容「特定の条件下でプラグイン読込時にクラッシュする不具合」は、OBS 内ロードの難しさを示す一例。
+- **プロセス分離**: エンジンとスキャナーをUIから分離する。VSTごとの隔離ではなく、Engine停止時は送信も停止する。LAAの将来のVSTホストの障害隔離方式や、同条件での安定性は未確認。
 - **歌唱時モニター**: 自分用の出力は内蔵処理だけを通し、配信用 DSP（NR／VST）は別 worker に分ける二系統構成を実装済み（[SINGING_MONITOR.md](SINGING_MONITOR.md)。実機・聴感・長時間運転は未確認）。LAA は OBS モニター経由の遅延を前提にしており、Timing Check はその補正手段。
 - **無料・OSS**: 試用の障壁が低い。
 
 ## LAA 次期構想後の見立て
 
-「VST3／ASIO 対応」だけでは差別化できなくなる。一方、OBS 内に ASIO と VST3 を入れる構成には構造的な制約が残る（いずれも推測で、LAA の実装は未確認）。
+VST3／ASIOだけを差別化の根拠にしない。ASIOの同時利用はdriver・機器・アプリの構成、安定性は隔離・回収、CPU負荷は処理配置と映像負荷を固定して比較する。LAAの将来版がOBSと同じプロセスでVSTを動かすと決め付けず、外部通話へ送れる範囲も未確認とする。
 
-- **ASIO の排他**: 多くの ASIO ドライバーは1プロセスからしか開けず、OBS が掴むと DAW 等と併用しにくい。
-- **VST の安定性**: プラグインのクラッシュ、GUI スレッド、DPI が OBS 本体の安定性に直結する。
-- **CPU 競合**: OBS の音声スレッドに重い DSP／VST が載り、映像エンコードと競合する。
-- **OBS 専用**: Discord や通話の音は改善されない。
-
-LAA は「OBS の中でそれなりに全部できる」方向、Auralyn は「OBS の外で、落ちずに、低遅延で、どこにでも届く」方向に分かれていく。
+Auralynの方針は、自宅・ゲーセンの配信／通話を、環境が変わっても準備・比較・復旧できる体験に置く。無停止・低遅延・任意経路への到達は、実測なしに保証しない。
 
 ## 方針の提案
 
 1. **機能数で正面から競わない**: BGM、Overlay、セットリスト、ASMR は相手の得意領域で、後追いになる。
-2. **共存を前提に打ち出す**: 「マイクは Auralyn、OBS 内の BGM 管理は LAA 等」という構成を正式に案内する。OBS 連携・接続確認が LAA 同居環境で壊れないかを検証して文書化する。
-3. **差別化軸へ投資する**（優先度順）
+2. **共存を評価する**: 「マイクはAuralyn、OBS内のBGM管理はLAA等」を候補とし、二重NR・音量処理・取り込みとOBS接続を実機検証してから案内する。現段階で推奨構成にはしない。
+3. **初回調査時の検討項目**（現在の優先順位は[競合比較と改善順序](COMPETITOR_STRATEGY_2026-10.md)を参照）
    - 歌唱時モニターの遅延を実測・公開する。現状は総遅延を測定していない（[LATENCY_MEASUREMENTS.md](LATENCY_MEASUREMENTS.md)）。
-   - ノイズ低減の強化。DeepFilterNet 級を別プロセスで扱えるか検討する（[PROPOSALS_AI_NOISE_HOST.md](PROPOSALS_AI_NOISE_HOST.md) の延長）。
+   - ノイズ低減の強化。#100後の現行NRを基準に#93で再比較し、DeepFilterNet3標準を追加候補として評価する。既定置換や別プロセス方式を先に確定しない。
    - VST のさらなる隔離（[ROADMAP_PENDING.md](ROADMAP_PENDING.md) のプラグイン単位の子プロセス化）。
    - OBS 以外の用途（Discord、ゲーム VC、通話）を前面に出す。
 4. **設計として参考にする点**
