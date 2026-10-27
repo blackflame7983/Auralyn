@@ -1,70 +1,65 @@
 import type { MessageKey } from '@/i18n/messages';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 
-type Pair = [number, number];
-type MeterState = 'waiting' | 'live' | 'silent' | 'stale' | 'stopped';
-interface Reading { levels: Pair; peak: Pair; clipped: boolean; state: MeterState }
-const empty = (state: MeterState): Reading => ({ levels: [0, 0], peak: [0, 0], clipped: false, state });
+export type Pair = [number, number];
+export type MeterState = 'waiting' | 'live' | 'silent' | 'stale' | 'stopped';
+export interface MeterReading { levels: Pair; peak: Pair; clipped: boolean; state: MeterState; resetClip: () => void }
 export const METER_TIMEOUT_MS = 1000;
+export const CLIP_LEVEL = 1;
+export const WARNING_LEVEL = Math.pow(10, -6 / 20);
+export const toDbfs = (level: number) => level > 0 && Number.isFinite(level) ? 20 * Math.log10(level) : -Infinity;
 export const meterStatusLabel = (state: MeterState): MessageKey => state === 'stopped' ? 'meter.state.stopped' : state === 'waiting' || state === 'stale' ? 'meter.state.waiting' : state === 'silent' ? 'meter.state.silent' : 'meter.state.active';
+const empty = (state: MeterState, clipped = false) => ({ levels: [0, 0] as Pair, peak: [0, 0] as Pair, clipped, state });
 
 // レベル通知は到達確認ではない。連続するゼロ通知はエンジン側で省略される。
-export function useMeterLevels({ running, type = 'output', large = false }: { running: boolean; type?: 'input' | 'output'; large?: boolean }) {
-    const [reading, setReading] = useState<Reading>(() => empty(running ? 'waiting' : 'stopped'));
+export function useMeterLevels({ running, type = 'output', enabled = true }: { running: boolean; type?: 'input' | 'output'; large?: boolean; enabled?: boolean }): MeterReading {
+    const [reading, setReading] = useState(() => empty(running ? 'waiting' : 'stopped'));
+    const clipped = useRef(false);
+    const resetClip = useCallback(() => { clipped.current = false; setReading(value => ({ ...value, clipped: false })); }, []);
     useEffect(() => {
+        if (!enabled) return;
         let active = true;
         let accepting = running;
         let target: Pair = [0, 0];
-        let current = empty(running ? 'waiting' : 'stopped');
+        let current = empty(running ? 'waiting' : 'stopped', clipped.current);
         let receivedAt = 0;
-        let clipUntil = 0;
         let peakAt = Date.now();
         const clear = (state: MeterState) => {
             target = [0, 0];
-            clipUntil = 0;
-            current = empty(state);
+            current = empty(state, clipped.current);
             if (active) setReading(current);
         };
+        // 新しい稼働開始では前の区間のクリップを引き継がない。
+        if (running) clipped.current = false;
         clear(running ? 'waiting' : 'stopped');
         const stop = () => { accepting = false; clear('stopped'); };
         const subscriptions = [
             listen<{ input: Pair; output: Pair }>('audio-level', event => {
                 if (!active || !accepting) return;
                 const value = event.payload?.[type];
-                if (!Array.isArray(value) || value.length !== 2 || !value.every(n => Number.isFinite(n) && n >= 0)) {
-                    clear('stale');
-                    return;
-                }
+                if (!Array.isArray(value) || value.length !== 2 || !value.every(n => Number.isFinite(n) && n >= 0)) { clear('stale'); return; }
                 target = [value[0], value[1]];
                 receivedAt = Date.now();
-                current = { ...current, state: target.every(n => n === 0) ? 'silent' : 'live' };
-                if (target.some(n => large ? n >= Math.pow(10, -3 / 20) : n > 1)) clipUntil = receivedAt + (large ? 3000 : 2000);
+                if (target.some(n => n >= CLIP_LEVEL)) clipped.current = true;
+                current = { ...current, clipped: clipped.current, state: target.every(n => n === 0) ? 'silent' : 'live' };
             }),
             ...['audio-stopped', 'audio-error', 'audio-stream-error'].map(name => listen(name, stop)),
-            listen('audio-started', () => {
-                if (!active) return;
-                accepting = true;
-                clear('waiting');
-            }),
+            listen('audio-started', () => { if (!active) return; accepting = true; clipped.current = false; clear('waiting'); }),
         ];
         const timer = setInterval(() => {
             if (!active || !accepting) return;
             const now = Date.now();
             if (current.state === 'live' && now - receivedAt >= METER_TIMEOUT_MS) { clear('stale'); return; }
             if (current.state !== 'live' && current.state !== 'silent') return;
-            const levels = current.levels.map((n, i) => n + (target[i] - n) * (target[i] > n ? (large ? .85 : .8) : (large ? .35 : .4))) as Pair;
+            const levels = current.levels.map((n, i) => n + (target[i] - n) * (target[i] > n ? .8 : .4)) as Pair;
             const decay = now - peakAt >= 2000;
             if (decay) peakAt = now;
             const peak = current.peak.map((n, i) => Math.max(decay ? n * .9 : n, target[i])) as Pair;
-            current = { ...current, levels, peak, clipped: clipUntil > now };
+            current = { ...current, levels, peak, clipped: clipped.current };
             setReading(current);
         }, 16);
-        return () => {
-            active = false;
-            clearInterval(timer);
-            subscriptions.forEach(promise => { void promise.then(unlisten => unlisten()).catch(() => {}); });
-        };
-    }, [running, type, large]);
-    return running ? reading : empty('stopped');
+        return () => { active = false; clearInterval(timer); subscriptions.forEach(p => { void p.then(unlisten => unlisten()).catch(() => {}); }); };
+    }, [running, type, enabled]);
+    return { ...(running ? reading : empty('stopped', clipped.current)), resetClip };
 }

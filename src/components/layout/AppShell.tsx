@@ -40,6 +40,8 @@ interface AppShellProps {
 }
 
 import { MasterBar } from './MasterBar';
+import { MeterProvider } from '../features/LevelMeter/MeterContext';
+import type { EngineRuntimeStats } from '@/api/audio';
 
 export const AppShell: React.FC<AppShellProps> = ({
     children,
@@ -65,6 +67,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     currentOutput
 }) => {
     const t = useMessages();
+    const [runtimeStats, setRuntimeStats] = useState<EngineRuntimeStats | null>(null);
+    useEffect(() => { setRuntimeStats(null); }, [isEngineRunning]);
     const shellRef = useRef<HTMLDivElement>(null);
     const footerRef = useRef<HTMLElement>(null);
     // 折り返したフッターが大型メーターを覆わないよう、実高さを共有する。
@@ -109,7 +113,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     }, []);
 
     return (
-        <div ref={shellRef} className="min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300">
+        <MeterProvider running={isEngineRunning}><div ref={shellRef} className="min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300">
             {/* Ambient Animated Glows - Visible mainly in Dark Mode */}
             <div className="fixed inset-0 pointer-events-none z-0 opacity-0 dark:opacity-100 transition-opacity duration-500">
                 <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-brand-secondary/5 blur-[130px] rounded-full mix-blend-screen animate-[pulse_8s_ease-in-out_infinite]" />
@@ -128,6 +132,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     onOpenWizard={onOpenWizard}
                     onToggleLargeMeter={onToggleLargeMeter}
                     isLargeMeterOpen={isLargeMeterOpen}
+                    stats={runtimeStats}
                     currentHost={currentHost}
                     currentSampleRate={currentSampleRate}
                     currentBufferSize={currentBufferSize}
@@ -229,6 +234,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     </div>
                     <div className="flex-1 min-w-0">
                         <MasterBar
+                            onStatsChange={setRuntimeStats}
                             isRunning={isEngineRunning}
                             processReady={engineProcessReady}
                             host={currentHost}
@@ -241,6 +247,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                     </div>
                 </footer>
             </div>
-        </div>
+        </div></MeterProvider>
     );
 };
