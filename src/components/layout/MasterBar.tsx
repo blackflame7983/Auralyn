@@ -286,18 +286,9 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     </>;
 
     return (
-        <div className={cn("relative h-full flex items-center gap-3 px-3 py-2 border-l border-border bg-card/30 backdrop-blur-sm transition-colors duration-300 min-w-0 whitespace-nowrap", gainMessage && "pt-0 pb-4")}>
-            {gainMessage && (
-                <span
-                    role="alert"
-                    className="absolute bottom-0.5 left-3 right-3 truncate text-xs leading-4 text-warning"
-                    title={gainMessage}
-                >
-                    {t('master.gainUnknown')}
-                </span>
-            )}
+        <div className="relative flex flex-wrap items-center justify-end gap-x-3 gap-y-2 px-3 py-2 border-l border-border bg-card/30 backdrop-blur-sm transition-colors duration-300 min-w-0">
             {/* Label */}
-            <div className="hidden sm:flex flex-col items-end justify-center min-w-[60px]">
+            <div className="hidden sm:flex shrink-0 flex-col items-end justify-center min-w-[60px]">
                 <div className="flex items-center gap-2 text-muted-foreground font-bold font-mono tracking-widest text-xs">
                     <MdGraphicEq className={cn("w-3 h-3", isClipping ? 'text-destructive-text animate-pulse' : 'text-success')} />
                     {t('master.label')}
@@ -308,7 +299,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             </div>
 
             {/* Meters */}
-            <div className="flex gap-1 h-3/4 items-end pb-1">
+            <div className="flex shrink-0 gap-1 h-8 items-end pb-1">
                 {renderMeter(levels[0], 'L')}
                 {renderMeter(levels[1], 'R')}
             </div>
@@ -316,7 +307,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             {onOpenVoiceCheck && (
                 <button
                     onClick={onOpenVoiceCheck}
-                    className="inline-flex items-center justify-center w-9 h-9 rounded-md border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    className="inline-flex shrink-0 items-center justify-center w-9 h-9 rounded-md border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                     title={t('master.voiceHint')}
                     aria-label={t('master.voice')}
                 >
@@ -325,7 +316,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             )}
 
             {/* Master Output Volume */}
-            <div className="flex items-center gap-2 border-l border-border pl-3 ml-1 min-w-0">
+            <div className="flex shrink-0 items-center gap-2 border-l border-border pl-3 ml-1">
                 <MdVolumeUp aria-hidden="true" className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 <span aria-hidden="true" className="hidden lg:inline text-xs font-bold text-muted-foreground">{t('master.outputGain')}</span>
                 <Slider
@@ -344,18 +335,8 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 </span>
             </div>
 
-            {/* Signal State + Latency */}
             {stats && (
-                <div className="flex items-center gap-1.5 text-muted-foreground border-l border-border pl-3 ml-1 min-w-0">
-                    <span
-                        className={cn(
-                            "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold",
-                            !isRunning ? "text-muted-foreground border-border bg-muted" : broadcastFailed ? "text-destructive-text border-destructive/50 bg-destructive/10" : "text-success border-success/40 bg-success/10"
-                        )}
-                    >
-                        {signalLabel}
-                    </span>
-                    {broadcastFailed && <span role="alert" className="sr-only">{t('liveOutput.failed')}</span>}
+                <div className="flex shrink-0 items-center gap-1.5 text-muted-foreground border-l border-border pl-3 ml-1">
                     {onOpenSoundSettings ? (
                         <button onClick={onOpenSoundSettings} className={noiseClassName}
                             title={t('master.nrHint', {mode: noiseModeLabel, rate: effectiveSampleRate})}>
@@ -371,9 +352,28 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             )}
 
             <button onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-expanded={detailsOpen}
-                className="rounded-md border border-border px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted">
+                className="shrink-0 rounded-md border border-border px-2 py-1.5 text-xs whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted">
                 {t('master.details')}
             </button>
+            {/* 状態は操作の後に配置し、狭い幅では独立した行へ送る。 */}
+            {stats && (
+                <div className="flex basis-full flex-wrap items-center gap-1.5 min-w-0 max-w-full whitespace-normal break-words lg:basis-auto">
+                    <span
+                        className={cn(
+                            "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold",
+                            !isRunning ? "text-muted-foreground border-border bg-muted" : broadcastFailed ? "text-destructive-text border-destructive/50 bg-destructive/10" : "text-success border-success/40 bg-success/10"
+                        )}
+                    >
+                        {signalLabel}
+                    </span>
+                    {broadcastFailed && <span role="alert" className="sr-only">{t('liveOutput.failed')}</span>}
+                </div>
+            )}
+            {gainMessage && (
+                <span role="alert" className="basis-full min-w-0 whitespace-normal break-words text-xs leading-4 text-warning" title={gainMessage}>
+                    {t('master.gainUnknown')}
+                </span>
+            )}
             {detailsOpen && <Modal title={t('master.detailsTitle')} onClose={() => setDetailsOpen(false)}>
                 <div className="modal-overlay-base">
                     <div className="modal-surface-base w-full max-w-md max-h-[90vh] flex flex-col whitespace-normal">

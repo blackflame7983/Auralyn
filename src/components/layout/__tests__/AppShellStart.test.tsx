@@ -121,3 +121,28 @@ it('かんたん表示の稼働中は入出力・声の簡易調整・試聴を�
     fireEvent.click(screen.getByRole('button', { name: 'OBS連携' }));
     expect(voice).toHaveBeenCalledOnce(); expect(obs).toHaveBeenCalledOnce();
 });
+
+
+it('フッターの実高さを大型メーターの余白へ公開し、終了時に監視を解除する', () => {
+    let height = 88;
+    let resize!: () => void;
+    const disconnect = vi.fn();
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(() => ({ height }) as DOMRect);
+    vi.stubGlobal('ResizeObserver', class {
+        constructor(callback: () => void) { resize = callback; }
+        observe() {}
+        disconnect = disconnect;
+    });
+    try {
+        const view = render(<AppShell {...commonProps} isBeginnerMode={false}><p>rack</p></AppShell>);
+        const shell = document.querySelector<HTMLElement>('[style*="--app-footer-height"]')!;
+        expect(shell.style.getPropertyValue('--app-footer-height')).toBe('88px');
+        height = 120;
+        act(resize);
+        expect(shell.style.getPropertyValue('--app-footer-height')).toBe('120px');
+        view.unmount();
+        expect(disconnect).toHaveBeenCalledOnce();
+    } finally {
+        vi.unstubAllGlobals();
+    }
+});
