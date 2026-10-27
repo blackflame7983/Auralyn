@@ -192,6 +192,13 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                 {/* Content Flex */}
                 <div className="absolute inset-0 flex items-center justify-between pl-10 pr-6 z-10">
 
+                    {/* ON/OFF は1行表示と同じく名前の左に置く。 */}
+                    <Switch
+                        aria-label={t('rack.card.enable', { arg0: plugin.name })}
+                        checked={plugin.enabled}
+                        onCheckedChange={(checked) => onToggle(plugin.id, checked)}
+                        className="mr-3 shrink-0"
+                    />
                     {/* 1. Identity Section */}
                     <div className="flex flex-col min-w-0 flex-1 mr-4 gap-0.5">
                         <span className={cn("text-xs", plugin.muted ? "text-destructive-text font-semibold" : "text-muted-foreground")}>
@@ -243,13 +250,13 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                             <TooltipTrigger asChild>
                                 <Button
                                     variant={plugin.muted ? "destructive" : "outline"}
-                                    size="icon"
-                                    className={cn("h-8 w-8", plugin.muted && "bg-destructive/10 text-destructive-text border-destructive/50 hover:bg-destructive/20 hover:text-destructive-text dark:hover:text-destructive-text ")}
+                                    size="sm"
+                                    className={cn("h-8 text-xs", plugin.muted && "bg-destructive/10 text-destructive-text border-destructive/50 hover:bg-destructive/20 hover:text-destructive-text dark:hover:text-destructive-text ")}
                                     aria-label={t('rack.card.muteAccessible', { arg0: plugin.name })}
                                     aria-pressed={plugin.muted}
                                     onClick={() => onMute(plugin.id, !plugin.muted)}
                                 >
-                                    <span className="text-xs font-bold font-mono">M</span>
+                                    {t('rack.card.mute')}
                                 </Button>
                             </TooltipTrigger>
                             <TooltipContent>
@@ -267,16 +274,6 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                         >
                             {t('rack.card.edit')}</Button>
 
-                        <Separator orientation="vertical" className="h-8" />
-
-                        {/* Power Toggle */}
-                        <div className="flex flex-col items-center gap-1">
-                            <Switch
-                                aria-label={t('rack.card.enable', { arg0: plugin.name })}
-                                checked={plugin.enabled}
-                                onCheckedChange={(checked) => onToggle(plugin.id, checked)}
-                            />
-                        </div>
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <Button

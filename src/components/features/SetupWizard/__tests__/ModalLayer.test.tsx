@@ -95,7 +95,7 @@ it('スキップでも既存の完了フラグを保存し、同じウィンド�
     render(<AppModals />);
     await screen.findByRole('button', { name: 'OBSで配信' }, { timeout: 3000 });
     expect(screen.getByTestId('tutorial-step')).toHaveTextContent('none');
-    fireEvent.click(screen.getByRole('button', { name: 'スキップ（手動設定）' }));
+    fireEvent.click(screen.getByRole('button', { name: 'セットアップをスキップ' }));
     await waitFor(() => expect(localStorage.getItem('vst_host_wizard_done')).toBe('true'));
     expect(screen.getByTestId('tutorial-step')).toHaveTextContent('click_add_effect');
 });

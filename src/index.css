@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", "Noto Sans JP", "runes", "sans-serif";
+  /* フォントは同梱しない。Windows 11 の UI フォントを明示し、英数字と和文の見え方を揃える。 */
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Meiryo UI", system-ui, sans-serif;
 
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
@@ -114,27 +115,27 @@
 }
 
 .dark {
-  /* Shadcn - Dark Mode */
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
+  /* Aurora（既定）: BRANDING.md の Deep Abyss Blue を地に、Aurora Cyan を主色、Mystic Purple を補助色にする。 */
+  --background: 222 47% 6%;
+  --foreground: 210 40% 96%;
 
-  --card: 222.2 84% 4.9%;
-  --card-foreground: 210 40% 98%;
+  --card: 222 44% 9%;
+  --card-foreground: 210 40% 96%;
 
-  --popover: 222.2 84% 4.9%;
-  --popover-foreground: 210 40% 98%;
+  --popover: 222 44% 9%;
+  --popover-foreground: 210 40% 96%;
 
-  --primary: 210 40% 98%;
-  --primary-foreground: 222.2 47.4% 11.2%;
+  --primary: 187 80% 56%;
+  --primary-foreground: 222 47% 8%;
 
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
+  --secondary: 220 35% 16%;
+  --secondary-foreground: 210 40% 96%;
 
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
+  --muted: 220 35% 15%;
+  --muted-foreground: 215 22% 70%;
 
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
+  --accent: 200 45% 18%;
+  --accent-foreground: 210 40% 96%;
 
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 210 40% 98%;
@@ -153,9 +154,9 @@
   --waveform-raw: 158 64% 65%;
   --waveform-processed: 199 95% 74%;
 
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 212.7 26.8% 83.9%;
+  --border: 220 30% 21%;
+  --input: 220 30% 21%;
+  --ring: 187 80% 56%;
 }
 
 .gaming {
@@ -236,6 +237,11 @@
 
   .modal-footer-base {
     @apply p-6 border-t border-border bg-muted/20;
+  }
+
+  /* 文字だけの補助操作。未装飾の下線ボタンを使わず、操作だと分かる色と無効表示を揃える。 */
+  .link-button {
+    @apply text-sm font-medium text-primary underline underline-offset-2 hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline;
   }
 }
 

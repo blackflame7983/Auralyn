@@ -7,12 +7,7 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { CSS } from '@dnd-kit/utilities';
 import { MdFolderOpen, MdAdd, MdViewCompact, MdViewAgenda } from 'react-icons/md';
 import { Button } from '@/components/ui/button';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { useTheme } from '../../../hooks/useTheme';
 
 interface PluginListProps {
@@ -117,12 +112,9 @@ export const PluginList: React.FC<PluginListProps> = ({
         };
     }, []);
 
-    const toggleSimpleMode = () => {
-        setSimpleMode(prev => {
-            const next = !prev;
-            localStorage.setItem('vst_host_simple_mode', String(next));
-            return next;
-        });
+    const setViewFormat = (compact: boolean) => {
+        setSimpleMode(compact);
+        localStorage.setItem('vst_host_simple_mode', String(compact));
     };
 
     const sensors = useSensors(
@@ -155,39 +147,30 @@ export const PluginList: React.FC<PluginListProps> = ({
 
     return (
         <TooltipProvider>
-            <div className="w-full max-w-4xl mr-auto ml-0 space-y-4">
+            <div className="w-full space-y-4">
                 {/* Header / Rack Ears */}
                 <div className="flex items-center justify-between mb-4 px-2">
-                    <h2 className="text-sm font-bold text-muted-foreground font-mono uppercase tracking-[0.2em] flex items-center gap-3">
+                    <h2 className="text-sm font-bold text-muted-foreground flex items-center gap-3">
                         <div className="flex gap-1">
                             <div className="w-1 h-1 bg-muted-foreground rounded-full" />
                             <div className="w-1 h-1 bg-muted-foreground rounded-full" />
                         </div>
-                        {isBeginnerMode ? t('rack.simpleTitle') : t('rack.title')}
+                        {t('rack.title')}
                     </h2>
                     <div className="flex items-center gap-2">
                         {!isBeginnerMode && (
                             <>
                                 {/* View Mode Toggle */}
                                 {plugins.length > 0 && (
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-                                                aria-label={t('rack.showSimpleAccessible')}
-                                                aria-pressed={simpleMode}
-                                                onClick={toggleSimpleMode}
-                                            >
-                                                {simpleMode ? <MdViewAgenda className="w-4 h-4" /> : <MdViewCompact className="w-4 h-4" />}
-                                                {simpleMode ? t('rack.simple') : t('rack.detailed')}
-                                            </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                            <p>{simpleMode ? t('rack.showDetailedHint') : t('rack.showSimpleHint')}</p>
-                                        </TooltipContent>
-                                    </Tooltip>
+                                    // 現在の表示形式をaria-pressedで示す。名前は表示モード（かんたん／詳細）と重ねない。
+                                    <div role="group" aria-label={t('rack.viewFormat')} className="flex rounded-md border border-border p-0.5">
+                                        {([[true, t('rack.simple'), MdViewCompact], [false, t('rack.detailed'), MdViewAgenda]] as const).map(([compact, label, Icon]) => (
+                                            <button key={label} type="button" aria-pressed={simpleMode === compact} onClick={() => setViewFormat(compact)}
+                                                className="inline-flex h-6 items-center gap-1 rounded px-2 text-xs text-muted-foreground hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground">
+                                                <Icon aria-hidden="true" className="w-3.5 h-3.5" />{label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 )}
                                 <Button variant="outline" size="sm" onClick={onOpenPresets} className="h-7 text-xs gap-2">
                                     <MdFolderOpen className="w-3.5 h-3.5" />

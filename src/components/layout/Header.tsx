@@ -193,14 +193,14 @@ export const Header: React.FC<HeaderProps> = ({
 
                     {!isBeginnerMode && (
                         <>
-                            <div className="hidden 2xl:block h-8 w-px bg-border/50 mx-2" />
+                            <div className="h-8 w-px bg-border/50 mx-1" />
 
                             {/* Input Gain + Visualizers */}
-                            <div className="hidden 2xl:flex items-center gap-3">
+                            <div className="flex items-center gap-3">
                                 {/* Compact Input Gain */}
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <div className="flex items-center gap-1.5 group">
+                                        <div className="hidden xl:flex items-center gap-1.5 group">
                                             <MdMic className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
                                             <div className="w-16 flex items-center" onPointerDown={e => e.stopPropagation()}>
                                                 <Slider
@@ -222,7 +222,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     </TooltipContent>
                                 </Tooltip>
 
-                                <div className="h-6 w-px bg-border/30" />
+                                <div className="hidden xl:block h-6 w-px bg-border/30" />
                                 <LevelMeter running={isEngineRunning} width={12} height={32} type="input" />
                                 <LevelMeter running={isEngineRunning} width={12} height={32} type="output" />
                             </div>

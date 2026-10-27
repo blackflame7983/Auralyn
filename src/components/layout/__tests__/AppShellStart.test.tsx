@@ -10,6 +10,7 @@ import { AppShell } from '../AppShell';
 vi.mock('../Header', () => ({ Header: () => null }));
 vi.mock('../MasterBar', () => ({ MasterBar: () => null }));
 vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: () => null }));
+vi.mock('../../features/Home/VoiceQuickControls', () => ({ VoiceQuickControls: () => <p>quick</p> }));
 beforeEach(() => vi.mocked(listen).mockClear());
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
@@ -26,7 +27,7 @@ it.each([false, true])('音声停止中の入口は設定を開き、稼働中�
     else { fireEvent.click(button!); expect(onOpenSettings).toHaveBeenCalledOnce(); }
 });
 
-it('かんたん表示の音づくりと試聴を直接開き、音量チェックは明示表示にする', () => {
+it('かんたん表示はつなぐ・整える・確かめるの3段で、未設定時は設定を唯一の主操作にする', () => {
     const sound = vi.fn();
     const voice = vi.fn();
     render(<AppShell isBeginnerMode onDisplayModeChange={vi.fn()} onOpenOBSSettings={vi.fn()}
@@ -35,11 +36,12 @@ it('かんたん表示の音づくりと試聴を直接開き、音量チェッ�
         onToggleLargeMeter={vi.fn()} isLargeMeterOpen={false} currentHost="" isEngineRunning={false}>
         <p>エフェクト設定</p>
     </AppShell>);
-    expect(screen.getByRole('checkbox', { name: '音量チェックを表示' })).not.toBeChecked();
-    fireEvent.click(screen.getByRole('button', { name: /1. 声を整える/ }));
-    expect(sound).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole('button', { name: /2. 録音して聴く/ }));
-    expect(voice).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: '音量チェック' })).toHaveAttribute('aria-pressed', 'false');
+    for (const name of ['マイクと送り先', '声を整える', '聴いて確かめる']) expect(screen.getByRole('region', { name })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'マイクと出力先を設定する' })).toHaveLength(1);
+    expect(screen.queryByText('quick')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '録音して聴き比べる' })).toBeDisabled();
+    expect(sound).not.toHaveBeenCalled(); expect(voice).not.toHaveBeenCalled();
 });
 
 
@@ -92,19 +94,32 @@ it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態
 
 it('音量チェックは両表示で同じ表示切替行に一つだけあり、モード変更時に閉じる', () => {
     const view = render(<AppShell {...commonProps} isBeginnerMode><p>rack</p></AppShell>);
-    const toggle = screen.getByRole('checkbox', { name: '音量チェックを表示' });
-    const row = toggle.closest('label')!.parentElement;
+    const toggle = screen.getByRole('button', { name: '音量チェック' });
+    const row = toggle.parentElement;
     expect(row).toHaveAttribute('aria-label', message('ja', 'shell.view'));
-    expect(toggle).not.toBeChecked();
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(toggle);
-    expect(toggle).toBeChecked();
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
     view.rerender(<AppShell {...commonProps} isBeginnerMode={false}><p>rack</p></AppShell>);
-    expect(screen.getAllByRole('checkbox', { name: '音量チェックを表示' })).toHaveLength(1);
-    expect(screen.getByRole('checkbox', { name: '音量チェックを表示' })).toBe(toggle);
-    expect(toggle.closest('label')!.parentElement).toBe(row);
-    expect(toggle).not.toBeChecked();
+    expect(screen.getAllByRole('button', { name: '音量チェック' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '音量チェック' })).toBe(toggle);
+    expect(toggle.parentElement).toBe(row);
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(toggle);
-    expect(toggle).toBeChecked();
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+});
+
+it('かんたん表示の稼働中は入出力・声の簡易調整・試聴をメインで扱い、詳しい調整は音づくりを開く', () => {
+    const sound = vi.fn(); const voice = vi.fn(); const obs = vi.fn();
+    render(<AppShell {...commonProps} isBeginnerMode onOpenSoundSettings={sound} onOpenVoiceCheck={voice} onOpenOBSSettings={obs}
+        currentInput="USB マイク" currentOutput="CABLE Input (VB-Audio Virtual Cable)"><p>rack</p></AppShell>);
+    expect(screen.getByText('USB マイク')).toBeInTheDocument();
+    expect(screen.getByRole('meter', { name: 'マイクの入力レベル' })).toBeInTheDocument();
+    expect(screen.getByText('quick')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'マイクと出力先を設定する' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '録音して聴き比べる' }));
+    fireEvent.click(screen.getByRole('button', { name: 'OBS連携' }));
+    expect(voice).toHaveBeenCalledOnce(); expect(obs).toHaveBeenCalledOnce();
 });
 
 

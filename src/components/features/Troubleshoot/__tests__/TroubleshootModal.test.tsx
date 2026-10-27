@@ -165,3 +165,12 @@ it('遅い診断中のlocale切替は再測定せず、結果とコピーはク�
     expect(screen.getByText('音声処理が停止中です')).toBeInTheDocument();
     expect(vi.mocked(invoke).mock.calls.some(([name]) => name === 'play_test_tone' || name === 'probe_loopback')).toBe(false);
 });
+
+it('セットアップで選んだ用途を初期値にし、別の用途にも切り替えられる', () => {
+    localStorage.setItem('vst_host_setup_goal', 'listening');
+    render(<TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /とりあえず聴きたいで診断する/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /OBS（配信・録画）/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '用途を変える' }));
+    expect(screen.getByRole('button', { name: /OBS（配信・録画）/ })).toBeInTheDocument();
+});

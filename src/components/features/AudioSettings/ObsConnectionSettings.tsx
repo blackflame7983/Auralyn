@@ -246,54 +246,10 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
   return (
 
             <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">{t('settings.ObsConnectionSettings.280')}</label>
-                <input
-                  aria-label={t('settings.ObsConnectionSettings.281')}
-                  disabled={loading || isObsConnected}
-                  type="text"
-                  value={obsHost}
-                  onChange={(e) => setObsHost(e.target.value)}
-                  className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                  placeholder="localhost"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">{t('settings.ObsConnectionSettings.282')}</label>
-                <input
-                  aria-label={t('settings.ObsConnectionSettings.283')}
-                  disabled={loading || isObsConnected}
-                  type="number"
-                  value={obsPort}
-                  onChange={(e) => setObsPort(Number(e.target.value))}
-                  className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                  placeholder="4455"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">{t('settings.ObsConnectionSettings.284')}</label>
-                <input
-                  aria-label={t('settings.ObsConnectionSettings.285')}
-                  disabled={loading || isObsConnected}
-                  type="password"
-                  value={obsPassword}
-                  onChange={(e) => setObsPassword(e.target.value)}
-                  className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                  placeholder={t('settings.ObsConnectionSettings.286')}
-                />
-              </div>
-
-              <p className="text-xs text-muted-foreground">{t('settings.ObsConnectionSettings.287')}</p>
-              <div className="pt-4">
-                {!isObsConnected ? (
-                  <button
-                    onClick={handleConnectObs}
-                    disabled={loading || obsStatusLoading}
-                    className="w-full py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-all font-bold"
-                  >
-                    {obsStatusLoading ? t('settings.ObsConnectionSettings.288') : loading ? t('settings.ObsConnectionSettings.289') : t('settings.ObsConnectionSettings.290')}
-                  </button>
-                ) : (
+              {/* 接続 → 到達確認 → 設定の変更 → 連動 の順に並べる。 */}
+              <section aria-label={t('obs.section.connect')} className="rounded-xl border border-border p-4 space-y-3">
+                <h3 className="text-sm font-bold text-foreground">{t('obs.section.connect')}</h3>
+                {isObsConnected && (
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/50 p-3">
                     <span role="status" className="text-sm font-medium">{t('settings.ObsConnectionSettings.291')}</span>
                     <Button
@@ -306,8 +262,59 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                     </Button>
                   </div>
                 )}
-              </div>
+                {/* 入力欄は接続中も残し、接続先の確認だけできるよう折りたたむ。 */}
+                <details open={!isObsConnected} className="space-y-3">
+                  <summary className="cursor-pointer text-sm font-medium">{t('obs.target')}</summary>
+                  <div className="space-y-4 pt-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">{t('settings.ObsConnectionSettings.280')}</label>
+                    <input
+                      aria-label={t('settings.ObsConnectionSettings.281')}
+                      disabled={loading || isObsConnected}
+                      type="text"
+                      value={obsHost}
+                      onChange={(e) => setObsHost(e.target.value)}
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      placeholder="localhost"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">{t('settings.ObsConnectionSettings.282')}</label>
+                    <input
+                      aria-label={t('settings.ObsConnectionSettings.283')}
+                      disabled={loading || isObsConnected}
+                      type="number"
+                      value={obsPort}
+                      onChange={(e) => setObsPort(Number(e.target.value))}
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      placeholder="4455"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">{t('settings.ObsConnectionSettings.284')}</label>
+                    <input
+                      aria-label={t('settings.ObsConnectionSettings.285')}
+                      disabled={loading || isObsConnected}
+                      type="password"
+                      value={obsPassword}
+                      onChange={(e) => setObsPassword(e.target.value)}
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      placeholder={t('settings.ObsConnectionSettings.286')}
+                    />
+                  </div>
 
+                    <p className="text-xs text-muted-foreground">{t('settings.ObsConnectionSettings.287')}</p>
+                  </div>
+                </details>
+                {!isObsConnected && (
+                  <button
+                    onClick={handleConnectObs}
+                    disabled={loading || obsStatusLoading}
+                    className="w-full py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-all font-bold"
+                  >
+                    {obsStatusLoading ? t('settings.ObsConnectionSettings.288') : loading ? t('settings.ObsConnectionSettings.289') : t('settings.ObsConnectionSettings.290')}
+                  </button>
+                )}
               {obsConnectionHint && (
                 <div className="text-xs bg-destructive/10 border border-destructive/30 text-destructive-text rounded-md p-3 space-y-2">
                   <p className="font-bold">{t('settings.ObsConnectionSettings.293')}</p>
@@ -332,21 +339,16 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                 </div>
               )}
 
-              <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md border border-input mt-4">
-                <p>{t('settings.ObsConnectionSettings.296')}<br />{t('settings.ObsConnectionSettings.297')}</p>
-              </div>
-
-              <div className="mt-4">
-                <ObsSafeSetup
-                  connected={isObsConnected}
-                  disabled={!isObsConnected || obsStatusLoading || obsReachLoading}
-                  onBusyChange={setObsSetupLoading}
-                  onOpenGuide={onOpenOBSGuide}
-                />
-              </div>
+                {!isObsConnected && (
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">{t('obs.prepare')}</summary>
+                    <p className="mt-2">{t('settings.ObsConnectionSettings.296')}<br />{t('settings.ObsConnectionSettings.297')}</p>
+                  </details>
+                )}
+              </section>
               {isObsConnected && (
-                <div className="mt-6 pt-6 border-t border-border space-y-4">
-                  <h3 className="text-sm font-bold text-foreground">{t('settings.ObsConnectionSettings.298')}</h3>
+                <section aria-label={t('obs.section.reach')} className="rounded-xl border border-border p-4 space-y-3">
+                  <h3 className="text-sm font-bold text-foreground">{t('obs.section.reach')}</h3>
                   <div className="space-y-3">
 
                     <button
@@ -406,8 +408,17 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                       </div>
                     )}
                   </div>
-                </div>
+                </section>
               )}
+              <section aria-label={t('settings.ObsConnectionSettings.298')} className="rounded-xl border border-border p-4 space-y-3">
+                <h3 className="text-sm font-bold text-foreground">{t('settings.ObsConnectionSettings.298')}</h3>
+                <ObsSafeSetup
+                  connected={isObsConnected}
+                  disabled={!isObsConnected || obsStatusLoading || obsReachLoading}
+                  onBusyChange={setObsSetupLoading}
+                  onOpenGuide={onOpenOBSGuide}
+                />
+              </section>
               <details className="rounded border border-border p-3 space-y-3">
                 <summary className="cursor-pointer font-semibold">{t('structure.sceneRouting')}</summary>
                 <ObsModeRoutingSettings />

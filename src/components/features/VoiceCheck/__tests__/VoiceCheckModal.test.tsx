@@ -56,7 +56,7 @@ it('通常出力の切替を求めず独立した試聴先と取り込み確認�
     expect(screen.getByRole('combobox', { name: 'ボイスチェックの試聴先' })).toBeInTheDocument();
     expect(screen.getByText(/ほかのアプリが試聴先を占有していると再生できません/)).toHaveTextContent('Voicemeeter');
     expect(screen.queryByRole('button', { name: '試聴先を設定する' })).not.toBeInTheDocument();
-    expect(screen.getByText(/通常出力・出力ゲイン・ミュートは変更しません/)).toBeInTheDocument();
+    expect(screen.getByText(/マイクの音・出力音量・ミュートは変わりません/)).toBeInTheDocument();
     expect(audioApi.startVoiceCheck).not.toHaveBeenCalled();
 });
 
@@ -178,7 +178,7 @@ it('録音後・録音中の変更と内部VST未照合を折畳み条件欄で�
     open();
     await waitFor(() => expect(screen.getByRole('button', { name: '試聴先を取得・更新' })).toBeEnabled());
     fireEvent.click(screen.getByText('録音時の条件と現在との違い'));
-    expect(screen.getByText(/現在の送出音とは異なる以前の録音/)).toBeVisible();
+    expect(screen.getByText(/現在のマイクの音とは異なる以前の録音/)).toBeVisible();
     expect(screen.getByText(/録音中にも設定が変更/)).toBeVisible();
     expect(screen.getByText(/VST内部パラメーターは照合していません/)).toBeVisible();
     expect(screen.getByText(/48000 Hz/)).toHaveTextContent('512');

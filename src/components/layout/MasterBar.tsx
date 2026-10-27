@@ -28,9 +28,10 @@ interface MasterBarProps {
     sampleRate?: number;
     bufferSize?: number;
     onOpenVoiceCheck?: () => void;
+    onOpenSoundSettings?: () => void;
 }
 
-export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, onOpenVoiceCheck, isRunning = false, processReady }) => {
+export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, onOpenVoiceCheck, onOpenSoundSettings, isRunning = false, processReady }) => {
     const t = useMessages();
     const [levels, setLevels] = useState<[number, number]>([0, 0]);
     const [isClipping, setIsClipping] = useState(false);
@@ -252,7 +253,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 <div className="absolute inset-0 meter-grid pointer-events-none" />
 
                 {/* Label */}
-                <div className="absolute bottom-1 left-0 right-0 text-[8px] text-center text-muted-foreground font-mono pointer-events-none mix-blend-difference opacity-0 group-hover:opacity-100 transition-opacity">{label}</div>
+                <div className="absolute bottom-1 left-0 right-0 text-xs text-center text-muted-foreground font-mono pointer-events-none mix-blend-difference opacity-0 group-hover:opacity-100 transition-opacity">{label}</div>
             </div>
         );
     };
@@ -271,25 +272,18 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     const broadcastFailed = isRunning && stats?.latencyMetadata?.broadcastState === 'failed';
     const signalLabel = processReady === null ? t('master.unverified') : !isRunning ? (host ? t('shell.stopped') : t('shell.unconfigured')) : broadcastFailed ? t('liveOutput.shortFailed') : stats?.latencyMetadata?.processingContext === 'broadcastWorker' ? t('liveOutput.branchLabel') : isFxActive ? t('master.vst') : (isCleanActive ? t('master.nr') : t('master.raw'));
 
-    const handleNoiseReductionCycle = useCallback(async () => {
-        if (!stats) return;
-        const currentMode = !stats.noiseReductionEnabled
-            ? 'off'
-            : (stats.noiseReductionMode?.toLowerCase() === 'high' ? 'high' : stats.noiseReductionMode?.toLowerCase() === 'smart' ? 'smart' : stats.noiseReductionMode?.toLowerCase() === 'venue' ? 'venue' : 'low');
-        const nextMode = currentMode === 'off' ? 'low' : currentMode === 'low' ? 'smart' : currentMode === 'smart' ? 'venue' : currentMode === 'venue' ? 'high' : 'off';
-        const nextEnabled = nextMode !== 'off';
-        try {
-            await audioApi.setNoiseReduction(nextEnabled, nextEnabled ? nextMode : undefined);
-            setStats(prev => prev ? {
-                ...prev,
-                noiseReductionEnabled: nextEnabled,
-                noiseReductionActive: nextEnabled,
-                noiseReductionMode: nextEnabled ? nextMode : (prev.noiseReductionMode || 'low'),
-            } : prev);
-        } catch (e) {
-            console.error("Failed to set noise reduction", e);
-        }
-    }, [stats]);
+    // フッターは状態表示に限る。本番中の誤操作を避けるため、変更は音づくりの欄で行う。
+    const noiseClassName = cn(
+        "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-bold transition-colors",
+        stats?.noiseReductionEnabled ? "text-foreground border-border bg-muted/60" : "text-muted-foreground border-border bg-muted/30",
+        onOpenSoundSettings && "hover:bg-muted"
+    );
+    const noiseContent = <>
+        <span className="hidden md:inline">{t('master.noise')} </span>{noiseModeLabel}
+        {stats?.speechDetected && stats.noiseReductionEnabled && (
+            <span className="ml-1 hidden lg:inline text-xs">{t('master.speech')}</span>
+        )}
+    </>;
 
     return (
         <div className="relative flex flex-wrap items-center justify-end gap-x-3 gap-y-2 px-3 py-2 border-l border-border bg-card/30 backdrop-blur-sm transition-colors duration-300 min-w-0">
@@ -323,7 +317,8 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
 
             {/* Master Output Volume */}
             <div className="flex shrink-0 items-center gap-2 border-l border-border pl-3 ml-1">
-                <MdVolumeUp className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <MdVolumeUp aria-hidden="true" className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <span aria-hidden="true" className="hidden lg:inline text-xs font-bold text-muted-foreground">{t('master.outputGain')}</span>
                 <Slider
                     aria-label={t('master.outputGain')}
                     aria-valuetext={`${outputGain}%`}
@@ -342,23 +337,14 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
 
             {stats && (
                 <div className="flex shrink-0 items-center gap-1.5 text-muted-foreground border-l border-border pl-3 ml-1">
-                    <button
-                        onClick={handleNoiseReductionCycle}
-                        className={cn(
-                            "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-bold font-mono transition-colors",
-                            stats.noiseReductionEnabled
-                                ? noiseMode === "high" || noiseMode === "venue"
-                                    ? "text-warning border-warning/40 bg-warning/10 hover:bg-warning/20"
-                                    : "text-info border-info/40 bg-info/10 hover:bg-info/20"
-                                : "text-muted-foreground border-border bg-muted/40 hover:bg-muted"
-                        )}
-                        title={t('master.nrHint', {mode: noiseModeLabel, rate: effectiveSampleRate})}
-                    >
-                        <span className="hidden md:inline">{t('master.noise')} </span>{noiseModeLabel}
-                        {stats.speechDetected && stats.noiseReductionEnabled && (
-                            <span className="ml-1 hidden lg:inline text-xs">{t('master.speech')}</span>
-                        )}
-                    </button>
+                    {onOpenSoundSettings ? (
+                        <button onClick={onOpenSoundSettings} className={noiseClassName}
+                            title={t('master.nrHint', {mode: noiseModeLabel, rate: effectiveSampleRate})}>
+                            {noiseContent}
+                        </button>
+                    ) : (
+                        <span className={noiseClassName} title={t('master.nrHint', {mode: noiseModeLabel, rate: effectiveSampleRate})}>{noiseContent}</span>
+                    )}
                     {hasRecentGlitch && (
                         <MdBolt className="w-3.5 h-3.5 text-warning animate-pulse" title={t('master.glitch')} />
                     )}
@@ -374,12 +360,8 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 <div className="flex basis-full flex-wrap items-center gap-1.5 min-w-0 max-w-full whitespace-normal break-words lg:basis-auto">
                     <span
                         className={cn(
-                            "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold font-mono",
-                            !isRunning ? "text-muted-foreground border-border bg-muted" : broadcastFailed ? "text-destructive-text border-destructive/50 bg-destructive/10" : isFxActive
-                                ? "text-warning border-warning/40 bg-warning/10"
-                                : isCleanActive
-                                    ? "text-info border-info/40 bg-info/10"
-                                    : "text-success border-success/40 bg-success/10"
+                            "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold",
+                            !isRunning ? "text-muted-foreground border-border bg-muted" : broadcastFailed ? "text-destructive-text border-destructive/50 bg-destructive/10" : "text-success border-success/40 bg-success/10"
                         )}
                     >
                         {signalLabel}

@@ -1,7 +1,7 @@
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useBeginnerMode } from './hooks/useBeginnerMode';
 import { useLiveModes } from './hooks/useLiveModes';
-import { LiveModeControls } from './components/features/AudioSettings/LiveModeControls';
+import { LiveModeBar } from './components/features/AudioSettings/LiveModeBar';
 import { useEffect, useRef } from 'react';
 import { AppShell } from './components/layout/AppShell';
 import { PluginList } from './components/features/PluginRack/PluginList';
@@ -159,6 +159,8 @@ function AppContent() {
         currentHost={audioConfig.host}
         currentSampleRate={audioConfig.sampleRate}
         currentBufferSize={audioConfig.bufferSize}
+        currentInput={audioConfig.input}
+        currentOutput={audioConfig.output}
         isEngineRunning={isEngineRunning}
         engineProcessReady={engineProcessReady}
       >
@@ -169,7 +171,7 @@ function AppContent() {
           busy={pluginsApi.isLoading || pluginsApi.isScanning || isInitializing}
           onRetry={pluginsApi.retrySessionRestore}
         />
-        <LiveModeControls model={liveModel} />
+        <LiveModeBar model={liveModel} refreshKey={isModalOpen} />
         {isBeginnerMode ? (
           <details className="mb-4">
             <summary className="cursor-pointer py-3 text-sm font-semibold">
@@ -258,7 +260,7 @@ function AppContent() {
           onPluginAdded={handlePluginAdded}
         />
 
-        <Toaster position="top-right" theme={theme === 'light' ? 'light' : 'dark'} richColors />
+        <Toaster position="bottom-right" offset={{ bottom: 'calc(var(--app-footer-height, 4rem) + 16px)', right: 16 }} theme={theme === 'light' ? 'light' : 'dark'} richColors />
       </AppShell>
     </>
   );

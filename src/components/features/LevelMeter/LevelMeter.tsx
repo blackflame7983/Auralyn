@@ -35,7 +35,7 @@ export const LevelMeter: React.FC<LevelMeterProps> = ({ width = 8, height = 32, 
     return (
         <div aria-label={t('meter.accessibleLevel', { arg0: type === 'input' ? t('meter.input') : t('meter.output'), arg1: t(meterStatusLabel(state)) })} title={t(meterStatusLabel(state))} className={`relative flex gap-1.5 p-1.5 bg-card/50 rounded-lg border shadow-inner items-center justify-center backdrop-blur-sm transition-colors duration-300 ${isClipping ? 'border-meter-danger shadow-[0_0_10px_hsl(var(--meter-danger)/0.3)] bg-destructive/10' : 'border-border'}`} style={{ height }}>
             {/* Type Label (Tiny) */}
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-mono font-bold text-muted-foreground uppercase tracking-wider bg-background px-1 rounded ring-1 ring-border/50">
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider bg-background px-1 rounded ring-1 ring-border/50">
                 {type === 'input' ? 'IN' : 'OUT'}
             </div>
 

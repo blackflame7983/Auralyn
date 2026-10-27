@@ -79,7 +79,7 @@ export function ShortcutsPanel() {
                         {keys.map(([value, name]) => <option key={value} value={value}>{name}</option>)}
                     </select></label>
                 </div>
-                <button type="button" className="underline" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('settings.ShortcutsPanel.389')}{label}</button>
+                <button type="button" className="link-button" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('settings.ShortcutsPanel.389')}{label}</button>
             </fieldset>;
         })}</div>
         <div className="flex flex-wrap gap-2">

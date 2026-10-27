@@ -87,6 +87,8 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
     const [isLoadingDevices, setIsLoadingDevices] = useState(false);
     const [isTestingSound, setIsTestingSound] = useState(false);
     const [inputLevel, setInputLevel] = useState(0);
+    // 開いた時点で動いている入力。同じマイクを選んでいる間だけ、入力ステップでレベルを示せる。
+    const [runningInput, setRunningInput] = useState<string | null>(null);
 
     // Initial Fetch when Opened
     useEffect(() => {
@@ -104,6 +106,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                 if (!active) return;
                 // Initial state captured for revert
                 initialStateRef.current = { ...s, is_running: !!stream?.running && !stream.streamFailed };
+                setRunningInput(initialStateRef.current.is_running ? s.config?.input ?? null : null);
                 hasTouchedEngineRef.current = false;
                 setInitialStateReady(true);
             }).catch(() => {
@@ -121,6 +124,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
             });
             setIsTestingSound(false);
             setInputLevel(0);
+            setRunningInput(null);
             hasTouchedEngineRef.current = false;
             initialStateRef.current = null;
         }
@@ -271,6 +275,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
             await audioApi.start(config.host, config.input.name, config.output.name);
             await audioApi.setInputChannels(0, 1); // Reset channels to default to avoid silence from old config
             setIsTestingSound(true);
+            setRunningInput(config.input.name);
             toast.success(createElement(LocalizedMessage, { id: 'guide.copy.251' }));
             return true;
         } catch (e) {
@@ -293,6 +298,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
             await audioApi.stop();
             setIsTestingSound(false);
             setInputLevel(0);
+            setRunningInput(null);
             return true;
         } catch (e) {
             console.error(e);
@@ -348,6 +354,6 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
     return { audioStartError, beginnerChoice, setBeginnerChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, availableInputs, availableOutputs,
-        isLoadingDevices, isTestingSound, inputLevel, loadDevices, handleRescanVirtualDevices,
+        isLoadingDevices, isTestingSound, inputLevel, runningInput, loadDevices, handleRescanVirtualDevices,
         selectGoal, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply };
 }

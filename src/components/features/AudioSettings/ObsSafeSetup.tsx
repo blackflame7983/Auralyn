@@ -77,6 +77,7 @@ export function ObsSafeSetup({
         <section aria-label={t('settings.ObsSafeSetup.335')} className="space-y-3 text-sm">
             <p className="text-xs text-muted-foreground">
                 {t('settings.ObsSafeSetup.336')}</p>
+            <div className="flex flex-wrap gap-2">
             <button
                 type="button"
                 className={buttonClass}
@@ -88,6 +89,7 @@ export function ObsSafeSetup({
                 <button type="button" className={buttonClass} disabled={busy} onClick={onOpenGuide}>
                     {t('settings.ObsSafeSetup.338')}</button>
             )}
+            </div>
             {error && (
                 <p role="alert" className="text-warning break-words">
                     {originalObsText(t, error)} {t('settings.ObsSafeSetup.339')}</p>

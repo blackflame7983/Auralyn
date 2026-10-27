@@ -200,7 +200,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                                             <div className="font-bold truncate text-sm">{item.name}</div>
                                             <div className="flex justify-between items-center mt-1">
                                                 <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{item.version}</span>
-                                                <span className="text-[10px] text-muted-foreground truncate max-w-[50%]">{item.licenseMissing ? t('licenses.unknown') : item.license}</span>
+                                                <span className="text-xs text-muted-foreground truncate max-w-[50%]">{item.licenseMissing ? t('licenses.unknown') : item.license}</span>
                                             </div>
                                         </button>
                                     ))}

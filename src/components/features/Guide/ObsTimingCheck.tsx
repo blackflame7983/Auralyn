@@ -188,7 +188,7 @@ export function ObsTimingCheck({ mixed = false, contextKey = '', onOpenObsSettin
         </div>}
         {busy && <p role="status">{writePending ? t('obsTiming.copy.47') : t('obsTiming.copy.48')}</p>}
         {message && <p role="alert" className="break-words">{renderNotice(t, message)}</p>}
-        <button type="button" disabled={!!busy} className="underline" onClick={() => { invalidate(); void run('history', async version => { const items = await obsApi.setupHistory(); if (current(version)) setHistory(items.filter(item => item.timing)); }); }}>{t('obsTiming.copy.49')}</button>
+        <button type="button" disabled={!!busy} className="link-button" onClick={() => { invalidate(); void run('history', async version => { const items = await obsApi.setupHistory(); if (current(version)) setHistory(items.filter(item => item.timing)); }); }}>{t('obsTiming.copy.49')}</button>
         {history.map(item => <div key={item.id} aria-label={t('obsTiming.historyAria', { id: item.id })} className="rounded border p-3 space-y-2">
             <p>{t('obsTiming.historyTitle', { id: item.id, source: item.timing?.source ?? '—', before: item.timing?.currentOffsetMs ?? '—', after: item.timing?.resultOffsetMs ?? '—' })}</p>
             <p>{t('obsTiming.reference', { note: item.timing?.measurement.referenceNote ?? '—' })}</p>

@@ -98,19 +98,19 @@ export function MonitorTrial({ devices, onApplied, onBusyChange, disabled = fals
             {monitorAdvice(pending.before).length > 0 && <details><summary>{t('monitorTrial.fxPlans')}</summary><ul className="list-disc pl-4 text-sm">{monitorAdvice(pending.before).map((a, index) => <li key={index}>{t(`monitorTrial.advice.${a.kind}`, { name: a.name ?? '', samples: a.samples ?? '' })}</li>)}</ul><p className="text-xs">{t('monitorTrial.fxBoundary')}</p></details>}
             <p className="text-sm">{t('monitorTrial.warning')}</p>
             <button disabled={busy || disabled} onClick={() => void apply()} className="border rounded p-2">{t('monitorTrial.apply')}</button>{' '}
-            <button disabled={busy || disabled} onClick={() => setPending(null)} className="underline">{t('monitorTrial.cancel')}</button>
+            <button disabled={busy || disabled} onClick={() => setPending(null)} className="link-button">{t('monitorTrial.cancel')}</button>
         </div>}
         {trial && <div className="space-y-2"><p>{t('monitorTrial.requested', { frames: trial.requested })}</p>
             <p>{t('monitorTrial.actual', { rate: trial.applied.sampleRate!, frames: trial.applied.bufferSize! })}</p>
             <details><summary>{t('monitorTrial.before')}</summary>{recorded(trial.before)}</details>
-            <button disabled={busy || disabled} className="underline" onClick={async () => {
+            <button disabled={busy || disabled} className="link-button" onClick={async () => {
                 setBusy(true); setError(false); setHeard(false);
                 try { const after = await audioApi.getEngineRuntimeStats(); if (condition(after) !== trial.condition || !after.latencyMetadata?.streamRunning) throw Error(); setTrial({ ...trial, after }); } catch { setError(true); } finally { setBusy(false); }
             }}>{t('monitorTrial.refresh')}</button>
             <LatencyDetails stats={trial.after} />
             <label className="flex gap-2 text-sm"><input type="checkbox" checked={heard} onChange={event => setHeard(event.target.checked)} />{t('monitorTrial.heard')}</label>
             <button disabled={busy || disabled || !heard} className="border rounded p-2 disabled:opacity-50" onClick={() => void finish(true)}>{t('monitorTrial.keep')}</button>{' '}
-            <button disabled={busy || disabled} className="underline" onClick={() => void finish(false)}>{t('monitorTrial.restore')}</button>
+            <button disabled={busy || disabled} className="link-button" onClick={() => void finish(false)}>{t('monitorTrial.restore')}</button>
         </div>}
         {recovery && !trial && <div className="space-y-2">
             <p>{t('monitorTrial.recovery', { input: recovery.input ?? '', output: recovery.output ?? '', rate: recovery.sampleRate!, frames: recovery.bufferSize! })}</p>

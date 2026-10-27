@@ -70,9 +70,9 @@ export function ObsMixCheck({ initialTimingOpen = false, onOpenObsSettings }: { 
         </div>
         <p className="text-xs text-muted-foreground">{t('guide.copy.174')}</p>
         <p className="text-xs text-muted-foreground">{t('guide.copy.175')}</p>
-        <button type="button" onClick={() => { setMic(''); setMusic(''); setMixed(false); resetChecks(); }} className="underline">{t('guide.copy.176')}</button>
+        <button type="button" onClick={() => { setMic(''); setMusic(''); setMixed(false); resetChecks(); }} className="link-button">{t('guide.copy.176')}</button>
         <p className="text-xs text-muted-foreground">{t('guide.copy.177')}</p>
-        <button type="button" onClick={() => setTimingOpen(open => !open)} className="underline">{timingOpen ? t('guide.copy.178') : t('guide.copy.179')}</button>
+        <button type="button" onClick={() => setTimingOpen(open => !open)} className="link-button">{timingOpen ? t('guide.copy.178') : t('guide.copy.179')}</button>
         {timingOpen && <ObsTimingCheck onOpenObsSettings={onOpenObsSettings} mixed={mixed} contextKey={JSON.stringify([mic, music])} />}
     </details>;
 }

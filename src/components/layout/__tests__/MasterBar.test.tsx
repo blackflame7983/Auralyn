@@ -101,7 +101,7 @@ describe('起動時の保存ゲイン復元', () => {
         running = true;
         render(<MasterBar isRunning />);
         await act(async () => { finishListening(); });
-        const slider = screen.getByRole('slider', { name: '出力ゲイン' });
+        const slider = screen.getByRole('slider', { name: '出力音量' });
         slider.focus();
         fireEvent.keyDown(slider, { key: 'ArrowRight' });
         await act(async () => { await vi.advanceTimersByTimeAsync(60); });
@@ -274,6 +274,20 @@ it('gainの固定失敗noticeはlocaleに追従し、購読/初期化/保存を�
     expect(invoke).toHaveBeenCalledTimes(calls);expect(listen).toHaveBeenCalledTimes(subscriptions);expect(localStorage.getItem('vst_host_output_gain')).toBe('50');
 });
 
+it('フッターのノイズ低減は状態表示で、押しても設定を変えずに音づくりを開く', async () => {
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({
+        globalBypass: false, enabledPluginCount: 0, activePluginCount: 0,
+        noiseReductionEnabled: true, noiseReductionActive: true, noiseReductionMode: 'low',
+    } as EngineRuntimeStats);
+    const openSound = vi.fn();
+    render(<MasterBar host="Wasapi" isRunning processReady onOpenSoundSettings={openSound} />);
+    await act(async () => { finishListening(); await vi.advanceTimersByTimeAsync(10); });
+    const calls = vi.mocked(invoke).mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: /ノイズ\s*弱/ }));
+    expect(openSound).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(invoke).mock.calls.length).toBe(calls);
+    expect(screen.getByText('ノイズ低減ON')).toBeInTheDocument();
+});
 
 it.each([
     ['ja', false], ['en', false], ['ja', true], ['en', true],
@@ -294,8 +308,9 @@ it.each([
     fireEvent.click(screen.getByRole('button', { name: message(locale, 'master.voice') }));
     expect(voice).toHaveBeenCalledOnce();
     const noise = screen.getByTitle(message(locale, 'master.nrHint', { mode: message(locale, 'master.nrHigh'), rate: 48000 }));
+    // フッターのノイズ低減は状態表示で、押しても設定を変えない。
     await act(async () => fireEvent.click(noise));
-    expect(audioApi.setNoiseReduction).toHaveBeenCalledWith(false, undefined);
+    expect(audioApi.setNoiseReduction).not.toHaveBeenCalled();
     expect(screen.getByRole('slider', { name: message(locale, 'master.outputGain') })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: message(locale, 'master.details') }));
     expect(screen.getByRole('dialog', { name: message(locale, 'master.detailsTitle') })).toBeVisible();

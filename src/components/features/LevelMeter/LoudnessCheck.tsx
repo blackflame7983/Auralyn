@@ -278,7 +278,7 @@ export function LoudnessCheck({
                     <h2 className="text-sm font-semibold">{t('loudness.title')}</h2>
                     <p
                         role="status"
-                        className={`text-lg font-bold ${good ? 'text-success' : 'text-warning'}`}
+                        className={`text-lg font-bold ${good ? 'text-success' : active ? 'text-warning' : 'text-muted-foreground'}`}
                     >
                         {message}
                     </p>
