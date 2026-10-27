@@ -117,6 +117,7 @@ export const audioApi = {
         });
     },
     openEditor: async (id: string) => {
+        window.dispatchEvent(new Event('preparation-external-change'));
         return await invoke("open_editor", { id });
     },
     setGlobalMute: async (active: boolean) => {
@@ -424,7 +425,13 @@ export interface ResamplerCohortTimingSnapshot {
     invalidReasons: string[];
 }
 
+export interface PreparationSnapshot {
+    engineEpoch: string; processingRevision: string; routingRevision: string; inputGain: number; inputChannels: [number, number];
+    outputGain: number; outputRevision: string; muted: boolean; controlsPending: boolean;
+    nrBackend: string; nrModel: string;
+}
 export interface EngineRuntimeStats {
+    preparation?: PreparationSnapshot | null;
     resamplerCohortTiming?: ResamplerCohortTimingSnapshot | null;
     frameTiming?: FrameTimingSnapshot | null;
     resamplerBatchTiming?: ResamplerBatchTimingSnapshot | null;

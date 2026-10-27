@@ -7,6 +7,7 @@ export const MIGRATION_KEYS = [
     'vst_host_audio_config', 'vst_host_audio_presets', 'vst_host_input_gain',
     'vst_host_output_gain', 'vst_host_plugin_favorites', 'vst_host_plugin_recent',
     'vst_host_session_plugins', 'vst_host_setup_goal', 'vst_host_wizard_done',
+    'auralyn_preparation_context',
     'vst_host_tutorial_completed', 'vst_host_settings_advanced',
 ] as const;
 export const REVIEW_KEY = 'vst_host_migration_review_required';

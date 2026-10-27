@@ -342,6 +342,7 @@ pub struct Engine {
     voice_recording_id: u64,
     voice_revision: u64,
     comparison_revision: u64,
+    preparation_routing_revision: u64,
     voice_input_gain: f32,
 
     // Diagnostics
@@ -431,6 +432,7 @@ impl Engine {
             voice_recording_id: 0,
             voice_revision: 0,
             comparison_revision: 0,
+            preparation_routing_revision: 0,
             voice_input_gain: 1.0,
             stats_max_jitter: Arc::new(AtomicU64::new(0)),
             stats_glitches: Arc::new(AtomicU64::new(0)),
@@ -868,6 +870,24 @@ impl Engine {
         Ok(self.builtin.snapshot(self.output_stream.is_some()))
     }
 
+    fn preparation_snapshot(&self) -> crate::ipc::PreparationSnapshot {
+        crate::ipc::PreparationSnapshot {
+            engine_epoch: self.builtin.snapshot(false).epoch,
+            processing_revision: self.voice_revision.to_string(),
+            routing_revision: self.preparation_routing_revision.to_string(),
+            input_gain: self.voice_input_gain,
+            input_channels: [self.input_channel_l, self.input_channel_r],
+            output_gain: self.output_gain,
+            output_revision: self.output_gain_revision.to_string(),
+            muted: self.global_mute,
+            controls_pending: !self.pending_audio_msgs.is_empty()
+                || self.command_tx.as_ref().is_some_and(|q| !q.is_empty())
+                || !self.gain_shared.settled.load(Ordering::Acquire),
+            nr_backend: "nnnoiseless-0.5.2".into(),
+            nr_model: "bundled-e6de5fbfadf7ec91".into(),
+        }
+    }
+
     fn handle_command<T>(
         &mut self,
         cmd: Command,
@@ -954,6 +974,12 @@ impl Engine {
             return;
         }
         // 新しい別出力試聴は、通常再生stateも自動ゲイン提案も変更しない。
+        if matches!(
+            &cmd,
+            Command::LiveOutput { config: Some(_) } | Command::SetGlobalMute { .. }
+        ) {
+            self.preparation_routing_revision = self.preparation_routing_revision.saturating_add(1);
+        }
         if matches!(
             &cmd,
             Command::StartVoiceCheckRecording { .. } | Command::PlayVoiceCheck { .. }
@@ -1635,6 +1661,7 @@ impl Engine {
                     0.0
                 };
                 self.send_response(Response::RuntimeStats {
+                    preparation: Some(Box::new(self.preparation_snapshot())),
                     active_plugin_count,
                     enabled_plugin_count,
                     pending_unload_count,
@@ -4702,5 +4729,54 @@ mod latency_stage_runtime_tests {
         }
         e.clear_audio_resources();
         assert!(e.noise_reduction_enabled);
+    }
+}
+
+#[cfg(test)]
+mod preparation_status_tests {
+    use super::*;
+
+    #[test]
+    fn status_reads_do_not_change_revisions_or_audio_and_roundtrip_without_integer_loss() {
+        let mut engine = Engine::new();
+        engine.voice_revision = (1_u64 << 54) + 1;
+        engine.preparation_routing_revision = 8;
+        engine.output_gain_revision = 9;
+        engine.voice_input_gain = 1.3;
+        engine.global_mute = true;
+        let first = engine.preparation_snapshot();
+        assert_eq!(first, engine.preparation_snapshot());
+        assert_eq!(first.processing_revision, "18014398509481985");
+        assert_eq!(first.routing_revision, "8");
+        assert_eq!(first.output_revision, "9");
+        assert_eq!(first.input_gain, 1.3);
+        assert!(first.muted);
+        assert!(engine.pending_audio_msgs.is_empty());
+        let value = serde_json::to_value(&first).unwrap();
+        assert_eq!(value["processingRevision"], "18014398509481985");
+        assert_eq!(
+            serde_json::from_value::<crate::ipc::PreparationSnapshot>(value).unwrap(),
+            first
+        );
+    }
+
+    #[test]
+    fn status_reports_unconsumed_audio_commands_as_pending_without_draining_them() {
+        let mut engine = Engine::new();
+        let (tx, mut rx) = HeapRb::new(2).split();
+        engine.command_tx = Some(tx);
+        engine.queue_audio_msg(AudioThreadMessage::SetInputGain(0.5));
+        assert!(engine.preparation_snapshot().controls_pending);
+        assert!(matches!(
+            rx.try_pop(),
+            Some(AudioThreadMessage::SetInputGain(0.5))
+        ));
+        engine.pending_audio_msgs.clear();
+        engine.command_tx = None;
+        let before = engine.preparation_snapshot();
+        engine.preparation_routing_revision += 1;
+        let after = engine.preparation_snapshot();
+        assert_eq!(before.processing_revision, after.processing_revision);
+        assert_ne!(before.routing_revision, after.routing_revision);
     }
 }

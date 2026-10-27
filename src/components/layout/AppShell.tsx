@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/tooltip";
 
 interface AppShellProps {
+    preparationBlocked?: boolean;
     isBeginnerMode: boolean;
     onDisplayModeChange: (beginner: boolean) => void;
     onOpenOBSSettings: () => void;
@@ -42,6 +43,7 @@ import { MasterBar } from './MasterBar';
 
 export const AppShell: React.FC<AppShellProps> = ({
     children,
+    preparationBlocked,
     isBeginnerMode,
     onDisplayModeChange,
     onOpenOBSSettings,
@@ -170,25 +172,16 @@ export const AppShell: React.FC<AppShellProps> = ({
                                 {t('shell.loudness')}
                             </button>
                         </div>
-                        {!audioReady && !isBeginnerMode && (
-                            <section aria-label={t('shell.start')} className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2">
-                                <p role="status" className="text-sm font-semibold">{engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}</p>
-                                <button onClick={onOpenSettings} className="rounded-md bg-primary px-3 py-1.5 text-sm font-bold text-primary-foreground">{t('shell.configure')}</button>
-                            </section>
-                        )}
-                        {isBeginnerMode && (
-                            <HomePanels
-                                audioReady={audioReady}
-                                statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
-                                isEngineRunning={isEngineRunning}
-                                inputName={currentInput}
-                                outputName={currentOutput}
-                                onOpenSettings={onOpenSettings}
-                                onOpenOBSSettings={onOpenOBSSettings}
-                                onOpenSoundSettings={onOpenSoundSettings}
-                                onOpenVoiceCheck={onOpenVoiceCheck}
-                            />
-                        )}
+                        <HomePanels
+                            audioReady={audioReady}
+                            statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
+                            isEngineRunning={isEngineRunning}
+                            inputName={currentInput} outputName={currentOutput}
+                            blocked={preparationBlocked}
+                            onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}
+                            onOpenSoundSettings={onOpenSoundSettings} onOpenVoiceCheck={onOpenVoiceCheck}
+                            onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot}
+                        />
                         <LoudnessCheck
                             enabled={loudnessEnabled}
                             running={isEngineRunning}
