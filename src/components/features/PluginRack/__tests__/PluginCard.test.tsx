@@ -3,9 +3,25 @@ import { createLocaleStore } from '@/i18n/locale';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { PluginCard } from '../PluginCard';
+import { RuntimeStatsContext } from '@/components/layout/RuntimeStatsContext';
+import type { EngineRuntimeStats } from '@/api/audio';
 
 beforeEach(() => vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+it('遅延申告は現在の世代とIDが一致した値だけを表示し、0と未取得を区別する', () => {
+    const stats = { queueDiagnostics: { state: 'running', epoch: 'e1' }, latencyMetadata: { schemaVersion: 1, streamRunning: true,
+        stageBreakdown: { schemaVersion: 1, current: true, queryBasis: 'queriedAtRuntimeStats', streamEpoch: 'e1', nr: { enabled: true },
+            builtinVoiceEnabled: false, builtinReverbEnabled: false, globalBypass: false,
+            vst: [{ id: '1', state: 'active', declaredSamples: 0 }] } } } as unknown as EngineRuntimeStats;
+    const card = <PluginCard simpleMode plugin={{ id: '1', name: 'OTT', path: 'ott', vendor: '', version: '', enabled: true, hasEditor: true, muted: false, gain: 1 }}
+        onToggle={vi.fn()} onMute={vi.fn()} onGainChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} />;
+    const view = render(<RuntimeStatsContext.Provider value={{ stats, running: true }}>{card}</RuntimeStatsContext.Provider>);
+    expect(screen.getByText('遅延申告：0 sample')).toBeInTheDocument();
+    stats.queueDiagnostics!.epoch = 'other';
+    view.rerender(<RuntimeStatsContext.Provider value={{ stats, running: true }}>{card}</RuntimeStatsContext.Provider>);
+    expect(screen.getByText('遅延申告：未取得')).toBeInTheDocument();
+    expect(screen.queryByText('遅延申告：0 sample')).not.toBeInTheDocument();
+});
 it.each([false, true])('詳細・かんたん表示で操作名と有効状態を公開する（かんたん=%s）', simpleMode => {
     const onToggle = vi.fn();
     const onMute = vi.fn();

@@ -9,6 +9,7 @@ import { useSharedMeter } from '../LevelMeter/MeterContext';
 import { MeterVisual } from '../LevelMeter/MeterVisual';
 import { deviceDisplayName } from '@/lib/audioRouting';
 import { VoiceQuickControls } from './VoiceQuickControls';
+import { SignalFlow } from './SignalFlow';
 
 interface HomePanelsProps {
     blocked?: boolean;
@@ -49,7 +50,9 @@ export function HomePanels({ audioReady, statusText, isEngineRunning, inputName,
     const actualInput = model.observation.config?.input ?? inputName;
     const actualOutput = model.observation.config?.output ?? outputName;
     return <div className="mb-4 space-y-3">
-        <section aria-label={t('prep.signalPath')} className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
+        <PreparationPanel model={model} audioReady={audioReady} onSettings={onOpenSettings} onSound={onOpenSoundSettings ?? onOpenSettings}
+            onListen={onOpenVoiceCheck} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings}
+            signalSummary={<section aria-label={t('prep.signalPath')} className="space-y-2">
             <dl className="grid gap-3 sm:grid-cols-3 text-sm">
                 <div className="min-w-0"><dt className="text-muted-foreground">{t('home.input')}</dt><dd className="truncate font-medium" title={actualInput ?? undefined}>{actualInput ? deviceDisplayName(actualInput) : t('master.unset')}</dd></div>
                 <div className="min-w-0"><dt className="text-muted-foreground">{t('prep.processing')}</dt><dd role="status" className="font-medium">{statusText ?? t(availability[model.observation.availability])}</dd></div>
@@ -60,9 +63,8 @@ export function HomePanels({ audioReady, statusText, isEngineRunning, inputName,
                 <button type="button" onClick={onOpenSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('home.changeDevices')}</button>
             </div>
             <p className="text-xs text-muted-foreground">{t('prep.localOnly')}</p>
-        </section>
-        <PreparationPanel model={model} audioReady={audioReady} onSettings={onOpenSettings} onSound={onOpenSoundSettings ?? onOpenSettings}
-            onListen={onOpenVoiceCheck} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} />
+        </section>} />
+        <SignalFlow />
         <section aria-label={t('shell.sound')} className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
             <h2 className="text-sm font-bold">{t('shell.sound')}</h2>
             {audioReady ? <VoiceQuickControls running={isEngineRunning} onOpenSoundSettings={onOpenSoundSettings} /> : <p className="text-sm text-muted-foreground">{t('home.soundAfterSetup')}</p>}

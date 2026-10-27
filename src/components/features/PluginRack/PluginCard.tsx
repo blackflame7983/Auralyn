@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { MdClose, MdDragIndicator } from 'react-icons/md';
+import { currentStageBreakdown, useRuntimeStats } from '@/components/layout/RuntimeStatsContext';
 import {
     Tooltip,
     TooltipContent,
@@ -44,6 +45,12 @@ interface PluginCardProps {
 export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute, onGainChange, onRemove, onEdit, dragHandleListeners, dragHandleAttributes, dragHandleRef, simpleMode = false }) => {
     const t = useMessages();
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const { stats, running } = useRuntimeStats();
+    const stage = currentStageBreakdown(stats, running);
+    const matched = stage?.vst.filter(v => v.id === plugin.id) ?? [];
+    const declared = matched.length === 1 && matched[0].state !== 'unavailable' && Number.isInteger(matched[0].declaredSamples)
+        && matched[0].declaredSamples! >= 0 && matched[0].declaredSamples! <= 4294967295 ? matched[0].declaredSamples : null;
+    const latency = declared === null ? t('rack.latencyUnknown') : t('rack.latencyReported', { samples: declared });
 
     // Calculate dB value for display
     const dbValue = plugin.gain === 0 ? '-inf' : (20 * Math.log10(plugin.gain)).toFixed(1);
@@ -89,6 +96,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                 {plugin.name}
                                 {plugin.muted && <span className="ml-2 text-xs text-muted-foreground">{t('rack.card.simpleMuted')}</span>}
                             </h3>
+                            <span className="hidden sm:inline truncate text-xs text-muted-foreground" title={latency}>{latency}</span>
                         </div>
 
                         {/* Gain Slider */}
@@ -207,6 +215,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                             {plugin.name}
                         </h3>
                         {plugin.vendor && <div className="text-xs text-muted-foreground truncate">{plugin.vendor}</div>}
+                        <div className="text-xs text-muted-foreground truncate" title={latency}>{latency}</div>
                     </div>
 
                     {/* 2. Controls Section */}
