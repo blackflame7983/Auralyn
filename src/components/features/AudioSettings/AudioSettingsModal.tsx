@@ -102,13 +102,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   });
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'audio' | 'sound' | 'obs' | 'appearance' | 'system'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'audio' | 'sound' | 'obs' | 'appearance' | 'system' | 'shortcuts'>(initialTab);
+  const [capturingShortcut, setCapturingShortcut] = useState(false);
   const [isBeginnerMode, setIsBeginnerMode] = useState(getBeginnerMode);
-  const [isSystemTabEnabled, setIsSystemTabEnabled] = useState(() => {
-    if (!getBeginnerMode()) return true;
-    return localStorage.getItem('vst_host_system_tab_enabled') === 'true';
-  });
-
   // Persist Advanced Mode selection
   useEffect(() => {
     localStorage.setItem('vst_host_settings_advanced', String(isAdvancedMode));
@@ -119,9 +115,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       const next = (event as CustomEvent<boolean> | undefined)?.detail;
       const beginnerMode = typeof next === 'boolean' ? next : getBeginnerMode();
       setIsBeginnerMode(beginnerMode);
-      if (!beginnerMode) {
-        setIsSystemTabEnabled(true);
-      }
     };
 
     window.addEventListener('vst_host_beginner_mode_changed', syncBeginnerMode as EventListener);
@@ -131,16 +124,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       window.removeEventListener('storage', syncBeginnerMode);
     };
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem('vst_host_system_tab_enabled', String(isSystemTabEnabled));
-  }, [isSystemTabEnabled]);
-
-  useEffect(() => {
-    if (isBeginnerMode && !isSystemTabEnabled && activeTab === 'system') {
-      setActiveTab('audio');
-    }
-  }, [isBeginnerMode, isSystemTabEnabled, activeTab]);
 
   const settingsBody = useRef<HTMLDivElement>(null);
   const soundStart = useRef<HTMLHeadingElement>(null);
@@ -280,7 +263,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         setAutostartReason(notice('settings.AudioSettingsModal.000'));
       });
       audioApi.getEngineTuningConfig()
-        .then((config) => setEngineTuningConfig(config))
+        .then((config) => { if (config && typeof config === 'object') setEngineTuningConfig(config); })
         .catch((e) => {
           console.error('Failed to load engine tuning config', e);
         });
@@ -381,10 +364,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     }
   };
 
-  const enableSystemTab = () => {
-    setIsSystemTabEnabled(true);
-    setActiveTab('system');
-  };
+
 
   const handleDangerousToggle = (
     key: 'enableRealtimePriority' | 'enableTimeCriticalAudioThreads',
@@ -585,16 +565,17 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <Modal title={t('common.settings')} onClose={onClose} initialFocusRef={initialTab === 'sound' ? soundStart : undefined}>
-        <div className="modal-overlay-base">
-      <div className="modal-surface-base w-full max-w-2xl max-h-[85vh] flex flex-col">
-        <div className="modal-header-base modal-header-muted shrink-0">
+    <Modal title={t('common.settings')} onClose={onClose} dismissible={!isApplying} onEscapeKeyDown={event => { if (capturingShortcut) event.preventDefault(); }} initialFocusRef={initialTab === 'sound' ? soundStart : undefined}>
+        <div className="fixed inset-0 z-[100] flex justify-end bg-background/80 backdrop-blur-sm">
+      <div className="h-full w-full max-w-5xl flex flex-col overflow-hidden border-l border-border bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3 shrink-0">
           <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
             <MdSettings className="w-5 h-5 text-primary" />
             {t('common.settings')}
           </h2>
           <button
             onClick={onClose}
+            disabled={isApplying}
             aria-label={t('settings.close')}
             className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted/50"
           >
@@ -602,16 +583,16 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           </button>
         </div>
 
-        <div ref={settingsBody} className="modal-body-base scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent">
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
-          <TabsList className={`grid h-auto w-full grid-cols-2 ${isBeginnerMode && !isSystemTabEnabled ? 'sm:grid-cols-4' : 'sm:grid-cols-5'} mb-4`}>
-            <TabsTrigger value="audio">{t('settings.audio')}</TabsTrigger>
-            <TabsTrigger value="sound">{t('settings.sound')}</TabsTrigger>
-            <TabsTrigger value="obs">{t('settings.obs')}</TabsTrigger>
-            <TabsTrigger value="appearance">{t('settings.appearance')}</TabsTrigger>
-            {(!isBeginnerMode || isSystemTabEnabled) && <TabsTrigger value="system">{t('settings.system')}</TabsTrigger>}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} orientation="vertical" className="flex min-h-0 flex-1">
+          <TabsList aria-label={t('common.settings')} className="h-auto w-40 shrink-0 flex-col items-stretch justify-start gap-1 rounded-none border-r border-border p-2 overflow-y-auto">
+            <TabsTrigger className="justify-start" value="audio">{t('settings.audio')}</TabsTrigger>
+            <TabsTrigger className="justify-start" value="sound">{t('settings.sound')}</TabsTrigger>
+            <TabsTrigger className="justify-start" value="obs">{t('settings.obs')}</TabsTrigger>
+            <TabsTrigger className="justify-start" value="appearance">{t('settings.appearance')}</TabsTrigger>
+            <TabsTrigger className="justify-start" value="shortcuts">{t('settings.shortcuts')}</TabsTrigger>
+            <TabsTrigger className="justify-start" value="system">{t('settings.system')}</TabsTrigger>
           </TabsList>
-
+          <div ref={settingsBody} className="min-w-0 flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent">
           <TabsContent value="audio" className="space-y-4">
             {reviewRequired && <div className="rounded border border-input bg-muted p-3 text-sm space-y-2">
               <p>{t('settings.AudioSettingsModal.029')}</p>
@@ -1205,8 +1186,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
 
             </div>
-            <p className="text-sm text-muted-foreground">{t('settings.AudioSettingsModal.136')}</p>
-            <button type="button" onClick={enableSystemTab} className="rounded-md border border-border px-3 py-2 text-sm">{t('settings.AudioSettingsModal.137')}</button>
             {/* App Info Card */}
             {/* App Info Card */}
             <div className="p-6 bg-muted/20 border border-border rounded-xl flex flex-col items-center justify-center space-y-3">
@@ -1233,9 +1212,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
           </TabsContent>
 
-          {(!isBeginnerMode || isSystemTabEnabled) && (
+          <TabsContent value="shortcuts" className="space-y-4">
+            <ShortcutsPanel onCaptureChange={setCapturingShortcut} />
+          </TabsContent>
           <TabsContent value="system" className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-            <ShortcutsPanel />
+            {onOpenWizard && <button type="button" disabled={loading} onClick={() => { onClose(); onOpenWizard(); }} className="rounded-md border border-border px-3 py-2 text-sm">{t('settings.AudioSettingsModal.198')}</button>}
 
             {/* Startup Settings */}
             <div className="p-4 bg-muted/20 border border-border rounded-xl flex items-center justify-between">
@@ -1517,34 +1498,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
             </div>
           </TabsContent>
-          )}
+          </div>
         </Tabs>
-        </div>
         {activeTab === 'audio' && !loading && !error && (
-          <div className="modal-footer-base shrink-0">
-            <div className="flex flex-col gap-2">
-              <div className="flex flex-col gap-3 sm:flex-row">
-
-                <button
-                  onClick={handleSave}
-                  disabled={loading || (reviewRequired && !migrationConfirmed)}
-                  className="flex-[2] py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-md transition-all shadow-sm active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {t('settings.AudioSettingsModal.197')}</button>
-              </div>
-
-              {onOpenWizard && (
-                <button
-                  onClick={() => {
-                    onClose();
-                    onOpenWizard();
-                  }}
-                  className="w-full py-2 text-xs text-muted-foreground hover:text-primary border border-border hover:border-primary/30 rounded-lg transition-all flex items-center justify-center gap-2"
-                >
-                  <MdExtension className="w-3 h-3" />
-                  {t('settings.AudioSettingsModal.198')}</button>
-              )}
-            </div>
+          <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-2 flex justify-end">
+            <button onClick={handleSave} disabled={loading || (reviewRequired && !migrationConfirmed)}
+              className="rounded-md bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+              {t('settings.AudioSettingsModal.197')}
+            </button>
           </div>
         )}
       </div>

@@ -8,6 +8,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Mutex,
     },
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
@@ -69,7 +70,96 @@ impl std::fmt::Display for ShortcutError {
 }
 impl std::error::Error for ShortcutError {}
 #[derive(Default)]
-pub struct Shortcuts(pub Mutex<Status>, AtomicBool, AtomicU64);
+pub struct Shortcuts(pub Mutex<Status>, AtomicBool, AtomicU64, Mutex<CaptureGate>);
+
+#[derive(Default)]
+struct CaptureGate {
+    generation: u64,
+    active: Option<(u64, Instant)>,
+}
+
+impl CaptureGate {
+    fn begin(&mut self, now: Instant) -> String {
+        self.generation = self.generation.wrapping_add(1);
+        self.active = Some((self.generation, now + Duration::from_secs(30)));
+        self.generation.to_string()
+    }
+    fn end(&mut self, token: &str) {
+        if self.active.is_some_and(|(id, _)| id.to_string() == token) {
+            self.active = None;
+        }
+    }
+    fn permits(&mut self, generation: u64, now: Instant) -> bool {
+        self.generation == generation && self.token(now).is_none()
+    }
+    fn token(&mut self, now: Instant) -> Option<String> {
+        if self.active.is_some_and(|(_, deadline)| now >= deadline) {
+            self.active = None;
+        }
+        self.active.map(|(id, _)| id.to_string())
+    }
+}
+
+// OS通知のコールバックでは音声操作が保持するgateを待たない。
+fn try_dispatch_gate<T>(
+    gate: &Mutex<CaptureGate>,
+    dispatch: impl FnOnce(&mut CaptureGate) -> T,
+) -> Option<T> {
+    let mut gate = gate.try_lock().ok()?;
+    Some(dispatch(&mut gate))
+}
+
+#[derive(Clone, Serialize)]
+struct CaptureEvent {
+    token: String,
+    shortcut: String,
+}
+
+#[tauri::command]
+pub async fn begin_shortcut_capture(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+) -> Result<String, ShortcutError> {
+    if window.label() != "main" {
+        return Err(ShortcutError::StateUnavailable);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<Shortcuts>();
+        let mut gate = state
+            .3
+            .lock()
+            .map_err(|_| ShortcutError::StateUnavailable)?;
+        Ok(gate.begin(Instant::now()))
+    })
+    .await
+    .map_err(|e| ShortcutError::OperationFailed {
+        detail: e.to_string(),
+    })?
+}
+
+#[tauri::command]
+pub async fn end_shortcut_capture(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    token: String,
+) -> Result<(), ShortcutError> {
+    if window.label() != "main" {
+        return Err(ShortcutError::StateUnavailable);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<Shortcuts>();
+        let mut gate = state
+            .3
+            .lock()
+            .map_err(|_| ShortcutError::StateUnavailable)?;
+        gate.end(&token);
+        Ok(())
+    })
+    .await
+    .map_err(|e| ShortcutError::OperationFailed {
+        detail: e.to_string(),
+    })?
+}
 
 fn defaults() -> Vec<Binding> {
     vec![
@@ -260,14 +350,31 @@ pub async fn save_shortcuts(
 }
 
 pub fn dispatch(app: AppHandle, id: u32) {
-    let action = app.state::<Shortcuts>().0.lock().ok().and_then(|status| {
-        status
-            .bindings
-            .iter()
-            .find(|binding| Shortcut::from_str(&binding.shortcut).is_ok_and(|key| key.id() == id))
-            .map(|binding| binding.action.clone())
-    });
-    let Some(action) = action else {
+    let state = app.state::<Shortcuts>();
+    let Some(Some((action, generation))) = try_dispatch_gate(&state.3, |gate| {
+        let binding = state.0.lock().ok().and_then(|status| {
+            status
+                .bindings
+                .iter()
+                .find(|binding| {
+                    Shortcut::from_str(&binding.shortcut).is_ok_and(|key| key.id() == id)
+                })
+                .cloned()
+        })?;
+        if let Some(token) = gate.token(Instant::now()) {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.emit(
+                    "shortcut-captured",
+                    CaptureEvent {
+                        token,
+                        shortcut: binding.shortcut,
+                    },
+                );
+            }
+            return None;
+        }
+        Some((binding.action, gate.generation))
+    }) else {
         return;
     };
     let is_mode = matches!(action, Action::SingingOn | Action::TalkOn);
@@ -283,6 +390,15 @@ pub fn dispatch(app: AppHandle, id: u32) {
                 .0
                 .lock()
                 .map_err(|_| ShortcutError::AudioStateUnavailable)?;
+            // 開始前に待機していた操作は、入力開始後に実行しない。
+            let shortcuts = app.state::<Shortcuts>();
+            let mut gate = shortcuts
+                .3
+                .lock()
+                .map_err(|_| ShortcutError::StateUnavailable)?;
+            if !gate.permits(generation, Instant::now()) {
+                return Ok(());
+            }
             match action {
                 Action::SingingOn | Action::TalkOn => {
                     if intent_sequence != app.state::<Shortcuts>().2.load(Ordering::Acquire) {
@@ -361,6 +477,48 @@ pub fn dispatch(app: AppHandle, id: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn busy_capture_gate_drops_dispatch_without_running_callback() {
+        let gate = Mutex::new(CaptureGate::default());
+        let guard = gate.lock().unwrap();
+        let mut dispatched = false;
+        assert_eq!(
+            try_dispatch_gate(&gate, |_| {
+                dispatched = true;
+                1
+            }),
+            None
+        );
+        assert!(!dispatched);
+        drop(guard);
+        assert_eq!(
+            try_dispatch_gate(&gate, |_| {
+                dispatched = true;
+                1
+            }),
+            Some(1)
+        );
+        assert!(dispatched);
+    }
+    #[test]
+    fn capture_gate_expires_and_ignores_old_tokens() {
+        let now = Instant::now();
+        let mut gate = CaptureGate::default();
+        assert!(gate.permits(0, now));
+        let first = gate.begin(now);
+        assert!(!gate.permits(0, now));
+        assert!(!gate.permits(1, now));
+        assert_eq!(gate.token(now), Some(first.clone()));
+        let second = gate.begin(now);
+        gate.end(&first);
+        assert_eq!(gate.token(now), Some(second.clone()));
+        assert_eq!(gate.token(now + Duration::from_secs(30)), None);
+        assert!(gate.permits(2, now + Duration::from_secs(30)));
+        let third = gate.begin(now);
+        gate.end(&third);
+        assert_eq!(gate.token(now), None);
+        assert_ne!(first, second);
+    }
     #[test]
     fn validation_errors_keep_reason_codes_instead_of_display_text() {
         let mut bindings = defaults();

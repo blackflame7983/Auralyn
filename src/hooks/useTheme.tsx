@@ -14,12 +14,13 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [theme, setTheme] = useState<Theme>(() => {
         // Check localStorage
-        const saved = localStorage.getItem('vst_host_theme');
+        let saved: string | null = null;
+        try { saved = localStorage.getItem('vst_host_theme'); } catch { /* 保存先を利用できないときは OS の設定を使う。 */ }
         if (saved === 'light' || saved === 'dark' || saved === 'gaming') return saved as Theme;
         // Check System Preference
-        if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-            return 'light';
-        }
+        try {
+            if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches) return 'light';
+        } catch { /* OS の設定を読めないときはダークを使う。 */ }
         return 'dark'; // Default to dark
     });
 
@@ -38,7 +39,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             root.classList.add('light');
             getCurrentWindow().setTheme('light').catch(console.error);
         }
-        localStorage.setItem('vst_host_theme', theme);
+        try { localStorage.setItem('vst_host_theme', theme); } catch { /* 表示の切り替えは保存できなくても維持する。 */ }
     }, [theme]);
 
     const toggleTheme = () => {

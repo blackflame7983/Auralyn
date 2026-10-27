@@ -1,3 +1,4 @@
+import * as Popover from '@radix-ui/react-popover';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useBeginnerMode } from '../../hooks/useBeginnerMode';
 import React, { useState, useEffect, useRef } from 'react';
@@ -194,37 +195,26 @@ export const Header: React.FC<HeaderProps> = ({
                         <span>{t('header.setup')}</span>
                     </button>
 
+                    <Popover.Root>
+                        <Popover.Trigger asChild>
+                            <button type="button" aria-label={t('header.inputGain')} className="flex items-center gap-1 rounded-md border border-border px-2 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+                                <MdMic aria-hidden="true" className="h-4 w-4 shrink-0" /><span className="hidden lg:inline whitespace-nowrap">{t('header.inputGain')}</span>
+                            </button>
+                        </Popover.Trigger>
+                        <Popover.Portal><Popover.Content aria-label={t('header.inputGain')} sideOffset={5} collisionPadding={12} className="z-[200] w-64 rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-lg">
+                            <div className="flex items-center justify-between gap-4 text-sm"><span>{t('header.inputGain')}</span><span>{inputGain}%</span></div>
+                            <Slider aria-label={t('header.inputGain')} aria-valuetext={`${inputGain}%`} value={[inputGain]} max={200} step={1}
+                                onValueChange={handleInputGainChange} onDoubleClick={() => handleInputGainChange([100])} className="mt-4" />
+                            <p className="mt-2 text-xs text-muted-foreground">{t('header.inputGainHint')}</p>
+                        </Popover.Content></Popover.Portal>
+                    </Popover.Root>
+
                     {!isBeginnerMode && (
                         <>
                             <div className="h-8 w-px bg-border/50 mx-1" />
 
                             {/* Input Gain + Visualizers */}
-                            <div className="flex items-center gap-3">
-                                {/* Compact Input Gain */}
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <div className="hidden xl:flex items-center gap-1.5 group">
-                                            <MdMic className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
-                                            <div className="w-16 flex items-center" onPointerDown={e => e.stopPropagation()}>
-                                                <Slider
-                                                    aria-label={t('header.inputGain')}
-                                                    aria-valuetext={`${inputGain}%`}
-                                                    value={[inputGain]}
-                                                    max={200}
-                                                    step={1}
-                                                    onValueChange={handleInputGainChange}
-                                                    onDoubleClick={() => handleInputGainChange([100])}
-                                                    className="cursor-pointer"
-                                                />
-                                            </div>
-                                            <span className="text-xs font-mono text-muted-foreground w-8 text-right tabular-nums">{inputGain}%</span>
-                                        </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>{t('header.inputGainHint')}</p>
-                                    </TooltipContent>
-                                </Tooltip>
-
+                            <div className="hidden xl:flex items-center gap-3">
                                 <div className="hidden xl:block h-6 w-px bg-border/30" />
                                 <LevelMeter running={isEngineRunning} width={12} height={32} type="input" />
                                 <LevelMeter running={isEngineRunning} width={12} height={32} type="output" />
@@ -289,7 +279,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 className="p-2 px-3 text-muted-foreground hover:text-foreground transition-colors hover:bg-muted rounded-lg flex items-center gap-2"
                             >
                                 <MdSettings className="w-5 h-5" />
-                                <span className="text-xs font-bold hidden xl:inline-block">{t('common.settings')}</span>
+                                <span className="text-xs font-bold hidden lg:inline-block">{t('common.settings')}</span>
                             </button>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -305,7 +295,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 className="p-2 px-3 text-muted-foreground hover:text-foreground transition-colors hover:bg-muted rounded-lg flex items-center gap-2"
                             >
                                 <MdHelpOutline className="w-5 h-5" />
-                                <span className="text-xs font-bold hidden xl:inline-block">{t('header.help')}</span>
+                                <span className="text-xs font-bold hidden lg:inline-block">{t('header.help')}</span>
                             </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="min-w-[200px]">
