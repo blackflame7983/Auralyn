@@ -84,3 +84,11 @@ it('旧エンジン・不正snapshotは不明、ミュートは確認操作を�
     stats.preparation = { ...runtime().preparation!, muted: true };
     expect(nextPreparationStage(observe(stats), confirmations(), context)).toBe('connect');
 });
+
+it('music は準備用途では listening として扱い、場所更新で元の目的を失わない', () => {
+    localStorage.setItem('vst_host_setup_goal', 'music');
+    const music = readPreparationContext();
+    expect(music.usage).toBe('listening');
+    savePreparationContext({ ...music, location: 'venue' });
+    expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
+});

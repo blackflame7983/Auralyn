@@ -17,19 +17,20 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
+    const music = localStorage.getItem('vst_host_setup_goal') === 'music';
     const purposeRef = useRef<HTMLSelectElement>(null);
     const detailsRef = useRef<HTMLDetailsElement>(null);
     const targetRef = useRef<HTMLInputElement>(null);
     const actionRef = useRef<HTMLButtonElement>(null);
     const summaryRef = useRef<HTMLElement>(null);
     const next = nextPreparationStage(observation, records, context);
-    const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
+    const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? (music ? onSettings() : onListen()) : onTroubleshoot();
     const needsTarget = next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim();
     const action = needsTarget ? () => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); } : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? () => { void model.refresh(); } : onSettings
         : next === 'purpose' ? () => { if (detailsRef.current) detailsRef.current.open = true; purposeRef.current?.focus(); }
-            : next === 'sound' ? onSound : next === 'listen' ? onListen : receiver;
+            : next === 'sound' ? onSound : next === 'listen' ? (music ? onSettings : onListen) : receiver;
     const actionLabel: MessageKey = needsTarget ? 'prep.targetAction' : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? 'prep.refresh' : 'shell.configure'
-        : next === 'purpose' ? 'prep.chooseUse' : next === 'sound' ? 'shell.sound' : next === 'listen' ? 'home.voiceCheck' : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
+        : next === 'purpose' ? 'prep.chooseUse' : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
     const acknowledgeLabels: Record<PreparationStage, MessageKey> = { sound: 'prep.ackSound', listen: 'prep.ackListen', receiver: 'prep.ackReceiver' };
     const pending = checking || confirming;
     return <section aria-label={t('prep.title')} className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
@@ -65,7 +66,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
                         <option value="">{t('prep.chooseUse')}</option><option value="obs">{t('prep.obs')}</option><option value="discord">{t('prep.call')}</option><option value="other">{t('prep.other')}</option><option value="listening">{t('prep.local')}</option>
                     </select>
                 </label>
-                <label className="text-sm">{t('prep.signal')}
+                <label className="text-sm">{t(music ? 'wizard.musicSignal' : 'prep.signal')}
                     <select value={context.signal} onChange={e => model.changeContext({ signal: e.target.value as typeof context.signal })} className="mt-1 block w-full rounded border border-border bg-background p-2">
                         <option value="unknown">{t('prep.signalUnknown')}</option><option value="separate">{t('prep.separate')}</option><option value="mixed">{t('prep.mixed')}</option>
                     </select>

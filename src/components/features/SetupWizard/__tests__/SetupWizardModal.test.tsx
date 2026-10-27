@@ -506,3 +506,142 @@ describe('入力ステップのレベル表示', () => {
         expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'start_audio')).toBe(false);
     });
 });
+
+
+describe('PC audio purpose', () => {
+    const fx = { active: true, preset: 'singing', amount: 0.7, singing: { lowCutHz: 80, dynamics: 0.4, brightnessDb: 2 }, reverb: { enabled: true, mix: 0.2, decaySeconds: 1, damping: 0.4 } };
+    const snapshot = { epoch: 'epoch', revision: '1', appliedRevision: '1', config: fx, pending: false, undoToken: null, error: null };
+    const chooseMusic = async () => {
+        fireEvent.click(await screen.findByRole('button', { name: /PCの音にエフェクト/ }));
+        await screen.findByRole('combobox', { name: 'PCの音の入力を選択' });
+    };
+    const toConfirm = async () => {
+        await chooseMusic();
+        await waitFor(() => expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled());
+        fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
+        fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
+        await screen.findByRole('heading', { name: '設定と接続の確認' });
+    };
+    it('選択だけでは既存目的や音設定を変えず、複数ケーブルは選択を待つ', async () => {
+        inputs = [mic, device('CABLE Output A', true), device('CABLE Output B', true)];
+        localStorage.setItem('vst_host_setup_goal', 'obs');
+        await openWizard(); await chooseMusic();
+        expect(screen.getByRole('combobox', { name: 'PCの音の入力を選択' })).toHaveValue('');
+        expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
+        expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');
+        expect(invoke).not.toHaveBeenCalledWith('set_noise_control_config', expect.anything());
+        expect(screen.getByText(/再生アプリ → CABLE Input/)).toBeInTheDocument();
+    });
+    it('OBS の仮想出力から music に切り替えると物理出力を選び直す', async () => {
+        inputs = [mic, device('CABLE Output', true)]; outputs = [cable, device('Headphones')];
+        await openWizard(); await chooseObsRoute();
+        fireEvent.click(screen.getByRole('button', { name: '入力を選び直す' }));
+        fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+        await toConfirm();
+        expect(screen.getByText('Headphones')).toBeInTheDocument();
+        expect(screen.queryByText('CABLE Input (VB-Audio)')).not.toBeInTheDocument();
+    });
+    it('明示適用で両処理をOFFにし、その他の設定を保持する', async () => {
+        inputs = [mic, device('CABLE Output', true)]; outputs = [device('Headphones')];
+        const original = vi.mocked(invoke).getMockImplementation()!;
+        let applied = false;
+        vi.mocked(invoke).mockImplementation(async (command, args) => {
+            if (command === 'get_engine_runtime_stats') return { latencyMetadata: { streamRunning: true }, noiseReductionEnabled: false, noiseReductionMode: 'venue', noiseControlStrength: 0.8, noiseVoiceGuard: true };
+            if (command === 'builtin_effects') {
+                if ((args as any).request.action === 'apply') applied = true;
+                return applied ? { ...snapshot, revision: '2', appliedRevision: '2', undoToken: 'undo', config: { ...fx, active: false } } : snapshot;
+            }
+            return original(command, args);
+        });
+        const { onApplyConfig } = await openWizard();
+        onApplyConfig.mockImplementation((host, input, output, actual) => {
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input, output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size }));
+            localStorage.setItem('vst_host_wizard_done', 'true');
+        });
+        await toConfirm();
+        expect(screen.queryByRole('button', { name: 'マイクの音を流して確認' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('heading', { name: '音声設定を保存しました' });
+        expect(invoke).toHaveBeenCalledWith('set_noise_control_config', { active: false, mode: 'venue', strength: 0.8, voiceGuard: true });
+        expect(invoke).toHaveBeenCalledWith('builtin_effects', { request: { action: 'apply', epoch: 'epoch', expectedRevision: '1', config: { ...fx, active: false } } });
+        expect(onApplyConfig).toHaveBeenCalledOnce(); expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
+    });
+    it('保存途中の失敗では、この操作が書いた保存値を条件付きで戻す', async () => {
+        inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
+        localStorage.setItem('vst_host_setup_goal', 'obs');
+        localStorage.setItem('vst_host_audio_config', 'previous');
+        const original = vi.mocked(invoke).getMockImplementation()!;
+        let applied = false;
+        vi.mocked(invoke).mockImplementation(async (command, args) => {
+            if (command === 'get_engine_runtime_stats') return { latencyMetadata: { streamRunning: true }, noiseReductionEnabled: false, noiseReductionMode: 'high', noiseControlStrength: 0.6, noiseVoiceGuard: false };
+            if (command === 'builtin_effects') {
+                if ((args as any).request.action === 'apply') applied = true;
+                return applied ? { ...snapshot, revision: '2', appliedRevision: '2', config: { ...fx, active: false } } : snapshot;
+            }
+            return original(command, args);
+        });
+        const { onApplyConfig } = await openWizard();
+        onApplyConfig.mockImplementation((host, input, output, actual) => {
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input, output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size }));
+            throw new Error('save failure');
+        });
+        await toConfirm(); fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('alert');
+        expect(localStorage.getItem('vst_host_audio_config')).toBe('previous');
+        expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');
+        expect(localStorage.getItem('vst_host_wizard_done')).toBeNull();
+    });
+    it.each([false, undefined])('最終確認時にストリームが稼働中でなければ保存しない (%s)', async (running) => {
+        inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
+        localStorage.setItem('vst_host_setup_goal', 'obs');
+        const original = vi.mocked(invoke).getMockImplementation()!;
+        let applied = false;
+        vi.mocked(invoke).mockImplementation(async (command, args) => {
+            if (command === 'get_engine_runtime_stats') return { latencyMetadata: { streamRunning: running }, noiseReductionEnabled: false, noiseReductionMode: 'high', noiseControlStrength: 0.6, noiseVoiceGuard: false };
+            if (command === 'builtin_effects') {
+                if ((args as any).request.action === 'apply') applied = true;
+                return applied ? { ...snapshot, revision: '2', appliedRevision: '2', config: { ...fx, active: false } } : snapshot;
+            }
+            return original(command, args);
+        });
+        const { onApplyConfig } = await openWizard(); await toConfirm();
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('alert');
+        expect(onApplyConfig).not.toHaveBeenCalled();
+        expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');
+    });
+    it('反映待ちの内蔵効果は保存完了にせず、確認を促す', async () => {
+        inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
+        localStorage.setItem('vst_host_setup_goal', 'obs');
+        const original = vi.mocked(invoke).getMockImplementation()!;
+        let applied = false;
+        vi.mocked(invoke).mockImplementation(async (command, args) => {
+            if (command === 'get_engine_runtime_stats') return { latencyMetadata: { streamRunning: true }, noiseReductionEnabled: false, noiseReductionMode: 'high', noiseControlStrength: 0.6, noiseVoiceGuard: false };
+            if (command === 'builtin_effects') {
+                if ((args as any).request.action === 'apply') applied = true;
+                return applied ? { ...snapshot, revision: '2', pending: true, config: { ...fx, active: false } } : snapshot;
+            }
+            return original(command, args);
+        });
+        const { onApplyConfig } = await openWizard(); await toConfirm();
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('一部変わった可能性');
+        expect(onApplyConfig).not.toHaveBeenCalled(); expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');
+    });
+    it('NR適用失敗は内蔵効果の条件付きundoを試み、保存完了しない', async () => {
+        inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
+        localStorage.setItem('vst_host_setup_goal', 'obs');
+        const original = vi.mocked(invoke).getMockImplementation()!;
+        vi.mocked(invoke).mockImplementation(async (command, args) => {
+            if (command === 'get_engine_runtime_stats') return { noiseReductionMode: 'high', noiseControlStrength: 0.6, noiseVoiceGuard: false };
+            if (command === 'set_noise_control_config') throw new Error('failure');
+            if (command === 'builtin_effects') return (args as any).request.action === 'snapshot' ? snapshot : { ...snapshot, revision: '2', undoToken: 'undo', config: { ...fx, active: false } };
+            return original(command, args);
+        });
+        const { onApplyConfig } = await openWizard(); await toConfirm();
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('alert');
+        expect(invoke).toHaveBeenCalledWith('builtin_effects', { request: { action: 'undo', epoch: 'epoch', expectedRevision: '2', undoToken: 'undo' } });
+        expect(onApplyConfig).not.toHaveBeenCalled(); expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');
+    });
+});
