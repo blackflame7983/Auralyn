@@ -23,7 +23,7 @@ export function readPreparationContext(): PreparationContext {
     try {
         const stored = JSON.parse(localStorage.getItem('auralyn_preparation_context') ?? 'null');
         const savedUse = localStorage.getItem('vst_host_setup_goal');
-        const use = savedUse === 'local' ? 'listening' : savedUse;
+        const use = savedUse === 'local' || savedUse === 'music' ? 'listening' : savedUse;
         return { location: stored?.location === 'venue' ? 'venue' : 'home', usage: isPreparationUse(use) ? use : '',
             signal: stored?.signal === 'separate' || stored?.signal === 'mixed' ? stored.signal : 'unknown',
             receiver: stored?.usage === use && typeof stored?.receiver === 'string' ? stored.receiver.slice(0, 200) : '' };
@@ -32,8 +32,9 @@ export function readPreparationContext(): PreparationContext {
 export function savePreparationContext(context: PreparationContext) {
     try {
         localStorage.setItem('auralyn_preparation_context', key(context));
-        if (context.usage) localStorage.setItem('vst_host_setup_goal', context.usage);
-        else localStorage.removeItem('vst_host_setup_goal');
+        if (context.usage) {
+            if (!(context.usage === 'listening' && localStorage.getItem('vst_host_setup_goal') === 'music')) localStorage.setItem('vst_host_setup_goal', context.usage);
+        } else localStorage.removeItem('vst_host_setup_goal');
     } catch { /* 保存できなくても、そのセッションでの準備と既存操作を妨げない。 */ }
 }
 

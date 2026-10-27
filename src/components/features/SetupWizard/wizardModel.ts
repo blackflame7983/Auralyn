@@ -26,7 +26,7 @@ export interface SetupWizardModalProps {
 }
 
 export type WizardState = 'welcome' | 'usage_selection' | 'input_selection' | 'output_selection' | 'confirmation' | 'configuring' | 'complete';
-export type UserGoal = 'obs' | 'discord' | 'listening' | 'other';
+export type UserGoal = 'obs' | 'discord' | 'listening' | 'music' | 'other';
 
 export interface WizardConfig {
     goal: UserGoal | null;

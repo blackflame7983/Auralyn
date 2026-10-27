@@ -1,7 +1,8 @@
 import { createElement } from 'react';
 import { LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useState, useEffect, useRef } from 'react';
-import { audioApi, type AudioDevice, type AudioStateInfo } from '../../../api/audio';
+import { audioApi, type AudioDevice, type AudioStateInfo, type NoiseControlMode } from '../../../api/audio';
+import { builtinApi, type BuiltinSnapshot } from '@/api/builtinEffects';
 import { getBeginnerMode, saveBeginnerMode } from '../../../hooks/useBeginnerMode';
 import { toast } from 'sonner';
 import { listen } from '@tauri-apps/api/event';
@@ -156,7 +157,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         if (state === 'input_selection' && !config.input && availableInputs.length > 0) {
             autoSelectInput();
         }
-    }, [availableInputs, state, config.input]);
+    }, [availableInputs, state, config.input, config.goal]);
 
     const normalizeDevices = (devices: { inputs: AudioDevice[]; outputs: AudioDevice[] }) => {
         // Filter WASAPI only (Case insensitive)
@@ -215,16 +216,21 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
     const autoSelectInput = () => {
         if (availableInputs.length === 0) return;
 
-        const input = recommendMicrophone(availableInputs);
+        const candidates = availableInputs.filter(isVirtualOutput);
+        const input = config.goal === 'music' ? (candidates.length === 1 ? candidates[0] : null) : recommendMicrophone(availableInputs);
         if (input) setConfig(prev => ({ ...prev, input }));
     };
 
     // --- Actions ---
 
     const selectGoal = (goal: UserGoal) => {
-        setConfig(prev => ({ ...prev, goal }));
-        localStorage.setItem('vst_host_setup_goal', goal);
-        window.dispatchEvent(new Event('preparation-purpose-changed'));
+        setConfig(prev => goal === 'music' && prev.goal !== 'music'
+            ? { ...prev, goal, input: null, outputMode: 'default', output: verifiedDefaultOutput(availableOutputs) }
+            : { ...prev, goal, input: prev.goal === 'music' && goal !== 'music' ? null : prev.input });
+        if (goal !== 'music') {
+            localStorage.setItem('vst_host_setup_goal', goal);
+            window.dispatchEvent(new Event('preparation-purpose-changed'));
+        }
         setState('input_selection');
         // Auto-select will trigger via useEffect if devices are ready
     };
@@ -318,7 +324,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
     };
 
     const finalApply = async () => {
-        if (!config.input || !config.output || !initialStateReady || operationRef.current || isCheckingConnection) return;
+        if (!config.input || !config.output || !initialStateReady || operationRef.current || isCheckingConnection || (config.goal === 'music' && isVirtualOutput(config.output))) return;
         operationRef.current = true;
         setIsBusy(true);
         setAudioStartError('');
@@ -334,9 +340,61 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
 
             const actualConfig = await audioApi.start(config.host, config.input.name, config.output.name);
             await audioApi.setInputChannels(0, 1); // Reset channels for safety
-            await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
+            if (config.goal === 'music') {
+                const stats = await audioApi.getEngineRuntimeStats();
+                const mode = stats.noiseReductionMode;
+                if (!['low', 'high', 'smart', 'venue'].includes(mode) || !Number.isFinite(stats.noiseControlStrength) || typeof stats.noiseVoiceGuard !== 'boolean') throw new Error('Noise control state unavailable');
+                const before = await builtinApi.request({ action: 'snapshot' });
+                let applied: BuiltinSnapshot | null = null;
+                if (before.config.active) applied = await builtinApi.request({ action: 'apply', epoch: before.epoch, expectedRevision: before.revision, config: { ...before.config, active: false } });
+                try {
+                    await audioApi.setNoiseControlConfig({ active: false, mode: mode as NoiseControlMode, strength: stats.noiseControlStrength, voiceGuard: stats.noiseVoiceGuard });
+                } catch (error) {
+                    if (applied?.undoToken) {
+                        try { await builtinApi.request({ action: 'undo', epoch: applied.epoch, expectedRevision: applied.revision, undoToken: applied.undoToken }); } catch { /* 並行編集や状態不明では上書きしない */ }
+                    }
+                    throw error;
+                }
+                const [confirmedNoise, confirmedBuiltin] = await Promise.all([
+                    audioApi.getEngineRuntimeStats(), builtinApi.request({ action: 'snapshot' }),
+                ]);
+                if (confirmedNoise.latencyMetadata?.streamRunning !== true || confirmedNoise.noiseReductionEnabled !== false || confirmedNoise.noiseReductionMode !== mode
+                    || confirmedNoise.noiseControlStrength !== stats.noiseControlStrength || confirmedNoise.noiseVoiceGuard !== stats.noiseVoiceGuard
+                    || confirmedBuiltin.epoch !== before.epoch || confirmedBuiltin.pending || confirmedBuiltin.error
+                    || confirmedBuiltin.revision !== confirmedBuiltin.appliedRevision || confirmedBuiltin.config.active !== false
+                    || JSON.stringify(confirmedBuiltin.config) !== JSON.stringify({ ...before.config, active: false })) {
+                    throw new Error('Music processing settings could not be confirmed');
+                }
+            }
+            if (config.goal === 'music') {
+                const expected: Record<string, string> = {
+                    vst_host_audio_config: JSON.stringify({ host: config.host, input: config.input.name, output: config.output.name, sampleRate: actualConfig.sample_rate, bufferSize: actualConfig.buffer_size }),
+                    vst_host_wizard_done: 'true', vst_host_setup_goal: 'music', vst_host_beginner_mode: String(beginnerChoice),
+                };
+                const previous = Object.fromEntries(Object.keys(expected).map(key => [key, localStorage.getItem(key)]));
+                try {
+                    await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
+                    localStorage.setItem('vst_host_setup_goal', 'music');
+                    saveBeginnerMode(beginnerChoice);
+                    if (Object.entries(expected).some(([key, value]) => localStorage.getItem(key) !== value)) throw new Error('Saved setup could not be verified');
+                } catch (error) {
+                    for (const [key, value] of Object.entries(expected)) {
+                        try {
+                            if (localStorage.getItem(key) === value) {
+                                if (previous[key] === null) localStorage.removeItem(key);
+                                else localStorage.setItem(key, previous[key]!);
+                            }
+                        } catch { /* ストレージ自体の障害も完了にせず知らせる */ }
+                    }
+                    window.dispatchEvent(new Event('preparation-purpose-changed'));
+                    throw error;
+                }
+                window.dispatchEvent(new Event('preparation-purpose-changed'));
+            } else {
+                await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
+                saveBeginnerMode(beginnerChoice);
+            }
             hasTouchedEngineRef.current = false;
-            saveBeginnerMode(beginnerChoice);
 
             setState('complete');
             toast.success(createElement(LocalizedMessage, { id: 'guide.copy.254' }));
