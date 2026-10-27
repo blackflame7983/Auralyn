@@ -38,7 +38,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
     return (
         <div className={cn(
             "fixed top-16 bottom-[calc(var(--app-footer-height,4rem)+1rem)] right-0 bg-background/95 border-l border-border shadow-2xl z-40 flex flex-col p-2 gap-2 transition-all duration-300 backdrop-blur-md",
-            isMiniMode ? "w-16" : "w-36"
+            isMiniMode ? "w-20" : "w-36"
         )}>
             {/* Header */}
             <div className="flex items-center justify-between">
@@ -120,10 +120,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
 
             {/* 共通基準の出力メーター */}
             <div className="flex-1 min-h-0 flex justify-center items-stretch">
-                <MeterVisual reading={reading} label={t('meter.output')} width={isMiniMode ? 12 : 32} height="100%" showValues={!isMiniMode} scale={!isMiniMode} />
-                {!isMiniMode && <div aria-hidden="true" className="relative h-full w-8 text-xs text-muted-foreground font-mono">
-                    {[0, -6, -12, -24, -48].map(mark => <span key={mark} className="absolute left-1 -translate-y-1/2" style={{ bottom: `calc(${Math.pow(10, mark / 20) * 100}% - 0.5em)` }}>{mark}</span>)}
-                </div>}
+                <MeterVisual reading={reading} label={t('meter.output')} width={isMiniMode ? 12 : 32} height="100%" showValues={!isMiniMode} scale={!isMiniMode} stackValues />
             </div>
         </div>
     );
