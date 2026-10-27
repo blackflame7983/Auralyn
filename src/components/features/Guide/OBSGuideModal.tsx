@@ -1,4 +1,4 @@
-import { SingingRouteGuide } from './SingingRouteGuide';
+import { SingingRouteChoice, SingingRouteGuide, type SingingRoute } from './SingingRouteGuide';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { buttonVariants } from '@/components/ui/button';
 import { Modal } from '../../ui/modal';
@@ -25,7 +25,13 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
     // step 2: Output & Monitoring
     // step 3: OBS Setup
     const [step, setStep] = useState(initialTimingOpen ? 3 : 0);
+    const [route, setRoute] = useState<SingingRoute>('processed');
+    const [timingRequested, setTimingRequested] = useState(initialTimingOpen);
     const [useHardwareMixer, setUseHardwareMixer] = useState<boolean | null>(null);
+    const chooseRoute = (value: SingingRoute) => {
+        setRoute(value); setTimingRequested(false);
+        if (value === 'processed' && useHardwareMixer === null && step > 0) setStep(0);
+    };
     const totalSteps = 4; // 0 to 3
     const [muteShortcut, setMuteShortcut] = useState<string | null>(null);
     useEffect(() => {
@@ -96,6 +102,8 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                 <div className="modal-body-base pr-4">
                     {step === 0 && (
                         <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
+                            <SingingRouteChoice value={route} onChange={chooseRoute} />
+                            {route === 'processed' ? <>
                             <h3 className="text-xl font-bold text-foreground">{t('guide.copy.003')}</h3>
                             <p className="text-muted-foreground">
                                 {t('guide.copy.004')}</p>
@@ -133,16 +141,17 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                         {t('guide.copy.014')}</span>
                                 </button>
                             </div>
+                            </> : <p className="text-sm text-muted-foreground">{t('singingRoute.directInstructions')}</p>}
                         </div>
                     )}
 
                     {step === 1 && (
                         <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
                             <h3 className="text-xl font-bold text-foreground">
-                                {useHardwareMixer ? t('guide.copy.015') : t('guide.copy.016')}
+                                {route === 'direct' ? t('singingRoute.choose') : useHardwareMixer ? t('guide.copy.015') : t('guide.copy.016')}
                             </h3>
 
-                            {useHardwareMixer ? (
+                            {route === 'direct' ? <p className="text-sm">{t('singingRoute.directInstructions')}</p> : useHardwareMixer ? (
                                 <div className="space-y-4">
                                     <p className="text-muted-foreground">
                                         {t('guide.copy.017')}<strong>{t('guide.copy.018')}</strong> {t('guide.copy.019')}</p>
@@ -179,7 +188,9 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                         </div>
                     )}
 
-                    {step === 2 && (
+                    {step === 2 && <SingingRouteGuide hardware={useHardwareMixer} route={route} onRouteChange={chooseRoute} onOpenTiming={() => { setTimingRequested(true); setStep(3); }} />}
+                    {step === 2 && route === 'direct' && <button type="button" onClick={onOpenAudioSettings} className="mt-3 rounded border border-border px-3 py-2 text-sm">{t('guide.copy.035')}</button>}
+                    {step === 2 && route === 'processed' && (
                         <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
                             <h3 className="text-xl font-bold text-foreground">{t('guide.copy.030')}</h3>
                             <p className="text-muted-foreground">
@@ -242,7 +253,6 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                         </div>
                     )}
 
-                    {step === 2 && <SingingRouteGuide hardware={useHardwareMixer} />}
                     {step === 3 && (
                         <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
                             <h3 className="text-xl font-bold text-foreground">{t('guide.copy.059')}</h3>
@@ -257,7 +267,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                         <li><strong>{t('guide.obs.selectCapture')}</strong></li>
                                         <li>
                                             {t('guide.copy.066')}<div className="mt-2 ml-4 p-2 bg-background border border-border rounded font-mono text-primary">
-                                                {useHardwareMixer ? (
+                                                {route === 'direct' ? t('singingRoute.directObsCapture') : useHardwareMixer ? (
                                                     // Hardware user -> Output of mixer (often depends on driver, usually line/stream)
                                                     t('guide.copy.067')
                                                 ) : (
@@ -278,7 +288,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                         {muteShortcut && t('guide.copy.071', { shortcut: muteShortcut })}</p>
                                 </div>
                             </div>
-                            <ObsMixCheck initialTimingOpen={initialTimingOpen} onOpenObsSettings={onOpenObsSettings} />
+                            <ObsMixCheck initialTimingOpen={timingRequested} onOpenObsSettings={onOpenObsSettings} />
                         </div>
                     )}
                 </div>
@@ -305,7 +315,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                     <button
                         onClick={nextStep}
                         aria-label={step === (totalSteps - 1) ? t('guide.copy.077') : t('guide.copy.078')}
-                        disabled={step === 0 && useHardwareMixer === null}
+                        disabled={step === 0 && route === 'processed' && useHardwareMixer === null}
                         className={buttonVariants({ className: "gap-2" })}
                     >
                         {step === (totalSteps - 1) ? t('guide.copy.079') : <>{t('guide.copy.080')}<MdArrowForward className="w-4 h-4" /></>}

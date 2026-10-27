@@ -5,8 +5,34 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest';
 import { OBSGuideModal } from '../OBSGuideModal';
 import { DiscordGuideModal } from '../DiscordGuideModal';
+import { obsApi } from '@/api/obs';
 
 afterEach(cleanup);
+it('直接モニターは機材分岐を選ばず進み、同期画面を開いても OBS に接続・変更しない', async () => {
+    const connect = vi.spyOn(obsApi, 'connect');
+    const apply = vi.spyOn(obsApi, 'applySetup');
+    const status = vi.spyOn(obsApi, 'connectionStatus').mockResolvedValue(false);
+    const settings = vi.fn();
+    render(<OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={settings} />);
+    fireEvent.click(screen.getByRole('radio', { name: /機器の直接モニターで聴く/ }));
+    expect(screen.queryByRole('button', { name: '機材を使用している手順を選択' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
+    expect(screen.getByText(/機器に直接モニター機能があるか/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
+    expect(screen.queryByText(/Auralynの通常出力を同じ機器のヘッドホンへ戻して/)).not.toBeInTheDocument();
+    expect(settings).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '設定を変更' }));
+    expect(settings).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'OBS の声と伴奏のタイミングを調整' }));
+    await act(async () => {});
+    expect(screen.getByText('録画を基にタイミングを調整する')).toBeInTheDocument();
+    expect(connect).not.toHaveBeenCalled(); expect(apply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '前の手順へ戻る' }));
+    fireEvent.click(screen.getByRole('radio', { name: '加工した声を Auralyn から聴く' }));
+    expect(screen.getByRole('button', { name: '次の手順へ進む' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '機材を使用している手順を選択' })).toBeInTheDocument();
+    connect.mockRestore(); apply.mockRestore(); status.mockRestore();
+});
 it.each([OBSGuideModal, DiscordGuideModal])('機器を選ぶまで分岐を進めず、戻って選び直せる', Guide => {
     render(<Guide isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} />);
     expect(screen.getByRole('button', { name: '次の手順へ進む' })).toBeDisabled();
