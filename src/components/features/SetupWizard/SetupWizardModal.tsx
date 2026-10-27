@@ -1,6 +1,8 @@
 import { renderNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { LanguageSelector } from '@/i18n/LanguageSelector';
 import { useMessages } from '@/i18n/LocaleProvider';
+import { useSharedMeter } from '../LevelMeter/MeterContext';
+import { MeterVisual } from '../LevelMeter/MeterVisual';
 import { buttonVariants } from '@/components/ui/button';
 import { receiverDeviceNotice, deviceDisplayName } from '../../../lib/audioRouting';
 import { Modal } from '../../ui/modal';
@@ -21,7 +23,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const { audioStartError, beginnerChoice, setBeginnerChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, availableInputs, availableOutputs,
-        isLoadingDevices, isTestingSound, inputLevel, runningInput, loadDevices, handleRescanVirtualDevices,
+        isLoadingDevices, isTestingSound, runningInput, loadDevices, handleRescanVirtualDevices,
         selectGoal, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply } = useSetupWizard(props);
     const bodyRef = useRef<HTMLDivElement>(null);
     const surfaceRef = useRef<HTMLDivElement>(null);
@@ -204,7 +206,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                                         {config.input && (config.input.name === runningInput
                                             ? <div className="space-y-1">
-                                                <InputLevelBar label={t('wizard.level')} level={inputLevel} />
+                                                <InputLevelBar label={t('wizard.level')} />
                                                 <p className="text-xs text-muted-foreground">{t('wizard.levelHint')}</p>
                                             </div>
                                             : <p className="text-xs text-muted-foreground">{t('wizard.levelLater')}</p>)}
@@ -367,7 +369,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             <div className="flex flex-col items-center gap-3">
                                 {isTestingSound && (
                                     <div className="w-full max-w-xs animate-in fade-in slide-in-from-bottom-2">
-                                        <InputLevelBar label={t('wizard.level')} level={inputLevel} />
+                                        <InputLevelBar label={t('wizard.level')} />
                                     </div>
                                 )}
 
@@ -519,15 +521,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 };
 
 // レベル通知は到達確認ではない。選んだマイクの声が届いているかの目安として表示する。
-function InputLevelBar({ label, level }: { label: string; level: number }) {
-    const pct = Math.round(Math.min(Math.max(level, 0) * 100, 100));
+function InputLevelBar({ label }: { label: string }) {
+    const reading = useSharedMeter(true, 'input');
     return (
         <div className="flex items-center gap-3">
             <span className="shrink-0 text-xs font-bold text-muted-foreground">{label}</span>
-            <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
-                className="h-3 flex-1 overflow-hidden rounded-full bg-muted ring-1 ring-border">
-                <div className="h-full bg-success transition-all duration-75 ease-out" style={{ width: `${pct}%` }} />
-            </div>
+            <MeterVisual reading={reading} label={label} orientation="horizontal" height={12} scale />
         </div>
     );
 }

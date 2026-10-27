@@ -20,7 +20,7 @@ import {
     MdAutoFixHigh
 } from 'react-icons/md';
 import { listen } from '@tauri-apps/api/event';
-import { audioApi } from '../../api/audio';
+import { audioApi, type EngineRuntimeStats } from '../../api/audio';
 import { toast } from 'sonner';
 import { useAppUpdate, UpdateGuide } from './AppUpdate';
 import { AvailableUpdateDialog } from './AvailableUpdateDialog';
@@ -49,6 +49,7 @@ interface HeaderProps {
     onOpenWizard: () => void;
     onToggleLargeMeter: () => void;
     isLargeMeterOpen: boolean;
+    stats?: EngineRuntimeStats | null;
     currentHost: string;
     currentSampleRate?: number;
     currentBufferSize?: number;
@@ -64,6 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
     onOpenWizard,
     onToggleLargeMeter,
     isLargeMeterOpen,
+    stats,
     currentHost,
     currentSampleRate,
     currentBufferSize,
@@ -148,6 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                     {/* 音声状態は表示専用。設定は共通ボタンから開く。 */}
                     <DeviceStatus
+                        stats={stats}
                         host={currentHost}
                         sampleRate={currentSampleRate}
                         bufferSize={currentBufferSize}

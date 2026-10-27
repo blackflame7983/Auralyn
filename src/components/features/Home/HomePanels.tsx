@@ -4,7 +4,9 @@ import type { Availability } from '@/lib/preparation';
 import type { MessageKey } from '@/i18n/messages';
 import { PreparationPanel } from './PreparationPanel';
 import { MdMic, MdHearing } from 'react-icons/md';
-import { useMeterLevels, meterStatusLabel } from '@/hooks/useMeterLevels';
+import { meterStatusLabel } from '@/hooks/useMeterLevels';
+import { useSharedMeter } from '../LevelMeter/MeterContext';
+import { MeterVisual } from '../LevelMeter/MeterVisual';
 import { deviceDisplayName } from '@/lib/audioRouting';
 import { VoiceQuickControls } from './VoiceQuickControls';
 
@@ -28,14 +30,11 @@ interface HomePanelsProps {
 // レベル通知は到達確認ではない。マイクの声が音声処理へ届いているかの目安として示す。
 function InputMeterBar({ running }: { running: boolean }) {
     const t = useMessages();
-    const { levels, clipped, state } = useMeterLevels({ running, type: 'input' });
-    const pct = Math.round(Math.min(1, Math.max(levels[0], levels[1])) * 100);
+    const reading = useSharedMeter(running, 'input');
+    const { state } = reading;
     return (
         <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div role="meter" aria-label={t('home.inputLevel')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-valuetext={t(meterStatusLabel(state))}
-                className="h-3 min-w-0 flex-1 overflow-hidden rounded-full bg-muted ring-1 ring-border">
-                <div className={`h-full transition-all duration-75 ease-out ${clipped ? 'bg-meter-danger' : 'bg-success'}`} style={{ width: `${pct}%` }} />
-            </div>
+            <MeterVisual reading={reading} label={t('home.inputLevel')} orientation="horizontal" height={12} scale />
             {state !== 'live' && <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(meterStatusLabel(state))}</span>}
         </div>
     );

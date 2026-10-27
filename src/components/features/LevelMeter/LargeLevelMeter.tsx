@@ -1,7 +1,9 @@
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useEffect, useState, useRef } from 'react';
-import { useMeterLevels, meterStatusLabel } from '../../../hooks/useMeterLevels';
-import { MdWarning, MdInfo, MdVolumeUp, MdClose, MdOpenInFull, MdCloseFullscreen } from 'react-icons/md';
+import { meterStatusLabel } from '../../../hooks/useMeterLevels';
+import { useSharedMeter } from './MeterContext';
+import { MeterVisual } from './MeterVisual';
+import { MdInfo, MdVolumeUp, MdClose, MdOpenInFull, MdCloseFullscreen } from 'react-icons/md';
 import { audioApi } from '../../../api/audio';
 import { cn } from '@/lib/utils';
 
@@ -10,21 +12,10 @@ interface LargeLevelMeterProps {
     running?: boolean;
 }
 
-// Helper: Linear peak (0-1) to dB
-const toDB = (linear: number): number => {
-    if (linear <= 0) return -Infinity;
-    return 20 * Math.log10(linear);
-};
-
-// Helper: Format dB for display
-const formatDB = (db: number): string => {
-    if (!isFinite(db) || db < -60) return '-∞';
-    return db.toFixed(1);
-};
-
 export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, running = false }) => {
     const t = useMessages();
-    const { levels, peak: peakHold, clipped: hasClipped, state } = useMeterLevels({ running, large: true });
+    const reading = useSharedMeter(running, 'output');
+    const { state } = reading;
     const [showTips, setShowTips] = useState(false);
     const [inputGain, setInputGain] = useState(() => {
         // Read persisted value (stored as percentage 0-200) and convert to linear 0-2
@@ -43,55 +34,6 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
         window.addEventListener('input-gain-sync', handler);
         return () => window.removeEventListener('input-gain-sync', handler);
     }, []);
-
-    const renderBar = (val: number, peak: number, label: string) => {
-        const pct = Math.min(100, Math.max(0, val * 100));
-        const peakPct = Math.min(100, Math.max(0, peak * 100));
-        const db = toDB(val);
-        const isClipping = db >= -3;
-        const isWarning = db >= -12 && db < -3;
-
-        return (
-            <div className="flex flex-col items-center gap-1 flex-1 h-full min-h-0">
-                {!isMiniMode && <span className="text-xs text-muted-foreground uppercase tracking-wider font-mono">{label}</span>}
-                <div className={cn("relative w-full bg-card rounded overflow-hidden ring-1 ring-border transition-all", isMiniMode ? "h-full" : "h-full")}>
-                    {/* Bar */}
-                    <div
-                        className={cn("absolute bottom-0 left-0 right-0 transition-all duration-75 ease-out",
-                            isClipping ? 'bg-gradient-to-t from-meter-danger to-meter-danger' :
-                                isWarning ? 'bg-gradient-to-t from-warning to-warning' :
-                                    'bg-gradient-to-t from-success to-success'
-                        )}
-                        style={{ height: `${pct}%` }}
-                    />
-                    {/* Peak Hold Line */}
-                    <div
-                        className="absolute left-0 right-0 h-0.5 bg-foreground/80 shadow-[0_0_4px_hsl(var(--foreground)/0.5)]"
-                        style={{ bottom: `${peakPct}%` }}
-                    />
-                    {/* Gridlines */}
-                    <div className="absolute inset-0 flex flex-col justify-between py-1 pointer-events-none opacity-50">
-                        {[0, -6, -12, -24, -48].map(dbMark => {
-                            const markPct = Math.pow(10, dbMark / 20) * 100;
-                            return (
-                                <div
-                                    key={dbMark}
-                                    className="absolute w-full border-t border-foreground/30"
-                                    style={{ bottom: `${markPct}%` }}
-                                />
-                            );
-                        })}
-                    </div>
-                </div>
-                {/* dB Value */}
-                {!isMiniMode && (
-                    <span className={cn("text-xs font-mono", isClipping ? 'text-destructive-text font-bold' : 'text-muted-foreground')}>
-                        {formatDB(db)}
-                    </span>
-                )}
-            </div>
-        );
-    };
 
     return (
         <div className={cn(
@@ -130,22 +72,11 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
 
             <span className="text-xs text-muted-foreground" title={t('meter.arrivalUnverified')}>{t(meterStatusLabel(state))}</span>
 
-            {/* Clipping Indicator */}
-            {hasClipped && (
-                <div className={cn(
-                    "flex items-center justify-center bg-destructive/20 border border-destructive/50 rounded animate-pulse shrink-0",
-                    isMiniMode ? "p-1" : "px-2 py-1 gap-1"
-                )}>
-                    <MdWarning className="w-3 h-3 text-destructive-text" />
-                    {!isMiniMode && <span className="text-xs font-bold text-destructive-text uppercase">Clip!</span>}
-                </div>
-            )}
-
             {/* Tips Panel */}
             {!isMiniMode && showTips && (
                 <div className="text-xs text-muted-foreground bg-popover/95 border border-border rounded-md p-2 space-y-1 animate-in fade-in zoom-in-95 duration-200">
                     <div><span className="text-success">{t('meter.scale.green')}</span>{t('meter.scale.low')}</div>
-                    <div><span className="text-warning">{t('meter.scale.yellow')}</span>: -12~-3dB</div>
+                    <div><span className="text-warning">{t('meter.scale.yellow')}</span>: −6〜0 dBFS</div>
                     <div><span className="text-destructive-text">{t('meter.scale.red')}</span>{t('meter.scale.high')}</div>
                 </div>
             )}
@@ -186,21 +117,13 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
                 </div>
             )}
 
-            {/* Meter Bars */}
-            <div className="flex gap-1.5 flex-1 min-h-0 w-full">
-                {renderBar(levels[0], peakHold[0], 'L')}
-                {renderBar(levels[1], peakHold[1], 'R')}
+            {/* 共通基準の出力メーター */}
+            <div className="flex-1 min-h-0 flex justify-center items-stretch">
+                <MeterVisual reading={reading} label={t('meter.output')} width={isMiniMode ? 12 : 32} height="100%" showValues={!isMiniMode} scale={!isMiniMode} />
+                {!isMiniMode && <div aria-hidden="true" className="relative h-full w-8 text-xs text-muted-foreground font-mono">
+                    {[0, -6, -12, -24, -48].map(mark => <span key={mark} className="absolute left-1 -translate-y-1/2" style={{ bottom: `calc(${Math.pow(10, mark / 20) * 100}% - 0.5em)` }}>{mark}</span>)}
+                </div>}
             </div>
-
-            {/* Grid Labels (Hidden in Mini Mode) */}
-            {!isMiniMode && (
-                <div className="flex justify-around text-xs text-muted-foreground font-mono shrink-0">
-                    <span>0</span>
-                    <span>-12</span>
-                    <span>-24</span>
-                    <span>-∞</span>
-                </div>
-            )}
         </div>
     );
 };

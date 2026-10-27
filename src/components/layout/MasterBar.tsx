@@ -7,6 +7,8 @@ import { MdGraphicEq, MdVolumeUp, MdBolt, MdMic, MdClose } from 'react-icons/md'
 import { Modal } from '../ui/modal';
 import { cn } from '@/lib/utils';
 import { audioApi, EngineRuntimeStats } from '../../api/audio';
+import { useSharedMeter } from '../features/LevelMeter/MeterContext';
+import { MeterVisual } from '../features/LevelMeter/MeterVisual';
 import { Slider } from '@/components/ui/slider';
 import { AudioQueueDetails } from './AudioQueueDetails';
 import { LatencyDetails } from './LatencyDetails';
@@ -16,30 +18,24 @@ import {
     setOutputGain as applyOutputGain,
 } from '@/api/outputGain';
 
-interface MeterLevels {
-    input: [number, number];
-    output: [number, number];
-}
-
 interface MasterBarProps {
     isRunning?: boolean;
     processReady?: boolean | null;
     host?: string;
     sampleRate?: number;
     bufferSize?: number;
+    onStatsChange?: (stats: EngineRuntimeStats | null) => void;
     onOpenVoiceCheck?: () => void;
     onOpenSoundSettings?: () => void;
 }
 
-export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, onOpenVoiceCheck, onOpenSoundSettings, isRunning = false, processReady }) => {
+export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, onOpenVoiceCheck, onOpenSoundSettings, isRunning = false, processReady, onStatsChange }) => {
     const t = useMessages();
-    const [levels, setLevels] = useState<[number, number]>([0, 0]);
-    const [isClipping, setIsClipping] = useState(false);
+    const meter = useSharedMeter(isRunning, 'output');
+    const isClipping = meter.clipped;
     const [stats, setStats] = useState<EngineRuntimeStats | null>(null);
     const [hasRecentGlitch, setHasRecentGlitch] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
-    const targetLevels = useRef<[number, number]>([0, 0]);
-    const clipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const glitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const previousGlitchCount = useRef<number | null>(null);
     const statsGeneration = useRef(0);
@@ -166,8 +162,13 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     useEffect(() => {
         let disposed = false;
         let fetching = false;
+        let expiry: ReturnType<typeof setTimeout> | undefined;
+        const invalidate = () => { statsGeneration.current++; setStats(null); onStatsChange?.(null); };
+        const visibility = () => { if (document.hidden) invalidate(); };
+        document.addEventListener('visibilitychange', visibility);
+        const stops = ['audio-stopped', 'audio-error', 'audio-stream-error'].map(name => listen(name, invalidate));
         const fetchStats = () => {
-            if (fetching) return;
+            if (fetching || document.hidden) return;
             fetching = true;
             const generation = statsGeneration.current;
             audioApi.getEngineRuntimeStats().then((next) => {
@@ -180,83 +181,15 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 }
                 previousGlitchCount.current = next.glitchCount;
                 setStats(next);
-            }).catch(() => {}).finally(() => { fetching = false; });
+                onStatsChange?.(next);
+                clearTimeout(expiry);
+                expiry = setTimeout(invalidate, 2500);
+            }).catch(() => { if (!disposed && generation === statsGeneration.current) invalidate(); }).finally(() => { fetching = false; });
         };
         fetchStats();
         const interval = setInterval(fetchStats, 1000);
-        return () => { disposed = true; clearInterval(interval); };
-    }, []);
-
-    useEffect(() => {
-        const unlisten = listen<MeterLevels>('audio-level', (event) => {
-            const data = event.payload.output;
-            targetLevels.current = data;
-
-            // Instant clip detection
-            if (data[0] > 1.0 || data[1] > 1.0) {
-                setIsClipping(true);
-                if (clipTimer.current) clearTimeout(clipTimer.current);
-                clipTimer.current = setTimeout(() => setIsClipping(false), 2000);
-            }
-        });
-
-        return () => {
-            unlisten.then(f => f());
-        };
-    }, []);
-
-    useEffect(() => {
-        const intervalId = setInterval(() => {
-            setLevels(prev => {
-                const [currL, currR] = prev;
-                let [targetL, targetR] = targetLevels.current;
-
-                if (isNaN(targetL)) targetL = 0;
-                if (isNaN(targetR)) targetR = 0;
-
-                // Smooth decay
-                const smoothL = targetL > currL ? 0.9 : 0.4;
-                const smoothR = targetR > currR ? 0.9 : 0.4;
-
-                let newL = currL + (targetL - currL) * smoothL;
-                let newR = currR + (targetR - currR) * smoothR;
-
-                if (isNaN(newL)) newL = 0;
-                if (isNaN(newR)) newR = 0;
-
-                return [newL, newR];
-            });
-        }, 16);
-
-        return () => clearInterval(intervalId);
-    }, []);
-
-    const dbValue = (val: number) => {
-        if (val <= 0.0001) return '-inf';
-        return (20 * Math.log10(val)).toFixed(1);
-    };
-
-    const renderMeter = (val: number, label: string) => {
-        const pct = isRunning ? Math.min(100, Math.max(0, val * 100)) : 0;
-        return (
-            <div className="flex flex-col gap-1 w-3 h-full bg-muted rounded-sm overflow-hidden border border-border relative group transition-colors duration-300">
-                {/* Bar */}
-                <div
-                    className={cn(
-                        "absolute bottom-0 left-0 right-0 transition-all duration-75 ease-out",
-                        isClipping ? "bg-meter-danger shadow-[0_0_10px_currentColor]" : "bg-success"
-                    )}
-                    style={{ height: `${pct}%` }}
-                />
-
-                {/* Grid */}
-                <div className="absolute inset-0 meter-grid pointer-events-none" />
-
-                {/* Label */}
-                <div className="absolute bottom-1 left-0 right-0 text-xs text-center text-muted-foreground font-mono pointer-events-none mix-blend-difference opacity-0 group-hover:opacity-100 transition-opacity">{label}</div>
-            </div>
-        );
-    };
+        return () => { disposed = true; clearInterval(interval); clearTimeout(expiry); document.removeEventListener('visibilitychange', visibility); stops.forEach(p => { void p.then(fn => fn()).catch(() => {}); }); };
+    }, [onStatsChange]);
 
     const effectiveSampleRate = sampleRate && sampleRate > 0 ? sampleRate : 48000;
     const isFxActive = !!stats && !stats.globalBypass && stats.enabledPluginCount > 0;
@@ -294,14 +227,13 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                     {t('master.label')}
                 </div>
                 <div className="text-xs text-muted-foreground font-mono tracking-tight">
-                    {isRunning ? `${dbValue(Math.max(levels[0], levels[1]))} dB` : t('master.stopped')}
+                    {t('meter.output')}
                 </div>
             </div>
 
             {/* Meters */}
             <div className="flex shrink-0 gap-1 h-8 items-end pb-1">
-                {renderMeter(levels[0], 'L')}
-                {renderMeter(levels[1], 'R')}
+                <MeterVisual reading={meter} label={t('meter.output')} width={12} height={28} showValues />
             </div>
 
             {onOpenVoiceCheck && (

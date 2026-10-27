@@ -22,21 +22,22 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.mocked(listen).mockReset(); });
 
-it.each(['audio-stopped', 'audio-error', 'audio-stream-error'])('%sでバー・peak・clipを即座に破棄し、遅延値を無視する', event => {
+it.each(['audio-stopped', 'audio-error', 'audio-stream-error'])('%sでバー・peakを即座に破棄し、クリップは新しい開始まで保持する', event => {
     const { result } = renderHook(() => useMeterLevels({ running: true, large: true }));
     level(1.2); tick(16);
     expect(result.current.clipped).toBe(true);
     emit(event); level(1.3); tick(16);
-    expect(result.current).toEqual({ levels: [0, 0], peak: [0, 0], clipped: false, state: 'stopped' });
+    expect(result.current).toMatchObject({ levels: [0, 0], peak: [0, 0], clipped: true, state: 'stopped' });
     emit('audio-started');
     expect(result.current.state).toBe('waiting');
+    expect(result.current.clipped).toBe(false);
     level(.5); tick(16);
     expect(result.current.levels[0]).toBeGreaterThan(0);
 });
 it('非ゼロtimeoutは更新待ちとし、ゼロ通知の省略は正常な無音として保持する', () => {
     const { result } = renderHook(() => useMeterLevels({ running: true }));
     level(1.2); tick(METER_TIMEOUT_MS + 32);
-    expect(result.current).toEqual({ levels: [0, 0], peak: [0, 0], clipped: false, state: 'stale' });
+    expect(result.current).toMatchObject({ levels: [0, 0], peak: [0, 0], clipped: true, state: 'stale' });
     level(0); tick(10000);
     expect(result.current.state).toBe('silent');
 });
@@ -45,6 +46,13 @@ it.each([NaN, Infinity, -1])('不正値%sを新しい有効測定として表示
     level(.8); tick(16); level(value);
     expect(result.current.levels).toEqual([0, 0]);
     expect(result.current.state).toBe('stale');
+});
+it('−3 dBFS では点灯せず、0 dBFS で点灯し手動で消せる', () => {
+    const { result } = renderHook(() => useMeterLevels({ running: true }));
+    level(Math.pow(10, -3 / 20)); tick(16); expect(result.current.clipped).toBe(false);
+    level(1); tick(16); expect(result.current.clipped).toBe(true);
+    level(.2); tick(16); act(() => result.current.resetClip()); tick(16);
+    expect(result.current.clipped).toBe(false);
 });
 it('prop停止・再開で前回値を使わない', () => {
     const { result, rerender } = renderHook(({ running }) => useMeterLevels({ running }), { initialProps: { running: true } });
