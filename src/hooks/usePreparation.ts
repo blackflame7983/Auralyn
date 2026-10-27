@@ -1,3 +1,4 @@
+import { noiseMeasurementApi } from '@/api/noiseMeasurement';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '@/api/audio';
@@ -148,6 +149,9 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
 
     const changeContext = (patch: Partial<PreparationContext>) => {
         const next = { ...currentContext.current, ...patch };
+        if ((patch.location !== undefined && patch.location !== currentContext.current.location) || (patch.signal !== undefined && patch.signal !== currentContext.current.signal)) {
+            void noiseMeasurementApi.request({ action: 'invalidate' }).catch(() => {});
+        }
         generation.current += 1;
         currentContext.current = next; setContext(next); savePreparationContext(next);
         setObservation(old => ({ ...old, availability: 'pending', obsCurrent: false }));
@@ -170,6 +174,6 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
         } finally { if (alive.current) setConfirming(false); }
     };
     const unconfirm = (stage: PreparationStage) => setRecords(old => old[stage] ? { ...old, [stage]: { ...old[stage]!, expired: true } } : old);
-    return { context, changeContext, observation, records, checking, confirming, confirm, unconfirm, refresh, reset: expireAll };
+    return { context, changeContext, observation, records, checking, confirming, confirm, unconfirm, refresh, reset: () => { expireAll(); void noiseMeasurementApi.request({ action: 'invalidate' }).catch(() => {}); } };
 }
 export type PreparationModel = ReturnType<typeof usePreparation>;

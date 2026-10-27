@@ -179,6 +179,7 @@ export const presetApi = {
             deviceSubstitutions?: DeviceSubstitutions;
             backupAudioExtras?: ProfileAudioExtras;
             skipBackup?: boolean;
+            soundOnly?: boolean;
         },
     ): Promise<ApplyProfileSummary> => {
         return await invoke("apply_profile", {
@@ -188,6 +189,7 @@ export const presetApi = {
             deviceSubstitutions: options?.deviceSubstitutions,
             backupAudioExtras: options?.backupAudioExtras ?? gatherProfileAudioExtras(),
             skipBackup: options?.skipBackup,
+            ...(options?.soundOnly !== undefined ? { soundOnly: options.soundOnly } : {}),
         });
     },
     hasBackup: async (): Promise<boolean> => {

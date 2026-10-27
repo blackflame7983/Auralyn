@@ -17,6 +17,7 @@ pub(super) struct Analysis {
     pub speech: bool,
     pub profile_rms: Option<f32>,
     pub learned_mix: f32,
+    pub has_learned_mix: bool,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -166,7 +167,7 @@ impl RtNoiseControl {
         let base = noise_reduction_mix_from_mode(self.settings.mode, self.settings.strength);
         let protected = analysis.speech && self.settings.voice_guard;
         let wet = match self.settings.mode {
-            NoiseControlMode::Smart if analysis.profile_rms.is_some() => {
+            NoiseControlMode::Smart if analysis.has_learned_mix => {
                 (base * 0.55 + analysis.learned_mix * 0.45).clamp(0.0, 1.0)
             }
             NoiseControlMode::Venue if protected => (base * 0.72).clamp(0.0, 1.0),
@@ -233,3 +234,85 @@ impl RtNoiseControl {
 #[cfg(test)]
 #[path = "noise_control_tests.rs"]
 mod tests;
+
+/// 非RT worker専用。共通の前置無音と既知の信号対応補正で、先頭/末尾を同じ長さへ揃える。
+pub(crate) fn render_candidate(
+    raw: &[f32],
+    rate: u32,
+    config: &crate::audio_engine::noise_candidate::Config,
+    cancel: &std::sync::atomic::AtomicBool,
+    mut write: impl FnMut(usize, [f32; 2]),
+) -> Result<u32, String> {
+    use std::sync::atomic::Ordering;
+    config.validate()?;
+    let frames = raw.len() / 2;
+    if !raw.len().is_multiple_of(2)
+        || frames == 0
+        || !(8_000..=192_000).contains(&rate)
+        || frames > rate as usize * 10
+    {
+        return Err("NR比較は8〜192kHz、最大10秒の確定録音が必要です".into());
+    }
+    if raw.iter().any(|sample| !sample.is_finite()) {
+        return Err("録音に不正な値があります".into());
+    }
+    let mode = match config.mode.as_str() {
+        "low" => NoiseControlMode::Low,
+        "high" => NoiseControlMode::High,
+        "smart" => NoiseControlMode::Smart,
+        "venue" => NoiseControlMode::Venue,
+        _ => return Err("NRモードが不正です".into()),
+    };
+    let mut control = RtNoiseControl::prepare(
+        rate,
+        Settings {
+            enabled: config.enabled,
+            mode,
+            strength: config.strength,
+            voice_guard: config.voice_guard,
+        },
+    )
+    .ok_or_else(|| "NR候補を準備できません".to_string())?;
+    let delay = if config.enabled {
+        control.aligned.history.len()
+    } else {
+        0
+    };
+    let pre_roll = rate as usize;
+    let window = (rate as usize / 100).max(1);
+    let total = pre_roll + frames + delay;
+    for index in 0..total {
+        if index.is_multiple_of(window) {
+            if cancel.load(Ordering::Acquire) {
+                return Err("NR比較を中止しました".into());
+            }
+            let mut energy = 0.0;
+            let mut count = 0;
+            for frame in index..(index + window).min(total) {
+                if frame >= pre_roll && frame < pre_roll + frames {
+                    let n = (frame - pre_roll) * 2;
+                    energy += (f64::from(raw[n]).powi(2) + f64::from(raw[n + 1]).powi(2)) * 0.5;
+                }
+                count += 1;
+            }
+            let rms = (energy / count.max(1) as f64).sqrt() as f32;
+            control.begin_block(Analysis {
+                speech: rms > (config.profile_rms.unwrap_or(0.0) * 2.8).max(0.018),
+                profile_rms: config.profile_rms,
+                learned_mix: config.learned_mix,
+                has_learned_mix: config.has_learned_mix,
+            });
+        }
+        let input = if index >= pre_roll && index < pre_roll + frames {
+            let n = (index - pre_roll) * 2;
+            [raw[n], raw[n + 1]]
+        } else {
+            [0.0; 2]
+        };
+        let output = control.process_sample(input[0], input[1]);
+        if index >= pre_roll + delay {
+            write(index - pre_roll - delay, output);
+        }
+    }
+    Ok(delay as u32)
+}

@@ -1,0 +1,31 @@
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { listen } from '@tauri-apps/api/event';
+import { peakProtectionApi, type PeakStatus } from '@/api/peakProtection';
+import { PeakProtectionPanel } from '../PeakProtectionPanel';
+import { message } from '@/i18n/messages';
+const fixture = (enabled = false): PeakStatus => ({ config: { enabled, ceilingDb: -3, releaseMs: 150 }, running: true, pending: false, revision: '2', reductionDb: 0, addedLatencySamples: 0 });
+beforeEach(() => { vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] }); vi.mocked(listen).mockClear(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
+it('読取りでは有効化せず、保持値を編集へ読み込み、明示操作だけで適用する', async () => {
+    const request = vi.spyOn(peakProtectionApi, 'request').mockImplementation(async config => ({ ...fixture(), config: config ?? fixture().config }));
+    render(<PeakProtectionPanel />); await act(async () => {});
+    expect(request).toHaveBeenCalledWith();
+    expect(request.mock.calls.every(args => args.length === 0)).toBe(true);
+    expect(screen.getByRole('spinbutton', { name: message('ja', 'peak.ceiling') })).toHaveValue(-3);
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'peak.enable') })); await act(async () => {});
+    expect(request).toHaveBeenCalledWith({ enabled: true, ceilingDb: -3, releaseMs: 150 });
+    fireEvent.change(screen.getByRole('spinbutton', { name: message('ja', 'peak.ceiling') }), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'peak.disable') })); await act(async () => {});
+    expect(request).toHaveBeenLastCalledWith({ enabled: false, ceilingDb: -3, releaseMs: 150 });
+});
+it('失敗や停止通知より古い適用応答で確認済みに戻さない', async () => {
+    let resolve!: (value: PeakStatus) => void;
+    vi.spyOn(peakProtectionApi, 'request').mockImplementation(config => config ? new Promise(done => { resolve = done; }) : Promise.resolve(fixture()));
+    render(<PeakProtectionPanel />); await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'peak.enable') }));
+    act(() => { for (const [event, callback] of vi.mocked(listen).mock.calls) if (event === 'audio-error') callback({ event, id: 1, payload: 'failure' }); });
+    await act(async () => resolve(fixture(true)));
+    expect(screen.getByText(message('ja', 'peak.unknown'))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: message('ja', 'peak.enable') })).toBeDisabled();
+});

@@ -1,3 +1,4 @@
+import { sessionMode } from './lib/temporarySession';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useBeginnerMode } from './hooks/useBeginnerMode';
 import { useLiveModes } from './hooks/useLiveModes';
@@ -165,6 +166,8 @@ function AppContent() {
         isEngineRunning={isEngineRunning}
         engineProcessReady={engineProcessReady}
       >
+        {sessionMode().cleanupPending && <p role="alert" className="mb-4 border rounded p-3 text-sm break-all">{t('temporary.cleanupFailed', { path: sessionMode().cleanupPending! })}</p>}
+        {sessionMode().temporary && <p role="status" className="mb-4 border rounded p-3 text-sm">{t('temporary.active')} <button type="button" className="underline" onClick={() => ui.setIsPresetManagerOpen(true)}>{t('temporary.manage')}</button></p>}
         <SessionRecoveryNotice
           status={pluginsApi.sessionRestoreStatus}
           protectedSession={pluginsApi.sessionPersistenceProtected}

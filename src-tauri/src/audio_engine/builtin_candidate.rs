@@ -20,6 +20,8 @@ use std::sync::{
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
+    #[serde(default)]
+    pub noise: Option<crate::audio_engine::noise_candidate::Config>,
     pub id: String,
     pub recording_id: u64,
     pub base_revision: String,
@@ -38,6 +40,7 @@ pub struct Snapshot {
     pub proposal_error: Option<Message>,
 }
 struct Job {
+    noise: Option<crate::audio_engine::noise_candidate::Config>,
     id: String,
     buffers: Arc<VoiceCheckBuffers>,
     config: Config,
@@ -56,7 +59,10 @@ pub(crate) struct Worker {
 }
 impl Worker {
     fn new() -> Self {
-        Self::with_renderer(|job| render(&job.buffers, &job.config, &job.cancel))
+        Self::with_renderer(|job| match &job.noise {
+            Some(noise) => render_noise(&job.buffers, noise, &job.cancel),
+            None => render(&job.buffers, &job.config, &job.cancel),
+        })
     }
     fn with_renderer(
         renderer: impl FnMut(&Job) -> Result<(Arc<VoiceCheckBuffers>, f32), String> + Send + 'static,
@@ -209,7 +215,7 @@ impl Candidate {
             (recording_id, revision),
             audio_revision,
             config,
-            None,
+            (None, None),
         )
     }
     pub(crate) fn prepare_proposal(
@@ -224,7 +230,28 @@ impl Candidate {
             (seed.recording_id, seed.base_revision.clone()),
             audio_revision,
             config,
-            Some(seed),
+            (Some(seed), None),
+        )
+    }
+    pub(crate) fn prepare_noise(
+        &mut self,
+        buffers: Arc<VoiceCheckBuffers>,
+        recording_id: u64,
+        basis: String,
+        audio_revision: u64,
+        noise: crate::audio_engine::noise_candidate::Config,
+    ) -> Result<(), String> {
+        noise.validate()?;
+        self.prepare_inner(
+            buffers,
+            (recording_id, basis),
+            audio_revision,
+            Config {
+                active: false,
+                reverb: None,
+                ..Config::default()
+            },
+            (None, Some(noise)),
         )
     }
     fn prepare_inner(
@@ -233,9 +260,13 @@ impl Candidate {
         binding: (u64, String),
         audio_revision: u64,
         config: Config,
-        proposal: Option<Seed>,
+        rendering: (
+            Option<Seed>,
+            Option<crate::audio_engine::noise_candidate::Config>,
+        ),
     ) -> Result<(), String> {
         let (recording_id, revision) = binding;
+        let (proposal, noise) = rendering;
         let config = config.normalize()?;
         let recording = buffers
             .recording()
@@ -260,9 +291,11 @@ impl Candidate {
                 config: config.clone(),
                 cancel: cancel.clone(),
                 proposal,
+                noise: noise.clone(),
             })
             .map_err(|_| "前の候補を停止中です。少し待って再試行してください")?;
         self.snapshot = Some(Snapshot {
+            noise: noise.clone(),
             id,
             recording_id,
             base_revision: revision,
@@ -271,8 +304,16 @@ impl Candidate {
             sample_rate,
             source_frames,
             rendered_frames: 0,
-            algorithmic_latency_frames: 0,
-            filter_phase: "minimumPhase".into(),
+            algorithmic_latency_frames: noise
+                .as_ref()
+                .filter(|n| n.enabled)
+                .map_or(0, |_| ((sample_rate + 50) / 100) * 2 - 1),
+            filter_phase: if noise.is_some() {
+                "nonlinearNr"
+            } else {
+                "minimumPhase"
+            }
+            .into(),
             sample_peak: None,
             error: None,
             proposal: None,
@@ -393,6 +434,39 @@ fn render(
     Ok((output, peak))
 }
 
+fn render_noise(
+    buffers: &VoiceCheckBuffers,
+    config: &crate::audio_engine::noise_candidate::Config,
+    cancel: &AtomicBool,
+) -> Result<(Arc<VoiceCheckBuffers>, f32), String> {
+    let source = buffers.recording().ok_or("録音が未確定です")?;
+    let output = Arc::new(allocate_candidate_buffers(
+        source.frames,
+        source.sample_rate_hz,
+    )?);
+    let mut writer = output
+        .claim_writer()
+        .ok_or("候補の書込みを開始できません")?;
+    let mut peak = 0.0_f32;
+    crate::audio_engine::core::noise_control::render_candidate(
+        source.raw,
+        source.sample_rate_hz,
+        config,
+        cancel,
+        |index, processed| {
+            writer.write_raw(
+                index as u64,
+                source.raw[index * 2],
+                source.raw[index * 2 + 1],
+            );
+            writer.write_processed(index as u64, processed[0], processed[1]);
+            peak = peak.max(processed[0].abs()).max(processed[1].abs());
+        },
+    )?;
+    writer.seal(source.frames as u64);
+    Ok((output, peak))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -469,6 +543,7 @@ mod tests {
             move || delivered_tx.send(()).unwrap(),
         );
         let make_job = |id: &str, cancel: Arc<AtomicBool>| Job {
+            noise: None,
             id: id.into(),
             buffers: recording(),
             config: Config::default(),

@@ -1,3 +1,5 @@
+import { audioApi } from '@/api/audio';
+import { runtime } from '@/__tests__/fixtures/preparation';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -6,7 +8,7 @@ import { bundleApi, BundleClientError, type BundlePreview, type BundleResult } f
 import { BroadcastBundlePanel } from '../BroadcastBundlePanel';
 const events = vi.hoisted(() => new Map<string, () => void>());
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async (event, cb) => { events.set(event, cb); return () => events.delete(event); }) }));
-vi.mock('../../../../api/bundles', async importOriginal => ({ ...await importOriginal<typeof import('../../../../api/bundles')>(), bundleApi: { list: vi.fn(), sources: vi.fn(), filters: vi.fn(), save: vi.fn(), preview: vi.fn(), history: vi.fn() } }));
+vi.mock('../../../../api/bundles', async importOriginal => ({ ...await importOriginal<typeof import('../../../../api/bundles')>(), bundleApi: { checkedList: vi.fn(), list: vi.fn(), sources: vi.fn(), filters: vi.fn(), save: vi.fn(), preview: vi.fn(), history: vi.fn() } }));
 const plan: BundlePreview = { id: 'p1', name: '歌枠', revision: 'r1', categories: ['内蔵処理'], running: true, auralyn: [{label: '音声方式', before: 'ASIO', after: 'WASAPI', status: 'changed'}, {label: '固定バッファ要求', before: '未確認', after: '変更しません', status: 'notSelected'}], obs: [{ source: '声', label: 'ミュート', before: false, after: true }] };
 const result: BundleResult = { id: 'p1', complete: true, undoPending: true, auralyn: 'Auralyn設定確認', obs: ['適用済み'], summary: null };
 beforeEach(() => {
@@ -192,4 +194,38 @@ it('typed差分とゼロOBS変更のcompleteを表示し、同一未保存名と
     fireEvent.click(screen.getByRole('button', {name:'Undo the latest bundle change'}));
     await waitFor(() => expect(operation).toHaveBeenLastCalledWith({action:'undo',id:'p1'}));
     expect(operation.mock.calls.map(c => c[0].action)).toEqual(['apply','undo']);
+});
+
+it('確認済み保存には現在条件と明示チェックが必要で、条件変更後は再確認に戻る', async () => {
+    vi.mocked(bundleApi.checkedList).mockResolvedValue([]);
+    const stats = vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue(runtime());
+    localStorage.setItem('vst_host_setup_goal', 'discord');
+    render(<BroadcastBundlePanel checkedOnly />);
+    await waitFor(() => expect(bundleApi.checkedList).toHaveBeenCalled());
+    fireEvent.change(screen.getByRole('textbox', { name: '配信状態名' }), { target: { value: 'checked-home' } });
+    const save = screen.getByRole('button', { name: '現在の配信状態を保存' });
+    expect(save).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '確認対象の現在条件を読み取る' }));
+    const ack = screen.getByRole('checkbox', { name: 'この条件で音・最終音量・送り先を自分で確認しました' });
+    await waitFor(() => expect(ack).toBeEnabled()); fireEvent.click(ack);
+    expect(save).toBeEnabled();
+    act(() => events.get('audio-conditions-changed')?.()); expect(save).toBeDisabled(); expect(ack).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: '確認対象の現在条件を読み取る' }));
+    await waitFor(() => expect(ack).toBeEnabled()); fireEvent.click(ack); fireEvent.click(save);
+    await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('checked-home', { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }, null, false,
+        { expected: runtime().preparation, usage: 'discord', location: 'home' }));
+    expect(bundleApi.sources).not.toHaveBeenCalled(); stats.mockRestore();
+});
+
+it('停止したEngineの保持値だけでは確認済み保存のチェックを許可しない', async () => {
+    vi.mocked(bundleApi.checkedList).mockResolvedValue([]);
+    const stopped = runtime(); stopped.latencyMetadata!.streamRunning = false;
+    const stats = vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue(stopped);
+    localStorage.setItem('vst_host_setup_goal', 'discord');
+    render(<BroadcastBundlePanel checkedOnly />);
+    await waitFor(() => expect(bundleApi.checkedList).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '確認対象の現在条件を読み取る' }));
+    await screen.findByRole('alert');
+    expect(screen.getByRole('checkbox', { name: 'この条件で音・最終音量・送り先を自分で確認しました' })).toBeDisabled();
+    expect(bundleApi.save).not.toHaveBeenCalled(); stats.mockRestore();
 });

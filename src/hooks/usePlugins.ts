@@ -1,3 +1,4 @@
+import { explicitSessionStartRequired } from '@/lib/temporarySession';
 import { useMessages } from '../i18n/LocaleProvider';
 import { pluginNotice, renderPluginNotice, defaultPluginMessages, type PluginNotice } from '../lib/pluginNotice';
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -86,7 +87,7 @@ export const usePlugins = () => {
                 setError(pluginNotice('pluginNotices.retained', undefined, true));
                 return;
             }
-            if (!explicit && localStorage.getItem(REVIEW_KEY) === 'true') return;
+            if (!explicit && (explicitSessionStartRequired() || localStorage.getItem(REVIEW_KEY) === 'true')) return;
             const items = saved === null ? [] : parsePluginSession(JSON.parse(saved));
             if (items.length === 0) {
                 const savedInput = localStorage.getItem('vst_host_input_gain');

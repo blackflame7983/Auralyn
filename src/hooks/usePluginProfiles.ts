@@ -104,7 +104,7 @@ export function usePluginProfiles(
     const applyProfile = useCallback(async (
         name: string,
         deviceSubstitutions?: { inputDevice?: string; outputDevice?: string },
-        options?: { skipBackup?: boolean },
+        options?: { skipBackup?: boolean; soundOnly?: boolean },
     ) => {
         const generation = getGeneration();
         const isCurrent = () => generation === getGeneration();
@@ -122,6 +122,7 @@ export function usePluginProfiles(
             const summary = await presetApi.applyProfile(name, currentIds, backupPlugins, {
                 deviceSubstitutions,
                 skipBackup: options?.skipBackup,
+                soundOnly: options?.soundOnly,
             });
             if (!isCurrent()) {
                 for (const instance of summary.loadedPluginInstances ?? []) await audioApi.removePlugin(instance.id);

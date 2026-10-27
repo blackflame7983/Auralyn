@@ -1,5 +1,7 @@
+#[path = "core/noise_comparison.rs"]
+mod noise_comparison;
 #[path = "core/noise_learning.rs"]
-mod noise_learning;
+pub mod noise_learning;
 use noise_learning::{NoiseLearningShared, RtNoiseLearning};
 #[path = "core/dsp.rs"]
 pub(crate) mod dsp;
@@ -11,7 +13,7 @@ use dsp::{
     NOISE_REDUCTION_MODE_VENUE,
 };
 #[path = "core/noise_control.rs"]
-mod noise_control;
+pub(crate) mod noise_control;
 use noise_control::{Analysis as NoiseAnalysis, RtNoiseControl, Settings as NoiseSettings};
 #[path = "core/auto_gain_commands.rs"]
 mod auto_gain_commands;
@@ -142,6 +144,8 @@ pub enum AudioThreadMessage {
     SetGlobalBypass(bool),
     SetInputGain(f32),
     StartNoiseLearning {
+        generation: u64,
+        window_frames: usize,
         duration_frames: u64,
     },
     CancelNoiseLearning,
@@ -267,6 +271,8 @@ pub struct Engine {
     gain_shared: Arc<auto_gain::Shared>,
     gain_capture_rx: Option<auto_gain::CaptureConsumer>,
     gain_revision: u64,
+    peak_config: super::peak_protection::Config,
+    peak_shared: Arc<super::peak_protection::Shared>,
     output_gain: f32,
     output_gain_revision: u64,
     output_gain_initialized: bool,
@@ -331,6 +337,10 @@ pub struct Engine {
     noise_control_strength: f32,
     noise_voice_guard: bool,
     noise_learning: Arc<NoiseLearningShared>,
+    noise_measurement: noise_learning::Controller,
+    noise_undo: Option<noise_comparison::Undo>,
+    noise_input_identity: Option<String>,
+    noise_input_revision: u64,
     built_in_effects_enabled: bool,
     built_in_effects_preset: BuiltInEffectsPreset,
     built_in_effects_amount: f32,
@@ -375,6 +385,8 @@ impl Engine {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as u64,
+            peak_config: Default::default(),
+            peak_shared: Default::default(),
             output_gain: 1.0,
             output_gain_revision: 0,
             output_gain_initialized: false,
@@ -422,6 +434,10 @@ impl Engine {
             noise_control_strength: 1.0,
             noise_voice_guard: true,
             noise_learning: Arc::new(NoiseLearningShared::new()),
+            noise_measurement: noise_learning::Controller::default(),
+            noise_undo: None,
+            noise_input_identity: None,
+            noise_input_revision: 0,
             built_in_effects_enabled: false,
             built_in_effects_preset: BuiltInEffectsPreset::Broadcast,
             built_in_effects_amount: 0.7,
@@ -528,6 +544,7 @@ impl Engine {
                     self.voice_check_buffers.collect();
                     self.flush_pending_audio_msgs();
                     self.poll_auto_gain();
+                    self.poll_noise_measurement();
 
                     // Retire processors off the audio callback thread (safe place to drop VST objects)
                     if let Some(retire_cons) = &mut self.retire_rx {
@@ -805,7 +822,14 @@ impl Engine {
             || self.gain_shared.active.load(Ordering::Acquire) != 0
             || self.gain_shared.requested.load(Ordering::Acquire) != 0;
         let builtin = self.builtin.snapshot(self.output_stream.is_some());
+        let noise = self.noise_candidate_settings();
+        let noise_basis = self.noise_candidate_basis(&noise);
         voice_preview::Context {
+            noise,
+            noise_basis,
+            noise_undo_token: self.noise_undo_token(),
+            noise_pending: !self.pending_audio_msgs.is_empty()
+                || self.command_tx.as_ref().is_some_and(|q| !q.is_empty()),
             builtin_revision: builtin.revision,
             builtin_epoch: builtin.epoch,
             builtin_config: builtin.config,
@@ -882,7 +906,12 @@ impl Engine {
             muted: self.global_mute,
             controls_pending: !self.pending_audio_msgs.is_empty()
                 || self.command_tx.as_ref().is_some_and(|q| !q.is_empty())
-                || !self.gain_shared.settled.load(Ordering::Acquire),
+                || !self.gain_shared.settled.load(Ordering::Acquire)
+                || (self.output_stream.is_some()
+                    && self.peak_shared.pending(
+                        self.live_output_config.split_processing,
+                        self.live_output.is_some(),
+                    )),
             nr_backend: "nnnoiseless-0.5.2".into(),
             nr_model: "bundled-e6de5fbfadf7ec91".into(),
         }
@@ -973,6 +1002,16 @@ impl Engine {
             self.send_error("音量調整を停止してから提案を適用してください".into());
             return;
         }
+        if matches!(
+            &cmd,
+            Command::Start { .. }
+                | Command::Stop
+                | Command::SetInputGain { .. }
+                | Command::SetInputChannels { .. }
+        ) {
+            self.noise_input_revision = self.noise_input_revision.saturating_add(1);
+            self.invalidate_noise_measurement("inputChanged");
+        }
         // 新しい別出力試聴は、通常再生stateも自動ゲイン提案も変更しない。
         if matches!(
             &cmd,
@@ -1025,7 +1064,8 @@ impl Engine {
         }
         if !matches!(
             &cmd,
-            Command::LiveOutput { config: None }
+            Command::PeakProtection { config: None }
+                | Command::LiveOutput { config: None }
                 | Command::LiveMode { .. }
                 | Command::ConfigureLiveModes { .. }
                 | Command::GetDevices
@@ -1033,6 +1073,9 @@ impl Engine {
                 | Command::PollDeviceScan { .. }
                 | Command::CancelDeviceScan { .. }
                 | Command::GetRuntimeStats
+                | Command::NoiseMeasurement {
+                    request: noise_learning::Request::Snapshot
+                }
                 | Command::GetFrameTimingTrace { .. }
                 | Command::GetPluginState { .. }
                 | Command::CaptureBundleState
@@ -1050,7 +1093,49 @@ impl Engine {
         ) {
             self.invalidate_auto_gain();
         }
+        if self.peak_config.enabled
+            && matches!(
+                &cmd,
+                Command::AutoGain {
+                    request: auto_gain::Request::Begin { .. }
+                }
+            )
+        {
+            self.send_error("固定ゲイン提案はピーク保護をOFFにして測定してください。最終送出は保護をONにして再確認できます".into());
+            return;
+        }
         match cmd {
+            Command::PeakProtection { config } => {
+                if let Some(config) = config {
+                    if self.live_modes.armed {
+                        self.send_error(
+                            "本番保護を解除してからピーク保護を変更してください".into(),
+                        );
+                        return;
+                    }
+                    match config.validate() {
+                        Ok(config) => {
+                            self.peak_config = config;
+                            self.peak_shared
+                                .publish(config.prepare(self.current_sample_rate as u32));
+                            self.preparation_routing_revision =
+                                self.preparation_routing_revision.saturating_add(1);
+                        }
+                        Err(error) => {
+                            self.send_error(error);
+                            return;
+                        }
+                    }
+                }
+                let mut status = self.peak_shared.status(
+                    self.peak_config,
+                    self.output_stream.is_some(),
+                    self.live_output_config.split_processing,
+                );
+                status.pending |=
+                    status.running && self.live_output.is_some() && self.peak_shared.sink_pending();
+                self.send_response(Response::PeakProtection(status));
+            }
             Command::LiveOutput { config } => {
                 if let Some(config) = config {
                     if let Err(error) = config.validate() {
@@ -1112,8 +1197,7 @@ impl Engine {
                 }
             }
             Command::VoiceCheckPreview { request } => {
-                let context = self.voice_preview_context();
-                match self.voice_preview.command(request, context) {
+                match self.noise_voice_preview_command(request) {
                     Ok(snapshot) => {
                         self.send_response(Response::VoiceCheckPreview(Box::new(snapshot)))
                     }
@@ -1412,7 +1496,16 @@ impl Engine {
                     Err(error) => self.send_error(error.to_string()),
                 }
             }
+            Command::NoiseMeasurement { request } => {
+                match self.noise_measurement_request(request) {
+                    Ok(snapshot) => {
+                        self.send_response(Response::NoiseMeasurement(Box::new(snapshot)))
+                    }
+                    Err(error) => self.send_error(error),
+                }
+            }
             Command::CancelNoiseLearning => {
+                self.invalidate_noise_measurement("cancelled");
                 if self.output_stream.is_some() {
                     self.queue_audio_msg(AudioThreadMessage::CancelNoiseLearning);
                 } else {
@@ -1697,8 +1790,8 @@ impl Engine {
                     noise_learning_progress: self.noise_learning.progress(),
                     noise_profile_available: self
                         .noise_learning
-                        .profile_available
-                        .load(Ordering::Relaxed),
+                        .profile_valid
+                        .load(Ordering::Acquire),
                     noise_profile_rms: self.noise_learning.profile_rms(),
                     recommended_noise_mix: self.noise_learning.recommended_mix(),
                     speech_detected: self.noise_learning.speech_detected.load(Ordering::Relaxed),
@@ -2039,6 +2132,7 @@ impl Engine {
             DeviceManager::coordinated_pair(in_dev, out_dev, is_asio, |device: &cpal::Device| {
                 device.id().map_err(Into::into)
             })?;
+        self.noise_input_identity = in_dev.id().ok().map(|id| id.to_string());
 
         log::debug!(
             "[StartupPhase] phase=device_resolve us={}",
@@ -2330,6 +2424,11 @@ impl Engine {
             }
         }
 
+        self.peak_shared
+            .publish(self.peak_config.prepare(self.current_sample_rate as u32));
+        let peak_shared = self.peak_shared.clone();
+        let mut rt_peak =
+            super::peak_protection::Rt::new(self.peak_config, self.current_sample_rate as u32);
         let (mut rt_global_mute, mut rt_input_gain, mut rt_output_gain) =
             self.initial_callback_levels();
         let mut rt_global_bypass = self.global_bypass;
@@ -2468,6 +2567,7 @@ impl Engine {
                     self.gain_main_device.as_deref(),
                     &self.live_output_config,
                     self.stream_failed.clone(),
+                    (self.peak_config, self.peak_shared.clone()),
                 ) {
                     Ok((sink, sender)) => {
                         sink.mute(self.global_mute);
@@ -2514,6 +2614,7 @@ impl Engine {
                 self.stream_failed.clone(),
                 mode,
                 initial_live_revision,
+                (self.peak_config, self.peak_shared.clone()),
             )?;
             if self.live_output.is_none() {
                 controller.shared.failed.store(true, Ordering::Release);
@@ -2561,6 +2662,7 @@ impl Engine {
             let output_build_started = Instant::now();
             let mut process_output =
                 move |data: &mut [f32], info: Option<&cpal::OutputCallbackInfo>| {
+                    rt_peak.sync(&peak_shared);
                     if let Some(sender) = &mut live_sender {
                         sender.get_mut().begin_block();
                     }
@@ -2827,8 +2929,16 @@ impl Engine {
                                     rt_input_gain = val;
                                 }
                             }
-                            AudioThreadMessage::StartNoiseLearning { duration_frames } => {
-                                rt_noise_learning.start(duration_frames);
+                            AudioThreadMessage::StartNoiseLearning {
+                                duration_frames,
+                                generation,
+                                window_frames,
+                            } => {
+                                rt_noise_learning.start_with_generation(
+                                    duration_frames,
+                                    generation,
+                                    window_frames,
+                                );
                             }
                             AudioThreadMessage::CancelNoiseLearning => {
                                 rt_noise_learning.cancel();
@@ -3108,16 +3218,25 @@ impl Engine {
                     if let Some(control) = &mut rt_noise_control {
                         let profile_available = rt_noise_learning
                             .shared
-                            .profile_available
-                            .load(Ordering::Relaxed);
+                            .profile_valid
+                            .load(Ordering::Acquire);
                         control.begin_block(NoiseAnalysis {
                             speech: rt_noise_learning
                                 .shared
                                 .speech_detected
                                 .load(Ordering::Relaxed),
-                            profile_rms: profile_available
-                                .then(|| rt_noise_learning.shared.profile_rms()),
-                            learned_mix: rt_noise_learning.shared.recommended_mix(),
+                            profile_rms: profile_available.then(|| {
+                                rt_noise_learning
+                                    .shared
+                                    .accepted_rms_ppm
+                                    .load(Ordering::Relaxed) as f32
+                                    / 1_000_000.0
+                            }),
+                            learned_mix: rt_noise_learning.shared.applied_mix(),
+                            has_learned_mix: rt_noise_learning
+                                .shared
+                                .has_applied_mix
+                                .load(Ordering::Acquire),
                         });
                         if channels >= 2 {
                             let (left, right) = planar_buf_a.split_at_mut(1);
@@ -3357,6 +3476,7 @@ impl Engine {
                         // ミュート中もゲインの反映を完了させる。出力は無音のまま。
                         for _ in 0..frames {
                             rt_output_gain.next();
+                            rt_peak.process([0.0; 2]);
                         }
                         data.fill(0.0);
                         // Zero metering too implies output is silence
@@ -3376,6 +3496,7 @@ impl Engine {
                             let (tone_l, tone_r) = rt_test_tone.sample();
                             let main_l = tone_l * gain;
                             let main_r = tone_r * gain;
+                            let [main_l, main_r] = rt_peak.process([main_l, main_r]);
 
                             if target_l < channels {
                                 let out_idx = i * channels + target_l;
@@ -3414,6 +3535,7 @@ impl Engine {
                             let (main_l, main_r) = rt_voice_check.read_playback_sample();
                             let main_l = main_l * gain;
                             let main_r = main_r * gain;
+                            let [main_l, main_r] = rt_peak.process([main_l, main_r]);
 
                             if target_l < channels {
                                 let out_idx = i * channels + target_l;
@@ -3470,6 +3592,7 @@ impl Engine {
                             let recovery_gain = queue_recovery.next_gain() * upstream_recovery[i];
                             let main_l = main_l * recovery_gain;
                             let main_r = main_r * recovery_gain;
+                            let [main_l, main_r] = rt_peak.process([main_l, main_r]);
 
                             if let Some(sender) = &mut live_sender {
                                 sender.get_mut().send([main_l, main_r]);
@@ -3511,6 +3634,7 @@ impl Engine {
                             output: [out_max_l, out_max_r],
                         });
                     }
+                    rt_peak.report(&peak_shared, 0);
                     // 最終ゲイン・ミュート・試聴を含め、デバイスへ実際に渡す値で測る。
                     // 測定していない間はフィルター・補間・走査を実行しない。
                     if rt_loudness.id.is_some() {
@@ -4302,6 +4426,7 @@ impl Engine {
         self.gain_main_device = None;
         self.gain_shared.settled.store(false, Ordering::Release);
         self.device_manager.clear_active_devices();
+        self.noise_input_identity = None;
         self.noise_learning.cancel_capture();
         let recorded_frames = self
             .voice_check_buffers

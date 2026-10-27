@@ -286,8 +286,8 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
     const candidateRef = useRef<BuiltinCandidate | null>(null);
     const draftRef = useRef(candidateDraft); draftRef.current = candidateDraft;
     const basisRef = useRef(proposalBasis); basisRef.current = proposalBasis;
-    const [candidateMode, setCandidateMode] = useState<'normal' | 'manual' | 'proposal'>(manualCandidate ? 'manual' : 'normal');
-    const candidateExpected = useRef<{ kind: 'manual' | 'proposal'; key: string; recordingId: number; baseRevision: string; builtinEpoch?: string; draftRevision?: number; preferencesRevision?: number; preferences?: ProposalPreferences; ruleVersion?: string; id?: string } | null>(null);
+    const [candidateMode, setCandidateMode] = useState<'normal' | 'manual' | 'proposal' | 'noise'>(manualCandidate ? 'manual' : 'normal');
+    const candidateExpected = useRef<{ kind: 'manual' | 'proposal' | 'noise'; key: string; recordingId: number; baseRevision: string; builtinEpoch?: string; draftRevision?: number; preferencesRevision?: number; preferences?: ProposalPreferences; ruleVersion?: string; id?: string } | null>(null);
     const candidatePreparing = useRef(false);
     const draftKey = candidateDraft ? JSON.stringify(candidateDraft) : '';
     const draftKeyRef = useRef(draftKey); draftKeyRef.current = draftKey;
@@ -306,10 +306,13 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
             clearCandidate();
             return true;
         }
+        if (expected?.kind === 'noise' && (expected.key !== next.noiseBasis || next.recordingStale)) {
+            clearCandidate(); setCandidateMode('normal'); return true;
+        }
         const basis = basisRef.current;
         const currentBasis = expected?.kind === 'proposal'
             ? (!basis || (basis.epoch === expected.builtinEpoch && basis.revision === expected.baseRevision && basis.draftRevision === expected.draftRevision))
-            : expected?.key === draftKeyRef.current;
+            : expected?.kind === 'noise' ? expected.key === next.noiseBasis : expected?.key === draftKeyRef.current;
         const preferenceMatch = !expected?.preferencesRevision || !result?.proposal || (result.proposal.ruleVersion === expected.ruleVersion && result.proposal.preferencesRevision === expected.preferencesRevision && proposalPreferencesEqual(result.proposal.preferences, expected.preferences));
         if (expected?.preferencesRevision && result?.state === 'ready' && (!result.proposal || !preferenceMatch)) {
             clearCandidate(); setPreviewError(notice('proposal.preferencesMismatch')); return false;
@@ -376,6 +379,8 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         }
     }, [accept, closePreview]);
 
+    const noiseMutation = useRef<{ session: VoicePreviewSession; version: number } | null>(null);
+    const conditionEvents = useRef(0);
     const runPreview = useCallback(async (action: VoicePreviewAction) => {
         const session = controller.current;
         if (!session) return false;
@@ -389,10 +394,17 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         const requestSequence = ++sequence.current;
         if (exclusive) { mutating.current = true; setPreviewBusy(true); }
         const expectationAtRequest = candidateExpected.current;
+        const ownNoiseChange = action.action === 'apply_noise' || action.action === 'undo_noise' ? { session, version } : null;
+        if (ownNoiseChange) noiseMutation.current = ownNoiseChange;
         try {
-            const next = await session.send(action);
+            let next = await session.send(action);
+            if (ownNoiseChange && controller.current === session && version === revision.current && !session.closed) {
+                const observed = conditionEvents.current;
+                next = await session.send({ action: 'status' });
+                if (observed !== conditionEvents.current) { await closePreview(); return false; }
+            }
             const accepted = accept(next, session, version, requestSequence);
-            if ((action.action === 'prepare_candidate' || action.action === 'prepare_proposal') && next.candidate && (!accepted || candidateExpected.current !== expectationAtRequest) && !session.closed && candidateExpected.current?.id !== next.candidate.id) {
+            if ((action.action === 'prepare_candidate' || action.action === 'prepare_proposal' || action.action === 'prepare_noise') && next.candidate && (!accepted || candidateExpected.current !== expectationAtRequest) && !session.closed && candidateExpected.current?.id !== next.candidate.id) {
                 void session.send({ action: 'cancel_candidate', candidateId: next.candidate.id }).catch(() => {});
             }
             if (accepted) {
@@ -406,7 +418,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
                     if (action.action === 'stop') setStopUnconfirmed(false);
                 }
             }
-            return true;
+            return action.action === 'prepare_noise' || action.action === 'apply_noise' || action.action === 'undo_noise' ? accepted : true;
         } catch (error) {
             if (alive.current && controller.current === session && version === revision.current) {
                 setPreviewError(notice('voice.copy.128', { arg0: clientErrorNotice(error) }));
@@ -414,6 +426,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
             }
             return false;
         } finally {
+            if (noiseMutation.current === ownNoiseChange) noiseMutation.current = null;
             if (exclusive && controller.current === session && version === revision.current) { mutating.current = false; if (alive.current) setPreviewBusy(false); }
         }
     }, [accept, closePreview]);
@@ -422,6 +435,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         alive.current = true;
         if (!isOpen) return;
         void preparePreview();
+        let listening = true;
         let polling = false;
         const timer = setInterval(() => {
             if (polling || mutating.current || document.hidden || !controller.current?.ready) return;
@@ -431,11 +445,20 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
                 ? { action: 'candidate_status', candidateId: pendingCandidate.id } : { action: 'status' };
             void runPreview(action).finally(() => { polling = false; });
         }, 250);
-        const interrupt = () => { void closePreview(); };
+        const interrupt = () => { if (listening) void closePreview(); };
         const hide = () => { if (document.hidden) interrupt(); };
         document.addEventListener('visibilitychange', hide);
-        const subscriptions = ['audio-stopped', 'audio-stream-error', 'audio-error', 'audio-conditions-changed', 'global-bypass-changed'].map(event => listen(event, interrupt));
+        const conditionChanged = () => {
+            if (!listening) return;
+            conditionEvents.current++;
+            const own = noiseMutation.current;
+            if (own && own.session === controller.current && own.version === revision.current) return;
+            interrupt();
+        };
+        const subscriptions = ['audio-stopped', 'audio-stream-error', 'audio-error', 'global-bypass-changed'].map(event => listen(event, interrupt));
+        subscriptions.push(listen('audio-conditions-changed', conditionChanged));
         return () => {
+            listening = false;
             alive.current = false;
             clearInterval(timer);
             document.removeEventListener('visibilitychange', hide);
@@ -489,6 +512,39 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         candidatePreparing.current = true;
         if (!await runPreview({ action: 'prepare_proposal', recordingId: current.recordingId, builtinEpoch: basis.epoch, expectedRevision: basis.revision, ...preferences, ...(preferences ? {ruleVersion:'singing-rules-v2' as const}: {}) })) candidatePreparing.current = false;
     };
+    const prepareNoise = async (variant: 'current' | 'weaker' | 'stronger') => {
+        const current = snapshotRef.current;
+        if (!current?.recordingId || !current.noiseBasis || current.noisePending || current.recordingStale || !controller.current?.ready || mutating.current || document.hidden) return;
+        if (current.state === 'playing' || current.state === 'stopping') {
+            if (!await runPreview({ action: 'stop' })) return;
+            if (snapshotRef.current?.noiseBasis !== current.noiseBasis) return;
+        }
+        clearCandidate(); setCandidateMode('noise');
+        const expected = { kind: 'noise' as const, key: current.noiseBasis, recordingId: current.recordingId, baseRevision: current.noiseBasis };
+        candidateExpected.current = expected;
+        candidatePreparing.current = true;
+        if (!await runPreview({ action: 'prepare_noise', recordingId: current.recordingId, expectedBasis: current.noiseBasis, variant }) && candidateExpected.current === expected) candidatePreparing.current = false;
+    };
+    const applyNoise = async () => {
+        const candidate = candidateRef.current, current = snapshotRef.current;
+        if (!candidate?.noise || candidate.state !== 'ready' || candidateMode !== 'noise' || !current?.noiseBasis || mutating.current || document.hidden) return;
+        if (current.state === 'playing' || current.state === 'stopping') {
+            if (!await runPreview({ action: 'stop' })) return;
+        }
+        if (await runPreview({ action: 'apply_noise', candidateId: candidate.id, expectedBasis: current.noiseBasis })) {
+            clearCandidate(); setCandidateMode('normal'); window.dispatchEvent(new Event('profile-fx-applied'));
+        }
+    };
+    const undoNoise = async () => {
+        const token = snapshotRef.current?.noiseUndoToken;
+        if (!token || mutating.current || document.hidden) return;
+        if (snapshotRef.current?.state === 'playing' || snapshotRef.current?.state === 'stopping') {
+            if (!await runPreview({ action: 'stop' })) return;
+        }
+        if (await runPreview({ action: 'undo_noise', token })) {
+            clearCandidate(); setCandidateMode('normal'); window.dispatchEvent(new Event('profile-fx-applied'));
+        }
+    };
     const invalidateProposalPreferences = () => {
         const previous = candidateRef.current; const session=controller.current;
         const version = ++revision.current;
@@ -517,7 +573,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         else { optionsRef.current = next; setOptions(next); }
     };
     return {
-        candidate, candidateMode, prepareCandidate, prepareProposal, invalidateProposalPreferences, returnToRecording,
+        prepareNoise, applyNoise, undoNoise, candidate, candidateMode, prepareCandidate, prepareProposal, invalidateProposalPreferences, returnToRecording,
         preview: snapshot, previewDevices: devices, previewDeviceId: deviceId, safeOutput, setSafeOutput,
         previewBusy, previewError: renderNotice(t, previewError), stopUnconfirmed, preparePreview,
         source: options.source, loopPlayback: options.loopPlayback, levelMatch: options.levelMatch,

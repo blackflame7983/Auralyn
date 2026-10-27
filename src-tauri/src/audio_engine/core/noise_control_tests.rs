@@ -15,6 +15,7 @@ fn analysis(speech: bool) -> Analysis {
         speech,
         profile_rms: None,
         learned_mix: 0.6,
+        has_learned_mix: false,
     }
 }
 
@@ -114,6 +115,7 @@ fn original_modes_strength_and_voice_guard_targets_are_preserved() {
         control.begin_block(Analysis {
             speech,
             profile_rms,
+            has_learned_mix: profile_rms.is_some(),
             learned_mix: 0.82,
         });
         assert!((control.frame.wet - expected).abs() < 1e-6);
@@ -295,6 +297,7 @@ fn reset_discards_old_audio_and_controls_and_all_rt_paths_allocate_nothing() {
                         control.begin_block(Analysis {
                             speech: n % 274 == 0,
                             profile_rms: Some(0.01),
+                            has_learned_mix: true,
                             learned_mix: 0.82,
                         });
                     }
@@ -365,6 +368,7 @@ fn learned_gate_is_applied_to_both_corresponding_paths() {
     control.begin_block(Analysis {
         speech: false,
         profile_rms: Some(0.01),
+        has_learned_mix: true,
         learned_mix: 0.82,
     });
     let mut reference = RtNoiseReducer::prepare(48_000).unwrap();
@@ -379,5 +383,35 @@ fn learned_gate_is_applied_to_both_corresponding_paths() {
             let expected = input[n - delay] * 0.224 + wet * 0.776;
             assert!((actual[0] - expected).abs() < 1e-7);
         }
+    }
+}
+
+#[test]
+fn invalid_environment_does_not_strengthen_or_discard_an_explicitly_accepted_mix() {
+    let mut control = RtNoiseControl::prepare(
+        48_000,
+        Settings {
+            mode: NoiseControlMode::Smart,
+            strength: 1.0,
+            ..settings(true)
+        },
+    )
+    .unwrap();
+    for mix in [0.55, 0.68, 0.82, 0.92] {
+        control.begin_block(Analysis {
+            speech: false,
+            profile_rms: Some(0.01),
+            learned_mix: mix,
+            has_learned_mix: true,
+        });
+        let before = control.frame.wet;
+        control.begin_block(Analysis {
+            speech: false,
+            profile_rms: None,
+            learned_mix: mix,
+            has_learned_mix: true,
+        });
+        assert_eq!(control.frame.wet, before);
+        assert!(control.gate_threshold.is_none());
     }
 }
