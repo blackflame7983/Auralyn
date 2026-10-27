@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
 import { confirmationState, nextPreparationStage, type PreparationStage, type PreparationUse } from '@/lib/preparation';
@@ -8,12 +8,12 @@ import { renderNotice } from '../AudioSettings/settingsNotice';
 
 interface Props {
     model: PreparationModel; onSettings: () => void; onSound: () => void; onListen: () => void;
-    onObs: () => void; onCall: () => void; onTroubleshoot: () => void; audioReady: boolean;
+    onObs: () => void; onCall: () => void; onTroubleshoot: () => void; audioReady: boolean; signalSummary?: ReactNode;
 }
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
-export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, audioReady }: Props) {
+export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, audioReady, signalSummary }: Props) {
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
@@ -37,6 +37,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
             <h2 className="text-sm font-bold">{t('prep.title')}</h2>
             <span role="status" className="text-sm text-muted-foreground">{t(checking ? 'prep.checking' : next === 'done' ? 'prep.sessionChecked' : 'prep.next')}</span>
         </div>
+        {signalSummary}
         {context.location === 'venue' && <p className="text-xs text-warning">{t('prep.venueWarning')}</p>}
         {context.signal === 'mixed' && <p className="text-xs text-muted-foreground">{t('prep.mixedWarning')}</p>}
         {next !== 'done' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && next !== 'purpose' && !audioReady)} onClick={action}

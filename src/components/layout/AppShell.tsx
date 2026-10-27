@@ -42,6 +42,7 @@ interface AppShellProps {
 import { MasterBar } from './MasterBar';
 import { MeterProvider } from '../features/LevelMeter/MeterContext';
 import type { EngineRuntimeStats } from '@/api/audio';
+import { RuntimeStatsContext } from './RuntimeStatsContext';
 
 export const AppShell: React.FC<AppShellProps> = ({
     children,
@@ -113,7 +114,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     }, []);
 
     return (
-        <MeterProvider running={isEngineRunning}><div ref={shellRef} className="min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300">
+        <MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef} className="min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300">
             {/* Ambient Animated Glows - Visible mainly in Dark Mode */}
             <div className="fixed inset-0 pointer-events-none z-0 opacity-0 dark:opacity-100 transition-opacity duration-500">
                 <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-brand-secondary/5 blur-[130px] rounded-full mix-blend-screen animate-[pulse_8s_ease-in-out_infinite]" />
@@ -247,6 +248,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                     </div>
                 </footer>
             </div>
-        </div></MeterProvider>
+        </div></RuntimeStatsContext.Provider></MeterProvider>
     );
 };
