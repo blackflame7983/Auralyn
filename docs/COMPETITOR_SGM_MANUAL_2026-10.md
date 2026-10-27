@@ -1,6 +1,6 @@
 # Stream Gear Mixer説明書の追加照合
 
-確認日：2026-10-27。[競合比較と改善順序](COMPETITOR_STRATEGY_2026-10.md)への追加資料。Auralyn側の基準は同書と同じ `e71a1d3fa175614fa5109475da89d0a2ff9a5522`。
+確認日：2026-10-27。[競合比較と改善順序](COMPETITOR_STRATEGY_2026-10.md)への追加資料。Auralyn側の基準は同書と同じ `e71a1d3fa175614fa5109475da89d0a2ff9a5522`。画面の作り・音楽鑑賞・再生音の取り込みに関する説明書の記載は[競合比較の補遺](COMPETITOR_SGM_2026-10.md)に記録する。
 
 ## 資料と確認範囲
 
