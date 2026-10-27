@@ -3,6 +3,9 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { audioApi, type RackPlugin, type SessionRackRequest, type SessionRackReply } from '../../api/audio';
 import { usePlugins } from '../usePlugins';
+import { invoke } from '@tauri-apps/api/core';
+import { acknowledgeSessionStart, initializeTemporarySession } from '../../lib/temporarySession';
+import { REVIEW_KEY } from '../../api/migration';
 import { PLUGIN_SESSION_KEY as KEY, PLUGIN_SESSION_BACKUP_KEY as BACKUP, PLUGIN_SESSION_PROTECTED_KEY as PROTECTED } from '../usePluginSessionPersistence';
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn() } }));
 const saved = JSON.stringify([{ path: 'same', name: 'Saved A', enabled: false, muted: true, gain: .3, state: 'opaque-a' },
@@ -25,7 +28,9 @@ async function backend(request: SessionRackRequest): Promise<SessionRackReply> {
     rack.push({ id: plugin.id, name: plugin.name, path: request.request.path, enabled: !request.request.bypassed, muted: request.request.muted, gain: request.request.gain });
     return { status: 'restored', plugin };
 }
-beforeEach(() => {
+beforeEach(async () => {
+    vi.mocked(invoke).mockResolvedValue({ temporary: false, reviewOnly: false, directory: null });
+    await initializeTemporarySession();
     vi.useFakeTimers(); localStorage.clear(); localStorage.setItem(KEY, saved); localStorage.setItem(BACKUP, 'immutable-backup');
     rack = []; eligible = true; generation = 'engine-1'; lease = undefined; sequence = 0;
     vi.spyOn(audioApi, 'sessionRack').mockImplementation(backend);
@@ -37,6 +42,110 @@ beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); localStorage.clear(); });
+async function requireSessionReview() {
+    vi.mocked(invoke).mockResolvedValue({ temporary: false, reviewOnly: true, directory: null });
+    await initializeTemporarySession();
+    eligible = false; // 通常設定へ戻ったHostは自動復元を禁止している。
+}
+
+it('通常設定への復帰後、明示開始の確認で保存済みVSTを復元して保存保護を解除する', async () => {
+    await requireSessionReview();
+    const { result } = renderHook(() => usePlugins()); await flush();
+    expect(rack).toEqual([]); expect(result.current.sessionPersistenceProtected).toBe(true);
+    await act(async () => { await acknowledgeSessionStart(); });
+    expect(invoke).toHaveBeenCalledWith('acknowledge_session_review');
+    expect(rack).toHaveLength(2); expect(result.current.sessionRestoreStatus).toBe('success');
+    expect(result.current.sessionPersistenceProtected).toBe(false); expect(localStorage.getItem(PROTECTED)).toBeNull();
+    expect(localStorage.getItem(BACKUP)).toBe('immutable-backup');
+    const save = strictSave(); await flush(); expect(save.resolve).toHaveBeenCalledOnce(); expect(save.reject).not.toHaveBeenCalled();
+});
+
+it.each([null, '[]'])('保存原文%sの空セッションも明示開始後に保存可能になる', async raw => {
+    await requireSessionReview();
+    if (raw === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, raw);
+    const { result } = renderHook(() => usePlugins()); await flush();
+    await act(async () => { await acknowledgeSessionStart(); });
+    expect(result.current.sessionRestoreStatus).toBe('success'); expect(result.current.sessionPersistenceProtected).toBe(false);
+    await act(async () => {
+        window.dispatchEvent(new Event('session-review-completed'));
+        window.dispatchEvent(new Event('migration-review-completed'));
+    });
+    expect(result.current.sessionPersistenceProtected).toBe(false);
+    expect(localStorage.getItem(PROTECTED)).toBeNull();
+    expect(vi.mocked(audioApi.sessionRack).mock.calls.filter(([r]) => r.action === 'retain')).toHaveLength(1);
+    const save = strictSave(); await flush();
+    expect(save.resolve).toHaveBeenCalledOnce(); expect(save.reject).not.toHaveBeenCalled(); expect(localStorage.getItem(KEY)).toBe('[]');
+});
+
+it('開始確認と移行確認は両方完了するまで復元せず、重複通知でも一度だけ復元する', async () => {
+    await requireSessionReview(); localStorage.setItem(REVIEW_KEY, 'true');
+    const { result } = renderHook(() => usePlugins()); await flush();
+    await act(async () => { await acknowledgeSessionStart(); });
+    expect(rack).toEqual([]); expect(result.current.sessionPersistenceProtected).toBe(true);
+    await act(async () => {
+        localStorage.removeItem(REVIEW_KEY);
+        window.dispatchEvent(new Event('migration-review-completed'));
+        window.dispatchEvent(new Event('session-review-completed'));
+    });
+    await act(async () => { window.dispatchEvent(new Event('migration-review-completed')); });
+    expect(rack).toHaveLength(2); expect(result.current.sessionPersistenceProtected).toBe(false);
+    expect(vi.mocked(audioApi.sessionRack).mock.calls.filter(([r]) => r.action === 'begin')).toHaveLength(1);
+    expect(vi.mocked(audioApi.sessionRack).mock.calls.filter(([r]) => r.action === 'add')).toHaveLength(2);
+});
+
+it('初回snapshot待ちの開始完了通知を失わず、待機後に一度だけ復元する', async () => {
+    await requireSessionReview();
+    let finish!: (value: SessionRackReply) => void;
+    vi.mocked(audioApi.sessionRack).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    const { result } = renderHook(() => usePlugins());
+    await act(async () => { await acknowledgeSessionStart(); });
+    expect(audioApi.sessionRack).toHaveBeenCalledTimes(1);
+    await act(async () => finish(snapshot()));
+    expect(rack).toHaveLength(2); expect(result.current.sessionPersistenceProtected).toBe(false);
+    expect(vi.mocked(audioApi.sessionRack).mock.calls.filter(([r]) => r.action === 'begin')).toHaveLength(1);
+});
+
+it('開始確認失敗ではVSTを復元せず保存保護を維持する', async () => {
+    await requireSessionReview();
+    const { result } = renderHook(() => usePlugins()); await flush();
+    vi.mocked(invoke).mockRejectedValueOnce(new Error('開始状態を確認できません'));
+    await act(async () => { await expect(acknowledgeSessionStart()).rejects.toThrow('開始状態を確認できません'); });
+    expect(rack).toEqual([]); expect(result.current.sessionPersistenceProtected).toBe(true);
+    const save = strictSave(); await flush(); expect(save.reject).toHaveBeenCalledOnce(); expect(localStorage.getItem(KEY)).toBe(saved);
+});
+
+it.each(['reset', 'stopped', 'unmount'])('初回snapshot待ちの通知予約後、%sで取消された復元を再開しない', async cancellation => {
+    await requireSessionReview();
+    let finish!: (value: SessionRackReply) => void;
+    vi.mocked(audioApi.sessionRack).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    const hook = renderHook(() => usePlugins());
+    await act(async () => { await acknowledgeSessionStart(); });
+    if (cancellation === 'unmount') hook.unmount();
+    else if (cancellation === 'reset') act(() => hook.result.current.resetPlugins());
+    else {
+        vi.spyOn(audioApi, 'getAudioState').mockResolvedValue({ is_running: false, config: null });
+        await act(async () => { await hook.result.current.keepSessionStopped(); });
+    }
+    await act(async () => finish(snapshot()));
+    expect(rack).toEqual([]); expect(hook.result.current.sessionPersistenceProtected).toBe(true);
+    expect(vi.mocked(audioApi.sessionRack).mock.calls.every(([r]) => r.action === 'snapshot')).toBe(true);
+    expect(audioApi.start).not.toHaveBeenCalled(); expect(localStorage.getItem(KEY)).toBe(saved);
+});
+
+it('自動復元可能な初回snapshot待ちでも移行完了通知で二度復元して保存保護へ戻さない', async () => {
+    localStorage.setItem(REVIEW_KEY, 'true');
+    let finish!: (value: SessionRackReply) => void;
+    vi.mocked(audioApi.sessionRack).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    const { result } = renderHook(() => usePlugins());
+    await act(async () => {
+        localStorage.removeItem(REVIEW_KEY);
+        window.dispatchEvent(new Event('migration-review-completed'));
+        finish(snapshot());
+    });
+    expect(rack).toHaveLength(2); expect(result.current.sessionRestoreStatus).toBe('success');
+    expect(result.current.sessionPersistenceProtected).toBe(false);
+    expect(vi.mocked(audioApi.sessionRack).mock.calls.filter(([r]) => r.action === 'begin')).toHaveLength(1);
+});
 function strictSave() {
     const reject = vi.fn(), resolve = vi.fn();
     act(() => window.dispatchEvent(new CustomEvent('auralyn-save-session', { detail: { reject, resolve } })));
