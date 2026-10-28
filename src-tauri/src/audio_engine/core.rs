@@ -279,6 +279,7 @@ pub struct Engine {
     output_gain_initialized: bool,
     gain_session: Option<GainSession>,
     gain_history: Option<auto_gain::History>,
+    gain_history_reason: super::history::Reason,
     gain_preview: Option<auto_gain_preview::Preview>,
     gain_main_device: Option<String>,
     stream_failed: Arc<AtomicBool>,
@@ -341,6 +342,7 @@ pub struct Engine {
     noise_learning: Arc<NoiseLearningShared>,
     noise_measurement: noise_learning::Controller,
     noise_undo: Option<noise_comparison::Undo>,
+    noise_history_reason: super::history::Reason,
     noise_command_revision: u64,
     noise_applied_revision: Arc<AtomicU64>,
     noise_input_identity: Option<String>,
@@ -396,6 +398,7 @@ impl Engine {
             output_gain_initialized: false,
             gain_session: None,
             gain_history: None,
+            gain_history_reason: Default::default(),
             gain_preview: None,
             gain_main_device: None,
             stream_failed: Arc::new(AtomicBool::new(false)),
@@ -441,6 +444,7 @@ impl Engine {
             noise_learning: Arc::new(NoiseLearningShared::new()),
             noise_measurement: noise_learning::Controller::default(),
             noise_undo: None,
+            noise_history_reason: Default::default(),
             noise_command_revision: 0,
             noise_applied_revision: Arc::new(AtomicU64::new(0)),
             noise_input_identity: None,
@@ -836,6 +840,7 @@ impl Engine {
             noise_basis,
             noise_undo_token: self.noise_undo_token(),
             noise_redo_token: self.noise_redo_token(),
+            noise_history_reason: self.noise_history_reason(),
             noise_pending: self.noise_applied_revision.load(Ordering::Acquire)
                 != self.noise_command_revision
                 || !self.pending_audio_msgs.is_empty()
@@ -862,7 +867,8 @@ impl Engine {
         use super::builtin::Request;
         let failed = self.output_stream.is_some() && self.stream_failed.load(Ordering::Acquire);
         if failed {
-            self.builtin.invalidate_history();
+            self.builtin
+                .invalidate_history_with_reason(super::history::Reason::StreamFailed);
             if !matches!(request, Request::Snapshot) {
                 return Err("音声処理が停止したため設定を確認してください".into());
             }
@@ -1033,6 +1039,13 @@ impl Engine {
                 | Command::SetInputGain { .. }
                 | Command::SetInputChannels { .. }
         ) {
+            self.invalidate_noise_history(
+                if matches!(&cmd, Command::Start { .. } | Command::Stop) {
+                    super::history::Reason::StreamChanged
+                } else {
+                    super::history::Reason::InputChanged
+                },
+            );
             self.noise_input_revision = self.noise_input_revision.saturating_add(1);
             self.invalidate_noise_measurement("inputChanged");
         }
@@ -1116,7 +1129,13 @@ impl Engine {
                     request: super::builtin::Request::Snapshot
                 }
         ) {
-            self.invalidate_auto_gain();
+            self.invalidate_auto_gain_with_reason(match &cmd {
+                Command::Start { .. } | Command::Stop => super::history::Reason::StreamChanged,
+                Command::SetInputGain { .. } | Command::SetInputChannels { .. } => {
+                    super::history::Reason::InputChanged
+                }
+                _ => super::history::Reason::ConditionsChanged,
+            });
         }
         if self.peak_config.enabled
             && matches!(
@@ -1529,7 +1548,8 @@ impl Engine {
                 self.send_response(Response::Success);
             }
             Command::SetInputGain { value } => {
-                self.builtin.invalidate_history();
+                self.builtin
+                    .invalidate_history_with_reason(super::history::Reason::InputChanged);
                 self.voice_input_gain = value;
                 self.queue_audio_msg(AudioThreadMessage::SetInputGain(value));
                 self.send_response(Response::Success);
@@ -1547,7 +1567,10 @@ impl Engine {
                     self.noise_voice_guard,
                     rate,
                 ) {
-                    Ok(()) => self.send_response(Response::Success),
+                    Ok(()) => {
+                        self.invalidate_noise_history(super::history::Reason::SettingsChanged);
+                        self.send_response(Response::Success);
+                    }
                     Err(error) => self.send_error(error.into()),
                 }
             }
@@ -1591,7 +1614,10 @@ impl Engine {
                     .map(|_| self.current_sample_rate as u32);
                 match self.apply_noise_intent(active, normalized_mode, strength, voice_guard, rate)
                 {
-                    Ok(()) => self.send_response(Response::Success),
+                    Ok(()) => {
+                        self.invalidate_noise_history(super::history::Reason::SettingsChanged);
+                        self.send_response(Response::Success);
+                    }
                     Err(error) => self.send_error(error.into()),
                 }
             }
@@ -1636,7 +1662,8 @@ impl Engine {
                     [left, right],
                     self.current_channels,
                 );
-                self.builtin.invalidate_history();
+                self.builtin
+                    .invalidate_history_with_reason(super::history::Reason::InputChanged);
                 self.input_channel_l = left;
                 self.input_channel_r = right;
                 self.queue_audio_msg(AudioThreadMessage::SetInputChannels(left, right));
@@ -1666,7 +1693,7 @@ impl Engine {
                     self.send_error("録音IDが上限です。音声エンジンを開き直してください".into());
                     return;
                 };
-                self.noise_undo = None;
+                self.invalidate_noise_history(super::history::Reason::NewMeasurement);
                 self.voice_recording_id = recording_id;
                 self.voice_metadata = Some(voice_preview::Metadata {
                     recording_id,
@@ -2177,7 +2204,8 @@ impl Engine {
         device_ids: (Option<String>, Option<String>),
         policy: lifecycle::StartupPolicy,
     ) -> Result<()> {
-        self.builtin.invalidate_history();
+        self.builtin
+            .invalidate_history_with_reason(super::history::Reason::StreamChanged);
         if self.output_stream.is_some() || self.input_stream.is_some() {
             self.stop_audio();
         }
@@ -4483,14 +4511,19 @@ impl Engine {
 
     // 開始失敗・通常停止・終了で同じ回収順を使う。stream終了後にVSTを解放する。
     fn clear_audio_resources(&mut self) {
-        self.noise_undo = None;
-        self.builtin.invalidate_history();
+        let reason = if self.stream_failed.load(Ordering::Acquire) {
+            super::history::Reason::StreamFailed
+        } else {
+            super::history::Reason::StreamChanged
+        };
+        self.invalidate_noise_history(reason);
+        self.builtin.invalidate_history_with_reason(reason);
         self.live_modes.stop();
         if self.pending_restore.take().is_some() {
             self.send_error("音声条件が変わったためVST復元を中断しました".into());
         }
         self.voice_preview.interrupt(true);
-        self.invalidate_auto_gain();
+        self.invalidate_auto_gain_with_reason(reason);
         if let Some(sink) = &self.live_output {
             sink.deactivate();
         }

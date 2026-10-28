@@ -6,6 +6,8 @@ import { builtinApi } from '@/api/builtinEffects';
 import { readOutputGainStatus } from '@/api/outputGain';
 import { voicePreviewApi } from '@/api/voiceCheckPreview';
 import { AdjustmentHistoryPanel } from '../AdjustmentHistoryPanel';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 
 const builtin = {epoch: 'one', revision: '2', appliedRevision: '2', config: {active: true, preset: 'warm', amount: 0.5, singing: null}, pending: false, undoToken: 'undo', redoToken: null, error: null} as const;
 beforeEach(() => {
@@ -17,6 +19,72 @@ beforeEach(() => {
 });
 import * as readOutputGainStatusModule from '@/api/outputGain';
 afterEach(() => {cleanup(); vi.restoreAllMocks();});
+
+it('未作成・対象編集・新測定の理由を対象別に示し、原因から操作権限を作らない', async () => {
+    vi.mocked(builtinApi.request).mockResolvedValue({...builtin, undoToken: null, historyReason: 'settings_changed'});
+    vi.mocked(voicePreviewApi.request).mockResolvedValue({noiseHistoryReason: 'not_created', noisePending: false} as any);
+    vi.mocked(readOutputGainStatusModule.readOutputGainStatus).mockResolvedValue({historyReason: 'new_measurement', settled: false} as any);
+    render(<AdjustmentHistoryPanel />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', {name: '履歴の状態を確認'}));
+    await waitFor(() => expect(screen.getByText('対象の設定が編集されたため、履歴が失効しました')).toBeInTheDocument());
+    expect(screen.getByText('このエンジンでは履歴がまだありません')).toBeInTheDocument();
+    expect(screen.getByText('新しい測定・録音を始めたため、前の履歴が失効しました')).toBeInTheDocument();
+    for (const button of screen.getAllByRole('button', {name: /適用前へ戻す|変更後を再適用/})) expect(button).toBeDisabled();
+});
+
+it.each([
+    ['input_changed', 'input conditions changed'],
+    ['learning_changed', 'noise measurement or learning conditions changed'],
+    ['stream_changed', 'audio was started or stopped'],
+    ['stream_failed', 'audio processing failed'],
+    ['conditions_changed', 'related audio conditions changed'],
+])('英語でも%sの根拠を表示する', async (reason, expected) => {
+    vi.mocked(builtinApi.request).mockResolvedValue({...builtin, undoToken: null, historyReason: reason as any});
+    const store = createLocaleStore(() => 'en', () => true);
+    render(<LocaleProvider store={store}><AdjustmentHistoryPanel /></LocaleProvider>);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', {name: 'Check history status'}));
+    await waitFor(() => expect(screen.getByText(new RegExp(expected))).toBeInTheDocument());
+});
+
+it.each([undefined, 'future_reason'])('理由コード%sを未作成や設定変更と推測しない', async reason => {
+    vi.mocked(builtinApi.request).mockResolvedValue({...builtin, undoToken: null, historyReason: reason as any});
+    render(<AdjustmentHistoryPanel />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', {name: '履歴の状態を確認'}));
+    await waitFor(() => expect(screen.getByText('履歴の有無・失効理由を確認できません。状態を取得し直してください')).toBeInTheDocument());
+    expect(screen.queryByText('このエンジンでは履歴がまだありません')).not.toBeInTheDocument();
+});
+
+it('取得失敗では直前の原因を表示し続けず、再確認で新しい理由へ更新する', async () => {
+    vi.mocked(builtinApi.request).mockResolvedValue({...builtin, undoToken: null, historyReason: 'input_changed'});
+    render(<AdjustmentHistoryPanel />);
+    await act(async () => {});
+    const check = screen.getByRole('button', {name: '履歴の状態を確認'});
+    fireEvent.click(check);
+    await waitFor(() => expect(screen.getByText(/入力機器・チャンネル・入力ゲインなどの条件変更/)).toBeInTheDocument());
+    vi.mocked(builtinApi.request).mockRejectedValueOnce(new Error('unavailable'));
+    fireEvent.click(check);
+    await waitFor(() => expect(screen.getAllByText('履歴の状態を取得できません。再確認してください')).toHaveLength(3));
+    expect(screen.queryByText(/入力機器・チャンネル・入力ゲインなどの条件変更/)).not.toBeInTheDocument();
+    vi.mocked(builtinApi.request).mockResolvedValue({...builtin, undoToken: null, historyReason: 'not_created'});
+    fireEvent.click(check);
+    await waitFor(() => expect(screen.getByText('このエンジンでは履歴がまだありません')).toBeInTheDocument());
+});
+
+it('停止中も理由を読み取るが、履歴取得から音声を開始しない', async () => {
+    const start = vi.spyOn(audioApi, 'start');
+    vi.mocked(audioApi.getAudioStreamState).mockResolvedValue({running: false, streamFailed: false});
+    vi.mocked(builtinApi.request).mockResolvedValue({...builtin, historyReason: 'stream_changed'});
+    render(<AdjustmentHistoryPanel />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', {name: '履歴の状態を確認'}));
+    await waitFor(() => expect(screen.getByText('音声の開始・停止やストリーム条件の変更で、履歴が失効しました')).toBeInTheDocument());
+    expect(screen.getByText('音声は停止中です。Undo／Redoは実行しません')).toBeInTheDocument();
+    expect(start).not.toHaveBeenCalled();
+    for (const button of screen.getAllByRole('button', {name: '適用前へ戻す'})) expect(button).toBeDisabled();
+});
 it('表示だけでは状態取得や設定変更をせず、明示取得で方向を表示する', async () => {
     const open = vi.fn(); render(<AdjustmentHistoryPanel onVoiceCheck={open} />);
     await act(async () => {});

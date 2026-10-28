@@ -1,5 +1,6 @@
 import { FixedClientError } from '@/lib/clientError';
 import { invoke } from '@tauri-apps/api/core';
+import type { HistoryReason } from './history';
 import type { BuiltinConfig } from './builtinEffects';
 import type { VoiceCheckSource } from './audio';
 
@@ -43,6 +44,7 @@ export interface VoiceProposal {
     reasons: ProposalMessage[]; limitations: ProposalMessage[];
 }
 export interface VoicePreviewSnapshot extends VoicePreviewOptions {
+    noiseHistoryReason?: HistoryReason | null;
     noiseBasis?: string; noiseUndoToken?: string | null; noiseRedoToken?: string | null; noiseSettings?: NoiseCandidateConfig | null; noisePending?: boolean;
     candidate?: BuiltinCandidate | null;
     epoch: string; sessionId: number; operationId: number; recordingId: number | null;

@@ -243,6 +243,8 @@ pub struct Snapshot {
     pub devices: Vec<PreviewDevice>,
     pub history_id: Option<u64>,
     pub history_epoch: Option<String>,
+    #[serde(default)]
+    pub history_reason: Option<super::history::Reason>,
     pub undo_available: bool,
     pub redo_available: bool,
 }

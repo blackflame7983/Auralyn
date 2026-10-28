@@ -51,7 +51,7 @@ it('復旧予約中の言語切替はtimerと購読を増やさず、raw Stream 
     const {store, wrapper} = language(); renderHook(() => useAudioRecovery(), {wrapper}); await act(async () => {});
     notify('audio-stream-error', 'Input Stream Error: actual device'); const subscriptions = vi.mocked(listen).mock.calls.length;
     act(() => {store.setLocale('en');}); await act(() => vi.advanceTimersByTimeAsync(2000));
-    expect(listen).toHaveBeenCalledTimes(subscriptions); expect(start).toHaveBeenCalledExactlyOnceWith('ASIO', 'actual mic', 'actual out', 512, 48000);
+    expect(listen).toHaveBeenCalledTimes(subscriptions); expect(start).toHaveBeenCalledExactlyOnceWith('ASIO', 'actual mic', 'actual out', 512, 48000, undefined, undefined);
     expect(audioApi.setInputChannels).toHaveBeenCalledExactlyOnceWith(4, 5); expect(toast.success).toHaveBeenCalledWith('Audio engine reconnected');
 });
 it('drop購読と一度だけのtray通知を言語で作り直さず、実名/payload/エラーidentityを維持する', async () => {

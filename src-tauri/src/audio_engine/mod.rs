@@ -16,6 +16,7 @@ pub mod loudness;
 pub mod auto_gain;
 mod auto_gain_preview;
 pub mod builtin;
+pub mod history;
 pub(crate) mod restoration;
 pub mod singing;
 

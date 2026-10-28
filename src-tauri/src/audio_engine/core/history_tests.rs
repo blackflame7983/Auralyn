@@ -1,6 +1,62 @@
 //! 履歴を録音やストリームの寿命と分ける回帰検査。実機streamは起動しない。
 use super::*;
 
+#[test]
+fn gain_history_reports_original_invalidation_cause_and_fresh_engine_is_not_created() {
+    use crate::audio_engine::history::Reason;
+    let mut fresh = Engine::new();
+    assert_eq!(
+        fresh
+            .auto_gain_command(auto_gain::Request::Status)
+            .unwrap()
+            .history_reason,
+        Some(Reason::NotCreated)
+    );
+    let mut engine = engine_with_history();
+    assert_eq!(
+        engine
+            .auto_gain_command(auto_gain::Request::Status)
+            .unwrap()
+            .history_reason,
+        None
+    );
+    engine.request_output_gain(0.8).unwrap(); // 同じ値でも手動編集は別操作。
+    assert_eq!(
+        engine
+            .auto_gain_command(auto_gain::Request::Status)
+            .unwrap()
+            .history_reason,
+        Some(Reason::SettingsChanged)
+    );
+    engine.clear_audio_resources();
+    assert_eq!(
+        engine
+            .auto_gain_command(auto_gain::Request::Status)
+            .unwrap()
+            .history_reason,
+        Some(Reason::SettingsChanged)
+    );
+    let mut stopped = engine_with_history();
+    stopped.clear_audio_resources();
+    assert_eq!(
+        stopped
+            .auto_gain_command(auto_gain::Request::Status)
+            .unwrap()
+            .history_reason,
+        Some(Reason::StreamChanged)
+    );
+    let mut failed = engine_with_history();
+    failed.stream_failed.store(true, Ordering::Release);
+    failed.clear_audio_resources();
+    assert_eq!(
+        failed
+            .auto_gain_command(auto_gain::Request::Status)
+            .unwrap()
+            .history_reason,
+        Some(Reason::StreamFailed)
+    );
+}
+
 fn engine_with_history() -> Engine {
     let mut engine = Engine::new();
     engine.gain_revision = 41;

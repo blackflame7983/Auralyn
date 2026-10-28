@@ -1580,6 +1580,7 @@ impl AudioHost {
                 devices: Vec::new(),
                 history_id: None,
                 history_epoch: None,
+                history_reason: Some(crate::audio_engine::history::Reason::NotCreated),
                 undo_available: false,
                 redo_available: false,
             });
@@ -3116,6 +3117,7 @@ mod config_storage_tests {
                         devices: Vec::new(),
                         history_id: None,
                         history_epoch: None,
+                        history_reason: Some(crate::audio_engine::history::Reason::NotCreated),
                         undo_available: false,
                         redo_available: false,
                     }),

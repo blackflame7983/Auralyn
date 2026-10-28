@@ -168,6 +168,8 @@ pub struct Snapshot {
     #[serde(default)]
     pub noise_redo_token: Option<String>,
     #[serde(default)]
+    pub noise_history_reason: Option<crate::audio_engine::history::Reason>,
+    #[serde(default)]
     pub noise_settings: Option<crate::audio_engine::noise_candidate::Config>,
     #[serde(default)]
     pub noise_pending: bool,
@@ -199,6 +201,7 @@ pub(in crate::audio_engine) struct Context {
     pub noise_basis: String,
     pub noise_undo_token: Option<String>,
     pub noise_redo_token: Option<String>,
+    pub noise_history_reason: Option<crate::audio_engine::history::Reason>,
     pub noise_pending: bool,
     pub builtin_revision: String,
     pub builtin_epoch: String,
@@ -894,6 +897,7 @@ impl Controller {
             noise_pending: context.noise_pending,
             noise_undo_token: context.noise_undo_token.clone(),
             noise_redo_token: context.noise_redo_token.clone(),
+            noise_history_reason: context.noise_history_reason,
             candidate: self.candidate.snapshot.clone(),
             epoch: self.sessions.epoch.clone(),
             session_id: request.session_id,
@@ -1324,6 +1328,7 @@ pub(in crate::audio_engine) mod tests {
             noise_basis: "noise-fixture".into(),
             noise_undo_token: None,
             noise_redo_token: None,
+            noise_history_reason: Some(crate::audio_engine::history::Reason::NotCreated),
             noise_pending: false,
             builtin_revision: "1".into(),
             builtin_epoch: "builtin-test".into(),
