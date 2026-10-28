@@ -1,6 +1,56 @@
 # テスト計画書 (Verification Plan)
 
-本アプリケーションの品質、安定性、および使いやすさを確認するための手動テスト項目です。
+本アプリケーションの品質、安定性、および使いやすさを確認するための自動・手動テストの手順です。
+
+## 自動テストの層と実行方法
+
+| 層 | 目的 | 実行 |
+| --- | --- | --- |
+| 単体（Node / Rust） | 計算・変換・バリデーション・IPC引数・状態遷移 | `npm run test:unit`、下記Rust検証 |
+| DOM / コンポーネント（jsdom） | UI操作・表示・操作禁止・非同期応答。Storageやwindowイベントを使うロジックも含む | `npm run test:dom` |
+| 実ブラウザ（IPCモック） | CSS・実際のスクロール・重なり・hit test・キーボード操作 | `npm run test:e2e` |
+| 実Tauri / 実sidecar（IPCモックなし） | UIからRustへの保存、Host終了・再起動後の復元、実エンジン応答と画面反映 | `npm run test:e2e:native` |
+
+`npm test -- --run --maxWorkers=4` はNodeとjsdomの両方を実行する。
+Node対象は `vitest.config.ts` に明示し、DOM・Storageを使うテストへブラウザの偽物を足してNode化しない。
+単純なReact setterの確認を増やさず、アプリ固有の設定タブ選択などの契約を検証する。
+ロジックの境界値と、その結果を受けた画面の反応は異なる責務なので両方を維持する。
+
+初回は `npm ci` と `npx playwright install chromium` を実行する。
+実ブラウザ試験は専用ポート1427のViteを起動し、既存サーバーを流用しない。
+900×600のライト・ダーク・ゲーミング、1024×768の200%ページ拡大で、初回画面・設定・ライセンスの操作とフォーカス復帰を検証する。
+200%ページ拡大はWindowsの実DPI変更とは別の検証である。
+未定義IPCとブラウザの実行時例外は失敗にし、モックの既定成功で隠さない。
+失敗時のtraceはignoredの `test-results/` に出力する。
+
+実Tauri試験はWindows 11 x64、Rust・C++ Build Tools・ASIO SDKを含む通常の開発環境が必要。
+実行スクリプトが現行ソースからHost・engine・scannerをビルドし、同じビルドの3実行ファイルを専用領域へコピーする。
+Tauriの追加設定で識別子・全アプリ保存先・WebView2を一時領域へ分離し、明示開始待ちで起動する。
+言語選択を実UIから保存し、Rustの保存ファイルとHostの再起動後の復元を検証する。
+診断の更新も実エンジン応答と照合し、存在しないコマンドが拒否されることを確認する。
+IPCの置換や音声ストリームの開始は行わない。通常アプリのcapability・設定・OBS設定は変更しない。
+終了用capabilityはE2Eの追加設定だけに付ける。
+調査用の隔離領域はコンソールに表示して保持する。任意の `CARGO_TARGET_DIR` を指定できる。
+ブラウザ用と実Tauri用は同じ専用Viteポートを使うため、同時には実行しない。
+
+### 実sidecarのプロセス境界と実機試験
+
+`src-tauri` で `cargo test --locked --test integration_test --test repro_ott` を実行すると、
+現行Cargo成果物のsidecarへ実IPCで要求し、未対応hostの拒否、空ラックの順序変更、停止、stdin EOF後の正常終了を確認する。
+応答欠落・想定外応答・エラーイベント・強制終了が必要な状態は失敗にする。失敗時も起動した子プロセスを回収する。
+実機録音とOTTエディタのテストは理由付きignoreとし、通常の自動テスト成功へ含めない。
+
+以下は入出力デバイス／VST GUIを実際に使うため、その確認を行うときだけ明示実行する。
+
+```powershell
+# 既定WASAPI入出力で録音。開始・停止・readyと正の録音時間・正常終了を必須にする。
+cargo test --locked --test integration_test audio_engine_hardware_recording_lifecycle -- --ignored
+# インストール済みOTTを音声開始なしで読込・GUI表示・閉じる／アンロードする。
+cargo test --locked --test repro_ott -- --ignored
+```
+
+OTTがない、デバイスを開けない、録音できない、エディタが開けない場合は成功へ読み替えない。
+GUI応答の成功だけでは描画欠け・DPI・聴感・OBSへの到達を保証しない。以下の実機手順と分けて記録する。
 
 ## 現行の検証手順（2026-10-15 改訂）
 

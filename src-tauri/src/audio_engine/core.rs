@@ -245,6 +245,7 @@ struct LoopbackProbeOutcome {
 #[derive(Debug)]
 pub enum UserEvent {
     Command(Command),
+    Shutdown,
     Timer,
 }
 
@@ -509,6 +510,8 @@ impl Engine {
                     Err(_) => break,
                 }
             }
+            // Hostがpipeを閉じた後も常駐しない。音声・GUIの破棄は制御スレッドで行う。
+            let _ = proxy.send_event(UserEvent::Shutdown);
         });
 
         // Log startup
@@ -542,6 +545,10 @@ impl Engine {
             match event {
                 Event::UserEvent(UserEvent::Command(cmd)) => {
                     self.handle_command(cmd, target);
+                }
+                Event::UserEvent(UserEvent::Shutdown) => {
+                    self.stop_audio();
+                    target.exit();
                 }
                 Event::UserEvent(UserEvent::Timer) => {}
                 Event::AboutToWait => {
