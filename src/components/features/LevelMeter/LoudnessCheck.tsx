@@ -300,7 +300,7 @@ export function LoudnessCheck({
         >
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h2 ref={heading} tabIndex={-1} className="text-sm font-semibold">{t('loudness.title')}</h2>
+                    <div className="flex items-center gap-1"><h2 ref={heading} tabIndex={-1} className="text-sm font-semibold">{t('loudness.title')}</h2><InfoPopover label={t('info.loudness')}>{t('loudness.scope')}</InfoPopover></div>
                     <p
                         role="status"
                         className={`text-lg font-bold ${good ? 'text-success' : active ? 'text-warning' : 'text-muted-foreground'}`}
@@ -327,7 +327,6 @@ export function LoudnessCheck({
                 {onClose && <button type="button" onClick={onClose} disabled={busy} className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground disabled:opacity-50">{t('loudness.hide')}</button>}
                 </div>
             </div>
-            <InfoPopover label={t('info.loudness')}>{t('loudness.scope')}</InfoPopover>
             {autoGainOpen && available && running && <AutoGainDialog onClose={() => setAutoGainOpen(false)} />}
             {active && reading && (
                 <details open={music} className="text-xs text-muted-foreground"><summary className="cursor-pointer">{t('structure.measurements')}</summary><p className="text-xs text-muted-foreground font-mono">

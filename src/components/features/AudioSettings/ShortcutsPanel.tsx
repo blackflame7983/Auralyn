@@ -173,7 +173,10 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
                     className="rounded border border-border px-2 py-1.5 text-left aria-pressed:border-primary aria-pressed:bg-muted">
                     {capturing === action ? t(armed ? 'shortcuts.captureWaiting' : 'shortcuts.capturePreparing') : values[action] || t('shortcuts.captureEmpty')}
                 </button>
-                <div className="flex flex-wrap gap-1">
+                {/* キー入力で登録できない場合の代替手段。既定では閉じて入力方式を1つに見せる。 */}
+                <details>
+                <summary className="cursor-pointer text-muted-foreground">{t('shortcuts.chooseFromList')}</summary>
+                <div className="mt-1 flex flex-wrap gap-1">
                     <label>{t('settings.ShortcutsPanel.381')}<select aria-label={t('settings.ShortcutsPanel.382', { arg0: label })} value={pair.modifier} onChange={e => setValues(v => ({ ...v, [action]: `${e.target.value}+${pair.key}` }))} className="block rounded border border-input bg-background p-2">
                         <option value="">{t('settings.ShortcutsPanel.383')}</option>
                         {pair.modifier && !modifiers.includes(pair.modifier) && <option value={pair.modifier}>{pair.modifier}{t('settings.ShortcutsPanel.384')}</option>}
@@ -185,7 +188,8 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
                         {keys.map(([value, name]) => <option key={value} value={value}>{name}</option>)}
                     </select></label>
                 </div>
-                <button type="button" className="link-button" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('settings.ShortcutsPanel.389')}{label}</button>
+                </details>
+                <button type="button" aria-label={`${t('settings.ShortcutsPanel.389')}${label}`} disabled={!values[action]} className="rounded border border-border px-2 py-1 text-muted-foreground hover:text-destructive-text disabled:opacity-50" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('shortcuts.unbind')}</button>
             </fieldset>;
         })}</div>
 

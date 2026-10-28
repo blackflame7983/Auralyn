@@ -196,7 +196,7 @@ function timingBackend() {
     return { connected: () => connected, calls: (name: string) => vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === name) };
 }
 async function guideTiming() {
-    fireEvent.click(await screen.findByRole('button', { name: '機材を使用していない手順を選択' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' }));
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
     fireEvent.click(screen.getByText('OBSの最終ミックスを確認する（手動）'));
@@ -217,7 +217,7 @@ it('実useObsUsageで接続設定からlazyガイドへ引き継ぎ、対象取�
     await waitFor(() => expect(connect).toBeEnabled()); fireEvent.click(connect);
     await screen.findByRole('button', { name: '切断' });
     fireEvent.click(screen.getByRole('button', { name: 'OBS連携ガイドを開く' }));
-    await screen.findByRole('button', { name: '機材を使用していない手順を選択' });
+    await screen.findByRole('button', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' });
     await act(async () => {});
     expect(backend.calls('disconnect_obs')).toHaveLength(0);
     await guideTiming();

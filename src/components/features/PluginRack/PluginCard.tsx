@@ -129,12 +129,14 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                             {t('rack.card.mute')}
                         </Button>
                         {/* Edit + Delete */}
-                        <div className="flex items-center gap-1 ml-2">
+                        {/* 削除は編集と見た目・位置を分け、常に表示して誤操作と見落としを防ぐ。 */}
+                        <div className="flex items-center gap-3 ml-2">
                             <Button
                                 variant="secondary"
                                 size="sm"
                                 disabled={!plugin.hasEditor || !plugin.enabled}
                                 onClick={() => onEdit(plugin.id)}
+                                aria-label={t('rack.card.editAccessible', { arg0: plugin.name })}
                                 className="h-8 text-xs"
                             >
                                 {t('rack.card.edit')}</Button>
@@ -143,7 +145,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="h-7 w-7 text-muted-foreground hover:text-destructive-text transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                                        className="h-7 w-7 border-l border-border rounded-none pl-1 text-muted-foreground hover:text-destructive-text transition-colors"
                                         aria-label={t('rack.card.removeAccessible', { arg0: plugin.name })}
                                         onClick={handleDelete}
                                     >
