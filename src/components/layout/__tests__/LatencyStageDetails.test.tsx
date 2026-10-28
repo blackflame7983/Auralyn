@@ -27,7 +27,7 @@ it('旧DTO・null・停止・異なるepoch・未知schemaは現在の段別値�
 });
 it('範囲外・NaNフレームは0や10msへ置換せず、過大VST配列は拒否する',()=>{
     const s=stage();s.nr.framePeriodMs=NaN;
-    const view=render(<LatencyStageDetails stats={stats(s)} current/>);expect(screen.getByText(/NR分析フレーム.*不明/)).toBeInTheDocument();
+    const view=render(<LatencyStageDetails stats={stats(s)} current/>);expect(screen.getByText(/ノイズ低減分析フレーム.*不明/)).toBeInTheDocument();
     s.vst=Array.from({length:33},()=>s.vst[0]);view.rerender(<LatencyStageDetails stats={stats(s)} current/>);expect(screen.getByText('段別の現在情報なし')).toBeInTheDocument();
 });
 it('英語でも公開VST名を翻訳せずbypass/muteと照会時点の限界を示す',()=>{

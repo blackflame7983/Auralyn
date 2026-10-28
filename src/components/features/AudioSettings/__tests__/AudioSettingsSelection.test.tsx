@@ -91,7 +91,14 @@ it('処理設定の取得前は音づくりを変更しない', async () => {
     expect(screen.getByText(/現在の設定を確認できるまで/)).toBeInTheDocument();
 });
 
+it('かんたん表示ではノイズ低減の強さを弱／強だけにし、数値の強さを出さない', async () => {
+    render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    await screen.findByRole('heading', { name: 'ノイズ低減' });
+    expect(screen.queryByRole('slider', { name: 'ノイズ低減の抑制強度' })).not.toBeInTheDocument();
+});
+
 it('ノイズ低減OFF中に強度を変更してもONにせず、タッチ・ペンのpointer操作で確定する', async () => {
+    localStorage.setItem('vst_host_beginner_mode', 'false');
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const slider = await screen.findByRole('slider', { name: 'ノイズ低減の抑制強度' });
     await waitFor(() => expect(slider).toBeEnabled());
@@ -131,7 +138,7 @@ it('学習の中止失敗を未処理のPromise拒否にせず、状態再取得
         return noiseMeasurementFixture('capturing', '2');
     });
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    const cancel = await screen.findByRole('button', { name: '学習を中止' });
+    const cancel = await screen.findByRole('button', { name: '測定を中止' });
     await waitFor(() => expect(cancel).toBeEnabled());
     fireEvent.click(cancel);
     expect(await screen.findByText('測定状態を取得できません。再取得してください。')).toBeInTheDocument();

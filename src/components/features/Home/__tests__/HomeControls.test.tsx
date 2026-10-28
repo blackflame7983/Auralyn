@@ -35,7 +35,7 @@ it('学習・会場モード中は強さを上書きせず、詳しい調整へ�
     vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue(stats({ noiseReductionMode: 'smart' }));
     const open = vi.fn();
     render(<VoiceQuickControls running onOpenSoundSettings={open} />);
-    expect(await screen.findByText(/現在は「学習」で低減しています/)).toBeInTheDocument();
+    expect(await screen.findByText(/現在は「測定値で調整」で低減しています/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '強' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /詳しく調整/ }));
     expect(open).toHaveBeenCalledOnce();

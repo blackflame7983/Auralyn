@@ -52,7 +52,8 @@ it('試聴エラーは録音前でも開き、停止と再試行の操作を表�
     const details = screen.getByText('試聴先と再生').closest('details')!;
     await waitFor(() => expect(details).toHaveAttribute('open'));
     expect(screen.getByText('試聴の停止を確認できません')).toBeVisible();
-    expect(screen.getByRole('button', { name: '試聴を停止' })).toBeVisible();
+    // 失敗・停止未確認では停止を再送できるようにする。
+    expect(screen.getByRole('button', { name: '試聴を停止' })).toBeEnabled();
     expect(screen.getByText('再生できないとき')).toBeVisible();
 });
 
@@ -141,7 +142,7 @@ it('録音開始失敗を画面内に残し、再試行の方法を示す', asyn
 
 it('声単体の録音地点をOBS最終ミックスと到達確認から区別する', async () => {
     open();
-    expect(screen.getByText(/出力ゲイン・全体ミュート適用前/)).toHaveTextContent('最終ミックスはOBSで録画して確認');
+    expect(screen.getByText(/出力音量・全体ミュート適用前/)).toHaveTextContent('最終ミックスはOBSで録画して確認');
     const scope = screen.getByText('録音範囲と接続診断について').closest('details');
     expect(scope).not.toHaveAttribute('open');
     fireEvent.click(screen.getByText('録音範囲と接続診断について'));
@@ -219,11 +220,11 @@ it.each([false, true])('残響だけ=%sの候補も準備でき、比較範囲�
             sampleRate: 48000, sourceFrames: 48000, renderedFrames: reverbOnly ? 168000 : 48000, algorithmicLatencyFrames: 0, filterPhase: 'minimumPhase', samplePeak: 0.2, error: null } : null }));
     function CandidateModal() { return <VoiceCheckModal isOpen onClose={vi.fn()} singingModel={useSingingDraft()} />; }
     render(<CandidateModal />);
-    const prepare = await screen.findByRole('button', { name: 'この録音から内蔵処理の候補を作成' });
+    const prepare = await screen.findByRole('button', { name: 'この録音から内蔵ボイスチェーンの候補を作成' });
     await waitFor(() => expect(prepare).toBeEnabled());
-    expect(screen.getByText(/ノイズ低減（NR）・既存VST・出力ゲインは含めません/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'A：原音（入力ゲイン後）' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'B：候補（内蔵処理・残響のみ）' })).toBeInTheDocument();
+    expect(screen.getByText(/ノイズ低減・既存VST・出力音量は含めません/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'A：原音（マイク音量後）' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'B：候補（内蔵ボイスチェーン・残響のみ）' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '品質チェックを実行' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'WAVで保存' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeDisabled();

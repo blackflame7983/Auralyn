@@ -291,9 +291,10 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                         <p role="status" className="mt-2 text-sm text-muted-foreground">
                                             {t('guide.copy.205')}</p>
                                     )}
-                                    {config.outputMode === 'monitor' && (
+                                    {config.outputMode === 'monitor' && (<>
+                                        <label htmlFor="wizard-output-206" className="mt-2 block text-xs font-medium text-foreground">{t('guide.copy.206')}</label>
                                         <select
-                                            aria-label={t('guide.copy.206')}
+                                            id="wizard-output-206"
                                             className="mt-2 w-full p-1 bg-background border border-border rounded text-xs"
                                             value={config.output?.name || ''}
                                             onClick={(e) => e.stopPropagation()}
@@ -307,11 +308,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                                 <option key={i} value={d.name} title={d.name}>{deviceDisplayName(d.name)}</option>
                                             ))}
                                         </select>
-                                    )}
+                                    </>)}
                                     {config.outputMode === 'broadcast' && (
                                         <>
+                                            <label htmlFor="wizard-output-208" className="mt-2 block text-xs font-medium text-foreground">{t('guide.copy.208')}</label>
                                             <select
-                                                aria-label={t('guide.copy.208')}
+                                                id="wizard-output-208"
                                                 className="mt-2 w-full p-1 bg-background border border-border rounded text-xs"
                                                 value={config.output?.name || ''}
                                                 onClick={(e) => e.stopPropagation()}

@@ -63,7 +63,7 @@ it('同名対象や判断不能を確認済みの品質として扱わない', (
 it('OBSガイド最終段から使え、再表示時に確認結果と名前が残らない', () => {
     const props = { isOpen: true, onClose: vi.fn(), onOpenAudioSettings: vi.fn() };
     const view = render(<OBSGuideModal {...props} />);
-    fireEvent.click(screen.getByRole('button', { name: '機材を使用していない手順を選択' }));
+    fireEvent.click(screen.getByRole('button', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' }));
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
     openCheck();

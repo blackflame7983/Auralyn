@@ -113,12 +113,12 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                     onClick={() => handleDeviceSelection(true)}
                                     aria-label={t('guide.copy.005')}
                                     aria-pressed={useHardwareMixer === true}
-                                    className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/50 transition-all text-left group"
+                                    className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/50 aria-pressed:border-primary aria-pressed:ring-1 aria-pressed:ring-primary/40 transition-all text-left group"
                                 >
                                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                         <MdMic className="w-6 h-6 text-primary" />
                                     </div>
-                                    <h4 className="font-bold text-foreground mb-2">{t('guide.copy.006')}{useHardwareMixer === true && t('guide.copy.007')}</h4>
+                                    <h4 className="font-bold text-foreground mb-2">{t('guide.copy.006')}</h4>
                                     <p className="text-sm text-muted-foreground">
                                         {t('guide.copy.008')}</p>
                                     <span className="inline-block mt-4 text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded">
@@ -129,12 +129,12 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                     onClick={() => handleDeviceSelection(false)}
                                     aria-label={t('guide.copy.010')}
                                     aria-pressed={useHardwareMixer === false}
-                                    className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/50 transition-all text-left group"
+                                    className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/50 aria-pressed:border-primary aria-pressed:ring-1 aria-pressed:ring-primary/40 transition-all text-left group"
                                 >
                                     <div className="w-12 h-12 rounded-full bg-secondary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                         <MdHeadphones className="w-6 h-6 text-secondary-foreground" />
                                     </div>
-                                    <h4 className="font-bold text-foreground mb-2">{t('guide.copy.011')}{useHardwareMixer === false && t('guide.copy.012')}</h4>
+                                    <h4 className="font-bold text-foreground mb-2">{t('guide.copy.011')}</h4>
                                     <p className="text-sm text-muted-foreground">
                                         {t('guide.copy.013')}</p>
                                     <span className="inline-block mt-4 text-xs font-bold text-secondary-foreground bg-secondary/10 px-2 py-1 rounded">

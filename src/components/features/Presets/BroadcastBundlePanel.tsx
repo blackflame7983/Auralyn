@@ -10,6 +10,8 @@ import { bundleApi, BundleClientError, type BundleFilter, type BundleOperation, 
 import type { ProfileSaveCategories } from '../../../api/presets';
 
 interface Props { checkedOnly?: boolean; onOperation?: (request: BundleOperation) => Promise<BundleResult | null>; onObsSettings?: () => void }
+// バックエンドが返す保存カテゴリ名を、用語集どおりの表示名へ対応付ける。未知の名前はそのまま出す。
+const planCategoryKeys: Record<string, MessageKey> = { 'VST構成': 'presets.copy.107', '入出力・音量': 'presets.copy.108', 'ノイズ低減': 'presets.copy.109', '内蔵処理': 'presets.copy.110' };
 const categoryLabels: [keyof ProfileSaveCategories, MessageKey][] = [['includePlugins', 'presets.copy.107'], ['includeAudioConfig', 'presets.copy.108'], ['includeNoiseControl', 'presets.copy.109'], ['includeBuiltinFx', 'presets.copy.110']];
 const categoryKeys: Record<string, MessageKey> = { plugins: 'presets.copy.113', audioConfig: 'presets.copy.114', noiseControl: 'presets.copy.115', builtinFx: 'presets.copy.116' };
 type PanelMessage = { kind: 'success' | 'error'; notice: SettingsNotice; rawDetail?: string };
@@ -157,7 +159,7 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
                 if (alive.current) { setRecovery(null); setResult(null); setRecoveryConfirmed(false); invalidate(); }
             })}>{t('bundle.recoveryAdopt')}</button>
         </section>}
-        {plan && <div className="border rounded p-3 space-y-2" aria-label={t('presets.copy.149')}>{plan.confirmation && <p className="text-xs">{t('recovery.historical', { time: new Date(plan.confirmation.checkedAtUnixMs).toLocaleString() })}</p>}<p>{plan.name}：{plan.categories.join('・')}{t('presets.copy.150')}</p><p className="text-xs">{t('presets.copy.151')}</p>
+        {plan && <div className="border rounded p-3 space-y-2" aria-label={t('presets.copy.149')}>{plan.confirmation && <p className="text-xs">{t('recovery.historical', { time: new Date(plan.confirmation.checkedAtUnixMs).toLocaleString() })}</p>}<p>{plan.name}：{plan.categories.map(name => Object.prototype.hasOwnProperty.call(planCategoryKeys, name) ? t(planCategoryKeys[name]) : name).join('・')}{t('presets.copy.150')}</p><p className="text-xs">{t('presets.copy.151')}</p>
             <table className="w-full text-xs text-left"><caption>{t('presets.copy.152')}</caption><thead><tr><th>{t('presets.copy.153')}</th><th>{t('presets.copy.154')}</th><th>{t('presets.copy.155')}</th><th>{t('presets.copy.156')}</th></tr></thead><tbody>{plan.auralyn.map((row,i) => <tr key={i}><th scope="row">{formatObsText(t, row.labelText, row.label)}</th><td className="break-all">{formatObsText(t, row.beforeText, row.before)}</td><td className="break-all">{formatObsText(t, row.afterText, row.after)}</td><td>{{same: t('presets.copy.157'), changed: t('presets.copy.158'), notSelected: t('presets.copy.159'), unknown: t('presets.copy.160')}[row.status]}</td></tr>)}</tbody></table>
 
             {plan.obs.length > 0 && <ul>{plan.obs.map((c,i) => <li key={i}>{c.source}：{formatObsText(t, c.labelText, c.label)} {formatObsText(t, c.beforeText, c.beforeDisplay ?? c.before)} → {formatObsText(t, c.afterText, c.afterDisplay ?? c.after)}</li>)}</ul>}

@@ -732,6 +732,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                           return (
                             <button
                               key={profile.value}
+                              type="button"
+                              aria-pressed={selectedBufferSize === profile.value}
                               onClick={() => setSelectedBufferSize(profile.value)}
                               disabled={disabled}
                               className={`
@@ -749,6 +751,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                           )
                         })}
                       </div>
+                      {/* 3択以外の値（数値で指定した値）でも、現在値が選ばれていないように見せない。 */}
+                      {selectedBufferSize > 0 && ![128, 512, 1024].includes(selectedBufferSize) && (
+                        <p role="status" className="text-xs text-muted-foreground text-center">{t('settings.bufferCustom', { size: selectedBufferSize })}</p>
+                      )}
                       {(selectedBufferSize <= 256 || selectedBufferSize >= 1024) && (
                         selectedBufferSize <= 256 ? <InfoPopover label={t('info.fast')}>{t('settings.AudioSettingsModal.057')}</InfoPopover> : <p className="text-xs text-muted-foreground text-center">{t('settings.AudioSettingsModal.058')}</p>
                       )}
@@ -870,9 +876,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 </>}
                 {/* Preset Section */}
                 <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-3">
-                  <InfoPopover label={t('info.preset')}>{t('settings.AudioSettingsModal.085')}</InfoPopover>
                   <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-muted-foreground">{t('settings.AudioSettingsModal.086')}</label>
+                    <span className="flex items-center gap-1"><label className="text-sm font-medium text-muted-foreground">{t('settings.AudioSettingsModal.086')}</label><InfoPopover label={t('info.preset')}>{t('settings.AudioSettingsModal.085')}</InfoPopover></span>
                     <div className="flex gap-2">
                       <select
                   aria-label={t('settings.AudioSettingsModal.087')}
@@ -930,9 +935,34 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {/* Noise reduction */}
                 <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
                   <div className="flex items-center justify-between gap-3">
-                    <div>
+                    <div className="flex items-center gap-1">
                       <h3 ref={soundStart} tabIndex={-1} className="text-sm font-bold text-foreground">{t('settings.AudioSettingsModal.105')}</h3>
-
+                      <InfoPopover label={t('info.noise')}>
+                    <div className="space-y-1.5">
+                      <p>
+                        <span className="font-bold">{t('settings.AudioSettingsModal.108')}</span> {t('settings.AudioSettingsModal.109')}</p>
+                      <p>
+                        <span className="font-bold">{t('settings.AudioSettingsModal.110')}</span> {t('settings.AudioSettingsModal.111')}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {t('settings.AudioSettingsModal.112')}{onOpenVoiceCheck ? (
+                          <>
+                            {' '}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                onOpenVoiceCheck();
+                              }}
+                              className="underline underline-offset-2 hover:text-foreground font-medium"
+                            >
+                              {t('settings.AudioSettingsModal.113')}</button>
+                          </>
+                        ) : (
+                          t('settings.AudioSettingsModal.114')
+                        )}
+                      </p>
+                    </div>
+                      </InfoPopover>
                     </div>
                     <Switch
                       checked={!!engineStats?.noiseReductionEnabled}
@@ -940,33 +970,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       aria-label={t('settings.AudioSettingsModal.107')}
                     />
                   </div>
-
-                  <InfoPopover label={t('info.noise')}>
-                  <div className="space-y-1.5">
-                    <p>
-                      <span className="font-bold">{t('settings.AudioSettingsModal.108')}</span> {t('settings.AudioSettingsModal.109')}</p>
-                    <p>
-                      <span className="font-bold">{t('settings.AudioSettingsModal.110')}</span> {t('settings.AudioSettingsModal.111')}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {t('settings.AudioSettingsModal.112')}{onOpenVoiceCheck ? (
-                        <>
-                          {' '}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onClose();
-                              onOpenVoiceCheck();
-                            }}
-                            className="underline underline-offset-2 hover:text-foreground font-medium"
-                          >
-                            {t('settings.AudioSettingsModal.113')}</button>
-                        </>
-                      ) : (
-                        t('settings.AudioSettingsModal.114')
-                      )}
-                    </p>
-                  </div>
-                  </InfoPopover>
 
                   <fieldset className="space-y-2"><legend className="text-xs font-medium">{t('structure.noise.standard')}</legend>
                     <div className="grid grid-cols-2 gap-2">
@@ -1033,7 +1036,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     )}
                   </p>
 
-                  <div className="space-y-2">
+                  {/* かんたん表示の強さは弱／強の2択だけにし、数値の強さは詳細表示で出す。 */}
+                  {!isBeginnerMode && <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">{t('settings.AudioSettingsModal.119')}</span>
                       <span className="font-mono text-foreground">{noiseStrength}%</span>
@@ -1054,7 +1058,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       className="w-full accent-primary"
                       aria-label={t('settings.AudioSettingsModal.120')}
                     />
-                  </div>
+                  </div>}
 
                   <NoiseMeasurementPanel />
 
@@ -1074,7 +1078,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </div>
                 </div>
 
-                <PeakProtectionPanel />
                 {/* Built-in Effects */}
                 <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
                   <div className="flex items-center justify-between gap-3">
@@ -1144,6 +1147,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <summary className="cursor-pointer font-semibold">{t('structure.singing')}</summary>
               <SingingControls showHeading={false} model={singingModel} onPreview={onPreviewSinging} onSaveProfile={onSaveSingingProfile} />
             </details>
+            {/* 出力の安全装置は上級設定。かんたん表示では閉じた欄に置く。 */}
+            {isBeginnerMode ? <details className="rounded border border-border p-3 space-y-3">
+              <summary className="cursor-pointer font-semibold">{t('peak.title')}</summary>
+              <PeakProtectionPanel />
+            </details> : <PeakProtectionPanel />}
           </TabsContent>
 
           <TabsContent value="obs" className="space-y-4">
@@ -1501,10 +1509,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           </div>
         </Tabs>
         {activeTab === 'audio' && !loading && !error && (
-          <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-2 flex justify-end">
+          <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-2 flex items-center justify-end gap-3">
+            {/* 稼働中の保存は再起動になり、音が途切れることを押す前に示す。 */}
+            {engineStats?.latencyMetadata?.streamRunning === true && <span id="settings-save-restart" className="text-xs text-muted-foreground">{t('settings.saveRestartHint')}</span>}
             <button onClick={handleSave} disabled={loading || (reviewRequired && !migrationConfirmed)}
+              aria-describedby={engineStats?.latencyMetadata?.streamRunning === true ? 'settings-save-restart' : undefined}
               className="rounded-md bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-              {t('settings.AudioSettingsModal.197')}
+              {t(engineStats?.latencyMetadata?.streamRunning === true ? 'settings.saveRestart' : 'settings.AudioSettingsModal.197')}
             </button>
           </div>
         )}

@@ -104,8 +104,11 @@ it('音量チェックは明示要求だけを送り、表示モード変更で�
     view.rerender(<AppShell {...commonProps} isBeginnerMode={false}><p>rack</p></AppShell>);
     expect(measurementProps.current.request).toBe(start);
     act(() => measurementProps.current.onStateChange({active: true, busy: false, stopUnconfirmed: false}));
-    fireEvent.click(screen.getByRole('button', {name: '測定を止める'}));
-    expect(measurementProps.current.request).toEqual({id: start.id + 1, action: 'stop'});
+    // 開いた後の測定・停止はパネル側だけに置き、同じ操作を上部と重ねない。
+    expect(screen.queryByRole('button', {name: '測定を止める'})).not.toBeInTheDocument();
+    act(() => { measurementProps.current.onStateChange({active: false, busy: false, stopUnconfirmed: false}); measurementProps.current.onClose(); });
+    expect(screen.getByRole('button', {name: '音量チェックを開始'})).toBeInTheDocument();
+    expect(measurementProps.current.request).toBe(start);
 });
 
 it('表示用途の切替は保存済みの音声用途と準備設定を保持する', () => {

@@ -29,21 +29,24 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
     const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
     const needsTarget = next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim();
     const action = needsTarget ? () => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); } : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? () => { void model.refresh(); } : onSettings
-        : next === 'purpose' ? () => { if (detailsRef.current) detailsRef.current.open = true; purposeRef.current?.focus(); }
-            : next === 'sound' ? onSound : next === 'listen' ? onListen : receiver;
+        : next === 'sound' ? onSound : next === 'listen' ? onListen : receiver;
     const actionLabel: MessageKey = needsTarget ? 'prep.targetAction' : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? 'prep.refresh' : 'shell.configure'
-        : next === 'purpose' ? 'prep.chooseUse' : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
+        : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
     const acknowledgeLabels: Record<PreparationStage, MessageKey> = { sound: 'prep.ackSound', listen: 'prep.ackListen', receiver: 'prep.ackReceiver' };
     const pending = checking || confirming;
+    const usageSelect = (className: string) => <select ref={purposeRef} value={context.usage} onChange={e => model.changeContext({ usage: e.target.value as PreparationUse | '', receiver: '' })} className={className}>
+        <option value="">{t('prep.chooseUse')}</option><option value="obs">{t('prep.obs')}</option><option value="discord">{t('prep.call')}</option><option value="other">{t('prep.other')}</option><option value="listening">{t('prep.local')}</option>
+    </select>;
     return <section aria-label={t('prep.title')} className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-bold">{t('prep.title')}</h2>
-            <span role="status" className="text-sm text-muted-foreground">{t(checking ? 'prep.checking' : next === 'done' ? 'prep.sessionChecked' : 'prep.next')}</span>
+            <span role="status" className="text-sm text-muted-foreground">{checking ? t('prep.checking') : next === 'done' ? t('prep.sessionChecked') : ''}</span>
         </div>
         {signalSummary}
         {context.location === 'venue' && <p className="text-xs text-warning">{t('prep.venueWarning')}</p>}
         {context.signal === 'mixed' && <p className="text-xs text-muted-foreground">{t('prep.mixedWarning')}</p>}
-        {next !== 'done' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && next !== 'purpose' && !audioReady)} onClick={action}
+        <label className="block text-sm">{t('prep.usage')}{usageSelect(`mt-1 block w-full max-w-xs rounded border bg-background p-2 ${next === 'purpose' ? 'border-primary' : 'border-border'}`)}</label>
+        {next !== 'done' && next !== 'purpose' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
             className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{t(actionLabel)}</button>}
         {(next === 'sound' || next === 'listen' || next === 'receiver') && <label key={next} className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={false} disabled={pending || observation.availability !== 'ready' || (next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim())}
@@ -55,17 +58,12 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
                     }));
                 }} />{t(next === 'receiver' && context.usage === 'listening' ? 'prep.ackLocal' : music && next === 'sound' ? 'music.ackSound' : music && next === 'listen' ? 'music.ackListen' : acknowledgeLabels[next])}
         </label>}
-        <details ref={detailsRef} open={context.usage === '' ? true : undefined} className="space-y-3">
+        <details ref={detailsRef} className="space-y-3">
             <summary ref={summaryRef} className="cursor-pointer text-sm font-medium">{t('prep.details')}</summary>
             <div className="grid gap-3 sm:grid-cols-2">
                 <label className="text-sm">{t('prep.location')}
                     <select value={context.location} onChange={e => model.changeContext({ location: e.target.value as 'home' | 'venue' })} className="mt-1 block w-full rounded border border-border bg-background p-2">
                         <option value="home">{t('prep.home')}</option><option value="venue">{t('prep.venue')}</option>
-                    </select>
-                </label>
-                <label className="text-sm">{t('prep.usage')}
-                    <select ref={purposeRef} value={context.usage} onChange={e => model.changeContext({ usage: e.target.value as PreparationUse | '', receiver: '' })} className="mt-1 block w-full rounded border border-border bg-background p-2">
-                        <option value="">{t('prep.chooseUse')}</option><option value="obs">{t('prep.obs')}</option><option value="discord">{t('prep.call')}</option><option value="other">{t('prep.other')}</option><option value="listening">{t('prep.local')}</option>
                     </select>
                 </label>
                 <label className="text-sm">{t(music ? 'wizard.musicSignal' : 'prep.signal')}
@@ -96,7 +94,6 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
             {context.usage === 'obs' && <div className="text-xs text-muted-foreground space-y-1">
                 <p>{t('prep.machine')}: {t(observation.obsCurrent && observation.obs?.reached === true ? 'prep.obsTone' : observation.obs?.reached === 'unsupported' ? 'prep.unsupported' : 'prep.obsUnconfirmed')}</p>
                 {observation.obs?.verification && <p>{observation.obs.verification.source} · {new Date(observation.obs.verification.checkedAtUnixMs).toLocaleString(locale === 'ja' ? 'ja-JP' : 'en-US')}</p>}
-                <p>{t('prep.toneScope')}</p>
             </div>}
             <p className="text-xs text-muted-foreground">{t(context.usage === 'discord' ? 'prep.callScope' : context.usage === 'listening' ? 'prep.localScope' : 'prep.manualScope')}</p>
             <p className="text-xs text-muted-foreground">{t('prep.externalScope')}</p>

@@ -26,7 +26,7 @@ beforeEach(() => {
 afterEach(cleanup);
 async function showPlan() {
     await screen.findByRole('option', { name: '歌枠' });
-    fireEvent.change(screen.getByLabelText('保存済み配信状態'), { target: { value: '歌枠' } });
+    fireEvent.change(screen.getByLabelText('保存済みOBS込みプロファイル'), { target: { value: '歌枠' } });
     fireEvent.click(screen.getByRole('button', { name: '変更予定を確認' }));
     await screen.findByRole('button', { name: 'この変更予定を適用する' });
 }
@@ -38,7 +38,7 @@ it('開くだけではOBS取得・保存・適用せず、差分と明示適用�
     expect(bundleApi.save).not.toHaveBeenCalled();
     expect(operation).not.toHaveBeenCalled();
     await showPlan();
-    expect(screen.getByLabelText('配信状態の変更予定')).toHaveTextContent('声：原文の詳細（未翻訳）：ミュート 原文の詳細（未翻訳）：OFF → 原文の詳細（未翻訳）：ON');
+    expect(screen.getByLabelText('OBS込みプロファイルの変更予定')).toHaveTextContent('声：原文の詳細（未翻訳）：ミュート 原文の詳細（未翻訳）：OFF → 原文の詳細（未翻訳）：ON');
     expect(screen.getByRole('table')).toHaveTextContent(/ASIO.*WASAPI.*変更/);
     expect(screen.getByRole('table')).toHaveTextContent(/未確認.*変更しません.*選択外/);
     fireEvent.click(screen.getByRole('button', { name: 'この変更予定を適用する' }));
@@ -52,7 +52,7 @@ it('遅いpreviewは選択・条件変更後に採用せず、own適用イベン
     const operation = vi.fn(async () => { events.get('audio-conditions-changed')?.(); events.get('obs://timing-invalidated')?.(); return result; });
     render(<BroadcastBundlePanel onOperation={operation} />);
     await screen.findByRole('option', { name: '歌枠' });
-    fireEvent.change(screen.getByLabelText('保存済み配信状態'), { target: { value: '歌枠' } });
+    fireEvent.change(screen.getByLabelText('保存済みOBS込みプロファイル'), { target: { value: '歌枠' } });
     fireEvent.click(screen.getByRole('button', { name: '変更予定を確認' }));
     await waitFor(() => expect(bundleApi.preview).toHaveBeenCalledOnce());
     act(() => events.get('audio-conditions-changed')?.());
@@ -61,7 +61,7 @@ it('遅いpreviewは選択・条件変更後に採用せず、own適用イベン
     await showPlan();
     fireEvent.click(screen.getByRole('button', { name: 'この変更予定を適用する' }));
     await screen.findByText(/Auralyn設定確認/);
-    expect(screen.getByRole('button', { name: '直近の配信状態変更を元に戻す' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '直近のOBS込みプロファイル変更を元に戻す' })).toBeVisible();
 });
 it('partial履歴は次applyを止め、競合Undoの拒否でも原本とUndo導線を保持する', async () => {
     vi.mocked(bundleApi.history).mockResolvedValue({ ...result, complete: false, auralyn: '一部未完了、原本保持' });
@@ -70,7 +70,7 @@ it('partial履歴は次applyを止め、競合Undoの拒否でも原本とUndo�
     await screen.findByText(/一部未完了、原本保持/);
     await showPlan();
     expect(screen.getByRole('button', { name: 'この変更予定を適用する' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: '直近の配信状態変更を元に戻す' }));
+    fireEvent.click(screen.getByRole('button', { name: '直近のOBS込みプロファイル変更を元に戻す' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('後からVST状態が変わりました');
     expect(screen.getByText(/一部未完了、原本保持/)).toBeVisible();
     expect(operation).toHaveBeenCalledExactlyOnceWith({ action: 'undo', id: 'p1' });
@@ -79,26 +79,26 @@ it('既存ソースを明示選択して限定項目を保存し、capture失敗
     vi.mocked(bundleApi.save).mockRejectedValue('OBS取得失敗。旧bundleを保持しています');
     render(<BroadcastBundlePanel />);
     await screen.findByRole('option', { name: '歌枠' });
-    fireEvent.change(screen.getByLabelText('配信状態名'), { target: { value: '新規' } });
+    fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), { target: { value: '新規' } });
     fireEvent.click(screen.getByLabelText('OBSの既存項目も含める'));
     fireEvent.click(screen.getByRole('button', { name: 'OBSの対象を取得' }));
     fireEvent.click(await screen.findByLabelText('声'));
-    fireEvent.click(screen.getByRole('button', { name: '現在の配信状態を保存' }));
+    fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('旧bundleを保持');
     expect(bundleApi.save).toHaveBeenCalledWith('新規', expect.any(Object), [{ source: '声', volume: true, muted: true, monitor: false, filters: [] }], false);
-    expect(screen.queryByText('配信状態を保存しました。')).not.toBeInTheDocument();
+    expect(screen.queryByText('OBS込みプロファイルを保存しました。')).not.toBeInTheDocument();
 });
 it('既存フィルタ一覧を明示取得し、有効状態だけ選択する', async () => {
     render(<BroadcastBundlePanel />);
     await screen.findByRole('option', { name: '歌枠' });
     expect(bundleApi.filters).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText('配信状態名'), {target: {value: 'filter-test'}});
+    fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), {target: {value: 'filter-test'}});
     fireEvent.click(screen.getByLabelText('OBSの既存項目も含める'));
     fireEvent.click(screen.getByRole('button', {name: 'OBSの対象を取得'}));
     fireEvent.click(await screen.findByLabelText('声'));
     fireEvent.click(screen.getByRole('button', {name: '声の既存フィルタを取得'}));
     fireEvent.click(await screen.findByLabelText('音声フィルタ（vst_filter・現在有効）の有効状態を保存'));
-    fireEvent.click(screen.getByRole('button', {name: '現在の配信状態を保存'}));
+    fireEvent.click(screen.getByRole('button', {name: '現在のOBS込みプロファイルを保存'}));
     await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('filter-test', expect.any(Object), [{source: '声', volume: true, muted: true, monitor: false, filters: ['音声フィルタ']}], false));
     expect(bundleApi.filters).toHaveBeenCalledExactlyOnceWith('声');
 });
@@ -106,13 +106,13 @@ it('一覧の遅い取得は入力で失効せず、大小文字違いの上書�
     let finish!: (names: string[]) => void;
     vi.mocked(bundleApi.list).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     render(<BroadcastBundlePanel />);
-    fireEvent.change(screen.getByLabelText('配信状態名'), {target: {value: 'live'}});
-    expect(screen.getByRole('button', {name: '現在の配信状態を保存'})).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), {target: {value: 'live'}});
+    expect(screen.getByRole('button', {name: '現在のOBS込みプロファイルを保存'})).toBeDisabled();
     await act(async () => finish(['Live']));
-    expect(await screen.findByLabelText('同名の配信状態を上書きする')).not.toBeChecked();
-    expect(screen.getByRole('button', {name: '現在の配信状態を保存'})).toBeDisabled();
-    fireEvent.click(screen.getByLabelText('同名の配信状態を上書きする'));
-    fireEvent.click(screen.getByRole('button', {name: '現在の配信状態を保存'}));
+    expect(await screen.findByLabelText('同名のOBS込みプロファイルを上書きする')).not.toBeChecked();
+    expect(screen.getByRole('button', {name: '現在のOBS込みプロファイルを保存'})).toBeDisabled();
+    fireEvent.click(screen.getByLabelText('同名のOBS込みプロファイルを上書きする'));
+    fireEvent.click(screen.getByRole('button', {name: '現在のOBS込みプロファイルを保存'}));
     await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('Live', expect.any(Object), null, true));
 });
 it.each(['constructor', 'toString', '__proto__'])('ソース名%sでも一覧を安全に扱い、filter名の空白をそのまま保存する', async source => {
@@ -120,13 +120,13 @@ it.each(['constructor', 'toString', '__proto__'])('ソース名%sでも一覧を
     vi.mocked(bundleApi.filters).mockResolvedValue([{name: 'Filter', kind: 'vst_filter', enabled: false}, {name: ' Filter ', kind: 'vst_filter', enabled: true}]);
     render(<BroadcastBundlePanel />);
     await screen.findByRole('option', {name: '歌枠'});
-    fireEvent.change(screen.getByLabelText('配信状態名'), {target: {value: 'exact-filter'}});
+    fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), {target: {value: 'exact-filter'}});
     fireEvent.click(screen.getByLabelText('OBSの既存項目も含める'));
     fireEvent.click(screen.getByRole('button', {name: 'OBSの対象を取得'}));
     fireEvent.click(await screen.findByLabelText(source));
     fireEvent.click(screen.getByRole('button', {name: `${source}の既存フィルタを取得`}));
     fireEvent.click(await screen.findByLabelText('Filter （vst_filter・現在有効）の有効状態を保存'));
-    fireEvent.click(screen.getByRole('button', {name: '現在の配信状態を保存'}));
+    fireEvent.click(screen.getByRole('button', {name: '現在のOBS込みプロファイルを保存'}));
     await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('exact-filter', expect.any(Object), [{source, volume: true, muted: true, monitor: false, filters: [' Filter ']}], false));
 });
 
@@ -134,14 +134,14 @@ it('localeだけで未保存名・カテゴリ・選択を保持し、一覧/OBS
     const store = createLocaleStore(() => 'ja', () => true);
     render(<LocaleProvider store={store}><BroadcastBundlePanel /></LocaleProvider>);
     await screen.findByRole('option', { name: '歌枠' });
-    const name = screen.getByLabelText('配信状態名'); const selected = screen.getByLabelText('保存済み配信状態');
+    const name = screen.getByLabelText('OBS込みプロファイル名'); const selected = screen.getByLabelText('保存済みOBS込みプロファイル');
     fireEvent.change(name, { target: { value: '未保存の実名' } });
     fireEvent.change(selected, { target: { value: '歌枠' } });
     const noise = screen.getByRole('checkbox', { name: 'ノイズ低減' }); fireEvent.click(noise);
     const calls = vi.mocked(bundleApi.list).mock.calls.length;
     act(() => { store.setLocale('en'); });
     expect(screen.getByLabelText('Bundle name')).toBe(name); expect(name).toHaveValue('未保存の実名');
-    expect(screen.getByLabelText('Saved broadcast bundle')).toBe(selected); expect(selected).toHaveValue('歌枠');
+    expect(screen.getByLabelText('Saved profile with OBS')).toBe(selected); expect(selected).toHaveValue('歌枠');
     expect(screen.getByRole('checkbox', { name: 'Noise reduction' })).toBe(noise); expect(noise).not.toBeChecked();
     expect(vi.mocked(bundleApi.list).mock.calls).toHaveLength(calls);
     expect(bundleApi.sources).not.toHaveBeenCalled(); expect(bundleApi.save).not.toHaveBeenCalled();
@@ -151,23 +151,23 @@ it('raw失敗に保存しましたが含まれてもalertのまま、明示成�
     vi.mocked(bundleApi.save).mockRejectedValueOnce('保存しましたではない: unknown backend failure');
     render(<LocaleProvider store={store}><BroadcastBundlePanel /></LocaleProvider>);
     await screen.findByRole('option', { name: '歌枠' });
-    fireEvent.change(screen.getByLabelText('配信状態名'), { target: { value: 'New' } });
-    fireEvent.click(screen.getByRole('button', { name: '現在の配信状態を保存' }));
+    fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), { target: { value: 'New' } });
+    fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
     const alert = await screen.findByRole('alert');
     act(() => { store.setLocale('en'); });
     expect(screen.getByRole('alert')).toBe(alert); expect(alert).toHaveTextContent('Original detail (untranslated)');
     expect(alert).toHaveTextContent('保存しましたではない: unknown backend failure');
-    fireEvent.click(screen.getByRole('button', { name: 'Save current broadcast bundle' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save current profile with OBS' }));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
-    expect(await screen.findByRole('status')).toHaveTextContent('Broadcast bundle saved.');
+    expect(await screen.findByRole('status')).toHaveTextContent('Profile with OBS saved.');
 });
 it('client生成codeだけ翻訳し、不正応答やrawbackendを成功扱いしない', async () => {
     const store = createLocaleStore(() => 'ja', () => true);
     vi.mocked(bundleApi.save).mockRejectedValueOnce(new BundleClientError('presets.copy.177'));
     render(<LocaleProvider store={store}><BroadcastBundlePanel /></LocaleProvider>);
     await screen.findByRole('option', { name: '歌枠' });
-    fireEvent.change(screen.getByLabelText('配信状態名'), { target: { value: 'New' } });
-    fireEvent.click(screen.getByRole('button', { name: '現在の配信状態を保存' }));
+    fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), { target: { value: 'New' } });
+    fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
     await screen.findByRole('alert');
     act(() => { store.setLocale('en'); });
     expect(screen.getByRole('alert')).toHaveTextContent('Could not confirm save completion');
@@ -181,14 +181,14 @@ it('typed差分とゼロOBS変更のcompleteを表示し、同一未保存名と
     const store = createLocaleStore(() => 'ja', () => true);
     render(<LocaleProvider store={store}><BroadcastBundlePanel onOperation={operation} /></LocaleProvider>);
     await showPlan();
-    const name = screen.getByLabelText('配信状態名');
+    const name = screen.getByLabelText('OBS込みプロファイル名');
     fireEvent.change(name, {target:{value:'未保存sentinel'}});
     await showPlan();
     const count = vi.mocked(bundleApi.preview).mock.calls.length;
     act(() => {store.setLocale('en');});
     expect(screen.getByLabelText('Bundle name')).toBe(name);
     expect(name).toHaveValue('未保存sentinel');
-    expect(screen.getByRole('table')).toHaveTextContent('Output gain30%40%');
+    expect(screen.getByRole('table')).toHaveTextContent('Output volume30%40%');
     expect(bundleApi.preview).toHaveBeenCalledTimes(count);
     expect(bundleApi.save).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', {name:'Apply this change preview'}));
@@ -205,8 +205,8 @@ it('確認済み保存には現在条件と明示チェックが必要で、条�
     localStorage.setItem('vst_host_setup_goal', 'discord');
     render(<BroadcastBundlePanel checkedOnly />);
     await waitFor(() => expect(bundleApi.checkedList).toHaveBeenCalled());
-    fireEvent.change(screen.getByRole('textbox', { name: '配信状態名' }), { target: { value: 'checked-home' } });
-    const save = screen.getByRole('button', { name: '現在の配信状態を保存' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'OBS込みプロファイル名' }), { target: { value: 'checked-home' } });
+    const save = screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' });
     expect(save).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '確認対象の現在条件を読み取る' }));
     const ack = screen.getByRole('checkbox', { name: 'この条件で音・最終音量・送り先を自分で確認しました' });
@@ -237,10 +237,10 @@ it('再起動後の原本は勝手に適用せず、差分を開いて明示的�
     vi.mocked(bundleApi.recovery).mockResolvedValue({id:'original-1', readable:true});
     const operation = vi.fn().mockResolvedValue(result);
     render(<BroadcastBundlePanel onOperation={operation} />);
-    expect(await screen.findByRole('heading', {name:'中断した配信状態の復旧'})).toBeInTheDocument();
+    expect(await screen.findByRole('heading', {name:'中断したOBS込みプロファイルの復旧'})).toBeInTheDocument();
     expect(operation).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', {name:'原本との差分を確認'}));
-    const apply = await screen.findByRole('button', {name:'確認した原本を復元'});
+    fireEvent.click(screen.getByRole('button', {name:'適用前の設定との差分を確認'}));
+    const apply = await screen.findByRole('button', {name:'確認した適用前の設定を復元'});
     expect(operation).not.toHaveBeenCalled();
     fireEvent.click(apply);
     await waitFor(() => expect(operation).toHaveBeenCalledWith({action:'recovery_apply',id:'p1'}));
@@ -249,6 +249,6 @@ it('読めない原本も明示確認するまでは解除しない', async () =
     vi.mocked(bundleApi.recovery).mockResolvedValue({id:null, readable:false});
     render(<BroadcastBundlePanel onOperation={vi.fn()} />);
     const adopt = await screen.findByRole('button', {name:'現在の状態を使う'}); expect(adopt).toBeDisabled();
-    fireEvent.click(screen.getByRole('checkbox',{name:/原本に戻さず/})); fireEvent.click(adopt);
+    fireEvent.click(screen.getByRole('checkbox',{name:/適用前の設定に戻さず/})); fireEvent.click(adopt);
     await waitFor(() => expect(bundleApi.resolveRecovery).toHaveBeenCalledWith(null));
 });

@@ -68,7 +68,7 @@ it('配信状態から認証設定へ移り、接続を保持して戻るが、�
     });
     render(<AppModals />);
     fireEvent.click(screen.getByRole('button', { name: '配信状態の管理を開く' }));
-    fireEvent.click(await screen.findByRole('button', { name: '配信状態' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'OBS込みプロファイル' }));
     fireEvent.click(screen.getByLabelText('OBSの既存項目も含める'));
     expect(invoke).not.toHaveBeenCalledWith('connect_obs', expect.anything());
     fireEvent.click(screen.getByRole('button', { name: 'OBS接続設定を開く' }));
@@ -77,7 +77,7 @@ it('配信状態から認証設定へ移り、接続を保持して戻るが、�
     fireEvent.click(connect);
     await waitFor(() => expect(connected).toBe(true));
     fireEvent.click(screen.getByRole('button', { name: '設定画面を閉じる' }));
-    expect(await screen.findByRole('button', { name: '配信状態' })).toHaveAttribute('aria-pressed', 'true');
+    expect(await screen.findByRole('button', { name: 'OBS込みプロファイル' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByLabelText('OBSの既存項目も含める'));
     fireEvent.click(screen.getByRole('button', { name: 'OBSの対象を取得' }));
     await screen.findByLabelText('声');
@@ -196,7 +196,7 @@ function timingBackend() {
     return { connected: () => connected, calls: (name: string) => vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === name) };
 }
 async function guideTiming() {
-    fireEvent.click(await screen.findByRole('button', { name: '機材を使用していない手順を選択' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' }));
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
     fireEvent.click(screen.getByText('OBSの最終ミックスを確認する（手動）'));
@@ -217,7 +217,7 @@ it('実useObsUsageで接続設定からlazyガイドへ引き継ぎ、対象取�
     await waitFor(() => expect(connect).toBeEnabled()); fireEvent.click(connect);
     await screen.findByRole('button', { name: '切断' });
     fireEvent.click(screen.getByRole('button', { name: 'OBS連携ガイドを開く' }));
-    await screen.findByRole('button', { name: '機材を使用していない手順を選択' });
+    await screen.findByRole('button', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' });
     await act(async () => {});
     expect(backend.calls('disconnect_obs')).toHaveLength(0);
     await guideTiming();
@@ -296,10 +296,10 @@ it('歌向け下書きは設定→候補試聴→設定の往復で保持し、�
     await waitFor(() => expect(defaults).toBeEnabled());
     fireEvent.click(defaults);
     fireEvent.change(screen.getByRole('spinbutton', { name: '低音の整理（Hz）' }), { target: { value: '135' } });
-    fireEvent.click(screen.getByRole('button', { name: '内蔵処理の候補を独立試聴' }));
-    await screen.findByText('原音と内蔵処理の候補を比べる');
+    fireEvent.click(screen.getByRole('button', { name: '内蔵ボイスチェーンの候補を独立試聴' }));
+    await screen.findByText('原音と内蔵ボイスチェーンの候補を比べる');
     expect(screen.getByText(/下書き：低音 135/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '音作りの下書きへ戻る' }));
+    fireEvent.click(screen.getByRole('button', { name: '音づくりの下書きへ戻る' }));
     expect(await screen.findByRole('spinbutton', { name: '低音の整理（Hz）' })).toHaveValue(135);
     expect(builtin.mock.calls.every(([request]) => request.action === 'snapshot')).toBe(true);
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ action: 'close' }));

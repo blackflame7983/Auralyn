@@ -12,7 +12,7 @@ vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn(async () => 'test-vers
 const config = { host: 'Wasapi', input: 'USB mic', output: 'Headphones' };
 const openDiagnosis = () => {
     render(<TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /OBS（配信・録画）/ }));
+    fireEvent.click(screen.getByRole('button', { name: /OBSで配信/ }));
 };
 beforeEach(() => { vi.mocked(invoke).mockReset(); vi.mocked(listen).mockClear(); });
 afterEach(() => { cleanup(); vi.useRealTimers(); localStorage.clear(); });
@@ -38,7 +38,7 @@ it.each(['', '-A', '-B'])('CABLE%s Inputの到達確認は、同じ系統・ホ�
     fireEvent.click(screen.getByRole('button', { name: '続行' }));
     await act(async () => {});
     expect(invoke).toHaveBeenCalledWith('probe_loopback', { inputDevice: receiver, durationMs: 1500, freqHz: 1000 });
-    expect(screen.getByText(new RegExp(`CABLE${variant} Output.*テストトーンを検出`))).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`CABLE${variant} Output.*テスト音を検出`))).toBeInTheDocument();
     expect(screen.getByText(/OBS のソースに/)).toHaveTextContent(`CABLE${variant} Output`);
 });
 
@@ -116,7 +116,7 @@ it('比較情報や通信デバイスが未取得なら成功を表示しない'
     expect(invoke).not.toHaveBeenCalledWith('play_test_tone', expect.anything());
 });
 
-it.each(['Discord（通話）', 'その他アプリ'])('%s の受け側処理を一律OFFにせず、比較と試聴を案内する', async purpose => {
+it.each(['通話（Discordなど）', 'その他のアプリ'])('%s の受け側処理を一律OFFにせず、比較と試聴を案内する', async purpose => {
     vi.useFakeTimers();
     vi.mocked(invoke).mockImplementation(async command => {
         if (command === 'get_audio_state') return { is_running: true, config };
@@ -143,7 +143,7 @@ it('遅い診断中のlocale切替は再測定せず、結果とコピーはク�
     const write = vi.fn(async (_value: string) => {});
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: write } });
     render(<LocaleProvider store={store}><TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} /></LocaleProvider>);
-    fireEvent.click(screen.getByRole('button', { name: /OBS（配信・録画）/ }));
+    fireEvent.click(screen.getByRole('button', { name: /OBSで配信/ }));
     await act(async () => {});
     const dialog = screen.getByRole('dialog'); const calls = vi.mocked(invoke).mock.calls.length;
     act(() => { store.setLocale('en'); });
@@ -169,10 +169,10 @@ it('遅い診断中のlocale切替は再測定せず、結果とコピーはク�
 it('セットアップで選んだ用途を初期値にし、別の用途にも切り替えられる', () => {
     localStorage.setItem('vst_host_setup_goal', 'listening');
     render(<TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /とりあえず聴きたいで診断する/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /OBS（配信・録画）/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /ヘッドホンで試すで診断する/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /OBSで配信/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '用途を変える' }));
-    expect(screen.getByRole('button', { name: /OBS（配信・録画）/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /OBSで配信/ })).toBeInTheDocument();
 });
 
 it('診断から用途を切り替えると、保存後に準備欄へ共用の変更通知を送る', async () => {
@@ -184,7 +184,7 @@ it('診断から用途を切り替えると、保存後に準備欄へ共用の�
     try {
         render(<TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
         fireEvent.click(screen.getByRole('button', { name: '用途を変える' }));
-        fireEvent.click(screen.getByRole('button', { name: /OBS（配信・録画）/ }));
+        fireEvent.click(screen.getByRole('button', { name: /OBSで配信/ }));
         await screen.findByRole('button', { name: '設定を開く' });
         expect(observed).toEqual(['obs']);
     } finally {

@@ -16,6 +16,8 @@ interface PluginBrowserModalProps {
   notice?: string | null;
   protectionNotice?: string | null;
   onScan: () => void;
+  /** VST 構成に入っているプラグインのパス。追加済みであることを一覧に示す。 */
+  addedPaths?: string[];
 }
 
 type TabType = 'all' | 'favorites' | 'recent';
@@ -106,6 +108,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   error,
   notice,
   protectionNotice,
+  addedPaths = [],
   onScan
 }) => {
     const t = useMessages();
@@ -393,8 +396,9 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                         </p>
                       </div>
                     </div>
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span className="px-2 py-1 text-xs bg-primary/10 text-primary rounded border border-primary/20">
+                    <div className="flex items-center gap-2">
+                      {addedPaths.includes(plugin.path) && <span className="px-2 py-1 text-xs text-muted-foreground rounded border border-border">{t('pluginBrowser.added')}</span>}
+                      <span className="opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 text-xs bg-primary/10 text-primary rounded border border-primary/20">
                         {t('pluginBrowser.add')}</span>
                     </div>
                   </div>

@@ -24,7 +24,7 @@ it.each(['ja', 'en'] as const)('両言語で5段を固定順にし、現在の�
     labels.forEach((label, i) => expect(rows[i]).toHaveTextContent(label));
     expect(rows[1]).toHaveTextContent(locale === 'ja' ? '設定 ON' : 'Configured ON');
     expect(rows[2]).toHaveTextContent(locale === 'ja' ? '設定 一部ON' : 'Partly configured ON');
-    expect(flow).toHaveTextContent(locale === 'ja' ? '自分用と配信側を分離すると経路が分かれます' : 'Monitor and broadcast paths can split');
+    expect(flow).toHaveTextContent(locale === 'ja' ? '自分用と配信側を分離すると経路が分かれます' : 'Monitor and broadcast paths split');
 });
 
 it('現在の世代と不一致または停止時は処理の設定を OFF と推測しない', () => {

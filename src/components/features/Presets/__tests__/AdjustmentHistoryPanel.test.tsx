@@ -25,7 +25,7 @@ it('状態更新は対象名ごと読み上げ、各操作の説明も同じ対�
     await act(async () => {});
     fireEvent.click(screen.getByRole('button', {name: '履歴の状態を確認'}));
     await waitFor(() => expect(screen.getAllByText('適用前へ戻せます')).toHaveLength(3));
-    for (const label of ['NR候補', '内蔵処理', '固定出力ゲイン']) {
+    for (const label of ['ノイズ低減の候補', '内蔵ボイスチェーン', '固定出力音量']) {
         const row = screen.getByText(new RegExp(`^${label}:`)).closest('li')!;
         const status = within(row).getByRole('status');
         expect(status).toHaveTextContent(`${label}: 適用前へ戻せます`);
@@ -51,7 +51,7 @@ it('未作成・対象編集・新測定の理由を対象別に示し、原因�
 
 it.each([
     ['input_changed', 'input conditions changed'],
-    ['learning_changed', 'noise measurement or learning conditions changed'],
+    ['learning_changed', 'ambient measurement conditions changed'],
     ['stream_changed', 'audio was started or stopped'],
     ['stream_failed', 'audio processing failed'],
     ['conditions_changed', 'related audio conditions changed'],
@@ -79,11 +79,11 @@ it('取得失敗では直前の原因を表示し続けず、再確認で新し�
     await act(async () => {});
     const check = screen.getByRole('button', {name: '履歴の状態を確認'});
     fireEvent.click(check);
-    await waitFor(() => expect(screen.getByText(/入力機器・チャンネル・入力ゲインなどの条件変更/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/入力機器・チャンネル・マイク音量などの条件変更/)).toBeInTheDocument());
     vi.mocked(builtinApi.request).mockRejectedValueOnce(new Error('unavailable'));
     fireEvent.click(check);
     await waitFor(() => expect(screen.getAllByText('履歴の状態を取得できません。再確認してください')).toHaveLength(3));
-    expect(screen.queryByText(/入力機器・チャンネル・入力ゲインなどの条件変更/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/入力機器・チャンネル・マイク音量などの条件変更/)).not.toBeInTheDocument();
     vi.mocked(builtinApi.request).mockResolvedValue({...builtin, undoToken: null, historyReason: 'not_created'});
     fireEvent.click(check);
     await waitFor(() => expect(screen.getByText('このエンジンでは履歴がまだありません')).toBeInTheDocument());
@@ -108,7 +108,7 @@ it('表示だけでは状態取得や設定変更をせず、明示取得で方�
     fireEvent.click(screen.getByRole('button', {name: '履歴の状態を確認'}));
     await waitFor(() => expect(screen.getAllByText('適用前へ戻せます')).toHaveLength(3));
     expect(voicePreviewApi.request).toHaveBeenCalledWith(expect.objectContaining({action: 'history_status'}));
-    fireEvent.click(screen.getByRole('button', {name: '録音チェックで操作する'}));
+    fireEvent.click(screen.getByRole('button', {name: 'ボイスチェックで操作する'}));
     expect(open).toHaveBeenCalledOnce();
     expect(builtinApi.request).toHaveBeenCalledWith({action: 'snapshot'});
     expect(readOutputGainStatus).toHaveBeenCalledOnce();
@@ -123,7 +123,7 @@ it('反映を確認したUndoの後だけRedoを有効にし、別変更通知�
     await act(async () => {});
     fireEvent.click(screen.getByRole('button', {name: '履歴の状態を確認'}));
     await waitFor(() => expect(screen.getAllByText('適用前へ戻せます')).toHaveLength(3));
-    const row = screen.getByText(/^内蔵処理:/).closest('li')!;
+    const row = screen.getByText(/^内蔵ボイスチェーン:/).closest('li')!;
     const undo = within(row).getByRole('button', {name: '適用前へ戻す'});
     undo.focus();
     fireEvent.click(undo);

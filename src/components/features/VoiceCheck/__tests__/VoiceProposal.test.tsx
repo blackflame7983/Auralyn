@@ -118,11 +118,11 @@ it('通常VoiceCheckで提案を作りlocaleを替えても候補・device・安
     const store = createLocaleStore(() => 'ja', () => true); const save = vi.fn();
     function Screen() { const model = useSingingDraft(); return <><input type="number" aria-label="manual draft" value={model.draft?.singing?.lowCutHz ?? 80} onChange={e => model.edit({ lowCutHz: Number(e.target.value) })} /><VoiceCheckModal isOpen manualCandidate={false} singingModel={model} onClose={vi.fn()} onSaveSingingProfile={save} /></>; }
     render(<LocaleProvider store={store}><Screen /></LocaleProvider>);
-    const candidates = screen.getByText('歌向け：内蔵処理の候補を試す').closest('details')!;
+    const candidates = screen.getByText('歌向け：内蔵ボイスチェーンの候補を試す').closest('details')!;
     expect(candidates).not.toHaveAttribute('open');
     const play = screen.getByRole('button', { name: '選んだ試聴先で再生' });
     expect(play.compareDocumentPosition(candidates) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    fireEvent.click(screen.getByText('歌向け：内蔵処理の候補を試す'));
+    fireEvent.click(screen.getByText('歌向け：内蔵ボイスチェーンの候補を試す'));
     const create = await screen.findByRole('button', { name: '録音から比較候補を作る' });
     await waitFor(() => expect(create).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '提案に使う現在設定を再取得' }));
@@ -216,17 +216,17 @@ it('手動Aと録音提案Bを混同せず、手動再準備後のA/BにはAのc
     });
     function Screen() { const model = useSingingDraft(); return <><input type="number" aria-label="manual" value={model.draft?.singing?.lowCutHz ?? 80} onChange={e => model.edit({ lowCutHz: Number(e.target.value) })} /><VoiceCheckModal isOpen singingModel={model} onClose={vi.fn()} /></>; }
     render(<Screen />);
-    const manual = await screen.findByRole('button', { name: 'この録音から内蔵処理の候補を作成' });
+    const manual = await screen.findByRole('button', { name: 'この録音から内蔵ボイスチェーンの候補を作成' });
     await waitFor(() => expect(manual).toBeEnabled());
     fireEvent.change(screen.getByLabelText('manual'), { target: { value: '140' } });
     fireEvent.click(screen.getByRole('button', { name: '録音から比較候補を作る' }));
     await screen.findByText(/低音整理80Hz/);
     expect(screen.queryByText('候補の準備ができました。試聴先を確認して再生してください。')).not.toBeInTheDocument();
-    expect(screen.getByText('A/B対象：原音と録音由来の提案（内蔵処理のみ）')).toBeVisible();
+    expect(screen.getByText('A/B対象：原音と録音由来の提案（内蔵ボイスチェーンのみ）')).toBeVisible();
     expect(screen.getByRole('button', { name: 'この下書きをマイクの音へ適用' })).toBeDisabled();
     fireEvent.click(manual);
     await screen.findByText('候補の準備ができました。試聴先を確認して再生してください。');
-    expect(screen.getByText('A/B対象：原音と手動下書きの候補（内蔵処理のみ）')).toBeVisible();
+    expect(screen.getByText('A/B対象：原音と手動下書きの候補（内蔵ボイスチェーンのみ）')).toBeVisible();
     expect(prepared?.config.singing?.lowCutHz).toBe(140);
     fireEvent.click(screen.getByRole('button', { name: '試聴先を取得・更新' }));
     await screen.findByRole('option', { name: 'Headphones' });

@@ -97,7 +97,7 @@ export function VoiceQuickControls({ running, onOpenSoundSettings }: { running: 
             <div className="grid gap-3 md:grid-cols-2">
                 <div id="home-noise" tabIndex={-1} className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
                     <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold">{t('settings.AudioSettingsModal.105')}</span>
+                        <span className="flex items-center gap-1 text-sm font-semibold">{t('settings.AudioSettingsModal.105')}<InfoPopover label={t('info.noise')}>{t('home.noiseScope')}</InfoPopover></span>
                         <Switch checked={noiseOn} disabled={disabled} onCheckedChange={active => void applyNoise({ active })} aria-label={t('settings.AudioSettingsModal.107')} />
                     </div>
                     {noiseMode === 'smart' || noiseMode === 'venue' ? (
@@ -112,7 +112,6 @@ export function VoiceQuickControls({ running, onOpenSoundSettings }: { running: 
                             ))}
                         </div>
                     )}
-                    <InfoPopover label={t('info.noise')}>{t('home.noiseScope')}</InfoPopover>
                 </div>
                 <div id="home-builtin" tabIndex={-1} className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
                     <div className="flex items-center justify-between gap-2">

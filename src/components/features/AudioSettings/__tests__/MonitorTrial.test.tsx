@@ -101,7 +101,7 @@ it('壊れた原本は新試験を防ぎ、現在の状態の明示採用まで�
     render(<MonitorTrial devices={devices} onApplied={vi.fn()} />);
     expect(screen.getByText('現在の実設定から候補を作る')).toBeDisabled();
     const keep = screen.getByRole('button', {name:'現在の設定を使う'}); expect(keep).toBeDisabled();
-    fireEvent.click(screen.getByRole('checkbox', {name:/保存原本は復元せず/}));
+    fireEvent.click(screen.getByRole('checkbox', {name:/保存済みの設定は復元せず/}));
     fireEvent.click(keep);
     expect(localStorage.getItem('auralyn_monitor_trial_original_v1')).toBeNull();
     expect(audioApi.start).not.toHaveBeenCalled();

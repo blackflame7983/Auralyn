@@ -157,6 +157,7 @@ export const Header: React.FC<HeaderProps> = ({
                         bufferSize={currentBufferSize}
                         isRunning={isEngineRunning}
                         processReady={engineProcessReady}
+                        showDetails={!isBeginnerMode}
                     />
                 </div>
 
@@ -205,7 +206,7 @@ export const Header: React.FC<HeaderProps> = ({
                             <div className="flex items-center justify-between gap-4 text-sm"><span>{t('header.inputGain')}</span><span>{inputGain}%</span></div>
                             <Slider aria-label={t('header.inputGain')} aria-valuetext={`${inputGain}%`} value={[inputGain]} max={200} step={1}
                                 onValueChange={handleInputGainChange} onDoubleClick={() => handleInputGainChange([100])} className="mt-4" />
-                            <p className="mt-2 text-xs text-muted-foreground">{t('header.inputGainHint')}</p>
+                            <button type="button" disabled={inputGain === 100} onClick={() => handleInputGainChange([100])} className="mt-3 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">{t('header.inputGainHint')}</button>
                         </Popover.Content></Popover.Portal>
                     </Popover.Root>
 

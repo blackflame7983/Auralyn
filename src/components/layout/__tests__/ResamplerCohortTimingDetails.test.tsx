@@ -28,7 +28,7 @@ it('蓄積到着区間とcarryを表示しDSP全信号を観測したとしな�
     expect(screen.getByText('12.00〜12.10 ms未満')).toBeInTheDocument();
     expect(screen.getByText('3.00〜3.10 ms未満')).toBeInTheDocument();
     expect(screen.getByText(/原入力 1,024 frame／cohort消費 882／未生成・carry 142/)).toBeInTheDocument();
-    expect(screen.getByText(/NRのdry\/wet混合/)).toBeInTheDocument();
+    expect(screen.getByText(/ノイズ低減のdry\/wet混合/)).toBeInTheDocument();
     expect(screen.getByText(/信号の点対応や総信号遅延ではありません/)).toBeInTheDocument();
 });
 it('旧missing/null/不正count/未知modeやsignal保証はunknownで数値を採用しない', () => {

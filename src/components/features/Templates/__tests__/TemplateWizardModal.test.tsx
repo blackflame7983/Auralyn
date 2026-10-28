@@ -5,12 +5,12 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { TemplateWizardModal } from '../TemplateWizardModal';
 
 afterEach(cleanup);
-it('外部VSTの準備と設定値の手動調整を明示し、内蔵処理へ進める', () => {
+it('外部VSTの準備と設定値の手動調整を明示し、内蔵ボイスチェーンへ進める', () => {
     const settings = vi.fn();
     render(<TemplateWizardModal isOpen onClose={vi.fn()} availablePlugins={[]} onApplyTemplate={vi.fn()}
         onScan={vi.fn()} isScanning={false} onOpenSoundSettings={settings} />);
     expect(screen.getByText(/各VSTの設定値は自動調整しません/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '外部VSTを使わず、内蔵処理を設定する' }));
+    fireEvent.click(screen.getByRole('button', { name: '外部VSTを使わず、内蔵ボイスチェーンを設定する' }));
     expect(settings).toHaveBeenCalledOnce();
 });
 
@@ -41,7 +41,7 @@ it('適用中は画面移動・閉じる・構成変更を止め、失敗後に�
     const apply = screen.getByRole('button', { name: 'VST構成を置き換える' });
     await waitFor(() => expect(apply).toBeEnabled());
     fireEvent.click(apply);
-    const blocked = ['閉じる', 'キャンセル', '← 戻る', '外部VSTを使わず、内蔵処理を設定する'];
+    const blocked = ['閉じる', 'キャンセル', '← 戻る', '外部VSTを使わず、内蔵ボイスチェーンを設定する'];
     for (const name of blocked) {
         const button = screen.getByRole('button', { name });
         expect(button).toBeDisabled();
@@ -76,6 +76,6 @@ it('localeだけでtemplate元objectと手動割当を保ち、自動割当やsc
     expect(screen.getByRole('dialog')).toBe(dialog);
     expect(screen.getByRole('combobox', { name: 'VST for Compressor' })).toBe(compressor);
     expect(compressor).toHaveValue('manual'); expect(scan).not.toHaveBeenCalled(); expect(apply).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Replace the VST chain' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Replace the VST setup' }));
     await waitFor(() => expect(apply).toHaveBeenCalledWith(expect.objectContaining({ '1': plugins[1], '2': plugins[2] })));
 });

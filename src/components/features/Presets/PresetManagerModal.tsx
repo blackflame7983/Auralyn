@@ -1,5 +1,6 @@
 import { RecoveryActionsPanel } from './RecoveryActionsPanel';
 import { TemporarySessionPanel } from './TemporarySessionPanel';
+import { sessionMode } from '@/lib/temporarySession';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useState, useEffect, useCallback } from 'react';
@@ -184,6 +185,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
     onOpenAudioSettings,
 }) => {
     const t = useMessages();
+    const temporaryActive = sessionMode().temporary;
     const [recoveryOpen, setRecoveryOpen] = useState(false);
     const [bundleOpen, setBundleOpen] = useState(initialBundleOpen);
     const [profiles, setProfiles] = useState<ProfileMeta[]>([]);
@@ -434,11 +436,11 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="px-4 pt-3"><TemporarySessionPanel /></div>
+                {temporaryActive && <div className="px-4 pt-3"><TemporarySessionPanel /></div>}
                 <div className="flex gap-2 border-b p-2" role="group" aria-label={t('presets.copy.056')}>
-                    <button type="button" className="border rounded p-2" aria-pressed={!bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(false); }}>{t('presets.copy.057')}</button>
-                    <button type="button" className="border rounded p-2" aria-pressed={bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(true); }}>{t('presets.copy.058')}</button>
-                    <button type="button" className="border rounded p-2" aria-pressed={recoveryOpen} onClick={() => setRecoveryOpen(true)}>{t('recoveryHub.title')}</button>
+                    <button type="button" className="border rounded p-2 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary" aria-pressed={!bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(false); }}>{t('presets.copy.057')}</button>
+                    <button type="button" className="border rounded p-2 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary" aria-pressed={bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(true); }}>{t('presets.copy.058')}</button>
+                    <button type="button" className="border rounded p-2 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary" aria-pressed={recoveryOpen} onClick={() => setRecoveryOpen(true)}>{t('recoveryHub.title')}</button>
                 </div>
                 {recoveryOpen ? <RecoveryActionsPanel onOperation={onBundleOperation} onVoiceCheck={onOpenVoiceCheck} onSettings={onOpenAudioSettings} /> : bundleOpen ? <BroadcastBundlePanel onOperation={onBundleOperation} onObsSettings={onObsSettings} /> : <>
                 <div className="p-4 border-b border-border bg-muted/30 space-y-3">
@@ -446,15 +448,19 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                         {t('presets.copy.059')}</h3>
                     <p className="text-sm text-muted-foreground">{t('presets.copy.060')}</p>
                     <div role="group" aria-label={t('profilePurpose.title')} className="flex flex-wrap gap-2">
-                        <button type="button" aria-pressed={!saveCategories.includeAudioConfig} className="border rounded p-2 text-sm" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: false }))}>{t('profilePurpose.sound')}</button>
-                        <button type="button" aria-pressed={saveCategories.includeAudioConfig} className="border rounded p-2 text-sm" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: true }))}>{t('profilePurpose.equipment')}</button>
+                        <button type="button" aria-pressed={!saveCategories.includeAudioConfig} className="border rounded p-2 text-sm aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: false }))}>{t('profilePurpose.sound')}</button>
+                        <button type="button" aria-pressed={saveCategories.includeAudioConfig} className="border rounded p-2 text-sm aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: true }))}>{t('profilePurpose.equipment')}</button>
                     </div>
                     <p className="text-xs text-muted-foreground">{t(saveCategories.includeAudioConfig ? 'profilePurpose.impact' : 'profilePurpose.portable')}</p>
-                    <CategoryCheckboxes
-                        idPrefix="save"
-                        categories={saveCategories}
-                        onChange={setSaveCategories}
-                    />
+                    {/* 目的の2択で足りる人が多いため、項目ごとの選択は閉じておく。 */}
+                    <details className="text-sm">
+                        <summary className="cursor-pointer text-xs font-medium">{t('profilePurpose.customize')}</summary>
+                        <div className="mt-2"><CategoryCheckboxes
+                            idPrefix="save"
+                            categories={saveCategories}
+                            onChange={setSaveCategories}
+                        /></div>
+                    </details>
                     <label htmlFor="profile-save-name" className="block text-xs font-medium">{t('presets.copy.061')}</label>
                     <div className="flex gap-2">
                         <input
@@ -586,6 +592,8 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
                 </div>
                 </>}
+                {/* 共有PCでの一時利用はまれな操作なので、使用中でなければ一覧の後ろに置く。 */}
+                {!temporaryActive && <div className="px-4 py-3"><TemporarySessionPanel /></div>}
                 </div>
             </div>
 

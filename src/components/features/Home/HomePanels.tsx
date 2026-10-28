@@ -63,6 +63,8 @@ export function HomePanels({ audioReady, statusText, isEngineRunning, inputName,
         const element = document.getElementById(id);
         if (element) { const details = element.closest('details'); if (details) details.open = true; element.scrollIntoView?.({ block: 'center' }); element.focus(); } else (onOpenSoundSettings ?? onOpenSettings)();
     };
+    // 未設定は処理欄と主ボタンで示す。停止中のメーターや注記を重ねない。
+    const configured = model.observation.availability !== 'unconfigured';
     const actualInput = model.observation.config?.input ?? inputName;
     const actualOutput = model.observation.config?.output ?? outputName;
     return <div className="mb-4 space-y-3">
@@ -74,22 +76,23 @@ export function HomePanels({ audioReady, statusText, isEngineRunning, inputName,
                 <div className="min-w-0"><dt className="text-muted-foreground">{t('prep.processing')}</dt><dd role="status" className="font-medium">{statusText ?? t(availability[model.observation.availability])}</dd></div>
                 <div className="min-w-0"><dt className="text-muted-foreground">{t('home.output')}</dt><dd className="truncate font-medium" title={actualOutput ?? undefined}>{actualOutput ? deviceDisplayName(actualOutput) : t('master.unset')}</dd></div>
             </dl>
-            <div className="flex flex-wrap items-center gap-3">
+            {configured && <div className="flex flex-wrap items-center gap-3">
                 {music ? <MdMusicNote aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /> : <MdMic aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />}<InputMeterBar running={isEngineRunning} />
                 <button type="button" onClick={onOpenSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('home.changeDevices')}</button>
-            </div>
-            <p className="text-xs text-muted-foreground">{t('prep.localOnly')}</p>
+            </div>}
+            {configured && <p className="text-xs text-muted-foreground">{t('prep.localOnly')}</p>}
         </section>} />
-        {model.observation.routing && (model.observation.routing.deviceId || model.observation.routing.splitProcessing) && !['unknown', 'stopped', 'unconfigured', 'failed', 'pending'].includes(model.observation.availability) && <RouteSummary routing={model.observation.routing} output={actualOutput} onSettings={onOpenSettings} />}
-        <SignalFlow onInput={onOpenSettings} onOutput={onOpenSettings} onNoise={() => focusControl('home-noise')} onBuiltin={() => focusControl('home-builtin')} onVst={onOpenVst} onRouting={onOpenSettings} />
         <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
             <h2 className="text-sm font-bold">{t(music ? 'wizard.musicSound' : 'shell.sound')}</h2>
-            {audioReady ? (music ? <details><summary className="cursor-pointer text-sm">{t('purpose.processing')}</summary><VoiceQuickControls running={isEngineRunning} onOpenSoundSettings={onOpenSoundSettings} /></details> : <VoiceQuickControls running={isEngineRunning} onOpenSoundSettings={onOpenSoundSettings} />) : <p className="text-sm text-muted-foreground">{t('home.soundAfterSetup')}</p>}
+            {/* 音楽鑑賞では声向けの処理を出さず、VST 構成で音を整える。 */}
+            {audioReady ? (music ? <p className="text-sm text-muted-foreground">{t('music.soundHint')}</p> : <VoiceQuickControls running={isEngineRunning} onOpenSoundSettings={onOpenSoundSettings} />) : <p className="text-sm text-muted-foreground">{t('home.soundAfterSetup')}</p>}
             <div className="flex flex-wrap gap-2">
                 <button type="button" ref={listenButton} onClick={music ? openListen : onOpenVoiceCheck} disabled={!audioReady} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"><MdHearing aria-hidden="true" />{t(music ? 'wizard.musicListen' : 'home.voiceCheck')}</button>
                 {!music && model.context.usage === 'obs' && <button type="button" onClick={onOpenOBSSettings} className="rounded-md border border-border px-3 py-2 text-sm">{t('shell.obs')}</button>}
             </div>
         </section>
+        {model.observation.routing && (model.observation.routing.deviceId || model.observation.routing.splitProcessing) && !['unknown', 'stopped', 'unconfigured', 'failed', 'pending'].includes(model.observation.availability) && <RouteSummary routing={model.observation.routing} output={actualOutput} onSettings={onOpenSettings} />}
+        <SignalFlow onInput={onOpenSettings} onOutput={onOpenSettings} onNoise={() => focusControl('home-noise')} onBuiltin={() => focusControl('home-builtin')} onVst={onOpenVst} onRouting={onOpenSettings} />
 
         {music && listenOpen && <MusicListeningCheck running={isEngineRunning} input={actualInput} output={actualOutput} onSettings={onOpenSettings} onClose={() => {setListenOpen(false); listenButton.current?.focus();}} />}
     </div>;

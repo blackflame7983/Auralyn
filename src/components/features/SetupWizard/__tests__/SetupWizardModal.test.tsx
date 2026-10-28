@@ -333,7 +333,7 @@ describe('セットアップの接続チェック', () => {
     it('Discord は対応する入力の手動確認を案内し、OBS に接続しない', async () => {
         await openWizard();
         await screen.findByRole('button', { name: 'OBSで配信' });
-        fireEvent.click(screen.getByRole('button', { name: 'ボイスチャット' }));
+        fireEvent.click(screen.getByRole('button', { name: '通話（Discordなど）' }));
         fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
         fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
         expect(screen.getByText(/Discord の「設定/)).toBeInTheDocument();
