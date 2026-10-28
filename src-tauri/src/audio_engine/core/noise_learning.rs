@@ -425,6 +425,7 @@ pub(super) struct Controller {
 }
 impl super::Engine {
     pub(super) fn invalidate_noise_measurement(&mut self, reason: &str) {
+        let history_valid = reason == "expired" && self.noise_history_valid_before_expiry();
         self.noise_learning.cancel_capture();
         self.noise_measurement.reference_valid = false;
         // 明示された環境変更は、未学習時の録音候補も古くする。値のABAで復活させない。
@@ -436,6 +437,7 @@ impl super::Engine {
             }
         }
         self.noise_measurement.reason = Some(reason.into());
+        self.rebind_noise_history_after_expiry(history_valid);
     }
     pub(super) fn begin_noise_learning(&mut self, duration_ms: u32) -> anyhow::Result<()> {
         if self.output_stream.is_none() || self.stream_failed.load(Ordering::Acquire) {

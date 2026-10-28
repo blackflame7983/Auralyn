@@ -8,13 +8,16 @@ import { bundleApi, BundleClientError, type BundlePreview, type BundleResult } f
 import { BroadcastBundlePanel } from '../BroadcastBundlePanel';
 const events = vi.hoisted(() => new Map<string, () => void>());
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async (event, cb) => { events.set(event, cb); return () => events.delete(event); }) }));
-vi.mock('../../../../api/bundles', async importOriginal => ({ ...await importOriginal<typeof import('../../../../api/bundles')>(), bundleApi: { checkedList: vi.fn(), list: vi.fn(), sources: vi.fn(), filters: vi.fn(), save: vi.fn(), preview: vi.fn(), history: vi.fn() } }));
+vi.mock('../../../../api/bundles', async importOriginal => ({ ...await importOriginal<typeof import('../../../../api/bundles')>(), bundleApi: { checkedList: vi.fn(), list: vi.fn(), sources: vi.fn(), filters: vi.fn(), save: vi.fn(), preview: vi.fn(), history: vi.fn(), recovery: vi.fn(), recoveryPreview: vi.fn(), resolveRecovery: vi.fn() } }));
 const plan: BundlePreview = { id: 'p1', name: '歌枠', revision: 'r1', categories: ['内蔵処理'], running: true, auralyn: [{label: '音声方式', before: 'ASIO', after: 'WASAPI', status: 'changed'}, {label: '固定バッファ要求', before: '未確認', after: '変更しません', status: 'notSelected'}], obs: [{ source: '声', label: 'ミュート', before: false, after: true }] };
 const result: BundleResult = { id: 'p1', complete: true, undoPending: true, auralyn: 'Auralyn設定確認', obs: ['適用済み'], summary: null };
 beforeEach(() => {
     vi.clearAllMocks(); events.clear();
     vi.mocked(bundleApi.list).mockResolvedValue(['歌枠']);
     vi.mocked(bundleApi.history).mockResolvedValue(null);
+    vi.mocked(bundleApi.recovery).mockResolvedValue(null);
+    vi.mocked(bundleApi.recoveryPreview).mockResolvedValue(plan);
+    vi.mocked(bundleApi.resolveRecovery).mockResolvedValue(undefined);
     vi.mocked(bundleApi.preview).mockResolvedValue(plan);
     vi.mocked(bundleApi.sources).mockResolvedValue(['声', '伴奏']);
     vi.mocked(bundleApi.filters).mockResolvedValue([{name: '音声フィルタ', kind: 'vst_filter', enabled: true}]);
@@ -228,4 +231,24 @@ it('停止したEngineの保持値だけでは確認済み保存のチェック�
     await screen.findByRole('alert');
     expect(screen.getByRole('checkbox', { name: 'この条件で音・最終音量・送り先を自分で確認しました' })).toBeDisabled();
     expect(bundleApi.save).not.toHaveBeenCalled(); stats.mockRestore();
+});
+
+it('再起動後の原本は勝手に適用せず、差分を開いて明示的に復元する', async () => {
+    vi.mocked(bundleApi.recovery).mockResolvedValue({id:'original-1', readable:true});
+    const operation = vi.fn().mockResolvedValue(result);
+    render(<BroadcastBundlePanel onOperation={operation} />);
+    expect(await screen.findByRole('heading', {name:'中断した配信状態の復旧'})).toBeInTheDocument();
+    expect(operation).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', {name:'原本との差分を確認'}));
+    const apply = await screen.findByRole('button', {name:'確認した原本を復元'});
+    expect(operation).not.toHaveBeenCalled();
+    fireEvent.click(apply);
+    await waitFor(() => expect(operation).toHaveBeenCalledWith({action:'recovery_apply',id:'p1'}));
+});
+it('読めない原本も明示確認するまでは解除しない', async () => {
+    vi.mocked(bundleApi.recovery).mockResolvedValue({id:null, readable:false});
+    render(<BroadcastBundlePanel onOperation={vi.fn()} />);
+    const adopt = await screen.findByRole('button', {name:'現在の状態を使う'}); expect(adopt).toBeDisabled();
+    fireEvent.click(screen.getByRole('checkbox',{name:/原本に戻さず/})); fireEvent.click(adopt);
+    await waitFor(() => expect(bundleApi.resolveRecovery).toHaveBeenCalledWith(null));
 });

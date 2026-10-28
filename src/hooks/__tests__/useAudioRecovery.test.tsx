@@ -37,7 +37,7 @@ it.each(['snapshot', 'actual'])('%sの遅い状態取得中に手動停止した
     } else {
         vi.mocked(liveModesApi.request).mockResolvedValue({ armed: true } as Awaited<ReturnType<typeof liveModesApi.request>>);
         vi.spyOn(audioApi, 'getAudioState').mockReturnValue(new Promise(resolve => {
-            finish = () => resolve({ is_running: true, config: { host: 'WASAPI', input: 'actual-in', output: 'actual-out', sample_rate: 96000, buffer_size: 256 } });
+            finish = () => resolve({ is_running: true, config: { host: 'WASAPI', input: 'actual-in', output: 'actual-out', input_id: 'actual-input-id', output_id: 'actual-output-id', sample_rate: 96000, buffer_size: 256 } });
         }));
     }
     const start = vi.spyOn(audioApi, 'start');
@@ -67,10 +67,10 @@ it('中止済みの旧snapshot応答が新しい復旧Startの停止通知除外
 });
 it('本番保護中は保存済み自動deviceではなくHostの具体的な実設定だけで復旧する', async () => {
     vi.mocked(liveModesApi.request).mockResolvedValue({ armed: true } as Awaited<ReturnType<typeof liveModesApi.request>>);
-    vi.spyOn(audioApi, 'getAudioState').mockResolvedValue({ is_running: true, config: { host: 'WASAPI', input: 'actual-in', output: 'actual-out', sample_rate: 96000, buffer_size: 256 } });
+    vi.spyOn(audioApi, 'getAudioState').mockResolvedValue({ is_running: true, config: { host: 'WASAPI', input: 'actual-in', output: 'actual-out', input_id: 'actual-input-id', output_id: 'actual-output-id', sample_rate: 96000, buffer_size: 256 } });
     const start = vi.spyOn(audioApi, 'start').mockResolvedValue({ sample_rate: 96000, buffer_size: 256, channels: 2 });
     renderHook(() => useAudioRecovery()); disconnect(); await tick(2000);
-    expect(start).toHaveBeenCalledWith('WASAPI', 'actual-in', 'actual-out', 256, 96000);
+    expect(start).toHaveBeenCalledWith('WASAPI', 'actual-in', 'actual-out', 256, 96000, 'actual-input-id', 'actual-output-id');
     expect(audioApi.setInputChannels).not.toHaveBeenCalled();
 });
 it('本番保護中の実設定が不明なら自動deviceへfallbackしない', async () => {

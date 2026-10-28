@@ -53,6 +53,8 @@ impl Default for Options {
 pub enum Action {
     Open,
     Status,
+    /// セッションを取得せず、NR履歴の可否だけを読み取る。
+    HistoryStatus,
     Devices,
     Start {
         recording_id: u64,
@@ -76,6 +78,9 @@ pub enum Action {
         expected_basis: String,
     },
     UndoNoise {
+        token: String,
+    },
+    RedoNoise {
         token: String,
     },
     PrepareCandidate {
@@ -161,6 +166,8 @@ pub struct Snapshot {
     #[serde(default)]
     pub noise_undo_token: Option<String>,
     #[serde(default)]
+    pub noise_redo_token: Option<String>,
+    #[serde(default)]
     pub noise_settings: Option<crate::audio_engine::noise_candidate::Config>,
     #[serde(default)]
     pub noise_pending: bool,
@@ -191,6 +198,7 @@ pub(in crate::audio_engine) struct Context {
     pub noise: crate::audio_engine::noise_candidate::Config,
     pub noise_basis: String,
     pub noise_undo_token: Option<String>,
+    pub noise_redo_token: Option<String>,
     pub noise_pending: bool,
     pub builtin_revision: String,
     pub builtin_epoch: String,
@@ -388,10 +396,16 @@ fn validate_request(request: &Request) -> Result<()> {
                 .client_id
                 .bytes()
                 .all(|ch| ch.is_ascii_alphanumeric() || b"-_:".contains(&ch))
-            && (1..=MAX_SAFE_ID).contains(&request.session_id)
+            && (if matches!(request.action, Action::HistoryStatus) {
+                request.session_id == 0 && request.operation_id == 0 && request.epoch.is_none()
+            } else {
+                (1..=MAX_SAFE_ID).contains(&request.session_id)
+            })
             && request.operation_id <= MAX_SAFE_ID
-            && (matches!(request.action, Action::Status | Action::Devices)
-                || request.operation_id > 0)
+            && (matches!(
+                request.action,
+                Action::Status | Action::Devices | Action::HistoryStatus
+            ) || request.operation_id > 0)
             && request
                 .epoch
                 .as_ref()
@@ -444,7 +458,7 @@ fn validate_request(request: &Request) -> Result<()> {
                 "NR採用の識別情報が不正です"
             );
         }
-        Action::UndoNoise { token } => {
+        Action::UndoNoise { token } | Action::RedoNoise { token } => {
             ensure!(
                 !token.is_empty() && token.len() <= 128,
                 "NR復元の識別情報が不正です"
@@ -879,6 +893,7 @@ impl Controller {
             noise_settings: Some(context.noise.clone()),
             noise_pending: context.noise_pending,
             noise_undo_token: context.noise_undo_token.clone(),
+            noise_redo_token: context.noise_redo_token.clone(),
             candidate: self.candidate.snapshot.clone(),
             epoch: self.sessions.epoch.clone(),
             session_id: request.session_id,
@@ -936,6 +951,10 @@ impl Controller {
         context: Context,
     ) -> Result<Snapshot> {
         validate_request(&request)?;
+        // 履歴一覧は試聴画面の所有・candidate・録音を変更せず取得する。
+        if matches!(request.action, Action::HistoryStatus) {
+            return Ok(self.snapshot(&request, &context, Vec::new()));
+        }
         // 厳密な録音条件は新提案だけに適用し、従来の手動A/Bの契約を変えない。
         if self.candidate.proposal_epoch().is_some_and(|epoch| {
             epoch != context.builtin_epoch
@@ -1083,6 +1102,15 @@ impl Controller {
                         && self.preview.is_none()
                         && context.noise_undo_token.as_ref() == Some(token),
                     "復元条件が変わったか、試聴が使用中です"
+                );
+            }
+            Action::RedoNoise { token } => {
+                ensure!(
+                    !context.busy
+                        && !context.noise_pending
+                        && self.preview.is_none()
+                        && context.noise_redo_token.as_ref() == Some(token),
+                    "再適用の条件が変わったか、試聴が使用中です"
                 );
             }
             Action::PrepareProposal {
@@ -1295,6 +1323,7 @@ pub(in crate::audio_engine) mod tests {
             noise: Default::default(),
             noise_basis: "noise-fixture".into(),
             noise_undo_token: None,
+            noise_redo_token: None,
             noise_pending: false,
             builtin_revision: "1".into(),
             builtin_epoch: "builtin-test".into(),
@@ -1465,6 +1494,76 @@ pub(in crate::audio_engine) mod tests {
             token: "current-token".into(),
         };
         assert!(controller.command(undo, context).is_ok());
+    }
+    #[test]
+    fn noise_history_can_be_reopened_without_audio_buffers_and_rejects_pending_or_old_tokens() {
+        let mut controller = Controller::new();
+        let mut context = recorded_context();
+        context.buffers = None;
+        context.metadata = None;
+        context.noise_redo_token = Some("redo-current".into());
+        let opened = controller
+            .command(request(1, 1, Action::Open), context.clone())
+            .unwrap();
+        assert_eq!(opened.noise_redo_token.as_deref(), Some("redo-current"));
+        let mut redo = request(
+            1,
+            2,
+            Action::RedoNoise {
+                token: "redo-old".into(),
+            },
+        );
+        redo.epoch = Some(opened.epoch.clone());
+        assert!(controller.command(redo.clone(), context.clone()).is_err());
+        redo.operation_id += 1;
+        redo.action = Action::RedoNoise {
+            token: "redo-current".into(),
+        };
+        context.noise_pending = true;
+        assert!(controller.command(redo.clone(), context.clone()).is_err());
+        context.noise_pending = false;
+        redo.operation_id += 1;
+        assert!(controller.command(redo, context.clone()).is_ok());
+
+        let mut close = request(1, 5, Action::Close);
+        close.epoch = Some(opened.epoch);
+        controller.command(close, context.clone()).unwrap();
+        let reopened = controller
+            .command(request(2, 1, Action::Open), context.clone())
+            .unwrap();
+        assert_eq!(reopened.noise_redo_token.as_deref(), Some("redo-current"));
+        let mut redo = request(
+            2,
+            2,
+            Action::RedoNoise {
+                token: "redo-current".into(),
+            },
+        );
+        redo.epoch = Some(reopened.epoch);
+        assert!(controller.command(redo, context).is_ok());
+    }
+    #[test]
+    fn history_status_does_not_change_existing_preview_ownership_or_operation() {
+        let mut controller = Controller::new();
+        let mut context = recorded_context();
+        context.noise_undo_token = Some("nr-undo-10".into());
+        let opened = controller
+            .command(request(1, 1, Action::Open), context.clone())
+            .unwrap();
+        let query = Request {
+            client_id: "recovery-hub".into(),
+            session_id: 0,
+            operation_id: 0,
+            epoch: None,
+            action: Action::HistoryStatus,
+        };
+        let history = controller.command(query.clone(), context.clone()).unwrap();
+        assert_eq!(history.noise_undo_token.as_deref(), Some("nr-undo-10"));
+        assert!(controller.command(query, context.clone()).is_ok());
+        let mut status = request(1, 1, Action::Status);
+        status.epoch = Some(opened.epoch);
+        assert!(controller.command(status, context).is_ok());
+        assert_eq!(controller.sessions.clients.len(), 1);
     }
     #[test]
     fn proposal_rejects_recording_conditions_without_changing_manual_candidate_contract() {

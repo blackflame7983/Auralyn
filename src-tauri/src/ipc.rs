@@ -246,6 +246,8 @@ pub enum Command {
     CancelDeviceScan {
         token: u64,
     },
+    /// このEngineがStart時の実デバイスID照合に対応することを確認する。
+    StartIdentityCapability,
     AutoGain {
         request: crate::audio_engine::auto_gain::Request,
     },
@@ -253,6 +255,10 @@ pub enum Command {
         host: String,
         input: Option<String>,
         output: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_id: Option<String>,
         buffer_size: Option<u32>,
         sample_rate: Option<u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -418,9 +424,16 @@ pub enum Response {
     VoiceCheckPreview(Box<crate::audio_engine::voice_check::preview::Snapshot>),
     FrameTimingTrace(Box<crate::audio_engine::frame_timing::Trace>),
     Success,
+    StartIdentityCapability {
+        version: u32,
+    },
     Started {
         sample_rate: u32,
         buffer_size: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_id: Option<String>,
     },
     Error(String),
     PluginLoaded {
@@ -530,6 +543,8 @@ pub enum EngineEvent {
 pub struct DeviceInfo {
     pub name: String,
     pub host: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub is_input: bool,
     pub buffer_size_range: Option<(u32, u32)>,
     pub channels: u16,

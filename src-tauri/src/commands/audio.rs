@@ -184,6 +184,9 @@ pub(crate) async fn start_audio(
     host: Option<String>,
     buffer_size: Option<u32>,
     sample_rate: Option<u32>,
+    input_id: Option<String>,
+    output_id: Option<String>,
+    expected_state: Option<serde_json::Value>,
 ) -> Result<audio::AudioConfig, String> {
     let state = state.0.clone();
     super::run_blocking(move || {
@@ -195,11 +198,73 @@ pub(crate) async fn start_audio(
             sample_rate
         );
         let mut host_instance = state.lock().map_err(|_| "Failed to lock audio state")?;
+        if let Some(expected) = expected_state {
+            validate_expected_start_state(&host_instance.get_state(), &expected)?;
+        }
         host_instance
-            .start(host, input, output, buffer_size, sample_rate)
+            .start_with_device_ids(
+                host,
+                input,
+                output,
+                buffer_size,
+                sample_rate,
+                input_id,
+                output_id,
+            )
             .map_err(|e| audio::localize_audio_error(e.to_string()))
     })
     .await
+}
+
+fn validate_expected_start_state(
+    current: &audio::AudioStateInfo,
+    expected: &serde_json::Value,
+) -> Result<(), String> {
+    if !current.is_running
+        || current.condition_witness.is_none()
+        || expected.get("condition_witness").is_none()
+        || serde_json::to_value(current).map_err(|e| e.to_string())? != *expected
+    {
+        return Err(
+            "音声の条件が変わりました。現在の設定を確認してから再試行してください。".into(),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod expected_start_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn stop_and_restart_invalidate_prior_condition_even_with_same_config_and_child() {
+        let conditions = Arc::new(audio::conditions::Conditions::default());
+        conditions.lifecycle(true);
+        let state = |conditions: &Arc<audio::conditions::Conditions>| {
+            let witness = conditions
+                .snapshot()
+                .ok()
+                .map(|w| audio::AudioConditionWitness {
+                    revision: w.revision().to_string(),
+                    epoch: w.engine_epoch().to_string(),
+                });
+            audio::AudioStateInfo {
+                is_running: true,
+                config: None,
+                condition_witness: witness,
+            }
+        };
+        let before = state(&conditions);
+        let expected = serde_json::to_value(&before).unwrap();
+        assert!(validate_expected_start_state(&before, &expected).is_ok());
+        conditions.lifecycle(false);
+        assert!(validate_expected_start_state(&state(&conditions), &expected).is_err());
+        conditions.lifecycle(true);
+        assert!(validate_expected_start_state(&state(&conditions), &expected).is_err());
+        let missing = serde_json::json!({ "is_running": true, "config": null });
+        assert!(validate_expected_start_state(&state(&conditions), &missing).is_err());
+    }
 }
 
 #[tauri::command]
@@ -329,6 +394,8 @@ pub(crate) async fn restart_audio_engine(
     host: Option<String>,
     buffer_size: Option<u32>,
     sample_rate: Option<u32>,
+    input_id: Option<String>,
+    output_id: Option<String>,
 ) -> Result<audio::AudioConfig, String> {
     let state = state.0.clone();
     super::run_blocking(move || {
@@ -351,7 +418,15 @@ pub(crate) async fn restart_audio_engine(
         // Short delay to ensure process is dead? Usually synchronous kill is fine on Windows.
         // Re-start
         audio_host
-            .start(host, input, output, buffer_size, sample_rate)
+            .start_with_device_ids(
+                host,
+                input,
+                output,
+                buffer_size,
+                sample_rate,
+                input_id,
+                output_id,
+            )
             .map_err(|e| audio::localize_audio_error(e.to_string()))
     })
     .await

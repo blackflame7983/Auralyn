@@ -9,7 +9,8 @@ import { AppShell } from '../AppShell';
 
 vi.mock('../Header', () => ({ Header: () => null }));
 vi.mock('../MasterBar', () => ({ MasterBar: () => null }));
-vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: () => null }));
+const measurementProps = vi.hoisted(() => ({current: null as any}));
+vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: (props: unknown) => { measurementProps.current = props; return null; } }));
 vi.mock('../../features/Home/VoiceQuickControls', () => ({ VoiceQuickControls: () => <p>quick</p> }));
 beforeEach(() => { vi.mocked(listen).mockClear(); localStorage.clear(); });
 afterEach(async () => { await act(async () => {}); cleanup(); vi.restoreAllMocks(); });
@@ -36,7 +37,7 @@ it('未設定時は状態帯・調整・準備を示し、音声を自動変更�
         onToggleLargeMeter={vi.fn()} isLargeMeterOpen={false} currentHost="" isEngineRunning={false}>
         <p>エフェクト設定</p>
     </AppShell>);
-    expect(screen.getByRole('button', { name: '音量チェック' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: '音量チェックを開始' })).toHaveAttribute('aria-pressed', 'false');
     for (const name of ['入力・処理・出力', '声を整える', '準備状況']) expect(screen.getByRole('region', { name })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'マイクと出力先を設定する' })).toHaveLength(1);
     expect(screen.queryByText('quick')).not.toBeInTheDocument();
@@ -55,7 +56,7 @@ it.each([null, false])('古い稼働表示が残っていても状態=%sでは�
     </AppShell>);
     fireEvent.click(screen.getByRole('button', { name: 'マイクと出力先を設定する' }));
     expect(settings).toHaveBeenCalledOnce();
-    const selectedView = screen.getByRole('button', { name: 'VST・詳細' });
+    const selectedView = screen.getByRole('button', { name: '詳細' });
     expect(selectedView).toHaveAttribute('aria-pressed', 'true');
     expect(selectedView.className).not.toContain('aria-pressed:bg-primary');
 });
@@ -92,22 +93,30 @@ it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態
     expect(screen.getAllByRole('button', { name: message(locale, 'header.compare') })).toHaveLength(1);
 });
 
-it('音量チェックは両表示で同じ表示切替行に一つだけあり、モード変更時に閉じる', () => {
+it('音量チェックは明示要求だけを送り、表示モード変更で再要求しない', () => {
     const view = render(<AppShell {...commonProps} isBeginnerMode><p>rack</p></AppShell>);
-    const toggle = screen.getByRole('button', { name: '音量チェック' });
-    expect(toggle).toHaveAccessibleDescription(message('ja', 'shell.loudnessHint'));
-    const row = toggle.parentElement;
-    expect(row).toHaveAttribute('aria-label', message('ja', 'shell.view'));
-    expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    const button = screen.getByRole('button', {name: '音量チェックを開始'});
+    expect(measurementProps.current.request).toBeUndefined();
+    fireEvent.click(button);
+    const start = measurementProps.current.request;
+    expect(start.action).toBe('start');
+    expect(measurementProps.current.enabled).toBe(true);
     view.rerender(<AppShell {...commonProps} isBeginnerMode={false}><p>rack</p></AppShell>);
-    expect(screen.getAllByRole('button', { name: '音量チェック' })).toHaveLength(1);
-    expect(screen.getByRole('button', { name: '音量チェック' })).toBe(toggle);
-    expect(toggle.parentElement).toBe(row);
-    expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(measurementProps.current.request).toBe(start);
+    act(() => measurementProps.current.onStateChange({active: true, busy: false, stopUnconfirmed: false}));
+    fireEvent.click(screen.getByRole('button', {name: '測定を止める'}));
+    expect(measurementProps.current.request).toEqual({id: start.id + 1, action: 'stop'});
+});
+
+it('表示用途の切替は保存済みの音声用途と準備設定を保持する', () => {
+    localStorage.setItem('vst_host_setup_goal', 'obs');
+    localStorage.setItem('vst_host_output_gain', '83');
+    render(<AppShell {...commonProps} isBeginnerMode><p>rack</p></AppShell>);
+    fireEvent.change(screen.getByRole('combobox', {name: '表示用途'}), {target: {value: 'music'}});
+    expect(screen.getByRole('region', {name: '音を整える'})).toBeInTheDocument();
+    expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');
+    expect(localStorage.getItem('vst_host_output_gain')).toBe('83');
+    expect(measurementProps.current.request).toBeUndefined();
 });
 
 it.each([true, false])('両表示で入出力・声の調整・試聴を保持する（かんたん=%s）', isBeginnerMode => {

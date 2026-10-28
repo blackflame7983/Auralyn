@@ -43,7 +43,7 @@ export interface VoiceProposal {
     reasons: ProposalMessage[]; limitations: ProposalMessage[];
 }
 export interface VoicePreviewSnapshot extends VoicePreviewOptions {
-    noiseBasis?: string; noiseUndoToken?: string | null; noiseSettings?: NoiseCandidateConfig | null; noisePending?: boolean;
+    noiseBasis?: string; noiseUndoToken?: string | null; noiseRedoToken?: string | null; noiseSettings?: NoiseCandidateConfig | null; noisePending?: boolean;
     candidate?: BuiltinCandidate | null;
     epoch: string; sessionId: number; operationId: number; recordingId: number | null;
     state: 'idle' | 'playing' | 'stopping' | 'stopped' | 'failed' | 'closed';
@@ -59,10 +59,11 @@ export type VoicePreviewAction = { action: 'open' | 'status' | 'devices' | 'stop
     | { action: 'prepare_noise'; recordingId: number; expectedBasis: string; variant: 'current' | 'weaker' | 'stronger' }
     | { action: 'apply_noise'; candidateId: string; expectedBasis: string }
     | { action: 'undo_noise'; token: string }
+    | { action: 'redo_noise'; token: string }
     | { action: 'prepare_candidate'; recordingId: number; expectedRevision: string; config: BuiltinConfig }
     | ({ action: 'prepare_proposal'; recordingId: number; builtinEpoch: string; expectedRevision: string; ruleVersion?: 'singing-rules-v2' } & Partial<ProposalPreferenceRequest>)
     | { action: 'candidate_status' | 'cancel_candidate'; candidateId: string };
-export type VoicePreviewRequest = VoicePreviewAction & { clientId: string; sessionId: number; operationId: number; epoch: string | null };
+export type VoicePreviewRequest = (VoicePreviewAction | { action: 'history_status' }) & { clientId: string; sessionId: number; operationId: number; epoch: string | null };
 const clientId = crypto.randomUUID();
 let nextSessionId = 0;
 export const voiceCheckPreview = (request: VoicePreviewRequest): Promise<VoicePreviewSnapshot> => invoke('voice_check_preview', { request });

@@ -24,6 +24,7 @@ struct Preview {
     before: Captured,
     witness: ControlWitness,
     obs: Option<obs_setup::Plan>,
+    recovery_id: Option<String>,
 }
 struct Operation {
     id: String,
@@ -33,6 +34,36 @@ struct Operation {
     obs_id: Option<u64>,
     result: ResultView,
     was_running: bool,
+    original_devices: Option<bundle::RecoveryDevices>,
+}
+fn active_devices(active: Option<&audio::ActiveAudioConfig>) -> Option<bundle::RecoveryDevices> {
+    let active = active?;
+    let input_id = active.input_id.as_ref()?.clone();
+    let output_id = active.output_id.as_ref()?.clone();
+    if input_id.is_empty() || output_id.is_empty() {
+        return None;
+    }
+    Some(bundle::RecoveryDevices {
+        input_id,
+        output_id,
+    })
+}
+fn recovery_device_matches(
+    list: &[audio::AudioDevice],
+    host: &str,
+    name: &Option<String>,
+    id: &str,
+) -> bool {
+    name.as_ref().is_some_and(|name| {
+        list.iter()
+            .filter(|device| {
+                device.host.eq_ignore_ascii_case(host)
+                    && device.name == *name
+                    && device.id.as_deref() == Some(id)
+            })
+            .count()
+            == 1
+    })
 }
 #[derive(Clone)]
 struct Captured {
@@ -182,6 +213,14 @@ pub(crate) enum Request {
         id: String,
     },
     History,
+    RecoveryStatus,
+    RecoveryPreview,
+    RecoveryApply {
+        id: String,
+    },
+    RecoveryResolve {
+        id: Option<String>,
+    },
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -236,6 +275,58 @@ pub(crate) enum Response {
     Saved,
     Preview(Box<PreviewView>),
     Result(Option<Box<ResultView>>),
+    Recovery(Option<RecoveryView>),
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RecoveryView {
+    pub id: Option<String>,
+    pub readable: bool,
+}
+
+fn recovery_view(root: &std::path::Path) -> Result<Option<RecoveryView>, String> {
+    if !bundle::recovery_exists(root)? {
+        return Ok(None);
+    }
+    match bundle::read_recovery(root) {
+        Ok(Some(receipt)) => {
+            let readable =
+                bundle::load(&root.join("broadcast-bundle-backups"), &receipt.backup_name).is_ok();
+            Ok(Some(RecoveryView {
+                id: Some(receipt.backup_name),
+                readable,
+            }))
+        }
+        _ => Ok(Some(RecoveryView {
+            id: None,
+            readable: false,
+        })),
+    }
+}
+
+// 保存対象と同じsource/propertyを、変更前に再取得して原本へ含める。
+fn recovery_obs_selection(saved: &obs_setup::bundle::Saved) -> Vec<obs_setup::bundle::Selection> {
+    use obs_setup::bundle::{Property, Selection};
+    let mut sources = std::collections::BTreeMap::<String, Selection>::new();
+    for item in &saved.items {
+        let selection = sources
+            .entry(item.source.clone())
+            .or_insert_with(|| Selection {
+                source: item.source.clone(),
+                volume: false,
+                muted: false,
+                monitor: false,
+                filters: vec![],
+            });
+        match &item.property {
+            Property::Volume => selection.volume = true,
+            Property::Muted => selection.muted = true,
+            Property::Monitor => selection.monitor = true,
+            Property::FilterEnabled { name, .. } => selection.filters.push(name.clone()),
+        }
+    }
+    sources.into_values().collect()
 }
 
 fn category_names(c: &ProfileSaveCategories) -> Vec<String> {
@@ -812,7 +903,10 @@ fn select(mut preset: Preset, categories: &ProfileSaveCategories) -> Result<Pres
 }
 fn unchanged(before: &Captured, after: &Captured) -> bool {
     // opaque component stateも除外しない。処理由来の変動でも保守的に競合にする。
-    before.engine == after.engine && before.preset == after.preset
+    before.engine == after.engine
+        && before.preset == after.preset
+        && before.active.as_ref().map(|a| (&a.input_id, &a.output_id))
+            == after.active.as_ref().map(|a| (&a.input_id, &a.output_id))
 }
 fn complete(summary: &ApplyProfileSummary) -> bool {
     summary.missing_devices.is_empty()
@@ -890,6 +984,7 @@ fn apply_selected(
     host: &mut audio::AudioHost,
     target: &BundleV1,
     before: &Captured,
+    device_ids: Option<bundle::RecoveryDevices>,
 ) -> Result<ApplyProfileSummary, String> {
     let ids = before
         .engine
@@ -921,7 +1016,7 @@ fn apply_selected(
         muted: before.engine.global_mute,
         bypassed: before.engine.global_bypass,
     };
-    let mut summary = profile::apply_profile_with_start_intent(
+    let mut summary = profile::apply_profile_with_start_intent_and_ids(
         root,
         host,
         &target.embedded_auralyn_preset,
@@ -935,6 +1030,7 @@ fn apply_selected(
         None,
         if replace_empty { &[] } else { &ids },
         Some(initial),
+        device_ids.map(|ids| (ids.input_id, ids.output_id)),
     )?;
     if replace_empty {
         summary.applied_categories.push("plugins".into());
@@ -1002,6 +1098,13 @@ pub(crate) async fn broadcast_bundle(
         Request::History => Ok(Response::Result(
             session.history.as_ref().map(|h| Box::new(h.result.clone())),
         )),
+        Request::RecoveryStatus => Ok(Response::Recovery(recovery_view(&root)?)),
+        Request::RecoveryResolve { id } => {
+            bundle::resolve_recovery(&root, id.as_deref())?;
+            session.history = None;
+            session.preview = None;
+            Ok(Response::Recovery(None))
+        }
         Request::Save {
             name,
             overwrite,
@@ -1070,9 +1173,18 @@ pub(crate) async fn broadcast_bundle(
             session.preview = None;
             Ok(Response::Saved)
         }
-        Request::Preview { name } => {
+        request @ (Request::Preview { .. } | Request::RecoveryPreview) => {
             session.preview = None;
-            let bundle = bundle::load(&root, &name)?;
+            let (bundle, recovery_id) = match request {
+                Request::Preview { name } => (bundle::load(&root, &name)?, None),
+                Request::RecoveryPreview => {
+                    let receipt = bundle::read_recovery(&root)?.ok_or("復旧原本がありません")?;
+                    let original =
+                        bundle::load(&root.join("broadcast-bundle-backups"), &receipt.backup_name)?;
+                    (original, Some(receipt.backup_name))
+                }
+                _ => unreachable!(),
+            };
             let (before, witness) = capture_async(host).await?;
             let obs_plan = if let Some(saved) = &bundle.obs {
                 Some(obs_setup::bundle::preview(&obs, saved).await?)
@@ -1082,7 +1194,7 @@ pub(crate) async fn broadcast_bundle(
             witness.validate()?;
             let view = PreviewView {
                 id: bundle::revision(),
-                name: name.clone(),
+                name: bundle.name.clone(),
                 revision: bundle.revision.clone(),
                 categories: category_names(&bundle.categories),
                 obs: obs_plan.as_ref().map_or(vec![], |p| p.changes.clone()),
@@ -1096,22 +1208,62 @@ pub(crate) async fn broadcast_bundle(
                 before,
                 witness,
                 obs: obs_plan,
+                recovery_id,
             });
             Ok(Response::Preview(Box::new(view)))
         }
-        Request::Apply { id } => {
-            if session
-                .history
-                .as_ref()
-                .is_some_and(|h| blocks_next_apply(&h.result))
+        request @ (Request::Apply { .. } | Request::RecoveryApply { .. }) => {
+            let (id, recovering) = match request {
+                Request::Apply { id } => (id, false),
+                Request::RecoveryApply { id } => (id, true),
+                _ => unreachable!(),
+            };
+            if !recovering && bundle::recovery_exists(&root)? {
+                return Err("未解決の配信状態の原本があります。先に確認してください".into());
+            }
+            if !recovering
+                && session
+                    .history
+                    .as_ref()
+                    .is_some_and(|h| blocks_next_apply(&h.result))
             {
                 return Err("前の配信状態の復元候補を保持中です。先に元に戻してください".into());
             }
             let plan = session.preview.take().ok_or("差分を再確認してください")?;
+            let receipt = if recovering {
+                Some(bundle::read_recovery(&root)?.ok_or("復旧原本がありません")?)
+            } else {
+                None
+            };
+            let expected_recovery = receipt.as_ref().map(|r| r.backup_name.clone());
             if plan.id != id
-                || bundle::load(&root, &plan.bundle.name)?.revision != plan.bundle.revision
+                || plan.recovery_id != expected_recovery
+                || (if recovering {
+                    bundle::load(&root.join("broadcast-bundle-backups"), &plan.bundle.name)?
+                } else {
+                    bundle::load(&root, &plan.bundle.name)?
+                })
+                .revision
+                    != plan.bundle.revision
             {
                 return Err("保存内容または変更予定が変わりました。再確認してください".into());
+            }
+            if recovering
+                && !plan.before.engine.running
+                && plan.bundle.categories.include_audio_config
+            {
+                return Err("音声は停止中です。自動開始せず、設定を確認してください".into());
+            }
+            if recovering
+                && plan.obs.as_ref().is_some_and(|obs| {
+                    obs.changes.iter().any(|change| {
+                        change.field_code == Some("obs.field.muted")
+                            && change.before.as_bool() == Some(true)
+                            && change.after.as_bool() == Some(false)
+                    })
+                })
+            {
+                return Err("現在のOBSミュートを解除する復元はできません。受け側と現在の状態を確認してください".into());
             }
             plan.witness.validate()?;
             if plan.bundle.confirmation.is_some() {
@@ -1129,7 +1281,49 @@ pub(crate) async fn broadcast_bundle(
                 return Err("確認済み構成を呼び戻す前に緊急ミュートを有効にし、差分を取り直してください。復元後も確認するまでミュートを維持します".into());
             }
             if plan.bundle.categories.include_audio_config {
-                super::audio::enumerate_devices_async(host.clone(), false).await?;
+                let devices =
+                    super::audio::enumerate_devices_async(host.clone(), recovering).await?;
+                if recovering {
+                    let target = plan
+                        .bundle
+                        .embedded_auralyn_preset
+                        .audio_config
+                        .as_ref()
+                        .ok_or("復元する入出力設定がありません")?;
+                    let current = plan
+                        .before
+                        .active
+                        .as_ref()
+                        .ok_or("現在の入出力を確認できません")?;
+                    if !current.host.eq_ignore_ascii_case(&target.host)
+                        || current.input != target.input_device
+                        || current.output != target.output_device
+                    {
+                        return Err("元の入出力機器を現在の設定と照合できません。先に機器を選び直してください".into());
+                    }
+                    let ids = receipt.as_ref().and_then(|r| r.devices.as_ref()).ok_or("復旧原本に機器IDがありません。機器を手動で確認し現在の設定を採用してください")?;
+                    if active_devices(Some(current)).as_ref() != Some(ids) {
+                        return Err(
+                            "現在の機器IDが元の機器と異なります。機器を手動で確認してください"
+                                .into(),
+                        );
+                    }
+                    if !recovery_device_matches(
+                        &devices.inputs,
+                        &target.host,
+                        &target.input_device,
+                        &ids.input_id,
+                    ) || !recovery_device_matches(
+                        &devices.outputs,
+                        &target.host,
+                        &target.output_device,
+                        &ids.output_id,
+                    ) {
+                        return Err(
+                            "元の入出力機器を一意に特定できません。機器を確認してください".into(),
+                        );
+                    }
+                }
             }
             let host_begin = host.clone();
             let token = super::run_blocking(move || {
@@ -1141,7 +1335,16 @@ pub(crate) async fn broadcast_bundle(
             })
             .await?;
             // Endはこのcommandが取得したtokenだけをfinally相当で解放する。
-            let result = apply_owned(&root, host.clone(), &obs, plan, &mut session).await;
+            let receipt_id = expected_recovery.unwrap_or_else(|| plan.id.clone());
+            let result = apply_owned(
+                &root,
+                host.clone(),
+                &obs,
+                plan,
+                &mut session,
+                receipt.and_then(|r| r.devices),
+            )
+            .await;
             let end = super::run_blocking(move || {
                 host.lock()
                     .map_err(|_| "音声状態を取得できません")?
@@ -1158,6 +1361,17 @@ pub(crate) async fn broadcast_bundle(
                     );
                 }
             }
+            if let Some(history) = &mut session.history {
+                if result.is_ok() && history.result.complete {
+                    if let Err(error) = bundle::resolve_recovery(&root, Some(&receipt_id)) {
+                        history.result.complete = false;
+                        history.result.set_auralyn(
+                            "bundle.recovery.clearUnknown",
+                            format!("復旧情報を解除できません: {error}"),
+                        );
+                    }
+                }
+            }
             result.map(|_| {
                 Response::Result(session.history.as_ref().map(|h| Box::new(h.result.clone())))
             })
@@ -1169,6 +1383,29 @@ pub(crate) async fn broadcast_bundle(
                 .ok_or("元に戻せる配信状態がありません")?;
             if history.id != id || !history.result.undo_pending {
                 return Err("古い復元操作です".into());
+            }
+            if let Some(saved) = &history.backup.obs {
+                let preview = obs_setup::bundle::preview(&obs, saved).await?;
+                if preview.changes.iter().any(|change| {
+                    change.field_code == Some("obs.field.muted")
+                        && change.before.as_bool() == Some(true)
+                        && change.after.as_bool() == Some(false)
+                }) {
+                    return Err("現在のOBSミュートを解除する復元はできません。受け側と現在の状態を確認してください".into());
+                }
+            }
+            if bundle::recovery_exists(&root)? {
+                if bundle::read_recovery(&root)?
+                    .is_none_or(|receipt| receipt.backup_name != history.backup.name)
+                {
+                    return Err("別の未解決原本があります。先に復旧情報を確認してください".into());
+                }
+            } else {
+                bundle::reserve_recovery(
+                    &root,
+                    &history.backup.name,
+                    history.original_devices.clone(),
+                )?;
             }
             let host_begin = host.clone();
             let token = super::run_blocking(move || {
@@ -1202,6 +1439,15 @@ pub(crate) async fn broadcast_bundle(
                 );
                 refresh_current(audio.0.clone(), history).await;
             }
+            if history.result.complete && !history.result.undo_pending {
+                if let Err(error) = bundle::resolve_recovery(&root, Some(&history.backup.name)) {
+                    history.result.complete = false;
+                    history.result.set_auralyn(
+                        "bundle.recovery.clearUnknown",
+                        format!("復旧情報を解除できません: {error}"),
+                    );
+                }
+            }
             Ok(Response::Result(Some(Box::new(history.result.clone()))))
         }
     }
@@ -1213,6 +1459,7 @@ async fn apply_owned(
     obs: &obs::ObsState,
     plan: Preview,
     session: &mut Session,
+    recovery_devices: Option<bundle::RecoveryDevices>,
 ) -> Result<(), String> {
     plan.witness.validate()?;
     let (before, witness) = capture_async(host.clone()).await?;
@@ -1222,6 +1469,11 @@ async fn apply_owned(
     if plan.bundle.categories.include_audio_config && before.preset.audio_config.is_none() {
         return Err("現在の入出力設定をバックアップできません。固定設定で音声を準備してから再確認してください".into());
     }
+    witness.validate()?;
+    let backup_obs = match &plan.bundle.obs {
+        Some(saved) => Some(obs_setup::bundle::capture(obs, &recovery_obs_selection(saved)).await?),
+        None => None,
+    };
     witness.validate()?;
     let backup =
         BundleV1 {
@@ -1237,9 +1489,17 @@ async fn apply_owned(
                 },
             ),
             embedded_auralyn_preset: select(before.preset.clone(), &plan.bundle.categories)?,
-            obs: None,
+            obs: backup_obs,
         };
     bundle::save(&root.join("broadcast-bundle-backups"), &backup)?;
+    let original_devices = if plan.bundle.categories.include_audio_config {
+        active_devices(before.active.as_ref())
+    } else {
+        None
+    };
+    if plan.recovery_id.is_none() {
+        bundle::reserve_recovery(root, &backup.name, original_devices.clone())?;
+    }
     session.history = Some(Operation {
         id: plan.id.clone(),
         backup,
@@ -1261,17 +1521,20 @@ async fn apply_owned(
             current: None,
         },
         was_running: before.engine.running,
+        original_devices,
     });
     let history = session.history.as_mut().ok_or("操作履歴がありません")?;
     let root_owned = root.to_path_buf();
     let target = plan.bundle;
     let verify_target = target.clone();
+    let verify_devices = recovery_devices.clone();
     let apply_host = host.clone();
     let applied = super::run_blocking(move || {
         let mut host = apply_host.lock().map_err(|_| "音声状態を取得できません")?;
         witness.validate()?;
-        let summary =
-            host.bundle_change_scope(|host| apply_selected(&root_owned, host, &target, &before))?;
+        let summary = host.bundle_change_scope(|host| {
+            apply_selected(&root_owned, host, &target, &before, recovery_devices)
+        })?;
         let witness = host.conditions().control_snapshot()?;
         Ok((summary, witness))
     })
@@ -1316,6 +1579,9 @@ async fn apply_owned(
     history.after = Some(after);
     history.witness = Some(after_witness.clone());
     if !all_applied
+        || (verify_devices.is_some()
+            && active_devices(history.after.as_ref().and_then(|a| a.active.as_ref()))
+                != verify_devices)
         || !selected_matches(
             &verify_target,
             history.after.as_ref().ok_or("適用後の状態がありません")?,
@@ -1391,6 +1657,9 @@ async fn undo_owned(
     if !unchanged(&expected, &current) {
         return Err("後からVST状態または設定が変わりました。上書きせず原本を保持しています".into());
     }
+    if history.backup.categories.include_audio_config && history.original_devices.is_none() {
+        return Err("復旧原本に機器IDがありません。機器を手動で確認してください".into());
+    }
     // OBSを先に戻し、競合/結果不明が残る間はAuralynを変更しない。
     if let Some(id) = history.obs_id {
         let restored = obs_setup::bundle::restore(obs, id).await?;
@@ -1403,6 +1672,8 @@ async fn undo_owned(
     witness.validate()?;
     let root = root.to_path_buf();
     let backup = history.backup.clone();
+    let original_devices = history.original_devices.clone();
+    let verify_devices = original_devices.clone();
     let was_running = history.was_running;
     let verify_backup = backup.clone();
     let apply_host = host.clone();
@@ -1413,7 +1684,7 @@ async fn undo_owned(
         let (fresh, _) = capture(&mut host)?;
         verify_undo_snapshot(&witness, &expected, &fresh)?;
         let summary = host.bundle_change_scope(|host| {
-            let summary = apply_selected(&root, host, &backup, &current)?;
+            let summary = apply_selected(&root, host, &backup, &current, original_devices)?;
             if !was_running {
                 host.stop().map_err(|e| e.to_string())?;
             }
@@ -1443,7 +1714,10 @@ async fn undo_owned(
     }
     let (restored, _) = settle_capture(host).await?;
     history.result.current = Some(current_dto(&restored));
-    if !selected_matches(&verify_backup, &restored) || restored.engine.running != was_running {
+    if !selected_matches(&verify_backup, &restored)
+        || restored.engine.running != was_running
+        || (verify_devices.is_some() && active_devices(restored.active.as_ref()) != verify_devices)
+    {
         history.result.set_auralyn(
             "bundle.undo.valuesUnknown",
             "復元値を確認できません。原本を保持しています",
@@ -1469,6 +1743,77 @@ async fn refresh_current(host: Arc<Mutex<audio::AudioHost>>, history: &mut Opera
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn recovery_device_identity_rejects_same_name_replacement_and_missing_id() {
+        let device = audio::AudioDevice {
+            name: "Mic".into(),
+            host: "WASAPI".into(),
+            id: Some("new-id".into()),
+            is_input: true,
+            channels: 2,
+            buffer_size_range: None,
+            index: 0,
+            is_default: false,
+        };
+        let name = Some("Mic".to_string());
+        assert!(!recovery_device_matches(
+            std::slice::from_ref(&device),
+            "WASAPI",
+            &name,
+            "old-id"
+        ));
+        assert!(recovery_device_matches(
+            std::slice::from_ref(&device),
+            "WASAPI",
+            &name,
+            "new-id"
+        ));
+        let mut missing = device;
+        missing.id = None;
+        assert!(!recovery_device_matches(
+            &[missing],
+            "WASAPI",
+            &name,
+            "old-id"
+        ));
+    }
+    #[test]
+    fn obs_original_selection_preserves_each_requested_source_and_property() {
+        use obs_setup::bundle::{Item, Property, Saved};
+        let original = Saved {
+            collection: "scene".into(),
+            items: vec![
+                Item {
+                    source: "mic".into(),
+                    kind: "input".into(),
+                    property: Property::Volume,
+                    value: serde_json::json!(0.7),
+                },
+                Item {
+                    source: "mic".into(),
+                    kind: "input".into(),
+                    property: Property::FilterEnabled {
+                        name: "EQ".into(),
+                        kind: "vst".into(),
+                    },
+                    value: serde_json::json!(true),
+                },
+                Item {
+                    source: "music".into(),
+                    kind: "input".into(),
+                    property: Property::Muted,
+                    value: serde_json::json!(false),
+                },
+            ],
+        };
+        let selected = recovery_obs_selection(&original);
+        assert_eq!(selected.len(), 2);
+        assert_eq!(selected[0].source, "mic");
+        assert!(selected[0].volume);
+        assert_eq!(selected[0].filters, ["EQ"]);
+        assert_eq!(selected[1].source, "music");
+        assert!(selected[1].muted);
+    }
     #[test]
     fn current_dto_contains_only_actual_rack_metadata_not_control_prefs_or_state() {
         let mut captured = captured();

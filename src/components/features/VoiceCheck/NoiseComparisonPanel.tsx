@@ -6,11 +6,11 @@ import type { MessageKey } from '@/i18n/messages';
 interface Props {
     preview: VoicePreviewSnapshot | null; candidate: BuiltinCandidate | null; disabled: boolean;
     prepare: (variant: 'current' | 'weaker' | 'stronger') => Promise<void>;
-    apply: () => Promise<void>; undo: () => Promise<void>;
+    apply: () => Promise<void>; undo: () => Promise<void>; redo?: () => Promise<void>;
 }
 const modes: Record<string, MessageKey> = { low: 'noiseCompare.low', high: 'noiseCompare.high', smart: 'noiseCompare.smart', venue: 'noiseCompare.venue' };
 
-export function NoiseComparisonPanel({ preview, candidate, disabled, prepare, apply, undo }: Props) {
+export function NoiseComparisonPanel({ preview, candidate, disabled, prepare, apply, undo, redo }: Props) {
     const t = useMessages();
     const [feedback, setFeedback] = useState<string[]>([]);
     useEffect(() => setFeedback([]), [candidate?.id]);
@@ -45,6 +45,7 @@ export function NoiseComparisonPanel({ preview, candidate, disabled, prepare, ap
         </>}
         {preview?.noisePending && <p role="status" className="text-xs">{t('noiseCompare.pending')}</p>}
         {preview?.noiseUndoToken && <button type="button" disabled={busy} onClick={() => void undo()} className="rounded border border-border px-3 py-2 text-xs disabled:opacity-50">{t('noiseCompare.undo')}</button>}
+        {preview?.noiseRedoToken && redo && <button type="button" disabled={busy} onClick={() => void redo()} className="rounded border border-border px-3 py-2 text-xs disabled:opacity-50">{t('history.redo')}</button>}
         <p className="text-xs text-muted-foreground">{t('noiseCompare.next')}</p>
     </section>;
 }

@@ -99,6 +99,7 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
             {onPreview && <button type="button" disabled={busy || !draft || conflict} onClick={onPreview} className="rounded border px-3 py-2 disabled:opacity-50">{t('settings.SingingControls.426')}</button>}
             <button type="button" disabled={previewActive || busy || !dirty || snapshot?.pending || conflict} onClick={() => void model.apply()} className="rounded border px-3 py-2 disabled:opacity-50">{t('settings.SingingControls.427')}</button>
             <button type="button" disabled={previewActive || busy || !snapshot?.undoToken || snapshot.pending || dirty} onClick={() => void model.undo()} className="rounded border px-3 py-2 disabled:opacity-50">{t('settings.SingingControls.428')}</button>
+            <button type="button" disabled={previewActive || busy || !snapshot?.redoToken || snapshot.pending || dirty} onClick={() => void model.redo()} className="rounded border px-3 py-2 disabled:opacity-50">{t('history.redo')}</button>
             {!compact && <Button type="button" variant="outline" disabled={busy || !dirty} onClick={model.resetDraft}>{t('settings.SingingControls.429')}</Button>}
             {onSaveProfile && <button type="button" disabled={previewActive || busy || !snapshot || snapshot.pending} onClick={onSaveProfile} className="rounded border px-3 py-2 disabled:opacity-50">{t('settings.SingingControls.430')}</button>}
         </div>

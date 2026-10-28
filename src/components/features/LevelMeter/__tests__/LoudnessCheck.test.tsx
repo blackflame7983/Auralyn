@@ -481,3 +481,41 @@ it('測定中のlocale変更で測定ID・目標・購読を保持し、無音�
     expect(screen.queryByText('About right')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Stop measurement/ })).toBeInTheDocument();
 });
+
+
+it('明示的な開始要求を一度だけ消費し、再表示や稼働回復では再開しない', async () => {
+    const request = {id: 42, action: 'start' as const};
+    const view = render(<LoudnessCheck running enabled request={request} onVoiceCheck={() => {}} />);
+    await act(async () => {});
+    expect(vi.mocked(audioApi.setLoudnessMeasurement).mock.calls.filter(([id]) => id !== null)).toHaveLength(1);
+    view.rerender(<LoudnessCheck running enabled request={request} onVoiceCheck={() => {}} />);
+    await act(async () => {});
+    expect(vi.mocked(audioApi.setLoudnessMeasurement).mock.calls.filter(([id]) => id !== null)).toHaveLength(1);
+    view.rerender(<LoudnessCheck running enabled={false} request={request} onVoiceCheck={() => {}} />);
+    await act(async () => {});
+    expect(audioApi.setLoudnessMeasurement).toHaveBeenLastCalledWith(null);
+    view.rerender(<LoudnessCheck running enabled request={request} onVoiceCheck={() => {}} />);
+    await act(async () => {});
+    expect(screen.getByRole('status')).toHaveTextContent('測定は停止中です');
+    expect(vi.mocked(audioApi.setLoudnessMeasurement).mock.calls.filter(([id]) => id !== null)).toHaveLength(1);
+});
+it('稼働未確認の要求は後の状態回復で実行せず、新しい操作を待つ', async () => {
+    const request = {id: 43, action: 'start' as const};
+    const view = render(<LoudnessCheck running stateKnown={false} request={request} onVoiceCheck={() => {}} />);
+    expect(screen.getByRole('button', {name: '測定する'})).toBeDisabled();
+    view.rerender(<LoudnessCheck running stateKnown request={request} onVoiceCheck={() => {}} />);
+    await act(async () => {});
+    expect(vi.mocked(audioApi.setLoudnessMeasurement).mock.calls.filter(([id]) => id !== null)).toHaveLength(0);
+});
+
+it('音楽表示は声用の目標・自動調整を出さず測定値とピークを表示する', async () => {
+    render(<LoudnessCheck running music request={{id: 60, action: 'start'}} onVoiceCheck={() => {}} />);
+    await act(async () => {});
+    const id = vi.mocked(audioApi.setLoudnessMeasurement).mock.calls.find(([value]) => value !== null)![0]!;
+    emit('audio-loudness', {...reading, id});
+    expect(screen.getByRole('status')).toHaveTextContent('出力の測定値を表示しています');
+    expect(screen.queryByRole('button', {name: '音量を合わせる'})).not.toBeInTheDocument();
+    expect(screen.getByText(/-20.0/)).toBeInTheDocument();
+    emit('audio-loudness', {...reading, id, true_peak_dbtp: 0});
+    expect(screen.getByRole('status')).toHaveTextContent('出力のピークが高くなっています');
+});

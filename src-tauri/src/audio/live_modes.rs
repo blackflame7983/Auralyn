@@ -176,6 +176,8 @@ impl AudioHost {
             host: active.host.clone(),
             input: active.input.clone(),
             output: active.output.clone(),
+            input_id: active.input_id.clone(),
+            output_id: active.output_id.clone(),
             rate: active.sample_rate,
             buffer: active.buffer_size,
         };

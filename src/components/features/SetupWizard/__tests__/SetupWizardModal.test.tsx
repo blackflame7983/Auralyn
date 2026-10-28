@@ -549,7 +549,7 @@ describe('PC audio purpose', () => {
             if (command === 'get_engine_runtime_stats') return { latencyMetadata: { streamRunning: true }, noiseReductionEnabled: false, noiseReductionMode: 'venue', noiseControlStrength: 0.8, noiseVoiceGuard: true };
             if (command === 'builtin_effects') {
                 if ((args as any).request.action === 'apply') applied = true;
-                return applied ? { ...snapshot, revision: '2', appliedRevision: '2', undoToken: 'undo', config: { ...fx, active: false } } : snapshot;
+                return applied ? { ...snapshot, revision: '2', appliedRevision: '2', undoToken: 'undo', config: { ...fx, active: false, reverb: {...fx.reverb, enabled: false} } } : snapshot;
             }
             return original(command, args);
         });
@@ -563,7 +563,7 @@ describe('PC audio purpose', () => {
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
         await screen.findByRole('heading', { name: '音声設定を保存しました' });
         expect(invoke).toHaveBeenCalledWith('set_noise_control_config', { active: false, mode: 'venue', strength: 0.8, voiceGuard: true });
-        expect(invoke).toHaveBeenCalledWith('builtin_effects', { request: { action: 'apply', epoch: 'epoch', expectedRevision: '1', config: { ...fx, active: false } } });
+        expect(invoke).toHaveBeenCalledWith('builtin_effects', { request: { action: 'apply', epoch: 'epoch', expectedRevision: '1', config: { ...fx, active: false, reverb: {...fx.reverb, enabled: false} } } });
         expect(onApplyConfig).toHaveBeenCalledOnce(); expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
     });
     it('保存途中の失敗では、この操作が書いた保存値を条件付きで戻す', async () => {
@@ -576,7 +576,7 @@ describe('PC audio purpose', () => {
             if (command === 'get_engine_runtime_stats') return { latencyMetadata: { streamRunning: true }, noiseReductionEnabled: false, noiseReductionMode: 'high', noiseControlStrength: 0.6, noiseVoiceGuard: false };
             if (command === 'builtin_effects') {
                 if ((args as any).request.action === 'apply') applied = true;
-                return applied ? { ...snapshot, revision: '2', appliedRevision: '2', config: { ...fx, active: false } } : snapshot;
+                return applied ? { ...snapshot, revision: '2', appliedRevision: '2', config: { ...fx, active: false, reverb: {...fx.reverb, enabled: false} } } : snapshot;
             }
             return original(command, args);
         });
@@ -600,7 +600,7 @@ describe('PC audio purpose', () => {
             if (command === 'get_engine_runtime_stats') return { latencyMetadata: { streamRunning: running }, noiseReductionEnabled: false, noiseReductionMode: 'high', noiseControlStrength: 0.6, noiseVoiceGuard: false };
             if (command === 'builtin_effects') {
                 if ((args as any).request.action === 'apply') applied = true;
-                return applied ? { ...snapshot, revision: '2', appliedRevision: '2', config: { ...fx, active: false } } : snapshot;
+                return applied ? { ...snapshot, revision: '2', appliedRevision: '2', config: { ...fx, active: false, reverb: {...fx.reverb, enabled: false} } } : snapshot;
             }
             return original(command, args);
         });
@@ -619,7 +619,7 @@ describe('PC audio purpose', () => {
             if (command === 'get_engine_runtime_stats') return { latencyMetadata: { streamRunning: true }, noiseReductionEnabled: false, noiseReductionMode: 'high', noiseControlStrength: 0.6, noiseVoiceGuard: false };
             if (command === 'builtin_effects') {
                 if ((args as any).request.action === 'apply') applied = true;
-                return applied ? { ...snapshot, revision: '2', pending: true, config: { ...fx, active: false } } : snapshot;
+                return applied ? { ...snapshot, revision: '2', pending: true, config: { ...fx, active: false, reverb: {...fx.reverb, enabled: false} } } : snapshot;
             }
             return original(command, args);
         });
@@ -635,7 +635,7 @@ describe('PC audio purpose', () => {
         vi.mocked(invoke).mockImplementation(async (command, args) => {
             if (command === 'get_engine_runtime_stats') return { noiseReductionMode: 'high', noiseControlStrength: 0.6, noiseVoiceGuard: false };
             if (command === 'set_noise_control_config') throw new Error('failure');
-            if (command === 'builtin_effects') return (args as any).request.action === 'snapshot' ? snapshot : { ...snapshot, revision: '2', undoToken: 'undo', config: { ...fx, active: false } };
+            if (command === 'builtin_effects') return (args as any).request.action === 'snapshot' ? snapshot : { ...snapshot, revision: '2', undoToken: 'undo', config: { ...fx, active: false, reverb: {...fx.reverb, enabled: false} } };
             return original(command, args);
         });
         const { onApplyConfig } = await openWizard(); await toConfirm();

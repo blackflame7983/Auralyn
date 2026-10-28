@@ -1,3 +1,7 @@
+import { useState, useRef } from 'react';
+import { MusicListeningCheck } from './MusicListeningCheck';
+import { RouteSummary } from './RouteSummary';
+import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { usePreparation } from '@/hooks/usePreparation';
 import type { Availability } from '@/lib/preparation';
@@ -26,6 +30,7 @@ interface HomePanelsProps {
     onOpenOBSSettings: () => void;
     onOpenSoundSettings?: () => void;
     onOpenVoiceCheck: () => void;
+    onOpenVst?: () => void;
 }
 
 // レベル通知は到達確認ではない。マイクの声が音声処理へ届いているかの目安として示す。
@@ -33,7 +38,8 @@ function InputMeterBar({ running }: { running: boolean }) {
     const t = useMessages();
     const reading = useSharedMeter(running, 'input');
     const { state } = reading;
-    const music = localStorage.getItem('vst_host_setup_goal') === 'music';
+    const [purpose] = useDisplayPurpose();
+    const music = purpose === 'music';
     return (
         <div className="flex min-w-0 flex-1 items-center gap-3">
             <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={12} scale />
@@ -44,16 +50,24 @@ function InputMeterBar({ running }: { running: boolean }) {
 
 // 通常の状態帯と調整は両表示で共通。準備の確認だけを必要なときに開く。
 export function HomePanels({ audioReady, statusText, isEngineRunning, inputName, outputName, blocked,
-    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVoiceCheck, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot }: HomePanelsProps) {
+    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVoiceCheck, onOpenVst, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot }: HomePanelsProps) {
     const t = useMessages();
-    const music = localStorage.getItem('vst_host_setup_goal') === 'music';
+    const [purpose] = useDisplayPurpose();
+    const music = purpose === 'music';
+    const [listenOpen, setListenOpen] = useState(false);
+    const listenButton = useRef<HTMLButtonElement>(null);
+    const openListen = () => setListenOpen(true);
     const model = usePreparation({ blocked, running: audioReady });
     const availability: Record<Availability, MessageKey> = { ready:'prep.running', unknown:'shell.unknown', unconfigured:'shell.unconfigured', stopped:'shell.stopped', failed:'prep.failed', pending:'prep.pending', muted:'prep.muted' };
+    const focusControl = (id: string) => {
+        const element = document.getElementById(id);
+        if (element) { const details = element.closest('details'); if (details) details.open = true; element.scrollIntoView?.({ block: 'center' }); element.focus(); } else (onOpenSoundSettings ?? onOpenSettings)();
+    };
     const actualInput = model.observation.config?.input ?? inputName;
     const actualOutput = model.observation.config?.output ?? outputName;
     return <div className="mb-4 space-y-3">
         <PreparationPanel model={model} audioReady={audioReady} onSettings={onOpenSettings} onSound={onOpenSoundSettings ?? onOpenSettings}
-            onListen={onOpenVoiceCheck} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings}
+            onListen={music ? openListen : onOpenVoiceCheck} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings}
             signalSummary={<section aria-label={t('prep.signalPath')} className="space-y-2">
             <dl className="grid gap-3 sm:grid-cols-3 text-sm">
                 <div className="min-w-0"><dt className="text-muted-foreground">{t('home.input')}</dt><dd className="truncate font-medium" title={actualInput ?? undefined}>{actualInput ? deviceDisplayName(actualInput) : t('master.unset')}</dd></div>
@@ -66,15 +80,17 @@ export function HomePanels({ audioReady, statusText, isEngineRunning, inputName,
             </div>
             <p className="text-xs text-muted-foreground">{t('prep.localOnly')}</p>
         </section>} />
-        <SignalFlow />
+        {model.observation.routing && (model.observation.routing.deviceId || model.observation.routing.splitProcessing) && !['unknown', 'stopped', 'unconfigured', 'failed', 'pending'].includes(model.observation.availability) && <RouteSummary routing={model.observation.routing} output={actualOutput} onSettings={onOpenSettings} />}
+        <SignalFlow onInput={onOpenSettings} onOutput={onOpenSettings} onNoise={() => focusControl('home-noise')} onBuiltin={() => focusControl('home-builtin')} onVst={onOpenVst} onRouting={onOpenSettings} />
         <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
             <h2 className="text-sm font-bold">{t(music ? 'wizard.musicSound' : 'shell.sound')}</h2>
-            {audioReady ? <VoiceQuickControls running={isEngineRunning} onOpenSoundSettings={onOpenSoundSettings} /> : <p className="text-sm text-muted-foreground">{t('home.soundAfterSetup')}</p>}
+            {audioReady ? (music ? <details><summary className="cursor-pointer text-sm">{t('purpose.processing')}</summary><VoiceQuickControls running={isEngineRunning} onOpenSoundSettings={onOpenSoundSettings} /></details> : <VoiceQuickControls running={isEngineRunning} onOpenSoundSettings={onOpenSoundSettings} />) : <p className="text-sm text-muted-foreground">{t('home.soundAfterSetup')}</p>}
             <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={music ? onOpenSettings : onOpenVoiceCheck} disabled={!audioReady} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"><MdHearing aria-hidden="true" />{t(music ? 'wizard.musicListen' : 'home.voiceCheck')}</button>
-                {model.context.usage === 'obs' && <button type="button" onClick={onOpenOBSSettings} className="rounded-md border border-border px-3 py-2 text-sm">{t('shell.obs')}</button>}
+                <button type="button" ref={listenButton} onClick={music ? openListen : onOpenVoiceCheck} disabled={!audioReady} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"><MdHearing aria-hidden="true" />{t(music ? 'wizard.musicListen' : 'home.voiceCheck')}</button>
+                {!music && model.context.usage === 'obs' && <button type="button" onClick={onOpenOBSSettings} className="rounded-md border border-border px-3 py-2 text-sm">{t('shell.obs')}</button>}
             </div>
         </section>
 
+        {music && listenOpen && <MusicListeningCheck running={isEngineRunning} input={actualInput} output={actualOutput} onSettings={onOpenSettings} onClose={() => {setListenOpen(false); listenButton.current?.focus();}} />}
     </div>;
 }

@@ -345,8 +345,9 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                 const mode = stats.noiseReductionMode;
                 if (!['low', 'high', 'smart', 'venue'].includes(mode) || !Number.isFinite(stats.noiseControlStrength) || typeof stats.noiseVoiceGuard !== 'boolean') throw new Error('Noise control state unavailable');
                 const before = await builtinApi.request({ action: 'snapshot' });
+                const musicConfig = { ...before.config, active: false, reverb: before.config.reverb ? { ...before.config.reverb, enabled: false } : before.config.reverb };
                 let applied: BuiltinSnapshot | null = null;
-                if (before.config.active) applied = await builtinApi.request({ action: 'apply', epoch: before.epoch, expectedRevision: before.revision, config: { ...before.config, active: false } });
+                if (before.config.active || before.config.reverb?.enabled) applied = await builtinApi.request({ action: 'apply', epoch: before.epoch, expectedRevision: before.revision, config: musicConfig });
                 try {
                     await audioApi.setNoiseControlConfig({ active: false, mode: mode as NoiseControlMode, strength: stats.noiseControlStrength, voiceGuard: stats.noiseVoiceGuard });
                 } catch (error) {
@@ -362,7 +363,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                     || confirmedNoise.noiseControlStrength !== stats.noiseControlStrength || confirmedNoise.noiseVoiceGuard !== stats.noiseVoiceGuard
                     || confirmedBuiltin.epoch !== before.epoch || confirmedBuiltin.pending || confirmedBuiltin.error
                     || confirmedBuiltin.revision !== confirmedBuiltin.appliedRevision || confirmedBuiltin.config.active !== false
-                    || JSON.stringify(confirmedBuiltin.config) !== JSON.stringify({ ...before.config, active: false })) {
+                    || JSON.stringify(confirmedBuiltin.config) !== JSON.stringify(musicConfig)) {
                     throw new Error('Music processing settings could not be confirmed');
                 }
             }

@@ -1,5 +1,5 @@
 import type { AudioStateInfo, EngineRuntimeStats, PreparationSnapshot } from '@/api/audio';
-import type { LiveOutputStatus } from '@/api/liveOutput';
+import type { LiveOutputConfig, LiveOutputStatus } from '@/api/liveOutput';
 import type { ObsAudioReachResult } from '@/api/obs';
 
 export type PreparationUse = 'obs' | 'discord' | 'other' | 'listening';
@@ -10,7 +10,7 @@ export interface PreparationContext {
 export type Availability = 'unknown' | 'unconfigured' | 'stopped' | 'failed' | 'pending' | 'muted' | 'ready';
 export interface PreparationObservation {
     availability: Availability; config: AudioStateInfo['config']; keys: Record<PreparationStage, string> | null;
-    inputGain?: number; obs: ObsAudioReachResult | null; obsCurrent: boolean;
+    routing?: LiveOutputConfig; inputGain?: number; obs: ObsAudioReachResult | null; obsCurrent: boolean;
 }
 export interface Confirmation { at: number; key: string; target: string; expired: boolean }
 export type Confirmations = Partial<Record<PreparationStage, Confirmation>>;
@@ -62,7 +62,7 @@ export function buildPreparationObservation(state: AudioStateInfo, stats: Engine
     const input = [state.config.host, state.config.input, state.config.sample_rate, state.config.buffer_size, p.inputGain, p.inputChannels];
     const sound = key([p.engineEpoch, stats.latencyMetadata.streamEpoch, input, p.processingRevision, p.nrBackend, p.nrModel, context.location, context.signal]);
     const listen = key([sound, state.config.output, p.outputGain, p.outputRevision, p.routingRevision, p.muted, live.config, live.broadcastEpoch]);
-    return { ...base, availability: p.controlsPending ? 'pending' : p.muted || p.outputGain === 0 ? 'muted' : 'ready', inputGain: p.inputGain,
+    return { ...base, availability: p.controlsPending ? 'pending' : p.muted || p.outputGain === 0 ? 'muted' : 'ready', inputGain: p.inputGain, routing: live.config,
         keys: { sound, listen, receiver: key([listen, context.usage, context.receiver.trim(), obs?.verification?.operationId, obsCurrent]) } };
 }
 
