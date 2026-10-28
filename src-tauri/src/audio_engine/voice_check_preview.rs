@@ -1965,7 +1965,9 @@ pub(in crate::audio_engine) mod tests {
                 );
                 assert!(output.iter().all(|sample| sample.is_finite()));
                 assert!(output
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .all(|frame| frame[2] == 0.0 && frame[3] == 0.0));
                 if !looping || frames == 0 {
                     assert!(!controls.active.load(Ordering::Acquire));

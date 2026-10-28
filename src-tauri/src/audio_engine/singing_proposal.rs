@@ -161,7 +161,7 @@ pub(crate) fn analyze(
             ));
         }
         let mut energy = [0.0f64; 2];
-        for (frame_index, frame) in samples.chunks_exact(2).enumerate() {
+        for (frame_index, frame) in samples.as_chunks::<2>().0.iter().enumerate() {
             if frame_index % 256 == 0 {
                 cancelled(cancel)?;
             }
@@ -329,7 +329,7 @@ mod tests {
             );
             assert_eq!(normal.config.singing.unwrap().dynamics, 0.35);
             let mut mono = tone(rate, false, false);
-            for f in mono.chunks_exact_mut(2) {
+            for f in mono.as_chunks_mut::<2>().0.iter_mut() {
                 f[1] = 0.;
             }
             let p = run(&mono, rate, false).unwrap();
@@ -524,7 +524,7 @@ fn evaluate_preferences(
     let mut raw_energy = 0.0;
     for samples in raw.chunks(window * 2) {
         let mut energy = [0.0; 2];
-        for (i, frame) in samples.chunks_exact(2).enumerate() {
+        for (i, frame) in samples.as_chunks::<2>().0.iter().enumerate() {
             if i % 256 == 0 {
                 cancelled(cancel)?;
             }
@@ -747,8 +747,18 @@ mod preference_tests {
             (params.low_cut_hz, params.dynamics, params.brightness_db),
             (40.0, 0.0, 0.5)
         );
-        let reversed: Vec<_> = raw.chunks_exact(2).flat_map(|f| [f[1], f[0]]).collect();
-        let stereo: Vec<_> = raw.chunks_exact(2).flat_map(|f| [f[0], f[0]]).collect();
+        let reversed: Vec<_> = raw
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .flat_map(|f| [f[1], f[0]])
+            .collect();
+        let stereo: Vec<_> = raw
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .flat_map(|f| [f[0], f[0]])
+            .collect();
         for data in [&reversed, &stereo] {
             let q = run(data, &base, Preferences::default()).unwrap();
             assert_eq!(p.config, q.config);
@@ -758,7 +768,12 @@ mod preference_tests {
                 q.evaluation.unwrap().hpf_energy_loss_db
             );
         }
-        let mono: Vec<_> = raw.chunks_exact(2).flat_map(|f| [f[0], 0.0]).collect();
+        let mono: Vec<_> = raw
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .flat_map(|f| [f[0], 0.0])
+            .collect();
         let m = run(&mono, &Config::default(), Preferences::default()).unwrap();
         assert_eq!(m.config.singing.unwrap().dynamics, 0.0);
         assert_eq!(m.metrics.active_windows, p.metrics.active_windows);

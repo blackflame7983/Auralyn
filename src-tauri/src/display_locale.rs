@@ -115,7 +115,7 @@ impl PageGeneration {
         // page通知ではatomicだけを更新し、UI threadでI/Oやmenu gateを待たない。
         if self
             .0
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |value| {
                 if value == 0 {
                     None
                 } else {

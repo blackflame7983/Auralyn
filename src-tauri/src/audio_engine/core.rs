@@ -265,6 +265,15 @@ fn time_critical_audio_threads_enabled() -> bool {
     })
 }
 
+struct AudioStartRequest {
+    host_name: Option<String>,
+    input_name: Option<String>,
+    output_name: Option<String>,
+    sample_rate: Option<u32>,
+    buffer_size: Option<u32>,
+    device_ids: (Option<String>, Option<String>),
+}
+
 pub struct Engine {
     builtin: super::builtin::Controller,
     live_modes: super::live_modes::Controller,
@@ -2155,12 +2164,14 @@ impl Engine {
         device_ids: (Option<String>, Option<String>),
     ) -> Result<()> {
         self.start_audio_impl(
-            host_name,
-            input_device,
-            output_device,
-            sample_rate,
-            buffer_size,
-            device_ids,
+            AudioStartRequest {
+                host_name,
+                input_name: input_device,
+                output_name: output_device,
+                sample_rate,
+                buffer_size,
+                device_ids,
+            },
             lifecycle::StartupPolicy::default(),
         )
     }
@@ -2168,23 +2179,10 @@ impl Engine {
     #[allow(deprecated)]
     fn start_audio_impl(
         &mut self,
-        host_name: Option<String>,
-        input_name: Option<String>,
-        output_name: Option<String>,
-        sample_rate: Option<u32>,
-        buffer_size: Option<u32>,
-        device_ids: (Option<String>, Option<String>),
+        request: AudioStartRequest,
         policy: lifecycle::StartupPolicy,
     ) -> Result<()> {
-        let result = self.start_audio_attempt(
-            host_name,
-            input_name,
-            output_name,
-            sample_rate,
-            buffer_size,
-            device_ids,
-            policy,
-        );
+        let result = self.start_audio_attempt(request, policy);
         // ローカルstreamとcallbackが破棄されてから、共有キューと所有値を回収する。
         if result.is_err() {
             self.clear_audio_resources();
@@ -2196,14 +2194,17 @@ impl Engine {
     #[allow(deprecated)]
     fn start_audio_attempt(
         &mut self,
-        host_name: Option<String>,
-        input_name: Option<String>,
-        output_name: Option<String>,
-        sample_rate: Option<u32>,
-        buffer_size: Option<u32>,
-        device_ids: (Option<String>, Option<String>),
+        request: AudioStartRequest,
         policy: lifecycle::StartupPolicy,
     ) -> Result<()> {
+        let AudioStartRequest {
+            host_name,
+            input_name,
+            output_name,
+            sample_rate,
+            buffer_size,
+            device_ids,
+        } = request;
         self.builtin
             .invalidate_history_with_reason(super::history::Reason::StreamChanged);
         if self.output_stream.is_some() || self.input_stream.is_some() {
@@ -2299,12 +2300,14 @@ impl Engine {
                             self.clear_audio_resources()
                         });
                         return self.start_audio_attempt(
-                            host_name,
-                            input_name,
-                            output_name,
-                            Some(fallback_rate),
-                            None,
-                            device_ids.clone(),
+                            AudioStartRequest {
+                                host_name,
+                                input_name,
+                                output_name,
+                                sample_rate: Some(fallback_rate),
+                                buffer_size: None,
+                                device_ids: device_ids.clone(),
+                            },
                             next_policy,
                         );
                     }
@@ -2917,9 +2920,8 @@ impl Engine {
                         mmcss_set_out.store(true, Ordering::Relaxed);
                     }
 
-                    if channels_len > 0 {
-                        let _ = frames_counter
-                            .fetch_add((data.len() / channels_len) as u64, Ordering::Relaxed);
+                    if let Some(frames) = data.len().checked_div(channels_len) {
+                        let _ = frames_counter.fetch_add(frames as u64, Ordering::Relaxed);
                     }
 
                     // Process Commands
@@ -4013,12 +4015,14 @@ impl Engine {
                         self.clear_audio_resources()
                     });
                     return self.start_audio_attempt(
-                        retry_host_out,
-                        retry_input_out,
-                        retry_output_out,
-                        Some(out_capabilities.default_rate()),
-                        None,
-                        device_ids.clone(),
+                        AudioStartRequest {
+                            host_name: retry_host_out,
+                            input_name: retry_input_out,
+                            output_name: retry_output_out,
+                            sample_rate: Some(out_capabilities.default_rate()),
+                            buffer_size: None,
+                            device_ids: device_ids.clone(),
+                        },
                         next_policy,
                     );
                 }
@@ -4046,12 +4050,14 @@ impl Engine {
                         self.clear_audio_resources()
                     });
                     return self.start_audio_attempt(
-                        retry_host_in,
-                        retry_input_in,
-                        retry_output_in,
-                        Some(out_stream_config.sample_rate),
-                        effective_fixed_block,
-                        device_ids.clone(),
+                        AudioStartRequest {
+                            host_name: retry_host_in,
+                            input_name: retry_input_in,
+                            output_name: retry_output_in,
+                            sample_rate: Some(out_stream_config.sample_rate),
+                            buffer_size: effective_fixed_block,
+                            device_ids: device_ids.clone(),
+                        },
                         next_policy,
                     );
                 }
@@ -4063,12 +4069,14 @@ impl Engine {
                         self.clear_audio_resources()
                     });
                     return self.start_audio_attempt(
-                        retry_host_in,
-                        retry_input_in,
-                        retry_output_in,
-                        Some(out_capabilities.default_rate()),
-                        None,
-                        device_ids.clone(),
+                        AudioStartRequest {
+                            host_name: retry_host_in,
+                            input_name: retry_input_in,
+                            output_name: retry_output_in,
+                            sample_rate: Some(out_capabilities.default_rate()),
+                            buffer_size: None,
+                            device_ids: device_ids.clone(),
+                        },
                         next_policy,
                     );
                 }

@@ -56,7 +56,7 @@ impl Controls {
     fn reserve_measurement(&self) {
         let _ = self
             .measurement
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |state| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |state| {
                 Some((state.wrapping_add(4) & !3) | 1)
             });
     }
@@ -383,7 +383,7 @@ impl Monitor {
         let read = self.timing.as_ref().map_or(0, |t| t.now_ns());
         self.diagnostics.record_output(data.len() / 2, consumed);
         let frames = data.len() / 2;
-        for (index, output) in data.chunks_exact_mut(2).enumerate() {
+        for (index, output) in data.as_chunks_mut::<2>().0.iter_mut().enumerate() {
             let pair = [
                 self.input_buffer[index * 2],
                 self.input_buffer[index * 2 + 1],
@@ -571,7 +571,11 @@ mod tests {
                 .render(&mut output, None)),
             (0, 0)
         );
-        assert!(output.chunks_exact(2).all(|frame| frame == [-0.2, 0.1]));
+        assert!(output
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .all(|frame| *frame == [-0.2, 0.1]));
         assert_eq!(controller.shared.offered.load(Ordering::Relaxed), 128);
         drop(renderer);
         drop(controller);
@@ -598,12 +602,12 @@ mod tests {
                 skips += 1;
                 assert_eq!(previous_gain, 0.0);
             }
-            for frame in output.chunks_exact(2) {
+            for frame in output.as_chunks::<2>().0.iter() {
                 let gain = gains.try_pop().unwrap();
                 let common = [audio.try_pop().unwrap(), audio.try_pop().unwrap()];
                 // 録音用のPCMは変更せず、配信FX後に同じgainを一度だけ掛ける。
                 assert_eq!(common, [-0.2, 0.1]);
-                assert_eq!(frame, common.map(|sample| sample * gain));
+                assert_eq!(*frame, common.map(|sample| sample * gain));
                 faded |= gain < 1.0;
                 previous_gain = gain;
             }
@@ -740,7 +744,11 @@ mod tests {
         }
         let mut output = [0.0; 256];
         renderer.get_mut().render(&mut output, None);
-        assert!(output.chunks_exact(2).all(|frame| frame == [-0.2, 0.1]));
+        assert!(output
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .all(|frame| *frame == [-0.2, 0.1]));
         controller.message(&AudioThreadMessage::SetGlobalMute(true));
         renderer.get_mut().render(&mut output, None);
         assert_eq!(output, [0.0; 256]);
@@ -812,7 +820,11 @@ mod tests {
                     .render(&mut output, None)),
                 (0, 0)
             );
-            assert!(output.chunks_exact(2).all(|frame| frame == [-0.2, 0.1]));
+            assert!(output
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .all(|frame| *frame == [-0.2, 0.1]));
         }
         release_tx.send(()).unwrap();
         drop(worker);

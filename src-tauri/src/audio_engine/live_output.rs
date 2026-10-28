@@ -248,7 +248,7 @@ impl Receiver {
         let step = 1.0 + (error * 0.004).clamp(-0.002, 0.002);
         let trim = f32::from_bits(self.shared.broadcast_trim.load(Ordering::Relaxed));
         let total_frames = data.len() / 2;
-        for (index, output) in data.chunks_exact_mut(2).enumerate() {
+        for (index, output) in data.as_chunks_mut::<2>().0.iter_mut().enumerate() {
             if self.shared.muted.load(Ordering::Acquire)
                 || !self.shared.active.load(Ordering::Acquire)
                 || self.shared.generation.load(Ordering::Acquire) != self.generation
@@ -481,7 +481,7 @@ mod tests {
         });
         assert_eq!(counts, (0, 0));
         assert_eq!(tx.monitor_gain(), 0.25);
-        assert!(output.chunks_exact(2).all(|s| s == [0.1, -0.1]));
+        assert!(output.as_chunks::<2>().0.iter().all(|s| *s == [0.1, -0.1]));
     }
     #[test]
     fn stalled_consumer_stops_only_broadcast_and_does_not_overwrite_old_audio() {
@@ -581,7 +581,7 @@ mod tests {
             assert!(!shared.failed.load(Ordering::Acquire), "ppm={ppm}");
             assert_eq!(shared.zero.load(Ordering::Relaxed), 0, "ppm={ppm}");
             assert!(rx.rx.occupied_len() < 8192);
-            assert!(output.chunks_exact(2).all(|s| s == [0.1, -0.1]));
+            assert!(output.as_chunks::<2>().0.iter().all(|s| *s == [0.1, -0.1]));
         }
     }
     #[test]

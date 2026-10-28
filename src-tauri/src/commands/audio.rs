@@ -176,9 +176,10 @@ pub(crate) async fn get_engine_runtime_stats(
     .await
 }
 
-#[tauri::command]
-pub(crate) async fn start_audio(
-    state: State<'_, audio::AudioState>,
+// 平坦なIPC引数とTauriの型検証を保ち、音声起動の設定だけを一つにまとめる。
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AudioStartOptions {
     input: Option<String>,
     output: Option<String>,
     host: Option<String>,
@@ -186,8 +187,52 @@ pub(crate) async fn start_audio(
     sample_rate: Option<u32>,
     input_id: Option<String>,
     output_id: Option<String>,
+}
+
+fn command_field<'de, T: serde::Deserialize<'de>, R: tauri::Runtime>(
+    command: &tauri::ipc::CommandItem<'de, R>,
+    key: &'static str,
+) -> Result<T, tauri::ipc::InvokeError> {
+    tauri::ipc::CommandArg::from_command(tauri::ipc::CommandItem {
+        plugin: command.plugin,
+        name: command.name,
+        key,
+        message: command.message,
+        acl: command.acl,
+    })
+}
+
+impl<'de, R: tauri::Runtime> tauri::ipc::CommandArg<'de, R> for AudioStartOptions {
+    fn from_command(
+        command: tauri::ipc::CommandItem<'de, R>,
+    ) -> Result<Self, tauri::ipc::InvokeError> {
+        Ok(Self {
+            input: command_field(&command, "input")?,
+            output: command_field(&command, "output")?,
+            host: command_field(&command, "host")?,
+            buffer_size: command_field(&command, "bufferSize")?,
+            sample_rate: command_field(&command, "sampleRate")?,
+            input_id: command_field(&command, "inputId")?,
+            output_id: command_field(&command, "outputId")?,
+        })
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn start_audio(
+    state: State<'_, audio::AudioState>,
+    options: AudioStartOptions,
     expected_state: Option<serde_json::Value>,
 ) -> Result<audio::AudioConfig, String> {
+    let AudioStartOptions {
+        input,
+        output,
+        host,
+        buffer_size,
+        sample_rate,
+        input_id,
+        output_id,
+    } = options;
     let state = state.0.clone();
     super::run_blocking(move || {
         log::debug!(
@@ -389,14 +434,17 @@ pub(crate) async fn set_gain(
 #[tauri::command]
 pub(crate) async fn restart_audio_engine(
     state: State<'_, audio::AudioState>,
-    input: Option<String>,
-    output: Option<String>,
-    host: Option<String>,
-    buffer_size: Option<u32>,
-    sample_rate: Option<u32>,
-    input_id: Option<String>,
-    output_id: Option<String>,
+    options: AudioStartOptions,
 ) -> Result<audio::AudioConfig, String> {
+    let AudioStartOptions {
+        input,
+        output,
+        host,
+        buffer_size,
+        sample_rate,
+        input_id,
+        output_id,
+    } = options;
     let state = state.0.clone();
     super::run_blocking(move || {
         log::debug!(
@@ -854,4 +902,84 @@ pub(crate) async fn noise_measurement(
             .map_err(|e| e.to_string())
     })
     .await
+}
+
+#[cfg(test)]
+mod start_options_ipc_tests {
+    use super::AudioStartOptions;
+    use serde_json::{json, Value};
+
+    #[tauri::command]
+    fn inspect_start_options(options: AudioStartOptions, expected_state: Option<Value>) -> Value {
+        json!({ "options": options, "expectedState": expected_state })
+    }
+
+    #[test]
+    fn flat_start_arguments_keep_tauri_validation_and_optional_values() {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![inspect_start_options])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let webview = tauri::WebviewWindowBuilder::new(&app, "start-options", Default::default())
+            .build()
+            .unwrap();
+        let invoke = |body| {
+            tauri::test::get_ipc_response(
+                &webview,
+                tauri::webview::InvokeRequest {
+                    cmd: "inspect_start_options".into(),
+                    callback: tauri::ipc::CallbackFn(0),
+                    error: tauri::ipc::CallbackFn(1),
+                    url: "http://tauri.localhost".parse().unwrap(),
+                    body,
+                    headers: Default::default(),
+                    invoke_key: tauri::test::INVOKE_KEY.to_owned(),
+                },
+            )
+        };
+        let options = json!({
+            "input": "microphone", "output": "headphones", "host": "WASAPI",
+            "bufferSize": 256, "sampleRate": 48000,
+            "inputId": "stable-input", "outputId": "stable-output"
+        });
+        let expected_state =
+            json!({ "is_running": true, "condition_witness": { "revision": "9" } });
+        let mut payload = options.clone();
+        payload["expectedState"] = expected_state.clone();
+        assert_eq!(
+            invoke(tauri::ipc::InvokeBody::Json(payload))
+                .unwrap()
+                .deserialize::<Value>()
+                .unwrap(),
+            json!({ "options": options, "expectedState": expected_state })
+        );
+        let empty = json!({
+            "input": null, "output": null, "host": null,
+            "bufferSize": null, "sampleRate": null, "inputId": null, "outputId": null
+        });
+        for payload in [json!({}), empty.clone()] {
+            assert_eq!(
+                invoke(tauri::ipc::InvokeBody::Json(payload))
+                    .unwrap()
+                    .deserialize::<Value>()
+                    .unwrap(),
+                json!({ "options": empty, "expectedState": null })
+            );
+        }
+        for (key, invalid) in [
+            ("input", json!(42)),
+            ("output", json!([])),
+            ("host", json!(false)),
+            ("bufferSize", json!(-1)),
+            ("sampleRate", json!("48000")),
+            ("inputId", json!({})),
+            ("outputId", json!(42)),
+        ] {
+            let mut payload = options.clone();
+            payload[key] = invalid;
+            let error = invoke(tauri::ipc::InvokeBody::Json(payload)).unwrap_err();
+            assert!(error.as_str().unwrap().contains(key), "{error}");
+        }
+        assert!(invoke(tauri::ipc::InvokeBody::Raw(vec![1, 2, 3])).is_err());
+    }
 }
