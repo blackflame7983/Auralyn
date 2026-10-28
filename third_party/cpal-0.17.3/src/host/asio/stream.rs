@@ -1,4 +1,4 @@
-// Auralyn local modification (2026-10-23): ASIO build失敗時の両callback回収。詳細はPATCHES.md。
+// Auralyn local modification: callback回収とplayまでの開始遅延。詳細はPATCHES.md。
 #[path = "build_lifecycle.rs"]
 mod build_lifecycle;
 
@@ -33,8 +33,15 @@ crate::assert_stream_sync!(Stream);
 
 impl Stream {
     pub fn play(&self) -> Result<(), PlayStreamError> {
-        self.playing.store(true, Ordering::SeqCst);
-        Ok(())
+        build_lifecycle::play_prepared_stream(&self.playing, || {
+            // 入出力のbuild中には開始しない。共有driverのstartは稼働済みならno-op。
+            self.driver.start().map_err(|error| {
+                BackendSpecificError {
+                    description: error.to_string(),
+                }
+                .into()
+            })
+        })
     }
 
     pub fn pause(&self) -> Result<(), PauseStreamError> {
@@ -261,16 +268,13 @@ impl Device {
         let driver = self.driver.clone();
         let asio_streams = self.asio_streams.clone();
 
-        build_lifecycle::start_prepared_stream(
-            Stream {
-                playing: stream_playing,
-                driver,
-                asio_streams,
-                callback_id,
-                message_callback_id,
-            },
-            |stream| stream.driver.start().map_err(build_stream_err),
-        )
+        Ok(Stream {
+            playing: stream_playing,
+            driver,
+            asio_streams,
+            callback_id,
+            message_callback_id,
+        })
     }
 
     pub fn build_output_stream_raw<D, E>(
@@ -541,16 +545,13 @@ impl Device {
         let driver = self.driver.clone();
         let asio_streams = self.asio_streams.clone();
 
-        build_lifecycle::start_prepared_stream(
-            Stream {
-                playing: stream_playing,
-                driver,
-                asio_streams,
-                callback_id,
-                message_callback_id,
-            },
-            |stream| stream.driver.start().map_err(build_stream_err),
-        )
+        Ok(Stream {
+            playing: stream_playing,
+            driver,
+            asio_streams,
+            callback_id,
+            message_callback_id,
+        })
     }
 
     /// Create a new CPAL Input Stream.

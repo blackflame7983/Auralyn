@@ -806,7 +806,7 @@ mod tests {
 
     #[test]
     fn asio_start_failure_removes_message_and_data_callbacks_before_device_or_processor_drop() {
-        use super::asio_build_lifecycle::{prepare_and_register, start_prepared_stream};
+        use super::asio_build_lifecycle::{play_prepared_stream, prepare_and_register};
         struct RegisteredStream {
             callback: Option<CallbackOwner<Tracked>>,
             events: Arc<Mutex<Vec<(&'static str, std::thread::ThreadId)>>>,
@@ -834,9 +834,24 @@ mod tests {
                 },
             )
             .unwrap();
-            assert!(start_prepared_stream(stream, |_| Err(direction)).is_err());
+            let input = RegisteredStream {
+                callback: None,
+                events: events.clone(),
+            };
+            assert!(StreamPair::start(stream, input, |_| {
+                play_prepared_stream(&AtomicBool::new(false), || Err(direction))
+            })
+            .is_err());
             let names: Vec<_> = events.lock().unwrap().iter().map(|e| e.0).collect();
-            assert_eq!(names, ["data removed", "message removed"]);
+            assert_eq!(
+                names,
+                [
+                    "data removed",
+                    "message removed",
+                    "data removed",
+                    "message removed"
+                ]
+            );
             release_devices_before_retry(devices, || {
                 drop(
                     returned
@@ -857,6 +872,8 @@ mod tests {
             assert_eq!(
                 names,
                 [
+                    "data removed",
+                    "message removed",
                     "data removed",
                     "message removed",
                     "input device",

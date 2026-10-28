@@ -102,5 +102,5 @@ panic = "abort"   # Remove unwind tables (smaller binary)
 # strip = true    # Windows Defenderの誤検知(トロイの木馬判定)を軽減するためデバッグシンボルを残す
 
 [patch.crates-io]
-# 固定版のASIO build失敗時に、data/message callback登録を対で回収する。
+# 固定版のASIO callback回収、playまでの開始遅延、登録名による機器検出。
 cpal = { path = "../third_party/cpal-0.17.3" }

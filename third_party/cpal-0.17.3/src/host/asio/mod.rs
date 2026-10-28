@@ -41,6 +41,31 @@ impl Host {
         let host = Host { asio };
         Ok(host)
     }
+
+    /// 登録名だけを取得する。ドライバーをロード・初期化しない。
+    pub fn driver_names(&self) -> Vec<String> {
+        self.asio.driver_names()
+    }
+
+    /// 選択した登録名だけをロードする。非選択ドライバーを列挙しない。
+    pub fn device_by_name(&self, name: &str) -> Option<Device> {
+        if !self
+            .driver_names()
+            .iter()
+            .any(|registered| registered == name)
+        {
+            return None;
+        }
+        let driver = self.asio.load_driver(name).ok()?;
+        Some(Device {
+            driver: Arc::new(driver),
+            asio_streams: Arc::new(std::sync::Mutex::new(sys::AsioStreams {
+                input: None,
+                output: None,
+            })),
+            current_callback_flag: Arc::new(std::sync::atomic::AtomicU32::new(u32::MAX)),
+        })
+    }
 }
 
 impl HostTrait for Host {
@@ -54,6 +79,13 @@ impl HostTrait for Host {
 
     fn devices(&self) -> Result<Self::Devices, DevicesError> {
         Devices::new(self.asio.clone())
+    }
+
+    fn device_by_id(&self, id: &DeviceId) -> Option<Self::Device> {
+        if id.0 != crate::HostId::Asio {
+            return None;
+        }
+        self.device_by_name(&id.1)
     }
 
     fn default_input_device(&self) -> Option<Self::Device> {

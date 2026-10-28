@@ -46,7 +46,11 @@ export function readCachedAudioDevices(): AudioDeviceList {
             return typeof d.name === 'string' && typeof d.host === 'string'
                 && typeof d.is_input === 'boolean' && typeof d.is_default === 'boolean'
                 && Number.isSafeInteger(d.index) && Number.isSafeInteger(d.channels)
-                && (d.index as number) >= 0 && (d.channels as number) > 0;
+                && (d.index as number) >= 0
+                && ((d.channels as number) > 0
+                    // 登録名だけのASIO候補は、未取得の能力を0で保持する。
+                    || (d.channels === 0 && d.host.toLowerCase() === 'asio'
+                        && typeof d.id === 'string' && d.id.length > 0 && d.buffer_size_range == null));
         };
         if (value && Array.isArray(value.inputs) && Array.isArray(value.outputs)) {
             return { inputs: value.inputs.filter(validDevice), outputs: value.outputs.filter(validDevice) };

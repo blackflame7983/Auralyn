@@ -1,5 +1,6 @@
 import { notice, type SettingsNotice } from './settingsNotice';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import { audioApi, type AudioDeviceList } from '../../../api/audio';
 import { readAudioPreferences, readCachedAudioDevices } from '../../../lib/audioPreferences';
 
@@ -61,7 +62,7 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
       }
   };
 
-  const fetchDevices = async (force: boolean = false) => {
+  const fetchDevices = async (force: boolean = false, restoreSelection: boolean = true) => {
     if (force || (devices.inputs.length === 0 && devices.outputs.length === 0)) {
       setLoading(true);
     }
@@ -72,7 +73,7 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
       if (!active.current || request !== requestRevision.current) return;
       setDevices(result);
       localStorage.setItem('vst_host_cached_devices', JSON.stringify(result));
-      restoreDeviceSelection(result);
+      if (restoreSelection) restoreDeviceSelection(result);
     } catch (err) {
       if (!active.current || request !== requestRevision.current) return;
       console.error('Failed to get devices:', err);
@@ -110,9 +111,10 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
     const allCandidates = [64, 128, 256, 512, 1024, 2048, 4096];
 
     if (!activeDevice || !activeDevice.buffer_size_range) {
-      // If NOT ASIO -> Allow all (Software buffering fallback)
-      // If ASIO and no range -> Assume Fixed/Locked (Return empty)
-      return isAsio ? [] : allCandidates;
+      // 未取得の能力を固定バッファと見なさない。実際の受理は開始時に確認する。
+      return currentBufferSize && Number.isSafeInteger(currentBufferSize) && currentBufferSize > 0
+        ? Array.from(new Set([...allCandidates, currentBufferSize])).sort((a, b) => a - b)
+        : allCandidates;
     }
 
     const [min, max] = activeDevice.buffer_size_range;
@@ -191,10 +193,27 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
       setSelectedSampleRate(currentSampleRate ?? saved?.sampleRate ?? 48000);
       setSelectedBufferSize(currentBufferSize ?? saved?.bufferSize ?? 512);
       if (devices.inputs.length === 0 && devices.outputs.length === 0) void fetchDevices();
-      else restoreDeviceSelection(devices);
+      else {
+        restoreDeviceSelection(devices);
+        // 前回の登録名だけのキャッシュを、現在稼働している機器の能力で補完する。
+        if (devices.inputs.some(device => device.host.toLowerCase() === 'asio' && device.channels === 0)) void fetchDevices(true, false);
+      }
     }
     return () => { active.current = false; requestRevision.current++; };
   }, [isOpen, currentSampleRate, currentBufferSize]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let disposed = false;
+    const subscription = listen('audio-started', () => {
+      if (!disposed && active.current) void fetchDevices(true, false);
+    });
+    void subscription.catch(() => console.warn('音声開始後の機器情報を監視できませんでした。'));
+    return () => {
+      disposed = true;
+      void subscription.then(unlisten => unlisten()).catch(() => {});
+    };
+  }, [isOpen]);
 
   return {
     devices, selectedHost, setSelectedHost, selectedInput, setSelectedInput,
