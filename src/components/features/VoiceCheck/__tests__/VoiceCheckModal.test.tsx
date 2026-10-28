@@ -52,7 +52,8 @@ it('試聴エラーは録音前でも開き、停止と再試行の操作を表�
     const details = screen.getByText('試聴先と再生').closest('details')!;
     await waitFor(() => expect(details).toHaveAttribute('open'));
     expect(screen.getByText('試聴の停止を確認できません')).toBeVisible();
-    expect(screen.getByRole('button', { name: '試聴を停止' })).toBeVisible();
+    // 失敗・停止未確認では停止を再送できるようにする。
+    expect(screen.getByRole('button', { name: '試聴を停止' })).toBeEnabled();
     expect(screen.getByText('再生できないとき')).toBeVisible();
 });
 

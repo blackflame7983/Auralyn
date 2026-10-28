@@ -51,3 +51,19 @@ it('通話ではOBS操作を出さず、ローカル試聴の記録を配信到�
     expect(screen.getByRole('checkbox', { name: message('ja', 'prep.ackLocal') })).toBeEnabled();
     expect(within(screen.getByRole('region')).queryByRole('textbox')).not.toBeInTheDocument();
 });
+it('用途は条件パネルの外の1か所で選び、選んだ後も同じ欄にフォーカスを残す', () => {
+    const model = fixture(); model.context.usage = '';
+    const view = render(<PreparationPanel model={model} {...callbacks()} />);
+    const select = screen.getByRole('combobox', { name: message('ja', 'prep.usage') });
+    expect(select.closest('details')).toBeNull();
+    expect(screen.getAllByRole('combobox', { name: message('ja', 'prep.usage') })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: message('ja', 'prep.chooseUse') })).not.toBeInTheDocument();
+    expect(view.container.querySelector('details')).not.toHaveAttribute('open');
+    select.focus();
+    fireEvent.change(select, { target: { value: 'discord' } });
+    expect(model.changeContext).toHaveBeenCalledWith({ usage: 'discord', receiver: '' });
+    model.context.usage = 'discord';
+    view.rerender(<PreparationPanel model={model} {...callbacks()} />);
+    expect(screen.getByRole('combobox', { name: message('ja', 'prep.usage') })).toBe(select);
+    expect(select).toHaveFocus();
+});

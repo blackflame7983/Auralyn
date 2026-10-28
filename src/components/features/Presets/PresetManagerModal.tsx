@@ -1,5 +1,6 @@
 import { RecoveryActionsPanel } from './RecoveryActionsPanel';
 import { TemporarySessionPanel } from './TemporarySessionPanel';
+import { sessionMode } from '@/lib/temporarySession';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useState, useEffect, useCallback } from 'react';
@@ -184,6 +185,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
     onOpenAudioSettings,
 }) => {
     const t = useMessages();
+    const temporaryActive = sessionMode().temporary;
     const [recoveryOpen, setRecoveryOpen] = useState(false);
     const [bundleOpen, setBundleOpen] = useState(initialBundleOpen);
     const [profiles, setProfiles] = useState<ProfileMeta[]>([]);
@@ -434,6 +436,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto">
+                {temporaryActive && <div className="px-4 pt-3"><TemporarySessionPanel /></div>}
                 <div className="flex gap-2 border-b p-2" role="group" aria-label={t('presets.copy.056')}>
                     <button type="button" className="border rounded p-2 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary" aria-pressed={!bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(false); }}>{t('presets.copy.057')}</button>
                     <button type="button" className="border rounded p-2 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary" aria-pressed={bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(true); }}>{t('presets.copy.058')}</button>
@@ -589,8 +592,8 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
                 </div>
                 </>}
-                {/* 共有PCでの一時利用はまれな操作なので、一覧の後ろに置く。 */}
-                <div className="px-4 py-3"><TemporarySessionPanel /></div>
+                {/* 共有PCでの一時利用はまれな操作なので、使用中でなければ一覧の後ろに置く。 */}
+                {!temporaryActive && <div className="px-4 py-3"><TemporarySessionPanel /></div>}
                 </div>
             </div>
 

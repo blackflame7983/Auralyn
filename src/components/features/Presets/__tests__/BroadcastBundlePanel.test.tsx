@@ -9,7 +9,7 @@ import { BroadcastBundlePanel } from '../BroadcastBundlePanel';
 const events = vi.hoisted(() => new Map<string, () => void>());
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async (event, cb) => { events.set(event, cb); return () => events.delete(event); }) }));
 vi.mock('../../../../api/bundles', async importOriginal => ({ ...await importOriginal<typeof import('../../../../api/bundles')>(), bundleApi: { checkedList: vi.fn(), list: vi.fn(), sources: vi.fn(), filters: vi.fn(), save: vi.fn(), preview: vi.fn(), history: vi.fn(), recovery: vi.fn(), recoveryPreview: vi.fn(), resolveRecovery: vi.fn() } }));
-const plan: BundlePreview = { id: 'p1', name: '歌枠', revision: 'r1', categories: ['内蔵ボイスチェーン'], running: true, auralyn: [{label: '音声方式', before: 'ASIO', after: 'WASAPI', status: 'changed'}, {label: '固定バッファ要求', before: '未確認', after: '変更しません', status: 'notSelected'}], obs: [{ source: '声', label: 'ミュート', before: false, after: true }] };
+const plan: BundlePreview = { id: 'p1', name: '歌枠', revision: 'r1', categories: ['内蔵処理'], running: true, auralyn: [{label: '音声方式', before: 'ASIO', after: 'WASAPI', status: 'changed'}, {label: '固定バッファ要求', before: '未確認', after: '変更しません', status: 'notSelected'}], obs: [{ source: '声', label: 'ミュート', before: false, after: true }] };
 const result: BundleResult = { id: 'p1', complete: true, undoPending: true, auralyn: 'Auralyn設定確認', obs: ['適用済み'], summary: null };
 beforeEach(() => {
     vi.clearAllMocks(); events.clear();
@@ -141,7 +141,7 @@ it('localeだけで未保存名・カテゴリ・選択を保持し、一覧/OBS
     const calls = vi.mocked(bundleApi.list).mock.calls.length;
     act(() => { store.setLocale('en'); });
     expect(screen.getByLabelText('Bundle name')).toBe(name); expect(name).toHaveValue('未保存の実名');
-    expect(screen.getByLabelText('Saved broadcast bundle')).toBe(selected); expect(selected).toHaveValue('歌枠');
+    expect(screen.getByLabelText('Saved profile with OBS')).toBe(selected); expect(selected).toHaveValue('歌枠');
     expect(screen.getByRole('checkbox', { name: 'Noise reduction' })).toBe(noise); expect(noise).not.toBeChecked();
     expect(vi.mocked(bundleApi.list).mock.calls).toHaveLength(calls);
     expect(bundleApi.sources).not.toHaveBeenCalled(); expect(bundleApi.save).not.toHaveBeenCalled();
@@ -157,9 +157,9 @@ it('raw失敗に保存しましたが含まれてもalertのまま、明示成�
     act(() => { store.setLocale('en'); });
     expect(screen.getByRole('alert')).toBe(alert); expect(alert).toHaveTextContent('Original detail (untranslated)');
     expect(alert).toHaveTextContent('保存しましたではない: unknown backend failure');
-    fireEvent.click(screen.getByRole('button', { name: 'Save current broadcast bundle' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save current profile with OBS' }));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
-    expect(await screen.findByRole('status')).toHaveTextContent('Broadcast bundle saved.');
+    expect(await screen.findByRole('status')).toHaveTextContent('Profile with OBS saved.');
 });
 it('client生成codeだけ翻訳し、不正応答やrawbackendを成功扱いしない', async () => {
     const store = createLocaleStore(() => 'ja', () => true);

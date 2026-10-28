@@ -46,7 +46,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
         {signalSummary}
         {context.location === 'venue' && <p className="text-xs text-warning">{t('prep.venueWarning')}</p>}
         {context.signal === 'mixed' && <p className="text-xs text-muted-foreground">{t('prep.mixedWarning')}</p>}
-        {next === 'purpose' && <label className="block text-sm">{t('prep.usage')}{usageSelect('mt-1 block w-full max-w-xs rounded border border-border bg-background p-2')}</label>}
+        <label className="block text-sm">{t('prep.usage')}{usageSelect(`mt-1 block w-full max-w-xs rounded border bg-background p-2 ${next === 'purpose' ? 'border-primary' : 'border-border'}`)}</label>
         {next !== 'done' && next !== 'purpose' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
             className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{t(actionLabel)}</button>}
         {(next === 'sound' || next === 'listen' || next === 'receiver') && <label key={next} className="flex items-center gap-2 text-sm">
@@ -67,7 +67,6 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
                         <option value="home">{t('prep.home')}</option><option value="venue">{t('prep.venue')}</option>
                     </select>
                 </label>
-                {next !== 'purpose' && <label className="text-sm">{t('prep.usage')}{usageSelect('mt-1 block w-full rounded border border-border bg-background p-2')}</label>}
                 <label className="text-sm">{t(music ? 'wizard.musicSignal' : 'prep.signal')}
                     <select value={context.signal} onChange={e => model.changeContext({ signal: e.target.value as typeof context.signal })} className="mt-1 block w-full rounded border border-border bg-background p-2">
                         <option value="unknown">{t('prep.signalUnknown')}</option><option value="separate">{t('prep.separate')}</option><option value="mixed">{t('prep.mixed')}</option>
