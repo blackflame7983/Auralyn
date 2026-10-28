@@ -159,7 +159,7 @@ pub fn analyze_voice_check_buffers(
     });
 
     let verdict = compute_verdict(&clip, &dropouts, noise_floor_processed, &advices);
-    advices.sort_by(|a, b| severity_rank(&b.severity).cmp(&severity_rank(&a.severity)));
+    advices.sort_by_key(|advice| std::cmp::Reverse(severity_rank(&advice.severity)));
 
     QualityReport {
         clip,
