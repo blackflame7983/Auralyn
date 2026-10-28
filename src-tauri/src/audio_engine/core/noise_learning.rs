@@ -446,6 +446,11 @@ impl super::Engine {
         }
         self.noise_measurement.reason = Some(reason.into());
         self.rebind_noise_history_after_expiry(history_valid);
+        // 再束縛できなかった履歴はここで理由を確定する。
+        // 有効なままの履歴は残し、後の編集で失効原因が変わることを防ぐ。
+        if reason == "expired" && self.noise_history_reason().is_some() {
+            self.invalidate_noise_history(super::super::history::Reason::LearningChanged);
+        }
     }
     pub(super) fn begin_noise_learning(&mut self, duration_ms: u32) -> anyhow::Result<()> {
         if self.output_stream.is_none() || self.stream_failed.load(Ordering::Acquire) {

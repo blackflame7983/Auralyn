@@ -265,6 +265,62 @@ mod tests {
     use super::*;
 
     #[test]
+    fn expired_profile_keeps_its_reason_after_later_manual_noise_commands() {
+        use crate::audio_engine::history::Reason;
+        for applied in [true, false] {
+            for edit_config in [true, false] {
+                let mut engine = Engine::new();
+                engine
+                    .noise_learning
+                    .profile_valid
+                    .store(true, Ordering::Release);
+                engine
+                    .noise_learning
+                    .accepted_rms_ppm
+                    .store(50_000, Ordering::Relaxed);
+                let (before, _) = history_fixture(&mut engine);
+                if !applied {
+                    engine.noise_control_strength = before.strength;
+                    engine.noise_undo.as_mut().unwrap().applied = false;
+                }
+                assert_eq!(engine.noise_history_reason(), None);
+                engine.invalidate_noise_measurement("expired");
+                assert_eq!(engine.noise_history_reason(), Some(Reason::LearningChanged));
+
+                // SetNoiseControlConfig / SetNoiseReductionの成功経路と同じ順序。
+                // rate指定でrevisionとqueueも更新するが、実streamは起動しない。
+                engine
+                    .apply_noise_intent(
+                        if edit_config {
+                            engine.noise_reduction_enabled
+                        } else {
+                            !engine.noise_reduction_enabled
+                        },
+                        engine.noise_control_mode,
+                        if edit_config {
+                            0.9
+                        } else {
+                            engine.noise_control_strength
+                        },
+                        engine.noise_voice_guard,
+                        Some(48_000),
+                    )
+                    .unwrap();
+                engine.invalidate_noise_history(Reason::SettingsChanged);
+                assert_eq!(engine.noise_history_reason(), Some(Reason::LearningChanged));
+                assert!(engine.noise_undo.is_none());
+                assert!(engine.noise_undo_token().is_none());
+                assert!(engine.noise_redo_token().is_none());
+
+                // 新たな採用だけが、新しい有効履歴へ置き換える。
+                history_fixture(&mut engine);
+                assert_eq!(engine.noise_history_reason(), None);
+                assert!(engine.noise_undo_token().is_some());
+            }
+        }
+    }
+
+    #[test]
     fn learned_profile_loss_reports_learning_without_overwriting_an_earlier_manual_edit() {
         use crate::audio_engine::history::Reason;
         for expired in [true, false] {
