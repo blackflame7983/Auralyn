@@ -1,143 +1,29 @@
-use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
-use std::sync::mpsc;
-use std::thread;
-use std::time::{Duration, Instant};
-use vst_host_lib::ipc::{Command as IpcCommand, OutputMessage, Response};
+mod common;
+
+use common::EngineProcess;
+use vst_host_lib::ipc::{Command, Response};
 
 #[test]
+#[ignore = "OTT VST3 のインストールとデスクトップ環境が必要"]
 fn test_ott_editor_loading() {
-    let bin_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug/audio_engine.exe");
-    if !bin_path.exists() {
-        panic!("Audio Engine binary not found. Please run `cargo build` first.");
-    }
-
-    let mut child = Command::new(&bin_path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .expect("Failed to spawn audio_engine");
-
-    let mut stdin = child.stdin.take().expect("Failed to open stdin");
-    let stdout = child.stdout.take().expect("Failed to open stdout");
-    let mut reader = BufReader::new(stdout);
-    let (resp_tx, resp_rx) = mpsc::channel::<Response>();
-
-    thread::spawn(move || {
-        let mut line = String::new();
-        loop {
-            line.clear();
-            match reader.read_line(&mut line) {
-                Ok(0) => break,
-                Ok(_) => {
-                    let trim = line.trim();
-                    if trim.is_empty() {
-                        continue;
-                    }
-                    println!("[Log] {}", trim);
-                    let payload = trim.strip_prefix("IPC:").unwrap_or(trim);
-                    if let Ok(OutputMessage::Response(r)) =
-                        serde_json::from_str::<OutputMessage>(payload)
-                    {
-                        let _ = resp_tx.send(r);
-                    }
-                }
-                Err(_) => break,
-            }
-        }
+    let mut engine = EngineProcess::spawn();
+    let response = engine.request(Command::LoadPlugin {
+        path: r"C:\Program Files\Common Files\VST3\OTT.vst3".into(),
     });
-
-    let send_command = |stdin: &mut std::process::ChildStdin, cmd: IpcCommand| {
-        let json = serde_json::to_string(&cmd).unwrap();
-        writeln!(stdin, "{}", json).expect("Failed to write to stdin");
+    let id = match response {
+        Response::PluginLoaded { id, .. } if !id.is_empty() => id,
+        other => panic!("OTT load failed: {other:?}"),
     };
-
-    let read_response =
-        || -> Option<Response> { resp_rx.recv_timeout(Duration::from_secs(30)).ok() };
-
-    // 1. Get Devices (Init)
-    send_command(&mut stdin, IpcCommand::GetDevices);
-    read_response();
-
-    // 2. Start Audio (Dummy)
-    // We assume default devices or just fail gracefully, we primarily want to test Plugin Loading.
-    // Actually, we don't strictly need audio started to load a plugin, but it's safer.
-    // For this test, we skip start and go straight to AddPlugin?
-    // Engine might need to be running.
-    // Let's try starting with "Wasapi".
-    send_command(
-        &mut stdin,
-        IpcCommand::Start {
-            host: "Wasapi".to_string(),
-            input: None,
-            output: None,
-            input_id: None,
-            output_id: None,
-            buffer_size: None,
-            sample_rate: None,
-            initial_controls: None,
-        },
+    let response = engine.request(Command::OpenEditor { id: id.clone() });
+    assert!(
+        matches!(response, Response::Success),
+        "editor open failed: {response:?}"
     );
-    read_response();
-
-    // 3. Load specific plugin
-    let ott_path = "C:\\Program Files\\Common Files\\VST3\\OTT.vst3";
-
-    send_command(
-        &mut stdin,
-        IpcCommand::LoadPlugin {
-            path: ott_path.to_string(),
-        },
+    // UnloadPlugin は内部でエディターを閉じてからアンロードする。
+    let response = engine.request(Command::UnloadPlugin { id });
+    assert!(
+        matches!(response, Response::Success),
+        "editor close / unload failed: {response:?}"
     );
-
-    let mut plugin_id = String::new();
-    if let Some(resp) = read_response() {
-        if let Response::PluginLoaded { id, .. } = resp {
-            println!("OTT Plugin Loaded: {}", id);
-            plugin_id = id;
-        } else {
-            println!("Failed to load OTT: {:?}", resp);
-        }
-    }
-
-    if !plugin_id.is_empty() {
-        // 4. Open Editor
-        println!("Attempting to open editor for {}", plugin_id);
-        send_command(
-            &mut stdin,
-            IpcCommand::OpenEditor {
-                id: plugin_id.clone(),
-            },
-        );
-
-        // We expect "Success" response, but crucially we want to see the stdout logs about sizing.
-        let resp = read_response();
-        println!("Open Editor Response: {:?}", resp);
-
-        // Wait a bit to let logs flush
-        thread::sleep(Duration::from_secs(2));
-    }
-
-    // 5. Cleanup
-    send_command(&mut stdin, IpcCommand::Stop);
-    read_response();
-    drop(stdin);
-
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break;
-                }
-                thread::sleep(Duration::from_millis(50));
-            }
-            Err(_) => break,
-        }
-    }
+    engine.finish();
 }

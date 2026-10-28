@@ -1,16 +1,28 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
 
+// DOM・Storage・windowイベントを使わないテストだけをNodeへ分離する。
+const nodeTests = [
+    'src/__tests__/{bootstrapTheme,themeContrast}.test.ts',
+    'src/lib/__tests__/{clientError,obsUiText,shortcutNotice,usageWindow}.test.ts',
+    'src/api/__tests__/{audio,bundles,liveModes,obs,voiceCheckPreview}.test.ts',
+    'src/i18n/__tests__/messageCatalog.test.ts',
+    'src/components/layout/__tests__/recentCohort.test.ts',
+];
+
 export default defineConfig({
     test: {
-        // テスト環境: jsdomを使用してDOM APIをエミュレート
-        environment: 'jsdom',
-        // テストファイルのパターン
-        include: ['src/**/__tests__/**/*.{test,spec}.{ts,tsx}'],
-        // セットアップファイル
-        setupFiles: ['src/__tests__/setup.ts'],
-        // グローバルなテスト関数（describe, it, expect等）を自動インポート
-        globals: true,
+        projects: [
+            { extends: true, test: {
+                name: 'unit', environment: 'node', globals: true,
+                include: nodeTests, setupFiles: ['src/__tests__/setupTauri.ts'],
+            } },
+            { extends: true, test: {
+                name: 'dom', environment: 'jsdom', globals: true,
+                include: ['src/**/__tests__/**/*.{test,spec}.{ts,tsx}'],
+                exclude: nodeTests, setupFiles: ['src/__tests__/setup.ts'],
+            } },
+        ],
     },
     resolve: {
         alias: {

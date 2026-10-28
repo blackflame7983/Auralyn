@@ -40,15 +40,22 @@ npx vite build
 npm run release:check
 ```
 
+テスト層別の実行は `npm run test:unit` / `npm run test:dom`。
+実ブラウザのレイアウト試験は `npx playwright install chromium` 後に `npm run test:e2e`、
+隔離した実Tauriの保存・再起動・実IPC試験は `npm run test:e2e:native` を使う。
+後者は現行Hostとsidecarをビルドし、通常設定を使わず、音声を開始しない。
+前提・検証境界・実機テストの明示実行は `docs/TESTING.md` を参照する。
+
 `src-tauri` で実行するRust側の例:
 
 ```powershell
 cargo check --locked --all-targets
 cargo test --locked --lib --bins --test audio_queue_contract --test msix_coexistence
+cargo test --locked --test integration_test --test repro_ott
 cargo clippy --locked --all-targets
 ```
 
-上記は音声入力を開始しない対象のテスト。全テストの `cargo test --locked` には実機・VSTを起動するテストも含むため、対象を読んでから実行する。範囲別の手動確認は `docs/TESTING.md` を参照する。
+上記は音声入力を開始しない対象のテスト。実機録音・OTT GUI・実OTTの寿命試験は理由付きignoreとし、`--ignored` で対象を明示したときだけ実行する。範囲別の前提・手動確認は `docs/TESTING.md` を参照する。
 
 ## 配布ビルド
 
