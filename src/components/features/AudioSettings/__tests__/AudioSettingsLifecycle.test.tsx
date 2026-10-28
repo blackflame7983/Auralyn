@@ -68,7 +68,7 @@ it('配信状態から認証設定へ移り、接続を保持して戻るが、�
     });
     render(<AppModals />);
     fireEvent.click(screen.getByRole('button', { name: '配信状態の管理を開く' }));
-    fireEvent.click(await screen.findByRole('button', { name: '配信状態' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'OBSも含めて保存' }));
     fireEvent.click(screen.getByLabelText('OBSの既存項目も含める'));
     expect(invoke).not.toHaveBeenCalledWith('connect_obs', expect.anything());
     fireEvent.click(screen.getByRole('button', { name: 'OBS接続設定を開く' }));
@@ -77,7 +77,7 @@ it('配信状態から認証設定へ移り、接続を保持して戻るが、�
     fireEvent.click(connect);
     await waitFor(() => expect(connected).toBe(true));
     fireEvent.click(screen.getByRole('button', { name: '設定画面を閉じる' }));
-    expect(await screen.findByRole('button', { name: '配信状態' })).toHaveAttribute('aria-pressed', 'true');
+    expect(await screen.findByRole('button', { name: 'OBSも含めて保存' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByLabelText('OBSの既存項目も含める'));
     fireEvent.click(screen.getByRole('button', { name: 'OBSの対象を取得' }));
     await screen.findByLabelText('声');

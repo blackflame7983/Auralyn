@@ -434,7 +434,6 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="px-4 pt-3"><TemporarySessionPanel /></div>
                 <div className="flex gap-2 border-b p-2" role="group" aria-label={t('presets.copy.056')}>
                     <button type="button" className="border rounded p-2" aria-pressed={!bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(false); }}>{t('presets.copy.057')}</button>
                     <button type="button" className="border rounded p-2" aria-pressed={bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(true); }}>{t('presets.copy.058')}</button>
@@ -450,11 +449,15 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                         <button type="button" aria-pressed={saveCategories.includeAudioConfig} className="border rounded p-2 text-sm" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: true }))}>{t('profilePurpose.equipment')}</button>
                     </div>
                     <p className="text-xs text-muted-foreground">{t(saveCategories.includeAudioConfig ? 'profilePurpose.impact' : 'profilePurpose.portable')}</p>
-                    <CategoryCheckboxes
-                        idPrefix="save"
-                        categories={saveCategories}
-                        onChange={setSaveCategories}
-                    />
+                    {/* 目的の2択で足りる人が多いため、項目ごとの選択は閉じておく。 */}
+                    <details className="text-sm">
+                        <summary className="cursor-pointer text-xs font-medium">{t('profilePurpose.customize')}</summary>
+                        <div className="mt-2"><CategoryCheckboxes
+                            idPrefix="save"
+                            categories={saveCategories}
+                            onChange={setSaveCategories}
+                        /></div>
+                    </details>
                     <label htmlFor="profile-save-name" className="block text-xs font-medium">{t('presets.copy.061')}</label>
                     <div className="flex gap-2">
                         <input
@@ -586,6 +589,8 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
                 </div>
                 </>}
+                {/* 共有PCでの一時利用はまれな操作なので、一覧の後ろに置く。 */}
+                <div className="px-4 py-3"><TemporarySessionPanel /></div>
                 </div>
             </div>
 
