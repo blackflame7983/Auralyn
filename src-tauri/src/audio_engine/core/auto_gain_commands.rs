@@ -6,7 +6,7 @@ impl Engine {
         if !value.is_finite() || !(0.0..=2.0).contains(&value) {
             return Err(anyhow!("出力ゲインは0〜200%で指定してください"));
         }
-        self.invalidate_auto_gain();
+        self.invalidate_auto_gain_with_reason(super::super::history::Reason::SettingsChanged);
         self.output_gain_initialized = true;
         self.output_gain = value;
         self.output_gain_revision = self.gain_revision;
@@ -31,7 +31,16 @@ impl Engine {
     }
 
     pub(super) fn invalidate_auto_gain(&mut self) {
-        self.gain_history = None;
+        self.invalidate_auto_gain_with_reason(super::super::history::Reason::ConditionsChanged);
+    }
+
+    pub(super) fn invalidate_auto_gain_with_reason(
+        &mut self,
+        reason: super::super::history::Reason,
+    ) {
+        if self.gain_history.take().is_some() {
+            self.gain_history_reason = reason;
+        }
         self.gain_revision += 1;
         self.gain_shared.requested.store(0, Ordering::Release);
         self.gain_shared.active.store(0, Ordering::Release);
@@ -66,7 +75,11 @@ impl Engine {
                 && (bad
                     || (s.phase == "recording" && s.started.elapsed() > Duration::from_secs(15)))
         }) {
-            self.invalidate_auto_gain();
+            self.invalidate_auto_gain_with_reason(if bad {
+                super::super::history::Reason::StreamFailed
+            } else {
+                super::super::history::Reason::ConditionsChanged
+            });
         }
         let settled = self.gain_settled();
         // 完了通知をAcquireで読んだ後に末尾を回収する。先のdrainと完了通知の間にも
@@ -140,6 +153,13 @@ impl Engine {
             error: s.and_then(|s| s.error.clone()),
             devices: Vec::new(),
             history_id: self.gain_history.as_ref().map(|h| h.id),
+            history_reason: if let Some(h) = &self.gain_history {
+                (h.revision != self.gain_revision
+                    || self.output_gain != if h.applied { h.after } else { h.before })
+                .then_some(super::super::history::Reason::ConditionsChanged)
+            } else {
+                Some(self.gain_history_reason)
+            },
             history_epoch: self
                 .gain_history
                 .as_ref()
@@ -264,7 +284,9 @@ impl Engine {
                 if !(44_100.0..=192_000.0).contains(&self.current_sample_rate) {
                     return Err(anyhow!("このサンプルレートでは測定できません"));
                 }
-                self.invalidate_auto_gain();
+                self.invalidate_auto_gain_with_reason(
+                    super::super::history::Reason::NewMeasurement,
+                );
                 let rate = self.current_sample_rate as u32;
                 self.gain_session = Some(GainSession {
                     id: self.gain_revision,

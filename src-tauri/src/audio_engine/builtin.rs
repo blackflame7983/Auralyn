@@ -105,6 +105,8 @@ pub struct Snapshot {
     pub pending: bool,
     pub undo_token: Option<String>,
     pub redo_token: Option<String>,
+    #[serde(default)]
+    pub history_reason: Option<super::history::Reason>,
     pub error: Option<String>,
 }
 pub(crate) struct Controller {
@@ -113,6 +115,7 @@ pub(crate) struct Controller {
     pub applied: Arc<AtomicU64>,
     epoch: String,
     history: Option<History>,
+    history_reason: super::history::Reason,
 }
 struct History {
     id: u64,
@@ -135,6 +138,7 @@ impl Controller {
                     .as_nanos()
             ),
             history: None,
+            history_reason: Default::default(),
         }
     }
     pub(crate) fn snapshot(&self, running: bool) -> Snapshot {
@@ -154,17 +158,24 @@ impl Controller {
                 .filter(|h| !h.after_selected)
                 .map(|h| format!("{}:{}:redo", self.epoch, h.id)),
             error: None,
+            history_reason: self.history.is_none().then_some(self.history_reason),
         }
     }
     pub(crate) fn legacy(&mut self, config: Config) -> Result<(), String> {
         let config = config.normalize()?;
         self.bump()?;
         self.config = config;
-        self.history = None;
+        self.invalidate_history_with_reason(super::history::Reason::SettingsChanged);
         Ok(())
     }
     pub(crate) fn invalidate_history(&mut self) {
-        self.history = None;
+        self.invalidate_history_with_reason(super::history::Reason::ConditionsChanged);
+    }
+    pub(crate) fn invalidate_history_with_reason(&mut self, reason: super::history::Reason) {
+        // 履歴未作成や、既に記録した失効原因を後の無関係な操作で上書きしない。
+        if self.history.take().is_some() {
+            self.history_reason = reason;
+        }
     }
     fn bump(&mut self) -> Result<(), String> {
         self.revision = self
@@ -262,6 +273,48 @@ impl Controller {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_reason_survives_later_changes_and_clears_only_with_new_history() {
+        use crate::audio_engine::history::Reason;
+        let mut controller = Controller::new();
+        assert_eq!(
+            controller.snapshot(false).history_reason,
+            Some(Reason::NotCreated)
+        );
+        controller.invalidate_history_with_reason(Reason::InputChanged);
+        assert_eq!(
+            controller.snapshot(false).history_reason,
+            Some(Reason::NotCreated)
+        );
+        apply(&mut controller, Config::default()).unwrap();
+        assert_eq!(controller.snapshot(false).history_reason, None);
+        // ACK待ちは失効ではない。
+        assert!(controller.snapshot(true).pending);
+        assert_eq!(controller.snapshot(true).history_reason, None);
+        controller.legacy(Config::default()).unwrap();
+        assert_eq!(
+            serde_json::to_value(controller.snapshot(false)).unwrap()["historyReason"],
+            "settings_changed"
+        );
+        assert_eq!(
+            controller.snapshot(false).history_reason,
+            Some(Reason::SettingsChanged)
+        );
+        controller.invalidate_history_with_reason(Reason::StreamChanged);
+        assert_eq!(
+            controller.snapshot(false).history_reason,
+            Some(Reason::SettingsChanged)
+        );
+        apply(&mut controller, Config::default()).unwrap();
+        controller.invalidate_history_with_reason(Reason::InputChanged);
+        assert_eq!(
+            controller.snapshot(false).history_reason,
+            Some(Reason::InputChanged)
+        );
+        apply(&mut controller, Config::default()).unwrap();
+        assert_eq!(controller.snapshot(false).history_reason, None);
+    }
     fn apply(controller: &mut Controller, config: Config) -> Result<bool, String> {
         let snapshot = controller.snapshot(false);
         controller.request(

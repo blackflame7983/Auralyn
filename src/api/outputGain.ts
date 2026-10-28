@@ -1,5 +1,6 @@
 import { FixedClientError } from '@/lib/clientError';
 import { invoke } from '@tauri-apps/api/core';
+import type { HistoryReason } from './history';
 
 export interface GainProposal {
     before: number;
@@ -12,6 +13,7 @@ export interface GainProposal {
 export interface GainSnapshot {
     revision: number;
     historyId?: number | null; historyEpoch?: string | null; undoAvailable?: boolean; redoAvailable?: boolean;
+    historyReason?: HistoryReason | null;
     gain: number;
     confirmedGain: number;
     settled: boolean;

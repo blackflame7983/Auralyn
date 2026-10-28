@@ -52,19 +52,53 @@ impl Engine {
         .unwrap_or_default()
     }
     fn valid_noise_history(&self) -> Option<&Undo> {
-        self.noise_undo.as_ref().filter(|undo| {
-            self.noise_command_revision < u64::MAX
-                && undo.revision == self.noise_command_revision
-                && undo.measurement_generation
-                    == self.noise_learning.generation.load(Ordering::Acquire)
-                && undo.input_revision == self.noise_input_revision
-                && undo.stream_attempt == self.queue_attempt
-                && (if undo.applied {
-                    &undo.after
-                } else {
-                    &undo.before
-                }) == &self.noise_candidate_settings()
-        })
+        self.noise_undo
+            .as_ref()
+            .filter(|_| self.noise_history_reason().is_none())
+    }
+    pub(super) fn invalidate_noise_history(&mut self, reason: super::super::history::Reason) {
+        // 値・revision照合で既に失効していた場合も、その根拠を破棄前に残す。
+        let reason = self.noise_history_reason().unwrap_or(reason);
+        if self.noise_undo.take().is_some() {
+            self.noise_history_reason = reason;
+        }
+    }
+    pub(super) fn noise_history_reason(&self) -> Option<super::super::history::Reason> {
+        use super::super::history::Reason;
+        let Some(undo) = &self.noise_undo else {
+            return Some(self.noise_history_reason);
+        };
+        let expected = if undo.applied {
+            &undo.after
+        } else {
+            &undo.before
+        };
+        let current = self.noise_candidate_settings();
+        if self.stream_failed.load(Ordering::Acquire) {
+            Some(Reason::StreamFailed)
+        } else if undo.stream_attempt != self.queue_attempt {
+            Some(Reason::StreamChanged)
+        } else if undo.input_revision != self.noise_input_revision {
+            Some(Reason::InputChanged)
+        } else if undo.revision != self.noise_command_revision
+            || expected.enabled != current.enabled
+            || expected.mode != current.mode
+            || expected.strength != current.strength
+            || expected.voice_guard != current.voice_guard
+        {
+            Some(Reason::SettingsChanged)
+        } else if undo.measurement_generation
+            != self.noise_learning.generation.load(Ordering::Acquire)
+            || expected.profile_rms != current.profile_rms
+            || expected.learned_mix != current.learned_mix
+            || expected.has_learned_mix != current.has_learned_mix
+        {
+            Some(Reason::LearningChanged)
+        } else if self.noise_command_revision == u64::MAX || expected != &current {
+            Some(Reason::ConditionsChanged)
+        } else {
+            None
+        }
     }
     pub(super) fn noise_undo_token(&self) -> Option<String> {
         self.valid_noise_history()
@@ -229,6 +263,84 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn learned_profile_loss_reports_learning_without_overwriting_an_earlier_manual_edit() {
+        use crate::audio_engine::history::Reason;
+        for expired in [true, false] {
+            for manually_edited in [false, true] {
+                let mut engine = Engine::new();
+                engine
+                    .noise_learning
+                    .profile_valid
+                    .store(true, Ordering::Release);
+                engine
+                    .noise_learning
+                    .accepted_rms_ppm
+                    .store(50_000, Ordering::Relaxed);
+                history_fixture(&mut engine);
+                assert_eq!(engine.noise_candidate_settings().profile_rms, Some(0.05));
+                if manually_edited {
+                    engine.noise_control_strength = 0.9;
+                }
+                if expired {
+                    // 30分の測定期限切れと同じ制御側の処理。実streamを起動しない。
+                    engine.invalidate_noise_measurement("expired");
+                } else {
+                    let mut learning =
+                        noise_learning::RtNoiseLearning::new(engine.noise_learning.clone());
+                    learning.analyze_block(&[f32::NAN], None, 1);
+                    assert!(!engine.noise_learning.profile_valid.load(Ordering::Acquire));
+                    // 無効な学習結果を検出した制御側と同じ入口。
+                    engine.invalidate_noise_measurement("invalidInput");
+                }
+                assert_eq!(engine.noise_candidate_settings().profile_rms, None);
+                assert_eq!(
+                    engine.noise_history_reason(),
+                    Some(if manually_edited {
+                        Reason::SettingsChanged
+                    } else {
+                        Reason::LearningChanged
+                    })
+                );
+                assert!(engine.noise_undo_token().is_none());
+                assert!(engine.noise_redo_token().is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn history_reason_distinguishes_measurement_input_learning_and_settings_changes() {
+        use crate::audio_engine::history::Reason;
+        let mut engine = Engine::new();
+        assert_eq!(engine.noise_history_reason(), Some(Reason::NotCreated));
+        history_fixture(&mut engine);
+        assert_eq!(engine.noise_history_reason(), None);
+        engine.noise_control_strength = 0.9;
+        assert_eq!(engine.noise_history_reason(), Some(Reason::SettingsChanged));
+        engine.invalidate_noise_measurement("inputChanged");
+        assert_eq!(engine.noise_history_reason(), Some(Reason::SettingsChanged));
+        history_fixture(&mut engine);
+        engine.noise_input_revision += 1;
+        assert_eq!(engine.noise_history_reason(), Some(Reason::InputChanged));
+        history_fixture(&mut engine);
+        engine
+            .noise_learning
+            .generation
+            .fetch_add(1, Ordering::AcqRel);
+        assert_eq!(engine.noise_history_reason(), Some(Reason::LearningChanged));
+        history_fixture(&mut engine);
+        engine.invalidate_noise_measurement("newMeasurement");
+        assert_eq!(engine.noise_history_reason(), Some(Reason::NewMeasurement));
+        engine.invalidate_noise_measurement("inputChanged");
+        assert_eq!(engine.noise_history_reason(), Some(Reason::NewMeasurement));
+        history_fixture(&mut engine);
+        engine.invalidate_noise_measurement("manualEnvironmentChange");
+        assert_eq!(engine.noise_history_reason(), Some(Reason::LearningChanged));
+        history_fixture(&mut engine);
+        engine.clear_audio_resources();
+        assert_eq!(engine.noise_history_reason(), Some(Reason::StreamChanged));
+    }
 
     fn history_fixture(engine: &mut Engine) -> (Config, Config) {
         let before = engine.noise_candidate_settings();

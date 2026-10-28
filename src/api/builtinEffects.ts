@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { HistoryReason } from './history';
 
 export interface SingingParams { lowCutHz: number; dynamics: number; brightnessDb: number }
 export interface ReverbParams { enabled: boolean; mix: number; decaySeconds: number; damping: number }
@@ -9,6 +10,7 @@ export interface BuiltinConfig {
 export interface BuiltinSnapshot {
     epoch: string; revision: string; appliedRevision: string; config: BuiltinConfig;
     pending: boolean; undoToken: string | null; redoToken?: string | null; error: string | null;
+    historyReason?: HistoryReason | null;
 }
 export type BuiltinRequest = { action: 'snapshot' }
     | { action: 'apply'; epoch: string; expectedRevision: string; config: BuiltinConfig }
