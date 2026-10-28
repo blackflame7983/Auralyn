@@ -20,6 +20,22 @@ beforeEach(() => {
 import * as readOutputGainStatusModule from '@/api/outputGain';
 afterEach(() => {cleanup(); vi.restoreAllMocks();});
 
+it('状態更新は対象名ごと読み上げ、各操作の説明も同じ対象と状態へ結び付ける', async () => {
+    render(<AdjustmentHistoryPanel onVoiceCheck={vi.fn()} />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', {name: '履歴の状態を確認'}));
+    await waitFor(() => expect(screen.getAllByText('適用前へ戻せます')).toHaveLength(3));
+    for (const label of ['NR候補', '内蔵処理', '固定出力ゲイン']) {
+        const row = screen.getByText(new RegExp(`^${label}:`)).closest('li')!;
+        const status = within(row).getByRole('status');
+        expect(status).toHaveTextContent(`${label}: 適用前へ戻せます`);
+        expect(status).toHaveAttribute('aria-atomic', 'true');
+        for (const button of within(row).getAllByRole('button')) {
+            expect(button).toHaveAccessibleDescription(`${label}: 適用前へ戻せます`);
+        }
+    }
+});
+
 it('未作成・対象編集・新測定の理由を対象別に示し、原因から操作権限を作らない', async () => {
     vi.mocked(builtinApi.request).mockResolvedValue({...builtin, undoToken: null, historyReason: 'settings_changed'});
     vi.mocked(voicePreviewApi.request).mockResolvedValue({noiseHistoryReason: 'not_created', noisePending: false} as any);
@@ -108,8 +124,11 @@ it('反映を確認したUndoの後だけRedoを有効にし、別変更通知�
     fireEvent.click(screen.getByRole('button', {name: '履歴の状態を確認'}));
     await waitFor(() => expect(screen.getAllByText('適用前へ戻せます')).toHaveLength(3));
     const row = screen.getByText(/^内蔵処理:/).closest('li')!;
-    fireEvent.click(within(row).getByRole('button', {name: '適用前へ戻す'}));
+    const undo = within(row).getByRole('button', {name: '適用前へ戻す'});
+    undo.focus();
+    fireEvent.click(undo);
     await waitFor(() => expect(within(row).getByRole('button', {name: '変更後を再適用'})).toBeEnabled());
+    expect(screen.getByRole('region', {name: '現在のUndo／Redo'})).toHaveFocus();
     act(() => window.dispatchEvent(new Event('profile-fx-applied')));
     expect(within(row).getByRole('button', {name: '変更後を再適用'})).toBeDisabled();
 });

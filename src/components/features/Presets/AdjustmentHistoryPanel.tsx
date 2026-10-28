@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '@/api/audio';
 import { builtinApi, type BuiltinSnapshot } from '@/api/builtinEffects';
@@ -25,6 +25,8 @@ function reasonKey(reason: unknown): MessageKey {
 
 export function AdjustmentHistoryPanel({ onVoiceCheck }: { onVoiceCheck?: () => void }) {
     const t = useMessages();
+    const statusId = useId();
+    const sectionRef = useRef<HTMLElement>(null);
     const [snapshot, setSnapshot] = useState<{ builtin: BuiltinSnapshot; gain: GainSnapshot; noise: VoicePreviewSnapshot; protected: boolean } | null>(null);
     const [known, setKnown] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -54,6 +56,8 @@ export function AdjustmentHistoryPanel({ onVoiceCheck }: { onVoiceCheck?: () => 
     };
     const run = async (action?: () => Promise<unknown>) => {
         if (pending.current || document.hidden || !eventsReady) return;
+        // 操作したボタンが無効になっても、キーボードの現在位置を失わない。
+        if (action && sectionRef.current?.contains(document.activeElement)) sectionRef.current.focus();
         pending.current = true; setBusy(true); setKnown(false); setFailed(false);
         try {
             if (action) await action();
@@ -79,16 +83,16 @@ export function AdjustmentHistoryPanel({ onVoiceCheck }: { onVoiceCheck?: () => 
         { key: 'builtin' as const, undo: !!snapshot?.builtin.undoToken, redo: !!snapshot?.builtin.redoToken, pending: snapshot?.builtin.pending, reason: snapshot?.builtin.historyReason },
         { key: 'gain' as const, undo: !!snapshot?.gain.undoAvailable && !!snapshot?.gain.historyEpoch, redo: !!snapshot?.gain.redoAvailable && !!snapshot?.gain.historyEpoch, pending: !snapshot?.gain.settled, reason: snapshot?.gain.historyReason },
     ];
-    return <section aria-label={t('history.current')} className="space-y-2 my-3">
+    return <section ref={sectionRef} tabIndex={-1} aria-label={t('history.current')} className="space-y-2 my-3">
         <h3 className="font-semibold">{t('history.current')}</h3><p className="text-xs">{t('history.scope')}</p>
         {stream && stream !== 'running' && <p role="status">{t(stream === 'failed' ? 'history.streamFailed' : 'history.stopped')}</p>}
         <button type="button" disabled={busy || !eventsReady} className="rounded border p-2" onClick={() => void run()}>{t('history.inspect')}</button>
         <ul className="space-y-3">{rows.map(row => <li key={row.key} className="rounded border p-2 space-y-2">
-            <p>{t(`history.${row.key}`)}: <span role="status">{t(!known ? failed ? 'history.fetchFailed' : 'history.unverified' : snapshot?.protected ? 'history.protected' : row.reason != null ? reasonKey(row.reason) : row.pending ? 'history.pending' : row.undo && stream === 'running' ? 'history.undoReady' : row.redo && stream === 'running' ? 'history.redoReady' : 'history.reason.unknown')}</span></p>
+            <p id={`${statusId}-${row.key}`} role="status" aria-atomic="true">{t(`history.${row.key}`)}: <span>{t(!known ? failed ? 'history.fetchFailed' : 'history.unverified' : snapshot?.protected ? 'history.protected' : row.reason != null ? reasonKey(row.reason) : row.pending ? 'history.pending' : row.undo && stream === 'running' ? 'history.undoReady' : row.redo && stream === 'running' ? 'history.redoReady' : 'history.reason.unknown')}</span></p>
             {known && snapshot?.protected && row.reason != null && <p className="text-xs">{t(reasonKey(row.reason))}</p>}
-            {row.key === 'nr' ? row.open && <button type="button" className="rounded border p-2" onClick={row.open}>{t('history.openNR')}</button> : <div className="flex flex-wrap gap-2">
-                <button type="button" disabled={busy || !known || stream !== 'running' || snapshot?.protected || row.reason != null || row.pending || !row.undo} className="rounded border p-2 disabled:opacity-50" onClick={() => void (row.key === 'builtin' ? builtinChange(false) : gainChange(false))}>{t('history.undo')}</button>
-                <button type="button" disabled={busy || !known || stream !== 'running' || snapshot?.protected || row.reason != null || row.pending || !row.redo} className="rounded border p-2 disabled:opacity-50" onClick={() => void (row.key === 'builtin' ? builtinChange(true) : gainChange(true))}>{t('history.redo')}</button>
+            {row.key === 'nr' ? row.open && <button type="button" aria-describedby={`${statusId}-${row.key}`} className="rounded border p-2" onClick={row.open}>{t('history.openNR')}</button> : <div className="flex flex-wrap gap-2">
+                <button type="button" aria-describedby={`${statusId}-${row.key}`} disabled={busy || !known || stream !== 'running' || snapshot?.protected || row.reason != null || row.pending || !row.undo} className="rounded border p-2 disabled:opacity-50" onClick={() => void (row.key === 'builtin' ? builtinChange(false) : gainChange(false))}>{t('history.undo')}</button>
+                <button type="button" aria-describedby={`${statusId}-${row.key}`} disabled={busy || !known || stream !== 'running' || snapshot?.protected || row.reason != null || row.pending || !row.redo} className="rounded border p-2 disabled:opacity-50" onClick={() => void (row.key === 'builtin' ? builtinChange(true) : gainChange(true))}>{t('history.redo')}</button>
             </div>}
         </li>)}</ul>
     </section>;
