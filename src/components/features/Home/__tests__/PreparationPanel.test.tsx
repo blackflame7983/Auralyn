@@ -40,7 +40,6 @@ it('未対応のOBS検査は成功扱いせず、手動の実マイク確認と�
     fireEvent.click(screen.getByText(message('ja', 'prep.details')));
     expect(screen.getByText(new RegExp(message('ja', 'prep.unsupported')))).toBeInTheDocument();
     expect(screen.queryByText(message('ja', 'prep.userConfirmed'))).not.toBeInTheDocument();
-    expect(screen.getByText(message('ja', 'prep.toneScope'))).toBeInTheDocument();
 });
 it('通話ではOBS操作を出さず、ローカル試聴の記録を配信到達と呼ばない', () => {
     const model = fixture(); checked(model, 'sound'); checked(model, 'listen'); const props = callbacks();

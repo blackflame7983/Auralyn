@@ -189,7 +189,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     {t('shell.advanced')}
                                 </button>
                             </div>
-                            <button
+                            {/* 開いた後の測定・停止・閉じるはパネル側に集める。 */}
+                            {!loudnessEnabled && !measurement.active && <button
                                 type="button"
                                 aria-pressed={measurement.active}
                                 onClick={() => { setLoudnessEnabled(true); setMeasurementRequest({id: ++requestId.current, action: measurement.active ? 'stop' : 'start'}); }}
@@ -198,9 +199,17 @@ export const AppShell: React.FC<AppShellProps> = ({
                                 className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted aria-pressed:border-primary aria-pressed:bg-muted aria-pressed:ring-1 aria-pressed:ring-primary/40"
                             >
                                 {t(measurement.busy ? 'loudness.switching' : measurement.stopUnconfirmed ? 'loudness.retryStop' : measurement.active ? 'loudness.stop' : 'loudness.startAction')}
-                            </button>
+                            </button>}
                             <span id="loudness-toggle-description" className="sr-only">{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.audioStopped') : t('loudness.scope')}</span>
                         </div>
+                        <div className="min-[1280px]:col-span-2"><LoudnessCheck
+                            music={purpose === 'music'}
+                            enabled={loudnessEnabled}
+                            request={measurementRequest} onStateChange={setMeasurement} onClose={() => setLoudnessEnabled(false)}
+                            running={audioReady}
+                            stateKnown={engineProcessReady !== null}
+                            onVoiceCheck={onOpenVoiceCheck}
+                        /></div>
                         <div className="min-w-0"><HomePanels
                             audioReady={audioReady}
                             statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
@@ -212,14 +221,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                             onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot} onOpenVst={openRack}
                         /></div>
                         <div className="min-w-0">
-                        <LoudnessCheck
-                            music={purpose === 'music'}
-                            enabled={loudnessEnabled}
-                            request={measurementRequest} onStateChange={setMeasurement} onClose={() => setLoudnessEnabled(false)}
-                            running={audioReady}
-                            stateKnown={engineProcessReady !== null}
-                            onVoiceCheck={onOpenVoiceCheck}
-                        />
                         <div id="home-rack">{children}</div>
                         </div>
                     </div>
