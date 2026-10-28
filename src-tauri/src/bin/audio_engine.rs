@@ -259,19 +259,8 @@ fn main() {
 // Function effectively similar to asio_diag but integrated
 fn scan_devices() {
     use cpal::traits::{DeviceTrait, HostTrait};
-    use serde::Serialize;
-
-    #[derive(Serialize)]
-    struct DeviceInfo {
-        name: String,
-        host: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        id: Option<String>,
-        is_input: bool,
-        buffer_size_range: Option<(u32, u32)>,
-        channels: u16,
-        is_default: bool,
-    }
+    use vst_host_lib::audio_engine::devices::DeviceManager;
+    use vst_host_lib::ipc::DeviceInfo;
 
     // 名前、レート表示、バッファ範囲、チャンネル数、既定フラグ、実デバイスID。
     type RawDeviceScanEntry = (
@@ -376,6 +365,11 @@ fn scan_devices() {
 
     for host_id in hosts {
         if let Ok(host) = cpal::host_from_id(host_id) {
+            if let cpal::platform::HostInner::Asio(asio) = host.as_inner() {
+                // 一覧取得だけではASIOをロードしない。能力は選択した機器の起動時に確認。
+                devices.extend(DeviceManager::registered_asio_devices(asio.driver_names()));
+                continue;
+            }
             let host_name = match host_id {
                 cpal::HostId::Asio => "ASIO",
                 cpal::HostId::Wasapi => "Wasapi",

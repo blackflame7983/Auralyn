@@ -74,7 +74,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
     }, [maxChannels]);
 
     const handlePairSelect = async (left: number, right: number) => {
-        if (mappingRef.current) return;
+        if (mappingRef.current || maxChannels === 0) return;
         mappingRef.current = true;
         setMapping(true);
         setMappingError('');
@@ -94,7 +94,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
         }
     };
 
-    const limit = maxChannels && maxChannels > 0 ? maxChannels : 32;
+    const limit = maxChannels === 0 ? 0 : maxChannels && maxChannels > 0 ? maxChannels : 32;
     // 端数チャンネルを含む既存のペア表示・マッピング契約を維持する。
     const loopLimit = limit % 2 === 0 ? limit : limit + 1;
     const pairs = [];
@@ -131,19 +131,20 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
             <h3 className="text-sm font-bold flex items-center gap-2 text-foreground">
                 <MdGraphicEq className="text-primary" aria-hidden="true" />{t('settings.InputChannelSelector.205')}</h3>
             <p className="text-xs text-muted-foreground">
-                {monitorState === 'error' ? t('settings.InputChannelSelector.206')
+                {maxChannels === 0 ? t('settings.InputChannelSelector.unverified')
+                    : monitorState === 'error' ? t('settings.InputChannelSelector.206')
                     : monitorState === 'starting' ? t('settings.InputChannelSelector.207')
                         : monitorState === 'waiting' ? t('settings.InputChannelSelector.208')
                             : t('settings.InputChannelSelector.209')}
             </p>
-            <p id={`${groupId}-help`} className="text-xs text-muted-foreground leading-relaxed">
-                {t('settings.InputChannelSelector.210')}</p>
-            <fieldset aria-describedby={`${groupId}-help`} aria-busy={mapping}>
+            {maxChannels !== 0 && <p id={`${groupId}-help`} className="text-xs text-muted-foreground leading-relaxed">
+                {t('settings.InputChannelSelector.210')}</p>}
+            {maxChannels !== 0 && <fieldset aria-describedby={`${groupId}-help`} aria-busy={mapping}>
                 <legend className="sr-only">{t('settings.InputChannelSelector.211')}</legend>
                 <div className={`grid grid-cols-4 gap-2 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-muted-foreground ${maxChannels && maxChannels > 16 ? 'max-h-60' : ''}`}>
                     {pairs}
                 </div>
-            </fieldset>
+            </fieldset>}
             {mappingError && <p role="alert" className="text-xs text-destructive-text">{renderNotice(t, mappingError)}</p>}
         </div>
     );

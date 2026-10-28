@@ -21,6 +21,22 @@ const openSettings = () => render(<AudioSettingsModal isOpen onClose={() => {}} 
 const hostSelect = () => screen.getAllByRole('combobox').find(element =>
     Array.from((element as HTMLSelectElement).options).some(option => option.value === 'Wasapi'))!;
 
+it('ASIO能力未取得でも960サンプルの表示値と開始要求値が一致する', async () => {
+    localStorage.setItem('vst_host_settings_advanced', 'true');
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'ASIO device', output: 'ASIO device', bufferSize: 960, sampleRate: 48000 }));
+    vi.spyOn(audioApi, 'getDevices').mockResolvedValue({
+        inputs: [{ ...devices.inputs[0], channels: 0 }], outputs: [{ ...devices.outputs[0], channels: 0 }],
+    });
+    const start = vi.spyOn(audioApi, 'start').mockResolvedValue({ sample_rate: 48000, buffer_size: 960, channels: 2 });
+    render(<AudioSettingsModal isOpen currentBufferSize={960} onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const buffer = await screen.findByRole('combobox', { name: 'バッファサイズ' });
+    expect(buffer).toHaveValue('960');
+    expect(screen.getByRole('option', { name: '960 サンプル' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存して開始' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', 'ASIO device', 'ASIO device', 960, 48000, undefined, undefined));
+});
+
 beforeEach(() => {
     localStorage.clear();
     vi.mocked(invoke).mockReset();

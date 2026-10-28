@@ -45,6 +45,18 @@ afterEach(() => {
     localStorage.clear();
 });
 
+it.each([2, 64])('未取得のチャンネルは選べず、取得後は実際の%ich分だけを表示する', async channels => {
+    const view = render(<InputChannelSelector maxChannels={0} initialChannels={[2, 3]} />);
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+    expect(screen.getByText(/入力チャンネル数が未確認/)).toBeInTheDocument();
+    expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'set_input_channels')).toBe(false);
+    view.rerender(<InputChannelSelector maxChannels={channels} />);
+    expect(screen.getAllByRole('radio')).toHaveLength(channels / 2);
+    expect(screen.queryByText(/入力チャンネル数が未確認/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 1/2' }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 0, right: 1 }));
+});
+
 it.each(['保存して開始', '音声エンジンを再起動'])(
     'ASIOからWASAPIの%sでエンジンと保存値を0/1へ更新する',
     async (action) => {

@@ -37,6 +37,26 @@ impl Default for DeviceManager {
 }
 
 impl DeviceManager {
+    /// 登録名だけの候補。入出力の対応・能力は選択した機器の開始時に確認する。
+    pub fn registered_asio_devices(names: Vec<String>) -> Vec<DeviceInfo> {
+        let mut devices = Vec::with_capacity(names.len() * 2);
+        for name in names {
+            let id = Some(cpal::DeviceId(cpal::HostId::Asio, name.clone()).to_string());
+            for is_input in [true, false] {
+                devices.push(DeviceInfo {
+                    name: name.clone(),
+                    host: "ASIO".into(),
+                    id: id.clone(),
+                    is_input,
+                    buffer_size_range: None,
+                    channels: 0,       // 未取得の能力を推測しない。
+                    is_default: false, // ASIOにはOS既定機器がない。
+                });
+            }
+        }
+        devices
+    }
+
     /// ASIOは同じIDの出力Deviceをcloneし、CPAL内部の共有stream状態も揃える。
     /// WASAPIは独立した入出力Deviceを維持し、ID問い合わせも増やさない。
     pub(super) fn coordinated_pair<D: Clone, Id: Eq>(
@@ -186,11 +206,19 @@ impl DeviceManager {
                         .into_iter()
                         .flatten()
                     {
-                        if !devices.iter().any(|device| {
-                            device.name == active.name
-                                && device.host == active.host
+                        if let Some(device) = devices.iter_mut().find(|device| {
+                            device.host.eq_ignore_ascii_case(&active.host)
                                 && device.is_input == active.is_input
+                                && match (&device.id, &active.id) {
+                                    (Some(id), Some(active_id)) => id == active_id,
+                                    _ => device.name == active.name,
+                                }
                         }) {
+                            // 登録名だけのASIO項目を、稼働中の実測能力で補完する。
+                            let is_default = device.is_default;
+                            *device = active.clone();
+                            device.is_default = is_default;
+                        } else {
                             devices.push(active.clone());
                         }
                     }
@@ -224,17 +252,10 @@ impl DeviceManager {
 
     #[allow(deprecated)]
     pub fn resolve_input_device(host: &cpal::Host, target_name: &str) -> Option<cpal::Device> {
-        if host.id() == cpal::HostId::Asio {
-            return resolve_asio_device(
-                || {
-                    Some(
-                        host.input_devices()
-                            .ok()?
-                            .filter_map(|device| device.name().ok().map(|name| (device, name))),
-                    )
-                },
-                target_name,
-            );
+        if let cpal::platform::HostInner::Asio(asio) = host.as_inner() {
+            return resolve_asio_device(asio.driver_names(), target_name, |name| {
+                asio.device_by_name(name).map(Into::into)
+            });
         }
         let devices = host.input_devices().ok()?;
         resolve_named_device(
@@ -244,6 +265,9 @@ impl DeviceManager {
     }
 
     pub fn resolve_input_device_by_id(host: &cpal::Host, target_id: &str) -> Option<cpal::Device> {
+        if let cpal::platform::HostInner::Asio(asio) = host.as_inner() {
+            return asio.device_by_id(&target_id.parse().ok()?).map(Into::into);
+        }
         resolve_identified_device(
             host.input_devices().ok()?.map(|device| {
                 let id = device.id().ok().map(|id| id.to_string());
@@ -254,6 +278,9 @@ impl DeviceManager {
     }
 
     pub fn resolve_output_device_by_id(host: &cpal::Host, target_id: &str) -> Option<cpal::Device> {
+        if let cpal::platform::HostInner::Asio(asio) = host.as_inner() {
+            return asio.device_by_id(&target_id.parse().ok()?).map(Into::into);
+        }
         resolve_identified_device(
             host.output_devices().ok()?.map(|device| {
                 let id = device.id().ok().map(|id| id.to_string());
@@ -286,17 +313,10 @@ impl DeviceManager {
 
     #[allow(deprecated)]
     pub fn resolve_output_device(host: &cpal::Host, target_name: &str) -> Option<cpal::Device> {
-        if host.id() == cpal::HostId::Asio {
-            return resolve_asio_device(
-                || {
-                    Some(
-                        host.output_devices()
-                            .ok()?
-                            .filter_map(|device| device.name().ok().map(|name| (device, name))),
-                    )
-                },
-                target_name,
-            );
+        if let cpal::platform::HostInner::Asio(asio) = host.as_inner() {
+            return resolve_asio_device(asio.driver_names(), target_name, |name| {
+                asio.device_by_name(name).map(Into::into)
+            });
         }
         let devices = host.output_devices().ok()?;
         resolve_named_device(
@@ -315,26 +335,20 @@ fn resolve_identified_device<T>(
         .find_map(|(device, id)| (id.as_deref() == Some(target)).then_some(device))
 }
 
-// ASIOは同時に異なるdriverを保持できない。完全一致を先に探し、
-// 非選択Deviceは次のnextより前に破棄する。registryのdriver名は一意。
-fn resolve_asio_device<T, I>(mut devices: impl FnMut() -> Option<I>, target: &str) -> Option<T>
-where
-    I: Iterator<Item = (T, String)>,
-{
-    for (device, name) in devices()? {
-        if name == target {
-            return Some(device);
-        }
-    }
-    // 表示用レートだけを除いて再列挙する。候補Deviceを保持したまま
-    // 別driverを探さず、実在する完全一致名より接尾辞除去を優先しない。
-    let base = asio_name_without_rate_suffix(target)?;
-    for (device, name) in devices()? {
-        if name == base {
-            return Some(device);
-        }
-    }
-    None
+// 登録名で選択を確定してから一度だけロードする。完全一致は旧レート表示より優先。
+fn resolve_asio_device<T>(
+    names: Vec<String>,
+    target: &str,
+    load: impl FnOnce(&str) -> Option<T>,
+) -> Option<T> {
+    let selected = names
+        .iter()
+        .find(|name| name.as_str() == target)
+        .or_else(|| {
+            let base = asio_name_without_rate_suffix(target)?;
+            names.iter().find(|name| name.as_str() == base)
+        })?;
+    load(selected)
 }
 
 fn asio_name_without_rate_suffix(target: &str) -> Option<&str> {
@@ -411,6 +425,23 @@ fn resolve_named_device<T>(devices: impl Iterator<Item = (T, String)>, target: &
 mod tests {
     use super::*;
     #[test]
+    fn asio_registration_list_has_stable_ids_without_claiming_capabilities_or_a_default() {
+        let devices = DeviceManager::registered_asio_devices(vec!["Insert ASIO".into()]);
+        assert_eq!(devices.len(), 2);
+        assert!(devices[0].is_input);
+        assert!(!devices[1].is_input);
+        for device in devices {
+            assert_eq!(device.name, "Insert ASIO");
+            assert_eq!(device.host, "ASIO");
+            assert_eq!(device.id.as_deref(), Some("asio:Insert ASIO"));
+            assert_eq!(device.channels, 0);
+            assert_eq!(device.buffer_size_range, None);
+            assert!(!device.is_default);
+        }
+        assert!(DeviceManager::registered_asio_devices(Vec::new()).is_empty());
+    }
+
+    #[test]
     fn asio_pair_requires_equal_known_ids_and_clones_one_shared_state_only_for_asio() {
         use std::{cell::Cell, rc::Rc};
         #[derive(Clone)]
@@ -471,66 +502,29 @@ mod tests {
     }
 
     #[test]
-    fn asio_sequential_resolution_drops_each_unselected_driver_before_next() {
-        use std::cell::Cell;
-        use std::rc::Rc;
-        struct Driver {
-            index: usize,
-            live: Rc<Cell<bool>>,
-        }
-        impl Drop for Driver {
-            fn drop(&mut self) {
-                self.live.set(false);
-            }
-        }
-        struct Drivers {
-            names: Vec<&'static str>,
-            next: usize,
-            live: Rc<Cell<bool>>,
-        }
-        impl Iterator for Drivers {
-            type Item = (Driver, String);
-            fn next(&mut self) -> Option<Self::Item> {
-                // asio-sys同様、前のdriverを保持していたら他のdriverはロード不可。
-                while self.next < self.names.len() {
-                    let index = self.next;
-                    self.next += 1;
-                    if self.live.get() {
-                        continue;
-                    }
-                    self.live.set(true);
-                    return Some((
-                        Driver {
-                            index,
-                            live: self.live.clone(),
-                        },
-                        self.names[index].into(),
-                    ));
-                }
-                None
-            }
-        }
-        let live = Rc::new(Cell::new(false));
-        let names = vec!["Creative", "Other", "Voicemeeter Insert Virtual ASIO"];
+    fn asio_resolution_loads_only_the_selected_registered_name_once() {
+        let names = ["Creative", "Other", "Voicemeeter Insert Virtual ASIO"];
         for target in [
             "Voicemeeter Insert Virtual ASIO",
             "Voicemeeter Insert Virtual ASIO [44/48/96kHz]",
+            "Missing",
         ] {
+            let mut loaded = Vec::new();
             let selected = resolve_asio_device(
-                || {
-                    Some(Drivers {
-                        names: names.clone(),
-                        next: 0,
-                        live: live.clone(),
-                    })
-                },
+                names.iter().map(|name| (*name).into()).collect(),
                 target,
-            )
-            .unwrap();
-            assert_eq!(selected.index, 2);
-            assert!(live.get());
-            drop(selected);
-            assert!(!live.get());
+                |name| {
+                    loaded.push(name.to_owned());
+                    Some(name.to_owned())
+                },
+            );
+            if target == "Missing" {
+                assert!(loaded.is_empty());
+                assert!(selected.is_none());
+            } else {
+                assert_eq!(loaded, ["Voicemeeter Insert Virtual ASIO"]);
+                assert_eq!(selected.as_deref(), Some("Voicemeeter Insert Virtual ASIO"));
+            }
         }
     }
 
@@ -539,15 +533,9 @@ mod tests {
         let names = ["Mic", "Mic [48kHz]", "Mic [USB]"];
         let select = |target| {
             resolve_asio_device(
-                || {
-                    Some(
-                        names
-                            .iter()
-                            .enumerate()
-                            .map(|(index, name)| (index, (*name).into())),
-                    )
-                },
+                names.iter().map(|name| (*name).into()).collect(),
                 target,
+                |name| names.iter().position(|registered| *registered == name),
             )
         };
         assert_eq!(select("Mic [48kHz]"), Some(1));
@@ -666,6 +654,41 @@ mod scan_tests {
             manager.poll_scan(token).unwrap(),
             DeviceScanStatus::Completed(_)
         ));
+    }
+
+    #[test]
+    fn registered_asio_entry_is_enriched_by_id_without_duplicate_or_stale_capabilities() {
+        let mut manager = DeviceManager::new();
+        let mut registered = device("Current");
+        registered.id = Some("ASIO:Current".into());
+        registered.channels = 0;
+        let mut active = registered.clone();
+        active.name = "Current [48kHz]".into(); // 旧表示名でもIDで照合する。
+        active.channels = 16;
+        active.buffer_size_range = Some((128, 1024));
+        manager.set_active_input(active.clone());
+        let token = manager
+            .begin_scan_with(move |_| Ok(vec![registered]))
+            .unwrap();
+        let DeviceScanStatus::Completed(devices) = finish(&mut manager, token) else {
+            panic!("not completed")
+        };
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].channels, 16);
+        assert_eq!(devices[0].buffer_size_range, Some((128, 1024)));
+        assert_eq!(devices[0].id, active.id);
+        manager.clear_active_devices();
+        let mut registered = device("Current");
+        registered.id = active.id;
+        registered.channels = 0;
+        let next = manager
+            .begin_scan_with(move |_| Ok(vec![registered]))
+            .unwrap();
+        let DeviceScanStatus::Completed(devices) = finish(&mut manager, next) else {
+            panic!("not completed")
+        };
+        assert_eq!(devices[0].channels, 0);
+        assert_eq!(devices[0].buffer_size_range, None);
     }
 
     #[test]
