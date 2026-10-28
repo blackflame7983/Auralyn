@@ -156,9 +156,6 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             <span>{formatMs(displayDurationMs)}</span>
                         </div>
                     </div>
-                    <NoiseComparisonPanel preview={preview} candidate={candidateMode === 'noise' ? candidate : null}
-                        disabled={busy || previewBusy || isRecording || isPlaying || preview?.state === 'stopping' || stopUnconfirmed || streamStatus !== 'ready' || Boolean(preview?.conflict)}
-                        prepare={prepareNoise} apply={applyNoise} undo={undoNoise} redo={redoNoise} />
                     {/* 状態が未確定・失敗した際は停止と再試行を隠さない。 */}
                     <details open={hasRecording || previewBusy || stopUnconfirmed || Boolean(previewError || preview?.error || preview?.conflict) || isPlaying || preview?.state === 'stopping' || preview?.owner === 'auto_gain' || undefined}>
                     <summary className="cursor-pointer text-sm font-semibold">{t('voice.playbackSection')}</summary>
@@ -201,7 +198,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                                     <MdPlayArrow className="w-4 h-4" /> {t('voice.copy.059')}</>
                             )}
                         </button>
-                        <button type="button" onClick={() => void handleStopPreview()} className={buttonVariants({ variant: 'outline' })}>{t('voice.copy.060')}</button>
+                        <button type="button" disabled={!isPlaying && !stopUnconfirmed && preview?.state !== 'playing' && preview?.owner !== 'auto_gain'} onClick={() => void handleStopPreview()} className={buttonVariants({ variant: 'outline' })}>{t('voice.copy.060')}</button>
                         <label className="inline-flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                             <input
                                 type="checkbox"
@@ -225,6 +222,10 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     <p className="text-xs text-muted-foreground">{t('voice.copy.064')}{preview?.levelMatchAvailable === false && t('voice.copy.065')} {t('voice.copy.066')}</p>
                     {preview && <p className="text-xs text-muted-foreground">{t('voice.copy.067')}{preview.levelMatchAttenuationDb[0].toFixed(1)} {t('voice.copy.068')}{preview.levelMatchAttenuationDb[1].toFixed(1)} {t('voice.copy.069')}{preview.safetyAttenuationDb.toFixed(1)} dB</p>}
                     </details>
+                    {/* 基本の録音・聴き比べの後に、ノイズ低減だけの比較を置く。 */}
+                    <NoiseComparisonPanel preview={preview} candidate={candidateMode === 'noise' ? candidate : null}
+                        disabled={busy || previewBusy || isRecording || isPlaying || preview?.state === 'stopping' || stopUnconfirmed || streamStatus !== 'ready' || Boolean(preview?.conflict)}
+                        prepare={prepareNoise} apply={applyNoise} undo={undoNoise} redo={redoNoise} />
                     <details className="rounded border border-border p-3 text-xs space-y-2">
                         <summary className="cursor-pointer font-semibold">{t('voice.copy.070')}</summary>
                         {!preview?.metadata ? <p>{t('voice.copy.071')}</p> : <>
@@ -256,7 +257,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                         <button
                             onClick={handleAnalyze}
                             disabled={!hasRecording || isRecording || isPlaying || analyzing}
-                            className={buttonVariants({ className: "gap-2" })}
+                            className={buttonVariants({ variant: "outline", className: "gap-2" })}
                         >
                             <MdAnalytics className="w-4 h-4" />
                             {analyzing ? t('voice.copy.091') : t('voice.copy.092')}
