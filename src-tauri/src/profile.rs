@@ -126,6 +126,36 @@ pub(crate) fn apply_profile_with_start_intent(
     current_plugin_ids: &[String],
     start_intent: Option<StartIntent>,
 ) -> Result<ApplyProfileSummary, String> {
+    apply_profile_with_start_intent_and_ids(
+        config_dir,
+        host,
+        profile,
+        substitutions,
+        skip_backup,
+        backup_plugins,
+        backup_audio_extras,
+        current_plugin_ids,
+        start_intent,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_profile_with_start_intent_and_ids(
+    config_dir: &Path,
+    host: &mut AudioHost,
+    profile: &Preset,
+    substitutions: Option<DeviceSubstitutions>,
+    skip_backup: bool,
+    backup_plugins: Vec<PresetPlugin>,
+    backup_audio_extras: Option<ProfileAudioExtras>,
+    current_plugin_ids: &[String],
+    start_intent: Option<StartIntent>,
+    device_ids: Option<(String, String)>,
+) -> Result<ApplyProfileSummary, String> {
+    if device_ids.is_some() && start_intent.is_none() {
+        return Err("機器ID付きの復旧には開始時の操作条件が必要です".into());
+    }
     host.preflight_live_changes()
         .map_err(|error| error.to_string())?;
     if !skip_backup {
@@ -218,18 +248,35 @@ pub(crate) fn apply_profile_with_start_intent(
                 &resolved,
             );
 
-            if differs {
+            let id_differs = device_ids.as_ref().is_some_and(|(input_id, output_id)| {
+                current.and_then(|c| c.input_id.as_ref()) != Some(input_id)
+                    || current.and_then(|c| c.output_id.as_ref()) != Some(output_id)
+            });
+            if differs || id_differs {
                 summary.needs_engine_restart = true;
                 if let Some(intent) = start_intent {
-                    host.start_bundle(
-                        Some(resolved.host.clone()),
-                        resolved.input_device.clone(),
-                        resolved.output_device.clone(),
-                        Some(resolved.buffer_size),
-                        Some(resolved.sample_rate),
-                        intent,
-                    )
-                    .map_err(|e| e.to_string())?;
+                    let result = if let Some((input_id, output_id)) = &device_ids {
+                        host.start_bundle_with_device_ids(
+                            Some(resolved.host.clone()),
+                            resolved.input_device.clone(),
+                            resolved.output_device.clone(),
+                            Some(resolved.buffer_size),
+                            Some(resolved.sample_rate),
+                            intent,
+                            Some(input_id.clone()),
+                            Some(output_id.clone()),
+                        )
+                    } else {
+                        host.start_bundle(
+                            Some(resolved.host.clone()),
+                            resolved.input_device.clone(),
+                            resolved.output_device.clone(),
+                            Some(resolved.buffer_size),
+                            Some(resolved.sample_rate),
+                            intent,
+                        )
+                    };
+                    result.map_err(|e| e.to_string())?;
                 } else {
                     host.kill_engine();
                     host.start(

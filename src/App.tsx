@@ -1,10 +1,11 @@
+import { useDisplayPurpose } from './hooks/useDisplayPurpose';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { sessionMode } from './lib/temporarySession';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useBeginnerMode } from './hooks/useBeginnerMode';
 import { useLiveModes } from './hooks/useLiveModes';
 import { LiveModeBar } from './components/features/AudioSettings/LiveModeBar';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppShell } from './components/layout/AppShell';
 import { PluginList } from './components/features/PluginRack/PluginList';
 import { ModalLayer } from './components/layout/ModalLayer';
@@ -31,6 +32,8 @@ function AppContent() {
 
   // Custom Hooks
   const ui = useUIState();
+  const [displayPurpose] = useDisplayPurpose();
+  const [rackExpanded, setRackExpanded] = useState(false);
   const [isBeginnerMode, setIsBeginnerMode] = useBeginnerMode();
   const { audioConfig, handleConfigUpdate, isInitializing, isEngineRunning, engineProcessReady } = useAudioConfig(
     () => ui.setIsWizardOpen(true),
@@ -176,20 +179,18 @@ function AppContent() {
           busy={pluginsApi.isLoading || pluginsApi.isScanning || isInitializing}
           onRetry={pluginsApi.retrySessionRestore}
         />
-        <LiveModeBar model={liveModel} refreshKey={isModalOpen} />
-        {isBeginnerMode ? (
-          <div className="relative mb-4">
+        <details open={displayPurpose === 'voice' || liveModel.snapshot?.armed || Boolean(liveModel.error)}>
+          <summary hidden={displayPurpose === 'voice'} className="cursor-pointer text-sm py-2">{t('purpose.liveDetails')}</summary>
+          <LiveModeBar model={liveModel} refreshKey={isModalOpen} />
+        </details>
+        <div className="relative mb-4">
           <div className="absolute right-0 top-2"><InfoPopover label={t('info.rack')}>{t('app.rackHint')}</InfoPopover></div>
-          <details>
-            <summary className="cursor-pointer py-3 text-sm font-semibold">
-              {t('app.rack')}
-            </summary>
+          <details id="plugin-rack-disclosure" open={!isBeginnerMode || displayPurpose === 'music' || rackExpanded}
+            onToggle={event => { if (isBeginnerMode && displayPurpose === 'voice') setRackExpanded(event.currentTarget.open); }}>
+            <summary hidden={!isBeginnerMode || displayPurpose === 'music'} className="cursor-pointer py-3 text-sm font-semibold">{t('app.rack')}</summary>
             {pluginRack}
           </details>
-          </div>
-        ) : (
-          pluginRack
-        )}
+        </div>
 
         {audioReady && !isBeginnerMode && !isModalOpen && (
           <>

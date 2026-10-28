@@ -51,13 +51,13 @@ export function useAudioRecovery() {
                     if (mode.armed) {
                         const actual = (await audioApi.getAudioState()).config;
                         if (!valid()) return;
-                        if (!actual?.host || !actual.input || !actual.output || !actual.sample_rate || !actual.buffer_size) throw new Error('本番保護中の具体的なデバイス設定を確認できません');
-                        recovery = { ...config, host: actual.host, input: actual.input, output: actual.output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size };
+                        if (!actual?.host || !actual.input || !actual.output || !actual.input_id || !actual.output_id || !actual.sample_rate || !actual.buffer_size) throw new Error('本番保護中の具体的なデバイス設定を確認できません');
+                        recovery = { ...config, host: actual.host, input: actual.input, output: actual.output, inputId: actual.input_id, outputId: actual.output_id, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size };
                     }
                     // ストリームだけを再開する。プロセスを破棄するとVSTとパラメーターも失う。
                     startingGeneration = current;
                     try {
-                        await audioApi.start(recovery.host, recovery.input, recovery.output, recovery.bufferSize, recovery.sampleRate);
+                        await audioApi.start(recovery.host, recovery.input, recovery.output, recovery.bufferSize, recovery.sampleRate, recovery.inputId, recovery.outputId);
                     } finally {
                         // 古い要求の終了で、後から始まった復旧のStart所有権を解除しない。
                         if (startingGeneration === current) startingGeneration = null;

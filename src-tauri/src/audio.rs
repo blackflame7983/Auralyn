@@ -48,10 +48,28 @@ pub(crate) enum DeviceScanStart {
 pub struct AudioDevice {
     pub name: String,
     pub host: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub is_input: bool,
     pub channels: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buffer_size_range: Option<(u32, u32)>,
     pub index: usize,
     pub is_default: bool,
+}
+impl AudioDevice {
+    fn from_info(index: usize, device: crate::ipc::DeviceInfo) -> Self {
+        Self {
+            name: device.name,
+            host: device.host,
+            id: device.id,
+            is_input: device.is_input,
+            channels: device.channels,
+            buffer_size_range: device.buffer_size_range,
+            index,
+            is_default: device.is_default,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -72,6 +90,10 @@ pub struct ActiveAudioConfig {
     pub host: String,
     pub input: Option<String>,
     pub output: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_id: Option<String>,
     pub buffer_size: Option<u32>,
     pub sample_rate: Option<u32>,
 }
@@ -80,6 +102,14 @@ pub struct ActiveAudioConfig {
 pub struct AudioStateInfo {
     pub is_running: bool,
     pub config: Option<ActiveAudioConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub condition_witness: Option<AudioConditionWitness>,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct AudioConditionWitness {
+    pub revision: String,
+    pub epoch: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -735,6 +765,7 @@ impl AudioHost {
                 | IpcCommand::BuiltinEffects {
                     request: crate::audio_engine::builtin::Request::Apply { .. }
                         | crate::audio_engine::builtin::Request::Undo { .. }
+                        | crate::audio_engine::builtin::Request::Redo { .. }
                         | crate::audio_engine::builtin::Request::ApplyProposal { .. }
                 }
         );
@@ -812,14 +843,7 @@ impl AudioHost {
                 let mut inputs = Vec::new();
                 let mut outputs = Vec::new();
                 for (i, d) in dl.into_iter().enumerate() {
-                    let ad = AudioDevice {
-                        name: d.name,
-                        host: d.host,
-                        is_input: d.is_input,
-                        channels: d.channels,
-                        index: i,
-                        is_default: d.is_default,
-                    };
+                    let ad = AudioDevice::from_info(i, d);
                     if ad.is_input {
                         inputs.push(ad);
                     } else {
@@ -944,14 +968,7 @@ impl AudioHost {
             outputs: Vec::new(),
         };
         for (index, device) in devices.into_iter().enumerate() {
-            let device = AudioDevice {
-                name: device.name,
-                host: device.host,
-                is_input: device.is_input,
-                channels: device.channels,
-                index,
-                is_default: device.is_default,
-            };
+            let device = AudioDevice::from_info(index, device);
             if device.is_input {
                 list.inputs.push(device);
             } else {
@@ -1002,6 +1019,32 @@ impl AudioHost {
         )
     }
 
+    /// ID指定時は名前へ代替せず、その実機だけを開始する。
+    #[allow(clippy::too_many_arguments)]
+    pub fn start_with_device_ids(
+        &mut self,
+        host_name: Option<String>,
+        input_name: Option<String>,
+        output_name: Option<String>,
+        buffer_size: Option<u32>,
+        sample_rate: Option<u32>,
+        input_id: Option<String>,
+        output_id: Option<String>,
+    ) -> Result<AudioConfig> {
+        self.frontend_bootstrap.cancel();
+        self.start_internal_guarded_with_ids(
+            host_name,
+            input_name,
+            output_name,
+            buffer_size,
+            sample_rate,
+            None,
+            None,
+            input_id,
+            output_id,
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn start_internal(
         &mut self,
@@ -1034,6 +1077,32 @@ impl AudioHost {
         initial_controls: Option<crate::ipc::StartControls>,
         expected_generation: Option<u64>,
     ) -> Result<AudioConfig> {
+        self.start_internal_guarded_with_ids(
+            host_name,
+            input_name,
+            output_name,
+            buffer_size,
+            sample_rate,
+            initial_controls,
+            expected_generation,
+            None,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start_internal_guarded_with_ids(
+        &mut self,
+        host_name: Option<String>,
+        input_name: Option<String>,
+        output_name: Option<String>,
+        buffer_size: Option<u32>,
+        sample_rate: Option<u32>,
+        initial_controls: Option<crate::ipc::StartControls>,
+        expected_generation: Option<u64>,
+        input_id: Option<String>,
+        output_id: Option<String>,
+    ) -> Result<AudioConfig> {
         if let Some(controls) = initial_controls {
             controls.validate().map_err(|e| anyhow!(e))?;
         }
@@ -1043,6 +1112,8 @@ impl AudioHost {
             host: host_name.clone().unwrap_or("ASIO".to_string()),
             input: input_name.clone(),
             output: output_name.clone(),
+            input_id: input_id.clone(),
+            output_id: output_id.clone(),
             buffer_size,
             sample_rate,
             initial_controls,
@@ -1068,6 +1139,7 @@ impl AudioHost {
         let generation = self.engine_generation;
         self.sync_live_modes()?;
         self.guard_live_command(&cmd)?;
+        require_identity_capability(&cmd, |probe| self.execute_running_command(probe))?;
         let live_path = self.last_config_path.with_file_name("live_output.json");
         if live_path.exists() {
             let config: crate::audio_engine::live_output::Config =
@@ -1093,12 +1165,29 @@ impl AudioHost {
             IpcResponse::Started {
                 sample_rate,
                 buffer_size,
+                input_id: actual_input_id,
+                output_id: actual_output_id,
             } => {
+                if input_id
+                    .as_ref()
+                    .is_some_and(|id| Some(id) != actual_input_id.as_ref())
+                    || output_id
+                        .as_ref()
+                        .is_some_and(|id| Some(id) != actual_output_id.as_ref())
+                {
+                    // 旧Engine等がID照合を行わない場合は即時停止し、成功としない。
+                    let _ = self.execute_running_command(IpcCommand::Stop);
+                    return Err(anyhow!(
+                        "開始した機器のIDを確認できません。機器を選び直してください"
+                    ));
+                }
                 // Update active config
                 let config = ActiveAudioConfig {
                     host: host_name.clone().unwrap_or("ASIO".to_string()),
                     input: input_name,
                     output: output_name,
+                    input_id: actual_input_id,
+                    output_id: actual_output_id,
                     buffer_size: Some(buffer_size),
                     sample_rate: Some(sample_rate),
                 };
@@ -1390,9 +1479,13 @@ impl AudioHost {
         &mut self,
         request: crate::audio_engine::builtin::Request,
     ) -> Result<crate::audio_engine::builtin::Snapshot> {
-        let response = if matches!(
+        let response = if matches!(&request, crate::audio_engine::builtin::Request::Snapshot) {
+            self.execute_running_command(IpcCommand::BuiltinEffects { request })?
+        } else if matches!(
             &request,
             crate::audio_engine::builtin::Request::ApplyProposal { .. }
+                | crate::audio_engine::builtin::Request::Undo { .. }
+                | crate::audio_engine::builtin::Request::Redo { .. }
         ) {
             self.preflight_proposal_apply()?;
             anyhow::ensure!(
@@ -1485,11 +1578,17 @@ impl AudioHost {
                 playing: false,
                 error: None,
                 devices: Vec::new(),
+                history_id: None,
+                history_epoch: None,
+                undo_available: false,
+                redo_available: false,
             });
         }
         let existing_only = matches!(
             request,
             crate::audio_engine::auto_gain::Request::Status
+                | crate::audio_engine::auto_gain::Request::UndoHistory { .. }
+                | crate::audio_engine::auto_gain::Request::RedoHistory { .. }
                 | crate::audio_engine::auto_gain::Request::Initialize { .. }
                 | crate::audio_engine::auto_gain::Request::Cancel
         );
@@ -1560,12 +1659,37 @@ impl AudioHost {
         rate: Option<u32>,
         intent: crate::profile::StartIntent,
     ) -> Result<AudioConfig> {
+        self.start_bundle_with_device_ids(host, input, output, buffer, rate, intent, None, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn start_bundle_with_device_ids(
+        &mut self,
+        host: Option<String>,
+        input: Option<String>,
+        output: Option<String>,
+        buffer: Option<u32>,
+        rate: Option<u32>,
+        intent: crate::profile::StartIntent,
+        input_id: Option<String>,
+        output_id: Option<String>,
+    ) -> Result<AudioConfig> {
         intent.validate().map_err(|e| anyhow!(e))?;
         self.validate_bundle_connection()?;
         self.preflight_live_changes()?;
         self.preserve_live_changes_for_restart();
         self.kill_engine();
-        self.start_internal(host, input, output, buffer, rate, Some(intent))
+        self.start_internal_guarded_with_ids(
+            host,
+            input,
+            output,
+            buffer,
+            rate,
+            Some(intent),
+            None,
+            input_id,
+            output_id,
+        )
     }
 
     fn validate_bundle_connection(&self) -> Result<()> {
@@ -1671,10 +1795,16 @@ impl AudioHost {
         }
         let response = if matches!(
             &request.action,
+            crate::audio_engine::voice_check::preview::Action::HistoryStatus
+        ) {
+            self.execute_running_command(IpcCommand::VoiceCheckPreview { request })?
+        } else if matches!(
+            &request.action,
             crate::audio_engine::voice_check::preview::Action::PrepareProposal { .. }
                 | crate::audio_engine::voice_check::preview::Action::PrepareNoise { .. }
                 | crate::audio_engine::voice_check::preview::Action::ApplyNoise { .. }
                 | crate::audio_engine::voice_check::preview::Action::UndoNoise { .. }
+                | crate::audio_engine::voice_check::preview::Action::RedoNoise { .. }
         ) {
             let generation = self.engine_generation;
             self.require_proposal_connection(generation)?;
@@ -2041,7 +2171,7 @@ impl AudioHost {
                         self.frontend_bootstrap.automatic_attempted = true;
                         log::info!("Auto-starting audio with last config: {:?}", config);
                         let generation = self.engine_generation;
-                        match self.start_internal_guarded(
+                        match self.start_internal_guarded_with_ids(
                             Some(config.host),
                             config.input,
                             config.output,
@@ -2049,6 +2179,8 @@ impl AudioHost {
                             config.sample_rate,
                             None,
                             Some(generation),
+                            config.input_id,
+                            config.output_id,
                         ) {
                             Ok(res) => {
                                 self.frontend_bootstrap.warmup_succeeded = true;
@@ -2084,6 +2216,14 @@ impl AudioHost {
         AudioStateInfo {
             is_running: self.child.is_some(),
             config: self.active_config.clone(),
+            condition_witness: self
+                .conditions
+                .snapshot()
+                .ok()
+                .map(|w| AudioConditionWitness {
+                    revision: w.revision().to_string(),
+                    epoch: w.engine_epoch().to_string(),
+                }),
         }
     }
 }
@@ -2130,6 +2270,30 @@ fn validate_start_generation(expected: u64, actual: u64) -> Result<()> {
         "開始準備中に音声エンジンが変わりました。開始していません"
     );
     Ok(())
+}
+
+fn require_identity_capability(
+    start: &IpcCommand,
+    mut send: impl FnMut(IpcCommand) -> Result<IpcResponse>,
+) -> Result<()> {
+    if !matches!(
+        start,
+        IpcCommand::Start {
+            input_id: Some(_),
+            ..
+        } | IpcCommand::Start {
+            output_id: Some(_),
+            ..
+        }
+    ) {
+        return Ok(());
+    }
+    match send(IpcCommand::StartIdentityCapability) {
+        Ok(IpcResponse::StartIdentityCapability { version: 1 }) => Ok(()),
+        _ => Err(anyhow!(
+            "音声エンジンが機器IDの照合に対応していません。再起動して設定を確認してください"
+        )),
+    }
 }
 
 fn start_with_mute(
@@ -2397,10 +2561,64 @@ mod config_storage_tests {
             host: "ASIO".into(),
             input: None,
             output: None,
+            input_id: None,
+            output_id: None,
             buffer_size: None,
             sample_rate: None,
             initial_controls: None,
         }
+    }
+
+    #[test]
+    fn identity_bound_start_requires_new_engine_before_any_start_is_sent() {
+        let mut start = start_command();
+        if let IpcCommand::Start {
+            input_id,
+            output_id,
+            ..
+        } = &mut start
+        {
+            *input_id = Some("input-exact".into());
+            *output_id = Some("output-exact".into());
+        }
+        for failure in 0..4 {
+            let mut sent = Vec::new();
+            let result = (|| -> Result<()> {
+                require_identity_capability(&start, |probe| {
+                    sent.push(probe);
+                    match failure {
+                        0 => Err(anyhow!("old engine")),
+                        1 => Ok(IpcResponse::Error("unsupported".into())),
+                        2 => Ok(IpcResponse::Success),
+                        _ => Ok(IpcResponse::StartIdentityCapability { version: 2 }),
+                    }
+                })?;
+                sent.push(start.clone());
+                Ok(())
+            })();
+            assert!(result.is_err());
+            assert!(matches!(
+                sent.as_slice(),
+                [IpcCommand::StartIdentityCapability]
+            ));
+        }
+        let mut sent = Vec::new();
+        require_identity_capability(&start, |probe| {
+            sent.push(probe);
+            Ok(IpcResponse::StartIdentityCapability { version: 1 })
+        })
+        .unwrap();
+        assert!(matches!(
+            sent.as_slice(),
+            [IpcCommand::StartIdentityCapability]
+        ));
+        let mut probed = false;
+        require_identity_capability(&start_command(), |_| {
+            probed = true;
+            Ok(IpcResponse::Success)
+        })
+        .unwrap();
+        assert!(!probed);
     }
 
     #[test]
@@ -2412,6 +2630,8 @@ mod config_storage_tests {
                     IpcResponse::Started {
                         sample_rate: 48000,
                         buffer_size: 512,
+                        input_id: None,
+                        output_id: None,
                     }
                 } else {
                     IpcResponse::Success
@@ -2475,6 +2695,34 @@ mod config_storage_tests {
     }
 
     #[test]
+    fn start_ipc_roundtrips_exact_ids_and_accepts_legacy_without_ids() {
+        let mut command = start_command();
+        if let IpcCommand::Start {
+            input_id,
+            output_id,
+            ..
+        } = &mut command
+        {
+            *input_id = Some("WASAPI:input-1".into());
+            *output_id = Some("WASAPI:output-1".into());
+        }
+        let json = serde_json::to_value(&command).unwrap();
+        let parsed: IpcCommand = serde_json::from_value(json).unwrap();
+        assert!(
+            matches!(parsed, IpcCommand::Start { input_id: Some(i), output_id: Some(o), .. } if i == "WASAPI:input-1" && o == "WASAPI:output-1")
+        );
+        let legacy = serde_json::to_value(start_command()).unwrap();
+        assert!(matches!(
+            serde_json::from_value::<IpcCommand>(legacy).unwrap(),
+            IpcCommand::Start {
+                input_id: None,
+                output_id: None,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn start_is_not_sent_after_mute_rejection_or_connection_loss() {
         for failure in 0..3 {
             let mut sent = Vec::new();
@@ -2486,6 +2734,8 @@ mod config_storage_tests {
                     _ => Ok(IpcResponse::Started {
                         sample_rate: 48000,
                         buffer_size: 512,
+                        input_id: None,
+                        output_id: None,
                     }),
                 }
             })
@@ -2864,6 +3114,10 @@ mod config_storage_tests {
                         playing: false,
                         error: None,
                         devices: Vec::new(),
+                        history_id: None,
+                        history_epoch: None,
+                        undo_available: false,
+                        redo_available: false,
                     }),
                     IpcCommand::GetPluginState { id } => IpcResponse::PluginState {
                         id,
@@ -3043,6 +3297,8 @@ mod config_storage_tests {
             host: "ASIO".into(),
             input: Some("Legacy Input".into()),
             output: None,
+            input_id: None,
+            output_id: None,
             sample_rate: Some(96000),
             buffer_size: Some(512),
         };
@@ -3074,6 +3330,27 @@ mod device_scan_tests {
             started: std::time::Instant::now(),
             terminal: Arc::new(OnceLock::new()),
         }
+    }
+    #[test]
+    fn scanner_identity_and_buffer_range_reach_frontend_without_name_fallback() {
+        // scannerのJSONをEngine IPC DTOとして受け、Hostの実際の変換・完了経路へ渡す。
+        let scanner_json = r#"[{"name":"Headphones","host":"Wasapi","id":"WASAPI:{endpoint-id}","is_input":false,"buffer_size_range":[128,1024],"channels":2,"is_default":false},{"name":"Legacy","host":"ASIO","is_input":false,"buffer_size_range":null,"channels":2,"is_default":true}]"#;
+        let devices: Vec<crate::ipc::DeviceInfo> = serde_json::from_str(scanner_json).unwrap();
+        assert!(devices[1].id.is_none());
+        let mut host = AudioHost::new(std::env::temp_dir());
+        host.engine_generation = 2;
+        let scan = ticket(2, 8);
+        host.device_scan = Some(scan.clone());
+        let result = host.finish_device_scan(&scan, devices).unwrap();
+        let json = serde_json::to_value(&result).unwrap();
+        assert_eq!(json["outputs"][0]["id"], "WASAPI:{endpoint-id}");
+        assert_eq!(
+            json["outputs"][0]["buffer_size_range"],
+            serde_json::json!([128, 1024])
+        );
+        assert!(json["outputs"][1].get("id").is_none());
+        assert!(json["outputs"][1].get("buffer_size_range").is_none());
+        assert!(host.child.is_none());
     }
     #[test]
     fn old_scan_ticket_cannot_poll_or_cancel_another_generation() {
@@ -3121,6 +3398,7 @@ mod device_scan_tests {
         let device = crate::ipc::DeviceInfo {
             name: "Current Mic".into(),
             host: "Wasapi".into(),
+            id: None,
             is_input: true,
             channels: 2,
             buffer_size_range: None,

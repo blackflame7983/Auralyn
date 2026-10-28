@@ -164,7 +164,7 @@ pub(super) fn command_changes(command: &Command) -> bool {
         Command::BuiltinEffects {
             request: crate::audio_engine::builtin::Request::Snapshot,
         } => false,
-        Command::GetDevices
+        Command::StartIdentityCapability | Command::GetDevices
         | Command::BeginDeviceScan
         | Command::PollDeviceScan { .. }
         | Command::CancelDeviceScan { .. }
@@ -181,11 +181,11 @@ pub(super) fn command_changes(command: &Command) -> bool {
         | Command::ExportVoiceCheck { .. } => false,
         Command::PeakProtection { config } => config.is_some(),
         Command::NoiseMeasurement { request } => !matches!(request, crate::audio_engine::core::noise_learning::Request::Snapshot),
-        Command::VoiceCheckPreview { request } => matches!(request.action, crate::audio_engine::voice_check::preview::Action::ApplyNoise { .. } | crate::audio_engine::voice_check::preview::Action::UndoNoise { .. }),
+        Command::VoiceCheckPreview { request } => matches!(request.action, crate::audio_engine::voice_check::preview::Action::ApplyNoise { .. } | crate::audio_engine::voice_check::preview::Action::UndoNoise { .. } | crate::audio_engine::voice_check::preview::Action::RedoNoise { .. }),
         Command::LiveOutput { config } => config.is_some(),
         Command::AutoGain { request } => matches!(
             request,
-            Request::Initialize { .. } | Request::Apply { .. } | Request::Restore { .. }
+            Request::Initialize { .. } | Request::Apply { .. } | Request::Restore { .. } | Request::UndoHistory { .. } | Request::RedoHistory { .. }
         ),
         _ => true,
     }
@@ -331,6 +331,8 @@ mod tests {
                 host: "ASIO".into(),
                 input: None,
                 output: None,
+                input_id: None,
+                output_id: None,
                 sample_rate: Some(96000),
                 buffer_size: Some(512),
                 initial_controls: None,

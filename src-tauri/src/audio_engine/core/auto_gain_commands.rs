@@ -31,6 +31,7 @@ impl Engine {
     }
 
     pub(super) fn invalidate_auto_gain(&mut self) {
+        self.gain_history = None;
         self.gain_revision += 1;
         self.gain_shared.requested.store(0, Ordering::Release);
         self.gain_shared.active.store(0, Ordering::Release);
@@ -138,7 +139,26 @@ impl Engine {
             playing: self.gain_preview.is_some(),
             error: s.and_then(|s| s.error.clone()),
             devices: Vec::new(),
+            history_id: self.gain_history.as_ref().map(|h| h.id),
+            history_epoch: self
+                .gain_history
+                .as_ref()
+                .map(|_| self.builtin.snapshot(false).epoch),
+            undo_available: self.gain_history_available(true),
+            redo_available: self.gain_history_available(false),
         }
+    }
+
+    fn gain_history_available(&self, undo: bool) -> bool {
+        self.gain_history.as_ref().is_some_and(|h| {
+            h.available(
+                undo,
+                self.gain_revision,
+                self.output_gain,
+                self.gain_settled(),
+                self.live_modes.armed,
+            )
+        })
     }
 
     pub(super) fn auto_gain_command(&mut self, request: Request) -> Result<Snapshot> {
@@ -160,6 +180,58 @@ impl Engine {
                 self.gain_shared.active.store(0, Ordering::Release);
                 self.gain_preview = None;
                 self.gain_session = None;
+            }
+            Request::UndoHistory {
+                id,
+                revision,
+                ref epoch,
+            }
+            | Request::RedoHistory {
+                id,
+                revision,
+                ref epoch,
+            } => {
+                let undo = matches!(request, Request::UndoHistory { .. });
+                if *epoch != self.builtin.snapshot(false).epoch {
+                    return Err(anyhow!(
+                        "エンジンの世代が変わったため、古い音量履歴は使用できません"
+                    ));
+                }
+                if !self.gain_history_available(undo)
+                    || revision != self.gain_revision
+                    || self.gain_history.as_ref().is_none_or(|h| h.id != id)
+                    || self.voice_preview.active()
+                    || self.voice_check.transport_busy()
+                {
+                    return Err(anyhow!(
+                        "履歴の条件または音量の反映を確認できません。現在の設定を確認してください"
+                    ));
+                }
+                self.gain_preview = None;
+                let h = self
+                    .gain_history
+                    .as_mut()
+                    .ok_or_else(|| anyhow!("戻せる設定がありません"))?;
+                let gain = h.transition(
+                    undo,
+                    self.gain_revision,
+                    self.output_gain,
+                    true,
+                    self.live_modes.armed,
+                )?;
+                self.gain_revision = h.revision;
+                self.output_gain = gain;
+                self.output_gain_initialized = true;
+                self.output_gain_revision = self.gain_revision;
+                self.gain_shared.settled.store(false, Ordering::Release);
+                if let Some(session) = &mut self.gain_session {
+                    session.revision = self.gain_revision;
+                    session.phase = if undo { "restoring" } else { "applying" }.into();
+                }
+                self.queue_audio_msg(AudioThreadMessage::SetOutputGain {
+                    value: gain,
+                    revision: self.output_gain_revision,
+                });
             }
             Request::StopPreview => {
                 self.gain_preview = None;
@@ -258,6 +330,14 @@ impl Engine {
                     .as_ref()
                     .ok_or_else(|| anyhow!("変更予定がありません"))?;
                 let gain = if restore { p.before } else { p.after };
+                let history = auto_gain::History {
+                    id: s.id,
+                    revision: self.gain_revision + 1,
+                    before: p.before,
+                    after: p.after,
+                    applied: !restore,
+                };
+                self.gain_history = Some(history);
                 self.gain_preview = None;
                 self.gain_revision += 1;
                 self.output_gain = gain;

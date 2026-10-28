@@ -6,7 +6,7 @@ import { notice, renderNotice, type SettingsNotice } from '@/components/features
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { bundleApi, BundleClientError, type BundleFilter, type BundleOperation, type BundleObsSelection, type BundlePreview, type BundleResult } from '../../../api/bundles';
+import { bundleApi, BundleClientError, type BundleFilter, type BundleOperation, type BundleObsSelection, type BundlePreview, type BundleRecovery, type BundleResult } from '../../../api/bundles';
 import type { ProfileSaveCategories } from '../../../api/presets';
 
 interface Props { checkedOnly?: boolean; onOperation?: (request: BundleOperation) => Promise<BundleResult | null>; onObsSettings?: () => void }
@@ -32,6 +32,10 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
     const [filters, setFilters] = useState<Map<string, BundleFilter[]>>(new Map());
     const [plan, setPlan] = useState<BundlePreview | null>(null);
     const [result, setResult] = useState<BundleResult | null>(null);
+    const [recovery, setRecovery] = useState<BundleRecovery | null>(null);
+    const [recoveryReady, setRecoveryReady] = useState(false);
+    const [recoveryConfirmed, setRecoveryConfirmed] = useState(false);
+    const [planIsRecovery, setPlanIsRecovery] = useState(false);
     const [message, setMessage] = useState<PanelMessage | null>(null);
     const [busy, setBusy] = useState(false);
     const [overwrite, setOverwrite] = useState(false);
@@ -39,13 +43,13 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
     const listVersion = useRef(0);
     const alive = useRef(true);
     const pending = useRef(false);
-    const invalidate = () => { version.current += 1; setPlan(null); setCheckedExpected(null); setCheckedAcknowledged(false); setOverwrite(false); };
+    const invalidate = () => { version.current += 1; setPlan(null); setPlanIsRecovery(false); setCheckedExpected(null); setCheckedAcknowledged(false); setOverwrite(false); };
     useEffect(() => {
         alive.current = true;
         const current = ++listVersion.current;
-        void Promise.all([list(), bundleApi.history()]).then(([items, history]) => {
+        void Promise.all([list(), bundleApi.history(), bundleApi.recovery()]).then(([items, history, original]) => {
             if (!alive.current || current !== listVersion.current) return;
-            setNames(items); setResult(history); setListReady(true);
+            setNames(items); setResult(history); setRecovery(original); setRecoveryReady(true); setListReady(true);
         }).catch(() => { if (alive.current && current === listVersion.current) setMessage({ kind: 'error', notice: notice('presets.copy.117') }); });
         const subscriptions = ['audio-conditions-changed', 'audio-stopped', 'audio-stream-error', 'audio-error', 'obs://timing-invalidated'].map(event => listen(event, () => {
             if (!alive.current) return;
@@ -74,18 +78,29 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
             : { kind: 'error', notice: notice('presets.copy.118'), rawDetail: typeof error === 'string' ? error : error instanceof Error ? error.message : undefined }); }
         finally { pending.current = false; if (alive.current) setBusy(false); }
     };
-    const refresh = () => run(async () => { invalidate(); setListReady(false); const current = ++listVersion.current; const [items, history] = await Promise.all([list(), bundleApi.history()]); if (alive.current && current === listVersion.current) { setNames(items); setResult(history); setListReady(true); } });
+    const refresh = () => run(async () => { invalidate(); setListReady(false); setRecoveryReady(false); const current = ++listVersion.current; const [items, history, original] = await Promise.all([list(), bundleApi.history(), bundleApi.recovery()]); if (alive.current && current === listVersion.current) { setNames(items); setResult(history); setRecovery(original); setRecoveryReady(true); setListReady(true); } });
     const preview = () => run(async () => {
         invalidate(); const current = version.current;
         const next = await bundleApi.preview(selected);
         if (alive.current && current === version.current) setPlan(next);
     });
+    const previewRecovery = () => run(async () => {
+        invalidate(); const current = version.current;
+        const next = await bundleApi.recoveryPreview();
+        if (alive.current && current === version.current) { setPlan(next); setPlanIsRecovery(true); }
+    });
     const operate = (operation: BundleOperation) => run(async () => {
         if (!onOperation) throw new BundleClientError('presets.copy.119');
         setPlan(null);
-        const next = await onOperation(operation);
-        if (alive.current && next) setResult(next);
-        if (!next) throw new BundleClientError('presets.copy.120');
+        setRecoveryReady(false);
+        try {
+            const next = await onOperation(operation);
+            if (alive.current && next) setResult(next);
+            if (!next) throw new BundleClientError('presets.copy.120');
+        } finally {
+            const original = await bundleApi.recovery();
+            if (alive.current) { setRecovery(original); setRecoveryReady(true); setRecoveryConfirmed(false); }
+        }
     });
     const updateObs = (source: string, change: Partial<BundleObsSelection>) => { invalidate(); setObs(items => items.map(item => item.source === source ? { ...item, ...change } : item)); };
     const existingName = names.find(item => item.toLowerCase() === name.trim().toLowerCase());
@@ -132,11 +147,22 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
             <button type="button" className="border rounded p-2 mr-2" onClick={() => void refresh()}>{t('presets.copy.147')}</button>
             <button type="button" className="border rounded p-2" disabled={!selected} onClick={() => void preview()}>{t('presets.copy.148')}</button>
         </fieldset>
+        {recovery && <section aria-label={t('bundle.recoveryTitle')} className="space-y-2 border rounded p-3">
+            <h3 className="font-semibold">{t('bundle.recoveryTitle')}</h3>
+            <p>{t(recovery.readable ? 'bundle.recoveryExplanation' : 'bundle.recoveryUnreadable')}</p>
+            {recovery.readable && <button type="button" className="border rounded p-2" disabled={busy} onClick={() => void previewRecovery()}>{t('bundle.recoveryPreview')}</button>}
+            <label className="flex gap-2"><input type="checkbox" checked={recoveryConfirmed} onChange={e => setRecoveryConfirmed(e.target.checked)} />{t('bundle.recoveryConfirmAdopt')}</label>
+            <button type="button" className="border rounded p-2 disabled:opacity-50" disabled={busy || !recoveryConfirmed} onClick={() => void run(async () => {
+                await bundleApi.resolveRecovery(recovery.id);
+                if (alive.current) { setRecovery(null); setResult(null); setRecoveryConfirmed(false); invalidate(); }
+            })}>{t('bundle.recoveryAdopt')}</button>
+        </section>}
         {plan && <div className="border rounded p-3 space-y-2" aria-label={t('presets.copy.149')}>{plan.confirmation && <p className="text-xs">{t('recovery.historical', { time: new Date(plan.confirmation.checkedAtUnixMs).toLocaleString() })}</p>}<p>{plan.name}：{plan.categories.join('・')}{t('presets.copy.150')}</p><p className="text-xs">{t('presets.copy.151')}</p>
             <table className="w-full text-xs text-left"><caption>{t('presets.copy.152')}</caption><thead><tr><th>{t('presets.copy.153')}</th><th>{t('presets.copy.154')}</th><th>{t('presets.copy.155')}</th><th>{t('presets.copy.156')}</th></tr></thead><tbody>{plan.auralyn.map((row,i) => <tr key={i}><th scope="row">{formatObsText(t, row.labelText, row.label)}</th><td className="break-all">{formatObsText(t, row.beforeText, row.before)}</td><td className="break-all">{formatObsText(t, row.afterText, row.after)}</td><td>{{same: t('presets.copy.157'), changed: t('presets.copy.158'), notSelected: t('presets.copy.159'), unknown: t('presets.copy.160')}[row.status]}</td></tr>)}</tbody></table>
 
             {plan.obs.length > 0 && <ul>{plan.obs.map((c,i) => <li key={i}>{c.source}：{formatObsText(t, c.labelText, c.label)} {formatObsText(t, c.beforeText, c.beforeDisplay ?? c.before)} → {formatObsText(t, c.afterText, c.afterDisplay ?? c.after)}</li>)}</ul>}
-            <button type="button" className="border rounded p-2" disabled={busy || !onOperation || !!(result?.undoPending && !result.complete)} onClick={() => void operate({ action: 'apply', id: plan.id })}>{t('presets.copy.161')}</button></div>}
+            {planIsRecovery && <p>{t('bundle.recoveryApplyHint')}</p>}
+            <button type="button" className="border rounded p-2" disabled={busy || !onOperation || !recoveryReady || (!planIsRecovery && (!!recovery || !!(result?.undoPending && !result.complete)))} onClick={() => void operate({ action: planIsRecovery ? 'recovery_apply' : 'apply', id: plan.id })}>{t(planIsRecovery ? 'bundle.recoveryApply' : 'presets.copy.161')}</button></div>}
         {result && <div className="border rounded p-3 space-y-2" aria-label={t('presets.copy.162')}><p>{formatObsText(t, result.auralynText, result.auralyn)}</p>{result.summary && <ul>
             {result.summary.appliedCategories.map(category => <li key={category}>Auralyn {categoryName(category)}{t('presets.copy.163')}</li>)}
             {result.summary.skippedCategories.map(category => <li key={category}>Auralyn {categoryName(category)}{t('presets.copy.164')}</li>)}

@@ -354,6 +354,10 @@ pub(super) mod tests {
             playing: false,
             error: None,
             devices: Vec::new(),
+            history_id: None,
+            history_epoch: None,
+            undo_available: false,
+            redo_available: false,
         })
     }
     #[test]
@@ -398,6 +402,8 @@ pub(super) mod tests {
                     IpcResponse::Started {
                         sample_rate: 96000,
                         buffer_size: 512,
+                        input_id: None,
+                        output_id: None,
                     }
                 }
                 _ => panic!("unexpected IPC"),

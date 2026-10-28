@@ -265,14 +265,23 @@ fn scan_devices() {
     struct DeviceInfo {
         name: String,
         host: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
         is_input: bool,
         buffer_size_range: Option<(u32, u32)>,
         channels: u16,
         is_default: bool,
     }
 
-    // 名前、レート表示、バッファ範囲、チャンネル数、既定フラグの順を維持する。
-    type RawDeviceScanEntry = (String, String, Option<(u32, u32)>, u16, bool);
+    // 名前、レート表示、バッファ範囲、チャンネル数、既定フラグ、実デバイスID。
+    type RawDeviceScanEntry = (
+        String,
+        String,
+        Option<(u32, u32)>,
+        u16,
+        bool,
+        Option<String>,
+    );
 
     let mut devices = Vec::new();
     let hosts = cpal::available_hosts();
@@ -395,17 +404,18 @@ fn scan_devices() {
                         let buf_range = get_buffer_range(&d, true);
                         let channels = get_max_channels(&d, true);
                         let is_def = default_in_name.as_ref().map(|dn| dn == &n).unwrap_or(false);
-                        raw_items.push((n, rates, buf_range, channels, is_def));
+                        let id = d.id().ok().map(|id| id.to_string());
+                        raw_items.push((n, rates, buf_range, channels, is_def, id));
                     }
                 }
 
                 let mut name_counts = std::collections::HashMap::new();
-                for (n, _, _, _, _) in &raw_items {
+                for (n, _, _, _, _, _) in &raw_items {
                     *name_counts.entry(n.clone()).or_insert(0) += 1;
                 }
 
                 let mut current_counts = std::collections::HashMap::new();
-                for (n, rates, buf_range, channels, is_def) in raw_items {
+                for (n, rates, buf_range, channels, is_def, id) in raw_items {
                     let total = *name_counts.get(&n).unwrap_or(&0);
                     let final_name = if total > 1 {
                         let idx = current_counts.entry(n.clone()).or_insert(0);
@@ -422,6 +432,7 @@ fn scan_devices() {
                     devices.push(DeviceInfo {
                         name: final_name,
                         host: host_name.clone(),
+                        id,
                         is_input: true,
                         buffer_size_range: buf_range,
                         channels,
@@ -454,17 +465,18 @@ fn scan_devices() {
                             .as_ref()
                             .map(|dn| dn == &n)
                             .unwrap_or(false);
-                        raw_items.push((n, rates, buf_range, channels, is_def));
+                        let id = d.id().ok().map(|id| id.to_string());
+                        raw_items.push((n, rates, buf_range, channels, is_def, id));
                     }
                 }
 
                 let mut name_counts = std::collections::HashMap::new();
-                for (n, _, _, _, _) in &raw_items {
+                for (n, _, _, _, _, _) in &raw_items {
                     *name_counts.entry(n.clone()).or_insert(0) += 1;
                 }
 
                 let mut current_counts = std::collections::HashMap::new();
-                for (n, rates, buf_range, channels, is_def) in raw_items {
+                for (n, rates, buf_range, channels, is_def, id) in raw_items {
                     let total = *name_counts.get(&n).unwrap_or(&0);
                     let final_name = if total > 1 {
                         let idx = current_counts.entry(n.clone()).or_insert(0);
@@ -481,6 +493,7 @@ fn scan_devices() {
                     devices.push(DeviceInfo {
                         name: final_name,
                         host: host_name.clone(),
+                        id,
                         is_input: false,
                         buffer_size_range: buf_range,
                         channels,

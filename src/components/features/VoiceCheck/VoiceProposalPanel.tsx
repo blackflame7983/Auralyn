@@ -123,6 +123,7 @@ export function VoiceProposalPanel({ model, candidate, disabled, previewActive, 
         <div className="flex flex-wrap gap-2">
             <button type="button" disabled={model.busy} onClick={() => void model.refresh()} className="rounded border px-3 py-2 disabled:opacity-50">{t('proposal.refresh')}</button>
             <button type="button" disabled={previewActive || model.busy || !model.snapshot?.undoToken || model.snapshot.pending} onClick={() => void model.undo()} className="rounded border px-3 py-2 disabled:opacity-50">{t('proposal.undo')}</button>
+            <button type="button" disabled={previewActive || model.busy || !model.snapshot?.redoToken || model.snapshot.pending} onClick={() => void model.redo()} className="rounded border px-3 py-2 disabled:opacity-50">{t('history.redo')}</button>
             {onSave && <button type="button" disabled={previewActive || model.busy || !model.snapshot || model.snapshot.pending} onClick={onSave} className="rounded border px-3 py-2 disabled:opacity-50">{t('proposal.save')}</button>}
         </div>
         <p className="text-xs text-muted-foreground">{t('proposal.manualDraft')}</p>

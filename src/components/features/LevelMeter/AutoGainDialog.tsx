@@ -87,7 +87,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
         setClosedForVisibility(false);
         try {
             let next = await gainCommand(request);
-            if (request.action === 'apply' || request.action === 'restore')
+            if (request.action === 'apply' || request.action === 'restore' || request.action === 'undo_history' || request.action === 'redo_history')
                 next = await confirmOutputGain(next);
             if (alive.current && version === epoch.current) {
                 setState(next);
@@ -250,7 +250,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                         }
                                     >
                                         {t('autoGain.apply')}</button>
-                                    <button
+                                    {state?.historyId == null && <button
                                         className={button}
                                         disabled={
                                             busy ||
@@ -266,10 +266,14 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                             })
                                         }
                                     >
-                                        {t('autoGain.undo')}</button>
+                                        {t('autoGain.undo')}</button>}
                                 </div>
                             </div>
                         )}
+                        {state?.historyId != null && <div className="flex flex-wrap gap-2">
+                            <button type="button" className={button} disabled={busy || !state.undoAvailable || !state.historyEpoch} onClick={() => void run({action: 'undo_history', id: state.historyId!, revision: state.revision, epoch: state.historyEpoch!})}>{t('history.undo')}</button>
+                            <button type="button" className={button} disabled={busy || !state.redoAvailable || !state.historyEpoch} onClick={() => void run({action: 'redo_history', id: state.historyId!, revision: state.revision, epoch: state.historyEpoch!})}>{t('history.redo')}</button>
+                        </div>}
                         {canPreview && (
                             <div className="space-y-3 rounded border border-border p-3">
                                 <p className="text-sm font-semibold">{t('autoGain.compareTitle')}</p>

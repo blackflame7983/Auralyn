@@ -14,8 +14,9 @@ export interface CheckedClaim { expected: import('./audio').PreparationSnapshot;
 export interface CheckedReceipt { checkedAtUnixMs: number; usage: string; location: string; preparation: import('./audio').PreparationSnapshot }
 export interface BundlePreview { confirmation?: CheckedReceipt | null; id: string; name: string; revision: string; categories: string[]; running: boolean; auralyn: (ObsTypedChange & { label: string; status: 'same' | 'changed' | 'notSelected' | 'unknown'; before: string; after: string })[]; obs: ObsChange[] }
 export interface BundleResult { id: string; complete: boolean; undoPending: boolean; auralyn: string; obs: string[]; auralynText?: ObsUiText | null; obsTexts?: ObsUiText[] | null; summary: ApplyProfileSummary | null; current?: ApplyProfileSummary | null }
-export type BundleOperation = { action: 'apply' | 'undo'; id: string };
-type Reply = { type: 'names'; value: string[] } | { type: 'filters'; value: BundleFilter[] } | { type: 'saved' } | { type: 'preview'; value: BundlePreview } | { type: 'result'; value: BundleResult | null };
+export interface BundleRecovery { id: string | null; readable: boolean }
+export type BundleOperation = { action: 'apply' | 'undo' | 'recovery_apply'; id: string };
+type Reply = { type: 'names'; value: string[] } | { type: 'filters'; value: BundleFilter[] } | { type: 'saved' } | { type: 'preview'; value: BundlePreview } | { type: 'result'; value: BundleResult | null } | { type: 'recovery'; value: BundleRecovery | null };
 async function request(request: unknown): Promise<Reply> { return invoke('broadcast_bundle', { request }); }
 export const bundleApi = {
     async list() { const r = await request({ action: 'list' }); if (r.type !== 'names') throw new BundleClientError('presets.copy.174'); return r.value; },
@@ -26,4 +27,7 @@ export const bundleApi = {
     async preview(name: string) { const r = await request({ action: 'preview', name }); if (r.type !== 'preview') throw new BundleClientError('presets.copy.178'); return r.value; },
     async operation(operation: BundleOperation) { const r = await request(operation); if (r.type !== 'result' || !r.value) throw new BundleClientError('presets.copy.179'); return r.value; },
     async history() { const r = await request({ action: 'history' }); if (r.type !== 'result') throw new BundleClientError('presets.copy.180'); return r.value; },
+    async recovery() { const r = await request({ action: 'recovery_status' }); if (r.type !== 'recovery') throw new BundleClientError('presets.copy.180'); return r.value; },
+    async recoveryPreview() { const r = await request({ action: 'recovery_preview' }); if (r.type !== 'preview') throw new BundleClientError('presets.copy.178'); return r.value; },
+    async resolveRecovery(id: string | null) { const r = await request({ action: 'recovery_resolve', id }); if (r.type !== 'recovery' || r.value !== null) throw new BundleClientError('presets.copy.180'); },
 };

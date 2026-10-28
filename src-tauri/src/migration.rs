@@ -152,7 +152,7 @@ fn validate(bundle: &Bundle) -> Result<(), String> {
                 })
             }
             "vst_host_setup_goal" => {
-                ["obs", "discord", "local", "listening", "other"].contains(&value.as_str())
+                ["obs", "discord", "local", "listening", "music", "other"].contains(&value.as_str())
             }
             "auralyn_preparation_context" => parsed.as_object().is_some_and(|context| {
                 context.len() == 4

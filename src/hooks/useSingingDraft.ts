@@ -29,7 +29,7 @@ export function useSingingDraft() {
         if (mounted.current) setBusy(true);
         try {
             const received = await builtinApi.request({ action: 'snapshot' });
-            const next = undoInvalidated.current ? { ...received, undoToken: null } : received;
+            const next = undoInvalidated.current ? { ...received, undoToken: null, redoToken: null } : received;
             if (!mounted.current || version !== sequence.current) return;
             const old = state.current.snapshot;
             const dirty = state.current.draft && old && JSON.stringify(state.current.draft) !== JSON.stringify(old.config);
@@ -60,7 +60,7 @@ export function useSingingDraft() {
         const subscriptions = ['profile-fx-applied', 'audio-conditions-changed', 'audio-started', 'audio-stopped', 'audio-error', 'audio-stream-error'];
         const invalidate = () => {
             setDraftRevision(value => value + 1);
-            setSnapshot(current => current ? { ...current, undoToken: null } : null);
+            setSnapshot(current => current ? { ...current, undoToken: null, redoToken: null } : null);
             if (!document.hidden) void refresh();
         };
         window.addEventListener('profile-fx-applied', invalidate);
@@ -68,7 +68,7 @@ export function useSingingDraft() {
         void Promise.all(native).catch(() => setError(notice('voice.copy.132')));
         return () => { window.removeEventListener('profile-fx-applied', invalidate); native.forEach(item => void item.then(stop => stop()).catch(() => {})); };
     }, [Boolean(snapshot), users > 0, refresh]);
-    const transact = async (kind: 'apply' | 'undo' | 'proposal', config?: BuiltinConfig, proposal?: VoiceProposal) => {
+    const transact = async (kind: 'apply' | 'undo' | 'redo' | 'proposal', config?: BuiltinConfig, proposal?: VoiceProposal) => {
         const current = state.current.snapshot;
         if (!current || operation.current) return false;
         const beforeDraft = state.current.draft;
@@ -77,6 +77,7 @@ export function useSingingDraft() {
         let accepted = false;
         try {
             if (kind === 'undo' && !current.undoToken) return false;
+            if (kind === 'redo' && !current.redoToken) return false;
             if (kind === 'proposal' && (!proposal || proposal.epoch !== current.epoch || proposal.baseRevision !== current.revision)) {
                 setConflict(true); return false;
             }
@@ -84,6 +85,7 @@ export function useSingingDraft() {
                 ? { action: 'apply_proposal', epoch: proposal!.epoch, expectedRevision: proposal!.baseRevision, proposalId: proposal!.id, recordingId: proposal!.recordingId }
                 : kind === 'apply'
                 ? { action: 'apply', epoch: current.epoch, expectedRevision: current.revision, config: config ?? state.current.draft! }
+                : kind === 'redo' ? {action: 'redo', epoch: current.epoch, expectedRevision: current.revision, redoToken: current.redoToken!}
                 : { action: 'undo', epoch: current.epoch, expectedRevision: current.revision, undoToken: current.undoToken! });
             if (!mounted.current) return false;
             undoInvalidated.current = false;
@@ -91,7 +93,7 @@ export function useSingingDraft() {
             state.current = { snapshot: next, draft: nextDraft };
             setSnapshot(next); setDraft(nextDraft); setConflict(false); setDraftRevision(value => value + 1); accepted = true;
         } catch {
-            if (mounted.current) { setConflict(true); setSnapshot(value => value ? { ...value, undoToken: null } : value); setError(notice('voice.copy.133')); }
+            if (mounted.current) { setConflict(true); setSnapshot(value => value ? { ...value, undoToken: null, redoToken: null } : value); setError(notice('voice.copy.133')); }
         } finally {
             operation.current = false; if (mounted.current) setBusy(false);
             if (needsRefresh.current) { needsRefresh.current = false; void refresh(); }
@@ -103,7 +105,7 @@ export function useSingingDraft() {
         undoInvalidated.current = true;
         setDraft(current => current ? { ...current, active: true, preset: 'singing', singing: { ...defaultSinging, ...current.singing, ...patch } } : current);
         setDraftRevision(value => value + 1);
-        setSnapshot(current => current ? { ...current, undoToken: null } : current);
+        setSnapshot(current => current ? { ...current, undoToken: null, redoToken: null } : current);
     };
     return { activate, snapshot, draft, draftRevision, busy, error: renderNotice(t, error), conflict, refresh,
         editReverb: (patch: Partial<ReverbParams>) => {
@@ -111,11 +113,11 @@ export function useSingingDraft() {
             undoInvalidated.current = true;
             setDraft(current => current ? { ...current, reverb: { ...defaultReverb, ...current.reverb, ...patch } } : current);
             setDraftRevision(value => value + 1);
-            setSnapshot(current => current ? { ...current, undoToken: null } : current);
+            setSnapshot(current => current ? { ...current, undoToken: null, redoToken: null } : current);
         },
         selectSinging: () => edit({ ...defaultSinging }), edit,
         resetDraft: () => { if (snapshot && !busy) { setDraft(snapshot.config); setConflict(false); setDraftRevision(value => value + 1); } },
-        apply: () => transact('apply'), undo: () => transact('undo'),
+        apply: () => transact('apply'), undo: () => transact('undo'), redo: () => transact('redo'),
         applyProposal: (proposal: VoiceProposal) => transact('proposal', undefined, proposal),
         setAppliedActive: (active: boolean) => state.current.snapshot ? transact('apply', { ...state.current.snapshot.config, active }) : Promise.resolve(false),
     };

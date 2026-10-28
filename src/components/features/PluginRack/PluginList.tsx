@@ -149,8 +149,8 @@ export const PluginList: React.FC<PluginListProps> = ({
         <TooltipProvider>
             <div className="w-full space-y-4">
                 {/* Header / Rack Ears */}
-                <div className="flex items-center justify-between mb-4 px-2">
-                    <h2 className="text-sm font-bold text-muted-foreground">{t('rack.title')}</h2>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4 px-2">
+                    <h2 id="plugin-rack-heading" tabIndex={-1} className="text-sm font-bold text-muted-foreground">{t('rack.title')}</h2>
                     <div className="flex items-center gap-2">
                         {!isBeginnerMode && (
                             <>

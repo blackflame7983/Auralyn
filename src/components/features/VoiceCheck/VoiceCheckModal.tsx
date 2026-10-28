@@ -29,7 +29,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
         handleSourceChange, handleExport, handleAnalyze,
         preview, previewDevices, previewDeviceId, setPreviewDeviceId, safeOutput, setSafeOutput,
         previewBusy, previewError, stopUnconfirmed, preparePreview, refreshPreviewDevices, handleStopPreview,
-        levelMatch, setLevelMatch, candidate, candidateMode, prepareNoise, applyNoise, undoNoise, prepareCandidate, prepareProposal, invalidateProposalPreferences, returnToRecording } = useVoiceCheck(isOpen, manualCandidate && singingModel?.draft && singingModel.snapshot ? {
+        levelMatch, setLevelMatch, candidate, candidateMode, prepareNoise, applyNoise, undoNoise, redoNoise, prepareCandidate, prepareProposal, invalidateProposalPreferences, returnToRecording } = useVoiceCheck(isOpen, manualCandidate && singingModel?.draft && singingModel.snapshot ? {
             config: singingModel.draft, revision: singingModel.snapshot.revision, epoch: singingModel.snapshot.epoch, draftRevision: singingModel.draftRevision,
         } : undefined, singingModel?.snapshot ? { epoch: singingModel.snapshot.epoch, revision: singingModel.snapshot.revision, draftRevision: singingModel.draftRevision } : undefined, manualCandidate);
 
@@ -158,7 +158,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     </div>
                     <NoiseComparisonPanel preview={preview} candidate={candidateMode === 'noise' ? candidate : null}
                         disabled={busy || previewBusy || isRecording || isPlaying || preview?.state === 'stopping' || stopUnconfirmed || streamStatus !== 'ready' || Boolean(preview?.conflict)}
-                        prepare={prepareNoise} apply={applyNoise} undo={undoNoise} />
+                        prepare={prepareNoise} apply={applyNoise} undo={undoNoise} redo={redoNoise} />
                     {/* 状態が未確定・失敗した際は停止と再試行を隠さない。 */}
                     <details open={hasRecording || previewBusy || stopUnconfirmed || Boolean(previewError || preview?.error || preview?.conflict) || isPlaying || preview?.state === 'stopping' || preview?.owner === 'auto_gain' || undefined}>
                     <summary className="cursor-pointer text-sm font-semibold">{t('voice.playbackSection')}</summary>

@@ -194,6 +194,85 @@ pub fn revision() -> String {
         NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     )
 }
+
+// 未完了の配信状態操作だけを追跡する。Undo tokenやOBS接続情報は保存しない。
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RecoveryReceipt {
+    pub version: u8,
+    pub backup_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub devices: Option<RecoveryDevices>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RecoveryDevices {
+    pub input_id: String,
+    pub output_id: String,
+}
+fn recovery_path(root: &Path) -> PathBuf {
+    root.join("broadcast-bundle-recovery.json")
+}
+pub(crate) fn recovery_exists(root: &Path) -> Result<bool, String> {
+    recovery_path(root).try_exists().map_err(|e| e.to_string())
+}
+pub(crate) fn read_recovery(root: &Path) -> Result<Option<RecoveryReceipt>, String> {
+    let path = recovery_path(root);
+    if !path.try_exists().map_err(|e| e.to_string())? {
+        return Ok(None);
+    }
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    if bytes.len() > 4096 {
+        return Err("配信状態の復旧情報が不正です".into());
+    }
+    let receipt: RecoveryReceipt =
+        serde_json::from_slice(&bytes).map_err(|_| "配信状態の復旧情報を読み込めません")?;
+    if receipt.version != 1 {
+        return Err("配信状態の復旧情報の版に対応していません".into());
+    }
+    validate_name(&receipt.backup_name)?;
+    if receipt
+        .devices
+        .as_ref()
+        .is_some_and(|d| d.input_id.is_empty() || d.output_id.is_empty())
+    {
+        return Err("配信状態の復旧機器IDが不正です".into());
+    }
+    Ok(Some(receipt))
+}
+pub(crate) fn reserve_recovery(
+    root: &Path,
+    backup_name: &str,
+    devices: Option<RecoveryDevices>,
+) -> Result<(), String> {
+    validate_name(backup_name)?;
+    std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
+    let receipt = RecoveryReceipt {
+        version: 1,
+        backup_name: backup_name.to_owned(),
+        devices,
+    };
+    let bytes = serde_json::to_vec(&receipt).map_err(|e| e.to_string())?;
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(recovery_path(root))
+        .map_err(|_| "未解決の配信状態の原本があります。先に確認してください".to_string())?;
+    file.write_all(&bytes)
+        .and_then(|_| file.sync_all())
+        .map_err(|e| e.to_string())
+}
+pub(crate) fn resolve_recovery(root: &Path, expected: Option<&str>) -> Result<(), String> {
+    let path = recovery_path(root);
+    let actual = read_recovery(root);
+    match (actual, expected) {
+        (Ok(Some(receipt)), Some(id)) if receipt.backup_name == id => {}
+        (Err(_), None) if recovery_exists(root)? => {}
+        _ => return Err("復旧情報が変更されました。読み直してください".into()),
+    }
+    std::fs::remove_file(path).map_err(|e| e.to_string())
+}
 pub fn save(root: &Path, bundle: &BundleV1) -> Result<(), String> {
     save_with_overwrite(root, bundle, true)
 }
@@ -284,6 +363,68 @@ pub fn list(root: &Path) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unresolved_receipt_survives_reload_and_cannot_be_replaced_or_implicitly_removed() {
+        let root = std::env::temp_dir().join(format!("auralyn-bundle-recovery-{}", revision()));
+        reserve_recovery(
+            &root,
+            "original-a",
+            Some(RecoveryDevices {
+                input_id: "input-a".into(),
+                output_id: "output-a".into(),
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            read_recovery(&root).unwrap().unwrap().backup_name,
+            "original-a"
+        );
+        assert_eq!(
+            read_recovery(&root)
+                .unwrap()
+                .unwrap()
+                .devices
+                .unwrap()
+                .input_id,
+            "input-a"
+        );
+        assert!(reserve_recovery(&root, "original-b", None).is_err());
+        assert!(resolve_recovery(&root, Some("original-b")).is_err());
+        assert_eq!(
+            read_recovery(&root).unwrap().unwrap().backup_name,
+            "original-a"
+        );
+        resolve_recovery(&root, Some("original-a")).unwrap();
+        assert!(!recovery_exists(&root).unwrap());
+    }
+    #[test]
+    fn corrupt_receipt_still_blocks_replacement_until_explicit_adoption() {
+        let root = std::env::temp_dir().join(format!("auralyn-bundle-corrupt-{}", revision()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(recovery_path(&root), b"not-json").unwrap();
+        assert!(read_recovery(&root).is_err());
+        assert!(reserve_recovery(&root, "replacement", None).is_err());
+        assert!(resolve_recovery(&root, Some("replacement")).is_err());
+        resolve_recovery(&root, None).unwrap();
+        assert!(!recovery_exists(&root).unwrap());
+    }
+
+    #[test]
+    fn legacy_receipt_is_retained_but_has_no_recoverable_device_identity() {
+        let root = std::env::temp_dir().join(format!("auralyn-legacy-receipt-{}", revision()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            recovery_path(&root),
+            br#"{"version":1,"backupName":"original"}"#,
+        )
+        .unwrap();
+        let receipt = read_recovery(&root).unwrap().unwrap();
+        assert_eq!(receipt.backup_name, "original");
+        assert_eq!(receipt.devices, None);
+        assert!(reserve_recovery(&root, "new", None).is_err());
+        resolve_recovery(&root, Some("original")).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
     fn sample() -> BundleV1 {
         BundleV1 {
             schema_version: 1,

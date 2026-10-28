@@ -11,6 +11,7 @@ export interface GainProposal {
 }
 export interface GainSnapshot {
     revision: number;
+    historyId?: number | null; historyEpoch?: string | null; undoAvailable?: boolean; redoAvailable?: boolean;
     gain: number;
     confirmedGain: number;
     settled: boolean;
@@ -29,7 +30,8 @@ export type GainRequest =
     | { action: 'initialize'; value: number }
     | { action: 'begin'; target: number; revision: number }
     | { action: 'preview'; id: number; after: boolean; device: string }
-    | { action: 'apply' | 'restore'; id: number; revision: number };
+    | { action: 'apply' | 'restore'; id: number; revision: number }
+    | { action: 'undo_history' | 'redo_history'; id: number; revision: number; epoch: string };
 
 // 保存は確認済みの実値だけで更新する。停止中の設定は明示操作から保存する。
 export function publishOutputGain(state: GainSnapshot) {
@@ -53,7 +55,7 @@ function enqueue<T>(run: () => Promise<T>): Promise<T> {
     return next;
 }
 export async function gainCommand(request: GainRequest): Promise<GainSnapshot> {
-    if (request.action === 'initialize' || request.action === 'apply' || request.action === 'restore') {
+    if (request.action === 'initialize' || request.action === 'apply' || request.action === 'restore' || request.action === 'undo_history' || request.action === 'redo_history') {
         window.dispatchEvent(new Event('output-gain-intent'));
     }
     const state = await enqueue(() => invoke<GainSnapshot>('auto_gain', { request }));

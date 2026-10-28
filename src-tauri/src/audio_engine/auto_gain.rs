@@ -43,6 +43,16 @@ pub enum Request {
         id: u64,
         revision: u64,
     },
+    UndoHistory {
+        id: u64,
+        revision: u64,
+        epoch: String,
+    },
+    RedoHistory {
+        id: u64,
+        revision: u64,
+        epoch: String,
+    },
     Restore {
         id: u64,
         revision: u64,
@@ -231,8 +241,53 @@ pub struct Snapshot {
     pub playing: bool,
     pub error: Option<String>,
     pub devices: Vec<PreviewDevice>,
+    pub history_id: Option<u64>,
+    pub history_epoch: Option<String>,
+    pub undo_available: bool,
+    pub redo_available: bool,
 }
 
+/// 録音の寿命から独立した最新1操作の設定履歴。
+pub(super) struct History {
+    pub id: u64,
+    pub revision: u64,
+    pub before: f32,
+    pub after: f32,
+    pub applied: bool,
+}
+impl History {
+    pub fn available(
+        &self,
+        undo: bool,
+        revision: u64,
+        gain: f32,
+        settled: bool,
+        protected: bool,
+    ) -> bool {
+        self.applied == undo
+            && self.revision == revision
+            && settled
+            && !protected
+            && gain == if undo { self.after } else { self.before }
+    }
+    pub fn transition(
+        &mut self,
+        undo: bool,
+        revision: u64,
+        gain: f32,
+        settled: bool,
+        protected: bool,
+    ) -> Result<f32> {
+        if !self.available(undo, revision, gain, settled, protected) {
+            return Err(anyhow!("固定ゲインの履歴条件が変わりました"));
+        }
+        self.revision = revision
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("操作回数の上限です"))?;
+        self.applied = !undo;
+        Ok(if undo { self.before } else { self.after })
+    }
+}
 pub struct Session {
     pub id: u64,
     pub revision: u64,
@@ -377,5 +432,29 @@ mod tests {
         });
         assert_eq!(counts, (0, 0));
         assert_eq!((0..1100).filter_map(|_| cons.try_pop()).count(), 1000);
+    }
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    #[test]
+    fn history_repeats_after_ack_and_rejects_old_revision_unsettled_and_protected() {
+        let mut h = History {
+            id: 7,
+            revision: 10,
+            before: 0.8,
+            after: 1.2,
+            applied: true,
+        };
+        assert!(h.transition(true, 10, 1.2, false, false).is_err());
+        assert!(h.transition(true, 10, 1.2, true, true).is_err());
+        assert_eq!(h.transition(true, 10, 1.2, true, false).unwrap(), 0.8);
+        assert!(h.transition(false, 10, 0.8, true, false).is_err());
+        assert!(h.transition(false, 11, 0.8, false, false).is_err());
+        assert_eq!(h.transition(false, 11, 0.8, true, false).unwrap(), 1.2);
+        assert_eq!(h.transition(true, 12, 1.2, true, false).unwrap(), 0.8);
+        assert_eq!(h.id, 7);
+        assert!(h.transition(false, 13, 0.9, true, false).is_err());
     }
 }

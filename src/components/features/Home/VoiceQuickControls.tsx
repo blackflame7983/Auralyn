@@ -95,7 +95,7 @@ export function VoiceQuickControls({ running, onOpenSoundSettings }: { running: 
         <div className="space-y-3">
             {!stats && <p role="status" className="text-xs text-muted-foreground">{t('home.voiceUnavailable')}</p>}
             <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+                <div id="home-noise" tabIndex={-1} className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
                     <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-semibold">{t('settings.AudioSettingsModal.105')}</span>
                         <Switch checked={noiseOn} disabled={disabled} onCheckedChange={active => void applyNoise({ active })} aria-label={t('settings.AudioSettingsModal.107')} />
@@ -114,7 +114,7 @@ export function VoiceQuickControls({ running, onOpenSoundSettings }: { running: 
                     )}
                     <InfoPopover label={t('info.noise')}>{t('home.noiseScope')}</InfoPopover>
                 </div>
-                <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+                <div id="home-builtin" tabIndex={-1} className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
                     <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-semibold">{t('settings.AudioSettingsModal.095')}</span>
                         <Switch checked={chainOn} disabled={disabled} onCheckedChange={active => void toggleChain(active)} aria-label={t('settings.AudioSettingsModal.097')} />

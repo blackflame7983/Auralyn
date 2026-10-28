@@ -66,7 +66,7 @@ export const audioApi = {
     getDevices: async (forceRefresh: boolean = false): Promise<AudioDeviceList> => {
         return await invoke("get_audio_devices", { forceRefresh });
     },
-    start: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string): Promise<AudioConfig> => {
+    start: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string, expectedState?: AudioStateInfo): Promise<AudioConfig> => {
         return await invoke("start_audio", {
             host,
             input,
@@ -74,7 +74,8 @@ export const audioApi = {
             bufferSize,
             sampleRate,
             inputId,
-            outputId
+            outputId,
+            ...(expectedState ? {expectedState} : {}),
         });
     },
     stop: async () => {
@@ -105,7 +106,7 @@ export const audioApi = {
     setGain: async (id: string, value: number) => {
         return await invoke("set_gain", { id, value });
     },
-    restart: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string): Promise<AudioConfig> => {
+    restart: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string, expectedState?: AudioStateInfo): Promise<AudioConfig> => {
         return await invoke("restart_audio_engine", {
             host,
             input,
@@ -113,7 +114,8 @@ export const audioApi = {
             bufferSize,
             sampleRate,
             inputId,
-            outputId
+            outputId,
+            ...(expectedState ? {expectedState} : {}),
         });
     },
     openEditor: async (id: string) => {
@@ -226,6 +228,8 @@ export interface ActiveAudioConfig {
     host: string;
     input: string | null;
     output: string | null;
+    input_id?: string;
+    output_id?: string;
     sample_rate: number | null;
     buffer_size: number | null;
 }
@@ -233,6 +237,7 @@ export interface ActiveAudioConfig {
 export interface AudioStateInfo {
     is_running: boolean;
     config: ActiveAudioConfig | null;
+    condition_witness?: { revision: string; epoch: string };
 }
 
 export interface EngineTuningConfig {

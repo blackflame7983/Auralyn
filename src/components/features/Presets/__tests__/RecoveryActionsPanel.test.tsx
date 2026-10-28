@@ -7,6 +7,7 @@ import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { RecoveryActionsPanel } from '../RecoveryActionsPanel';
 
+vi.mock('../AdjustmentHistoryPanel', () => ({AdjustmentHistoryPanel: () => null}));
 vi.mock('../BroadcastBundlePanel', () => ({ BroadcastBundlePanel: () => null }));
 const emit = (name: string) => {
     for (const [event, callback] of vi.mocked(listen).mock.calls) {

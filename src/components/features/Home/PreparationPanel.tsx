@@ -1,3 +1,4 @@
+import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useRef, type ReactNode } from 'react';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
@@ -17,18 +18,19 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
-    const music = localStorage.getItem('vst_host_setup_goal') === 'music';
+    const [purpose] = useDisplayPurpose();
+    const music = purpose === 'music';
     const purposeRef = useRef<HTMLSelectElement>(null);
     const detailsRef = useRef<HTMLDetailsElement>(null);
     const targetRef = useRef<HTMLInputElement>(null);
     const actionRef = useRef<HTMLButtonElement>(null);
     const summaryRef = useRef<HTMLElement>(null);
     const next = nextPreparationStage(observation, records, context);
-    const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? (music ? onSettings() : onListen()) : onTroubleshoot();
+    const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
     const needsTarget = next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim();
     const action = needsTarget ? () => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); } : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? () => { void model.refresh(); } : onSettings
         : next === 'purpose' ? () => { if (detailsRef.current) detailsRef.current.open = true; purposeRef.current?.focus(); }
-            : next === 'sound' ? onSound : next === 'listen' ? (music ? onSettings : onListen) : receiver;
+            : next === 'sound' ? onSound : next === 'listen' ? onListen : receiver;
     const actionLabel: MessageKey = needsTarget ? 'prep.targetAction' : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? 'prep.refresh' : 'shell.configure'
         : next === 'purpose' ? 'prep.chooseUse' : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
     const acknowledgeLabels: Record<PreparationStage, MessageKey> = { sound: 'prep.ackSound', listen: 'prep.ackListen', receiver: 'prep.ackReceiver' };
@@ -51,7 +53,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
                     void model.confirm(next).then(() => requestAnimationFrame(() => {
                         if (!checkbox.isConnected && document.activeElement === document.body) (actionRef.current ?? summaryRef.current)?.focus();
                     }));
-                }} />{t(next === 'receiver' && context.usage === 'listening' ? 'prep.ackLocal' : acknowledgeLabels[next])}
+                }} />{t(next === 'receiver' && context.usage === 'listening' ? 'prep.ackLocal' : music && next === 'sound' ? 'music.ackSound' : music && next === 'listen' ? 'music.ackListen' : acknowledgeLabels[next])}
         </label>}
         <details ref={detailsRef} open={context.usage === '' ? true : undefined} className="space-y-3">
             <summary ref={summaryRef} className="cursor-pointer text-sm font-medium">{t('prep.details')}</summary>
@@ -80,7 +82,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
                 {(['sound', 'listen', 'receiver'] as const).map(stage => {
                     const state = confirmationState(records, stage);
                     const receipt = records[stage];
-                    const label = t(stage === 'receiver' && context.usage === 'listening' ? 'prep.localReceiver' : stageLabels[stage]);
+                    const label = t(stage === 'receiver' && context.usage === 'listening' ? 'prep.localReceiver' : music && stage === 'sound' ? 'wizard.musicSound' : music && stage === 'listen' ? 'wizard.musicListen' : stageLabels[stage]);
                     return <li key={stage} className="py-3 space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <h3 className="text-sm font-semibold">{label}</h3>

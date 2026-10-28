@@ -394,7 +394,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         const requestSequence = ++sequence.current;
         if (exclusive) { mutating.current = true; setPreviewBusy(true); }
         const expectationAtRequest = candidateExpected.current;
-        const ownNoiseChange = action.action === 'apply_noise' || action.action === 'undo_noise' ? { session, version } : null;
+        const ownNoiseChange = action.action === 'apply_noise' || action.action === 'undo_noise' || action.action === 'redo_noise' ? { session, version } : null;
         if (ownNoiseChange) noiseMutation.current = ownNoiseChange;
         try {
             let next = await session.send(action);
@@ -418,7 +418,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
                     if (action.action === 'stop') setStopUnconfirmed(false);
                 }
             }
-            return action.action === 'prepare_noise' || action.action === 'apply_noise' || action.action === 'undo_noise' ? accepted : true;
+            return action.action === 'prepare_noise' || action.action === 'apply_noise' || action.action === 'undo_noise' || action.action === 'redo_noise' ? accepted : true;
         } catch (error) {
             if (alive.current && controller.current === session && version === revision.current) {
                 setPreviewError(notice('voice.copy.128', { arg0: clientErrorNotice(error) }));
@@ -545,6 +545,16 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
             clearCandidate(); setCandidateMode('normal'); window.dispatchEvent(new Event('profile-fx-applied'));
         }
     };
+    const redoNoise = async () => {
+        const token = snapshotRef.current?.noiseRedoToken;
+        if (!token || mutating.current || document.hidden) return;
+        if (snapshotRef.current?.state === 'playing' || snapshotRef.current?.state === 'stopping') {
+            if (!await runPreview({ action: 'stop' })) return;
+        }
+        if (await runPreview({ action: 'redo_noise', token })) {
+            clearCandidate(); setCandidateMode('normal'); window.dispatchEvent(new Event('profile-fx-applied'));
+        }
+    };
     const invalidateProposalPreferences = () => {
         const previous = candidateRef.current; const session=controller.current;
         const version = ++revision.current;
@@ -573,7 +583,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         else { optionsRef.current = next; setOptions(next); }
     };
     return {
-        prepareNoise, applyNoise, undoNoise, candidate, candidateMode, prepareCandidate, prepareProposal, invalidateProposalPreferences, returnToRecording,
+        prepareNoise, applyNoise, undoNoise, redoNoise, candidate, candidateMode, prepareCandidate, prepareProposal, invalidateProposalPreferences, returnToRecording,
         preview: snapshot, previewDevices: devices, previewDeviceId: deviceId, safeOutput, setSafeOutput,
         previewBusy, previewError: renderNotice(t, previewError), stopUnconfirmed, preparePreview,
         source: options.source, loopPlayback: options.loopPlayback, levelMatch: options.levelMatch,

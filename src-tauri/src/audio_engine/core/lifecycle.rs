@@ -368,6 +368,46 @@ mod tests {
         engine.clear_audio_resources();
         assert_eq!(engine.builtin.config.singing.unwrap().low_cut_hz, 160.0);
     }
+
+    #[test]
+    fn clearing_stream_invalidates_builtin_history_without_changing_config() {
+        use super::super::Engine;
+        use crate::audio_engine::builtin::{Config, Request};
+        let mut engine = Engine::new();
+        let before = engine.builtin.snapshot(false);
+        let config = Config {
+            active: true,
+            ..Default::default()
+        };
+        engine
+            .builtin
+            .request(
+                Request::Apply {
+                    epoch: before.epoch,
+                    expected_revision: before.revision,
+                    config: config.clone(),
+                },
+                false,
+            )
+            .unwrap();
+        let token = engine.builtin.snapshot(false);
+        assert!(token.undo_token.is_some());
+        engine.clear_audio_resources();
+        let after = engine.builtin.snapshot(false);
+        assert!(after.undo_token.is_none() && after.redo_token.is_none());
+        assert_eq!(after.config, config);
+        assert!(engine
+            .builtin
+            .request(
+                Request::Undo {
+                    epoch: after.epoch,
+                    expected_revision: after.revision,
+                    undo_token: token.undo_token.unwrap()
+                },
+                false
+            )
+            .is_err());
+    }
     #[test]
     fn stopping_drops_unpublished_deferred_restore_and_pending_start_is_rejected() {
         use super::super::Engine;

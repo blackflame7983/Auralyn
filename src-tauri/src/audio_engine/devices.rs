@@ -243,6 +243,47 @@ impl DeviceManager {
         )
     }
 
+    pub fn resolve_input_device_by_id(host: &cpal::Host, target_id: &str) -> Option<cpal::Device> {
+        resolve_identified_device(
+            host.input_devices().ok()?.map(|device| {
+                let id = device.id().ok().map(|id| id.to_string());
+                (device, id)
+            }),
+            target_id,
+        )
+    }
+
+    pub fn resolve_output_device_by_id(host: &cpal::Host, target_id: &str) -> Option<cpal::Device> {
+        resolve_identified_device(
+            host.output_devices().ok()?.map(|device| {
+                let id = device.id().ok().map(|id| id.to_string());
+                (device, id)
+            }),
+            target_id,
+        )
+    }
+
+    pub fn verify_selected_ids(
+        expected: &(Option<String>, Option<String>),
+        input: Option<String>,
+        output: Option<String>,
+    ) -> Result<()> {
+        if expected
+            .0
+            .as_ref()
+            .is_some_and(|id| Some(id) != input.as_ref())
+            || expected
+                .1
+                .as_ref()
+                .is_some_and(|id| Some(id) != output.as_ref())
+        {
+            return Err(anyhow!(
+                "選択した機器のIDを確認できません。機器を選び直してください"
+            ));
+        }
+        Ok(())
+    }
+
     #[allow(deprecated)]
     pub fn resolve_output_device(host: &cpal::Host, target_name: &str) -> Option<cpal::Device> {
         if host.id() == cpal::HostId::Asio {
@@ -263,6 +304,15 @@ impl DeviceManager {
             target_name,
         )
     }
+}
+
+fn resolve_identified_device<T>(
+    devices: impl Iterator<Item = (T, Option<String>)>,
+    target: &str,
+) -> Option<T> {
+    devices
+        .into_iter()
+        .find_map(|(device, id)| (id.as_deref() == Some(target)).then_some(device))
 }
 
 // ASIOは同時に異なるdriverを保持できない。完全一致を先に探し、
@@ -522,10 +572,45 @@ mod scan_tests {
     use super::*;
     use std::time::Instant;
 
+    #[test]
+    fn requested_device_ids_never_accept_missing_or_different_device() {
+        let expected = (Some("input-a".to_string()), Some("output-b".to_string()));
+        assert!(DeviceManager::verify_selected_ids(
+            &expected,
+            Some("input-a".into()),
+            Some("output-b".into())
+        )
+        .is_ok());
+        assert!(DeviceManager::verify_selected_ids(
+            &expected,
+            Some("input-b".into()),
+            Some("output-b".into())
+        )
+        .is_err());
+        assert!(
+            DeviceManager::verify_selected_ids(&expected, Some("input-a".into()), None).is_err()
+        );
+        assert!(DeviceManager::verify_selected_ids(&(None, None), None, None).is_ok());
+        let devices = || {
+            vec![
+                ("same-name-first", Some("id-a".to_string())),
+                ("same-name-second", Some("id-b".to_string())),
+                ("unidentified", None),
+            ]
+            .into_iter()
+        };
+        assert_eq!(
+            resolve_identified_device(devices(), "id-b"),
+            Some("same-name-second")
+        );
+        assert_eq!(resolve_identified_device(devices(), "missing"), None);
+    }
+
     fn device(name: &str) -> DeviceInfo {
         DeviceInfo {
             name: name.into(),
             host: "ASIO".into(),
+            id: None,
             is_input: true,
             channels: 2,
             buffer_size_range: None,

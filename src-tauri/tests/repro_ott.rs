@@ -73,6 +73,8 @@ fn test_ott_editor_loading() {
             host: "Wasapi".to_string(),
             input: None,
             output: None,
+            input_id: None,
+            output_id: None,
             buffer_size: None,
             sample_rate: None,
             initial_controls: None,

@@ -1,3 +1,5 @@
+import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useUsageWindow } from '@/hooks/useUsageWindow';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
 import { HomePanels } from '../features/Home/HomePanels';
@@ -68,6 +70,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     currentOutput
 }) => {
     const t = useMessages();
+    const [purpose, setPurpose] = useDisplayPurpose();
+    useUsageWindow(purpose);
     const [runtimeStats, setRuntimeStats] = useState<EngineRuntimeStats | null>(null);
     useEffect(() => { setRuntimeStats(null); }, [isEngineRunning]);
     const shellRef = useRef<HTMLDivElement>(null);
@@ -90,7 +94,18 @@ export const AppShell: React.FC<AppShellProps> = ({
 
     const audioReady = Boolean(currentHost) && isEngineRunning && engineProcessReady === true;
     const [loudnessEnabled, setLoudnessEnabled] = useState(false);
-    useEffect(() => setLoudnessEnabled(false), [isBeginnerMode]);
+    const [measurement, setMeasurement] = useState({ active: false, busy: false, stopUnconfirmed: false });
+    const [measurementRequest, setMeasurementRequest] = useState<{id: number; action: 'start' | 'stop'}>();
+    const requestId = useRef(0);
+    const openRack = () => {
+        const rack = document.getElementById('home-rack');
+        if (!rack) return;
+        const disclosure = document.getElementById('plugin-rack-disclosure') as HTMLDetailsElement | null;
+        if (disclosure) disclosure.open = true;
+        const target = document.getElementById('plugin-rack-heading');
+        target?.scrollIntoView?.({ block: 'start' });
+        target?.focus({ preventScroll: true });
+    };
     const [isABBypassed, setIsABBypassed] = useState(false);
     const handleABToggle = useCallback(async () => {
         try {
@@ -143,11 +158,17 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <main
                     className={`flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent pb-4 transition-all duration-300 ${isLargeMeterOpen ? 'pr-36 lg:pr-36' : ''}`}
                 >
-                    <div className="max-w-4xl mx-auto min-[1440px]:max-w-none min-[1440px]:grid min-[1440px]:grid-cols-2 min-[1440px]:gap-x-6">
+                    <div className="max-w-4xl mx-auto min-[1280px]:max-w-none min-[1280px]:grid min-[1280px]:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] min-[1280px]:gap-x-6">
                         <div
-                            className="mb-3 flex flex-wrap items-center justify-between gap-3 min-[1440px]:col-span-2"
+                            className="mb-3 flex flex-wrap items-center justify-between gap-3 min-[1280px]:col-span-2"
                             aria-label={t('shell.view')}
                         >
+                            <label className="flex flex-wrap items-center gap-2 text-sm">
+                                {t('purpose.label')}
+                                <select value={purpose} onChange={event => setPurpose(event.target.value as 'voice' | 'music')} className="rounded border border-border bg-background p-2">
+                                    <option value="voice">{t('purpose.voice')}</option><option value="music">{t('purpose.music')}</option>
+                                </select>
+                            </label>
                             <div
                                 role="group"
                                 aria-label={t('shell.viewGoal')}
@@ -170,14 +191,15 @@ export const AppShell: React.FC<AppShellProps> = ({
                             </div>
                             <button
                                 type="button"
-                                aria-pressed={loudnessEnabled}
-                                onClick={() => setLoudnessEnabled(value => !value)}
+                                aria-pressed={measurement.active}
+                                onClick={() => { setLoudnessEnabled(true); setMeasurementRequest({id: ++requestId.current, action: measurement.active ? 'stop' : 'start'}); }}
+                                disabled={measurement.busy || (!measurement.active && !audioReady)}
                                 aria-describedby="loudness-toggle-description"
                                 className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted aria-pressed:border-primary aria-pressed:bg-muted aria-pressed:ring-1 aria-pressed:ring-primary/40"
                             >
-                                {t('shell.loudness')}
+                                {t(measurement.busy ? 'loudness.switching' : measurement.stopUnconfirmed ? 'loudness.retryStop' : measurement.active ? 'loudness.stop' : 'loudness.startAction')}
                             </button>
-                            <span id="loudness-toggle-description" className="sr-only">{t('shell.loudnessHint')}</span>
+                            <span id="loudness-toggle-description" className="sr-only">{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.audioStopped') : t('loudness.scope')}</span>
                         </div>
                         <div className="min-w-0"><HomePanels
                             audioReady={audioReady}
@@ -187,16 +209,18 @@ export const AppShell: React.FC<AppShellProps> = ({
                             blocked={preparationBlocked}
                             onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}
                             onOpenSoundSettings={onOpenSoundSettings} onOpenVoiceCheck={onOpenVoiceCheck}
-                            onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot}
+                            onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot} onOpenVst={openRack}
                         /></div>
                         <div className="min-w-0">
                         <LoudnessCheck
+                            music={purpose === 'music'}
                             enabled={loudnessEnabled}
-                            running={isEngineRunning}
+                            request={measurementRequest} onStateChange={setMeasurement} onClose={() => setLoudnessEnabled(false)}
+                            running={audioReady}
                             stateKnown={engineProcessReady !== null}
                             onVoiceCheck={onOpenVoiceCheck}
                         />
-                        {children}
+                        <div id="home-rack">{children}</div>
                         </div>
                     </div>
                 </main>

@@ -27,13 +27,20 @@ export function LoudnessCheck({
     stateKnown = true,
     enabled = true,
     onVoiceCheck,
+    request, onStateChange, onClose, music = false,
 }: {
     running: boolean;
     stateKnown?: boolean;
+    music?: boolean;
     enabled?: boolean;
     onVoiceCheck: () => void;
+    request?: { id: number; action: 'start' | 'stop' };
+    onStateChange?: (state: { active: boolean; busy: boolean; stopUnconfirmed: boolean }) => void;
+    onClose?: () => void;
 }) {
     const t = useMessages();
+    const musicRef = useRef(music); musicRef.current = music;
+    useEffect(() => { if (music) setAutoGainOpen(false); }, [music]);
     const [autoGainOpen, setAutoGainOpen] = useState(false);
     const [visible, setVisible] = useState(() => !document.hidden);
     const available = enabled && visible;
@@ -51,6 +58,8 @@ export function LoudnessCheck({
     const [error, setError] = useState<SettingsNotice>('');
     const [stale, setStale] = useState(false);
     const [stopUnconfirmed, setStopUnconfirmed] = useState(false);
+    const consumedRequest = useRef<number | null>(null);
+    const heading = useRef<HTMLHeadingElement>(null);
     const id = useRef<number | null>(null);
     const generation = useRef(0);
     const pending = useRef(false);
@@ -96,7 +105,7 @@ export function LoudnessCheck({
                 lastEvent.current = performance.now();
                 setStale(false);
                 setReading(payload);
-                const next = classifyLoudness(payload, targetRef.current, current.current);
+                const next = musicRef.current ? null : classifyLoudness(payload, targetRef.current, current.current);
                 const now = performance.now();
                 if (next === null) {
                     current.current = null;
@@ -244,10 +253,23 @@ export function LoudnessCheck({
             }
         }
     };
+    useEffect(() => {
+        onStateChange?.({ active, busy, stopUnconfirmed });
+    }, [active, busy, stopUnconfirmed, onStateChange]);
+    // 表示や復元ではなく、利用者の新しい要求だけを一度消費する。
+    useEffect(() => {
+        if (!request || consumedRequest.current === request.id) return;
+        consumedRequest.current = request.id;
+        if (request.action === 'start' && (!available || !running || !stateKnown || active || pending.current)) return;
+        if (request.action === 'stop' && (!active || pending.current)) return;
+        heading.current?.scrollIntoView?.({ block: 'start' });
+        heading.current?.focus({ preventScroll: true });
+        void toggle();
+    }, [request, available, running, stateKnown]);
     const message = stopUnconfirmed
         ? t('loudness.stopUnconfirmed')
-        : busy && active
-          ? t('loudness.stopping')
+        : busy
+          ? t(active ? 'loudness.stopping' : 'loudness.starting')
           : !running
             ? stateKnown
               ? t('loudness.audioStopped')
@@ -260,12 +282,14 @@ export function LoudnessCheck({
                   ? t('loudness.invalidData')
                   : reading && !reading.supported
                     ? t('loudness.unsupportedRate')
-                    : verdict
+                    : music && reading?.ready && !reading.silent
+                      ? t((reading.true_peak_dbtp ?? -Infinity) > -1 ? 'music.peakWarning' : 'music.readingsReady')
+                    : !music && verdict
                       ? t(verdictLabel[verdict])
                       : reading?.silent
                         ? t('loudness.quietSignal')
-                        : t('loudness.measuring');
-    const good = verdict === 'good' && active && !stale;
+                        : t(music ? 'music.measuring' : 'loudness.measuring');
+    const good = !music && verdict === 'good' && active && !stale;
     // アンマウントせず停止を確認し、停止失敗時の再試行だけは隠さない。
     if (!enabled && !active && !busy && !stopUnconfirmed) return null;
 
@@ -276,7 +300,7 @@ export function LoudnessCheck({
         >
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-sm font-semibold">{t('loudness.title')}</h2>
+                    <h2 ref={heading} tabIndex={-1} className="text-sm font-semibold">{t('loudness.title')}</h2>
                     <p
                         role="status"
                         className={`text-lg font-bold ${good ? 'text-success' : active ? 'text-warning' : 'text-muted-foreground'}`}
@@ -287,7 +311,7 @@ export function LoudnessCheck({
                 <div className="flex flex-wrap gap-2">
                 <button
                     onClick={() => void toggle()}
-                    disabled={busy || (!active && (!running || !available))}
+                    disabled={busy || (!active && (!running || !available || !stateKnown))}
                     className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
                 >
                     {busy
@@ -298,14 +322,15 @@ export function LoudnessCheck({
                             ? t('loudness.stop')
                             : t('loudness.measure')}
                 </button>
-                <button className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
-                    disabled={!running || !available || busy} onClick={() => setAutoGainOpen(true)}>{t('loudness.openAutoGain')}</button>
+                <button hidden={music} className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
+                    disabled={!running || !available || busy || music} onClick={() => setAutoGainOpen(true)}>{t('loudness.openAutoGain')}</button>
                 </div>
             </div>
+            {onClose && <button type="button" onClick={onClose} className="text-xs underline underline-offset-2">{t('loudness.hide')}</button>}
             <InfoPopover label={t('info.loudness')}>{t('loudness.scope')}</InfoPopover>
             {autoGainOpen && available && running && <AutoGainDialog onClose={() => setAutoGainOpen(false)} />}
             {active && reading && (
-                <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">{t('structure.measurements')}</summary><p className="text-xs text-muted-foreground font-mono">
+                <details open={music} className="text-xs text-muted-foreground"><summary className="cursor-pointer">{t('structure.measurements')}</summary><p className="text-xs text-muted-foreground font-mono">
                     {t('loudness.reading', { lufs: reading.short_term_lufs?.toFixed(1) ?? '—', peak: reading.true_peak_dbtp?.toFixed(1) ?? '—' })}
                 </p></details>
             )}
@@ -318,7 +343,7 @@ export function LoudnessCheck({
                 <summary className="cursor-pointer">{t('loudness.measurementDetails')}</summary>
                 <div className="mt-2 space-y-2">
                     <p>{t('loudness.includesPreview')}</p>
-                    <label className="flex flex-wrap items-center gap-2">
+                    {!music && <label className="flex flex-wrap items-center gap-2">
                         {t('loudness.targetLabel')}<select
                             aria-label={t('loudness.targetLabel')}
                             value={target}
@@ -334,12 +359,12 @@ export function LoudnessCheck({
                                 </option>
                             ))}
                         </select>
-                    </label>
-                    <p>
-                        {t('loudness.targetReference')}</p>
+                    </label>}
+                    {!music && <p>{t('loudness.targetReference')}</p>}
+                    {music && <p>{t('music.measurementScope')}</p>}
                     <p>
                         {t('loudness.measurementLimitations')}</p>
-                    <button className="underline underline-offset-2" onClick={onVoiceCheck}>
+                    <button hidden={music} className="underline underline-offset-2" onClick={onVoiceCheck}>
                         {t('loudness.openVoiceCheck')}</button>
                 </div>
             </details>
