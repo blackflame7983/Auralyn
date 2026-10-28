@@ -29,10 +29,9 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
     const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
     const needsTarget = next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim();
     const action = needsTarget ? () => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); } : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? () => { void model.refresh(); } : onSettings
-        : next === 'purpose' ? () => { if (detailsRef.current) detailsRef.current.open = true; purposeRef.current?.focus(); }
-            : next === 'sound' ? onSound : next === 'listen' ? onListen : receiver;
+        : next === 'sound' ? onSound : next === 'listen' ? onListen : receiver;
     const actionLabel: MessageKey = needsTarget ? 'prep.targetAction' : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? 'prep.refresh' : 'shell.configure'
-        : next === 'purpose' ? 'prep.chooseUse' : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
+        : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
     const acknowledgeLabels: Record<PreparationStage, MessageKey> = { sound: 'prep.ackSound', listen: 'prep.ackListen', receiver: 'prep.ackReceiver' };
     const pending = checking || confirming;
     const usageSelect = (className: string) => <select ref={purposeRef} value={context.usage} onChange={e => model.changeContext({ usage: e.target.value as PreparationUse | '', receiver: '' })} className={className}>
