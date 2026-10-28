@@ -16,7 +16,7 @@ function Example({ onClose, onRecover = async () => {}, onWithoutPlugins = async
     return <RecoveryModal isOpen={open} error="テスト用の停止通知" onRecover={onRecover} onWithoutPlugins={onWithoutPlugins} onKeepStopped={onKeepStopped}
         onClose={() => { onClose(); setOpen(false); }} />;
 }
-const dialog = () => screen.getByRole('dialog', { name: 'オーディオエンジンが停止しました' });
+const dialog = () => screen.getByRole('dialog', { name: '音声エンジンが停止しました' });
 const escape = async () => { await act(async () => { fireEvent.keyDown(document.activeElement!, { key: 'Escape' }); }); };
 
 it('待機中にEscを押しても復旧手段と原因候補を失わない', async () => {

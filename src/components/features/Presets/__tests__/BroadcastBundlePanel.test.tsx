@@ -9,7 +9,7 @@ import { BroadcastBundlePanel } from '../BroadcastBundlePanel';
 const events = vi.hoisted(() => new Map<string, () => void>());
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async (event, cb) => { events.set(event, cb); return () => events.delete(event); }) }));
 vi.mock('../../../../api/bundles', async importOriginal => ({ ...await importOriginal<typeof import('../../../../api/bundles')>(), bundleApi: { checkedList: vi.fn(), list: vi.fn(), sources: vi.fn(), filters: vi.fn(), save: vi.fn(), preview: vi.fn(), history: vi.fn(), recovery: vi.fn(), recoveryPreview: vi.fn(), resolveRecovery: vi.fn() } }));
-const plan: BundlePreview = { id: 'p1', name: '歌枠', revision: 'r1', categories: ['内蔵処理'], running: true, auralyn: [{label: '音声方式', before: 'ASIO', after: 'WASAPI', status: 'changed'}, {label: '固定バッファ要求', before: '未確認', after: '変更しません', status: 'notSelected'}], obs: [{ source: '声', label: 'ミュート', before: false, after: true }] };
+const plan: BundlePreview = { id: 'p1', name: '歌枠', revision: 'r1', categories: ['内蔵ボイスチェーン'], running: true, auralyn: [{label: '音声方式', before: 'ASIO', after: 'WASAPI', status: 'changed'}, {label: '固定バッファ要求', before: '未確認', after: '変更しません', status: 'notSelected'}], obs: [{ source: '声', label: 'ミュート', before: false, after: true }] };
 const result: BundleResult = { id: 'p1', complete: true, undoPending: true, auralyn: 'Auralyn設定確認', obs: ['適用済み'], summary: null };
 beforeEach(() => {
     vi.clearAllMocks(); events.clear();
@@ -188,7 +188,7 @@ it('typed差分とゼロOBS変更のcompleteを表示し、同一未保存名と
     act(() => {store.setLocale('en');});
     expect(screen.getByLabelText('Bundle name')).toBe(name);
     expect(name).toHaveValue('未保存sentinel');
-    expect(screen.getByRole('table')).toHaveTextContent('Output gain30%40%');
+    expect(screen.getByRole('table')).toHaveTextContent('Output volume30%40%');
     expect(bundleApi.preview).toHaveBeenCalledTimes(count);
     expect(bundleApi.save).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', {name:'Apply this change preview'}));

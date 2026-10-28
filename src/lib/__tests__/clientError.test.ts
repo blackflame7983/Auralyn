@@ -31,7 +31,7 @@ const cases = [
     "gain.range",
     "clientErrors.gainRange",
     "出力音量は0〜200%で指定してください。",
-    "Set output gain between 0 and 200%."
+    "Set output volume between 0 and 200%."
   ],
   [
     "gain.audioUnverified",

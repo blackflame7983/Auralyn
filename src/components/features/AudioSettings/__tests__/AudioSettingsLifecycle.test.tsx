@@ -296,10 +296,10 @@ it('歌向け下書きは設定→候補試聴→設定の往復で保持し、�
     await waitFor(() => expect(defaults).toBeEnabled());
     fireEvent.click(defaults);
     fireEvent.change(screen.getByRole('spinbutton', { name: '低音の整理（Hz）' }), { target: { value: '135' } });
-    fireEvent.click(screen.getByRole('button', { name: '内蔵処理の候補を独立試聴' }));
-    await screen.findByText('原音と内蔵処理の候補を比べる');
+    fireEvent.click(screen.getByRole('button', { name: '内蔵ボイスチェーンの候補を独立試聴' }));
+    await screen.findByText('原音と内蔵ボイスチェーンの候補を比べる');
     expect(screen.getByText(/下書き：低音 135/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '音作りの下書きへ戻る' }));
+    fireEvent.click(screen.getByRole('button', { name: '音づくりの下書きへ戻る' }));
     expect(await screen.findByRole('spinbutton', { name: '低音の整理（Hz）' })).toHaveValue(135);
     expect(builtin.mock.calls.every(([request]) => request.action === 'snapshot')).toBe(true);
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ action: 'close' }));

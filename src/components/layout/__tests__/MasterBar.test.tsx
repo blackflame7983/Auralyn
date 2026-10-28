@@ -168,7 +168,7 @@ describe('起動時の保存ゲイン復元', () => {
         expect(screen.getByText('音声停止中')).toBeInTheDocument();
         expect(screen.queryByText('VST有効')).not.toBeInTheDocument();
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-        const details = screen.getByRole('button', { name: '音声の詳細' });
+        const details = screen.getByRole('button', { name: '音声処理の詳細' });
         details.focus();
         fireEvent.click(details);
         expect(screen.getByRole('dialog', { name: '音声処理の詳細' })).toBeInTheDocument();
@@ -214,7 +214,7 @@ describe('起動時の保存ゲイン復元', () => {
         const view = render(<MasterBar isRunning />);
         await act(async () => { finishListening(); });
         view.rerender(<MasterBar isRunning={false} />);
-        fireEvent.click(screen.getByRole('button', { name: '音声の詳細' }));
+        fireEvent.click(screen.getByRole('button', { name: '音声処理の詳細' }));
         await act(async () => old({ ...latest, latencyMetadata: { ...metadata, fixedBufferRequestFrames: 256 } }));
         expect(screen.queryByText('256 sample / 5.33 ms')).not.toBeInTheDocument();
         view.rerender(<MasterBar isRunning />);

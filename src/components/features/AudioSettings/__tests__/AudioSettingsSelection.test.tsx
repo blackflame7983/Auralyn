@@ -131,7 +131,7 @@ it('学習の中止失敗を未処理のPromise拒否にせず、状態再取得
         return noiseMeasurementFixture('capturing', '2');
     });
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    const cancel = await screen.findByRole('button', { name: '学習を中止' });
+    const cancel = await screen.findByRole('button', { name: '測定を中止' });
     await waitFor(() => expect(cancel).toBeEnabled());
     fireEvent.click(cancel);
     expect(await screen.findByText('測定状態を取得できません。再取得してください。')).toBeInTheDocument();

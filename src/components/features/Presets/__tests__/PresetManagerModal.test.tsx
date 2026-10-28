@@ -51,7 +51,7 @@ it('locale切替で未保存名・カテゴリ・確認dialogを保持し同じ�
     await screen.findByRole('button', { name: `${meta.name}を保存名に選ぶ` });
     const name = screen.getByRole('textbox', { name: '保存するプロファイル名' });
     fireEvent.change(name, { target: { value: meta.name } });
-    const noise = screen.getByRole('checkbox', { name: 'ノイズ抑制' });
+    const noise = screen.getByRole('checkbox', { name: 'ノイズ低減' });
     fireEvent.click(noise);
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     const confirm = screen.getByRole('dialog', { name: `プロファイル「${meta.name}」を上書きしますか？` });
