@@ -4,6 +4,7 @@ import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
 import { HomePanels } from '../features/Home/HomePanels';
 import { LiveStrip } from '../features/Home/LiveStrip';
+import { SoundChain } from '../features/Home/SoundChain';
 import { usePreparation } from '@/hooks/usePreparation';
 import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Header } from './Header';
@@ -43,6 +44,8 @@ interface AppShellProps {
     currentOutput?: string;
     /** 本番帯に置く歌・雑談の切替。登録前は描画されない。 */
     liveControls?: ReactNode;
+    /** チェーン列の VST 段の中身。 */
+    vstChain?: ReactNode;
 }
 
 import { MasterBar } from './MasterBar';
@@ -72,7 +75,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     engineProcessReady,
     currentInput,
     currentOutput,
-    liveControls
+    liveControls,
+    vstChain
 }) => {
     const t = useMessages();
     const [purpose, setPurpose] = useDisplayPurpose();
@@ -112,6 +116,14 @@ export const AppShell: React.FC<AppShellProps> = ({
         target?.scrollIntoView?.({ block: 'start' });
         target?.focus({ preventScroll: true });
     };
+    // 未設定の間は本番帯を出さず、準備の主ボタンを先頭にする。
+    const configured = Boolean(currentHost) && preparation.observation.availability !== 'unconfigured';
+    // 音楽鑑賞の聴き比べは、準備の手順とチェーン列のどちらからも開く。
+    const [listenOpen, setListenOpen] = useState(false);
+    const openListen = purpose === 'music' ? () => setListenOpen(true) : onOpenVoiceCheck;
+    const soundChain = <SoundChain model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
+        vst={vstChain} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
+        onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} />;
     const [isABBypassed, setIsABBypassed] = useState(false);
     const handleABToggle = useCallback(async () => {
         try {
@@ -221,22 +233,24 @@ export const AppShell: React.FC<AppShellProps> = ({
                         /></div>
                         {/* 未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
-                        {Boolean(currentHost) && preparation.observation.availability !== 'unconfigured'
+                        {configured
                             ? <LiveStrip model={preparation} running={isEngineRunning} liveControls={liveControls} />
                             : liveControls && <div className="mb-3 rounded-xl border border-border bg-card/70 px-3 py-2 empty:hidden min-[1280px]:col-span-2">{liveControls}</div>}
+                        {/* チェーン列は本番帯の直下に置き、準備や経路の情報より下へ押し出さない。未設定の間だけ準備の後ろへ回す。 */}
+                        {configured && soundChain}
                         <div className="min-w-0"><HomePanels
                             model={preparation}
                             audioReady={audioReady}
                             statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
-                            isEngineRunning={isEngineRunning}
                             inputName={currentInput} outputName={currentOutput}
                             onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}
-                            onOpenSoundSettings={onOpenSoundSettings} onOpenVoiceCheck={onOpenVoiceCheck}
-                            onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot} onOpenVst={openRack}
+                            onOpenSoundSettings={onOpenSoundSettings} onListen={openListen}
+                            onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot}
                         /></div>
                         <div className="min-w-0">
                         <div id="home-rack">{children}</div>
                         </div>
+                        {!configured && soundChain}
                     </div>
                 </main>
 

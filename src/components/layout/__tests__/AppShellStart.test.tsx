@@ -11,7 +11,7 @@ vi.mock('../Header', () => ({ Header: () => null }));
 vi.mock('../MasterBar', () => ({ MasterBar: () => null }));
 const measurementProps = vi.hoisted(() => ({current: null as any}));
 vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: (props: unknown) => { measurementProps.current = props; return null; } }));
-vi.mock('../../features/Home/VoiceQuickControls', () => ({ VoiceQuickControls: () => <p>quick</p> }));
+vi.mock('../../features/Home/VoiceQuickControls', () => ({ useVoiceQuick: () => ({ stats: {} }), NoiseSwitch: () => null, NoiseQuick: () => <p>quick</p>, BuiltinSwitch: () => null, BuiltinQuick: () => null }));
 beforeEach(() => { vi.mocked(listen).mockClear(); localStorage.clear(); });
 afterEach(async () => { await act(async () => {}); cleanup(); vi.restoreAllMocks(); });
 
@@ -205,4 +205,16 @@ it('歌・雑談が未登録で何も描画しないときは、本番帯がな�
     const Empty = () => null;
     render(<AppShell {...commonProps} currentHost="" isEngineRunning={false} isBeginnerMode liveControls={<Empty />}><p>rack</p></AppShell>);
     expect(document.querySelector('.empty\\:hidden')).toBeEmptyDOMElement();
+});
+
+it('チェーン列は本番帯の直下で準備状況より前に置き、未設定の間だけ準備の後ろへ回す', () => {
+    const follows = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const view = render(<AppShell {...commonProps} isBeginnerMode vstChain={<span>vst-items</span>}><p>rack</p></AppShell>);
+    const chain = screen.getByRole('region', { name: '声を整える' });
+    expect(chain).toHaveTextContent('vst-items');
+    expect(follows(screen.getByRole('region', { name: '本番' }), chain)).toBe(true);
+    expect(follows(chain, screen.getByRole('region', { name: '準備状況' }))).toBe(true);
+    expect(follows(chain, screen.getByText('rack'))).toBe(true);
+    view.rerender(<AppShell {...commonProps} currentHost="" isEngineRunning={false} isBeginnerMode vstChain={<span>vst-items</span>}><p>rack</p></AppShell>);
+    expect(follows(screen.getByRole('region', { name: '準備状況' }), screen.getByRole('region', { name: '声を整える' }))).toBe(true);
 });
