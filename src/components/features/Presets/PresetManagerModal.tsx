@@ -397,9 +397,9 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
 
     return (
         <Modal title={t('presets.copy.049')} onClose={onClose}>
-        <div className="modal-overlay-base animate-in fade-in duration-200">
+        <div className="modal-overlay-base">
             <div
-                className="modal-surface-base w-full max-w-lg bg-background flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"
+                className="modal-surface-base w-full max-w-lg bg-background flex flex-col max-h-[85vh]"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="modal-header-base shrink-0">

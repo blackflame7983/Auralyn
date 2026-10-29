@@ -101,7 +101,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                 {/* Content Area */}
                 <div className="modal-body-base pr-4">
                     {step === 0 && (
-                        <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
+                        <div className="space-y-6">
                             <SingingRouteChoice value={route} onChange={chooseRoute} />
                             {route === 'processed' ? <>
                             <h3 className="text-xl font-bold text-foreground">{t('guide.copy.003')}</h3>
@@ -146,7 +146,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                     )}
 
                     {step === 1 && (
-                        <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
+                        <div className="space-y-6">
                             <h3 className="text-xl font-bold text-foreground">
                                 {route === 'direct' ? t('singingRoute.choose') : useHardwareMixer ? t('guide.copy.015') : t('guide.copy.016')}
                             </h3>
@@ -191,7 +191,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                     {step === 2 && <SingingRouteGuide hardware={useHardwareMixer} route={route} onRouteChange={chooseRoute} onOpenTiming={() => { setTimingRequested(true); setStep(3); }} />}
                     {step === 2 && route === 'direct' && <button type="button" onClick={onOpenAudioSettings} className="mt-3 rounded border border-border px-3 py-2 text-sm">{t('guide.copy.035')}</button>}
                     {step === 2 && route === 'processed' && (
-                        <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
+                        <div className="space-y-6">
                             <h3 className="text-xl font-bold text-foreground">{t('guide.copy.030')}</h3>
                             <p className="text-muted-foreground">
                                 {t('guide.copy.031')}</p>
@@ -254,7 +254,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                     )}
 
                     {step === 3 && (
-                        <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
+                        <div className="space-y-6">
                             <h3 className="text-xl font-bold text-foreground">{t('guide.copy.059')}</h3>
                             <p className="text-muted-foreground leading-relaxed">
                                 {t('guide.copy.060')}</p>

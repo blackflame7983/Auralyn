@@ -478,7 +478,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
     return (
         <Modal title={t('guide.copy.404')} onClose={onClose}>
         <div className="modal-overlay-base">
-            <div className="modal-surface-base w-full max-w-lg max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="modal-surface-base w-full max-w-lg max-h-[90vh] flex flex-col">
                 <div className="modal-header-base shrink-0">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-warning/10 rounded-lg">

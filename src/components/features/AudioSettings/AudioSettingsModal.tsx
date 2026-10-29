@@ -664,7 +664,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
                 {/* Smart Input Channel Selector (ASIO Only) */}
                 {isAsio && (
-                  <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div>
                     <InputChannelSelector
                       initialChannels={currentInputChannels}
                       maxChannels={activeDevice?.channels}
@@ -718,7 +718,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
                 {/* Simple Mode UI */}
                 {!isAdvancedMode ? (
-                  <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="space-y-4">
                     {/* Latency Profile */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-muted-foreground">{t('settings.AudioSettingsModal.047')}</label>
@@ -788,7 +788,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </div>
                 ) : (
                   /* Advanced Mode UI (Buffer Size & Sample Rate) */
-                  <div className="grid grid-cols-2 gap-4 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="grid grid-cols-2 gap-4 pt-2">
                     {/* Buffer Size */}
                     {canChangeBufferSize ? (
                       <div className="space-y-2">
@@ -1225,7 +1225,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           <TabsContent value="shortcuts" className="space-y-4">
             <ShortcutsPanel onCaptureChange={setCapturingShortcut} />
           </TabsContent>
-          <TabsContent value="system" className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          <TabsContent value="system" className="space-y-4">
             {onOpenWizard && <button type="button" disabled={loading} onClick={() => { onClose(); onOpenWizard(); }} className="rounded-md border border-border px-3 py-2 text-sm">{t('settings.AudioSettingsModal.198')}</button>}
 
             {/* Startup Settings */}
