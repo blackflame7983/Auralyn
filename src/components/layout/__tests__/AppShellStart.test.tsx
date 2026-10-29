@@ -200,3 +200,9 @@ it('本番帯を出さない未設定の間も、歌・雑談の切替（本番�
     expect(screen.queryByRole('region', { name: '本番' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '歌' })).toBeInTheDocument();
 });
+
+it('歌・雑談が未登録で何も描画しないときは、本番帯がない間も空の枠を出さない', () => {
+    const Empty = () => null;
+    render(<AppShell {...commonProps} currentHost="" isEngineRunning={false} isBeginnerMode liveControls={<Empty />}><p>rack</p></AppShell>);
+    expect(document.querySelector('.empty\\:hidden')).toBeEmptyDOMElement();
+});
