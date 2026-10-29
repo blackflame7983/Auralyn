@@ -141,4 +141,27 @@ it('問題中に閉じても、別の問題へ変わったら開き直す', () =
     model.observation = { ...model.observation, availability: 'failed' };
     view.rerender(<PreparationPanel model={model} {...callbacks()} />);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
+});it('ミュート中に閉じた手順は、反映待ちを挟んで同じミュートに戻っても閉じたまま', () => {
+    const model = fixture(); const ready = model.observation;
+    model.observation = { ...ready, availability: 'muted' };
+    const view = render(<PreparationPanel model={model} {...callbacks()} />);
+    const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    for (const availability of ['pending', 'muted'] as const) {
+        model.observation = { ...ready, availability };
+        view.rerender(<PreparationPanel model={model} {...callbacks()} />);
+        expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    }
+});
+it('ミュートで開いている手順は、反映待ちの間も閉じない', () => {
+    const model = fixture(); const ready = model.observation;
+    model.observation = { ...ready, availability: 'muted' };
+    const view = render(<PreparationPanel model={model} {...callbacks()} />);
+    const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
+    for (const availability of ['pending', 'muted'] as const) {
+        model.observation = { ...ready, availability };
+        view.rerender(<PreparationPanel model={model} {...callbacks()} />);
+        expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    }
 });

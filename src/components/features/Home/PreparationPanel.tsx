@@ -15,8 +15,10 @@ interface Props {
 }
 // 問題の種類を返す。正常時は null にして手順を畳み、毎日の起動で読ませない。
 // ミュート・音量ゼロは配信事故なので、直す入口（主ボタン）が見えるよう開く。
+// 反映待ち（pending）は取り直しの途中なので undefined を返し、直前の判定を使い続ける。
 const attentionKey = (model: PreparationModel) => {
     const { availability } = model.observation;
+    if (availability === 'pending') return undefined;
     if (!model.context.usage) return `purpose:${availability}`;
     return ['unconfigured', 'stopped', 'failed', 'unknown', 'muted'].includes(availability) ? availability : null;
 };
@@ -36,7 +38,10 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
     const summaryRef = useRef<HTMLElement>(null);
     const toggleRef = useRef<HTMLButtonElement>(null);
     const stepsId = useId();
-    const problem = attentionKey(model);
+    const settledProblem = useRef<string | null>(null);
+    const latest = attentionKey(model);
+    if (latest !== undefined) settledProblem.current = latest;
+    const problem = settledProblem.current;
     // userOpen は利用者の選択。null の間だけ問題の有無で自動に開閉する。
     // 手順内を操作したら開いたままにし、一時的な状態不明を経てもフォーカスを失わせない。
     const [userOpen, setUserOpen] = useState<boolean | null>(null);
