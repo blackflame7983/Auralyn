@@ -3,21 +3,46 @@ const fs = require('fs');
 const path = require('path');
 
 const OUTPUT_PATH = path.join(__dirname, 'src/assets/licenses-npm.json');
+// devDependencies だが、生成物（Tailwind の preflight と生成CSS）が配布物に入るため一覧に含める。
+const BUNDLED_DEV_PACKAGES = ['tailwindcss'];
 
 console.log('Generating NPM license data...');
 
-checker.init({
+const options = {
     start: __dirname,
     production: true, // DevDependenciesを除外する場合はtrue
     json: true,
     customFormat: {
         licenseText: '', // これを含めることでlicenseTextフィールドが追加されるが、license-checkerのバージョンによっては動作が怪しいので後処理で読む
     }
-}, (err, packages) => {
+};
+
+const packageName = id => id.slice(0, id.lastIndexOf('@') > 0 ? id.lastIndexOf('@') : id.length);
+
+checker.init(options, (err, production) => {
     if (err) {
         console.error('Error generating licenses:', err);
         process.exit(1);
     }
+    checker.init({ ...options, production: false }, (allErr, all) => {
+        if (allErr) {
+            console.error('Error generating licenses:', allErr);
+            process.exit(1);
+        }
+        const packages = { ...production };
+        for (const id of Object.keys(all)) {
+            if (BUNDLED_DEV_PACKAGES.includes(packageName(id))) packages[id] = all[id];
+        }
+        const missing = BUNDLED_DEV_PACKAGES.filter(name => !Object.keys(packages).some(id => packageName(id) === name));
+        if (missing.length) {
+            console.error(`Bundled packages not installed: ${missing.join(', ')}`);
+            process.exit(1);
+        }
+        writeLicenses(packages);
+    });
+});
+
+function writeLicenses(packages) {
 
     // license-checkerのJSON出力には通常licenseFileパスが含まれる。
     // これを読み込んでlicenseTextとして埋め込む。
@@ -26,7 +51,7 @@ checker.init({
     const licenses = {};
     const libraries = [];
 
-    Object.keys(packages).forEach(pkgName => {
+    Object.keys(packages).sort().forEach(pkgName => {
         const pkg = packages[pkgName];
 
         // Auralyn本体は専用タブでGPL本文を表示するため、第三者一覧には含めない。
@@ -94,4 +119,4 @@ checker.init({
 
     fs.writeFileSync(OUTPUT_PATH, JSON.stringify(outputData, null, 2));
     console.log(`License data with text written to ${OUTPUT_PATH}`);
-});
+}

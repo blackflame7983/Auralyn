@@ -395,3 +395,18 @@ push・PR作成・タグ・公開は行っていない。
 releaseバイナリのコンパイル成功は、署名済みインストーラーや旧版からの更新適用の成功を意味しない。配布先の既存sidecarは上書きせず、今回の準備スクリプトのコピー動作は隔離fixtureで確認した。
 長時間音声・全デバイス切替・全VST/DPI・実OBS・設定移行・署名済み配布と更新適用は未検証であり、公開前の確認事項として残す。
 音声系の大幅移行、OTT修正、push・PR作成・タグ・公開は行っていない。
+
+## 未使用の tailwindcss-animate 削除（2026-10-29）
+
+UI監査で、Tailwind v4 が `tailwind.config.js` を読んでおらず、`tailwindcss-animate` のクラスがビルドCSSに生成されていないことを確認した。参照していた設定とクラスは #131 で削除済みのため、`codex/remove-tailwindcss-animate` で依存だけを外す。
+
+- `npm uninstall tailwindcss-animate`。lockfile から除かれたのは `tailwindcss-animate` 1件だけで、ほかの版は変わらない。
+- 配布用npmライセンス一覧では、`tailwindcss` がこのプラグインの peer 依存として本番扱いになっていた。削除後は開発依存になり一覧から外れるが、生成CSS（preflight を含む）は配布物に入る。`generate-licenses.cjs` に `BUNDLED_DEV_PACKAGES` を設け、`tailwindcss` を明示的に残す。一覧の差分は `tailwindcss-animate` の削除だけ（73件 → 72件）。
+
+検証結果:
+
+- `npm ls --all`、`npx tsc --noEmit`、`npx vite build`、`npm run release:check`、`git diff --check`: 成功。
+- `npx vitest --run`: 1192件成功。`npm run test:release`: 53件成功（PowerShell から実行。Git Bash では GNU tar が `C:` をホスト名と解釈し、tar を使う2件が環境要因で失敗する）。
+- `node generate-licenses.cjs`: 成功。
+
+アプリ番号は1.1.0を維持。配布物を再生成して再配布する際は `VERSIONING.md` に従って別途判定する。
