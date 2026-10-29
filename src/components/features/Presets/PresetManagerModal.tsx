@@ -543,7 +543,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                             filteredProfiles.map(profile => (
                                 <div
                                     key={profile.name}
-                                    className={`group flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-accent transition-all ${
+                                    className={`group flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-accent transition-colors ${
                                         profile.name === saveName ? 'border-primary ring-1 ring-primary/50 bg-primary/5' : 'border-border bg-card'
                                     }`}
                                 >

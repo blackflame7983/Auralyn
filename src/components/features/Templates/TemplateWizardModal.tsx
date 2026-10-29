@@ -165,7 +165,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                         setSelectedTemplate(template);
                                         setStep(2);
                                     }}
-                                    className="flex flex-col text-left p-6 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all group h-full"
+                                    className="flex flex-col text-left p-6 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-colors group h-full"
                                 >
                                     <div className="text-xl font-bold mb-2 group-hover:text-primary transition-colors">{templateText(template, 'name')}</div>
                                     <div className="text-sm text-muted-foreground mb-4 flex-1">{templateText(template, 'description')}</div>
@@ -259,7 +259,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                         <button
                             onClick={handleApply}
                             disabled={loading || (selectedTemplate?.slots.some((s, i) => s.required && !mapping[i]) ?? false)}
-                            className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-6 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {loading ? t('presets.copy.105') : t('presets.copy.106')}
                             {!loading && <MdArrowForward />}

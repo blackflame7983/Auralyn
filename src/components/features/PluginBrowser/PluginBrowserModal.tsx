@@ -252,7 +252,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               aria-pressed={activeTab === tab.id}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${activeTab === tab.id
+              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeTab === tab.id
                 ? 'bg-background text-primary shadow-sm font-bold'
                 : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
                 }`}
@@ -280,14 +280,14 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               aria-label={t('pluginBrowser.search')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-muted/50 border border-input rounded-lg py-2 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+              className="w-full bg-muted/50 border border-input rounded-lg py-2 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition"
             />
           </div>
           <button
             onClick={onScan}
             disabled={isLoading}
             aria-label={t('pluginBrowser.rescanAccessible')}
-            className="px-4 py-2 bg-muted/50 border border-input rounded-lg text-muted-foreground hover:text-primary hover:border-primary/50 transition-all disabled:opacity-50"
+            className="px-4 py-2 bg-muted/50 border border-input rounded-lg text-muted-foreground hover:text-primary hover:border-primary/50 transition disabled:opacity-50"
             title={t('pluginBrowser.rescan')}
           >
             <MdRefresh className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -300,7 +300,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
             <button
               onClick={() => setSelectedCategory(null)}
               aria-pressed={!selectedCategory}
-              className={`px-2.5 py-1 text-xs rounded-full border transition-all ${
+              className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
                 !selectedCategory
                   ? 'bg-primary/10 text-primary border-primary/30 font-bold'
                   : 'bg-muted/50 text-muted-foreground border-border hover:border-primary/30 hover:text-foreground'
@@ -313,7 +313,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                 key={cat.name}
                 onClick={() => setSelectedCategory(selectedCategory === cat.name ? null : cat.name)}
                 aria-pressed={selectedCategory === cat.name}
-                className={`px-2.5 py-1 text-xs rounded-full border transition-all ${
+                className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
                   selectedCategory === cat.name
                     ? 'bg-primary/10 text-primary border-primary/30 font-bold'
                     : 'bg-muted/50 text-muted-foreground border-border hover:border-primary/30 hover:text-foreground'
@@ -366,7 +366,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                     key={`${plugin.id}-${idx}`}
                     onClick={() => handlePluginSelect(plugin)}
                     onKeyDown={(e) => handlePluginKeyDown(e, plugin)}
-                    className="group flex items-center justify-between p-3 rounded-lg border border-transparent hover:bg-muted/50 hover:border-primary/30 transition-all text-left cursor-pointer"
+                    className="group flex items-center justify-between p-3 rounded-lg border border-transparent hover:bg-muted/50 hover:border-primary/30 transition-colors text-left cursor-pointer"
                     role="button"
                     tabIndex={0}
                     aria-label={t('pluginBrowser.addNamed', { arg0: displayPluginName(plugin) })}

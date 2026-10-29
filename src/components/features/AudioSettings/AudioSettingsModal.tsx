@@ -632,7 +632,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     aria-label={t('settings.AudioSettingsModal.035')}
                     value={selectedHost}
                     onChange={(e) => setSelectedHost(e.target.value)}
-                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select"
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select"
                   >
                     {!selectedHost && <option value="">{t('settings.AudioSettingsModal.036')}</option>}
                     {availableHosts.map((host) => (
@@ -654,7 +654,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       if (isAsio) setSelectedOutput(e.target.value);
                     }}
                     disabled={filteredInputs.length === 0}
-                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select disabled:opacity-50"
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select disabled:opacity-50"
                   >
                     {filteredInputs.length === 0 && <option value="">{t('settings.AudioSettingsModal.040')}</option>}
                     {filteredInputs.map((device, i) => (
@@ -685,7 +685,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       value={selectedOutput}
                       onChange={(e) => setSelectedOutput(e.target.value)}
                       disabled={filteredOutputs.length === 0}
-                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select disabled:opacity-50"
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select disabled:opacity-50"
                     >
                       {filteredOutputs.length === 0 && <option value="">{t('settings.AudioSettingsModal.043')}</option>}
                       {filteredOutputs.map((device, i) => (
@@ -706,12 +706,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-lg">
                     <button
                       onClick={() => setIsAdvancedMode(false)}
-                      className={`text-xs px-3 py-1 rounded transition-all ${!isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
+                      className={`text-xs px-3 py-1 rounded transition-colors ${!isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
                     >
                       {t('settings.AudioSettingsModal.045')}</button>
                     <button
                       onClick={() => setIsAdvancedMode(true)}
-                      className={`text-xs px-3 py-1 rounded transition-all ${isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
+                      className={`text-xs px-3 py-1 rounded transition-colors ${isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
                     >
                       {t('settings.AudioSettingsModal.046')}</button>
                   </div>
@@ -738,7 +738,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                               onClick={() => setSelectedBufferSize(profile.value)}
                               disabled={disabled}
                               className={`
-                                        flex flex-col items-center justify-center p-2 rounded-lg border transition-all
+                                        flex flex-col items-center justify-center p-2 rounded-lg border transition-colors
                                         ${selectedBufferSize === profile.value
                                   ? 'bg-primary/10 border-primary text-primary'
                                   : 'bg-background border-input text-muted-foreground hover:border-primary/50'
@@ -747,7 +747,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                                     `}
                             >
                               <span className="text-sm font-bold">{profile.label}</span>
-                              <span className="text-xs opacity-80">{profile.desc}</span>
+                              <span className="text-xs">{profile.desc}</span>
                             </button>
                           )
                         })}
@@ -773,7 +773,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                             key={profile.value}
                             onClick={() => setSelectedSampleRate(profile.value)}
                             className={`
-                                        flex flex-col items-center justify-center p-2 rounded-lg border transition-all
+                                        flex flex-col items-center justify-center p-2 rounded-lg border transition-colors
                                         ${selectedSampleRate === profile.value
                                 ? 'bg-primary/10 border-primary text-primary'
                                 : 'bg-background border-input text-muted-foreground hover:border-primary/50'
@@ -781,7 +781,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                                     `}
                           >
                             <span className="text-sm font-bold">{profile.label}</span>
-                            <span className="text-xs opacity-80">{profile.desc}</span>
+                            <span className="text-xs">{profile.desc}</span>
                           </button>
                         ))}
                       </div>
@@ -798,7 +798,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     aria-label={t('settings.AudioSettingsModal.066')}
                           value={selectedBufferSize}
                           onChange={(e) => setSelectedBufferSize(Number(e.target.value))}
-                          className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select"
+                          className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select"
                         >
                           {supportedBufferSizes.map(size => (
                             <option key={size} value={size}>{size} {t('settings.AudioSettingsModal.067')}</option>
@@ -820,7 +820,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     aria-label={t('master.rate')}
                         value={selectedSampleRate}
                         onChange={(e) => setSelectedSampleRate(Number(e.target.value))}
-                        className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all custom-select"
+                        className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select"
                       >
                         {sampleRates.map(rate => (
                           <option key={rate} value={rate}>{(rate / 1000).toFixed(1)} kHz</option>
@@ -1173,20 +1173,20 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <h3 className="text-sm font-medium mb-3 flex items-center gap-2 text-foreground">
                   <MdPalette className="w-4 h-4 text-primary" /> {t('settings.AudioSettingsModal.130')}</h3>
                 <RadioGroup value={theme} onValueChange={(v) => setTheme(v as any)} className="space-y-3">
-                  <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-all cursor-pointer" onClick={() => setTheme('light')}>
+                  <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('light')}>
                     <RadioGroupItem value="light" id="theme-light" />
                     <Label htmlFor="theme-light" className="cursor-pointer flex-1">
                       <span className="font-bold block">{t('header.light')}</span>
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-all cursor-pointer" onClick={() => setTheme('dark')}>
+                  <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('dark')}>
                     <RadioGroupItem value="dark" id="theme-dark" />
                     <Label htmlFor="theme-dark" className="cursor-pointer flex-1">
                       <span className="font-bold block">{t('header.dark')}</span>
                       <span className="text-xs text-muted-foreground">{t('settings.AudioSettingsModal.132')}</span>
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-all cursor-pointer" onClick={() => setTheme('gaming')}>
+                  <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('gaming')}>
                     <RadioGroupItem value="gaming" id="theme-gaming" className="text-brand border-brand" />
                     <Label htmlFor="theme-gaming" className="cursor-pointer flex-1">
                       <span className="font-bold block">{t('header.gaming')}</span>
@@ -1270,7 +1270,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <button
                   onClick={handleRestart}
                   disabled={loading || (reviewRequired && !migrationConfirmed)}
-                  className="px-3 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive-text border border-input hover:border-destructive/30 rounded-md transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive-text border border-input hover:border-destructive/30 rounded-md transition text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('settings.AudioSettingsModal.196')}</button>
             </section>
@@ -1359,7 +1359,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <button
                     onClick={saveEngineTuningConfig}
                     disabled={systemSaving}
-                    className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-all"
+                    className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition"
                   >
                     {systemSaving ? t('settings.AudioSettingsModal.167') : t('settings.AudioSettingsModal.168')}
                   </button>
@@ -1376,7 +1376,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <button
                     onClick={refreshEngineRuntimeStats}
                     disabled={statsLoading}
-                    className="px-3 py-1.5 text-xs border border-input rounded-md text-muted-foreground hover:text-foreground hover:border-primary/40 disabled:opacity-50 transition-all flex items-center gap-1"
+                    className="px-3 py-1.5 text-xs border border-input rounded-md text-muted-foreground hover:text-foreground hover:border-primary/40 disabled:opacity-50 transition flex items-center gap-1"
                   >
                     <MdRefresh className="w-3 h-3" />
                     {statsLoading ? t('settings.AudioSettingsModal.169') : t('settings.AudioSettingsModal.170')}
@@ -1456,7 +1456,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         },
                       });
                     }}
-                    className="px-3 py-1.5 text-xs text-destructive-text bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 rounded-md transition-all whitespace-nowrap"
+                    className="px-3 py-1.5 text-xs text-destructive-text bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 rounded-md transition-colors whitespace-nowrap"
                   >
                     {t('settings.AudioSettingsModal.187')}</button>
                 </div>
@@ -1502,7 +1502,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         },
                       });
                     }}
-                    className="px-3 py-1.5 text-xs text-destructive-text bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 rounded-md transition-all whitespace-nowrap"
+                    className="px-3 py-1.5 text-xs text-destructive-text bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 rounded-md transition-colors whitespace-nowrap"
                   >
                     {t('settings.AudioSettingsModal.195')}</button>
                 </div>

@@ -71,7 +71,7 @@ export function BandDeltaChart({ bands }: { bands: QualityReport['bandDeltaDb'] 
                             <div className="w-full h-16 flex items-end justify-center">
                                 <div
                                     className={cn(
-                                        'w-full max-w-[28px] rounded-sm transition-all',
+                                        'w-full max-w-[28px] rounded-sm',
                                         isNeg ? 'bg-warning/70' : 'bg-info/70'
                                     )}
                                     style={{ height: `${Math.max(4, h)}%` }}

@@ -147,8 +147,8 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     <div className="space-y-2">
                         <div className="h-2 rounded-full bg-muted overflow-hidden">
                             <div
-                                className="h-full bg-waveform-processed transition-all duration-100"
-                                style={{ width: `${progressPct}%` }}
+                                className="h-full origin-left bg-waveform-processed transition-transform duration-100 ease-linear"
+                                style={{ transform: `scaleX(${progressPct / 100})` }}
                             />
                         </div>
                         <div className="flex justify-between text-xs font-mono text-muted-foreground">
