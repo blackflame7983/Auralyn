@@ -892,14 +892,16 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       </select>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      className="flex-1 bg-background border border-input rounded px-3 py-1.5 text-sm text-foreground outline-none focus:border-primary placeholder:text-muted-foreground"
-                      placeholder={t('settings.AudioSettingsModal.089')}
-                      value={presetName}
-                      onChange={(e) => setPresetName(e.target.value)}
-                    />
+                  <div className="flex items-end gap-2">
+                    <label className="flex flex-1 flex-col gap-1 text-xs text-muted-foreground">
+                      {t('settings.AudioSettingsModal.089')}
+                      <input
+                        type="text"
+                        className="bg-background border border-input rounded px-3 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+                        value={presetName}
+                        onChange={(e) => setPresetName(e.target.value)}
+                      />
+                    </label>
                     <button
                       onClick={handleSavePreset}
                       disabled={!presetName}

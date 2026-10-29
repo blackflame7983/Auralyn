@@ -84,7 +84,7 @@
   --accent: 210 40% 96.1%;
   --accent-foreground: 222.2 47.4% 11.2%;
 
-  --destructive: 0 84.2% 60.2%;
+  --destructive: 0 84.2% 46%;
   --destructive-foreground: 210 40% 98%;
 
   /* 状態色とブランド色は用途を分け、全画面で共有する。 */
@@ -185,7 +185,7 @@
   /* Slight cyan tint for accents */
   --accent-foreground: 0 0% 98%;
 
-  --destructive: 0 80% 50%;
+  --destructive: 0 80% 47%;
   --destructive-foreground: 0 0% 98%;
 
   --brand: 180 100% 50%;
