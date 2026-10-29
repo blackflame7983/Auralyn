@@ -602,8 +602,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <MicrophonePermissionGuide expanded={!!error && /アクセス.*拒否|0x80070005|access.*denied/i.test(renderNotice(t, error))} />
 
             {loading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <div role="status" className="flex flex-col items-center gap-2 py-8 text-sm text-muted-foreground">
+                <div aria-hidden="true" className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                {t('common.loading')}
               </div>
             ) : error ? (
               <div className="space-y-4">
