@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* dark: はOSの配色ではなく、useTheme が html に付けるテーマのクラスに従う（ゲーミングも .dark を併用する）。 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* フォントは同梱しない。Windows 11 の UI フォントを明示し、英数字と和文の見え方を揃える。 */
   --font-sans: "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Meiryo UI", system-ui, sans-serif;
