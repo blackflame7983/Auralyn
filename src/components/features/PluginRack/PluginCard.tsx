@@ -180,7 +180,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
     return (
         <TooltipProvider>
             <Card className={cn(
-                "group relative w-full h-20 transition-colors duration-200 select-none overflow-hidden",
+                "group relative w-full h-20 transition duration-(--motion-base) select-none overflow-hidden",
                 plugin.enabled
                     ? "bg-card shadow-sm border-border"
                     : "bg-muted/50 opacity-90 border-transparent shadow-none"
