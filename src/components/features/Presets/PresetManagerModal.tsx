@@ -397,9 +397,9 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
 
     return (
         <Modal title={t('presets.copy.049')} onClose={onClose}>
-        <div className="modal-overlay-base animate-in fade-in duration-200">
+        <div className="modal-overlay-base">
             <div
-                className="modal-surface-base w-full max-w-lg bg-background flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"
+                className="modal-surface-base w-full max-w-lg bg-background flex flex-col max-h-[85vh]"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="modal-header-base shrink-0">
@@ -528,8 +528,9 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                             <button type="button" disabled={isLoading} onClick={() => void loadProfiles()} className="mt-2 underline">{t('presets.copy.068')}</button>
                         </div>}
                         {isLoading ? (
-                            <div className="flex justify-center py-8">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                            <div role="status" className="flex flex-col items-center gap-2 py-8 text-sm text-muted-foreground">
+                                <div aria-hidden="true" className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                                {t('common.loading')}
                             </div>
                         ) : filteredProfiles.length === 0 && !loadError ? (
                             <div className="text-center py-12 text-muted-foreground">

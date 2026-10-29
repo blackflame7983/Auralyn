@@ -134,7 +134,7 @@ function AppContent() {
   return (
     <>
       {isInitializing && (
-        <div className="fixed inset-0 z-[9999] bg-background flex flex-col items-center justify-center space-y-6 animate-out fade-out duration-700 fill-mode-forwards">
+        <div className="fixed inset-0 z-[9999] bg-background flex flex-col items-center justify-center space-y-6">
           <div className="relative">
             <div className="w-20 h-20 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
             <div className="absolute inset-0 flex items-center justify-center">

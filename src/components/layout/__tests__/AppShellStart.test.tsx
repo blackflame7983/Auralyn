@@ -153,6 +153,13 @@ it.each([true, false])('両表示で入出力・声の調整・試聴を保持�
 });
 
 
+it.each([true, false])('背景のオーロラは音声処理中だけ止める（稼働=%s）', running => {
+    render(<AppShell {...commonProps} isEngineRunning={running} isBeginnerMode><p>rack</p></AppShell>);
+    const glows = document.querySelectorAll('.aurora-glow');
+    expect(glows).toHaveLength(2);
+    expect(glows[0].parentElement!.className.includes('[animation-play-state:paused]')).toBe(running);
+});
+
 it('フッターの実高さを大型メーターの余白へ公開し、終了時に監視を解除する', () => {
     let height = 88;
     let resize!: () => void;

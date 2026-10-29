@@ -74,7 +74,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
 
             {/* Tips Panel */}
             {!isMiniMode && showTips && (
-                <div className="text-xs text-muted-foreground bg-popover/95 border border-border rounded-md p-2 space-y-1 animate-in fade-in zoom-in-95 duration-200">
+                <div className="text-xs text-muted-foreground bg-popover/95 border border-border rounded-md p-2 space-y-1">
                     <div><span className="text-success">{t('meter.scale.green')}</span>{t('meter.scale.low')}</div>
                     <div><span className="text-warning">{t('meter.scale.yellow')}</span>: −6〜0 dBFS</div>
                     <div><span className="text-destructive-text">{t('meter.scale.red')}</span>{t('meter.scale.high')}</div>

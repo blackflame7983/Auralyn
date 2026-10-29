@@ -83,7 +83,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
 
                     <div className="space-y-6">
                         {step === 0 && (
-                            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                            <div className="space-y-6">
                                 <div className="text-center space-y-2">
                                     <h3 className="text-2xl font-bold">{t('guide.copy.084')}</h3>
                                     <p className="text-muted-foreground">
@@ -127,7 +127,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                         )}
 
                         {step === 1 && (
-                            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                            <div className="space-y-6">
                                 <div className="text-center space-y-2">
                                     <h3 className="text-2xl font-bold">{t('guide.copy.096')}</h3>
                                     <p className="text-muted-foreground">
@@ -183,7 +183,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                         )}
 
                         {step === 2 && (
-                            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                            <div className="space-y-6">
                                 <div className="text-center space-y-2">
                                     <h3 className="text-2xl font-bold">{t('guide.copy.112')}</h3>
                                     <p className="text-muted-foreground">
@@ -220,7 +220,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                         )}
 
                         {step === 3 && (
-                            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                            <div className="space-y-6">
                                 <div className="text-center space-y-2">
                                     <h3 className="text-2xl font-bold">{t('guide.copy.121')}</h3>
                                     <p className="text-muted-foreground">
