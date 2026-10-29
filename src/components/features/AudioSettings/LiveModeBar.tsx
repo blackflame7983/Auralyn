@@ -6,7 +6,8 @@ import type { LiveModesModel } from '@/hooks/useLiveModes';
 
 // 本番中に使う歌・雑談の切替と本番保護。モードを登録するまではメインに出さない（登録は設定の音づくりで行う）。
 // 未登録の間は起動時と設定を閉じたときに1回だけ状態を読み、定期確認はしない。
-export function LiveModeBar({ model, refreshKey }: { model: LiveModesModel; refreshKey?: unknown }) {
+// embedded は本番帯の中に置くとき。枠と余白を本番帯に任せる。
+export function LiveModeBar({ model, refreshKey, embedded = false }: { model: LiveModesModel; refreshKey?: unknown; embedded?: boolean }) {
     const t = useMessages();
     const { snapshot: value, busy, error, refresh, activate } = model;
     const registered = Boolean(value?.definitions.singing || value?.definitions.talk);
@@ -18,8 +19,8 @@ export function LiveModeBar({ model, refreshKey }: { model: LiveModesModel; refr
     const applied = value.phase === 'settled' ? value.applied : null;
     const pending = value.phase === 'queued' || value.phase === 'transitioning';
     return (
-        <section aria-label={t('liveBar.label')} className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/70 px-3 py-2">
-            <span className="text-sm font-semibold">{t('liveBar.label')}</span>
+        <section aria-label={t('liveBar.label')} className={cn('flex flex-wrap items-center gap-3', !embedded && 'mb-3 rounded-xl border border-border bg-card/70 px-3 py-2')}>
+            {!embedded && <span className="text-sm font-semibold">{t('liveBar.label')}</span>}
             <div role="group" aria-label={t('liveBar.mode')} className="flex gap-1">
                 {(['singing', 'talk'] as const).map(mode => (
                     <button key={mode} type="button" disabled={busy || !value.definitions[mode]} aria-pressed={applied === mode}

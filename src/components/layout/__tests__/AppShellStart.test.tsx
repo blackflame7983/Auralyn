@@ -56,6 +56,8 @@ it('未設定時は状態帯・調整・準備を示し、音声を自動変更�
     expect(screen.getByRole('button', { name: '音量チェックを開始' })).toHaveAttribute('aria-pressed', 'false');
     for (const name of ['入力・処理・出力', '声を整える', '準備状況']) expect(screen.getByRole('region', { name })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'マイクと出力先を設定する' })).toHaveLength(1);
+    // 未設定の間は本番帯を出さず、準備の主ボタンを先頭にする。
+    expect(screen.queryByRole('region', { name: '本番' })).not.toBeInTheDocument();
     expect(screen.queryByText('quick')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '録音して聴き比べる' })).toBeDisabled();
     expect(sound).not.toHaveBeenCalled(); expect(voice).not.toHaveBeenCalled();
@@ -144,7 +146,10 @@ it.each([true, false])('両表示で入出力・声の調整・試聴を保持�
     render(<AppShell {...commonProps} isBeginnerMode={isBeginnerMode} onOpenSoundSettings={sound} onOpenVoiceCheck={voice} onOpenOBSSettings={obs}
         currentInput="USB マイク" currentOutput="CABLE Input (VB-Audio Virtual Cable)"><p>rack</p></AppShell>);
     expect(screen.getByText('USB マイク')).toBeInTheDocument();
-    expect(screen.getByRole('meter', { name: 'マイクの入力レベル' })).toBeInTheDocument();
+    // 入力メーターは本番帯の1か所だけにし、準備状況とは重ねない。
+    const meters = screen.getAllByRole('meter', { name: 'マイクの入力レベル' });
+    expect(meters).toHaveLength(1);
+    expect(meters[0].closest('section[aria-label="本番"]')).not.toBeNull();
     expect(screen.getByText('quick')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'マイクと出力先を設定する' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '録音して聴き比べる' }));
@@ -182,4 +187,22 @@ it('フッターの実高さを大型メーターの余白へ公開し、終了�
     } finally {
         vi.unstubAllGlobals();
     }
+});
+
+it('歌・雑談の切替は本番帯の中に置く', () => {
+    render(<AppShell {...commonProps} isBeginnerMode liveControls={<button type="button">歌</button>}><p>rack</p></AppShell>);
+    const strip = screen.getByRole('region', { name: '本番' });
+    expect(strip).toContainElement(screen.getByRole('button', { name: '歌' }));
+});
+
+it('本番帯を出さない未設定の間も、歌・雑談の切替（本番保護の解除）はホームに残す', () => {
+    render(<AppShell {...commonProps} currentHost="" isEngineRunning={false} isBeginnerMode liveControls={<button type="button">歌</button>}><p>rack</p></AppShell>);
+    expect(screen.queryByRole('region', { name: '本番' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '歌' })).toBeInTheDocument();
+});
+
+it('歌・雑談が未登録で何も描画しないときは、本番帯がない間も空の枠を出さない', () => {
+    const Empty = () => null;
+    render(<AppShell {...commonProps} currentHost="" isEngineRunning={false} isBeginnerMode liveControls={<Empty />}><p>rack</p></AppShell>);
+    expect(document.querySelector('.empty\\:hidden')).toBeEmptyDOMElement();
 });

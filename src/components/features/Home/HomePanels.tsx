@@ -3,20 +3,18 @@ import { MusicListeningCheck } from './MusicListeningCheck';
 import { RouteSummary } from './RouteSummary';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useMessages } from '@/i18n/LocaleProvider';
-import { usePreparation } from '@/hooks/usePreparation';
+import type { PreparationModel } from '@/hooks/usePreparation';
 import type { Availability } from '@/lib/preparation';
 import type { MessageKey } from '@/i18n/messages';
 import { PreparationPanel } from './PreparationPanel';
-import { MdMic, MdHearing, MdMusicNote } from 'react-icons/md';
-import { meterStatusLabel } from '@/hooks/useMeterLevels';
-import { useSharedMeter } from '../LevelMeter/MeterContext';
-import { MeterVisual } from '../LevelMeter/MeterVisual';
+import { MdHearing } from 'react-icons/md';
 import { deviceDisplayName } from '@/lib/audioRouting';
 import { VoiceQuickControls } from './VoiceQuickControls';
 import { SignalFlow } from './SignalFlow';
 
 interface HomePanelsProps {
-    blocked?: boolean;
+    /** 本番帯と共有する準備の状態。取得を二重にしないよう AppShell で1つだけ持つ。 */
+    model: PreparationModel;
     onOpenOBSGuide?: () => void;
     onOpenDiscordGuide?: () => void;
     onOpenTroubleshoot?: () => void;
@@ -33,23 +31,9 @@ interface HomePanelsProps {
     onOpenVst?: () => void;
 }
 
-// レベル通知は到達確認ではない。マイクの声が音声処理へ届いているかの目安として示す。
-function InputMeterBar({ running }: { running: boolean }) {
-    const t = useMessages();
-    const reading = useSharedMeter(running, 'input');
-    const { state } = reading;
-    const [purpose] = useDisplayPurpose();
-    const music = purpose === 'music';
-    return (
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-            <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={12} scale />
-            {state !== 'live' && <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(meterStatusLabel(state))}</span>}
-        </div>
-    );
-}
-
 // 通常の状態帯と調整は両表示で共通。準備の確認だけを必要なときに開く。
-export function HomePanels({ audioReady, statusText, isEngineRunning, inputName, outputName, blocked,
+// 入力メーターは本番帯（LiveStrip）に置き、ここでは重ねない。
+export function HomePanels({ model, audioReady, statusText, isEngineRunning, inputName, outputName,
     onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVoiceCheck, onOpenVst, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot }: HomePanelsProps) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
@@ -57,7 +41,6 @@ export function HomePanels({ audioReady, statusText, isEngineRunning, inputName,
     const [listenOpen, setListenOpen] = useState(false);
     const listenButton = useRef<HTMLButtonElement>(null);
     const openListen = () => setListenOpen(true);
-    const model = usePreparation({ blocked, running: audioReady });
     const availability: Record<Availability, MessageKey> = { ready:'prep.running', unknown:'shell.unknown', unconfigured:'shell.unconfigured', stopped:'shell.stopped', failed:'prep.failed', pending:'prep.pending', muted:'prep.muted' };
     const focusControl = (id: string) => {
         const element = document.getElementById(id);
@@ -78,10 +61,7 @@ export function HomePanels({ audioReady, statusText, isEngineRunning, inputName,
                 <div className="min-w-0"><dt className="text-muted-foreground">{t('prep.processing')}</dt><dd role="status" className="font-medium">{statusText ?? t(availability[model.observation.availability])}</dd></div>
                 <div className="min-w-0"><dt className="text-muted-foreground">{t('home.output')}</dt><dd className="truncate font-medium" title={actualOutput ?? undefined}>{actualOutput ? deviceDisplayName(actualOutput) : t('master.unset')}</dd></div>
             </dl>
-            {configured && <div className="flex flex-wrap items-center gap-3">
-                {music ? <MdMusicNote aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /> : <MdMic aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />}<InputMeterBar running={isEngineRunning} />
-                {!configureIsPrimary && <button type="button" onClick={onOpenSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('home.changeDevices')}</button>}
-            </div>}
+            {configured && !configureIsPrimary && <button type="button" onClick={onOpenSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('home.changeDevices')}</button>}
         </section>} />
         <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
             <h2 className="text-sm font-bold">{t(music ? 'wizard.musicSound' : 'shell.sound')}</h2>
