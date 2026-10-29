@@ -65,6 +65,8 @@ export function HomePanels({ audioReady, statusText, isEngineRunning, inputName,
     };
     // 未設定は処理欄と主ボタンで示す。停止中のメーターや注記を重ねない。
     const configured = model.observation.availability !== 'unconfigured';
+    // 準備の主ボタンが「マイクと出力先を設定する」の間は、同じ設定を開く入口を重ねない（DESIGN.md 2.2）。
+    const configureIsPrimary = !['ready', 'unknown', 'pending'].includes(model.observation.availability);
     const actualInput = model.observation.config?.input ?? inputName;
     const actualOutput = model.observation.config?.output ?? outputName;
     return <div className="mb-4 space-y-3">
@@ -78,7 +80,7 @@ export function HomePanels({ audioReady, statusText, isEngineRunning, inputName,
             </dl>
             {configured && <div className="flex flex-wrap items-center gap-3">
                 {music ? <MdMusicNote aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /> : <MdMic aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />}<InputMeterBar running={isEngineRunning} />
-                <button type="button" onClick={onOpenSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('home.changeDevices')}</button>
+                {!configureIsPrimary && <button type="button" onClick={onOpenSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('home.changeDevices')}</button>}
             </div>}
             {configured && <p className="text-xs text-muted-foreground">{t('prep.localOnly')}</p>}
         </section>} />
