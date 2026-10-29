@@ -58,6 +58,14 @@ it('音声処理中は声の段にその場の操作を出し、設定状態の�
     expect(screen.queryByText(message('ja', 'home.soundAfterSetup'))).not.toBeInTheDocument();
 });
 
+it('操作中でも、声の処理だけOFFで残響が鳴る「一部 ON」は内訳を見える形で残す', () => {
+    render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
+    const builtin = screen.getAllByRole('listitem')[2];
+    expect(builtin).toHaveTextContent('builtin-switch');
+    expect(builtin).toHaveTextContent('設定 一部ON');
+    expect(screen.getByText('声の処理: 設定 OFF ／ 残響: 設定 ON')).not.toHaveClass('sr-only');
+});
+
 it('音楽鑑賞では声向けの操作を出さず、状態の表示にとどめる', () => {
     localStorage.setItem('auralyn_display_purpose', 'music');
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);

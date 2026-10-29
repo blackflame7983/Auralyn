@@ -48,7 +48,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         : stage.vst.some(v => v.state === 'muted') ? t('flow.vstMixed')
         : setting(stage.vst.some(v => v.state === 'active'));
     const builtinDetails = stage ? t('flow.builtinParts', { voice: setting(stage.builtinVoiceEnabled), reverb: setting(stage.builtinReverbEnabled) }) : undefined;
-    const builtinStatus = stage && stage.builtinVoiceEnabled !== stage.builtinReverbEnabled ? t('flow.partial') : setting(stage?.builtinVoiceEnabled);
+    const partial = Boolean(stage && stage.builtinVoiceEnabled !== stage.builtinReverbEnabled);
+    const builtinStatus = partial ? t('flow.partial') : setting(stage?.builtinVoiceEnabled);
     const flowing = running ? t('flow.running') : t('flow.unknown');
     const actualInput = model.observation.config?.input ?? inputName;
     const actualOutput = model.observation.config?.output ?? outputName;
@@ -75,8 +76,9 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             {live && <NoiseQuick q={q} />}
         </div> },
         { key: 'builtin', className: 'min-w-[14rem] flex-1', body: <div id="home-builtin" tabIndex={-1} className={card}>
-            {head(MdTune, t('settings.AudioSettingsModal.095'), live ? null : builtinStatus, live && <BuiltinSwitch q={q} />, builtinDetails)}
-            {builtinDetails && <span className="sr-only">{builtinDetails}</span>}
+            {head(MdTune, t('settings.AudioSettingsModal.095'), live && !partial ? null : builtinStatus, live && <BuiltinSwitch q={q} />, builtinDetails)}
+            {/* スイッチは声の処理だけを表す。残響だけ鳴っている「一部 ON」は、操作中も内訳を見える形で残す。 */}
+            {builtinDetails && <span className={partial ? 'block text-xs text-muted-foreground' : 'sr-only'}>{builtinDetails}</span>}
             {live && <BuiltinQuick q={q} />}
         </div> },
         { key: 'vst', className: 'min-w-[14rem] flex-[1.5]', body: <div className={card}>
