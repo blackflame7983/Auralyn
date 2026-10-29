@@ -82,7 +82,6 @@ export function HomePanels({ audioReady, statusText, isEngineRunning, inputName,
                 {music ? <MdMusicNote aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /> : <MdMic aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />}<InputMeterBar running={isEngineRunning} />
                 {!configureIsPrimary && <button type="button" onClick={onOpenSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('home.changeDevices')}</button>}
             </div>}
-            {configured && <p className="text-xs text-muted-foreground">{t('prep.localOnly')}</p>}
         </section>} />
         <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
             <h2 className="text-sm font-bold">{t(music ? 'wizard.musicSound' : 'shell.sound')}</h2>
