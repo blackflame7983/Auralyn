@@ -6,6 +6,7 @@ import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 import { AppShell } from '../AppShell';
+import { saveDisplayPurpose } from '@/hooks/useDisplayPurpose';
 
 vi.mock('../Header', () => ({ Header: () => null }));
 vi.mock('../MasterBar', () => ({ MasterBar: () => null }));
@@ -129,11 +130,12 @@ it('音量チェックは明示要求だけを送り、表示モード変更で�
     expect(measurementProps.current.request).toBe(start);
 });
 
-it('表示用途の切替は保存済みの音声用途と準備設定を保持する', () => {
+it('表示用途はホームの本文に置かず、設定から切り替えると保存済みの音声用途と準備設定を保持する', () => {
     localStorage.setItem('vst_host_setup_goal', 'obs');
     localStorage.setItem('vst_host_output_gain', '83');
     render(<AppShell {...commonProps} isBeginnerMode><p>rack</p></AppShell>);
-    fireEvent.change(screen.getByRole('combobox', {name: '表示用途'}), {target: {value: 'music'}});
+    expect(screen.queryByRole('combobox', {name: '表示用途'})).not.toBeInTheDocument();
+    act(() => saveDisplayPurpose('music'));
     expect(screen.getByRole('region', {name: '音を整える'})).toBeInTheDocument();
     expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');
     expect(localStorage.getItem('vst_host_output_gain')).toBe('83');

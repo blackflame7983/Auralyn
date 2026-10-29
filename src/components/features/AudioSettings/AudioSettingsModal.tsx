@@ -32,6 +32,7 @@ import { APP_INFO } from '../../../constants/appInfo';
 import { MigrationPanel } from './MigrationPanel';
 import { ShortcutsPanel } from './ShortcutsPanel';
 import { UpdatePreferences } from './UpdatePreferences';
+import { DisplayPurposeSelector } from './DisplayPurposeSelector';
 import { REVIEW_KEY } from '@/api/migration';
 import { useAudioDeviceSelection } from './useAudioDeviceSelection';
 
@@ -1168,6 +1169,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
           <TabsContent value="appearance" className="space-y-6">
             <LanguageSelector />
+            <DisplayPurposeSelector />
             <div className="space-y-4">
               <div>
                 <h3 className="text-sm font-medium mb-3 flex items-center gap-2 text-foreground">

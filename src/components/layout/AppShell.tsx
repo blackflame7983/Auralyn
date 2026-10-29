@@ -79,7 +79,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     vstChain
 }) => {
     const t = useMessages();
-    const [purpose, setPurpose] = useDisplayPurpose();
+    const [purpose] = useDisplayPurpose();
     useUsageWindow(purpose);
     const [runtimeStats, setRuntimeStats] = useState<EngineRuntimeStats | null>(null);
     useEffect(() => { setRuntimeStats(null); }, [isEngineRunning]);
@@ -181,12 +181,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             className="mb-3 flex flex-wrap items-center justify-between gap-3 min-[1280px]:col-span-2"
                             aria-label={t('shell.view')}
                         >
-                            <label className="flex flex-wrap items-center gap-2 text-sm">
-                                {t('purpose.label')}
-                                <select value={purpose} onChange={event => setPurpose(event.target.value as 'voice' | 'music')} className="rounded border border-border bg-background p-2">
-                                    <option value="voice">{t('purpose.voice')}</option><option value="music">{t('purpose.music')}</option>
-                                </select>
-                            </label>
+                            {/* 表示用途は毎日切り替えないので、設定の「表示」に置く。 */}
                             <div
                                 role="group"
                                 aria-label={t('shell.viewGoal')}
