@@ -26,6 +26,22 @@ it.each([false, true])('音声停止中の入口は設定を開き、稼働中�
     const button = screen.queryByRole('button', { name: 'マイクと出力先を設定する' });
     if (running) expect(button).not.toBeInTheDocument();
     else { fireEvent.click(button!); expect(onOpenSettings).toHaveBeenCalledOnce(); }
+    // 同じ設定画面への入口は、準備の主ボタンと重ねない（DESIGN.md 2.2）。
+    expect(screen.queryAllByRole('button', { name: /マイクと出力先を設定する|入出力を変更/ })).toHaveLength(1);
+});
+
+it('音声停止中の音量チェックは無効表示にし、押せない理由を画面に出す', () => {
+    render(<AppShell isBeginnerMode onDisplayModeChange={vi.fn()} onOpenOBSSettings={vi.fn()}
+        onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
+        onOpenTroubleshoot={vi.fn()} onOpenVoiceCheck={vi.fn()} onOpenWizard={vi.fn()}
+        onToggleLargeMeter={vi.fn()} isLargeMeterOpen={false} currentHost="WASAPI" engineProcessReady={true} isEngineRunning={false}>
+        <p>rack</p>
+    </AppShell>);
+    const button = screen.getByRole('button', { name: '音量チェックを開始' });
+    expect(button).toBeDisabled();
+    expect(button.className).toContain('disabled:opacity-50');
+    expect(button).toHaveAccessibleDescription('音声処理中に使えます');
+    expect(screen.getByText('音声処理中に使えます')).not.toHaveClass('sr-only');
 });
 
 it('未設定時は状態帯・調整・準備を示し、音声を自動変更しない', () => {
