@@ -29,7 +29,7 @@ export const test = base.extend<{ transport: void }>({
                     case 'broadcast_bundle': return args.request.action === 'recovery_status' ? { type: 'recovery', value: null } : { type: 'names', value: [] };
                     case 'get_autostart_status': return { enabled: false, canChange: false, reason: null };
                     case 'get_engine_tuning_config': return { enableAffinityPinning: false, affinityMask: null, enableRealtimePriority: false, enableTimeCriticalAudioThreads: false };
-                    case 'get_shortcuts': return { enabled: false, bindings: [] };
+                    case 'get_shortcuts': return { bindings: [], errors: [] };
                     case 'obs_connection_status': return false;
                     case 'obs_live_scene_status': return { connected: false, connectionGeneration: 0, sequence: 0 };
                     case 'set_loudness_measurement':
