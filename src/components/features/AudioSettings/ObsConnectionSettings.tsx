@@ -313,7 +313,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                   <button
                     onClick={handleConnectObs}
                     disabled={loading || obsStatusLoading}
-                    className="w-full py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-all font-bold"
+                    className="w-full py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-bold"
                   >
                     {obsStatusLoading ? t('settings.ObsConnectionSettings.288') : loading ? t('settings.ObsConnectionSettings.289') : t('settings.ObsConnectionSettings.290')}
                   </button>
@@ -358,7 +358,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                       type="button"
                       onClick={handleObsReachCheck}
                       disabled={obsSetupLoading || obsReachLoading || !reachListenersReady}
-                      className="w-full py-2 bg-muted border border-border text-foreground rounded-lg hover:bg-muted/80 transition-all font-bold disabled:opacity-50"
+                      className="w-full py-2 bg-muted border border-border text-foreground rounded-lg hover:bg-muted/80 transition font-bold disabled:opacity-50"
                     >
                       {obsReachLoading ? t('settings.ObsConnectionSettings.299') : t('settings.ObsConnectionSettings.300')}
                     </button>

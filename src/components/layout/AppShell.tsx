@@ -156,7 +156,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     engineProcessReady={engineProcessReady}
                 />
                 <main
-                    className={`flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent pb-4 transition-all duration-300 ${isLargeMeterOpen ? 'pr-36 lg:pr-36' : ''}`}
+                    className={`flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent pb-4 ${isLargeMeterOpen ? 'pr-36 lg:pr-36' : ''}`}
                 >
                     <div className="max-w-4xl mx-auto min-[1280px]:max-w-none min-[1280px]:grid min-[1280px]:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] min-[1280px]:gap-x-6">
                         <div
@@ -244,7 +244,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                         aria-pressed={isABBypassed}
                                         aria-describedby={isABBypassed ? 'footer-compare-state' : undefined}
                                         className={cn(
-                                            "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold font-mono transition-all whitespace-nowrap shrink-0",
+                                            "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold font-mono whitespace-nowrap shrink-0",
                                             isABBypassed
                                                 ? "bg-warning/10 text-warning border-warning/50 ring-1 ring-warning/30 animate-pulse"
                                                 : "bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground"

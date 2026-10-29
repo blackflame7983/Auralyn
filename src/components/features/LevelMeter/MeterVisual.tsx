@@ -24,7 +24,7 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
                 const color = peaks[i] >= CLIP_LEVEL ? 'bg-meter-danger' : peaks[i] >= WARNING_LEVEL ? 'bg-warning' : 'bg-success';
                 return <div key={i} title={orientation === 'vertical' ? (i === 0 ? 'Left' : 'Right') : undefined}
                     className={`relative overflow-hidden rounded bg-muted ring-1 ring-border ${orientation === 'horizontal' ? 'h-full flex-1' : 'h-full'}`} style={orientation === 'vertical' ? { width } : undefined}>
-                    <div className={`absolute bottom-0 left-0 ${orientation === 'horizontal' ? 'h-full' : 'right-0'} ${color} transition-all duration-75`} style={orientation === 'horizontal' ? { width: `${pct}%` } : { height: `${pct}%` }} />
+                    <div className={`absolute bottom-0 left-0 ${orientation === 'horizontal' ? 'h-full' : 'right-0'} ${color}`} style={orientation === 'horizontal' ? { width: `${pct}%` } : { height: `${pct}%` }} />
                     {scale && [0, -6, -12, -24, -48].map(mark => <span key={mark} aria-hidden="true" className={`absolute bg-foreground/30 ${orientation === 'horizontal' ? 'top-0 bottom-0 w-px' : 'left-0 right-0 h-px'}`} style={orientation === 'horizontal' ? { left: `${Math.pow(10, mark / 20) * 100}%` } : { bottom: `${Math.pow(10, mark / 20) * 100}%` }} />)}
                     {current && <div aria-hidden="true" className={`absolute bg-foreground/80 ${orientation === 'horizontal' ? 'top-0 bottom-0 w-0.5' : 'left-0 right-0 h-0.5'}`} style={orientation === 'horizontal' ? { left: `${peak}%` } : { bottom: `${peak}%` }} />}
                 </div>;

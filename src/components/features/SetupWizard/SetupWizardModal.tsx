@@ -389,14 +389,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                         <button
                                             onClick={startSoundTest}
                                             disabled={isBusy || isCheckingConnection || !initialStateReady}
-                                            className="px-6 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground font-bold rounded-lg transition-all flex items-center gap-2"
+                                            className="px-6 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground font-bold rounded-lg transition-colors flex items-center gap-2"
                                         >
                                             <MdPlayArrow /> {t('guide.copy.229')}</button>
                                     ) : (
                                         <button
                                             onClick={stopSoundTest}
                                             disabled={isBusy || isCheckingConnection}
-                                            className="px-6 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold rounded-lg transition-all flex items-center gap-2 animate-pulse"
+                                            className="px-6 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold rounded-lg transition-colors flex items-center gap-2 animate-pulse"
                                         >
                                             <MdStop /> {t('guide.copy.230')}</button>
                                     )}

@@ -259,7 +259,10 @@ Auralyn は作業の道具です。動きは状態の変化を伝えるときだ
 **書き方**
 
 - 時間と曲線は `src/index.css` のモーショントークンを使う。値を個別に書かない。UI の動きは 300ms 以内にする。
-- 動かすのは `transform` と `opacity` だけにする。`transition: all`（Tailwind の `transition-all`）を使わず、変化させるプロパティを指定する。
+  - 時間：`duration-(--motion-fast)`（150ms：押下・ホバー・ツールチップ）、`duration-(--motion-base)`（200ms：ポップオーバー・モーダル）
+  - 曲線：出入りは `ease-out`、画面内の移動は `ease-in-out`（どちらも `index.css` で強めの曲線に上書き済み）。進捗のように一定の速さで進むものは `ease-linear`
+- 動かすのは `transform` と `opacity` だけにする。幅・高さ・余白を遷移させず、伸び縮みは `scaleX` などで表す。
+- `transition: all`（Tailwind の `transition-all`）を使わない。色だけなら `transition-colors`、影・不透明度・transform も変わるなら `transition`、移動だけなら `transition-transform` を使う。
 - 出入りには ease-out 系の曲線を使い、ease-in を使わない。`scale(0)` から出さない。
 - 何度も押される要素には、途中から戻れる transition を使う。最初からやり直す keyframes を使わない。
 - メーターと波形は計測値の表示であり、この節の対象外とする。値を遅らせたり、補間で実際と違う値に見せたりしない。

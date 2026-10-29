@@ -170,7 +170,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 onClick={handleToggleMute}
                                 aria-label={t('header.emergency')}
                                 aria-describedby={isGlobalMuted ? 'header-mute-state' : undefined}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all font-bold text-sm shadow-sm text-foreground ${isGlobalMuted
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border font-bold text-sm shadow-sm text-foreground ${isGlobalMuted
                                     ? 'bg-destructive/10 border-destructive ring-2 ring-destructive/50'
                                     : 'bg-background hover:bg-destructive/10 border-destructive/30 hover:border-destructive hover:shadow-destructive/20'
                                     }`}
@@ -227,7 +227,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     <button
                                         onClick={onToggleLargeMeter}
                                         aria-label={isLargeMeterOpen ? t('header.meterClose') : t('header.meterOpen')}
-                                        className={`p-2 rounded-lg transition-all border ${isLargeMeterOpen
+                                        className={`p-2 rounded-lg transition-colors border ${isLargeMeterOpen
                                             ? 'bg-primary/10 text-primary border-primary/50'
                                             : 'text-muted-foreground hover:text-foreground hover:bg-muted border-transparent'
                                             }`}

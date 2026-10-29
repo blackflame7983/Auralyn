@@ -95,7 +95,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                         onClick={() => handleDeviceSelection(true)}
                                         aria-label={t('guide.copy.086')}
                                         aria-pressed={useHardwareMixer === true}
-                                        className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-discord/50 aria-pressed:border-discord aria-pressed:ring-1 aria-pressed:ring-discord/40 transition-all text-left flex flex-col items-center text-center group"
+                                        className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-discord/50 aria-pressed:border-discord aria-pressed:ring-1 aria-pressed:ring-discord/40 transition text-left flex flex-col items-center text-center group"
                                     >
                                         <div className="w-16 h-16 rounded-full bg-discord/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                             <MdMic className="w-8 h-8 text-discord-text" />
@@ -111,15 +111,15 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                         onClick={() => handleDeviceSelection(false)}
                                         aria-label={t('guide.copy.091')}
                                         aria-pressed={useHardwareMixer === false}
-                                        className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-discord/50 aria-pressed:border-discord aria-pressed:ring-1 aria-pressed:ring-discord/40 transition-all text-left flex flex-col items-center text-center group"
+                                        className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-discord/50 aria-pressed:border-discord aria-pressed:ring-1 aria-pressed:ring-discord/40 transition text-left flex flex-col items-center text-center group"
                                     >
-                                        <div className="w-16 h-16 rounded-full bg-secondary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                            <MdHeadphones className="w-8 h-8 text-secondary-foreground" />
+                                        <div className="w-16 h-16 rounded-full bg-discord/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                            <MdHeadphones className="w-8 h-8 text-discord-text" />
                                         </div>
                                         <h4 className="font-bold text-foreground text-lg mb-2">{t('guide.copy.092')}</h4>
                                         <p className="text-sm text-muted-foreground mb-4">
                                             {t('guide.copy.094')}</p>
-                                        <div className="flex items-center gap-2 text-xs font-bold text-secondary-foreground bg-secondary/10 px-3 py-1 rounded-full">
+                                        <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground bg-muted px-3 py-1 rounded-full">
                                             <MdCheckCircle /> {t('guide.copy.095')}</div>
                                     </button>
                                 </div>
