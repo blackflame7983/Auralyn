@@ -37,14 +37,14 @@ it('実設定dialogのタブと未保存入力を保ち、言語変更だけで�
     const store = createLocaleStore(() => 'ja', () => true);
     render(<LocaleProvider store={store}><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);
     await screen.findByRole('option', { name: '実名のマイク' });
-    fireEvent.change(screen.getByPlaceholderText('入出力プリセット名を入力'), { target: { value: '未保存の実名' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '保存する名前' }), { target: { value: '未保存の実名' } });
     const dialog = screen.getByRole('dialog');
     const driver = screen.getByRole('combobox', { name: 'オーディオドライバ' });
     const calls = vi.mocked(invoke).mock.calls.length;
     act(() => { store.setLocale('en'); });
     expect(screen.getByRole('dialog')).toBe(dialog);
     expect(screen.getByRole('combobox', { name: 'Audio driver' })).toBe(driver);
-    expect(screen.getByPlaceholderText('Enter an input/output preset name')).toHaveValue('未保存の実名');
+    expect(screen.getByRole('textbox', { name: 'Name to save' })).toHaveValue('未保存の実名');
     expect(screen.getByRole('tab', { name: 'Audio' })).toHaveAttribute('aria-selected', 'true');
     expect(invoke).toHaveBeenCalledTimes(calls);
     expect(localStorage.getItem('vst_host_session_plugins')).toBe('opaque-session-original');

@@ -189,6 +189,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     {t('shell.advanced')}
                                 </button>
                             </div>
+                            <div className="flex flex-wrap items-center justify-end gap-2">
                             {/* 開いた後の測定・停止・閉じるはパネル側に集める。 */}
                             {!loudnessEnabled && !measurement.active && <button
                                 type="button"
@@ -196,11 +197,13 @@ export const AppShell: React.FC<AppShellProps> = ({
                                 onClick={() => { setLoudnessEnabled(true); setMeasurementRequest({id: ++requestId.current, action: measurement.active ? 'stop' : 'start'}); }}
                                 disabled={measurement.busy || (!measurement.active && !audioReady)}
                                 aria-describedby="loudness-toggle-description"
-                                className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted aria-pressed:border-primary aria-pressed:bg-muted aria-pressed:ring-1 aria-pressed:ring-primary/40"
+                                className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted aria-pressed:border-primary aria-pressed:bg-muted aria-pressed:ring-1 aria-pressed:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
                             >
                                 {t(measurement.busy ? 'loudness.switching' : measurement.stopUnconfirmed ? 'loudness.retryStop' : measurement.active ? 'loudness.stop' : 'loudness.startAction')}
                             </button>}
-                            <span id="loudness-toggle-description" className="sr-only">{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.audioStopped') : t('loudness.scope')}</span>
+                            {/* 押せない理由は画面にも出す。押せるときの対象範囲は読み上げだけにする。 */}
+                            <span id="loudness-toggle-description" className={!audioReady && !loudnessEnabled && !measurement.active ? 'text-xs text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
+                            </div>
                         </div>
                         <div className="min-[1280px]:col-span-2"><LoudnessCheck
                             music={purpose === 'music'}
