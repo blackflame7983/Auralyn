@@ -706,12 +706,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-lg">
                     <button
                       onClick={() => setIsAdvancedMode(false)}
-                      className={`text-xs px-3 py-1 rounded transition-colors ${!isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
+                      className={`text-xs px-3 py-1 rounded transition ${!isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
                     >
                       {t('settings.AudioSettingsModal.045')}</button>
                     <button
                       onClick={() => setIsAdvancedMode(true)}
-                      className={`text-xs px-3 py-1 rounded transition-colors ${isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
+                      className={`text-xs px-3 py-1 rounded transition ${isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
                     >
                       {t('settings.AudioSettingsModal.046')}</button>
                   </div>

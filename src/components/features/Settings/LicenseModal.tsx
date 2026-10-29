@@ -145,21 +145,21 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                         <button
                             onClick={() => setActiveTab('product')}
                             aria-pressed={activeTab === 'product'}
-                            className={`px-4 py-1.5 rounded-md text-sm font-bold transition-colors ${activeTab === 'product' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                            className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeTab === 'product' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             Auralyn
                         </button>
                         <button
                             onClick={() => setActiveTab('npm')}
                             aria-pressed={activeTab === 'npm'}
-                            className={`px-4 py-1.5 rounded-md text-sm font-bold transition-colors ${activeTab === 'npm' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                            className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeTab === 'npm' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             {t('licenses.npm')}
                         </button>
                         <button
                             onClick={() => setActiveTab('cargo')}
                             aria-pressed={activeTab === 'cargo'}
-                            className={`px-4 py-1.5 rounded-md text-sm font-bold transition-colors ${activeTab === 'cargo' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                            className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeTab === 'cargo' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             {t('licenses.cargo')}
                         </button>
