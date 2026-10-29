@@ -400,7 +400,7 @@ releaseバイナリのコンパイル成功は、署名済みインストーラ�
 
 UI監査で、Tailwind v4 が `tailwind.config.js` を読んでおらず、`tailwindcss-animate` のクラスがビルドCSSに生成されていないことを確認した。参照していた設定とクラスは #131 で削除済みのため、`codex/remove-tailwindcss-animate` で依存だけを外す。
 
-- `npm uninstall tailwindcss-animate`。lockfile から除かれたのは `tailwindcss-animate` 1件だけで、ほかの版は変わらない。
+- `npm uninstall tailwindcss-animate` で削除した。ただし手元の npm（10.9.4）は lockfile を書き直す際に、Linux向けoptional依存の `libc` 欄39か所を落とした。そのため lockfile は main の版を基に、`tailwindcss-animate` の項目削除と、peer 依存がなくなった `tailwindcss` への `"dev": true` 付与だけを反映した。ほかの版・メタデータは変わらない。
 - 配布用npmライセンス一覧では、`tailwindcss` がこのプラグインの peer 依存として本番扱いになっていた。削除後は開発依存になり一覧から外れるが、生成CSS（preflight を含む）は配布物に入る。`generate-licenses.cjs` に `BUNDLED_DEV_PACKAGES` を設け、`tailwindcss` を明示的に残す。一覧の差分は `tailwindcss-animate` の削除だけ（73件 → 72件）。
 
 検証結果:
