@@ -25,7 +25,8 @@ export function LiveStrip({ model, running, liveControls }: { model: Preparation
         <div className="flex items-center gap-3">
             <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
             <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={24} scale showValues />
-            {reading.state !== 'live' && reading.state !== 'silent' && <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(meterStatusLabel(reading.state))}</span>}
+            {/* 無音は「声が来ていない」本番事故の手がかりなので、dBFS 値だけにせず言葉でも示す。 */}
+            {reading.state !== 'live' && <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(meterStatusLabel(reading.state))}</span>}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <p className="flex min-w-0 items-center gap-1.5 text-sm">

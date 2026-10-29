@@ -219,8 +219,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                             stateKnown={engineProcessReady !== null}
                             onVoiceCheck={onOpenVoiceCheck}
                         /></div>
-                        {/* 未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。 */}
-                        {Boolean(currentHost) && preparation.observation.availability !== 'unconfigured' && <LiveStrip model={preparation} running={isEngineRunning} liveControls={liveControls} />}
+                        {/* 未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
+                            歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
+                        {Boolean(currentHost) && preparation.observation.availability !== 'unconfigured'
+                            ? <LiveStrip model={preparation} running={isEngineRunning} liveControls={liveControls} />
+                            : liveControls && <div className="mb-3 rounded-xl border border-border bg-card/70 px-3 py-2 min-[1280px]:col-span-2">{liveControls}</div>}
                         <div className="min-w-0"><HomePanels
                             model={preparation}
                             audioReady={audioReady}

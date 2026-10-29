@@ -194,3 +194,9 @@ it('歌・雑談の切替は本番帯の中に置く', () => {
     const strip = screen.getByRole('region', { name: '本番' });
     expect(strip).toContainElement(screen.getByRole('button', { name: '歌' }));
 });
+
+it('本番帯を出さない未設定の間も、歌・雑談の切替（本番保護の解除）はホームに残す', () => {
+    render(<AppShell {...commonProps} currentHost="" isEngineRunning={false} isBeginnerMode liveControls={<button type="button">歌</button>}><p>rack</p></AppShell>);
+    expect(screen.queryByRole('region', { name: '本番' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '歌' })).toBeInTheDocument();
+});

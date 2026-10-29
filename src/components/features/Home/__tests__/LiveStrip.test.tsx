@@ -7,8 +7,12 @@ import { context, audioState, runtime, liveStatus } from '@/__tests__/fixtures/p
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
+import type { MeterReading } from '@/hooks/useMeterLevels';
 
-afterEach(() => { cleanup(); localStorage.clear(); });
+const meter = vi.hoisted(() => ({ state: 'stopped' as MeterReading['state'] }));
+vi.mock('../../LevelMeter/MeterContext', () => ({ useSharedMeter: () => ({ levels: [0, 0], peak: [0, 0], clipped: false, state: meter.state, resetClip: () => {} }) }));
+
+afterEach(() => { cleanup(); localStorage.clear(); meter.state = 'stopped'; });
 const fixture = (): PreparationModel => ({ context: { ...context }, observation: buildPreparationObservation(audioState, runtime(), liveStatus, context), records: {}, checking: false, confirming: false,
     confirm: vi.fn(), unconfirm: vi.fn(), refresh: vi.fn(), reset: vi.fn(), changeContext: vi.fn() });
 
@@ -46,4 +50,10 @@ it('音楽鑑賞では音楽向けのメーター名にする', () => {
     localStorage.setItem('auralyn_display_purpose', 'music');
     render(<LiveStrip model={fixture()} running />);
     expect(screen.getByRole('meter', { name: message('ja', 'wizard.musicLevel') })).toBeInTheDocument();
+});
+
+it('入力が無音のときは dBFS 値だけにせず「無音」と言葉で示す', () => {
+    meter.state = 'silent';
+    render(<LiveStrip model={fixture()} running />);
+    expect(screen.getByRole('region', { name: '本番' })).toHaveTextContent(message('ja', 'meter.state.silent'));
 });
