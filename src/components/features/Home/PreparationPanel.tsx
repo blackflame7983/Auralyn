@@ -13,8 +13,13 @@ interface Props {
     model: PreparationModel; onSettings: () => void; onSound: () => void; onListen: () => void;
     onObs: () => void; onCall: () => void; onTroubleshoot: () => void; audioReady: boolean; signalSummary?: ReactNode;
 }
-// 未設定・停止・失敗・状態不明と、送り先が未選択のときだけ手順を開いておく。正常時は毎日の起動で読ませない。
-const needsAttention = (model: PreparationModel) => !model.context.usage || ['unconfigured', 'stopped', 'failed', 'unknown'].includes(model.observation.availability);
+// 問題の種類を返す。正常時は null にして手順を畳み、毎日の起動で読ませない。
+// ミュート・音量ゼロは配信事故なので、直す入口（主ボタン）が見えるよう開く。
+const attentionKey = (model: PreparationModel) => {
+    const { availability } = model.observation;
+    if (!model.context.usage) return `purpose:${availability}`;
+    return ['unconfigured', 'stopped', 'failed', 'unknown', 'muted'].includes(availability) ? availability : null;
+};
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
@@ -31,11 +36,13 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
     const summaryRef = useRef<HTMLElement>(null);
     const toggleRef = useRef<HTMLButtonElement>(null);
     const stepsId = useId();
-    const attention = needsAttention(model);
-    // 利用者が開閉した後も、問題が新たに起きたときは開き直す。
+    const problem = attentionKey(model);
+    // userOpen は利用者の選択。null の間だけ問題の有無で自動に開閉する。
+    // 手順内を操作したら開いたままにし、一時的な状態不明を経てもフォーカスを失わせない。
     const [userOpen, setUserOpen] = useState<boolean | null>(null);
-    useEffect(() => { if (attention) setUserOpen(null); }, [attention]);
-    const open = userOpen ?? attention;
+    // 閉じた後でも、別の問題が起きたら開き直す。
+    useEffect(() => { if (problem) setUserOpen(old => old === false ? null : old); }, [problem]);
+    const open = userOpen ?? problem !== null;
     const next = nextPreparationStage(observation, records, context);
     const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
     const needsTarget = next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim();
@@ -45,7 +52,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
         : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
     const acknowledgeLabels: Record<PreparationStage, MessageKey> = { sound: 'prep.ackSound', listen: 'prep.ackListen', receiver: 'prep.ackReceiver' };
     const pending = checking || confirming;
-    const usageSelect = (className: string) => <select ref={purposeRef} value={context.usage} onChange={e => { setUserOpen(true); model.changeContext({ usage: e.target.value as PreparationUse | '', receiver: '' }); }} className={className}>
+    const usageSelect = (className: string) => <select ref={purposeRef} value={context.usage} onChange={e => { model.changeContext({ usage: e.target.value as PreparationUse | '', receiver: '' }); }} className={className}>
         <option value="">{t('prep.chooseUse')}</option><option value="obs">{t('prep.obs')}</option><option value="discord">{t('prep.call')}</option><option value="other">{t('prep.other')}</option><option value="listening">{t('prep.local')}</option>
     </select>;
     return <section aria-label={t('prep.title')} className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
@@ -65,7 +72,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
         {signalSummary}
         {context.location === 'venue' && <p className="text-xs text-warning">{t('prep.venueWarning')}</p>}
         {context.signal === 'mixed' && <p className="text-xs text-muted-foreground">{t('prep.mixedWarning')}</p>}
-        {open && <div id={stepsId} className="space-y-3">
+        {open && <div id={stepsId} className="space-y-3" onFocusCapture={() => setUserOpen(old => old ?? true)}>
         <label className="block text-sm">{t('prep.usage')}{usageSelect(`mt-1 block w-full max-w-xs rounded border bg-background p-2 ${next === 'purpose' ? 'border-primary' : 'border-border'}`)}</label>
         {next !== 'done' && next !== 'purpose' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
             className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{t(actionLabel)}</button>}

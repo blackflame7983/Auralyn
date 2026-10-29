@@ -96,3 +96,49 @@ it.each(['unconfigured', 'stopped', 'unknown'] as const)('%sでは最初から�
     render(<PreparationPanel model={model} {...callbacks()} />);
     expect(screen.getByRole('button', { name: message('ja', 'prep.steps') })).toHaveAttribute('aria-expanded', 'true');
 });
+it('ミュート・音量ゼロでは手順を開き、直す入口を見せる', () => {
+    const model = fixture(); model.observation = { ...model.observation, availability: 'muted' };
+    render(<PreparationPanel model={model} {...callbacks()} />);
+    expect(screen.getByRole('button', { name: message('ja', 'prep.steps') })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: message('ja', 'shell.configure') })).toBeInTheDocument();
+});
+it('起動時の状態不明から正常になったら、操作していなければ畳む', () => {
+    const model = fixture(); model.observation = { ...model.observation, availability: 'unknown' };
+    const view = render(<PreparationPanel model={model} {...callbacks()} />);
+    const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    model.observation = { ...model.observation, availability: 'ready' };
+    view.rerender(<PreparationPanel model={model} {...callbacks()} />);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+});
+it('手順内を操作した後は、状態不明を経て正常に戻っても開いたままでフォーカスを保つ', () => {
+    const model = fixture(); const ready = model.observation;
+    model.observation = { ...ready, availability: 'unknown' };
+    const view = render(<PreparationPanel model={model} {...callbacks()} />);
+    const refresh = screen.getByRole('button', { name: message('ja', 'prep.refresh') });
+    refresh.focus();
+    fireEvent.click(refresh);
+    expect(model.refresh).toHaveBeenCalledOnce();
+    model.observation = ready;
+    view.rerender(<PreparationPanel model={model} {...callbacks()} />);
+    const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const select = screen.getByRole('combobox', { name: message('ja', 'prep.usage') });
+    select.focus();
+    model.observation = { ...ready, availability: 'unknown' };
+    view.rerender(<PreparationPanel model={model} {...callbacks()} />);
+    model.observation = ready;
+    view.rerender(<PreparationPanel model={model} {...callbacks()} />);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(select).toHaveFocus();
+});
+it('問題中に閉じても、別の問題へ変わったら開き直す', () => {
+    const model = fixture(); model.observation = { ...model.observation, availability: 'unknown' };
+    const view = render(<PreparationPanel model={model} {...callbacks()} />);
+    const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    model.observation = { ...model.observation, availability: 'failed' };
+    view.rerender(<PreparationPanel model={model} {...callbacks()} />);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+});
