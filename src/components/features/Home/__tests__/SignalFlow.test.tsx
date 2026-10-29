@@ -24,7 +24,11 @@ it.each(['ja', 'en'] as const)('両言語で5段を固定順にし、現在の�
     labels.forEach((label, i) => expect(rows[i]).toHaveTextContent(label));
     expect(rows[1]).toHaveTextContent(locale === 'ja' ? '設定 ON' : 'Configured ON');
     expect(rows[2]).toHaveTextContent(locale === 'ja' ? '設定 一部ON' : 'Partly configured ON');
-    expect(flow).toHaveTextContent(locale === 'ja' ? '自分用と配信側を分離すると経路が分かれます' : 'Monitor and broadcast paths split');
+    // 範囲の説明は常設せず、見出し横の情報ボタンから読む。
+    expect(flow).not.toHaveTextContent(locale === 'ja' ? '自分用と配信側を分離すると経路が分かれます' : 'Monitor and broadcast paths split');
+    fireEvent.click(within(flow).getByRole('button', { name: locale === 'ja' ? '音の流れについて' : 'About the signal flow' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent(locale === 'ja' ? '自分用と配信側を分離すると経路が分かれます' : 'Monitor and broadcast paths split');
+    expect(screen.getByRole('dialog')).toHaveTextContent(locale === 'ja' ? '表示対象: 自分用の処理' : 'Shown: monitor processing');
 });
 
 it('現在の世代と不一致または停止時は処理の設定を OFF と推測しない', () => {

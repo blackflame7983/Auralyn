@@ -1,5 +1,7 @@
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
-import { useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { MdExpandMore } from 'react-icons/md';
+import { InfoPopover } from '@/components/ui/InfoPopover';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
 import { confirmationState, nextPreparationStage, type PreparationStage, type PreparationUse } from '@/lib/preparation';
@@ -11,6 +13,8 @@ interface Props {
     model: PreparationModel; onSettings: () => void; onSound: () => void; onListen: () => void;
     onObs: () => void; onCall: () => void; onTroubleshoot: () => void; audioReady: boolean; signalSummary?: ReactNode;
 }
+// 未設定・停止・失敗・状態不明と、送り先が未選択のときだけ手順を開いておく。正常時は毎日の起動で読ませない。
+const needsAttention = (model: PreparationModel) => !model.context.usage || ['unconfigured', 'stopped', 'failed', 'unknown'].includes(model.observation.availability);
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
@@ -25,6 +29,13 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
     const targetRef = useRef<HTMLInputElement>(null);
     const actionRef = useRef<HTMLButtonElement>(null);
     const summaryRef = useRef<HTMLElement>(null);
+    const toggleRef = useRef<HTMLButtonElement>(null);
+    const stepsId = useId();
+    const attention = needsAttention(model);
+    // 利用者が開閉した後も、問題が新たに起きたときは開き直す。
+    const [userOpen, setUserOpen] = useState<boolean | null>(null);
+    useEffect(() => { if (attention) setUserOpen(null); }, [attention]);
+    const open = userOpen ?? attention;
     const next = nextPreparationStage(observation, records, context);
     const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
     const needsTarget = next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim();
@@ -34,17 +45,27 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
         : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
     const acknowledgeLabels: Record<PreparationStage, MessageKey> = { sound: 'prep.ackSound', listen: 'prep.ackListen', receiver: 'prep.ackReceiver' };
     const pending = checking || confirming;
-    const usageSelect = (className: string) => <select ref={purposeRef} value={context.usage} onChange={e => model.changeContext({ usage: e.target.value as PreparationUse | '', receiver: '' })} className={className}>
+    const usageSelect = (className: string) => <select ref={purposeRef} value={context.usage} onChange={e => { setUserOpen(true); model.changeContext({ usage: e.target.value as PreparationUse | '', receiver: '' }); }} className={className}>
         <option value="">{t('prep.chooseUse')}</option><option value="obs">{t('prep.obs')}</option><option value="discord">{t('prep.call')}</option><option value="other">{t('prep.other')}</option><option value="listening">{t('prep.local')}</option>
     </select>;
     return <section aria-label={t('prep.title')} className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-bold">{t('prep.title')}</h2>
-            <span role="status" className="text-sm text-muted-foreground">{checking ? t('prep.checking') : next === 'done' ? t('prep.sessionChecked') : ''}</span>
+            <div className="flex items-center gap-1">
+                <h2 className="text-sm font-bold">{t('prep.title')}</h2>
+                <InfoPopover label={t('prep.scopeInfo')}>{t('prep.localOnly')}</InfoPopover>
+            </div>
+            <div className="flex items-center gap-2">
+                <span role="status" className="text-sm text-muted-foreground">{checking ? t('prep.checking') : next === 'done' ? t('prep.sessionChecked') : ''}</span>
+                <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={stepsId} onClick={() => setUserOpen(!open)}
+                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted">
+                    {t('prep.steps')}<MdExpandMore aria-hidden="true" className={`h-4 w-4 ${open ? 'rotate-180' : ''}`} />
+                </button>
+            </div>
         </div>
         {signalSummary}
         {context.location === 'venue' && <p className="text-xs text-warning">{t('prep.venueWarning')}</p>}
         {context.signal === 'mixed' && <p className="text-xs text-muted-foreground">{t('prep.mixedWarning')}</p>}
+        {open && <div id={stepsId} className="space-y-3">
         <label className="block text-sm">{t('prep.usage')}{usageSelect(`mt-1 block w-full max-w-xs rounded border bg-background p-2 ${next === 'purpose' ? 'border-primary' : 'border-border'}`)}</label>
         {next !== 'done' && next !== 'purpose' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
             className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{t(actionLabel)}</button>}
@@ -54,7 +75,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
                     if (!e.target.checked) return;
                     const checkbox = e.currentTarget;
                     void model.confirm(next).then(() => requestAnimationFrame(() => {
-                        if (!checkbox.isConnected && document.activeElement === document.body) (actionRef.current ?? summaryRef.current)?.focus();
+                        if (!checkbox.isConnected && document.activeElement === document.body) (actionRef.current ?? summaryRef.current ?? toggleRef.current)?.focus();
                     }));
                 }} />{t(next === 'receiver' && context.usage === 'listening' ? 'prep.ackLocal' : music && next === 'sound' ? 'music.ackSound' : music && next === 'listen' ? 'music.ackListen' : acknowledgeLabels[next])}
         </label>}
@@ -99,5 +120,6 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
             <p className="text-xs text-muted-foreground">{t('prep.externalScope')}</p>
             <button type="button" onClick={model.reset} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('prep.externalChanged')}</button>
         </details>
+        </div>}
     </section>;
 }
