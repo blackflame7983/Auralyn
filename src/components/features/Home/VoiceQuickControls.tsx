@@ -11,26 +11,32 @@ import { builtinApi } from '@/api/builtinEffects';
 const STATS_INTERVAL_MS = 2000;
 const quickPresets: BuiltInEffectsPreset[] = ['broadcast', 'warm', 'bright'];
 
-// かんたん表示のメインで、よく使う声の調整だけを直接操作する。
+// チェーン列のノイズ低減・内蔵ボイスチェーンの段で、よく使う声の調整だけを直接操作する。
 // 学習・会場・声を守る・歌向けなどの細かい調整は、設定の音づくりで行う。
-export function VoiceQuickControls({ running, onOpenSoundSettings }: { running: boolean; onOpenSoundSettings?: () => void }) {
+// enabled が false の間（音声未準備・音楽鑑賞）は状態を取りに行かない。
+export function useVoiceQuick(running: boolean, enabled = true) {
     const t = useMessages();
     const [stats, setStats] = useState<EngineRuntimeStats | null>(null);
     const [busy, setBusy] = useState(false);
     const [amount, setAmount] = useState<number | null>(null);
     const generation = useRef(0);
+    // 無効にした後に終わった操作の再取得で、古い状態を残さない。
+    const active = useRef(enabled);
+    active.current = enabled;
 
     const refresh = useCallback(async () => {
+        if (!active.current) return;
         const request = ++generation.current;
         try {
             const next = await audioApi.getEngineRuntimeStats();
-            if (request === generation.current) setStats(next);
+            if (request === generation.current && active.current) setStats(next);
         } catch {
-            if (request === generation.current) setStats(null);
+            if (request === generation.current && active.current) setStats(null);
         }
     }, []);
 
     useEffect(() => {
+        if (!enabled) { generation.current++; setStats(null); return; }
         void refresh();
         const timer = setInterval(() => { if (!document.hidden) void refresh(); }, STATS_INTERVAL_MS);
         const onExternal = () => void refresh();
@@ -42,7 +48,7 @@ export function VoiceQuickControls({ running, onOpenSoundSettings }: { running: 
             window.removeEventListener('profile-fx-applied', onExternal);
             subscriptions.forEach(item => void item.then(stop => stop()).catch(() => {}));
         };
-    }, [refresh, running]);
+    }, [refresh, running, enabled]);
 
     const run = async (action: () => Promise<unknown>, success: string) => {
         if (busy) return;
@@ -85,67 +91,64 @@ export function VoiceQuickControls({ running, onOpenSoundSettings }: { running: 
     }), t('settings.AudioSettingsModal.008'));
     const commitAmount = () => { if (amount !== null) { const value = amount; setAmount(null); void applyChain({ amount: value }); } };
 
-    const presetLabel = (value: BuiltInEffectsPreset) => value === 'broadcast' ? t('settings.AudioSettingsModal.098')
-        : value === 'warm' ? t('settings.AudioSettingsModal.099') : value === 'bright' ? t('settings.AudioSettingsModal.100') : t('home.presetSinging');
-    const segment = (selected: boolean) => cn('rounded-md border px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-50',
-        selected ? 'border-primary bg-primary/15 text-primary' : 'border-input bg-background text-muted-foreground hover:text-foreground');
-    const disabled = !stats || busy;
+    return { stats, disabled: !stats || busy, noiseOn, noiseMode, applyNoise, chainOn, preset, shownAmount, setAmount, commitAmount, toggleChain, applyChain };
+}
+export type VoiceQuick = ReturnType<typeof useVoiceQuick>;
 
-    return (
-        <div className="space-y-3">
-            {!stats && <p role="status" className="text-xs text-muted-foreground">{t('home.voiceUnavailable')}</p>}
-            <div className="grid gap-3 md:grid-cols-2">
-                <div id="home-noise" tabIndex={-1} className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                        <span className="flex items-center gap-1 text-sm font-semibold">{t('settings.AudioSettingsModal.105')}<InfoPopover label={t('info.noise')}>{t('home.noiseScope')}</InfoPopover></span>
-                        <Switch checked={noiseOn} disabled={disabled} onCheckedChange={active => void applyNoise({ active })} aria-label={t('settings.AudioSettingsModal.107')} />
-                    </div>
-                    {noiseMode === 'smart' || noiseMode === 'venue' ? (
-                        <p className="text-xs text-muted-foreground">{t('home.noiseAdvancedMode', { mode: noiseMode === 'smart' ? t('master.nrLearn') : t('master.nrVenue') })}</p>
-                    ) : (
-                        <div role="group" aria-label={t('structure.noise.standard')} className="grid grid-cols-2 gap-2">
-                            {(['low', 'high'] as NoiseControlMode[]).map(mode => (
-                                <button key={mode} type="button" disabled={disabled || !noiseOn} aria-pressed={noiseOn && noiseMode === mode}
-                                    onClick={() => void applyNoise({ mode })} className={segment(noiseOn && noiseMode === mode)}>
-                                    {mode === 'low' ? t('master.nrLow') : t('master.nrHigh')}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
-                <div id="home-builtin" tabIndex={-1} className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold">{t('settings.AudioSettingsModal.095')}</span>
-                        <Switch checked={chainOn} disabled={disabled} onCheckedChange={active => void toggleChain(active)} aria-label={t('settings.AudioSettingsModal.097')} />
-                    </div>
-                    {preset === 'singing' ? (
-                        <p className="text-xs text-muted-foreground">{t('home.chainSinging')}</p>
-                    ) : (<>
-                        <div role="group" aria-label={t('home.chainPreset')} className="grid grid-cols-3 gap-2">
-                            {quickPresets.map(value => (
-                                <button key={value} type="button" disabled={disabled} aria-pressed={chainOn && preset === value}
-                                    onClick={() => void applyChain({ preset: value })} className={segment(chainOn && preset === value)}>
-                                    {presetLabel(value)}
-                                </button>
-                            ))}
-                        </div>
-                        <label className="block space-y-1 text-xs">
-                            <span className="flex justify-between text-muted-foreground">
-                                <span>{t('settings.AudioSettingsModal.103')}</span>
-                                <span className="font-mono text-foreground">{shownAmount}%</span>
-                            </span>
-                            <input type="range" min={0} max={100} step={5} value={shownAmount} disabled={disabled || !chainOn}
-                                onChange={event => setAmount(Number(event.target.value))} onPointerUp={commitAmount} onKeyUp={commitAmount} onBlur={commitAmount}
-                                aria-label={t('settings.AudioSettingsModal.104')} className="w-full accent-primary" />
-                        </label>
-                    </>)}
-                </div>
-            </div>
-            {onOpenSoundSettings && (
-                <button type="button" onClick={onOpenSoundSettings} className="text-xs font-semibold text-primary underline underline-offset-2 hover:opacity-80">
-                    {t('home.moreSound')}
+const segment = (selected: boolean) => cn('whitespace-nowrap rounded-md border px-2 py-1.5 text-xs font-bold transition-colors disabled:opacity-50',
+    selected ? 'border-primary bg-primary/15 text-primary' : 'border-input bg-background text-muted-foreground hover:text-foreground');
+
+// 段の見出し行の右端に置くスイッチ。
+export function NoiseSwitch({ q }: { q: VoiceQuick }) {
+    const t = useMessages();
+    return <span className="flex items-center gap-1">
+        <InfoPopover label={t('info.noise')}>{t('home.noiseScope')}</InfoPopover>
+        <Switch checked={q.noiseOn} disabled={q.disabled} onCheckedChange={active => void q.applyNoise({ active })} aria-label={t('settings.AudioSettingsModal.107')} />
+    </span>;
+}
+
+export function NoiseQuick({ q }: { q: VoiceQuick }) {
+    const t = useMessages();
+    if (q.noiseMode === 'smart' || q.noiseMode === 'venue') {
+        return <p className="text-xs text-muted-foreground">{t('home.noiseAdvancedMode', { mode: q.noiseMode === 'smart' ? t('master.nrLearn') : t('master.nrVenue') })}</p>;
+    }
+    return <div role="group" aria-label={t('structure.noise.standard')} className="grid grid-cols-2 gap-1.5">
+        {(['low', 'high'] as NoiseControlMode[]).map(mode => (
+            <button key={mode} type="button" disabled={q.disabled || !q.noiseOn} aria-pressed={q.noiseOn && q.noiseMode === mode}
+                onClick={() => void q.applyNoise({ mode })} className={segment(q.noiseOn && q.noiseMode === mode)}>
+                {mode === 'low' ? t('master.nrLow') : t('master.nrHigh')}
+            </button>
+        ))}
+    </div>;
+}
+
+export function BuiltinSwitch({ q }: { q: VoiceQuick }) {
+    const t = useMessages();
+    return <Switch checked={q.chainOn} disabled={q.disabled} onCheckedChange={active => void q.toggleChain(active)} aria-label={t('settings.AudioSettingsModal.097')} />;
+}
+
+export function BuiltinQuick({ q }: { q: VoiceQuick }) {
+    const t = useMessages();
+    if (q.preset === 'singing') return <p className="text-xs text-muted-foreground">{t('home.chainSinging')}</p>;
+    const presetLabel = (value: BuiltInEffectsPreset) => value === 'broadcast' ? t('settings.AudioSettingsModal.098')
+        : value === 'warm' ? t('settings.AudioSettingsModal.099') : t('settings.AudioSettingsModal.100');
+    return <div className="space-y-2">
+        <div role="group" aria-label={t('home.chainPreset')} className="grid grid-cols-3 gap-1.5">
+            {quickPresets.map(value => (
+                <button key={value} type="button" disabled={q.disabled} aria-pressed={q.chainOn && q.preset === value}
+                    onClick={() => void q.applyChain({ preset: value })} className={segment(q.chainOn && q.preset === value)}>
+                    {presetLabel(value)}
                 </button>
-            )}
+            ))}
         </div>
-    );
+        <label className="block space-y-1 text-xs">
+            <span className="flex justify-between gap-2 text-muted-foreground">
+                <span className="whitespace-nowrap">{t('settings.AudioSettingsModal.103')}</span>
+                <span className="font-mono text-foreground">{q.shownAmount}%</span>
+            </span>
+            <input type="range" min={0} max={100} step={5} value={q.shownAmount} disabled={q.disabled || !q.chainOn}
+                onChange={event => q.setAmount(Number(event.target.value))} onPointerUp={q.commitAmount} onKeyUp={q.commitAmount} onBlur={q.commitAmount}
+                aria-label={t('settings.AudioSettingsModal.104')} className="w-full accent-primary" />
+        </label>
+    </div>;
 }

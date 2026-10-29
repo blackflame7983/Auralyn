@@ -6,7 +6,7 @@ import { liveModesApi } from '@/api/liveModes';
 import { useLiveModes } from '@/hooks/useLiveModes';
 import { liveSnapshot } from '@/hooks/__tests__/liveModesFixture';
 import { LiveModeBar } from '../../AudioSettings/LiveModeBar';
-import { VoiceQuickControls } from '../VoiceQuickControls';
+import { BuiltinQuick, BuiltinSwitch, NoiseQuick, NoiseSwitch, useVoiceQuick } from '../VoiceQuickControls';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
@@ -14,6 +14,11 @@ const stats = (patch: Partial<EngineRuntimeStats> = {}) => ({
     noiseReductionEnabled: true, noiseReductionMode: 'low', noiseControlStrength: 0.6, noiseVoiceGuard: false,
     builtInEffectsEnabled: true, builtInEffectsPreset: 'broadcast', builtInEffectsAmount: 0.5, ...patch,
 } as EngineRuntimeStats);
+// チェーン列のノイズ低減・内蔵ボイスチェーンの段と同じ組み合わせで操作する。
+function VoiceQuickControls({ running }: { running: boolean }) {
+    const q = useVoiceQuick(running);
+    return <><NoiseSwitch q={q} /><NoiseQuick q={q} /><BuiltinSwitch q={q} /><BuiltinQuick q={q} /></>;
+}
 const singing: BuiltinConfig = { active: true, preset: 'singing', amount: 0.5, singing: { lowCutHz: 100, dynamics: 0.4, brightnessDb: 1 }, reverb: { enabled: true, mix: 0.1, decaySeconds: 1, damping: 0.5 } };
 
 beforeEach(() => {
@@ -33,12 +38,15 @@ it('ノイズ低減の強さは現在の抑制強度と声を守る設定を保�
 
 it('学習・会場モード中は強さを上書きせず、詳しい調整へ案内する', async () => {
     vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue(stats({ noiseReductionMode: 'smart' }));
-    const open = vi.fn();
-    render(<VoiceQuickControls running onOpenSoundSettings={open} />);
+    render(<VoiceQuickControls running />);
     expect(await screen.findByText(/現在は「測定値で調整」で低減しています/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '強' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /詳しく調整/ }));
-    expect(open).toHaveBeenCalledOnce();
+});
+
+it('使わない間（enabled=false）は状態を取りに行かない', async () => {
+    renderHook(() => useVoiceQuick(true, false));
+    await act(async () => {});
+    expect(audioApi.getEngineRuntimeStats).not.toHaveBeenCalled();
 });
 
 it('内蔵ボイスチェーンのON/OFFは適用済みの歌向け設定と残響を保持する', async () => {
@@ -53,6 +61,19 @@ it('内蔵ボイスチェーンのON/OFFは適用済みの歌向け設定と残�
     expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
 });
 
+it('操作中に無効になったら、終わった操作の再取得で古い状態を戻さない', async () => {
+    let finish!: () => void;
+    vi.mocked(audioApi.setNoiseControlConfig).mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+    const view = renderHook(({ enabled }) => useVoiceQuick(true, enabled), { initialProps: { enabled: true } });
+    await waitFor(() => expect(view.result.current.stats).not.toBeNull());
+    act(() => { void view.result.current.applyNoise({ mode: 'high' }); });
+    view.rerender({ enabled: false });
+    expect(view.result.current.stats).toBeNull();
+    const calls = vi.mocked(audioApi.getEngineRuntimeStats).mock.calls.length;
+    await act(async () => { finish(); });
+    expect(audioApi.getEngineRuntimeStats).toHaveBeenCalledTimes(calls);
+    expect(view.result.current.stats).toBeNull();
+});
 it('プリセットはかかり具合を保って反映する', async () => {
     render(<VoiceQuickControls running />);
     const bright = await screen.findByRole('button', { name: '明瞭' });

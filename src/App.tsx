@@ -8,6 +8,7 @@ import { LiveModeBar } from './components/features/AudioSettings/LiveModeBar';
 import { useEffect, useRef, useState } from 'react';
 import { AppShell } from './components/layout/AppShell';
 import { PluginList } from './components/features/PluginRack/PluginList';
+import { VstChainItems } from './components/features/Home/VstChainItems';
 import { ModalLayer } from './components/layout/ModalLayer';
 import { SessionRecoveryNotice } from './components/features/Recovery/SessionRecoveryNotice';
 import { Toaster } from 'sonner';
@@ -168,6 +169,7 @@ function AppContent() {
         currentInput={audioConfig.input}
         currentOutput={audioConfig.output}
         liveControls={displayPurpose === 'voice' ? <LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded /> : undefined}
+        vstChain={<VstChainItems plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} onAdd={() => ui.setIsBrowserOpen(true)} />}
         isEngineRunning={isEngineRunning}
         engineProcessReady={engineProcessReady}
       >
