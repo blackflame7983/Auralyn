@@ -403,10 +403,12 @@ UI監査で、Tailwind v4 が `tailwind.config.js` を読んでおらず、`tail
 - `npm uninstall tailwindcss-animate` で削除した。ただし手元の npm（10.9.4）は lockfile を書き直す際に、Linux向けoptional依存の `libc` 欄39か所を落とした。そのため lockfile は main の版を基に、`tailwindcss-animate` の項目削除と、peer 依存がなくなった `tailwindcss` への `"dev": true` 付与だけを反映した。ほかの版・メタデータは変わらない。
 - 配布用npmライセンス一覧では、`tailwindcss` がこのプラグインの peer 依存として本番扱いになっていた。削除後は開発依存になり一覧から外れるが、生成CSS（preflight を含む）は配布物に入る。`generate-licenses.cjs` に `BUNDLED_DEV_PACKAGES` を設け、`tailwindcss` を明示的に残す。一覧の差分は `tailwindcss-animate` の削除だけ（73件 → 72件）。
 
-検証結果:
+検証結果（最終の lockfile で実施）:
 
-- `npm ls --all`、`npx tsc --noEmit`、`npx vite build`、`npm run release:check`、`git diff --check`: 成功。
+- `npm ci --dry-run`、`npm ls --all`、`npx tsc --noEmit`、`npx vite build`、`npm run release:check`、`git diff --check`: 成功。`libc` 欄は main と同じ39か所。
 - `npx vitest --run`: 1192件成功。`npm run test:release`: 53件成功（PowerShell から実行。Git Bash では GNU tar が `C:` をホスト名と解釈し、tar を使う2件が環境要因で失敗する）。
 - `node generate-licenses.cjs`: 成功。
+
+npm 10.9.4 で `npm install` / `npm uninstall` を行うと `libc` 欄が再び落ちる。lockfile を更新するときは、差分に `libc` の削除が混ざっていないか確認する。
 
 アプリ番号は1.1.0を維持。配布物を再生成して再配布する際は `VERSIONING.md` に従って別途判定する。
