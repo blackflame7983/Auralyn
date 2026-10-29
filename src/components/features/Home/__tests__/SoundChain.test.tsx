@@ -64,6 +64,9 @@ it('音楽鑑賞では声向けの操作を出さず、状態の表示にとど�
     expect(screen.getByRole('region', { name: '音を整える' })).toBeInTheDocument();
     expect(screen.queryByText('noise-quick')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
+    // 声の処理の設定へは誘導せず、VST 構成で整えることを常に見える文で示す。
+    expect(screen.queryByRole('button', { name: '詳しく調整' })).not.toBeInTheDocument();
+    expect(screen.getByText(message('ja', 'music.soundHint'))).toBeVisible();
 });
 
 it('現在の世代と不一致または停止時は処理の設定を OFF と推測しない', () => {

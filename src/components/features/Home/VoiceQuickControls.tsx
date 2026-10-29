@@ -20,19 +20,23 @@ export function useVoiceQuick(running: boolean, enabled = true) {
     const [busy, setBusy] = useState(false);
     const [amount, setAmount] = useState<number | null>(null);
     const generation = useRef(0);
+    // 無効にした後に終わった操作の再取得で、古い状態を残さない。
+    const active = useRef(enabled);
+    active.current = enabled;
 
     const refresh = useCallback(async () => {
+        if (!active.current) return;
         const request = ++generation.current;
         try {
             const next = await audioApi.getEngineRuntimeStats();
-            if (request === generation.current) setStats(next);
+            if (request === generation.current && active.current) setStats(next);
         } catch {
-            if (request === generation.current) setStats(null);
+            if (request === generation.current && active.current) setStats(null);
         }
     }, []);
 
     useEffect(() => {
-        if (!enabled) { setStats(null); return; }
+        if (!enabled) { generation.current++; setStats(null); return; }
         void refresh();
         const timer = setInterval(() => { if (!document.hidden) void refresh(); }, STATS_INTERVAL_MS);
         const onExternal = () => void refresh();

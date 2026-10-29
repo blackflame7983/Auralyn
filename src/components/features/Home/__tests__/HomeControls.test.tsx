@@ -61,6 +61,19 @@ it('内蔵ボイスチェーンのON/OFFは適用済みの歌向け設定と残�
     expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
 });
 
+it('操作中に無効になったら、終わった操作の再取得で古い状態を戻さない', async () => {
+    let finish!: () => void;
+    vi.mocked(audioApi.setNoiseControlConfig).mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+    const view = renderHook(({ enabled }) => useVoiceQuick(true, enabled), { initialProps: { enabled: true } });
+    await waitFor(() => expect(view.result.current.stats).not.toBeNull());
+    act(() => { void view.result.current.applyNoise({ mode: 'high' }); });
+    view.rerender({ enabled: false });
+    expect(view.result.current.stats).toBeNull();
+    const calls = vi.mocked(audioApi.getEngineRuntimeStats).mock.calls.length;
+    await act(async () => { finish(); });
+    expect(audioApi.getEngineRuntimeStats).toHaveBeenCalledTimes(calls);
+    expect(view.result.current.stats).toBeNull();
+});
 it('プリセットはかかり具合を保って反映する', async () => {
     render(<VoiceQuickControls running />);
     const bright = await screen.findByRole('button', { name: '明瞭' });

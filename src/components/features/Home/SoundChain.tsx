@@ -92,17 +92,19 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 <InfoPopover label={t('flow.info')}>
                     <p>{t('flow.scope')}</p>
                     {stage && <p className="mt-2">{t(stats?.latencyMetadata?.processingContext === 'broadcastWorker' ? 'flow.broadcastPath' : 'flow.monitorPath')}</p>}
-                    {music && <p className="mt-2">{t('music.soundHint')}</p>}
                 </InfoPopover>
             </div>
             <div className="flex flex-wrap gap-2">
                 <button type="button" ref={listenButton} onClick={onListen} disabled={!audioReady} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50"><MdHearing aria-hidden="true" />{t(music ? 'wizard.musicListen' : 'home.voiceCheck')}</button>
                 {!music && model.context.usage === 'obs' && <button type="button" onClick={onOpenOBSSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('shell.obs')}</button>}
-                {onOpenSoundSettings && <button type="button" onClick={onOpenSoundSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('home.moreSound')}</button>}
+                {/* 「詳しく調整」は声の処理の設定を開く。音楽鑑賞では VST 構成で整えるので出さない。 */}
+                {!music && onOpenSoundSettings && <button type="button" onClick={onOpenSoundSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('home.moreSound')}</button>}
             </div>
         </div>
         {!audioReady ? <p className="text-xs text-muted-foreground">{t('home.soundAfterSetup')}</p>
-            : controls && !live && <p role="status" className="text-xs text-muted-foreground">{t('home.voiceUnavailable')}</p>}
+            // 音楽鑑賞では声の段に操作を出さない理由を、常に見える形で示す。
+            : music ? <p className="text-xs text-muted-foreground">{t('music.soundHint')}</p>
+            : !live && <p role="status" className="text-xs text-muted-foreground">{t('home.voiceUnavailable')}</p>}
         <ol aria-label={t('flow.title')} className="flex flex-wrap items-stretch gap-1.5">
             {stages.map((item, i) => <li key={item.key} className={cn('flex items-stretch gap-1.5', item.className)}>
                 {i > 0 && <MdChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 self-center text-muted-foreground" />}
