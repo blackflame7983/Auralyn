@@ -104,7 +104,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                     {/* --- STEP 2: USAGE SELECTION --- */}
                     {state === 'usage_selection' && (
-                        <div className="space-y-3 animate-in slide-in-from-right-10 duration-300">
+                        <div className="space-y-3">
                             <h2 className="text-xl font-bold text-foreground text-center">{t('wizard.chooseGoal')}</h2>
                             <div className="space-y-2">
                                 <p className="text-muted-foreground text-sm leading-relaxed">
@@ -178,7 +178,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                     {/* --- STEP 3: INPUT SELECTION --- */}
                     {state === 'input_selection' && (
-                        <div className="space-y-3 animate-in slide-in-from-right-10 duration-300">
+                        <div className="space-y-3">
                             <div className="text-center space-y-2">
                                 <h2 className="text-xl font-bold text-foreground">
                                     {config.goal === 'music' ? t('wizard.musicInput') : config.goal === 'listening' ? t('guide.copy.182') : t('wizard.microphone')}
@@ -240,7 +240,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                     {/* --- STEP 4: OUTPUT SELECTION --- */}
                     {state === 'output_selection' && (
-                        <div className="space-y-3 animate-in slide-in-from-right-10 duration-300">
+                        <div className="space-y-3">
                             <div className="text-center space-y-2">
                                 <h2 className="text-xl font-bold text-foreground">{t('wizard.destination')}</h2>
                                 <p className="text-sm text-muted-foreground">
@@ -360,7 +360,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                     {/* --- STEP 5: CONFIRMATION & TEST --- */}
                     {state === 'confirmation' && (
-                        <div className="space-y-3 animate-in slide-in-from-right-10 duration-300">
+                        <div className="space-y-3">
                             <div className="text-center mb-3">
                                 <h2 className="text-xl font-bold text-foreground">{t('wizard.confirm')}</h2>
                                 <p className="text-sm text-muted-foreground">{t(config.goal === 'music' ? 'wizard.musicConfirm' : 'guide.copy.221')}</p>
@@ -379,7 +379,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                             {config.goal !== 'music' && <div className="flex flex-col items-center gap-3">
                                 {isTestingSound && (
-                                    <div className="w-full max-w-xs animate-in fade-in slide-in-from-bottom-2">
+                                    <div className="w-full max-w-xs">
                                         <InputLevelBar label={t('wizard.level')} />
                                     </div>
                                 )}
@@ -452,7 +452,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                     {/* --- STEP 6: CONFIGURING & COMPLETE --- */}
                     {(state === 'configuring' || state === 'complete') && (
-                        <div className="text-center space-y-8 animate-in zoom-in-95 duration-300 my-auto">
+                        <div className="text-center space-y-8 my-auto">
                             {state === 'configuring' ? (
                                 <>
                                     <div className="w-16 h-16 border-4 border-muted border-t-green-500 rounded-full animate-spin mx-auto" />

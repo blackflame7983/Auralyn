@@ -130,10 +130,10 @@ export const AppShell: React.FC<AppShellProps> = ({
 
     return (
         <MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef} className="min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300">
-            {/* Ambient Animated Glows - Visible mainly in Dark Mode */}
-            <div className="fixed inset-0 pointer-events-none z-0 opacity-0 dark:opacity-100 transition-opacity duration-500">
-                <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-brand-secondary/5 blur-[130px] rounded-full mix-blend-screen animate-[pulse_8s_ease-in-out_infinite]" />
-                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-brand/10 blur-[100px] rounded-full mix-blend-screen animate-[pulse_10s_ease-in-out_infinite_reverse]" />
+            {/* 背景のオーロラ。音声処理中（本番中とみなす）と動きを減らす設定では止める（DESIGN.md 5.6）。 */}
+            <div className={`fixed inset-0 pointer-events-none z-0 opacity-0 dark:opacity-100 transition-opacity duration-500 ${isEngineRunning ? '[&>.aurora-glow]:[animation-play-state:paused]' : ''}`}>
+                <div className="aurora-glow absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-brand-secondary/5 blur-[130px] rounded-full mix-blend-screen animate-[pulse_8s_ease-in-out_infinite]" />
+                <div className="aurora-glow absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-brand/10 blur-[100px] rounded-full mix-blend-screen animate-[pulse_10s_ease-in-out_infinite_reverse]" />
             </div>
 
             {/* Subtle Grid overlay - Fades out in center to avoid distraction */}
@@ -189,6 +189,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     {t('shell.advanced')}
                                 </button>
                             </div>
+                            <div className="flex flex-wrap items-center justify-end gap-2">
                             {/* 開いた後の測定・停止・閉じるはパネル側に集める。 */}
                             {!loudnessEnabled && !measurement.active && <button
                                 type="button"
@@ -196,11 +197,13 @@ export const AppShell: React.FC<AppShellProps> = ({
                                 onClick={() => { setLoudnessEnabled(true); setMeasurementRequest({id: ++requestId.current, action: measurement.active ? 'stop' : 'start'}); }}
                                 disabled={measurement.busy || (!measurement.active && !audioReady)}
                                 aria-describedby="loudness-toggle-description"
-                                className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted aria-pressed:border-primary aria-pressed:bg-muted aria-pressed:ring-1 aria-pressed:ring-primary/40"
+                                className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted aria-pressed:border-primary aria-pressed:bg-muted aria-pressed:ring-1 aria-pressed:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
                             >
                                 {t(measurement.busy ? 'loudness.switching' : measurement.stopUnconfirmed ? 'loudness.retryStop' : measurement.active ? 'loudness.stop' : 'loudness.startAction')}
                             </button>}
-                            <span id="loudness-toggle-description" className="sr-only">{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.audioStopped') : t('loudness.scope')}</span>
+                            {/* 押せない理由は画面にも出す。押せるときの対象範囲は読み上げだけにする。 */}
+                            <span id="loudness-toggle-description" className={!audioReady && !loudnessEnabled && !measurement.active ? 'text-xs text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
+                            </div>
                         </div>
                         <div className="min-[1280px]:col-span-2"><LoudnessCheck
                             music={purpose === 'music'}
