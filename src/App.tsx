@@ -167,6 +167,7 @@ function AppContent() {
         preparationBlocked={isModalOpen || isInitializing}
         currentInput={audioConfig.input}
         currentOutput={audioConfig.output}
+        liveControls={displayPurpose === 'voice' ? <LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded /> : undefined}
         isEngineRunning={isEngineRunning}
         engineProcessReady={engineProcessReady}
       >
@@ -179,10 +180,11 @@ function AppContent() {
           busy={pluginsApi.isLoading || pluginsApi.isScanning || isInitializing}
           onRetry={pluginsApi.retrySessionRestore}
         />
-        <details open={displayPurpose === 'voice' || liveModel.snapshot?.armed || Boolean(liveModel.error)}>
-          <summary hidden={displayPurpose === 'voice'} className="cursor-pointer text-sm py-2">{t('purpose.liveDetails')}</summary>
+        {/* 配信・通話では歌・雑談の切替を本番帯に置く。音楽鑑賞では使う機会が少ないので畳んでおく。 */}
+        {displayPurpose === 'music' && <details open={liveModel.snapshot?.armed || Boolean(liveModel.error)}>
+          <summary className="cursor-pointer text-sm py-2">{t('purpose.liveDetails')}</summary>
           <LiveModeBar model={liveModel} refreshKey={isModalOpen} />
-        </details>
+        </details>}
         <div className="relative mb-4">
           <div className="absolute right-0 top-2"><InfoPopover label={t('info.rack')}>{t('app.rackHint')}</InfoPopover></div>
           <details id="plugin-rack-disclosure" open={!isBeginnerMode || displayPurpose === 'music' || rackExpanded}

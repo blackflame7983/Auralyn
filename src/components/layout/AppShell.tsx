@@ -3,6 +3,8 @@ import { useUsageWindow } from '@/hooks/useUsageWindow';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
 import { HomePanels } from '../features/Home/HomePanels';
+import { LiveStrip } from '../features/Home/LiveStrip';
+import { usePreparation } from '@/hooks/usePreparation';
 import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Header } from './Header';
 import { audioApi } from '../../api/audio';
@@ -39,6 +41,8 @@ interface AppShellProps {
     engineProcessReady?: boolean | null;
     currentInput?: string;
     currentOutput?: string;
+    /** 本番帯に置く歌・雑談の切替。登録前は描画されない。 */
+    liveControls?: ReactNode;
 }
 
 import { MasterBar } from './MasterBar';
@@ -67,7 +71,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     isEngineRunning,
     engineProcessReady,
     currentInput,
-    currentOutput
+    currentOutput,
+    liveControls
 }) => {
     const t = useMessages();
     const [purpose, setPurpose] = useDisplayPurpose();
@@ -93,6 +98,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     }, []);
 
     const audioReady = Boolean(currentHost) && isEngineRunning && engineProcessReady === true;
+    const preparation = usePreparation({ blocked: preparationBlocked, running: audioReady });
     const [loudnessEnabled, setLoudnessEnabled] = useState(false);
     const [measurement, setMeasurement] = useState({ active: false, busy: false, stopUnconfirmed: false });
     const [measurementRequest, setMeasurementRequest] = useState<{id: number; action: 'start' | 'stop'}>();
@@ -213,12 +219,14 @@ export const AppShell: React.FC<AppShellProps> = ({
                             stateKnown={engineProcessReady !== null}
                             onVoiceCheck={onOpenVoiceCheck}
                         /></div>
+                        {/* 未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。 */}
+                        {Boolean(currentHost) && preparation.observation.availability !== 'unconfigured' && <LiveStrip model={preparation} running={isEngineRunning} liveControls={liveControls} />}
                         <div className="min-w-0"><HomePanels
+                            model={preparation}
                             audioReady={audioReady}
                             statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
                             isEngineRunning={isEngineRunning}
                             inputName={currentInput} outputName={currentOutput}
-                            blocked={preparationBlocked}
                             onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}
                             onOpenSoundSettings={onOpenSoundSettings} onOpenVoiceCheck={onOpenVoiceCheck}
                             onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot} onOpenVst={openRack}
