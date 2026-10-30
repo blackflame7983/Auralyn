@@ -35,7 +35,7 @@ function AppContent() {
   const ui = useUIState();
   const [displayPurpose] = useDisplayPurpose();
   const [rackExpanded, setRackExpanded] = useState(false);
-  const [isBeginnerMode, setIsBeginnerMode] = useBeginnerMode();
+  const [isBeginnerMode] = useBeginnerMode();
   const { audioConfig, handleConfigUpdate, isInitializing, isEngineRunning, engineProcessReady } = useAudioConfig(
     () => ui.setIsWizardOpen(true),
     () => ui.setIsSettingsOpen(true)
@@ -150,8 +150,6 @@ function AppContent() {
       )}
 
       <AppShell
-        isBeginnerMode={isBeginnerMode}
-        onDisplayModeChange={setIsBeginnerMode}
         onOpenOBSSettings={ui.openObsSettings}
         onOpenSettings={() => ui.setIsSettingsOpen(true)}
         onOpenSoundSettings={ui.openSoundSettings}

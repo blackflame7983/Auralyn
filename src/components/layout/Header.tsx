@@ -18,7 +18,8 @@ import {
     MdFavorite,
     MdMic,
     MdSystemUpdateAlt,
-    MdAutoFixHigh
+    MdAutoFixHigh,
+    MdSpaceDashboard
 } from 'react-icons/md';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi, type EngineRuntimeStats } from '../../api/audio';
@@ -271,6 +272,27 @@ export const Header: React.FC<HeaderProps> = ({
                         </>
                     )}
 
+                    {/* かんたん／詳細は頻繁に切り替えないので、本文に常設せずアイコン1つにする。
+                        ヘルプメニューの近道と同じ名前・アイコンにし（DESIGN.md 2.2）、詳細表示中は主色で示す。
+                        セットアップの杖アイコンとは見分けられるよう、表示の切替には別のアイコンを使う。 */}
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <button
+                                type="button"
+                                onClick={() => setIsBeginnerMode(prev => !prev)}
+                                aria-label={isBeginnerMode ? t('header.advanced') : t('header.simple')}
+                                data-detailed={!isBeginnerMode}
+                                className="p-2 rounded-lg border transition-colors text-muted-foreground border-transparent hover:text-foreground hover:bg-muted data-[detailed=true]:bg-primary/10 data-[detailed=true]:text-primary data-[detailed=true]:border-primary/50"
+                            >
+                                <MdSpaceDashboard aria-hidden="true" className="w-5 h-5" />
+                            </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            <p className="font-bold">{isBeginnerMode ? t('header.advanced') : t('header.simple')}</p>
+                            <p>{isBeginnerMode ? t('header.advancedHint') : t('header.simpleHint')}</p>
+                        </TooltipContent>
+                    </Tooltip>
+
                     {/* Audio Settings */}
                     <Tooltip>
                         <TooltipTrigger asChild>
@@ -346,7 +368,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 className="gap-3 cursor-pointer p-3"
                             >
                                 <span className="w-6 h-6 flex items-center justify-center bg-primary/15 text-primary rounded-full shadow-sm">
-                                    <MdAutoFixHigh className="w-3.5 h-3.5" />
+                                    <MdSpaceDashboard className="w-3.5 h-3.5" />
                                 </span>
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">
