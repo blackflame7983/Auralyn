@@ -3,7 +3,7 @@ import { renderNotice } from '@/components/features/AudioSettings/settingsNotice
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { MdGraphicEq, MdVolumeUp, MdBolt, MdClose } from 'react-icons/md';
+import { MdGraphicEq, MdVolumeUp, MdBolt, MdClose, MdInfoOutline } from 'react-icons/md';
 import { Modal } from '../ui/modal';
 import { cn } from '@/lib/utils';
 import { audioApi, EngineRuntimeStats } from '../../api/audio';
@@ -236,8 +236,9 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             {hasRecentGlitch && <span role="status" title={t('master.glitch')}><MdBolt aria-hidden="true" className="w-3.5 h-3.5 text-warning" /><span className="sr-only">{t('master.glitch')}</span></span>}
 
             <button onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-expanded={detailsOpen}
-                className="shrink-0 rounded-md border border-border px-2 py-1.5 text-xs whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted">
-                {t('master.details')}
+                aria-label={t('master.details')} title={t('master.details')}
+                className="shrink-0 rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                <MdInfoOutline aria-hidden="true" className="h-4 w-4" />
             </button>
             {/* 状態は操作の後に配置し、狭い幅では独立した行へ送る。 */}
             {/* 未設定はヘッダーとホームで示すため、ここでは重ねない。 */}

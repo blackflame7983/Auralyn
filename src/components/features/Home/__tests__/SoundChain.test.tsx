@@ -39,6 +39,11 @@ it('外部 VST を使っていないと確認できたら薄い1行と追加の�
     expect(row).toHaveTextContent('外部 VST'); expect(row).toHaveTextContent('使っていません');
     expect(row.querySelector('[data-on]')).toHaveAttribute('data-on', 'false');
     expect(screen.queryByRole('button', { name: 'VST を編集' })).not.toBeInTheDocument();
+    const hint = message('ja', 'chain.vstEmptyHint');
+    expect(screen.queryByText(hint)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '外部 VST' }));
+    expect(screen.getByRole('dialog', { name: '外部 VST' })).toHaveTextContent(hint);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: '追加' }));
     expect(p.onOpenVst).toHaveBeenCalledOnce();
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: null, running: true }}><SoundChain {...p} vst={vst} /></RuntimeStatsContext.Provider>);

@@ -424,6 +424,15 @@
 [data-radix-menu-content][data-state="open"] {
   animation: surface-appear var(--motion-base) ease-out;
 }
+@keyframes surface-disappear {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+/* Radix の Presence に終了だけを任せ、選択した操作は待たせない。 */
+[data-radix-menu-content][data-state="closed"] {
+  animation: surface-disappear var(--motion-fast) ease-in;
+  pointer-events: none;
+}
 [data-panel-instant] .vst-panel-space,
 [data-panel-instant] .vst-panel-motion,
 [data-panel-instant] .large-meter-motion {
@@ -462,8 +471,8 @@
   }
   .vst-panel-scrim,
   .modal-overlay-base,
-  .app-dialog,
-  [data-radix-menu-content] {
+  .app-dialog[data-state],
+  [data-radix-menu-content][data-state] {
     animation: none;
   }
 }

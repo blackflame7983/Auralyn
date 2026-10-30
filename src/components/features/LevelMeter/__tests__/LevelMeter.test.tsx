@@ -18,6 +18,11 @@ beforeEach(() => {
     });
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.mocked(listen).mockReset(); });
+it('無音通知後の減衰残値を極端なdBFS値として表示しない', () => {
+    render(<MeterVisual label="出力" showValues reading={{ levels: [1e-300, 1e-300], peak: [.1, .1], clipped: false, state: 'silent', resetClip: () => {} }} />);
+    expect(screen.getByRole('meter', { name: '出力' })).toHaveAttribute('aria-valuetext', '−∞ dBFS');
+    expect(screen.getByText('−∞ dBFS')).toBeInTheDocument();
+});
 it('フッター用の小表示は数値とクリップがあっても固定のバー高さを保つ', () => {
     render(<MeterVisual label="出力" height={28} width={12} showValues reading={{ levels: [1, 1], peak: [1, 1], clipped: true, state: 'live', resetClip: () => {} }} />);
     expect(screen.getByRole('meter', { name: '出力' })).toHaveStyle({ height: '28px' });
@@ -37,12 +42,12 @@ it('大メーターはtimeoutでもclipを保持し、手動で消せる', () =>
     emit('audio-level', { input: [0, 0], output: [1.2, 1.2] });
     act(() => vi.advanceTimersByTime(16)); expect(screen.getByText('クリップ')).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(1100));
-    expect(screen.getByText('レベル更新待ち')).toBeInTheDocument(); expect(screen.getByText('クリップ')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('更新待ち'); expect(screen.getByText('クリップ')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /クリップ表示を消す/ }));
     expect(screen.queryByText('クリップ')).toBeNull();
     emit('audio-level', { input: [0, 0], output: [0, 0] });
     act(() => vi.advanceTimersByTime(3000)); expect(screen.getByText('無音')).toBeInTheDocument();
-    emit('audio-stream-error'); expect(screen.getByText('音声停止中')).toBeInTheDocument();
+    emit('audio-stream-error'); expect(screen.getByRole('status')).toHaveTextContent('停止中');
 });
 
 it('同じ出力の表示はクリップを共有し、1か所の解除が両方に反映される', () => {

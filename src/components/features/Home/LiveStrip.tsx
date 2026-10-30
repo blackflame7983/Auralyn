@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { MdArrowForward, MdMic, MdMusicNote, MdVolumeOff } from 'react-icons/md';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
-import { meterStatusLabel } from '@/hooks/useMeterLevels';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
@@ -35,7 +34,6 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
             <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
             <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues />
             {/* 無音は「声が来ていない」本番事故の手がかりなので、dBFS 値だけにせず言葉でも示す。 */}
-            {reading.state !== 'live' && <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(meterStatusLabel(reading.state))}</span>}
             {/* マイク音量と音量チェックはメーターに関わる操作なので、上部に単独で置かずメーターの横に置く。 */}
             <InputGainControl />
             {meterAction}

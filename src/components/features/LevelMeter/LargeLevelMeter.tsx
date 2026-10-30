@@ -40,7 +40,9 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
                 <p>{t('meter.scale.red')}{t('meter.scale.high')}</p>
             </InfoPopover>}
         </div>
-        {reading.state !== 'live' && <span role="status" className="text-center text-xs text-muted-foreground">{t(meterStatusLabel(reading.state))}</span>}
+        <span role="status" title={t(meterStatusLabel(reading.state))} className="h-4 shrink-0 text-center text-xs leading-4 text-muted-foreground">
+            {reading.state === 'live' ? '' : t(reading.state === 'stopped' ? 'meter.stoppedShort' : reading.state === 'silent' ? 'meter.state.silent' : 'meter.waitingShort')}
+        </span>
         {detailed && <div className="flex justify-center"><InputGainControl /></div>}
         <div className="flex-1 min-h-0 flex justify-center items-stretch">
             <MeterVisual reading={reading} label={t('meter.output')} width={detailed ? 14 : 8} height="100%" showValues={detailed} scale stackValues />

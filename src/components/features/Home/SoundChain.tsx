@@ -77,6 +77,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                         <div className="flex items-center gap-1">
                             <h3 className="text-sm font-semibold">{name}</h3>
                             {key === 'builtin' && <InfoPopover label={t('settings.builtinHelp')}>{t('settings.AudioSettingsModal.096')}</InfoPopover>}
+                            {key === 'vst' && quiet && <InfoPopover label={t('chain.vstEmptyName')}>{t('chain.vstEmptyHint')}</InfoPopover>}
                         </div>
                         {sub && <div className={typeof sub === 'string' ? 'sr-only' : 'text-xs text-muted-foreground'}>{sub}</div>}
                     </div>
@@ -118,7 +119,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         // 外部 VST を使わない人には、薄い1行で「使っていない」ことと追加の入口だけを示す。
         emptyVst
             ? row({ key: 'vst', on: false, quiet: true, tag: 'VST', name: t('chain.vstEmptyName'), sub: t('chain.vstEmptySub'),
-                body: <span className="text-xs text-muted-foreground">{t('chain.vstEmptyHint')}</span>, action: vstEdit })
+                body: <span className="text-xs text-muted-foreground">{t('flow.noVst')}</span>, action: vstEdit })
             : row({ key: 'vst', on: vstOn, tag: 'VST', name: 'VST', sub: <StatusDot tone={vstTone}>{vstStatus}</StatusDot>, body: vst, action: vstEdit }),
     ];
     return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="sound-chain aurora-card mb-4 rounded-xl border border-border bg-card/70 px-4 py-3 min-[1100px]:px-5">

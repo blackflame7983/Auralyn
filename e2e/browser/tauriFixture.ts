@@ -9,9 +9,14 @@ export const test = base.extend<{ transport: void; liveHome: boolean; registered
         page.on('pageerror', error => errors.push(error.message));
         await page.addInitScript(({ liveHome, registeredModes }) => {
             const callbacks = new Map<number, (payload: unknown) => void>();
+            const listeners = new Map<number, { event: string; handler: number }>();
             let next = 1;
             const unexpected: string[] = [];
-            Object.assign(window, { __e2eUnexpected: unexpected });
+            Object.assign(window, { __e2eUnexpected: unexpected, __e2eEmit: (event: string, payload: unknown) => {
+                listeners.forEach((listener, id) => {
+                    if (listener.event === event) callbacks.get(listener.handler)?.({ event, id, payload });
+                });
+            } });
             const mic = { name: liveHome ? 'CABLE Output' : 'Test microphone', host: 'WASAPI', is_input: true, index: 0, channels: 2, is_default: true, id: 'mic' };
             const output = { ...mic, name: liveHome ? 'スピーカー' : 'Test headphones', is_input: false, id: 'headphones' };
             // 登録済みモードとミュート表示を含め、実Tauriで重なった本番帯を再現する。
@@ -57,8 +62,12 @@ export const test = base.extend<{ transport: void; liveHome: boolean; registered
                         return;
                     case 'has_backup_profile': return false;
                     case 'get_distribution': return 'standalone';
-                    case 'plugin:event|listen': return next++;
-                    case 'plugin:event|unlisten':
+                    case 'plugin:event|listen': {
+                        const id = next++;
+                        listeners.set(id, { event: args.event, handler: args.handler });
+                        return id;
+                    }
+                    case 'plugin:event|unlisten': listeners.delete(args.eventId); return;
                     case 'plugin:window|set_theme':
                     case 'plugin:window|set_min_size': return;
                     default: unexpected.push(command); throw new Error(`未定義のテストIPC: ${command}`);

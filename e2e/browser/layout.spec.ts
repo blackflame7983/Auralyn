@@ -258,6 +258,47 @@ test('動きを減らす設定では右パネルを移動せず、キーボー�
 
 test.describe('メーター数値の幅', () => {
     test.use({ liveHome: true });
+    test('クリップの発生・解除と無音への変化で横・縦メーターの寸法が変わらない', async ({ page }, testInfo) => {
+        await page.setViewportSize({ width: 960, height: 640 });
+        await page.addInitScript(() => {
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('auralyn_vst_panel_open', 'false');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+        });
+        await page.goto('/');
+        await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
+        const large = page.locator('.large-meter-motion');
+        const input = page.getByRole('meter', { name: 'マイクの入力レベル', exact: true });
+        const output = page.getByRole('meter', { name: '出力', exact: true });
+        const emit = (value: number) => page.evaluate(value => (window as any).__e2eEmit('audio-level', { input: [value, value], output: [value, value] }), value);
+        for (const detailed of [false, true]) {
+            if (detailed) await large.getByRole('button', { name: '詳細表示', exact: true }).click();
+            await emit(0.1);
+            await expect(input).toHaveAttribute('aria-valuenow', '-20');
+            const baseline = await Promise.all([input, output.nth(0), output.nth(1)].map(locator => locator.boundingBox()));
+            await emit(1.2);
+            const resets = page.getByRole('button', { name: /クリップ表示を消す/ });
+            await expect(resets).toHaveCount(3);
+            for (const [i, locator] of [input, output.nth(0), output.nth(1)].entries()) {
+                const clipped = (await locator.boundingBox())!;
+                expect(clipped).toEqual(baseline[i]);
+            }
+            await page.screenshot({ path: testInfo.outputPath(`clip-${detailed ? 'detail' : 'slim'}.png`) });
+            // 出力は2か所で共有し、入力の履歴とは独立して解除する。
+            await large.getByRole('button', { name: /クリップ表示を消す/ }).click();
+            await expect(resets).toHaveCount(1);
+            await resets.click();
+            await emit(0);
+            await expect(large.getByRole('status')).toHaveText('無音');
+            for (const [i, locator] of [input, output.nth(0), output.nth(1)].entries()) {
+                expect(await locator.boundingBox()).toEqual(baseline[i]);
+            }
+            // 不正なレベル通知は更新待ちになり、状態欄で縦バーを縮めない。
+            await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [], output: [] }));
+            await expect(large.getByRole('status')).toHaveText('更新待ち');
+            expect(await large.getByRole('meter').boundingBox()).toEqual(baseline[1]);
+        }
+    });
     test('数値の桁が変わっても入力メーターのバー幅と隣の操作位置は変わらない', async ({ page }) => {
         await page.setViewportSize({ width: 1024, height: 768 });
         await page.addInitScript(() => {
@@ -283,4 +324,37 @@ test.describe('メーター数値の幅', () => {
             expect(sample.control).toBeCloseTo(samples[0].control, 3);
         }
     });
+});
+
+test('メニューは短く閉じて入口へ戻り、動きを減らす場合は即座に消える', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('vst_host_wizard_done', 'true'));
+    await page.goto('/');
+    const trigger = page.getByRole('button', { name: 'ヘルプメニューを開く', exact: true });
+    const menu = page.locator('[data-radix-menu-content]');
+    for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+        await page.emulateMedia({ reducedMotion });
+        await trigger.click();
+        await expect(menu).toHaveAttribute('data-state', 'open');
+        const closing = await menu.evaluate(element => {
+            // 開くアニメーションの途中でも閉じられる。
+            element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            return new Promise<{ state: string | null; pointer: string; animations: string[] }>(resolve => requestAnimationFrame(() => resolve({
+                state: element.getAttribute('data-state'), pointer: getComputedStyle(element).pointerEvents,
+                animations: element.getAnimations().map(animation => (animation as CSSAnimation).animationName),
+            })));
+        });
+        if (reducedMotion === 'no-preference') {
+            expect(closing.state).toBe('closed');
+            expect(closing.pointer).toBe('none');
+            expect(closing.animations).toContain('surface-disappear');
+        } else expect(closing.animations).toHaveLength(0);
+        await expect(menu).toHaveCount(0);
+        await expect(trigger).toBeFocused();
+    }
+    // 小さくした詳細アイコンから診断内容へ到達できる。
+    const details = page.getByRole('button', { name: '音声処理の詳細', exact: true });
+    await details.click();
+    await expect(page.getByRole('dialog', { name: '音声処理の詳細', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(details).toBeFocused();
 });
