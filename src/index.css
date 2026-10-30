@@ -172,43 +172,43 @@
 }
 
 .gaming {
-  /* Gaming Mode - Cyber/Neon with High Contrast */
-  --background: 240 10% 3%;
+  /* ゲーミング: 黒に近い地に、ネオンのマゼンタを主色、ネオンのシアンを選択色にして、オーロラ（シアン主色）と見てすぐ区別できるようにする。 */
+  --background: 270 25% 3%;
   --foreground: 0 0% 98%;
 
   /* Darker cards for contrast against glowing borders */
-  --card: 240 10% 2%;
+  --card: 270 25% 5%;
   --card-foreground: 0 0% 98%;
 
-  --popover: 240 10% 3%;
+  --popover: 270 25% 5%;
   --popover-foreground: 0 0% 98%;
 
-  --primary: 180 100% 50%;
-  /* Neon Cyan */
+  --primary: 300 100% 68%;
+  /* Neon Magenta */
   --primary-foreground: 240 5.9% 10%;
 
-  --secondary: 240 20% 10%;
+  --secondary: 280 30% 11%;
   --secondary-foreground: 0 0% 98%;
 
-  --muted: 240 20% 10%;
+  --muted: 280 30% 11%;
   --muted-foreground: 240 5% 70%;
 
-  --accent: 190 80% 15%;
-  /* Slight cyan tint for accents */
+  --accent: 300 70% 16%;
+  /* Slight magenta tint for accents */
   --accent-foreground: 0 0% 98%;
 
   --destructive: 0 80% 47%;
   --destructive-foreground: 0 0% 98%;
 
-  --brand: 180 100% 50%;
-  --brand-secondary: 270 100% 80%;
-  --selection: 180 100% 50%;
+  --brand: 300 100% 68%;
+  --brand-secondary: 185 100% 60%;
+  --selection: 185 100% 55%;
 
   /* Stronger borders for "Mechanical/Cyber" feel */
-  --border: 240 30% 20%;
-  --input: 240 30% 20%;
+  --border: 295 45% 24%;
+  --input: 295 45% 24%;
 
-  --ring: 180 100% 50%;
+  --ring: 300 100% 68%;
   /* Sharp Neon Ring */
 
   --radius: 0.2rem;
