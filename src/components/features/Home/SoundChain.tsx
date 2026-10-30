@@ -80,6 +80,17 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     </button>;
     const stages: { key: string; className: string; body: ReactNode }[] = [
         { key: 'input', className: 'flex-none', body: endpoint(music ? MdMusicNote : MdMic, t('home.input'), actualInput) },
+        // 音楽鑑賞では声向けの処理を操作しないので、2段を状態だけの1段に縮め、VST の段を広く使う。
+        // 設定が残っていれば音楽にもかかるため、状態は隠さない。
+        ...(music ? [{ key: 'voice', className: 'flex-none', body: <div className={cn(card, 'min-w-[9rem]')}>
+            <span className="flex items-center gap-1.5"><MdTune aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="whitespace-nowrap text-sm font-semibold">{t('chain.voiceTools')}</span></span>
+            <dl className="space-y-1 text-xs text-muted-foreground">
+                <div className="flex items-center justify-between gap-2"><dt className="whitespace-nowrap">{t('settings.AudioSettingsModal.105')}</dt><dd><StatusDot tone={tone(stage?.nr.enabled)}>{setting(stage?.nr.enabled)}</StatusDot></dd></div>
+                <div className="flex items-center justify-between gap-2"><dt className="whitespace-nowrap">{t('settings.AudioSettingsModal.095')}</dt><dd><StatusDot tone={builtinTone}>{builtinStatus}</StatusDot></dd></div>
+            </dl>
+            {/* 残響だけ鳴っている「一部 ON」は音楽にもかかるので、声の表示と同じく内訳を見える形で残す。 */}
+            {builtinDetails && <span className={partial ? 'block text-xs text-muted-foreground' : 'sr-only'}>{builtinDetails}</span>}
+        </div> }] : [
         { key: 'noise', className: 'min-w-[11rem] flex-1', body: <div id="home-noise" tabIndex={-1} className={card}>
             {head(MdNoiseAware, t('settings.AudioSettingsModal.105'), live ? null : <StatusDot tone={tone(stage?.nr.enabled)}>{setting(stage?.nr.enabled)}</StatusDot>, live && <NoiseSwitch q={q} />)}
             {live && <NoiseQuick q={q} />}
@@ -90,6 +101,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             {builtinDetails && <span className={partial ? 'block text-xs text-muted-foreground' : 'sr-only'}>{builtinDetails}</span>}
             {live && <BuiltinQuick q={q} />}
         </div> },
+        ]),
         { key: 'vst', className: 'min-w-[14rem] flex-[1.5]', body: <div className={card}>
             {head(MdExtension, 'VST', <StatusDot tone={vstTone}>{vstStatus}</StatusDot>, onOpenVst && <button type="button" onClick={onOpenVst} className="whitespace-nowrap text-xs font-semibold text-primary hover:opacity-80">{t('chain.vstOpen')}</button>)}
             {vst}
