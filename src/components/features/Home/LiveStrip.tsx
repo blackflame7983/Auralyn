@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { MdArrowForward, MdMic, MdMusicNote, MdVolumeOff } from 'react-icons/md';
+import { MdArrowForward, MdMic, MdMusicNote, MdVolumeOff, MdVolumeUp } from 'react-icons/md';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -14,14 +14,16 @@ const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', disc
 
 // 本番中に見る3つ（声のレベル、送り先、歌・雑談）だけを最上段に置く（DESIGN.md 1.3、2.5）。
 // 入力機器の名前は送り先の手前に1つだけ出し、押すと機器の設定を開く。確認の手順は準備状況に任せる。
-export function LiveStrip({ model, running, liveControls, meterAction, onOpenDevices, onCheckOutput, inputName, outputName }: {
+export function LiveStrip({ model, running, liveControls, meterAction, onOpenDevices, onCheckOutput, onAdjustOutput, inputName, outputName }: {
     model: PreparationModel; running: boolean; liveControls?: ReactNode; meterAction?: ReactNode; onOpenDevices?: () => void;
     onCheckOutput?: () => void;
+    onAdjustOutput?: () => void;
     /** 準備の観測で機器を取れない間に使う、AppShell が持つ機器名。 */
     inputName?: string; outputName?: string;
 }) {
     const t = useMessages();
     const reading = useSharedMeter(running, 'input');
+    const outputReading = useSharedMeter(running, 'output');
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
     const { usage, receiver } = model.context;
@@ -30,14 +32,24 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
     const input = model.observation.config?.input ?? inputName;
     const output = model.observation.config?.output ?? outputName;
     const devices = t('live.devices', { input: input ? deviceDisplayName(input) : t('flow.unknown'), output: output ? deviceDisplayName(output) : t('flow.unknown') });
-    return <section aria-label={t('live.strip')} className="aurora-card aurora-edge aurora-glow-live mb-4 space-y-3 rounded-xl border border-border bg-card/70 px-4 py-4 min-[1100px]:px-5">
-        <div className="flex flex-wrap items-center gap-3">
+    return <section aria-label={t('live.strip')} className="live-strip aurora-card aurora-edge aurora-glow-live mb-4 space-y-3 rounded-xl border border-border bg-card/70 px-4 py-4 min-[1100px]:px-5">
+        <div className="live-meter-pair">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
             <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
             <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues />
             {/* 無音は「声が来ていない」本番事故の手がかりなので、dBFS 値だけにせず言葉でも示す。 */}
             {/* マイク音量と音量チェックはメーターに関わる操作なので、上部に単独で置かずメーターの横に置く。 */}
             <InputGainControl />
             {meterAction}
+        </div>
+        {/* 広い作業幅では入出力を隣接させる。同じ観測値を共有し、出力音量の操作はフッターへ集約する。 */}
+        <div className="live-output-summary min-w-0 items-center gap-3 border-l border-border pl-4">
+            <button type="button" onClick={onAdjustOutput} aria-label={t('master.outputGain')} title={t('master.outputGain')}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md p-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+                <MdVolumeUp aria-hidden="true" className="h-5 w-5" />{t('meter.output')}
+            </button>
+            <MeterVisual reading={outputReading} label={t('meter.output')} orientation="horizontal" height={32} scale showValues />
+        </div>
         </div>
         <div data-live-routing className="flex flex-wrap items-center gap-x-3 gap-y-2">
             {input && onOpenDevices && <button type="button" onClick={onOpenDevices} aria-label={devices} title={devices}

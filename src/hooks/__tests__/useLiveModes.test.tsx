@@ -74,7 +74,7 @@ it('操作開始前の遅いsnapshotは新しいepochとモード応答を巻き
 it('画面はCustom・停止保持・RT受付・切替完了・自然tailを区別する', async () => {
     function Panel() { return <LiveModeControls model={useLiveModes()} />; }
     render(<Panel />);
-    fireEvent.click(screen.getByText('本番の歌・雑談モード'));
+    fireEvent.click(screen.getByText('モード登録'));
     await screen.findByText(/現在は個別の設定/);
     vi.mocked(liveModesApi.request).mockResolvedValue(liveSnapshot({ target: 'singing', phase: 'stopped' }));
     fireEvent.click(screen.getByText('モードの状態を再取得'));

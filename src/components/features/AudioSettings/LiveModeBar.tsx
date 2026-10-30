@@ -1,6 +1,6 @@
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect } from 'react';
-import { MdShield, MdAdd, MdTune } from 'react-icons/md';
+import { MdShield, MdAdd, MdTune, MdMic, MdMusicNote } from 'react-icons/md';
 import { cn } from '@/lib/utils';
 import type { LiveModesModel } from '@/hooks/useLiveModes';
 
@@ -36,9 +36,9 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister }:
                 {(['singing', 'talk'] as const).map(mode => (
                     <button key={mode} type="button" disabled={busy || !value.definitions[mode]} aria-pressed={applied === mode}
                         onClick={() => void model.select(mode)}
-                        className={cn('rounded-md border px-3 py-1.5 text-sm font-bold transition-colors disabled:opacity-50',
+                        className={cn('inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-sm font-bold transition-colors disabled:opacity-50',
                             applied === mode ? 'border-selection bg-selection/20 text-foreground ring-1 ring-selection/30' : 'border-input bg-background text-foreground hover:bg-muted')}>
-                        {name(mode)}
+                        {mode === 'singing' ? <MdMusicNote aria-hidden="true" className="h-4 w-4" /> : <MdMic aria-hidden="true" className="h-4 w-4" />}{name(mode)}
                     </button>
                 ))}
             </div>}

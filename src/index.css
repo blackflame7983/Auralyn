@@ -370,7 +370,12 @@
 .home-main {
   padding-right: calc(1rem + var(--visible-meter-width));
 }
-.sound-chain { container-type: inline-size; }
+.sound-chain, .live-strip { container-type: inline-size; }
+.live-output-summary { display: none; }
+@container (min-width: 1080px) {
+  .live-meter-pair { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1rem; }
+  .live-output-summary { display: flex; }
+}
 .sound-chain-row {
   grid-template-columns: minmax(10rem, 12rem) minmax(0, 1fr) auto;
 }

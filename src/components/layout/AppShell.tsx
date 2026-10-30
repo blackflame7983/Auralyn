@@ -250,7 +250,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
-                            ? <LiveStrip model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
+                            ? <LiveStrip model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={() => document.querySelector<HTMLElement>('#master-output-gain [role="slider"]')?.focus({ preventScroll: true })} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
                             : liveControls && <div className="mb-4 rounded-xl border border-border bg-card/70 px-4 py-3 empty:hidden">{liveControls}</div>}
                         {/* 音量チェックは開いたメーターの直下に出す。 */}
                         <div><LoudnessCheck

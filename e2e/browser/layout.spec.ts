@@ -3,6 +3,29 @@ import { test, expect } from './tauriFixture';
 
 test.describe('通常のホーム表示', () => {
     test.use({ liveHome: true, registeredModes: false });
+    test('広い画面は入出力を並べ、狭い画面は出力の操作をフッターに保つ', async ({ page }) => {
+        await page.addInitScript(() => {
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('auralyn_vst_panel_open', 'false');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+        });
+        await page.goto('/');
+        for (const width of [960, 1280, 1920, 2560]) {
+            await page.setViewportSize({ width, height: 768 });
+            const summary = page.locator('.live-output-summary');
+            if (width === 960) await expect(summary).toBeHidden();
+            else {
+                await expect(summary).toBeVisible();
+                const input = (await page.getByRole('meter', { name: 'マイクの入力レベル', exact: true }).boundingBox())!;
+                const output = (await summary.getByRole('meter').boundingBox())!;
+                expect(output.y).toBe(input.y);
+                expect(input.width).toBeGreaterThan(120);
+                expect(output.width).toBeGreaterThan(120);
+                await summary.getByRole('button', { name: '出力音量', exact: true }).click();
+                await expect(page.getByRole('slider', { name: '出力音量', exact: true })).toBeFocused();
+            }
+        }
+    });
     test('復元警告なしで、ミュート表示による折返しと高さの変化がない', async ({ page }, testInfo) => {
         await page.addInitScript(() => {
             localStorage.setItem('vst_host_wizard_done', 'true');
