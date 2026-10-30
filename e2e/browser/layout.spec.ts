@@ -57,3 +57,38 @@ test('1024×768・200%ページ拡大: 設定をキーボードで操作し、�
     await expect(dialog).not.toBeVisible();
     await expect(page.getByRole('button', { name: 'Set up microphone and output', exact: true })).toBeFocused();
 });
+
+// パネルが重なる幅でも、大型メーターの下にホームの操作を隠さない。
+test('900〜1100px: VST 構成と大型メーターを開いてもホームの操作を覆わない', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 768 });
+    await page.addInitScript(() => {
+        localStorage.setItem('vst_host_wizard_done', 'true');
+        localStorage.setItem('auralyn_vst_panel_open', 'true');
+        localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'Test microphone', output: 'Test headphones', sampleRate: 48000, bufferSize: 512 }));
+    });
+    await page.goto('/');
+    await page.getByRole('button', { name: '大型レベルメーターを開く' }).click();
+    const meter = page.locator('div.fixed.top-16');
+    await expect(meter).toBeVisible();
+    for (const width of [900, 1024, 1099, 1100, 1280]) {
+        await page.setViewportSize({ width, height: 600 });
+        const content = page.locator('main > .mx-auto');
+        const contentBox = (await content.boundingBox())!;
+        const meterBox = (await meter.boundingBox())!;
+        const panelBox = (await page.locator('#vst-panel').boundingBox())!;
+        expect(contentBox.width).toBeGreaterThan(280);
+        expect(contentBox.x + contentBox.width).toBeLessThanOrEqual(meterBox.x + 1);
+        expect(meterBox.x + meterBox.width).toBeLessThanOrEqual(panelBox.x + 1);
+        const live = page.getByRole('region', { name: '本番', exact: true });
+        const gain = live.getByRole('button', { name: /100%/ });
+        const toggle = live.getByRole('button', { name: '大型レベルメーターを閉じる' });
+        await reachable(gain, page);
+        await reachable(toggle, page);
+        const gainBox = (await gain.boundingBox())!;
+        const toggleBox = (await toggle.boundingBox())!;
+        expect(Math.max(gainBox.x + gainBox.width, toggleBox.x + toggleBox.width)).toBeLessThanOrEqual(meterBox.x + 1);
+        if (width === 900 || width === 1024) await page.screenshot({ path: testInfo.outputPath(`meter-panel-${width}.png`) });
+    }
+    await page.getByRole('button', { name: 'VST 構成を閉じる' }).click();
+    expect((await meter.boundingBox())!.x + (await meter.boundingBox())!.width).toBe(1280);
+});

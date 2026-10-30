@@ -33,7 +33,7 @@ export function HomePanels({ model, audioReady, statusText, inputName, outputNam
     const configureIsPrimary = !['ready', 'unknown', 'pending'].includes(model.observation.availability);
     const actualInput = model.observation.config?.input ?? inputName;
     const actualOutput = model.observation.config?.output ?? outputName;
-    return <div className="mb-4 space-y-3">
+    return <div className="mb-4 space-y-4">
         <PreparationPanel model={model} audioReady={audioReady} onSettings={onOpenSettings} onSound={onOpenSoundSettings ?? onOpenSettings}
             onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText}
             devices={actualInput || actualOutput ? `${actualInput ? deviceDisplayName(actualInput) : t('master.unset')} → ${actualOutput ? deviceDisplayName(actualOutput) : t('master.unset')}` : undefined}

@@ -1,5 +1,8 @@
 import { useDisplayPurpose, type DisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useBeginnerMode } from '@/hooks/useBeginnerMode';
 import { useMessages } from '@/i18n/LocaleProvider';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 
 // 毎日切り替えるものではないので、ホームの本文ではなく設定の「表示」に置く。
 // 表示だけを切り替え、音声設定・準備の送り先・送出には触れない。
@@ -14,5 +17,19 @@ export function DisplayPurposeSelector() {
             </select>
         </label>
         <p id="display-purpose-hint" className="text-xs text-muted-foreground">{t('purpose.hint')}</p>
+    </div>;
+}
+
+// 遅延などの数値は配信中に毎回見るものではないので、ホームの表示モードではなく外観の設定1つで出し分ける。
+// 保存先は以前の「かんたん／詳細」と同じキーで、詳細表示を使っていた人はそのまま数値が出る。
+export function NumericDetailsSwitch() {
+    const t = useMessages();
+    const [isBeginnerMode, setIsBeginnerMode] = useBeginnerMode();
+    return <div className="mb-3 space-y-1 text-sm">
+        <div className="flex items-center gap-3">
+            <Label htmlFor="numeric-details">{t('details.label')}</Label>
+            <Switch id="numeric-details" checked={!isBeginnerMode} onCheckedChange={checked => setIsBeginnerMode(!checked)} aria-describedby="numeric-details-hint" />
+        </div>
+        <p id="numeric-details-hint" className="text-xs text-muted-foreground">{t('details.hint')}</p>
     </div>;
 }

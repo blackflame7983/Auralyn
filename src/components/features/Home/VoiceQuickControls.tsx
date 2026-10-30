@@ -95,7 +95,7 @@ export function useVoiceQuick(running: boolean, enabled = true) {
 }
 export type VoiceQuick = ReturnType<typeof useVoiceQuick>;
 
-const segment = (selected: boolean) => cn('whitespace-nowrap rounded-md border px-2 py-1.5 text-xs font-bold transition-colors disabled:opacity-50',
+const segment = (selected: boolean) => cn('whitespace-nowrap rounded-md border px-2 py-2 text-[13px] font-bold transition-colors disabled:opacity-50',
     selected ? 'border-selection bg-selection/15 text-selection' : 'border-input bg-background text-muted-foreground hover:text-foreground');
 
 // 段の見出し行の右端に置くスイッチ。
@@ -112,7 +112,7 @@ export function NoiseQuick({ q }: { q: VoiceQuick }) {
     if (q.noiseMode === 'smart' || q.noiseMode === 'venue') {
         return <p className="text-xs text-muted-foreground">{t('home.noiseAdvancedMode', { mode: q.noiseMode === 'smart' ? t('master.nrLearn') : t('master.nrVenue') })}</p>;
     }
-    return <div role="group" aria-label={t('structure.noise.standard')} className="grid grid-cols-2 gap-1.5">
+    return <div role="group" aria-label={t('structure.noise.standard')} className="grid w-40 grid-cols-2 gap-1.5">
         {(['low', 'high'] as NoiseControlMode[]).map(mode => (
             <button key={mode} type="button" disabled={q.disabled || !q.noiseOn} aria-pressed={q.noiseOn && q.noiseMode === mode}
                 onClick={() => void q.applyNoise({ mode })} className={segment(q.noiseOn && q.noiseMode === mode)}>
@@ -132,8 +132,9 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
     if (q.preset === 'singing') return <p className="text-xs text-muted-foreground">{t('home.chainSinging')}</p>;
     const presetLabel = (value: BuiltInEffectsPreset) => value === 'broadcast' ? t('settings.AudioSettingsModal.098')
         : value === 'warm' ? t('settings.AudioSettingsModal.099') : t('settings.AudioSettingsModal.100');
-    return <div className="space-y-2">
-        <div role="group" aria-label={t('home.chainPreset')} className="flex flex-wrap gap-1.5">
+    // 行カードの中で横に並べ、狭い幅ではプリセットとかかり具合を折り返す。
+    return <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2">
+        <div role="group" aria-label={t('home.chainPreset')} className="flex gap-1.5">
             {quickPresets.map(value => (
                 <button key={value} type="button" disabled={q.disabled} aria-pressed={q.chainOn && q.preset === value}
                     onClick={() => void q.applyChain({ preset: value })} className={cn(segment(q.chainOn && q.preset === value), 'flex-1 whitespace-nowrap')}>
@@ -141,14 +142,14 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
                 </button>
             ))}
         </div>
-        <label className="block space-y-1 text-xs">
-            <span className="flex justify-between gap-2 text-muted-foreground">
-                <span className="whitespace-nowrap">{t('settings.AudioSettingsModal.103')}</span>
-                <span className="font-mono text-foreground">{q.shownAmount}%</span>
+        <label className="flex min-w-[12rem] flex-1 items-center gap-2 text-[13px]">
+            <span className="contents text-muted-foreground">
+                <span className="whitespace-nowrap text-muted-foreground">{t('settings.AudioSettingsModal.103')}</span>
+                <span className="order-last w-10 text-right font-mono text-foreground">{q.shownAmount}%</span>
             </span>
             <input type="range" min={0} max={100} step={5} value={q.shownAmount} disabled={q.disabled || !q.chainOn}
                 onChange={event => q.setAmount(Number(event.target.value))} onPointerUp={q.commitAmount} onKeyUp={q.commitAmount} onBlur={q.commitAmount}
-                aria-label={t('settings.AudioSettingsModal.104')} className="w-full accent-primary" />
+                aria-label={t('settings.AudioSettingsModal.104')} className="min-w-0 flex-1 accent-primary" />
         </label>
     </div>;
 }

@@ -21,7 +21,6 @@ it.each(['ja', 'en'] as const)('共通ヘッダーの入口とミュートの状
     const mute = vi.spyOn(audioApi, 'toggleGlobalMute').mockResolvedValue(undefined);
     const props = { onOpenSettings: vi.fn(), onOpenOBSGuide: vi.fn(), onOpenDiscordGuide: vi.fn(),
         onOpenTroubleshoot: vi.fn(), onOpenWizard: vi.fn(),
-        onToggleLargeMeter: vi.fn(), isLargeMeterOpen: false,
         currentHost: 'WASAPI', isEngineRunning: true, engineProcessReady: true };
     const view = render(<LocaleProvider store={store}><Header {...props} /></LocaleProvider>);
     const muteButton = screen.getByRole('button', { name: message(locale, 'header.emergency') });
@@ -66,24 +65,15 @@ it.each([
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });
 
-it.each(['ja', 'en'] as const)('かんたん／詳細はヘッダーのアイコン1つで切り替え、ヘルプの近道と同じ名前にする（%s）', locale => {
+it.each(['ja', 'en'] as const)('表示モードの切替・大型メーター・マイク音量・テーマはヘッダーに置かない（%s）', locale => {
     const store = createLocaleStore(() => locale, () => true);
+    // 以前の詳細表示を使っていた人（数値の詳細を表示）でも同じ。
+    localStorage.setItem('vst_host_beginner_mode', 'false');
     const props = { onOpenSettings: vi.fn(), onOpenOBSGuide: vi.fn(), onOpenDiscordGuide: vi.fn(),
         onOpenTroubleshoot: vi.fn(), onOpenWizard: vi.fn(),
-        onToggleLargeMeter: vi.fn(), isLargeMeterOpen: false,
         currentHost: 'WASAPI', isEngineRunning: true, engineProcessReady: true };
     render(<LocaleProvider store={store}><Header {...props} /></LocaleProvider>);
-    const toDetailed = screen.getByRole('button', { name: message(locale, 'header.advanced') });
-    expect(toDetailed).toHaveAttribute('data-detailed', 'false');
-    fireEvent.click(toDetailed);
-    expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
-    // 押した後は同じボタンが「かんたんに切替」になり、詳細表示中であることを主色で示す。
-    expect(toDetailed).toHaveAccessibleName(message(locale, 'header.simple'));
-    expect(toDetailed).toHaveAttribute('data-detailed', 'true');
-    fireEvent.click(toDetailed);
-    expect(localStorage.getItem('vst_host_beginner_mode')).toBe('true');
-    // マイク音量は本番帯へ移し、フッター・本番帯と重なる小さなメーターとテーマ切替はヘッダーに置かない（詳細表示でも）。
-    fireEvent.click(toDetailed);
-    expect(screen.queryByRole('button', { name: message(locale, 'header.inputGain') })).not.toBeInTheDocument();
+    for (const id of ['header.meterOpen', 'header.inputGain'] as const)
+        expect(screen.queryByRole('button', { name: message(locale, id) })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /テーマ|theme/i })).not.toBeInTheDocument();
 });

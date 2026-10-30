@@ -20,7 +20,7 @@ import { isVirtualOutput, type SetupWizardModalProps } from './wizardModel';
 export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const t = useMessages();
     const { isOpen, onClose, onSkip, onOpenSettings, onOpenTroubleshoot } = props;
-    const { audioStartError, beginnerChoice, setBeginnerChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
+    const { audioStartError, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, availableInputs, availableOutputs,
         isLoadingDevices, isTestingSound, runningInput, loadDevices, handleRescanVirtualDevices,
@@ -427,8 +427,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     <input
                                         type="radio"
                                         name="display-choice"
-                                        checked={beginnerChoice}
-                                        onChange={() => setBeginnerChoice(true)}
+                                        checked={!panelChoice}
+                                        onChange={() => setPanelChoice(false)}
                                     />
                                     {t(config.goal === 'music' ? 'wizard.musicSimple' : 'wizard.simple')}
                                 </label>
@@ -436,8 +436,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     <input
                                         type="radio"
                                         name="display-choice"
-                                        checked={!beginnerChoice}
-                                        onChange={() => setBeginnerChoice(false)}
+                                        checked={panelChoice}
+                                        onChange={() => setPanelChoice(true)}
                                     />
                                     {t('wizard.advanced')}
                                 </label>
@@ -555,9 +555,9 @@ interface SelectionCardProps {
 }
 
 const SelectionCard: React.FC<SelectionCardProps> = ({ onClick, icon, title, description, active, children, compact = false }) => {
-    const activeClass = 'border-primary text-foreground';
-    const activeBg = 'bg-primary/5';
-    const activeRing = 'ring-1 ring-primary/50';
+    const activeClass = 'border-selection text-foreground';
+    const activeBg = 'bg-selection/10';
+    const activeRing = 'ring-1 ring-selection/50';
 
     return (
         <div

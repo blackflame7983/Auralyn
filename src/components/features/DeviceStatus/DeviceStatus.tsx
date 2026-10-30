@@ -11,7 +11,7 @@ interface DeviceStatusProps {
     isRunning: boolean;
     processReady?: boolean | null;
     stats?: EngineRuntimeStats | null;
-    // かんたん表示では方式・レート・待ち時間を出さない。
+    // 数値の詳細を表示していない間は、方式・レート・待ち時間を出さない。
     showDetails?: boolean;
 }
 

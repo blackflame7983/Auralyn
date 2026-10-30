@@ -39,7 +39,7 @@ export function LiveModeBar({ model, refreshKey, embedded = false }: { model: Li
             </span>
             <button type="button" disabled={busy} aria-pressed={value.armed} aria-label={t('liveBar.protect')} aria-describedby={value.armed ? 'live-protect-state' : undefined} onClick={() => void model.protect(!value.armed)}
                 title={t('liveBar.protectHint')}
-                className={cn('ml-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-50',
+                className={cn('inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-50', !embedded && 'ml-auto',
                     value.armed ? 'border-brand bg-brand/15 text-brand' : 'border-border text-muted-foreground hover:text-foreground')}>
                 <MdShield aria-hidden="true" className="h-4 w-4" />
                 {t('liveBar.protect')}

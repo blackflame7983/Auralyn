@@ -180,8 +180,8 @@ it('畳んでいる間は状態を読み上げ対象にし、機器名と、ヘ�
     const status = screen.getByText(message('ja', 'prep.running')).closest('[role="status"]')!;
     expect(status).toHaveTextContent(message('ja', 'prep.running'));
     expect(status).toHaveTextContent('USB マイク → CABLE Input');
-    // 機器名はチェーン列に出る広い幅では重ねない。
-    expect(screen.getByText('USB マイク → CABLE Input')).toHaveClass('min-[1280px]:hidden');
+    // 畳んでいる間は枠を付けず、状態の1行だけにする。
+    expect(screen.getByRole('region', { name: message('ja', 'prep.title') })).not.toHaveClass('aurora-card');
     // 停止中に手で畳んでも、AppShell の状態文（ヘッダーと同じ文言）を使う。
     model.observation = { ...model.observation, availability: 'stopped' };
     view.rerender(<PreparationPanel model={model} {...callbacks()} statusText={message('ja', 'shell.unknown')} />);

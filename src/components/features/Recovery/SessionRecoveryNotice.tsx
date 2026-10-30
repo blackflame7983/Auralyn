@@ -16,11 +16,11 @@ const labels = {
     retained: 'session.retained',
 } as const;
 
-// 表示モードやラックの折畳みに関係なく、保護理由と明示的な再試行を残す。
+// 右パネルの開閉に関係なく、保護理由と明示的な再試行をホームに残す。
 export function SessionRecoveryNotice({ status, protectedSession, reason, busy, onRetry }: SessionRecoveryNoticeProps) {
     const t = useMessages();
     if (!protectedSession || status === 'pending') return null;
-    // 引継ぎは正常な動作のことが多い。中立の見た目にし、保護中であることは常に見せ、再試行の説明は折りたたむ。
+    // 引継ぎは正常な動作のことが多い。枠を付けない控えめな文にし、保護中であることは常に見せ、再試行の説明は折りたたむ。
     const retained = status === 'retained';
     const retry = <>
         <p className="text-xs text-muted-foreground">{t('session.explain')}</p>
@@ -29,11 +29,11 @@ export function SessionRecoveryNotice({ status, protectedSession, reason, busy, 
         </button>
         {busy && <p role="status" className="text-xs">{t('session.busy')}</p>}
     </>;
-    if (retained) return <section aria-label={t('session.label')} className="mb-4 space-y-1 rounded-lg border border-border bg-card/70 px-3 py-2 text-sm text-foreground">
+    if (retained) return <section aria-label={t('session.label')} className="mb-4 space-y-1 px-1 text-xs text-muted-foreground">
         <h2 className="font-semibold">{t(labels[status])}</h2>
-        <p className="text-xs text-muted-foreground">{reason ?? t('session.defaultReason')}</p>
+        <p>{reason ?? t('session.defaultReason')}</p>
         <details>
-            <summary className="cursor-pointer text-xs text-muted-foreground">{t('session.retryDetails')}</summary>
+            <summary className="cursor-pointer">{t('session.retryDetails')}</summary>
             <div className="mt-2 space-y-2">{retry}</div>
         </details>
     </section>;
