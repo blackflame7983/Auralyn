@@ -92,3 +92,48 @@ test('900〜1100px: VST 構成と大型メーターを開いてもホームの�
     await page.getByRole('button', { name: 'VST 構成を閉じる' }).click();
     expect((await meter.boundingBox())!.x + (await meter.boundingBox())!.width).toBe(1280);
 });
+
+// 未登録の本番モードだけでは検出できなかった、ミュート表示との組合せを維持する。
+test.describe('登録済みの歌・雑談と右パネル', () => {
+    test.use({ liveHome: true });
+    for (const theme of ['light', 'dark', 'gaming']) {
+        test(`${theme}: 右パネルを先に開いても大型メーターと本番モードを操作できる`, async ({ page }, testInfo) => {
+            await page.setViewportSize({ width: 900, height: 600 });
+            await page.addInitScript(theme => {
+                localStorage.setItem('vst_host_theme', theme);
+                localStorage.setItem('vst_host_wizard_done', 'true');
+                localStorage.setItem('vst_host_tutorial_completed', 'true');
+                localStorage.setItem('auralyn_vst_panel_open', 'false');
+                localStorage.setItem('vst_host_setup_goal', 'listening');
+                localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+            }, theme);
+            await page.goto('/');
+            const live = page.getByRole('region', { name: '本番', exact: true });
+            await expect(live.getByRole('status').filter({ hasText: '出力ミュート・音量ゼロ' })).toBeVisible();
+            // モーダルを閉じる際の読み直しで、登録済みモードを画面へ反映する。
+            await page.getByRole('button', { name: 'セットアップを開く', exact: true }).click();
+            await page.getByRole('button', { name: 'セットアップを閉じる', exact: true }).click();
+            const modes = live.getByRole('group', { name: '歌・雑談の切替' });
+            await expect(modes).toBeVisible();
+            await page.locator('#vst-panel-toggle').click();
+            await expect(page.locator('#vst-panel')).toBeVisible();
+            await reachable(live.getByRole('button', { name: '大型レベルメーターを開く', exact: true }), page);
+            await live.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
+            const meter = page.locator('div.fixed.top-16');
+            for (const width of [900, 960, 1024, 1099, 1100, 1280]) {
+                await page.setViewportSize({ width, height: 600 });
+                const meterBox = (await meter.boundingBox())!;
+                for (const control of [modes.getByRole('button', { name: '歌', exact: true }), modes.getByRole('button', { name: '雑談', exact: true }), live.getByRole('button', { name: /100%/ }), live.getByRole('button', { name: '大型レベルメーターを閉じる', exact: true })]) {
+                    await reachable(control, page);
+                    const box = (await control.boundingBox())!;
+                    expect(box.x + box.width).toBeLessThanOrEqual(meterBox.x + 1);
+                }
+                if (width === 900 || width === 1099) await page.screenshot({ path: testInfo.outputPath(`registered-modes-${width}.png`) });
+            }
+            // メーターだけ閉じても、再び開く入口を右パネルの下へ隠さない。
+            await page.setViewportSize({ width: 1024, height: 600 });
+            await live.getByRole('button', { name: '大型レベルメーターを閉じる', exact: true }).click();
+            await reachable(live.getByRole('button', { name: '大型レベルメーターを開く', exact: true }), page);
+        });
+    }
+});
