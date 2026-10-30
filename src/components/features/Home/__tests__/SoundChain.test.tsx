@@ -79,6 +79,11 @@ it('音楽鑑賞では声向けの操作を出さず、状態の表示にとど�
     expect(rows[1]).toHaveTextContent('ノイズ低減');
     expect(rows[1]).toHaveTextContent('設定 ON');
     expect(rows[1]).toHaveTextContent('設定 一部ON');
+    expect(rows[1]).toHaveTextContent('内蔵ボイスチェーン');
+    // 一部 ON の内訳は title だけにせず、見える文で残す。
+    expect(within(rows[1]).getByText('声の処理: 設定 OFF ／ 残響: 設定 ON')).not.toHaveClass('sr-only');
+    expect([...rows[1].querySelectorAll('[data-tone]')].map(node => node.getAttribute('data-tone'))).toEqual(['ok', 'ok']);
+    for (const text of ['noise-switch', 'builtin-switch', 'builtin-quick']) expect(rows[1]).not.toHaveTextContent(text);
     expect(rows[2]).toHaveTextContent('VST');
     expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
     // 声の処理の設定へは誘導せず、VST 構成で整えることを常に見える文で示す。
@@ -126,4 +131,12 @@ it('VST段は押してオン・オフし、エディタは有効なときだけ�
     fireEvent.click(screen.getByRole('button', { name: 'EQの画面を開く' })); expect(edit).toHaveBeenCalledWith('a');
     expect(screen.getByRole('button', { name: 'Gateの画面を開く' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '追加' })); expect(add).toHaveBeenCalledOnce();
+});
+
+it('音楽鑑賞の声向けの段は英語でも見出しと状態を出す', () => {
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    render(<LocaleProvider store={createLocaleStore(() => 'en', () => true)}><RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider></LocaleProvider>);
+    const rows = within(screen.getByRole('list', { name: message('en', 'flow.title') })).getAllByRole('listitem');
+    expect(rows[1]).toHaveTextContent(message('en', 'chain.voiceTools'));
+    expect(rows[1]).toHaveTextContent(message('en', 'flow.partial'));
 });
