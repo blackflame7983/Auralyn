@@ -1,22 +1,15 @@
-import * as Popover from '@radix-ui/react-popover';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useBeginnerMode } from '../../hooks/useBeginnerMode';
-import React, { useState, useEffect, useRef } from 'react';
-import { LevelMeter } from '../features/LevelMeter/LevelMeter';
+import React, { useState, useEffect } from 'react';
 import { DeviceStatus } from '../features/DeviceStatus/DeviceStatus';
-import { Slider } from '@/components/ui/slider';
 import { useTheme } from '../../hooks/useTheme';
 import { DiscordIcon } from '../ui/DiscordIcon';
 import {
     MdSettings,
     MdHelpOutline,
-    MdWbSunny,
-    MdDarkMode,
     MdMicOff,
     MdGraphicEq,
-    MdGamepad,
     MdFavorite,
-    MdMic,
     MdSystemUpdateAlt,
     MdAutoFixHigh,
     MdSpaceDashboard
@@ -38,9 +31,7 @@ import {
     DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuSeparator,
-    DropdownMenuTrigger,
-    DropdownMenuRadioGroup,
-    DropdownMenuRadioItem
+    DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 
 interface HeaderProps {
@@ -75,41 +66,10 @@ export const Header: React.FC<HeaderProps> = ({
     engineProcessReady
 }) => {
     const t = useMessages();
-    const { theme, setTheme } = useTheme();
+    const { theme } = useTheme();
     const appUpdate = useAppUpdate();
     const [isGlobalMuted, setIsGlobalMuted] = useState(false);
-    const [inputGain, setInputGain] = useState(() => {
-        const saved = localStorage.getItem('vst_host_input_gain');
-        return saved ? Number(saved) : 100;
-    });
     const [isBeginnerMode, setIsBeginnerMode] = useBeginnerMode();
-    const gainDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    const handleInputGainChange = (value: number[], fromExternal = false) => {
-        const gain = value[0];
-        setInputGain(gain);
-        if (gainDebounceRef.current) clearTimeout(gainDebounceRef.current);
-        gainDebounceRef.current = setTimeout(() => {
-            audioApi.setInputGain(gain / 100).catch(e => console.error("Failed to set input gain", e));
-            localStorage.setItem('vst_host_input_gain', String(gain));
-        }, 50);
-        // Notify other components (avoid re-entrant loop when fromExternal)
-        if (!fromExternal) {
-            window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: gain }));
-        }
-    };
-
-    // Sync input gain from other components (e.g. LargeLevelMeter)
-    useEffect(() => {
-        const handler = (e: Event) => {
-            const pct = (e as CustomEvent<number>).detail;
-            if (pct !== inputGain) {
-                handleInputGainChange([pct], true);
-            }
-        };
-        window.addEventListener('input-gain-sync', handler);
-        return () => window.removeEventListener('input-gain-sync', handler);
-    }, [inputGain]);
 
     useEffect(() => {
         const unlisten = listen<boolean>('global-mute-changed', (event) => {
@@ -188,39 +148,27 @@ export const Header: React.FC<HeaderProps> = ({
                         </TooltipContent>
                     </Tooltip>
 
-                    <button
-                        onClick={onOpenWizard}
-                        aria-label={t('header.setupOpen')}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-input bg-background text-foreground hover:bg-muted transition-colors text-xs font-bold"
-                    >
-                        <MdAutoFixHigh className="w-4 h-4" />
-                        <span>{t('header.setup')}</span>
-                    </button>
-
-                    <Popover.Root>
-                        <Popover.Trigger asChild>
-                            <button type="button" aria-label={t('header.inputGain')} className="flex items-center gap-1 rounded-md border border-border px-2 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
-                                <MdMic aria-hidden="true" className="h-4 w-4 shrink-0" /><span className="hidden lg:inline whitespace-nowrap">{t('header.inputGain')}</span>
+                    {/* セットアップは初回や機器を替えたときにだけ使うので、アイコンにして説明はツールチップに置く。 */}
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <button
+                                type="button"
+                                onClick={onOpenWizard}
+                                aria-label={t('header.setupOpen')}
+                                className="p-2 rounded-lg border border-input bg-background text-foreground hover:bg-muted transition-colors"
+                            >
+                                <MdAutoFixHigh aria-hidden="true" className="w-5 h-5" />
                             </button>
-                        </Popover.Trigger>
-                        <Popover.Portal><Popover.Content aria-label={t('header.inputGain')} sideOffset={5} collisionPadding={12} className="z-[200] w-64 rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-lg">
-                            <div className="flex items-center justify-between gap-4 text-sm"><span>{t('header.inputGain')}</span><span>{inputGain}%</span></div>
-                            <Slider aria-label={t('header.inputGain')} aria-valuetext={`${inputGain}%`} value={[inputGain]} max={200} step={1}
-                                onValueChange={handleInputGainChange} onDoubleClick={() => handleInputGainChange([100])} className="mt-4" />
-                            <button type="button" disabled={inputGain === 100} onClick={() => handleInputGainChange([100])} className="mt-3 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">{t('header.inputGainHint')}</button>
-                        </Popover.Content></Popover.Portal>
-                    </Popover.Root>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            <p className="font-bold">{t('header.setup')}</p>
+                            <p>{t('header.setupHint')}</p>
+                        </TooltipContent>
+                    </Tooltip>
+
 
                     {!isBeginnerMode && (
                         <>
-                            <div className="h-8 w-px bg-border/50 mx-1" />
-
-                            {/* Input Gain + Visualizers */}
-                            <div className="hidden xl:flex items-center gap-3">
-                                <div className="hidden xl:block h-6 w-px bg-border/30" />
-                                <LevelMeter running={isEngineRunning} width={12} height={32} type="input" />
-                                <LevelMeter running={isEngineRunning} width={12} height={32} type="output" />
-                            </div>
 
                             {/* Large Meter Toggle */}
                             <Tooltip>
@@ -241,34 +189,6 @@ export const Header: React.FC<HeaderProps> = ({
                                 </TooltipContent>
                             </Tooltip>
 
-                            {/* Theme Toggle Dropdown */}
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <button
-                                        className={`hidden xl:flex p-2 transition-colors rounded-lg items-center gap-2 ${theme === 'gaming' ? 'text-primary hover:text-primary hover:bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
-                                        aria-label={t('header.themeOpen')}
-                                    >
-                                        {theme === 'light' && <MdWbSunny className="w-5 h-5" />}
-                                        {theme === 'dark' && <MdDarkMode className="w-5 h-5" />}
-                                        {theme === 'gaming' && <MdGamepad className="w-5 h-5" />}
-                                    </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuLabel>{t('header.theme')}</DropdownMenuLabel>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuRadioGroup value={theme} onValueChange={(v) => setTheme(v as any)}>
-                                        <DropdownMenuRadioItem value="light" className="gap-2">
-                                            <MdWbSunny className="w-4 h-4" /> {t('header.light')}
-                                        </DropdownMenuRadioItem>
-                                        <DropdownMenuRadioItem value="dark" className="gap-2">
-                                            <MdDarkMode className="w-4 h-4" /> {t('header.dark')}
-                                        </DropdownMenuRadioItem>
-                                        <DropdownMenuRadioItem value="gaming" className="gap-2">
-                                            <MdGamepad className="w-4 h-4 text-brand" /> {t('header.gaming')}
-                                        </DropdownMenuRadioItem>
-                                    </DropdownMenuRadioGroup>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
                         </>
                     )}
 

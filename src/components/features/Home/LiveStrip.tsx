@@ -8,6 +8,7 @@ import type { MessageKey } from '@/i18n/messages';
 import type { PreparationUse } from '@/lib/preparation';
 import { useSharedMeter } from '../LevelMeter/MeterContext';
 import { MeterVisual } from '../LevelMeter/MeterVisual';
+import { InputGainControl } from './InputGainControl';
 
 const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' };
 
@@ -27,7 +28,8 @@ export function LiveStrip({ model, running, liveControls, meterAction }: { model
             <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={24} scale showValues />
             {/* 無音は「声が来ていない」本番事故の手がかりなので、dBFS 値だけにせず言葉でも示す。 */}
             {reading.state !== 'live' && <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(meterStatusLabel(reading.state))}</span>}
-            {/* 音量チェックはメーターに関わる操作なので、上部に単独で置かずメーターの横に置く。 */}
+            {/* マイク音量と音量チェックはメーターに関わる操作なので、上部に単独で置かずメーターの横に置く。 */}
+            <InputGainControl />
             {meterAction}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
