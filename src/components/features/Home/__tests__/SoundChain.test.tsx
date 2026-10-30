@@ -72,6 +72,14 @@ it('音楽鑑賞では声向けの操作を出さず、状態の表示にとど�
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
     expect(screen.getByRole('region', { name: '音を整える' })).toBeInTheDocument();
     expect(screen.queryByText('noise-quick')).not.toBeInTheDocument();
+    // 声向けの2段は状態だけの1段に縮め、設定状態は隠さない。
+    const rows = within(screen.getByRole('list', { name: '音の流れ' })).getAllByRole('listitem');
+    expect(rows).toHaveLength(4);
+    expect(rows[1]).toHaveTextContent('声向けの処理');
+    expect(rows[1]).toHaveTextContent('ノイズ低減');
+    expect(rows[1]).toHaveTextContent('設定 ON');
+    expect(rows[1]).toHaveTextContent('設定 一部ON');
+    expect(rows[2]).toHaveTextContent('VST');
     expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
     // 声の処理の設定へは誘導せず、VST 構成で整えることを常に見える文で示す。
     expect(screen.queryByRole('button', { name: '詳しく調整' })).not.toBeInTheDocument();
