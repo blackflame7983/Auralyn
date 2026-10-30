@@ -983,6 +983,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     />
                   </div>
 
+                  {!engineStats?.noiseReductionEnabled && <p className="text-xs text-muted-foreground">{t('settings.noiseOffHint')}</p>}
+                  <div className="min-w-0 space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2">
                   <fieldset className="space-y-2"><legend className="text-xs font-medium">{t('structure.noise.standard')}</legend>
                     <div className="grid grid-cols-2 gap-2">
@@ -1000,8 +1002,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                           applyNoiseControlConfig({ mode });
                         }}
                         className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
-                          engineStats?.noiseReductionEnabled && noiseMode === mode
-                            ? 'border-selection bg-selection/15 text-selection'
+                          noiseMode === mode
+                            ? engineStats?.noiseReductionEnabled ? 'border-selection bg-selection/15 text-selection' : 'border-muted-foreground/50 bg-muted text-foreground'
                             : 'border-input bg-background text-muted-foreground hover:text-foreground'
                         }`}
                       >
@@ -1026,8 +1028,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                           applyNoiseControlConfig({ mode });
                         }}
                         className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
-                          engineStats?.noiseReductionEnabled && noiseMode === mode
-                            ? 'border-selection bg-selection/15 text-selection'
+                          noiseMode === mode
+                            ? engineStats?.noiseReductionEnabled ? 'border-selection bg-selection/15 text-selection' : 'border-muted-foreground/50 bg-muted text-foreground'
                             : 'border-input bg-background text-muted-foreground hover:text-foreground'
                         }`}
                       >
@@ -1076,6 +1078,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     />
                   </div>}
 
+                  </div>
                   <details open={noiseMeasurementOpen} onToggle={event => setNoiseMeasurementOpen(event.currentTarget.open)} className="rounded-md border border-border p-3 text-sm">
                     <summary className="font-semibold">{t('measurement.title')}</summary>
                     {/* 閉じると測定欄を外し、その欄が開始した測定だけを既存の後片付けで取り消す。 */}
@@ -1089,6 +1092,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     </div>
                     <Switch
                       checked={noiseVoiceGuard}
+                      className={engineStats?.noiseReductionEnabled ? undefined : 'data-[state=checked]:bg-muted data-[state=checked]:border-muted-foreground/50 [&_[data-state=checked]]:bg-muted-foreground'}
                       onCheckedChange={(checked) => {
                         setNoiseVoiceGuard(checked);
                         applyNoiseControlConfig({ voiceGuard: checked });
