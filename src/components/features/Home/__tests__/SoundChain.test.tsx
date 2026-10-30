@@ -30,6 +30,20 @@ const props = () => ({ model: model(), audioReady: false, isEngineRunning: true,
     onOpenSettings: vi.fn(), onOpenOBSSettings: vi.fn(), onOpenSoundSettings: vi.fn(), onOpenVst: vi.fn() });
 afterEach(() => { cleanup(); localStorage.clear(); });
 
+it('VST未追加を確認できた段は追加操作に絞り、未確認なら一覧の入口を残す', () => {
+    const current = stats(); current.latencyMetadata!.stageBreakdown!.vst = [];
+    const add = vi.fn(); const p = props();
+    const vst = <VstChainItems plugins={[]} onToggle={vi.fn()} onEdit={vi.fn()} onAdd={add} />;
+    const view = render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vst={vst} /></RuntimeStatsContext.Provider>);
+    expect(screen.getByText('未追加')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '一覧' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '追加' }));
+    expect(add).toHaveBeenCalledOnce();
+    view.rerender(<RuntimeStatsContext.Provider value={{ stats: null, running: true }}><SoundChain {...p} vst={vst} /></RuntimeStatsContext.Provider>);
+    expect(screen.getByRole('button', { name: '一覧' })).toBeInTheDocument();
+    expect(screen.queryByText('未追加')).not.toBeInTheDocument();
+});
+
 it.each(['ja', 'en'] as const)('5段を固定順に並べ、操作できない間は各段の設定状態を表示する (%s)', locale => {
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}>
         <SoundChain {...props()} />

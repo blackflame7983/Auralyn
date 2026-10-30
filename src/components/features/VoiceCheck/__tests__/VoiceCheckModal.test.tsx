@@ -32,29 +32,46 @@ beforeEach(() => {
     vi.spyOn(audioApi, 'stopVoiceCheckPlayback').mockResolvedValue(undefined);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
-it('録音前は試聴を折りたたみ、録音完了後は開いて再生操作を表示する', async () => {
+it('録音前は録音に絞り、完了後に再生と必要時に開く比較を表示する', async () => {
     open();
-    const details = screen.getByText('試聴先と再生').closest('details')!;
-    await waitFor(() => expect(details).not.toHaveAttribute('open'));
-    expect(screen.getByText('マイクの音・出力音量・ミュートは変わりません。配信・通話に乗らないヘッドホンなどを選んでください。OBSのデスクトップ音声やループバックが試聴先を拾う場合は、試聴音も配信・通話へ流れます。')).not.toBeVisible();
+    await waitFor(() => expect(record()).toBeEnabled());
+    expect(screen.queryByText('試聴先と再生')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '加工前' })).not.toBeInTheDocument();
+    expect(screen.queryByText('同じ録音でノイズ低減を比較')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '品質チェックを実行' })).not.toBeInTheDocument();
     act(() => {
         for (const [event, callback] of vi.mocked(listen).mock.calls) {
             if (event === 'voice-check-state') callback({ event, id: 1, payload: { state: 'ready', position_ms: 0, duration_ms: 1000 } });
         }
     });
-    await waitFor(() => expect(details).toHaveAttribute('open'));
+    const details = (await screen.findByText('試聴先と再生')).closest('details')!;
+    expect(details).toHaveAttribute('open');
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeVisible();
+    expect(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ })).toBeVisible();
+    const comparison = screen.getByText('同じ録音でノイズ低減を比較').closest('details')!;
+    expect(comparison).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('同じ録音でノイズ低減を比較'));
+    expect(screen.getByRole('button', { name: '弱めで生成' })).toBeVisible();
+    expect(audioApi.startVoiceCheck).not.toHaveBeenCalled();
 });
 
 it('試聴エラーは録音前でも開き、停止と再試行の操作を表示する', async () => {
     vi.mocked(voicePreviewApi.request).mockImplementation(async request => previewSnapshot(request, { error: '試聴の停止を確認できません' }));
     open();
-    const details = screen.getByText('試聴先と再生').closest('details')!;
+    const details = (await screen.findByText('試聴先と再生')).closest('details')!;
     await waitFor(() => expect(details).toHaveAttribute('open'));
     expect(screen.getByText('試聴の停止を確認できません')).toBeVisible();
     // 失敗・停止未確認では停止を再送できるようにする。
     expect(screen.getByRole('button', { name: '試聴を停止' })).toBeEnabled();
     expect(screen.getByText('再生できないとき')).toBeVisible();
+});
+
+it('録音がなくても前回のノイズ低減を戻す操作は隠さない', async () => {
+    vi.mocked(voicePreviewApi.request).mockImplementation(async request => previewSnapshot(request, { noiseUndoToken: 'previous-noise' }));
+    open();
+    expect(await screen.findByRole('button', { name: '直前のノイズ低減変更を戻す' })).toBeVisible();
+    expect(screen.getByText('同じ録音でノイズ低減を比較').closest('details')).toHaveAttribute('open');
+    expect(screen.queryByRole('button', { name: '加工前' })).not.toBeInTheDocument();
 });
 
 it('locale更新による親再描画でも録音とdialogを保持し、previewをclose/cancelしない', async () => {
@@ -76,6 +93,12 @@ it('locale更新による親再描画でも録音とdialogを保持し、preview
 
 it('通常出力の切替を求めず独立した試聴先と取り込み確認を案内する', async () => {
     open();
+    await waitFor(() => expect(record()).toBeEnabled());
+    act(() => {
+        for (const [event, callback] of vi.mocked(listen).mock.calls) {
+            if (event === 'voice-check-state') callback({ event, id: 1, payload: { state: 'ready', position_ms: 0, duration_ms: 1000 } });
+        }
+    });
     await screen.findByRole('button', { name: '試聴先を取得・更新' });
     await waitFor(() => expect(screen.getByRole('button', { name: '試聴先を取得・更新' })).toBeEnabled());
     expect(screen.getByRole('combobox', { name: 'ボイスチェックの試聴先' })).toBeInTheDocument();
@@ -157,7 +180,7 @@ it('保存した試聴先が消えても代替せず、再選択と取り込み�
     localStorage.setItem('vst_host_voice_check_preview_device', 'missing-device');
     vi.mocked(voicePreviewApi.request).mockImplementation(async request => previewSnapshot(request, { recordingId: 9, durationMs: 1000, devices: request.action === 'devices' ? [{ id: 'hp', name: 'Headphones' }] : [] }));
     open();
-    const refresh = screen.getByRole('button', { name: '試聴先を取得・更新' });
+    const refresh = await screen.findByRole('button', { name: '試聴先を取得・更新' });
     await waitFor(() => expect(refresh).toBeEnabled());
     fireEvent.click(refresh);
     await screen.findByRole('option', { name: 'Headphones' });
@@ -180,7 +203,7 @@ it('AutoGainの所有と停止操作を区別し、取り込み確認があっ�
         devices: request.action === 'devices' ? [{ id: 'hp', name: 'Headphones' }] : [],
     }));
     open();
-    const refresh = screen.getByRole('button', { name: '試聴先を取得・更新' });
+    const refresh = await screen.findByRole('button', { name: '試聴先を取得・更新' });
     await waitFor(() => expect(refresh).toBeEnabled());
     fireEvent.click(refresh);
     await screen.findByRole('option', { name: 'Headphones' });
@@ -259,7 +282,7 @@ it.each(['ja', 'en'] as const)('再生中は一時停止とせず停止・先頭
     });
     const store = createLocaleStore(() => locale, () => true);
     render(<LocaleProvider store={store}><VoiceCheckModal isOpen onClose={vi.fn()} /></LocaleProvider>);
-    const refresh = screen.getByRole('button', { name: locale === 'ja' ? '試聴先を取得・更新' : 'Get / refresh listening outputs' });
+    const refresh = await screen.findByRole('button', { name: locale === 'ja' ? '試聴先を取得・更新' : 'Get / refresh listening outputs' });
     await waitFor(() => expect(refresh).toBeEnabled());
     fireEvent.click(refresh);
     await screen.findByRole('option', { name: 'Headphones' });

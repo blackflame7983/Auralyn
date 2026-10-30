@@ -133,10 +133,10 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
     const presetLabel = (value: BuiltInEffectsPreset) => value === 'broadcast' ? t('settings.AudioSettingsModal.098')
         : value === 'warm' ? t('settings.AudioSettingsModal.099') : t('settings.AudioSettingsModal.100');
     return <div className="space-y-2">
-        <div role="group" aria-label={t('home.chainPreset')} className="grid grid-cols-3 gap-1.5">
+        <div role="group" aria-label={t('home.chainPreset')} className="flex flex-wrap gap-1.5">
             {quickPresets.map(value => (
                 <button key={value} type="button" disabled={q.disabled} aria-pressed={q.chainOn && q.preset === value}
-                    onClick={() => void q.applyChain({ preset: value })} className={segment(q.chainOn && q.preset === value)}>
+                    onClick={() => void q.applyChain({ preset: value })} className={cn(segment(q.chainOn && q.preset === value), 'flex-1 whitespace-nowrap')}>
                     {presetLabel(value)}
                 </button>
             ))}

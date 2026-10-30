@@ -60,13 +60,17 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const actualInput = model.observation.config?.input ?? inputName;
     const actualOutput = model.observation.config?.output ?? outputName;
 
-    const head = (Icon: IconType, label: string, status: ReactNode, extra?: ReactNode, title?: string) => <div className="flex items-center justify-between gap-2">
-        <span className="flex min-w-0 items-center gap-1.5" title={title}>
-            <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="whitespace-nowrap text-sm font-semibold">{label}</span>
-            {status && <span className="min-w-0 text-xs text-muted-foreground">{status}</span>}
-        </span>
-        {extra}
+    const emptyVst = !music && Boolean(stage && validVst && stage.vst.length === 0);
+    // 状態は操作と同じ行へ押し込まず、段の幅を使って示す。英語の見出しも折り返せる。
+    const head = (Icon: IconType, label: string, status: ReactNode, extra?: ReactNode, title?: string) => <div className="space-y-1">
+        <div className="flex items-start justify-between gap-2">
+            <span className="flex min-w-0 flex-1 items-start gap-1.5" title={title}>
+                <Icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 text-sm font-semibold">{label}</span>
+            </span>
+            {extra && <span className="shrink-0">{extra}</span>}
+        </div>
+        {status && <div className="text-xs text-muted-foreground">{status}</div>}
     </div>;
     const card = 'h-full space-y-2 rounded-lg border border-border bg-muted/20 p-2.5';
     // 入力と出力は機器の設定を開く。段全体を1つのボタンにする。
@@ -102,8 +106,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             {live && <BuiltinQuick q={q} />}
         </div> },
         ]),
-        { key: 'vst', className: 'min-w-[14rem] flex-[1.5]', body: <div className={card}>
-            {head(MdExtension, 'VST', <StatusDot tone={vstTone}>{vstStatus}</StatusDot>, onOpenVst && <button type="button" onClick={onOpenVst} className="whitespace-nowrap text-xs font-semibold text-primary hover:opacity-80">{t('chain.vstOpen')}</button>)}
+        { key: 'vst', className: emptyVst ? 'min-w-[7rem] flex-none' : 'min-w-[14rem] flex-[1.5]', body: <div className={card}>
+            {head(MdExtension, 'VST', <StatusDot tone={vstTone}>{vstStatus}</StatusDot>, !emptyVst && onOpenVst && <button type="button" onClick={onOpenVst} className="whitespace-nowrap text-xs font-semibold text-primary hover:opacity-80">{t('chain.vstOpen')}</button>)}
             {vst}
         </div> },
         { key: 'output', className: 'flex-none', body: endpoint(MdSpeaker, t('home.output'), actualOutput) },

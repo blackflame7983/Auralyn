@@ -2,11 +2,24 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { audioApi } from '@/api/audio';
 import { InputGainControl } from '../InputGainControl';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 
 // Slider は Radix の操作を jsdom で再現しにくいため、値の変更だけを渡す部品に置き換える。
 vi.mock('@/components/ui/slider', () => ({ Slider: ({ onValueChange }: { onValueChange: (value: number[]) => void }) => <button type="button" onClick={() => onValueChange([150])}>set150</button> }));
 beforeEach(() => { localStorage.clear(); vi.useFakeTimers(); });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
+
+it.each([['ja', '入力音量'], ['en', 'Input volume']] as const)('音楽鑑賞ではマイクと呼ばず入力音量を表示・操作する (%s)', async (locale, label) => {
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    const set = vi.spyOn(audioApi, 'setInputGain').mockResolvedValue(undefined);
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><InputGainControl /></LocaleProvider>);
+    act(() => screen.getByRole('button', { name: `${label} 100%` }).click());
+    act(() => screen.getByRole('button', { name: 'set150' }).click());
+    await act(async () => { vi.advanceTimersByTime(60); });
+    expect(set).toHaveBeenCalledWith(1.5);
+    expect(screen.getByRole('button', { name: `${label} 150%` })).toBeInTheDocument();
+});
 
 it('保存済みのマイク音量を表示し、変更を保存・反映して他の表示へ知らせる', async () => {
     localStorage.setItem('vst_host_input_gain', '80');

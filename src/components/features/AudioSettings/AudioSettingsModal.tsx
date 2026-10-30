@@ -165,6 +165,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [systemSaving, setSystemSaving] = useState(false);
   const [statsLoading, setStatsLoading] = useState(false);
   const [noiseMode, setNoiseMode] = useState<NoiseControlMode>('smart');
+  const [noiseMeasurementOpen, setNoiseMeasurementOpen] = useState(false);
   const [noiseStrength, setNoiseStrength] = useState(80);
   const [noiseVoiceGuard, setNoiseVoiceGuard] = useState(true);
   const [noiseActionBusy, setNoiseActionBusy] = useState(false);
@@ -987,6 +988,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         aria-pressed={noiseMode === mode}
                         onClick={() => {
                           setNoiseMode(mode);
+                          setNoiseMeasurementOpen(mode === 'smart' || mode === 'venue');
                           applyNoiseControlConfig({ mode });
                         }}
                         className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
@@ -1012,6 +1014,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         aria-pressed={noiseMode === mode}
                         onClick={() => {
                           setNoiseMode(mode);
+                          setNoiseMeasurementOpen(mode === 'smart' || mode === 'venue');
                           applyNoiseControlConfig({ mode });
                         }}
                         className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
@@ -1064,7 +1067,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     />
                   </div>}
 
-                  <NoiseMeasurementPanel />
+                  <details open={noiseMeasurementOpen} onToggle={event => setNoiseMeasurementOpen(event.currentTarget.open)} className="rounded-md border border-border p-3 text-sm">
+                    <summary className="font-semibold">{t('measurement.title')}</summary>
+                    {/* 閉じると測定欄を外し、その欄が開始した測定だけを既存の後片付けで取り消す。 */}
+                    {noiseMeasurementOpen && <NoiseMeasurementPanel embedded />}
+                  </details>
 
                   <div className="flex items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2">
                     <div>

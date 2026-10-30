@@ -7,10 +7,11 @@ interface Props {
     preview: VoicePreviewSnapshot | null; candidate: BuiltinCandidate | null; disabled: boolean;
     prepare: (variant: 'current' | 'weaker' | 'stronger') => Promise<void>;
     apply: () => Promise<void>; undo: () => Promise<void>; redo?: () => Promise<void>;
+    embedded?: boolean;
 }
 const modes: Record<string, MessageKey> = { low: 'noiseCompare.low', high: 'noiseCompare.high', smart: 'noiseCompare.smart', venue: 'noiseCompare.venue' };
 
-export function NoiseComparisonPanel({ preview, candidate, disabled, prepare, apply, undo, redo }: Props) {
+export function NoiseComparisonPanel({ preview, candidate, disabled, prepare, apply, undo, redo, embedded = false }: Props) {
     const t = useMessages();
     const [feedback, setFeedback] = useState<string[]>([]);
     useEffect(() => setFeedback([]), [candidate?.id]);
@@ -20,8 +21,8 @@ export function NoiseComparisonPanel({ preview, candidate, disabled, prepare, ap
         state: config.enabled ? 'ON' : 'OFF', mode: t(modes[config.mode] ?? 'noiseCompare.unknown'),
         strength: Math.round(config.strength * 100), guard: config.voiceGuard ? 'ON' : 'OFF',
     });
-    return <section aria-label={t('noiseCompare.title')} className="rounded-lg border border-border p-3 space-y-3 text-sm">
-        <h3 className="font-semibold">{t('noiseCompare.title')}</h3>
+    return <section aria-label={t('noiseCompare.title')} className={embedded ? 'mt-3 space-y-3 text-sm' : 'rounded-lg border border-border p-3 space-y-3 text-sm'}>
+        {!embedded && <h3 className="font-semibold">{t('noiseCompare.title')}</h3>}
         <p className="text-xs text-muted-foreground">{t('noiseCompare.scope')}</p>
         {!ready && <p className="text-xs">{t('noiseCompare.record')}</p>}
         <div className="flex flex-wrap gap-2">

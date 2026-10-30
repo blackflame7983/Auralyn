@@ -13,7 +13,7 @@ const qualityLabels: Record<string, MessageKey> = {
     short: 'measurement.short', variable: 'measurement.variable', uncertain: 'measurement.uncertain',
 };
 
-export function NoiseMeasurementPanel() {
+export function NoiseMeasurementPanel({ embedded = false }: { embedded?: boolean }) {
     const t = useMessages();
     const { locale } = useLocale();
     const [snapshot, setSnapshot] = useState<NoiseMeasurementSnapshot | null>(null);
@@ -93,8 +93,8 @@ export function NoiseMeasurementPanel() {
         } catch { if (active.current && version === serial.current) { setError(true); setSnapshot(null); } }
         finally { writing.current = false; if (active.current) setBusy(false); }
     };
-    return <section aria-label={t('measurement.title')} className="space-y-3 rounded-md border border-border p-3">
-        <h3 className="text-sm font-semibold">{t('measurement.title')}</h3>
+    return <section aria-label={t('measurement.title')} className={embedded ? 'mt-3 space-y-3' : 'space-y-3 rounded-md border border-border p-3'}>
+        {!embedded && <h3 className="text-sm font-semibold">{t('measurement.title')}</h3>}
         <p className="text-xs text-muted-foreground">{t('measurement.scope')}</p>
         <div className="flex flex-wrap gap-2">
             <button type="button" disabled={busy || !snapshot || snapshot.state === 'capturing'} onClick={() => snapshot && void run({ action: 'start', epoch: snapshot.epoch, generation: snapshot.generation })} className="rounded border border-border px-3 py-2 text-xs disabled:opacity-50">{t('settings.AudioSettingsModal.121')}</button>

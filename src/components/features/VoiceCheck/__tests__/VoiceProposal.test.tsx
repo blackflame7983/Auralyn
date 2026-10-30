@@ -118,7 +118,7 @@ it('通常VoiceCheckで提案を作りlocaleを替えても候補・device・安
     const store = createLocaleStore(() => 'ja', () => true); const save = vi.fn();
     function Screen() { const model = useSingingDraft(); return <><input type="number" aria-label="manual draft" value={model.draft?.singing?.lowCutHz ?? 80} onChange={e => model.edit({ lowCutHz: Number(e.target.value) })} /><VoiceCheckModal isOpen manualCandidate={false} singingModel={model} onClose={vi.fn()} onSaveSingingProfile={save} /></>; }
     render(<LocaleProvider store={store}><Screen /></LocaleProvider>);
-    const candidates = screen.getByText('歌向け：内蔵ボイスチェーンの候補を試す').closest('details')!;
+    const candidates = (await screen.findByText('歌向け：内蔵ボイスチェーンの候補を試す')).closest('details')!;
     expect(candidates).not.toHaveAttribute('open');
     const play = screen.getByRole('button', { name: '選んだ試聴先で再生' });
     expect(play.compareDocumentPosition(candidates) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
