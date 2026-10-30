@@ -202,13 +202,16 @@ describe('セットアップの接続チェック', () => {
         expect(screen.queryByText(inputs[0].name)).not.toBeInTheDocument();
     });
 
-    it.each(['再生リダイレクト', 'Stereo Mix', 'ステレオ ミキサー', 'Loopback', 'What U Hear', 'CABLE Output', 'Voicemeeter Out B1'])('入力が %s だけなら自動選択せず手動選択へ進む', async name => {
-        inputs = [device(name, true)];
+    // 名前の組み合わせはwizardModelのNode試験で扱い、画面は操作禁止と明示選択を守る。
+    it('ループバック入力だけなら自動選択せず、利用者の明示選択まで進めない', async () => {
+        inputs = [device('Loopback', true)];
         await openWizard();
         await chooseObsRoute();
         await screen.findByRole('heading', { name: 'マイクを選んでください' });
         expect(screen.getByRole('combobox', { name: '入力デバイス' })).toHaveValue('');
         expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
+        fireEvent.change(screen.getByRole('combobox', { name: '入力デバイス' }), { target: { value: 'Loopback' } });
+        expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled();
     });
 
     it('物理マイクが複数あれば既定の候補でも自動選択せず、明示選択を待つ', async () => {
