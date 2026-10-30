@@ -95,7 +95,7 @@ export function useVoiceQuick(running: boolean, enabled = true) {
 }
 export type VoiceQuick = ReturnType<typeof useVoiceQuick>;
 
-const segment = (selected: boolean) => cn('whitespace-nowrap rounded-md border px-2 py-1.5 text-xs font-bold transition-colors disabled:opacity-50',
+const segment = (selected: boolean) => cn('whitespace-nowrap rounded-md border px-2 py-2 text-[13px] font-bold transition-colors disabled:opacity-50',
     selected ? 'border-selection bg-selection/15 text-selection' : 'border-input bg-background text-muted-foreground hover:text-foreground');
 
 // 段の見出し行の右端に置くスイッチ。
@@ -141,7 +141,7 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
                 </button>
             ))}
         </div>
-        <label className="block space-y-1 text-xs">
+        <label className="block space-y-1.5 text-[13px]">
             <span className="flex justify-between gap-2 text-muted-foreground">
                 <span className="whitespace-nowrap">{t('settings.AudioSettingsModal.103')}</span>
                 <span className="font-mono text-foreground">{q.shownAmount}%</span>

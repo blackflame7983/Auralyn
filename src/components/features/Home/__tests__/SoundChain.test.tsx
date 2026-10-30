@@ -102,6 +102,7 @@ it('音楽鑑賞では声向けの操作を出さず、状態の表示にとど�
     expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
     // 声の処理の設定へは誘導せず、VST 構成で整えることを常に見える文で示す。
     expect(screen.queryByRole('button', { name: '詳しく調整' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'その他の操作' })).not.toBeInTheDocument();
     expect(screen.getByText(message('ja', 'music.soundHint'))).toBeVisible();
 });
 
@@ -116,7 +117,7 @@ it('現在の世代と不一致または停止時は処理の設定を OFF と�
     expect(screen.queryByText('設定 OFF')).not.toBeInTheDocument();
 });
 
-it('入力・出力は機器の設定、VSTの一覧は VST 構成を開き、見出しから聴き比べと詳しい調整へ進める', () => {
+it('入力・出力は機器の設定、VSTの一覧は VST 構成を開き、見出しから聴き比べ、その他の操作から OBS 連携と詳しい調整へ進める', async () => {
     const p = props();
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...p} audioReady vst={<span>vst-items</span>} /></RuntimeStatsContext.Provider>);
     // 入力・出力の段に機器名と状態の点を出す。
@@ -128,8 +129,13 @@ it('入力・出力は機器の設定、VSTの一覧は VST 構成を開き、�
     fireEvent.click(screen.getByRole('button', { name: '一覧' })); expect(p.onOpenVst).toHaveBeenCalledOnce();
     expect(screen.getAllByRole('listitem')[3]).toHaveTextContent('vst-items');
     fireEvent.click(screen.getByRole('button', { name: '録音して聴き比べる' })); expect(p.onListen).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole('button', { name: 'OBS連携' })); expect(p.onOpenOBSSettings).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole('button', { name: '詳しく調整' })); expect(p.onOpenSoundSettings).toHaveBeenCalledOnce();
+    // 毎回は使わない OBS 連携と詳しい調整は、見出しに並べず「その他の操作」にまとめる。
+    expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
+    const more = screen.getByRole('button', { name: 'その他の操作' });
+    fireEvent.pointerDown(more, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'OBS連携' })); expect(p.onOpenOBSSettings).toHaveBeenCalledOnce();
+    fireEvent.pointerDown(more, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: '詳しく調整' })); expect(p.onOpenSoundSettings).toHaveBeenCalledOnce();
 });
 
 it('VST段は押してオン・オフし、エディタは有効なときだけアイコンから開く', () => {

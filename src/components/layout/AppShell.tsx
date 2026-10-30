@@ -118,13 +118,16 @@ export const AppShell: React.FC<AppShellProps> = ({
     const [listenOpen, setListenOpen] = useState(false);
     const openListen = purpose === 'music' ? () => setListenOpen(true) : onOpenVoiceCheck;
     // 開いた後の測定・停止・閉じるはパネル側に集める。押せない理由は画面にも出し、押せるときの対象範囲は読み上げだけにする。
+    const loudnessLabel = t(measurement.busy ? 'loudness.switching' : measurement.stopUnconfirmed ? 'loudness.retryStop' : measurement.active ? 'loudness.stop' : 'loudness.startAction');
     const loudnessAction = !loudnessEnabled && !measurement.active ? <span className="flex shrink-0 items-center gap-2">
         <span id="loudness-toggle-description" className={!audioReady ? 'whitespace-nowrap text-xs text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
         <button type="button" aria-pressed={measurement.active} aria-describedby="loudness-toggle-description"
             onClick={() => { setLoudnessEnabled(true); setMeasurementRequest({ id: ++requestId.current, action: measurement.active ? 'stop' : 'start' }); }}
             disabled={measurement.busy || (!measurement.active && !audioReady)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent">
-            <MdQueryStats aria-hidden="true" className="h-4 w-4" />{t(measurement.busy ? 'loudness.switching' : measurement.stopUnconfirmed ? 'loudness.retryStop' : measurement.active ? 'loudness.stop' : 'loudness.startAction')}
+            aria-label={loudnessLabel} title={loudnessLabel}
+            className="inline-flex items-center rounded-md border border-border p-1.5 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent">
+            {/* 本番帯を詰めないようアイコンだけにし、名前は読み上げとツールチップで伝える。 */}
+            <MdQueryStats aria-hidden="true" className="h-[18px] w-[18px]" />
         </button>
     </span> : null;
     const soundChain = <SoundChain model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
@@ -182,15 +185,16 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <main
                     className={`flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent pb-4 ${isLargeMeterOpen ? 'pr-36 lg:pr-36' : ''}`}
                 >
-                    <div className="max-w-4xl mx-auto min-[1280px]:max-w-none min-[1280px]:grid min-[1280px]:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] min-[1280px]:gap-x-6">
+                    {/* 左右に分けると片側だけが詰まって見えるので、どの幅でも上から1列に並べ、広い画面では中央に寄せる。 */}
+                    <div className="mx-auto max-w-[1180px]">
                         {/* かんたん／詳細はヘッダーの切替に、音量チェックは本番帯のメーター横に置き、ホーム上部に常設の行を作らない。
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
                             ? <LiveStrip model={preparation} running={isEngineRunning} liveControls={liveControls} meterAction={loudnessAction} />
-                            : liveControls && <div className="mb-3 rounded-xl border border-border bg-card/70 px-3 py-2 empty:hidden min-[1280px]:col-span-2">{liveControls}</div>}
+                            : liveControls && <div className="mb-4 rounded-xl border border-border bg-card/70 px-4 py-3 empty:hidden">{liveControls}</div>}
                         {/* 音量チェックは開いたメーターの直下に出す。 */}
-                        <div className="min-[1280px]:col-span-2"><LoudnessCheck
+                        <div><LoudnessCheck
                             music={purpose === 'music'}
                             enabled={loudnessEnabled}
                             request={measurementRequest} onStateChange={setMeasurement} onClose={() => setLoudnessEnabled(false)}

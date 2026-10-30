@@ -253,7 +253,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               onClick={() => setActiveTab(tab.id)}
               aria-pressed={activeTab === tab.id}
               className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition ${activeTab === tab.id
-                ? 'bg-background text-primary shadow-sm font-bold'
+                ? 'bg-background text-selection shadow-sm font-bold'
                 : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
                 }`}
             >

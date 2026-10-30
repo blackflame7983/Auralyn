@@ -141,7 +141,7 @@ it('表示用途はホームの本文に置かず、設定から切り替える�
     expect(measurementProps.current.request).toBeUndefined();
 });
 
-it('入出力・声の調整・試聴を保持する', () => {
+it('入出力・声の調整・試聴を保持する', async () => {
     localStorage.setItem('vst_host_setup_goal', 'obs');
     const sound = vi.fn(); const voice = vi.fn(); const obs = vi.fn();
     render(<AppShell {...commonProps} onOpenSoundSettings={sound} onOpenVoiceCheck={voice} onOpenOBSSettings={obs}
@@ -155,7 +155,8 @@ it('入出力・声の調整・試聴を保持する', () => {
     expect(screen.getByText('quick')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'マイクと出力先を設定する' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '録音して聴き比べる' }));
-    fireEvent.click(screen.getByRole('button', { name: 'OBS連携' }));
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'その他の操作' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'OBS連携' }));
     expect(voice).toHaveBeenCalledOnce(); expect(obs).toHaveBeenCalledOnce();
 });
 

@@ -22,10 +22,10 @@ export function LiveStrip({ model, running, liveControls, meterAction }: { model
     const { usage, receiver } = model.context;
     const muted = model.observation.availability === 'muted';
     const Icon = music ? MdMusicNote : MdMic;
-    return <section aria-label={t('live.strip')} className="aurora-card aurora-edge aurora-glow-live mb-3 space-y-2 rounded-xl border border-border bg-card/70 p-3 min-[1280px]:col-span-2">
+    return <section aria-label={t('live.strip')} className="aurora-card aurora-edge aurora-glow-live mb-4 space-y-3 rounded-xl border border-border bg-card/70 px-4 py-4 min-[1100px]:px-5">
         <div className="flex items-center gap-3">
             <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
-            <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={24} scale showValues />
+            <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues />
             {/* 無音は「声が来ていない」本番事故の手がかりなので、dBFS 値だけにせず言葉でも示す。 */}
             {reading.state !== 'live' && <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(meterStatusLabel(reading.state))}</span>}
             {/* マイク音量と音量チェックはメーターに関わる操作なので、上部に単独で置かずメーターの横に置く。 */}

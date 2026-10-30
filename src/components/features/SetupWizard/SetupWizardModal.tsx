@@ -555,9 +555,9 @@ interface SelectionCardProps {
 }
 
 const SelectionCard: React.FC<SelectionCardProps> = ({ onClick, icon, title, description, active, children, compact = false }) => {
-    const activeClass = 'border-primary text-foreground';
-    const activeBg = 'bg-primary/5';
-    const activeRing = 'ring-1 ring-primary/50';
+    const activeClass = 'border-selection text-foreground';
+    const activeBg = 'bg-selection/10';
+    const activeRing = 'ring-1 ring-selection/50';
 
     return (
         <div
