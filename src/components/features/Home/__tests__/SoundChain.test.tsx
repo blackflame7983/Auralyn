@@ -40,6 +40,7 @@ it.each(['ja', 'en'] as const)('5段を固定順に並べ、操作できない�
     const labels = locale === 'ja' ? ['入力', 'ノイズ低減', '内蔵ボイスチェーン', 'VST', '出力先'] : ['Input', 'Noise reduction', 'Built-in voice chain', 'VST', 'Output'];
     labels.forEach((label, i) => expect(rows[i]).toHaveTextContent(label));
     expect(rows[1]).toHaveTextContent(message(locale, 'flow.enabled'));
+    expect(rows[1].querySelector('[data-tone]')).toHaveAttribute('data-tone', 'ok');
     expect(rows[2]).toHaveTextContent(message(locale, 'flow.partial'));
     expect(rows[2]).toHaveTextContent(message(locale, 'flow.builtinParts', { voice: message(locale, 'flow.disabled'), reverb: message(locale, 'flow.enabled') }));
     // 範囲の説明は常設せず、見出し横の情報ボタンから読む。
@@ -82,6 +83,8 @@ it('現在の世代と不一致または停止時は処理の設定を OFF と�
     const view = render(<RuntimeStatsContext.Provider value={{ stats: stale, running: true }}><SoundChain {...props()} /></RuntimeStatsContext.Provider>);
     const rows = screen.getAllByRole('listitem');
     expect(rows[1]).toHaveTextContent('未確認'); expect(rows[2]).toHaveTextContent('未確認'); expect(rows[3]).toHaveTextContent('未確認');
+    // 未確認は注意色の点で示し、OFF の中立色と区別する。
+    [1, 2, 3].forEach(i => expect(rows[i].querySelector('[data-tone]')).toHaveAttribute('data-tone', 'warn'));
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: stats(), running: false }}><SoundChain {...props()} /></RuntimeStatsContext.Provider>);
     expect(screen.queryByText('設定 OFF')).not.toBeInTheDocument();
 });
@@ -89,8 +92,11 @@ it('現在の世代と不一致または停止時は処理の設定を OFF と�
 it('入力・出力は機器の設定、VSTの一覧は VST 構成を開き、見出しから聴き比べと詳しい調整へ進める', () => {
     const p = props();
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...p} audioReady vst={<span>vst-items</span>} /></RuntimeStatsContext.Provider>);
-    fireEvent.click(screen.getByRole('button', { name: '入力 稼働中' }));
-    fireEvent.click(screen.getByRole('button', { name: '出力先 稼働中' }));
+    // 入力・出力の段に機器名と状態の点を出す。
+    const input = screen.getByRole('button', { name: '入力 Mic 稼働中' });
+    expect(input.querySelector('[data-tone="ok"]')).not.toBeNull();
+    fireEvent.click(input);
+    fireEvent.click(screen.getByRole('button', { name: '出力先 CABLE Input 稼働中' }));
     expect(p.onOpenSettings).toHaveBeenCalledTimes(2);
     fireEvent.click(screen.getByRole('button', { name: '一覧' })); expect(p.onOpenVst).toHaveBeenCalledOnce();
     expect(screen.getAllByRole('listitem')[3]).toHaveTextContent('vst-items');

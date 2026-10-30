@@ -72,18 +72,23 @@ it('用途は条件パネルの外の1か所で選び、選んだ後も同じ欄
     expect(screen.getByRole('combobox', { name: message('ja', 'prep.usage') })).toBe(select);
     expect(select).toHaveFocus();
 });
-it('正常時は手順を畳んで状態と警告だけを残し、問題が起きたら開き直す', () => {
+it('正常時は手順と入出力の要約を畳んで状態の点と警告だけを残し、問題が起きたら開き直す', () => {
     const model = fixture(); model.context.location = 'venue';
     const view = render(<PreparationPanel model={model} {...callbacks()} signalSummary={<p>summary</p>} />);
     const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByText('summary')).toBeInTheDocument();
+    expect(screen.queryByText('summary')).not.toBeInTheDocument();
+    const badge = screen.getByText(message('ja', 'prep.running'));
+    expect(badge.closest('[data-tone]')).toHaveAttribute('data-tone', 'ok');
     expect(screen.getByText(message('ja', 'prep.venueWarning'))).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('combobox', { name: message('ja', 'prep.usage') })).toBeInTheDocument();
+    // 開いたら入出力の要約を手順と一緒に出し、状態の点は重ねない。
+    expect(screen.getByText('summary')).toBeInTheDocument();
+    expect(screen.queryByText(message('ja', 'prep.running'))).not.toBeInTheDocument();
     fireEvent.click(toggle);
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     model.observation = { ...model.observation, availability: 'failed' };

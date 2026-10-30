@@ -4,7 +4,8 @@ import { MdExpandMore } from 'react-icons/md';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
-import { confirmationState, nextPreparationStage, type PreparationStage, type PreparationUse } from '@/lib/preparation';
+import { confirmationState, nextPreparationStage, type Availability, type PreparationStage, type PreparationUse } from '@/lib/preparation';
+import { StatusDot, type StatusTone } from '@/components/ui/StatusDot';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { receiverDeviceNotice } from '@/lib/audioRouting';
 import { renderNotice } from '../AudioSettings/settingsNotice';
@@ -22,6 +23,8 @@ const attentionKey = (model: PreparationModel) => {
     if (!model.context.usage) return `purpose:${availability}`;
     return ['unconfigured', 'stopped', 'failed', 'unknown', 'muted'].includes(availability) ? availability : null;
 };
+export const availabilityLabels: Record<Availability, MessageKey> = { ready: 'prep.running', unknown: 'shell.unknown', unconfigured: 'shell.unconfigured', stopped: 'shell.stopped', failed: 'prep.failed', pending: 'prep.pending', muted: 'prep.muted' };
+const availabilityTones: Record<Availability, StatusTone> = { ready: 'ok', unknown: 'warn', pending: 'warn', muted: 'warn', unconfigured: 'error', stopped: 'error', failed: 'error' };
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
@@ -65,6 +68,8 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
             <div className="flex items-center gap-1">
                 <h2 className="text-sm font-bold">{t('prep.title')}</h2>
                 <InfoPopover label={t('prep.scopeInfo')}>{t('prep.localOnly')}</InfoPopover>
+                {/* 畳んでいる間は、入力・処理・出力の要約の代わりに状態の点1つで示す。機器名はチェーン列に出す。 */}
+                {!open && <StatusDot tone={availabilityTones[observation.availability]} className="ml-2 text-xs font-medium">{t(availabilityLabels[observation.availability])}</StatusDot>}
             </div>
             <div className="flex items-center gap-2">
                 <span role="status" className="text-sm text-muted-foreground">{checking ? t('prep.checking') : next === 'done' ? t('prep.sessionChecked') : ''}</span>
@@ -74,10 +79,10 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
                 </button>
             </div>
         </div>
-        {signalSummary}
         {context.location === 'venue' && <p className="text-xs text-warning">{t('prep.venueWarning')}</p>}
         {context.signal === 'mixed' && <p className="text-xs text-muted-foreground">{t('prep.mixedWarning')}</p>}
         {open && <div id={stepsId} className="space-y-3" onFocusCapture={() => setUserOpen(old => old ?? true)}>
+        {signalSummary}
         <label className="block text-sm">{t('prep.usage')}{usageSelect(`mt-1 block w-full max-w-xs rounded border bg-background p-2 ${next === 'purpose' ? 'border-primary' : 'border-border'}`)}</label>
         {next !== 'done' && next !== 'purpose' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
             className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{t(actionLabel)}</button>}
