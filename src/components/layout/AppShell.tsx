@@ -115,6 +115,13 @@ export const AppShell: React.FC<AppShellProps> = ({
         if (!focusRack) return;
         document.getElementById('plugin-rack-heading')?.focus({ preventScroll: true });
     }, [focusRack]);
+    // パネルを閉じてフォーカスの行き場がなくなったら、開いたボタンへ戻してキーボード操作を続けられるようにする。
+    const panelWasOpen = useRef(vstPanelOpen);
+    useEffect(() => {
+        if (panelWasOpen.current && !vstPanelOpen && (document.activeElement === document.body || !document.activeElement))
+            document.getElementById('vst-panel-toggle')?.focus({ preventScroll: true });
+        panelWasOpen.current = vstPanelOpen;
+    }, [vstPanelOpen]);
     // 未設定の間は本番帯を出さず、準備の主ボタンを先頭にする。
     const configured = Boolean(currentHost) && preparation.observation.availability !== 'unconfigured';
     // 音楽鑑賞の聴き比べは、準備の手順とチェーン列のどちらからも開く。
@@ -142,7 +149,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     </span> : null;
     const soundChain = <SoundChain model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
-        onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} />;
+        onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} />;
     const [isABBypassed, setIsABBypassed] = useState(false);
     const handleABToggle = useCallback(async () => {
         try {
@@ -166,7 +173,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     }, []);
 
     return (
-        <MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef} className={cn(vstPanel && vstPanelOpen && 'min-[1100px]:[--vst-panel-width:420px]', "min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300")}>
+        <MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef} className={cn(vstPanel && vstPanelOpen && '[--vst-panel-width:min(420px,100vw)]',"min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300")}>
             {/* 背景のオーロラ。音声処理中（本番中とみなす）と動きを減らす設定では止める（DESIGN.md 5.6）。 */}
             <div className={`fixed inset-0 pointer-events-none z-0 opacity-0 dark:opacity-100 transition-opacity duration-500 ${isEngineRunning ? '[&>.aurora-glow]:[animation-play-state:paused]' : ''}`}>
                 <div className="aurora-glow absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-brand-secondary/5 blur-[130px] rounded-full mix-blend-screen animate-[pulse_8s_ease-in-out_infinite]" />

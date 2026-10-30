@@ -26,12 +26,14 @@ interface Props {
     onOpenOBSSettings: () => void;
     onOpenSoundSettings?: () => void;
     onOpenVst?: () => void;
+    /** 右パネルを開いているか。開閉ボタンの aria-expanded に使う。 */
+    vstPanelOpen?: boolean;
 }
 
 // 音の流れと声の調整を1本のチェーンにまとめる。各段で状態を見て、その場で操作できる。
 // 設定状態と音の到達確認は異なる。値を取得できないときは OFF と推測しない。
 export function SoundChain({ model, audioReady, isEngineRunning, inputName, outputName, vst, listenOpen, onListen, onListenClose,
-    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst }: Props) {
+    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, vstPanelOpen = false }: Props) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
@@ -87,7 +89,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const vstOn = vstTone === 'ok';
     // 内訳は「一部 ON」のときだけ見える形で残し、それ以外は読み上げとツールチップにする。
     const builtinBreakdown = builtinDetails && <span className={partial ? 'text-[13px] text-muted-foreground' : 'sr-only'}>{builtinDetails}</span>;
-    const vstEdit = onOpenVst && <button type="button" onClick={onOpenVst}
+    // パネルを閉じたときはこのボタンへフォーカスを戻す（AppShell）。
+    const vstEdit = onOpenVst && <button type="button" id="vst-panel-toggle" onClick={onOpenVst} aria-expanded={vstPanelOpen} aria-controls="vst-panel"
         className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-primary/60 px-3 py-1.5 text-[13px] font-semibold text-primary hover:bg-primary/10">
         {t(emptyVst ? 'chain.vstAdd' : 'chain.vstEditPanel')}<MdChevronRight aria-hidden="true" className="h-4 w-4" />
     </button>;

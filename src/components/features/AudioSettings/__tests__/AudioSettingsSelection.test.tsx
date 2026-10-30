@@ -130,7 +130,7 @@ it('処理設定の取得前は音づくりを変更しない', async () => {
     expect(screen.getByText(/現在の設定を確認できるまで/)).toBeInTheDocument();
 });
 
-it('かんたん表示ではノイズ低減の強さを弱／強だけにし、数値の強さを出さない', async () => {
+it('数値の詳細を出さない間はノイズ低減の強さを弱／強だけにし、数値の強さを出さない', async () => {
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     await screen.findByRole('heading', { name: 'ノイズ低減' });
     expect(screen.queryByRole('slider', { name: 'ノイズ低減の抑制強度' })).not.toBeInTheDocument();

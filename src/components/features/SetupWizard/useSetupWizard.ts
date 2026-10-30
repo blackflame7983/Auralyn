@@ -14,6 +14,9 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
 
     const [audioStartError, setAudioStartError] = useState('');
     const [beginnerChoice, setBeginnerChoice] = useState(getBeginnerMode);
+    // 右パネルは「VSTで音を調整したい」を選んだときだけ開く。もう一方の選択では、
+    // セットアップのやり直しで利用者が開閉したパネルを閉じないよう、今の状態に触れない。
+    const openPanelForVstChoice = () => { if (!beginnerChoice) saveVstPanelOpen(true); };
 
     // State Preservation Logic
     const initialStateRef = useRef<AudioStateInfo | null>(null);
@@ -377,7 +380,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                 try {
                     await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
                     localStorage.setItem('vst_host_setup_goal', 'music');
-                    saveBeginnerMode(beginnerChoice); saveVstPanelOpen(!beginnerChoice);
+                    saveBeginnerMode(beginnerChoice);
                     if (Object.entries(expected).some(([key, value]) => localStorage.getItem(key) !== value)) throw new Error('Saved setup could not be verified');
                 } catch (error) {
                     for (const [key, value] of Object.entries(expected)) {
@@ -391,10 +394,13 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                     window.dispatchEvent(new Event('preparation-purpose-changed'));
                     throw error;
                 }
+                // 保存の確認に成功してから開く。失敗して巻き戻したときにパネルだけ変わったまま残さない。
+                openPanelForVstChoice();
                 window.dispatchEvent(new Event('preparation-purpose-changed'));
             } else {
                 await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
-                saveBeginnerMode(beginnerChoice); saveVstPanelOpen(!beginnerChoice);
+                saveBeginnerMode(beginnerChoice);
+                openPanelForVstChoice();
             }
             hasTouchedEngineRef.current = false;
 

@@ -436,16 +436,25 @@ describe('初回選択と表示設定', () => {
     it.each([true, false])('音声設定の適用成功後だけ表示を保存する: %s', async beginner => {
         localStorage.setItem('vst_host_beginner_mode', String(!beginner));
         await quickStart();
-        fireEvent.click(screen.getByRole('radio', { name: beginner ? '配信をはじめたい（かんたん表示）' : 'VSTで音を調整したい（詳細表示）' }));
+        fireEvent.click(screen.getByRole('radio', { name: beginner ? '配信をはじめたい' : 'VSTで音を調整したい（VST 構成を開いておく）' }));
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(!beginner));
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
         await screen.findByRole('heading', { name: '音声設定を保存しました' });
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(beginner));
     });
+    it.each([['true', true], ['false', false], [null, true], [null, false]] as const)('右パネルは VST を選んだときだけ開き、もう一方では今の開閉（%s）を変えない: VST=%s', async (panel, vst) => {
+        // セットアップのやり直しで、利用者が開閉したパネルを選択肢の初期値で上書きしない。
+        if (panel !== null) localStorage.setItem('auralyn_vst_panel_open', panel);
+        await quickStart();
+        fireEvent.click(screen.getByRole('radio', { name: vst ? 'VSTで音を調整したい（VST 構成を開いておく）' : '配信をはじめたい' }));
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('heading', { name: '音声設定を保存しました' });
+        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe(vst ? 'true' : panel);
+    });
     it('確認画面で表示を選んだ後に中断しても既存の表示設定を変えない', async () => {
         localStorage.setItem('vst_host_beginner_mode', 'false');
         const { onClose } = await quickStart();
-        fireEvent.click(screen.getByRole('radio', { name: '配信をはじめたい（かんたん表示）' }));
+        fireEvent.click(screen.getByRole('radio', { name: '配信をはじめたい' }));
         fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
         fireEvent.click(within(screen.getByRole('dialog', { name: 'セットアップを中断しますか？' })).getByRole('button', { name: '中断する' }));
         await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
@@ -455,7 +464,7 @@ describe('初回選択と表示設定', () => {
         localStorage.setItem('vst_host_beginner_mode', 'false');
         startFails = true;
         await quickStart();
-        fireEvent.click(screen.getByRole('radio', { name: '配信をはじめたい（かんたん表示）' }));
+        fireEvent.click(screen.getByRole('radio', { name: '配信をはじめたい' }));
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
         await waitFor(() => expect(screen.getByRole('button', { name: '設定を保存して開始' })).toBeEnabled());
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
