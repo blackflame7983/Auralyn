@@ -8,10 +8,13 @@ const nodeTests = [
     'src/api/__tests__/{audio,bundles,liveModes,obs,voiceCheckPreview}.test.ts',
     'src/i18n/__tests__/messageCatalog.test.ts',
     'src/components/layout/__tests__/recentCohort.test.ts',
+    'src/components/features/SetupWizard/__tests__/wizardModel.test.ts',
 ];
 
 export default defineConfig({
     test: {
+        // CPU数による過剰な同時起動を避ける。CLIの--maxWorkersで変更できる。
+        maxWorkers: 4,
         projects: [
             { extends: true, test: {
                 name: 'unit', environment: 'node', globals: true,

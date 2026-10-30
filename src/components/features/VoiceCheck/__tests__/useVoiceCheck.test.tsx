@@ -37,7 +37,7 @@ beforeEach(() => {
     vi.spyOn(audioApi, 'stopVoiceCheckPlayback').mockResolvedValue(undefined);
     vi.spyOn(audioApi, 'analyzeVoiceCheck').mockResolvedValue(report);
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 it.each(['success', 'failure'] as const)('解析待ちの非表示後に再実行でき、旧%s応答は新しい解析へ干渉しない', async outcome => {
     const previous = deferred<QualityReport>();
@@ -285,17 +285,22 @@ it('hiddenとエンジン停止で試聴sessionを終了し、自動的には再
 });
 
 it('停止失敗を残し再試行でき、状態pollだけでは警告を消さない', async () => {
+    // 開始準備とpollを仮想時計で進め、実時間の待機をなくす。
+    vi.useFakeTimers();
     let failStop = true;
     vi.mocked(voicePreviewApi.request).mockImplementation(async request => {
         if (request.action === 'stop' && failStop) throw new Error('stop unavailable');
         return previewSnapshot(request, { state: request.action === 'stop' ? 'stopped' : 'idle' });
     });
     const { result } = renderHook(() => useVoiceCheck(true));
-    await waitFor(() => expect(result.current.preview?.epoch).toBe('engine-epoch'));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(result.current.preview?.epoch).toBe('engine-epoch');
     await act(async () => { await result.current.handleStopPreview(); });
     expect(result.current.stopUnconfirmed).toBe(true);
     expect(result.current.previewError).toContain('stop unavailable');
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
+    const statusCount = vi.mocked(voicePreviewApi.request).mock.calls.filter(([request]) => request.action === 'status').length;
+    await act(() => vi.advanceTimersByTimeAsync(300));
+    expect(vi.mocked(voicePreviewApi.request).mock.calls.filter(([request]) => request.action === 'status').length).toBeGreaterThan(statusCount);
     expect(result.current.stopUnconfirmed).toBe(true);
     failStop = false;
     await act(async () => { await result.current.handleStopPreview(); });
@@ -305,6 +310,7 @@ it('停止失敗を残し再試行でき、状態pollだけでは警告を消さ
 
 
 it('update応答待ちのstatus追越しを防ぎ、次の変更へ確定したA/B・loop・音量合わせを引き継ぐ', async () => {
+    vi.useFakeTimers();
     let options = { source: 'processed' as 'raw' | 'processed', loopPlayback: true, levelMatch: false };
     let pending: ReturnType<typeof deferred<ReturnType<typeof previewSnapshot>>> | undefined;
     let pendingRequest: Parameters<typeof previewSnapshot>[0] | undefined;
@@ -318,7 +324,8 @@ it('update応答待ちのstatus追越しを防ぎ、次の変更へ確定したA
         return previewSnapshot(request, { state: 'playing', ...options });
     });
     const { result } = renderHook(() => useVoiceCheck(true));
-    await waitFor(() => expect(result.current.preview?.state).toBe('playing'));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(result.current.preview?.state).toBe('playing');
     const changes = [
         () => result.current.handleSourceChange('raw'),
         () => result.current.setLoopPlayback(false),
@@ -327,14 +334,17 @@ it('update応答待ちのstatus追越しを防ぎ、次の変更へ確定したA
     for (const change of changes) {
         pending = undefined;
         act(() => { void change(); });
-        await waitFor(() => expect(pending).toBeDefined());
+        await act(() => vi.advanceTimersByTimeAsync(0));
+        expect(pending).toBeDefined();
         const statusCount = vi.mocked(voicePreviewApi.request).mock.calls.filter(([request]) => request.action === 'status').length;
-        await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
+        await act(() => vi.advanceTimersByTimeAsync(300));
         expect(vi.mocked(voicePreviewApi.request).mock.calls.filter(([request]) => request.action === 'status')).toHaveLength(statusCount);
         await act(async () => pending!.resolve(previewSnapshot(pendingRequest!, { state: 'playing', ...options })));
         expect(result.current.source).toBe(options.source);
         expect(result.current.loopPlayback).toBe(options.loopPlayback);
         expect(result.current.levelMatch).toBe(options.levelMatch);
+        await act(() => vi.advanceTimersByTimeAsync(300));
+        expect(vi.mocked(voicePreviewApi.request).mock.calls.filter(([request]) => request.action === 'status').length).toBeGreaterThan(statusCount);
     }
     const updates = vi.mocked(voicePreviewApi.request).mock.calls.map(([request]) => request).filter(request => request.action === 'update');
     expect(updates).toEqual([
@@ -345,6 +355,7 @@ it('update応答待ちのstatus追越しを防ぎ、次の変更へ確定したA
 });
 
 it('devices応答待ちは後発statusと他の一覧取得を抑止し、取得した候補を必ず表示する', async () => {
+    vi.useFakeTimers();
     const listed = deferred<ReturnType<typeof previewSnapshot>>();
     let deviceRequest: Parameters<typeof previewSnapshot>[0] | undefined;
     vi.mocked(voicePreviewApi.request).mockImplementation(async request => {
@@ -352,17 +363,21 @@ it('devices応答待ちは後発statusと他の一覧取得を抑止し、取得
         return previewSnapshot(request);
     });
     const { result } = renderHook(() => useVoiceCheck(true));
-    await waitFor(() => expect(result.current.preview?.epoch).toBe('engine-epoch'));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(result.current.preview?.epoch).toBe('engine-epoch');
     act(() => { result.current.setSafeOutput(true); void result.current.refreshPreviewDevices(); });
-    await waitFor(() => expect(deviceRequest).toBeDefined());
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(deviceRequest).toBeDefined();
     const statusCount = vi.mocked(voicePreviewApi.request).mock.calls.filter(([request]) => request.action === 'status').length;
-    await act(async () => { await result.current.refreshPreviewDevices(); await new Promise(resolve => setTimeout(resolve, 300)); });
+    await act(async () => { await result.current.refreshPreviewDevices(); await vi.advanceTimersByTimeAsync(300); });
     expect(vi.mocked(voicePreviewApi.request).mock.calls.filter(([request]) => request.action === 'devices')).toHaveLength(1);
     expect(vi.mocked(voicePreviewApi.request).mock.calls.filter(([request]) => request.action === 'status')).toHaveLength(statusCount);
     await act(async () => listed.resolve(previewSnapshot(deviceRequest!, { devices: [{ id: 'new-hp', name: 'New headphones' }] })));
     expect(result.current.previewDevices).toEqual([{ id: 'new-hp', name: 'New headphones' }]);
     expect(result.current.safeOutput).toBe(false);
     expect(result.current.previewBusy).toBe(false);
+    await act(() => vi.advanceTimersByTimeAsync(300));
+    expect(vi.mocked(voicePreviewApi.request).mock.calls.filter(([request]) => request.action === 'status').length).toBeGreaterThan(statusCount);
 });
 
 it('操作前に開始したstatusが操作後に返っても確定した表示を巻き戻さない', async () => {

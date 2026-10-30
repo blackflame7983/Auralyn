@@ -5,7 +5,8 @@ import { resolve, join } from 'node:path';
 
 if (process.platform !== 'win32') throw new Error('実TauriのE2EはWindows 11 x64で実行してください');
 const root = mkdtempSync(join(tmpdir(), 'Auralyn-e2e-'));
-const target = resolve(process.env.CARGO_TARGET_DIR || 'src-tauri/target');
+// debug設定とTAURI_CONFIGが異なる試験で、通常開発のCargo成果物を入れ替えない。
+const target = resolve(process.env.CARGO_TARGET_DIR || 'src-tauri/target/native-e2e');
 // 設定とWebView2を実行ごとに隔離する。製品の設定・識別子・権限は変更しない。
 const config = {
     identifier: 'com.auralyn.test.e2e',
