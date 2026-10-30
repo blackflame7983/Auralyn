@@ -38,8 +38,8 @@ export function InputGainControl() {
 
     return <Popover.Root>
         <Popover.Trigger asChild>
-            <button type="button" aria-label={t('header.inputGain')} className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted">
-                <MdMic aria-hidden="true" className="h-4 w-4" /><span className="whitespace-nowrap">{t('header.inputGain')}</span><span className="font-mono text-muted-foreground">{inputGain}%</span>
+            <button type="button" className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted">
+                <MdMic aria-hidden="true" className="h-4 w-4" /><span className="whitespace-nowrap">{t('header.inputGain')}</span> <span className="font-mono text-muted-foreground">{inputGain}%</span>
             </button>
         </Popover.Trigger>
         <Popover.Portal><Popover.Content aria-label={t('header.inputGain')} sideOffset={5} collisionPadding={12} className="z-[200] w-64 rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-lg">

@@ -32,6 +32,7 @@
   --color-destructive-text: hsl(var(--destructive-text));
   --color-brand: hsl(var(--brand));
   --color-brand-secondary: hsl(var(--brand-secondary));
+  --color-selection: hsl(var(--selection));
   --color-overlay: hsl(var(--overlay));
   --color-discord-text: hsl(var(--discord-text));
   --color-discord: hsl(var(--discord));
@@ -102,6 +103,8 @@
   --destructive-text: 0 74% 35%;
   --brand: 190 90% 28%;
   --brand-secondary: 270 60% 45%;
+  /* 選択中の目印。ライトは主色のまま、ダークは紫にする（DESIGN.md 5.1）。 */
+  --selection: 222.2 47.4% 11.2%;
   --overlay: 0 0% 0%;
   --discord: 235 86% 65%;
   --discord-text: 235 65% 42%;
@@ -123,26 +126,26 @@
 }
 
 .dark {
-  /* Aurora（既定）: BRANDING.md の Deep Abyss Blue を地に、Aurora Cyan を主色、Mystic Purple を補助色にする。 */
-  --background: 222 47% 6%;
+  /* Aurora（既定）: BRANDING.md の Deep Abyss Blue に Mystic Purple を少し混ぜた地に、Aurora Cyan を主色、Mystic Purple を選択色にする。 */
+  --background: 250 38% 7%;
   --foreground: 210 40% 96%;
 
-  --card: 222 44% 9%;
+  --card: 252 34% 10%;
   --card-foreground: 210 40% 96%;
 
-  --popover: 222 44% 9%;
+  --popover: 252 34% 10%;
   --popover-foreground: 210 40% 96%;
 
   --primary: 187 80% 56%;
   --primary-foreground: 222 47% 8%;
 
-  --secondary: 220 35% 16%;
+  --secondary: 254 28% 16%;
   --secondary-foreground: 210 40% 96%;
 
-  --muted: 220 35% 15%;
-  --muted-foreground: 215 22% 70%;
+  --muted: 254 28% 16%;
+  --muted-foreground: 250 20% 74%;
 
-  --accent: 200 45% 18%;
+  --accent: 265 38% 22%;
   --accent-foreground: 210 40% 96%;
 
   --destructive: 0 62.8% 30.6%;
@@ -159,11 +162,12 @@
   --discord-text: 235 95% 80%;
   --brand: 187 86% 65%;
   --brand-secondary: 270 90% 80%;
+  --selection: 270 85% 80%;
   --waveform-raw: 158 64% 65%;
   --waveform-processed: 199 95% 74%;
 
-  --border: 220 30% 21%;
-  --input: 220 30% 21%;
+  --border: 258 24% 25%;
+  --input: 258 24% 25%;
   --ring: 187 80% 56%;
 }
 
@@ -198,6 +202,7 @@
 
   --brand: 180 100% 50%;
   --brand-secondary: 270 100% 80%;
+  --selection: 180 100% 50%;
 
   /* Stronger borders for "Mechanical/Cyber" feel */
   --border: 240 30% 20%;
@@ -243,6 +248,10 @@
     mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z'/></svg>") center / contain no-repeat;
     transition: transform 150ms ease-out;
   }
+  /* 先頭に自前のアイコンを持つ開閉欄は、山形を重ねない。 */
+  summary:has(> svg:first-child)::before {
+    display: none;
+  }
   details[open] > summary::before {
     transform: rotate(90deg);
   }
@@ -271,6 +280,34 @@
 
   .modal-footer-base {
     @apply p-6 border-t border-border bg-muted/20;
+  }
+
+  /*
+    オーロラ（既定のダーク）だけ、ホームの主要カードを半透明の面にし、上辺にシアンから紫への線を入れる。
+    ゲーミング（.dark.gaming）とライトには付けない。色は飾りで、状態の意味は持たせない（DESIGN.md 5.1）。
+  */
+  .dark:not(.gaming) .aurora-card {
+    position: relative;
+    background-image: linear-gradient(160deg, hsl(252 38% 13% / 0.82), hsl(236 42% 9% / 0.62));
+    backdrop-filter: blur(14px);
+    border-color: hsl(258 40% 40% / 0.45);
+    box-shadow: inset 0 1px 0 hsl(270 80% 85% / 0.07), 0 14px 34px -20px hsl(0 0% 0% / 0.9);
+  }
+  .dark:not(.gaming) .aurora-card.aurora-edge::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 2px;
+    border-top-left-radius: inherit;
+    border-top-right-radius: inherit;
+    background: linear-gradient(90deg, hsl(187 86% 60%), hsl(230 85% 70%), hsl(275 85% 74%));
+    pointer-events: none;
+  }
+  .dark:not(.gaming) .aurora-glow-live {
+    box-shadow: 0 0 0 1px hsl(270 70% 70% / 0.2), 0 12px 40px -14px hsl(260 85% 60% / 0.4);
+  }
+  .dark:not(.gaming) [role="switch"][data-state="checked"] {
+    background-image: linear-gradient(90deg, hsl(187 86% 52%), hsl(268 75% 66%));
   }
 
   /* 文字だけの補助操作。未装飾の下線ボタンを使わず、操作だと分かる色と無効表示を揃える。 */

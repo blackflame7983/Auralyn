@@ -22,7 +22,7 @@ export function LiveStrip({ model, running, liveControls, meterAction }: { model
     const { usage, receiver } = model.context;
     const muted = model.observation.availability === 'muted';
     const Icon = music ? MdMusicNote : MdMic;
-    return <section aria-label={t('live.strip')} className="mb-3 space-y-2 rounded-xl border border-border bg-card/70 p-3 min-[1280px]:col-span-2">
+    return <section aria-label={t('live.strip')} className="aurora-card aurora-edge aurora-glow-live mb-3 space-y-2 rounded-xl border border-border bg-card/70 p-3 min-[1280px]:col-span-2">
         <div className="flex items-center gap-3">
             <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
             <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={24} scale showValues />

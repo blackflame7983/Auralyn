@@ -991,7 +991,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         }}
                         className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
                           noiseMode === mode
-                            ? 'border-primary bg-primary/15 text-primary'
+                            ? 'border-selection bg-selection/15 text-selection'
                             : 'border-input bg-background text-muted-foreground hover:text-foreground'
                         }`}
                       >
@@ -1016,7 +1016,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         }}
                         className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
                           noiseMode === mode
-                            ? 'border-primary bg-primary/15 text-primary'
+                            ? 'border-selection bg-selection/15 text-selection'
                             : 'border-input bg-background text-muted-foreground hover:text-foreground'
                         }`}
                       >
@@ -1114,7 +1114,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         }}
                         className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
                           (singingModel.snapshot?.config.preset ?? builtInEffectsPreset) === preset
-                            ? 'border-primary bg-primary/15 text-primary'
+                            ? 'border-selection bg-selection/15 text-selection'
                             : 'border-input bg-background text-muted-foreground hover:text-foreground'
                         }`}
                       >

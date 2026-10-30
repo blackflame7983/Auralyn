@@ -14,8 +14,8 @@ it('保存済みのマイク音量を表示し、変更を保存・反映して�
     const events: number[] = [];
     window.addEventListener('input-gain-sync', event => events.push((event as CustomEvent<number>).detail));
     render(<InputGainControl />);
-    const trigger = screen.getByRole('button', { name: 'マイク音量' });
-    expect(trigger).toHaveTextContent('80%');
+    // 読み上げの名前にも、画面に出ている今の値を含める。
+    const trigger = screen.getByRole('button', { name: 'マイク音量 80%' });
     act(() => trigger.click());
     act(() => screen.getByRole('button', { name: 'set150' }).click());
     await act(async () => { vi.advanceTimersByTime(60); });
@@ -32,7 +32,7 @@ it('大型メーターなど外部からの同期では、値を反映しても�
     act(() => { window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: 120 })); });
     window.addEventListener('input-gain-sync', listener);
     await act(async () => { vi.advanceTimersByTime(60); });
-    expect(screen.getByRole('button', { name: 'マイク音量' })).toHaveTextContent('120%');
+    expect(screen.getByRole('button', { name: 'マイク音量 120%' })).toBeInTheDocument();
     expect(events).toEqual([]);
     window.removeEventListener('input-gain-sync', listener);
 });

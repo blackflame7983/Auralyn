@@ -108,7 +108,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         </div> },
         { key: 'output', className: 'flex-none', body: endpoint(MdSpeaker, t('home.output'), actualOutput) },
     ];
-    return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="mb-3 space-y-3 rounded-xl border border-border bg-card/70 p-3 min-[1280px]:col-span-2">
+    return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="aurora-card aurora-edge mb-3 space-y-3 rounded-xl border border-border bg-card/70 p-3 min-[1280px]:col-span-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1">
                 <h2 className="text-sm font-bold">{t(music ? 'wizard.musicSound' : 'shell.sound')}</h2>

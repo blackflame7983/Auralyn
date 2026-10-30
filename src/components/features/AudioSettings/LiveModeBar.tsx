@@ -26,7 +26,7 @@ export function LiveModeBar({ model, refreshKey, embedded = false }: { model: Li
                     <button key={mode} type="button" disabled={busy || !value.definitions[mode]} aria-pressed={applied === mode}
                         onClick={() => void model.select(mode)}
                         className={cn('rounded-md border px-3 py-1.5 text-sm font-bold transition-colors disabled:opacity-50',
-                            applied === mode ? 'border-primary bg-primary/15 text-primary' : 'border-input bg-background text-muted-foreground hover:text-foreground')}>
+                            applied === mode ? 'border-selection bg-selection/15 text-selection' : 'border-input bg-background text-muted-foreground hover:text-foreground')}>
                         {name(mode)}
                     </button>
                 ))}

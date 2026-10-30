@@ -96,7 +96,7 @@ export function useVoiceQuick(running: boolean, enabled = true) {
 export type VoiceQuick = ReturnType<typeof useVoiceQuick>;
 
 const segment = (selected: boolean) => cn('whitespace-nowrap rounded-md border px-2 py-1.5 text-xs font-bold transition-colors disabled:opacity-50',
-    selected ? 'border-primary bg-primary/15 text-primary' : 'border-input bg-background text-muted-foreground hover:text-foreground');
+    selected ? 'border-selection bg-selection/15 text-selection' : 'border-input bg-background text-muted-foreground hover:text-foreground');
 
 // 段の見出し行の右端に置くスイッチ。
 export function NoiseSwitch({ q }: { q: VoiceQuick }) {
