@@ -25,6 +25,9 @@ export const test = base.extend<{ transport: void; liveHome: boolean; registered
             let definitions = { schemaVersion: 1, version: '1', singing: liveHome && registeredModes ? builtin : null, talk: liveHome && registeredModes ? builtin : null };
             const modeWrites: unknown[] = [];
             let outputMuted = true;
+            let outputGain = 1;
+            const gainWrites: number[] = [];
+            Object.assign(window, { __e2eOutputGainWrites: gainWrites, __e2eSetOutputGain: (value: number) => { outputGain = value; window.dispatchEvent(new CustomEvent('output-gain-sync', { detail: value * 100 })); } });
             Object.assign(window, { __e2eSetOutputMuted: (muted: boolean) => {
                 outputMuted = muted;
                 window.dispatchEvent(new Event('preparation-external-change'));
@@ -44,9 +47,10 @@ export const test = base.extend<{ transport: void; liveHome: boolean; registered
                         if (args.request.action === 'retain' && args.request.ids.length === 0 && args.request.inputGain === null) return { status: 'finished' };
                         if (args.request.action !== 'snapshot') { unexpected.push(command); throw new Error('空ラックの確認以外は実行しません'); }
                         return { status: 'snapshot', generation: '1', revision: '1', running: liveHome, present: false, restoreEligible: true, plugins: [] };
-                    case 'auto_gain': return { revision: 1, gain: 1, confirmedGain: 1, settled: true, running: liveHome, streamFailed: false, phase: 'idle', id: null, playing: false, devices: [] };
+                    case 'set_output_gain': outputGain = args.value; gainWrites.push(args.value); return;
+                    case 'auto_gain': return { revision: 1, gain: outputGain, confirmedGain: outputGain, settled: true, running: liveHome, streamFailed: false, phase: 'idle', id: null, playing: false, devices: [] };
                     case 'get_plugins': case 'list_presets': case 'list_profiles': return [];
-                    case 'get_engine_runtime_stats': return { activePluginCount: 0, enabledPluginCount: 0, pendingUnloadCount: 0, burnedLibraryCount: 0, maxJitterUs: 0, glitchCount: 0, totalPluginLatencyMs: 0, totalChainLatencyMs: 0, globalBypass: false, builtInEffectsEnabled: builtinEnabled, builtInEffectsPreset: 'broadcast', builtInEffectsAmount: 0.7, ...(liveHome ? { preparation: { engineEpoch: '1', processingRevision: '1', routingRevision: '1', outputRevision: '1', inputGain: 1, inputChannels: [0, 1], outputGain: 1, muted: outputMuted, controlsPending: false, nrBackend: 'nnnoiseless', nrModel: 'bundled' }, queueDiagnostics: { state: 'running', epoch: '1' }, latencyMetadata: { schemaVersion: 1, processingContext: 'monitor', streamEpoch: '1', streamRunning: true, stageBreakdown: { schemaVersion: 1, current: true, queryBasis: 'queriedAtRuntimeStats', streamEpoch: '1', nr: { enabled: false }, builtinVoiceEnabled: builtinEnabled, builtinReverbEnabled: false, globalBypass: false, vst: [] } } } : {}) };
+                    case 'get_engine_runtime_stats': return { activePluginCount: 0, enabledPluginCount: 0, pendingUnloadCount: 0, burnedLibraryCount: 0, maxJitterUs: 0, glitchCount: 0, totalPluginLatencyMs: 0, totalChainLatencyMs: 0, globalBypass: false, builtInEffectsEnabled: builtinEnabled, builtInEffectsPreset: 'broadcast', builtInEffectsAmount: 0.7, ...(liveHome ? { preparation: { engineEpoch: '1', processingRevision: '1', routingRevision: '1', outputRevision: '1', inputGain: 1, inputChannels: [0, 1], outputGain, muted: outputMuted, controlsPending: false, nrBackend: 'nnnoiseless', nrModel: 'bundled' }, queueDiagnostics: { state: 'running', epoch: '1' }, latencyMetadata: { schemaVersion: 1, processingContext: 'monitor', streamEpoch: '1', streamRunning: true, stageBreakdown: { schemaVersion: 1, current: true, queryBasis: 'queriedAtRuntimeStats', streamEpoch: '1', nr: { enabled: false }, builtinVoiceEnabled: builtinEnabled, builtinReverbEnabled: false, globalBypass: false, vst: [] } } } : {}) };
                     case 'builtin_effects':
                         if (args.request.action !== 'snapshot') { unexpected.push(command); throw new Error('登録導線の試験では音を変更しません'); }
                         return { epoch: '1', revision: '1', appliedRevision: '1', config: builtin, pending: false, undoToken: null, error: null };

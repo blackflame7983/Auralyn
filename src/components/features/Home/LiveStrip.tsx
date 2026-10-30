@@ -9,15 +9,17 @@ import { useSharedMeter } from '../LevelMeter/MeterContext';
 import { MeterVisual } from '../LevelMeter/MeterVisual';
 import { InputGainControl } from './InputGainControl';
 import { deviceDisplayName } from '@/lib/audioRouting';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' };
 
 // 本番中に見る3つ（声のレベル、送り先、歌・雑談）だけを最上段に置く（DESIGN.md 1.3、2.5）。
 // 入力機器の名前は送り先の手前に1つだけ出し、押すと機器の設定を開く。確認の手順は準備状況に任せる。
-export function LiveStrip({ model, running, liveControls, meterAction, onOpenDevices, onCheckOutput, onAdjustOutput, inputName, outputName }: {
+export function LiveStrip({ model, running, liveControls, meterAction, onOpenDevices, onCheckOutput, onAdjustOutput, outputGainOpen = false, inputName, outputName }: {
     model: PreparationModel; running: boolean; liveControls?: ReactNode; meterAction?: ReactNode; onOpenDevices?: () => void;
     onCheckOutput?: () => void;
-    onAdjustOutput?: () => void;
+    onAdjustOutput?: (anchor: HTMLButtonElement) => void;
+    outputGainOpen?: boolean;
     /** 準備の観測で機器を取れない間に使う、AppShell が持つ機器名。 */
     inputName?: string; outputName?: string;
 }) {
@@ -44,10 +46,10 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
         </div>
         {/* 広い作業幅では入出力を隣接させる。同じ観測値を共有し、出力音量の操作はフッターへ集約する。 */}
         <div className="live-output-summary min-w-0 items-center gap-3 border-l border-border pl-4">
-            <button type="button" onClick={onAdjustOutput} aria-label={t('master.outputGain')} title={t('master.outputGain')}
+            <TooltipProvider delayDuration={300}><Tooltip><TooltipTrigger asChild><button type="button" onClick={event => onAdjustOutput?.(event.currentTarget)} aria-label={t('master.outputGain')} aria-haspopup="dialog" aria-expanded={outputGainOpen}
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-md p-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
                 <MdVolumeUp aria-hidden="true" className="h-5 w-5" />{t('meter.output')}
-            </button>
+            </button></TooltipTrigger><TooltipContent>{t('home.adjustOutput')}</TooltipContent></Tooltip></TooltipProvider>
             <MeterVisual reading={outputReading} label={t('meter.output')} orientation="horizontal" height={32} scale showValues />
         </div>
         </div>

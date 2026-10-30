@@ -1,8 +1,9 @@
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect } from 'react';
-import { MdShield, MdAdd, MdTune, MdMic, MdMusicNote } from 'react-icons/md';
+import { MdShield, MdAdd, MdEditNote, MdMic, MdMusicNote } from 'react-icons/md';
 import { cn } from '@/lib/utils';
 import type { LiveModesModel } from '@/hooks/useLiveModes';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // 本番中に使う歌・雑談の切替と本番保護。未登録の間は登録欄への入口だけを出す。
 // 未登録の間は起動時・設定を閉じたとき・前面への復帰時に状態を読み、定期確認はしない。
@@ -57,10 +58,10 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister }:
                 {value.armed && <span id="live-protect-state" className="font-medium">{t('liveBar.protecting')}</span>}
             </button>}
             {/* 登録後も同じボタンを保ち、設定を閉じたときのフォーカス復帰先を失わない。 */}
-            {onRegister && <button type="button" onClick={onRegister} aria-label={t(registered ? 'liveBar.editRegistration' : 'liveBar.register')} title={registered ? t('liveBar.editRegistration') : undefined}
+            {onRegister && <TooltipProvider delayDuration={300}><Tooltip><TooltipTrigger asChild><button type="button" onClick={onRegister} aria-label={t(registered ? 'liveBar.editRegistration' : 'liveBar.register')}
                 className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
-                {registered ? <MdTune aria-hidden="true" className="h-4 w-4" /> : <><MdAdd aria-hidden="true" className="h-4 w-4" />{t('liveBar.register')}</>}
-            </button>}
+                {registered ? <MdEditNote aria-hidden="true" className="h-4 w-4" /> : <><MdAdd aria-hidden="true" className="h-4 w-4" />{t('liveBar.register')}</>}
+            </button></TooltipTrigger><TooltipContent>{t(registered ? 'liveBar.editRegistration' : 'liveBar.register')}</TooltipContent></Tooltip></TooltipProvider>}
             {error && <p role="alert" className="basis-full text-xs text-destructive-text">{error}</p>}
         </section>
     );

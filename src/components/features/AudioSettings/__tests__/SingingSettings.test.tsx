@@ -119,7 +119,8 @@ it('プロファイル適用でモードが変わっても音づくりの表示�
     await waitFor(() => expect(low).toBeEnabled());
     expect(low).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText(message('ja', 'settings.noiseOffHint'))).toBeVisible();
-    expect(screen.getByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.129') })).toBeEnabled();
+    fireEvent.click(screen.getByText(message('ja', 'settings.noiseDetails')));
+    expect(await screen.findByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.129') })).toBeEnabled();
     act(() => { window.dispatchEvent(new CustomEvent('profile-fx-applied', { detail: {
         noiseControl: { enabled: true, mode: 'venue', strength: 1.1, voiceGuard: true },
         builtinFx: { preset: 'warm', enabled: false, amount: 0.4 },

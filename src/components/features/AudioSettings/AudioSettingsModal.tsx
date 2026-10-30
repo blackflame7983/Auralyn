@@ -172,6 +172,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [statsLoading, setStatsLoading] = useState(false);
   const [noiseMode, setNoiseMode] = useState<NoiseControlMode>('smart');
   const [noiseMeasurementOpen, setNoiseMeasurementOpen] = useState(false);
+  const [noiseAdvancedOpen, setNoiseAdvancedOpen] = useState(false);
   const [noiseStrength, setNoiseStrength] = useState(80);
   const [noiseVoiceGuard, setNoiseVoiceGuard] = useState(true);
   const [noiseActionBusy, setNoiseActionBusy] = useState(false);
@@ -985,8 +986,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
                   {!engineStats?.noiseReductionEnabled && <p className="text-xs text-muted-foreground">{t('settings.noiseOffHint')}</p>}
                   <div className="min-w-0 space-y-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                  <fieldset className="space-y-2"><legend className="text-xs font-medium">{t('structure.noise.standard')}</legend>
+                  <fieldset className="max-w-[22rem] space-y-2"><legend className="sr-only">{t('structure.noise.standard')}</legend>
                     <div className="grid grid-cols-2 gap-2">
                       {([
                         ['low', t('master.nrLow')],
@@ -1012,7 +1012,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       ))}
                     </div>
                   </fieldset>
-                  <fieldset className="space-y-2"><legend className="text-xs font-medium">{t('structure.noise.adaptive')}</legend>
+                  {(noiseMode === 'low' || noiseMode === 'high') && <p className="text-xs text-muted-foreground">{t(noiseMode === 'low' ? 'settings.AudioSettingsModal.117' : 'settings.AudioSettingsModal.118')}</p>}
+                  <details open={noiseAdvancedOpen} onToggle={event => setNoiseAdvancedOpen(event.currentTarget.open)} className="border-t border-border pt-3">
+                    <summary className="cursor-pointer text-sm font-medium">
+                      {t('settings.noiseDetails')}
+                      {(noiseMode === 'smart' || noiseMode === 'venue') && <span className="ml-3 text-xs font-normal text-muted-foreground">{t(noiseMode === 'smart' ? 'master.nrLearn' : 'master.nrVenue')}</span>}
+                    </summary>
+                    {noiseAdvancedOpen && <div className="space-y-4 pt-4">
+                  <fieldset className="max-w-[22rem] space-y-2"><legend className="text-xs font-medium">{t('structure.noise.adaptive')}</legend>
                     <div className="grid grid-cols-2 gap-2">
                       {([
                         ['smart', t('master.nrLearn')],
@@ -1038,24 +1045,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       ))}
                     </div>
                   </fieldset>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    {noiseMode === 'smart' && (
-                      <>{t('settings.AudioSettingsModal.115')}</>
-                    )}
-                    {noiseMode === 'venue' && (
-                      <>{t('settings.AudioSettingsModal.116')}</>
-                    )}
-                    {noiseMode === 'low' && (
-                      <>{t('settings.AudioSettingsModal.117')}</>
-                    )}
-                    {noiseMode === 'high' && (
-                      <>{t('settings.AudioSettingsModal.118')}</>
-                    )}
-                  </p>
+                  {(noiseMode === 'smart' || noiseMode === 'venue') && <p className="max-w-prose text-xs text-muted-foreground leading-relaxed">{t(noiseMode === 'smart' ? 'settings.AudioSettingsModal.115' : 'settings.AudioSettingsModal.116')}</p>}
 
                   {/* 強さはふだん弱／強の2択だけにし、数値の強さは外観の「数値の詳細を表示」で出す。 */}
-                  {!isBeginnerMode && <div className="space-y-2">
+                  {!isBeginnerMode && <div className="max-w-[22rem] space-y-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">{t('settings.AudioSettingsModal.119')}</span>
                       <span className="font-mono text-foreground">{noiseStrength}%</span>
@@ -1078,7 +1071,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     />
                   </div>}
 
-                  </div>
                   <details open={noiseMeasurementOpen} onToggle={event => setNoiseMeasurementOpen(event.currentTarget.open)} className="rounded-md border border-border p-3 text-sm">
                     <summary className="font-semibold">{t('measurement.title')}</summary>
                     {/* 閉じると測定欄を外し、その欄が開始した測定だけを既存の後片付けで取り消す。 */}
@@ -1099,6 +1091,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       }}
                       aria-label={t('settings.AudioSettingsModal.129')}
                     />
+                  </div>
+                    </div>}
+                  </details>
                   </div>
                 </div>
 

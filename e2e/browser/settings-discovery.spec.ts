@@ -13,6 +13,8 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await page.goto('/');
     const register = page.getByRole('button', { name: 'モードを登録', exact: true });
     await expect(register).toBeVisible();
+    await page.getByRole('button', { name: 'マイク音量 100%', exact: true }).hover();
+    await expect(page.getByRole('tooltip')).toHaveText('マイク音量');
     await page.getByRole('button', { name: '音量チェックを開始', exact: true }).hover();
     await expect(page.getByRole('tooltip')).toContainText('出力音量を測る');
     await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).hover();
@@ -46,6 +48,8 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await expect(modes.getByRole('button', { name: '雑談モード', exact: true })).toBeEnabled();
     await expect.poll(() => page.evaluate(() => (window as any).__e2eModeWrites.length)).toBe(2);
     await expect(register).toHaveCount(0);
+    await live.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).hover();
+    await expect(page.getByRole('tooltip')).toHaveText('歌・雑談の登録を編集');
 });
 
 test('設定の通常操作を先に置き、アイコンと必要時の説明で意味を確認できる', async ({ page }, testInfo) => {

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MdMic, MdMusicNote } from 'react-icons/md';
 import { audioApi } from '@/api/audio';
 import { Slider } from '@/components/ui/slider';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 
@@ -41,12 +42,12 @@ export function InputGainControl() {
     }, [inputGain]);
 
     return <Popover.Root>
-        <Popover.Trigger asChild>
+        <TooltipProvider delayDuration={300}><Tooltip><TooltipTrigger asChild><Popover.Trigger asChild>
             {/* 本番帯を詰めないよう、アイコンと値だけを出す。名前は読み上げとツールチップで伝える。 */}
-            <button type="button" aria-label={`${label} ${inputGain}%`} title={label} className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[13px] hover:bg-muted">
+            <button type="button" aria-label={`${label} ${inputGain}%`} className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[13px] hover:bg-muted">
                 <Icon aria-hidden="true" className="h-4 w-4" /><span className="font-mono">{inputGain}%</span>
             </button>
-        </Popover.Trigger>
+        </Popover.Trigger></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip></TooltipProvider>
         <Popover.Portal><Popover.Content aria-label={label} sideOffset={5} collisionPadding={12} className="z-[200] w-64 rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-lg">
             <div className="flex items-center justify-between gap-4 text-sm"><span>{label}</span><span>{inputGain}%</span></div>
             <Slider aria-label={label} aria-valuetext={`${inputGain}%`} value={[inputGain]} max={200} step={1}

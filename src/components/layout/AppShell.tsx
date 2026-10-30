@@ -11,7 +11,8 @@ import { usePanelMotion } from '@/hooks/usePanelMotion';
 import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Header } from './Header';
 import { audioApi } from '../../api/audio';
-import { MdCompareArrows, MdGraphicEq, MdSpeed } from 'react-icons/md';
+import { MdCompareArrows } from 'react-icons/md';
+import { AudioCheckIcon, LevelMeterIcon } from '@/components/ui/AudioControlIcons';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { listen } from '@tauri-apps/api/event';
@@ -166,7 +167,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const largeMeterButton = <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><button type="button" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
         aria-label={largeMeterLabel}
         className={cn('inline-flex shrink-0 items-center rounded-md border p-1.5', isLargeMeterOpen ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border hover:bg-muted')}>
-        <MdGraphicEq aria-hidden="true" className="h-[18px] w-[18px]" />
+        <LevelMeterIcon className="h-[18px] w-[18px]" />
     </button></TooltipTrigger><TooltipContent><p>{t('home.largeMeterTool')}</p><p className="max-w-64 text-xs">{t('meter.arrivalUnverified')}</p></TooltipContent></Tooltip></TooltipProvider>;
     const loudnessAction = !loudnessEnabled && !measurement.active ? <span className="flex shrink-0 items-center gap-2">
         <span id="loudness-toggle-description" className={!audioReady ? 'whitespace-nowrap text-xs text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
@@ -176,7 +177,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             aria-label={loudnessLabel}
             className="inline-flex items-center rounded-md border border-border p-1.5 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent">
             {/* 本番帯を詰めないようアイコンだけにし、名前は読み上げとツールチップで伝える。 */}
-            <MdSpeed aria-hidden="true" className="h-[18px] w-[18px]" />
+            <AudioCheckIcon className="h-[18px] w-[18px]" />
         </button></TooltipTrigger><TooltipContent><p>{t('home.loudnessTool')}</p><p className="max-w-64 text-xs">{t('loudness.scope')}</p></TooltipContent></Tooltip></TooltipProvider>
     </span> : null;
     const focusOutputControl = () => {
@@ -184,6 +185,10 @@ export const AppShell: React.FC<AppShellProps> = ({
             ? '#master-output-gain [role="slider"]' : '#emergency-mute';
         document.querySelector<HTMLElement>(target)?.focus();
     };
+    const [outputGainAnchor, setOutputGainAnchor] = useState<HTMLButtonElement | null>(null);
+    const closeOutputGain = useCallback(() => setOutputGainAnchor(null), []);
+    const toggleOutputGain = useCallback((anchor: HTMLButtonElement) => setOutputGainAnchor(current => current === anchor ? null : anchor), []);
+    useEffect(() => { if (panelOverlays || !configured) closeOutputGain(); }, [panelOverlays, configured, closeOutputGain]);
     const soundChain = <SoundChain model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
         onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} />;
@@ -250,7 +255,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
-                            ? <LiveStrip model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={() => document.querySelector<HTMLElement>('#master-output-gain [role="slider"]')?.focus({ preventScroll: true })} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
+                            ? <LiveStrip model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
                             : liveControls && <div className="mb-4 rounded-xl border border-border bg-card/70 px-4 py-3 empty:hidden">{liveControls}</div>}
                         {/* 音量チェックは開いたメーターの直下に出す。 */}
                         <div><LoudnessCheck
@@ -326,6 +331,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     </div>
                     <div className="flex-1 min-w-0">
                         <MasterBar
+                            outputGainAnchor={outputGainAnchor} onOutputGainClose={closeOutputGain}
                             onStatsChange={setRuntimeStats}
                             isRunning={isEngineRunning}
                             processReady={engineProcessReady}
