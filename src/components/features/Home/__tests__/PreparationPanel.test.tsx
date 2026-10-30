@@ -170,3 +170,19 @@ it('ミュートで開いている手順は、反映待ちの間も閉じない'
         expect(toggle).toHaveAttribute('aria-expanded', 'true');
     }
 });
+
+it('畳んでいる間は状態を読み上げ対象にし、機器名と、ヘッダーと同じ停止理由を添える', () => {
+    const model = fixture();
+    const view = render(<PreparationPanel model={model} {...callbacks()} devices="USB マイク → CABLE Input" />);
+    const status = screen.getByText(message('ja', 'prep.running')).closest('[role="status"]')!;
+    expect(status).toHaveTextContent(message('ja', 'prep.running'));
+    expect(status).toHaveTextContent('USB マイク → CABLE Input');
+    // 機器名はチェーン列に出る広い幅では重ねない。
+    expect(screen.getByText('USB マイク → CABLE Input')).toHaveClass('min-[1280px]:hidden');
+    // 停止中に手で畳んでも、AppShell の状態文（ヘッダーと同じ文言）を使う。
+    model.observation = { ...model.observation, availability: 'stopped' };
+    view.rerender(<PreparationPanel model={model} {...callbacks()} statusText={message('ja', 'shell.unknown')} />);
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
+    expect(screen.getByText(message('ja', 'shell.unknown')).closest('[role="status"]')).not.toBeNull();
+    expect(screen.queryByText(message('ja', 'shell.stopped'))).not.toBeInTheDocument();
+});

@@ -35,7 +35,8 @@ export function HomePanels({ model, audioReady, statusText, inputName, outputNam
     const actualOutput = model.observation.config?.output ?? outputName;
     return <div className="mb-4 space-y-3">
         <PreparationPanel model={model} audioReady={audioReady} onSettings={onOpenSettings} onSound={onOpenSoundSettings ?? onOpenSettings}
-            onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings}
+            onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText}
+            devices={actualInput || actualOutput ? `${actualInput ? deviceDisplayName(actualInput) : t('master.unset')} → ${actualOutput ? deviceDisplayName(actualOutput) : t('master.unset')}` : undefined}
             signalSummary={<section aria-label={t('prep.signalPath')} className="space-y-2">
             <dl className="grid gap-3 sm:grid-cols-3 text-sm">
                 <div className="min-w-0"><dt className="text-muted-foreground">{t('home.input')}</dt><dd className="truncate font-medium" title={actualInput ?? undefined}>{actualInput ? deviceDisplayName(actualInput) : t('master.unset')}</dd></div>
