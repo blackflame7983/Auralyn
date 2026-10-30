@@ -132,7 +132,7 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
     if (q.preset === 'singing') return <p className="text-xs text-muted-foreground">{t('home.chainSinging')}</p>;
     const presetLabel = (value: BuiltInEffectsPreset) => value === 'broadcast' ? t('settings.AudioSettingsModal.098')
         : value === 'warm' ? t('settings.AudioSettingsModal.099') : t('settings.AudioSettingsModal.100');
-    // 行カードの中で横に並べ、狭い幅ではプリセットとかかり具合を折り返す。
+    // 5%刻みの操作に十分な長さを保ち、広い窓でもスライダーだけを伸ばし続けない。
     return <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2">
         <div role="group" aria-label={t('home.chainPreset')} className="flex gap-1.5">
             {quickPresets.map(value => (
@@ -142,10 +142,10 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
                 </button>
             ))}
         </div>
-        <label className="flex min-w-[12rem] flex-1 items-center gap-2 text-[13px]">
+        <label className="flex min-w-[16rem] max-w-[22rem] flex-1 items-center gap-2 text-[13px]">
             <span className="contents text-muted-foreground">
                 <span className="whitespace-nowrap text-muted-foreground">{t('settings.AudioSettingsModal.103')}</span>
-                <span className="order-last w-10 text-right font-mono text-foreground">{q.shownAmount}%</span>
+                <span className="order-last w-10 shrink-0 text-right font-mono tabular-nums text-foreground">{q.shownAmount}%</span>
             </span>
             <input type="range" min={0} max={100} step={5} value={q.shownAmount} disabled={q.disabled || !q.chainOn}
                 onChange={event => q.setAmount(Number(event.target.value))} onPointerUp={q.commitAmount} onKeyUp={q.commitAmount} onBlur={q.commitAmount}

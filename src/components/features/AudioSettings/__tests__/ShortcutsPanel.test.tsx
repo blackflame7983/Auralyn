@@ -90,12 +90,12 @@ it('歌と雑談は明示登録できるが自動キーはなく、9件以上は
     const actions = ['muteToggle', 'muteOn', 'muteOff', 'bypassToggle', 'bypassOn', 'bypassOff', 'gainUp', 'gainDown'];
     const bindings = actions.map((action, index) => ({ action, shortcut: `Alt+F${index + 11}` }));
     open(false, bindings);
-    const singing = await screen.findByLabelText('歌にするの通常キー');
+    const singing = await screen.findByLabelText('歌唱モードの通常キー');
     await waitFor(() => expect(singing).toBeEnabled());
     expect(singing).toHaveRole('combobox');
     expect(singing).toHaveValue('');
-    expect(screen.getByLabelText('雑談にするの通常キー')).toHaveValue('');
-    fireEvent.change(screen.getByLabelText('歌にするの修飾キー'), { target: { value: 'Alt' } });
+    expect(screen.getByLabelText('雑談モードの通常キー')).toHaveValue('');
+    fireEvent.change(screen.getByLabelText('歌唱モードの修飾キー'), { target: { value: 'Alt' } });
     fireEvent.change(singing, { target: { value: 'F19' } });
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
     expect(screen.getByRole('status')).toHaveTextContent('8件まで');

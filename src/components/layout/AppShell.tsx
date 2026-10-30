@@ -290,8 +290,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </div>
 
                 {/* Master Section Footer */}
-                <footer ref={footerRef} className="min-h-16 bg-background border-t border-border px-4 z-50 footer-shadow shrink-0 transition-colors duration-300">
-                    <div className="mx-auto max-w-[1180px] w-full flex items-start gap-3">
+                <footer ref={footerRef} className="bg-background border-t border-border px-4 z-50 footer-shadow shrink-0 transition-colors duration-300">
+                    <div className="mx-auto max-w-[1180px] w-full flex items-center gap-3">
                     <div className="flex shrink-0 items-center py-2">
                         {/* Effect Compare Button */}
                         <TooltipProvider>

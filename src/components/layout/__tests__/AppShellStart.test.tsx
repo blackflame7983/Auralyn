@@ -57,12 +57,12 @@ it('未設定時は状態帯・調整・準備を示し、音声を自動変更�
     </AppShell>);
     // 未設定の間は音量チェックも本番帯ごと出さない（押しても使えないため）。
     expect(screen.queryByRole('button', { name: '音量チェックを開始' })).not.toBeInTheDocument();
-    for (const name of ['入力・処理・出力', '声を整える', '準備状況']) expect(screen.getByRole('region', { name })).toBeInTheDocument();
+    for (const name of ['入力・処理・出力', '音調整', '音声チェック']) expect(screen.getByRole('region', { name })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'マイクと出力先を設定する' })).toHaveLength(1);
     // 未設定の間は本番帯を出さず、準備の主ボタンを先頭にする。
     expect(screen.queryByRole('region', { name: '本番' })).not.toBeInTheDocument();
     expect(screen.queryByText('quick')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '録音して聴き比べる' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '録音して比較' })).toBeDisabled();
     expect(sound).not.toHaveBeenCalled(); expect(voice).not.toHaveBeenCalled();
 });
 
@@ -150,14 +150,14 @@ it('入出力・声の調整・試聴を保持する', async () => {
     // 入力機器の名前は本番帯に1つだけ出し、押すと機器の設定を開く。声の処理には入力・出力の段を置かない。
     fireEvent.click(within(screen.getByRole('region', { name: '本番' })).getByRole('button', { name: /^入力: USB マイク/ }));
     expect(commonProps.onOpenSettings).toHaveBeenCalled();
-    expect(within(screen.getByRole('region', { name: '声を整える' })).queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
-    // 入力メーターは本番帯の1か所だけにし、準備状況とは重ねない。
+    expect(within(screen.getByRole('region', { name: '音調整' })).queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
+    // 入力メーターは本番帯の1か所だけにし、音声チェックとは重ねない。
     const meters = screen.getAllByRole('meter', { name: 'マイクの入力レベル' });
     expect(meters).toHaveLength(1);
     expect(meters[0].closest('section[aria-label="本番"]')).not.toBeNull();
     expect(screen.getByText('quick')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'マイクと出力先を設定する' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '録音して聴き比べる' }));
+    fireEvent.click(screen.getByRole('button', { name: '録音して比較' }));
     fireEvent.pointerDown(screen.getByRole('button', { name: 'その他の操作' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(await screen.findByRole('menuitem', { name: 'OBS連携' }));
     expect(voice).toHaveBeenCalledOnce(); expect(obs).toHaveBeenCalledOnce();
@@ -230,13 +230,13 @@ it('フッターの実高さを大型メーターの余白へ公開し、終了�
     }
 });
 
-it('歌・雑談の切替は本番帯の中に置く', () => {
+it('モード切替は本番帯の中に置く', () => {
     render(<AppShell {...commonProps} liveControls={<button type="button">歌</button>}><p>rack</p></AppShell>);
     const strip = screen.getByRole('region', { name: '本番' });
     expect(strip).toContainElement(screen.getByRole('button', { name: '歌' }));
 });
 
-it('本番帯を出さない未設定の間も、歌・雑談の切替（本番保護の解除）はホームに残す', () => {
+it('本番帯を出さない未設定の間も、モード切替（本番保護の解除）はホームに残す', () => {
     render(<AppShell {...commonProps} currentHost="" isEngineRunning={false} liveControls={<button type="button">歌</button>}><p>rack</p></AppShell>);
     expect(screen.queryByRole('region', { name: '本番' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '歌' })).toBeInTheDocument();
@@ -248,16 +248,16 @@ it('歌・雑談が未登録で何も描画しないときは、本番帯がな�
     expect(document.querySelector('.empty\\:hidden')).toBeEmptyDOMElement();
 });
 
-it('チェーン列は本番帯の直下で準備状況より前に置き、未設定の間だけ準備の後ろへ回す', () => {
+it('チェーン列は本番帯の直下で音声チェックより前に置き、未設定の間だけ準備の後ろへ回す', () => {
     const follows = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     const view = render(<AppShell {...commonProps} vstChain={<span>vst-items</span>}><p>rack</p></AppShell>);
-    const chain = screen.getByRole('region', { name: '声を整える' });
+    const chain = screen.getByRole('region', { name: '音調整' });
     expect(chain).toHaveTextContent('vst-items');
     expect(follows(screen.getByRole('region', { name: '本番' }), chain)).toBe(true);
-    expect(follows(chain, screen.getByRole('region', { name: '準備状況' }))).toBe(true);
+    expect(follows(chain, screen.getByRole('region', { name: '音声チェック' }))).toBe(true);
     expect(follows(chain, screen.getByText('rack'))).toBe(true);
     view.rerender(<AppShell {...commonProps} currentHost="" isEngineRunning={false} vstChain={<span>vst-items</span>}><p>rack</p></AppShell>);
-    expect(follows(screen.getByRole('region', { name: '準備状況' }), screen.getByRole('region', { name: '声を整える' }))).toBe(true);
+    expect(follows(screen.getByRole('region', { name: '音声チェック' }), screen.getByRole('region', { name: '音調整' }))).toBe(true);
 });
 
 it('ホーム上部に表示モードの切替を常設しない', () => {

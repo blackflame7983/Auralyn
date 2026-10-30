@@ -1,6 +1,96 @@
 import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './tauriFixture';
 
+test.describe('通常のホーム表示', () => {
+    test.use({ liveHome: true, registeredModes: false });
+    test('復元警告なしで、ミュート表示による折返しと高さの変化がない', async ({ page }, testInfo) => {
+        await page.addInitScript(() => {
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('auralyn_vst_panel_open', 'false');
+            localStorage.setItem('vst_host_theme', 'gaming');
+            localStorage.setItem('vst_host_setup_goal', 'listening');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+        });
+        await page.goto('/');
+        await expect(page.getByRole('region', { name: 'VST保存済み構成の保護' })).toHaveCount(0);
+        await expect(page.locator('header').getByText('音声処理中', { exact: true })).toHaveCount(0);
+        const routing = page.locator('[data-live-routing]');
+        // 長い機器名は実寸で検査し、IPC側の保存値や音声処理には触れない。
+        await routing.locator('button').first().locator('span').evaluate(element => { element.textContent = 'Voicemeeter Insert Virtual ASIO'; });
+        for (const width of [960, 1024]) {
+            await page.setViewportSize({ width, height: 640 });
+            const samples = [];
+            for (const muted of [false, true, false]) {
+                await page.evaluate(muted => (window as any).__e2eSetOutputMuted(muted), muted);
+                const badge = routing.getByRole('status', { includeHidden: true });
+                if (muted) await expect(badge).toBeVisible(); else await expect(badge).toBeHidden();
+                samples.push({ row: await routing.boundingBox(), button: await routing.getByRole('button', { name: 'モードを登録', exact: true }).boundingBox() });
+            }
+            expect(samples[1]).toEqual(samples[0]); expect(samples[2]).toEqual(samples[0]);
+            expect(samples[0].row!.height).toBeLessThan(36);
+            const footer = page.locator('footer');
+            const box = (await footer.boundingBox())!;
+            expect(box.y + box.height).toBe(640);
+            expect(box.height).toBeLessThan(64);
+            await page.screenshot({ path: testInfo.outputPath(`normal-home-${width}.png`) });
+        }
+    });
+});
+
+test.describe('操作部品のサイズとテーマ', () => {
+    test.use({ liveHome: true, registeredModes: false });
+    test('各テーマの角丸・候補色とエフェクト量の操作幅を保つ', async ({ page }, testInfo) => {
+        await page.addInitScript(() => {
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('auralyn_vst_panel_open', 'false');
+            localStorage.setItem('vst_host_setup_goal', 'listening');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+        });
+        for (const theme of ['light', 'dark', 'gaming']) {
+            await page.goto('/');
+            await page.evaluate(theme => {
+                document.documentElement.classList.toggle('dark', theme !== 'light');
+                document.documentElement.classList.toggle('gaming', theme === 'gaming');
+            }, theme);
+            const button = page.getByRole('button', { name: '録音して比較', exact: true });
+            expect(await button.evaluate(element => parseFloat(getComputedStyle(element).borderTopLeftRadius))).toBeGreaterThanOrEqual(8);
+            await page.getByRole('button', { name: 'セットアップを開く', exact: true }).click();
+            await page.getByRole('button', { name: '自分で聴く', exact: true }).click();
+            const select = page.getByRole('combobox', { name: '入力デバイス', exact: true });
+            await expect(select).toBeVisible();
+            const styles = await select.evaluate(element => {
+                const option = element.querySelector('option')!;
+                const reference = document.createElement('span');
+                reference.style.color = 'hsl(var(--popover-foreground))';
+                reference.style.backgroundColor = 'hsl(var(--popover))';
+                element.parentElement!.append(reference);
+                const expected = getComputedStyle(reference);
+                const actual = getComputedStyle(option);
+                const result = { scheme: getComputedStyle(element).colorScheme, background: actual.backgroundColor, foreground: actual.color, expectedBackground: expected.backgroundColor, expectedForeground: expected.color };
+                reference.remove(); return result;
+            });
+            expect(styles.scheme).toBe(theme === 'light' ? 'light' : 'dark');
+            expect(styles.background).toBe(styles.expectedBackground);
+            expect(styles.foreground).toBe(styles.expectedForeground);
+            await page.keyboard.press('Escape');
+        }
+        // ウィザードの中断確認を含む状態を破棄して、ホームの操作幅だけを検査する。
+        await page.goto('/');
+        // 初期化中も背後にホームは存在するため、描画だけでなく実際に操作できるまで待つ。
+        await page.getByRole('button', { name: '録音して比較', exact: true }).click({ trial: true });
+        for (const width of [960, 1024, 1440, 1920]) {
+            await page.setViewportSize({ width, height: 768 });
+            const range = page.getByRole('slider', { name: '内蔵ボイスチェーンのエフェクト量', exact: true });
+            const box = (await range.boundingBox())!;
+            // 20段階の操作に6px以上/段を確保し、長大なバーにしない。
+            expect(box.width).toBeGreaterThanOrEqual(120);
+            expect(box.width).toBeLessThanOrEqual(240);
+            await expect(range).toHaveAttribute('step', '5');
+            await page.screenshot({ path: testInfo.outputPath(`controls-${width}.png`) });
+        }
+    });
+});
+
 async function reachable(locator: Locator, page: Page) {
     await locator.scrollIntoViewIfNeeded();
     await expect(locator).toBeInViewport();
@@ -159,7 +249,7 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
             await page.getByRole('button', { name: 'セットアップを開く', exact: true }).click();
             await page.getByRole('button', { name: 'セットアップを閉じる', exact: true }).click();
             const live = page.getByRole('region', { name: '本番', exact: true });
-            const modes = live.getByRole('group', { name: '歌・雑談の切替' });
+            const modes = live.getByRole('group', { name: 'モード切替' });
             await expect(modes).toBeVisible();
             await live.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
             await page.locator('#vst-panel-toggle').click();
@@ -167,12 +257,12 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
             await expect(page.locator('.large-meter-motion')).toBeHidden();
             await page.locator('.vst-panel-scrim').click({ position: { x: 20, y: 20 } });
             await expect(page.locator('#vst-panel')).toHaveCount(0);
-            for (const name of ['歌', '雑談']) await reachable(modes.getByRole('button', { name, exact: true }), page);
+            for (const name of ['歌唱モード', '雑談モード']) await reachable(modes.getByRole('button', { name, exact: true }), page);
             await expect(page.locator('.large-meter-motion')).toBeVisible();
             await page.locator('#vst-panel-toggle').click();
             await page.setViewportSize({ width: 1600, height: 900 });
             await expect(page.locator('main')).not.toHaveAttribute('inert', '');
-            for (const name of ['歌', '雑談']) await reachable(modes.getByRole('button', { name, exact: true }), page);
+            for (const name of ['歌唱モード', '雑談モード']) await reachable(modes.getByRole('button', { name, exact: true }), page);
             await reachable(live.getByRole('button', { name: /100%/ }), page);
             await page.screenshot({ path: testInfo.outputPath(`registered-modes-${theme}.png`) });
         });

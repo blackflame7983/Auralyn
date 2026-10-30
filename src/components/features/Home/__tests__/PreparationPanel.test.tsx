@@ -9,6 +9,25 @@ import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 
 afterEach(cleanup);
+it('定期確認では確認中文字を出さず、手動確認が長引いたときだけ表示する', async () => {
+    vi.useFakeTimers();
+    try {
+        const model = fixture();
+        model.checking = true;
+        model.observation.availability = 'unknown';
+        let finish!: () => void;
+        model.refresh = vi.fn(() => new Promise<null>(resolve => { finish = () => resolve(null); }));
+        render(<PreparationPanel model={model} {...callbacks()} />);
+        expect(screen.queryByText('状態を確認中')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.refresh') }));
+        act(() => vi.advanceTimersByTime(599));
+        expect(screen.queryByText('状態を確認中')).not.toBeInTheDocument();
+        act(() => vi.advanceTimersByTime(1));
+        expect(screen.getByText('状態を確認中')).toBeInTheDocument();
+        await act(async () => { finish(); });
+        expect(screen.queryByText('状態を確認中')).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+});
 const fixture = (): PreparationModel => ({ context: { ...context }, observation: buildPreparationObservation(audioState, runtime(), liveStatus, context), records: {}, checking: false, confirming: false,
     confirm: vi.fn().mockResolvedValue(undefined), unconfirm: vi.fn(), refresh: vi.fn(), reset: vi.fn(), changeContext: vi.fn() });
 const callbacks = () => ({ onSettings: vi.fn(), onSound: vi.fn(), onListen: vi.fn(), onObs: vi.fn(), onCall: vi.fn(), onTroubleshoot: vi.fn(), audioReady: true });

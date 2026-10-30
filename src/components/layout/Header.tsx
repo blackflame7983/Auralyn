@@ -105,7 +105,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </div>
 
                     {/* 音声状態は表示専用。設定は共通ボタンから開く。 */}
-                    <DeviceStatus
+                    {(!isEngineRunning || engineProcessReady === false || engineProcessReady === null) && <DeviceStatus
                         stats={stats}
                         host={currentHost}
                         sampleRate={currentSampleRate}
@@ -113,7 +113,7 @@ export const Header: React.FC<HeaderProps> = ({
                         isRunning={isEngineRunning}
                         processReady={engineProcessReady}
                         showDetails={!isBeginnerMode}
-                    />
+                    />}
                 </div>
 
                 <div className="flex items-center gap-2 xl:gap-4 shrink-0 pl-2">

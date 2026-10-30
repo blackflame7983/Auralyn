@@ -23,6 +23,7 @@ it.each(['ja', 'en'] as const)('共通ヘッダーの入口とミュートの状
         onOpenTroubleshoot: vi.fn(), onOpenWizard: vi.fn(),
         currentHost: 'WASAPI', isEngineRunning: true, engineProcessReady: true };
     const view = render(<LocaleProvider store={store}><Header {...props} /></LocaleProvider>);
+    expect(screen.queryByText(message(locale, 'device.engine'))).not.toBeInTheDocument();
     const muteButton = screen.getByRole('button', { name: message(locale, 'header.emergency') });
     expect(screen.queryByRole('button', { name: message(locale, 'header.compare') })).not.toBeInTheDocument();
     const setup = screen.getByRole('button', { name: message(locale, 'header.setupOpen') });

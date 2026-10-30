@@ -142,7 +142,7 @@ it('VST の行から右パネルの VST 構成を開き、見出しから聴き�
     expect(screen.queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'VST を編集' })); expect(p.onOpenVst).toHaveBeenCalledOnce();
     expect(screen.getAllByRole('listitem')[2]).toHaveTextContent('vst-items');
-    fireEvent.click(screen.getByRole('button', { name: '録音して聴き比べる' })); expect(p.onListen).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '録音して比較' })); expect(p.onListen).toHaveBeenCalledOnce();
     // 毎回は使わない OBS 連携と詳しい調整は、見出しに並べず「その他の操作」にまとめる。
     expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
     const more = screen.getByRole('button', { name: 'その他の操作' });

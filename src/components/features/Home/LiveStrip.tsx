@@ -38,22 +38,22 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
             <InputGainControl />
             {meterAction}
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div data-live-routing className="flex flex-wrap items-center gap-x-3 gap-y-2">
             {input && onOpenDevices && <button type="button" onClick={onOpenDevices} aria-label={devices} title={devices}
-                className="flex min-w-0 max-w-[16rem] items-center gap-1.5 rounded-md text-sm hover:text-foreground">
+                className="flex min-w-0 max-w-[16rem] flex-[1_1_8rem] items-center gap-1.5 rounded-md text-sm hover:text-foreground">
                 <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="truncate font-semibold">{deviceDisplayName(input)}</span>
             </button>}
-            <p className="flex min-w-0 items-center gap-1.5 text-sm">
+            <p className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-sm">
                 <MdArrowForward aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="text-muted-foreground">{t('live.destination')}</span>
                 <span className="truncate font-semibold" title={receiver || undefined}>{usage ? t(destinations[usage]) : t('live.noDestination')}{usage && usage !== 'listening' && receiver ? ` · ${receiver}` : ''}</span>
             </p>
-            {muted && <span role="status" className="inline-flex items-center gap-1 rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-xs font-bold text-warning">
+            <span role="status" aria-hidden={!muted} className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-xs font-bold text-warning ${muted ? '' : 'invisible'}`}>
                 <MdVolumeOff aria-hidden="true" className="h-4 w-4" />{t('prep.muted')}
-            </span>}
+            </span>
             {/* 切替欄を余った数pxまで縮めず、必要な幅がなければ次の行へ送る。未登録の間は控えめな登録入口を置く。 */}
-            {liveControls && <div className="min-w-0 flex-[1_1_18rem] empty:hidden">{liveControls}</div>}
+            {liveControls && <div className="min-w-0 flex-[0_1_auto] empty:hidden">{liveControls}</div>}
         </div>
     </section>;
 }

@@ -68,6 +68,7 @@
   Dark:  Deep Black / Neon / Glows
 */
 :root {
+  color-scheme: light;
   /* Shadcn - Light Mode */
   --background: 0 0% 100%;
   --foreground: 222.2 84% 4.9%;
@@ -118,8 +119,8 @@
   --input: 214.3 31.8% 70%;
   --ring: 222.2 84% 4.9%;
 
-  /* Sharper radius for professional feel */
-  --radius: 0.35rem;
+  /* 小さな操作も角張らせず、通常ボタン10px・大きな操作12pxで揃える。 */
+  --radius: 0.75rem;
 
   /* 動きの時間。押下・ホバー・ツールチップは fast、ポップオーバー・モーダルは base。UI は 300ms 以内。 */
   --motion-fast: 150ms;
@@ -128,6 +129,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   /* Aurora（既定）: BRANDING.md の Deep Abyss Blue に Mystic Purple を少し混ぜた地に、Aurora Cyan を主色、Mystic Purple を選択色にする。 */
   --background: 250 38% 7%;
   --foreground: 210 40% 96%;
@@ -214,8 +216,6 @@
   --ring: 300 100% 68%;
   /* Sharp Neon Ring */
 
-  --radius: 0.2rem;
-  /* More squared off/techy */
 }
 
 @layer base {
@@ -227,6 +227,15 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+  }
+
+  /* 展開したネイティブの候補にも、アプリの配色を渡す。 */
+  select {
+    color: hsl(var(--foreground));
+  }
+  option, optgroup {
+    color: hsl(var(--popover-foreground));
+    background-color: hsl(var(--popover));
   }
 
   /* 開閉の三角はブラウザ標準を使わず、アプリのアイコンと同じ山形にそろえる。開くと下を向く。 */
