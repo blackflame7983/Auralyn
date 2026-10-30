@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { audioApi, type AudioDevice, type AudioStateInfo, type NoiseControlMode } from '../../../api/audio';
 import { builtinApi, type BuiltinSnapshot } from '@/api/builtinEffects';
 import { getBeginnerMode, saveBeginnerMode } from '../../../hooks/useBeginnerMode';
+import { saveVstPanelOpen } from '../../../hooks/useVstPanel';
 import { toast } from 'sonner';
 import { listen } from '@tauri-apps/api/event';
 import { isVirtualOutput, verifiedDefaultOutput, recommendMicrophone, type WizardConfig, type WizardState, type UserGoal, type SetupWizardModalProps } from './wizardModel';
@@ -376,7 +377,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                 try {
                     await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
                     localStorage.setItem('vst_host_setup_goal', 'music');
-                    saveBeginnerMode(beginnerChoice);
+                    saveBeginnerMode(beginnerChoice); saveVstPanelOpen(!beginnerChoice);
                     if (Object.entries(expected).some(([key, value]) => localStorage.getItem(key) !== value)) throw new Error('Saved setup could not be verified');
                 } catch (error) {
                     for (const [key, value] of Object.entries(expected)) {
@@ -393,7 +394,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                 window.dispatchEvent(new Event('preparation-purpose-changed'));
             } else {
                 await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
-                saveBeginnerMode(beginnerChoice);
+                saveBeginnerMode(beginnerChoice); saveVstPanelOpen(!beginnerChoice);
             }
             hasTouchedEngineRef.current = false;
 

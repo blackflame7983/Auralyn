@@ -1,5 +1,5 @@
 import { useMessages } from '@/i18n/LocaleProvider';
-import React, { useEffect, useState } from 'react';
+import React, { useState, type ReactNode } from 'react';
 import { Plugin, PluginCard } from './PluginCard';
 import { PluginRackEmptyState } from './PluginRackEmptyState';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
@@ -22,6 +22,8 @@ interface PluginListProps {
     onReorder: (plugins: Plugin[]) => void;
     onOpenPresets: () => void;
     onOpenTemplates: () => void;
+    /** 右パネルの閉じるボタンなど、見出し行の右端に置く操作。 */
+    headerAction?: ReactNode;
 }
 
 const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, onEdit, simpleMode, ...props }: {
@@ -81,37 +83,17 @@ export const PluginList: React.FC<PluginListProps> = ({
     onEdit,
     onReorder,
     onOpenPresets,
-    onOpenTemplates
+    onOpenTemplates,
+    headerAction
 }) => {
     const t = useMessages();
-    const getBeginnerMode = () => localStorage.getItem('vst_host_beginner_mode') !== 'false';
     const { theme } = useTheme();
-    const [isBeginnerMode, setIsBeginnerMode] = useState(getBeginnerMode);
+    // 表示形式はラックを開いた人がいつでも選べる（以前の詳細表示に限らない）。
     const [simpleMode, setSimpleMode] = useState(() => {
         const saved = localStorage.getItem('vst_host_simple_mode');
         if (saved !== null) return saved === 'true';
         return true;
     });
-
-    useEffect(() => {
-        const syncBeginnerMode = (event?: Event) => {
-            const next = (event as CustomEvent<boolean> | undefined)?.detail;
-            const isBeginner = typeof next === 'boolean' ? next : getBeginnerMode();
-            setIsBeginnerMode(isBeginner);
-            if (isBeginner) {
-                setSimpleMode(true);
-                localStorage.setItem('vst_host_simple_mode', 'true');
-            }
-        };
-
-        window.addEventListener('vst_host_beginner_mode_changed', syncBeginnerMode as EventListener);
-        window.addEventListener('storage', syncBeginnerMode);
-        return () => {
-            window.removeEventListener('vst_host_beginner_mode_changed', syncBeginnerMode as EventListener);
-            window.removeEventListener('storage', syncBeginnerMode);
-        };
-    }, []);
-
     const setViewFormat = (compact: boolean) => {
         setSimpleMode(compact);
         localStorage.setItem('vst_host_simple_mode', String(compact));
@@ -152,25 +134,22 @@ export const PluginList: React.FC<PluginListProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4 px-2">
                     <h2 id="plugin-rack-heading" tabIndex={-1} className="text-sm font-bold text-muted-foreground">{t('rack.title')}</h2>
                     <div className="flex items-center gap-2">
-                        {!isBeginnerMode && (
-                            <>
-                                {/* View Mode Toggle */}
-                                {plugins.length > 0 && (
-                                    // 現在の表示形式をaria-pressedで示す。名前は表示モード（かんたん／詳細）と重ねない。
-                                    <div role="group" aria-label={t('rack.viewFormat')} className="flex rounded-md border border-border p-0.5">
-                                        {([[true, t('rack.simple'), MdViewCompact], [false, t('rack.detailed'), MdViewAgenda]] as const).map(([compact, label, Icon]) => (
-                                            <button key={label} type="button" aria-pressed={simpleMode === compact} onClick={() => setViewFormat(compact)}
-                                                className="inline-flex h-6 items-center gap-1 rounded px-2 text-xs text-muted-foreground hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground">
-                                                <Icon aria-hidden="true" className="w-3.5 h-3.5" />{label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                                <Button variant="outline" size="sm" onClick={onOpenPresets} className="h-7 text-xs gap-2">
-                                    <MdFolderOpen className="w-3.5 h-3.5" />
-                                    {t('rack.manageProfiles')}</Button>
-                            </>
+                        {/* View Mode Toggle */}
+                        {plugins.length > 0 && (
+                            // 現在の表示形式をaria-pressedで示す。
+                            <div role="group" aria-label={t('rack.viewFormat')} className="flex rounded-md border border-border p-0.5">
+                                {([[true, t('rack.simple'), MdViewCompact], [false, t('rack.detailed'), MdViewAgenda]] as const).map(([compact, label, Icon]) => (
+                                    <button key={label} type="button" aria-pressed={simpleMode === compact} onClick={() => setViewFormat(compact)}
+                                        className="inline-flex h-6 items-center gap-1 rounded px-2 text-xs text-muted-foreground hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground">
+                                        <Icon aria-hidden="true" className="w-3.5 h-3.5" />{label}
+                                    </button>
+                                ))}
+                            </div>
                         )}
+                        <Button variant="outline" size="sm" onClick={onOpenPresets} className="h-7 text-xs gap-2">
+                            <MdFolderOpen className="w-3.5 h-3.5" />
+                            {t('rack.manageProfiles')}</Button>
+                        {headerAction}
                     </div>
                 </div>
 

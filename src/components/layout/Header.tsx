@@ -8,11 +8,9 @@ import {
     MdSettings,
     MdHelpOutline,
     MdMicOff,
-    MdGraphicEq,
     MdFavorite,
     MdSystemUpdateAlt,
-    MdAutoFixHigh,
-    MdSpaceDashboard
+    MdAutoFixHigh
 } from 'react-icons/md';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi, type EngineRuntimeStats } from '../../api/audio';
@@ -40,8 +38,6 @@ interface HeaderProps {
     onOpenDiscordGuide: () => void;
     onOpenTroubleshoot: () => void;
     onOpenWizard: () => void;
-    onToggleLargeMeter: () => void;
-    isLargeMeterOpen: boolean;
     stats?: EngineRuntimeStats | null;
     currentHost: string;
     currentSampleRate?: number;
@@ -56,8 +52,6 @@ export const Header: React.FC<HeaderProps> = ({
     onOpenDiscordGuide,
     onOpenTroubleshoot,
     onOpenWizard,
-    onToggleLargeMeter,
-    isLargeMeterOpen,
     stats,
     currentHost,
     currentSampleRate,
@@ -69,7 +63,7 @@ export const Header: React.FC<HeaderProps> = ({
     const { theme } = useTheme();
     const appUpdate = useAppUpdate();
     const [isGlobalMuted, setIsGlobalMuted] = useState(false);
-    const [isBeginnerMode, setIsBeginnerMode] = useBeginnerMode();
+    const [isBeginnerMode] = useBeginnerMode();
 
     useEffect(() => {
         const unlisten = listen<boolean>('global-mute-changed', (event) => {
@@ -167,51 +161,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </Tooltip>
 
 
-                    {!isBeginnerMode && (
-                        <>
-
-                            {/* Large Meter Toggle */}
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <button
-                                        onClick={onToggleLargeMeter}
-                                        aria-label={isLargeMeterOpen ? t('header.meterClose') : t('header.meterOpen')}
-                                        className={`p-2 rounded-lg transition-colors border ${isLargeMeterOpen
-                                            ? 'bg-primary/10 text-primary border-primary/50'
-                                            : 'text-muted-foreground hover:text-foreground hover:bg-muted border-transparent'
-                                            }`}
-                                    >
-                                        <MdGraphicEq className="w-5 h-5" />
-                                    </button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>{t('header.meter')}</p>
-                                </TooltipContent>
-                            </Tooltip>
-
-                        </>
-                    )}
-
-                    {/* かんたん／詳細は頻繁に切り替えないので、本文に常設せずアイコン1つにする。
-                        ヘルプメニューの近道と同じ名前・アイコンにし（DESIGN.md 2.2）、詳細表示中は主色で示す。
-                        セットアップの杖アイコンとは見分けられるよう、表示の切替には別のアイコンを使う。 */}
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <button
-                                type="button"
-                                onClick={() => setIsBeginnerMode(prev => !prev)}
-                                aria-label={isBeginnerMode ? t('header.advanced') : t('header.simple')}
-                                data-detailed={!isBeginnerMode}
-                                className="p-2 rounded-lg border transition-colors text-muted-foreground border-transparent hover:text-foreground hover:bg-muted data-[detailed=true]:bg-primary/10 data-[detailed=true]:text-primary data-[detailed=true]:border-primary/50"
-                            >
-                                <MdSpaceDashboard aria-hidden="true" className="w-5 h-5" />
-                            </button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            <p className="font-bold">{isBeginnerMode ? t('header.advanced') : t('header.simple')}</p>
-                            <p>{isBeginnerMode ? t('header.advancedHint') : t('header.simpleHint')}</p>
-                        </TooltipContent>
-                    </Tooltip>
+                    {/* 大型メーターは本番帯のメーター横へ移した。表示モード（かんたん／詳細）はなくし、VST 構成は右パネル、細かい数値は設定の外観で切り替える。 */}
 
                     {/* Audio Settings */}
                     <Tooltip>
@@ -280,23 +230,6 @@ export const Header: React.FC<HeaderProps> = ({
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">{t('header.support')}</span>
                                     <span className="text-xs text-muted-foreground">{t('header.supportHint')}</span>
-                                </div>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                                onSelect={() => setIsBeginnerMode(prev => !prev)}
-                                className="gap-3 cursor-pointer p-3"
-                            >
-                                <span className="w-6 h-6 flex items-center justify-center bg-primary/15 text-primary rounded-full shadow-sm">
-                                    <MdSpaceDashboard className="w-3.5 h-3.5" />
-                                </span>
-                                <div className="flex flex-col">
-                                    <span className="font-bold text-sm">
-                                        {isBeginnerMode ? t('header.advanced') : t('header.simple')}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                        {isBeginnerMode ? t('header.advancedHint') : t('header.simpleHint')}
-                                    </span>
                                 </div>
                             </DropdownMenuItem>
                         </DropdownMenuContent>

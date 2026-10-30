@@ -202,7 +202,8 @@
 
   --brand: 300 100% 68%;
   --brand-secondary: 185 100% 60%;
-  --selection: 185 100% 55%;
+  /* ゲーミングは差し色をマゼンタ1色にし、選択中も主色で示す。 */
+  --selection: 300 100% 68%;
 
   /* Stronger borders for "Mechanical/Cyber" feel */
   --border: 295 45% 24%;

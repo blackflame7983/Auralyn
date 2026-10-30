@@ -2,10 +2,11 @@ import { useDisplayPurpose } from './hooks/useDisplayPurpose';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { sessionMode } from './lib/temporarySession';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
-import { useBeginnerMode } from './hooks/useBeginnerMode';
+import { useVstPanel } from './hooks/useVstPanel';
+import { MdClose } from 'react-icons/md';
 import { useLiveModes } from './hooks/useLiveModes';
 import { LiveModeBar } from './components/features/AudioSettings/LiveModeBar';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppShell } from './components/layout/AppShell';
 import { PluginList } from './components/features/PluginRack/PluginList';
 import { VstChainItems } from './components/features/Home/VstChainItems';
@@ -34,8 +35,7 @@ function AppContent() {
   // Custom Hooks
   const ui = useUIState();
   const [displayPurpose] = useDisplayPurpose();
-  const [rackExpanded, setRackExpanded] = useState(false);
-  const [isBeginnerMode] = useBeginnerMode();
+  const [vstPanelOpen, setVstPanelOpen] = useVstPanel();
   const { audioConfig, handleConfigUpdate, isInitializing, isEngineRunning, engineProcessReady } = useAudioConfig(
     () => ui.setIsWizardOpen(true),
     () => ui.setIsSettingsOpen(true)
@@ -43,7 +43,8 @@ function AppContent() {
 
   const audioReady = !isInitializing && Boolean(audioConfig.host) && isEngineRunning && engineProcessReady === true;
   const tutorialEligible = useRef(false);
-  tutorialEligible.current = audioReady && !isBeginnerMode;
+  // 初回の使い方案内は VST ラックの操作を指すので、右パネルを開いている間だけ進める。
+  tutorialEligible.current = audioReady && vstPanelOpen;
 
   const pluginsApi = usePlugins();
   const liveModel = useLiveModes(pluginsApi.isLoading);
@@ -129,6 +130,13 @@ function AppContent() {
       onReorder={pluginsApi.reorderPlugins}
       onOpenPresets={() => ui.setIsPresetManagerOpen(true)}
       onOpenTemplates={() => ui.setIsTemplateWizardOpen(true)}
+      headerAction={<>
+        <InfoPopover label={t('info.rack')}>{t('app.rackHint')}</InfoPopover>
+        <button type="button" onClick={() => setVstPanelOpen(false)} aria-label={t('rack.closePanel')} title={t('rack.closePanel')}
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+          <MdClose aria-hidden="true" className="h-4 w-4" />
+        </button>
+      </>}
     />
   );
 
@@ -167,7 +175,8 @@ function AppContent() {
         currentInput={audioConfig.input}
         currentOutput={audioConfig.output}
         liveControls={displayPurpose === 'voice' ? <LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded /> : undefined}
-        vstChain={<VstChainItems plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} onAdd={() => ui.setIsBrowserOpen(true)} />}
+        vstChain={<VstChainItems plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
+        vstPanel={pluginRack}
         isEngineRunning={isEngineRunning}
         engineProcessReady={engineProcessReady}
       >
@@ -185,16 +194,8 @@ function AppContent() {
           <summary className="cursor-pointer text-sm py-2">{t('purpose.liveDetails')}</summary>
           <LiveModeBar model={liveModel} refreshKey={isModalOpen} />
         </details>}
-        <div className="relative mb-4">
-          <div className="absolute right-0 top-2"><InfoPopover label={t('info.rack')}>{t('app.rackHint')}</InfoPopover></div>
-          <details id="plugin-rack-disclosure" open={!isBeginnerMode || displayPurpose === 'music' || rackExpanded}
-            onToggle={event => { if (isBeginnerMode && displayPurpose === 'voice') setRackExpanded(event.currentTarget.open); }}>
-            <summary hidden={!isBeginnerMode || displayPurpose === 'music'} className="cursor-pointer py-3 text-sm font-semibold">{t('app.rack')}</summary>
-            {pluginRack}
-          </details>
-        </div>
-
-        {audioReady && !isBeginnerMode && !isModalOpen && (
+        {/* VST ラックは AppShell の右パネルに出す。 */}
+        {audioReady && vstPanelOpen && !isModalOpen && (
           <>
             {!ui.isBrowserOpen && !isInitializing && (
               <TutorialOverlay

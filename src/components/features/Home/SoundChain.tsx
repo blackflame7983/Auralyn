@@ -1,14 +1,12 @@
 import { useRef, type ReactNode } from 'react';
-import { MdChevronRight, MdExtension, MdHearing, MdMic, MdMusicNote, MdNoiseAware, MdSpeaker, MdTune, MdMoreHoriz, MdCast } from 'react-icons/md';
+import { MdChevronRight, MdHearing, MdTune, MdMoreHoriz, MdCast } from 'react-icons/md';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import type { IconType } from 'react-icons';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { currentStageBreakdown, useRuntimeStats } from '@/components/layout/RuntimeStatsContext';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { cn } from '@/lib/utils';
-import { deviceDisplayName } from '@/lib/audioRouting';
 import { StatusDot, type StatusTone } from '@/components/ui/StatusDot';
 import { MusicListeningCheck } from './MusicListeningCheck';
 import { BuiltinQuick, BuiltinSwitch, NoiseQuick, NoiseSwitch, useVoiceQuick } from './VoiceQuickControls';
@@ -53,7 +51,6 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const builtinDetails = stage ? t('flow.builtinParts', { voice: setting(stage.builtinVoiceEnabled), reverb: setting(stage.builtinReverbEnabled) }) : undefined;
     const partial = Boolean(stage && stage.builtinVoiceEnabled !== stage.builtinReverbEnabled);
     const builtinStatus = partial ? t('flow.partial') : setting(stage?.builtinVoiceEnabled);
-    const flowing = running ? t('flow.running') : t('flow.unknown');
     // 状態は色の点と文言で示す。未確認は注意、OFF は中立で、問題とは区別する（DESIGN.md 5.1）。
     const tone = (value: boolean | undefined): StatusTone => value === undefined ? 'warn' : value ? 'ok' : 'off';
     const vstTone: StatusTone = vstStatus === t('flow.enabled') ? 'ok' : vstStatus === t('flow.disabled') || vstStatus === t('flow.noVst') ? 'off' : 'warn';
@@ -62,57 +59,61 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const actualOutput = model.observation.config?.output ?? outputName;
 
     const emptyVst = !music && Boolean(stage && validVst && stage.vst.length === 0);
-    // 状態は操作と同じ行へ押し込まず、段の幅を使って示す。英語の見出しは語の切れ目で折り返し、日本語は1語の途中で折り返さない。
-    const head = (Icon: IconType, label: string, status: ReactNode, extra?: ReactNode, title?: string) => <div className="space-y-1">
-        <div className="flex items-start justify-between gap-2">
-            <span className="flex min-w-0 flex-1 items-start gap-1.5" title={title}>
-                <Icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 text-sm font-semibold break-keep">{label}</span>
-            </span>
-            {extra && <span className="shrink-0">{extra}</span>}
+    // 1段ずつ横長の行カードにし、上から音の流れの順に並べる（DESIGN.md 5.5）。左端の帯と枠の光で ON を示し、
+    // OFF の段は名前を薄くする。状態の色だけに頼らず、操作できない間は点と文言でも示す。
+    const row = ({ key, id, on, tag, builtin, name, sub, title, body, action, quiet }: {
+        key: string; id?: string; on: boolean; tag: string; builtin?: boolean; name: string; sub?: ReactNode; title?: string;
+        body?: ReactNode; action?: ReactNode; quiet?: boolean;
+    }) => <li key={key}>
+        <div id={id} tabIndex={id ? -1 : undefined} data-on={on} className={cn('flex items-stretch overflow-hidden rounded-lg border bg-card transition-[border-color,box-shadow]',
+            quiet ? 'min-h-[52px]' : 'min-h-[60px]',
+            on ? 'border-primary/35 shadow-[0_0_22px_-12px_hsl(var(--primary)/0.7)]' : 'border-border')}>
+            <span aria-hidden="true" className={cn('w-1.5 shrink-0', on ? 'bg-primary shadow-[0_0_12px_hsl(var(--primary)/0.8)]' : 'bg-muted')} />
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+                <div className={cn('min-w-0 shrink-0 min-[700px]:w-[12.5rem]', !on && 'opacity-60')} title={title}>
+                    <span className={cn('inline-block rounded px-1.5 py-0.5 font-mono text-[10px] font-bold',
+                        builtin ? 'border border-primary/60 text-primary' : on ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>{tag}</span>
+                    <h3 className={cn('mt-1 font-bold break-keep', quiet ? 'text-sm' : 'text-[15px]')}>{name}</h3>
+                    {sub && <div className="text-[11px] text-muted-foreground">{sub}</div>}
+                </div>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">{body}</div>
+                {action && <div className="shrink-0">{action}</div>}
+            </div>
         </div>
-        {status && <div className="text-[13px] text-muted-foreground">{status}</div>}
-    </div>;
-    // 狭い幅では段が折り返さないよう余白を詰め、広い幅でだけゆとりを持たせる。
-    const card = 'h-full space-y-3 rounded-lg border border-border bg-muted/20 p-2.5 min-[1100px]:p-3.5';
-    // 入力と出力は機器の設定を開く。段全体を1つのボタンにする。
-    // 機器名はここに出し、準備状況の要約とは重ねない。長い名前は省略し、全体は title で読める。
-    // 1280px 未満では段が折り返さないよう機器名を隠し、title と読み上げだけに残す。
-    const endpoint = (Icon: IconType, label: string, device?: string) => <button type="button" onClick={onOpenSettings} aria-label={[label, device && deviceDisplayName(device), flowing].filter(Boolean).join(' ')} title={device}
-        className={cn(card, 'w-full min-[1280px]:max-w-[10rem] text-left hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary')}>
-        <span className="flex items-center gap-1.5"><Icon aria-hidden="true" className="h-4 w-4 text-muted-foreground" /><span className="whitespace-nowrap text-sm font-semibold">{label}</span></span>
-        {device && <span className="hidden truncate text-[13px] font-medium min-[1280px]:block">{deviceDisplayName(device)}</span>}
-        <StatusDot tone={running ? 'ok' : 'warn'} className="text-[13px] text-muted-foreground">{flowing}</StatusDot>
+    </li>;
+    const builtinTag = t('chain.tagBuiltin');
+    const noiseOn = live ? q.noiseOn : stage?.nr.enabled === true;
+    const builtinOn = live ? q.chainOn || partial : stage?.builtinVoiceEnabled === true || partial;
+    const vstOn = vstTone === 'ok';
+    // 内訳は「一部 ON」のときだけ見える形で残し、それ以外は読み上げとツールチップにする。
+    const builtinBreakdown = builtinDetails && <span className={partial ? 'text-[13px] text-muted-foreground' : 'sr-only'}>{builtinDetails}</span>;
+    const vstEdit = onOpenVst && <button type="button" onClick={onOpenVst}
+        className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-primary/60 px-3 py-1.5 text-[13px] font-semibold text-primary hover:bg-primary/10">
+        {t(emptyVst ? 'chain.vstAdd' : 'chain.vstEditPanel')}<MdChevronRight aria-hidden="true" className="h-4 w-4" />
     </button>;
-    const stages: { key: string; className: string; body: ReactNode }[] = [
-        { key: 'input', className: 'flex-none', body: endpoint(music ? MdMusicNote : MdMic, t('home.input'), actualInput) },
-        // 音楽鑑賞では声向けの処理を操作しないので、2段を状態だけの1段に縮め、VST の段を広く使う。
-        // 設定が残っていれば音楽にもかかるため、状態は隠さない。
-        ...(music ? [{ key: 'voice', className: 'flex-none', body: <div className={cn(card, 'min-w-[9rem]')}>
-            <span className="flex items-center gap-1.5"><MdTune aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="whitespace-nowrap text-sm font-semibold">{t('chain.voiceTools')}</span></span>
-            <dl className="space-y-1 text-[13px] text-muted-foreground">
-                <div className="flex items-center justify-between gap-2"><dt className="whitespace-nowrap">{t('settings.AudioSettingsModal.105')}</dt><dd><StatusDot tone={tone(stage?.nr.enabled)}>{setting(stage?.nr.enabled)}</StatusDot></dd></div>
-                <div className="flex items-center justify-between gap-2"><dt className="whitespace-nowrap">{t('settings.AudioSettingsModal.095')}</dt><dd><StatusDot tone={builtinTone}>{builtinStatus}</StatusDot></dd></div>
-            </dl>
-            {/* 残響だけ鳴っている「一部 ON」は音楽にもかかるので、声の表示と同じく内訳を見える形で残す。 */}
-            {builtinDetails && <span className={partial ? 'block text-[13px] text-muted-foreground' : 'sr-only'}>{builtinDetails}</span>}
-        </div> }] : [
-        { key: 'noise', className: 'min-w-[12rem] flex-1', body: <div id="home-noise" tabIndex={-1} className={card}>
-            {head(MdNoiseAware, t('settings.AudioSettingsModal.105'), live ? null : <StatusDot tone={tone(stage?.nr.enabled)}>{setting(stage?.nr.enabled)}</StatusDot>, live && <NoiseSwitch q={q} />)}
-            {live && <NoiseQuick q={q} />}
-        </div> },
-        { key: 'builtin', className: 'min-w-[14rem] flex-1', body: <div id="home-builtin" tabIndex={-1} className={card}>
-            {head(MdTune, t('settings.AudioSettingsModal.095'), live && !partial ? null : <StatusDot tone={builtinTone}>{builtinStatus}</StatusDot>, live && <BuiltinSwitch q={q} />, builtinDetails)}
-            {/* スイッチは声の処理だけを表す。残響だけ鳴っている「一部 ON」は、操作中も内訳を見える形で残す。 */}
-            {builtinDetails && <span className={partial ? 'block text-[13px] text-muted-foreground' : 'sr-only'}>{builtinDetails}</span>}
-            {live && <BuiltinQuick q={q} />}
-        </div> },
+    const rows = [
+        // 音楽鑑賞では声向けの処理を操作しないので、2段を状態だけの1段に縮める。設定が残っていれば音楽にもかかるため、状態は隠さない。
+        ...(music ? [row({ key: 'voice', on: noiseOn || builtinOn, tag: builtinTag, builtin: true, name: t('chain.voiceTools'), body: <>
+            <StatusDot tone={tone(stage?.nr.enabled)} className="text-[13px]">{t('settings.AudioSettingsModal.105')} {setting(stage?.nr.enabled)}</StatusDot>
+            <StatusDot tone={builtinTone} className="text-[13px]">{t('settings.AudioSettingsModal.095')} {builtinStatus}</StatusDot>
+            {builtinBreakdown}
+        </> })] : [
+            row({ key: 'noise', id: 'home-noise', on: noiseOn, tag: builtinTag, builtin: true, name: t('settings.AudioSettingsModal.105'), sub: t('chain.noiseSub'),
+                body: live ? <NoiseQuick q={q} /> : <StatusDot tone={tone(stage?.nr.enabled)} className="text-[13px] text-muted-foreground">{setting(stage?.nr.enabled)}</StatusDot>,
+                action: live && <NoiseSwitch q={q} /> }),
+            row({ key: 'builtin', id: 'home-builtin', on: builtinOn, tag: builtinTag, builtin: true, name: t('settings.AudioSettingsModal.095'), sub: t('chain.builtinSub'), title: builtinDetails,
+                body: <>
+                    {(!live || partial) && <StatusDot tone={builtinTone} className="text-[13px] text-muted-foreground">{builtinStatus}</StatusDot>}
+                    {builtinBreakdown}
+                    {live && <BuiltinQuick q={q} />}
+                </>,
+                action: live && <BuiltinSwitch q={q} /> }),
         ]),
-        { key: 'vst', className: emptyVst ? 'min-w-[7rem] flex-none' : 'min-w-[11rem] min-[1100px]:min-w-[14rem] flex-[1.5]', body: <div className={card}>
-            {head(MdExtension, 'VST', <StatusDot tone={vstTone}>{vstStatus}</StatusDot>, !emptyVst && onOpenVst && <button type="button" onClick={onOpenVst} className="whitespace-nowrap text-xs font-semibold text-primary hover:opacity-80">{t('chain.vstOpen')}</button>)}
-            {vst}
-        </div> },
-        { key: 'output', className: 'flex-none', body: endpoint(MdSpeaker, t('home.output'), actualOutput) },
+        // 外部 VST を使わない人には、薄い1行で「使っていない」ことと追加の入口だけを示す。
+        emptyVst
+            ? row({ key: 'vst', on: false, quiet: true, tag: 'VST', name: t('chain.vstEmptyName'), sub: t('chain.vstEmptySub'),
+                body: <span className="text-xs text-muted-foreground">{t('chain.vstEmptyHint')}</span>, action: vstEdit })
+            : row({ key: 'vst', on: vstOn, tag: 'VST', name: 'VST', sub: <StatusDot tone={vstTone}>{vstStatus}</StatusDot>, body: vst, action: vstEdit }),
     ];
     return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="aurora-card aurora-edge mb-4 space-y-4 rounded-xl border border-border bg-card/70 px-4 py-4 min-[1100px]:px-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -144,11 +145,9 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             // 音楽鑑賞では声の段に操作を出さない理由を、常に見える形で示す。
             : music ? <p className="text-xs text-muted-foreground">{t('music.soundHint')}</p>
             : !live && <p role="status" className="text-xs text-muted-foreground">{t('home.voiceUnavailable')}</p>}
-        <ol aria-label={t('flow.title')} className="flex flex-wrap items-stretch gap-1.5 min-[1100px]:gap-2">
-            {stages.map((item, i) => <li key={item.key} className={cn('flex items-stretch gap-1.5 min-[1100px]:gap-2', item.className)}>
-                {i > 0 && <MdChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 self-center text-muted-foreground" />}
-                <div className="min-w-0 flex-1">{item.body}</div>
-            </li>)}
+        {/* 段の間は細い線でつなぎ、矢印やボックスの入れ子にしない。 */}
+        <ol aria-label={t('flow.title')} className="space-y-2.5 [&>li+li]:relative [&>li+li]:before:absolute [&>li+li]:before:-top-2.5 [&>li+li]:before:left-[30px] [&>li+li]:before:h-2.5 [&>li+li]:before:w-0.5 [&>li+li]:before:bg-primary/35">
+            {rows}
         </ol>
         {music && listenOpen && <MusicListeningCheck running={isEngineRunning} input={actualInput} output={actualOutput} onSettings={onOpenSettings} onClose={() => { onListenClose(); listenButton.current?.focus(); }} />}
     </section>;

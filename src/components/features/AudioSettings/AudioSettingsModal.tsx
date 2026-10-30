@@ -32,7 +32,7 @@ import { APP_INFO } from '../../../constants/appInfo';
 import { MigrationPanel } from './MigrationPanel';
 import { ShortcutsPanel } from './ShortcutsPanel';
 import { UpdatePreferences } from './UpdatePreferences';
-import { DisplayPurposeSelector } from './DisplayPurposeSelector';
+import { DisplayPurposeSelector, NumericDetailsSwitch } from './DisplayPurposeSelector';
 import { REVIEW_KEY } from '@/api/migration';
 import { useAudioDeviceSelection } from './useAudioDeviceSelection';
 
@@ -1043,7 +1043,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     )}
                   </p>
 
-                  {/* かんたん表示の強さは弱／強の2択だけにし、数値の強さは詳細表示で出す。 */}
+                  {/* 強さはふだん弱／強の2択だけにし、数値の強さは外観の「数値の詳細を表示」で出す。 */}
                   {!isBeginnerMode && <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">{t('settings.AudioSettingsModal.119')}</span>
@@ -1158,7 +1158,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <summary className="cursor-pointer font-semibold">{t('structure.singing')}</summary>
               <SingingControls showHeading={false} model={singingModel} onPreview={onPreviewSinging} onSaveProfile={onSaveSingingProfile} />
             </details>
-            {/* 出力の安全装置は上級設定。かんたん表示では閉じた欄に置く。 */}
+            {/* 出力の安全装置は上級設定。数値の詳細を出さない間は閉じた欄に置く。 */}
             {isBeginnerMode ? <details className="rounded border border-border p-3 space-y-3">
               <summary className="cursor-pointer font-semibold">{t('peak.title')}</summary>
               <PeakProtectionPanel />
@@ -1177,6 +1177,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           <TabsContent value="appearance" className="space-y-6">
             <LanguageSelector />
             <DisplayPurposeSelector />
+            <NumericDetailsSwitch />
             <div className="space-y-4">
               <div>
                 <h3 className="text-sm font-medium mb-3 flex items-center gap-2 text-foreground">

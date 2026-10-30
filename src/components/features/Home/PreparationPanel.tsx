@@ -17,7 +17,7 @@ interface Props {
     onObs: () => void; onCall: () => void; onTroubleshoot: () => void; audioReady: boolean; signalSummary?: ReactNode;
     /** 音声が使えないときの状態文（ヘッダーと同じ文言）。畳んだときの状態表示にも使う。 */
     statusText?: string;
-    /** 畳んでいる間に状態の横へ出す機器名。チェーン列に機器名が出る幅では隠す。 */
+    /** 畳んでいる間に状態の横へ出す機器名（入力 → 出力先）。 */
     devices?: ReactNode;
 }
 // 問題の種類を返す。正常時は null にして手順を畳み、毎日の起動で読ませない。
@@ -80,16 +80,17 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
             {icon}<span className="min-w-0 truncate">{t(label)}</span>
         </label>)}
     </div>;
-    return <section aria-label={t('prep.title')} className="aurora-card rounded-xl border border-border bg-card/70 p-4 space-y-3">
+    // 問題がなく畳んでいる間は枠を付けず、状態の1行だけにしてホームの主役（本番帯と声の処理）を目立たせる。
+    return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'aurora-card rounded-xl border border-border bg-card/70 p-4' : 'px-1 py-0.5')}>
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-1">
-                <h2 className="shrink-0 text-sm font-bold">{t('prep.title')}</h2>
+                <h2 className={cn('shrink-0 font-bold', open ? 'text-sm' : 'text-xs text-muted-foreground')}>{t('prep.title')}</h2>
                 <InfoPopover label={t('prep.scopeInfo')}>{t('prep.localOnly')}</InfoPopover>
-                {/* 畳んでいる間は、入力・処理・出力の要約の代わりに状態の点1つで示す。機器名はチェーン列に出す。 */}
+                {/* 畳んでいる間は、入力・処理・出力の要約の代わりに状態の点1つと機器名で示す。 */}
                 {/* 開いているときは要約の「音声処理」が状態を読み上げるので、role="status" はどちらか一方だけにする。 */}
                 {!open && <span role="status" className="ml-2 flex min-w-0 items-center gap-2 text-xs">
                     <StatusDot tone={availabilityTones[observation.availability]} className="font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>
-                    {devices && <span className="min-w-0 truncate text-muted-foreground min-[1280px]:hidden">{devices}</span>}
+                    {devices && <span className="min-w-0 truncate text-muted-foreground">{devices}</span>}
                 </span>}
             </div>
             <div className="flex items-center gap-2">

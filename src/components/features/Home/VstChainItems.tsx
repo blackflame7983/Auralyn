@@ -1,14 +1,15 @@
-import { MdAdd, MdOpenInNew, MdVolumeOff } from 'react-icons/md';
+import { MdOpenInNew, MdVolumeOff } from 'react-icons/md';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { cn } from '@/lib/utils';
 import type { Plugin } from '../PluginRack/PluginCard';
 
 // チェーン列の VST 段。押すとオン・オフし、エディタはアイコンから開く。
-// ゲイン・並べ替え・削除は VST 構成（詳細表示）で行い、ここには重ねない（DESIGN.md 2.3）。
-export function VstChainItems({ plugins, onToggle, onEdit, onAdd }: {
-    plugins: Plugin[]; onToggle: (id: string, enabled: boolean) => void; onEdit: (id: string) => void; onAdd: () => void;
+// 追加・ゲイン・並べ替え・削除は右パネルの VST 構成で行い、ここには重ねない（DESIGN.md 2.3）。
+export function VstChainItems({ plugins, onToggle, onEdit }: {
+    plugins: Plugin[]; onToggle: (id: string, enabled: boolean) => void; onEdit: (id: string) => void;
 }) {
     const t = useMessages();
+    if (plugins.length === 0) return null;
     return <ul aria-label={t('chain.vstList')} className="flex flex-wrap gap-1.5">
         {plugins.map(plugin => <li key={plugin.id} className={cn('inline-flex max-w-full items-center rounded-md border text-xs',
             plugin.enabled ? 'border-selection/60 bg-selection/15' : 'border-border bg-background opacity-70')}>
@@ -23,8 +24,5 @@ export function VstChainItems({ plugins, onToggle, onEdit, onAdd }: {
                 <MdOpenInNew aria-hidden="true" className="h-3.5 w-3.5" />
             </button>}
         </li>)}
-        <li><button type="button" onClick={onAdd} className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground">
-            <MdAdd aria-hidden="true" className="h-3.5 w-3.5" />{t('chain.vstAdd')}
-        </button></li>
     </ul>;
 }

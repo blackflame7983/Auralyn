@@ -146,8 +146,10 @@ it('入出力・声の調整・試聴を保持する', async () => {
     const sound = vi.fn(); const voice = vi.fn(); const obs = vi.fn();
     render(<AppShell {...commonProps} onOpenSoundSettings={sound} onOpenVoiceCheck={voice} onOpenOBSSettings={obs}
         currentInput="USB マイク" currentOutput="CABLE Input (VB-Audio Virtual Cable)"><p>rack</p></AppShell>);
-    // 機器名はチェーン列の入力の段に出す（準備状況は畳んでいる間は状態の点だけ）。
-    expect(within(screen.getByRole('region', { name: '声を整える' })).getByRole('button', { name: /^入力 USB マイク/ })).toBeInTheDocument();
+    // 入力機器の名前は本番帯に1つだけ出し、押すと機器の設定を開く。声の処理には入力・出力の段を置かない。
+    fireEvent.click(within(screen.getByRole('region', { name: '本番' })).getByRole('button', { name: /^入力: USB マイク/ }));
+    expect(commonProps.onOpenSettings).toHaveBeenCalled();
+    expect(within(screen.getByRole('region', { name: '声を整える' })).queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
     // 入力メーターは本番帯の1か所だけにし、準備状況とは重ねない。
     const meters = screen.getAllByRole('meter', { name: 'マイクの入力レベル' });
     expect(meters).toHaveLength(1);
@@ -160,6 +162,22 @@ it('入出力・声の調整・試聴を保持する', async () => {
     expect(voice).toHaveBeenCalledOnce(); expect(obs).toHaveBeenCalledOnce();
 });
 
+
+it('VST 構成は右パネルで開閉し、大型メーターは本番帯のメーター横から開く', () => {
+    const toggleMeter = vi.fn();
+    const view = render(<AppShell {...commonProps} onToggleLargeMeter={toggleMeter} vstPanel={<h2 id="plugin-rack-heading" tabIndex={-1}>rack-panel</h2>}><p>rack</p></AppShell>);
+    expect(screen.queryByText('rack-panel')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'VST を編集' }));
+    // 開いたら見出しへ移り、キーボードでもそのまま続けられる。
+    expect(screen.getByRole('complementary')).toHaveTextContent('rack-panel');
+    expect(screen.getByText('rack-panel')).toHaveFocus();
+    expect(localStorage.getItem('auralyn_vst_panel_open')).toBe('true');
+    const meter = within(screen.getByRole('region', { name: '本番' })).getByRole('button', { name: '大型レベルメーターを開く' });
+    fireEvent.click(meter);
+    expect(toggleMeter).toHaveBeenCalledOnce();
+    view.rerender(<AppShell {...commonProps} isLargeMeterOpen vstPanel={<span>rack-panel</span>}><p>rack</p></AppShell>);
+    expect(within(screen.getByRole('region', { name: '本番' })).getByRole('button', { name: message('ja', 'header.meterClose') })).toHaveAttribute('aria-pressed', 'true');
+});
 
 it.each([true, false])('背景のオーロラは音声処理中だけ止める（稼働=%s）', running => {
     render(<AppShell {...commonProps} isEngineRunning={running}><p>rack</p></AppShell>);

@@ -37,7 +37,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
 
     return (
         <div className={cn(
-            "fixed top-16 bottom-[calc(var(--app-footer-height,4rem)+1rem)] right-0 bg-background/95 border-l border-border shadow-2xl z-40 flex flex-col p-2 gap-2 backdrop-blur-md",
+            "fixed top-16 bottom-[calc(var(--app-footer-height,4rem)+1rem)] right-[var(--vst-panel-width,0px)] bg-background/95 border-l border-border shadow-2xl z-40 flex flex-col p-2 gap-2 backdrop-blur-md",
             isMiniMode ? "w-20" : "w-36"
         )}>
             {/* Header */}

@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from '../App';
 import { saveBeginnerMode } from '../hooks/useBeginnerMode';
+import { saveVstPanelOpen } from '../hooks/useVstPanel';
 
 const { audioState, modalCallbacks } = vi.hoisted(() => ({
     audioState: { audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: true, engineProcessReady: true as boolean | null },
@@ -37,15 +38,18 @@ vi.mock('@/components/layout/ModalLayer', () => ({
         return <span data-testid="modals">設定入口</span>;
     },
 }));
-vi.mock('@/components/layout/AppShell', () => ({
-    // 表示の切替はヘッダーのアイコンが共有の保存値（useBeginnerMode）を書き換える。
-    AppShell: ({ children }: { children: React.ReactNode }) => (
-        <>
-            <button onClick={() => { localStorage.setItem('vst_host_beginner_mode', 'false'); window.dispatchEvent(new CustomEvent('vst_host_beginner_mode_changed', { detail: false })); }}>VST詳細へ</button>
+vi.mock('@/components/layout/AppShell', async () => {
+    // 右パネルの開閉は共有の保存値（useVstPanel）で行う。本物の AppShell と同じく、開いている間だけラックを出す。
+    const { useVstPanel, saveVstPanelOpen } = await import('@/hooks/useVstPanel');
+    return { AppShell: ({ children, vstPanel }: { children: React.ReactNode; vstPanel?: React.ReactNode }) => {
+        const [open] = useVstPanel();
+        return <>
+            <button onClick={() => saveVstPanelOpen(true)}>VSTを編集</button>
+            {open && vstPanel}
             {children}
-        </>
-    ),
-}));
+        </>;
+    } };
+});
 vi.mock('sonner', () => ({ Toaster: () => null, toast: { success: vi.fn() } }));
 
 beforeEach(() => {
@@ -54,12 +58,12 @@ beforeEach(() => {
     Object.assign(audioState, { audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: true, engineProcessReady: true });
 });
 afterEach(cleanup);
-it('かんたん表示はVSTだけを折りたたみ、用途切替後もエフェクトと全チュートリアルを保持する', () => {
+it('VST 構成は右パネルを開いたときだけ出し、エフェクトと全チュートリアルを保持する', () => {
     render(<App />);
-    expect(screen.getByTestId('plugins')).not.toBeVisible();
+    expect(screen.queryByTestId('plugins')).not.toBeInTheDocument();
     expect(screen.getByTestId('modals')).toBeVisible();
     expect(screen.queryAllByTestId('tutorial')).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'VST詳細へ' }));
+    fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' }));
     expect(screen.getByTestId('plugins')).toBeVisible();
     expect(screen.getByTestId('plugins')).toHaveTextContent('kept');
     expect(screen.getAllByTestId('tutorial').map((node) => node.textContent)).toEqual([
@@ -69,15 +73,16 @@ it('かんたん表示はVSTだけを折りたたみ、用途切替後もエフ�
         'try_ab_compare',
     ]);
 });
-it('既存の詳細表示を初回から維持し、セットアップで保存した表示にも同期する', () => {
+it('以前の詳細表示を使っていた人は右パネルを開いた状態から始め、数値の詳細の切替ではパネルを閉じない', () => {
     localStorage.setItem('vst_host_beginner_mode', 'false');
     render(<App />);
     expect(screen.getByTestId('plugins')).toBeVisible();
     act(() => saveBeginnerMode(true));
-    expect(screen.getByTestId('plugins')).not.toBeVisible();
+    expect(screen.getByTestId('plugins')).toBeVisible();
+    act(() => saveVstPanelOpen(false));
+    expect(screen.queryByTestId('plugins')).not.toBeInTheDocument();
     expect(screen.queryAllByTestId('tutorial')).toHaveLength(0);
 });
-
 
 it.each([
     { label: '未設定', audioConfig: { host: '' }, isInitializing: false, isEngineRunning: false, engineProcessReady: true },
@@ -85,9 +90,9 @@ it.each([
     { label: '停止中', audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: false, engineProcessReady: true },
     { label: '稼働未確認', audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: true, engineProcessReady: null },
     { label: '開始失敗', audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: false, engineProcessReady: false },
-])('$labelではVST準備を残し、チュートリアルは稼働確認後まで表示しない', state => {
+])('$labelでも右パネルの VST 準備を残し、チュートリアルは稼働確認後まで表示しない', state => {
     Object.assign(audioState, state);
-    localStorage.setItem('vst_host_beginner_mode', 'false');
+    localStorage.setItem('auralyn_vst_panel_open', 'true');
     render(<App />);
     expect(screen.getByTestId('plugins')).toBeVisible();
     expect(screen.getByTestId('plugins')).toHaveAttribute('data-audio-ready', 'false');
@@ -97,7 +102,7 @@ it.each([
 });
 
 it('停止中の遅い追加完了で進めず、稼働再開時に同じチュートリアル手順へ戻る', () => {
-    localStorage.setItem('vst_host_beginner_mode', 'false');
+    localStorage.setItem('auralyn_vst_panel_open', 'true');
     const view = render(<App />);
     const activeStep = () => screen.getAllByTestId('tutorial').find(node => node.dataset.active === 'true')?.textContent;
     expect(activeStep()).toBe('click_add_effect');
@@ -124,7 +129,7 @@ it('停止中の遅い追加完了で進めず、稼働再開時に同じチュ�
 
 it('同じウィンドウの完了通知後もモーダル中は隠し、閉じて稼働確認できた時に最初の案内を表示する', () => {
     localStorage.removeItem('vst_host_wizard_done');
-    localStorage.setItem('vst_host_beginner_mode', 'false');
+    localStorage.setItem('auralyn_vst_panel_open', 'true');
     const view = render(<App />);
     const activeStep = () => screen.queryAllByTestId('tutorial').find(node => node.dataset.active === 'true')?.textContent;
     expect(activeStep()).toBeUndefined();
