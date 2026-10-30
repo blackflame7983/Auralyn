@@ -29,6 +29,11 @@ it('各テーマで状態文字は4.5:1、メーター危険域は3:1以上を�
         // 主ボタンの文字と、主色で示す選択中の文字
         expect(contrast(color('primary-foreground'), color('primary')), `${selector} primary button`).toBeGreaterThanOrEqual(4.5);
         for (const background of ['background', 'card']) expect(contrast(color('primary'), color(background)), `${selector} primary/${background}`).toBeGreaterThanOrEqual(4.5);
+        // 選択中の目印（文字と枠）は、自身の淡い塗りの上でも 4.5:1 を保つ
+        for (const background of ['background', 'card']) {
+            const panel = blend(color('selection'), color(background), 0.15);
+            expect(contrast(color('selection'), panel), `${selector} selection/${background}`).toBeGreaterThanOrEqual(4.5);
+        }
         // 削除・停止・テスト音停止などの危険操作の塗りボタン
         expect(contrast(color('destructive-foreground'), color('destructive')), `${selector} destructive button`).toBeGreaterThanOrEqual(4.5);
     }

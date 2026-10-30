@@ -11,7 +11,7 @@ export function VstChainItems({ plugins, onToggle, onEdit, onAdd }: {
     const t = useMessages();
     return <ul aria-label={t('chain.vstList')} className="flex flex-wrap gap-1.5">
         {plugins.map(plugin => <li key={plugin.id} className={cn('inline-flex max-w-full items-center rounded-md border text-xs',
-            plugin.enabled ? 'border-primary/60 bg-primary/10' : 'border-border bg-background opacity-70')}>
+            plugin.enabled ? 'border-selection/60 bg-selection/15' : 'border-border bg-background opacity-70')}>
             <button type="button" aria-pressed={plugin.enabled} title={t('chain.vstToggle')} onClick={() => onToggle(plugin.id, !plugin.enabled)}
                 className={cn('flex min-w-0 items-center gap-1 px-2 py-1.5 font-semibold', plugin.enabled ? 'text-foreground' : 'text-muted-foreground line-through')}>
                 <span className="truncate">{plugin.name}</span>

@@ -96,7 +96,7 @@ export function useVoiceQuick(running: boolean, enabled = true) {
 export type VoiceQuick = ReturnType<typeof useVoiceQuick>;
 
 const segment = (selected: boolean) => cn('whitespace-nowrap rounded-md border px-2 py-1.5 text-xs font-bold transition-colors disabled:opacity-50',
-    selected ? 'border-primary bg-primary/15 text-primary' : 'border-input bg-background text-muted-foreground hover:text-foreground');
+    selected ? 'border-selection bg-selection/15 text-selection' : 'border-input bg-background text-muted-foreground hover:text-foreground');
 
 // 段の見出し行の右端に置くスイッチ。
 export function NoiseSwitch({ q }: { q: VoiceQuick }) {
@@ -133,10 +133,10 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
     const presetLabel = (value: BuiltInEffectsPreset) => value === 'broadcast' ? t('settings.AudioSettingsModal.098')
         : value === 'warm' ? t('settings.AudioSettingsModal.099') : t('settings.AudioSettingsModal.100');
     return <div className="space-y-2">
-        <div role="group" aria-label={t('home.chainPreset')} className="grid grid-cols-3 gap-1.5">
+        <div role="group" aria-label={t('home.chainPreset')} className="flex flex-wrap gap-1.5">
             {quickPresets.map(value => (
                 <button key={value} type="button" disabled={q.disabled} aria-pressed={q.chainOn && q.preset === value}
-                    onClick={() => void q.applyChain({ preset: value })} className={segment(q.chainOn && q.preset === value)}>
+                    onClick={() => void q.applyChain({ preset: value })} className={cn(segment(q.chainOn && q.preset === value), 'flex-1 whitespace-nowrap')}>
                     {presetLabel(value)}
                 </button>
             ))}

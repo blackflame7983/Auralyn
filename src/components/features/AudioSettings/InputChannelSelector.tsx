@@ -104,7 +104,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
         const hasSignal = activeChannels.includes(left) || activeChannels.includes(right);
         pairs.push(
             <label key={left} className={`flex items-center gap-2 p-2 rounded-md cursor-pointer border focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background ${isSelected
-                ? 'bg-primary/10 border-primary text-primary dark:bg-primary/20'
+                ? 'bg-selection/15 border-selection text-selection'
                 : 'bg-card border-border text-foreground hover:bg-muted dark:bg-muted/30 dark:border-transparent dark:text-muted-foreground dark:hover:bg-muted/50'}`}>
                 <input
                     type="radio"

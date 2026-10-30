@@ -74,13 +74,13 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
         ['listening', 'prep.local', <MdMusicNote aria-hidden="true" className="h-4 w-4 shrink-0" />],
     ];
     const usagePicker = <div role="radiogroup" aria-labelledby={`${stepsId}-usage`} className={cn('grid gap-2 sm:grid-cols-2', next === 'purpose' && 'rounded-lg ring-1 ring-primary/60 p-1')}>
-        {destinations.map(([value, label, icon]) => <label key={value} className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary">
+        {destinations.map(([value, label, icon]) => <label key={value} className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm has-[:checked]:border-selection has-[:checked]:bg-selection/15 has-[:checked]:text-selection has-[:checked]:font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary">
             <input type="radio" name={`${stepsId}-usage-choice`} value={value} checked={context.usage === value} className="sr-only"
                 onChange={() => model.changeContext({ usage: value, receiver: '' })} />
             {icon}<span className="min-w-0 truncate">{t(label)}</span>
         </label>)}
     </div>;
-    return <section aria-label={t('prep.title')} className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
+    return <section aria-label={t('prep.title')} className="aurora-card rounded-xl border border-border bg-card/70 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-1">
                 <h2 className="shrink-0 text-sm font-bold">{t('prep.title')}</h2>

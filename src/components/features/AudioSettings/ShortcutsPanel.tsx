@@ -170,7 +170,7 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
                 <button type="button" aria-label={t('shortcuts.captureNamed', { action: label })} aria-pressed={capturing === action} aria-busy={capturing === action && !armed}
                     onClick={() => { setMessage([]); capture(capturing === action ? null : action); }}
                     onKeyDown={event => handleCapture(event, action)} onBlur={() => { if (capturing === action) capture(null); }}
-                    className="rounded border border-border px-2 py-1.5 text-left aria-pressed:border-primary aria-pressed:bg-muted disabled:cursor-not-allowed disabled:opacity-50">
+                    className="rounded border border-border px-2 py-1.5 text-left aria-pressed:border-selection aria-pressed:bg-muted disabled:cursor-not-allowed disabled:opacity-50">
                     {capturing === action ? t(armed ? 'shortcuts.captureWaiting' : 'shortcuts.capturePreparing') : values[action] || t('shortcuts.captureEmpty')}
                 </button>
                 {/* キー入力で登録できない場合の代替手段。既定では閉じて入力方式を1つに見せる。 */}

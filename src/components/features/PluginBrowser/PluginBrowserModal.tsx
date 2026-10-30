@@ -302,7 +302,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               aria-pressed={!selectedCategory}
               className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
                 !selectedCategory
-                  ? 'bg-primary/10 text-primary border-primary/30 font-bold'
+                  ? 'bg-selection/15 text-selection border-selection/40 font-bold'
                   : 'bg-muted/50 text-muted-foreground border-border hover:border-primary/30 hover:text-foreground'
               }`}
             >
@@ -315,7 +315,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                 aria-pressed={selectedCategory === cat.name}
                 className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
                   selectedCategory === cat.name
-                    ? 'bg-primary/10 text-primary border-primary/30 font-bold'
+                    ? 'bg-selection/15 text-selection border-selection/40 font-bold'
                     : 'bg-muted/50 text-muted-foreground border-border hover:border-primary/30 hover:text-foreground'
                 }`}
               >

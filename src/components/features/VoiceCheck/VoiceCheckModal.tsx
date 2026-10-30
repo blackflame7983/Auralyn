@@ -39,6 +39,11 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
     const comparingCandidate = candidateMode !== 'normal';
     const manualPreviewCandidate = candidateMode === 'manual' ? candidate : null;
     const hasRecording = vcState.duration_ms > 0 || vcState.state === 'ready' || isPlaying || Boolean(preview?.recordingId);
+    const showRecording = hasRecording || isRecording;
+    // 録音前でも、試聴の失敗・競合・停止待ちは操作とともに見せる。
+    const previewNeedsAttention = stopUnconfirmed || Boolean(previewError || preview?.error || preview?.conflict)
+        || isPlaying || preview?.state === 'stopping' || preview?.owner === 'auto_gain';
+    const hasNoiseHistory = Boolean(preview?.noiseUndoToken || preview?.noiseRedoToken || preview?.noisePending);
     const displayPositionMs = isPlaying || preview?.state === 'stopping' ? preview.positionMs : vcState.position_ms;
     const displayDurationMs = isRecording ? vcState.duration_ms : preview?.durationMs || vcState.duration_ms;
     // 録音中は position == duration になるため、最大録音時間を分母にする
@@ -115,6 +120,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     {comparingCandidate && <p role="status">{t(candidateMode === 'noise' ? 'noiseCompare.comparing' : candidateMode === 'proposal' ? 'voice.comparisonProposal' : 'voice.comparisonManual')}</p>}
                     {comparingCandidate && <button type="button" disabled={previewBusy || busy || isRecording} onClick={() => void returnToRecording()} className="rounded border px-3 py-2 disabled:opacity-50">{t('voice.returnToRecording')}</button>}
                     {!hasRecording && !isRecording && <p className="text-sm text-muted-foreground">{t('voice.copy.053')}</p>}
+                    {showRecording && <>
                     {!comparingCandidate && <WaveformCanvas
                         rawPeaks={rawPeaks}
                         processedPeaks={processedPeaks}
@@ -156,8 +162,9 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             <span>{formatMs(displayDurationMs)}</span>
                         </div>
                     </div>
+                    </>}
                     {/* 状態が未確定・失敗した際は停止と再試行を隠さない。 */}
-                    <details open={hasRecording || previewBusy || stopUnconfirmed || Boolean(previewError || preview?.error || preview?.conflict) || isPlaying || preview?.state === 'stopping' || preview?.owner === 'auto_gain' || undefined}>
+                    {(hasRecording || previewNeedsAttention) && <details open={hasRecording || previewNeedsAttention || undefined}>
                     <summary className="cursor-pointer text-sm font-semibold">{t('voice.playbackSection')}</summary>
                     {/* 録音 → 波形 → 聴き比べの順に置き、試聴先は再生操作の直前で選ぶ。 */}
                     <section aria-label={t('voice.copy.036')} className="rounded-lg border border-border p-3 space-y-3">
@@ -221,11 +228,15 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={levelMatch} disabled={previewBusy || isRecording || !preview?.levelMatchAvailable || preview?.state === 'stopping'} onChange={event => setLevelMatch(event.target.checked)} className="mt-1" /><span>{t('voice.copy.063')}</span></label>
                     <p className="text-xs text-muted-foreground">{t('voice.copy.064')}{preview?.levelMatchAvailable === false && t('voice.copy.065')} {t('voice.copy.066')}</p>
                     {preview && <p className="text-xs text-muted-foreground">{t('voice.copy.067')}{preview.levelMatchAttenuationDb[0].toFixed(1)} {t('voice.copy.068')}{preview.levelMatchAttenuationDb[1].toFixed(1)} {t('voice.copy.069')}{preview.safetyAttenuationDb.toFixed(1)} dB</p>}
-                    </details>
+                    </details>}
                     {/* 基本の録音・聴き比べの後に、ノイズ低減だけの比較を置く。 */}
-                    <NoiseComparisonPanel preview={preview} candidate={candidateMode === 'noise' ? candidate : null}
+                    {(hasRecording || hasNoiseHistory) && !isRecording && <details open={candidateMode === 'noise' || hasNoiseHistory || undefined} className="rounded-lg border border-border p-3">
+                    <summary className="text-sm font-semibold">{t('noiseCompare.title')}</summary>
+                    <NoiseComparisonPanel embedded preview={preview} candidate={candidateMode === 'noise' ? candidate : null}
                         disabled={busy || previewBusy || isRecording || isPlaying || preview?.state === 'stopping' || stopUnconfirmed || streamStatus !== 'ready' || Boolean(preview?.conflict)}
                         prepare={prepareNoise} apply={applyNoise} undo={undoNoise} redo={redoNoise} />
+                    </details>}
+                    {hasRecording && !isRecording && <>
                     <details className="rounded border border-border p-3 text-xs space-y-2">
                         <summary className="cursor-pointer font-semibold">{t('voice.copy.070')}</summary>
                         {!preview?.metadata ? <p>{t('voice.copy.071')}</p> : <>
@@ -334,7 +345,8 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             </div>
                         )}
                     </div>}
-                    {singingModel && <details open={manualCandidate || comparingCandidate || undefined} onToggle={event => { if (comparingCandidate || previewBusy) event.currentTarget.open = true; }} className="rounded border border-border p-3 space-y-3">
+                    </>}
+                    {singingModel && (hasRecording || manualCandidate) && <details open={manualCandidate || comparingCandidate || undefined} onToggle={event => { if (comparingCandidate || previewBusy) event.currentTarget.open = true; }} className="rounded border border-border p-3 space-y-3">
                         <summary className="cursor-pointer font-semibold">{t('structure.voiceCandidates')}</summary>
                     {singingModel && <VoiceProposalPanel running={streamStatus === 'ready' ? true : streamStatus === 'stopped' ? false : undefined} model={singingModel} candidate={candidateMode === 'proposal' ? candidate : null} currentRecordingId={preview?.state === 'closed' ? null : preview?.recordingId ?? null} disabled={isRecording || busy || previewBusy || stopUnconfirmed || preview?.state === 'closed' || Boolean(preview?.conflict) || preview?.owner === 'auto_gain'} previewActive={isPlaying || previewBusy || preview?.state === 'stopping'} prepare={prepareProposal} invalidatePreferences={invalidateProposalPreferences} onSave={onSaveSingingProfile} />}
                     {manualCandidate && singingModel && <section aria-label={t('voice.copy.014')} className="rounded-lg border border-border p-3 space-y-3 text-sm">
