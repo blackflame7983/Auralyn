@@ -12,7 +12,7 @@ import { SoundChain } from '../SoundChain';
 import { VstChainItems } from '../VstChainItems';
 
 vi.mock('../VoiceQuickControls', () => ({
-    useVoiceQuick: (_running: boolean, enabled: boolean) => ({ stats: enabled ? {} : null }),
+    useVoiceQuick: (_running: boolean, enabled: boolean) => ({ stats: enabled ? {} : null, noiseOn: true, chainOn: true }),
     NoiseSwitch: () => <span>noise-switch</span>, NoiseQuick: () => <span>noise-quick</span>,
     BuiltinSwitch: () => <span>builtin-switch</span>, BuiltinQuick: () => <span>builtin-quick</span>,
 }));

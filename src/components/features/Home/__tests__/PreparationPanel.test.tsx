@@ -38,6 +38,7 @@ it('ミュート・音量ゼロでは機器の再設定ではなく本番操作�
     const model = fixture(); model.observation.availability = 'muted';
     const props = callbacks(); const checkOutput = vi.fn();
     render(<PreparationPanel model={model} {...props} onCheckOutput={checkOutput} />);
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
     fireEvent.click(screen.getByRole('button', { name: 'ミュート・出力音量を確認' }));
     expect(checkOutput).toHaveBeenCalledOnce();
     expect(props.onSettings).not.toHaveBeenCalled();
@@ -133,10 +134,12 @@ it.each(['unconfigured', 'stopped', 'unknown'] as const)('%sでは最初から�
     render(<PreparationPanel model={model} {...callbacks()} />);
     expect(screen.getByRole('button', { name: message('ja', 'prep.steps') })).toHaveAttribute('aria-expanded', 'true');
 });
-it('ミュート・音量ゼロでは手順を開き、直す入口を見せる', () => {
+it('ミュート・音量ゼロでは手順を自動展開せず、手動で確認できる', () => {
     const model = fixture(); model.observation = { ...model.observation, availability: 'muted' };
     render(<PreparationPanel model={model} {...callbacks()} />);
-    expect(screen.getByRole('button', { name: message('ja', 'prep.steps') })).toHaveAttribute('aria-expanded', 'true');
+    const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
     expect(screen.getByRole('button', { name: message('ja', 'shell.configure') })).toBeInTheDocument();
 });
 it('起動時の状態不明から正常になったら、操作していなければ畳む', () => {
@@ -184,6 +187,7 @@ it('問題中に閉じても、別の問題へ変わったら開き直す', () =
     const view = render(<PreparationPanel model={model} {...callbacks()} />);
     const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
     fireEvent.click(toggle);
+    fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     for (const availability of ['pending', 'muted'] as const) {
         model.observation = { ...ready, availability };
@@ -196,6 +200,7 @@ it('ミュートで開いている手順は、反映待ちの間も閉じない'
     model.observation = { ...ready, availability: 'muted' };
     const view = render(<PreparationPanel model={model} {...callbacks()} />);
     const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
+    fireEvent.click(toggle);
     for (const availability of ['pending', 'muted'] as const) {
         model.observation = { ...ready, availability };
         view.rerender(<PreparationPanel model={model} {...callbacks()} />);

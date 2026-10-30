@@ -1000,7 +1000,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                           applyNoiseControlConfig({ mode });
                         }}
                         className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
-                          noiseMode === mode
+                          engineStats?.noiseReductionEnabled && noiseMode === mode
                             ? 'border-selection bg-selection/15 text-selection'
                             : 'border-input bg-background text-muted-foreground hover:text-foreground'
                         }`}
@@ -1026,7 +1026,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                           applyNoiseControlConfig({ mode });
                         }}
                         className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
-                          noiseMode === mode
+                          engineStats?.noiseReductionEnabled && noiseMode === mode
                             ? 'border-selection bg-selection/15 text-selection'
                             : 'border-input bg-background text-muted-foreground hover:text-foreground'
                         }`}
@@ -1115,7 +1115,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     />
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2">
+                  {singingModel.snapshot && !singingModel.snapshot.config.active && <p className="text-xs text-muted-foreground">{t('settings.fxOffHint')}</p>}
+                  <fieldset disabled={!singingModel.snapshot?.config.active || singingModel.busy} className="space-y-4 disabled:opacity-50">
+                  <div className="grid max-w-[22rem] grid-cols-3 gap-2">
                     {([
                       ['broadcast', t('settings.AudioSettingsModal.098')],
                       ['warm', t('settings.AudioSettingsModal.099')],
@@ -1137,12 +1139,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     ))}
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="w-full max-w-[22rem] space-y-2">
                     {singingModel.snapshot?.config.preset === 'singing' && <p className="text-xs">{t('settings.AudioSettingsModal.102')}</p>}
-                    <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 text-[13px]">
                       <span className="text-muted-foreground">{t('settings.AudioSettingsModal.103')}</span>
-                      <span className="font-mono text-foreground">{builtInEffectsAmount}%</span>
-                    </div>
+                      <span className="order-last w-10 shrink-0 text-right font-mono tabular-nums text-foreground">{builtInEffectsAmount}%</span>
                     <input
                       type="range"
                       disabled={singingModel.snapshot?.config.preset === 'singing' || !singingModel.snapshot || singingModel.busy}
@@ -1153,10 +1154,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       onChange={(e) => setBuiltInEffectsAmount(Number(e.target.value))}
                       onMouseUp={() => applyBuiltInEffects({ amount: builtInEffectsAmount })}
                       onKeyUp={() => applyBuiltInEffects({ amount: builtInEffectsAmount })}
-                      className="w-full accent-primary"
+                      className="min-w-0 flex-1 accent-primary"
                       aria-label={t('settings.AudioSettingsModal.104')}
                     />
+                    </div>
                   </div>
+                  </fieldset>
                 </div>
 
             </fieldset>

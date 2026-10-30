@@ -14,8 +14,9 @@ const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', disc
 
 // 本番中に見る3つ（声のレベル、送り先、歌・雑談）だけを最上段に置く（DESIGN.md 1.3、2.5）。
 // 入力機器の名前は送り先の手前に1つだけ出し、押すと機器の設定を開く。確認の手順は準備状況に任せる。
-export function LiveStrip({ model, running, liveControls, meterAction, onOpenDevices, inputName, outputName }: {
+export function LiveStrip({ model, running, liveControls, meterAction, onOpenDevices, onCheckOutput, inputName, outputName }: {
     model: PreparationModel; running: boolean; liveControls?: ReactNode; meterAction?: ReactNode; onOpenDevices?: () => void;
+    onCheckOutput?: () => void;
     /** 準備の観測で機器を取れない間に使う、AppShell が持つ機器名。 */
     inputName?: string; outputName?: string;
 }) {
@@ -49,8 +50,11 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
                 <span className="text-muted-foreground">{t('live.destination')}</span>
                 <span className="truncate font-semibold" title={receiver || undefined}>{usage ? t(destinations[usage]) : t('live.noDestination')}{usage && usage !== 'listening' && receiver ? ` · ${receiver}` : ''}</span>
             </p>
-            <span role="status" aria-hidden={!muted} className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-xs font-bold text-warning ${muted ? '' : 'invisible'}`}>
-                <MdVolumeOff aria-hidden="true" className="h-4 w-4" />{t('prep.muted')}
+            <span role="status" aria-hidden={!muted} className={`inline-flex shrink-0 ${muted ? '' : 'invisible'}`}>
+                <button type="button" onClick={onCheckOutput} tabIndex={muted ? 0 : -1} aria-label={t('prep.checkOutput')}
+                    title={t('prep.checkOutput')} className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-xs font-bold text-warning hover:bg-warning/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warning">
+                    <MdVolumeOff aria-hidden="true" className="h-4 w-4" />{t('prep.muted')}
+                </button>
             </span>
             {/* 切替欄を余った数pxまで縮めず、必要な幅がなければ次の行へ送る。未登録の間は控えめな登録入口を置く。 */}
             {liveControls && <div className="min-w-0 flex-[0_1_auto] empty:hidden">{liveControls}</div>}

@@ -105,14 +105,14 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             <StatusDot tone={builtinTone} className="text-[13px]">{t('settings.AudioSettingsModal.095')} {builtinStatus}</StatusDot>
             {builtinBreakdown}
         </> })] : [
-            row({ key: 'noise', id: 'home-noise', on: noiseOn, tag: builtinTag, builtin: true, name: t('settings.AudioSettingsModal.105'), sub: t('chain.noiseSub'),
-                body: live ? <NoiseQuick q={q} /> : <StatusDot tone={tone(stage?.nr.enabled)} className="text-[13px] text-muted-foreground">{setting(stage?.nr.enabled)}</StatusDot>,
+            row({ key: 'noise', id: 'home-noise', on: noiseOn, quiet: !noiseOn, tag: builtinTag, builtin: true, name: t('settings.AudioSettingsModal.105'), sub: t('chain.noiseSub'),
+                body: live && noiseOn ? <NoiseQuick q={q} /> : <StatusDot tone={live ? 'off' : tone(stage?.nr.enabled)} className="text-[13px] text-muted-foreground">{live ? t('flow.disabled') : setting(stage?.nr.enabled)}</StatusDot>,
                 action: live && <NoiseSwitch q={q} /> }),
-            row({ key: 'builtin', id: 'home-builtin', on: builtinOn, tag: builtinTag, builtin: true, name: t('settings.AudioSettingsModal.095'), sub: t('chain.builtinSub'), title: builtinDetails,
+            row({ key: 'builtin', id: 'home-builtin', on: builtinOn, quiet: !builtinOn, tag: builtinTag, builtin: true, name: t('settings.AudioSettingsModal.095'), sub: t('chain.builtinSub'), title: builtinDetails,
                 body: <>
-                    {(!live || partial) && <StatusDot tone={builtinTone} className="text-[13px] text-muted-foreground">{builtinStatus}</StatusDot>}
+                    {(!live || !builtinOn || partial) && <StatusDot tone={live && !builtinOn ? 'off' : builtinTone} className="text-[13px] text-muted-foreground">{live && !builtinOn ? t('flow.disabled') : builtinStatus}</StatusDot>}
                     {builtinBreakdown}
-                    {live && <BuiltinQuick q={q} />}
+                    {live && builtinOn && <BuiltinQuick q={q} />}
                 </>,
                 action: live && <BuiltinSwitch q={q} /> }),
         ]),

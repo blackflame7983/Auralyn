@@ -37,12 +37,12 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister }:
                     <button key={mode} type="button" disabled={busy || !value.definitions[mode]} aria-pressed={applied === mode}
                         onClick={() => void model.select(mode)}
                         className={cn('rounded-md border px-3 py-1.5 text-sm font-bold transition-colors disabled:opacity-50',
-                            applied === mode ? 'border-selection bg-selection/15 text-selection' : 'border-input bg-background text-muted-foreground hover:text-foreground')}>
+                            applied === mode ? 'border-selection bg-selection/20 text-foreground ring-1 ring-selection/30' : 'border-input bg-background text-foreground hover:bg-muted')}>
                         {name(mode)}
                     </button>
                 ))}
             </div>}
-            {registered && <span role="status" className="text-xs text-muted-foreground">
+            {registered && <span role="status" title={t('settings.LiveModeControls.217')} className="text-xs text-muted-foreground">
                 {pending ? t('liveBar.switching', { mode: value.target ? name(value.target) : '' })
                     : value.phase === 'partial' ? t('liveOutput.partial')
                     : !value.running || value.phase === 'stopped' ? t('liveBar.stopped')

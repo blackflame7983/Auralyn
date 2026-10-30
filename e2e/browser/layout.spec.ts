@@ -28,6 +28,13 @@ test.describe('通常のホーム表示', () => {
             }
             expect(samples[1]).toEqual(samples[0]); expect(samples[2]).toEqual(samples[0]);
             expect(samples[0].row!.height).toBeLessThan(36);
+            await page.evaluate(() => (window as any).__e2eSetOutputMuted(true));
+            const recovery = routing.getByRole('button', { name: 'ミュート・出力音量を確認', exact: true });
+            await expect(recovery).toBeInViewport();
+            await recovery.click();
+            await expect(page.getByRole('button', { name: '緊急ミュート', exact: true })).toBeFocused();
+            // 復旧操作へ案内するだけで、ミュートを勝手に解除しない。
+            await expect(recovery).toBeVisible();
             const footer = page.locator('footer');
             const box = (await footer.boundingBox())!;
             expect(box.y + box.height).toBe(640);
@@ -38,7 +45,7 @@ test.describe('通常のホーム表示', () => {
 });
 
 test.describe('操作部品のサイズとテーマ', () => {
-    test.use({ liveHome: true, registeredModes: false });
+    test.use({ liveHome: true, registeredModes: false, builtinEnabled: true });
     test('各テーマの角丸・候補色とエフェクト量の操作幅を保つ', async ({ page }, testInfo) => {
         await page.addInitScript(() => {
             localStorage.setItem('vst_host_wizard_done', 'true');
@@ -385,7 +392,7 @@ test.describe('メーター数値の幅', () => {
             }
             // 不正なレベル通知は更新待ちになり、状態欄で縦バーを縮めない。
             await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [], output: [] }));
-            await expect(large.getByRole('status')).toHaveText('更新待ち');
+            await expect(large.getByRole('status')).toHaveText('未受信');
             expect(await large.getByRole('meter').boundingBox()).toEqual(baseline[1]);
         }
     });

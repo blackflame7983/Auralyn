@@ -1,3 +1,4 @@
+import { readPreparationContext } from '@/lib/preparation';
 import { useDisplayPurpose } from './hooks/useDisplayPurpose';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { sessionMode } from './lib/temporarySession';
@@ -99,12 +100,12 @@ function AppContent() {
       const timer = setTimeout(() => {
         toast.info(<LocalizedMessage id="guide.copy.424" />, {
           description:
-            <LocalizedMessage id="guide.copy.425" />,
-          duration: 10000,
-          action: {
+            <LocalizedMessage id={readPreparationContext().usage === 'obs' ? "guide.copy.425" : "guide.tutorialLocalDone"} />,
+          duration: 5000,
+          action: readPreparationContext().usage === 'obs' ? {
             label: <LocalizedMessage id="guide.copy.426" />,
             onClick: () => ui.setIsOBSGuideOpen(true),
-          },
+          } : undefined,
         });
       }, 500);
       return () => clearTimeout(timer);

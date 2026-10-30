@@ -1,13 +1,14 @@
 import { test as base, expect } from '@playwright/test';
 
 // この層だけがIPCをモックする。実接続試験はe2e/nativeに分離する。
-export const test = base.extend<{ transport: void; liveHome: boolean; registeredModes: boolean }>({
+export const test = base.extend<{ transport: void; liveHome: boolean; registeredModes: boolean; builtinEnabled: boolean }>({
     liveHome: [false, { option: true }],
     registeredModes: [true, { option: true }],
-    transport: [async ({ page, liveHome, registeredModes }, use) => {
+    builtinEnabled: [false, { option: true }],
+    transport: [async ({ page, liveHome, registeredModes, builtinEnabled }, use) => {
         const errors: string[] = [];
         page.on('pageerror', error => errors.push(error.message));
-        await page.addInitScript(({ liveHome, registeredModes }) => {
+        await page.addInitScript(({ liveHome, registeredModes, builtinEnabled }) => {
             const callbacks = new Map<number, (payload: unknown) => void>();
             const listeners = new Map<number, { event: string; handler: number }>();
             let next = 1;
@@ -20,7 +21,7 @@ export const test = base.extend<{ transport: void; liveHome: boolean; registered
             const mic = { name: liveHome ? 'CABLE Output' : 'Test microphone', host: 'WASAPI', is_input: true, index: 0, channels: 2, is_default: true, id: 'mic' };
             const output = { ...mic, name: liveHome ? 'スピーカー' : 'Test headphones', is_input: false, id: 'headphones' };
             // 登録済みモードとミュート表示を含め、実Tauriで重なった本番帯を再現する。
-            const builtin = { active: false, preset: 'broadcast', amount: 0.7, singing: null, reverb: { enabled: false, mix: 0.08, decaySeconds: 1.2, damping: 0.5 } };
+            const builtin = { active: builtinEnabled, preset: 'broadcast', amount: 0.7, singing: null, reverb: { enabled: false, mix: 0.08, decaySeconds: 1.2, damping: 0.5 } };
             let definitions = { schemaVersion: 1, version: '1', singing: liveHome && registeredModes ? builtin : null, talk: liveHome && registeredModes ? builtin : null };
             const modeWrites: unknown[] = [];
             let outputMuted = true;
@@ -45,7 +46,7 @@ export const test = base.extend<{ transport: void; liveHome: boolean; registered
                         return { status: 'snapshot', generation: '1', revision: '1', running: liveHome, present: false, restoreEligible: true, plugins: [] };
                     case 'auto_gain': return { revision: 1, gain: 1, confirmedGain: 1, settled: true, running: liveHome, streamFailed: false, phase: 'idle', id: null, playing: false, devices: [] };
                     case 'get_plugins': case 'list_presets': case 'list_profiles': return [];
-                    case 'get_engine_runtime_stats': return { activePluginCount: 0, enabledPluginCount: 0, pendingUnloadCount: 0, burnedLibraryCount: 0, maxJitterUs: 0, glitchCount: 0, totalPluginLatencyMs: 0, totalChainLatencyMs: 0, globalBypass: false, ...(liveHome ? { preparation: { engineEpoch: '1', processingRevision: '1', routingRevision: '1', outputRevision: '1', inputGain: 1, inputChannels: [0, 1], outputGain: 1, muted: outputMuted, controlsPending: false, nrBackend: 'nnnoiseless', nrModel: 'bundled' }, queueDiagnostics: { state: 'running', epoch: '1' }, latencyMetadata: { schemaVersion: 1, processingContext: 'monitor', streamEpoch: '1', streamRunning: true, stageBreakdown: { schemaVersion: 1, current: true, queryBasis: 'queriedAtRuntimeStats', streamEpoch: '1', nr: { enabled: false }, builtinVoiceEnabled: false, builtinReverbEnabled: false, globalBypass: false, vst: [] } } } : {}) };
+                    case 'get_engine_runtime_stats': return { activePluginCount: 0, enabledPluginCount: 0, pendingUnloadCount: 0, burnedLibraryCount: 0, maxJitterUs: 0, glitchCount: 0, totalPluginLatencyMs: 0, totalChainLatencyMs: 0, globalBypass: false, builtInEffectsEnabled: builtinEnabled, builtInEffectsPreset: 'broadcast', builtInEffectsAmount: 0.7, ...(liveHome ? { preparation: { engineEpoch: '1', processingRevision: '1', routingRevision: '1', outputRevision: '1', inputGain: 1, inputChannels: [0, 1], outputGain: 1, muted: outputMuted, controlsPending: false, nrBackend: 'nnnoiseless', nrModel: 'bundled' }, queueDiagnostics: { state: 'running', epoch: '1' }, latencyMetadata: { schemaVersion: 1, processingContext: 'monitor', streamEpoch: '1', streamRunning: true, stageBreakdown: { schemaVersion: 1, current: true, queryBasis: 'queriedAtRuntimeStats', streamEpoch: '1', nr: { enabled: false }, builtinVoiceEnabled: builtinEnabled, builtinReverbEnabled: false, globalBypass: false, vst: [] } } } : {}) };
                     case 'builtin_effects':
                         if (args.request.action !== 'snapshot') { unexpected.push(command); throw new Error('登録導線の試験では音を変更しません'); }
                         return { epoch: '1', revision: '1', appliedRevision: '1', config: builtin, pending: false, undoToken: null, error: null };
@@ -92,7 +93,7 @@ export const test = base.extend<{ transport: void; liveHome: boolean; registered
             });
             localStorage.setItem('vst_host_tutorial_completed', 'true');
             localStorage.setItem('vst_host_update_policy', JSON.stringify({ automatic: false, download: false }));
-        }, { liveHome, registeredModes });
+        }, { liveHome, registeredModes, builtinEnabled });
         await use();
         const unexpected = await page.evaluate(() => (window as any).__e2eUnexpected);
         expect(unexpected, '未定義IPCを成功した応答で隠さない').toEqual([]);

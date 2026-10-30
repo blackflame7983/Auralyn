@@ -80,6 +80,9 @@ it.each(['ja', 'en'] as const)('歌向けON/OFFは全値を保持し、短いプ
     } }));
     expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
     const legacy = screen.getByRole('button', { name: message(locale, 'settings.AudioSettingsModal.098') });
+    await waitFor(() => expect(legacy).toBeDisabled());
+    expect(screen.getByText(message(locale, 'settings.fxOffHint'))).toBeVisible();
+    fireEvent.click(toggle);
     await waitFor(() => expect(legacy).toBeEnabled());
     expect(screen.getByText(message(locale, 'settings.AudioSettingsModal.092'))).toBeVisible();
     for (const key of ['settings.AudioSettingsModal.099', 'settings.AudioSettingsModal.100'] as const) {
@@ -98,7 +101,7 @@ it.each([true, false])('音づくりの基本を先に置き、歌向けの欄�
     expect(noise.compareDocumentPosition(builtIn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(noise).toHaveFocus();
     expect(screen.getByText('歌向けに整える').closest('details')).not.toHaveAttribute('open');
-    expect(screen.getByText('本番の歌・雑談モード').closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByText('モード登録').closest('details')).not.toHaveAttribute('open');
     expect(screen.queryByRole('combobox', { name: '表示言語' })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('tab', { name: '外観' }), { key: 'Enter' });
     expect(screen.getByRole('combobox', { name: '表示言語' })).toBeInTheDocument();

@@ -179,6 +179,11 @@ export const AppShell: React.FC<AppShellProps> = ({
             <MdSpeed aria-hidden="true" className="h-[18px] w-[18px]" />
         </button></TooltipTrigger><TooltipContent><p>{t('home.loudnessTool')}</p><p className="max-w-64 text-xs">{t('loudness.scope')}</p></TooltipContent></Tooltip></TooltipProvider>
     </span> : null;
+    const focusOutputControl = () => {
+        const target = runtimeStats?.preparation?.muted === false && runtimeStats.preparation.outputGain === 0
+            ? '#master-output-gain [role="slider"]' : '#emergency-mute';
+        document.querySelector<HTMLElement>(target)?.focus();
+    };
     const soundChain = <SoundChain model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
         onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} />;
@@ -245,7 +250,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
-                            ? <LiveStrip model={preparation} running={isEngineRunning} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
+                            ? <LiveStrip model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
                             : liveControls && <div className="mb-4 rounded-xl border border-border bg-card/70 px-4 py-3 empty:hidden">{liveControls}</div>}
                         {/* 音量チェックは開いたメーターの直下に出す。 */}
                         <div><LoudnessCheck
@@ -264,11 +269,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
                             inputName={currentInput} outputName={currentOutput}
                             onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}
-                            onCheckOutput={() => {
-                                const target = runtimeStats?.preparation?.muted === false && runtimeStats.preparation.outputGain === 0
-                                    ? '#master-output-gain [role="slider"]' : '#emergency-mute';
-                                document.querySelector<HTMLElement>(target)?.focus();
-                            }}
+                            onCheckOutput={focusOutputControl}
                             onOpenSoundSettings={onOpenSoundSettings} onListen={openListen}
                             onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot}
                         /></div>

@@ -42,7 +42,7 @@ it('大メーターはtimeoutでもclipを保持し、手動で消せる', () =>
     emit('audio-level', { input: [0, 0], output: [1.2, 1.2] });
     act(() => vi.advanceTimersByTime(16)); expect(screen.getByText('クリップ')).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(1100));
-    expect(screen.getByRole('status')).toHaveTextContent('更新待ち'); expect(screen.getByText('クリップ')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('未受信'); expect(screen.getByText('クリップ')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /クリップ表示を消す/ }));
     expect(screen.queryByText('クリップ')).toBeNull();
     emit('audio-level', { input: [0, 0], output: [0, 0] });

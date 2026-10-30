@@ -8,6 +8,18 @@ import { TutorialOverlay } from '../TutorialOverlay';
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 const Copy = () => { const t = useMessages(); return <p>{t('guide.copy.427')}</p>; };
 afterEach(() => { cleanup(); localStorage.clear(); vi.useRealTimers(); });
+it('変形されたパネル内の対象もbody上の固定座標で強調し、スクロール位置を足さない', async () => {
+    vi.useFakeTimers(); localStorage.setItem('vst_host_wizard_done', 'true');
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ top: 235, left: 420, width: 160, height: 40, right: 580, bottom: 275, x: 420, y: 235, toJSON: () => ({}) });
+    const view = render(<TutorialProvider><aside style={{ transform: 'translateX(0)' }}><button id="add-effect-btn">Add</button>
+        <TutorialOverlay targetId="add-effect-btn" step="click_add_effect" content="Help" />
+    </aside></TutorialProvider>);
+    await act(async () => {});
+    const spotlight = document.querySelector('.tutorial-spotlight')!;
+    expect(spotlight.parentElement).toBe(document.body);
+    expect(spotlight).toHaveStyle({ position: 'fixed', top: '235px', left: '420px', width: '160px', height: '40px' });
+    view.unmount(); vi.restoreAllMocks();
+});
 it('localeだけで同じTutorial targetとstepを保持しskipや保存完了へ進まない', async () => {
     vi.useFakeTimers(); localStorage.setItem('vst_host_wizard_done', 'true');
     const store = createLocaleStore(() => 'ja', () => true);

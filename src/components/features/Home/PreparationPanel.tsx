@@ -67,7 +67,8 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
     };
     // 閉じた後でも、別の問題が起きたら開き直す。
     useEffect(() => { if (problem) setUserOpen(old => old === false ? null : old); }, [problem]);
-    const open = userOpen ?? problem !== null;
+    // ミュートは本番帯の警告から直接直せる。毎回チェックリストを押し広げない。
+    const open = userOpen ?? (problem !== null && observation.availability !== 'muted');
     const next = nextPreparationStage(observation, records, context);
     const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
     const needsTarget = next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim();

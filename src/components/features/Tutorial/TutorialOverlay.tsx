@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useTutorial } from '../../../contexts/TutorialContext';
 import * as Popover from '@radix-ui/react-popover';
 import { MdClose } from 'react-icons/md';
+import { createPortal } from 'react-dom';
 
 interface Props {
     targetId: string;
@@ -25,14 +26,9 @@ export const TutorialOverlay: React.FC<Props> = ({ targetId, step, content, alig
         if (el) {
             const newRect = el.getBoundingClientRect();
             // Simple check to avoid excessive re-renders
-            if (!rect ||
-                rect.top !== newRect.top ||
-                rect.left !== newRect.left ||
-                rect.width !== newRect.width ||
-                rect.height !== newRect.height) {
-                setRect(newRect);
-                setTargetElement(el);
-            }
+            setRect(previous => previous && previous.top === newRect.top && previous.left === newRect.left
+                && previous.width === newRect.width && previous.height === newRect.height ? previous : newRect);
+            setTargetElement(el);
         } else {
             setTargetElement(null);
         }
@@ -58,11 +54,11 @@ export const TutorialOverlay: React.FC<Props> = ({ targetId, step, content, alig
 
     return (
         <Popover.Root open={true}>
-            <Popover.Anchor asChild>
+            {createPortal(<Popover.Anchor asChild>
                 <div className="tutorial-spotlight" style={{
-                    position: 'absolute',
-                    left: rect.left + window.scrollX,
-                    top: rect.top + window.scrollY,
+                    position: 'fixed',
+                    left: rect.left,
+                    top: rect.top,
                     width: rect.width,
                     height: rect.height,
                     pointerEvents: 'none', // Allow clicks pass through to target
@@ -70,7 +66,7 @@ export const TutorialOverlay: React.FC<Props> = ({ targetId, step, content, alig
                     zIndex: 9998,
                     borderRadius: getComputedStyle(targetElement).borderRadius
                 }} />
-            </Popover.Anchor>
+            </Popover.Anchor>, document.body)}
 
             <Popover.Portal>
                 <Popover.Content

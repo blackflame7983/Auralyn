@@ -11,12 +11,23 @@ interface SelectionOptions {
   onError: (message: SettingsNotice | null) => void;
 }
 
+// 列挙結果と稼働中機器の補完値で表記が異なることがある。同じドライバの候補を分断しない。
+const normalizeHosts = (devices: AudioDeviceList): AudioDeviceList => {
+  const hosts = new Map<string, string>();
+  const normalize = (device: AudioDeviceList['inputs'][number]) => {
+    const key = device.host.toLowerCase();
+    if (!hosts.has(key)) hosts.set(key, device.host);
+    return { ...device, host: hosts.get(key)! };
+  };
+  return { ...devices, inputs: devices.inputs.map(normalize), outputs: devices.outputs.map(normalize) };
+};
+
 // 一覧の取得・選択復元・バッファ候補を画面の描画と適用処理から分離する。
 export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBufferSize, onError }: SelectionOptions) {
   const requestRevision = useRef(0);
   const active = useRef(false);
   const [loading, setLoading] = useState(false);
-  const [devices, setDevices] = useState<AudioDeviceList>(readCachedAudioDevices);
+  const [devices, setDevices] = useState<AudioDeviceList>(() => normalizeHosts(readCachedAudioDevices()));
   const [selectedHost, setSelectedHost] = useState<string>('');
   const [selectedInput, setSelectedInput] = useState<string>('');
   const [selectedOutput, setSelectedOutput] = useState<string>('');
@@ -33,7 +44,9 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
 
       if (hosts.length > 0) {
         // If we don't have a host, or the current one is invalid, pick a default
-        const effectiveHost = currentHost || selectedHost;
+        // 保存値のWASAPIと列挙名のWasapiは同じドライバ。表記差でASIOへ切り替えない。
+        const requestedHost = currentHost || selectedHost;
+        const effectiveHost = hosts.find(host => host.toLowerCase() === requestedHost.toLowerCase()) ?? requestedHost;
 
         if (!effectiveHost || !hosts.includes(effectiveHost)) {
           // Saved host invalid or missing, selecting default
@@ -47,11 +60,11 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
 
           // Restore I/O if valid for this host
           if (currentInput) {
-            const isValidInput = result.inputs.some(d => d.host === effectiveHost && d.name === currentInput);
+            const isValidInput = result.inputs.some(d => d.host.toLowerCase() === effectiveHost.toLowerCase() && d.name === currentInput);
             if (isValidInput) setSelectedInput(currentInput);
           }
           if (currentOutput) {
-            const isValidOutput = result.outputs.some(d => d.host === effectiveHost && d.name === currentOutput);
+            const isValidOutput = result.outputs.some(d => d.host.toLowerCase() === effectiveHost.toLowerCase() && d.name === currentOutput);
             if (isValidOutput) setSelectedOutput(currentOutput);
           }
         }
@@ -69,7 +82,7 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
     onError(null);
     const request = ++requestRevision.current;
     try {
-      const result = await audioApi.getDevices(force);
+      const result = normalizeHosts(await audioApi.getDevices(force));
       if (!active.current || request !== requestRevision.current) return;
       setDevices(result);
       localStorage.setItem('vst_host_cached_devices', JSON.stringify(result));

@@ -11,6 +11,22 @@ const devices = (name: string, input = true): AudioDeviceList => ({
 beforeEach(() => { localStorage.clear(); vi.mocked(listen).mockClear(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
+it('保存したWASAPIは列挙のWasapiと一致し、先頭のASIOへ切り替わらない', async () => {
+    const wasapi = devices('other mic');
+    wasapi.inputs.push({ ...wasapi.inputs[0], name: 'saved mic', host: 'WASAPI', index: 2 });
+    const asio = { ...wasapi.inputs[0], name: 'ASIO driver', host: 'ASIO' };
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'saved mic', output: 'out', sampleRate: 48000, bufferSize: 512 }));
+    vi.spyOn(audioApi, 'getDevices').mockResolvedValue({ inputs: [asio, ...wasapi.inputs], outputs: [{ ...asio, is_input: false }, ...wasapi.outputs] });
+    const { result, rerender } = renderHook(({ isOpen }) => useAudioDeviceSelection({ isOpen, onError: vi.fn() }), { initialProps: { isOpen: true } });
+    await waitFor(() => expect(result.current.selectedHost).toBe('Wasapi'));
+    expect(result.current.selectedInput).toBe('saved mic');
+    expect(result.current.selectedOutput).toBe('out');
+    rerender({ isOpen: false });
+    rerender({ isOpen: true });
+    expect(result.current.selectedHost).toBe('Wasapi');
+    expect(result.current.selectedInput).toBe('saved mic');
+});
+
 it.each([2, 64])('音声開始後に%iチャンネルの実能力を取得し、閉じた後は開始通知で再検出しない', async channels => {
     const input = { name: 'Insert ASIO', host: 'ASIO', id: 'asio:Insert ASIO', channels: 0, index: 0, is_input: true, is_default: false };
     const getDevices = vi.spyOn(audioApi, 'getDevices').mockResolvedValue({ inputs: [input], outputs: [{ ...input, is_input: false }] });
