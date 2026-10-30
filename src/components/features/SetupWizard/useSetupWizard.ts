@@ -3,8 +3,8 @@ import { LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useState, useEffect, useRef } from 'react';
 import { audioApi, type AudioDevice, type AudioStateInfo, type NoiseControlMode } from '../../../api/audio';
 import { builtinApi, type BuiltinSnapshot } from '@/api/builtinEffects';
-import { getBeginnerMode, saveBeginnerMode } from '../../../hooks/useBeginnerMode';
-import { saveVstPanelOpen } from '../../../hooks/useVstPanel';
+import { saveBeginnerMode } from '../../../hooks/useBeginnerMode';
+import { getVstPanelOpen, saveVstPanelOpen } from '../../../hooks/useVstPanel';
 import { toast } from 'sonner';
 import { listen } from '@tauri-apps/api/event';
 import { isVirtualOutput, verifiedDefaultOutput, recommendMicrophone, type WizardConfig, type WizardState, type UserGoal, type SetupWizardModalProps } from './wizardModel';
@@ -13,10 +13,9 @@ import { isVirtualOutput, verifiedDefaultOutput, recommendMicrophone, type Wizar
 export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardModalProps) {
 
     const [audioStartError, setAudioStartError] = useState('');
-    const [beginnerChoice, setBeginnerChoice] = useState(getBeginnerMode);
-    // 右パネルは「VSTで音を調整したい」を選んだときだけ開く。もう一方の選択では、
-    // セットアップのやり直しで利用者が開閉したパネルを閉じないよう、今の状態に触れない。
-    const openPanelForVstChoice = () => { if (!beginnerChoice) saveVstPanelOpen(true); };
+    const [panelChoice, setPanelChoice] = useState(getVstPanelOpen);
+    // 選択はパネルの開閉だけを表す。数値の詳細は VST を選んだときだけ有効にする。
+    const applyPanelChoice = () => saveVstPanelOpen(panelChoice);
 
     // State Preservation Logic
     const initialStateRef = useRef<AudioStateInfo | null>(null);
@@ -101,7 +100,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         if (isOpen) {
             setAudioStartError('');
             setInitialStateReady(false);
-            setBeginnerChoice(getBeginnerMode());
+            setPanelChoice(getVstPanelOpen());
             setInitialStateError(false);
             loadDevices();
             // Capture initial state
@@ -374,13 +373,14 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
             if (config.goal === 'music') {
                 const expected: Record<string, string> = {
                     vst_host_audio_config: JSON.stringify({ host: config.host, input: config.input.name, output: config.output.name, sampleRate: actualConfig.sample_rate, bufferSize: actualConfig.buffer_size }),
-                    vst_host_wizard_done: 'true', vst_host_setup_goal: 'music', vst_host_beginner_mode: String(beginnerChoice),
+                    vst_host_wizard_done: 'true', vst_host_setup_goal: 'music',
+                    ...(panelChoice ? { vst_host_beginner_mode: 'false' } : {}),
                 };
                 const previous = Object.fromEntries(Object.keys(expected).map(key => [key, localStorage.getItem(key)]));
                 try {
                     await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
                     localStorage.setItem('vst_host_setup_goal', 'music');
-                    saveBeginnerMode(beginnerChoice);
+                    if (panelChoice) saveBeginnerMode(false);
                     if (Object.entries(expected).some(([key, value]) => localStorage.getItem(key) !== value)) throw new Error('Saved setup could not be verified');
                 } catch (error) {
                     for (const [key, value] of Object.entries(expected)) {
@@ -394,13 +394,13 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                     window.dispatchEvent(new Event('preparation-purpose-changed'));
                     throw error;
                 }
-                // 保存の確認に成功してから開く。失敗して巻き戻したときにパネルだけ変わったまま残さない。
-                openPanelForVstChoice();
+                // 保存の確認に成功してから開閉する。失敗時はパネルの状態を変えない。
+                applyPanelChoice();
                 window.dispatchEvent(new Event('preparation-purpose-changed'));
             } else {
                 await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
-                saveBeginnerMode(beginnerChoice);
-                openPanelForVstChoice();
+                if (panelChoice) saveBeginnerMode(false);
+                applyPanelChoice();
             }
             hasTouchedEngineRef.current = false;
 
@@ -418,7 +418,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
     };
 
 
-    return { audioStartError, beginnerChoice, setBeginnerChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
+    return { audioStartError, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, availableInputs, availableOutputs,
         isLoadingDevices, isTestingSound, inputLevel, runningInput, loadDevices, handleRescanVirtualDevices,

@@ -200,8 +200,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                 {/* VST の右パネルはヘッダーとフッターの間に置く。広い画面ではホームの横に並べ、狭い画面ではホームの上に重ねる。
                     どちらでもモーダルにはせず、本番帯の操作は止めない。 */}
                 <div className="relative flex min-h-0 flex-1">
+                {/* 重ねて出す幅でも、メーターの左側までをホームの表示領域にする。 */}
                 <main
-                    className={`min-w-0 flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent pb-4 ${isLargeMeterOpen ? 'pr-36 lg:pr-36' : ''}`}
+                    className={`min-w-0 flex-1 overflow-y-auto p-4 lg:py-6 lg:pl-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent pb-4 ${isLargeMeterOpen ? (vstPanel && vstPanelOpen ? 'pr-[calc(min(420px,100vw)+9rem)] min-[1100px]:pr-36' : 'pr-36') : 'lg:pr-6'}`}
                 >
                     {/* 左右に分けると片側だけが詰まって見えるので、どの幅でも上から1列に並べ、広い画面では中央に寄せる。 */}
                     <div className="mx-auto max-w-[1180px]">

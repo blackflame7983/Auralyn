@@ -20,7 +20,7 @@ import { isVirtualOutput, type SetupWizardModalProps } from './wizardModel';
 export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const t = useMessages();
     const { isOpen, onClose, onSkip, onOpenSettings, onOpenTroubleshoot } = props;
-    const { audioStartError, beginnerChoice, setBeginnerChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
+    const { audioStartError, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, availableInputs, availableOutputs,
         isLoadingDevices, isTestingSound, runningInput, loadDevices, handleRescanVirtualDevices,
@@ -427,8 +427,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     <input
                                         type="radio"
                                         name="display-choice"
-                                        checked={beginnerChoice}
-                                        onChange={() => setBeginnerChoice(true)}
+                                        checked={!panelChoice}
+                                        onChange={() => setPanelChoice(false)}
                                     />
                                     {t(config.goal === 'music' ? 'wizard.musicSimple' : 'wizard.simple')}
                                 </label>
@@ -436,8 +436,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     <input
                                         type="radio"
                                         name="display-choice"
-                                        checked={!beginnerChoice}
-                                        onChange={() => setBeginnerChoice(false)}
+                                        checked={panelChoice}
+                                        onChange={() => setPanelChoice(true)}
                                     />
                                     {t('wizard.advanced')}
                                 </label>

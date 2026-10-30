@@ -31,7 +31,7 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
     const output = model.observation.config?.output ?? outputName;
     const devices = t('live.devices', { input: input ? deviceDisplayName(input) : t('flow.unknown'), output: output ? deviceDisplayName(output) : t('flow.unknown') });
     return <section aria-label={t('live.strip')} className="aurora-card aurora-edge aurora-glow-live mb-4 space-y-3 rounded-xl border border-border bg-card/70 px-4 py-4 min-[1100px]:px-5">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
             <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
             <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues />
             {/* 無音は「声が来ていない」本番事故の手がかりなので、dBFS 値だけにせず言葉でも示す。 */}

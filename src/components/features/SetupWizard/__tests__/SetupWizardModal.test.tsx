@@ -433,23 +433,31 @@ describe('セットアップの接続チェック', () => {
 });
 
 describe('初回選択と表示設定', () => {
-    it.each([true, false])('音声設定の適用成功後だけ表示を保存する: %s', async beginner => {
-        localStorage.setItem('vst_host_beginner_mode', String(!beginner));
+    it.each([
+        [false, false], [false, true], [true, false], [true, true],
+    ])('初期選択は現在のパネルに合わせ、そのまま保存しても開閉を変えない: panel=%s details=%s', async (panel, details) => {
+        localStorage.setItem('auralyn_vst_panel_open', String(panel));
+        localStorage.setItem('vst_host_beginner_mode', String(!details));
         await quickStart();
-        fireEvent.click(screen.getByRole('radio', { name: beginner ? '配信をはじめたい' : 'VSTで音を調整したい（VST 構成を開いておく）' }));
-        expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(!beginner));
+        expect((screen.getByRole('radio', { name: 'VSTで音を調整したい（VST 構成を開いておく）' }) as HTMLInputElement).checked).toBe(panel);
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
         await screen.findByRole('heading', { name: '音声設定を保存しました' });
-        expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(beginner));
+        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe(String(panel));
+        expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(!(details || panel)));
     });
-    it.each([['true', true], ['false', false], [null, true], [null, false]] as const)('右パネルは VST を選んだときだけ開き、もう一方では今の開閉（%s）を変えない: VST=%s', async (panel, vst) => {
-        // セットアップのやり直しで、利用者が開閉したパネルを選択肢の初期値で上書きしない。
-        if (panel !== null) localStorage.setItem('auralyn_vst_panel_open', panel);
+    it.each([
+        [false, false], [false, true], [true, false], [true, true],
+    ])('選んだ開閉を反映し、数値の詳細は VST 選択でのみ ON にする: VST=%s details=%s', async (vst, details) => {
+        localStorage.setItem('auralyn_vst_panel_open', String(!vst));
+        localStorage.setItem('vst_host_beginner_mode', String(!details));
         await quickStart();
         fireEvent.click(screen.getByRole('radio', { name: vst ? 'VSTで音を調整したい（VST 構成を開いておく）' : '配信をはじめたい' }));
+        expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(!details));
+        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe(String(!vst));
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
         await screen.findByRole('heading', { name: '音声設定を保存しました' });
-        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe(vst ? 'true' : panel);
+        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe(String(vst));
+        expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(!(details || vst)));
     });
     it('確認画面で表示を選んだ後に中断しても既存の表示設定を変えない', async () => {
         localStorage.setItem('vst_host_beginner_mode', 'false');
@@ -574,6 +582,62 @@ describe('PC audio purpose', () => {
         expect(invoke).toHaveBeenCalledWith('set_noise_control_config', { active: false, mode: 'venue', strength: 0.8, voiceGuard: true });
         expect(invoke).toHaveBeenCalledWith('builtin_effects', { request: { action: 'apply', epoch: 'epoch', expectedRevision: '1', config: { ...fx, active: false, reverb: {...fx.reverb, enabled: false} } } });
         expect(onApplyConfig).toHaveBeenCalledOnce(); expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
+    });
+    it.each([
+        [true, 'success'], [false, 'success'],
+        [true, 'reject'], [false, 'reject'],
+        [true, 'readback'], [false, 'readback'],
+    ] as const)('音楽鑑賞は保存待ち・失敗時の開閉を保ち、読み戻し成功後だけ選択を反映する: VST=%s %s', async (vst, result) => {
+        inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
+        localStorage.setItem('auralyn_vst_panel_open', String(!vst));
+        localStorage.setItem('vst_host_beginner_mode', String(vst));
+        const original = vi.mocked(invoke).getMockImplementation()!;
+        const inactive = { ...snapshot, config: { ...fx, active: false, reverb: { ...fx.reverb, enabled: false } } };
+        vi.mocked(invoke).mockImplementation(async (command, args) => {
+            if (command === 'get_engine_runtime_stats') return { latencyMetadata: { streamRunning: true }, noiseReductionEnabled: false, noiseReductionMode: 'high', noiseControlStrength: 0.6, noiseVoiceGuard: false };
+            if (command === 'builtin_effects') return inactive;
+            return original(command, args);
+        });
+        const { onApplyConfig } = await openWizard();
+        let finish!: () => void;
+        const pending = new Promise<void>(resolve => { finish = resolve; });
+        onApplyConfig.mockImplementation(async (host, input, output, actual) => {
+            await pending;
+            if (result === 'reject') throw new Error('save failure');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input, output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size }));
+            if (result !== 'readback') localStorage.setItem('vst_host_wizard_done', 'true');
+        });
+        await toConfirm();
+        fireEvent.click(screen.getByRole('radio', { name: vst ? 'VSTで音を調整したい（VST 構成を開いておく）' : '音を手軽に調整したい' }));
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await waitFor(() => expect(onApplyConfig).toHaveBeenCalledOnce());
+        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe(String(!vst));
+        await act(async () => { finish(); });
+        if (result === 'success') await screen.findByRole('heading', { name: '音声設定を保存しました' });
+        else await screen.findByRole('alert');
+        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe(String(result === 'success' ? vst : !vst));
+        expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(result === 'success' && vst ? false : vst));
+    });
+    it('音楽鑑賞の新規利用者が手軽を選ぶと、用途の既定値より明示的に閉じる選択を優先する', async () => {
+        inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
+        const original = vi.mocked(invoke).getMockImplementation()!;
+        vi.mocked(invoke).mockImplementation(async (command, args) => {
+            if (command === 'get_engine_runtime_stats') return { latencyMetadata: { streamRunning: true }, noiseReductionEnabled: false, noiseReductionMode: 'high', noiseControlStrength: 0.6, noiseVoiceGuard: false };
+            if (command === 'builtin_effects') return { ...snapshot, config: { ...fx, active: false, reverb: { ...fx.reverb, enabled: false } } };
+            return original(command, args);
+        });
+        const { onApplyConfig } = await openWizard();
+        onApplyConfig.mockImplementation((host, input, output, actual) => {
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input, output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size }));
+            localStorage.setItem('vst_host_wizard_done', 'true');
+        });
+        await toConfirm();
+        expect(screen.getByRole('radio', { name: '音を手軽に調整したい' })).toBeChecked();
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('heading', { name: '音声設定を保存しました' });
+        expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
+        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe('false');
+        expect(localStorage.getItem('vst_host_beginner_mode')).toBeNull();
     });
     it('保存途中の失敗では、この操作が書いた保存値を条件付きで戻す', async () => {
         inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
