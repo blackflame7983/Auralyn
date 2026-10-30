@@ -4,7 +4,8 @@ import { MdExpandMore } from 'react-icons/md';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
-import { confirmationState, nextPreparationStage, type PreparationStage, type PreparationUse } from '@/lib/preparation';
+import { confirmationState, nextPreparationStage, type Availability, type PreparationStage, type PreparationUse } from '@/lib/preparation';
+import { StatusDot, type StatusTone } from '@/components/ui/StatusDot';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { receiverDeviceNotice } from '@/lib/audioRouting';
 import { renderNotice } from '../AudioSettings/settingsNotice';
@@ -12,6 +13,10 @@ import { renderNotice } from '../AudioSettings/settingsNotice';
 interface Props {
     model: PreparationModel; onSettings: () => void; onSound: () => void; onListen: () => void;
     onObs: () => void; onCall: () => void; onTroubleshoot: () => void; audioReady: boolean; signalSummary?: ReactNode;
+    /** 音声が使えないときの状態文（ヘッダーと同じ文言）。畳んだときの状態表示にも使う。 */
+    statusText?: string;
+    /** 畳んでいる間に状態の横へ出す機器名。チェーン列に機器名が出る幅では隠す。 */
+    devices?: ReactNode;
 }
 // 問題の種類を返す。正常時は null にして手順を畳み、毎日の起動で読ませない。
 // ミュート・音量ゼロは配信事故なので、直す入口（主ボタン）が見えるよう開く。
@@ -22,10 +27,12 @@ const attentionKey = (model: PreparationModel) => {
     if (!model.context.usage) return `purpose:${availability}`;
     return ['unconfigured', 'stopped', 'failed', 'unknown', 'muted'].includes(availability) ? availability : null;
 };
+export const availabilityLabels: Record<Availability, MessageKey> = { ready: 'prep.running', unknown: 'shell.unknown', unconfigured: 'shell.unconfigured', stopped: 'shell.stopped', failed: 'prep.failed', pending: 'prep.pending', muted: 'prep.muted' };
+const availabilityTones: Record<Availability, StatusTone> = { ready: 'ok', unknown: 'warn', pending: 'warn', muted: 'warn', unconfigured: 'error', stopped: 'error', failed: 'error' };
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
-export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, audioReady, signalSummary }: Props) {
+export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, audioReady, signalSummary, statusText, devices }: Props) {
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
@@ -62,9 +69,15 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
     </select>;
     return <section aria-label={t('prep.title')} className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-1">
-                <h2 className="text-sm font-bold">{t('prep.title')}</h2>
+            <div className="flex min-w-0 flex-1 items-center gap-1">
+                <h2 className="shrink-0 text-sm font-bold">{t('prep.title')}</h2>
                 <InfoPopover label={t('prep.scopeInfo')}>{t('prep.localOnly')}</InfoPopover>
+                {/* 畳んでいる間は、入力・処理・出力の要約の代わりに状態の点1つで示す。機器名はチェーン列に出す。 */}
+                {/* 開いているときは要約の「音声処理」が状態を読み上げるので、role="status" はどちらか一方だけにする。 */}
+                {!open && <span role="status" className="ml-2 flex min-w-0 items-center gap-2 text-xs">
+                    <StatusDot tone={availabilityTones[observation.availability]} className="font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>
+                    {devices && <span className="min-w-0 truncate text-muted-foreground min-[1280px]:hidden">{devices}</span>}
+                </span>}
             </div>
             <div className="flex items-center gap-2">
                 <span role="status" className="text-sm text-muted-foreground">{checking ? t('prep.checking') : next === 'done' ? t('prep.sessionChecked') : ''}</span>
@@ -74,10 +87,10 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
                 </button>
             </div>
         </div>
-        {signalSummary}
         {context.location === 'venue' && <p className="text-xs text-warning">{t('prep.venueWarning')}</p>}
         {context.signal === 'mixed' && <p className="text-xs text-muted-foreground">{t('prep.mixedWarning')}</p>}
         {open && <div id={stepsId} className="space-y-3" onFocusCapture={() => setUserOpen(old => old ?? true)}>
+        {signalSummary}
         <label className="block text-sm">{t('prep.usage')}{usageSelect(`mt-1 block w-full max-w-xs rounded border bg-background p-2 ${next === 'purpose' ? 'border-primary' : 'border-border'}`)}</label>
         {next !== 'done' && next !== 'purpose' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
             className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{t(actionLabel)}</button>}
