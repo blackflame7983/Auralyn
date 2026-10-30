@@ -741,7 +741,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                               className={`
                                         flex flex-col items-center justify-center p-2 rounded-lg border transition-colors
                                         ${selectedBufferSize === profile.value
-                                  ? 'bg-primary/10 border-primary text-primary'
+                                  ? 'bg-selection/15 border-selection text-selection'
                                   : 'bg-background border-input text-muted-foreground hover:border-primary/50'
                                 }
                                         ${disabled ? 'opacity-30 cursor-not-allowed bg-muted' : ''}
@@ -776,7 +776,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                             className={`
                                         flex flex-col items-center justify-center p-2 rounded-lg border transition-colors
                                         ${selectedSampleRate === profile.value
-                                ? 'bg-primary/10 border-primary text-primary'
+                                ? 'bg-selection/15 border-selection text-selection'
                                 : 'bg-background border-input text-muted-foreground hover:border-primary/50'
                               }
                                     `}

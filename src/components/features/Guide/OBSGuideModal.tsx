@@ -113,7 +113,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                     onClick={() => handleDeviceSelection(true)}
                                     aria-label={t('guide.copy.005')}
                                     aria-pressed={useHardwareMixer === true}
-                                    className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/50 aria-pressed:border-primary aria-pressed:ring-1 aria-pressed:ring-primary/40 transition text-left group"
+                                    className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/50 aria-pressed:border-selection aria-pressed:ring-1 aria-pressed:ring-selection/40 transition text-left group"
                                 >
                                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                         <MdMic className="w-6 h-6 text-primary" />
@@ -129,7 +129,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                     onClick={() => handleDeviceSelection(false)}
                                     aria-label={t('guide.copy.010')}
                                     aria-pressed={useHardwareMixer === false}
-                                    className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/50 aria-pressed:border-primary aria-pressed:ring-1 aria-pressed:ring-primary/40 transition text-left group"
+                                    className="p-6 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/50 aria-pressed:border-selection aria-pressed:ring-1 aria-pressed:ring-selection/40 transition text-left group"
                                 >
                                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                         <MdHeadphones className="w-6 h-6 text-primary" />

@@ -438,9 +438,9 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                 <div className="min-h-0 flex-1 overflow-y-auto">
                 {temporaryActive && <div className="px-4 pt-3"><TemporarySessionPanel /></div>}
                 <div className="flex gap-2 border-b p-2" role="group" aria-label={t('presets.copy.056')}>
-                    <button type="button" className="border rounded p-2 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary" aria-pressed={!bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(false); }}>{t('presets.copy.057')}</button>
-                    <button type="button" className="border rounded p-2 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary" aria-pressed={bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(true); }}>{t('presets.copy.058')}</button>
-                    <button type="button" className="border rounded p-2 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary" aria-pressed={recoveryOpen} onClick={() => setRecoveryOpen(true)}>{t('recoveryHub.title')}</button>
+                    <button type="button" className="border rounded p-2 aria-pressed:border-selection aria-pressed:bg-selection/15 aria-pressed:text-selection" aria-pressed={!bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(false); }}>{t('presets.copy.057')}</button>
+                    <button type="button" className="border rounded p-2 aria-pressed:border-selection aria-pressed:bg-selection/15 aria-pressed:text-selection" aria-pressed={bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(true); }}>{t('presets.copy.058')}</button>
+                    <button type="button" className="border rounded p-2 aria-pressed:border-selection aria-pressed:bg-selection/15 aria-pressed:text-selection" aria-pressed={recoveryOpen} onClick={() => setRecoveryOpen(true)}>{t('recoveryHub.title')}</button>
                 </div>
                 {recoveryOpen ? <RecoveryActionsPanel onOperation={onBundleOperation} onVoiceCheck={onOpenVoiceCheck} onSettings={onOpenAudioSettings} /> : bundleOpen ? <BroadcastBundlePanel onOperation={onBundleOperation} onObsSettings={onObsSettings} /> : <>
                 <div className="p-4 border-b border-border bg-muted/30 space-y-3">
@@ -448,8 +448,8 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                         {t('presets.copy.059')}</h3>
                     <p className="text-sm text-muted-foreground">{t('presets.copy.060')}</p>
                     <div role="group" aria-label={t('profilePurpose.title')} className="flex flex-wrap gap-2">
-                        <button type="button" aria-pressed={!saveCategories.includeAudioConfig} className="border rounded p-2 text-sm aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: false }))}>{t('profilePurpose.sound')}</button>
-                        <button type="button" aria-pressed={saveCategories.includeAudioConfig} className="border rounded p-2 text-sm aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: true }))}>{t('profilePurpose.equipment')}</button>
+                        <button type="button" aria-pressed={!saveCategories.includeAudioConfig} className="border rounded p-2 text-sm aria-pressed:border-selection aria-pressed:bg-selection/15 aria-pressed:text-selection" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: false }))}>{t('profilePurpose.sound')}</button>
+                        <button type="button" aria-pressed={saveCategories.includeAudioConfig} className="border rounded p-2 text-sm aria-pressed:border-selection aria-pressed:bg-selection/15 aria-pressed:text-selection" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: true }))}>{t('profilePurpose.equipment')}</button>
                     </div>
                     <p className="text-xs text-muted-foreground">{t(saveCategories.includeAudioConfig ? 'profilePurpose.impact' : 'profilePurpose.portable')}</p>
                     {/* 目的の2択で足りる人が多いため、項目ごとの選択は閉じておく。 */}
@@ -544,7 +544,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                                 <div
                                     key={profile.name}
                                     className={`group flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-accent transition ${
-                                        profile.name === saveName ? 'border-primary ring-1 ring-primary/50 bg-primary/5' : 'border-border bg-card'
+                                        profile.name === saveName ? 'border-selection ring-1 ring-selection/50 bg-selection/10' : 'border-border bg-card'
                                     }`}
                                 >
                                     <button type="button" onClick={() => setSaveName(profile.name)} aria-label={t('presets.copy.073', { arg0: profile.name })} aria-pressed={profile.name === saveName} className="flex items-center gap-3 min-w-0 text-left rounded focus-visible:ring-2 focus-visible:ring-primary">
