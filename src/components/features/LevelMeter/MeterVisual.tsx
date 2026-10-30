@@ -30,10 +30,13 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
                 </div>;
             })}
             {stacked && scale && <div aria-hidden="true" className="relative h-full w-8 shrink-0 text-xs text-muted-foreground font-mono">
-                {[0, -6, -12, -24, -48].map(mark => <span key={mark} className="absolute left-1 -translate-y-1/2" style={{ bottom: `calc(${Math.pow(10, mark / 20) * 100}% - 0.5em)` }}>{mark}</span>)}
+                {/* 上端の0と下端の目盛りも、この欄の中へ収める。状態表示や値の欄へはみ出させない。 */}
+                {[0, -6, -12, -24, -48].map(mark => <span key={mark} className="absolute left-1 leading-4"
+                    style={{ top: `clamp(0px, calc(${100 - Math.pow(10, mark / 20) * 100}% - 0.5rem), calc(100% - 1rem))` }}>{mark}</span>)}
             </div>}
         </div>
-        {showValues && current && <span className="text-xs font-mono text-muted-foreground whitespace-nowrap">{text}</span>}
+        {/* 桁数・無音・更新待ちでバーの長さを変えないよう、値の欄は常に同じ幅と高さを確保する。 */}
+        {showValues && <span className="inline-block h-4 w-[12ch] shrink-0 text-right text-xs leading-4 font-mono tabular-nums text-muted-foreground whitespace-nowrap">{current ? text : ''}</span>}
         {scale && <span className="sr-only">0, −6, −12, −24, −48 dBFS</span>}
         {reading.clipped && <button type="button" onClick={reading.resetClip} className="shrink-0 rounded border border-destructive/50 px-1 text-xs font-semibold text-destructive-text" aria-label={t('meter.clearClipNamed', { name: label })}>{t('meter.clip')}</button>}
     </div>;

@@ -1,5 +1,5 @@
 import { useRef, type ReactNode } from 'react';
-import { MdChevronRight, MdHearing, MdTune, MdMoreHoriz, MdCast } from 'react-icons/md';
+import { MdChevronRight, MdHearing, MdTune, MdMoreHoriz, MdCast, MdFilterAlt, MdGraphicEq, MdExtension } from 'react-icons/md';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { currentStageBreakdown, useRuntimeStats } from '@/components/layout/RuntimeStatsContext';
@@ -61,28 +61,31 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const actualOutput = model.observation.config?.output ?? outputName;
 
     const emptyVst = !music && Boolean(stage && validVst && stage.vst.length === 0);
-    // 1段ずつ横長の行カードにし、上から音の流れの順に並べる（DESIGN.md 5.5）。左端の帯と枠の光で ON を示し、
-    // OFF の段は名前を薄くする。状態の色だけに頼らず、操作できない間は点と文言でも示す。
+    // 音の順序は保ち、枠の入れ子と分類タグの反復をなくす。名前・操作・スイッチの列を揃える。
     const row = ({ key, id, on, tag, builtin, name, sub, title, body, action, quiet }: {
         key: string; id?: string; on: boolean; tag: string; builtin?: boolean; name: string; sub?: ReactNode; title?: string;
         body?: ReactNode; action?: ReactNode; quiet?: boolean;
-    }) => <li key={key}>
-        <div id={id} tabIndex={id ? -1 : undefined} data-on={on} className={cn('flex items-stretch overflow-hidden rounded-lg border bg-card transition-[border-color,box-shadow]',
-            quiet ? 'min-h-[52px]' : 'min-h-[60px]',
-            on ? 'border-primary/35 shadow-[0_0_22px_-12px_hsl(var(--primary)/0.7)]' : 'border-border')}>
-            <span aria-hidden="true" className={cn('w-1.5 shrink-0', on ? 'bg-primary shadow-[0_0_12px_hsl(var(--primary)/0.8)]' : 'bg-muted')} />
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-                <div className={cn('min-w-0 shrink-0 min-[700px]:w-[12.5rem]', !on && 'opacity-60')} title={title}>
-                    <span className={cn('inline-block rounded px-1.5 py-0.5 font-mono text-[10px] font-bold',
-                        builtin ? 'border border-primary/60 text-primary' : on ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>{tag}</span>
-                    <h3 className={cn('mt-1 font-bold break-keep', quiet ? 'text-sm' : 'text-[15px]')}>{name}</h3>
-                    {sub && <div className="text-[11px] text-muted-foreground">{sub}</div>}
+    }) => {
+        const Icon = builtin ? key === 'noise' ? MdFilterAlt : MdGraphicEq : MdExtension;
+        return <li key={key}>
+            <div id={id} tabIndex={id ? -1 : undefined} data-on={on}
+                className={cn('sound-chain-row grid items-center gap-x-4 gap-y-3 py-4', quiet && 'py-3')}>
+                <div className="flex min-w-0 items-center gap-3" title={title ?? (typeof sub === 'string' ? sub : undefined)}>
+                    <Icon aria-hidden="true" className={cn('h-5 w-5 shrink-0', on ? 'text-primary' : 'text-muted-foreground')} />
+                    <div className="min-w-0">
+                        <span className="sr-only">{tag}</span>
+                        <div className="flex items-center gap-1">
+                            <h3 className="text-sm font-semibold">{name}</h3>
+                            {key === 'builtin' && <InfoPopover label={t('settings.builtinHelp')}>{t('settings.AudioSettingsModal.096')}</InfoPopover>}
+                        </div>
+                        {sub && <div className={typeof sub === 'string' ? 'sr-only' : 'text-xs text-muted-foreground'}>{sub}</div>}
+                    </div>
                 </div>
-                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">{body}</div>
-                {action && <div className="shrink-0">{action}</div>}
+                <div className="sound-chain-controls flex min-w-0 flex-wrap items-center gap-2.5">{body}</div>
+                {action && <div className="sound-chain-action justify-self-end">{action}</div>}
             </div>
-        </div>
-    </li>;
+        </li>;
+    };
     const builtinTag = t('chain.tagBuiltin');
     const noiseOn = live ? q.noiseOn : stage?.nr.enabled === true;
     const builtinOn = live ? q.chainOn || partial : stage?.builtinVoiceEnabled === true || partial;
@@ -118,7 +121,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 body: <span className="text-xs text-muted-foreground">{t('chain.vstEmptyHint')}</span>, action: vstEdit })
             : row({ key: 'vst', on: vstOn, tag: 'VST', name: 'VST', sub: <StatusDot tone={vstTone}>{vstStatus}</StatusDot>, body: vst, action: vstEdit }),
     ];
-    return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="aurora-card aurora-edge mb-4 space-y-4 rounded-xl border border-border bg-card/70 px-4 py-4 min-[1100px]:px-5">
+    return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="sound-chain aurora-card mb-4 rounded-xl border border-border bg-card/70 px-4 py-3 min-[1100px]:px-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1">
                 <h2 className="text-sm font-bold">{t(music ? 'wizard.musicSound' : 'shell.sound')}</h2>
@@ -149,7 +152,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             : music ? <p className="text-xs text-muted-foreground">{t('music.soundHint')}</p>
             : !live && <p role="status" className="text-xs text-muted-foreground">{t('home.voiceUnavailable')}</p>}
         {/* 段の間は細い線でつなぎ、矢印やボックスの入れ子にしない。 */}
-        <ol aria-label={t('flow.title')} className="space-y-2.5 [&>li+li]:relative [&>li+li]:before:absolute [&>li+li]:before:-top-2.5 [&>li+li]:before:left-[30px] [&>li+li]:before:h-2.5 [&>li+li]:before:w-0.5 [&>li+li]:before:bg-primary/35">
+        <ol aria-label={t('flow.title')} className="mt-2 divide-y divide-border/60">
             {rows}
         </ol>
         {music && listenOpen && <MusicListeningCheck running={isEngineRunning} input={actualInput} output={actualOutput} onSettings={onOpenSettings} onClose={() => { onListenClose(); listenButton.current?.focus(); }} />}

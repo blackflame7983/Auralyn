@@ -1,4 +1,5 @@
 import { useMessages } from '@/i18n/LocaleProvider';
+import { MdWarningAmber } from 'react-icons/md';
 import type { PluginSessionRestoreResult } from '../../../lib/restorePluginSession';
 
 interface SessionRecoveryNoticeProps {
@@ -37,9 +38,12 @@ export function SessionRecoveryNotice({ status, protectedSession, reason, busy, 
             <div className="mt-2 space-y-2">{retry}</div>
         </details>
     </section>;
-    return <section aria-label={t('session.label')} className="mb-4 space-y-2 rounded-lg border border-warning/50 bg-warning/10 p-3 text-sm text-foreground">
-        <h2 className="font-bold">{t(labels[status])}</h2>
+    return <section aria-label={t('session.label')} className="mb-4 space-y-1 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground">
+        <h2 className="flex items-center gap-2 font-semibold"><MdWarningAmber aria-hidden="true" className="h-5 w-5 shrink-0 text-warning" />{t(labels[status])}</h2>
         <p>{reason ?? t('session.defaultReason')}</p>
-        {retry}
+        <details open={busy || undefined}>
+            <summary className="cursor-pointer text-xs font-medium">{t('session.retryDetails')}</summary>
+            <div className="mt-2 space-y-2">{retry}</div>
+        </details>
     </section>;
 }

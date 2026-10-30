@@ -7,10 +7,11 @@ import { LiveStrip } from '../features/Home/LiveStrip';
 import { SoundChain } from '../features/Home/SoundChain';
 import { usePreparation } from '@/hooks/usePreparation';
 import { useVstPanel } from '@/hooks/useVstPanel';
+import { usePanelMotion } from '@/hooks/usePanelMotion';
 import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Header } from './Header';
 import { audioApi } from '../../api/audio';
-import { MdCompareArrows, MdGraphicEq, MdQueryStats } from 'react-icons/md';
+import { MdCompareArrows, MdGraphicEq, MdSpeed } from 'react-icons/md';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { listen } from '@tauri-apps/api/event';
@@ -22,6 +23,7 @@ import {
 } from "@/components/ui/tooltip";
 
 interface AppShellProps {
+    notices?: ReactNode;
     preparationBlocked?: boolean;
     onOpenOBSSettings: () => void;
     children: ReactNode;
@@ -56,6 +58,7 @@ import { RuntimeStatsContext } from './RuntimeStatsContext';
 
 export const AppShell: React.FC<AppShellProps> = ({
     children,
+    notices,
     preparationBlocked,
     onOpenOBSSettings,
     onOpenSettings,
@@ -109,6 +112,35 @@ export const AppShell: React.FC<AppShellProps> = ({
     const requestId = useRef(0);
     // VST 構成は右パネルで編集する。開いたら見出しへ移り、キーボードでもそのまま続けられるようにする。
     const [vstPanelOpen, setVstPanelOpen] = useVstPanel();
+    // ホームの操作幅を保てない間は重ね表示にする。メーター併用時はその幅も確保する。
+    const [panelBeside, setPanelBeside] = useState(false);
+    useLayoutEffect(() => {
+        const media = window.matchMedia?.(`(min-width: ${isLargeMeterOpen ? 1536 : 1440}px)`);
+        if (!media) return;
+        const update = () => setPanelBeside(media.matches);
+        update();
+        media.addEventListener('change', update);
+        return () => media.removeEventListener('change', update);
+    }, [isLargeMeterOpen]);
+    const panelOverlays = Boolean(vstPanel) && vstPanelOpen && !panelBeside;
+    const panelRef = useRef<HTMLElement>(null);
+    const panelMotion = usePanelMotion(Boolean(vstPanel) && vstPanelOpen);
+    useEffect(() => {
+        if (!panelOverlays) return;
+        const close = (event: KeyboardEvent) => {
+            // 入れ子のメニューや設定画面の Escape は、その画面に任せる。
+            if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('[role="dialog"], [role="menu"]')) {
+                event.preventDefault();
+                setVstPanelOpen(false);
+            }
+        };
+        window.addEventListener('keydown', close);
+        return () => window.removeEventListener('keydown', close);
+    }, [panelOverlays, setVstPanelOpen]);
+    useEffect(() => {
+        if (panelOverlays && document.activeElement?.closest('main'))
+            document.getElementById('plugin-rack-heading')?.focus({ preventScroll: true });
+    }, [panelOverlays]);
     const [focusRack, setFocusRack] = useState(0);
     const openRack = () => { setVstPanelOpen(true); setFocusRack(n => n + 1); };
     useEffect(() => {
@@ -118,7 +150,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     // パネルを閉じてフォーカスの行き場がなくなったら、開いたボタンへ戻してキーボード操作を続けられるようにする。
     const panelWasOpen = useRef(vstPanelOpen);
     useEffect(() => {
-        if (panelWasOpen.current && !vstPanelOpen && (document.activeElement === document.body || !document.activeElement))
+        if (panelWasOpen.current && !vstPanelOpen && (document.activeElement === document.body || !document.activeElement || panelRef.current?.contains(document.activeElement)))
             document.getElementById('vst-panel-toggle')?.focus({ preventScroll: true });
         panelWasOpen.current = vstPanelOpen;
     }, [vstPanelOpen]);
@@ -131,21 +163,21 @@ export const AppShell: React.FC<AppShellProps> = ({
     const loudnessLabel = t(measurement.busy ? 'loudness.switching' : measurement.stopUnconfirmed ? 'loudness.retryStop' : measurement.active ? 'loudness.stop' : 'loudness.startAction');
     // 大型メーターは声のレベルを大きく見るためのものなので、ヘッダーではなく本番帯のメーター横から開く。
     const largeMeterLabel = t(isLargeMeterOpen ? 'header.meterClose' : 'header.meterOpen');
-    const largeMeterButton = <button type="button" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
-        aria-label={largeMeterLabel} title={largeMeterLabel}
+    const largeMeterButton = <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><button type="button" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
+        aria-label={largeMeterLabel}
         className={cn('inline-flex shrink-0 items-center rounded-md border p-1.5', isLargeMeterOpen ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border hover:bg-muted')}>
         <MdGraphicEq aria-hidden="true" className="h-[18px] w-[18px]" />
-    </button>;
+    </button></TooltipTrigger><TooltipContent><p>{t('home.largeMeterTool')}</p><p className="max-w-64 text-xs">{t('meter.arrivalUnverified')}</p></TooltipContent></Tooltip></TooltipProvider>;
     const loudnessAction = !loudnessEnabled && !measurement.active ? <span className="flex shrink-0 items-center gap-2">
         <span id="loudness-toggle-description" className={!audioReady ? 'whitespace-nowrap text-xs text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
-        <button type="button" aria-pressed={measurement.active} aria-describedby="loudness-toggle-description"
+        <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><button type="button" aria-pressed={measurement.active} aria-describedby="loudness-toggle-description"
             onClick={() => { setLoudnessEnabled(true); setMeasurementRequest({ id: ++requestId.current, action: measurement.active ? 'stop' : 'start' }); }}
             disabled={measurement.busy || (!measurement.active && !audioReady)}
-            aria-label={loudnessLabel} title={loudnessLabel}
+            aria-label={loudnessLabel}
             className="inline-flex items-center rounded-md border border-border p-1.5 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent">
             {/* 本番帯を詰めないようアイコンだけにし、名前は読み上げとツールチップで伝える。 */}
-            <MdQueryStats aria-hidden="true" className="h-[18px] w-[18px]" />
-        </button>
+            <MdSpeed aria-hidden="true" className="h-[18px] w-[18px]" />
+        </button></TooltipTrigger><TooltipContent><p>{t('home.loudnessTool')}</p><p className="max-w-64 text-xs">{t('loudness.scope')}</p></TooltipContent></Tooltip></TooltipProvider>
     </span> : null;
     const soundChain = <SoundChain model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
@@ -173,7 +205,10 @@ export const AppShell: React.FC<AppShellProps> = ({
     }, []);
 
     return (
-        <MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef} className={cn(vstPanel && vstPanelOpen && '[--vst-panel-width:min(420px,100vw)]',"min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300")}>
+        <MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef} data-panel-instant={panelMotion.instant || undefined}
+            data-vst-open={Boolean(vstPanel) && vstPanelOpen || undefined} data-vst-overlay={panelOverlays || undefined} data-large-meter={isLargeMeterOpen || undefined}
+            data-meter-suspended={panelMotion.present && !panelBeside || undefined}
+            className="app-shell min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300">
             {/* 背景のオーロラ。音声処理中（本番中とみなす）と動きを減らす設定では止める（DESIGN.md 5.6）。 */}
             <div className={`fixed inset-0 pointer-events-none z-0 opacity-0 dark:opacity-100 transition-opacity duration-500 ${isEngineRunning ? '[&>.aurora-glow]:[animation-play-state:paused]' : ''}`}>
                 <div className="aurora-glow absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-brand-secondary/5 blur-[130px] rounded-full mix-blend-screen animate-[pulse_8s_ease-in-out_infinite]" />
@@ -197,15 +232,15 @@ export const AppShell: React.FC<AppShellProps> = ({
                     isEngineRunning={isEngineRunning}
                     engineProcessReady={engineProcessReady}
                 />
-                {/* VST の右パネルはヘッダーとフッターの間に置く。広い画面ではホームの横に並べ、狭い画面では右に重ねて配置してホームにパネルの幅を空ける。
-                    どちらでもモーダルにはせず、本番帯の操作は止めない。 */}
+                {/* 重ね表示は中央の作業領域だけを覆う。緊急ミュートと出力音量は操作できるままにする。 */}
                 <div className="relative flex min-h-0 flex-1">
-                {/* メーターの開閉にかかわらずパネルの幅を空け、メーターを開く入口も隠さない。 */}
                 <main
-                    className={`min-w-0 flex-1 overflow-y-auto p-4 lg:py-6 lg:pl-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent pb-4 ${isLargeMeterOpen ? 'pr-36' : 'lg:pr-6'} ${vstPanel && vstPanelOpen ? 'mr-[var(--vst-panel-width)] min-[1100px]:mr-0' : ''}`}
+                    inert={panelOverlays}
+                    className="home-main min-w-0 flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent"
                 >
                     {/* 左右に分けると片側だけが詰まって見えるので、どの幅でも上から1列に並べ、広い画面では中央に寄せる。 */}
                     <div className="mx-auto max-w-[1180px]">
+                        {notices}
                         {/* 音量チェックと大型メーターは本番帯のメーター横に置き、ホーム上部に常設の行を作らない。
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
@@ -229,6 +264,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                             statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
                             inputName={currentInput} outputName={currentOutput}
                             onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}
+                            onCheckOutput={() => {
+                                const target = runtimeStats?.preparation?.muted === false && runtimeStats.preparation.outputGain === 0
+                                    ? '#master-output-gain [role="slider"]' : '#emergency-mute';
+                                document.querySelector<HTMLElement>(target)?.focus();
+                            }}
                             onOpenSoundSettings={onOpenSoundSettings} onListen={openListen}
                             onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot}
                         /></div>
@@ -238,15 +278,20 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {!configured && soundChain}
                     </div>
                 </main>
-                {vstPanel && vstPanelOpen && <aside id="vst-panel" aria-labelledby="plugin-rack-heading"
-                    className="absolute inset-y-0 right-0 z-[45] w-[min(420px,100%)] overflow-y-auto border-l border-border bg-background p-4 shadow-2xl scrollbar-thin min-[1100px]:static min-[1100px]:z-auto min-[1100px]:shrink-0 min-[1100px]:shadow-none">
+                {panelOverlays && <div aria-hidden="true" className="vst-panel-scrim absolute inset-0 z-[44] bg-overlay/35" onClick={() => setVstPanelOpen(false)} />}
+                {/* パネルと同じ時間で予約幅を戻す。退場後のアンマウントではホームの幅を変えない。 */}
+                {vstPanel && <div aria-hidden="true" className="vst-panel-space" data-state={vstPanelOpen ? 'open' : 'closed'} />}
+                {panelMotion.present && <aside ref={panelRef} id="vst-panel" aria-labelledby="plugin-rack-heading"
+                    data-state={vstPanelOpen ? 'open' : 'closed'} aria-hidden={!vstPanelOpen} inert={!vstPanelOpen}
+                    onTransitionEnd={panelMotion.onTransitionEnd}
+                    className="vst-panel-motion absolute inset-y-0 right-0 z-[45] w-[min(420px,100%)] overflow-y-auto border-l border-border bg-background p-4 shadow-2xl scrollbar-thin">
                     {vstPanel}
                 </aside>}
                 </div>
 
                 {/* Master Section Footer */}
                 <footer ref={footerRef} className="min-h-16 bg-background border-t border-border px-4 z-50 footer-shadow shrink-0 transition-colors duration-300">
-                    <div className="w-full flex items-start gap-3">
+                    <div className="mx-auto max-w-[1180px] w-full flex items-start gap-3">
                     <div className="flex shrink-0 items-center py-2">
                         {/* Effect Compare Button */}
                         <TooltipProvider>

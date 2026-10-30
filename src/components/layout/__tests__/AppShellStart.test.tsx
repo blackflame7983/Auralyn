@@ -180,20 +180,22 @@ it('VST 構成は右パネルで開閉し、大型メーターは本番帯のメ
     expect(within(screen.getByRole('region', { name: '本番' })).getByRole('button', { name: message('ja', 'header.meterClose') })).toHaveAttribute('aria-pressed', 'true');
 });
 
-it('右パネルを開いている間は幅を問わず大型メーターをパネルの左へ寄せ、閉じたら開いたボタンへフォーカスを戻す', () => {
+it('狭い幅では右パネルを重ねて背景の誤操作を防ぎ、閉じたら入口へ戻す', () => {
     const { container } = render(<AppShell {...commonProps} vstPanel={<button type="button" onClick={() => saveVstPanelOpen(false)}>close-panel</button>}><p>rack</p></AppShell>);
     const toggle = screen.getByRole('button', { name: 'VST を編集' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(toggle).toHaveAttribute('aria-controls', 'vst-panel');
-    // 重ねて出す狭い幅でもメーターがパネルの下に隠れないよう、幅の指定に画面幅の条件を付けない。
-    expect(container.firstElementChild!.className).toContain('[--vst-panel-width:min(420px,100vw)]');
+    expect(container.firstElementChild).toHaveAttribute('data-vst-overlay', 'true');
+    expect(container.querySelector('main')).toHaveAttribute('inert');
+    expect(container.querySelector('footer')!.closest('[inert]')).toBeNull();
     const close = screen.getByRole('button', { name: 'close-panel' });
     close.focus();
     fireEvent.click(close);
     expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
-    expect(container.firstElementChild!.className).not.toContain('--vst-panel-width');
+    expect(container.firstElementChild).not.toHaveAttribute('data-vst-open');
+    expect(container.querySelector('main')).not.toHaveAttribute('inert');
     expect(toggle).toHaveFocus();
 });
 

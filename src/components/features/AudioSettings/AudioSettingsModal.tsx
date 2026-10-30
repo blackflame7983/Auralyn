@@ -15,7 +15,7 @@ import { Modal } from '../../ui/modal';
 import { listen } from '@tauri-apps/api/event';
 import { MicrophonePermissionGuide } from './MicrophonePermissionGuide';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage } from 'react-icons/md';
+import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage, MdMic, MdGraphicEq, MdCast, MdKeyboard, MdTune } from 'react-icons/md';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { audioApi, BuiltInEffectsPreset, EngineRuntimeStats, EngineTuningConfig, NoiseControlMode } from '../../../api/audio';
@@ -42,6 +42,7 @@ interface AudioSettingsModalProps {
   onPreviewSinging?: () => void;
   onSaveSingingProfile?: () => void;
   initialTab?: 'audio' | 'obs' | 'sound';
+  initialSection?: 'liveModes';
   isOpen: boolean;
   onClose: () => void;
   onConfigChange: (config: Partial<import('../../../lib/audioPreferences').AudioPreferences> & { host: string }, options?: { audioStarted: true }) => void | Promise<void>;
@@ -59,7 +60,7 @@ interface AudioSettingsModalProps {
 export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   liveModel: providedLive,
   singingModel: providedSinging, onPreviewSinging, onSaveSingingProfile,
-  initialTab = 'audio',
+  initialTab = 'audio', initialSection,
   isOpen,
   onClose,
   onConfigChange,
@@ -131,9 +132,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   useEffect(() => { settingsBody.current?.scrollTo?.({ top: 0 }); }, [activeTab]);
   useEffect(() => {
     if (isOpen && initialTab === 'sound') {
-      soundStart.current?.scrollIntoView?.({ block: 'start' });
+      const frame = requestAnimationFrame(() => {
+        const target = initialSection === 'liveModes' ? settingsBody.current?.querySelector<HTMLElement>('#live-mode-settings') : soundStart.current;
+        target?.scrollIntoView?.({ block: 'start' });
+        if (initialSection === 'liveModes') target?.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
+      });
+      return () => cancelAnimationFrame(frame);
     }
-  }, [isOpen, initialTab]);
+  }, [isOpen, initialTab, initialSection]);
 
   // OBS State
   // Preset State
@@ -587,12 +593,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} orientation="vertical" className="flex min-h-0 flex-1">
           <TabsList aria-label={t('common.settings')} className="h-auto w-40 shrink-0 flex-col items-stretch justify-start gap-1 rounded-none border-r border-border p-2 overflow-y-auto">
-            <TabsTrigger className="justify-start" value="audio">{t('settings.audio')}</TabsTrigger>
-            <TabsTrigger className="justify-start" value="sound">{t('settings.sound')}</TabsTrigger>
-            <TabsTrigger className="justify-start" value="obs">{t('settings.obs')}</TabsTrigger>
-            <TabsTrigger className="justify-start" value="appearance">{t('settings.appearance')}</TabsTrigger>
-            <TabsTrigger className="justify-start" value="shortcuts">{t('settings.shortcuts')}</TabsTrigger>
-            <TabsTrigger className="justify-start" value="system">{t('settings.system')}</TabsTrigger>
+            <TabsTrigger className="justify-start gap-2" value="audio"><MdMic aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.audio')}</TabsTrigger>
+            <TabsTrigger className="justify-start gap-2" value="sound"><MdGraphicEq aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.sound')}</TabsTrigger>
+            <TabsTrigger className="justify-start gap-2" value="obs"><MdCast aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.obs')}</TabsTrigger>
+            <TabsTrigger className="justify-start gap-2" value="appearance"><MdPalette aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.appearance')}</TabsTrigger>
+            <TabsTrigger className="justify-start gap-2" value="shortcuts"><MdKeyboard aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.shortcuts')}</TabsTrigger>
+            <TabsTrigger className="justify-start gap-2" value="system"><MdTune aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.system')}</TabsTrigger>
           </TabsList>
           <div ref={settingsBody} className="min-w-0 flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent">
           <TabsContent value="audio" className="space-y-4">
@@ -601,7 +607,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               {importedPlugins.length > 0 && <ul className="max-h-24 overflow-auto break-all">{importedPlugins.map((p, i) => <li key={i}>{p.name} — {p.path}</li>)}</ul>}
               <label className="flex gap-2"><input type="checkbox" checked={migrationConfirmed} onChange={e => setMigrationConfirmed(e.target.checked)} />{t('settings.AudioSettingsModal.030')}</label>
             </div>}
-            <MicrophonePermissionGuide expanded={!!error && /アクセス.*拒否|0x80070005|access.*denied/i.test(renderNotice(t, error))} />
+            {!!error && <MicrophonePermissionGuide expanded={/アクセス.*拒否|0x80070005|access.*denied/i.test(renderNotice(t, error))} />}
 
             {loading ? (
               <div role="status" className="flex flex-col items-center gap-2 py-8 text-sm text-muted-foreground">
@@ -931,6 +937,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <LiveOutputPanel outputs={devices.outputs} disabled={loading} onBusyChange={setLoading} />
             <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await refreshEngineRuntimeStats(); }} />
             </details>
+            {!error && <MicrophonePermissionGuide />}
           </TabsContent>
 
           <TabsContent value="sound" className="space-y-4">
@@ -976,6 +983,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     />
                   </div>
 
+                  <div className="grid gap-4 sm:grid-cols-2">
                   <fieldset className="space-y-2"><legend className="text-xs font-medium">{t('structure.noise.standard')}</legend>
                     <div className="grid grid-cols-2 gap-2">
                       {([
@@ -1028,6 +1036,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       ))}
                     </div>
                   </fieldset>
+                  </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     {noiseMode === 'smart' && (
                       <>{t('settings.AudioSettingsModal.115')}</>
@@ -1092,10 +1101,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {/* Built-in Effects */}
                 <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
                   <div className="flex items-center justify-between gap-3">
-                    <div>
+                    <div className="flex items-center gap-1">
                       <h3 className="text-sm font-bold text-foreground">{t('settings.AudioSettingsModal.095')}</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {t('settings.AudioSettingsModal.096')}</p>
+                      <InfoPopover label={t('settings.builtinHelp')}>{t('settings.AudioSettingsModal.096')}</InfoPopover>
                     </div>
                     <Switch
                       disabled={!singingModel.snapshot || singingModel.busy}
@@ -1153,7 +1161,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
             </fieldset>
             {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="h-10 px-4 rounded-md border border-input text-sm hover:bg-muted">{t('settings.AudioSettingsModal.093')}</button>}
-            <LiveModeControls model={providedLive ?? localLive} />
+            <LiveModeControls model={providedLive ?? localLive} initiallyOpen={initialSection === 'liveModes'} />
             <details className="rounded border border-border p-3 space-y-3">
               <summary className="cursor-pointer font-semibold">{t('structure.singing')}</summary>
               <SingingControls showHeading={false} model={singingModel} onPreview={onPreviewSinging} onSaveProfile={onSaveSingingProfile} />

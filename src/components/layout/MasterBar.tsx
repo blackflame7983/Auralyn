@@ -217,6 +217,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 <MdVolumeUp aria-hidden="true" className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 <span aria-hidden="true" className="hidden lg:inline text-xs font-bold text-muted-foreground">{t('master.outputGain')}</span>
                 <Slider
+                    id="master-output-gain"
                     aria-label={t('master.outputGain')}
                     aria-valuetext={`${outputGain}%`}
                     value={[outputGain]}

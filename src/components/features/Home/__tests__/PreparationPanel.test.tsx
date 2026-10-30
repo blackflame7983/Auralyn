@@ -15,6 +15,16 @@ const callbacks = () => ({ onSettings: vi.fn(), onSound: vi.fn(), onListen: vi.f
 const expand = (locale: 'ja' | 'en' = 'ja') => fireEvent.click(screen.getByRole('button', { name: message(locale, 'prep.steps') }));
 const checked = (model: PreparationModel, stage: 'sound' | 'listen') => { model.records[stage] = { at: 1, target: 'Mic', key: model.observation.keys![stage], expired: false }; };
 
+it('ミュート・音量ゼロでは機器の再設定ではなく本番操作の確認へ案内する', () => {
+    const model = fixture(); model.observation.availability = 'muted';
+    const props = callbacks(); const checkOutput = vi.fn();
+    render(<PreparationPanel model={model} {...props} onCheckOutput={checkOutput} />);
+    fireEvent.click(screen.getByRole('button', { name: 'ミュート・出力音量を確認' }));
+    expect(checkOutput).toHaveBeenCalledOnce();
+    expect(props.onSettings).not.toHaveBeenCalled();
+    expect(model.confirm).not.toHaveBeenCalled();
+});
+
 it.each(['ja', 'en'] as const)('会場の再生注意は閉じた条件パネルの外にあり、次の操作・明示確認を分ける (%s)', locale => {
     const model = fixture(); model.context.location = 'venue'; model.context.signal = 'mixed';
     const props = callbacks();

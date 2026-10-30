@@ -54,7 +54,7 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
             {muted && <span role="status" className="inline-flex items-center gap-1 rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-xs font-bold text-warning">
                 <MdVolumeOff aria-hidden="true" className="h-4 w-4" />{t('prep.muted')}
             </span>}
-            {/* 切替欄を余った数pxまで縮めず、必要な幅がなければ次の行へ送る。未登録なら場所を取らない。 */}
+            {/* 切替欄を余った数pxまで縮めず、必要な幅がなければ次の行へ送る。未登録の間は控えめな登録入口を置く。 */}
             {liveControls && <div className="min-w-0 flex-[1_1_18rem] empty:hidden">{liveControls}</div>}
         </div>
     </section>;

@@ -68,6 +68,15 @@ it.each(['ja', 'en'] as const)('声の処理を音の流れの順に行カード
     expect(screen.getByRole('dialog')).toHaveTextContent(message(locale, 'flow.monitorPath'));
 });
 
+it('内蔵ボイスチェーンの意味を見出し横の情報ボタンから確認できる', () => {
+    render(<SoundChain {...props()} />);
+    const description = message('ja', 'settings.AudioSettingsModal.096');
+    expect(screen.queryByText(description)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'settings.builtinHelp') }));
+    expect(screen.getByRole('dialog', { name: message('ja', 'settings.builtinHelp') })).toHaveTextContent(description);
+    expect(screen.getByRole('heading', { name: '内蔵ボイスチェーン' })).toBeInTheDocument();
+});
+
 it('音声処理中は声の段にその場の操作を出し、設定状態の文字は重ねない', () => {
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
     const rows = screen.getAllByRole('listitem');
