@@ -1,6 +1,8 @@
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { MdExpandMore } from 'react-icons/md';
+import { MdCast, MdExpandMore, MdMusicNote, MdSettings } from 'react-icons/md';
+import { DiscordIcon } from '@/components/ui/DiscordIcon';
+import { cn } from '@/lib/utils';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
@@ -38,7 +40,6 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
     const { context, observation, records, checking, confirming } = model;
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
-    const purposeRef = useRef<HTMLSelectElement>(null);
     const detailsRef = useRef<HTMLDetailsElement>(null);
     const targetRef = useRef<HTMLInputElement>(null);
     const actionRef = useRef<HTMLButtonElement>(null);
@@ -64,9 +65,21 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
         : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
     const acknowledgeLabels: Record<PreparationStage, MessageKey> = { sound: 'prep.ackSound', listen: 'prep.ackListen', receiver: 'prep.ackReceiver' };
     const pending = checking || confirming;
-    const usageSelect = (className: string) => <select ref={purposeRef} value={context.usage} onChange={e => { model.changeContext({ usage: e.target.value as PreparationUse | '', receiver: '' }); }} className={className}>
-        <option value="">{t('prep.chooseUse')}</option><option value="obs">{t('prep.obs')}</option><option value="discord">{t('prep.call')}</option><option value="other">{t('prep.other')}</option><option value="listening">{t('prep.local')}</option>
-    </select>;
+    // 送り先は4つだけなので、選択欄ではなくセットアップと同じアイコンのボタンで選ぶ（DESIGN.md 2.2）。
+    // 中身は標準のラジオボタンにし、矢印キーでの移動と読み上げを保つ。
+    const destinations: [PreparationUse, MessageKey, ReactNode][] = [
+        ['obs', 'prep.obs', <MdCast aria-hidden="true" className="h-4 w-4 shrink-0" />],
+        ['discord', 'prep.call', <DiscordIcon aria-hidden="true" className="h-4 w-4 shrink-0" />],
+        ['other', 'prep.other', <MdSettings aria-hidden="true" className="h-4 w-4 shrink-0" />],
+        ['listening', 'prep.local', <MdMusicNote aria-hidden="true" className="h-4 w-4 shrink-0" />],
+    ];
+    const usagePicker = <div role="radiogroup" aria-labelledby={`${stepsId}-usage`} className={cn('grid gap-2 sm:grid-cols-2', next === 'purpose' && 'rounded-lg ring-1 ring-primary/60 p-1')}>
+        {destinations.map(([value, label, icon]) => <label key={value} className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary">
+            <input type="radio" name={`${stepsId}-usage-choice`} value={value} checked={context.usage === value} className="sr-only"
+                onChange={() => model.changeContext({ usage: value, receiver: '' })} />
+            {icon}<span className="min-w-0 truncate">{t(label)}</span>
+        </label>)}
+    </div>;
     return <section aria-label={t('prep.title')} className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-1">
@@ -91,7 +104,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
         {context.signal === 'mixed' && <p className="text-xs text-muted-foreground">{t('prep.mixedWarning')}</p>}
         {open && <div id={stepsId} className="space-y-3" onFocusCapture={() => setUserOpen(old => old ?? true)}>
         {signalSummary}
-        <label className="block text-sm">{t('prep.usage')}{usageSelect(`mt-1 block w-full max-w-xs rounded border bg-background p-2 ${next === 'purpose' ? 'border-primary' : 'border-border'}`)}</label>
+        <div className="space-y-1 text-sm"><p id={`${stepsId}-usage`}>{t('prep.usage')}</p>{usagePicker}</div>
         {next !== 'done' && next !== 'purpose' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
             className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{t(actionLabel)}</button>}
         {(next === 'sound' || next === 'listen' || next === 'receiver') && <label key={next} className="flex items-center gap-2 text-sm">

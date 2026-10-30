@@ -27,7 +27,9 @@ it.each(['ja', 'en'] as const)('本番帯に入力メーター・送り先・歌
     expect(strip).toHaveTextContent(`${message(locale, 'prep.call')} · CABLE Output`);
     expect(within(strip).getByRole('button', { name: 'mode' })).toBeInTheDocument();
     // 入力機器名は準備状況の「入力」に任せる。
-    expect(strip).not.toHaveTextContent('Mic');
+    expect(within(strip).queryByText('Mic')).toBeNull();
+    // マイク音量はメーター横から合わせる。
+    expect(within(strip).getByRole('button', { name: message(locale, 'header.inputGain') })).toBeInTheDocument();
 });
 
 it('送り先が未選択なら未選択と示し、自分で聴くときは対象名を付けない', () => {

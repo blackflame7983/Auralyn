@@ -56,21 +56,24 @@ it('通話ではOBS操作を出さず、ローカル試聴の記録を配信到�
     expect(screen.getByRole('checkbox', { name: message('ja', 'prep.ackLocal') })).toBeEnabled();
     expect(within(screen.getByRole('region')).queryByRole('textbox')).not.toBeInTheDocument();
 });
-it('用途は条件パネルの外の1か所で選び、選んだ後も同じ欄にフォーカスを残す', () => {
+it('送り先は条件パネルの外の1か所で、アイコン付きのボタンから選び、選んだ後も同じボタンにフォーカスを残す', () => {
     const model = fixture(); model.context.usage = '';
     const view = render(<PreparationPanel model={model} {...callbacks()} />);
-    const select = screen.getByRole('combobox', { name: message('ja', 'prep.usage') });
-    expect(select.closest('details')).toBeNull();
-    expect(screen.getAllByRole('combobox', { name: message('ja', 'prep.usage') })).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: message('ja', 'prep.chooseUse') })).not.toBeInTheDocument();
+    const group = screen.getByRole('radiogroup', { name: message('ja', 'prep.usage') });
+    expect(group.closest('details')).toBeNull();
+    expect(screen.getAllByRole('radiogroup', { name: message('ja', 'prep.usage') })).toHaveLength(1);
+    expect(within(group).getAllByRole('radio').map(radio => radio.getAttribute('value'))).toEqual(['obs', 'discord', 'other', 'listening']);
+    expect(within(group).getAllByRole('radio').some(radio => (radio as HTMLInputElement).checked)).toBe(false);
     expect(view.container.querySelector('details')).not.toHaveAttribute('open');
-    select.focus();
-    fireEvent.change(select, { target: { value: 'discord' } });
+    const call = within(group).getByRole('radio', { name: message('ja', 'prep.call') });
+    call.focus();
+    fireEvent.click(call);
     expect(model.changeContext).toHaveBeenCalledWith({ usage: 'discord', receiver: '' });
     model.context.usage = 'discord';
     view.rerender(<PreparationPanel model={model} {...callbacks()} />);
-    expect(screen.getByRole('combobox', { name: message('ja', 'prep.usage') })).toBe(select);
-    expect(select).toHaveFocus();
+    expect(within(group).getByRole('radio', { name: message('ja', 'prep.call') })).toBe(call);
+    expect(call).toBeChecked();
+    expect(call).toHaveFocus();
 });
 it('正常時は手順と入出力の要約を畳んで状態の点と警告だけを残し、問題が起きたら開き直す', () => {
     const model = fixture(); model.context.location = 'venue';
@@ -81,16 +84,16 @@ it('正常時は手順と入出力の要約を畳んで状態の点と警告だ�
     const badge = screen.getByText(message('ja', 'prep.running'));
     expect(badge.closest('[data-tone]')).toHaveAttribute('data-tone', 'ok');
     expect(screen.getByText(message('ja', 'prep.venueWarning'))).toBeInTheDocument();
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('combobox', { name: message('ja', 'prep.usage') })).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: message('ja', 'prep.usage') })).toBeInTheDocument();
     // 開いたら入出力の要約を手順と一緒に出し、状態の点は重ねない。
     expect(screen.getByText('summary')).toBeInTheDocument();
     expect(screen.queryByText(message('ja', 'prep.running'))).not.toBeInTheDocument();
     fireEvent.click(toggle);
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
     model.observation = { ...model.observation, availability: 'failed' };
     view.rerender(<PreparationPanel model={model} {...callbacks()} />);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
@@ -128,7 +131,7 @@ it('手順内を操作した後は、状態不明を経て正常に戻っても�
     view.rerender(<PreparationPanel model={model} {...callbacks()} />);
     const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    const select = screen.getByRole('combobox', { name: message('ja', 'prep.usage') });
+    const select = screen.getByRole('radio', { name: message('ja', 'prep.call') });
     select.focus();
     model.observation = { ...ready, availability: 'unknown' };
     view.rerender(<PreparationPanel model={model} {...callbacks()} />);

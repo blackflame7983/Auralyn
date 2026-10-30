@@ -82,4 +82,8 @@ it.each(['ja', 'en'] as const)('かんたん／詳細はヘッダーのアイコ
     expect(toDetailed).toHaveAttribute('data-detailed', 'true');
     fireEvent.click(toDetailed);
     expect(localStorage.getItem('vst_host_beginner_mode')).toBe('true');
+    // マイク音量は本番帯へ移し、フッター・本番帯と重なる小さなメーターとテーマ切替はヘッダーに置かない（詳細表示でも）。
+    fireEvent.click(toDetailed);
+    expect(screen.queryByRole('button', { name: message(locale, 'header.inputGain') })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /テーマ|theme/i })).not.toBeInTheDocument();
 });
