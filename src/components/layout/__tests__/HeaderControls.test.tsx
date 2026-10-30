@@ -65,3 +65,21 @@ it.each([
     if (props.label !== '音声処理中') expect(screen.queryByText('WASAPI')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });
+
+it.each(['ja', 'en'] as const)('かんたん／詳細はヘッダーのアイコン1つで切り替え、ヘルプの近道と同じ名前にする（%s）', locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    const props = { onOpenSettings: vi.fn(), onOpenOBSGuide: vi.fn(), onOpenDiscordGuide: vi.fn(),
+        onOpenTroubleshoot: vi.fn(), onOpenWizard: vi.fn(),
+        onToggleLargeMeter: vi.fn(), isLargeMeterOpen: false,
+        currentHost: 'WASAPI', isEngineRunning: true, engineProcessReady: true };
+    render(<LocaleProvider store={store}><Header {...props} /></LocaleProvider>);
+    const toDetailed = screen.getByRole('button', { name: message(locale, 'header.advanced') });
+    expect(toDetailed).toHaveAttribute('data-detailed', 'false');
+    fireEvent.click(toDetailed);
+    expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
+    // 押した後は同じボタンが「かんたんに切替」になり、詳細表示中であることを主色で示す。
+    expect(toDetailed).toHaveAccessibleName(message(locale, 'header.simple'));
+    expect(toDetailed).toHaveAttribute('data-detailed', 'true');
+    fireEvent.click(toDetailed);
+    expect(localStorage.getItem('vst_host_beginner_mode')).toBe('true');
+});

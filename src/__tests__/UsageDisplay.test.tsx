@@ -38,15 +38,10 @@ vi.mock('@/components/layout/ModalLayer', () => ({
     },
 }));
 vi.mock('@/components/layout/AppShell', () => ({
-    AppShell: ({
-        children,
-        onDisplayModeChange,
-    }: {
-        children: React.ReactNode;
-        onDisplayModeChange: (value: boolean) => void;
-    }) => (
+    // 表示の切替はヘッダーのアイコンが共有の保存値（useBeginnerMode）を書き換える。
+    AppShell: ({ children }: { children: React.ReactNode }) => (
         <>
-            <button onClick={() => onDisplayModeChange(false)}>VST詳細へ</button>
+            <button onClick={() => { localStorage.setItem('vst_host_beginner_mode', 'false'); window.dispatchEvent(new CustomEvent('vst_host_beginner_mode_changed', { detail: false })); }}>VST詳細へ</button>
             {children}
         </>
     ),

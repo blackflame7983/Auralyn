@@ -13,7 +13,7 @@ const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', disc
 
 // 本番中に見る3つ（声のレベル、送り先、歌・雑談）だけを最上段に置く（DESIGN.md 1.3、2.5）。
 // 機器名や確認の手順は準備状況に任せ、ここでは繰り返さない。
-export function LiveStrip({ model, running, liveControls }: { model: PreparationModel; running: boolean; liveControls?: ReactNode }) {
+export function LiveStrip({ model, running, liveControls, meterAction }: { model: PreparationModel; running: boolean; liveControls?: ReactNode; meterAction?: ReactNode }) {
     const t = useMessages();
     const reading = useSharedMeter(running, 'input');
     const [purpose] = useDisplayPurpose();
@@ -27,6 +27,8 @@ export function LiveStrip({ model, running, liveControls }: { model: Preparation
             <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={24} scale showValues />
             {/* 無音は「声が来ていない」本番事故の手がかりなので、dBFS 値だけにせず言葉でも示す。 */}
             {reading.state !== 'live' && <span className="w-24 shrink-0 text-xs text-muted-foreground">{t(meterStatusLabel(reading.state))}</span>}
+            {/* 音量チェックはメーターに関わる操作なので、上部に単独で置かずメーターの横に置く。 */}
+            {meterAction}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <p className="flex min-w-0 items-center gap-1.5 text-sm">
