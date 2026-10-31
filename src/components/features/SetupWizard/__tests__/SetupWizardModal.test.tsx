@@ -485,6 +485,26 @@ describe('初回選択と表示設定', () => {
             expect(notified).not.toHaveBeenCalled();
         } finally { window.removeEventListener('preparation-purpose-changed', notified); }
     });
+    it.each([['listening', '自分で聴く'], ['local', '自分で聴く'], ['discord', '通話（Discordなど）']])('保存済みの目的 %s は最初の画面で選択中として示し、保存値は変えない', async (saved, name) => {
+        localStorage.setItem('vst_host_setup_goal', saved);
+        await openWizard();
+        expect(screen.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getAllByRole('button', { pressed: true })).toHaveLength(1);
+        expect(localStorage.getItem('vst_host_setup_goal')).toBe(saved);
+    });
+    it('設定し直すときは、いま使っているマイクを選んだ状態で入力へ進み、重複した警告を出さない', async () => {
+        inputs = [mic, device('Second microphone', true)];
+        const base = vi.mocked(invoke).getMockImplementation()!;
+        vi.mocked(invoke).mockImplementation((command, args, options) => {
+            if (command === 'get_audio_state') return Promise.resolve({ is_running: true, config: { host: 'WASAPI', input: 'Second microphone', output: 'スピーカー' } });
+            if (command === 'get_audio_stream_state') return Promise.resolve({ running: true, streamFailed: false });
+            return base(command, args, options);
+        });
+        await openWizard();
+        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        await waitFor(() => expect(screen.getByRole('combobox', { name: '入力デバイス' })).toHaveValue('Second microphone'));
+        expect(screen.queryByText('デバイスを選択してください。')).toBeNull();
+    });
     it('保存完了時に選んだ目的を用途として保存する', async () => {
         localStorage.setItem('vst_host_setup_goal', 'listening');
         await quickStart();
