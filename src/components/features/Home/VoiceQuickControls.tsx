@@ -96,7 +96,7 @@ export function useVoiceQuick(running: boolean, enabled = true) {
 }
 export type VoiceQuick = ReturnType<typeof useVoiceQuick>;
 
-const segment = (selected: boolean) => cn('whitespace-nowrap rounded-md border px-2 py-2 text-[13px] font-bold transition-colors disabled:opacity-50',
+const segment = (selected: boolean) => cn('min-w-16 whitespace-nowrap rounded-md border px-2 py-2 text-[13px] font-bold transition-colors disabled:opacity-50',
     selected ? 'border-selection bg-selection/15 text-selection' : 'border-input bg-background text-muted-foreground hover:text-foreground');
 
 // 段の見出し行の右端に置くスイッチ。
@@ -113,7 +113,7 @@ export function NoiseQuick({ q }: { q: VoiceQuick }) {
     if (q.noiseMode === 'smart' || q.noiseMode === 'venue') {
         return <p className="text-xs text-muted-foreground">{t('home.noiseAdvancedMode', { mode: q.noiseMode === 'smart' ? t('master.nrLearn') : t('master.nrVenue') })}</p>;
     }
-    return <div role="group" aria-label={t('structure.noise.standard')} className="grid w-40 grid-cols-2 gap-1.5">
+    return <div role="group" aria-label={t('structure.noise.standard')} className="inline-flex gap-1.5">
         {(['low', 'high'] as NoiseControlMode[]).map(mode => (
             <button key={mode} type="button" disabled={q.disabled || !q.noiseOn} aria-pressed={q.noiseOn && q.noiseMode === mode}
                 onClick={() => void q.applyNoise({ mode })} className={segment(q.noiseOn && q.noiseMode === mode)}>

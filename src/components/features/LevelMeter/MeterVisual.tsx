@@ -46,7 +46,7 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
             {bars.map((value, i) => {
                 const pct = current ? Math.min(100, Math.max(0, value * 100)) : 0;
                 const peak = current ? Math.min(100, Math.max(0, peaks[i] * 100)) : 0;
-                const color = peaks[i] >= CLIP_LEVEL ? 'bg-meter-danger' : peaks[i] >= WARNING_LEVEL ? 'bg-warning' : 'bg-success';
+                const color = peaks[i] >= CLIP_LEVEL ? 'bg-meter-danger' : peaks[i] >= WARNING_LEVEL ? 'bg-meter-warning' : 'bg-success';
                 return <div key={i} title={orientation === 'vertical' ? (i === 0 ? 'Left' : 'Right') : undefined}
                     className={`relative overflow-hidden rounded bg-muted ring-1 ring-border ${orientation === 'horizontal' ? 'h-full flex-1' : 'h-full'}`} style={orientation === 'vertical' ? { width } : undefined}>
                     <div className={`absolute bottom-0 left-0 ${orientation === 'horizontal' ? 'h-full' : 'right-0'} ${color}`} style={orientation === 'horizontal' ? { width: `${pct}%` } : { height: `${pct}%` }} />

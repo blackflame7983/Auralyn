@@ -2,6 +2,8 @@ import { readPreparationContext } from '@/lib/preparation';
 import { useDisplayPurpose } from './hooks/useDisplayPurpose';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { sessionMode } from './lib/temporarySession';
+import { REVIEW_KEY } from './api/migration';
+import { startHomeAudio } from './lib/startHomeAudio';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useVstPanel } from './hooks/useVstPanel';
 import { MdClose } from 'react-icons/md';
@@ -160,6 +162,9 @@ function AppContent() {
       )}
 
       <AppShell
+        onStartAudio={sessionMode().reviewOnly || localStorage.getItem(REVIEW_KEY) === 'true' ? undefined : async () => {
+          await startHomeAudio(audioConfig, config => handleConfigUpdate(config, { audioStarted: true }));
+        }}
         onOpenOBSSettings={ui.openObsSettings}
         onOpenSettings={() => ui.setIsSettingsOpen(true)}
         onOpenSoundSettings={ui.openSoundSettings}
@@ -273,7 +278,11 @@ function AppContent() {
           liveModel={liveModel}
           ui={ui}
           audioConfig={audioConfig}
-          handleConfigUpdate={handleConfigUpdate}
+          handleConfigUpdate={async (config, options) => {
+            await handleConfigUpdate(config, options);
+            // 音声設定からの開始と保存が揃った後だけ、ホームの開始失敗を解除する。
+            if (options?.audioStarted) window.dispatchEvent(new Event('audio-settings-started'));
+          }}
           pluginsApi={pluginsApi}
           onPluginAdded={handlePluginAdded}
         />

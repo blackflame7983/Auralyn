@@ -5,6 +5,7 @@ import { PreparationPanel, availabilityLabels } from './PreparationPanel';
 import { deviceDisplayName } from '@/lib/audioRouting';
 
 interface HomePanelsProps {
+    homeActionInStrip?: boolean; destinationRequest?: number;
     onCheckOutput?: (anchor?: HTMLButtonElement) => void;
     /** 本番帯と共有する準備の状態。取得を二重にしないよう AppShell で1つだけ持つ。 */
     model: PreparationModel;
@@ -25,7 +26,7 @@ interface HomePanelsProps {
 
 // 準備の確認と経路の要約。声の調整と音の流れはチェーン列（SoundChain）に置く。
 // 入力メーターは本番帯（LiveStrip）に置き、ここでは重ねない。
-export function HomePanels({ model, audioReady, statusText, inputName, outputName,
+export function HomePanels({ homeActionInStrip, destinationRequest, model, audioReady, statusText, inputName, outputName,
     onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onListen, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onCheckOutput }: HomePanelsProps) {
     const t = useMessages();
     // 未設定は処理欄と主ボタンで示す。停止中のメーターや注記を重ねない。
@@ -35,13 +36,13 @@ export function HomePanels({ model, audioReady, statusText, inputName, outputNam
     const actualInput = model.observation.config?.input ?? inputName;
     const actualOutput = model.observation.config?.output ?? outputName;
     return <div className="mb-4 space-y-4">
-        <PreparationPanel model={model} audioReady={audioReady} onSettings={onOpenSettings} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
+        <PreparationPanel homeActionInStrip={homeActionInStrip} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
             onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText}
             devices={actualInput || actualOutput ? `${actualInput ? deviceDisplayName(actualInput) : t('master.unset')} → ${actualOutput ? deviceDisplayName(actualOutput) : t('master.unset')}` : undefined}
             signalSummary={<section aria-label={t('prep.signalPath')} className="space-y-2">
             <dl className="grid gap-3 sm:grid-cols-3 text-sm">
                 <div className="min-w-0"><dt className="text-muted-foreground">{t('home.input')}</dt><dd className="truncate font-medium" title={actualInput ?? undefined}>{actualInput ? deviceDisplayName(actualInput) : t('master.unset')}</dd></div>
-                <div className="min-w-0"><dt className="text-muted-foreground">{t('prep.processing')}</dt><dd role="status" className="font-medium">{statusText ?? t(availabilityLabels[model.observation.availability])}</dd></div>
+                {!homeActionInStrip && <div className="min-w-0"><dt className="text-muted-foreground">{t('prep.processing')}</dt><dd role="status" className="font-medium">{statusText ?? t(availabilityLabels[model.observation.availability])}</dd></div>}
                 <div className="min-w-0"><dt className="text-muted-foreground">{t('home.output')}</dt><dd className="truncate font-medium" title={actualOutput ?? undefined}>{actualOutput ? deviceDisplayName(actualOutput) : t('master.unset')}</dd></div>
             </dl>
             {configured && !configureIsPrimary && <button type="button" onClick={onOpenSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('home.changeDevices')}</button>}

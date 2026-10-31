@@ -87,6 +87,27 @@ const commonProps = {
     isLargeMeterOpen: false, currentHost: 'WASAPI', isEngineRunning: true, engineProcessReady: true,
 };
 
+it('設定済み停止の開始は1つで、連打を防ぎ、失敗時は設定へ案内する', async () => {
+    let reject!: (error: Error) => void;
+    const start = vi.fn(() => new Promise<void>((_, fail) => { reject = fail; }));
+    const settings = vi.fn();
+    render(<AppShell {...commonProps} currentInput="Mic" currentOutput="Out" isEngineRunning={false} onStartAudio={start} onOpenSettings={settings}><p>rack</p></AppShell>);
+    const button = screen.getByRole('button', { name: '音声を開始' });
+    expect(screen.getByRole('button', { name: '入出力を変更' })).not.toHaveClass('bg-primary');
+    fireEvent.click(button); fireEvent.click(button);
+    expect(start).toHaveBeenCalledOnce();
+    expect(button).toBeDisabled();
+    expect(button).toHaveTextContent('音声を開始中');
+    await act(async () => { reject(new Error('Device missing')); });
+    expect(button).toBeEnabled();
+    const error = screen.getByRole('alert');
+    expect(error).toHaveTextContent('音声を開始できませんでした');
+    fireEvent.click(within(error).getByRole('button', { name: '入出力を変更' }));
+    expect(settings).toHaveBeenCalledOnce();
+    act(() => window.dispatchEvent(new Event('audio-settings-started')));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
 it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態・外部変更を保ち、失敗時は反転しない（%s）', async locale => {
     const bypass = vi.spyOn(audioApi, 'setGlobalBypass').mockResolvedValue(undefined);
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
@@ -96,6 +117,7 @@ it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態
     expect(compare.closest('footer')).not.toBeNull();
     expect(compare).toHaveAttribute('aria-pressed', 'false');
     await act(async () => fireEvent.click(compare));
+    expect(compare).not.toHaveClass('animate-pulse');
     expect(bypass).toHaveBeenCalledWith(true);
     expect(compare).toHaveAttribute('aria-pressed', 'true');
     expect(compare).toHaveAccessibleDescription(message(locale, 'header.vstOff'));
