@@ -104,7 +104,8 @@ class Probe:
 
 
 def main():
-    if len(sys.argv) not in (4, 5) or (len(sys.argv) == 5 and sys.argv[1] != "--tree"):
+    if not ((len(sys.argv) == 5 and sys.argv[1] == "--tree")
+            or (len(sys.argv) == 4 and sys.argv[1] != "--tree")):
         raise SystemExit("usage: native_audio_probe.py BINARY PLAN_JSON OUTPUT_DIR | --tree PID SECONDS OUTPUT_JSON")
     if sys.argv[1] == "--tree":
         root = psutil.Process(int(sys.argv[2]))
