@@ -1,4 +1,5 @@
 pub mod callback_diagnostics;
+mod channel_scan;
 pub mod core;
 mod deferred_drop;
 pub mod devices;
