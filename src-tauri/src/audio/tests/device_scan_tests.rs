@@ -1,4 +1,3 @@
-
 use super::*;
 fn ticket(generation: u64, token: u64) -> DeviceScanTicket {
     DeviceScanTicket {

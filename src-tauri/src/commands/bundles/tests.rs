@@ -1,4 +1,3 @@
-
 use super::*;
 #[test]
 fn recovery_device_identity_rejects_same_name_replacement_and_missing_id() {

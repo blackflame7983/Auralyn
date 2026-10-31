@@ -1,4 +1,3 @@
-
 use super::*;
 #[test]
 fn live_output_read_and_invalid_configuration_never_spawn_or_invalidate_conditions() {
