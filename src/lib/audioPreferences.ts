@@ -11,6 +11,15 @@ export interface AudioPreferences {
     outputId?: string;
 }
 
+// 完全な機器選択でIDが不明なら古いIDを引き継がず、ペアだけの部分更新では保持する。
+export function deviceIdsForUpdate(previous: AudioPreferences, update: Partial<AudioPreferences> & { host: string }) {
+    const changedHost = previous.host.toLowerCase() !== update.host.toLowerCase();
+    const resolve = (side: 'input' | 'output', id: 'inputId' | 'outputId') =>
+        id in update ? update[id] : changedHost || (update[side] !== undefined && update[side] !== previous[side])
+            ? undefined : previous[id];
+    return { inputId: resolve('input', 'inputId'), outputId: resolve('output', 'outputId') };
+}
+
 export function readAudioPreferences(): AudioPreferences | null {
     try {
         const value: unknown = JSON.parse(localStorage.getItem('vst_host_audio_config') ?? 'null');
