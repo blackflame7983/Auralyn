@@ -162,7 +162,7 @@ test('再評価用の正常ホームは警告状態と分け、縦長でも出�
     });
     await expect(page.locator('#vst-panel-toggle')).toHaveText('追加');
     await expect(page.getByRole('region', { name: 'VST保存済み構成の保護', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'ミュート・出力音量を確認', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true })).toHaveCount(0);
     for (const [width, height] of [[1024, 768], [1920, 1080], [1200, 1849]]) {
         await page.setViewportSize({ width, height });
         await page.screenshot({ path: testInfo.outputPath(`healthy-${width}x${height}.png`) });

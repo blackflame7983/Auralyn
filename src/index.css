@@ -377,6 +377,9 @@
 @container (min-width: 1080px) {
   .live-meter-pair { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1rem; }
   .live-output-summary { display: flex; }
+  /* 大型メーターが見えている間は同じ出力レベルを本番帯に重ねて出さない。出力音量はフッターで操作できる。 */
+  .app-shell[data-large-meter]:not([data-meter-suspended]) .live-meter-pair { display: block; }
+  .app-shell[data-large-meter]:not([data-meter-suspended]) .live-output-summary { display: none; }
 }
 .sound-chain-row {
   grid-template-columns: minmax(10rem, 12rem) minmax(0, 1fr) auto;

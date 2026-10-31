@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { MdArrowForward, MdMic, MdMusicNote, MdVolumeOff, MdVolumeUp } from 'react-icons/md';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useBeginnerMode } from '@/hooks/useBeginnerMode';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
@@ -28,6 +29,8 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
     const reading = useSharedMeter(running, 'input');
     const outputReading = useSharedMeter(running, 'output');
     const [purpose] = useDisplayPurpose();
+    // dBFS 値は数値の詳細でだけ出す。無音・停止などは数値の詳細によらず言葉で示す。
+    const [simple] = useBeginnerMode();
     const music = purpose === 'music';
     const { usage, receiver } = model.context;
     const muted = model.observation.availability === 'muted';
@@ -39,7 +42,7 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
         <div className="live-meter-pair">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
             <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
-            <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues />
+            <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues numbers={!simple} />
             {/* 無音は「声が来ていない」本番事故の手がかりなので、dBFS 値だけにせず言葉でも示す。 */}
             {/* マイク音量と音量チェックはメーターに関わる操作なので、上部に単独で置かずメーターの横に置く。 */}
             <InputGainControl disabled={controlsDisabled} />
@@ -51,7 +54,7 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-md p-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
                 <MdVolumeUp aria-hidden="true" className="h-5 w-5" />{t('meter.output')}
             </button></TooltipTrigger><TooltipContent>{t('home.adjustOutput')}</TooltipContent></Tooltip></TooltipProvider>
-            <MeterVisual reading={outputReading} label={t('meter.output')} orientation="horizontal" height={32} scale showValues />
+            <MeterVisual reading={outputReading} label={t('meter.output')} orientation="horizontal" height={32} scale showValues numbers={!simple} />
         </div>
         </div>
         <div data-live-routing className="flex flex-wrap items-center gap-x-3 gap-y-2">

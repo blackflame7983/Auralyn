@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { audioApi, EngineRuntimeStats } from '../../api/audio';
 import { useSharedMeter } from '../features/LevelMeter/MeterContext';
 import { MeterVisual } from '../features/LevelMeter/MeterVisual';
+import { useBeginnerMode } from '@/hooks/useBeginnerMode';
 import { Slider } from '@/components/ui/slider';
 import * as Popover from '@radix-ui/react-popover';
 import { AudioQueueDetails } from './AudioQueueDetails';
@@ -34,6 +35,7 @@ interface MasterBarProps {
 
 export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, outputGainAnchor, onOutputGainClose }) => {
     const t = useMessages();
+    const [simple] = useBeginnerMode();
     const meter = useSharedMeter(isRunning, 'output');
     const isClipping = meter.clipped;
     const [stats, setStats] = useState<EngineRuntimeStats | null>(null);
@@ -259,7 +261,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
 
             {/* Meters */}
             <div className="flex shrink-0 gap-1 h-8 items-end pb-1">
-                <MeterVisual reading={meter} label={t('meter.output')} width={12} height={28} showValues />
+                <MeterVisual reading={meter} label={t('meter.output')} width={12} height={28} showValues numbers={!simple} />
             </div>
 
             {/* Master Output Volume */}

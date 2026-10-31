@@ -69,3 +69,13 @@ it('入力が無音のときは dBFS 値だけにせず「無音」と言葉で�
     render(<LiveStrip model={fixture()} running />);
     expect(screen.getByRole('region', { name: '本番' })).toHaveTextContent(message('ja', 'meter.state.silent'));
 });
+
+it.each([[null, false], ['true', false], ['false', true]])('数値の詳細の保存値=%s では dBFS 値の表示=%s とし、メーターの読み上げ値は保つ', (stored, shown) => {
+    meter.state = 'live';
+    if (stored !== null) localStorage.setItem('vst_host_beginner_mode', stored);
+    render(<LiveStrip model={fixture()} running />);
+    const strip = screen.getByRole('region', { name: '本番' });
+    // 目盛りの読み上げ用文字列（sr-only）にも dBFS が入るため、値の書式で判定する。
+    if (shown) expect(strip).toHaveTextContent(/(∞|\d\.\d) dBFS/); else expect(strip).not.toHaveTextContent(/(∞|\d\.\d) dBFS/);
+    expect(within(strip).getByRole('meter', { name: message('ja', 'home.inputLevel') })).toHaveAttribute('aria-valuetext', expect.stringContaining('dBFS'));
+});

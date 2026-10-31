@@ -2,8 +2,10 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { MdWarningAmber } from 'react-icons/md';
 import { CLIP_LEVEL, WARNING_LEVEL, meterStatusLabel, toDbfs, type MeterReading } from '@/hooks/useMeterLevels';
 
-export function MeterVisual({ reading, label, orientation = 'vertical', height = 32, width = 8, showValues = false, scale = false, stackValues = false }: {
-    reading: MeterReading; label: string; orientation?: 'horizontal' | 'vertical'; height?: number | string; width?: number; showValues?: boolean; scale?: boolean; stackValues?: boolean;
+export function MeterVisual({ reading, label, orientation = 'vertical', height = 32, width = 8, showValues = false, numbers = true, scale = false, stackValues = false }: {
+    reading: MeterReading; label: string; orientation?: 'horizontal' | 'vertical'; height?: number | string; width?: number; showValues?: boolean;
+    /** false では dBFS 値を出さず、無音・停止などの状態だけを言葉で示す（数値の詳細 OFF）。 */
+    numbers?: boolean; scale?: boolean; stackValues?: boolean;
 }) {
     const t = useMessages();
     const current = reading.state === 'live' || reading.state === 'silent';
@@ -38,7 +40,7 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
             </div>}
         </div>
         {/* 桁数・無音・更新待ちでバーの長さを変えないよう、値の欄は常に同じ幅と高さを確保する。 */}
-        {showValues && <span title={text} className="inline-block h-4 w-[12ch] shrink-0 truncate text-right text-xs leading-4 font-mono tabular-nums text-muted-foreground">{orientation === 'horizontal' && reading.state !== 'live' ? t(meterStatusLabel(reading.state)) : current ? text : ''}</span>}
+        {showValues && (numbers || orientation === 'horizontal') && <span title={text} className={`inline-block h-4 ${numbers ? 'w-[12ch] font-mono tabular-nums' : 'w-[5em]'} shrink-0 truncate text-right text-xs leading-4 text-muted-foreground`}>{orientation === 'horizontal' && reading.state !== 'live' ? t(meterStatusLabel(reading.state)) : current && numbers ? text : ''}</span>}
         {scale && <span className="sr-only">0, −6, −12, −24, −48 dBFS</span>}
         {/* 警告の有無で横バーの幅・縦バーの高さを変えない。解除操作の場所も固定する。 */}
         <span className="inline-flex h-5 w-6 shrink-0 items-center justify-center">
