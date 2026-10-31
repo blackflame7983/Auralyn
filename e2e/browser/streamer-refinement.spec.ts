@@ -118,6 +118,8 @@ test('出力音量の失敗は小窓でも再試行でき、確認できるま�
     await popup.getByRole('slider').press('ArrowRight');
     await expect(popup.getByRole('alert')).toContainText('音量を確認できません');
     expect(await page.evaluate(() => localStorage.getItem('vst_host_output_gain'))).not.toBe('101');
+    // 定期取得で表示が旧値へ戻っても、再試行は失敗した101%を送る。
+    await expect(popup.getByRole('slider')).toHaveAttribute('aria-valuenow', '100');
     await page.screenshot({ path: testInfo.outputPath('output-volume-failure.png') });
     await popup.getByRole('button', { name: '再試行', exact: true }).click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem('vst_host_output_gain'))).toBe('101');
