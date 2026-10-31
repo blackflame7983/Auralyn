@@ -42,6 +42,7 @@ export interface Preset {
     schemaVersion?: number;
     name: string;
     plugins: PresetPlugin[];
+    pluginsIncluded?: boolean;
     audioConfig?: ProfileAudioConfig;
     noiseControl?: ProfileNoiseControl;
     builtinFx?: ProfileBuiltinFx;

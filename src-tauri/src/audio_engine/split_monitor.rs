@@ -299,7 +299,34 @@ impl Drop for Controller {
     }
 }
 impl Monitor {
+    #[cfg(test)]
     pub fn render(&mut self, data: &mut [f32], info: Option<&cpal::OutputCallbackInfo>) {
+        self.render_inner(data, info, None);
+    }
+    pub(crate) fn render_gated(
+        &mut self,
+        data: &mut [f32],
+        info: Option<&cpal::OutputCallbackInfo>,
+        gate: &super::mode_silence::Shared,
+    ) {
+        let ticket = gate.ticket();
+        if gate.drain_monitor_input() {
+            self.input.skip(self.input.occupied_len());
+            self.input_buffer.fill(0.0);
+            if let Some(timing) = &mut self.timing {
+                timing.invalidate_recovery();
+            }
+            gate.monitor_input_drained();
+        }
+        self.render_inner(data, info, Some(gate));
+        gate.finish(super::mode_silence::MONITOR, ticket, data);
+    }
+    fn render_inner(
+        &mut self,
+        data: &mut [f32],
+        info: Option<&cpal::OutputCallbackInfo>,
+        gate: Option<&super::mode_silence::Shared>,
+    ) {
         let begin = self.timing.as_ref().map_or(0, |t| t.now_ns());
         data.fill(0.0);
         self.peak.sync(&self.peak_shared);
@@ -399,7 +426,9 @@ impl Monitor {
             });
             self.shared.offered.fetch_add(1, Ordering::Relaxed);
             let recovery_gain = self.recovery.next_gain();
-            if !self.shared.failed.load(Ordering::Acquire) {
+            if !self.shared.failed.load(Ordering::Acquire)
+                && !gate.is_some_and(|g| g.pause_sources())
+            {
                 if self.broadcast.vacant_len() >= 2 && self.recovery_gains.vacant_len() >= 1 {
                     // gainを先に公開し、PCMを読めるworkerには必ず同じframeの係数も届く。
                     let _ = self.recovery_gains.try_push(recovery_gain);
@@ -459,12 +488,30 @@ pub struct Worker {
     handle: Option<std::thread::JoinHandle<()>>,
 }
 impl Worker {
+    #[cfg(test)]
     pub fn start(
+        process: impl FnMut(&mut [f32]) + Send + 'static,
+        queue: Arc<HeapRb<f32>>,
+        controls: Arc<Controls>,
+        main_failed: Arc<AtomicBool>,
+        frames: usize,
+    ) -> Result<Self> {
+        Self::start_gated(
+            process,
+            queue,
+            controls,
+            main_failed,
+            frames,
+            Arc::default(),
+        )
+    }
+    pub(crate) fn start_gated(
         mut process: impl FnMut(&mut [f32]) + Send + 'static,
         queue: Arc<HeapRb<f32>>,
         controls: Arc<Controls>,
         main_failed: Arc<AtomicBool>,
         frames: usize,
+        gate: Arc<super::mode_silence::Shared>,
     ) -> Result<Self> {
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = stop.clone();
@@ -476,11 +523,14 @@ impl Worker {
                     && !main_failed.load(Ordering::Acquire)
                     && !controls.failed.load(Ordering::Acquire)
                 {
-                    if queue.occupied_len() < buffer.len() {
+                    if queue.occupied_len() < buffer.len() && !gate.drain_worker() {
                         std::thread::sleep(std::time::Duration::from_millis(1));
                         continue;
                     }
                     process(&mut buffer);
+                    if gate.pause_sources() {
+                        std::thread::sleep(std::time::Duration::from_millis(1));
+                    }
                 }
             })?;
         Ok(Self {
@@ -556,6 +606,60 @@ mod tests {
             broadcast_consumer,
             gains,
         )
+    }
+    #[test]
+    fn mode_silence_monitor_acks_after_zero_output_and_stops_worker_input_before_drain() {
+        use crate::audio_engine::mode_silence::{self, Request};
+        let (_controller, mut renderer, mut input, queue, _consumer, _gains) = fixture();
+        let mut barrier = mode_silence::Controller::default();
+        let request = |finish| {
+            if finish {
+                Request::Finish { id: "test".into() }
+            } else {
+                Request::Begin { id: "test".into() }
+            }
+        };
+        barrier
+            .request(request(false), 1, true, true, true, false)
+            .unwrap();
+        for _ in 0..256 {
+            input.try_push(0.2).unwrap();
+            input.try_push(0.3).unwrap();
+        }
+        let mut output = [1.0; 256];
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| renderer.get_mut().render_gated(
+                &mut output,
+                None,
+                &barrier.shared
+            )),
+            (0, 0)
+        );
+        assert_eq!(output, [0.0; 256]);
+        assert!(queue.occupied_len() > 0);
+        barrier
+            .shared
+            .finish(mode_silence::MAIN, barrier.shared.ticket(), &mut output);
+        barrier
+            .shared
+            .finish(mode_silence::SINK, barrier.shared.ticket(), &mut output);
+        barrier
+            .request(request(true), 1, true, true, true, false)
+            .unwrap();
+        let queued = queue.occupied_len();
+        renderer
+            .get_mut()
+            .render_gated(&mut output, None, &barrier.shared);
+        assert_eq!(queue.occupied_len(), queued);
+        assert!(!barrier.shared.drain_worker());
+        barrier.shared.source_finished(mode_silence::INPUT);
+        assert!(!barrier.shared.drain_worker());
+        // 入力callbackの停止ACK後に残りのupstream PCMも破棄してからmonitorをACKする。
+        renderer
+            .get_mut()
+            .render_gated(&mut output, None, &barrier.shared);
+        assert_eq!(renderer.get_mut().input.occupied_len(), 0);
+        assert!(barrier.shared.drain_worker());
     }
     #[test]
     fn common_channel_gain_runs_once_and_monitor_has_no_rt_allocation() {

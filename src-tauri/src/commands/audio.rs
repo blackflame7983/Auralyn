@@ -69,6 +69,7 @@ pub(crate) async fn save_vst_recovery_profile(
             return Err("復旧名または件数が不正です".into());
         }
         let preset = vst_host::presets::Preset {
+            plugins_included: Some(true),
             schema_version: 1,
             name: name.clone(),
             plugins,

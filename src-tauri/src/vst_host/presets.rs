@@ -73,6 +73,8 @@ pub struct Preset {
     #[serde(default)]
     pub plugins: Vec<PresetPlugin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugins_included: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio_config: Option<ProfileAudioConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub noise_control: Option<ProfileNoiseControl>,
@@ -171,6 +173,10 @@ pub struct DeviceSubstitutions {
 }
 
 impl Preset {
+    pub fn includes_plugin_category(&self) -> bool {
+        self.plugins_included.unwrap_or(!self.plugins.is_empty())
+    }
+
     pub fn effective_schema_version(&self) -> u32 {
         if self.schema_version == 0 {
             1
@@ -182,7 +188,7 @@ impl Preset {
     pub fn to_meta(&self) -> ProfileMeta {
         ProfileMeta {
             name: self.name.clone(),
-            has_plugins: !self.plugins.is_empty(),
+            has_plugins: self.includes_plugin_category(),
             has_audio_config: self.audio_config.is_some(),
             has_noise_control: self.noise_control.is_some(),
             has_builtin_fx: self.builtin_fx.is_some(),
@@ -204,6 +210,7 @@ impl Preset {
             || categories.include_builtin_fx;
 
         Preset {
+            plugins_included: Some(categories.include_plugins),
             schema_version: if has_v2 { 2 } else { 1 },
             name,
             plugins: if categories.include_plugins {
@@ -241,7 +248,7 @@ pub fn db_to_linear(db: f32) -> f32 {
     10f32.powf(db / 20.0)
 }
 
-fn preset_path(config_dir: &Path, name: &str) -> Result<std::path::PathBuf, String> {
+pub(crate) fn preset_path(config_dir: &Path, name: &str) -> Result<std::path::PathBuf, String> {
     // インポート内の名前も外部入力。保存先からの逸脱とWindowsの特殊名を拒否する。
     let stem = name.split('.').next().unwrap_or("").to_ascii_uppercase();
     let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
@@ -374,6 +381,42 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
+    fn plugin_category_distinguishes_legacy_empty_and_explicit_empty() {
+        let legacy: Preset = serde_json::from_str(r#"{"name":"old","plugins":[]}"#).unwrap();
+        assert!(!legacy.includes_plugin_category());
+        assert!(!legacy.to_meta().has_plugins);
+        let explicit = Preset::build_from_parts(
+            "empty".into(),
+            &ProfileSaveCategories {
+                include_plugins: true,
+                ..Default::default()
+            },
+            vec![],
+            None,
+            None,
+            None,
+        );
+        assert!(explicit.includes_plugin_category());
+        assert!(explicit.to_meta().has_plugins);
+        assert_eq!(
+            serde_json::to_value(&explicit).unwrap()["pluginsIncluded"],
+            true
+        );
+        let mut legacy_nonempty = legacy;
+        legacy_nonempty.plugins.push(PresetPlugin {
+            path: "x".into(),
+            name: "x".into(),
+            vendor: "".into(),
+            version: "".into(),
+            enabled: true,
+            muted: false,
+            gain: 1.0,
+            state: None,
+        });
+        assert!(legacy_nonempty.includes_plugin_category());
+    }
+
+    #[test]
     fn singing_profile_roundtrip_and_legacy_missing_parameters() {
         let old: ProfileBuiltinFx =
             serde_json::from_str(r#"{"enabled":true,"preset":"warm","amount":0.7}"#).unwrap();
@@ -486,6 +529,7 @@ mod tests {
     #[test]
     fn v2_preset_roundtrip() {
         let preset = Preset {
+            plugins_included: None,
             schema_version: 2,
             name: "game".to_string(),
             plugins: vec![],

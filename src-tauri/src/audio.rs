@@ -1,6 +1,7 @@
 pub(crate) mod conditions;
 pub(crate) mod frontend_bootstrap;
 mod live_modes;
+mod mode_vst;
 mod replies;
 mod session_rack;
 use anyhow::{anyhow, Result};
@@ -177,6 +178,7 @@ pub struct AudioHost {
     last_config_path: PathBuf,
     maintenance: bool,
     live_modes: live_modes::HostModes,
+    mode_vst: mode_vst::State,
     voice_activity: Arc<AtomicBool>,
     reader_active: Arc<AtomicBool>,
     child: Option<Child>,
@@ -303,11 +305,14 @@ impl AudioHost {
         }
     }
     pub fn new(config_dir: PathBuf) -> Self {
+        let mode_vst = mode_vst::State::new(&config_dir);
+        let recovery_muted = mode_vst.blocked();
         Self {
             conditions: Arc::new(conditions::Conditions::default()),
             last_config_path: config_dir.join("last_audio_config.json"),
             maintenance: false,
             live_modes: live_modes::HostModes::new(&config_dir),
+            mode_vst,
             voice_activity: Arc::new(AtomicBool::new(false)),
             reader_active: Arc::new(AtomicBool::new(false)),
             child: None,
@@ -324,7 +329,7 @@ impl AudioHost {
             frontend_bootstrap: frontend_bootstrap::Startup::default(),
             device_scan: None,
             active_config: None,
-            is_global_muted: false,
+            is_global_muted: recovery_muted,
             engine_tuning: EngineTuningConfig::default(),
             #[cfg(windows)]
             engine_job: None,
@@ -388,6 +393,7 @@ impl AudioHost {
     }
 
     fn ensure_engine_running(&mut self) -> Result<()> {
+        self.guard_mode_vst()?;
         if self.maintenance {
             return Err(anyhow!("更新を適用中のため音声操作はできません。"));
         }
@@ -736,6 +742,7 @@ impl AudioHost {
     }
 
     fn execute_command(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
+        self.guard_mode_vst()?;
         if conditions::command_changes(&cmd) {
             self.frontend_bootstrap.cancel();
             match &cmd {
@@ -792,6 +799,7 @@ impl AudioHost {
     }
 
     fn execute_running_command_inner(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
+        self.guard_mode_vst()?;
         anyhow::ensure!(
             self.reader_active.load(Ordering::Acquire),
             "音声エンジンとの通信が終了しました"
@@ -1103,6 +1111,7 @@ impl AudioHost {
         input_id: Option<String>,
         output_id: Option<String>,
     ) -> Result<AudioConfig> {
+        self.guard_mode_vst()?;
         if let Some(controls) = initial_controls {
             controls.validate().map_err(|e| anyhow!(e))?;
         }
@@ -1237,6 +1246,11 @@ impl AudioHost {
     }
 
     pub fn stop(&mut self) -> Result<()> {
+        if self.mode_vst.blocked() {
+            self.cancel_mode_vst("利用者が音声を停止しました");
+            self.kill_engine();
+            return Ok(());
+        }
         self.frontend_bootstrap.cancel();
         self.frontend_bootstrap.session_claimed = true;
         if self.reap_confirmed_stopped_connection()? {
@@ -1351,6 +1365,18 @@ impl AudioHost {
     }
 
     pub fn set_global_mute(&mut self, active: bool) -> Result<()> {
+        if self.mode_vst.blocked() {
+            anyhow::ensure!(active, "切替・復旧の完了後にミュートを解除してください");
+            self.is_global_muted = true;
+            self.cancel_mode_vst("緊急ミュートで切替を中止しました");
+            self.kill_engine();
+            if let Ok(emitter) = self.emitter.lock() {
+                if let Some(handle) = emitter.as_ref() {
+                    let _ = handle.emit("global-mute-changed", true);
+                }
+            }
+            return Ok(());
+        }
         match self.execute_command(IpcCommand::SetGlobalMute { active })? {
             IpcResponse::Success => {
                 self.is_global_muted = active;
@@ -2116,6 +2142,9 @@ impl AudioHost {
     }
 
     pub fn kill_engine(&mut self) {
+        if self.mode_vst.busy() {
+            self.cancel_mode_vst("音声エンジンが終了したため手動復旧が必要です");
+        }
         if self.child.is_some() {
             self.frontend_bootstrap.cancel();
             self.frontend_bootstrap.session_claimed = true;
@@ -2150,6 +2179,10 @@ impl AudioHost {
     }
 
     fn warmup_once(&mut self) -> Result<()> {
+        if self.mode_vst.blocked() {
+            self.require_explicit_start();
+            return Ok(());
+        }
         if !self.prepare_warmup(Self::ensure_engine_running)? {
             return Ok(());
         }

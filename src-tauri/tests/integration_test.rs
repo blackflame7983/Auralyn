@@ -30,6 +30,25 @@ fn sidecar_ipc_smoke_without_audio_device() {
         Response::Success
     ));
     assert!(matches!(engine.request(Command::Stop), Response::Success));
+    // 停止中を「無音確認済み」とは返さず、Host専用の構成操作もsidecarへ通さない。
+    assert!(matches!(
+        engine.request(Command::ModeSilence {
+            request: vst_host_lib::audio_engine::mode_silence::Request::Begin {
+                id: "no-stream".into()
+            }
+        }),
+        Response::Error(_)
+    ));
+    assert!(matches!(
+        engine.request(Command::LiveMode {
+            request: vst_host_lib::audio_engine::live_modes::Request::BindProfile {
+                expected_version: "1".into(),
+                mode: vst_host_lib::audio_engine::live_modes::Mode::Singing,
+                name: None
+            }
+        }),
+        Response::Error(_)
+    ));
     engine.finish();
 }
 

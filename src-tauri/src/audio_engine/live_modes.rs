@@ -22,6 +22,8 @@ pub struct Definitions {
     pub version: String,
     pub singing: Option<Config>,
     pub talk: Option<Config>,
+    #[serde(default)]
+    pub profiles: ProfileBindings,
 }
 impl Default for Definitions {
     fn default() -> Self {
@@ -30,8 +32,23 @@ impl Default for Definitions {
             version: "1".into(),
             singing: None,
             talk: None,
+            profiles: ProfileBindings::default(),
         }
     }
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProfileBindings {
+    #[serde(default)]
+    pub singing: Option<ProfileBinding>,
+    #[serde(default)]
+    pub talk: Option<ProfileBinding>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProfileBinding {
+    pub name: String,
+    pub revision: String,
 }
 impl Definitions {
     pub fn validate(mut self) -> Result<Self, String> {
@@ -43,6 +60,19 @@ impl Definitions {
                 .is_none_or(|version| version == 0)
         {
             return Err("本番モードの保存形式を確認してください".into());
+        }
+        for binding in [&self.profiles.singing, &self.profiles.talk]
+            .into_iter()
+            .flatten()
+        {
+            if binding.name.len() > 255
+                || crate::vst_host::presets::preset_path(std::path::Path::new(""), &binding.name)
+                    .is_err()
+                || binding.revision.len() != 64
+                || !binding.revision.bytes().all(|b| b.is_ascii_hexdigit())
+            {
+                return Err("プロファイル参照が不正です".into());
+            }
         }
         self.singing = self.singing.map(Config::normalize).transpose()?;
         self.talk = self.talk.map(Config::normalize).transpose()?;
@@ -131,6 +161,14 @@ pub enum Request {
         singing: Option<Config>,
         talk: Option<Config>,
     },
+    BindProfile {
+        expected_version: String,
+        mode: Mode,
+        name: Option<String>,
+    },
+    Recover {
+        expected_epoch: String,
+    },
     SingingOn {
         intent: Intent,
     },
@@ -159,6 +197,17 @@ pub struct Snapshot {
     pub natural_tail: bool,
     pub definitions: Definitions,
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transaction: Option<TransactionSnapshot>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionSnapshot {
+    pub id: String,
+    pub phase: String,
+    pub target: Option<Mode>,
+    pub error: Option<String>,
+    pub recovery_available: bool,
 }
 #[derive(Default)]
 pub(crate) struct Shared {
@@ -309,6 +358,7 @@ impl Controller {
             natural_tail: running && self.target == Some(Mode::Talk),
             definitions: self.definitions.clone(),
             error: None,
+            transaction: None,
         }
     }
 }
@@ -520,6 +570,24 @@ pub(crate) fn guard(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn profile_bindings_accept_legacy_and_validate_name_and_revision() {
+        let old: Definitions =
+            serde_json::from_str(r#"{"schemaVersion":1,"version":"1","singing":null,"talk":null}"#)
+                .unwrap();
+        assert!(old.profiles.singing.is_none());
+        let mut definitions = old;
+        definitions.profiles.singing = Some(ProfileBinding {
+            name: "歌用".into(),
+            revision: "a".repeat(64),
+        });
+        assert!(definitions.clone().validate().is_ok());
+        definitions.profiles.singing.as_mut().unwrap().name = "../bad".into();
+        assert!(definitions.clone().validate().is_err());
+        definitions.profiles.singing.as_mut().unwrap().name = "valid".into();
+        definitions.profiles.singing.as_mut().unwrap().revision = "z".repeat(64);
+        assert!(definitions.validate().is_err());
+    }
     fn definitions() -> Definitions {
         Definitions {
             singing: Some(Config {

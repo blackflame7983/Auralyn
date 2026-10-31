@@ -3,7 +3,7 @@ import { message, type MessageKey } from '@/i18n/messages';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { builtinApi } from '@/api/builtinEffects';
-import { liveModesApi, type LiveMode, type LiveModeSnapshot } from '@/api/liveModes';
+import { liveModesApi, transactionBlocksChanges, type LiveMode, type LiveModeSnapshot } from '@/api/liveModes';
 import { rackRestoreBusy, useRackRestoreBusy } from '@/lib/liveRouting';
 
 type LiveNotice = { key: MessageKey; reason?: keyof typeof clientKeys; rawDetail?: string };
@@ -47,8 +47,8 @@ export function useLiveModes(externalBusy = false) {
         update();
         return () => { active = false; serial.current++; clearInterval(timer); document.removeEventListener('visibilitychange', update); void event.then(stop => stop()).catch(() => {}); };
     }, [users > 0, refresh]);
-    const change = async (action: () => Promise<LiveModeSnapshot>) => {
-        if (writing.current) return false;
+    const change = async (action: () => Promise<LiveModeSnapshot>, recovery = false) => {
+        if (writing.current || (!recovery && transactionBlocksChanges(current.current?.transaction))) return false;
         if (externalBusy || rackRestoreBusy()) { setError({ key: 'liveNotices.restoring' }); return false; }
         writing.current = true; serial.current++; setBusy(true); setError(null);
         try {
@@ -62,7 +62,10 @@ export function useLiveModes(externalBusy = false) {
         } finally { writing.current = false; if (mounted.current) setBusy(false); }
     };
     const error = errorNotice ? [t(errorNotice.key), errorNotice.reason ? t(clientKeys[errorNotice.reason]) : ''].filter(Boolean).join(' ') : '';
-    return { activate, snapshot, busy: busy || rackBusy || externalBusy, error, errorDetail: errorNotice?.rawDetail, refresh,
+    const transactionBusy = Boolean(snapshot?.transaction && !['failed', 'recovery_required'].includes(snapshot.transaction.phase));
+    return { activate, snapshot, changesBlocked: transactionBlocksChanges(snapshot?.transaction), busy: busy || rackBusy || externalBusy || transactionBusy, recoveryBusy: busy || rackBusy || externalBusy, error, errorDetail: errorNotice?.rawDetail, refresh,
+        bindProfile: (mode: LiveMode, name: string | null) => current.current ? change(() => liveModesApi.request({ action: 'bind_profile', expectedVersion: current.current!.definitions.version, mode, name })) : Promise.resolve(false),
+        recover: () => current.current ? change(() => liveModesApi.request({ action: 'recover', expectedEpoch: current.current!.epoch }), true) : Promise.resolve(false),
         select: (mode: LiveMode) => current.current ? change(() => liveModesApi.select(mode, current.current!.epoch)) : Promise.resolve(),
         protect: (armed: boolean) => current.current ? change(() => liveModesApi.protect(armed, current.current!.epoch)) : Promise.resolve(),
         saveApplied: (mode: LiveMode, disableReverb = false) => change(async () => {

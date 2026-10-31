@@ -265,6 +265,7 @@ pub fn run() {
             app.manage(audio::conditions::ConditionState(audio_host.conditions()));
             app.manage(audio::AudioState(Arc::new(Mutex::new(audio_host))));
             let state = app.state::<audio::AudioState>();
+            audio::AudioHost::start_mode_vst_scheduler(&state.0);
 
             // Explicitly set window icon (Fix for taskbar icon issue)
             if let Some(window) = app.get_webview_window("main") {
