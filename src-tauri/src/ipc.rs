@@ -549,6 +549,9 @@ pub enum EngineEvent {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DeviceInfo {
+    /// 選択中の既定ch・F32の対応範囲。Noneは取得していないことを表す。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_rate_ranges: Option<Vec<(u32, u32)>>,
     pub name: String,
     pub host: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

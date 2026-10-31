@@ -1747,6 +1747,7 @@ mod tests {
     #[test]
     fn recovery_device_identity_rejects_same_name_replacement_and_missing_id() {
         let device = audio::AudioDevice {
+            sample_rate_ranges: None,
             name: "Mic".into(),
             host: "WASAPI".into(),
             id: Some("new-id".into()),

@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export interface AudioDevice {
+    /** 現在取得済みの既定ch/F32対応範囲。未取得と空の対応表を区別する。 */
+    sample_rate_ranges?: [number, number][];
     name: string;
     host: string;
     is_input: boolean;
@@ -355,6 +357,8 @@ export interface RoutingDiagnosticsReport {
 }
 
 export interface QueueDiagnosticsSnapshot {
+    /** PCMキュー1フレームの物理ch数。旧エンジンでは未取得。 */
+    queueChannels?: number | null;
     recoveryDiscardedFrames?: number | null; recoveryCount?: number | null;
     recoveryStatus?: number | null; recoveryTargetFrames?: number | null; recoveryHighFrames?: number | null;
     epoch: string;

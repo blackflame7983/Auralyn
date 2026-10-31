@@ -66,12 +66,16 @@ pub fn callback_lateness(elapsed: Duration, previous_frames: usize, rate: u32) -
     (late, late > period / 2)
 }
 
-pub fn normalized_channels(asio: bool, selected: [usize; 2], channels: usize) -> [usize; 2] {
-    if asio && selected.iter().all(|c| *c < channels) {
+pub fn normalized_channels(_asio: bool, selected: [usize; 2], channels: usize) -> [usize; 2] {
+    if selected.iter().all(|c| *c < channels) {
         selected
     } else {
         [0, usize::from(channels > 1)]
     }
+}
+
+pub fn valid_input_channels(running: bool, selected: [usize; 2], channels: usize) -> bool {
+    !running || selected.iter().all(|&channel| channel < channels)
 }
 
 #[cfg(test)]
@@ -102,6 +106,17 @@ mod tests {
         assert_eq!(normalized_channels(false, [6, 7], 1), [0, 0]);
         assert_eq!(normalized_channels(true, [6, 7], 22), [6, 7]);
         assert_eq!(normalized_channels(true, [6, 7], 2), [0, 1]);
+    }
+    #[test]
+    fn explicit_selection_rejects_out_of_range_only_when_running() {
+        assert!(valid_input_channels(false, [6, 7], 2));
+        assert!(valid_input_channels(true, [6, 7], 8));
+        assert!(valid_input_channels(true, [2, 2], 3));
+        assert!(valid_input_channels(true, [0, 0], 1));
+        assert!(!valid_input_channels(true, [6, 8], 8));
+        assert!(!valid_input_channels(true, [1, 0], 1));
+        assert_eq!(normalized_channels(true, [6, 7], 2), [0, 1]);
+        assert_eq!(normalized_channels(false, [2, 2], 3), [2, 2]);
     }
     #[test]
     fn diagnostics_report_actual_size_and_processing_without_allocating() {

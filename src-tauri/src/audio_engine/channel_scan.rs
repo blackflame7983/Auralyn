@@ -1,5 +1,33 @@
 use ringbuf::traits::Producer;
 
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+
+/// 制御側から入力callbackへ有効状態・世代・ゲインを渡す。
+pub(super) struct Control {
+    ticket: AtomicU64,
+    gain: AtomicU32,
+}
+impl Control {
+    pub(super) fn new(enabled: bool, generation: u64, gain: f32) -> Self {
+        Self {
+            ticket: AtomicU64::new((generation << 1) | u64::from(enabled)),
+            gain: AtomicU32::new(gain.to_bits()),
+        }
+    }
+    pub(super) fn set_enabled(&self, enabled: bool, generation: u64) {
+        self.ticket
+            .store((generation << 1) | u64::from(enabled), Ordering::Release);
+    }
+    pub(super) fn set_gain(&self, gain: f32) {
+        self.gain.store(gain.to_bits(), Ordering::Release);
+    }
+    pub(super) fn sync(&self, scan: &mut ChannelScan) -> f32 {
+        let ticket = self.ticket.load(Ordering::Acquire);
+        scan.set_enabled(ticket & 1 != 0, ticket >> 1);
+        f32::from_bits(self.gain.load(Ordering::Acquire))
+    }
+}
+
 const CHANNELS: usize = 32;
 
 #[derive(Clone, Copy)]
@@ -90,6 +118,31 @@ mod tests {
         traits::{Consumer, Split},
         HeapRb,
     };
+
+    #[test]
+    fn control_observes_physical_channels_with_gain_and_latest_generation() {
+        let control = Control::new(false, 0, 1.0);
+        let mut scan = ChannelScan::new(100, false, 0);
+        let (mut tx, mut rx) = HeapRb::new(2).split();
+        control.set_enabled(true, 1);
+        control.set_gain(0.5);
+        assert_eq!(
+            allocation_counts(|| {
+                let gain = control.sync(&mut scan);
+                scan.observe(7, -0.8 * gain);
+                scan.finish_block(10, &mut tx);
+            }),
+            (0, 0)
+        );
+        let snapshot = rx.try_pop().unwrap();
+        assert_eq!(snapshot.generation, 1);
+        assert_eq!(snapshot.peaks[7], 0.4);
+        control.set_enabled(false, 2);
+        control.sync(&mut scan);
+        scan.observe(7, 1.0);
+        scan.finish_block(10, &mut tx);
+        assert!(rx.try_pop().is_none());
+    }
 
     #[test]
     fn retains_early_signal_until_rate_dependent_interval() {

@@ -424,6 +424,7 @@ fn scan_devices() {
                         is_def
                     );
                     devices.push(DeviceInfo {
+                        sample_rate_ranges: None,
                         name: final_name,
                         host: host_name.clone(),
                         id,
@@ -485,6 +486,7 @@ fn scan_devices() {
                         is_def
                     );
                     devices.push(DeviceInfo {
+                        sample_rate_ranges: None,
                         name: final_name,
                         host: host_name.clone(),
                         id,

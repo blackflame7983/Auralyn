@@ -27,7 +27,9 @@ pub(super) mod lifecycle;
 mod session_rack;
 use super::auto_gain::{self, Session as GainSession};
 use super::auto_gain_preview;
-use super::callback_diagnostics::{callback_lateness, normalized_channels, CallbackDiagnostics};
+use super::callback_diagnostics::{
+    callback_lateness, normalized_channels, valid_input_channels, CallbackDiagnostics,
+};
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use lifecycle::{callback_owner, ControlOwner, StreamPair};
@@ -172,7 +174,6 @@ pub enum AudioThreadMessage {
     },
     StartAutoGainCapture(u64),
     SetInputChannels(usize, usize), // (Left, Right)
-    SetChannelScan(bool, u64),      // Enable/Disable background scanning
     StartVoiceCheckRecording {
         buffers: Arc<VoiceCheckBuffers>,
         max_frames: u64,
@@ -332,6 +333,7 @@ pub struct Engine {
     // デバイスの設定値とは別に、全VSTとcallbackで共有する確保済み処理容量。
     processing_block_capacity: usize,
     current_channels: usize,
+    current_input_channels: usize,
     current_host_is_asio: bool,
     callback_diagnostics: Arc<CallbackDiagnostics>,
     queue_diagnostics: Option<Arc<QueueDiagnostics>>,
@@ -346,6 +348,7 @@ pub struct Engine {
     input_channel_r: usize,
     scan_enabled: bool,
     scan_generation: u64,
+    scan_control: Arc<super::channel_scan::Control>,
     global_bypass: bool,
     global_mute: bool,
     noise_reduction_enabled: bool,
@@ -439,6 +442,7 @@ impl Engine {
             session_rack_revision: 0,
             processing_block_capacity: 0,
             current_channels: 2,
+            current_input_channels: 2,
             current_host_is_asio: false,
             callback_diagnostics: Arc::new(CallbackDiagnostics::default()),
             queue_diagnostics: None,
@@ -449,8 +453,9 @@ impl Engine {
             frame_timing: None,
             input_channel_l: 0,
             input_channel_r: 1,
-            scan_enabled: true, // Auto-enable scan for smart selector
+            scan_enabled: false,
             scan_generation: 0,
+            scan_control: Arc::new(super::channel_scan::Control::new(false, 0, 1.0)),
             global_bypass: false,
             global_mute: false,
             noise_reduction_enabled: false,
@@ -1614,6 +1619,7 @@ impl Engine {
                 self.builtin
                     .invalidate_history_with_reason(super::history::Reason::InputChanged);
                 self.voice_input_gain = value;
+                self.scan_control.set_gain(value);
                 self.queue_audio_msg(AudioThreadMessage::SetInputGain(value));
                 self.send_response(Response::Success);
             }
@@ -1720,11 +1726,14 @@ impl Engine {
                 Err(e) => self.send_error(e.to_string()),
             },
             Command::SetInputChannels { left, right } => {
-                let [left, right] = normalized_channels(
-                    self.current_host_is_asio,
+                if !valid_input_channels(
+                    self.output_stream.is_some(),
                     [left, right],
-                    self.current_channels,
-                );
+                    self.current_input_channels,
+                ) {
+                    self.send_error("入力チャンネルが範囲外です".into());
+                    return;
+                }
                 self.builtin
                     .invalidate_history_with_reason(super::history::Reason::InputChanged);
                 self.input_channel_l = left;
@@ -2102,24 +2111,16 @@ impl Engine {
 
     fn set_channel_scan(&mut self, active: bool) {
         self.scan_enabled = active;
-        self.scan_generation = self.scan_generation.wrapping_add(1);
-        // 停止中の設定は開始時に直接反映するため、旧世代をキューに残さない。
-        if self.command_tx.is_some() {
-            self.queue_audio_msg(AudioThreadMessage::SetChannelScan(
-                active,
-                self.scan_generation,
-            ));
-        }
+        self.scan_generation = self.scan_generation.wrapping_add(1) & (u64::MAX >> 1);
+        self.scan_control.set_enabled(active, self.scan_generation);
     }
 
-    fn prepare_channel_scan(&mut self) -> super::channel_scan::ChannelScan {
-        // 再開始後の最初のゼロも新しいスキャン結果として通知する。
-        self.scan_generation = self.scan_generation.wrapping_add(1);
-        super::channel_scan::ChannelScan::new(
-            self.current_sample_rate as u32,
-            self.scan_enabled,
-            self.scan_generation,
-        )
+    fn prepare_channel_scan(&mut self, input_rate: u32) -> super::channel_scan::ChannelScan {
+        self.scan_generation = self.scan_generation.wrapping_add(1) & (u64::MAX >> 1);
+        self.scan_control
+            .set_enabled(self.scan_enabled, self.scan_generation);
+        self.scan_control.set_gain(self.voice_input_gain);
+        super::channel_scan::ChannelScan::new(input_rate, self.scan_enabled, self.scan_generation)
     }
 
     fn queue_audio_msg(&mut self, msg: AudioThreadMessage) {
@@ -2400,7 +2401,6 @@ impl Engine {
         };
         self.current_channels = out_stream_config.channels as usize;
         self.current_host_is_asio = is_asio;
-        self.normalize_start_channels();
 
         // Force detection of Locked Buffer Size (ASIO)
         let default_max_block = out_capabilities.default_buffer_range().map(|(_, max)| max);
@@ -2441,6 +2441,9 @@ impl Engine {
             used_preferred_input
         );
 
+        self.current_input_channels = in_stream_config.channels as usize;
+        self.normalize_start_channels();
+
         // 今回の要求・固定サイズ検出後に全処理段の上限を揃える。
         let effective_fixed_block = match out_stream_config.buffer_size {
             cpal::BufferSize::Fixed(frames) => Some(frames),
@@ -2454,8 +2457,6 @@ impl Engine {
         {
             use crate::ipc::DeviceInfo;
 
-            let in_channels = in_capabilities.max_channels();
-            let out_channels = out_capabilities.max_channels();
             let in_buf_range = in_capabilities.buffer_range();
             let out_buf_range = out_capabilities.buffer_range();
             let in_name = input_name
@@ -2471,7 +2472,8 @@ impl Engine {
                 id: in_dev.id().ok().map(|id| id.to_string()),
                 is_input: true,
                 buffer_size_range: in_buf_range,
-                channels: in_channels,
+                channels: in_stream_config.channels,
+                sample_rate_ranges: in_capabilities.f32_rate_ranges(),
                 is_default: false,
             });
 
@@ -2481,7 +2483,8 @@ impl Engine {
                 id: out_dev.id().ok().map(|id| id.to_string()),
                 is_input: false,
                 buffer_size_range: out_buf_range,
-                channels: out_channels,
+                channels: out_stream_config.channels,
+                sample_rate_ranges: out_capabilities.f32_rate_ranges(),
                 is_default: false,
             });
         }
@@ -2515,18 +2518,21 @@ impl Engine {
         let mut rt_loudness = LoudnessMeter::new(self.current_sample_rate as u32);
         let mut loudness_start = super::queue_recovery::MeasurementGate::default();
 
-        let mut rt_channel_scan = self.prepare_channel_scan();
+        let mut rt_channel_scan = self.prepare_channel_scan(in_stream_config.sample_rate);
+        let scan_control = self.scan_control.clone();
         let channel_rb = HeapRb::<super::channel_scan::Snapshot>::new(16); // Small buffer for low-rate scan data
         let (mut channel_prod, channel_cons) = channel_rb.split();
         self.channel_rx = Some(channel_cons);
 
-        let audio_rb_size = (self.current_sample_rate as usize / 2) * 2;
-        let audio_rb = Arc::new(HeapRb::<f32>::new(audio_rb_size.max(8192)));
+        let audio_rb_frames = (self.current_sample_rate as usize / 2).max(4096);
+        let audio_rb = Arc::new(HeapRb::<f32>::new(
+            audio_rb_frames * self.current_input_channels,
+        ));
         self.queue_attempt = self
             .queue_attempt
             .checked_add(1)
             .ok_or_else(|| anyhow!("queue観測世代の上限です"))?;
-        let queue_diagnostics = Arc::new(QueueDiagnostics::new(
+        let queue_diagnostics = Arc::new(QueueDiagnostics::new_input_queue(
             format!(
                 "{}:queue:{}",
                 self.builtin.snapshot(false).epoch,
@@ -2563,7 +2569,7 @@ impl Engine {
         let output_queue_diagnostics = queue_diagnostics.clone();
         let input_queue_diagnostics = queue_diagnostics;
         let mut queue_recovery = super::queue_recovery::Recovery::new(
-            audio_rb.capacity().get() / out_stream_config.channels as usize,
+            audio_rb.capacity().get() / in_stream_config.channels as usize,
             out_stream_config.sample_rate as usize,
             1,
             3,
@@ -2617,7 +2623,7 @@ impl Engine {
         let max_frames_per_callback = self.processing_block_capacity;
 
         // RT State Setup (fixed-capacity / no resize in callback)
-        let max_len = max_frames_per_callback.saturating_mul(channels_len.max(1));
+        let max_len = max_frames_per_callback.saturating_mul(self.current_input_channels.max(2));
         let mut input_buf = vec![0.0; max_len];
 
         // Planar Buffers (fixed-capacity for callback upper bound)
@@ -2750,7 +2756,11 @@ impl Engine {
         let in_rate = in_stream_config.sample_rate as usize;
         let out_rate = out_stream_config.sample_rate as usize;
         let channels = in_stream_config.channels as usize;
-        let out_channels_target = out_stream_config.channels as usize;
+        let queue_input_channels = if self.live_output_config.split_processing {
+            2
+        } else {
+            channels
+        };
 
         let mut resampler = crate::audio_engine::resampling::prepare(in_rate, out_rate, channels)?;
         let batch_timing = resampler.is_some();
@@ -2813,26 +2823,28 @@ impl Engine {
                 .live_modes
                 .snapshot(self.builtin.snapshot(false).epoch, false)
                 .target;
-            let (controller, renderer, gains) = super::split_monitor::Controller::prepare(
-                original_consumer,
-                tx,
-                output_timing.take(),
-                output_queue_diagnostics.clone(),
-                max_frames_per_callback,
-                &self.live_output_config,
-                self.current_sample_rate as u32,
-                self.voice_input_gain,
-                self.output_gain,
-                [self.input_channel_l, self.input_channel_r],
-                self.global_mute,
-                self.global_bypass,
-                self.monitor_levels.clone(),
-                self.stream_failed.clone(),
-                mode,
-                initial_live_revision,
-                (self.peak_config, self.peak_shared.clone()),
-                self.restored_monitor.as_ref(),
-            )?;
+            let (controller, renderer, gains) =
+                super::split_monitor::Controller::prepare_with_input_channels(
+                    original_consumer,
+                    tx,
+                    output_timing.take(),
+                    output_queue_diagnostics.clone(),
+                    max_frames_per_callback,
+                    &self.live_output_config,
+                    self.current_sample_rate as u32,
+                    self.voice_input_gain,
+                    self.output_gain,
+                    [self.input_channel_l, self.input_channel_r],
+                    self.global_mute,
+                    self.global_bypass,
+                    self.monitor_levels.clone(),
+                    self.stream_failed.clone(),
+                    mode,
+                    initial_live_revision,
+                    (self.peak_config, self.peak_shared.clone()),
+                    self.restored_monitor.as_ref(),
+                    channels,
+                )?;
             if self.live_output.is_none() {
                 controller.shared.failed.store(true, Ordering::Release);
             }
@@ -2884,7 +2896,9 @@ impl Engine {
             let mut process_output =
                 move |data: &mut [f32], info: Option<&cpal::OutputCallbackInfo>| {
                     if dsp_silence.drain_worker() {
-                        audio_cons.skip(audio_cons.occupied_len());
+                        audio_cons.skip(
+                            audio_cons.occupied_len() / queue_input_channels * queue_input_channels,
+                        );
                         if let Some(gains) = &mut broadcast_recovery_gains {
                             gains.skip(gains.occupied_len());
                         }
@@ -3231,9 +3245,6 @@ impl Engine {
                                     rt_input_r = r;
                                 }
                             }
-                            AudioThreadMessage::SetChannelScan(enable, generation) => {
-                                rt_channel_scan.set_enabled(enable, generation);
-                            }
                             AudioThreadMessage::StartVoiceCheckRecording {
                                 buffers,
                                 max_frames,
@@ -3291,7 +3302,7 @@ impl Engine {
                         || rt_loudness.id.is_some()
                         || loudness_start.blocks_recovery();
                     let skip_frames = queue_recovery.begin_block(
-                        audio_cons.occupied_len() / channels,
+                        audio_cons.occupied_len() / queue_input_channels,
                         frames,
                         output_queue_diagnostics.max_burst(),
                         recovery_blocked || separated,
@@ -3301,7 +3312,8 @@ impl Engine {
                             timing.invalidate_recovery();
                         }
                         // f32のskipはindex更新。完全frameだけをconsumerが回収する。
-                        let skipped = audio_cons.skip(skip_frames * channels) / channels;
+                        let skipped = audio_cons.skip(skip_frames * queue_input_channels)
+                            / queue_input_channels;
                         output_queue_diagnostics.record_recovery(
                             skipped,
                             queue_recovery.status(),
@@ -3316,12 +3328,12 @@ impl Engine {
                             queue_recovery.high(),
                         );
                     }
-                    let to_read = frames * channels;
+                    let to_read = frames * queue_input_channels;
                     let (consumed_frames, timing_read) = if let Some(timing) = &output_timing {
                         queue_diagnostics::read_complete_frames_observed(
                             &mut audio_cons,
                             &mut input_buf[..to_read],
-                            channels,
+                            queue_input_channels,
                             || timing.now_ns(),
                         )
                     } else {
@@ -3329,7 +3341,7 @@ impl Engine {
                             queue_diagnostics::read_complete_frames(
                                 &mut audio_cons,
                                 &mut input_buf[..to_read],
-                                channels,
+                                queue_input_channels,
                             ),
                             0,
                         )
@@ -3343,55 +3355,17 @@ impl Engine {
                     let record_block_start = rt_voice_check.block_record_start();
 
                     for i in 0..frames {
-                        // Manual de-interleaving and Mapping to Stereo Bus (0/1)
-                        // The internal processing is Stereo (2ch).
-                        // We map the selected Input Channels to Planar 0 and 1.
-
-                        // First de-interleave everything to planar? Or just what we need?
-                        // To support "Active Channel Scan", we should de-interleave or peek all.
-                        // For performance, let's just peek for scan and de-interleave selected for processing.
-
-                        // OPTIMIZATION: Just de-interleave ALL for now, or just the selected?
-                        // Let's stick to full de-interleave to plan_buf_a to support multi-channel plugins later if needed.
-                        for ch in 0..channels {
-                            let sample = input_buf[i * channels + ch] * rt_input_gain;
-                            planar_buf_a[ch][i] = sample;
-
-                            rt_channel_scan.observe(ch, sample);
-                        }
-
-                        // Input Routing & Metering:
-                        // We WANT the selected input channels (rt_input_l, rt_input_r) to appear as indices 0 and 1
-                        // for the subsequent plugin chain if the chain expects stereo.
-                        // HOWEVER, `planar_buf_a` currently holds the physical mapping (Index N = Channel N).
-                        // If we want plugins to receive "Main Input" on 0/1, we must SWAP or COPY.
-
-                        // Simple approach: Copy active inputs to a temporary "Stereo Processing Buffer"
-                        // OR just use the selected indices for Metering and passing to first plugin.
-                        // BUT: Current ping-pong logic iterates 0..channels.
-                        // If plugins process "Stereo" they usually take buf[0] and buf[1].
-
-                        // SOLUTION: The host should likely copy Selected Ch -> Ch 0, Selected Ch -> Ch 1
-                        // BEFORE processing starts.
-                        // Note: This destructively overwrites physical Ch 0/1 data in the buffer.
-                        // But that's fine, we are "Routing" inputs.
-
-                        let sample_l = if rt_input_l < channels {
-                            planar_buf_a[rt_input_l][i]
-                        } else {
-                            0.0
-                        };
-                        let sample_r = if rt_input_r < channels {
-                            planar_buf_a[rt_input_r][i]
-                        } else {
-                            0.0
-                        };
-
-                        // Overwrite 0/1 for the processing chain
-                        if channels >= 2 {
-                            planar_buf_a[0][i] = sample_l;
-                            planar_buf_a[1][i] = sample_r;
-                        }
+                        // 入力の選択値を先に取得してから、出力形状のplanarへ配置する。
+                        let frame =
+                            &input_buf[i * queue_input_channels..(i + 1) * queue_input_channels];
+                        let [sample_l, sample_r] = queue_diagnostics::route_input_frame(
+                            frame,
+                            [rt_input_l, rt_input_r],
+                            rt_input_gain,
+                            &mut planar_buf_a,
+                            i,
+                            channels,
+                        );
 
                         // Main Metering (Post-Routing)
                         let abs_l = sample_l.abs();
@@ -3512,8 +3486,6 @@ impl Engine {
                             *sample = rt_reverb.process([*sample; 2], false)[0];
                         }
                     }
-
-                    rt_channel_scan.finish_block(frames, &mut channel_prod);
 
                     // --- 2. Ping-Pong Processing Loop ---
                     // We toggle between using `planar_buf_a` and `planar_buf_b` as input/output
@@ -3946,6 +3918,13 @@ impl Engine {
             let input_result = in_dev.build_input_stream(
                 &in_stream_config,
                 move |data: &[f32], info: &cpal::InputCallbackInfo| {
+                    let scan_gain = scan_control.sync(&mut rt_channel_scan);
+                    for frame in data.chunks_exact(channels) {
+                        for (channel, sample) in frame.iter().enumerate() {
+                            rt_channel_scan.observe(channel, *sample * scan_gain);
+                        }
+                    }
+                    rt_channel_scan.finish_block(data.len() / channels, &mut channel_prod);
                     if input_silence.pause_input(|| {
                         if input_silence_reset != input_silence.ticket() {
                             if let Some(resampler) = &mut resampler {
@@ -3985,9 +3964,6 @@ impl Engine {
                     }
 
                     // Push interleaved samples as full frames to preserve channel alignment.
-                    // Mapping policy:
-                    // - 1ch input -> duplicate to all output channels
-                    // - Nch input, Mch output -> copy min(N, M), duplicate last input channel for extras
                     // 分割された出力でも、このコールバックの転送上限は1回だけ決める。
                     let mut remaining_frames = None;
                     let mut accepted_prefix = super::frame_timing::AcceptedPrefix::default();
@@ -4004,7 +3980,7 @@ impl Engine {
                                 &mut audio_prod,
                                 samples,
                                 in_channels,
-                                out_channels_target,
+                                in_channels,
                                 &mut remaining_frames,
                             );
                             if let Some(timing) = &mut input_timing {
@@ -4856,7 +4832,7 @@ mod singing_startup_tests {
             // 停止中の設定後、cleanupを経ずにコマンドキューとRT状態を作る。
             let (tx, mut rx) = HeapRb::new(8).split();
             engine.command_tx = Some(tx);
-            let mut scan = engine.prepare_channel_scan();
+            let mut scan = engine.prepare_channel_scan(100);
             engine.flush_pending_audio_msgs();
             assert!(rx.try_pop().is_none());
             let (mut snapshots, mut received) = HeapRb::new(2).split();
@@ -4875,12 +4851,10 @@ mod singing_startup_tests {
             } else {
                 assert!(received.try_pop().is_none());
             }
-            // 稼働中の設定変更は現在の世代をFIFOでRTへ送る。
+            // 稼働中の設定変更は最新世代を入力callbackへ直接渡す。
             engine.set_channel_scan(true);
-            let Some(AudioThreadMessage::SetChannelScan(active, generation)) = rx.try_pop() else {
-                panic!("running scan change must be queued");
-            };
-            scan.set_enabled(active, generation);
+            assert!(rx.try_pop().is_none());
+            engine.scan_control.sync(&mut scan);
             scan.observe(0, 0.4);
             scan.finish_block(10, &mut snapshots);
             let mut merged = None;

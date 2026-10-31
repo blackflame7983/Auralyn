@@ -47,6 +47,8 @@ pub(crate) enum DeviceScanStart {
 // Re-export for frontend
 #[derive(Debug, Serialize, Clone)]
 pub struct AudioDevice {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sample_rate_ranges: Option<Vec<(u32, u32)>>,
     pub name: String,
     pub host: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -61,6 +63,7 @@ pub struct AudioDevice {
 impl AudioDevice {
     fn from_info(index: usize, device: crate::ipc::DeviceInfo) -> Self {
         Self {
+            sample_rate_ranges: device.sample_rate_ranges,
             name: device.name,
             host: device.host,
             id: device.id,
@@ -3431,6 +3434,7 @@ mod device_scan_tests {
         };
         assert!(Arc::ptr_eq(&first.terminal, &second.terminal));
         let device = crate::ipc::DeviceInfo {
+            sample_rate_ranges: None,
             name: "Current Mic".into(),
             host: "Wasapi".into(),
             id: None,
