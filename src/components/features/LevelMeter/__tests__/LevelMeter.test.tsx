@@ -65,7 +65,7 @@ it('−3 dBFS は注意色、0 dBFS 到達は危険色とクリップ表示に�
     render(<LevelMeter running type="output" />);
     emit('audio-level', { input: [0, 0], output: [Math.pow(10, -3 / 20), 0] });
     act(() => vi.advanceTimersByTime(16));
-    expect(screen.getByTitle('Left').firstElementChild).toHaveClass('bg-warning');
+    expect(screen.getByTitle('Left').firstElementChild).toHaveClass('bg-meter-warning');
     expect(screen.queryByRole('button', { name: /クリップ表示を消す/ })).toBeNull();
     emit('audio-level', { input: [0, 0], output: [1, 0] });
     act(() => vi.advanceTimersByTime(16));

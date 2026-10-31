@@ -34,6 +34,16 @@ const callbacks = () => ({ onSettings: vi.fn(), onSound: vi.fn(), onListen: vi.f
 const expand = (locale: 'ja' | 'en' = 'ja') => fireEvent.click(screen.getByRole('button', { name: message(locale, 'prep.steps') }));
 const checked = (model: PreparationModel, stage: 'sound' | 'listen') => { model.records[stage] = { at: 1, target: 'Mic', key: model.observation.keys![stage], expired: false }; };
 
+it('本番帯からの送り先要求で、閉じた手順を開きラジオへフォーカスする', () => {
+    const model = fixture(); model.context.usage = '';
+    const view = render(<PreparationPanel model={model} {...callbacks()} homeActionInStrip />);
+    expand();
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    view.rerender(<PreparationPanel model={model} {...callbacks()} homeActionInStrip destinationRequest={1} />);
+    expect(screen.getByRole('radio', { name: message('ja', 'prep.obs') })).toHaveFocus();
+    expect(screen.queryByRole('button', { name: message('ja', 'prep.refresh') })).not.toBeInTheDocument();
+});
+
 it('ミュート・音量ゼロでは機器の再設定ではなく本番操作の確認へ案内する', () => {
     const model = fixture(); model.observation.availability = 'muted';
     const props = callbacks(); const checkOutput = vi.fn();

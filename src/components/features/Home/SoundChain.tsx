@@ -153,7 +153,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 </DropdownMenu>}
             </div>
         </div>
-        {!audioReady ? <p className="text-xs text-muted-foreground">{t('home.soundAfterSetup')}</p>
+        {!audioReady ? <p className="text-xs text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
             // 音楽鑑賞では声の段に操作を出さない理由を、常に見える形で示す。
             : music ? <p className="text-xs text-muted-foreground">{t('music.soundHint')}</p>
             : !live && <p role="status" className="text-xs text-muted-foreground">{t('home.voiceUnavailable')}</p>}

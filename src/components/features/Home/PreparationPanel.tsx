@@ -13,6 +13,7 @@ import { receiverDeviceNotice } from '@/lib/audioRouting';
 import { renderNotice } from '../AudioSettings/settingsNotice';
 
 interface Props {
+    homeActionInStrip?: boolean; destinationRequest?: number;
     onCheckOutput?: (anchor?: HTMLButtonElement) => void;
     model: PreparationModel; onSettings: () => void; onSound: () => void; onListen: () => void;
     onObs: () => void; onCall: () => void; onTroubleshoot: () => void; audioReady: boolean; signalSummary?: ReactNode;
@@ -35,7 +36,7 @@ const availabilityTones: Record<Availability, StatusTone> = { ready: 'ok', unkno
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
-export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices }: Props) {
+export function PreparationPanel({ homeActionInStrip = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices }: Props) {
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
@@ -69,6 +70,18 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
     useEffect(() => { if (problem) setUserOpen(old => old === false ? null : old); }, [problem]);
     // ミュートは本番帯の警告から直接直せる。毎回チェックリストを押し広げない。
     const open = userOpen ?? (problem !== null && observation.availability !== 'muted');
+    const usageRef = useRef<HTMLDivElement>(null);
+    const focusedRequest = useRef(0);
+    useEffect(() => { if (destinationRequest) setUserOpen(true); }, [destinationRequest]);
+    useEffect(() => {
+        if (!open || destinationRequest <= focusedRequest.current) return;
+        const radio = usageRef.current?.querySelector<HTMLInputElement>('input:checked, input');
+        if (radio) {
+            focusedRequest.current = destinationRequest;
+            radio.closest('label')?.scrollIntoView?.({ block: 'center' });
+            radio.focus({ preventScroll: true });
+        }
+    }, [open, destinationRequest]);
     const next = nextPreparationStage(observation, records, context);
     const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
     const needsTarget = next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim();
@@ -87,7 +100,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
         ['other', 'prep.other', <MdSettings aria-hidden="true" className="h-4 w-4 shrink-0" />],
         ['listening', 'prep.local', <MdMusicNote aria-hidden="true" className="h-4 w-4 shrink-0" />],
     ];
-    const usagePicker = <div role="radiogroup" aria-labelledby={`${stepsId}-usage`} className={cn('grid gap-2 sm:grid-cols-2', next === 'purpose' && 'rounded-lg ring-1 ring-primary/60 p-1')}>
+    const usagePicker = <div ref={usageRef} role="radiogroup" aria-labelledby={`${stepsId}-usage`} className={cn('grid gap-2 sm:grid-cols-2', next === 'purpose' && 'rounded-lg ring-1 ring-primary/60 p-1')}>
         {destinations.map(([value, label, icon]) => <label key={value} className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm has-[:checked]:border-selection has-[:checked]:bg-selection/15 has-[:checked]:text-selection has-[:checked]:font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary">
             <input type="radio" name={`${stepsId}-usage-choice`} value={value} checked={context.usage === value} className="sr-only"
                 onChange={() => model.changeContext({ usage: value, receiver: '' })} />
@@ -103,7 +116,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
                 {/* 畳んでいる間は、入力・処理・出力の要約の代わりに状態の点1つと機器名で示す。 */}
                 {/* 開いているときは要約の「音声処理」が状態を読み上げるので、role="status" はどちらか一方だけにする。 */}
                 {!open && <span role="status" className="ml-2 flex min-w-0 items-center gap-2 text-xs">
-                    <StatusDot tone={availabilityTones[observation.availability]} className="font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>
+                    {!homeActionInStrip && <StatusDot tone={availabilityTones[observation.availability]} className="font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>}
                     {devices && <span className="min-w-0 truncate text-muted-foreground">{devices}</span>}
                 </span>}
             </div>
@@ -121,7 +134,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
         {signalSummary}
         <div className="space-y-1 text-sm"><p id={`${stepsId}-usage`}>{t('prep.usage')}</p>{usagePicker}</div>
         {next !== 'done' && next !== 'purpose' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
-            className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{t(actionLabel)}</button>}
+            className={cn("rounded-md px-3 py-2 text-sm font-semibold disabled:opacity-50", homeActionInStrip ? "border border-border hover:bg-muted" : "bg-primary text-primary-foreground")}>{t(homeActionInStrip && !audioReady ? 'home.changeDevices' : actionLabel)}</button>}
         {(next === 'sound' || next === 'listen' || next === 'receiver') && <label key={next} className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={false} disabled={pending || observation.availability !== 'ready' || (next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim())}
                 onChange={e => {

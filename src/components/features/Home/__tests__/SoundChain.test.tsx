@@ -161,7 +161,10 @@ it('VST段は押してオン・オフし、エディタは有効なときだけ�
     expect(eq).toHaveAttribute('aria-pressed', 'true');
     expect(eq).toHaveTextContent('ミュート中');
     fireEvent.click(eq); expect(toggle).toHaveBeenCalledWith('a', false);
-    fireEvent.click(screen.getByRole('button', { name: 'Gate' })); expect(toggle).toHaveBeenLastCalledWith('b', true);
+    const gate = screen.getByRole('button', { name: 'Gate VST オフ' });
+    expect(gate).toHaveAttribute('aria-pressed', 'false');
+    expect(gate).not.toHaveClass('line-through');
+    fireEvent.click(gate); expect(toggle).toHaveBeenLastCalledWith('b', true);
     fireEvent.click(screen.getByRole('button', { name: 'EQの画面を開く' })); expect(edit).toHaveBeenCalledWith('a');
     expect(screen.getByRole('button', { name: 'Gateの画面を開く' })).toBeDisabled();
     // 追加は右パネルで行い、チップの列には置かない。

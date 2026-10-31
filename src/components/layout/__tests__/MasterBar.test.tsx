@@ -195,7 +195,9 @@ describe('起動時の保存ゲイン復元', () => {
         } as EngineRuntimeStats);
         const view = render(<MasterBar host="Wasapi" sampleRate={48000} bufferSize={512} isRunning={false} />);
         await act(async () => { finishListening(); });
-        expect(screen.getByText('音声停止中')).toBeInTheDocument();
+        // 常設の停止表示はヘッダーへ集約し、メーターの状態名は残す。
+        expect(screen.queryByText('音声停止中')).not.toBeInTheDocument();
+        expect(screen.getByRole('meter', { name: '出力' })).toHaveAttribute('aria-valuetext', '音声停止中');
         expect(screen.queryByText('VST有効')).not.toBeInTheDocument();
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         const details = screen.getByRole('button', { name: '音声処理の詳細' });

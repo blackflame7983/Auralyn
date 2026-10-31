@@ -17,7 +17,8 @@ const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', disc
 
 // 本番中に見る3つ（声のレベル、送り先、歌・雑談）だけを最上段に置く（DESIGN.md 1.3、2.5）。
 // 入力機器の名前は送り先の手前に1つだけ出し、押すと機器の設定を開く。確認の手順は準備状況に任せる。
-export function LiveStrip({ model, running, liveControls, meterAction, onOpenDevices, onCheckOutput, onAdjustOutput, outputGainOpen = false, controlsDisabled = false, inputName, outputName }: {
+export function LiveStrip({ onStartAudio, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, meterAction, onOpenDevices, onCheckOutput, onAdjustOutput, outputGainOpen = false, controlsDisabled = false, inputName, outputName }: {
+    onStartAudio?: () => void; starting?: boolean; startError?: string | null; startPartiallyApplied?: boolean; onChooseDestination?: () => void;
     model: PreparationModel; running: boolean; liveControls?: ReactNode; meterAction?: ReactNode; onOpenDevices?: () => void;
     onCheckOutput?: (anchor: HTMLButtonElement) => void;
     onAdjustOutput?: (anchor: HTMLButtonElement) => void;
@@ -43,7 +44,11 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
     return <section aria-label={t('live.strip')} className="live-strip relative isolate mb-4 space-y-3 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-4 min-[1100px]:px-5">
         {/* 音声処理中だけ静止した光として灯す飾り。状態の意味は持たせない（DESIGN.md 5.1）。 */}
         {aurora && <div aria-hidden="true" className="live-aurora" data-lit={running} />}
-        <div className="live-meter-pair">
+        {!running && onStartAudio ? <div className="flex flex-wrap items-center gap-3">
+            <button type="button" onClick={onStartAudio} disabled={starting || controlsDisabled} className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{t(starting ? 'home.starting' : 'home.startAudio')}</button>
+            <p className="text-xs text-muted-foreground">{t('home.startSavedDevices')}</p>
+            {meterAction}
+        </div> : <div className="live-meter-pair">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
             <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
             <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues numbers={!simple} />
@@ -61,17 +66,23 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
             <MeterVisual reading={outputReading} label={t('meter.output')} orientation="horizontal" height={32} scale showValues numbers={!simple} />
         </div>
         </div>
+        }
+        {startError && <div role="alert" className="space-y-2 text-sm text-destructive-text">
+            <p>{t(startPartiallyApplied ? 'home.startIncomplete' : 'home.startFailed')}</p>
+            <button type="button" onClick={onOpenDevices} className="rounded-md border border-border px-3 py-1.5 text-foreground">{t('home.changeDevices')}</button>
+            <details><summary className="cursor-pointer">{t('prep.details')}</summary><p className="break-words">{startError}</p></details>
+        </div>}
         <div data-live-routing className="flex flex-wrap items-center gap-x-3 gap-y-2">
             {input && onOpenDevices && <button type="button" onClick={onOpenDevices} aria-label={devices} title={devices}
                 className="flex min-w-0 max-w-[16rem] flex-[1_1_8rem] items-center gap-1.5 rounded-md text-sm hover:text-foreground">
                 <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="truncate font-semibold">{deviceDisplayName(input)}</span>
             </button>}
-            <p className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-sm">
+            {running && !usage && onChooseDestination ? <button type="button" onClick={onChooseDestination} className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">{t('home.chooseDestination')}</button> : <p className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-sm">
                 <MdArrowForward aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="text-muted-foreground">{t('live.destination')}</span>
                 <span className="truncate font-semibold" title={receiver || undefined}>{usage ? t(destinations[usage]) : t('live.noDestination')}{usage && usage !== 'listening' && receiver ? ` · ${receiver}` : ''}</span>
-            </p>
+            </p>}
             <span role="status" aria-hidden={!muted} className={`inline-flex shrink-0 ${muted ? '' : 'invisible'}`}>
                 {/* 読み上げ名は見えている状態名にし、押した結果はツールチップで補う（DESIGN.md 3.3）。 */}
                 <button type="button" onClick={event => onCheckOutput?.(event.currentTarget)} tabIndex={muted ? 0 : -1}

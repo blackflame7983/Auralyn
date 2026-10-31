@@ -1,6 +1,14 @@
 import type { Locale } from './locale';
 
 const ja = {
+    "home.startAudio": "音声を開始",
+    "home.startIncomplete": "音声は開始しましたが、入力チャンネルの反映または設定の保存を完了できませんでした。入出力を確認してください。",
+    "home.startSavedDevices": "保存済みのマイクと出力先で開始します。",
+    "home.starting": "音声を開始中…",
+    "home.startFailed": "音声を開始できませんでした。機器の接続と入出力の設定を確認してください。",
+    "home.soundAfterStart": "音声を開始すると、ここで音を調整できます。",
+    "home.chooseDestination": "送り先を選ぶ",
+
     "liveTransaction.profilesFailed": "プロファイル一覧を取得できませんでした。",
     "liveTransaction.retryProfiles": "プロファイル一覧を再取得",
     "liveTransaction.profileLabel": "{mode}の VST プロファイル",
@@ -2704,7 +2712,7 @@ const ja = {
     "home.largeMeterTool": "出力レベルを大きく見る",
     "liveBar.mode": "モード切替",
     "live.strip": "本番",
-    "live.destination": "用途",
+    "live.destination": "送り先",
     "live.noDestination": "未選択",
     "chain.vstList": "VSTの並び",
     "chain.vstToggle": "押すとオン・オフを切り替えます",
@@ -2740,6 +2748,14 @@ const ja = {
 } as const;
 export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
+    "home.startAudio": "Start audio",
+    "home.startIncomplete": "Audio started, but input channel setup or saving settings did not finish. Check your input and output.",
+    "home.startSavedDevices": "Start with your saved microphone and output.",
+    "home.starting": "Starting audio…",
+    "home.startFailed": "Audio could not start. Check your device connections and input/output settings.",
+    "home.soundAfterStart": "Start audio to adjust your sound here.",
+    "home.chooseDestination": "Choose destination",
+
     "liveTransaction.profilesFailed": "Could not load the profile list.",
     "liveTransaction.retryProfiles": "Retry loading profiles",
     "liveTransaction.profileLabel": "VST profile for {mode}",

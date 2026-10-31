@@ -304,7 +304,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             </button>
             {/* 状態は操作の後に配置し、狭い幅では独立した行へ送る。 */}
             {/* 未設定はヘッダーとホームで示すため、ここでは重ねない。 */}
-            {(broadcastFailed || (!isRunning && !!host) || (isRunning && processReady !== true)) && (
+            {(broadcastFailed || (isRunning && processReady !== true)) && (
                 <div className="flex basis-full flex-wrap items-center gap-1.5 min-w-0 max-w-full whitespace-normal break-words lg:basis-auto">
                     <span
                         className={cn(

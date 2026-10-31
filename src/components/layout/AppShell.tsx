@@ -1,4 +1,5 @@
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { HomeAudioStartError } from '@/lib/startHomeAudio';
 import { useUsageWindow } from '@/hooks/useUsageWindow';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
@@ -25,6 +26,7 @@ import {
 } from "@/components/ui/tooltip";
 
 interface AppShellProps {
+    onStartAudio?: () => Promise<void>;
     notices?: ReactNode;
     preparationBlocked?: boolean;
     onOpenOBSSettings: () => void;
@@ -61,6 +63,7 @@ import type { EngineRuntimeStats } from '@/api/audio';
 import { RuntimeStatsContext } from './RuntimeStatsContext';
 
 export const AppShell: React.FC<AppShellProps> = ({
+    onStartAudio,
     children,
     notices,
     preparationBlocked,
@@ -87,6 +90,24 @@ export const AppShell: React.FC<AppShellProps> = ({
     vstPanel
 }) => {
     const t = useMessages();
+    const [starting, setStarting] = useState(false);
+    const startPending = useRef(false);
+    const [startError, setStartError] = useState<string | null>(null);
+    const [startPartiallyApplied, setStartPartiallyApplied] = useState(false);
+    const [destinationRequest, setDestinationRequest] = useState(0);
+    const startAudio = async () => {
+        if (!onStartAudio || startPending.current || preparationBlocked) return;
+        startPending.current = true; setStarting(true); setStartError(null); setStartPartiallyApplied(false);
+        try { await onStartAudio(); }
+        catch (error) { setStartError(String(error)); setStartPartiallyApplied(error instanceof HomeAudioStartError && error.started); }
+        finally { startPending.current = false; setStarting(false); }
+    };
+    useEffect(() => {
+        const recovered = () => { setStartError(null); setStartPartiallyApplied(false); };
+        window.addEventListener('audio-settings-started', recovered);
+        return () => window.removeEventListener('audio-settings-started', recovered);
+    }, []);
+    const canStart = Boolean(onStartAudio && currentHost && currentInput && currentOutput);
     const [purpose] = useDisplayPurpose();
     useUsageWindow(purpose);
     const [runtimeStats, setRuntimeStats] = useState<EngineRuntimeStats | null>(null);
@@ -270,7 +291,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
-                            ? <LiveStrip model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
+                            ? <LiveStrip onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startError} startPartiallyApplied={startPartiallyApplied} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
                             : liveControls && <div className="mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden">{liveControls}</div>}
                         {/* 音量チェックは開いたメーターの直下に出す。 */}
                         <div><LoudnessCheck
@@ -285,6 +306,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {configured && soundChain}
                         <div className="min-w-0"><HomePanels
                             model={preparation}
+                            homeActionInStrip={canStart && !isEngineRunning || audioReady && !preparation.context.usage}
+                            destinationRequest={destinationRequest}
                             audioReady={audioReady}
                             statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
                             inputName={currentInput} outputName={currentOutput}
@@ -330,7 +353,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                         className={cn(
                                             "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold font-mono whitespace-nowrap shrink-0",
                                             isABBypassed
-                                                ? "bg-warning/10 text-warning border-warning/50 ring-1 ring-warning/30 animate-pulse"
+                                                ? "bg-warning/10 text-warning border-warning/50 ring-1 ring-warning/30"
                                                 : "bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground"
                                         )}
                                     >

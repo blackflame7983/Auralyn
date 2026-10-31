@@ -25,6 +25,7 @@
   --color-destructive-foreground: hsl(var(--destructive-foreground));
 
   --color-meter-danger: hsl(var(--meter-danger));
+  --color-meter-warning: hsl(var(--meter-warning));
   --color-warning: hsl(var(--warning));
   --color-warning-foreground: hsl(var(--warning-foreground));
   --color-success: hsl(var(--success));
@@ -97,6 +98,7 @@
 
   /* 状態色とブランド色は用途を分け、全画面で共有する。 */
   --meter-danger: 0 72% 45%;
+  --meter-warning: 38 100% 37%;
   --warning: 32 95% 28%;
   --warning-foreground: 0 0% 100%;
   --success: 158 80% 23%;
@@ -163,6 +165,7 @@
   --destructive-foreground: 210 40% 98%;
 
   --meter-danger: 0 90% 72%;
+  --meter-warning: 43 96% 65%;
   --warning: 43 96% 65%;
   --warning-foreground: 222 84% 5%;
   --success: 158 64% 65%;
