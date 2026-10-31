@@ -55,7 +55,7 @@ it.each([2, 64])('未取得のチャンネルは選べず、取得後は実際�
     expect(screen.getAllByRole('radio')).toHaveLength(channels / 2);
     expect(screen.queryByText(/入力チャンネル数が未確認/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 1/2' }));
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 0, right: 1 }));
+    expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
 });
 
 it('多入力では選択中と信号のあるペアを残し、全ペアを展開して選び直せる', async () => {
@@ -141,38 +141,19 @@ it('入力ペアは同じ名前の標準ラジオとして選択・復元でき�
     last.focus();
     fireEvent.click(last);
     await waitFor(() => expect(mapped).toHaveBeenCalledWith([4, 5]));
-    expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 4, right: 5 });
+    expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
     expect(last).toBeChecked();
     expect(last).toHaveFocus();
     view.rerender(<InputChannelSelector initialChannels={[0, 1]} maxChannels={6} onChannelMapped={mapped} />);
     expect(screen.getByRole('radio', { name: '入力チャンネル 1/2' })).toBeChecked();
 });
 
-it('端数のチャンネルでも既存どおり末尾ペアを表示してマッピングする', async () => {
+it('端数の最後のチャンネルをモノラルで選択する', async () => {
     const mapped = vi.fn();
     render(<InputChannelSelector maxChannels={3} onChannelMapped={mapped} />);
     expect(screen.getAllByRole('radio')).toHaveLength(2);
-    fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 3/4' }));
-    await waitFor(() => expect(mapped).toHaveBeenCalledWith([2, 3]));
-});
-
-it('マッピング失敗では元の選択を保ち、成功する再試行まで親へ通知しない', async () => {
-    let fail = true;
-    vi.mocked(invoke).mockImplementation(async command => {
-        if (command === 'set_input_channels' && fail) throw new Error('mapping failed');
-        return null;
-    });
-    const mapped = vi.fn();
-    render(<InputChannelSelector maxChannels={4} onChannelMapped={mapped} />);
-    const target = screen.getByRole('radio', { name: '入力チャンネル 3/4' });
-    fireEvent.click(target);
-    expect(await screen.findByRole('alert')).toHaveTextContent('入力チャンネルを変更できませんでした');
-    expect(screen.getByRole('radio', { name: '入力チャンネル 1/2' })).toBeChecked();
-    expect(mapped).not.toHaveBeenCalled();
-    fail = false;
-    fireEvent.click(target);
-    await waitFor(() => expect(mapped).toHaveBeenCalledWith([2, 3]));
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 3/3' }));
+    await waitFor(() => expect(mapped).toHaveBeenCalledWith([2, 2]));
 });
 
 it('監視データ待ちと継続監視を区別し、信号を日本語で示す', async () => {
@@ -186,7 +167,7 @@ it('監視データ待ちと継続監視を区別し、信号を日本語で示�
     expect(view.container.querySelector('.animate-pulse')).toBeNull();
     view.rerender(<InputChannelSelector maxChannels={6} />);
     expect(screen.getByText(/信号データを待っています/)).toBeInTheDocument();
-    expect(screen.getAllByText('信号未検出')).toHaveLength(3);
+    expect(screen.getAllByText('未測定')).toHaveLength(3);
 });
 
 it.each(['set_channel_scan', 'listen'])('監視開始の%s失敗を表示して選択は維持する', async failure => {
@@ -227,3 +208,69 @@ it('監視終了の失敗も回収する', async () => {
 });
 
 beforeEach(() => { vi.spyOn(audioApi, 'getEngineTuningConfig').mockResolvedValue({ enableAffinityPinning: false, affinityMask: null, enableRealtimePriority: false, enableTimeCriticalAudioThreads: false }); });
+
+it('監視範囲外のペアは未測定でも選択できる', async () => {
+    const mapped = vi.fn();
+    render(<InputChannelSelector maxChannels={34} onChannelMapped={mapped} />);
+    await screen.findByText(/信号データを待っています/);
+    const callback = vi.mocked(listen).mock.calls.find(([name]) => name === 'audio-channel-scan')![1];
+    act(() => callback({ event: 'audio-channel-scan', id: 1, payload: Array(32).fill(0) }));
+    fireEvent.click(screen.getByRole('button', { name: 'すべての入力ペアを表示' }));
+    const target = screen.getByRole('radio', { name: '入力チャンネル 33/34' });
+    expect(target).toHaveAccessibleDescription('未測定');
+    fireEvent.click(target);
+    expect(mapped).toHaveBeenCalledWith([32, 33]);
+});
+
+it('監視対象でない機器は購読せず未測定と表示する', () => {
+    render(<InputChannelSelector maxChannels={4} monitorEnabled={false} />);
+    expect(screen.getByText(/現在の接続と異なる/)).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '入力チャンネル 1/2' })).toHaveAccessibleDescription('未測定');
+    expect(listen).not.toHaveBeenCalled();
+});
+
+it('ペア変更は下書きであり、保存開始後にのみ適用する', async () => {
+    const update = vi.fn();
+    render(<AudioSettingsModal isOpen onClose={() => {}} onConfigChange={update} currentInputChannels={[6, 7]} />);
+    const pair = await screen.findByRole('radio', { name: '入力チャンネル 3/4' });
+    fireEvent.click(pair);
+    expect(update).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
+    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({ inputChannels: [2, 3] }), { audioStarted: true }));
+    expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 2, right: 3 });
+});
+
+
+it('現在のレートと 88.2 / 192 kHz を選択肢に残す', async () => {
+    localStorage.setItem('vst_host_settings_advanced', 'true');
+    render(<AudioSettingsModal isOpen onClose={() => {}} onConfigChange={vi.fn()} currentSampleRate={176400} />);
+    const rate = await screen.findByRole('combobox', { name: 'サンプルレート' });
+    expect(rate).toHaveValue('176400');
+    expect(within(rate).getByRole('option', { name: '88.2 kHz' })).toBeInTheDocument();
+    expect(within(rate).getByRole('option', { name: '192.0 kHz' })).toBeInTheDocument();
+});
+
+it('同じチャンネル数の別機器では下書きと信号表示を引き継がない', async () => {
+    const twoDevices = { inputs: [
+        { name: 'First', id: 'first', host: 'ASIO', channels: 4 },
+        { name: 'Second', id: 'second', host: 'ASIO', channels: 4 },
+    ], outputs: [{ name: 'First', id: 'first-out', host: 'ASIO', channels: 4 }] };
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'First', output: 'First' }));
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'get_audio_devices') return twoDevices;
+        if (command === 'get_audio_state') return { is_running: true, config: { host: 'ASIO', input_id: 'first' } };
+        return null;
+    });
+    render(<AudioSettingsModal isOpen onClose={() => {}} onConfigChange={vi.fn()} currentInputChannels={[0, 1]} />);
+    await screen.findByRole('option', { name: 'Second' });
+    await waitFor(() => expect(listen).toHaveBeenCalledWith('audio-channel-scan', expect.any(Function)));
+    const callback = vi.mocked(listen).mock.calls.find(([name]) => name === 'audio-channel-scan')![1];
+    act(() => callback({ event: 'audio-channel-scan', id: 1, payload: [0, 0, 0.2, 0] }));
+    fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 3/4' }));
+    const input = screen.getAllByRole('combobox').find(element => Array.from((element as HTMLSelectElement).options).some(option => option.value === 'Second'))!;
+    fireEvent.change(input, { target: { value: 'Second' } });
+    expect(screen.getByRole('radio', { name: '入力チャンネル 1/2' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: '入力チャンネル 3/4' })).toHaveAccessibleDescription('未測定');
+    expect(screen.getByText(/現在の接続と異なる/)).toBeInTheDocument();
+});

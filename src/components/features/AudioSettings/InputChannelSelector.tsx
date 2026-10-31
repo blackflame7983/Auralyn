@@ -1,6 +1,5 @@
-import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '../../../api/audio';
 import { MdGraphicEq } from 'react-icons/md';
@@ -10,36 +9,35 @@ interface InputChannelSelectorProps {
     onChannelMapped?: (channels: [number, number]) => void;
     initialChannels?: [number, number];
     maxChannels?: number;
+    monitorEnabled?: boolean;
 }
 
-export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onChannelMapped, initialChannels, maxChannels }) => {
+export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onChannelMapped, initialChannels, maxChannels, monitorEnabled = true }) => {
     const t = useMessages();
     const groupId = useId();
     const [activeChannels, setActiveChannels] = useState<number[]>([]);
     const [selectedPair, setSelectedPair] = useState<[number, number]>(initialChannels || [0, 1]);
     const [monitorState, setMonitorState] = useState<'starting' | 'waiting' | 'receiving' | 'error'>('starting');
-    const [mappingError, setMappingError] = useState<SettingsNotice>('');
-    const [mapping, setMapping] = useState(false);
+    const [measuredCount, setMeasuredCount] = useState(0);
     const [showAllPairs, setShowAllPairs] = useState(false);
     const [focusedPair, setFocusedPair] = useState<number | null>(null);
-    const mappingRef = useRef(false);
-    const mountedRef = useRef(true);
-    const selectionRevisionRef = useRef(0);
-
     useEffect(() => {
-        selectionRevisionRef.current += 1;
         if (initialChannels) setSelectedPair(initialChannels);
     }, [initialChannels]);
 
     useEffect(() => {
-        mountedRef.current = true;
+        setActiveChannels([]);
+        setMeasuredCount(0);
+        setMonitorState('starting');
+        if (!monitorEnabled) return;
         let active = true;
         let unlisten: (() => void) | undefined;
         const start = async () => {
             try {
                 const unsubscribe = await listen<unknown>('audio-channel-scan', (event) => {
                     if (!active || !Array.isArray(event.payload)) return;
-                    setActiveChannels(event.payload.flatMap((level, index) =>
+                    setMeasuredCount(Math.min(event.payload.length, 32));
+                    setActiveChannels(event.payload.slice(0, 32).flatMap((level, index) =>
                         typeof level === 'number' && Number.isFinite(level) && level > 0.05 ? [index] : []));
                     setMonitorState('receiving');
                 });
@@ -61,14 +59,13 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
         void start();
         return () => {
             active = false;
-            mountedRef.current = false;
             unlisten?.();
             // 閉じた後の停止失敗も未処理のPromise rejectionにしない。
             void audioApi.setChannelScan(false).catch(() => {
                 console.warn('入力チャンネルの信号監視を停止できませんでした。');
             });
         };
-    }, []);
+    }, [monitorEnabled]);
 
     // デバイス変更後に、前のデバイスの信号表示を残さない。
     useEffect(() => {
@@ -76,34 +73,20 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
         setMonitorState(previous => previous === 'receiving' ? 'waiting' : previous);
     }, [maxChannels]);
 
-    const handlePairSelect = async (left: number, right: number) => {
-        if (mappingRef.current || maxChannels === 0) return;
-        mappingRef.current = true;
-        setMapping(true);
-        setMappingError('');
-        const revision = selectionRevisionRef.current;
-        try {
-            await audioApi.setInputChannels(left, right);
-            if (!mountedRef.current || revision !== selectionRevisionRef.current) return;
-            setSelectedPair([left, right]);
-            onChannelMapped?.([left, right]);
-        } catch {
-            if (mountedRef.current && revision === selectionRevisionRef.current) {
-                setMappingError(notice('settings.InputChannelSelector.200'));
-            }
-        } finally {
-            mappingRef.current = false;
-            if (mountedRef.current) setMapping(false);
-        }
+    const handlePairSelect = (left: number, right: number) => {
+        if (maxChannels === 0) return;
+        setSelectedPair([left, right]);
+        onChannelMapped?.([left, right]);
     };
 
     const limit = maxChannels === 0 ? 0 : maxChannels && maxChannels > 0 ? maxChannels : 32;
-    // 端数チャンネルを含む既存のペア表示・マッピング契約を維持する。
+    // 端数の最後の入力は左右同じモノラルとして扱う。
     const loopLimit = limit % 2 === 0 ? limit : limit + 1;
     const pairs = [];
     for (let left = 0; left < loopLimit; left += 2) {
-        const right = left + 1;
+        const right = Math.min(left + 1, limit - 1);
         const isSelected = selectedPair[0] === left && selectedPair[1] === right;
+        const measured = monitorEnabled && monitorState === 'receiving' && right < measuredCount;
         const hasSignal = activeChannels.includes(left) || activeChannels.includes(right);
         pairs.push(
             <label key={left} hidden={!showAllPairs && loopLimit > 8 && left >= 8 && !isSelected && !hasSignal && focusedPair !== left} className={`input-channel-pair flex items-center gap-2 p-2 rounded-md cursor-pointer border focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background ${isSelected
@@ -124,7 +107,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
                 <span className="flex-1 text-xs flex flex-col min-w-0">
                     <span className="font-mono">{t('settings.channel.input', { left: left + 1, right: right + 1 })}</span>
                     <span id={`${groupId}-signal-${left}`} className={`text-xs mt-0.5 ${hasSignal ? 'text-success' : 'text-muted-foreground'}`}>
-                        {hasSignal ? t('settings.InputChannelSelector.203') : t('settings.InputChannelSelector.204')}
+                        {!measured ? t('settings.InputChannelSelector.notMeasured') : hasSignal ? t('settings.InputChannelSelector.203') : t('settings.InputChannelSelector.204')}
                     </span>
                 </span>
             </label>
@@ -140,6 +123,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
             </div>
             <p className="text-xs text-muted-foreground">
                 {maxChannels === 0 ? t('settings.InputChannelSelector.unverified')
+                    : !monitorEnabled ? t('settings.InputChannelSelector.differentDevice')
                     : monitorState === 'error' ? t('settings.InputChannelSelector.206')
                     : monitorState === 'starting' ? t('settings.InputChannelSelector.207')
                         : monitorState === 'waiting' ? t('settings.InputChannelSelector.208')
@@ -147,7 +131,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
             </p>
             {maxChannels !== 0 && <p id={`${groupId}-help`} className="text-xs text-muted-foreground leading-relaxed">
                 {t('settings.inputPairHint')}</p>}
-            {maxChannels !== 0 && <fieldset id={`${groupId}-pairs`} aria-describedby={`${groupId}-help`} aria-busy={mapping}>
+            {maxChannels !== 0 && <fieldset id={`${groupId}-pairs`} aria-describedby={`${groupId}-help`}>
                 <legend className="sr-only">{t('settings.InputChannelSelector.211')}</legend>
                 <div className={`grid grid-cols-4 gap-2 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-muted-foreground ${maxChannels && maxChannels > 16 ? 'max-h-60' : ''}`}>
                     {pairs}
@@ -157,7 +141,6 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
                 onClick={() => setShowAllPairs(value => !value)} className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted">
                 {t(showAllPairs ? 'settings.inputPairsLess' : 'settings.inputPairsAll')}
             </button>}
-            {mappingError && <p role="alert" className="text-xs text-destructive-text">{renderNotice(t, mappingError)}</p>}
         </div>
     );
 };

@@ -126,7 +126,8 @@ it.each([
         expect(screen.getByRole('button', { name: '保存して開始' })).toBeDisabled();
         if (host === 'ASIO') {
             fireEvent.click(await screen.findByRole('radio', { name: '入力チャンネル 7/8' }));
-            await waitFor(() => expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([6, 7]));
+            expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([0, 1]);
+            expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
             expect(localStorage.getItem(REVIEW_KEY)).toBe('true');
             expect(screen.getByRole('button', { name: '保存して開始' })).toBeDisabled();
             await openSystemTab();
@@ -153,6 +154,9 @@ it.each([
         expect(localStorage.getItem(REVIEW_KEY)).toBe('true');
         expect(enginePaths).toEqual([]);
         expect(nativeReview).toBe(true);
+        if (host === 'ASIO' && failAt !== 'complete') {
+            expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([0, 1]);
+        }
         // 次回のbootstrapでも確認待ちが消えず、自動復元を許さない。
         await bootstrapMigration();
         expect(localStorage.getItem(REVIEW_KEY)).toBe('true');

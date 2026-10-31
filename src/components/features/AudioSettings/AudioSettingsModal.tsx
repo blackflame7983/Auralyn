@@ -93,9 +93,43 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     devices, selectedHost, setSelectedHost, selectedInput, setSelectedInput,
     selectedOutput, setSelectedOutput, selectedBufferSize, setSelectedBufferSize,
     selectedSampleRate, setSelectedSampleRate, fetchDevices, isAsio,
-    filteredInputs, filteredOutputs, activeDevice, supportedBufferSizes,
+    filteredInputs, filteredOutputs, supportedBufferSizes,
     canChangeBufferSize, loading: devicesLoading,
   } = useAudioDeviceSelection({ isOpen, currentSampleRate, currentBufferSize, onError: setError });
+  const selectedInputDevice = filteredInputs.find(device => device.name === selectedInput);
+  const deviceKey = selectedHost && selectedInput ? `${selectedHost}\u0000${selectedInputDevice?.id ?? selectedInput}` : '';
+  const [draftSelection, setDraftSelection] = useState<{ key: string; channels: [number, number] } | null>(null);
+  const [actualInput, setActualInput] = useState<{ host: string; id: string } | null>(null);
+  const draftChannels: [number, number] = draftSelection?.key === deviceKey
+    ? draftSelection.channels : draftSelection === null ? (currentInputChannels ?? [0, 1]) : [0, 1];
+  useEffect(() => {
+    if (!isOpen) { setDraftSelection(null); return; }
+    if (deviceKey) setDraftSelection(previous => previous?.key === deviceKey ? previous : {
+      key: deviceKey, channels: previous === null ? (currentInputChannels ?? [0, 1]) : [0, 1],
+    });
+  }, [isOpen, deviceKey]);
+  useEffect(() => {
+    if (!isOpen) { setActualInput(null); return; }
+    let active = true;
+    let revision = 0;
+    const refresh = () => {
+      const request = ++revision;
+      setActualInput(null);
+      void audioApi.getAudioState().then(state => {
+        if (active && request === revision && state.is_running && state.config?.input_id) {
+          setActualInput({ host: state.config.host, id: state.config.input_id });
+        }
+      }).catch(() => {});
+    };
+    refresh();
+    const subscriptions = ['audio-started', 'audio-stopped', 'audio-error', 'audio-stream-error'].map(event => listen(event, refresh));
+    return () => {
+      active = false;
+      subscriptions.forEach(item => void item.then(stop => stop()).catch(() => {}));
+    };
+  }, [isOpen]);
+  const monitorInput = !!(isOpen && selectedInputDevice?.id && actualInput &&
+    selectedHost.toLowerCase() === actualInput.host.toLowerCase() && selectedInputDevice.id === actualInput.id);
   const loading = isApplying || devicesLoading;
 
   // Simple/Advanced Mode
@@ -259,7 +293,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   };
 
   // Common sample rates
-  const sampleRates = [44100, 48000, 96000];
+  const sampleRates = Array.from(new Set([44100, 48000, 88200, 96000, 192000, selectedSampleRate])).sort((a, b) => a - b);
 
   // Load settings from localStorage on mount/open
   useEffect(() => {
@@ -429,7 +463,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       // This prevents overwriting the actual Fallback values with our requested values.
 
       // Notify parent to update persistence with ALL params
-      const inputChannels: [number, number] = isAsio ? (currentInputChannels ?? [0, 1]) : [0, 1];
+      const inputChannels: [number, number] = isAsio ? draftChannels : [0, 1];
       await audioApi.setInputChannels(inputChannels[0], inputChannels[1]);
       await onConfigChange({
         inputChannels,
@@ -471,7 +505,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         outputId
       );
 
-      const inputChannels: [number, number] = isAsio ? (currentInputChannels ?? [0, 1]) : [0, 1];
+      const inputChannels: [number, number] = isAsio ? draftChannels : [0, 1];
       await audioApi.setInputChannels(inputChannels[0], inputChannels[1]);
       await onConfigChange({
         inputChannels,
@@ -678,11 +712,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {isAsio && (
                   <div>
                     <InputChannelSelector
-                      initialChannels={currentInputChannels}
-                      maxChannels={activeDevice?.channels}
-                      onChannelMapped={(channels) => {
-                        onConfigChange({ host: selectedHost, input: selectedInput, output: selectedOutput, sampleRate: selectedSampleRate, bufferSize: selectedBufferSize, inputChannels: channels });
-                      }}
+                      key={deviceKey}
+                      initialChannels={draftChannels}
+                      maxChannels={selectedInputDevice?.channels ?? 0}
+                      monitorEnabled={monitorInput}
+                      onChannelMapped={(channels) => setDraftSelection({ key: deviceKey, channels })}
                     />
                   </div>
                 )}
