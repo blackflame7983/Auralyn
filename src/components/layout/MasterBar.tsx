@@ -10,6 +10,7 @@ import { audioApi, EngineRuntimeStats } from '../../api/audio';
 import { useSharedMeter } from '../features/LevelMeter/MeterContext';
 import { MeterVisual } from '../features/LevelMeter/MeterVisual';
 import { useBeginnerMode } from '@/hooks/useBeginnerMode';
+import { invalidateRuntimeStats, useRuntimeStats } from '@/hooks/useRuntimeStats';
 import { Slider } from '@/components/ui/slider';
 import * as Popover from '@radix-ui/react-popover';
 import { AudioQueueDetails } from './AudioQueueDetails';
@@ -39,14 +40,16 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     const meter = useSharedMeter(isRunning, 'output');
     const isClipping = meter.clipped;
     const detailsButtonRef = useRef<HTMLButtonElement>(null);
-    const [stats, setStats] = useState<EngineRuntimeStats | null>(null);
+    const stats = useRuntimeStats();
     const [hasRecentGlitch, setHasRecentGlitch] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
     const glitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const previousGlitchCount = useRef<number | null>(null);
-    const statsGeneration = useRef(0);
+    const previousRunning = useRef(isRunning);
     useEffect(() => {
-        statsGeneration.current++; setStats(null); previousGlitchCount.current = null;
+        if (previousRunning.current !== isRunning) invalidateRuntimeStats();
+        previousRunning.current = isRunning;
+        previousGlitchCount.current = null;
         if (glitchTimer.current) clearTimeout(glitchTimer.current);
         setHasRecentGlitch(false);
     }, [isRunning]);
@@ -158,7 +161,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
         };
         // mount直後のstatusはLSへ公開しない。初回bootstrap待ちの保存音量を保持する。
         const unlisten = listen('audio-started', () => {
-            statsGeneration.current++; previousGlitchCount.current = null;
+            previousGlitchCount.current = null;
             if (glitchTimer.current) clearTimeout(glitchTimer.current);
             setHasRecentGlitch(false);
             void applyGain();
@@ -191,38 +194,17 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
         };
     }, []);
 
-    // Poll engine stats frequently for signal state and glitch indication
     useEffect(() => {
-        let disposed = false;
-        let fetching = false;
-        let expiry: ReturnType<typeof setTimeout> | undefined;
-        const invalidate = () => { statsGeneration.current++; previousGlitchCount.current = null; setStats(null); onStatsChange?.(null); };
-        const visibility = () => { if (document.hidden) invalidate(); };
-        document.addEventListener('visibilitychange', visibility);
-        const stops = ['audio-stopped', 'audio-error', 'audio-stream-error'].map(name => listen(name, invalidate));
-        const fetchStats = () => {
-            if (fetching || document.hidden) return;
-            fetching = true;
-            const generation = statsGeneration.current;
-            audioApi.getEngineRuntimeStats().then((next) => {
-                if (disposed || generation !== statsGeneration.current) return;
-                const prev = previousGlitchCount.current;
-                if (prev !== null && next.glitchCount > prev) {
-                    setHasRecentGlitch(true);
-                    if (glitchTimer.current) clearTimeout(glitchTimer.current);
-                    glitchTimer.current = setTimeout(() => setHasRecentGlitch(false), 10000);
-                }
-                previousGlitchCount.current = next.glitchCount;
-                setStats(next);
-                onStatsChange?.(next);
-                clearTimeout(expiry);
-                expiry = setTimeout(invalidate, 2500);
-            }).catch(() => { if (!disposed && generation === statsGeneration.current) invalidate(); }).finally(() => { fetching = false; });
-        };
-        fetchStats();
-        const interval = setInterval(fetchStats, 1000);
-        return () => { disposed = true; clearInterval(interval); clearTimeout(expiry); document.removeEventListener('visibilitychange', visibility); stops.forEach(p => { void p.then(fn => fn()).catch(() => {}); }); };
-    }, [onStatsChange]);
+        onStatsChange?.(stats);
+        if (!stats) { previousGlitchCount.current = null; return; }
+        const previous = previousGlitchCount.current;
+        if (previous !== null && stats.glitchCount > previous) {
+            setHasRecentGlitch(true);
+            if (glitchTimer.current) clearTimeout(glitchTimer.current);
+            glitchTimer.current = setTimeout(() => setHasRecentGlitch(false), 10000);
+        }
+        previousGlitchCount.current = stats.glitchCount;
+    }, [stats, onStatsChange]);
 
     const isFxActive = !!stats && !stats.globalBypass && stats.enabledPluginCount > 0;
     const isNoiseConfigured = !!stats?.noiseReductionEnabled;
