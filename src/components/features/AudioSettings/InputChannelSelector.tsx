@@ -20,6 +20,8 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
     const [monitorState, setMonitorState] = useState<'starting' | 'waiting' | 'receiving' | 'error'>('starting');
     const [mappingError, setMappingError] = useState<SettingsNotice>('');
     const [mapping, setMapping] = useState(false);
+    const [showAllPairs, setShowAllPairs] = useState(false);
+    const [focusedPair, setFocusedPair] = useState<number | null>(null);
     const mappingRef = useRef(false);
     const mountedRef = useRef(true);
     const selectionRevisionRef = useRef(0);
@@ -104,7 +106,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
         const isSelected = selectedPair[0] === left && selectedPair[1] === right;
         const hasSignal = activeChannels.includes(left) || activeChannels.includes(right);
         pairs.push(
-            <label key={left} className={`flex items-center gap-2 p-2 rounded-md cursor-pointer border focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background ${isSelected
+            <label key={left} hidden={!showAllPairs && loopLimit > 8 && left >= 8 && !isSelected && !hasSignal && focusedPair !== left} className={`input-channel-pair flex items-center gap-2 p-2 rounded-md cursor-pointer border focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background ${isSelected
                 ? 'bg-selection/15 border-selection text-selection'
                 : 'bg-card border-border text-foreground hover:bg-muted dark:bg-muted/30 dark:border-transparent dark:text-muted-foreground dark:hover:bg-muted/50'}`}>
                 <input
@@ -114,6 +116,8 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
                     checked={isSelected}
                     aria-label={t('settings.InputChannelSelector.201', { arg0: left + 1, arg1: right + 1 })}
                     onChange={() => void handlePairSelect(left, right)}
+                    onFocus={() => setFocusedPair(left)}
+                    onBlur={() => setFocusedPair(null)}
                     aria-describedby={`${groupId}-signal-${left}`}
                     className="shrink-0 accent-primary"
                 />
@@ -143,12 +147,16 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
             </p>
             {maxChannels !== 0 && <p id={`${groupId}-help`} className="text-xs text-muted-foreground leading-relaxed">
                 {t('settings.inputPairHint')}</p>}
-            {maxChannels !== 0 && <fieldset aria-describedby={`${groupId}-help`} aria-busy={mapping}>
+            {maxChannels !== 0 && <fieldset id={`${groupId}-pairs`} aria-describedby={`${groupId}-help`} aria-busy={mapping}>
                 <legend className="sr-only">{t('settings.InputChannelSelector.211')}</legend>
                 <div className={`grid grid-cols-4 gap-2 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-muted-foreground ${maxChannels && maxChannels > 16 ? 'max-h-60' : ''}`}>
                     {pairs}
                 </div>
             </fieldset>}
+            {loopLimit > 8 && <button type="button" aria-expanded={showAllPairs} aria-controls={`${groupId}-pairs`}
+                onClick={() => setShowAllPairs(value => !value)} className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted">
+                {t(showAllPairs ? 'settings.inputPairsLess' : 'settings.inputPairsAll')}
+            </button>}
             {mappingError && <p role="alert" className="text-xs text-destructive-text">{renderNotice(t, mappingError)}</p>}
         </div>
     );

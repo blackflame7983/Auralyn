@@ -576,7 +576,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   return (
     <Modal title={t('common.settings')} onClose={onClose} dismissible={!isApplying} onEscapeKeyDown={event => { if (capturingShortcut) event.preventDefault(); }} initialFocusRef={initialTab === 'sound' ? soundStart : undefined}>
         <div className="fixed inset-0 z-[100] flex justify-end bg-background/80 backdrop-blur-sm">
-      <div className="h-full w-full max-w-5xl flex flex-col overflow-hidden border-l border-border bg-card shadow-2xl">
+      <div className="settings-surface h-full w-full max-w-5xl flex flex-col overflow-hidden border-l border-border bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3 shrink-0">
           <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
             <MdSettings className="w-5 h-5 text-primary" />
@@ -586,7 +586,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             onClick={onClose}
             disabled={isApplying}
             aria-label={t('settings.close')}
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted/50"
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-primary focus:not-focus-visible:outline-none"
           >
             <MdClose className="w-5 h-5" />
           </button>

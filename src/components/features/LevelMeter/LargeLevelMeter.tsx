@@ -1,5 +1,6 @@
 import { useMessages } from '@/i18n/LocaleProvider';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { meterStatusLabel } from '../../../hooks/useMeterLevels';
 import { useSharedMeter } from './MeterContext';
 import { MeterVisual } from './MeterVisual';
@@ -18,9 +19,20 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
     const t = useMessages();
     const reading = useSharedMeter(running, 'output');
     const [detailed, setDetailed] = useState(false);
-    return <div data-detailed={detailed || undefined} className={cn(
-        'large-meter-motion fixed top-16 bottom-[calc(var(--app-footer-height,4rem)+1rem)] right-0 bg-background/95 border-l border-border z-40 flex flex-col px-1 py-2 gap-2',
-        detailed ? 'w-24' : 'w-16'
+    const [homeTarget, setHomeTarget] = useState<HTMLElement | null>(null);
+    useEffect(() => {
+        const media = window.matchMedia?.('(min-height: 1100px)');
+        if (!media) return;
+        const update = () => setHomeTarget(media.matches ? document.getElementById('home-large-meter') : null);
+        update();
+        media.addEventListener('change', update);
+        return () => media.removeEventListener('change', update);
+    }, []);
+    const horizontal = Boolean(homeTarget);
+    const content = <div data-detailed={detailed || undefined} data-horizontal={horizontal || undefined} className={cn(
+        'large-meter-motion bg-background/95 border-border flex flex-col gap-2',
+        horizontal ? 'w-full rounded-xl border p-5' : 'fixed top-16 bottom-[calc(var(--app-footer-height,4rem)+1rem)] right-0 z-40 border-l px-1 py-2',
+        !horizontal && (detailed ? 'w-24' : 'w-16')
     )}>
         <div className="flex items-center justify-center">
             <button type="button" onClick={() => setDetailed(!detailed)} aria-pressed={detailed}
@@ -45,7 +57,8 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
         </span>
         {detailed && <div className="flex justify-center"><InputGainControl /></div>}
         <div className="flex-1 min-h-0 flex justify-center items-stretch">
-            <MeterVisual reading={reading} label={t('meter.output')} width={detailed ? 14 : 8} height="100%" showValues={detailed} scale stackValues />
+            <MeterVisual reading={reading} label={t('meter.output')} orientation={horizontal ? 'horizontal' : 'vertical'} width={detailed ? 20 : 14} height={horizontal ? 'clamp(80px, 14vh, 220px)' : '100%'} showValues={horizontal || detailed} scale stackValues />
         </div>
     </div>;
+    return homeTarget ? createPortal(content, homeTarget) : content;
 };

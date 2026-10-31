@@ -51,10 +51,30 @@ it.each([2, 64])('未取得のチャンネルは選べず、取得後は実際�
     expect(screen.getByText(/入力チャンネル数が未確認/)).toBeInTheDocument();
     expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'set_input_channels')).toBe(false);
     view.rerender(<InputChannelSelector maxChannels={channels} />);
+    if (channels > 8) fireEvent.click(screen.getByRole('button', { name: 'すべての入力ペアを表示' }));
     expect(screen.getAllByRole('radio')).toHaveLength(channels / 2);
     expect(screen.queryByText(/入力チャンネル数が未確認/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 1/2' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 0, right: 1 }));
+});
+
+it('多入力では選択中と信号のあるペアを残し、全ペアを展開して選び直せる', async () => {
+    let scan: (event: { payload: number[] }) => void = () => {};
+    vi.mocked(listen).mockImplementation(async (event, handler) => {
+        if (event === 'audio-channel-scan') scan = handler as typeof scan;
+        return () => {};
+    });
+    render(<InputChannelSelector maxChannels={22} initialChannels={[20, 21]} />);
+    expect(screen.getAllByRole('radio')).toHaveLength(5);
+    expect(screen.getByRole('radio', { name: '入力チャンネル 21/22' })).toBeChecked();
+    act(() => scan({ payload: Array.from({ length: 22 }, (_, i) => i === 16 ? 0.2 : 0) }));
+    expect(screen.getByRole('radio', { name: '入力チャンネル 17/18' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'すべての入力ペアを表示' }));
+    expect(screen.getAllByRole('radio')).toHaveLength(11);
+    fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 13/14' }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: '入力チャンネル 13/14' })).toBeChecked());
+    fireEvent.click(screen.getByRole('button', { name: '入力ペアを少なく表示' }));
+    expect(screen.getByRole('radio', { name: '入力チャンネル 13/14' })).toBeVisible();
 });
 
 it.each(['保存して開始', '音声エンジンを再起動'])(

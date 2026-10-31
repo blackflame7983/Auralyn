@@ -117,7 +117,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     // ホームの操作幅を保てない間は重ね表示にする。メーター併用時はその幅も確保する。
     const [panelBeside, setPanelBeside] = useState(false);
     useLayoutEffect(() => {
-        const media = window.matchMedia?.(`(min-width: ${isLargeMeterOpen ? 1536 : 1440}px)`);
+        const media = window.matchMedia?.('(min-width: 1200px)');
         if (!media) return;
         const update = () => setPanelBeside(media.matches);
         update();
@@ -250,7 +250,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     className="home-main min-w-0 flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent"
                 >
                     {/* 左右に分けると片側だけが詰まって見えるので、どの幅でも上から1列に並べ、広い画面では中央に寄せる。 */}
-                    <div className="mx-auto max-w-[1180px]">
+                    <div className="home-content mx-auto max-w-[1180px]">
                         {notices}
                         {/* 音量チェックと大型メーターは本番帯のメーター横に置き、ホーム上部に常設の行を作らない。
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
@@ -283,6 +283,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         <div id="home-rack">{children}</div>
                         </div>
                         {!configured && soundChain}
+                        {isLargeMeterOpen && <div id="home-large-meter" className="home-large-meter" />}
                     </div>
                 </main>
                 {panelOverlays && <div aria-hidden="true" className="vst-panel-scrim absolute inset-0 z-[44] bg-overlay/35" onClick={() => setVstPanelOpen(false)} />}

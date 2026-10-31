@@ -276,7 +276,7 @@ test('最小〜最大: VST は作業幅を保って重なり、広い窓では�
         const main = page.locator('main');
         await page.locator('#vst-panel-toggle').click();
         await expect(page.locator('#vst-panel')).toHaveAttribute('data-state', 'open');
-        const overlays = width < 1536;
+        const overlays = width < 1200;
         if (overlays) {
             await expect(main).toHaveAttribute('inert', '');
             await expect(meter).toBeHidden();
