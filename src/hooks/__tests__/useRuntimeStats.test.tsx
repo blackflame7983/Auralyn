@@ -2,7 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { audioApi, type EngineRuntimeStats } from '@/api/audio';
 import { listen } from '@tauri-apps/api/event';
-import { refreshRuntimeStats, useRuntimeStats } from '../useRuntimeStats';
+import { refreshRuntimeStats, refreshRuntimeStatsChecked, useRuntimeStats } from '../useRuntimeStats';
 
 const stats = (count: number) => ({ glitchCount: count } as EngineRuntimeStats);
 const handlers = new Map<string, () => void>();
@@ -81,4 +81,50 @@ it('状態通知の購読に失敗したら古い取得結果を捨て、未確�
     const retry = renderHook(() => useRuntimeStats());
     await act(async () => {});
     expect(retry.result.current).toEqual(stats(1));
+});
+
+
+it('取得失敗は明示更新の成功とせず、後続の成功で復旧する', async () => {
+    const view = renderHook(() => useRuntimeStats());
+    await act(async () => {});
+    vi.mocked(audioApi.getEngineRuntimeStats).mockRejectedValueOnce(new Error('offline'));
+    await act(async () => { await expect(refreshRuntimeStatsChecked()).rejects.toThrow(); });
+    expect(view.result.current).toBeNull();
+    await act(async () => { await expect(refreshRuntimeStatsChecked()).resolves.toEqual(stats(1)); });
+});
+
+it('全利用終了時に未完了の旧取得から独立し、再利用時は古い応答を捨てる', async () => {
+    let finish!: (value: EngineRuntimeStats) => void;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    const old = renderHook(() => useRuntimeStats());
+    old.unmount();
+    const next = renderHook(() => useRuntimeStats());
+    await act(async () => {});
+    expect(next.result.current).toEqual(stats(1));
+    await act(async () => { finish(stats(99)); });
+    expect(next.result.current).toEqual(stats(1));
+});
+
+
+it('強制取得中に状態が無効化されたら古いsnapshotを成功として返さない', async () => {
+    const view = renderHook(() => useRuntimeStats());
+    await act(async () => {});
+    let finish!: (value: EngineRuntimeStats) => void;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    let request!: Promise<EngineRuntimeStats>;
+    act(() => { request = refreshRuntimeStatsChecked(); });
+    act(() => handlers.get('audio-stopped')!());
+    await act(async () => { finish(stats(9)); await expect(request).rejects.toThrow(); });
+    expect(view.result.current).toBeNull();
+});
+
+it('profile通知後に古い取得を捨て、派生値を含む新しい統計を取得する', async () => {
+    let finish!: (value: EngineRuntimeStats) => void;
+    const old = { ...stats(1), latencyMetadata: { schemaVersion: 1, streamRunning: true, nrProcessingFrameSamples: 480 } } as EngineRuntimeStats;
+    const fresh = { ...stats(2), latencyMetadata: { schemaVersion: 1, streamRunning: true, nrProcessingFrameSamples: 960 } } as EngineRuntimeStats;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockReturnValueOnce(new Promise(resolve => { finish = resolve; })).mockResolvedValue(fresh);
+    const view = renderHook(() => useRuntimeStats());
+    act(() => window.dispatchEvent(new CustomEvent('profile-fx-applied', { detail: { noiseControl: { enabled: true } } })));
+    await act(async () => { finish(old); });
+    expect(view.result.current).toEqual(fresh);
 });

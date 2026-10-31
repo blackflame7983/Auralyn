@@ -121,6 +121,7 @@ it('プロファイル適用でモードが変わっても音づくりの表示�
     expect(screen.getByText(message('ja', 'settings.noiseOffHint'))).toBeVisible();
     fireEvent.click(screen.getByText(message('ja', 'settings.noiseDetails')));
     expect(await screen.findByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.129') })).toBeEnabled();
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({ noiseReductionEnabled: true, noiseReductionActive: true, noiseReductionMode: 'venue', noiseControlStrength: 1.1, noiseVoiceGuard: true, builtInEffectsEnabled: false, builtInEffectsPreset: 'warm', builtInEffectsAmount: 0.4 } as EngineRuntimeStats);
     act(() => { window.dispatchEvent(new CustomEvent('profile-fx-applied', { detail: {
         noiseControl: { enabled: true, mode: 'venue', strength: 1.1, voiceGuard: true },
         builtinFx: { preset: 'warm', enabled: false, amount: 0.4 },
@@ -133,4 +134,15 @@ it('プロファイル適用でモードが変わっても音づくりの表示�
     expect(screen.getByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.129') })).toBeEnabled();
     fireEvent.click(noise);
     await waitFor(() => expect(setNoise).toHaveBeenCalledWith({ active: false, mode: 'venue', strength: 1.1, voiceGuard: true }));
+});
+
+
+it('統計の取得失敗は停止と断定せず根拠未取得として示す', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    vi.mocked(audioApi.getEngineRuntimeStats).mockRejectedValue(new Error('offline'));
+    render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    fireEvent.keyDown(await screen.findByRole('tab', { name: 'システム' }), { key: 'Enter' });
+    fireEvent.click(screen.getByText('診断情報'));
+    expect(await screen.findByText(/根拠情報を未取得です/)).toBeInTheDocument();
+    expect(screen.queryByText(/音声は停止中・未確認です/)).not.toBeInTheDocument();
 });

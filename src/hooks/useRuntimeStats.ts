@@ -12,6 +12,9 @@ let expiry: ReturnType<typeof setTimeout> | undefined;
 let subscriptions: Promise<() => void>[] = [];
 let subscriptionSession = 0;
 let subscriptionFailed = false;
+let acceptedSerial = 0;
+let acceptedRevision = -1;
+let acceptedSession = -1;
 
 function publish(value: EngineRuntimeStats | null) {
     if (snapshot === value) return;
@@ -30,6 +33,7 @@ export function refreshRuntimeStats(force = false): Promise<void> {
         if (force) { revision++; queued = true; }
         return inFlight;
     }
+    const requestSession = subscriptionSession;
     const run = async () => {
         do {
             queued = false;
@@ -37,6 +41,9 @@ export function refreshRuntimeStats(force = false): Promise<void> {
             try {
                 const next = await audioApi.getEngineRuntimeStats();
                 if (listeners.size && !document.hidden && !subscriptionFailed && revision === requestRevision) {
+                    acceptedSerial++;
+                    acceptedRevision = requestRevision;
+                    acceptedSession = requestSession;
                     publish(next);
                     clearTimeout(expiry);
                     expiry = setTimeout(invalidateRuntimeStats, 2500);
@@ -44,17 +51,27 @@ export function refreshRuntimeStats(force = false): Promise<void> {
             } catch {
                 if (listeners.size && revision === requestRevision) invalidateRuntimeStats();
             }
-        } while (queued && listeners.size && !document.hidden && !subscriptionFailed);
+        } while (queued && listeners.size && requestSession === subscriptionSession && !document.hidden && !subscriptionFailed);
     };
-    inFlight = run().finally(() => { inFlight = null; });
-    return inFlight;
+    const request = run().finally(() => { if (inFlight === request) inFlight = null; });
+    inFlight = request;
+    return request;
+}
+export async function refreshRuntimeStatsChecked(): Promise<EngineRuntimeStats> {
+    const before = acceptedSerial;
+    const session = subscriptionSession;
+    await refreshRuntimeStats(true);
+    if (!snapshot || document.hidden || subscriptionFailed || acceptedSerial <= before || acceptedRevision !== revision || acceptedSession !== session || session !== subscriptionSession) throw new Error('Runtime stats are unavailable');
+    return snapshot;
 }
 function visibility() {
     if (document.hidden) invalidateRuntimeStats();
     else void refreshRuntimeStats(true);
 }
 function external(event: Event) {
-    if (!(event as CustomEvent<{ runtimeStatsRefreshed?: boolean }>).detail?.runtimeStatsRefreshed) void refreshRuntimeStats(true);
+    if ((event as CustomEvent<{ runtimeStatsRefreshed?: boolean }>).detail?.runtimeStatsRefreshed) return;
+    invalidateRuntimeStats();
+    void refreshRuntimeStats(true);
 }
 function started() { invalidateRuntimeStats(); void refreshRuntimeStats(true); }
 function subscribe(listener: () => void) {
@@ -80,6 +97,7 @@ function subscribe(listener: () => void) {
         listeners.delete(listener);
         if (!listeners.size) {
             subscriptionSession++;
+            inFlight = null;
             invalidateRuntimeStats();
             queued = false;
             clearInterval(interval);
