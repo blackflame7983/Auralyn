@@ -5,6 +5,7 @@ import { StrictMode } from 'react';
 import { act, cleanup, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { METER_TIMEOUT_MS, useMeterLevels } from '../useMeterLevels';
 
 const handlers = new Map<string, Set<(event: { payload: unknown }) => void>>();
@@ -100,4 +101,51 @@ it('実メーターのlocale切替で購読・timeout・無音状態を作り直
     expect(result.current).toMatchObject({ clipped: false, clipSecondsAgo: null });
     level(1); tick(16); emit('audio-started');
     expect(result.current).toMatchObject({ clipped: false, clipSecondsAgo: null });
+});
+
+it('2秒の無音では状態が安定しIPCを発行しない', () => {
+    let renders = 0;
+    vi.mocked(invoke).mockClear();
+    renderHook(() => { renders++; return useMeterLevels({ running: true }); });
+    level(0);
+    for (let i = 0; i < 125; i++) tick(16);
+    expect({ renders, ipc: vi.mocked(invoke).mock.calls.length }).toEqual({ renders: 2, ipc: 0 });
+});
+
+
+
+it('非表示中は描画せずクリップを記録し、復帰時に反映する', () => {
+    let renders = 0;
+    const { result } = renderHook(() => { renders++; return useMeterLevels({ running: true }); });
+    const initialRenders = renders;
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    level(1.2); tick(2000);
+    expect(renders).toBe(initialRenders);
+    expect(result.current.clipped).toBe(false);
+    vi.mocked(Object.getOwnPropertyDescriptor(document, 'hidden')!.get!).mockReturnValue(false);
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    expect(result.current).toMatchObject({ clipped: true, clipSecondsAgo: 2, state: 'stale' });
+    vi.restoreAllMocks();
+});
+
+it('信号から無音になった後のレベルはゼロに収束する', () => {
+    const { result } = renderHook(() => useMeterLevels({ running: true }));
+    level(.5); tick(16); level(0); tick(1000);
+    expect(result.current.levels).toEqual([0, 0]);
+});
+
+
+it('非表示中の停止と再開も復帰時に反映する', () => {
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    const { result } = renderHook(() => useMeterLevels({ running: true }));
+    level(1); emit('audio-stopped');
+    hidden.mockReturnValue(false);
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    expect(result.current).toMatchObject({ state: 'stopped', clipped: true });
+    hidden.mockReturnValue(true);
+    emit('audio-started');
+    hidden.mockReturnValue(false);
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    expect(result.current).toMatchObject({ state: 'waiting', clipped: false });
+    hidden.mockRestore();
 });
