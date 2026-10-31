@@ -1,6 +1,19 @@
 import type { Locale } from './locale';
 
 const ja = {
+    "settings.mode.registerHintNew": "いまの音を歌・雑談に登録します",
+    "settings.mode.reverbConfirm": "雑談の登録では残響をOFFにします。いまの音は変わりません。",
+    "settings.mode.registerWithoutReverb": "残響をOFFにして登録",
+    "settings.mode.cancelRegistration": "キャンセル",
+    "settings.mode.adjustOther": "次に{mode}の音を調整",
+    "saveHelp.modeScope": "モードには適用済みの内蔵設定を登録します。VSTと未適用の下書きは含みません。雑談では残響をOFFにします。",
+    "session.checkMissing": "見つからないVSTを確認",
+    "session.removeMissingImpact": "次のVSTを保存済み構成から外し、現在のラックを保存します。元の構成はプロファイルにバックアップします。復元にはVSTを元の場所に戻す必要があります。",
+    "session.confirmRemoveMissing": "外して保存",
+    "session.noMissing": "見つからないVSTはありませんでした。",
+    "session.missingRecoveryFailed": "確認または保存ができませんでした。保存済み構成は保護中です。状況を確認してやり直してください。",
+    "home.meterSuspended": "VST 構成を閉じると大型メーターが戻ります",
+
     "saveHelp.title": "モード登録とプロファイル保存の違い",
     "saveHelp.modeTitle": "歌・雑談モード：配信中の切替に",
     "saveHelp.mode": "適用済みの内蔵ボイスチェーンと残響だけを登録します。ホームから切り替えられます。マイク・VST・ノイズ低減・音量・ミュートは切り替えません。",
@@ -1627,6 +1640,7 @@ const ja = {
     "master.noise": "ノイズ",
     "master.speech": "声",
     "master.glitch": "直近でグリッチを検出",
+    "master.recentDropout": "直近で音切れを検出",
     "master.details": "音声処理の詳細",
     "master.detailsTitle": "音声処理の詳細",
     "master.status": "状態",
@@ -2421,6 +2435,7 @@ const ja = {
     "meter.output": "出力",
     "meter.accessibleLevel": "{arg0}レベル: {arg1}",
     "meter.clip": "クリップ",
+    "meter.clipAge": "{seconds}秒前にクリップ",
     "meter.clearClipNamed": "{name}のクリップ表示を消す",
     "meter.title": "レベル",
     "meter.detailedView": "詳細表示",
@@ -2712,6 +2727,19 @@ const ja = {
 } as const;
 export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
+    "settings.mode.registerHintNew": "Register the current sound for singing or talking.",
+    "settings.mode.reverbConfirm": "Reverb will be turned off in the talk mode registration. Your current sound will not change.",
+    "settings.mode.registerWithoutReverb": "Register with reverb off",
+    "settings.mode.cancelRegistration": "Cancel",
+    "settings.mode.adjustOther": "Next, adjust the sound for {mode}",
+    "saveHelp.modeScope": "Modes register applied built-in settings, excluding VSTs and unapplied drafts. Reverb is off in talk mode.",
+    "session.checkMissing": "Check for missing VSTs",
+    "session.removeMissingImpact": "The following VSTs will be removed from the saved configuration and the current rack saved. The original is backed up as a profile; restore the VSTs to their original locations to use it.",
+    "session.confirmRemoveMissing": "Remove and save",
+    "session.noMissing": "No missing VSTs were found.",
+    "session.missingRecoveryFailed": "Could not check or save. The saved configuration remains protected. Check the situation and try again.",
+    "home.meterSuspended": "Close VST configuration to show the large meter again",
+
     "saveHelp.title": "Mode registration versus profile saving",
     "saveHelp.modeTitle": "Singing / Talk modes: switch during a stream",
     "saveHelp.mode": "Register only applied built-in voice processing and reverb, then switch from Home. Microphone, VSTs, noise reduction, volume and mute stay unchanged.",
@@ -4339,6 +4367,7 @@ const en: Record<MessageKey, string> = {
     "master.noise": "Noise",
     "master.speech": "Voice",
     "master.glitch": "A recent audio glitch was detected",
+    "master.recentDropout": "Recent audio dropout detected",
     "master.details": "Audio processing details",
     "master.detailsTitle": "Audio processing details",
     "master.status": "Status",
@@ -5133,6 +5162,7 @@ const en: Record<MessageKey, string> = {
     "meter.output": "Output",
     "meter.accessibleLevel": "{arg0} level: {arg1}",
     "meter.clip": "Clip",
+    "meter.clipAge": "Clipped {seconds} seconds ago",
     "meter.clearClipNamed": "Clear {name} clip indicator",
     "meter.title": "Level",
     "meter.detailedView": "Detailed view",

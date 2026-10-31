@@ -2,6 +2,99 @@
 use crate::{audio, audio_engine, desktop_integration, routing_diag, vst_host};
 use tauri::{AppHandle, Manager, State};
 
+// 読み込みやスキャンを行わず、明確な不在だけを返す。
+fn missing_vst_path(path: &str) -> Result<bool, String> {
+    let path = std::path::Path::new(path);
+    if !path.is_absolute()
+        || !path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("vst3"))
+    {
+        return Err("VSTのパスが不正です".into());
+    }
+    classify_vst_metadata(std::fs::metadata(path))
+}
+
+fn classify_vst_metadata(result: std::io::Result<std::fs::Metadata>) -> Result<bool, String> {
+    match result {
+        Ok(_) => Ok(false),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(_) => Err("VSTの存在を確認できません".into()),
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn missing_vst_paths(paths: Vec<String>) -> Result<Vec<bool>, String> {
+    if paths.len() > 32 {
+        return Err("VSTの件数が不正です".into());
+    }
+    super::run_blocking(move || paths.iter().map(|path| missing_vst_path(path)).collect()).await
+}
+
+#[cfg(test)]
+mod missing_vst_tests {
+    use super::{classify_vst_metadata, missing_vst_path};
+    #[test]
+    fn missing_vst_distinguishes_absence_and_access_errors() {
+        assert_eq!(
+            classify_vst_metadata(Err(std::io::ErrorKind::NotFound.into())),
+            Ok(true)
+        );
+        assert!(classify_vst_metadata(Err(std::io::ErrorKind::PermissionDenied.into())).is_err());
+        assert!(missing_vst_path("relative.vst3").is_err());
+        assert!(missing_vst_path("relative.dll").is_err());
+        let missing = std::env::temp_dir()
+            .join("auralyn-nonexistent-test-vst")
+            .join("missing.vst3");
+        assert_eq!(missing_vst_path(missing.to_str().unwrap()), Ok(true));
+    }
+}
+
+// 復旧用プロファイルは既存ファイルを決して上書きしない。
+#[tauri::command]
+pub(crate) async fn save_vst_recovery_profile(
+    app: AppHandle,
+    name: String,
+    plugins: Vec<vst_host::presets::PresetPlugin>,
+) -> Result<(), String> {
+    super::run_blocking(move || {
+        use std::io::Write;
+        let suffix = name
+            .strip_prefix("VST-recovery-")
+            .ok_or("復旧名が不正です")?;
+        if suffix.len() != 36
+            || !suffix.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+            || plugins.len() > 32
+        {
+            return Err("復旧名または件数が不正です".into());
+        }
+        let preset = vst_host::presets::Preset {
+            schema_version: 1,
+            name: name.clone(),
+            plugins,
+            audio_config: None,
+            noise_control: None,
+            builtin_fx: None,
+        };
+        let json = serde_json::to_vec_pretty(&preset).map_err(|e| e.to_string())?;
+        let dir = app
+            .path()
+            .app_config_dir()
+            .map_err(|e| e.to_string())?
+            .join("presets");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(dir.join(format!("{name}.json")))
+            .map_err(|e| e.to_string())?;
+        file.write_all(&json)
+            .and_then(|_| file.sync_all())
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
 #[tauri::command]
 pub(crate) async fn peak_protection(
     state: State<'_, audio::AudioState>,

@@ -396,6 +396,8 @@ pub fn run() {
             commands::audio::load_plugin,
             commands::audio::restore_plugin,
             commands::audio::session_rack,
+            commands::audio::missing_vst_paths,
+            commands::audio::save_vst_recovery_profile,
             commands::audio::audio_frontend_bootstrap,
             commands::audio::get_output_gain_observation,
             commands::audio::remove_plugin,

@@ -49,3 +49,19 @@ it('読み込めていないVSTがなければ名前と補足を出さない', (
     expect(screen.queryByText(/読み込めていないVST/)).toBeNull();
     expect(screen.queryByText(/アンインストール・移動したVST/)).toBeNull();
 });
+
+it('不在確認後に名前とバックアップの影響を示し、別の明示操作で保存する', () => {
+    const check = vi.fn().mockResolvedValue(undefined);
+    const save = vi.fn().mockResolvedValue(undefined);
+    const view = render(<SessionRecoveryNotice {...props} onCheckMissing={check} onSaveWithoutMissing={save} />);
+    fireEvent.click(screen.getByText('保存済み構成から読み直す'));
+    fireEvent.click(screen.getByRole('button', { name: '見つからないVSTを確認' }));
+    expect(check).toHaveBeenCalledOnce();
+    expect(save).not.toHaveBeenCalled();
+    view.rerender(<SessionRecoveryNotice {...props} onCheckMissing={check} onSaveWithoutMissing={save} missingRecovery={{ names: ['A', 'B'] }} />);
+    expect(screen.getByText('A')).toBeVisible();
+    expect(screen.getByText('B')).toBeVisible();
+    expect(screen.getByText(/プロファイルにバックアップ/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '外して保存' }));
+    expect(save).toHaveBeenCalledOnce();
+});

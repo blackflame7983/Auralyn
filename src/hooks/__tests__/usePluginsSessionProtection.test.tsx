@@ -238,3 +238,57 @@ it('A復元済みB待機中の追加・削除・操作・profile置換をhookで
     await act(() => vi.advanceTimersByTimeAsync(2000));
     expect(JSON.parse(localStorage.getItem(PLUGIN_SESSION_KEY)!).map((plugin: { path: string }) => plugin.path)).toEqual(['ozone', 'insight']);
 });
+
+
+it.each(['success', 'all-missing', 'nonmissing-failure', 'state-failure', 'backup-failure', 'source-race', 'rack-race', 'reset-race', 'absence-race', 'storage-failure', 'release-storage-failure'])('不在VSTの明示保存: %s', async mode => {
+    localStorage.setItem(PLUGIN_SESSION_KEY, original);
+    localStorage.setItem(PLUGIN_SESSION_BACKUP_KEY, 'previous backup');
+    vi.mocked(audioApi.restorePlugin).mockImplementation(async request => {
+        if (request.path === 'ozone' || ['all-missing', 'nonmissing-failure'].includes(mode)) throw new Error('load failed');
+        return { id: request.path, name: request.path, prepared: false };
+    });
+    vi.spyOn(audioApi, 'missingVstPaths').mockResolvedValue(mode === 'all-missing' ? [true, true] : [true, false]);
+    const backup = vi.spyOn(audioApi, 'saveVstRecoveryProfile').mockResolvedValue(undefined);
+    const { result } = renderHook(() => usePlugins());
+    await flush();
+    await act(async () => { await result.current.checkMissingPlugins(); });
+    expect(result.current.missingRecovery?.names).toEqual(mode === 'all-missing' ? ['ozone', 'insight'] : ['ozone']);
+    if (mode === 'reset-race') act(() => result.current.resetPlugins());
+    if (mode === 'absence-race') vi.mocked(audioApi.missingVstPaths).mockResolvedValue([false, false]);
+    if (mode === 'state-failure') vi.mocked(audioApi.getPluginState).mockRejectedValue(new Error('state'));
+    if (mode === 'backup-failure') backup.mockRejectedValue(new Error('backup'));
+    if (mode === 'source-race') backup.mockImplementation(async () => { localStorage.setItem(PLUGIN_SESSION_KEY, 'changed'); });
+    if (mode === 'rack-race') {
+        const prior = vi.mocked(audioApi.sessionRack).getMockImplementation()!;
+        vi.mocked(audioApi.sessionRack).mockImplementation(async request => request.action === 'retain' ? { status: 'conflict' } : prior(request));
+    }
+    if (mode === 'storage-failure') {
+        const prior = Storage.prototype.setItem;
+        vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+            if (key.startsWith('vst_host_session_recovery_')) throw new Error('storage');
+            prior.call(this, key, value);
+        });
+    }
+    if (mode === 'release-storage-failure') {
+        const prior = Storage.prototype.removeItem;
+        vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key) {
+            if (key === PLUGIN_SESSION_PROTECTED_KEY) throw new Error('storage');
+            prior.call(this, key);
+        });
+    }
+    let failure: unknown;
+    await act(async () => { try { await result.current.saveWithoutMissingPlugins(); } catch (error) { failure = error; } });
+    if (mode === 'success' || mode === 'all-missing') {
+        expect(failure).toBeUndefined();
+        expect(localStorage.getItem(PLUGIN_SESSION_PROTECTED_KEY)).toBeNull();
+        expect(JSON.parse(localStorage.getItem(PLUGIN_SESSION_KEY)!)).toHaveLength(mode === 'all-missing' ? 0 : 1);
+        expect(backup).toHaveBeenCalledWith(expect.stringMatching(/^VST-recovery-/), JSON.parse(original));
+        expect(Object.keys(localStorage).some(key => key.startsWith('vst_host_session_recovery_') && localStorage.getItem(key) === original)).toBe(true);
+    } else {
+        expect(failure).toBeDefined();
+        expect(localStorage.getItem(PLUGIN_SESSION_PROTECTED_KEY)).toBe('true');
+        expect(localStorage.getItem(PLUGIN_SESSION_KEY)).toBe(mode === 'source-race' ? 'changed' : original);
+    }
+    expect(localStorage.getItem(PLUGIN_SESSION_BACKUP_KEY)).toBe('previous backup');
+    expect(audioApi.removePlugin).not.toHaveBeenCalled();
+});

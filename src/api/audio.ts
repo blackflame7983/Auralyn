@@ -58,6 +58,8 @@ export type SessionRackReply = { status: 'snapshot'; generation: string; revisio
 export const audioApi = {
     frontendBootstrap: async (request: FrontendBootstrapRequest): Promise<FrontendBootstrapReply> => invoke('audio_frontend_bootstrap', { request }),
     sessionRack: async (request: SessionRackRequest): Promise<SessionRackReply> => invoke('session_rack', { request }),
+    missingVstPaths: async (paths: string[]): Promise<boolean[]> => invoke('missing_vst_paths', { paths }),
+    saveVstRecoveryProfile: async (name: string, plugins: import('./presets').PresetPlugin[]): Promise<void> => invoke('save_vst_recovery_profile', { name, plugins }),
     // 既存の状態取得コマンドで実ストリームを確認する。プロセスの常駐とは区別する。
     getAudioStreamState: async (): Promise<{ running: boolean; streamFailed: boolean }> =>
         invoke('auto_gain', { request: { action: 'status' } }),
