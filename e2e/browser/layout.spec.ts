@@ -3,7 +3,7 @@ import { test, expect } from './tauriFixture';
 
 test.describe('通常のホーム表示', () => {
     test.use({ liveHome: true, registeredModes: false });
-    for (const source of ['本番帯', '大型メーター']) {
+    for (const source of ['本番帯', '大型メーター併用']) {
     test(`${source}のマイク音量を開いて横並びから重ね表示へ縮めると、閉じてVST操作へ移る`, async ({ page }) => {
         await page.setViewportSize({ width: 1920, height: 768 });
         await page.addInitScript(() => {
@@ -13,11 +13,11 @@ test.describe('通常のホーム表示', () => {
         });
         await page.goto('/');
         await expect(page.locator('#vst-panel')).toBeVisible();
-        if (source === '大型メーター') {
+        if (source === '大型メーター併用') {
             await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
             await page.locator('.large-meter-motion').getByRole('button', { name: '詳細表示', exact: true }).click();
         }
-        const region = source === '大型メーター' ? page.locator('.large-meter-motion') : page.getByRole('region', { name: '本番', exact: true });
+        const region = page.getByRole('region', { name: '本番', exact: true });
         await region.getByRole('button', { name: 'マイク音量 100%', exact: true }).click();
         const popup = page.getByRole('dialog', { name: 'マイク音量', exact: true });
         await expect(popup.getByRole('slider')).toBeFocused();

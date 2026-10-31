@@ -144,7 +144,11 @@ export const AppShell: React.FC<AppShellProps> = ({
             document.getElementById('plugin-rack-heading')?.focus({ preventScroll: true });
     }, [panelOverlays]);
     const [focusRack, setFocusRack] = useState(0);
-    const openRack = () => { setVstPanelOpen(true); setFocusRack(n => n + 1); };
+    const [rackPointerFocus, setRackPointerFocus] = useState(false);
+    const openRack = (event?: React.MouseEvent<HTMLButtonElement>) => {
+        setRackPointerFocus(Boolean(event && event.detail > 0));
+        setVstPanelOpen(true); setFocusRack(n => n + 1);
+    };
     useEffect(() => {
         if (!focusRack) return;
         document.getElementById('plugin-rack-heading')?.focus({ preventScroll: true });
@@ -165,7 +169,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const loudnessLabel = t(measurement.busy ? 'loudness.switching' : measurement.stopUnconfirmed ? 'loudness.retryStop' : measurement.active ? 'loudness.stop' : 'loudness.startAction');
     // 大型メーターは声のレベルを大きく見るためのものなので、ヘッダーではなく本番帯のメーター横から開く。
     const largeMeterLabel = t(isLargeMeterOpen ? 'header.meterClose' : 'header.meterOpen');
-    const largeMeterButton = <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><button type="button" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
+    const largeMeterButton = <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><button type="button" id="large-meter-toggle" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
         aria-label={largeMeterLabel}
         className={cn('inline-flex shrink-0 items-center rounded-md border p-1.5', isLargeMeterOpen ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border hover:bg-muted')}>
         <LevelMeterIcon className="h-[18px] w-[18px]" />
@@ -290,6 +294,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 {/* パネルと同じ時間で予約幅を戻す。退場後のアンマウントではホームの幅を変えない。 */}
                 {vstPanel && <div aria-hidden="true" className="vst-panel-space" data-state={vstPanelOpen ? 'open' : 'closed'} />}
                 {panelMotion.present && <aside ref={panelRef} id="vst-panel" aria-labelledby="plugin-rack-heading"
+                    data-pointer-focus={rackPointerFocus || undefined} onKeyDownCapture={() => setRackPointerFocus(false)}
                     data-state={vstPanelOpen ? 'open' : 'closed'} aria-hidden={!vstPanelOpen} inert={!vstPanelOpen}
                     onTransitionEnd={panelMotion.onTransitionEnd}
                     className="vst-panel-motion absolute inset-y-0 right-0 z-[45] w-[min(420px,100%)] overflow-y-auto border-l border-border bg-background p-4 shadow-2xl scrollbar-thin">

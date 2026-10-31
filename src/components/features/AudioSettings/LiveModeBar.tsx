@@ -25,7 +25,11 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister }:
         return () => document.removeEventListener('visibilitychange', visible);
     }, [registered, refresh]);
     useEffect(() => (registered ? activate() : undefined), [registered, activate]);
-    if (!value || (!registered && !onRegister)) return null;
+    if (!value) return error ? <section aria-label={t('liveBar.label')} className="flex flex-wrap items-center gap-2">
+        <p role="alert" className="text-xs text-warning">{error}</p>
+        <button type="button" disabled={busy} onClick={() => void refresh()} className="rounded-md border border-border px-3 py-1.5 text-xs">{t('settings.LiveModeControls.236')}</button>
+    </section> : null;
+    if (!registered && !onRegister) return null;
 
     const name = (mode: 'singing' | 'talk') => mode === 'singing' ? t('settings.LiveModeControls.212') : t('settings.LiveModeControls.213');
     const applied = value.phase === 'settled' ? value.applied : null;
@@ -62,7 +66,9 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister }:
                 className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
                 {registered ? <MdEditNote aria-hidden="true" className="h-4 w-4" /> : <><MdAdd aria-hidden="true" className="h-4 w-4" />{t('liveBar.register')}</>}
             </button></TooltipTrigger><TooltipContent>{t(registered ? 'liveBar.editRegistration' : 'liveBar.register')}</TooltipContent></Tooltip></TooltipProvider>}
-            {error && <p role="alert" className="basis-full text-xs text-destructive-text">{error}</p>}
+            {(error || value.error) && <div className="basis-full space-y-2"><p role="alert" className="text-xs text-destructive-text">{error || t('liveNotices.operationFailed')}</p>
+                <button type="button" disabled={busy} onClick={() => void refresh()} className="rounded-md border border-border px-3 py-1.5 text-xs">{t('settings.LiveModeControls.236')}</button>
+            </div>}
         </section>
     );
 }

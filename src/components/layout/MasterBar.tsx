@@ -238,7 +238,10 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                         min={0} max={200} step={1} onDoubleClick={() => handleOutputGainChange([100])} className="mt-4" />
                     <button type="button" disabled={outputGain === 100} onClick={() => handleOutputGainChange([100])}
                         className="mt-3 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">{t('header.inputGainHint')}</button>
-                    {gainMessage && <p role="alert" className="mt-3 text-xs text-warning">{gainMessage}</p>}
+                    {gainMessage && <div className="mt-3 space-y-2"><p role="alert" className="text-xs text-warning">{t('master.gainUnknown')}</p>
+                        <button type="button" onClick={() => handleOutputGainChange([outputGain])} className="rounded-md border border-border px-3 py-1.5 text-xs">{t('common.retry')}</button>
+                        <details><summary className="cursor-pointer text-xs">{t('settings.mode.errorDetails')}</summary><p className="mt-2 break-words text-xs text-muted-foreground">{gainMessage}</p></details>
+                    </div>}
                 </Popover.Content></Popover.Portal>
             </Popover.Root>
             {/* Label */}

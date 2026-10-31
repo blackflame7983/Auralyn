@@ -87,13 +87,17 @@ test('縦横を切り替えても大型メーターの開閉と詳細表示を�
     const meter = page.locator('.large-meter-motion');
     await expect(meter).toHaveAttribute('data-horizontal', 'true');
     await meter.getByRole('button', { name: '詳細表示', exact: true }).click();
+    await expect(meter.getByRole('button', { name: /マイク音量/ })).toHaveCount(0);
+    await meter.getByRole('button', { name: 'ミニモード', exact: true }).focus();
     await page.setViewportSize({ width: 1920, height: 1080 });
     await expect(meter).not.toHaveAttribute('data-horizontal', 'true');
     await expect(meter).toHaveAttribute('data-detailed', 'true');
     await expect(meter).toBeVisible();
+    await expect(meter.getByRole('button', { name: 'ミニモード', exact: true })).toBeFocused();
     await page.setViewportSize({ width: 1200, height: 1600 });
     await expect(meter).toHaveAttribute('data-horizontal', 'true');
     await expect(meter).toHaveAttribute('data-detailed', 'true');
     await meter.getByRole('button', { name: '大型レベルメーターを閉じる', exact: true }).click();
     await expect(meter).toHaveCount(0);
+    await expect(page.locator('#large-meter-toggle')).toBeFocused();
 });

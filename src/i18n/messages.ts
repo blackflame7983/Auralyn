@@ -1,6 +1,20 @@
 import type { Locale } from './locale';
 
 const ja = {
+    "settings.mode.return": "モード登録へ戻る",
+    "header.muteFailed": "ミュートの切替を確認できません。配信・通話アプリ側でミュートし、設定から接続状態を確認してください。",
+    "flow.reverbOnly": "残響のみ ON",
+    "home.inputGainFailed": "音量の反映・保存を確認できません。接続を確認して再試行してください。",
+    "home.inputGainReopen": "音量変更を確認できません。音量ボタンを開いて再試行してください。",
+    "home.preset.broadcastHint": "会話向けの音色です。録音して比較で、声に合うか確認できます。",
+    "home.preset.warmHint": "低音寄りの音色です。声の高さを変える機能ではありません。",
+    "home.preset.brightHint": "明るめの音色です。録音して比較で、声に合うか確認できます。",
+    "settings.mode.adjust": "音を調整",
+    "settings.mode.adjustNamed": "{mode}の音を調整",
+    "settings.mode.savedSummary": "声 {voice}・残響 {reverb}",
+    "settings.mode.sameSettings": "歌唱と雑談に同じ設定が登録されています。違いを付ける場合は「音を調整」から調整し、登録し直してください。",
+    "settings.mode.errorDetails": "技術的な詳細",
+
     "history.unconfigured": "音声の入出力が未設定です。設定から機器を選んでください。",
     "history.deviceUnknown": "選択した機器を一覧から一意に確認できません。接続と設定を確認してください。",
     "history.detailsUnknown": "詳細な原因は未確認です。設定と接続を確認してください。",
@@ -695,8 +709,8 @@ const ja = {
     "liveNotices.stateFailed": "モードの状態を取得できません。再取得してください。",
     "liveNotices.eventsFailed": "モードの変更通知を確認できません。状態を再取得してください。",
     "liveNotices.restoring": "プリセット・プロファイルを復元中です。完了してからモード操作を行ってください。",
-    "liveNotices.operationFailed": "モード操作を適用できませんでした。状態・保存値・本番保護を確認して再取得してください。",
-    "liveNotices.notReady": "未取得",
+    "liveNotices.operationFailed": "モードを変更できませんでした。「モードの状態を再取得」を押し、登録内容と本番保護を確認してから、もう一度操作してください。",
+    "liveNotices.notReady": "状態が未確認です。モードの状態を再取得してから登録してください。",
     "liveNotices.pending": "内蔵ボイスチェーンへの反映を確認してから登録してください。未適用の下書きは登録しません。",
     "liveNotices.reverb": "雑談には残響OFFの適用済み設定を登録してください。下書きは変更しません。",
     "liveNotices.rawDetail": "原文の詳細（未翻訳）: {detail}",
@@ -2628,7 +2642,7 @@ const ja = {
     "home.largeMeterTool": "出力レベルを大きく見る",
     "liveBar.mode": "モード切替",
     "live.strip": "本番",
-    "live.destination": "送り先",
+    "live.destination": "用途",
     "live.noDestination": "未選択",
     "chain.vstList": "VSTの並び",
     "chain.vstToggle": "押すとオン・オフを切り替えます",
@@ -2664,6 +2678,20 @@ const ja = {
 } as const;
 export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
+    "settings.mode.return": "Return to mode registration",
+    "header.muteFailed": "Could not confirm the mute change. Mute in your streaming or call app, then open Settings to check the connection.",
+    "flow.reverbOnly": "Reverb only ON",
+    "home.inputGainFailed": "Could not confirm the volume change or save it. Check the connection and retry.",
+    "home.inputGainReopen": "Could not confirm the volume change. Open the volume control and retry.",
+    "home.preset.broadcastHint": "A voice tone for conversation. Use Record and compare to check it with your voice.",
+    "home.preset.warmHint": "A warmer, bass-focused tone. This does not change voice pitch.",
+    "home.preset.brightHint": "A brighter voice tone. Use Record and compare to check it with your voice.",
+    "settings.mode.adjust": "Adjust sound",
+    "settings.mode.adjustNamed": "Adjust sound for {mode}",
+    "settings.mode.savedSummary": "Voice {voice} · Reverb {reverb}",
+    "settings.mode.sameSettings": "Singing and Talk have the same settings. To make them different, adjust the sound and save each mode again.",
+    "settings.mode.errorDetails": "Technical details",
+
     "history.unconfigured": "Audio input/output is unconfigured. Select devices in Settings.",
     "history.deviceUnknown": "The selected device could not be uniquely verified in the device list. Check its connection and settings.",
     "history.detailsUnknown": "The detailed cause is unverified. Check settings and connections.",

@@ -64,7 +64,7 @@ it.each(['ja', 'en'] as const)('声の処理を音の流れの順に行カード
     expect(rows[0].querySelector('[data-tone]')).toHaveAttribute('data-tone', 'ok');
     // ON の段は左端の帯と枠の光で示す。
     expect(rows[0].querySelector('[data-on]')).toHaveAttribute('data-on', 'true');
-    expect(rows[1]).toHaveTextContent(message(locale, 'flow.partial'));
+    expect(rows[1]).toHaveTextContent(message(locale, 'flow.reverbOnly'));
     expect(rows[1]).toHaveTextContent(message(locale, 'flow.builtinParts', { voice: message(locale, 'flow.disabled'), reverb: message(locale, 'flow.enabled') }));
     // 範囲の説明は常設せず、見出し横の情報ボタンから読む。
     expect(screen.queryByText(message(locale, 'flow.scope'))).not.toBeInTheDocument();
@@ -91,12 +91,12 @@ it('音声処理中は声の段にその場の操作を出し、設定状態の�
     expect(screen.queryByText(message('ja', 'home.soundAfterSetup'))).not.toBeInTheDocument();
 });
 
-it('操作中でも、声の処理だけOFFで残響が鳴る「一部 ON」は内訳を見える形で残す', () => {
+it('声の処理がOFFでも残響が有効なら、残響のみONと明示する', () => {
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
     const builtin = screen.getAllByRole('listitem')[1];
     expect(builtin).toHaveTextContent('builtin-switch');
-    expect(builtin).toHaveTextContent('設定 一部ON');
-    expect(screen.getByText('声の処理: 設定 OFF ／ 残響: 設定 ON')).not.toHaveClass('sr-only');
+    expect(builtin).toHaveTextContent('残響のみ ON');
+    expect(screen.getByText('声の処理: 設定 OFF ／ 残響: 設定 ON')).toHaveClass('sr-only');
 });
 
 it('音楽鑑賞では声向けの操作を出さず、状態の表示にとどめる', () => {

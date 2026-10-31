@@ -419,9 +419,8 @@
   .app-shell[data-large-meter]:has(.large-meter-motion[data-detailed]) { --visible-meter-width: 0px; }
   .home-large-meter {
     display: flex;
-    align-items: center;
-    flex-grow: 1;
-    padding-block: 2rem;
+    align-items: flex-start;
+    padding-block: 1rem;
     min-height: 240px;
   }
   .large-meter-motion[data-horizontal] { translate: none; max-height: none; }
@@ -513,6 +512,7 @@
 }
 .settings-surface { transform-origin: top right; }
 #plugin-rack-heading:focus:not(:focus-visible) { outline: none; }
+.vst-panel-motion[data-pointer-focus] #plugin-rack-heading:focus { outline: none; }
 @keyframes surface-disappear {
   from { opacity: 1; }
   to { opacity: 0; }
