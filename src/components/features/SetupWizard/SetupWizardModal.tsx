@@ -9,7 +9,7 @@ import { Modal } from '../../ui/modal';
 import React, { useEffect, useRef } from 'react';
 import { DiscordIcon } from '../../ui/DiscordIcon';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
-import { MdCheckCircle, MdWarning, MdVolumeUp, MdSettings, MdCast, MdHeadphones, MdMusicNote, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
+import { MdCheckCircle, MdWarning, MdVolumeUp, MdSettings, MdCast, MdHeadphones, MdMusicNote, MdHearing, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
 import { invoke } from '@tauri-apps/api/core';
 import { ConnectionCheck } from './ConnectionCheck';
 import { MicrophonePermissionGuide } from '../AudioSettings/MicrophonePermissionGuide';
@@ -150,7 +150,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 />
                                 <SelectionCard compact
                                     onClick={() => selectGoal('listening')}
-                                    icon={<MdMusicNote className="w-5 h-5 text-primary" />}
+                                    icon={<MdHearing className="w-5 h-5 text-primary" />}
                                     title={t('wizard.music')}
                                     description={t('wizard.musicHint')}
                                     active={config.goal === 'listening'}
