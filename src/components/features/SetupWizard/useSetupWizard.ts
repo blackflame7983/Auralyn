@@ -230,10 +230,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         setConfig(prev => goal === 'music' && prev.goal !== 'music'
             ? { ...prev, goal, input: null, outputMode: 'default', output: verifiedDefaultOutput(availableOutputs) }
             : { ...prev, goal, input: prev.goal === 'music' && goal !== 'music' ? null : prev.input });
-        if (goal !== 'music') {
-            localStorage.setItem('vst_host_setup_goal', goal);
-            window.dispatchEvent(new Event('preparation-purpose-changed'));
-        }
+        // 目的は保存完了時に書く。選んだだけで中断した場合、ホームの用途を変えない。
         setState('input_selection');
         // Auto-select will trigger via useEffect if devices are ready
     };
@@ -399,8 +396,10 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                 window.dispatchEvent(new Event('preparation-purpose-changed'));
             } else {
                 await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
+                if (config.goal) localStorage.setItem('vst_host_setup_goal', config.goal);
                 if (panelChoice) saveBeginnerMode(false);
                 applyPanelChoice();
+                window.dispatchEvent(new Event('preparation-purpose-changed'));
             }
             hasTouchedEngineRef.current = false;
 

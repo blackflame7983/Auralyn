@@ -471,6 +471,28 @@ describe('初回選択と表示設定', () => {
         await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
     });
+    it('目的を選んだだけで中断しても、保存済みの用途と通知を変えない', async () => {
+        localStorage.setItem('vst_host_setup_goal', 'listening');
+        const notified = vi.fn();
+        window.addEventListener('preparation-purpose-changed', notified);
+        try {
+            const { onClose } = await openWizard();
+            fireEvent.click(screen.getByRole('button', { name: '通話（Discordなど）' }));
+            fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
+            fireEvent.click(within(screen.getByRole('dialog', { name: 'セットアップを中断しますか？' })).getByRole('button', { name: '中断する' }));
+            await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+            expect(localStorage.getItem('vst_host_setup_goal')).toBe('listening');
+            expect(notified).not.toHaveBeenCalled();
+        } finally { window.removeEventListener('preparation-purpose-changed', notified); }
+    });
+    it('保存完了時に選んだ目的を用途として保存する', async () => {
+        localStorage.setItem('vst_host_setup_goal', 'listening');
+        await quickStart();
+        expect(localStorage.getItem('vst_host_setup_goal')).toBe('listening');
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('heading', { name: '音声設定を保存しました' });
+        expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');
+    });
     it('適用失敗では選んだ表示を確定しない', async () => {
         localStorage.setItem('vst_host_beginner_mode', 'false');
         startFails = true;
@@ -685,6 +707,15 @@ describe('PC audio purpose', () => {
         await screen.findByRole('alert');
         expect(onApplyConfig).not.toHaveBeenCalled();
         expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');
+    });
+    it('通常の目的でも反映に失敗したら保存済みの用途を変えない', async () => {
+        localStorage.setItem('vst_host_setup_goal', 'listening');
+        render(<SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn().mockRejectedValue(new Error('save failed'))} />);
+        await chooseObsRoute();
+        fireEvent.click(await screen.findByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('heading', { name: '設定と接続の確認' });
+        await waitFor(() => expect(screen.getByRole('button', { name: '設定を保存して開始' })).toBeEnabled());
+        expect(localStorage.getItem('vst_host_setup_goal')).toBe('listening');
     });
     it('反映待ちの内蔵効果は保存完了にせず、確認を促す', async () => {
         inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
