@@ -1,8 +1,9 @@
 //! ボイスチェック録音のオフライン品質分析（Tauri メインプロセス専用）
 
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{num_complex::Complex, Fft, FftPlanner};
 use serde::Serialize;
 use std::path::Path;
+use std::sync::Arc;
 
 /// 判定・アドバイス用の閾値（実測で調整する前提で 1 箇所に集約）
 pub mod thresholds {
@@ -380,6 +381,17 @@ fn loudness_report(interleaved: &[f32]) -> LoudnessReport {
 }
 
 fn octave_band_deltas(raw: &[f32], processed: &[f32], sample_rate_hz: u32) -> Vec<BandDeltaDb> {
+    octave_band_deltas_with_plan(raw, processed, sample_rate_hz, |fft_size| {
+        FftPlanner::new().plan_fft_forward(fft_size)
+    })
+}
+
+fn octave_band_deltas_with_plan(
+    raw: &[f32],
+    processed: &[f32],
+    sample_rate_hz: u32,
+    plan: impl FnOnce(usize) -> Arc<dyn Fft<f32>>,
+) -> Vec<BandDeltaDb> {
     use thresholds::OCTAVE_CENTER_HZ;
 
     let n = raw.len().max(processed.len()) / CHANNELS;
@@ -394,8 +406,22 @@ fn octave_band_deltas(raw: &[f32], processed: &[f32], sample_rate_hz: u32) -> Ve
     }
 
     let fft_size = next_pow2(n);
-    let raw_mag = stereo_magnitude_spectrum(raw, fft_size);
-    let proc_mag = stereo_magnitude_spectrum(processed, fft_size);
+    // 同じ解析内の4回のFFTで計画と作業領域を共有する。
+    let fft = plan(fft_size);
+    let mut buffer = vec![Complex::new(0.0, 0.0); fft_size];
+    let mut scratch = vec![Complex::new(0.0, 0.0); fft.get_inplace_scratch_len()];
+    let raw_mag = stereo_magnitude_spectrum(raw, &*fft, &mut buffer, &mut scratch);
+    let proc_mag = stereo_magnitude_spectrum(processed, &*fft, &mut buffer, &mut scratch);
+    band_deltas_from_spectra(&raw_mag, &proc_mag, fft_size, sample_rate_hz)
+}
+
+fn band_deltas_from_spectra(
+    raw_mag: &[f32],
+    proc_mag: &[f32],
+    fft_size: usize,
+    sample_rate_hz: u32,
+) -> Vec<BandDeltaDb> {
+    use thresholds::OCTAVE_CENTER_HZ;
     let bin_hz = sample_rate_hz as f32 / fft_size as f32;
 
     OCTAVE_CENTER_HZ
@@ -427,36 +453,27 @@ fn next_pow2(n: usize) -> usize {
     p.max(256)
 }
 
-fn stereo_magnitude_spectrum(interleaved: &[f32], fft_size: usize) -> Vec<f32> {
-    // 左右それぞれのスペクトルのエネルギーを平均する。
-    let left: Vec<f32> = interleaved.chunks_exact(CHANNELS).map(|f| f[0]).collect();
-    let right: Vec<f32> = interleaved.chunks_exact(CHANNELS).map(|f| f[1]).collect();
-    let left = magnitude_spectrum(&left, fft_size);
-    let right = magnitude_spectrum(&right, fft_size);
-    left.into_iter()
-        .zip(right)
-        .map(|(l, r)| (l + r) * 0.5)
-        .collect()
-}
-
-fn magnitude_spectrum(mono: &[f32], fft_size: usize) -> Vec<f32> {
-    let mut planner = FftPlanner::new();
-    let fft = planner.plan_fft_forward(fft_size);
-
-    let mut buffer: Vec<Complex<f32>> = mono
-        .iter()
-        .take(fft_size)
-        .map(|&s| Complex::new(s, 0.0))
-        .collect();
-    buffer.resize(fft_size, Complex::new(0.0, 0.0));
-
-    fft.process(&mut buffer);
-
-    buffer
-        .iter()
-        .take(fft_size / 2 + 1)
-        .map(|c| c.norm_sqr())
-        .collect()
+fn stereo_magnitude_spectrum(
+    interleaved: &[f32],
+    fft: &dyn Fft<f32>,
+    buffer: &mut [Complex<f32>],
+    scratch: &mut [Complex<f32>],
+) -> Vec<f32> {
+    let mut magnitude = vec![0.0; buffer.len() / 2 + 1];
+    for channel in 0..CHANNELS {
+        buffer.fill(Complex::new(0.0, 0.0));
+        for (slot, frame) in buffer.iter_mut().zip(interleaved.chunks_exact(CHANNELS)) {
+            slot.re = frame[channel];
+        }
+        fft.process_with_scratch(buffer, scratch);
+        for (sum, value) in magnitude.iter_mut().zip(buffer.iter()) {
+            *sum += value.norm_sqr();
+        }
+    }
+    for value in &mut magnitude {
+        *value *= 0.5;
+    }
+    magnitude
 }
 
 fn band_energy(mag_sqr: &[f32], low_bin: usize, high_bin: usize) -> f32 {
@@ -688,6 +705,107 @@ mod tests {
             }
             let t = idx as f32 / sample_rate as f32;
             mono_base[idx] += (2.0 * PI * 300.0 * t).sin() * amp;
+        }
+    }
+
+    // Issue #182 時点の4回計画する実装を比較基準として保持する。
+    fn baseline_band_deltas(raw: &[f32], processed: &[f32], sr: u32) -> Vec<BandDeltaDb> {
+        fn spectrum(input: &[f32], fft_size: usize) -> Vec<f32> {
+            let mut planner = FftPlanner::new();
+            let fft = planner.plan_fft_forward(fft_size);
+            let mut buffer: Vec<_> = input
+                .iter()
+                .take(fft_size)
+                .map(|&s| Complex::new(s, 0.0))
+                .collect();
+            buffer.resize(fft_size, Complex::new(0.0, 0.0));
+            fft.process(&mut buffer);
+            buffer
+                .iter()
+                .take(fft_size / 2 + 1)
+                .map(|c| c.norm_sqr())
+                .collect()
+        }
+        fn stereo(input: &[f32], fft_size: usize) -> Vec<f32> {
+            let left: Vec<_> = input.chunks_exact(CHANNELS).map(|f| f[0]).collect();
+            let right: Vec<_> = input.chunks_exact(CHANNELS).map(|f| f[1]).collect();
+            spectrum(&left, fft_size)
+                .into_iter()
+                .zip(spectrum(&right, fft_size))
+                .map(|(l, r)| (l + r) * 0.5)
+                .collect()
+        }
+        let n = raw.len().max(processed.len()) / CHANNELS;
+        if n == 0 {
+            return thresholds::OCTAVE_CENTER_HZ
+                .iter()
+                .map(|&band_hz| BandDeltaDb {
+                    band_hz,
+                    delta_db: 0.0,
+                })
+                .collect();
+        }
+        let size = next_pow2(n);
+        band_deltas_from_spectra(&stereo(raw, size), &stereo(processed, size), size, sr)
+    }
+
+    #[test]
+    fn fft_plan_reuse_matches_baseline_and_plans_once() {
+        use std::cell::Cell;
+        let sr = 48_000;
+        for frames in [0, 1, 255, 256, 257, 4096] {
+            let raw = sine_stereo(1000.0, sr, frames, 0.4);
+            let mut processed = sine_stereo(3000.0, sr, frames, 0.2);
+            for frame in processed.chunks_exact_mut(2) {
+                frame[1] *= -0.5;
+            }
+            let calls = Cell::new(0);
+            let actual = octave_band_deltas_with_plan(&raw, &processed, sr, |size| {
+                calls.set(calls.get() + 1);
+                FftPlanner::new().plan_fft_forward(size)
+            });
+            let expected = baseline_band_deltas(&raw, &processed, sr);
+            assert_eq!(calls.get(), usize::from(frames != 0));
+            for (actual, expected) in actual.iter().zip(&expected) {
+                assert_eq!(actual.band_hz, expected.band_hz);
+                assert!(
+                    (actual.delta_db - expected.delta_db).abs() < 0.0001,
+                    "frames={frames} band={} actual={} expected={}",
+                    actual.band_hz,
+                    actual.delta_db,
+                    expected.delta_db
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "手動の非RT FFT計測"]
+    fn measure_fft_plan_reuse() {
+        use std::{hint::black_box, time::Instant};
+        let sr = 48_000;
+        for (seconds, iterations) in [(1, 10), (30, 3)] {
+            let raw = sine_stereo(440.0, sr, sr as usize * seconds, 0.3);
+            let processed = sine_stereo(1000.0, sr, sr as usize * seconds, 0.2);
+            let start = Instant::now();
+            for _ in 0..iterations {
+                black_box(baseline_band_deltas(
+                    black_box(&raw),
+                    black_box(&processed),
+                    sr,
+                ));
+            }
+            let baseline = start.elapsed();
+            let start = Instant::now();
+            for _ in 0..iterations {
+                black_box(octave_band_deltas(
+                    black_box(&raw),
+                    black_box(&processed),
+                    sr,
+                ));
+            }
+            let reused = start.elapsed();
+            eprintln!("FFT {seconds}s {iterations}回: 旧={baseline:?}, 再利用={reused:?}");
         }
     }
 
