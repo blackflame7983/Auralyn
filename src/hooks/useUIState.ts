@@ -15,7 +15,8 @@ export const useUIState = () => {
         setSettingsOpen(true);
     };
     const openSoundSettings = (section?: 'liveModes' | 'singing') => {
-        setSettingsSection(section);
+        // イベントハンドラーとして渡された場合も、選択イベントを移動先へ持ち込まない。
+        setSettingsSection(section === 'liveModes' || section === 'singing' ? section : undefined);
         setSettingsTab('sound');
         setSettingsOpen(true);
     };
