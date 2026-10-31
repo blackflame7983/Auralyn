@@ -397,7 +397,15 @@ fn octave_band_deltas_with_plan(
     use thresholds::OCTAVE_CENTER_HZ;
 
     let n = raw.len().max(processed.len()) / CHANNELS;
-    if n == 0 {
+    // 元音と処理音が同じ有限サンプル列なら、全帯域の差は厳密に0。
+    // FXを使わない録音でも大きなFFTを4回行っていたため、比較だけで確定する。
+    // 非有限値や長さ違いは通常の解析へ渡し、異常値を同一音として隠さない。
+    let identical = raw.len() == processed.len()
+        && raw
+            .iter()
+            .zip(processed)
+            .all(|(a, b)| a.is_finite() && a == b);
+    if n == 0 || identical {
         return OCTAVE_CENTER_HZ
             .iter()
             .map(|&band_hz| BandDeltaDb {
@@ -765,7 +773,7 @@ mod tests {
     }
 
     #[test]
-    fn fft_plan_reuse_matches_baseline_and_plans_once() {
+    fn fft_plan_reuse_matches_baseline_and_plans_once_when_needed() {
         use std::cell::Cell;
         let sr = 48_000;
         for frames in [0, 1, 255, 256, 257, 4096] {
@@ -780,7 +788,7 @@ mod tests {
                 FftPlanner::new().plan_fft_forward(size)
             });
             let expected = baseline_band_deltas(&raw, &processed, sr);
-            assert_eq!(calls.get(), usize::from(frames != 0));
+            assert_eq!(calls.get(), usize::from(frames != 0 && raw != processed));
             for (actual, expected) in actual.iter().zip(&expected) {
                 assert_eq!(actual.band_hz, expected.band_hz);
                 assert!(
@@ -791,6 +799,43 @@ mod tests {
                     expected.delta_db
                 );
             }
+        }
+    }
+
+    #[test]
+    fn identical_finite_recordings_preserve_band_deltas_without_fft() {
+        for frames in [0, 1, 255, 256, 4096] {
+            let mut audio = sine_stereo(1000.0, 48_000, frames, 0.4);
+            for frame in audio.as_chunks_mut::<2>().0 {
+                frame[1] *= -0.5;
+            }
+            let actual = octave_band_deltas_with_plan(&audio, &audio, 48_000, |_| {
+                panic!("同一音の帯域差にFFTは不要");
+            });
+            let expected = baseline_band_deltas(&audio, &audio, 48_000);
+            assert_eq!(actual.len(), expected.len());
+            for (actual, expected) in actual.iter().zip(expected) {
+                assert_eq!(actual.band_hz, expected.band_hz);
+                assert_eq!(actual.delta_db, expected.delta_db);
+                assert_eq!(actual.delta_db, 0.0);
+            }
+        }
+    }
+
+    #[test]
+    fn fft_is_not_skipped_for_nonfinite_or_different_samples() {
+        use std::cell::Cell;
+        for (raw, processed) in [
+            ([f32::INFINITY, 0.0], [f32::INFINITY, 0.0]),
+            ([f32::NAN, 0.0], [f32::NAN, 0.0]),
+            ([0.5, 0.5], [f32::from_bits(0.5f32.to_bits() + 1), 0.5]),
+        ] {
+            let calls = Cell::new(0);
+            octave_band_deltas_with_plan(&raw, &processed, 48_000, |size| {
+                calls.set(calls.get() + 1);
+                FftPlanner::new().plan_fft_forward(size)
+            });
+            assert_eq!(calls.get(), 1);
         }
     }
 
