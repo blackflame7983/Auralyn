@@ -53,7 +53,12 @@ export function readCachedAudioDevices(): AudioDeviceList {
                         && typeof d.id === 'string' && d.id.length > 0 && d.buffer_size_range == null));
         };
         if (value && Array.isArray(value.inputs) && Array.isArray(value.outputs)) {
-            return { inputs: value.inputs.filter(validDevice), outputs: value.outputs.filter(validDevice) };
+            // 前回の能力は現在の機器・接続条件を証明しない。
+            const withoutRates = (device: AudioDevice) => {
+                const { sample_rate_ranges: _stale, ...rest } = device;
+                return rest;
+            };
+            return { inputs: value.inputs.filter(validDevice).map(withoutRates), outputs: value.outputs.filter(validDevice).map(withoutRates) };
         }
     } catch { /* キャッシュ破損時も設定を開き、実際のデバイスを再取得できるようにする。 */ }
     return { inputs: [], outputs: [] };

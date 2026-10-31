@@ -29,3 +29,10 @@ it.each(['{broken', 'null', '{"inputs":null,"outputs":[]}', '{"inputs":[null,{}]
     localStorage.setItem('vst_host_cached_devices', value);
     expect(readCachedAudioDevices()).toEqual({ inputs: [], outputs: [] });
 });
+
+
+it('以前のデバイスキャッシュのレート範囲は現在の能力として復元しない', () => {
+    const device = { name: 'mic', host: 'Wasapi', channels: 2, index: 0, is_input: true, is_default: true, sample_rate_ranges: [[48000, 96000]] };
+    localStorage.setItem('vst_host_cached_devices', JSON.stringify({ inputs: [device], outputs: [] }));
+    expect(readCachedAudioDevices().inputs[0].sample_rate_ranges).toBeUndefined();
+});

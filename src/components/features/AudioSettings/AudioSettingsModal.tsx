@@ -35,6 +35,7 @@ import { UpdatePreferences } from './UpdatePreferences';
 import { AuroraDisplaySwitch, DisplayPurposeSelector, NumericDetailsSwitch } from './DisplayPurposeSelector';
 import { REVIEW_KEY } from '@/api/migration';
 import { useAudioDeviceSelection } from './useAudioDeviceSelection';
+import { formatSampleRate, sampleRateOptions } from './sampleRateOptions';
 
 interface AudioSettingsModalProps {
   liveModel?: LiveModesModel;
@@ -292,8 +293,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     setConfirmDialog({ ...opts, isOpen: true });
   };
 
-  // Common sample rates
-  const sampleRates = Array.from(new Set([44100, 48000, 88200, 96000, 192000, selectedSampleRate])).sort((a, b) => a - b);
+  const selectedOutputDevice = filteredOutputs.find(device => device.name === (isAsio ? selectedInput : selectedOutput));
+  const sampleRates = sampleRateOptions(selectedInputDevice, selectedOutputDevice, isAsio, selectedSampleRate, currentSampleRate);
 
   // Load settings from localStorage on mount/open
   useEffect(() => {
@@ -867,10 +868,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         onChange={(e) => setSelectedSampleRate(Number(e.target.value))}
                         className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select"
                       >
-                        {sampleRates.map(rate => (
-                          <option key={rate} value={rate}>{(rate / 1000).toFixed(1)} kHz</option>
+                        {sampleRates.options.map(({ rate, supported }) => (
+                          <option key={rate} value={rate} disabled={!supported}>{formatSampleRate(rate)} kHz{!supported ? ` ${t('settings.rateUnsupported')}` : ''}</option>
                         ))}
                       </select>
+                      {(sampleRates.inputUnknown || sampleRates.outputUnknown) && <p className="text-xs text-muted-foreground">
+                        {t(sampleRates.inputUnknown && sampleRates.outputUnknown ? 'settings.rateUnknownBoth' : sampleRates.inputUnknown ? 'settings.rateUnknownInput' : 'settings.rateUnknownOutput')}
+                      </p>}
+                      {!sampleRates.options.find(option => option.rate === selectedSampleRate)?.supported && <p className="text-xs text-warning">{t('settings.rateSelectedUnsupported')}</p>}
                       {!isAsio && (
                         <div className="text-xs text-warning/90 flex items-start gap-1.5 bg-warning/10 p-1.5 rounded border border-warning/20 mt-2">
                           <MdWarning className="w-3 h-3 mt-0.5 shrink-0" />

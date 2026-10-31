@@ -385,3 +385,24 @@ it('古い利用の購読失敗は新しい監視を止めない', async () => {
     expect(screen.getByText(/信号データを待っています/)).toBeInTheDocument();
     expect(screen.queryByText(/信号監視を切り替えられませんでした/)).not.toBeInTheDocument();
 });
+
+
+it('取得済みのASIO範囲外を無効にし、現在値と未取得側を表示する', async () => {
+    localStorage.setItem('vst_host_settings_advanced', 'true');
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'get_audio_devices') return {
+            inputs: [{ ...devices.inputs[0], sample_rate_ranges: [[48000, 96000]] }],
+            outputs: [{ ...devices.outputs[0] }],
+        };
+        if (command === 'get_autostart_status') return { enabled: false };
+        return null;
+    });
+    render(<AudioSettingsModal isOpen onClose={() => {}} onConfigChange={vi.fn()} currentSampleRate={176400} />);
+    const rate = await screen.findByRole('combobox', { name: 'サンプルレート' });
+    await waitFor(() => expect(within(rate).getByRole('option', { name: '44.1 kHz （非対応）' })).toBeDisabled());
+    expect(rate).toHaveValue('176400');
+    expect(within(rate).getByRole('option', { name: '176.4 kHz （非対応）' })).toBeDisabled();
+    expect(within(rate).getByRole('option', { name: '88.2 kHz' })).toBeEnabled();
+    expect(screen.getByText('出力の対応レートは未確認です。')).toBeInTheDocument();
+    expect(screen.getByText('現在の選択値は確認済みの対応範囲外です。')).toBeInTheDocument();
+});
