@@ -109,7 +109,9 @@ impl Engine {
         self.builtin
             .invalidate_history_with_reason(crate::audio_engine::history::Reason::StreamChanged);
         if self.output_stream.is_some() || self.input_stream.is_some() {
-            self.stop_audio();
+            // 同じStart内の再設定は、利用者のStop通知と区別する。
+            // 成功時はStartedだけを通知し、失敗時はstart_audio_implがStoppedを送る。
+            self.clear_audio_resources();
         }
 
         self.send_event(EngineEvent::Log(format!(

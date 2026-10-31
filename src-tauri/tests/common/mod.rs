@@ -108,6 +108,14 @@ impl EngineProcess {
         }
     }
 
+    #[allow(
+        dead_code,
+        reason = "イベントの検証を行わない共通helper利用先でもコンパイルするため"
+    )]
+    pub fn take_events(&mut self) -> Vec<EngineEvent> {
+        std::mem::take(&mut self.events)
+    }
+
     pub fn finish(mut self) {
         drop(self.stdin.take());
         let deadline = Instant::now() + EXIT_TIMEOUT;
