@@ -48,29 +48,35 @@ export function useLiveModes(externalBusy = false) {
         return () => { active = false; serial.current++; clearInterval(timer); document.removeEventListener('visibilitychange', update); void event.then(stop => stop()).catch(() => {}); };
     }, [users > 0, refresh]);
     const change = async (action: () => Promise<LiveModeSnapshot>) => {
-        if (writing.current) return;
-        if (externalBusy || rackRestoreBusy()) { setError({ key: 'liveNotices.restoring' }); return; }
+        if (writing.current) return false;
+        if (externalBusy || rackRestoreBusy()) { setError({ key: 'liveNotices.restoring' }); return false; }
         writing.current = true; serial.current++; setBusy(true); setError(null);
         try {
             const value = await action();
             if (mounted.current) { current.current = value; setSnapshot(value); }
+            return true;
         } catch (cause) {
+            if (cause instanceof LiveModeClientError && cause.code === 'reverb') return 'reverb' as const;
             if (mounted.current) setError({ key: 'liveNotices.operationFailed', reason: cause instanceof LiveModeClientError ? cause.code : undefined, rawDetail: cause instanceof LiveModeClientError ? undefined : String(cause) });
+            return false;
         } finally { writing.current = false; if (mounted.current) setBusy(false); }
     };
     const error = errorNotice ? [t(errorNotice.key), errorNotice.reason ? t(clientKeys[errorNotice.reason]) : ''].filter(Boolean).join(' ') : '';
     return { activate, snapshot, busy: busy || rackBusy || externalBusy, error, errorDetail: errorNotice?.rawDetail, refresh,
         select: (mode: LiveMode) => current.current ? change(() => liveModesApi.select(mode, current.current!.epoch)) : Promise.resolve(),
         protect: (armed: boolean) => current.current ? change(() => liveModesApi.protect(armed, current.current!.epoch)) : Promise.resolve(),
-        saveApplied: (mode: LiveMode) => change(async () => {
+        saveApplied: (mode: LiveMode, disableReverb = false) => change(async () => {
             const before = current.current;
             if (!before) throw new LiveModeClientError('notReady');
             const applied = await builtinApi.request({ action: 'snapshot' });
             if (applied.pending) throw new LiveModeClientError('pending');
-            if (mode === 'talk' && applied.config.reverb?.enabled) throw new LiveModeClientError('reverb');
+            if (mode === 'talk' && applied.config.reverb?.enabled && !disableReverb) throw new LiveModeClientError('reverb');
+            const config = mode === 'talk' && disableReverb && applied.config.reverb
+                ? { ...applied.config, reverb: { ...applied.config.reverb, enabled: false } }
+                : applied.config;
             return liveModesApi.request({ action: 'save', expectedVersion: before.definitions.version,
-                singing: mode === 'singing' ? applied.config : before.definitions.singing,
-                talk: mode === 'talk' ? applied.config : before.definitions.talk });
+                singing: mode === 'singing' ? config : before.definitions.singing,
+                talk: mode === 'talk' ? config : before.definitions.talk });
         }),
     };
 }

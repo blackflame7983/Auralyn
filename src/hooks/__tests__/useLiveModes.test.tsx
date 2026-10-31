@@ -37,16 +37,61 @@ it('同じモード指定も明示intentで送り、応答前に適用済みや�
     expect(result.current.snapshot?.phase).toBe('stopped');
     expect(result.current.snapshot?.applied).toBeNull();
 });
-it('適用済み内蔵設定だけを別CAS保存し、雑談の残響ONは改変や保存をせず拒否する', async () => {
+it('雑談の残響ONは確認を求め、明示選択後に登録用コピーだけをOFFにする', async () => {
     const config = { active: false, preset: 'broadcast' as const, amount: 0.7, singing: null, reverb: { ...defaultReverb, enabled: true } };
     vi.spyOn(builtinApi, 'request').mockResolvedValue({ epoch: 'engine', revision: '5', appliedRevision: '4', pending: false, config, undoToken: null, error: null });
     const { result } = renderHook(() => useLiveModes());
-    await act(async () => { await result.current.refresh(); await result.current.saveApplied('talk'); });
-    expect(result.current.error).toContain('残響OFF');
+    let outcome: unknown;
+    await act(async () => { await result.current.refresh(); outcome = await result.current.saveApplied('talk'); });
+    expect(outcome).toBe('reverb');
     expect(vi.mocked(liveModesApi.request).mock.calls.some(([request]) => request.action === 'save')).toBe(false);
     expect(config.reverb.enabled).toBe(true);
+    await act(async () => { outcome = await result.current.saveApplied('talk', true); });
+    expect(outcome).toBe(true);
+    expect(liveModesApi.request).toHaveBeenLastCalledWith({ action: 'save', expectedVersion: '0', singing: null, talk: { ...config, reverb: { ...config.reverb, enabled: false } } });
+    expect(config.reverb.enabled).toBe(true);
+    expect(builtinApi.request).toHaveBeenCalledTimes(2);
     await act(async () => { await result.current.saveApplied('singing'); });
     expect(liveModesApi.request).toHaveBeenLastCalledWith({ action: 'save', expectedVersion: '0', singing: config, talk: null });
+});
+it('残響OFFを選んでも未適用の設定を登録しない', async () => {
+    const config = { active: true, preset: 'broadcast' as const, amount: 0.7, singing: null, reverb: { ...defaultReverb, enabled: true } };
+    vi.spyOn(builtinApi, 'request').mockResolvedValue({ epoch: 'engine', revision: '5', appliedRevision: '4', pending: true, config, undoToken: null, error: null });
+    const { result } = renderHook(() => useLiveModes());
+    let outcome: unknown;
+    await act(async () => { await result.current.refresh(); outcome = await result.current.saveApplied('talk', true); });
+    expect(outcome).toBe(false);
+    expect(result.current.error).toContain('適用');
+    expect(vi.mocked(liveModesApi.request).mock.calls.some(([request]) => request.action === 'save')).toBe(false);
+});
+it('保存が失敗した場合は次の調整導線を表示せず、保存済み要約を維持する', async () => {
+    const config = { active: true, preset: 'broadcast' as const, amount: 0.7, singing: null, reverb: { ...defaultReverb, enabled: true } };
+    vi.mocked(liveModesApi.request).mockImplementation(async request => {
+        if (request.action === 'save') throw new Error('save failed');
+        return liveSnapshot({ definitions: { schemaVersion: 1, version: '0', singing: config, talk: null } });
+    });
+    vi.spyOn(builtinApi, 'request').mockResolvedValue({ epoch: 'engine', revision: '5', appliedRevision: '5', pending: false, config, undoToken: null, error: null });
+    function Panel() { return <LiveModeControls model={useLiveModes()} initiallyOpen onAdjust={vi.fn()} />; }
+    render(<Panel />);
+    await screen.findByText(/声 ON.*残響 ON/);
+    fireEvent.click(screen.getByRole('button', { name: /歌.*登録/ }));
+    await screen.findByRole('alert');
+    expect(screen.queryByText(/次に.*音を調整/)).not.toBeInTheDocument();
+    expect(screen.getByText(/声 ON.*残響 ON/)).toBeInTheDocument();
+});
+it('雑談の残響確認から登録した後に歌の調整へ進める', async () => {
+    const config = { active: true, preset: 'broadcast' as const, amount: 0.7, singing: null, reverb: { ...defaultReverb, enabled: true } };
+    vi.spyOn(builtinApi, 'request').mockResolvedValue({ epoch: 'engine', revision: '5', appliedRevision: '5', pending: false, config, undoToken: null, error: null });
+    const adjust = vi.fn();
+    function Panel() { return <LiveModeControls model={useLiveModes()} initiallyOpen onAdjust={adjust} />; }
+    render(<Panel />);
+    const register = await screen.findByRole('button', { name: /雑談モードへ登録/ });
+    fireEvent.click(register);
+    const confirm = await screen.findByRole('button', { name: '残響をOFFにして登録' });
+    expect(vi.mocked(liveModesApi.request).mock.calls.some(([request]) => request.action === 'save')).toBe(false);
+    fireEvent.click(confirm);
+    fireEvent.click(await screen.findByRole('button', { name: /次に歌.*音を調整/ }));
+    expect(adjust).toHaveBeenCalledWith('singing');
 });
 it('復元中はmode/arm要求を拒否し、完了後に保護解除を送れる', async () => {
     const { result } = renderHook(() => useLiveModes());
