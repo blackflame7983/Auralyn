@@ -38,3 +38,14 @@ it('復元待機中や保護解除後には警告を残さない', () => {
     view.rerender(<SessionRecoveryNotice {...props} status="success" protectedSession={false} />);
     expect(screen.queryByRole('region')).not.toBeInTheDocument();
 });
+it('読み込めていないVSTの名前を先に示し、4件目以降は件数にまとめ、再試行で直らない場合を説明する', () => {
+    render(<SessionRecoveryNotice {...props} status="failed" unrestored={['Ozone 12 Equalizer', 'B', 'C', 'D', 'E']} />);
+    expect(screen.getByRole('region', { name: 'VST保存済み構成の保護' })).toHaveTextContent('読み込めていないVST：Ozone 12 Equalizer、B、C ほか2件');
+    fireEvent.click(screen.getByText('保存済み構成から読み直す'));
+    expect(screen.getByText(/アンインストール・移動したVST/)).toBeVisible();
+});
+it('読み込めていないVSTがなければ名前と補足を出さない', () => {
+    render(<SessionRecoveryNotice {...props} />);
+    expect(screen.queryByText(/読み込めていないVST/)).toBeNull();
+    expect(screen.queryByText(/アンインストール・移動したVST/)).toBeNull();
+});

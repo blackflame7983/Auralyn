@@ -1,6 +1,7 @@
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import type { MessageKey } from '@/i18n/messages';
 import type { useMessages } from '@/i18n/LocaleProvider';
+import { formatShortcut } from './shortcutLabel';
 
 const errorKeys = {
     tooManyBindings: 'settings.ShortcutsPanel.374',
@@ -29,7 +30,9 @@ export interface ShortcutError {
 export function shortcutErrorNotices(error: unknown, fallback?: MessageKey): SettingsNotice[] {
     if (typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' && Object.prototype.hasOwnProperty.call(errorKeys, error.code)) {
         const value = error as ShortcutError;
-        const parts = [notice(errorKeys[value.code], { shortcut: typeof value.shortcut === 'string' ? value.shortcut : '' })];
+        // 形式エラーは入力そのものを見直すため原文のまま出す。それ以外はキー刻印に近い表記にする。
+        const shortcut = typeof value.shortcut !== 'string' ? '' : value.code === 'invalidShortcut' ? value.shortcut : formatShortcut(value.shortcut);
+        const parts = [notice(errorKeys[value.code], { shortcut })];
         if (typeof value.detail === 'string' && value.detail) parts.push(notice('audioNotices.rawDetail', { detail: value.detail }));
         return parts;
     }

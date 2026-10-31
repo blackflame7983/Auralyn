@@ -78,6 +78,8 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
     };
 
     const [state, setState] = useState<WizardState>('usage_selection');
+    // 設定し直すときに今の目的が分かるよう、保存済みの目的を最初の画面の選択表示にだけ使う。
+    const [savedGoal, setSavedGoal] = useState<UserGoal | null>(null);
     const [config, setConfig] = useState<WizardConfig>({
         goal: null,
         host: 'WASAPI',
@@ -99,6 +101,11 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         let active = true;
         if (isOpen) {
             setAudioStartError('');
+            try {
+                const saved = localStorage.getItem('vst_host_setup_goal');
+                const goal = saved === 'local' ? 'listening' : saved;
+                setSavedGoal(goal === 'obs' || goal === 'discord' || goal === 'listening' || goal === 'music' || goal === 'other' ? goal : null);
+            } catch { setSavedGoal(null); }
             setInitialStateReady(false);
             setPanelChoice(getVstPanelOpen());
             setInitialStateError(false);
@@ -220,7 +227,9 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         if (availableInputs.length === 0) return;
 
         const candidates = availableInputs.filter(isVirtualOutput);
-        const input = config.goal === 'music' ? (candidates.length === 1 ? candidates[0] : null) : recommendMicrophone(availableInputs);
+        // 設定し直す場合は、いま使っているマイクを先に選ぶ。仮想ケーブルはマイクとして推さない。
+        const current = availableInputs.find(device => device.name === runningInput && !isVirtualOutput(device));
+        const input = config.goal === 'music' ? (candidates.length === 1 ? candidates[0] : null) : current ?? recommendMicrophone(availableInputs);
         if (input) setConfig(prev => ({ ...prev, input }));
     };
 
@@ -230,10 +239,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         setConfig(prev => goal === 'music' && prev.goal !== 'music'
             ? { ...prev, goal, input: null, outputMode: 'default', output: verifiedDefaultOutput(availableOutputs) }
             : { ...prev, goal, input: prev.goal === 'music' && goal !== 'music' ? null : prev.input });
-        if (goal !== 'music') {
-            localStorage.setItem('vst_host_setup_goal', goal);
-            window.dispatchEvent(new Event('preparation-purpose-changed'));
-        }
+        // 目的は保存完了時に書く。選んだだけで中断した場合、ホームの用途を変えない。
         setState('input_selection');
         // Auto-select will trigger via useEffect if devices are ready
     };
@@ -399,8 +405,10 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                 window.dispatchEvent(new Event('preparation-purpose-changed'));
             } else {
                 await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
+                if (config.goal) localStorage.setItem('vst_host_setup_goal', config.goal);
                 if (panelChoice) saveBeginnerMode(false);
                 applyPanelChoice();
+                window.dispatchEvent(new Event('preparation-purpose-changed'));
             }
             hasTouchedEngineRef.current = false;
 
@@ -420,7 +428,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
 
     return { audioStartError, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
-        performClose, state, setState, config, setConfig, availableInputs, availableOutputs,
+        performClose, state, setState, config, setConfig, savedGoal, availableInputs, availableOutputs,
         isLoadingDevices, isTestingSound, inputLevel, runningInput, loadDevices, handleRescanVirtualDevices,
         selectGoal, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply };
 }

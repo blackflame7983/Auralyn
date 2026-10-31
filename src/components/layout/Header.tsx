@@ -10,7 +10,7 @@ import {
     MdMicOff,
     MdFavorite,
     MdSystemUpdateAlt,
-    MdAutoFixHigh
+    MdCable
 } from 'react-icons/md';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi, type EngineRuntimeStats } from '../../api/audio';
@@ -154,7 +154,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 aria-label={t('header.setupOpen')}
                                 className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                             >
-                                <MdAutoFixHigh aria-hidden="true" className="w-5 h-5" />
+                                <MdCable aria-hidden="true" className="w-5 h-5" />
                             </button>
                         </TooltipTrigger>
                         <TooltipContent>

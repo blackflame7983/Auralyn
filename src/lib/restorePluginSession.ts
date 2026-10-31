@@ -91,3 +91,16 @@ export async function restorePluginSession(
     if (isCurrent()) onProgress([...loaded]);
     return result(!isCurrent());
 }
+
+/** 保存済み構成のうち、現在のラックに読み込まれていないVSTの名前。保存値が壊れていれば推定しない。 */
+export function unrestoredPluginNames(saved: string | null, current: { path: string }[]): string[] {
+    if (!saved) return [];
+    let items: PresetPlugin[];
+    try { items = parsePluginSession(JSON.parse(saved)); } catch { return []; }
+    const remaining = current.map(plugin => plugin.path);
+    return items.filter(item => {
+        const index = remaining.indexOf(item.path);
+        if (index >= 0) { remaining.splice(index, 1); return false; }
+        return true;
+    }).map(item => item.name || item.path);
+}

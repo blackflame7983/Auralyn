@@ -9,6 +9,7 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { cn } from '@/lib/utils';
 import { StatusDot, type StatusTone } from '@/components/ui/StatusDot';
 import { MusicListeningCheck } from './MusicListeningCheck';
+import { unrestoredNamesText } from '../Recovery/SessionRecoveryNotice';
 import { BuiltinQuick, BuiltinSwitch, NoiseQuick, NoiseSwitch, useVoiceQuick } from './VoiceQuickControls';
 
 interface Props {
@@ -19,6 +20,8 @@ interface Props {
     outputName?: string;
     /** VST 段の中身（App が VST 構成から作る）。 */
     vst?: ReactNode;
+    /** 保存済み構成から読み込めていないVST。空の段を「未追加」と見せない。 */
+    vstUnrestored?: string[];
     listenOpen: boolean;
     onListen: () => void;
     onListenClose: () => void;
@@ -33,7 +36,7 @@ interface Props {
 // 音の流れと声の調整を1本のチェーンにまとめる。各段で状態を見て、その場で操作できる。
 // 設定状態と音の到達確認は異なる。値を取得できないときは OFF と推測しない。
 export function SoundChain({ model, audioReady, isEngineRunning, inputName, outputName, vst, listenOpen, onListen, onListenClose,
-    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, vstPanelOpen = false }: Props) {
+    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, vstPanelOpen = false, vstUnrestored = [] }: Props) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
@@ -119,7 +122,9 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         // 外部 VST を使わない人には、薄い1行で「使っていない」ことと追加の入口だけを示す。
         emptyVst
             ? row({ key: 'vst', on: false, quiet: true, tag: 'VST', name: t('chain.vstEmptyName'), sub: t('chain.vstEmptySub'),
-                body: <span className="text-xs text-muted-foreground">{t('flow.noVst')}</span>, action: vstEdit })
+                body: vstUnrestored.length > 0
+                    ? <StatusDot tone="warn" className="text-xs">{unrestoredNamesText(t, vstUnrestored)}</StatusDot>
+                    : <span className="text-xs text-muted-foreground">{t('flow.noVst')}</span>, action: vstEdit })
             : row({ key: 'vst', on: vstOn, tag: 'VST', name: 'VST', sub: <StatusDot tone={vstTone}>{vstStatus}</StatusDot>, body: vst, action: vstEdit }),
     ];
     return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="sound-chain aurora-card mb-4 rounded-xl border border-border bg-card/70 px-4 py-3 min-[1100px]:px-5">

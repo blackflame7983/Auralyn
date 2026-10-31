@@ -49,6 +49,8 @@ interface AppShellProps {
     liveControls?: ReactNode;
     /** チェーン列の VST 段の中身。 */
     vstChain?: ReactNode;
+    /** 保存済み構成から読み込めていないVSTの名前。 */
+    vstUnrestored?: string[];
     /** 右パネルに出す VST ラック。 */
     vstPanel?: ReactNode;
 }
@@ -81,6 +83,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     currentOutput,
     liveControls,
     vstChain,
+    vstUnrestored,
     vstPanel
 }) => {
     const t = useMessages();
@@ -185,17 +188,22 @@ export const AppShell: React.FC<AppShellProps> = ({
             <AudioCheckIcon className="h-[18px] w-[18px]" />
         </button></TooltipTrigger><TooltipContent><p>{t('home.loudnessTool')}</p><p className="max-w-64 text-xs">{t('loudness.scope')}</p></TooltipContent></Tooltip></TooltipProvider>
     </span> : null;
-    const focusOutputControl = () => {
-        const target = runtimeStats?.preparation?.muted === false && runtimeStats.preparation.outputGain === 0
-            ? '#master-output-gain [role="slider"]' : '#emergency-mute';
-        document.querySelector<HTMLElement>(target)?.focus();
+    const focusOutputControl = (anchor?: HTMLButtonElement) => {
+        const zeroGain = runtimeStats?.preparation?.muted === false && runtimeStats.preparation.outputGain === 0;
+        // 音量ゼロは押した場所で直せるよう出力音量の小窓を開く。ミュートは解除ボタンへ移り、移動先を短く示す。
+        if (zeroGain && anchor?.getClientRects().length) { setOutputGainAnchor(anchor); return; }
+        const target = document.querySelector<HTMLElement>(zeroGain ? '#master-output-gain [role="slider"]' : '#emergency-mute');
+        if (!target) return;
+        target.focus();
+        target.dataset.attention = '';
+        window.setTimeout(() => { delete target.dataset.attention; }, 1200);
     };
     const [outputGainAnchor, setOutputGainAnchor] = useState<HTMLButtonElement | null>(null);
     const closeOutputGain = useCallback(() => setOutputGainAnchor(null), []);
     const toggleOutputGain = useCallback((anchor: HTMLButtonElement) => setOutputGainAnchor(current => current === anchor ? null : anchor), []);
     useEffect(() => { if (panelOverlays || !configured) closeOutputGain(); }, [panelOverlays, configured, closeOutputGain]);
     const soundChain = <SoundChain model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
-        vst={vstChain} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
+        vst={vstChain} vstUnrestored={vstUnrestored} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
         onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} />;
     const [isABBypassed, setIsABBypassed] = useState(false);
     const handleABToggle = useCallback(async () => {

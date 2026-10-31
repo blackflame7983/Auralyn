@@ -131,6 +131,7 @@ function AppContent() {
       onReorder={pluginsApi.reorderPlugins}
       onOpenPresets={() => ui.setIsPresetManagerOpen(true)}
       onOpenTemplates={() => ui.setIsTemplateWizardOpen(true)}
+      unrestored={pluginsApi.sessionUnrestored}
       headerAction={<>
         <InfoPopover label={t('info.rack')}>{t('app.rackHint')}</InfoPopover>
         <button type="button" onClick={() => setVstPanelOpen(false)} aria-label={t('rack.closePanel')} title={t('rack.closePanel')}
@@ -177,6 +178,7 @@ function AppContent() {
         currentOutput={audioConfig.output}
         liveControls={displayPurpose === 'voice' ? <LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} /> : undefined}
         vstChain={<VstChainItems plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
+        vstUnrestored={pluginsApi.sessionUnrestored}
         vstPanel={pluginRack}
         isEngineRunning={isEngineRunning}
         engineProcessReady={engineProcessReady}
@@ -189,6 +191,7 @@ function AppContent() {
             reason={pluginsApi.sessionProtectionReason}
             busy={pluginsApi.isLoading || pluginsApi.isScanning || isInitializing}
             onRetry={pluginsApi.retrySessionRestore}
+            unrestored={pluginsApi.sessionUnrestored}
           />
         </>}
       >

@@ -24,6 +24,8 @@ interface PluginListProps {
     onOpenTemplates: () => void;
     /** 右パネルの閉じるボタンなど、見出し行の右端に置く操作。 */
     headerAction?: ReactNode;
+    /** 保存済み構成から読み込めていないVSTの名前。 */
+    unrestored?: string[];
 }
 
 const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, onEdit, simpleMode, ...props }: {
@@ -84,7 +86,8 @@ export const PluginList: React.FC<PluginListProps> = ({
     onReorder,
     onOpenPresets,
     onOpenTemplates,
-    headerAction
+    headerAction,
+    unrestored = []
 }) => {
     const t = useMessages();
     const { theme } = useTheme();
@@ -193,6 +196,7 @@ export const PluginList: React.FC<PluginListProps> = ({
                         audioReady={audioReady}
                         onAddClick={onAddClick}
                         onOpenTemplates={onOpenTemplates}
+                        unrestored={unrestored}
                     />
                 ) : (
                     <Button

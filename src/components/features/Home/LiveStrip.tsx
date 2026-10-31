@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { MdArrowForward, MdMic, MdMusicNote, MdVolumeOff, MdVolumeUp } from 'react-icons/md';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { useBeginnerMode } from '@/hooks/useBeginnerMode';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
@@ -17,7 +18,7 @@ const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', disc
 // 入力機器の名前は送り先の手前に1つだけ出し、押すと機器の設定を開く。確認の手順は準備状況に任せる。
 export function LiveStrip({ model, running, liveControls, meterAction, onOpenDevices, onCheckOutput, onAdjustOutput, outputGainOpen = false, controlsDisabled = false, inputName, outputName }: {
     model: PreparationModel; running: boolean; liveControls?: ReactNode; meterAction?: ReactNode; onOpenDevices?: () => void;
-    onCheckOutput?: () => void;
+    onCheckOutput?: (anchor: HTMLButtonElement) => void;
     onAdjustOutput?: (anchor: HTMLButtonElement) => void;
     outputGainOpen?: boolean;
     controlsDisabled?: boolean;
@@ -28,6 +29,8 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
     const reading = useSharedMeter(running, 'input');
     const outputReading = useSharedMeter(running, 'output');
     const [purpose] = useDisplayPurpose();
+    // dBFS 値は数値の詳細でだけ出す。無音・停止などは数値の詳細によらず言葉で示す。
+    const [simple] = useBeginnerMode();
     const music = purpose === 'music';
     const { usage, receiver } = model.context;
     const muted = model.observation.availability === 'muted';
@@ -39,7 +42,7 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
         <div className="live-meter-pair">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
             <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
-            <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues />
+            <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues numbers={!simple} />
             {/* 無音は「声が来ていない」本番事故の手がかりなので、dBFS 値だけにせず言葉でも示す。 */}
             {/* マイク音量と音量チェックはメーターに関わる操作なので、上部に単独で置かずメーターの横に置く。 */}
             <InputGainControl disabled={controlsDisabled} />
@@ -51,7 +54,7 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-md p-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
                 <MdVolumeUp aria-hidden="true" className="h-5 w-5" />{t('meter.output')}
             </button></TooltipTrigger><TooltipContent>{t('home.adjustOutput')}</TooltipContent></Tooltip></TooltipProvider>
-            <MeterVisual reading={outputReading} label={t('meter.output')} orientation="horizontal" height={32} scale showValues />
+            <MeterVisual reading={outputReading} label={t('meter.output')} orientation="horizontal" height={32} scale showValues numbers={!simple} />
         </div>
         </div>
         <div data-live-routing className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -66,7 +69,8 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
                 <span className="truncate font-semibold" title={receiver || undefined}>{usage ? t(destinations[usage]) : t('live.noDestination')}{usage && usage !== 'listening' && receiver ? ` · ${receiver}` : ''}</span>
             </p>
             <span role="status" aria-hidden={!muted} className={`inline-flex shrink-0 ${muted ? '' : 'invisible'}`}>
-                <button type="button" onClick={onCheckOutput} tabIndex={muted ? 0 : -1} aria-label={t('prep.checkOutput')}
+                {/* 読み上げ名は見えている状態名にし、押した結果はツールチップで補う（DESIGN.md 3.3）。 */}
+                <button type="button" onClick={event => onCheckOutput?.(event.currentTarget)} tabIndex={muted ? 0 : -1}
                     title={t('prep.checkOutput')} className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-xs font-bold text-warning hover:bg-warning/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warning">
                     <MdVolumeOff aria-hidden="true" className="h-4 w-4" />{t('prep.muted')}
                 </button>

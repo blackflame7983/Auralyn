@@ -132,7 +132,7 @@ test.describe('通常のホーム表示', () => {
             expect(samples[1]).toEqual(samples[0]); expect(samples[2]).toEqual(samples[0]);
             expect(samples[0].row!.height).toBeLessThan(36);
             await page.evaluate(() => (window as any).__e2eSetOutputMuted(true));
-            const recovery = routing.getByRole('button', { name: 'ミュート・出力音量を確認', exact: true });
+            const recovery = routing.getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true });
             await expect(recovery).toBeInViewport();
             await recovery.click();
             await expect(page.getByRole('button', { name: '緊急ミュート', exact: true })).toBeFocused();

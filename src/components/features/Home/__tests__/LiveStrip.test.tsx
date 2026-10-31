@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { LiveStrip } from '../LiveStrip';
 import type { PreparationModel } from '@/hooks/usePreparation';
@@ -48,6 +48,16 @@ it('出力ミュート・音量ゼロは本番帯でも警告として示す', (
     expect(within(screen.getByRole('region', { name: '本番' })).getByRole('status')).toHaveTextContent(message('ja', 'prep.muted'));
 });
 
+it('出力ミュート・音量ゼロの表示は見えている名前で押せ、押した位置を確認先へ渡す', () => {
+    const model = fixture(); model.observation = { ...model.observation, availability: 'muted' };
+    const onCheckOutput = vi.fn();
+    render(<LiveStrip model={model} running onCheckOutput={onCheckOutput} />);
+    const chip = screen.getByRole('button', { name: message('ja', 'prep.muted') });
+    expect(chip).toHaveAttribute('title', message('ja', 'prep.checkOutput'));
+    fireEvent.click(chip);
+    expect(onCheckOutput).toHaveBeenCalledWith(chip);
+});
+
 it('音楽鑑賞では音楽向けのメーター名にする', () => {
     localStorage.setItem('auralyn_display_purpose', 'music');
     render(<LiveStrip model={fixture()} running />);
@@ -58,4 +68,14 @@ it('入力が無音のときは dBFS 値だけにせず「無音」と言葉で�
     meter.state = 'silent';
     render(<LiveStrip model={fixture()} running />);
     expect(screen.getByRole('region', { name: '本番' })).toHaveTextContent(message('ja', 'meter.state.silent'));
+});
+
+it.each([[null, false], ['true', false], ['false', true]])('数値の詳細の保存値=%s では dBFS 値の表示=%s とし、メーターの読み上げ値は保つ', (stored, shown) => {
+    meter.state = 'live';
+    if (stored !== null) localStorage.setItem('vst_host_beginner_mode', stored);
+    render(<LiveStrip model={fixture()} running />);
+    const strip = screen.getByRole('region', { name: '本番' });
+    // 目盛りの読み上げ用文字列（sr-only）にも dBFS が入るため、値の書式で判定する。
+    if (shown) expect(strip).toHaveTextContent(/(∞|\d\.\d) dBFS/); else expect(strip).not.toHaveTextContent(/(∞|\d\.\d) dBFS/);
+    expect(within(strip).getByRole('meter', { name: message('ja', 'home.inputLevel') })).toHaveAttribute('aria-valuetext', expect.stringContaining('dBFS'));
 });

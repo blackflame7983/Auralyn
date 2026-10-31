@@ -134,7 +134,7 @@ it('表示用途はホームの本文に置かず、設定から切り替える�
     localStorage.setItem('vst_host_setup_goal', 'obs');
     localStorage.setItem('vst_host_output_gain', '83');
     render(<AppShell {...commonProps}><p>rack</p></AppShell>);
-    expect(screen.queryByRole('combobox', {name: '表示用途'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', {name: 'ホームの表示'})).not.toBeInTheDocument();
     act(() => saveDisplayPurpose('music'));
     expect(screen.getByRole('region', {name: '音を整える'})).toBeInTheDocument();
     expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');

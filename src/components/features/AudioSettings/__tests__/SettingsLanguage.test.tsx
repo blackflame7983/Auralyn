@@ -152,7 +152,7 @@ it('移行の動的件数を英語で表示し、実ファイル名・VST名は�
 it('外観タブで表示用途を切り替えられ、言語の下に置く', async () => {
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     fireEvent.keyDown(screen.getByRole('tab', { name: '外観' }), { key: 'Enter' });
-    const purpose = await screen.findByRole('combobox', { name: '表示用途' });
+    const purpose = await screen.findByRole('combobox', { name: 'ホームの表示' });
     const language = screen.getByRole('combobox', { name: /言語/ });
     expect(language.compareDocumentPosition(purpose) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

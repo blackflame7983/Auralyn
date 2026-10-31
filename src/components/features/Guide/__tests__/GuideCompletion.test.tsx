@@ -76,7 +76,7 @@ it.each(['ja', 'en'] as const)('OBSガイドは変更したミュートキーを
     vi.mocked(invoke).mockResolvedValue({ bindings: [{ action: 'muteToggle', shortcut: 'Control+Shift+KeyK' }], errors: [] });
     const store = createLocaleStore(() => locale, () => true);
     render(<LocaleProvider store={store}><OBSGuideModal isOpen initialTimingOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} /></LocaleProvider>);
-    expect(await screen.findByText(/Control\+Shift\+K/)).toHaveTextContent('Auralyn');
+    expect(await screen.findByText(/Ctrl \+ Shift \+ K/)).toHaveTextContent('Auralyn');
     expect(screen.queryByText(/Alt \+ M/)).not.toBeInTheDocument();
     vi.mocked(invoke).mockReset();
 });

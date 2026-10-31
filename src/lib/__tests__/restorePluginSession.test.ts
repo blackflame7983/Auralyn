@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { audioApi } from '../../api/audio';
-import { restorePluginSession } from '../restorePluginSession';
+import { restorePluginSession, unrestoredPluginNames } from '../restorePluginSession';
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), warning: vi.fn() } }));
 const item = (path: string) => ({ path, name: path, enabled: false, muted: true, gain: 0.5, state: 'saved' });
@@ -62,4 +62,13 @@ it('連番の処理中はクラッシュ候補を保持し、既知の問題VST�
     expect(await restoring).toEqual({ status: 'partial', total: 3, restored: 2, failed: 0, skipped: 1 });
     expect(audioApi.restorePlugin).toHaveBeenNthCalledWith(2, { path: 'second', state: 'saved', bypassed: true, muted: true, gain: 0.5 });
     expect(progress).toHaveBeenLastCalledWith([expect.objectContaining({ id: 'first' }), expect.objectContaining({ id: 'second' })]);
+});
+
+it('保存済み構成のうち現在のラックにないVSTだけを、同じパスの重複も数えて返す', () => {
+    const saved = JSON.stringify([{ path: 'a.vst3', name: 'A' }, { path: 'b.vst3', name: 'B' }, { path: 'a.vst3', name: 'A' }]);
+    expect(unrestoredPluginNames(saved, [{ path: 'a.vst3' }])).toEqual(['B', 'A']);
+    expect(unrestoredPluginNames(saved, [{ path: 'a.vst3' }, { path: 'b.vst3' }, { path: 'a.vst3' }])).toEqual([]);
+});
+it.each([null, '', '{壊れた', JSON.stringify({ path: 'x' })])('保存値 %j から未読込を推定しない', saved => {
+    expect(unrestoredPluginNames(saved, [])).toEqual([]);
 });

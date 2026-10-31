@@ -9,7 +9,7 @@ import { Modal } from '../../ui/modal';
 import React, { useEffect, useRef } from 'react';
 import { DiscordIcon } from '../../ui/DiscordIcon';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
-import { MdCheckCircle, MdWarning, MdVolumeUp, MdSettings, MdCast, MdHeadphones, MdMusicNote, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
+import { MdCheckCircle, MdVolumeUp, MdSettings, MdCast, MdHeadphones, MdMusicNote, MdHearing, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
 import { invoke } from '@tauri-apps/api/core';
 import { ConnectionCheck } from './ConnectionCheck';
 import { MicrophonePermissionGuide } from '../AudioSettings/MicrophonePermissionGuide';
@@ -22,7 +22,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const { isOpen, onClose, onSkip, onOpenSettings, onOpenTroubleshoot } = props;
     const { audioStartError, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
-        performClose, state, setState, config, setConfig, availableInputs, availableOutputs,
+        performClose, state, setState, config, setConfig, savedGoal, availableInputs, availableOutputs,
         isLoadingDevices, isTestingSound, runningInput, loadDevices, handleRescanVirtualDevices,
         selectGoal, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply } = useSetupWizard(props);
     const bodyRef = useRef<HTMLDivElement>(null);
@@ -137,7 +137,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     icon={<MdCast className="w-5 h-5 text-primary" />}
                                     title={t('wizard.obs')}
                                     description={t('wizard.obsHint')}
-                                    active={config.goal === 'obs'}
+                                    active={(config.goal ?? savedGoal) === 'obs'}
                                     color="blue"
                                 />
                                 <SelectionCard compact
@@ -145,15 +145,15 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     icon={<DiscordIcon className="w-5 h-5 text-primary" />}
                                     title={t('wizard.chat')}
                                     description={t('wizard.chatHint')}
-                                    active={config.goal === 'discord'}
+                                    active={(config.goal ?? savedGoal) === 'discord'}
                                     color="indigo"
                                 />
                                 <SelectionCard compact
                                     onClick={() => selectGoal('listening')}
-                                    icon={<MdMusicNote className="w-5 h-5 text-primary" />}
+                                    icon={<MdHearing className="w-5 h-5 text-primary" />}
                                     title={t('wizard.music')}
                                     description={t('wizard.musicHint')}
-                                    active={config.goal === 'listening'}
+                                    active={(config.goal ?? savedGoal) === 'listening'}
                                     color="pink"
                                 />
                                 <SelectionCard compact
@@ -161,7 +161,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     icon={<MdMusicNote className="w-5 h-5 text-primary" />}
                                     title={t('wizard.musicGoal')}
                                     description={t('wizard.musicGoalHint')}
-                                    active={config.goal === 'music'}
+                                    active={(config.goal ?? savedGoal) === 'music'}
                                     color="pink"
                                 />
                                 <SelectionCard compact
@@ -169,7 +169,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     icon={<MdSettings className="w-5 h-5 text-primary" />}
                                     title={t('wizard.manual')}
                                     description={t('guide.copy.181')}
-                                    active={config.goal === 'other'}
+                                    active={(config.goal ?? savedGoal) === 'other'}
                                     color="emerald"
                                 />
                             </div>
@@ -218,10 +218,6 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                                 <p className="text-xs text-muted-foreground">{t('wizard.levelHint')}</p>
                                             </div>
                                             : <p className="text-xs text-muted-foreground">{t('wizard.levelLater')}</p>)}
-                                        {!config.input && availableInputs.length > 0 && (
-                                            <div className="flex items-center gap-2 text-warning text-sm bg-warning/10 p-3 rounded-lg">
-                                                <MdWarning /> {config.goal === 'music' ? t('wizard.musicInput') : t('guide.copy.191')}</div>
-                                        )}
                                         {availableInputs.length === 0 && (
                                             <div className="flex items-center gap-2 text-destructive-text text-sm bg-destructive/10 p-3 rounded-lg">
                                                 <MdError /> {t('guide.copy.192')}</div>
