@@ -199,9 +199,11 @@ it('狭い幅では右パネルを重ねて背景の誤操作を防ぎ、閉じ�
     expect(toggle).toHaveFocus();
 });
 
-it.each([true, false])('背景のオーロラは音声処理中だけ止める（稼働=%s）', running => {
+it.each([true, false])('背景の光と格子はゲーミングだけに表示し、音声処理中は止める（稼働=%s）', running => {
     render(<AppShell {...commonProps} isEngineRunning={running}><p>rack</p></AppShell>);
-    const glows = document.querySelectorAll('.aurora-glow');
+    const backdrop = document.querySelector('[data-gaming-backdrop]')!;
+    expect(backdrop).toHaveClass('hidden', 'gaming:block');
+    const glows = backdrop.querySelectorAll('.aurora-glow');
     expect(glows).toHaveLength(2);
     expect(glows[0].parentElement!.className.includes('[animation-play-state:paused]')).toBe(running);
 });

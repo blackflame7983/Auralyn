@@ -1,5 +1,6 @@
 import { useDisplayPurpose, type DisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useBeginnerMode } from '@/hooks/useBeginnerMode';
+import { useAuroraDisplay } from '@/hooks/useAuroraDisplay';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -31,5 +32,18 @@ export function NumericDetailsSwitch() {
             <Switch id="numeric-details" checked={!isBeginnerMode} onCheckedChange={checked => setIsBeginnerMode(!checked)} aria-describedby="numeric-details-hint" />
         </div>
         <p id="numeric-details-hint" className="text-xs text-muted-foreground">{t('details.hint')}</p>
+    </div>;
+}
+
+// 本番帯のオーロラは飾りなので、ホームには切替を置かず外観の設定でだけ出し分ける（DESIGN.md 5.1）。
+export function AuroraDisplaySwitch() {
+    const t = useMessages();
+    const [shown, setShown] = useAuroraDisplay();
+    return <div className="mb-3 space-y-1 text-sm">
+        <div className="flex items-center gap-3">
+            <Label htmlFor="aurora-display">{t('aurora.label')}</Label>
+            <Switch id="aurora-display" checked={shown} onCheckedChange={setShown} aria-describedby="aurora-display-hint" />
+        </div>
+        <p id="aurora-display-hint" className="text-xs text-muted-foreground">{t('aurora.hint')}</p>
     </div>;
 }
