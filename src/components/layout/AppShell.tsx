@@ -234,14 +234,6 @@ export const AppShell: React.FC<AppShellProps> = ({
             data-vst-open={Boolean(vstPanel) && vstPanelOpen || undefined} data-vst-overlay={panelOverlays || undefined} data-large-meter={isLargeMeterOpen || undefined}
             data-meter-suspended={panelMotion.present && !panelBeside || undefined}
             className="app-shell min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300">
-            {/* 背景のオーロラ。音声処理中（本番中とみなす）と動きを減らす設定では止める（DESIGN.md 5.6）。 */}
-            <div className={`fixed inset-0 pointer-events-none z-0 opacity-0 dark:opacity-100 transition-opacity duration-500 ${isEngineRunning ? '[&>.aurora-glow]:[animation-play-state:paused]' : ''}`}>
-                <div className="aurora-glow absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-brand-secondary/5 blur-[130px] rounded-full mix-blend-screen animate-[pulse_8s_ease-in-out_infinite]" />
-                <div className="aurora-glow absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-brand/10 blur-[100px] rounded-full mix-blend-screen animate-[pulse_10s_ease-in-out_infinite_reverse]" />
-            </div>
-
-            {/* Subtle Grid overlay - Fades out in center to avoid distraction */}
-            <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.02] bg-[linear-gradient(currentColor_1px,transparent_1px),linear-gradient(90deg,currentColor_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_at_center,transparent_40%,black_80%)]" />
 
             <div className="relative z-10 flex flex-col h-screen">
                 <Header

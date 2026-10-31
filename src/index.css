@@ -62,34 +62,33 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* 
-  Design System Variables 
-  Light: Ceramic White / Clean / Soft Shadows
-  Dark:  Deep Black / Neon / Glows
+/*
+  配色（DESIGN.md 5.1、BRANDING.md「静かな面、一か所の光」）
+  面（背景・カード・枠線・文字）は彩度の低い段階で作り、色はメーター・状態色・本番帯のオーロラに集める。
 */
 :root {
   color-scheme: light;
-  /* Shadcn - Light Mode */
-  --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
+  --background: 220 14% 97%;
+  --foreground: 222 25% 10%;
 
   --card: 0 0% 100%;
-  --card-foreground: 222.2 84% 4.9%;
+  --card-foreground: 222 25% 10%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 222.2 84% 4.9%;
+  --popover-foreground: 222 25% 10%;
 
-  --primary: 222.2 47.4% 11.2%;
-  --primary-foreground: 210 40% 98%;
+  /* 主色は Aurora Teal。主ボタン・スイッチの ON・文字リンク・操作の目印に使う。 */
+  --primary: 174 82% 24%;
+  --primary-foreground: 0 0% 100%;
 
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
+  --secondary: 220 14% 96%;
+  --secondary-foreground: 222 25% 12%;
 
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 40%;
+  --muted: 220 14% 96%;
+  --muted-foreground: 222 10% 38%;
 
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
+  --accent: 220 14% 92%;
+  --accent-foreground: 222 25% 12%;
 
   --destructive: 0 84.2% 46%;
   --destructive-foreground: 210 40% 98%;
@@ -103,10 +102,10 @@
   --info: 202 85% 30%;
   --info-foreground: 0 0% 100%;
   --destructive-text: 0 74% 35%;
-  --brand: 190 90% 28%;
-  --brand-secondary: 270 60% 45%;
-  /* 選択中の目印。ライトは主色のまま、ダークは紫にする（DESIGN.md 5.1）。 */
-  --selection: 222.2 47.4% 11.2%;
+  --brand: 174 82% 24%;
+  --brand-secondary: 318 45% 40%;
+  /* 選択中の目印。色相を持たせず、文字色に近い濃さの枠と淡い塗りで示す。 */
+  --selection: 222 25% 16%;
   --overlay: 0 0% 0%;
   --discord: 235 86% 65%;
   --discord-text: 235 65% 42%;
@@ -114,10 +113,16 @@
   --waveform-raw: 158 80% 25%;
   --waveform-processed: 202 85% 30%;
 
-  /* Darker border/input for "tactile" feel as requested */
-  --border: 214.3 31.8% 70%;
-  --input: 214.3 31.8% 70%;
-  --ring: 222.2 84% 4.9%;
+  /* 入力欄の境界が背景と3:1に近づくよう、枠線は濃いめにする。 */
+  --border: 220 9% 70%;
+  --input: 220 9% 70%;
+  --ring: 174 82% 24%;
+
+  /* 本番帯の奥のオーロラ。実物に近い緑〜青緑と、上端の淡い赤紫。ライトは淡くする。 */
+  --aurora-green: 152 62% 45%;
+  --aurora-teal: 178 62% 42%;
+  --aurora-rose: 318 55% 62%;
+  --aurora-strength: 0.55;
 
   /* 小さな操作も角張らせず、通常ボタン10px・大きな操作12pxで揃える。 */
   --radius: 0.75rem;
@@ -130,27 +135,27 @@
 
 .dark {
   color-scheme: dark;
-  /* Aurora（既定）: BRANDING.md の Deep Abyss Blue に Mystic Purple を少し混ぜた地に、Aurora Cyan を主色、Mystic Purple を選択色にする。 */
-  --background: 250 38% 7%;
-  --foreground: 210 40% 96%;
+  /* オーロラ（既定）: わずかに青みのある黒の地。面は色相を持たせず、主色を Aurora Teal にする。 */
+  --background: 222 12% 7%;
+  --foreground: 220 20% 94%;
 
-  --card: 252 34% 10%;
-  --card-foreground: 210 40% 96%;
+  --card: 222 10% 10%;
+  --card-foreground: 220 20% 94%;
 
-  --popover: 252 34% 10%;
-  --popover-foreground: 210 40% 96%;
+  --popover: 222 10% 11%;
+  --popover-foreground: 220 20% 94%;
 
-  --primary: 187 80% 56%;
-  --primary-foreground: 222 47% 8%;
+  --primary: 166 58% 56%;
+  --primary-foreground: 222 12% 8%;
 
-  --secondary: 254 28% 16%;
-  --secondary-foreground: 210 40% 96%;
+  --secondary: 222 9% 15%;
+  --secondary-foreground: 220 20% 94%;
 
-  --muted: 254 28% 16%;
-  --muted-foreground: 250 20% 74%;
+  --muted: 222 9% 15%;
+  --muted-foreground: 222 8% 70%;
 
-  --accent: 265 38% 22%;
-  --accent-foreground: 210 40% 96%;
+  --accent: 222 8% 19%;
+  --accent-foreground: 220 20% 94%;
 
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 210 40% 98%;
@@ -164,15 +169,20 @@
   --info-foreground: 222 84% 5%;
   --destructive-text: 0 94% 82%;
   --discord-text: 235 95% 80%;
-  --brand: 187 86% 65%;
-  --brand-secondary: 270 90% 80%;
-  --selection: 270 85% 80%;
+  --brand: 166 58% 56%;
+  --brand-secondary: 318 60% 74%;
+  --selection: 220 15% 88%;
   --waveform-raw: 158 64% 65%;
   --waveform-processed: 199 95% 74%;
 
-  --border: 258 24% 25%;
-  --input: 258 24% 25%;
-  --ring: 187 80% 56%;
+  --border: 222 8% 21%;
+  --input: 222 8% 24%;
+  --ring: 166 58% 56%;
+
+  --aurora-green: 150 70% 48%;
+  --aurora-teal: 176 70% 48%;
+  --aurora-rose: 318 60% 62%;
+  --aurora-strength: 1;
 }
 
 .gaming {
@@ -301,33 +311,27 @@
 }
 
 /*
-  オーロラ（既定のダーク）だけ、ホームの主要カードを半透明の面にし、上辺にシアンから紫への線を入れる。
-  ゲーミング（.dark.gaming）とライトには付けない。色は飾りで、状態の意味は持たせない（DESIGN.md 5.1）。
-  カードの border / bg ユーティリティより優先させるため、layer の外に置く。
+  本番帯の奥のオーロラ（DESIGN.md 5.1、5.6）。音声処理中だけ静止した光として灯し、声や操作には連動させない。
+  ぼかしフィルターや合成を使わず、グラデーションの重ね合わせで描く。ゲーミングでは表示しない。
 */
-.dark:not(.gaming) .aurora-card {
-  position: relative;
-  background-image: linear-gradient(160deg, hsl(252 38% 13% / 0.82), hsl(236 42% 9% / 0.62));
-  backdrop-filter: blur(14px);
-  border-color: hsl(258 40% 40% / 0.45);
-  box-shadow: inset 0 1px 0 hsl(270 80% 85% / 0.07), 0 14px 34px -20px hsl(0 0% 0% / 0.9);
-}
-.dark:not(.gaming) .aurora-card.aurora-edge::before {
-  content: "";
+.live-aurora {
   position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
-  border-top-left-radius: inherit;
-  border-top-right-radius: inherit;
-  background: linear-gradient(90deg, hsl(187 86% 60%), hsl(230 85% 70%), hsl(275 85% 74%));
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--motion-panel) var(--ease-out);
+  background:
+    radial-gradient(60% 110% at 20% 120%, hsl(var(--aurora-green) / calc(0.30 * var(--aurora-strength))), transparent 70%),
+    radial-gradient(55% 100% at 62% 125%, hsl(var(--aurora-teal) / calc(0.26 * var(--aurora-strength))), transparent 70%),
+    radial-gradient(45% 55% at 42% -15%, hsl(var(--aurora-rose) / calc(0.12 * var(--aurora-strength))), transparent 70%);
 }
-.dark:not(.gaming) .aurora-glow-live {
-  /* aurora-card の影に、本番帯だけ淡い発光を重ねる。 */
-  box-shadow: inset 0 1px 0 hsl(270 80% 85% / 0.07), 0 0 0 1px hsl(270 70% 70% / 0.2), 0 12px 40px -14px hsl(260 85% 60% / 0.4);
+.live-aurora[data-lit="true"] {
+  opacity: 1;
 }
-.dark:not(.gaming) [role="switch"][data-state="checked"] {
-  background-image: linear-gradient(90deg, hsl(187 86% 52%), hsl(268 75% 66%));
+.gaming .live-aurora {
+  display: none;
 }
 
 /* 拡大表示などで高さが足りない場合も、本文と操作を切らずにスクロールする。 */
@@ -393,10 +397,7 @@
   grid-template-columns: minmax(10rem, 12rem) minmax(0, 1fr) auto;
   position: relative;
 }
-/* ON の設定を静的に示す。音声の有無や処理成功とは区別し、点滅させない。 */
-.sound-chain-row[data-on="true"] {
-  background: linear-gradient(90deg, hsl(var(--primary) / 0.09), transparent 65%);
-}
+/* ON の設定を細い線で静的に示す。音声の有無や処理成功とは区別し、点滅・発光・面の塗りを付けない（DESIGN.md 5.1）。 */
 .sound-chain-row[data-on="true"]::before {
   content: '';
   position: absolute;
@@ -406,7 +407,6 @@
   width: 2px;
   border-radius: 2px;
   background: hsl(var(--primary));
-  box-shadow: 0 0 8px hsl(var(--primary) / 0.35);
 }
 /* 高さを活かして本番帯を広げる。小さな窓と、未設定のホームは従来の密度を保つ。 */
 @media (min-height: 900px) {
@@ -580,9 +580,11 @@
   .animate-spin,
   .animate-pulse,
   .animate-bounce,
-  .animate-ping,
-  .aurora-glow {
+  .animate-ping {
     animation: none;
+  }
+  .live-aurora {
+    transition: none;
   }
   .vst-panel-scrim,
   .modal-overlay-base,

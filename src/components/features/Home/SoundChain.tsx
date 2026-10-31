@@ -127,7 +127,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                     : <span className="text-xs text-muted-foreground">{t('flow.noVst')}</span>, action: vstEdit })
             : row({ key: 'vst', on: vstOn, tag: 'VST', name: 'VST', sub: <StatusDot tone={vstTone}>{vstStatus}</StatusDot>, body: vst, action: vstEdit }),
     ];
-    return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="sound-chain aurora-card mb-4 rounded-xl border border-border bg-card/70 px-4 py-3 min-[1100px]:px-5">
+    return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="sound-chain mb-4 rounded-xl border border-border bg-card px-4 py-3 min-[1100px]:px-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1">
                 <h2 className="text-sm font-bold">{t(music ? 'wizard.musicSound' : 'shell.sound')}</h2>

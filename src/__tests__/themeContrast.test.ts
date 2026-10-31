@@ -38,3 +38,15 @@ it('各テーマで状態文字は4.5:1、メーター危険域は3:1以上を�
         expect(contrast(color('destructive-foreground'), color('destructive')), `${selector} destructive button`).toBeGreaterThanOrEqual(4.5);
     }
 });
+
+it('ライトとオーロラは面に色相を持たせず、色はメーター・状態色・オーロラに集める', () => {
+    const css = readFileSync('src/index.css', 'utf8');
+    for (const selector of [':root', '.dark']) {
+        const block = css.slice(css.indexOf(`${selector} {`)).split('}')[0];
+        for (const token of ['background', 'card', 'popover', 'secondary', 'muted', 'accent', 'border', 'input']) {
+            const value = block.match(new RegExp(`--${token}:\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%;`));
+            expect(value, `${selector} ${token}`).not.toBeNull();
+            expect(Number(value![2]), `${selector} ${token} saturation`).toBeLessThanOrEqual(15);
+        }
+    }
+});

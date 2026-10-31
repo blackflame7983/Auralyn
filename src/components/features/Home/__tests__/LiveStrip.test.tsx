@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { LiveStrip } from '../LiveStrip';
 import type { PreparationModel } from '@/hooks/usePreparation';
@@ -8,6 +8,7 @@ import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 import type { MeterReading } from '@/hooks/useMeterLevels';
+import { saveAuroraDisplay } from '@/hooks/useAuroraDisplay';
 
 const meter = vi.hoisted(() => ({ state: 'stopped' as MeterReading['state'] }));
 vi.mock('../../LevelMeter/MeterContext', () => ({ useSharedMeter: () => ({ levels: [0, 0], peak: [0, 0], clipped: false, state: meter.state, resetClip: () => {} }) }));
@@ -78,4 +79,19 @@ it.each([[null, false], ['true', false], ['false', true]])('数値の詳細の�
     // 目盛りの読み上げ用文字列（sr-only）にも dBFS が入るため、値の書式で判定する。
     if (shown) expect(strip).toHaveTextContent(/(∞|\d\.\d) dBFS/); else expect(strip).not.toHaveTextContent(/(∞|\d\.\d) dBFS/);
     expect(within(strip).getByRole('meter', { name: message('ja', 'home.inputLevel') })).toHaveAttribute('aria-valuetext', expect.stringContaining('dBFS'));
+});
+
+it.each([true, false])('本番帯のオーロラは音声処理中だけ灯し、読み上げの対象にしない（稼働=%s）', running => {
+    const { container } = render(<LiveStrip model={fixture()} running={running} />);
+    const aurora = container.querySelector('.live-aurora');
+    expect(aurora).toHaveAttribute('data-lit', String(running));
+    expect(aurora).toHaveAttribute('aria-hidden', 'true');
+});
+
+it('設定でオーロラをオフにすると本番帯に描かない', () => {
+    saveAuroraDisplay(false);
+    const { container } = render(<LiveStrip model={fixture()} running />);
+    expect(container.querySelector('.live-aurora')).toBeNull();
+    act(() => saveAuroraDisplay(true));
+    expect(container.querySelector('.live-aurora')).toHaveAttribute('data-lit', 'true');
 });
