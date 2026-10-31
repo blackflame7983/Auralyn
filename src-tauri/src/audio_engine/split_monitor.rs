@@ -13,6 +13,7 @@ use ringbuf::{
     traits::{Consumer, Observer, Producer, Split},
     HeapRb,
 };
+use serde::{Deserialize, Serialize};
 use std::sync::{
     atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     Arc,
@@ -22,6 +23,40 @@ type AudioTx = <HeapRb<f32> as Split>::Prod;
 pub type GainRx = <HeapRb<f32> as Split>::Cons;
 type JobRx = <HeapRb<Job> as Split>::Cons;
 type JobTx = <HeapRb<Job> as Split>::Prod;
+
+/// モード名だけでは、個別設定中に残っている自分用処理を特定できない。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct State {
+    pub mode: Mode,
+    pub config: super::builtin::Config,
+}
+impl State {
+    pub(crate) fn validate(&self) -> Result<()> {
+        self.config.clone().normalize().map_err(|e| anyhow!(e))?;
+        anyhow::ensure!(
+            self.mode != Mode::Talk || !self.config.reverb.is_some_and(|r| r.enabled),
+            "自分用の雑談設定は残響をOFFにしてください"
+        );
+        Ok(())
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+pub enum Request {
+    Snapshot,
+    Restore { state: Option<State> },
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StateSnapshot {
+    pub epoch: String,
+    pub state: Option<State>,
+    pub revision: String,
+    pub completed_revision: String,
+    pub pending: bool,
+    pub failed: bool,
+}
 #[expect(
     clippy::large_enum_variant,
     reason = "固定容量キューの値をRTで解放するため、Boxによる最終解放を持ち込まない"
@@ -33,6 +68,7 @@ enum Job {
         revision: u64,
         talk: bool,
         frames: u32,
+        reset: bool,
     },
     Window(u64),
 }
@@ -107,6 +143,8 @@ pub struct Controller {
     owner: ControlOwner<Monitor>,
     rate: u32,
     config: Config,
+    state: State,
+    revision: u64,
 }
 pub struct Monitor {
     timing: Option<super::frame_timing::OutputRecorder>,
@@ -150,6 +188,7 @@ impl Controller {
             super::peak_protection::Config,
             Arc<super::peak_protection::Shared>,
         ),
+        initial_state: Option<&State>,
     ) -> Result<(Self, CallbackOwner<Monitor>, GainRx)> {
         let selected = if mode == Some(Mode::Talk) {
             &config.monitor_talk
@@ -159,6 +198,12 @@ impl Controller {
         let selected = selected
             .as_ref()
             .ok_or_else(|| anyhow!("自分用の歌・雑談設定を明示してください"))?;
+        let state = initial_state.cloned().unwrap_or_else(|| State {
+            mode: mode.unwrap_or(Mode::Singing),
+            config: selected.clone(),
+        });
+        state.validate()?;
+        let selected = &state.config;
         let voice = RtVoice::new(Voice::prepare(selected, rate).map_err(|e| anyhow!(e))?);
         let reverb = reverb::Reverb::new(selected.reverb.unwrap_or_default(), rate)
             .map_err(|e| anyhow!(e))?;
@@ -209,6 +254,8 @@ impl Controller {
                 owner,
                 rate,
                 config: config.clone(),
+                state,
+                revision,
             },
             monitor,
             gains,
@@ -252,17 +299,54 @@ impl Controller {
         let config = config
             .as_ref()
             .ok_or_else(|| anyhow!("自分用の本番設定が未定義です"))?;
+        self.enqueue_state(
+            State {
+                mode,
+                config: config.clone(),
+            },
+            revision,
+            false,
+        )
+    }
+    pub(crate) fn restore(&mut self, state: State, revision: u64) -> Result<()> {
+        self.enqueue_state(state, revision, true)
+    }
+    fn enqueue_state(&mut self, state: State, revision: u64, reset: bool) -> Result<()> {
+        state.validate()?;
+        if revision == self.revision && state == self.state {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            revision > self.revision,
+            "古い自分用設定の復元を拒否しました"
+        );
+        let config = &state.config;
         let job = Job::Mode {
             voice: Voice::prepare(config, self.rate).map_err(|e| anyhow!(e))?,
             reverb: super::live_modes::reverb_coefficients(config, self.rate)
                 .map_err(|e| anyhow!(e))?,
             revision,
-            talk: mode == Mode::Talk,
-            frames: (self.rate / 50).max(1),
+            talk: state.mode == Mode::Talk,
+            // 復旧は無音中なので旧処理とのcrossfadeを残さず、次のframeで確定する。
+            frames: if reset { 1 } else { (self.rate / 50).max(1) },
+            reset,
         };
+        self.state = state;
+        self.revision = revision;
         self.pending = Some(job);
         self.flush();
         Ok(())
+    }
+    pub(crate) fn state_snapshot(&self, epoch: String) -> StateSnapshot {
+        let completed = self.shared.completed.load(Ordering::Acquire);
+        StateSnapshot {
+            epoch,
+            state: Some(self.state.clone()),
+            revision: self.revision.to_string(),
+            completed_revision: completed.to_string(),
+            pending: completed != self.revision,
+            failed: self.shared.failed.load(Ordering::Acquire),
+        }
     }
     pub fn snapshot(&self, epoch: String) -> super::live_output::MonitorSnapshot {
         super::live_output::MonitorSnapshot {
@@ -353,8 +437,13 @@ impl Monitor {
                     revision,
                     talk,
                     frames,
+                    reset,
                 } => {
                     self.voice.start(voice, revision, 0, frames);
+                    if reset {
+                        // 失敗した切替先の残響を、元設定の復元後に送出しない。
+                        self.reverb.restore(reverb);
+                    }
                     if talk {
                         self.reverb.set_transport(0.0, 1.0);
                     } else {
@@ -552,14 +641,18 @@ impl Drop for Worker {
 mod tests {
     use super::super::builtin;
     use super::*;
-    fn fixture() -> (
+    type Fixture = (
         Controller,
         CallbackOwner<Monitor>,
         AudioTx,
         Arc<HeapRb<f32>>,
         AudioRx,
         GainRx,
-    ) {
+    );
+    fn fixture() -> Fixture {
+        fixture_with_state(None)
+    }
+    fn fixture_with_state(initial_state: Option<&State>) -> Fixture {
         let (input, consumer) = HeapRb::new(8192).split();
         let queue = Arc::new(HeapRb::new(32768));
         let (producer, broadcast_consumer) = queue.clone().split();
@@ -596,6 +689,7 @@ mod tests {
             None,
             1,
             Default::default(),
+            initial_state,
         )
         .unwrap();
         (
@@ -860,6 +954,88 @@ mod tests {
         drop(controller);
     }
     #[test]
+    fn stopped_recovery_uses_captured_monitor_from_the_first_audio_frame() {
+        let state = State {
+            mode: Mode::Talk,
+            config: builtin::Config {
+                active: true,
+                preset: builtin::Preset::Warm,
+                amount: 0.31,
+                ..Default::default()
+            },
+        };
+        let (controller, mut renderer, mut input, _, _, _gains) = fixture_with_state(Some(&state));
+        let mut expected = RtVoice::new(Voice::prepare(&state.config, 48_000).unwrap());
+        for _ in 0..128 {
+            input.try_push(0.2).unwrap();
+            input.try_push(0.4).unwrap();
+        }
+        let mut output = [0.0; 256];
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| renderer
+                .get_mut()
+                .render(&mut output, None)),
+            (0, 0)
+        );
+        for frame in output.as_chunks::<2>().0 {
+            assert_eq!(*frame, expected.process([0.2, 0.1]));
+        }
+        assert_eq!(
+            controller.state_snapshot("engine".into()).state,
+            Some(state)
+        );
+    }
+
+    #[test]
+    fn rollback_restores_captured_monitor_and_discards_failed_mode_reverb_without_rt_alloc() {
+        for source_mode in [Mode::Talk, Mode::Singing] {
+            let (mut controller, mut renderer, mut input, _, _, _gains) = fixture();
+            let source = State {
+                mode: source_mode,
+                config: super::super::builtin::Config {
+                    amount: 0.37,
+                    ..Default::default()
+                },
+            };
+            controller.restore(source.clone(), 2).unwrap();
+            let mut output = [0.0; 256];
+            renderer.get_mut().render(&mut output, None);
+            controller.config.monitor_singing = Some(super::super::builtin::Config {
+                active: true,
+                reverb: Some(reverb::ReverbParams {
+                    enabled: true,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
+            controller.mode(Mode::Singing, 3).unwrap();
+            // 切替先で残響を作った後に、commit保存が失敗した状況。
+            for _ in 0..16 {
+                for _ in 0..256 {
+                    input.try_push(0.25).unwrap();
+                }
+                renderer.get_mut().render(&mut output, None);
+            }
+            assert!(!controller.state_snapshot("epoch".into()).pending);
+            controller.restore(source.clone(), 4).unwrap();
+            assert!(controller.state_snapshot("epoch".into()).pending);
+            assert_eq!(
+                crate::vst_host::instance::allocation_counts(|| {
+                    renderer.get_mut().render(&mut output, None);
+                }),
+                (0, 0)
+            );
+            assert_eq!(output, [0.0; 256]);
+            let restored = controller.state_snapshot("epoch".into());
+            assert_eq!(restored.state, Some(source));
+            assert_eq!(restored.completed_revision, "4");
+            assert!(!restored.pending);
+            // 復元前のmode ACKだけで完了にしない。
+            assert!(controller.restore(restored.state.unwrap(), 3).is_err());
+        }
+    }
+
+    #[test]
     fn mode_completion_is_separate_from_acceptance_and_old_acks_cannot_rewind() {
         let (mut controller, mut renderer, mut input, _, _, _gains) = fixture();
         controller.mode(Mode::Talk, 2).unwrap();
@@ -975,6 +1151,7 @@ mod tests {
             None,
             1,
             Default::default(),
+            None,
         )
         .unwrap();
         let revision = observer.request_cohort_window().unwrap();

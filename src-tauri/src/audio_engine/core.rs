@@ -298,6 +298,7 @@ pub struct Engine {
     live_output_error: Option<String>,
     monitor_levels: Arc<AtomicU64>,
     split_monitor: Option<super::split_monitor::Controller>,
+    restored_monitor: Option<super::split_monitor::State>,
     split_worker: Option<super::split_monitor::Worker>,
     mode_silence: super::mode_silence::Controller,
     input_stream: Option<cpal::Stream>,
@@ -394,6 +395,7 @@ impl Engine {
             live_output_error: None,
             monitor_levels: Arc::new(AtomicU64::new(1.0f32.to_bits() as u64)),
             split_monitor: None,
+            restored_monitor: None,
             split_worker: None,
             mode_silence: Default::default(),
             input_stream: None,
@@ -1123,6 +1125,7 @@ impl Engine {
                 | Command::LiveOutput { config: None }
                 | Command::LiveMode { .. }
                 | Command::ModeSilence { .. }
+                | Command::ModeMonitor { .. }
                 | Command::ConfigureLiveModes { .. }
                 | Command::GetDevices
                 | Command::StartIdentityCapability
@@ -1168,6 +1171,10 @@ impl Engine {
             return;
         }
         match cmd {
+            Command::ModeMonitor { request } => match self.mode_monitor_command(request) {
+                Ok(snapshot) => self.send_response(Response::ModeMonitor(Box::new(snapshot))),
+                Err(error) => self.send_error(error),
+            },
             Command::ModeSilence { request } => {
                 let failed = self.stream_failed.load(Ordering::Acquire)
                     || self.nr_failed.load(Ordering::Acquire)
@@ -1251,7 +1258,7 @@ impl Engine {
                         Ordering::Release,
                     );
                     self.builtin.invalidate_history();
-                    self.live_output_config = config;
+                    self.set_live_output_config(config);
                     if self.output_stream.is_some() {
                         if let Some(revision) = self
                             .frame_timing
@@ -2801,6 +2808,7 @@ impl Engine {
                 mode,
                 initial_live_revision,
                 (self.peak_config, self.peak_shared.clone()),
+                self.restored_monitor.as_ref(),
             )?;
             if self.live_output.is_none() {
                 controller.shared.failed.store(true, Ordering::Release);
@@ -4388,6 +4396,79 @@ impl Engine {
             .map_err(str::to_string)
     }
 
+    fn set_live_output_config(&mut self, config: super::live_output::Config) {
+        if !config.same_route(&self.live_output_config) {
+            self.restored_monitor = None;
+        }
+        self.live_output_config = config;
+    }
+
+    fn mode_monitor_command(
+        &mut self,
+        request: super::split_monitor::Request,
+    ) -> std::result::Result<super::split_monitor::StateSnapshot, String> {
+        use super::split_monitor::{Request, State, StateSnapshot};
+        let running = self.output_stream.is_some();
+        if let Request::Restore { state } = request {
+            if running && !self.mode_silence.shared.active() {
+                return Err("自分用設定の復元には切替用の無音確認が必要です".into());
+            }
+            if state.is_some() != self.live_output_config.split_processing {
+                return Err("復旧原本と自分用出力の構成が一致しません".into());
+            }
+            if let Some(state) = &state {
+                state.validate().map_err(|e| e.to_string())?;
+            }
+            // 配信側は個別設定のまま保持し、自分用だけに新しい完了世代を作る。
+            self.live_modes.custom();
+            let revision = self
+                .live_mode_snapshot()
+                .revision
+                .parse::<u64>()
+                .map_err(|_| "自分用設定の世代が不正です")?;
+            if let Some(state) = &state {
+                if running {
+                    self.split_monitor
+                        .as_mut()
+                        .ok_or("自分用の音声処理がありません")?
+                        .restore(state.clone(), revision)
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+            // 停止中の手動復旧では、次の開始の初期DSPにも同じ設定を使う。
+            self.restored_monitor = state;
+        }
+        let epoch = self.builtin.snapshot(false).epoch;
+        if let Some(monitor) = &self.split_monitor {
+            return Ok(monitor.state_snapshot(epoch));
+        }
+        let state = self.restored_monitor.clone().or_else(|| {
+            if self.live_output_config.split_processing {
+                let mode = self
+                    .live_mode_snapshot()
+                    .target
+                    .unwrap_or(super::live_modes::Mode::Singing);
+                let config = if mode == super::live_modes::Mode::Talk {
+                    self.live_output_config.monitor_talk.clone()
+                } else {
+                    self.live_output_config.monitor_singing.clone()
+                }?;
+                Some(State { mode, config })
+            } else {
+                None
+            }
+        });
+        let revision = self.live_mode_snapshot().revision;
+        Ok(StateSnapshot {
+            epoch,
+            state,
+            revision: revision.clone(),
+            completed_revision: revision,
+            pending: false,
+            failed: running && self.live_output_config.split_processing,
+        })
+    }
+
     fn live_mode_snapshot(&self) -> super::live_modes::Snapshot {
         let mut snapshot = self.live_modes.snapshot(
             self.builtin.snapshot(false).epoch,
@@ -4425,6 +4506,7 @@ impl Engine {
         mode: super::live_modes::Mode,
     ) -> std::result::Result<(), String> {
         if let Some(config) = self.live_modes.select(mode)? {
+            self.restored_monitor = None;
             self.invalidate_auto_gain();
             self.builtin.legacy(config)?;
             self.built_in_effects_enabled = self.builtin.config.active;
@@ -4706,6 +4788,64 @@ impl Drop for Engine {
 
 #[cfg(test)]
 mod singing_startup_tests {
+    #[test]
+    fn stopped_recovery_keeps_captured_monitor_without_changing_broadcast_builtin() {
+        use super::super::split_monitor::{Request, State};
+        use super::*;
+        let mut engine = Engine::new();
+        let broadcast = engine.builtin.config.clone();
+        let route = super::super::live_output::Config {
+            split_processing: true,
+            device_id: Some("fixture".into()),
+            monitor_singing: Some(Default::default()),
+            monitor_talk: Some(Default::default()),
+            ..Default::default()
+        };
+        engine.set_live_output_config(route.clone());
+        let source = State {
+            mode: super::super::live_modes::Mode::Talk,
+            config: super::super::builtin::Config {
+                amount: 0.31,
+                ..Default::default()
+            },
+        };
+        let snapshot = engine
+            .mode_monitor_command(Request::Restore {
+                state: Some(source.clone()),
+            })
+            .unwrap();
+        assert_eq!(snapshot.state, Some(source.clone()));
+        assert!(!snapshot.pending && !snapshot.failed);
+        assert_eq!(engine.restored_monitor, Some(source.clone()));
+        assert_eq!(engine.builtin.config, broadcast);
+        assert!(engine.output_stream.is_none());
+        let snapshot = engine.mode_monitor_command(Request::Snapshot).unwrap();
+        assert_eq!(snapshot.state, Some(source.clone()));
+        assert!(engine.live_mode_snapshot().target.is_none());
+        // 初回Startによる同じ保存構成の再送は元処理を維持する。
+        engine.set_live_output_config(route.clone());
+        assert_eq!(engine.restored_monitor, Some(source));
+        // 復旧後の明示編集は古い復旧overrideより優先する。
+        let mut edited = route;
+        edited.monitor_singing = Some(super::super::builtin::Config {
+            active: true,
+            preset: BuiltInEffectsPreset::Warm,
+            amount: 0.8,
+            ..Default::default()
+        });
+        engine.set_live_output_config(edited.clone());
+        assert!(engine.restored_monitor.is_none());
+        assert_eq!(
+            engine
+                .mode_monitor_command(Request::Snapshot)
+                .unwrap()
+                .state
+                .unwrap()
+                .config,
+            edited.monitor_singing.unwrap()
+        );
+    }
+
     #[test]
     fn cohort_marker_backpressure_waits_for_rt_completion_without_restarting_stream() {
         use super::*;

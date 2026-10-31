@@ -151,6 +151,14 @@ impl Reverb {
         };
         self.set_transport(active, active);
     }
+    /// 無音ゲート内の復旧用。失敗先のtailと係数の遷移を持ち越さない。
+    pub(crate) fn restore(&mut self, coefficients: Coefficients) {
+        self.reset();
+        self.update(coefficients);
+        self.current = coefficients;
+        self.input_send = self.target_send;
+        self.tail_output = self.target_output;
+    }
     // #36用: 送入停止と既存tailの出力を別々に制御する。公開APIではまだ使用しない。
     pub(crate) fn set_transport(&mut self, send: f32, output: f32) {
         self.target_send = send.clamp(0.0, 1.0);

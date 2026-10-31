@@ -1,6 +1,6 @@
 //! VSTと内蔵モードを、応答待ち中にHostを占有せず一体で切り替える。
 use super::*;
-use crate::audio_engine::{builtin, live_modes as model, mode_silence};
+use crate::audio_engine::{builtin, live_modes as model, mode_silence, split_monitor};
 use crate::vst_host::presets::{self, PresetPlugin};
 use sha2::{Digest, Sha256};
 use std::sync::mpsc::{Receiver, TryRecvError};
@@ -18,6 +18,8 @@ struct Journal {
     phase: String,
     plugins: Vec<PresetPlugin>,
     builtin: builtin::Config,
+    #[serde(default)]
+    monitor: Option<split_monitor::State>,
     origin_mode: Option<model::Mode>,
     original_mute: bool,
 }
@@ -29,6 +31,9 @@ impl Journal {
         );
         validate_plugins(&self.plugins, true)?;
         self.builtin.clone().normalize().map_err(|e| anyhow!(e))?;
+        if let Some(monitor) = &self.monitor {
+            monitor.validate()?;
+        }
         Ok(())
     }
 }
@@ -153,6 +158,7 @@ enum Step {
     SourceState(usize),
     ConfirmSource,
     SourceBuiltin,
+    SourceMonitor,
     SilenceBegin,
     SilencePoll,
     ClearRack,
@@ -164,6 +170,9 @@ enum Step {
     BuiltinApply,
     BuiltinSelect,
     BuiltinWait,
+    MonitorRestore,
+    MonitorConfigure,
+    MonitorWait,
     LiveWait,
     Finish,
     ReleasePoll,
@@ -194,6 +203,7 @@ struct Transaction {
     source_revision: u64,
     current_rack: Vec<crate::ipc::RackPlugin>,
     builtin: Option<builtin::Snapshot>,
+    monitor_revision: Option<String>,
     step: Step,
     pending: Option<Pending>,
     disk: Option<DiskJob>,
@@ -336,6 +346,7 @@ impl AudioHost {
             phase: "preparing".into(),
             plugins: Vec::new(),
             builtin: Default::default(),
+            monitor: None,
             origin_mode: self.live_modes.target,
             original_mute: self.is_global_muted,
         };
@@ -350,6 +361,7 @@ impl AudioHost {
             source_revision: 0,
             current_rack: Vec::new(),
             builtin: None,
+            monitor_revision: None,
             step: Step::Configure,
             pending: None,
             disk: None,
@@ -399,6 +411,7 @@ impl AudioHost {
             source_revision: 0,
             current_rack: Vec::new(),
             builtin: None,
+            monitor_revision: None,
             step: Step::ClearRack,
             pending: None,
             disk: None,
@@ -598,6 +611,7 @@ impl AudioHost {
                 | Step::ReadLive
                 | Step::SourceRack
                 | Step::SourceState(_)
+                | Step::SourceMonitor
                 | Step::ConfirmSource
                 | Step::SourceBuiltin => "preparing",
                 Step::SilenceBegin | Step::SilencePoll => "silencing",
@@ -900,6 +914,32 @@ impl AudioHost {
             Step::LiveWait => IpcCommand::LiveMode {
                 request: model::Request::Snapshot,
             },
+            Step::SourceMonitor | Step::MonitorWait => IpcCommand::ModeMonitor {
+                request: split_monitor::Request::Snapshot,
+            },
+            Step::MonitorRestore => IpcCommand::ModeMonitor {
+                request: split_monitor::Request::Restore {
+                    state: tx.source.monitor.clone(),
+                },
+            },
+            Step::MonitorConfigure => {
+                // 停止復旧したsidecarにも通常の出力構成を先に同期する。
+                // 復旧後の初回Startの再送と、利用者による明示編集を区別できる。
+                let path = self.last_config_path.with_file_name("live_output.json");
+                let config: crate::audio_engine::live_output::Config = if path.try_exists()? {
+                    serde_json::from_slice(&std::fs::read(path)?)?
+                } else {
+                    Default::default()
+                };
+                config.validate()?;
+                anyhow::ensure!(
+                    config.split_processing == tx.source.monitor.is_some(),
+                    "復旧原本と保存済みの自分用出力構成が一致しません"
+                );
+                IpcCommand::LiveOutput {
+                    config: Some(config),
+                }
+            }
             Step::BuiltinApply => {
                 let snapshot = tx
                     .builtin
@@ -1004,6 +1044,17 @@ impl AudioHost {
                     "内蔵処理の切替完了を待ってください"
                 );
                 tx.source.builtin = snapshot.config;
+                tx.step = Step::SourceMonitor;
+            }
+            (Step::SourceMonitor, IpcResponse::ModeMonitor(snapshot)) => {
+                anyhow::ensure!(
+                    snapshot.epoch == self.live_modes.engine_epoch
+                        && !snapshot.failed
+                        && !snapshot.pending
+                        && snapshot.revision == snapshot.completed_revision,
+                    "自分用処理の切替完了を待ってください"
+                );
+                tx.source.monitor = snapshot.state;
                 tx.source.validate()?;
                 anyhow::ensure!(
                     !self.mode_vst.path.try_exists()?,
@@ -1122,10 +1173,48 @@ impl AudioHost {
                     && (tx.recovery || snapshot.revision == snapshot.applied_revision)
                 {
                     if tx.recovery || tx.rollback {
-                        self.commit_mode_transaction(tx)?;
+                        tx.step = if tx.recovery {
+                            Step::MonitorConfigure
+                        } else {
+                            Step::MonitorRestore
+                        };
                     } else {
                         tx.step = Step::LiveWait;
                     }
+                }
+            }
+            (Step::MonitorConfigure, IpcResponse::LiveOutput(status)) => {
+                anyhow::ensure!(
+                    status.error.is_none()
+                        && status.config.split_processing == tx.source.monitor.is_some(),
+                    "復旧前の出力構成の同期を確認できません"
+                );
+                tx.step = Step::MonitorRestore;
+            }
+            (Step::MonitorRestore, IpcResponse::ModeMonitor(snapshot)) => {
+                anyhow::ensure!(
+                    tx.builtin
+                        .as_ref()
+                        .is_some_and(|builtin| snapshot.epoch == builtin.epoch)
+                        && !snapshot.failed
+                        && snapshot.state == tx.source.monitor,
+                    "自分用処理の復元要求を確認できません"
+                );
+                tx.monitor_revision = Some(snapshot.revision);
+                tx.step = Step::MonitorWait;
+            }
+            (Step::MonitorWait, IpcResponse::ModeMonitor(snapshot)) => {
+                anyhow::ensure!(
+                    tx.builtin
+                        .as_ref()
+                        .is_some_and(|builtin| snapshot.epoch == builtin.epoch)
+                        && !snapshot.failed
+                        && snapshot.state == tx.source.monitor
+                        && Some(&snapshot.revision) == tx.monitor_revision.as_ref(),
+                    "自分用処理の復元結果が一致しません"
+                );
+                if !snapshot.pending && snapshot.revision == snapshot.completed_revision {
+                    self.commit_mode_transaction(tx)?;
                 }
             }
             (Step::LiveWait, IpcResponse::LiveModes(snapshot)) => {
@@ -1220,6 +1309,7 @@ mod tests {
             phase: "preparing".into(),
             plugins: vec![],
             builtin: Default::default(),
+            monitor: None,
             origin_mode: Some(model::Mode::Talk),
             original_mute: false,
         }
@@ -1236,6 +1326,7 @@ mod tests {
             source_revision: 0,
             current_rack: vec![],
             builtin: None,
+            monitor_revision: None,
             step,
             pending: None,
             disk: None,
@@ -1260,6 +1351,16 @@ mod tests {
             history_reason: None,
             error: None,
         })
+    }
+    fn monitor(state: Option<split_monitor::State>, pending: bool) -> IpcResponse {
+        IpcResponse::ModeMonitor(Box::new(split_monitor::StateSnapshot {
+            epoch: "engine".into(),
+            state,
+            revision: "9".into(),
+            completed_revision: if pending { "8" } else { "9" }.into(),
+            pending,
+            failed: false,
+        }))
     }
     fn rack(plugins: Vec<crate::ipc::RackPlugin>, revision: u64) -> IpcResponse {
         IpcResponse::PluginRack {
@@ -1384,15 +1485,18 @@ mod tests {
     #[test]
     fn journal_write_failure_prevents_silence() {
         let mut host = host();
+        host.live_modes.engine_epoch = "engine".into();
         // 親が通常ファイルならjournalを作成できない。原本以外の既存ファイルは触らない。
         let root = host.live_modes.path.parent().unwrap();
         std::fs::write(root, b"not a directory").unwrap();
         let mut transaction = tx(Step::SourceBuiltin);
         host.mode_step_response(&mut transaction, builtin(Default::default(), false))
             .unwrap();
+        host.mode_step_response(&mut transaction, monitor(None, false))
+            .unwrap();
         assert!(await_disk(&mut host, &mut transaction).is_err());
         assert!(!transaction.journaled);
-        assert!(matches!(transaction.step, Step::SourceBuiltin));
+        assert!(matches!(transaction.step, Step::SourceMonitor));
         host.reader_active.store(true, Ordering::Release);
         let generation = host.engine_generation;
         host.fail_mode_transaction(transaction, "journal write failed".into(), false);
@@ -1481,13 +1585,26 @@ mod tests {
     #[test]
     fn pending_builtin_and_staged_release_never_clear_journal() {
         let mut host = host();
+        host.live_modes.engine_epoch = "engine".into();
         let mut transaction = tx(Step::BuiltinWait);
         transaction.rollback = true;
+        if let IpcResponse::BuiltinEffects(snapshot) = builtin(Default::default(), false) {
+            transaction.builtin = Some(snapshot);
+        }
         crate::migration::write_json(&host.mode_vst.path, &transaction.source).unwrap();
         host.mode_step_response(&mut transaction, builtin(Default::default(), true))
             .unwrap();
         assert!(matches!(transaction.step, Step::BuiltinWait));
         host.mode_step_response(&mut transaction, builtin(Default::default(), false))
+            .unwrap();
+        assert!(matches!(transaction.step, Step::MonitorRestore));
+        host.mode_step_response(&mut transaction, monitor(None, true))
+            .unwrap();
+        host.mode_step_response(&mut transaction, monitor(None, true))
+            .unwrap();
+        assert!(matches!(transaction.step, Step::MonitorWait));
+        assert!(transaction.disk.is_none());
+        host.mode_step_response(&mut transaction, monitor(None, false))
             .unwrap();
         await_disk(&mut host, &mut transaction).unwrap();
         assert!(matches!(transaction.step, Step::Finish));
@@ -1504,6 +1621,61 @@ mod tests {
         host.complete_mode_transaction(transaction);
         assert!(!host.mode_vst.path.exists());
     }
+    #[test]
+    fn monitor_restore_failure_or_stale_ack_never_releases_silence() {
+        for failure in ["pending", "failed", "epoch", "revision", "state"] {
+            let mut host = host();
+            let mut transaction = tx(Step::MonitorWait);
+            transaction.rollback = true;
+            transaction.journaled = true;
+            transaction.silence_ready = true;
+            transaction.source.origin_mode = None; // 個別設定中でも自分用の実設定を保持する。
+            transaction.source.monitor = Some(split_monitor::State {
+                mode: model::Mode::Talk,
+                config: Default::default(),
+            });
+            transaction.monitor_revision = Some("9".into());
+            if let IpcResponse::BuiltinEffects(snapshot) = builtin(Default::default(), false) {
+                transaction.builtin = Some(snapshot);
+            }
+            crate::migration::write_json(&host.mode_vst.path, &transaction.source).unwrap();
+            assert_eq!(
+                read_journal(&host.mode_vst.path).unwrap().monitor,
+                transaction.source.monitor
+            );
+            let IpcResponse::ModeMonitor(mut snapshot) =
+                monitor(transaction.source.monitor.clone(), failure == "pending")
+            else {
+                unreachable!()
+            };
+            match failure {
+                "failed" => snapshot.failed = true,
+                "epoch" => snapshot.epoch = "old".into(),
+                "revision" => {
+                    snapshot.revision = "8".into();
+                    snapshot.completed_revision = "8".into();
+                }
+                "state" => snapshot.state = None,
+                _ => {}
+            }
+            let result =
+                host.mode_step_response(&mut transaction, IpcResponse::ModeMonitor(snapshot));
+            if failure == "pending" {
+                result.unwrap();
+                assert!(matches!(transaction.step, Step::MonitorWait));
+                assert!(transaction.disk.is_none());
+            } else {
+                host.fail_mode_transaction(transaction, result.unwrap_err().to_string(), false);
+                assert!(host.mode_vst.blocked());
+                assert_eq!(
+                    host.mode_vst.status.as_ref().unwrap().phase,
+                    "recovery_required"
+                );
+            }
+            assert!(host.mode_vst.path.exists());
+        }
+    }
+
     #[test]
     fn emergency_mute_and_stop_cancel_pending_receiver_without_waiting() {
         for emergency in [false, true] {
@@ -1530,7 +1702,7 @@ mod tests {
     }
     #[test]
     fn full_fake_ipc_success_empty_rack_and_rollback_restore_every_source_value() {
-        for scenario in ["empty", "rack", "rollback", "recovery"] {
+        for scenario in ["empty", "rack", "rollback", "commit-rollback", "recovery"] {
             let mut host = host();
             host.live_modes.engine_epoch = "engine".into();
             host.is_global_muted = true;
@@ -1584,11 +1756,29 @@ mod tests {
             let mut release_polls = 0;
             let mut live_polls = 0;
             let mut failed = false;
+            let original_monitor = split_monitor::State {
+                mode: model::Mode::Talk,
+                config: Default::default(),
+            };
+            let mut monitor_state = Some(original_monitor.clone());
+            let journal_path = host.mode_vst.path.clone();
             if scenario == "recovery" {
+                crate::migration::write_json(
+                    &host.last_config_path.with_file_name("live_output.json"),
+                    &crate::audio_engine::live_output::Config {
+                        split_processing: true,
+                        device_id: Some("fixture".into()),
+                        monitor_singing: Some(Default::default()),
+                        monitor_talk: Some(Default::default()),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
                 transaction.recovery = true;
                 transaction.journaled = true;
                 transaction.source.plugins = vec![source_plugin.clone()];
                 transaction.source.builtin = original.clone();
+                transaction.source.monitor = monitor_state.clone();
                 transaction.destination = transaction.source.plugins.clone();
                 transaction.desired = original.clone();
                 transaction.step = Step::ClearRack;
@@ -1599,7 +1789,14 @@ mod tests {
             }
             for tick in 0..100 {
                 assert!(tick < 99, "flow failed to finish: {scenario}");
-                await_disk(&mut host, &mut transaction).unwrap();
+                if let Err(error) = await_disk(&mut host, &mut transaction) {
+                    assert!(scenario == "commit-rollback" && !failed);
+                    assert_eq!(monitor_state.as_ref().unwrap().mode, model::Mode::Singing);
+                    host.mode_vst.path = journal_path.clone();
+                    host.fail_mode_transaction(transaction, error.to_string(), false);
+                    transaction = host.mode_vst.transaction.take().unwrap();
+                    failed = true;
+                }
                 if matches!(transaction.step, Step::ReleasePoll)
                     && host
                         .mode_vst
@@ -1705,6 +1902,23 @@ mod tests {
                         }
                         response
                     }
+                    IpcCommand::ModeMonitor { request } => {
+                        if let split_monitor::Request::Restore { state } = request {
+                            monitor_state = state;
+                        }
+                        monitor(monitor_state.clone(), false)
+                    }
+                    IpcCommand::LiveOutput {
+                        config: Some(config),
+                    } => IpcResponse::LiveOutput(Box::new(
+                        crate::audio_engine::live_output::Status {
+                            config,
+                            sink: None,
+                            error: None,
+                            broadcast_epoch: None,
+                            monitor: None,
+                        },
+                    )),
                     IpcCommand::LiveMode { request } => {
                         let mut snapshot = host.mode_vst_snapshot();
                         snapshot.epoch = "engine".into();
@@ -1713,6 +1927,12 @@ mod tests {
                         snapshot.revision = "7".into();
                         snapshot.completed_revision = "6".into();
                         snapshot.phase = "transitioning".into();
+                        if matches!(step, Step::BuiltinSelect) {
+                            monitor_state = Some(split_monitor::State {
+                                mode: model::Mode::Singing,
+                                config: desired.clone(),
+                            });
+                        }
                         if matches!(step, Step::ReadLive) {
                             snapshot.phase = "settled".into();
                             snapshot.target = Some(model::Mode::Talk);
@@ -1722,6 +1942,10 @@ mod tests {
                                 snapshot.completed_revision = "7".into();
                                 snapshot.applied = transaction.mode;
                                 snapshot.phase = "settled".into();
+                                if scenario == "commit-rollback" && !failed {
+                                    // 元journalは保持し、通常ファイルを親にしてcommit保存だけ失敗させる。
+                                    host.mode_vst.path = journal_path.join("unwritable");
+                                }
                             }
                         }
                         IpcResponse::LiveModes(Box::new(snapshot))
@@ -1734,7 +1958,10 @@ mod tests {
                     transaction = host.mode_vst.transaction.take().unwrap();
                 }
             }
-            let restored_source = scenario == "rollback" || scenario == "recovery";
+            let restored_source = matches!(scenario, "rollback" | "commit-rollback" | "recovery");
+            if restored_source {
+                assert_eq!(monitor_state, Some(original_monitor));
+            }
             assert!(rack_matches(
                 &actual,
                 if restored_source {
