@@ -4,6 +4,7 @@ import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
 import { HomePanels } from '../features/Home/HomePanels';
 import { LiveStrip } from '../features/Home/LiveStrip';
+import { InputGainDisabledContext } from '../features/Home/InputGainContext';
 import { SoundChain } from '../features/Home/SoundChain';
 import { usePreparation } from '@/hooks/usePreparation';
 import { useVstPanel } from '@/hooks/useVstPanel';
@@ -215,7 +216,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     }, []);
 
     return (
-        <MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef} data-panel-instant={panelMotion.instant || undefined}
+        <InputGainDisabledContext.Provider value={panelOverlays}><MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef} data-panel-instant={panelMotion.instant || undefined}
             data-vst-open={Boolean(vstPanel) && vstPanelOpen || undefined} data-vst-overlay={panelOverlays || undefined} data-large-meter={isLargeMeterOpen || undefined}
             data-meter-suspended={panelMotion.present && !panelBeside || undefined}
             className="app-shell min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300">
@@ -345,6 +346,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                     </div>
                 </footer>
             </div>
-        </div></RuntimeStatsContext.Provider></MeterProvider>
+        </div></RuntimeStatsContext.Provider></MeterProvider></InputGainDisabledContext.Provider>
     );
 };
