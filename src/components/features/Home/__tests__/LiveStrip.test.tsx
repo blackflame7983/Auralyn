@@ -96,13 +96,26 @@ it('設定でオーロラをオフにすると本番帯に描かない', () => {
     expect(container.querySelector('.live-aurora')).toHaveAttribute('data-lit', 'true');
 });
 
-it('保存に失敗しても、オーロラの表示は切り替える', () => {
-    const { container } = render(<LiveStrip model={fixture()} running />);
+it('保存に失敗しても、オーロラの表示を切り替え、開き直しても選んだ値を保つ', () => {
+    const view = render(<LiveStrip model={fixture()} running />);
     const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
     try {
         act(() => saveAuroraDisplay(false));
-        expect(container.querySelector('.live-aurora')).toBeNull();
+        expect(view.container.querySelector('.live-aurora')).toBeNull();
+        view.unmount();
+        const reopened = render(<LiveStrip model={fixture()} running />);
+        expect(reopened.container.querySelector('.live-aurora')).toBeNull();
     } finally {
         setItem.mockRestore();
+        act(() => saveAuroraDisplay(true));
     }
+});
+
+it('他の窓で変えた値は保存先から読み直す', () => {
+    act(() => saveAuroraDisplay(false));
+    const { container } = render(<LiveStrip model={fixture()} running />);
+    expect(container.querySelector('.live-aurora')).toBeNull();
+    localStorage.setItem('vst_host_aurora_display', 'true');
+    act(() => { window.dispatchEvent(new StorageEvent('storage', { key: 'vst_host_aurora_display' })); });
+    expect(container.querySelector('.live-aurora')).toHaveAttribute('data-lit', 'true');
 });
