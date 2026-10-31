@@ -1,5 +1,6 @@
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { HomeAudioStartError } from '@/lib/startHomeAudio';
+import { renderClientError } from '@/lib/clientError';
 import { useUsageWindow } from '@/hooks/useUsageWindow';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
@@ -92,14 +93,14 @@ export const AppShell: React.FC<AppShellProps> = ({
     const t = useMessages();
     const [starting, setStarting] = useState(false);
     const startPending = useRef(false);
-    const [startError, setStartError] = useState<string | null>(null);
+    const [startError, setStartError] = useState<unknown>(null);
     const [startPartiallyApplied, setStartPartiallyApplied] = useState(false);
     const [destinationRequest, setDestinationRequest] = useState(0);
     const startAudio = async () => {
         if (!onStartAudio || startPending.current || preparationBlocked) return;
         startPending.current = true; setStarting(true); setStartError(null); setStartPartiallyApplied(false);
         try { await onStartAudio(); }
-        catch (error) { setStartError(String(error)); setStartPartiallyApplied(error instanceof HomeAudioStartError && error.started); }
+        catch (error) { setStartError(() => error); setStartPartiallyApplied(error instanceof HomeAudioStartError && error.started); }
         finally { startPending.current = false; setStarting(false); }
     };
     useEffect(() => {
@@ -131,6 +132,12 @@ export const AppShell: React.FC<AppShellProps> = ({
     }, []);
 
     const audioReady = Boolean(currentHost) && isEngineRunning && engineProcessReady === true;
+    // イベント・定期取得のどちらで復旧しても開始失敗を解除する。開始後の反映失敗は残す。
+    useEffect(() => {
+        if (audioReady && !startPartiallyApplied) setStartError(null);
+    }, [audioReady, startError, startPartiallyApplied]);
+    const startErrorDetail = startError === null ? null : renderClientError(t,
+        startError instanceof HomeAudioStartError ? startError.cause : startError);
     const preparation = usePreparation({ blocked: preparationBlocked, running: audioReady });
     const [loudnessEnabled, setLoudnessEnabled] = useState(false);
     const [measurement, setMeasurement] = useState({ active: false, busy: false, stopUnconfirmed: false });
@@ -291,7 +298,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
-                            ? <LiveStrip onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startError} startPartiallyApplied={startPartiallyApplied} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
+                            ? <LiveStrip onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
                             : liveControls && <div className="mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden">{liveControls}</div>}
                         {/* 音量チェックは開いたメーターの直下に出す。 */}
                         <div><LoudnessCheck

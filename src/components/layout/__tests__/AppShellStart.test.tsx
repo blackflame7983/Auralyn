@@ -6,6 +6,8 @@ import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 import { AppShell } from '../AppShell';
+import { HomeAudioStartError } from '@/lib/startHomeAudio';
+import { FixedClientError } from '@/lib/clientError';
 import { saveDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { saveVstPanelOpen } from '@/hooks/useVstPanel';
 
@@ -86,6 +88,42 @@ const commonProps = {
     onOpenVoiceCheck: vi.fn(), onOpenWizard: vi.fn(), onToggleLargeMeter: vi.fn(),
     isLargeMeterOpen: false, currentHost: 'WASAPI', isEngineRunning: true, engineProcessReady: true,
 };
+
+it.each(['ja', 'en'] as const)('保護中の確認失敗を現在の言語で表示する (%s)', async locale => {
+    const error = new HomeAudioStartError(false, new FixedClientError('home.protectedConfigUnverified'));
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <AppShell {...commonProps} currentInput="Mic" currentOutput="Out" isEngineRunning={false} onStartAudio={vi.fn().mockRejectedValue(error)}><p>rack</p></AppShell>
+    </LocaleProvider>);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: message(locale, 'home.startAudio') })));
+    expect(screen.getByRole('alert')).toHaveTextContent(message(locale, 'clientErrors.homeProtectedConfigUnverified'));
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Error:');
+});
+
+it.each([false, true])('別経路の稼働で開始失敗を解除し、遅い失敗応答でも戻さない (遅い応答=%s)', async late => {
+    let reject!: (error: unknown) => void;
+    const start = vi.fn(() => new Promise<void>((_, fail) => { reject = fail; }));
+    const props = { ...commonProps, currentInput: 'Mic', currentOutput: 'Out', onStartAudio: start };
+    const view = render(<AppShell {...props} isEngineRunning={false}><p>rack</p></AppShell>);
+    fireEvent.click(screen.getByRole('button', { name: '音声を開始' }));
+    if (late) view.rerender(<AppShell {...props} isEngineRunning><p>rack</p></AppShell>);
+    await act(async () => { reject(new HomeAudioStartError(false, new Error('Device missing'))); });
+    if (!late) {
+        expect(screen.getByRole('alert')).toHaveTextContent('Error: Device missing');
+        expect(screen.getByRole('alert')).not.toHaveTextContent('Error: Error:');
+        view.rerender(<AppShell {...props} isEngineRunning><p>rack</p></AppShell>);
+    }
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('開始後の設定失敗は、別経路で稼働しても残し、設定で復旧したら解除する', async () => {
+    const props = { ...commonProps, currentInput: 'Mic', currentOutput: 'Out', onStartAudio: vi.fn().mockRejectedValue(new HomeAudioStartError(true, new Error('Channel failed'))) };
+    const view = render(<AppShell {...props} isEngineRunning={false}><p>rack</p></AppShell>);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '音声を開始' })));
+    view.rerender(<AppShell {...props} isEngineRunning><p>rack</p></AppShell>);
+    expect(screen.getByRole('alert')).toHaveTextContent(message('ja', 'home.startIncomplete'));
+    act(() => window.dispatchEvent(new Event('audio-settings-started')));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
 
 it('設定済み停止の開始は1つで、連打を防ぎ、失敗時は設定へ案内する', async () => {
     let reject!: (error: Error) => void;

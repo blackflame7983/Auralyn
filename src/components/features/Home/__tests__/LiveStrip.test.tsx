@@ -17,6 +17,17 @@ afterEach(() => { cleanup(); localStorage.clear(); meter.state = 'stopped'; });
 const fixture = (): PreparationModel => ({ context: { ...context }, observation: buildPreparationObservation(audioState, runtime(), liveStatus, context), records: {}, checking: false, confirming: false,
     confirm: vi.fn(), unconfirm: vi.fn(), refresh: vi.fn(), reset: vi.fn(), changeContext: vi.fn() });
 
+it.each(['ja', 'en'] as const)('失敗の詳細をそのまま表示し、開始後の設定失敗とは区別する (%s)', locale => {
+    const props = { model: fixture(), startError: 'Device missing' };
+    const view = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip {...props} running={false} /></LocaleProvider>);
+    expect(screen.getByRole('alert')).toHaveTextContent(message(locale, 'home.startFailed'));
+    fireEvent.click(screen.getByText(message(locale, 'prep.details')));
+    expect(screen.getByText('Device missing')).toBeVisible();
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Error:');
+    view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip {...props} running startPartiallyApplied /></LocaleProvider>);
+    expect(screen.getByRole('alert')).toHaveTextContent(message(locale, 'home.startIncomplete'));
+});
+
 it.each(['ja', 'en'] as const)('本番帯に入力メーター・送り先・歌と雑談の切替をまとめ、機器名は繰り返さない (%s)', locale => {
     const model = fixture();
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>

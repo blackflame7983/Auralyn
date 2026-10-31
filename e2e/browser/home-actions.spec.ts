@@ -60,6 +60,25 @@ for (const theme of ['light', 'dark', 'gaming']) {
 
 test.describe('設定済みの停止中', () => {
     test.use({ stoppedHome: true });
+    test('別経路で音声が復旧したら開始失敗の警告を解除する', async ({ page }, info) => {
+        await page.goto('/');
+        await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
+        await page.evaluate(() => { (window as any).__e2eStartFailure = true; });
+        await page.getByRole('button', { name: '音声を開始', exact: true }).click();
+        const error = page.getByRole('alert').filter({ hasText: '音声を開始できませんでした' });
+        await expect(error).toBeVisible();
+        await error.getByText('確認条件・履歴', { exact: true }).click();
+        await expect(error).toContainText('機器が見つかりません');
+        await expect(error).not.toContainText('Error: Error:');
+        await page.screenshot({ path: info.outputPath('error-details.png') });
+        // ホームや設定のcallbackを通さず、別の開始経路から届く通知を再現する。
+        await page.evaluate(async () => {
+            (window as any).__e2eStartFailure = false;
+            await (window as any).__TAURI_INTERNALS__.invoke('start_audio');
+        });
+        await expect(page.getByRole('button', { name: '音声を開始', exact: true })).toHaveCount(0);
+        await expect(error).toHaveCount(0);
+    });
     test('音声開始後の設定失敗を、開始自体の失敗と区別する', async ({ page }) => {
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);

@@ -1,6 +1,8 @@
 import type { Locale } from './locale';
 
 const ja = {
+    "chain.vstOff": "オフ",
+    "clientErrors.homeProtectedConfigUnverified": "本番保護中の機器設定を確認できません。設定を確認してください。",
     "home.startAudio": "音声を開始",
     "home.startIncomplete": "音声は開始しましたが、入力チャンネルの反映または設定の保存を完了できませんでした。入出力を確認してください。",
     "home.startSavedDevices": "保存済みのマイクと出力先で開始します。",
@@ -2748,6 +2750,8 @@ const ja = {
 } as const;
 export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
+    "chain.vstOff": "Off",
+    "clientErrors.homeProtectedConfigUnverified": "Could not verify the device settings while live protection is on. Check your settings.",
     "home.startAudio": "Start audio",
     "home.startIncomplete": "Audio started, but input channel setup or saving settings did not finish. Check your input and output.",
     "home.startSavedDevices": "Start with your saved microphone and output.",

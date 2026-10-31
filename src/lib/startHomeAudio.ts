@@ -1,10 +1,11 @@
 import { audioApi } from '@/api/audio';
 import { liveModesApi } from '@/api/liveModes';
 import type { AudioPreferences } from './audioPreferences';
+import { FixedClientError } from './clientError';
 
 export class HomeAudioStartError extends Error {
-    constructor(readonly started: boolean, cause: unknown) {
-        super(String(cause));
+    constructor(readonly started: boolean, readonly cause: unknown) {
+        super(cause instanceof Error ? cause.message : String(cause));
     }
 }
 
@@ -17,7 +18,7 @@ export async function startHomeAudio(saved: AudioPreferences, persist: (config: 
         if (mode.armed) {
             const actual = (await audioApi.getAudioState()).config;
             if (!actual?.host || !actual.input || !actual.output || !actual.input_id || !actual.output_id || !actual.sample_rate || !actual.buffer_size) {
-                throw new Error('本番保護中の機器設定を確認できません。設定を確認してください。');
+                throw new FixedClientError('home.protectedConfigUnverified');
             }
             config = { ...saved, host: actual.host, input: actual.input, output: actual.output, inputId: actual.input_id,
                 outputId: actual.output_id, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size };

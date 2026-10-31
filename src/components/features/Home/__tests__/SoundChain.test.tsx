@@ -161,7 +161,7 @@ it('VST段は押してオン・オフし、エディタは有効なときだけ�
     expect(eq).toHaveAttribute('aria-pressed', 'true');
     expect(eq).toHaveTextContent('ミュート中');
     fireEvent.click(eq); expect(toggle).toHaveBeenCalledWith('a', false);
-    const gate = screen.getByRole('button', { name: 'Gate VST オフ' });
+    const gate = screen.getByRole('button', { name: 'Gate オフ' });
     expect(gate).toHaveAttribute('aria-pressed', 'false');
     expect(gate).not.toHaveClass('line-through');
     fireEvent.click(gate); expect(toggle).toHaveBeenLastCalledWith('b', true);
