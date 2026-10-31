@@ -25,7 +25,7 @@ interface Props {
     onOpenSettings: () => void;
     onOpenOBSSettings: () => void;
     onOpenSoundSettings?: () => void;
-    onOpenVst?: () => void;
+    onOpenVst?: (event: React.MouseEvent<HTMLButtonElement>) => void;
     /** 右パネルを開いているか。開閉ボタンの aria-expanded に使う。 */
     vstPanelOpen?: boolean;
 }
@@ -76,7 +76,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                         <span className="sr-only">{tag}</span>
                         <div className="flex items-center gap-1">
                             <h3 className="text-sm font-semibold">{name}</h3>
-                            {key === 'builtin' && <InfoPopover label={t('settings.builtinHelp')}>{t('settings.AudioSettingsModal.096')}</InfoPopover>}
+                            {key === 'builtin' && <InfoPopover label={t('settings.builtinHelp')}><p>{t('settings.AudioSettingsModal.096')}</p>{builtinDetails && <p className="mt-2">{builtinDetails}</p>}</InfoPopover>}
                             {key === 'vst' && quiet && <InfoPopover label={t('chain.vstEmptyName')}>{t('chain.vstEmptyHint')}</InfoPopover>}
                         </div>
                         {sub && <div className={typeof sub === 'string' ? 'sr-only' : 'text-xs text-muted-foreground'}>{sub}</div>}
@@ -91,8 +91,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const noiseOn = live ? q.noiseOn : stage?.nr.enabled === true;
     const builtinOn = live ? q.chainOn || partial : stage?.builtinVoiceEnabled === true || partial;
     const vstOn = vstTone === 'ok';
-    // 内訳は「一部 ON」のときだけ見える形で残し、それ以外は読み上げとツールチップにする。
-    const builtinBreakdown = builtinDetails && <span className={partial ? 'text-[13px] text-muted-foreground' : 'sr-only'}>{builtinDetails}</span>;
+    // 声の処理と残響は別の設定。声ON・残響OFFを異常に見せず、逆の場合だけ「残響のみ」を伝える。
+    const builtinBreakdown = builtinDetails && <span className={music && partial ? 'text-xs text-muted-foreground' : 'sr-only'}>{builtinDetails}</span>;
     // パネルを閉じたときはこのボタンへフォーカスを戻す（AppShell）。
     const vstEdit = onOpenVst && <button type="button" id="vst-panel-toggle" onClick={onOpenVst} aria-expanded={vstPanelOpen} aria-controls="vst-panel"
         className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-primary/60 px-3 py-1.5 text-[13px] font-semibold text-primary hover:bg-primary/10">
@@ -110,7 +110,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 action: live && <NoiseSwitch q={q} /> }),
             row({ key: 'builtin', id: 'home-builtin', on: builtinOn, quiet: !builtinOn, tag: builtinTag, builtin: true, name: t('settings.AudioSettingsModal.095'), sub: t('chain.builtinSub'), title: builtinDetails,
                 body: <>
-                    {(!live || !builtinOn || partial) && <StatusDot tone={live && !builtinOn ? 'off' : builtinTone} className="text-[13px] text-muted-foreground">{live && !builtinOn ? t('flow.disabled') : builtinStatus}</StatusDot>}
+                    {(!live || !builtinOn || (stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled)) && <StatusDot tone={live && !builtinOn ? 'off' : builtinTone} className="text-[13px] text-muted-foreground">{stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled ? t('flow.reverbOnly') : live && !builtinOn ? t('flow.disabled') : setting(stage?.builtinVoiceEnabled)}</StatusDot>}
                     {builtinBreakdown}
                     {live && builtinOn && <BuiltinQuick q={q} />}
                 </>,

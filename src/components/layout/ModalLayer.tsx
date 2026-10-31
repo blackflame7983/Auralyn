@@ -27,11 +27,11 @@ const markWizardDone = () => {
 };
 
 interface UIState {
-    settingsSection?: 'liveModes';
+    settingsSection?: 'liveModes' | 'singing';
     settingsTab?: 'audio' | 'obs' | 'sound';
     isSettingsOpen: boolean;
     setIsSettingsOpen: (v: boolean) => void;
-    openSoundSettings: () => void;
+    openSoundSettings: (section?: 'liveModes' | 'singing') => void;
     openObsSettings: () => void;
     isBrowserOpen: boolean;
     setIsBrowserOpen: (v: boolean) => void;
@@ -345,11 +345,11 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         singingModel={singingModel}
                         manualCandidate={singingPreview}
                         onSaveSingingProfile={() => { setSingingPreview(false); ui.setIsVoiceCheckOpen(false); ui.setIsPresetManagerOpen(true); }}
-                        onClose={() => { ui.setIsVoiceCheckOpen(false); if (singingPreview) { setSingingPreview(false); ui.openSoundSettings(); } }}
+                        onClose={() => { ui.setIsVoiceCheckOpen(false); if (singingPreview) { setSingingPreview(false); ui.openSoundSettings('singing'); } }}
                         onOpenSoundSettings={() => {
                             setSingingPreview(false);
                             ui.setIsVoiceCheckOpen(false);
-                            ui.openSoundSettings();
+                            ui.openSoundSettings(singingPreview ? 'singing' : undefined);
                         }}
                         onOpenAudioSettings={() => {
                             setSingingPreview(false);

@@ -58,9 +58,8 @@ export function useLiveModes(externalBusy = false) {
             if (mounted.current) setError({ key: 'liveNotices.operationFailed', reason: cause instanceof LiveModeClientError ? cause.code : undefined, rawDetail: cause instanceof LiveModeClientError ? undefined : String(cause) });
         } finally { writing.current = false; if (mounted.current) setBusy(false); }
     };
-    const error = errorNotice ? [t(errorNotice.key), errorNotice.reason ? t(clientKeys[errorNotice.reason]) : '',
-        errorNotice.rawDetail ? t('liveNotices.rawDetail', { detail: errorNotice.rawDetail }) : ''].filter(Boolean).join(' ') : '';
-    return { activate, snapshot, busy: busy || rackBusy || externalBusy, error, refresh,
+    const error = errorNotice ? [t(errorNotice.key), errorNotice.reason ? t(clientKeys[errorNotice.reason]) : ''].filter(Boolean).join(' ') : '';
+    return { activate, snapshot, busy: busy || rackBusy || externalBusy, error, errorDetail: errorNotice?.rawDetail, refresh,
         select: (mode: LiveMode) => current.current ? change(() => liveModesApi.select(mode, current.current!.epoch)) : Promise.resolve(),
         protect: (armed: boolean) => current.current ? change(() => liveModesApi.protect(armed, current.current!.epoch)) : Promise.resolve(),
         saveApplied: (mode: LiveMode) => change(async () => {

@@ -2,6 +2,24 @@ import { test, expect } from './tauriFixture';
 
 test.use({ liveHome: true, registeredModes: false });
 
+for (const input of ['pointer', 'keyboard'] as const) test(`詳しく調整は選択イベントを移動先にせず、通常の音づくり欄を開く（${input}）`, async ({ page }) => {
+    await page.setViewportSize({ width: 960, height: 640 });
+    await page.addInitScript(() => {
+        localStorage.setItem('vst_host_wizard_done', 'true');
+        localStorage.setItem('auralyn_vst_panel_open', 'false');
+        localStorage.setItem('vst_host_setup_goal', 'obs');
+    });
+    await page.goto('/');
+    const more = page.getByRole('button', { name: 'その他の操作', exact: true });
+    if (input === 'pointer') await more.click(); else await more.press('Enter');
+    const adjust = page.getByRole('menuitem', { name: '詳しく調整', exact: true });
+    if (input === 'pointer') await adjust.click(); else await adjust.press('Enter');
+    const settings = page.getByRole('dialog', { name: '設定', exact: true });
+    await expect(settings.getByRole('tab', { name: '音づくり', exact: true })).toHaveAttribute('data-state', 'active');
+    await expect(settings.getByRole('heading', { name: 'ノイズ低減', exact: true })).toBeInViewport();
+    await expect(settings.locator('#singing-settings')).not.toHaveAttribute('open');
+});
+
 test('未登録の入口から歌・雑談を登録し、ホームの切替と編集へ戻れる', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 960, height: 640 });
     await page.addInitScript(() => {

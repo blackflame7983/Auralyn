@@ -1,5 +1,6 @@
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
+import { message } from '@/i18n/messages';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
@@ -15,6 +16,19 @@ beforeEach(() => {
     });
 });
 afterEach(cleanup);
+it.each(['ja', 'en'] as const)('保存方法の説明は編集内容・保存対象を変えず、保存・適用もしない（%s）', async locale => {
+    const save = vi.fn(); const apply = vi.fn();
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={save} onApplyProfile={apply} onRestoreBackup={vi.fn()} /></LocaleProvider>);
+    const name = await screen.findByRole('textbox', { name: message(locale, 'presets.copy.061') });
+    fireEvent.change(name, { target: { value: '編集中の名前' } });
+    const before = Array.from(document.querySelectorAll<HTMLInputElement>('input[id^="save-"]')).map(input => input.checked);
+    const trigger = screen.getByRole('button', { name: message(locale, 'saveHelp.title') });
+    fireEvent.click(trigger);
+    expect(screen.getByRole('dialog', { name: message(locale, 'saveHelp.title') })).toHaveTextContent(message(locale, 'saveHelp.appliedOnly'));
+    expect(name).toHaveValue('編集中の名前');
+    expect(Array.from(document.querySelectorAll<HTMLInputElement>('input[id^="save-"]')).map(input => input.checked)).toEqual(before);
+    expect(save).not.toHaveBeenCalled(); expect(apply).not.toHaveBeenCalled();
+});
 it('入力の目的と各行の操作対象を公開し、検索解除で一覧へ戻る', async () => {
     open();
     const select = await screen.findByRole('button', { name: `${meta.name}を保存名に選ぶ` });

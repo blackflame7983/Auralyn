@@ -19,7 +19,7 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
         <div role="meter" aria-label={label} aria-valuemin={-60} aria-valuemax={0}
             aria-valuenow={current ? Math.max(-60, Math.min(0, Number.isFinite(db) ? db : -60)) : undefined}
             aria-valuetext={text} title={t(reading.state === 'waiting' || reading.state === 'stale' ? 'meter.waitingHelp' : meterStatusLabel(reading.state))}
-            className={`flex min-w-0 gap-1 ${stacked ? 'min-h-0 flex-1' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`} style={{ height: stacked ? undefined : height }}>
+            className={`meter-visual flex min-w-0 gap-1 ${stacked ? 'min-h-0 flex-1' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`} style={{ height: stacked ? undefined : height }}>
             {bars.map((value, i) => {
                 const pct = current ? Math.min(100, Math.max(0, value * 100)) : 0;
                 const peak = current ? Math.min(100, Math.max(0, peaks[i] * 100)) : 0;

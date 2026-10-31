@@ -18,20 +18,34 @@ export function InputGainControl({ disabled = false }: { disabled?: boolean }) {
     const backgroundDisabled = useContext(InputGainDisabledContext);
     const unavailable = disabled || backgroundDisabled;
     const [open, setOpen] = useState(false);
+    const [failed, setFailed] = useState(false);
+    const request = useRef(0);
+    const mounted = useRef(true);
     useLayoutEffect(() => { if (unavailable) setOpen(false); }, [unavailable]);
     const [inputGain, setInputGain] = useState(() => {
         const saved = localStorage.getItem('vst_host_input_gain');
         return saved ? Number(saved) : 100;
     });
     const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => {
+        mounted.current = true;
+        return () => { mounted.current = false; request.current++; if (debounce.current) clearTimeout(debounce.current); };
+    }, []);
 
     const change = (value: number[], fromExternal = false) => {
         const gain = value[0];
+        if (!Number.isFinite(gain) || gain < 0 || gain > 200) return;
+        const operation = ++request.current;
         setInputGain(gain);
+        setFailed(false);
         if (debounce.current) clearTimeout(debounce.current);
-        debounce.current = setTimeout(() => {
-            audioApi.setInputGain(gain / 100).catch(e => console.error('Failed to set input gain', e));
-            localStorage.setItem('vst_host_input_gain', String(gain));
+        debounce.current = setTimeout(async () => {
+            try {
+                await audioApi.setInputGain(gain / 100);
+                if (mounted.current && operation === request.current) localStorage.setItem('vst_host_input_gain', String(gain));
+            } catch {
+                if (mounted.current && operation === request.current) setFailed(true);
+            }
         }, 50);
         // 外部からの同期では再通知せず、往復を防ぐ。
         if (!fromExternal) window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: gain }));
@@ -53,6 +67,7 @@ export function InputGainControl({ disabled = false }: { disabled?: boolean }) {
                 <Icon aria-hidden="true" className="h-4 w-4" /><span className="font-mono">{inputGain}%</span>
             </button>
         </Popover.Trigger></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip></TooltipProvider>
+        {failed && !open && <p role="alert" className="text-xs text-warning">{t('home.inputGainReopen')}</p>}
         <Popover.Portal><Popover.Content aria-label={label} sideOffset={5} collisionPadding={12}
             onCloseAutoFocus={event => {
                 // 重ね表示で背後の入口が操作不可になったら、VSTの作業へフォーカスを渡す。
@@ -65,6 +80,9 @@ export function InputGainControl({ disabled = false }: { disabled?: boolean }) {
             <Slider aria-label={label} aria-valuetext={`${inputGain}%`} value={[inputGain]} max={200} step={1}
                 onValueChange={change} onDoubleClick={() => change([100])} className="mt-4" />
             <button type="button" disabled={inputGain === 100} onClick={() => change([100])} className="mt-3 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">{t('header.inputGainHint')}</button>
+            {failed && <div className="mt-3 space-y-2"><p role="alert" className="text-xs text-warning">{t('home.inputGainFailed')}</p>
+                <button type="button" onClick={() => change([inputGain])} className="rounded-md border border-border px-3 py-1.5 text-xs">{t('common.retry')}</button>
+            </div>}
         </Popover.Content></Popover.Portal>
     </Popover.Root>;
 }

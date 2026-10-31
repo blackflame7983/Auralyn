@@ -68,6 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
     useEffect(() => {
         const unlisten = listen<boolean>('global-mute-changed', (event) => {
             setIsGlobalMuted(event.payload);
+            toast.dismiss('emergency-mute-failed');
             if (event.payload) {
                 toast.warning(<LocalizedMessage id="header.muteOn" />);
             } else {
@@ -86,6 +87,8 @@ export const Header: React.FC<HeaderProps> = ({
             await audioApi.toggleGlobalMute();
         } catch (e) {
             console.error("Failed to toggle global mute", e);
+            toast.error(t('header.muteFailed'), { id: 'emergency-mute-failed', duration: Infinity,
+                action: { label: t('header.audioSettingsOpen'), onClick: onOpenSettings } });
         }
     };
 

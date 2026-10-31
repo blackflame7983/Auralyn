@@ -223,7 +223,7 @@ it('手動Aと録音提案Bを混同せず、手動再準備後のA/BにはAのc
     await screen.findByText(/低音整理80Hz/);
     expect(screen.queryByText('候補の準備ができました。試聴先を確認して再生してください。')).not.toBeInTheDocument();
     expect(screen.getByText('A/B対象：原音と録音由来の提案（内蔵ボイスチェーンのみ）')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'この下書きをマイクの音へ適用' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'この音をマイクへ適用' })).toBeDisabled();
     fireEvent.click(manual);
     await screen.findByText('候補の準備ができました。試聴先を確認して再生してください。');
     expect(screen.getByText('A/B対象：原音と手動下書きの候補（内蔵ボイスチェーンのみ）')).toBeVisible();

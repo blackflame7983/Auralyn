@@ -371,6 +371,8 @@
   padding-right: calc(1rem + var(--visible-meter-width));
 }
 .sound-chain, .live-strip { container-type: inline-size; }
+.input-channel-pair[hidden] { display: none; }
+.recovery-details[open] { flex-basis: 100%; }
 .live-output-summary { display: none; }
 @container (min-width: 1080px) {
   .live-meter-pair { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1rem; }
@@ -378,6 +380,55 @@
 }
 .sound-chain-row {
   grid-template-columns: minmax(10rem, 12rem) minmax(0, 1fr) auto;
+  position: relative;
+}
+/* ON の設定を静的に示す。音声の有無や処理成功とは区別し、点滅させない。 */
+.sound-chain-row[data-on="true"] {
+  background: linear-gradient(90deg, hsl(var(--primary) / 0.09), transparent 65%);
+}
+.sound-chain-row[data-on="true"]::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 16px;
+  bottom: 16px;
+  width: 2px;
+  border-radius: 2px;
+  background: hsl(var(--primary));
+  box-shadow: 0 0 8px hsl(var(--primary) / 0.35);
+}
+/* 高さを活かして本番帯を広げる。小さな窓と、未設定のホームは従来の密度を保つ。 */
+@media (min-height: 900px) {
+  .home-content:has(.live-strip) {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .home-content > * { flex-shrink: 0; }
+  .home-content > .live-strip {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1.5rem;
+  }
+  .live-strip .meter-visual { height: clamp(64px, calc(15vh - 70px), 140px) !important; }
+}
+.home-large-meter { display: none; }
+@media (min-height: 1100px) {
+  .app-shell[data-large-meter],
+  .app-shell[data-large-meter]:has(.large-meter-motion[data-detailed]) { --visible-meter-width: 0px; }
+  .home-large-meter {
+    display: flex;
+    align-items: flex-start;
+    padding-block: 1rem;
+    min-height: 240px;
+  }
+  .large-meter-motion[data-horizontal] { translate: none; max-height: none; }
+}
+/* 押下中も色で応答し、ミュートの適用や状態通知をアニメーション待ちにしない。 */
+#emergency-mute:active {
+  background-color: hsl(var(--destructive) / 0.3);
+  border-color: hsl(var(--destructive));
 }
 /* ウィンドウ幅ではなく、メーター等を除いた実際の作業幅で切り替える。 */
 @container (max-width: 760px) {
@@ -404,6 +455,9 @@
   /* 狭い窓のホームは縮めない。余白が増えるにつれ、パネル用の幅を少しずつ空ける。 */
   width: clamp(0px, calc(100vw - 1020px - var(--visible-meter-width)), 420px);
 }
+@media (min-width: 1200px) {
+  .vst-panel-space[data-state="open"] { width: 420px; }
+}
 .vst-panel-motion {
   opacity: 1;
   transform: translateX(0);
@@ -421,6 +475,7 @@
   }
 }
 .large-meter-motion {
+  max-height: 720px;
   /* 親の幅指定は開閉時だけ変わる。フレームごとにCSS変数を更新せず translate を遷移させる。 */
   /* 広い窓でもホーム（最大1180px）の右隣へ置く。ホームの左右余白の差と12pxの間隔を含める。 */
   translate: calc(-1 * (var(--vst-panel-width, 0px) + max(0px, (100vw - var(--vst-panel-width, 0px) - var(--visible-meter-width, 64px) - 1180px - 36px) / 2))) 0;
@@ -438,6 +493,26 @@
 [data-radix-menu-content][data-state="open"] {
   animation: surface-appear var(--motion-base) ease-out;
 }
+@keyframes surface-open {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+/* 暗幕を拡大せず、内側の画面だけを開く。 */
+.app-dialog[data-state="open"] > :not(.sr-only),
+[data-radix-menu-content][data-state="open"] {
+  animation: surface-open var(--motion-base) var(--ease-out);
+}
+[data-radix-menu-content] { transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
+/* 入力方法は既存のパネル制御と揃え、キーボードでは拡大せず表示する。 */
+@media (prefers-reduced-motion: no-preference) {
+  body:has(.app-shell[data-panel-instant]) .app-dialog[data-state="open"] > :not(.sr-only),
+  body:has(.app-shell[data-panel-instant]) [data-radix-menu-content][data-state="open"] {
+    animation-name: surface-appear;
+  }
+}
+.settings-surface { transform-origin: top right; }
+#plugin-rack-heading:focus:not(:focus-visible) { outline: none; }
+.vst-panel-motion[data-pointer-focus] #plugin-rack-heading:focus { outline: none; }
 @keyframes surface-disappear {
   from { opacity: 1; }
   to { opacity: 0; }
@@ -486,6 +561,7 @@
   .vst-panel-scrim,
   .modal-overlay-base,
   .app-dialog[data-state],
+  .app-dialog[data-state] > :not(.sr-only),
   [data-radix-menu-content][data-state] {
     animation: none;
   }

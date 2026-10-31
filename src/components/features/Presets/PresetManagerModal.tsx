@@ -1,4 +1,5 @@
 import { RecoveryActionsPanel } from './RecoveryActionsPanel';
+import { SavePurposeHelp } from './SavePurposeHelp';
 import { TemporarySessionPanel } from './TemporarySessionPanel';
 import { sessionMode } from '@/lib/temporarySession';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
@@ -444,8 +445,10 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                 </div>
                 {recoveryOpen ? <RecoveryActionsPanel onOperation={onBundleOperation} onVoiceCheck={onOpenVoiceCheck} onSettings={onOpenAudioSettings} /> : bundleOpen ? <BroadcastBundlePanel onOperation={onBundleOperation} onObsSettings={onObsSettings} /> : <>
                 <div className="p-4 border-b border-border bg-muted/30 space-y-3">
-                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                        {t('presets.copy.059')}</h3>
+                    <div className="flex items-center gap-1">
+                        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t('presets.copy.059')}</h3>
+                        <SavePurposeHelp />
+                    </div>
                     <p className="text-sm text-muted-foreground">{t('presets.copy.060')}</p>
                     <div role="group" aria-label={t('profilePurpose.title')} className="flex flex-wrap gap-2">
                         <button type="button" aria-pressed={!saveCategories.includeAudioConfig} className="border rounded p-2 text-sm aria-pressed:border-selection aria-pressed:bg-selection/15 aria-pressed:text-selection" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: false }))}>{t('profilePurpose.sound')}</button>

@@ -12,7 +12,7 @@ vi.mock('@/components/ui/slider', () => ({ Slider: () => null }));
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
 vi.mock('../AppUpdate', () => ({ useAppUpdate: () => ({}), UpdateGuide: () => null }));
 vi.mock('../../features/LevelMeter/LevelMeter', () => ({ LevelMeter: () => null }));
-vi.mock('sonner', () => ({ toast: { warning: vi.fn(), success: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { warning: vi.fn(), success: vi.fn(), error: vi.fn(), dismiss: vi.fn() } }));
 beforeEach(() => { localStorage.clear(); vi.mocked(listen).mockClear(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 

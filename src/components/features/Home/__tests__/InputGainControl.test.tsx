@@ -49,3 +49,34 @@ it('大型メーターなど外部からの同期では、値を反映しても�
     expect(events).toEqual([]);
     window.removeEventListener('input-gain-sync', listener);
 });
+
+it('音量変更の失敗を保存せず、同じ値で再試行できる', async () => {
+    localStorage.setItem('vst_host_input_gain', '80');
+    const set = vi.spyOn(audioApi, 'setInputGain').mockRejectedValueOnce(new Error('pipe closed')).mockResolvedValue(undefined);
+    render(<InputGainControl />);
+    act(() => screen.getByRole('button', { name: 'マイク音量 80%' }).click());
+    act(() => screen.getByRole('button', { name: 'set150' }).click());
+    await act(async () => { vi.advanceTimersByTime(60); });
+    expect(screen.getByRole('alert')).toHaveTextContent('接続を確認して再試行');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('pipe closed');
+    expect(localStorage.getItem('vst_host_input_gain')).toBe('80');
+    act(() => screen.getByRole('button', { name: '再試行' }).click());
+    await act(async () => { vi.advanceTimersByTime(60); });
+    expect(set).toHaveBeenLastCalledWith(1.5);
+    expect(localStorage.getItem('vst_host_input_gain')).toBe('150');
+    expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('古い音量変更の失敗は、新しい操作の成功を上書きしない', async () => {
+    let rejectOld!: (error: Error) => void;
+    vi.spyOn(audioApi, 'setInputGain').mockReturnValueOnce(new Promise((_, reject) => { rejectOld = reject; })).mockResolvedValue(undefined);
+    render(<InputGainControl />);
+    act(() => screen.getByRole('button', { name: 'マイク音量 100%' }).click());
+    act(() => screen.getByRole('button', { name: 'set150' }).click());
+    await act(async () => { vi.advanceTimersByTime(60); });
+    act(() => screen.getByRole('button', { name: '100%に戻す' }).click());
+    await act(async () => { vi.advanceTimersByTime(60); });
+    await act(async () => { rejectOld(new Error('old failure')); });
+    expect(localStorage.getItem('vst_host_input_gain')).toBe('100');
+    expect(screen.queryByRole('alert')).toBeNull();
+});

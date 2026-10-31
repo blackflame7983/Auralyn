@@ -3,7 +3,7 @@ import { useState } from 'react';
 export const useUIState = () => {
     const [isSettingsOpen, setSettingsOpen] = useState(false);
     const [settingsTab, setSettingsTab] = useState<'audio' | 'obs' | 'sound'>('audio');
-    const [settingsSection, setSettingsSection] = useState<'liveModes'>();
+    const [settingsSection, setSettingsSection] = useState<'liveModes' | 'singing'>();
     const setIsSettingsOpen = (open: boolean) => {
         setSettingsSection(undefined);
         setSettingsTab('audio');
@@ -14,8 +14,9 @@ export const useUIState = () => {
         setSettingsTab('obs');
         setSettingsOpen(true);
     };
-    const openSoundSettings = () => {
-        setSettingsSection(undefined);
+    const openSoundSettings = (section?: 'liveModes' | 'singing') => {
+        // イベントハンドラーとして渡された場合も、選択イベントを移動先へ持ち込まない。
+        setSettingsSection(section === 'liveModes' || section === 'singing' ? section : undefined);
         setSettingsTab('sound');
         setSettingsOpen(true);
     };

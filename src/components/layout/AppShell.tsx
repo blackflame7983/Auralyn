@@ -117,7 +117,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     // ホームの操作幅を保てない間は重ね表示にする。メーター併用時はその幅も確保する。
     const [panelBeside, setPanelBeside] = useState(false);
     useLayoutEffect(() => {
-        const media = window.matchMedia?.(`(min-width: ${isLargeMeterOpen ? 1536 : 1440}px)`);
+        const media = window.matchMedia?.('(min-width: 1200px)');
         if (!media) return;
         const update = () => setPanelBeside(media.matches);
         update();
@@ -144,7 +144,11 @@ export const AppShell: React.FC<AppShellProps> = ({
             document.getElementById('plugin-rack-heading')?.focus({ preventScroll: true });
     }, [panelOverlays]);
     const [focusRack, setFocusRack] = useState(0);
-    const openRack = () => { setVstPanelOpen(true); setFocusRack(n => n + 1); };
+    const [rackPointerFocus, setRackPointerFocus] = useState(false);
+    const openRack = (event?: React.MouseEvent<HTMLButtonElement>) => {
+        setRackPointerFocus(Boolean(event && event.detail > 0));
+        setVstPanelOpen(true); setFocusRack(n => n + 1);
+    };
     useEffect(() => {
         if (!focusRack) return;
         document.getElementById('plugin-rack-heading')?.focus({ preventScroll: true });
@@ -165,7 +169,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const loudnessLabel = t(measurement.busy ? 'loudness.switching' : measurement.stopUnconfirmed ? 'loudness.retryStop' : measurement.active ? 'loudness.stop' : 'loudness.startAction');
     // 大型メーターは声のレベルを大きく見るためのものなので、ヘッダーではなく本番帯のメーター横から開く。
     const largeMeterLabel = t(isLargeMeterOpen ? 'header.meterClose' : 'header.meterOpen');
-    const largeMeterButton = <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><button type="button" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
+    const largeMeterButton = <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><button type="button" id="large-meter-toggle" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
         aria-label={largeMeterLabel}
         className={cn('inline-flex shrink-0 items-center rounded-md border p-1.5', isLargeMeterOpen ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border hover:bg-muted')}>
         <LevelMeterIcon className="h-[18px] w-[18px]" />
@@ -250,7 +254,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     className="home-main min-w-0 flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent"
                 >
                     {/* 左右に分けると片側だけが詰まって見えるので、どの幅でも上から1列に並べ、広い画面では中央に寄せる。 */}
-                    <div className="mx-auto max-w-[1180px]">
+                    <div className="home-content mx-auto max-w-[1180px]">
                         {notices}
                         {/* 音量チェックと大型メーターは本番帯のメーター横に置き、ホーム上部に常設の行を作らない。
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
@@ -283,12 +287,14 @@ export const AppShell: React.FC<AppShellProps> = ({
                         <div id="home-rack">{children}</div>
                         </div>
                         {!configured && soundChain}
+                        {isLargeMeterOpen && <div id="home-large-meter" className="home-large-meter" />}
                     </div>
                 </main>
                 {panelOverlays && <div aria-hidden="true" className="vst-panel-scrim absolute inset-0 z-[44] bg-overlay/35" onClick={() => setVstPanelOpen(false)} />}
                 {/* パネルと同じ時間で予約幅を戻す。退場後のアンマウントではホームの幅を変えない。 */}
                 {vstPanel && <div aria-hidden="true" className="vst-panel-space" data-state={vstPanelOpen ? 'open' : 'closed'} />}
                 {panelMotion.present && <aside ref={panelRef} id="vst-panel" aria-labelledby="plugin-rack-heading"
+                    data-pointer-focus={rackPointerFocus || undefined} onKeyDownCapture={() => setRackPointerFocus(false)}
                     data-state={vstPanelOpen ? 'open' : 'closed'} aria-hidden={!vstPanelOpen} inert={!vstPanelOpen}
                     onTransitionEnd={panelMotion.onTransitionEnd}
                     className="vst-panel-motion absolute inset-y-0 right-0 z-[45] w-[min(420px,100%)] overflow-y-auto border-l border-border bg-background p-4 shadow-2xl scrollbar-thin">

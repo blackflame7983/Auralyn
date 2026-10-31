@@ -38,10 +38,10 @@ export function SessionRecoveryNotice({ status, protectedSession, reason, busy, 
             <div className="mt-2 space-y-2">{retry}</div>
         </details>
     </section>;
-    return <section aria-label={t('session.label')} className="mb-4 space-y-1 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground">
+    return <section aria-label={t('session.label')} className="mb-4 flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-lg border border-warning/40 bg-warning/10 px-4 py-2 text-sm text-foreground">
         <h2 className="flex items-center gap-2 font-semibold"><MdWarningAmber aria-hidden="true" className="h-5 w-5 shrink-0 text-warning" />{t(labels[status])}</h2>
-        <p>{reason ?? t('session.defaultReason')}</p>
-        <details open={busy || undefined}>
+        <p className="min-w-0 flex-1 basis-48 text-xs">{reason ?? t('session.defaultReason')}</p>
+        <details open={busy || undefined} className="recovery-details min-w-0">
             <summary className="cursor-pointer text-xs font-medium">{t('session.retryDetails')}</summary>
             <div className="mt-2 space-y-2">{retry}</div>
         </details>

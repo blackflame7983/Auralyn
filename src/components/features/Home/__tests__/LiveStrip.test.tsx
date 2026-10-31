@@ -35,7 +35,7 @@ it.each(['ja', 'en'] as const)('本番帯に入力メーター・送り先・歌
 it('送り先が未選択なら未選択と示し、自分で聴くときは対象名を付けない', () => {
     const model = fixture(); model.context.usage = '';
     const view = render(<LiveStrip model={model} running={false} />);
-    expect(screen.getByRole('region', { name: '本番' })).toHaveTextContent('送り先未選択');
+    expect(screen.getByRole('region', { name: '本番' })).toHaveTextContent('用途未選択');
     const listening = fixture(); listening.context.usage = 'listening';
     view.rerender(<LiveStrip model={listening} running={false} />);
     expect(screen.getByRole('region', { name: '本番' })).toHaveTextContent(message('ja', 'prep.local'));

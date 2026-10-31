@@ -50,9 +50,10 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
         return saved ? parseFloat(saved) : 100;
     });
     const outputGainDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [gainError, setGainError] = useState<ClientErrorNotice | null>(null);
+    const gainRequestGeneration = useRef(0);
+    const [gainError, setGainError] = useState<{ notice: ClientErrorNotice; requestedGain: number } | null>(null);
     const [gainRestoreError, setGainRestoreError] = useState<ClientErrorNotice | null>(null);
-    const gainMessage = renderNotice(t, gainError ?? gainRestoreError);
+    const gainMessage = renderNotice(t, gainError?.notice ?? gainRestoreError);
     const lastGainAnchor = useRef<HTMLButtonElement | null>(null);
     const gainDismissedOutside = useRef(false);
     if (outputGainAnchor) lastGainAnchor.current = outputGainAnchor;
@@ -70,13 +71,17 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     }, [outputGainAnchor, onOutputGainClose]);
 
     const handleOutputGainChange = useCallback((values: number[]) => {
+        const generation = ++gainRequestGeneration.current;
+        setGainError(null);
         window.dispatchEvent(new Event('output-gain-intent'));
         const pct = values[0];
         setOutputGain(pct);
         if (outputGainDebounce.current) clearTimeout(outputGainDebounce.current);
         outputGainDebounce.current = setTimeout(() => {
-            setGainError(null);
-            applyOutputGain(pct / 100).catch((e) => setGainError(clientErrorNotice(e)));
+            // 状態取得で表示が実値へ戻っても、失敗した要求値を再試行できるように残す。
+            applyOutputGain(pct / 100).catch((e) => {
+                if (generation === gainRequestGeneration.current) setGainError({ notice: clientErrorNotice(e), requestedGain: pct });
+            });
         }, 30);
     }, []);
 
@@ -238,7 +243,10 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                         min={0} max={200} step={1} onDoubleClick={() => handleOutputGainChange([100])} className="mt-4" />
                     <button type="button" disabled={outputGain === 100} onClick={() => handleOutputGainChange([100])}
                         className="mt-3 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">{t('header.inputGainHint')}</button>
-                    {gainMessage && <p role="alert" className="mt-3 text-xs text-warning">{gainMessage}</p>}
+                    {gainMessage && <div className="mt-3 space-y-2"><p role="alert" className="text-xs text-warning">{t('master.gainUnknown')}</p>
+                        <button type="button" onClick={() => handleOutputGainChange([gainError?.requestedGain ?? outputGain])} className="rounded-md border border-border px-3 py-1.5 text-xs">{t('common.retry')}</button>
+                        <details><summary className="cursor-pointer text-xs">{t('settings.mode.errorDetails')}</summary><p className="mt-2 break-words text-xs text-muted-foreground">{gainMessage}</p></details>
+                    </div>}
                 </Popover.Content></Popover.Portal>
             </Popover.Root>
             {/* Label */}

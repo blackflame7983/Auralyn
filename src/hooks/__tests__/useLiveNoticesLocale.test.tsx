@@ -46,8 +46,8 @@ it('client拒否と予約busyはkeyで再表示し、raw backend例外・未保�
     act(() => {store.setLocale('en');}); expect(result.current.error).toContain('Unapplied drafts are not registered'); expect(builtin).toHaveBeenCalledOnce();
     expect(result.current.snapshot).toBe(snapshot); expect(config.reverb.enabled).toBe(true); expect(liveModesApi.request).toHaveBeenCalledOnce();
     const raw = new Error('Plugin not found: 実名'); const protect = vi.spyOn(liveModesApi, 'protect').mockRejectedValue(raw);
-    await act(async () => {await result.current.protect(true);}); expect(result.current.error).toContain('Original detail (untranslated): Error: Plugin not found: 実名'); expect(raw.message).toBe('Plugin not found: 実名');
-    act(() => {store.setLocale('ja');}); expect(result.current.error).toContain('原文の詳細（未翻訳）: Error: Plugin not found: 実名'); expect(protect).toHaveBeenCalledExactlyOnceWith(true,'host1');
+    await act(async () => {await result.current.protect(true);}); expect(result.current.error).not.toContain('Plugin not found'); expect(result.current.errorDetail).toBe('Error: Plugin not found: 実名'); expect(raw.message).toBe('Plugin not found: 実名');
+    act(() => {store.setLocale('ja');}); expect(result.current.error).toContain('モードの状態を再取得'); expect(result.current.errorDetail).toBe('Error: Plugin not found: 実名'); expect(protect).toHaveBeenCalledExactlyOnceWith(true,'host1');
     let release!: () => void; act(() => {release = beginRackRestore();});
     try {
         await act(async () => {await result.current.select('talk');}); act(() => {store.setLocale('en');});

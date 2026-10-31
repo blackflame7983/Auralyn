@@ -5,6 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { audioApi, type BuiltInEffectsPreset, type EngineRuntimeStats, type NoiseControlMode } from '@/api/audio';
 import { builtinApi } from '@/api/builtinEffects';
 
@@ -134,14 +135,14 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
         : value === 'warm' ? t('settings.AudioSettingsModal.099') : t('settings.AudioSettingsModal.100');
     // 5%刻みの操作に十分な長さを保ち、広い窓でもスライダーだけを伸ばし続けない。
     return <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2">
-        <div role="group" aria-label={t('home.chainPreset')} className="flex gap-1.5">
+        <TooltipProvider delayDuration={300}><div role="group" aria-label={t('home.chainPreset')} className="flex gap-1.5">
             {quickPresets.map(value => (
-                <button key={value} type="button" disabled={q.disabled} aria-pressed={q.chainOn && q.preset === value}
+                <Tooltip key={value}><TooltipTrigger asChild><button type="button" disabled={q.disabled} aria-pressed={q.chainOn && q.preset === value}
                     onClick={() => void q.applyChain({ preset: value })} className={cn(segment(q.chainOn && q.preset === value), 'flex-1 whitespace-nowrap')}>
                     {presetLabel(value)}
-                </button>
+                </button></TooltipTrigger><TooltipContent className="max-w-64">{t(value === 'warm' ? 'home.preset.warmHint' : value === 'bright' ? 'home.preset.brightHint' : 'home.preset.broadcastHint')}</TooltipContent></Tooltip>
             ))}
-        </div>
+        </div></TooltipProvider>
         <label className="flex min-w-[16rem] max-w-[22rem] flex-1 items-center gap-2 text-[13px]">
             <span className="contents text-muted-foreground">
                 <span className="whitespace-nowrap text-muted-foreground">{t('settings.AudioSettingsModal.103')}</span>

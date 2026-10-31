@@ -42,7 +42,7 @@ interface AudioSettingsModalProps {
   onPreviewSinging?: () => void;
   onSaveSingingProfile?: () => void;
   initialTab?: 'audio' | 'obs' | 'sound';
-  initialSection?: 'liveModes';
+  initialSection?: 'liveModes' | 'singing';
   isOpen: boolean;
   onClose: () => void;
   onConfigChange: (config: Partial<import('../../../lib/audioPreferences').AudioPreferences> & { host: string }, options?: { audioStarted: true }) => void | Promise<void>;
@@ -81,6 +81,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const getBeginnerMode = () => localStorage.getItem('vst_host_beginner_mode') !== 'false';
   const { theme, setTheme } = useTheme();
   const [isApplying, setLoading] = useState(false);
+  const [preparingMode, setPreparingMode] = useState<'singing' | 'talk' | null>(initialSection === 'singing' ? 'singing' : null);
   const reviewRequired = localStorage.getItem(REVIEW_KEY) === 'true';
   const [migrationConfirmed, setMigrationConfirmed] = useState(false);
   const importedPlugins = useMemo(() => {
@@ -133,9 +134,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   useEffect(() => {
     if (isOpen && initialTab === 'sound') {
       const frame = requestAnimationFrame(() => {
-        const target = initialSection === 'liveModes' ? settingsBody.current?.querySelector<HTMLElement>('#live-mode-settings') : soundStart.current;
+        const target = initialSection ? settingsBody.current?.querySelector<HTMLDetailsElement>(initialSection === 'liveModes' ? '#live-mode-settings' : '#singing-settings') : soundStart.current;
+        if (target instanceof HTMLDetailsElement) target.open = true;
         target?.scrollIntoView?.({ block: 'start' });
-        if (initialSection === 'liveModes') target?.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
+        if (initialSection) target?.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
       });
       return () => cancelAnimationFrame(frame);
     }
@@ -576,7 +578,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   return (
     <Modal title={t('common.settings')} onClose={onClose} dismissible={!isApplying} onEscapeKeyDown={event => { if (capturingShortcut) event.preventDefault(); }} initialFocusRef={initialTab === 'sound' ? soundStart : undefined}>
         <div className="fixed inset-0 z-[100] flex justify-end bg-background/80 backdrop-blur-sm">
-      <div className="h-full w-full max-w-5xl flex flex-col overflow-hidden border-l border-border bg-card shadow-2xl">
+      <div className="settings-surface h-full w-full max-w-5xl flex flex-col overflow-hidden border-l border-border bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3 shrink-0">
           <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
             <MdSettings className="w-5 h-5 text-primary" />
@@ -586,7 +588,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             onClick={onClose}
             disabled={isApplying}
             aria-label={t('settings.close')}
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted/50"
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-primary focus:not-focus-visible:outline-none"
           >
             <MdClose className="w-5 h-5" />
           </button>
@@ -1163,10 +1165,20 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
             </fieldset>
             {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="h-10 px-4 rounded-md border border-input text-sm hover:bg-muted">{t('settings.AudioSettingsModal.093')}</button>}
-            <LiveModeControls model={providedLive ?? localLive} initiallyOpen={initialSection === 'liveModes'} />
-            <details className="rounded border border-border p-3 space-y-3">
+            <LiveModeControls model={providedLive ?? localLive} initiallyOpen={initialSection === 'liveModes'} onAdjust={mode => {
+              setPreparingMode(mode);
+              const target = mode === 'singing' ? settingsBody.current?.querySelector<HTMLDetailsElement>('#singing-settings') : soundStart.current;
+              if (target instanceof HTMLDetailsElement) target.open = true;
+              target?.scrollIntoView?.({ block: 'start' });
+              (target instanceof HTMLDetailsElement ? target.querySelector('summary') : target)?.focus({ preventScroll: true });
+            }} />
+            <details id="singing-settings" className="rounded border border-border p-3 space-y-3">
               <summary className="cursor-pointer font-semibold">{t('structure.singing')}</summary>
               <SingingControls showHeading={false} model={singingModel} onPreview={onPreviewSinging} onSaveProfile={onSaveSingingProfile} />
+              {preparingMode === 'singing' && <button type="button" className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted" onClick={() => {
+                const target = settingsBody.current?.querySelector<HTMLDetailsElement>('#live-mode-settings');
+                if (target) { target.open = true; target.scrollIntoView?.({ block: 'start' }); target.querySelector('summary')?.focus({ preventScroll: true }); }
+              }}>{t('settings.mode.return')}</button>}
             </details>
             {/* 出力の安全装置は上級設定。数値の詳細を出さない間は閉じた欄に置く。 */}
             {isBeginnerMode ? <details className="rounded border border-border p-3 space-y-3">
