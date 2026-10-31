@@ -50,6 +50,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
         return saved ? parseFloat(saved) : 100;
     });
     const outputGainDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const gainRequestGeneration = useRef(0);
     const [gainError, setGainError] = useState<{ notice: ClientErrorNotice; requestedGain: number } | null>(null);
     const [gainRestoreError, setGainRestoreError] = useState<ClientErrorNotice | null>(null);
     const gainMessage = renderNotice(t, gainError?.notice ?? gainRestoreError);
@@ -70,14 +71,17 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     }, [outputGainAnchor, onOutputGainClose]);
 
     const handleOutputGainChange = useCallback((values: number[]) => {
+        const generation = ++gainRequestGeneration.current;
+        setGainError(null);
         window.dispatchEvent(new Event('output-gain-intent'));
         const pct = values[0];
         setOutputGain(pct);
         if (outputGainDebounce.current) clearTimeout(outputGainDebounce.current);
         outputGainDebounce.current = setTimeout(() => {
-            setGainError(null);
             // 状態取得で表示が実値へ戻っても、失敗した要求値を再試行できるように残す。
-            applyOutputGain(pct / 100).catch((e) => setGainError({ notice: clientErrorNotice(e), requestedGain: pct }));
+            applyOutputGain(pct / 100).catch((e) => {
+                if (generation === gainRequestGeneration.current) setGainError({ notice: clientErrorNotice(e), requestedGain: pct });
+            });
         }, 30);
     }, []);
 

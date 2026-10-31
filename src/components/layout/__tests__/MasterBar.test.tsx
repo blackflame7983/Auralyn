@@ -65,6 +65,36 @@ afterEach(async () => {
 });
 
 describe('起動時の保存ゲイン復元', () => {
+    it('古い要求の遅い失敗を、新しい要求の成功後の再試行として残さない', async () => {
+        const original = vi.mocked(invoke).getMockImplementation()!;
+        let rejectFirst!: (error: Error) => void;
+        const firstWrite = new Promise<void>((_resolve, reject) => { rejectFirst = reject; });
+        const values: number[] = [];
+        vi.mocked(invoke).mockImplementation(async (command, args) => {
+            if (command === 'set_output_gain') {
+                const value = (args as { value: number }).value;
+                values.push(value);
+                if (values.length === 1) return firstWrite;
+                gain = value;
+                return;
+            }
+            return original(command, args);
+        });
+        running = true;
+        render(<MasterBar isRunning />);
+        await act(async () => { finishListening(); });
+        const slider = screen.getByRole('slider', { name: '出力音量' });
+        fireEvent.keyDown(slider, { key: 'ArrowRight' });
+        await act(async () => { await vi.advanceTimersByTimeAsync(35); });
+        expect(values).toEqual([1.01]);
+        fireEvent.keyDown(slider, { key: 'ArrowLeft' });
+        await act(async () => { await vi.advanceTimersByTimeAsync(35); });
+        await act(async () => { rejectFirst(new Error('古い要求だけが失敗')); });
+        expect(values).toEqual([1.01, 1]);
+        expect(localStorage.getItem('vst_host_output_gain')).toBe('100');
+        expect(slider).toHaveAttribute('aria-valuenow', '100');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
     it('child不在では保存gainを保持して初期化を送らず、明示開始後にだけ再試行する', async () => {
         vi.mocked(audioApi.getAudioState).mockResolvedValue({ is_running: false, config: null });
         render(<MasterBar />);
