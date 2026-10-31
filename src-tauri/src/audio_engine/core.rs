@@ -172,7 +172,7 @@ pub enum AudioThreadMessage {
     },
     StartAutoGainCapture(u64),
     SetInputChannels(usize, usize), // (Left, Right)
-    SetChannelScan(bool),           // Enable/Disable background scanning
+    SetChannelScan(bool, u64),      // Enable/Disable background scanning
     StartVoiceCheckRecording {
         buffers: Arc<VoiceCheckBuffers>,
         max_frames: u64,
@@ -252,7 +252,7 @@ pub enum UserEvent {
 type CmdProducer = <HeapRb<AudioThreadMessage> as Split>::Prod;
 type LoudnessConsumer = <HeapRb<LoudnessReading> as Split>::Cons;
 type LevelConsumer = <HeapRb<MeterLevels> as Split>::Cons;
-type ChannelConsumer = <HeapRb<[f32; 32]> as Split>::Cons;
+type ChannelConsumer = <HeapRb<super::channel_scan::Snapshot> as Split>::Cons;
 type RetireConsumer = <HeapRb<DisposedProcessor> as Split>::Cons;
 
 fn time_critical_audio_threads_enabled() -> bool {
@@ -345,6 +345,7 @@ pub struct Engine {
     input_channel_l: usize,
     input_channel_r: usize,
     scan_enabled: bool,
+    scan_generation: u64,
     global_bypass: bool,
     global_mute: bool,
     noise_reduction_enabled: bool,
@@ -449,6 +450,7 @@ impl Engine {
             input_channel_l: 0,
             input_channel_r: 1,
             scan_enabled: true, // Auto-enable scan for smart selector
+            scan_generation: 0,
             global_bypass: false,
             global_mute: false,
             noise_reduction_enabled: false,
@@ -537,6 +539,7 @@ impl Engine {
         let mut last_heartbeat = Instant::now();
         let mut last_meter_was_zero = false;
         let mut last_channel_scan_was_zero = false;
+        let mut last_channel_scan_generation = self.scan_generation;
 
         // Run Event Loop
         let _ = event_loop.run(move |event, target| {
@@ -716,24 +719,23 @@ impl Engine {
                         self.send_event(EngineEvent::Loudness(reading));
                     }
 
-                    // Channel Scan Processing (32ch)
-                    let mut channel_scan_to_send: Option<Vec<f32>> = None;
+                    // 排出したスナップショットの最大値を統合し、IPC 用に一度だけ変換する。
+                    let mut channel_scan_to_send = None;
                     if let Some(chan_cons) = &mut self.channel_rx {
-                        // We only care about the latest scan? Or accumulate max?
-                        // For visualization, latest snapshot is usually fine if rate is controlled by audio thread.
-                        // Audio thread sends at ~10-20Hz.
-                        while let Some(peaks) = chan_cons.try_pop() {
-                            // peaks is [f32; 32]
-                            // Convert to Vec for IPC
-                            // Optimization: Only send if we really have new data.
-                            // But we just popped it, so we have new data.
-                            channel_scan_to_send = Some(peaks.to_vec());
+                        while let Some(snapshot) = chan_cons.try_pop() {
+                            super::channel_scan::merge(
+                                &mut channel_scan_to_send, snapshot, self.scan_generation, self.scan_enabled,
+                            );
                         }
                     }
                     if let Some(scan_data) = channel_scan_to_send {
+                        if last_channel_scan_generation != self.scan_generation {
+                            last_channel_scan_generation = self.scan_generation;
+                            last_channel_scan_was_zero = false;
+                        }
                         let is_zero = scan_data.iter().all(|v| *v == 0.0);
                         if !is_zero || !last_channel_scan_was_zero {
-                            self.send_event(EngineEvent::ChannelLevels(scan_data));
+                            self.send_event(EngineEvent::ChannelLevels(scan_data.to_vec()));
                         }
                         last_channel_scan_was_zero = is_zero;
                     }
@@ -1731,8 +1733,7 @@ impl Engine {
                 self.send_response(Response::Success);
             }
             Command::SetChannelScan { active } => {
-                self.scan_enabled = active;
-                self.queue_audio_msg(AudioThreadMessage::SetChannelScan(active));
+                self.set_channel_scan(active);
                 self.send_response(Response::Success);
             }
             Command::StartVoiceCheckRecording { max_ms } => {
@@ -2097,6 +2098,28 @@ impl Engine {
         }
 
         AudioThreadMessage::ReorderProcessors { order, len }
+    }
+
+    fn set_channel_scan(&mut self, active: bool) {
+        self.scan_enabled = active;
+        self.scan_generation = self.scan_generation.wrapping_add(1);
+        // 停止中の設定は開始時に直接反映するため、旧世代をキューに残さない。
+        if self.command_tx.is_some() {
+            self.queue_audio_msg(AudioThreadMessage::SetChannelScan(
+                active,
+                self.scan_generation,
+            ));
+        }
+    }
+
+    fn prepare_channel_scan(&mut self) -> super::channel_scan::ChannelScan {
+        // 再開始後の最初のゼロも新しいスキャン結果として通知する。
+        self.scan_generation = self.scan_generation.wrapping_add(1);
+        super::channel_scan::ChannelScan::new(
+            self.current_sample_rate as u32,
+            self.scan_enabled,
+            self.scan_generation,
+        )
     }
 
     fn queue_audio_msg(&mut self, msg: AudioThreadMessage) {
@@ -2492,7 +2515,8 @@ impl Engine {
         let mut rt_loudness = LoudnessMeter::new(self.current_sample_rate as u32);
         let mut loudness_start = super::queue_recovery::MeasurementGate::default();
 
-        let channel_rb = HeapRb::<[f32; 32]>::new(16); // Small buffer for low-rate scan data
+        let mut rt_channel_scan = self.prepare_channel_scan();
+        let channel_rb = HeapRb::<super::channel_scan::Snapshot>::new(16); // Small buffer for low-rate scan data
         let (mut channel_prod, channel_cons) = channel_rb.split();
         self.channel_rx = Some(channel_cons);
 
@@ -2633,7 +2657,6 @@ impl Engine {
         );
         let mut rt_input_l = self.input_channel_l;
         let mut rt_input_r = self.input_channel_r;
-        let mut rt_scan_enabled = self.scan_enabled;
         let rt_sample_rate_hz = self.current_sample_rate.round().clamp(8_000.0, 192_000.0) as u32;
         let mut rt_noise_control = RtNoiseControl::prepare(
             self.current_sample_rate as u32,
@@ -3208,8 +3231,8 @@ impl Engine {
                                     rt_input_r = r;
                                 }
                             }
-                            AudioThreadMessage::SetChannelScan(enable) => {
-                                rt_scan_enabled = enable;
+                            AudioThreadMessage::SetChannelScan(enable, generation) => {
+                                rt_channel_scan.set_enabled(enable, generation);
                             }
                             AudioThreadMessage::StartVoiceCheckRecording {
                                 buffers,
@@ -3317,9 +3340,6 @@ impl Engine {
                     let mut in_max_l = 0.0;
                     let mut in_max_r = 0.0;
 
-                    // Channel Scanning (For UI Smart Selector)
-                    let mut channel_peaks = [0.0f32; 32]; // Max 32 channels scan
-                    let scan_limit = channels.min(32);
                     let record_block_start = rt_voice_check.block_record_start();
 
                     for i in 0..frames {
@@ -3337,13 +3357,7 @@ impl Engine {
                             let sample = input_buf[i * channels + ch] * rt_input_gain;
                             planar_buf_a[ch][i] = sample;
 
-                            // Scanner Logic (only if enabled)
-                            if rt_scan_enabled && ch < scan_limit {
-                                let abs = sample.abs();
-                                if abs > channel_peaks[ch] {
-                                    channel_peaks[ch] = abs;
-                                }
-                            }
+                            rt_channel_scan.observe(ch, sample);
                         }
 
                         // Input Routing & Metering:
@@ -3499,23 +3513,7 @@ impl Engine {
                         }
                     }
 
-                    // Send Channel Scan Data (throttled)
-                    if rt_scan_enabled {
-                        // Simple throttling using frames_processed
-                        let current_frames = frames_counter.load(Ordering::Relaxed);
-                        // 48000Hz / 4800 = 10Hz approx.
-                        // This logic "current_frames % 4800 < frames" ensures we trigger once per ~4800-frame window.
-
-                        if current_frames % 4800 < frames as u64 {
-                            let mut peaks = [0.0f32; 32];
-                            for i in 0..scan_limit {
-                                peaks[i] = channel_peaks[i];
-                                channel_peaks[i] = 0.0; // Reset peak
-                            }
-                            // Use channel_prod captured by move closure
-                            let _ = channel_prod.try_push(peaks);
-                        }
-                    }
+                    rt_channel_scan.finish_block(frames, &mut channel_prod);
 
                     // --- 2. Ping-Pong Processing Loop ---
                     // We toggle between using `planar_buf_a` and `planar_buf_b` as input/output
@@ -4844,6 +4842,56 @@ mod singing_startup_tests {
                 .config,
             edited.monitor_singing.unwrap()
         );
+    }
+
+    #[test]
+    fn stopped_channel_scan_changes_are_not_replayed_with_stale_generation() {
+        use super::*;
+        for enabled in [false, true] {
+            let mut engine = Engine::new();
+            engine.current_sample_rate = 100.0;
+            engine.set_channel_scan(!enabled);
+            engine.set_channel_scan(enabled);
+            assert!(engine.pending_audio_msgs.is_empty());
+            // 停止中の設定後、cleanupを経ずにコマンドキューとRT状態を作る。
+            let (tx, mut rx) = HeapRb::new(8).split();
+            engine.command_tx = Some(tx);
+            let mut scan = engine.prepare_channel_scan();
+            engine.flush_pending_audio_msgs();
+            assert!(rx.try_pop().is_none());
+            let (mut snapshots, mut received) = HeapRb::new(2).split();
+            scan.observe(0, 0.7);
+            scan.finish_block(10, &mut snapshots);
+            if enabled {
+                let snapshot = received.try_pop().expect("enabled scan must publish");
+                let mut merged = None;
+                super::super::channel_scan::merge(
+                    &mut merged,
+                    snapshot,
+                    engine.scan_generation,
+                    true,
+                );
+                assert_eq!(merged.unwrap()[0], 0.7);
+            } else {
+                assert!(received.try_pop().is_none());
+            }
+            // 稼働中の設定変更は現在の世代をFIFOでRTへ送る。
+            engine.set_channel_scan(true);
+            let Some(AudioThreadMessage::SetChannelScan(active, generation)) = rx.try_pop() else {
+                panic!("running scan change must be queued");
+            };
+            scan.set_enabled(active, generation);
+            scan.observe(0, 0.4);
+            scan.finish_block(10, &mut snapshots);
+            let mut merged = None;
+            super::super::channel_scan::merge(
+                &mut merged,
+                received.try_pop().unwrap(),
+                engine.scan_generation,
+                true,
+            );
+            assert_eq!(merged.unwrap()[0], 0.4);
+        }
     }
 
     #[test]

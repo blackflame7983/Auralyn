@@ -29,7 +29,7 @@ it('設定起動に失敗しても手動の手順と再試行を残す', async (
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
 });
 
-it.each(['保存して開始', '音声エンジンを再起動'])('%sのアクセス拒否から戻っても選択したデバイスと保存値を保ち、明示操作で再試行する', async action => {
+it.each(['保存して開始', '音声処理を再起動'])('%sのアクセス拒否から戻っても選択したデバイスと保存値を保ち、明示操作で再試行する', async action => {
     const devices = {
         inputs: ['Mic A', 'Mic B'].map(name => ({ name, host: 'Wasapi', channels: 2 })),
         outputs: [{ name: 'Headphones', host: 'Wasapi', channels: 2 }],
@@ -49,9 +49,9 @@ it.each(['保存して開始', '音声エンジンを再起動'])('%sのアク�
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={changed} onEngineRestarted={restarted} />);
     const input = await screen.findByRole('combobox', { name: 'マイク入力' });
     fireEvent.change(input, { target: { value: 'Mic B' } });
-    if (action === '音声エンジンを再起動') await openSystemTab();
+    if (action === '音声処理を再起動') await openSystemTab();
         fireEvent.click(screen.getByRole('button', { name: action }));
-    if (action === '音声エンジンを再起動')
+    if (action === '音声処理を再起動')
         fireEvent.click(await screen.findByRole('button', { name: '再起動する' }));
     await screen.findByRole('button', { name: '設定に戻って再試行' });
     expect(document.querySelector('details')).toHaveAttribute('open');

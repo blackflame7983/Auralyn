@@ -31,3 +31,29 @@ it('歌・雑談の登録入口は音づくりの該当欄を指定し、通常�
     expect(result.current.settingsTab).toBe('audio');
     expect(result.current.settingsSection).toBeUndefined();
 });
+
+it('音切れの入口は音声タブの調整欄を指定し、通常の設定では指定を解除する', () => {
+    const { result } = renderHook(() => useUIState());
+    act(() => result.current.openAudioTuning());
+    expect(result.current.isSettingsOpen).toBe(true);
+    expect(result.current.settingsTab).toBe('audio');
+    expect(result.current.settingsSection).toBe('audioTuning');
+    act(() => result.current.setIsSettingsOpen(false));
+    act(() => result.current.setIsSettingsOpen(true));
+    expect(result.current.settingsSection).toBeUndefined();
+});
+
+it('設定反映の再試行は音声タブに限定し、ほかの入口と終了で解除する', () => {
+    const { result } = renderHook(() => useUIState());
+    const normalEntries = [() => result.current.setIsSettingsOpen(true), () => result.current.setIsSettingsOpen(false),
+        () => result.current.openObsSettings(), () => result.current.openAudioTuning(),
+        () => result.current.openSoundSettings('singing'), () => result.current.openLiveModeSettings()];
+    for (const open of normalEntries) {
+        act(() => result.current.openAudioSettingsRetry());
+        expect(result.current.settingsNeedsRetry).toBe(true);
+        expect(result.current.settingsTab).toBe('audio');
+        expect(result.current.settingsSection).toBeUndefined();
+        act(open);
+        expect(result.current.settingsNeedsRetry).toBe(false);
+    }
+});

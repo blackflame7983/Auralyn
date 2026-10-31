@@ -39,11 +39,11 @@ it('実設定dialogのタブと未保存入力を保ち、言語変更だけで�
     await screen.findByRole('option', { name: '実名のマイク' });
     fireEvent.change(screen.getByRole('textbox', { name: '保存する名前' }), { target: { value: '未保存の実名' } });
     const dialog = screen.getByRole('dialog');
-    const driver = screen.getByRole('combobox', { name: 'オーディオドライバ' });
+    const driver = screen.getByRole('combobox', { name: '接続方式' });
     const calls = vi.mocked(invoke).mock.calls.length;
     act(() => { store.setLocale('en'); });
     expect(screen.getByRole('dialog')).toBe(dialog);
-    expect(screen.getByRole('combobox', { name: 'Audio driver' })).toBe(driver);
+    expect(screen.getByRole('combobox', { name: 'Connection method' })).toBe(driver);
     expect(screen.getByRole('textbox', { name: 'Name to save' })).toHaveValue('未保存の実名');
     expect(screen.getByRole('tab', { name: 'Audio' })).toHaveAttribute('aria-selected', 'true');
     expect(invoke).toHaveBeenCalledTimes(calls);

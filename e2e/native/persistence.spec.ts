@@ -6,6 +6,7 @@ import { once } from 'node:events';
 import { createServer } from 'node:net';
 
 test('実UI→Tauri→保存→Host再起動で言語を復元し、実エンジンの応答を表示する', async ({}, testInfo) => {
+    test.setTimeout(150_000);
     const root = process.env.AURALYN_E2E_ROOT;
     const binary = process.env.AURALYN_E2E_BINARY;
     if (!root || !binary) throw new Error('npm run test:e2e:native から実行してください');
@@ -64,10 +65,63 @@ test('実UI→Tauri→保存→Host再起動で言語を復元し、実エンジ
             try { return JSON.parse(await readFile(join(root, 'config', 'display-locale.json'), 'utf8')).locale; }
             catch { return null; }
         }).toBe('en');
+
+        // 保存操作を伴わない表示・開閉だけを実UIで確認する。
+        await expect(page!.getByText('A light background with teal accents.')).toBeVisible();
+        await page!.screenshot({ path: testInfo.outputPath('native-appearance.png') });
+        await page!.getByRole('tab', { name: 'Audio', exact: true }).click();
+        await expect(page!.getByRole('combobox', { name: 'Connection method' })).toBeVisible({ timeout: 30_000 });
+        const redetect = page!.getByRole('button', { name: 'Re-detect', exact: true });
+        const size = await redetect.boundingBox();
+        expect(size).not.toBeNull();
+        expect(size!.width).toBeGreaterThanOrEqual(24);
+        expect(size!.height).toBeGreaterThanOrEqual(24);
+        const tuning = page!.locator('details').filter({ has: page!.locator('summary').filter({ hasText: 'Dropouts and sample rate' }) });
+        await expect(tuning).not.toHaveAttribute('open', '');
+        await tuning.locator('summary').click();
+        await expect(tuning).toHaveAttribute('open', '');
+        await tuning.locator('summary').click();
+        await expect(tuning).not.toHaveAttribute('open', '');
+        await page!.screenshot({ path: testInfo.outputPath('native-audio.png') });
+
+        await page!.getByRole('tab', { name: 'OBS', exact: true }).click();
+        const preview = page!.getByRole('button', { name: 'Review proposed changes' });
+        await expect(preview).toBeDisabled();
+        await expect(page!.getByText('Connect to OBS to use this.')).toBeVisible();
+        await expect(preview).toHaveAccessibleDescription('Connect to OBS to use this.');
+        await page!.screenshot({ path: testInfo.outputPath('native-obs.png') });
+
+        await page!.getByRole('tab', { name: 'System', exact: true }).click();
+        await expect(page!.getByRole('button', { name: 'Reset blocklist', exact: true })).toBeVisible();
+        const reset = page!.getByRole('button', { name: 'Reset all', exact: true });
+        await expect(reset).toBeVisible();
+        await expect(reset).toHaveClass(/\bbg-destructive\b/);
+        await page!.screenshot({ path: testInfo.outputPath('native-system.png') });
+
+        // この隔離Hostだけで登録し、正常終了時にOS登録を解放する。
+        await page!.getByRole('tab', { name: 'Hotkeys', exact: true }).click();
+        const mute = page!.getByRole('group', { name: 'Toggle mute' });
+        await mute.getByText('Choose from a list').click();
+        await mute.getByRole('combobox', { name: 'Toggle mute modifier' }).selectOption('Alt+Shift');
+        await mute.getByRole('combobox', { name: 'Toggle mute regular key' }).selectOption('F11');
+        await page!.getByRole('button', { name: 'Save key settings' }).click();
+        await expect(page!.getByText('Key settings saved.', { exact: true })).toBeVisible();
+        const expectedBinding = { action: 'muteToggle', shortcut: 'Alt+Shift+F11' };
+        const savedStatus = await page!.evaluate(() => (window as any).__TAURI__.core.invoke('get_shortcuts'));
+        expect(savedStatus.errors).toEqual([]);
+        expect(savedStatus.bindings).toContainEqual(expectedBinding);
+        const persisted = JSON.parse(await readFile(join(root, 'config', 'shortcuts.json'), 'utf8'));
+        expect(persisted).toContainEqual(expectedBinding);
+        await page!.screenshot({ path: testInfo.outputPath('native-hotkeys.png') });
         await quit();
         await launch();
         await page!.getByRole('tab', { name: 'Appearance', exact: true }).click();
         await expect(page!.getByRole('combobox', { name: 'Display language' })).toHaveValue('en');
+        const restoredStatus = await page!.evaluate(() => (window as any).__TAURI__.core.invoke('get_shortcuts'));
+        expect(restoredStatus.errors).toEqual([]);
+        expect(restoredStatus.bindings).toContainEqual(expectedBinding);
+        await page!.getByRole('tab', { name: 'Hotkeys', exact: true }).click();
+        await expect(page!.getByRole('group', { name: 'Toggle mute' }).getByRole('button', { name: 'Enter keys for Toggle mute', exact: true })).toHaveText('Alt + Shift + F11');
         // モックを介さず、実sidecarの要求・応答とJSONデコードを確認する。
         const stats = await page!.evaluate(() => (window as any).__TAURI__.core.invoke('get_engine_runtime_stats'));
         expect(stats.activePluginCount).toBe(0);

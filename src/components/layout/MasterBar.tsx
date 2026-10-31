@@ -31,9 +31,10 @@ interface MasterBarProps {
     onStatsChange?: (stats: EngineRuntimeStats | null) => void;
     onOpenVoiceCheck?: () => void;
     onOpenSoundSettings?: () => void;
+    onOpenAudioTuning?: () => void;
 }
 
-export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, outputGainAnchor, onOutputGainClose }) => {
+export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, outputGainAnchor, onOutputGainClose, onOpenAudioTuning }) => {
     const t = useMessages();
     const [simple] = useBeginnerMode();
     const meter = useSharedMeter(isRunning, 'output');
@@ -296,6 +297,8 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             {hasRecentGlitch && <button type="button" onClick={() => { detailsButtonRef.current?.focus(); setDetailsOpen(true); }} aria-haspopup="dialog" aria-expanded={detailsOpen}
                 aria-label={t('master.recentDropout')} title={t('master.recentDropout')}
                 className="rounded p-1 text-warning hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"><MdBolt aria-hidden="true" className="h-4 w-4" /></button>}
+            {hasRecentGlitch && onOpenAudioTuning && <button type="button" onClick={onOpenAudioTuning}
+                className="rounded border border-border px-2 py-1 text-xs hover:bg-muted">{t('settings.audioTuning.open')}</button>}
 
             <button ref={detailsButtonRef} onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-expanded={detailsOpen}
                 aria-label={t('master.details')} title={t('master.details')}

@@ -167,7 +167,9 @@ function AppContent() {
         }}
         onOpenOBSSettings={ui.openObsSettings}
         onOpenSettings={() => ui.setIsSettingsOpen(true)}
+        onOpenAudioSettingsRetry={ui.openAudioSettingsRetry}
         onOpenSoundSettings={ui.openSoundSettings}
+        onOpenAudioTuning={ui.openAudioTuning}
         onOpenOBSGuide={() => ui.setIsOBSGuideOpen(true)}
         onOpenDiscordGuide={() => ui.setIsDiscordGuideOpen(true)}
         onOpenTroubleshoot={() => ui.setIsTroubleshootOpen(true)}

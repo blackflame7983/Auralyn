@@ -21,6 +21,18 @@ const openSettings = () => render(<AudioSettingsModal isOpen onClose={() => {}} 
 const hostSelect = () => screen.getAllByRole('combobox').find(element =>
     Array.from((element as HTMLSelectElement).options).some(option => option.value === 'Wasapi'))!;
 
+it.each([88200, 192000])('代表値以外の%d Hzでも表示値と開始要求値が一致する', async rate => {
+    localStorage.setItem('vst_host_settings_advanced', 'true');
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'ASIO device', output: 'ASIO device', sampleRate: rate, bufferSize: 512 }));
+    const start = vi.spyOn(audioApi, 'start').mockResolvedValue({ sample_rate: rate, buffer_size: 512, channels: 2 });
+    render(<AudioSettingsModal isOpen currentSampleRate={rate} onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const sampleRate = await screen.findByRole('combobox', { name: 'サンプルレート' });
+    expect(sampleRate).toHaveValue(String(rate));
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存して開始' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', 'ASIO device', 'ASIO device', 512, rate, undefined, undefined));
+});
+
 it('ASIO能力未取得でも960サンプルの表示値と開始要求値が一致する', async () => {
     localStorage.setItem('vst_host_settings_advanced', 'true');
     localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'ASIO device', output: 'ASIO device', bufferSize: 960, sampleRate: 48000 }));
@@ -87,7 +99,7 @@ it('未保存で閉じて再表示してもキャッシュからホストとデ�
 
 it('接続設定と即時反映の音づくりを分け、操作名を公開する', async () => {
     openSettings();
-    const host = await screen.findByRole('combobox', { name: 'オーディオドライバ' });
+    const host = await screen.findByRole('combobox', { name: '接続方式' });
     const input = screen.getByRole('combobox', { name: 'マイク入力' });
     expect(screen.queryByRole('switch', { name: 'ノイズ低減' })).not.toBeInTheDocument();
     fireEvent.mouseDown(screen.getByRole('tab', { name: '音づくり' }), { button: 0, ctrlKey: false });

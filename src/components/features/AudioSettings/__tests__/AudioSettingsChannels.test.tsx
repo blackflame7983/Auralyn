@@ -77,7 +77,7 @@ it('多入力では選択中と信号のあるペアを残し、全ペアを展�
     expect(screen.getByRole('radio', { name: '入力チャンネル 13/14' })).toBeVisible();
 });
 
-it.each(['保存して開始', '音声エンジンを再起動'])(
+it.each(['保存して開始', '音声処理を再起動'])(
     'ASIOからWASAPIの%sでエンジンと保存値を0/1へ更新する',
     async (action) => {
         const update = vi.fn();
@@ -96,9 +96,9 @@ it.each(['保存して開始', '音声エンジンを再起動'])(
                 Array.from((e as HTMLSelectElement).options).some((o) => o.value === 'Wasapi')
             )!;
         fireEvent.change(host, { target: { value: 'Wasapi' } });
-        if (action === '音声エンジンを再起動') await openSystemTab();
+        if (action === '音声処理を再起動') await openSystemTab();
         fireEvent.click(screen.getByRole('button', { name: action }));
-        if (action === '音声エンジンを再起動')
+        if (action === '音声処理を再起動')
             fireEvent.click(await screen.findByRole('button', { name: '再起動する' }));
         await waitFor(() =>
             expect(update).toHaveBeenCalledWith(
