@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { LiveStrip } from '../LiveStrip';
 import type { PreparationModel } from '@/hooks/usePreparation';
@@ -46,6 +46,16 @@ it('出力ミュート・音量ゼロは本番帯でも警告として示す', (
     const model = fixture(); model.observation = { ...model.observation, availability: 'muted' };
     render(<LiveStrip model={model} running />);
     expect(within(screen.getByRole('region', { name: '本番' })).getByRole('status')).toHaveTextContent(message('ja', 'prep.muted'));
+});
+
+it('出力ミュート・音量ゼロの表示は見えている名前で押せ、押した位置を確認先へ渡す', () => {
+    const model = fixture(); model.observation = { ...model.observation, availability: 'muted' };
+    const onCheckOutput = vi.fn();
+    render(<LiveStrip model={model} running onCheckOutput={onCheckOutput} />);
+    const chip = screen.getByRole('button', { name: message('ja', 'prep.muted') });
+    expect(chip).toHaveAttribute('title', message('ja', 'prep.checkOutput'));
+    fireEvent.click(chip);
+    expect(onCheckOutput).toHaveBeenCalledWith(chip);
 });
 
 it('音楽鑑賞では音楽向けのメーター名にする', () => {

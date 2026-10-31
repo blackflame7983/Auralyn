@@ -185,10 +185,15 @@ export const AppShell: React.FC<AppShellProps> = ({
             <AudioCheckIcon className="h-[18px] w-[18px]" />
         </button></TooltipTrigger><TooltipContent><p>{t('home.loudnessTool')}</p><p className="max-w-64 text-xs">{t('loudness.scope')}</p></TooltipContent></Tooltip></TooltipProvider>
     </span> : null;
-    const focusOutputControl = () => {
-        const target = runtimeStats?.preparation?.muted === false && runtimeStats.preparation.outputGain === 0
-            ? '#master-output-gain [role="slider"]' : '#emergency-mute';
-        document.querySelector<HTMLElement>(target)?.focus();
+    const focusOutputControl = (anchor?: HTMLButtonElement) => {
+        const zeroGain = runtimeStats?.preparation?.muted === false && runtimeStats.preparation.outputGain === 0;
+        // 音量ゼロは押した場所で直せるよう出力音量の小窓を開く。ミュートは解除ボタンへ移り、移動先を短く示す。
+        if (zeroGain && anchor?.getClientRects().length) { setOutputGainAnchor(anchor); return; }
+        const target = document.querySelector<HTMLElement>(zeroGain ? '#master-output-gain [role="slider"]' : '#emergency-mute');
+        if (!target) return;
+        target.focus();
+        target.dataset.attention = '';
+        window.setTimeout(() => { delete target.dataset.attention; }, 1200);
     };
     const [outputGainAnchor, setOutputGainAnchor] = useState<HTMLButtonElement | null>(null);
     const closeOutputGain = useCallback(() => setOutputGainAnchor(null), []);

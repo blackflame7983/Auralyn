@@ -5,7 +5,7 @@ import { PreparationPanel, availabilityLabels } from './PreparationPanel';
 import { deviceDisplayName } from '@/lib/audioRouting';
 
 interface HomePanelsProps {
-    onCheckOutput?: () => void;
+    onCheckOutput?: (anchor?: HTMLButtonElement) => void;
     /** 本番帯と共有する準備の状態。取得を二重にしないよう AppShell で1つだけ持つ。 */
     model: PreparationModel;
     onOpenOBSGuide?: () => void;

@@ -1,5 +1,5 @@
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { MdCast, MdExpandMore, MdMusicNote, MdSettings } from 'react-icons/md';
 import { DiscordIcon } from '@/components/ui/DiscordIcon';
 import { cn } from '@/lib/utils';
@@ -13,7 +13,7 @@ import { receiverDeviceNotice } from '@/lib/audioRouting';
 import { renderNotice } from '../AudioSettings/settingsNotice';
 
 interface Props {
-    onCheckOutput?: () => void;
+    onCheckOutput?: (anchor?: HTMLButtonElement) => void;
     model: PreparationModel; onSettings: () => void; onSound: () => void; onListen: () => void;
     onObs: () => void; onCall: () => void; onTroubleshoot: () => void; audioReady: boolean; signalSummary?: ReactNode;
     /** 音声が使えないときの状態文（ヘッダーと同じ文言）。畳んだときの状態表示にも使う。 */
@@ -73,7 +73,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
     const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
     const needsTarget = next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim();
     const mutedOutput = observation.availability === 'muted' && Boolean(onCheckOutput);
-    const action = mutedOutput ? onCheckOutput! : needsTarget ? () => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); } : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? () => { void refreshManually(); } : onSettings
+    const action = mutedOutput ? (event: MouseEvent<HTMLButtonElement>) => onCheckOutput!(event.currentTarget) :needsTarget ? () => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); } : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? () => { void refreshManually(); } : onSettings
         : next === 'sound' ? onSound : next === 'listen' ? onListen : receiver;
     const actionLabel: MessageKey = mutedOutput ? 'prep.checkOutput' : needsTarget ? 'prep.targetAction' : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? 'prep.refresh' : 'shell.configure'
         : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';

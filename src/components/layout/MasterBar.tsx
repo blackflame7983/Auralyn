@@ -3,7 +3,7 @@ import { renderNotice } from '@/components/features/AudioSettings/settingsNotice
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { MdGraphicEq, MdVolumeUp, MdBolt, MdClose, MdInfoOutline } from 'react-icons/md';
+import { MdGraphicEq, MdVolumeUp, MdVolumeOff, MdBolt, MdClose, MdInfoOutline } from 'react-icons/md';
 import { Modal } from '../ui/modal';
 import { cn } from '@/lib/utils';
 import { audioApi, EngineRuntimeStats } from '../../api/audio';
@@ -264,7 +264,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
 
             {/* Master Output Volume */}
             <div className="flex shrink-0 items-center gap-2 border-l border-border pl-3 ml-1">
-                <MdVolumeUp aria-hidden="true" className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                {outputGain === 0 ? <MdVolumeOff aria-hidden="true" className="w-4 h-4 text-warning flex-shrink-0" /> : <MdVolumeUp aria-hidden="true" className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
                 <span aria-hidden="true" className="hidden lg:inline text-xs font-bold text-muted-foreground">{t('master.outputGain')}</span>
                 <Slider
                     id="master-output-gain"
