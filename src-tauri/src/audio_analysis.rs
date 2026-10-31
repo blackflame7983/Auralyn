@@ -127,11 +127,12 @@ pub fn analyze_voice_check_buffers(
     let raw = &raw[..frames * CHANNELS];
     let processed = &processed[..frames * CHANNELS];
 
-    let raw_mono = to_mono(raw);
-    let processed_mono = to_mono(processed);
+    // エネルギーの平均を使い、逆位相でも相殺しない。時間差分には使わない。
+    let raw_mono = frame_rms(raw);
+    let processed_mono = frame_rms(processed);
 
-    let clip = detect_clips(&processed_mono, sample_rate_hz);
-    let dropouts = detect_dropouts(&processed_mono, sample_rate_hz);
+    let clip = detect_clips(processed, sample_rate_hz);
+    let dropouts = detect_dropouts(processed, sample_rate_hz);
     let vad = compute_vad_mask(&raw_mono, sample_rate_hz);
 
     let noise_floor_raw = noise_floor_dbfs(&raw_mono, &vad);
@@ -144,8 +145,8 @@ pub fn analyze_voice_check_buffers(
         noise_floor_processed,
     );
 
-    let band_delta_db = octave_band_deltas(&raw_mono, &processed_mono, sample_rate_hz);
-    let loudness = loudness_report(&processed_mono);
+    let band_delta_db = octave_band_deltas(raw, processed, sample_rate_hz);
+    let loudness = loudness_report(processed);
 
     let mut advices = generate_advices(AdviceInputs {
         clip: &clip,
@@ -184,21 +185,18 @@ fn severity_rank(severity: &str) -> u8 {
     }
 }
 
-fn to_mono(interleaved: &[f32]) -> Vec<f32> {
-    let frames = interleaved.len() / CHANNELS;
-    let mut mono = Vec::with_capacity(frames);
-    for frame in 0..frames {
-        let base = frame * CHANNELS;
-        mono.push((interleaved[base] + interleaved[base + 1]) * 0.5);
-    }
-    mono
+fn frame_rms(interleaved: &[f32]) -> Vec<f32> {
+    interleaved
+        .chunks_exact(CHANNELS)
+        .map(|frame| ((frame[0] * frame[0] + frame[1] * frame[1]) * 0.5).sqrt())
+        .collect()
 }
 
 fn linear_to_dbfs(v: f32) -> f32 {
     20.0 * v.abs().max(MIN_EPS).log10()
 }
 
-fn detect_clips(mono: &[f32], sample_rate_hz: u32) -> ClipReport {
+fn detect_clips(interleaved: &[f32], sample_rate_hz: u32) -> ClipReport {
     use thresholds::{CLIP_COUNT_WARN, CLIP_RATIO_WARN, CLIP_SAMPLE_THRESHOLD};
 
     let mut count = 0u32;
@@ -206,8 +204,8 @@ fn detect_clips(mono: &[f32], sample_rate_hz: u32) -> ClipReport {
     let mut in_run = false;
     let mut clipped_samples = 0usize;
 
-    for (i, &s) in mono.iter().enumerate() {
-        if s.abs() >= CLIP_SAMPLE_THRESHOLD {
+    for (i, frame) in interleaved.chunks_exact(CHANNELS).enumerate() {
+        if frame.iter().any(|s| s.abs() >= CLIP_SAMPLE_THRESHOLD) {
             clipped_samples += 1;
             if !in_run {
                 count += 1;
@@ -219,10 +217,11 @@ fn detect_clips(mono: &[f32], sample_rate_hz: u32) -> ClipReport {
         }
     }
 
-    let ratio = if mono.is_empty() {
+    let frames = interleaved.len() / CHANNELS;
+    let ratio = if frames == 0 {
         0.0
     } else {
-        clipped_samples as f32 / mono.len() as f32
+        clipped_samples as f32 / frames as f32
     };
 
     // 微小なクリップは warn 閾値でフィルタ（テスト用に count は維持）
@@ -235,19 +234,21 @@ fn detect_clips(mono: &[f32], sample_rate_hz: u32) -> ClipReport {
     }
 }
 
-fn detect_dropouts(mono: &[f32], sample_rate_hz: u32) -> DropoutReport {
+fn detect_dropouts(interleaved: &[f32], sample_rate_hz: u32) -> DropoutReport {
     use thresholds::{DROPOUT_DIFF_THRESHOLD, DROPOUT_MIN_GAP_FRAMES};
 
-    if mono.len() < 2 {
+    let frames = interleaved.len() / CHANNELS;
+    if frames < 2 {
         return DropoutReport {
             count: 0,
             positions_ms: Vec::new(),
         };
     }
 
-    let mut diffs = Vec::with_capacity(mono.len() - 1);
-    for w in mono.windows(2) {
-        diffs.push((w[1] - w[0]).abs());
+    let mut diffs = Vec::with_capacity(frames - 1);
+    for pair in interleaved.windows(CHANNELS * 2).step_by(CHANNELS) {
+        // 各チャンネルの実際の差分だけを比較し、符号合成による偽の不連続を避ける。
+        diffs.push((pair[2] - pair[0]).abs().max((pair[3] - pair[1]).abs()));
     }
 
     let mean = diffs.iter().sum::<f32>() / diffs.len() as f32;
@@ -362,30 +363,26 @@ fn snr_improvement_db(
     snr_processed - snr_raw
 }
 
-fn loudness_report(mono: &[f32]) -> LoudnessReport {
-    if mono.is_empty() {
+fn loudness_report(interleaved: &[f32]) -> LoudnessReport {
+    if interleaved.is_empty() {
         return LoudnessReport {
             rms_db: -96.0,
             peak_db: -96.0,
         };
     }
-    let sum_sq: f32 = mono.iter().map(|s| s * s).sum();
-    let rms = (sum_sq / mono.len() as f32).sqrt();
-    let peak = mono.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+    let sum_sq: f32 = interleaved.iter().map(|s| s * s).sum();
+    let rms = (sum_sq / interleaved.len() as f32).sqrt();
+    let peak = interleaved.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
     LoudnessReport {
         rms_db: linear_to_dbfs(rms),
         peak_db: linear_to_dbfs(peak),
     }
 }
 
-fn octave_band_deltas(
-    raw_mono: &[f32],
-    processed_mono: &[f32],
-    sample_rate_hz: u32,
-) -> Vec<BandDeltaDb> {
+fn octave_band_deltas(raw: &[f32], processed: &[f32], sample_rate_hz: u32) -> Vec<BandDeltaDb> {
     use thresholds::OCTAVE_CENTER_HZ;
 
-    let n = raw_mono.len().max(processed_mono.len());
+    let n = raw.len().max(processed.len()) / CHANNELS;
     if n == 0 {
         return OCTAVE_CENTER_HZ
             .iter()
@@ -397,8 +394,8 @@ fn octave_band_deltas(
     }
 
     let fft_size = next_pow2(n);
-    let raw_mag = magnitude_spectrum(raw_mono, fft_size);
-    let proc_mag = magnitude_spectrum(processed_mono, fft_size);
+    let raw_mag = stereo_magnitude_spectrum(raw, fft_size);
+    let proc_mag = stereo_magnitude_spectrum(processed, fft_size);
     let bin_hz = sample_rate_hz as f32 / fft_size as f32;
 
     OCTAVE_CENTER_HZ
@@ -428,6 +425,18 @@ fn next_pow2(n: usize) -> usize {
         p <<= 1;
     }
     p.max(256)
+}
+
+fn stereo_magnitude_spectrum(interleaved: &[f32], fft_size: usize) -> Vec<f32> {
+    // 左右それぞれのスペクトルのエネルギーを平均する。
+    let left: Vec<f32> = interleaved.chunks_exact(CHANNELS).map(|f| f[0]).collect();
+    let right: Vec<f32> = interleaved.chunks_exact(CHANNELS).map(|f| f[1]).collect();
+    let left = magnitude_spectrum(&left, fft_size);
+    let right = magnitude_spectrum(&right, fft_size);
+    left.into_iter()
+        .zip(right)
+        .map(|(l, r)| (l + r) * 0.5)
+        .collect()
 }
 
 fn magnitude_spectrum(mono: &[f32], fft_size: usize) -> Vec<f32> {
@@ -680,6 +689,89 @@ mod tests {
             let t = idx as f32 / sample_rate as f32;
             mono_base[idx] += (2.0 * PI * 300.0 * t).sin() * amp;
         }
+    }
+
+    #[test]
+    fn stereo_energy_preserves_phase_and_single_channel() {
+        let sr = 8_000;
+        let frames = 8_000;
+        let same = sine_stereo(1000.0, sr, frames, 0.4);
+        let opposite: Vec<f32> = same.chunks_exact(2).flat_map(|f| [f[0], -f[1]]).collect();
+        let one_side: Vec<f32> = same.chunks_exact(2).flat_map(|f| [f[0], 0.0]).collect();
+        let scaled_same: Vec<f32> = same.iter().map(|s| s * 0.5).collect();
+        let scaled_opposite: Vec<f32> = opposite.iter().map(|s| s * 0.5).collect();
+        let scaled_one_side: Vec<f32> = one_side.iter().map(|s| s * 0.5).collect();
+        let analyze = |raw: &[f32], processed: &[f32]| {
+            analyze_voice_check_buffers(raw, processed, sr, &AnalysisContext::default())
+        };
+        let same_report = analyze(&same, &scaled_same);
+        let opposite_report = analyze(&opposite, &scaled_opposite);
+        let one_side_report = analyze(&one_side, &scaled_one_side);
+        let expected_rms = linear_to_dbfs(0.2 / 2.0_f32.sqrt());
+        assert!((same_report.loudness.rms_db - expected_rms).abs() < 0.01);
+        assert!((opposite_report.loudness.rms_db - expected_rms).abs() < 0.01);
+        assert!((one_side_report.loudness.rms_db - (expected_rms - 3.0103)).abs() < 0.01);
+        assert!((one_side_report.loudness.peak_db - linear_to_dbfs(0.2)).abs() < 0.01);
+        for report in [&same_report, &opposite_report, &one_side_report] {
+            let band = report
+                .band_delta_db
+                .iter()
+                .find(|b| b.band_hz == 1000)
+                .unwrap();
+            assert!(
+                (band.delta_db + 6.0206).abs() < 0.01,
+                "delta={}",
+                band.delta_db
+            );
+            assert_eq!(report.dropouts.count, 0);
+        }
+    }
+
+    #[test]
+    fn stereo_clips_count_frames_and_channel_transitions() {
+        let audio = [0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 1.0];
+        let report = analyze_voice_check_buffers(&audio, &audio, 1000, &AnalysisContext::default());
+        assert_eq!(report.clip.count, 2);
+        assert_eq!(report.clip.positions_ms, vec![1, 4]);
+        assert!((report.clip.ratio - 0.6).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn stereo_vad_noise_and_dropouts_do_not_cancel() {
+        let sr = 1000;
+        let mut raw = vec![0.0; 400 * CHANNELS];
+        let mut processed = raw.clone();
+        for i in 0..400 {
+            let amplitude = if i < 200 { 0.004 } else { 0.2 };
+            raw[i * 2] = amplitude;
+            raw[i * 2 + 1] = -amplitude;
+            processed[i * 2] = amplitude * if i < 200 { 0.5 } else { 1.0 };
+            processed[i * 2 + 1] = -processed[i * 2];
+        }
+        let report = analyze_voice_check_buffers(&raw, &processed, sr, &AnalysisContext::default());
+        assert!((report.noise_floor_db.raw - linear_to_dbfs(0.004)).abs() < 0.01);
+        assert!((report.noise_floor_db.processed - linear_to_dbfs(0.002)).abs() < 0.01);
+        assert!((report.snr_improvement_db - 6.0206).abs() < 0.01);
+        assert_eq!(report.dropouts.count, 0);
+        processed[300 * 2 + 1] = 0.8;
+        let report = analyze_voice_check_buffers(&raw, &processed, sr, &AnalysisContext::default());
+        assert_eq!(report.dropouts.count, 1);
+        assert_eq!(report.dropouts.positions_ms, vec![300]);
+    }
+
+    #[test]
+    fn stereo_silence_keeps_finite_baseline() {
+        let silence = vec![0.0; 400];
+        let report =
+            analyze_voice_check_buffers(&silence, &silence, 1000, &AnalysisContext::default());
+        assert_eq!(report.clip.count, 0);
+        assert_eq!(report.clip.ratio, 0.0);
+        assert_eq!(report.dropouts.count, 0);
+        assert_eq!(report.loudness.rms_db, linear_to_dbfs(0.0));
+        assert_eq!(report.loudness.peak_db, linear_to_dbfs(0.0));
+        assert_eq!(report.noise_floor_db.raw, linear_to_dbfs(0.0));
+        assert_eq!(report.snr_improvement_db, 0.0);
+        assert!(report.band_delta_db.iter().all(|b| b.delta_db == 0.0));
     }
 
     #[test]
