@@ -80,6 +80,10 @@ impl ChannelScan {
         self.generation = generation;
     }
 
+    pub(super) fn enabled(&self) -> bool {
+        self.enabled
+    }
+
     #[inline]
     pub(super) fn observe(&mut self, channel: usize, sample: f32) {
         if self.enabled && channel < CHANNELS {
@@ -124,6 +128,8 @@ mod tests {
         let control = Control::new(false, 0, 1.0);
         let mut scan = ChannelScan::new(100, false, 0);
         let (mut tx, mut rx) = HeapRb::new(2).split();
+        control.sync(&mut scan);
+        assert!(!scan.enabled());
         control.set_enabled(true, 1);
         control.set_gain(0.5);
         assert_eq!(
@@ -139,6 +145,7 @@ mod tests {
         assert_eq!(snapshot.peaks[7], 0.4);
         control.set_enabled(false, 2);
         control.sync(&mut scan);
+        assert!(!scan.enabled());
         scan.observe(7, 1.0);
         scan.finish_block(10, &mut tx);
         assert!(rx.try_pop().is_none());

@@ -277,7 +277,7 @@ pub(crate) fn selected_pair(frame: &[f32], channels: [usize; 2], gain: f32) -> [
     channels.map(|ch| frame.get(ch).copied().unwrap_or(0.0) * gain)
 }
 
-/// 選択された2chを先頭へ配置し、残りは入力末尾を必要に応じて複製する。
+/// 選択された2chを先頭へ配置し、余剰出力には入力を流さない。
 pub(crate) fn route_input_frame(
     frame: &[f32],
     selected: [usize; 2],
@@ -287,8 +287,8 @@ pub(crate) fn route_input_frame(
     output_channels: usize,
 ) -> [f32; 2] {
     let pair = selected_pair(frame, selected, gain);
-    for ch in 0..output_channels {
-        planar[ch][index] = frame[ch.min(frame.len() - 1)] * gain;
+    for channel in planar.iter_mut().take(output_channels).skip(2) {
+        channel[index] = 0.0;
     }
     planar[0][index] = pair[0];
     if output_channels >= 2 {
@@ -378,7 +378,7 @@ pub(crate) fn push_mapped_frames(
 mod tests {
     #[test]
     fn normal_route_and_raw_pair_match_for_physical_and_output_shapes() {
-        for (input, output) in [(8, 2), (2, 8), (1, 2), (3, 2)] {
+        for (input, output) in [(8, 2), (8, 8), (2, 8), (1, 2), (3, 2), (3, 1)] {
             let frame: Vec<_> = (0..input).map(|i| (i + 1) as f32).collect();
             let mut planar = vec![vec![0.0; 1]; output];
             for left in 0..input {
@@ -394,14 +394,38 @@ mod tests {
                                 output,
                             );
                             assert_eq!(raw, [frame[left] * 0.5, frame[right] * 0.5]);
-                            assert_eq!([planar[0][0], planar[1][0]], raw);
-                            for ch in 2..output {
-                                assert_eq!(planar[ch][0], frame[ch.min(input - 1)] * 0.5);
+                            assert_eq!(planar[0][0], raw[0]);
+                            if output >= 2 {
+                                assert_eq!(planar[1][0], raw[1]);
                             }
+                            assert!(planar.iter().skip(2).all(|channel| channel[0] == 0.0));
                         }),
                         (0, 0)
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn unselected_physical_signal_never_reaches_extra_outputs() {
+        for (input, output, selected) in [
+            (8, 8, [6, 7]),
+            (8, 2, [0, 0]),
+            (2, 8, [0, 0]),
+            (3, 8, [2, 2]),
+            (3, 1, [0, 0]),
+        ] {
+            for active in 0..input {
+                if selected.contains(&active) {
+                    continue;
+                }
+                let mut frame = vec![0.0; input];
+                frame[active] = 1.0;
+                let mut planar = vec![vec![7.0]; output];
+                let raw = super::route_input_frame(&frame, selected, 1.0, &mut planar, 0, output);
+                assert_eq!(raw, [0.0, 0.0]);
+                assert!(planar.iter().all(|channel| channel[0] == 0.0));
             }
         }
     }

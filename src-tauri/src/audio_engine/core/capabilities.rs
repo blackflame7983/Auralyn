@@ -144,13 +144,6 @@ impl CapabilitySnapshot {
         })
     }
 
-    pub(super) fn max_channels(&self) -> u16 {
-        self.supported
-            .as_ref()
-            .and_then(|supported| supported.iter().map(|range| range.channels()).max())
-            .unwrap_or(2)
-    }
-
     pub(super) fn buffer_range(&self) -> Option<(u32, u32)> {
         let mut min_buffer = u32::MAX;
         let mut max_buffer = 0;
@@ -478,7 +471,8 @@ mod tests {
                 .same_rate_input(&snapshot.input_config(Some(256)), 96_000)
                 .unwrap();
             assert_eq!((preferred.sample_rate, preferred.channels), (96_000, 2));
-            assert_eq!(snapshot.max_channels(), 8);
+            // 別構成の最大8chではなく、今回使う既定2chの能力を提示する。
+            assert_eq!(snapshot.default.channels(), 2);
             assert_eq!(snapshot.buffer_range(), Some((64, 2048)));
             assert_eq!(snapshot.default_buffer_range(), Some((512, 512)));
             assert_eq!(snapshot.locked_buffer_override(256), Some(512));
@@ -512,7 +506,7 @@ mod tests {
                 snapshot.output_config(Some(192_000), Some(512)).sample_rate,
                 44_100 * attempt
             );
-            assert_eq!(snapshot.max_channels(), 2);
+            assert_eq!(snapshot.f32_rate_ranges(), None);
             assert!(snapshot
                 .same_rate_input(&snapshot.input_config(None), 96_000)
                 .is_none());

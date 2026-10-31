@@ -769,14 +769,15 @@ impl Engine {
                 Err(e) => self.send_error(e.to_string()),
             },
             Command::SetInputChannels { left, right } => {
-                if !valid_input_channels(
+                let Some([left, right]) = requested_channels(
+                    self.current_host_is_asio,
                     self.output_stream.is_some(),
                     [left, right],
                     self.current_input_channels,
-                ) {
+                ) else {
                     self.send_error("入力チャンネルが範囲外です".into());
                     return;
-                }
+                };
                 self.builtin.invalidate_history_with_reason(
                     crate::audio_engine::history::Reason::InputChanged,
                 );

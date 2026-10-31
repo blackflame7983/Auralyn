@@ -66,8 +66,8 @@ pub fn callback_lateness(elapsed: Duration, previous_frames: usize, rate: u32) -
     (late, late > period / 2)
 }
 
-pub fn normalized_channels(_asio: bool, selected: [usize; 2], channels: usize) -> [usize; 2] {
-    if selected.iter().all(|c| *c < channels) {
+pub fn normalized_channels(asio: bool, selected: [usize; 2], channels: usize) -> [usize; 2] {
+    if asio && selected.iter().all(|c| *c < channels) {
         selected
     } else {
         [0, usize::from(channels > 1)]
@@ -76,6 +76,21 @@ pub fn normalized_channels(_asio: bool, selected: [usize; 2], channels: usize) -
 
 pub fn valid_input_channels(running: bool, selected: [usize; 2], channels: usize) -> bool {
     !running || selected.iter().all(|&channel| channel < channels)
+}
+
+/// WASAPIの従来のステレオ要求は、物理monoでも安全に同じ入力へ写像する。
+pub fn requested_channels(
+    asio: bool,
+    running: bool,
+    selected: [usize; 2],
+    channels: usize,
+) -> Option<[usize; 2]> {
+    let selected = if asio {
+        selected
+    } else {
+        normalized_channels(false, selected, channels)
+    };
+    valid_input_channels(running, selected, channels).then_some(selected)
 }
 
 #[cfg(test)]
@@ -116,7 +131,16 @@ mod tests {
         assert!(!valid_input_channels(true, [6, 8], 8));
         assert!(!valid_input_channels(true, [1, 0], 1));
         assert_eq!(normalized_channels(true, [6, 7], 2), [0, 1]);
-        assert_eq!(normalized_channels(false, [2, 2], 3), [2, 2]);
+        assert_eq!(normalized_channels(false, [2, 2], 3), [0, 1]);
+    }
+
+    #[test]
+    fn legacy_wasapi_pair_is_mono_safe_but_asio_never_silently_changes_a_request() {
+        assert_eq!(requested_channels(false, true, [0, 1], 1), Some([0, 0]));
+        assert_eq!(requested_channels(false, true, [6, 7], 2), Some([0, 1]));
+        assert_eq!(requested_channels(true, true, [0, 1], 1), None);
+        assert_eq!(requested_channels(true, true, [6, 7], 8), Some([6, 7]));
+        assert_eq!(requested_channels(true, false, [6, 7], 2), Some([6, 7]));
     }
     #[test]
     fn diagnostics_report_actual_size_and_processing_without_allocating() {

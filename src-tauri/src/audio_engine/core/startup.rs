@@ -1716,12 +1716,14 @@ impl Engine {
                 &in_stream_config,
                 move |data: &[f32], info: &cpal::InputCallbackInfo| {
                     let scan_gain = scan_control.sync(&mut rt_channel_scan);
-                    for frame in data.chunks_exact(channels) {
-                        for (channel, sample) in frame.iter().enumerate() {
-                            rt_channel_scan.observe(channel, *sample * scan_gain);
+                    if rt_channel_scan.enabled() {
+                        for frame in data.chunks_exact(channels) {
+                            for (channel, sample) in frame.iter().enumerate() {
+                                rt_channel_scan.observe(channel, *sample * scan_gain);
+                            }
                         }
+                        rt_channel_scan.finish_block(data.len() / channels, &mut channel_prod);
                     }
-                    rt_channel_scan.finish_block(data.len() / channels, &mut channel_prod);
                     if input_silence.pause_input(|| {
                         if input_silence_reset != input_silence.ticket() {
                             if let Some(resampler) = &mut resampler {
