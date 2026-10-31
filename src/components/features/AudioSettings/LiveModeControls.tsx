@@ -2,7 +2,7 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useState } from 'react';
 import type { LiveModesModel } from '@/hooks/useLiveModes';
 import { MdMusicNote, MdMic, MdCheckCircle, MdSave } from 'react-icons/md';
-import { InfoPopover } from '@/components/ui/InfoPopover';
+import { SavePurposeHelp } from '../Presets/SavePurposeHelp';
 
 function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode: 'singing' | 'talk') => void }) {
     const t = useMessages();
@@ -14,7 +14,7 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
     return <div className="space-y-3 p-3 text-sm">
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <p>{t('settings.mode.registerHint')}</p>
-            <InfoPopover label={t('settings.mode.scope')}><p>{t('settings.LiveModeControls.215')}</p></InfoPopover>
+            <SavePurposeHelp />
         </div>
         {/* 登録を二重の折りたたみに隠さない。保存条件は実行ボタンより先に伝える。 */}
         <p className="text-xs text-muted-foreground">{t('settings.mode.registrationScope')}</p>

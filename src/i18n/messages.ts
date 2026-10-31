@@ -1,6 +1,20 @@
 import type { Locale } from './locale';
 
 const ja = {
+    "saveHelp.title": "モード登録とプロファイル保存の違い",
+    "saveHelp.modeTitle": "歌・雑談モード：配信中の切替に",
+    "saveHelp.mode": "適用済みの内蔵ボイスチェーンと残響だけを登録します。ホームから切り替えられます。マイク・VST・ノイズ低減・音量・ミュートは切り替えません。",
+    "saveHelp.profileTitle": "プロファイル：構成をあとで呼び出すときに",
+    "saveHelp.profile": "VST・ノイズ低減・内蔵処理など、保存する項目を選べます。入出力も含めて保存・呼び出す場合は、機器や音量も対象です。歌・雑談の切替ボタンを登録する操作とは別です。",
+    "saveHelp.appliedOnly": "未適用の下書き・試聴候補は、どちらにも保存しません。先に試聴し、適用を確認してください。保存・登録だけでは音は切り替わりません。",
+    "singing.valueHelp": "{name}の意味と調整の目安",
+    "singing.help.lowCutHz": "低い音をどこまで減らすかの境目です。Hzは音の高さの単位です。大きくすると低い振動音を減らす範囲が広がりますが、声の厚みも減ることがあります。声が細く感じたら小さくします。",
+    "singing.help.dynamics": "大きな声を抑え、小さな声との音量差を整える強さです。0%はこの調整なし、大きくすると強く抑えます。歌の強弱が失われると感じたら小さくします。マイク音量全体を上げる設定ではありません。",
+    "singing.help.brightnessDb": "声の高い成分を調整します。dBは増減の大きさの単位です。0は変更なし、プラスは明るく、マイナスは落ち着いた方向です。鋭く感じたら下げます。声全体の音量とは別です。",
+    "singing.help.mix": "元の声に加える響きの量です。残響が有効なとき、大きくすると響きが増えます。0%は響きを加えません。言葉が聞き取りにくく感じたら少なくします。",
+    "singing.help.decaySeconds": "響きが減衰していく長さの目安です。秒を大きくすると余韻が長く、小さくすると短くなります。次の言葉に響きが重なりすぎると感じたら短くします。指定秒で音が急に止まる設定ではありません。",
+    "singing.help.damping": "響きに含まれる高い音を減らす量です。大きくすると響きが落ち着いた音に、小さくすると明るい音に近づきます。響きが鋭く感じたら増やします。声そのものの明るさとは別です。",
+    "singing.help.listen": "一度に1つずつ少し変え、試聴で確かめてから適用してください。説明を開くだけでは値や配信の音は変わりません。",
     "singing.appliedReverb": "適用済みの残響：{state}",
     "singing.guideHelp": "歌向け調整の範囲と使い方",
     "singing.draftSafety": "調整した音は、適用するまで配信・通話へ反映しません。",
@@ -2694,6 +2708,20 @@ const ja = {
 } as const;
 export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
+    "saveHelp.title": "Mode registration versus profile saving",
+    "saveHelp.modeTitle": "Singing / Talk modes: switch during a stream",
+    "saveHelp.mode": "Register only applied built-in voice processing and reverb, then switch from Home. Microphone, VSTs, noise reduction, volume and mute stay unchanged.",
+    "saveHelp.profileTitle": "Profiles: recall a setup later",
+    "saveHelp.profile": "Choose what to save, such as VSTs, noise reduction and built-in processing. Saving and recalling audio routing also includes devices and levels. This does not register the Singing / Talk buttons.",
+    "saveHelp.appliedOnly": "Neither saves unapplied drafts or preview candidates. Listen first and confirm application. Saving or registering alone does not switch the sound.",
+    "singing.valueHelp": "Meaning and adjustment guide: {name}",
+    "singing.help.lowCutHz": "The boundary below which low frequencies are reduced. Hz measures frequency. Raising it removes a wider range of low rumble, but may also thin the voice. Lower it if your voice sounds too thin.",
+    "singing.help.dynamics": "Reduces louder parts to narrow the difference from quieter parts. 0% leaves this adjustment off; higher values apply stronger reduction. Lower it if singing loses expression. This does not turn up overall microphone volume.",
+    "singing.help.brightnessDb": "Adjusts the high frequencies of the voice. dB measures the amount of change: 0 is unchanged, positive is brighter, and negative is softer. Lower it if the voice sounds sharp. This is separate from overall volume.",
+    "singing.help.mix": "The amount of reverb added to the original voice when reverb is enabled. Higher adds more; 0% adds none. Reduce it if words become harder to understand.",
+    "singing.help.decaySeconds": "An indication of how long the reverb fades. More seconds give a longer tail; fewer give a shorter one. Shorten it if the tail overlaps the next words too much. The sound does not stop abruptly at the specified time.",
+    "singing.help.damping": "Reduces high frequencies in the reverb. Higher values make the tail darker; lower values make it brighter. Increase it if the reverb sounds sharp. This is separate from the brightness of the voice itself.",
+    "singing.help.listen": "Change one setting a little at a time, preview, then apply. Opening help alone changes neither values nor stream audio.",
     "singing.appliedReverb": "Applied reverb: {state}",
     "singing.guideHelp": "About singing adjustments",
     "singing.draftSafety": "Edits leave streaming and call audio unchanged until applied.",

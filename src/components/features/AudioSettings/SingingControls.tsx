@@ -1,16 +1,18 @@
 import { Button } from '@/components/ui/button';
 import { InfoPopover } from '@/components/ui/InfoPopover';
+import { SavePurposeHelp } from '../Presets/SavePurposeHelp';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { audioApi } from '@/api/audio';
 import { defaultReverb } from '@/api/builtinEffects';
 import { listen } from '@tauri-apps/api/event';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { SingingDraft } from '@/hooks/useSingingDraft';
 
 export function SingingControls({ model, onPreview, onSaveProfile, compact = false, running, previewActive = false, showHeading = true }: {
     model: SingingDraft; running?: boolean; previewActive?: boolean; onPreview?: () => void; onSaveProfile?: () => void; compact?: boolean; showHeading?: boolean;
 }) {
     const t = useMessages();
+    const fieldId = useId();
     const { snapshot, draft, busy, conflict, error } = model;
     const [observedRunning, setObservedRunning] = useState<boolean | undefined>();
     const refreshStream = useRef<() => void>(() => {});
@@ -66,13 +68,14 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
         <Button type="button" variant="outline" disabled={previewActive || busy || !snapshot?.redoToken || snapshot.pending || dirty} onClick={() => void model.redo()} className="h-auto whitespace-normal px-3 py-2 text-xs">{t('history.redo')}</Button>
     </>;
     const canUndo = Boolean(snapshot?.undoToken || snapshot?.redoToken);
-    const saveButton = onSaveProfile && <Button type="button" variant="outline" disabled={previewActive || busy || !snapshot || snapshot.pending} onClick={onSaveProfile} className="h-auto whitespace-normal px-3 py-2 text-xs">{t('settings.SingingControls.430')}</Button>;
-    const numeric = (key: 'mix' | 'decaySeconds' | 'damping', label: string, min: number, max: number, step: number) => <label key={key} className="min-w-0 text-xs">{label}
-        <input aria-label={label} type="number" min={min} max={max} step={step} value={key === 'decaySeconds' ? reverb[key] : Math.round(reverb[key] * 100)} onChange={event => {
+    const saveButton = onSaveProfile && <div className="flex items-center gap-1"><Button type="button" variant="outline" disabled={previewActive || busy || !snapshot || snapshot.pending} onClick={onSaveProfile} className="h-auto whitespace-normal px-3 py-2 text-xs">{t('settings.SingingControls.430')}</Button><SavePurposeHelp /></div>;
+    const numeric = (key: 'mix' | 'decaySeconds' | 'damping', label: string, min: number, max: number, step: number) => <div key={key} className="min-w-0 text-xs">
+        <div className="flex items-center gap-1"><label htmlFor={`${fieldId}-${key}`}>{label}</label><InfoPopover label={t('singing.valueHelp', { name: label })}>{t(`singing.help.${key}`)}<p className="mt-2">{t('singing.help.listen')}</p></InfoPopover></div>
+        <input id={`${fieldId}-${key}`} aria-label={label} type="number" min={min} max={max} step={step} value={key === 'decaySeconds' ? reverb[key] : Math.round(reverb[key] * 100)} onChange={event => {
             const number = Number(event.target.value);
             if (event.target.value !== '' && Number.isFinite(number) && number >= min && number <= max) model.editReverb({ [key]: key === 'decaySeconds' ? number : number / 100 });
         }} className="mt-1 block w-full rounded border border-input bg-background p-2 text-sm" />
-    </label>;
+    </div>;
     return <section aria-label={t('settings.SingingControls.393')} className="space-y-4 text-sm">
         <div className="flex items-center gap-1">
             {showHeading && <h3 className="font-bold">{t('settings.SingingControls.394')}</h3>}
@@ -103,10 +106,10 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
                             ['lowCutHz', t('settings.SingingControls.407'), 40, 160, 1],
                             ['dynamics', t('settings.SingingControls.408'), 0, 100, 1],
                             ['brightnessDb', t('settings.SingingControls.409'), -3, 3, 0.1],
-                        ] as const).map(([key, label, min, max, step]) => <label key={key} className="min-w-0 text-xs">{label}<input aria-label={label} type="number" min={min} max={max} step={step} value={key === 'dynamics' ? Math.round(params[key] * 100) : params[key]} onChange={event => {
+                        ] as const).map(([key, label, min, max, step]) => <div key={key} className="min-w-0 text-xs"><div className="flex items-center gap-1"><label htmlFor={`${fieldId}-${key}`}>{label}</label><InfoPopover label={t('singing.valueHelp', { name: label })}>{t(`singing.help.${key}`)}<p className="mt-2">{t('singing.help.listen')}</p></InfoPopover></div><input id={`${fieldId}-${key}`} aria-label={label} type="number" min={min} max={max} step={step} value={key === 'dynamics' ? Math.round(params[key] * 100) : params[key]} onChange={event => {
                             const number = Number(event.target.value);
                             if (event.target.value !== '' && Number.isFinite(number) && number >= min && number <= max) model.edit({ [key]: key === 'dynamics' ? number / 100 : number });
-                        }} className="mt-1 block w-full rounded border border-input bg-background p-2 text-sm" /></label>)}</div>
+                        }} className="mt-1 block w-full rounded border border-input bg-background p-2 text-sm" /></div>)}</div>
                     </fieldset>}
                     <fieldset disabled={busy || !draft}>
                         <legend className="mb-2 text-xs font-semibold">{t('settings.SingingControls.413')}</legend>
