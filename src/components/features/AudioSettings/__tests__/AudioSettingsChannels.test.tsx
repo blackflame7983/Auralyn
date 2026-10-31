@@ -1,4 +1,5 @@
 import { audioApi } from '@/api/audio';
+import { StrictMode } from 'react';
 import { openSystemTab } from './settingsActions';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -177,7 +178,7 @@ it.each(['set_channel_scan', 'listen'])('監視開始の%s失敗を表示して�
         return null;
     });
     render(<InputChannelSelector initialChannels={[2, 3]} maxChannels={4} />);
-    await screen.findByText(/信号監視を開始できませんでした/);
+    await screen.findByText(/信号監視を切り替えられませんでした/);
     expect(screen.getByRole('radio', { name: '入力チャンネル 3/4' })).toBeChecked();
     expect(screen.getByRole('radio', { name: '入力チャンネル 1/2' })).toBeEnabled();
 });
@@ -191,7 +192,7 @@ it('遅い購読の完了が画面終了後なら解除し、監視を開始し�
     await act(async () => resolveListener(unsubscribe));
     expect(unsubscribe).toHaveBeenCalledOnce();
     expect(invoke).not.toHaveBeenCalledWith('set_channel_scan', { active: true });
-    expect(invoke).toHaveBeenCalledWith('set_channel_scan', { active: false });
+    expect(invoke).not.toHaveBeenCalledWith('set_channel_scan', { active: false });
 });
 
 it('監視終了の失敗も回収する', async () => {
@@ -273,4 +274,114 @@ it('同じチャンネル数の別機器では下書きと信号表示を引き�
     expect(screen.getByRole('radio', { name: '入力チャンネル 1/2' })).toBeChecked();
     expect(screen.getByRole('radio', { name: '入力チャンネル 3/4' })).toHaveAccessibleDescription('未測定');
     expect(screen.getByText(/現在の接続と異なる/)).toBeInTheDocument();
+});
+
+
+it('遅い監視開始を待ってから最後の停止を送り、監視を復活させない', async () => {
+    let finish!: () => void;
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+        if (command === 'set_channel_scan' && (args as { active: boolean }).active) await new Promise<void>(resolve => { finish = resolve; });
+        return null;
+    });
+    const view = render(<InputChannelSelector maxChannels={4} />);
+    await waitFor(() => expect(finish).toBeTypeOf('function'));
+    view.unmount();
+    expect(invoke).not.toHaveBeenCalledWith('set_channel_scan', { active: false });
+    await act(async () => { finish(); });
+    await waitFor(() => expect(invoke).toHaveBeenLastCalledWith('set_channel_scan', { active: false }));
+});
+
+it('複数利用では片方の終了で停止せず、最後の終了で停止する', async () => {
+    const first = render(<InputChannelSelector maxChannels={4} />);
+    const second = render(<InputChannelSelector maxChannels={4} />);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_channel_scan', { active: true }));
+    first.unmount();
+    await act(async () => {});
+    expect(invoke).not.toHaveBeenCalledWith('set_channel_scan', { active: false });
+    second.unmount();
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_channel_scan', { active: false }));
+});
+
+it('StrictModeの再購読でも最後の利用終了時に監視を止める', async () => {
+    const view = render(<StrictMode><InputChannelSelector maxChannels={4} /></StrictMode>);
+    await screen.findByText(/信号データを待っています/);
+    view.unmount();
+    await waitFor(() => expect(invoke).toHaveBeenLastCalledWith('set_channel_scan', { active: false }));
+});
+
+it('開始失敗後に再試行できる', async () => {
+    let fail = true;
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+        if (command === 'set_channel_scan' && (args as { active: boolean }).active && fail) throw new Error('start failed');
+        return null;
+    });
+    render(<InputChannelSelector maxChannels={4} />);
+    await screen.findByText(/信号監視を切り替えられませんでした/);
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    await screen.findByText(/信号データを待っています/);
+});
+
+it('機器変更時の停止失敗は表示し、停止を再試行できる', async () => {
+    let fail = true;
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+        if (command === 'set_channel_scan' && !(args as { active: boolean }).active && fail) throw new Error('stop failed');
+        return null;
+    });
+    const view = render(<InputChannelSelector maxChannels={4} />);
+    await screen.findByText(/信号データを待っています/);
+    view.rerender(<InputChannelSelector maxChannels={4} monitorEnabled={false} />);
+    await screen.findByText(/信号監視を切り替えられませんでした/);
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    await screen.findByText(/現在の接続と異なる/);
+    expect(invoke).toHaveBeenLastCalledWith('set_channel_scan', { active: false });
+});
+
+
+it('稼働中にエンジンが再起動したら監視を再適用する', async () => {
+    render(<InputChannelSelector maxChannels={4} />);
+    await screen.findByText(/信号データを待っています/);
+    const started = vi.mocked(listen).mock.calls.find(([name]) => name === 'audio-started')![1];
+    expect(vi.mocked(invoke).mock.calls.filter(([name, args]) => name === 'set_channel_scan' && (args as { active: boolean }).active)).toHaveLength(1);
+    await act(async () => started({ event: 'audio-started', id: 1, payload: undefined }));
+    await waitFor(() => expect(vi.mocked(invoke).mock.calls.filter(([name, args]) => name === 'set_channel_scan' && (args as { active: boolean }).active)).toHaveLength(2));
+});
+
+it('終了後に完了した古い開始通知の購読を解除し、新しい利用を維持する', async () => {
+    let finish!: (stop: () => void) => void;
+    let first = true;
+    vi.mocked(listen).mockImplementation((event) => {
+        if (event === 'audio-started' && first) { first = false; return new Promise(resolve => { finish = resolve; }); }
+        return Promise.resolve(() => {});
+    });
+    const old = render(<InputChannelSelector maxChannels={4} />);
+    await waitFor(() => expect(finish).toBeTypeOf('function'));
+    old.unmount();
+    const current = render(<InputChannelSelector maxChannels={4} />);
+    await screen.findByText(/信号データを待っています/);
+    const stopOld = vi.fn();
+    await act(async () => { finish(stopOld); });
+    expect(stopOld).toHaveBeenCalledOnce();
+    expect(screen.getByText(/信号データを待っています/)).toBeInTheDocument();
+    current.unmount();
+    await waitFor(() => expect(invoke).toHaveBeenLastCalledWith('set_channel_scan', { active: false }));
+});
+
+
+it('古い利用の購読失敗は新しい監視を止めない', async () => {
+    let rejectOld!: (error: Error) => void;
+    let first = true;
+    vi.mocked(listen).mockImplementation(event => {
+        if (event === 'audio-started' && first) { first = false; return new Promise((_, reject) => { rejectOld = reject; }); }
+        return Promise.resolve(() => {});
+    });
+    const old = render(<InputChannelSelector maxChannels={4} />);
+    await waitFor(() => expect(rejectOld).toBeTypeOf('function'));
+    old.unmount();
+    render(<InputChannelSelector maxChannels={4} />);
+    await screen.findByText(/信号データを待っています/);
+    await act(async () => rejectOld(new Error('old subscription failed')));
+    expect(screen.getByText(/信号データを待っています/)).toBeInTheDocument();
+    expect(screen.queryByText(/信号監視を切り替えられませんでした/)).not.toBeInTheDocument();
 });

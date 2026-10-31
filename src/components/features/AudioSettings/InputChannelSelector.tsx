@@ -1,7 +1,7 @@
 import { useMessages } from '@/i18n/LocaleProvider';
-import React, { useEffect, useId, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { audioApi } from '../../../api/audio';
+import { acquireChannelScan, retryChannelScan } from './channelScanLease';
 import { MdGraphicEq } from 'react-icons/md';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 
@@ -21,6 +21,9 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
     const [measuredCount, setMeasuredCount] = useState(0);
     const [showAllPairs, setShowAllPairs] = useState(false);
     const [focusedPair, setFocusedPair] = useState<number | null>(null);
+    const [retryRevision, setRetryRevision] = useState(0);
+    const mounted = useRef(false);
+    useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
     useEffect(() => {
         if (initialChannels) setSelectedPair(initialChannels);
     }, [initialChannels]);
@@ -28,10 +31,11 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
     useEffect(() => {
         setActiveChannels([]);
         setMeasuredCount(0);
-        setMonitorState('starting');
         if (!monitorEnabled) return;
+        setMonitorState('starting');
         let active = true;
         let unlisten: (() => void) | undefined;
+        let lease: ReturnType<typeof acquireChannelScan> | undefined;
         const start = async () => {
             try {
                 const unsubscribe = await listen<unknown>('audio-channel-scan', (event) => {
@@ -46,7 +50,11 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
                     return;
                 }
                 unlisten = unsubscribe;
-                await audioApi.setChannelScan(true);
+                lease = acquireChannelScan({
+                    restarting: () => { if (active) { setActiveChannels([]); setMeasuredCount(0); setMonitorState('waiting'); } },
+                    failed: () => { if (active) setMonitorState('error'); },
+                });
+                await lease.ready;
                 if (active) setMonitorState(previous => previous === 'receiving' ? previous : 'waiting');
             } catch {
                 if (!active) return;
@@ -61,11 +69,12 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
             active = false;
             unlisten?.();
             // 閉じた後の停止失敗も未処理のPromise rejectionにしない。
-            void audioApi.setChannelScan(false).catch(() => {
-                console.warn('入力チャンネルの信号監視を停止できませんでした。');
+            if (lease) void lease.release().catch(() => {
+                if (mounted.current) setMonitorState('error');
+                else console.warn('入力チャンネルの信号監視を停止できませんでした。');
             });
         };
-    }, [monitorEnabled]);
+    }, [monitorEnabled, retryRevision]);
 
     // デバイス変更後に、前のデバイスの信号表示を残さない。
     useEffect(() => {
@@ -123,12 +132,17 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
             </div>
             <p className="text-xs text-muted-foreground">
                 {maxChannels === 0 ? t('settings.InputChannelSelector.unverified')
-                    : !monitorEnabled ? t('settings.InputChannelSelector.differentDevice')
                     : monitorState === 'error' ? t('settings.InputChannelSelector.206')
+                    : !monitorEnabled ? t('settings.InputChannelSelector.differentDevice')
                     : monitorState === 'starting' ? t('settings.InputChannelSelector.207')
                         : monitorState === 'waiting' ? t('settings.InputChannelSelector.208')
                             : t('settings.InputChannelSelector.209')}
             </p>
+            {monitorState === 'error' && <button type="button" className="rounded-md border border-border px-3 py-1.5 text-xs"
+                onClick={() => {
+                    if (monitorEnabled) setRetryRevision(value => value + 1);
+                    else void retryChannelScan().then(() => { if (mounted.current) setMonitorState('starting'); }).catch(() => {});
+                }}>{t('common.retry')}</button>}
             {maxChannels !== 0 && <p id={`${groupId}-help`} className="text-xs text-muted-foreground leading-relaxed">
                 {t('settings.inputPairHint')}</p>}
             {maxChannels !== 0 && <fieldset id={`${groupId}-pairs`} aria-describedby={`${groupId}-help`}>
