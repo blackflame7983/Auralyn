@@ -2,6 +2,8 @@
 
 /* dark: はOSの配色ではなく、useTheme が html に付けるテーマのクラスに従う（ゲーミングも .dark を併用する）。 */
 @custom-variant dark (&:where(.dark, .dark *));
+/* gaming: ゲーミングだけに残す従来の装飾（半透明のカード、背景の光など）に使う。 */
+@custom-variant gaming (&:where(.gaming, .gaming *));
 
 @theme {
   /* フォントは同梱しない。Windows 11 の UI フォントを明示し、英数字と和文の見え方を揃える。 */
@@ -408,6 +410,13 @@
   border-radius: 2px;
   background: hsl(var(--primary));
 }
+/* ゲーミングは今回の配色改訂の対象外なので、ON 行の淡い塗りと線の発光を従来どおり残す。 */
+.gaming .sound-chain-row[data-on="true"] {
+  background: linear-gradient(90deg, hsl(var(--primary) / 0.09), transparent 65%);
+}
+.gaming .sound-chain-row[data-on="true"]::before {
+  box-shadow: 0 0 8px hsl(var(--primary) / 0.35);
+}
 /* 高さを活かして本番帯を広げる。小さな窓と、未設定のホームは従来の密度を保つ。 */
 @media (min-height: 900px) {
   .home-content:has(.live-strip) {
@@ -580,7 +589,8 @@
   .animate-spin,
   .animate-pulse,
   .animate-bounce,
-  .animate-ping {
+  .animate-ping,
+  .aurora-glow {
     animation: none;
   }
   .live-aurora {

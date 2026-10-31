@@ -35,7 +35,7 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister }:
     const applied = value.phase === 'settled' ? value.applied : null;
     const pending = value.phase === 'queued' || value.phase === 'transitioning';
     return (
-        <section aria-label={t('liveBar.label')} className={cn('flex flex-wrap items-center gap-3', !embedded && 'mb-3 rounded-xl border border-border bg-card/70 px-3 py-2')}>
+        <section aria-label={t('liveBar.label')} className={cn('flex flex-wrap items-center gap-3', !embedded && 'mb-3 rounded-xl border border-border bg-card gaming:bg-card/70 px-3 py-2')}>
             {registered && <span className="text-xs font-semibold text-muted-foreground">{t('liveBar.label')}</span>}
             {registered && <div role="group" aria-label={t('liveBar.mode')} className="flex gap-1">
                 {(['singing', 'talk'] as const).map(mode => (

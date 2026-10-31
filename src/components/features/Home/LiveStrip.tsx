@@ -40,7 +40,7 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
     const input = model.observation.config?.input ?? inputName;
     const output = model.observation.config?.output ?? outputName;
     const devices = t('live.devices', { input: input ? deviceDisplayName(input) : t('flow.unknown'), output: output ? deviceDisplayName(output) : t('flow.unknown') });
-    return <section aria-label={t('live.strip')} className="live-strip relative isolate mb-4 space-y-3 rounded-xl border border-border bg-card px-4 py-4 min-[1100px]:px-5">
+    return <section aria-label={t('live.strip')} className="live-strip relative isolate mb-4 space-y-3 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-4 min-[1100px]:px-5">
         {/* 音声処理中だけ静止した光として灯す飾り。状態の意味は持たせない（DESIGN.md 5.1）。 */}
         {aurora && <div aria-hidden="true" className="live-aurora" data-lit={running} />}
         <div className="live-meter-pair">

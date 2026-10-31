@@ -95,3 +95,14 @@ it('設定でオーロラをオフにすると本番帯に描かない', () => {
     act(() => saveAuroraDisplay(true));
     expect(container.querySelector('.live-aurora')).toHaveAttribute('data-lit', 'true');
 });
+
+it('保存に失敗しても、オーロラの表示は切り替える', () => {
+    const { container } = render(<LiveStrip model={fixture()} running />);
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+    try {
+        act(() => saveAuroraDisplay(false));
+        expect(container.querySelector('.live-aurora')).toBeNull();
+    } finally {
+        setItem.mockRestore();
+    }
+});

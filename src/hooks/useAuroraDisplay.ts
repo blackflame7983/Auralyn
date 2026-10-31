@@ -16,7 +16,8 @@ export function saveAuroraDisplay(value: boolean) {
 export function useAuroraDisplay() {
     const [shown, setShown] = useState(getAuroraDisplay);
     useEffect(() => {
-        const sync = () => setShown(getAuroraDisplay());
+        // 保存に失敗しても今の表示は切り替える。同じ画面からの通知は渡された値を使い、他の窓からの変更だけ保存先を読み直す。
+        const sync = (event: Event) => setShown(event instanceof CustomEvent && typeof event.detail === 'boolean' ? event.detail : getAuroraDisplay());
         window.addEventListener(EVENT, sync);
         window.addEventListener('storage', sync);
         return () => {
