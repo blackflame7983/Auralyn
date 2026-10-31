@@ -367,6 +367,14 @@
 .app-shell[data-vst-open] {
   --vst-panel-width: 420px;
 }
+/* ホームとVSTを同じ中央領域に置き、最大化時の余白を外側へ集める。
+   最大幅と予約幅を同時に動かすので、auto marginの切替による跳躍を作らない。 */
+.workspace-body {
+  width: 100%;
+  margin-inline: auto;
+  max-width: calc(1228px + var(--vst-panel-width) + var(--visible-meter-width));
+  transition: max-width var(--motion-panel) var(--ease-drawer);
+}
 .home-main {
   padding-right: calc(1rem + var(--visible-meter-width));
 }
@@ -481,7 +489,7 @@
   max-height: 720px;
   /* 親の幅指定は開閉時だけ変わる。フレームごとにCSS変数を更新せず translate を遷移させる。 */
   /* 広い窓でもホーム（最大1180px）の右隣へ置く。ホームの左右余白の差と12pxの間隔を含める。 */
-  translate: calc(-1 * (var(--vst-panel-width, 0px) + max(0px, (100vw - var(--vst-panel-width, 0px) - var(--visible-meter-width, 64px) - 1180px - 36px) / 2))) 0;
+  translate: calc(-1 * (var(--vst-panel-width, 0px) + max(0px, (100vw - var(--vst-panel-width, 0px) - var(--visible-meter-width, 64px) - 1228px) / 2))) 0;
   transition: translate var(--motion-panel) var(--ease-drawer);
 }
 .vst-panel-scrim {
@@ -535,6 +543,7 @@
   animation: surface-disappear var(--motion-fast) ease-in;
   pointer-events: none;
 }
+[data-panel-instant] .workspace-body,
 [data-panel-instant] .vst-panel-space,
 [data-panel-instant] .vst-panel-motion,
 [data-panel-instant] .large-meter-motion {
@@ -546,6 +555,7 @@
   移動・拡大と繰り返しの動きだけを止める。ユーティリティより後に効くよう layer の外に置く。
 */
 @media (prefers-reduced-motion: reduce) {
+  .workspace-body { transition: none; }
   .vst-panel-space {
     transition: none;
   }

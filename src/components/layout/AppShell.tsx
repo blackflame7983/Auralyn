@@ -172,11 +172,13 @@ export const AppShell: React.FC<AppShellProps> = ({
     const loudnessLabel = t(measurement.busy ? 'loudness.switching' : measurement.stopUnconfirmed ? 'loudness.retryStop' : measurement.active ? 'loudness.stop' : 'loudness.startAction');
     // 大型メーターは声のレベルを大きく見るためのものなので、ヘッダーではなく本番帯のメーター横から開く。
     const largeMeterLabel = t(isLargeMeterOpen ? 'header.meterClose' : 'header.meterOpen');
+    const meterSuspended = isLargeMeterOpen && panelMotion.present && !panelBeside;
     const largeMeterButton = <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><button type="button" id="large-meter-toggle" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
-        aria-label={largeMeterLabel}
+        aria-label={largeMeterLabel} aria-describedby={meterSuspended ? 'large-meter-suspended' : undefined}
         className={cn('inline-flex shrink-0 items-center rounded-md border p-1.5', isLargeMeterOpen ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border hover:bg-muted')}>
-        <LevelMeterIcon className="h-[18px] w-[18px]" />
-    </button></TooltipTrigger><TooltipContent><p>{t('home.largeMeterTool')}</p><p className="max-w-64 text-xs">{t('meter.arrivalUnverified')}</p></TooltipContent></Tooltip></TooltipProvider>;
+        <span className="relative"><LevelMeterIcon className="h-[18px] w-[18px]" />{meterSuspended && <span aria-hidden="true" className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-warning" />}</span>
+    </button></TooltipTrigger><TooltipContent><p>{t(meterSuspended ? 'home.meterSuspended' : 'home.largeMeterTool')}</p><p className="max-w-64 text-xs">{t('meter.arrivalUnverified')}</p></TooltipContent></Tooltip></TooltipProvider>;
+    const meterSuspendedNotice = meterSuspended ? <span id="large-meter-suspended" role="status" className="mb-3 text-xs text-muted-foreground">{t('home.meterSuspended')}</span> : null;
     const loudnessAction = !loudnessEnabled && !measurement.active ? <span className="flex shrink-0 items-center gap-2">
         <span id="loudness-toggle-description" className={!audioReady ? 'whitespace-nowrap text-xs text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
         <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><button type="button" aria-pressed={measurement.active} aria-describedby="loudness-toggle-description"
@@ -256,7 +258,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     engineProcessReady={engineProcessReady}
                 />
                 {/* 重ね表示は中央の作業領域だけを覆う。緊急ミュートと出力音量は操作できるままにする。 */}
-                <div className="relative flex min-h-0 flex-1">
+                <div className="workspace-body relative flex min-h-0 flex-1">
                 <main
                     inert={panelOverlays}
                     className="home-main min-w-0 flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent"
@@ -306,6 +308,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     data-state={vstPanelOpen ? 'open' : 'closed'} aria-hidden={!vstPanelOpen} inert={!vstPanelOpen}
                     onTransitionEnd={panelMotion.onTransitionEnd}
                     className="vst-panel-motion absolute inset-y-0 right-0 z-[45] w-[min(420px,100%)] overflow-y-auto border-l border-border bg-background p-4 shadow-2xl scrollbar-thin">
+                    {meterSuspendedNotice}
                     {vstPanel}
                 </aside>}
                 </div>

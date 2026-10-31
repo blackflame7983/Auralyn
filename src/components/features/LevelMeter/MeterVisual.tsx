@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { MdWarningAmber } from 'react-icons/md';
 import { CLIP_LEVEL, WARNING_LEVEL, meterStatusLabel, toDbfs, type MeterReading } from '@/hooks/useMeterLevels';
@@ -16,9 +17,29 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
     const bars = orientation === 'horizontal' ? [Math.max(...reading.levels)] : reading.levels;
     const peaks = orientation === 'horizontal' ? [Math.max(...reading.peak)] : reading.peak;
     // 大型の縦表示では値と解除ボタンを下に置き、狭いサイドバーでもバー幅を保つ。
+    const scaleRef = useRef<HTMLDivElement>(null);
+    const [scaleHeight, setScaleHeight] = useState(0);
+    // 実際のバー高に合わせ、隣の目盛りとの文字間隔を確保する。
+    useLayoutEffect(() => {
+        const node = scaleRef.current;
+        if (!node || !scale || orientation !== 'vertical' || !stackValues) return;
+        const update = () => setScaleHeight(node.getBoundingClientRect().height);
+        update();
+        if (typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(update);
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, [scale, orientation, stackValues]);
+    let previousMarkTop = -Infinity;
+    const visibleMarks = [0, -6, -12, -24, -48].filter(mark => {
+        const top = Math.max(0, Math.min(scaleHeight - 16, (1 - Math.pow(10, mark / 20)) * scaleHeight - 8));
+        if (scaleHeight > 0 && top - previousMarkTop < 20) return false;
+        previousMarkTop = top;
+        return true;
+    });
     const stacked = orientation === 'vertical' && stackValues;
     return <div className={`flex min-w-0 items-center gap-1 ${stacked ? 'h-full min-h-0 flex-col' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`}>
-        <div role="meter" aria-label={label} aria-valuemin={-60} aria-valuemax={0}
+        <div ref={scaleRef} role="meter" aria-label={label} aria-valuemin={-60} aria-valuemax={0}
             aria-valuenow={current ? Math.max(-60, Math.min(0, Number.isFinite(db) ? db : -60)) : undefined}
             aria-valuetext={text} title={t(reading.state === 'waiting' || reading.state === 'stale' ? 'meter.waitingHelp' : meterStatusLabel(reading.state))}
             className={`meter-visual flex min-w-0 gap-1 ${stacked ? 'min-h-0 flex-1' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`} style={{ height: stacked ? undefined : height }}>
@@ -35,7 +56,7 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
             })}
             {stacked && scale && <div aria-hidden="true" className="relative h-full w-8 shrink-0 text-xs text-muted-foreground font-mono">
                 {/* 上端の0と下端の目盛りも、この欄の中へ収める。状態表示や値の欄へはみ出させない。 */}
-                {[0, -6, -12, -24, -48].map(mark => <span key={mark} className="absolute left-1 leading-4"
+                {visibleMarks.map(mark => <span key={mark} className="absolute left-1 leading-4"
                     style={{ top: `clamp(0px, calc(${100 - Math.pow(10, mark / 20) * 100}% - 0.5rem), calc(100% - 1rem))` }}>{mark}</span>)}
             </div>}
         </div>
@@ -45,8 +66,8 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
         {/* 警告の有無で横バーの幅・縦バーの高さを変えない。解除操作の場所も固定する。 */}
         <span className="inline-flex h-5 w-6 shrink-0 items-center justify-center">
             {reading.clipped && <button type="button" onClick={reading.resetClip}
-                title={`${t('meter.clip')} — ${t('meter.clearClipNamed', { name: label })}`}
-                className="rounded border border-destructive/50 p-0.5 text-destructive-text hover:bg-destructive/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                title={`${t('meter.clipAge', { seconds: reading.clipSecondsAgo ?? 0 })} — ${t('meter.clearClipNamed', { name: label })}`}
+                className={`rounded border p-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${reading.clipSecondsAgo != null && reading.clipSecondsAgo >= 10 ? 'border-border text-muted-foreground hover:bg-muted' : 'border-meter-danger/50 text-meter-danger hover:bg-destructive/10'}`}
                 aria-label={t('meter.clearClipNamed', { name: label })}>
                 <MdWarningAmber aria-hidden="true" className="h-4 w-4" /><span className="sr-only">{t('meter.clip')}</span>
             </button>}
