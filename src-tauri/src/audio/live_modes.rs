@@ -9,18 +9,18 @@ struct Reservation {
     canceled: bool,
 }
 pub(super) struct HostModes {
-    path: PathBuf,
-    definitions: Definitions,
-    load_error: Option<String>,
+    pub(super) path: PathBuf,
+    pub(super) definitions: Definitions,
+    pub(super) load_error: Option<String>,
     generation: u64,
     intents: model::Intents,
-    epoch: String,
-    engine_epoch: String,
+    pub(super) epoch: String,
+    pub(super) engine_epoch: String,
     retired: bool,
     reservation: Option<Reservation>,
     next_reservation: u64,
     pub(super) needs_sync: bool,
-    armed: bool,
+    pub(super) armed: bool,
     bound: Option<StartSpec>,
     pub(super) target: Option<Mode>,
 }
@@ -68,7 +68,7 @@ impl HostModes {
     }
 }
 impl AudioHost {
-    fn observe_live_generation(&mut self) {
+    pub(super) fn observe_live_generation(&mut self) {
         if self.live_modes.generation != self.engine_generation {
             if self.live_modes.generation != 0 {
                 self.invalidate_live_protection();
@@ -82,6 +82,7 @@ impl AudioHost {
         }
     }
     pub(super) fn sync_live_modes(&mut self) -> Result<()> {
+        self.guard_mode_vst()?;
         self.observe_live_generation();
         if !self.live_modes.needs_sync {
             return Ok(());
@@ -97,6 +98,12 @@ impl AudioHost {
             _ => return Err(anyhow!("本番設定応答が不正です")),
         }
         if let Some(mode) = self.live_modes.target {
+            if self.mode_profile(mode).is_some() {
+                // 関連VSTは再起動時に無条件で再適用しない。明示操作で一体切替する。
+                self.live_modes.target = None;
+                self.live_modes.needs_sync = false;
+                return Ok(());
+            }
             let intent = model::Intent {
                 client_id: "host-restore".into(),
                 sequence: self.engine_generation,
@@ -154,6 +161,7 @@ impl AudioHost {
         .map_err(|error| anyhow!(error))
     }
     pub fn preflight_live_changes(&mut self) -> Result<()> {
+        self.guard_mode_vst()?;
         if !self.reader_active.load(Ordering::Acquire) {
             self.invalidate_live_protection();
         }
@@ -161,6 +169,7 @@ impl AudioHost {
         Ok(())
     }
     pub(super) fn preflight_proposal_apply(&self) -> Result<()> {
+        self.guard_mode_vst()?;
         anyhow::ensure!(
             self.live_modes.reservation.is_none(),
             "配信状態の復元中です。完了後に提案を作成し直してください"
@@ -279,11 +288,42 @@ impl AudioHost {
         }
     }
     pub fn live_modes(&mut self, mut request: Request) -> Result<Snapshot> {
+        if matches!(request, Request::Snapshot) && self.mode_vst.blocked() {
+            return Ok(self.mode_vst_snapshot());
+        }
+        if let Request::Recover { expected_epoch } = request {
+            return self.recover_mode_vst(expected_epoch);
+        }
+        self.guard_mode_vst()?;
         if !self.reader_active.load(Ordering::Acquire) {
             self.invalidate_live_protection();
         }
         self.guard_live_reservation(&request)?;
+        if let Request::BindProfile {
+            expected_version,
+            mode,
+            name,
+        } = request
+        {
+            return self.bind_mode_profile(expected_version, mode, name);
+        }
+        let linked = match &request {
+            Request::SingingOn { .. } if self.mode_profile(Mode::Singing).is_some() => {
+                Some(Mode::Singing)
+            }
+            Request::TalkOn { .. } if self.mode_profile(Mode::Talk).is_some() => Some(Mode::Talk),
+            _ => None,
+        };
+        if linked.is_some() {
+            self.observe_live_generation();
+        }
         let expected = self.preflight_live_intent(&request)?;
+        if let Some(mode) = linked {
+            if let Some(error) = &self.live_modes.load_error {
+                return Err(anyhow!(error.clone()));
+            }
+            return self.begin_mode_vst(mode);
+        }
         // 初回idle Armはengineを起動する前に明示設定を検証する。
         if matches!(request, Request::Arm { .. }) {
             self.bind_live_protection()?;
@@ -311,6 +351,7 @@ impl AudioHost {
                 natural_tail: false,
                 definitions: self.live_modes.definitions.clone(),
                 error: self.live_modes.load_error.clone(),
+                transaction: self.mode_vst.status.clone(),
             });
         }
         if let Some(error) = &self.live_modes.load_error {
@@ -346,6 +387,7 @@ impl AudioHost {
                     .to_string(),
                 singing,
                 talk,
+                profiles: self.live_modes.definitions.profiles.clone(),
             }
             .validate()
             .map_err(|error| anyhow!(error))?;
@@ -374,6 +416,8 @@ impl AudioHost {
                 self.live_modes.armed = snapshot.armed;
                 self.live_modes.target = snapshot.target;
                 snapshot.epoch = self.live_modes.epoch.clone();
+                snapshot.transaction = self.mode_vst.status.clone();
+                self.cache_mode_snapshot(&snapshot);
                 Ok(*snapshot)
             }
             IpcResponse::Error(error) => Err(anyhow!(error)),

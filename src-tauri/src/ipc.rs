@@ -220,6 +220,12 @@ pub enum SessionRackReply {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum Command {
+    ModeMonitor {
+        request: crate::audio_engine::split_monitor::Request,
+    },
+    ModeSilence {
+        request: crate::audio_engine::mode_silence::Request,
+    },
     LiveOutput {
         config: Option<crate::audio_engine::live_output::Config>,
     },
@@ -394,6 +400,8 @@ pub enum Command {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum Response {
+    ModeMonitor(Box<crate::audio_engine::split_monitor::StateSnapshot>),
+    ModeSilence(crate::audio_engine::mode_silence::Snapshot),
     PeakProtection(crate::audio_engine::peak_protection::Snapshot),
     NoiseMeasurement(Box<crate::audio_engine::core::noise_learning::Snapshot>),
     LiveOutput(Box<crate::audio_engine::live_output::Status>),

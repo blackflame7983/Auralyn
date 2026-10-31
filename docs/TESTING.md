@@ -403,3 +403,11 @@ cargo test --locked --lib measure_fixed_period_publication_cost -- --ignored --n
 - 歌・雑談登録では適用済み設定の範囲を情報ボタンで確認する。残響ONの雑談登録は明示確認後、登録用コピーだけOFFにし、現在の音を変えない。失敗・反映待ちでは次の調整への成功案内を出さない。
 - 入力・出力のクリップ記録は10秒後も残り、色だけ弱める。新しい検出で警告色へ戻し、手動解除・再開始では記録を消す。音切れ表示は最後の回数増加から10秒保持し、詳細を開いて10秒以上経過してから閉じても常設入口へフォーカスが戻る。
 - `e2e/browser/open-issues.spec.ts` は1200/1600/1920/2560pxのパネル隣接、960×640pxの目盛り間隔・一時非表示案内と復帰、高さ1100px以上の横メーター、低減設定とキーボードの即時開閉を確認する。既存の `home-responsive.spec.ts` と `streamer-refinement.spec.ts` も併用する。ブラウザIPCモックは実Tauri・Windows最大化・実DPI・読み上げ・実音声の受入ではない。
+
+
+## VSTと歌・雑談モードの一体切替（Issue #151）
+
+- `cargo test --locked --lib audio::mode_vst` は任意参照と内容変更、取得・復旧原本・無音ACK・各VST・内蔵完了・無音解除の段階を確認する。既存streamを使った成功、空/非空ラック、全件ロールバック、停止中の明示復旧、古い応答、遅い原本書込み・パイプ送信中の停止と緊急ミュートも確認する。実パイプ詰まりのテストは専用の非読取子プロセスを作成し、そのPIDだけを終了する。音声デバイスと通常設定は使わない。
+- `cargo test --locked --lib mode_silence` はcallback末尾の無音ACK、入力停止→キュー排出→出力排出の順序、分離monitorと配信出力、古い送出block、不一致ID・世代・異常、レート変換のcarry破棄を確認する。callback処理の割当/解放が0であることを測る。耳までの無音成立時刻を測った試験ではない。
+- 登録・失敗後の操作再開・手動復旧は `useLiveModes.test.tsx`、新ラックIDの同期と保存原本の保護は `usePluginsRackInvalidated.test.tsx` で確認する。`e2e/browser/live-mode-vst.spec.ts` はプロファイル関連付け、切替中の二重操作禁止、緊急ミュートへの到達、復旧の明示操作と完了後の操作再開を実ブラウザ・IPCモックで確認する。
+- 完了時にはRust全体のtest/check/clippy/fmtとフロント全体・型・buildを実行する。実Tauri・複数の実VST・WASAPI/ASIO・実出力録音・OBS連動で、無音区間、旧音の混入、失敗時復旧、停止・緊急ミュートの優先、再起動の手動復旧、キーボード・読み上げを別途受入する。対象経路・VST/ドライバー/レート/bufferを記録し、未実施なら未確認とする。

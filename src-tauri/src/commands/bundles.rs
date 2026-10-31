@@ -864,6 +864,7 @@ fn capture(host: &mut audio::AudioHost) -> Result<(Captured, ControlWitness), St
         })
     });
     let preset = Preset {
+        plugins_included: Some(true),
         schema_version: 2,
         name: "配信状態".into(),
         plugins: engine.plugins.iter().map(|p| p.plugin.clone()).collect(),
@@ -1911,6 +1912,7 @@ mod tests {
         };
         Captured {
             preset: Preset {
+                plugins_included: Some(true),
                 schema_version: 2,
                 name: "配信状態".into(),
                 plugins: vec![],

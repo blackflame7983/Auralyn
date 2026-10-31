@@ -298,7 +298,9 @@ pub struct Engine {
     live_output_error: Option<String>,
     monitor_levels: Arc<AtomicU64>,
     split_monitor: Option<super::split_monitor::Controller>,
+    restored_monitor: Option<super::split_monitor::State>,
     split_worker: Option<super::split_monitor::Worker>,
+    mode_silence: super::mode_silence::Controller,
     input_stream: Option<cpal::Stream>,
     output_stream: Option<cpal::Stream>,
 
@@ -393,7 +395,9 @@ impl Engine {
             live_output_error: None,
             monitor_levels: Arc::new(AtomicU64::new(1.0f32.to_bits() as u64)),
             split_monitor: None,
+            restored_monitor: None,
             split_worker: None,
+            mode_silence: Default::default(),
             input_stream: None,
             gain_shared: Arc::new(auto_gain::Shared::default()),
             gain_capture_rx: None,
@@ -1120,6 +1124,8 @@ impl Engine {
             Command::PeakProtection { config: None }
                 | Command::LiveOutput { config: None }
                 | Command::LiveMode { .. }
+                | Command::ModeSilence { .. }
+                | Command::ModeMonitor { .. }
                 | Command::ConfigureLiveModes { .. }
                 | Command::GetDevices
                 | Command::StartIdentityCapability
@@ -1165,6 +1171,35 @@ impl Engine {
             return;
         }
         match cmd {
+            Command::ModeMonitor { request } => match self.mode_monitor_command(request) {
+                Ok(snapshot) => self.send_response(Response::ModeMonitor(Box::new(snapshot))),
+                Err(error) => self.send_error(error),
+            },
+            Command::ModeSilence { request } => {
+                let failed = self.stream_failed.load(Ordering::Acquire)
+                    || self.nr_failed.load(Ordering::Acquire)
+                    || self.resampling_failed.load(Ordering::Acquire)
+                    || self.block_capacity_failed.load(Ordering::Acquire)
+                    || self
+                        .live_output
+                        .as_ref()
+                        .is_some_and(|sink| sink.snapshot().failed)
+                    || self
+                        .split_monitor
+                        .as_ref()
+                        .is_some_and(|m| m.shared.failed.load(Ordering::Acquire));
+                match self.mode_silence.request(
+                    request,
+                    self.queue_attempt,
+                    self.output_stream.is_some(),
+                    self.live_output_config.split_processing,
+                    self.live_output.is_some(),
+                    failed,
+                ) {
+                    Ok(value) => self.send_response(Response::ModeSilence(value)),
+                    Err(error) => self.send_error(error),
+                }
+            }
             Command::StartIdentityCapability => {
                 self.send_response(Response::StartIdentityCapability { version: 1 });
             }
@@ -1223,7 +1258,7 @@ impl Engine {
                         Ordering::Release,
                     );
                     self.builtin.invalidate_history();
-                    self.live_output_config = config;
+                    self.set_live_output_config(config);
                     if self.output_stream.is_some() {
                         if let Some(revision) = self
                             .frame_timing
@@ -1285,6 +1320,14 @@ impl Engine {
                 Err(error) => self.send_error(error.to_string()),
             },
             Command::LiveMode { request } => {
+                if matches!(
+                    request,
+                    super::live_modes::Request::BindProfile { .. }
+                        | super::live_modes::Request::Recover { .. }
+                ) {
+                    self.send_error("VST構成の登録と復旧はHostから操作してください".into());
+                    return;
+                }
                 if let Err(error) = self
                     .live_modes
                     .accept_request(&request, &self.builtin.snapshot(false).epoch)
@@ -1318,7 +1361,9 @@ impl Engine {
                     super::live_modes::Request::TalkOn { .. } => {
                         self.select_live_mode(super::live_modes::Mode::Talk)
                     }
-                    super::live_modes::Request::Save { .. } => {
+                    super::live_modes::Request::Save { .. }
+                    | super::live_modes::Request::BindProfile { .. }
+                    | super::live_modes::Request::Recover { .. } => {
                         Err("保存はHostの本番モードAPIを使用してください".into())
                     }
                 };
@@ -2715,6 +2760,7 @@ impl Engine {
                     &self.live_output_config,
                     self.stream_failed.clone(),
                     (self.peak_config, self.peak_shared.clone()),
+                    self.mode_silence.shared.clone(),
                 ) {
                     Ok((sink, sender)) => {
                         sink.mute(self.global_mute);
@@ -2762,6 +2808,7 @@ impl Engine {
                 mode,
                 initial_live_revision,
                 (self.peak_config, self.peak_shared.clone()),
+                self.restored_monitor.as_ref(),
             )?;
             if self.live_output.is_none() {
                 controller.shared.failed.store(true, Ordering::Release);
@@ -2805,10 +2852,23 @@ impl Engine {
         let mut upstream_consumed = 0u64;
         let mut measurement_processed = 0;
         let worker_generation_controls = worker_controls.clone();
+        let dsp_silence = self.mode_silence.shared.clone();
+        let output_silence = self.mode_silence.shared.clone();
+        let monitor_silence = self.mode_silence.shared.clone();
+        let input_silence = self.mode_silence.shared.clone();
         let build_output = || {
             let output_build_started = Instant::now();
             let mut process_output =
                 move |data: &mut [f32], info: Option<&cpal::OutputCallbackInfo>| {
+                    if dsp_silence.drain_worker() {
+                        audio_cons.skip(audio_cons.occupied_len());
+                        if let Some(gains) = &mut broadcast_recovery_gains {
+                            gains.skip(gains.occupied_len());
+                        }
+                        dsp_silence.worker_drained();
+                        data.fill(0.0);
+                        return;
+                    }
                     rt_peak.sync(&peak_shared);
                     if let Some(sender) = &mut live_sender {
                         sender.get_mut().begin_block();
@@ -3839,19 +3899,26 @@ impl Engine {
             let output_result = if let (Some(mut monitor), Some(queue), Some(controls)) =
                 (monitor_renderer, broadcast_queue, worker_controls)
             {
-                match super::split_monitor::Worker::start(
-                    move |data| process_output(data, None),
+                match super::split_monitor::Worker::start_gated(
+                    move |data| {
+                        let ticket = output_silence.ticket();
+                        process_output(data, None);
+                        output_silence.finish(super::mode_silence::MAIN, ticket, data);
+                    },
                     queue,
                     controls,
                     self.stream_failed.clone(),
                     self.current_block_size.min(max_frames_per_callback).max(1),
+                    self.mode_silence.shared.clone(),
                 ) {
                     Ok(worker) => {
                         self.split_worker = Some(worker);
                         out_dev.build_output_stream(
                             &out_stream_config,
                             move |data: &mut [f32], info| {
-                                monitor.get_mut().render(data, Some(info))
+                                monitor
+                                    .get_mut()
+                                    .render_gated(data, Some(info), &monitor_silence)
                             },
                             err_fn_ipc,
                             None,
@@ -3862,7 +3929,11 @@ impl Engine {
             } else {
                 out_dev.build_output_stream(
                     &out_stream_config,
-                    move |data: &mut [f32], info| process_output(data, Some(info)),
+                    move |data: &mut [f32], info| {
+                        let ticket = output_silence.ticket();
+                        process_output(data, Some(info));
+                        output_silence.finish(super::mode_silence::MAIN, ticket, data);
+                    },
                     err_fn_ipc,
                     None,
                 )
@@ -3871,11 +3942,25 @@ impl Engine {
             output_result
         };
 
+        let mut input_silence_reset = 0;
         let build_input = || {
             let input_build_started = Instant::now();
             let input_result = in_dev.build_input_stream(
                 &in_stream_config,
                 move |data: &[f32], info: &cpal::InputCallbackInfo| {
+                    if input_silence.pause_input(|| {
+                        if input_silence_reset != input_silence.ticket() {
+                            if let Some(resampler) = &mut resampler {
+                                resampler.discard_history();
+                            }
+                            if let Some(timing) = &mut input_timing {
+                                timing.invalidate();
+                            }
+                            input_silence_reset = input_silence.ticket();
+                        }
+                    }) {
+                        return;
+                    }
                     let timing_arrival = input_timing.as_ref().map_or(0, |timing| timing.now_ns());
                     let received_frames = data.len() / channels;
                     if let Some(timing) = &mut input_timing {
@@ -4311,6 +4396,79 @@ impl Engine {
             .map_err(str::to_string)
     }
 
+    fn set_live_output_config(&mut self, config: super::live_output::Config) {
+        if !config.same_route(&self.live_output_config) {
+            self.restored_monitor = None;
+        }
+        self.live_output_config = config;
+    }
+
+    fn mode_monitor_command(
+        &mut self,
+        request: super::split_monitor::Request,
+    ) -> std::result::Result<super::split_monitor::StateSnapshot, String> {
+        use super::split_monitor::{Request, State, StateSnapshot};
+        let running = self.output_stream.is_some();
+        if let Request::Restore { state } = request {
+            if running && !self.mode_silence.shared.active() {
+                return Err("自分用設定の復元には切替用の無音確認が必要です".into());
+            }
+            if state.is_some() != self.live_output_config.split_processing {
+                return Err("復旧原本と自分用出力の構成が一致しません".into());
+            }
+            if let Some(state) = &state {
+                state.validate().map_err(|e| e.to_string())?;
+            }
+            // 配信側は個別設定のまま保持し、自分用だけに新しい完了世代を作る。
+            self.live_modes.custom();
+            let revision = self
+                .live_mode_snapshot()
+                .revision
+                .parse::<u64>()
+                .map_err(|_| "自分用設定の世代が不正です")?;
+            if let Some(state) = &state {
+                if running {
+                    self.split_monitor
+                        .as_mut()
+                        .ok_or("自分用の音声処理がありません")?
+                        .restore(state.clone(), revision)
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+            // 停止中の手動復旧では、次の開始の初期DSPにも同じ設定を使う。
+            self.restored_monitor = state;
+        }
+        let epoch = self.builtin.snapshot(false).epoch;
+        if let Some(monitor) = &self.split_monitor {
+            return Ok(monitor.state_snapshot(epoch));
+        }
+        let state = self.restored_monitor.clone().or_else(|| {
+            if self.live_output_config.split_processing {
+                let mode = self
+                    .live_mode_snapshot()
+                    .target
+                    .unwrap_or(super::live_modes::Mode::Singing);
+                let config = if mode == super::live_modes::Mode::Talk {
+                    self.live_output_config.monitor_talk.clone()
+                } else {
+                    self.live_output_config.monitor_singing.clone()
+                }?;
+                Some(State { mode, config })
+            } else {
+                None
+            }
+        });
+        let revision = self.live_mode_snapshot().revision;
+        Ok(StateSnapshot {
+            epoch,
+            state,
+            revision: revision.clone(),
+            completed_revision: revision,
+            pending: false,
+            failed: running && self.live_output_config.split_processing,
+        })
+    }
+
     fn live_mode_snapshot(&self) -> super::live_modes::Snapshot {
         let mut snapshot = self.live_modes.snapshot(
             self.builtin.snapshot(false).epoch,
@@ -4348,6 +4506,7 @@ impl Engine {
         mode: super::live_modes::Mode,
     ) -> std::result::Result<(), String> {
         if let Some(config) = self.live_modes.select(mode)? {
+            self.restored_monitor = None;
             self.invalidate_auto_gain();
             self.builtin.legacy(config)?;
             self.built_in_effects_enabled = self.builtin.config.active;
@@ -4526,6 +4685,7 @@ impl Engine {
 
     // 開始失敗・通常停止・終了で同じ回収順を使う。stream終了後にVSTを解放する。
     fn clear_audio_resources(&mut self) {
+        self.mode_silence.invalidate();
         let reason = if self.stream_failed.load(Ordering::Acquire) {
             super::history::Reason::StreamFailed
         } else {
@@ -4628,6 +4788,64 @@ impl Drop for Engine {
 
 #[cfg(test)]
 mod singing_startup_tests {
+    #[test]
+    fn stopped_recovery_keeps_captured_monitor_without_changing_broadcast_builtin() {
+        use super::super::split_monitor::{Request, State};
+        use super::*;
+        let mut engine = Engine::new();
+        let broadcast = engine.builtin.config.clone();
+        let route = super::super::live_output::Config {
+            split_processing: true,
+            device_id: Some("fixture".into()),
+            monitor_singing: Some(Default::default()),
+            monitor_talk: Some(Default::default()),
+            ..Default::default()
+        };
+        engine.set_live_output_config(route.clone());
+        let source = State {
+            mode: super::super::live_modes::Mode::Talk,
+            config: super::super::builtin::Config {
+                amount: 0.31,
+                ..Default::default()
+            },
+        };
+        let snapshot = engine
+            .mode_monitor_command(Request::Restore {
+                state: Some(source.clone()),
+            })
+            .unwrap();
+        assert_eq!(snapshot.state, Some(source.clone()));
+        assert!(!snapshot.pending && !snapshot.failed);
+        assert_eq!(engine.restored_monitor, Some(source.clone()));
+        assert_eq!(engine.builtin.config, broadcast);
+        assert!(engine.output_stream.is_none());
+        let snapshot = engine.mode_monitor_command(Request::Snapshot).unwrap();
+        assert_eq!(snapshot.state, Some(source.clone()));
+        assert!(engine.live_mode_snapshot().target.is_none());
+        // 初回Startによる同じ保存構成の再送は元処理を維持する。
+        engine.set_live_output_config(route.clone());
+        assert_eq!(engine.restored_monitor, Some(source));
+        // 復旧後の明示編集は古い復旧overrideより優先する。
+        let mut edited = route;
+        edited.monitor_singing = Some(super::super::builtin::Config {
+            active: true,
+            preset: BuiltInEffectsPreset::Warm,
+            amount: 0.8,
+            ..Default::default()
+        });
+        engine.set_live_output_config(edited.clone());
+        assert!(engine.restored_monitor.is_none());
+        assert_eq!(
+            engine
+                .mode_monitor_command(Request::Snapshot)
+                .unwrap()
+                .state
+                .unwrap()
+                .config,
+            edited.monitor_singing.unwrap()
+        );
+    }
+
     #[test]
     fn cohort_marker_backpressure_waits_for_rt_completion_without_restarting_stream() {
         use super::*;

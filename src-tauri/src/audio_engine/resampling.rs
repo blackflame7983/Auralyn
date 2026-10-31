@@ -155,6 +155,21 @@ impl StreamResampler {
         })
     }
 
+    /// 切替の入力停止ACKより前に、旧入力のcarryとフィルター状態を固定領域で破棄する。
+    pub(crate) fn discard_history(&mut self) {
+        self.resampler.reset();
+        self.input_frames_collected = 0;
+        for channel in &mut self.input_accumulation {
+            channel.fill(0.0);
+        }
+        for channel in &mut self.output_planar {
+            channel.fill(0.0);
+        }
+        self.output_interleaved.fill(0.0);
+        // frame対応を破棄した区間を旧ordinalの有効な観測としてつながない。
+        self.cohort_geometry = None;
+    }
+
     /// 開始準備中の制御側だけで利用する。DSP状態・carryを変更しない。
     pub fn timing_descriptor(&self) -> TimingDescriptor {
         self.timing.clone()
@@ -307,6 +322,26 @@ mod tests {
     use rubato::{FftFixedIn, Resampler};
     use std::sync::atomic::{AtomicBool, Ordering};
 
+    #[test]
+    fn mode_silence_resampler_discards_old_carry_without_rt_allocation() {
+        let mut stream = StreamResampler::new(44100, 48000, 2).unwrap();
+        let data = vec![0.7; stream.input_chunk_size * 3];
+        stream.process_into(&data, |_| {}).unwrap();
+        assert!(stream.input_frames_collected > 0);
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| stream.discard_history()),
+            (0, 0)
+        );
+        let zeros = vec![0.0; stream.input_chunk_size * 4];
+        let mut nonzero = false;
+        stream
+            .process_into(&zeros, |chunk| {
+                nonzero |= chunk.iter().any(|sample| *sample != 0.0);
+            })
+            .unwrap();
+        assert!(!nonzero);
+        assert!(stream.cohort_geometry.is_none());
+    }
     #[test]
     fn cohort_geometry_and_ordinals_preserve_audio_across_zero_multi_emit_and_carry() {
         for (ir, or) in [

@@ -435,6 +435,7 @@ mod tests {
                 ..Default::default()
             },
             embedded_auralyn_preset: Preset {
+                plugins_included: Some(true),
                 schema_version: 2,
                 name: "歌配信".into(),
                 plugins: vec![],

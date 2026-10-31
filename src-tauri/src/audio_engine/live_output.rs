@@ -81,6 +81,7 @@ impl Config {
 }
 #[derive(Default)]
 pub struct Shared {
+    gate: Arc<super::mode_silence::Shared>,
     source_active: AtomicBool,
     active: AtomicBool,
     failed: AtomicBool,
@@ -138,10 +139,12 @@ pub struct Sender {
     tx: Tx,
     shared: Arc<Shared>,
     block_generation: u64,
+    block_silence: u64,
 }
 impl Sender {
     pub fn begin_block(&mut self) {
         self.block_generation = self.shared.generation.load(Ordering::Acquire);
+        self.block_silence = self.shared.gate.ticket();
     }
     pub fn normal(&mut self, active: bool) {
         if self.shared.source_active.swap(active, Ordering::AcqRel) != active {
@@ -151,6 +154,8 @@ impl Sender {
     pub fn send(&mut self, sample: [f32; 2]) {
         if !self.shared.active.load(Ordering::Acquire)
             || self.shared.muted.load(Ordering::Acquire)
+            || self.shared.gate.active()
+            || self.block_silence != self.shared.gate.ticket()
             || self.block_generation != self.shared.generation.load(Ordering::Acquire)
         {
             return;
@@ -202,6 +207,13 @@ impl Receiver {
         Some(f.sample)
     }
     fn render(&mut self, data: &mut [f32]) {
+        let ticket = self.shared.gate.ticket();
+        self.render_inner(data);
+        self.shared
+            .gate
+            .finish(super::mode_silence::SINK, ticket, data);
+    }
+    fn render_inner(&mut self, data: &mut [f32]) {
         data.fill(0.0);
         self.peak.sync(&self.peak_shared);
         if self.main_failed.load(Ordering::Acquire) {
@@ -211,6 +223,7 @@ impl Receiver {
         if generation != self.generation
             || !self.shared.source_active.load(Ordering::Acquire)
             || self.shared.muted.load(Ordering::Acquire)
+            || self.shared.gate.active()
             || !self.shared.active.load(Ordering::Acquire)
         {
             // 1callbackあたりの廃棄も固定容量以下に制限。mute解除後は新世代だけを再生する。
@@ -302,6 +315,7 @@ impl Sink {
             super::peak_protection::Config,
             Arc<super::peak_protection::Shared>,
         ),
+        gate: Arc<super::mode_silence::Shared>,
     ) -> Result<(Self, CallbackOwner<Sender>)> {
         config.validate()?;
         ensure!(
@@ -326,13 +340,17 @@ impl Sink {
             .ok_or_else(|| anyhow!("配信出力は同一rate・stereo F32の構成に対応していません"))?
             .with_sample_rate(rate)
             .config();
-        let shared = Arc::new(Shared::default());
+        let shared = Arc::new(Shared {
+            gate,
+            ..Default::default()
+        });
         shared.active.store(true, Ordering::Release);
         shared.source_active.store(true, Ordering::Release);
         shared.update(config);
         let (tx, rx) = HeapRb::new((rate as usize / 5).max(2)).split();
         let (sender, sender_owner) = callback_owner(Sender {
             block_generation: 0,
+            block_silence: 0,
             tx,
             shared: shared.clone(),
         });
@@ -424,6 +442,7 @@ mod tests {
         (
             Sender {
                 block_generation: 0,
+                block_silence: 0,
                 tx,
                 shared: shared.clone(),
             },
@@ -441,6 +460,62 @@ mod tests {
             },
             shared,
         )
+    }
+    #[test]
+    fn mode_silence_flushes_queued_output_and_rejects_pre_barrier_sender_blocks() {
+        use crate::audio_engine::mode_silence::{self, Request};
+        let (mut sender, mut receiver, shared) = fixture(1024, 128);
+        let mut controller = mode_silence::Controller::default();
+        controller.shared = shared.gate.clone();
+        sender.begin_block();
+        for _ in 0..512 {
+            sender.send([0.8, -0.8]);
+        }
+        let request = |action| match action {
+            0 => Request::Begin { id: "test".into() },
+            1 => Request::Finish { id: "test".into() },
+            _ => Request::Snapshot { id: "test".into() },
+        };
+        controller
+            .request(request(0), 1, true, false, true, false)
+            .unwrap();
+        let mut output = [1.0; 256];
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| receiver.render(&mut output)),
+            (0, 0)
+        );
+        assert_eq!(output, [0.0; 256]);
+        assert_eq!(receiver.rx.occupied_len(), 0);
+        controller
+            .shared
+            .finish(mode_silence::MAIN, controller.shared.ticket(), &mut output);
+        controller
+            .request(request(1), 1, true, false, true, false)
+            .unwrap();
+        controller.shared.source_finished(mode_silence::INPUT);
+        controller.shared.worker_drained();
+        controller
+            .shared
+            .finish(mode_silence::MAIN, controller.shared.ticket(), &mut output);
+        controller
+            .request(request(2), 1, true, false, true, false)
+            .unwrap();
+        receiver.render(&mut output);
+        assert!(
+            !controller
+                .request(request(2), 1, true, false, true, false)
+                .unwrap()
+                .active
+        );
+        // 解除前に開始した送出blockは、解除後も投入できない。
+        sender.send([0.9; 2]);
+        assert_eq!(receiver.rx.occupied_len(), 0);
+        sender.begin_block();
+        for _ in 0..512 {
+            sender.send([0.2; 2]);
+        }
+        receiver.render(&mut output);
+        assert!(output.iter().all(|sample| *sample == 0.2));
     }
     #[test]
     fn peak_protection_also_limits_old_queued_audio_after_switching_or_lowering_the_ceiling() {

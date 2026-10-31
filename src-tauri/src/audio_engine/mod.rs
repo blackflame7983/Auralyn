@@ -23,6 +23,7 @@ pub mod singing;
 pub mod reverb;
 
 pub mod live_modes;
+pub mod mode_silence;
 
 pub mod queue_recovery;
 

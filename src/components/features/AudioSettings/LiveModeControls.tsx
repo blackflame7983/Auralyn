@@ -2,15 +2,22 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useState } from 'react';
 import type { LiveModesModel } from '@/hooks/useLiveModes';
 import { MdMusicNote, MdMic, MdCheckCircle, MdSave } from 'react-icons/md';
+import { presetApi, type ProfileMeta } from '@/api/presets';
 import { SavePurposeHelp } from '../Presets/SavePurposeHelp';
 
 function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode: 'singing' | 'talk') => void }) {
     const t = useMessages();
+    const [profiles, setProfiles] = useState<ProfileMeta[]>([]);
+    const [profileError, setProfileError] = useState(false);
+    const [profileReload, setProfileReload] = useState(0);
+    const [selection, setSelection] = useState<Partial<Record<'singing' | 'talk', string>>>({});
+    useEffect(() => { let active = true; setProfileError(false); void presetApi.listProfiles().then(items => { if (active) setProfiles(items.filter(item => item.hasPlugins && !item.isBackup)); }).catch(() => { if (active) setProfileError(true); }); return () => { active = false; }; }, [profileReload]);
     const [confirmReverb, setConfirmReverb] = useState(false);
     const [nextMode, setNextMode] = useState<'singing' | 'talk' | null>(null);
     const name = (mode: 'singing' | 'talk' | null) => mode === 'singing' ? t('settings.LiveModeControls.212') : mode === 'talk' ? t('settings.LiveModeControls.213') : t('settings.LiveModeControls.214');
     useEffect(() => model.activate(), [model.activate]);
-    const { snapshot: value, busy, error } = model;
+    const { snapshot: value, error } = model;
+    const busy = model.busy || model.changesBlocked;
     const save = async (mode: 'singing' | 'talk', disableReverb = false) => {
         setNextMode(null);
         setConfirmReverb(false);
@@ -25,15 +32,29 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
             <p>{t('settings.mode.registerHintNew')}</p>
             <SavePurposeHelp />
         </div>
+        {profileError && <div className="space-y-2" role="alert"><p>{t('liveTransaction.profilesFailed')}</p><button type="button" onClick={() => setProfileReload(n => n + 1)} className="rounded-md border border-border px-3 py-1.5 text-xs">{t('liveTransaction.retryProfiles')}</button></div>}
         <div className="divide-y divide-border">
             {(['singing', 'talk'] as const).map(mode => {
                 const Icon = mode === 'singing' ? MdMusicNote : MdMic;
                 const saved = Boolean(value?.definitions[mode]);
+                const bound = value?.definitions.profiles?.[mode]?.name ?? '';
+                const selected = selection[mode] ?? bound;
                 return <div key={mode} className="flex flex-wrap items-center justify-between gap-3 py-3">
                     <div className="flex flex-wrap items-center gap-2"><Icon aria-hidden="true" className="h-5 w-5 text-primary" />
                         <span className="font-semibold">{name(mode)}</span>
                         <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">{saved && <MdCheckCircle aria-hidden="true" className="h-4 w-4 text-success" />}{t(!value ? 'settings.LiveModeControls.216' : saved ? 'settings.LiveModeControls.232' : 'settings.LiveModeControls.233')}</span>
                         {saved && <span className="text-xs text-muted-foreground">{t('settings.mode.savedSummary', { voice: value!.definitions[mode]!.active ? 'ON' : 'OFF', reverb: value!.definitions[mode]!.reverb?.enabled ? 'ON' : 'OFF' })}</span>}
+                    </div>
+                    <div className="basis-full space-y-2">
+                        <label className="block text-xs" htmlFor={`profile-${mode}`}>{t('liveTransaction.profileLabel', { mode: name(mode) })}</label>
+                        <select id={`profile-${mode}`} disabled={busy || !saved || profileError} value={selected} onChange={event => setSelection(old => ({ ...old, [mode]: event.target.value }))} className="rounded-md border border-border bg-background px-2 py-1 text-sm">
+                            <option value="">{t('liveTransaction.builtinOnly')}</option>
+                            {bound && !profiles.some(profile => profile.name === bound) && <option value={bound}>{bound}</option>}
+                            {profiles.map(profile => <option key={profile.name} value={profile.name}>{profile.name}</option>)}
+                        </select>
+                        <p className="text-xs text-muted-foreground">{t('liveTransaction.bound', { name: bound || t('liveTransaction.builtinOnly') })}</p>
+                        {selected && selection[mode] !== undefined && <p className="text-xs text-warning">{t('liveTransaction.warning')}</p>}
+                        <button type="button" disabled={busy || !saved || profileError || (selected === bound && !selected)} onClick={() => void model.bindProfile(mode, selected || null).then(ok => { if (ok) setSelection(old => { const next = { ...old }; delete next[mode]; return next; }); })} className="rounded-md border border-border px-3 py-1.5 text-xs">{t('liveTransaction.saveBinding', { mode: name(mode) })}</button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                     {onAdjust && <button type="button" onClick={() => onAdjust(mode)} aria-label={t('settings.mode.adjustNamed', { mode: name(mode) })}

@@ -33,6 +33,7 @@ pub(crate) async fn save_preset(
     super::run_blocking(move || {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
         let preset = Preset {
+            plugins_included: Some(true),
             schema_version: 1,
             name: name.clone(),
             plugins,

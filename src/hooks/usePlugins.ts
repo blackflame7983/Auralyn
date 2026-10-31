@@ -11,6 +11,7 @@ import { REVIEW_KEY } from '../api/migration';
 import { usePluginSessionPersistence, protectPluginSession, PLUGIN_SESSION_KEY, PLUGIN_SESSION_PROTECTED_KEY } from './usePluginSessionPersistence';
 import { liveModesApi } from '../api/liveModes';
 import { beginRackRestore, rackRestoreBusy } from '../lib/liveRouting';
+import { listen } from '@tauri-apps/api/event';
 
 async function restoreSavedGains(check: () => void) {
     const input = Number(localStorage.getItem('vst_host_input_gain') ?? '100') / 100;
@@ -44,6 +45,9 @@ export const usePlugins = () => {
     const pluginsRef = useRef(plugins);
     pluginsRef.current = plugins;
     const retryRef = useRef<(() => Promise<unknown>) | null>(null);
+    const sessionState = useRef({ sessionPersistenceProtected, isSessionLoaded, sessionRestoreStatus });
+    sessionState.current = { sessionPersistenceProtected, isSessionLoaded, sessionRestoreStatus };
+    const rackSync = useRef<{ source: string | null; resume: boolean; status: PluginSessionRestoreResult['status'] | 'pending'; phase: 'changing' | 'refresh' | 'failed'; retrySnapshot: boolean } | null>(null);
 
     usePluginSessionPersistence(plugins, isSessionLoaded, isLoading || isScanning, sessionPersistenceProtected);
 
@@ -51,6 +55,7 @@ export const usePlugins = () => {
         // Reactの次のeffectを待たず、進行中の自動保存にも原本保護を伝える。
         try { protectPluginSession(localStorage.getItem(PLUGIN_SESSION_KEY)); } catch { /* 保存処理自体もfail-closedにする。 */ }
         restoreGeneration.current += 1;
+        if (rackSync.current) rackSync.current = { ...rackSync.current, phase: 'failed', retrySnapshot: false };
         setSessionPersistenceProtected(true);
         setSessionRestoreStatus('cancelled');
         setPlugins([]);
@@ -178,6 +183,9 @@ export const usePlugins = () => {
 
     const retrySavedSession = useCallback(async (excludePath?: string | null, manual = false) => {
         if (retryPending.current || sessionRestorePending.current || (manualRecoveryPending.current && !manual)) return;
+        // 中断後の明示復元は旧snapshotの応答を引き継がない。
+        rackSync.current = null;
+        restoreGeneration.current += 1;
         retryPending.current = true;
         let expectedGeneration = restoreGeneration.current;
         const isCurrent = () => expectedGeneration === restoreGeneration.current;
@@ -285,10 +293,15 @@ export const usePlugins = () => {
     }, [missingRecovery]);
 
     const restoreSession = useCallback(async (explicit = true) => {
+        if (explicit && !sessionRestorePending.current) {
+            rackSync.current = null;
+            restoreGeneration.current += 1;
+        }
         await restoreSavedSession(undefined, explicit);
     }, [restoreSavedSession]);
     const protectForManualRecovery = useCallback(() => {
         protectPluginSession(localStorage.getItem(PLUGIN_SESSION_KEY));
+        rackSync.current = null;
         const generation = ++restoreGeneration.current;
         setSessionPersistenceProtected(true);
         setIsSessionLoaded(false);
@@ -436,8 +449,94 @@ export const usePlugins = () => {
         };
     }, [restoreSession]);
 
+    useEffect(() => {
+        let active = true;
+        const disposers: Array<() => void> = [];
+        const protect = (phase: 'changing' | 'refresh') => {
+            if (!active) return;
+            const current = rackSync.current;
+            try {
+                const source = localStorage.getItem(PLUGIN_SESSION_KEY);
+                const resume = current?.resume ?? (!sessionState.current.sessionPersistenceProtected
+                    && sessionState.current.isSessionLoaded
+                    && localStorage.getItem(PLUGIN_SESSION_PROTECTED_KEY) !== 'true');
+                protectPluginSession(source);
+                rackSync.current = { source: current ? current.source : source, resume,
+                    status: current?.status ?? sessionState.current.sessionRestoreStatus, phase, retrySnapshot: false };
+                setSessionPersistenceProtected(true);
+            } catch {
+                rackSync.current = { source: current?.source ?? null, resume: false,
+                    status: current?.status ?? sessionState.current.sessionRestoreStatus, phase: 'failed', retrySnapshot: false };
+                ++restoreGeneration.current;
+                setSessionPersistenceProtected(true);
+                setSessionRestoreStatus('failed');
+                setError(pluginNotice('pluginNotices.restoreFailedProtected', undefined, true));
+                return;
+            }
+            ++restoreGeneration.current;
+            if (sessionRestorePending.current || retryPending.current || manualRecoveryPending.current) setIsLoading(false);
+            return rackSync.current;
+        };
+        const synchronize = async () => {
+            const operation = protect('refresh');
+            if (!operation) return;
+            const generation = restoreGeneration.current;
+            const isCurrent = () => active && mounted.current && rackSync.current === operation
+                && generation === restoreGeneration.current;
+            try {
+                const first = await audioApi.sessionRack({ action: 'snapshot' });
+                if (!isCurrent()) return;
+                if (first.status !== 'snapshot') throw new Error('ラックを確認できません');
+                const second = await audioApi.sessionRack({ action: 'snapshot' });
+                if (!isCurrent()) return;
+                if (second.status !== 'snapshot' || first.generation !== second.generation || first.revision !== second.revision
+                    || localStorage.getItem(PLUGIN_SESSION_KEY) !== operation.source
+                    || localStorage.getItem(PLUGIN_SESSION_PROTECTED_KEY) !== 'true') throw new Error('ラックまたは保存原本が変更されました');
+                hydrateRack(second.plugins);
+                if (operation.resume) {
+                    localStorage.removeItem(PLUGIN_SESSION_PROTECTED_KEY);
+                    setSessionPersistenceProtected(false);
+                    setIsSessionLoaded(true);
+                    setSessionRestoreStatus(operation.status);
+                    setError(null);
+                }
+                rackSync.current = null;
+            } catch {
+                if (!isCurrent()) return;
+                rackSync.current = { ...operation, phase: 'failed', retrySnapshot: true };
+                setSessionRestoreStatus('failed');
+                setError(pluginNotice('pluginNotices.restoreFailedProtected', undefined, true));
+            }
+        };
+        const cancelled = () => {
+            if (!active) return;
+            const operation = rackSync.current ?? protect('changing');
+            ++restoreGeneration.current;
+            if (operation) rackSync.current = { ...operation, phase: 'failed', retrySnapshot: false };
+            hydrateRack([]);
+            setIsSessionLoaded(false);
+            setIsLoading(false);
+            setSessionPersistenceProtected(true);
+            setSessionRestoreStatus('failed');
+            setError(pluginNotice('pluginNotices.restoreFailedProtected', undefined, true));
+        };
+        const visibility = () => { if (document.visibilityState === 'visible' && rackSync.current?.retrySnapshot) void synchronize(); };
+        document.addEventListener('visibilitychange', visibility);
+        const subscriptions = [
+            listen('session-rack-change-started', () => { protect('changing'); }),
+            listen('session-rack-change-cancelled', cancelled),
+            listen('session-rack-invalidated', () => { if (active) void synchronize(); }),
+        ];
+        subscriptions.forEach(subscription => { void subscription.then(dispose => { if (active) disposers.push(dispose); else dispose(); }).catch(() => {}); });
+        return () => {
+            active = false;
+            document.removeEventListener('visibilitychange', visibility);
+            disposers.forEach(dispose => dispose());
+        };
+    }, [hydrateRack]);
+
     const rejectDuringRestore = useCallback(() => {
-        if (!sessionRestorePending.current && !retryPending.current && !manualRecoveryPending.current) return false;
+        if (!sessionRestorePending.current && !retryPending.current && !manualRecoveryPending.current && (!rackSync.current || rackSync.current.phase === 'failed')) return false;
         setError(pluginNotice('pluginNotices.restoring', undefined, true));
         return true;
     }, []);
