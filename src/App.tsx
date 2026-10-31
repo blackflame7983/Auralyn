@@ -178,6 +178,7 @@ function AppContent() {
         currentOutput={audioConfig.output}
         liveControls={displayPurpose === 'voice' ? <LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} /> : undefined}
         vstChain={<VstChainItems plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
+        vstUnrestored={pluginsApi.sessionUnrestored}
         vstPanel={pluginRack}
         isEngineRunning={isEngineRunning}
         engineProcessReady={engineProcessReady}

@@ -49,6 +49,8 @@ interface AppShellProps {
     liveControls?: ReactNode;
     /** チェーン列の VST 段の中身。 */
     vstChain?: ReactNode;
+    /** 保存済み構成から読み込めていないVSTの名前。 */
+    vstUnrestored?: string[];
     /** 右パネルに出す VST ラック。 */
     vstPanel?: ReactNode;
 }
@@ -81,6 +83,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     currentOutput,
     liveControls,
     vstChain,
+    vstUnrestored,
     vstPanel
 }) => {
     const t = useMessages();
@@ -200,7 +203,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const toggleOutputGain = useCallback((anchor: HTMLButtonElement) => setOutputGainAnchor(current => current === anchor ? null : anchor), []);
     useEffect(() => { if (panelOverlays || !configured) closeOutputGain(); }, [panelOverlays, configured, closeOutputGain]);
     const soundChain = <SoundChain model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
-        vst={vstChain} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
+        vst={vstChain} vstUnrestored={vstUnrestored} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
         onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} />;
     const [isABBypassed, setIsABBypassed] = useState(false);
     const handleABToggle = useCallback(async () => {

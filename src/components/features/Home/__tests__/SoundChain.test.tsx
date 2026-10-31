@@ -175,3 +175,13 @@ it('音楽鑑賞の声向けの段は英語でも見出しと状態を出す', (
     expect(rows[0]).toHaveTextContent(message('en', 'chain.voiceTools'));
     expect(rows[0]).toHaveTextContent(message('en', 'flow.partial'));
 });
+
+it('保存済みのVSTを読み込めていない空の段は「未追加」と出さず、読み込めていない名前を示す', () => {
+    const current = stats(); current.latencyMetadata!.stageBreakdown!.vst = [];
+    render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}>
+        <SoundChain {...props()} vst={<VstChainItems plugins={[]} onToggle={vi.fn()} onEdit={vi.fn()} />} vstUnrestored={['Ozone 12 Equalizer']} />
+    </RuntimeStatsContext.Provider>);
+    const row = screen.getAllByRole('listitem')[2];
+    expect(row).toHaveTextContent('読み込めていないVST：Ozone 12 Equalizer');
+    expect(row).not.toHaveTextContent(message('ja', 'flow.noVst'));
+});
