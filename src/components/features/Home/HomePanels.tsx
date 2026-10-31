@@ -5,6 +5,7 @@ import { PreparationPanel, availabilityLabels } from './PreparationPanel';
 import { deviceDisplayName } from '@/lib/audioRouting';
 
 interface HomePanelsProps {
+    onCheckOutput?: () => void;
     /** 本番帯と共有する準備の状態。取得を二重にしないよう AppShell で1つだけ持つ。 */
     model: PreparationModel;
     onOpenOBSGuide?: () => void;
@@ -25,7 +26,7 @@ interface HomePanelsProps {
 // 準備の確認と経路の要約。声の調整と音の流れはチェーン列（SoundChain）に置く。
 // 入力メーターは本番帯（LiveStrip）に置き、ここでは重ねない。
 export function HomePanels({ model, audioReady, statusText, inputName, outputName,
-    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onListen, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot }: HomePanelsProps) {
+    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onListen, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onCheckOutput }: HomePanelsProps) {
     const t = useMessages();
     // 未設定は処理欄と主ボタンで示す。停止中のメーターや注記を重ねない。
     const configured = model.observation.availability !== 'unconfigured';
@@ -34,7 +35,7 @@ export function HomePanels({ model, audioReady, statusText, inputName, outputNam
     const actualInput = model.observation.config?.input ?? inputName;
     const actualOutput = model.observation.config?.output ?? outputName;
     return <div className="mb-4 space-y-4">
-        <PreparationPanel model={model} audioReady={audioReady} onSettings={onOpenSettings} onSound={onOpenSoundSettings ?? onOpenSettings}
+        <PreparationPanel model={model} audioReady={audioReady} onSettings={onOpenSettings} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
             onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText}
             devices={actualInput || actualOutput ? `${actualInput ? deviceDisplayName(actualInput) : t('master.unset')} → ${actualOutput ? deviceDisplayName(actualOutput) : t('master.unset')}` : undefined}
             signalSummary={<section aria-label={t('prep.signalPath')} className="space-y-2">

@@ -1,3 +1,4 @@
+import { readPreparationContext } from '@/lib/preparation';
 import { useDisplayPurpose } from './hooks/useDisplayPurpose';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { sessionMode } from './lib/temporarySession';
@@ -99,12 +100,12 @@ function AppContent() {
       const timer = setTimeout(() => {
         toast.info(<LocalizedMessage id="guide.copy.424" />, {
           description:
-            <LocalizedMessage id="guide.copy.425" />,
-          duration: 10000,
-          action: {
+            <LocalizedMessage id={readPreparationContext().usage === 'obs' ? "guide.copy.425" : "guide.tutorialLocalDone"} />,
+          duration: 5000,
+          action: readPreparationContext().usage === 'obs' ? {
             label: <LocalizedMessage id="guide.copy.426" />,
             onClick: () => ui.setIsOBSGuideOpen(true),
-          },
+          } : undefined,
         });
       }, 500);
       return () => clearTimeout(timer);
@@ -174,21 +175,23 @@ function AppContent() {
         preparationBlocked={isModalOpen || isInitializing}
         currentInput={audioConfig.input}
         currentOutput={audioConfig.output}
-        liveControls={displayPurpose === 'voice' ? <LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded /> : undefined}
+        liveControls={displayPurpose === 'voice' ? <LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} /> : undefined}
         vstChain={<VstChainItems plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
         vstPanel={pluginRack}
         isEngineRunning={isEngineRunning}
         engineProcessReady={engineProcessReady}
+        notices={<>
+          {sessionMode().cleanupPending && <p role="alert" className="mb-4 border rounded p-3 text-sm break-all">{t('temporary.cleanupFailed', { path: sessionMode().cleanupPending! })}</p>}
+          {sessionMode().temporary && <p role="status" className="mb-4 border rounded p-3 text-sm">{t('temporary.active')} <button type="button" className="underline" onClick={() => ui.setIsPresetManagerOpen(true)}>{t('temporary.manage')}</button></p>}
+          <SessionRecoveryNotice
+            status={pluginsApi.sessionRestoreStatus}
+            protectedSession={pluginsApi.sessionPersistenceProtected}
+            reason={pluginsApi.sessionProtectionReason}
+            busy={pluginsApi.isLoading || pluginsApi.isScanning || isInitializing}
+            onRetry={pluginsApi.retrySessionRestore}
+          />
+        </>}
       >
-        {sessionMode().cleanupPending && <p role="alert" className="mb-4 border rounded p-3 text-sm break-all">{t('temporary.cleanupFailed', { path: sessionMode().cleanupPending! })}</p>}
-        {sessionMode().temporary && <p role="status" className="mb-4 border rounded p-3 text-sm">{t('temporary.active')} <button type="button" className="underline" onClick={() => ui.setIsPresetManagerOpen(true)}>{t('temporary.manage')}</button></p>}
-        <SessionRecoveryNotice
-          status={pluginsApi.sessionRestoreStatus}
-          protectedSession={pluginsApi.sessionPersistenceProtected}
-          reason={pluginsApi.sessionProtectionReason}
-          busy={pluginsApi.isLoading || pluginsApi.isScanning || isInitializing}
-          onRetry={pluginsApi.retrySessionRestore}
-        />
         {/* 配信・通話では歌・雑談の切替を本番帯に置く。音楽鑑賞では使う機会が少ないので畳んでおく。 */}
         {displayPurpose === 'music' && <details open={liveModel.snapshot?.armed || Boolean(liveModel.error)}>
           <summary className="cursor-pointer text-sm py-2">{t('purpose.liveDetails')}</summary>

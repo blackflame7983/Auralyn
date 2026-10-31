@@ -3,13 +3,14 @@ import { renderNotice } from '@/components/features/AudioSettings/settingsNotice
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { MdGraphicEq, MdVolumeUp, MdBolt, MdClose } from 'react-icons/md';
+import { MdGraphicEq, MdVolumeUp, MdBolt, MdClose, MdInfoOutline } from 'react-icons/md';
 import { Modal } from '../ui/modal';
 import { cn } from '@/lib/utils';
 import { audioApi, EngineRuntimeStats } from '../../api/audio';
 import { useSharedMeter } from '../features/LevelMeter/MeterContext';
 import { MeterVisual } from '../features/LevelMeter/MeterVisual';
 import { Slider } from '@/components/ui/slider';
+import * as Popover from '@radix-ui/react-popover';
 import { AudioQueueDetails } from './AudioQueueDetails';
 import { LatencyDetails } from './LatencyDetails';
 import {
@@ -19,6 +20,8 @@ import {
 } from '@/api/outputGain';
 
 interface MasterBarProps {
+    outputGainAnchor?: HTMLButtonElement | null;
+    onOutputGainClose?: () => void;
     isRunning?: boolean;
     processReady?: boolean | null;
     host?: string;
@@ -29,7 +32,7 @@ interface MasterBarProps {
     onOpenSoundSettings?: () => void;
 }
 
-export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange }) => {
+export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, outputGainAnchor, onOutputGainClose }) => {
     const t = useMessages();
     const meter = useSharedMeter(isRunning, 'output');
     const isClipping = meter.clipped;
@@ -50,6 +53,21 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     const [gainError, setGainError] = useState<ClientErrorNotice | null>(null);
     const [gainRestoreError, setGainRestoreError] = useState<ClientErrorNotice | null>(null);
     const gainMessage = renderNotice(t, gainError ?? gainRestoreError);
+    const lastGainAnchor = useRef<HTMLButtonElement | null>(null);
+    const gainDismissedOutside = useRef(false);
+    if (outputGainAnchor) lastGainAnchor.current = outputGainAnchor;
+    // 幅の変更で入口が隠れた場合は閉じる。音量の同期・適用処理はフッターと共有する。
+    useEffect(() => {
+        if (!outputGainAnchor) return;
+        gainDismissedOutside.current = false;
+        const checkAnchor = () => {
+            if (!outputGainAnchor.getClientRects().length || outputGainAnchor.closest('[inert]')) onOutputGainClose?.();
+        };
+        const observer = new ResizeObserver(checkAnchor);
+        observer.observe(outputGainAnchor);
+        window.addEventListener('resize', checkAnchor);
+        return () => { observer.disconnect(); window.removeEventListener('resize', checkAnchor); };
+    }, [outputGainAnchor, onOutputGainClose]);
 
     const handleOutputGainChange = useCallback((values: number[]) => {
         window.dispatchEvent(new Event('output-gain-intent'));
@@ -199,6 +217,30 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
 
     return (
         <div className="relative flex flex-wrap items-center justify-end gap-x-3 gap-y-2 px-3 py-2 border-l border-border bg-card/30 backdrop-blur-sm transition-colors duration-300 min-w-0">
+            <Popover.Root open={Boolean(outputGainAnchor)} onOpenChange={open => { if (!open) onOutputGainClose?.(); }}>
+                {outputGainAnchor && <Popover.Anchor virtualRef={{ current: outputGainAnchor }} />}
+                <Popover.Portal><Popover.Content aria-label={t('master.outputGain')} side="bottom" align="end" sideOffset={8} collisionPadding={12}
+                    onInteractOutside={event => {
+                        // 入口の再クリックは親で開閉し、別の操作へ進んだ場合はそのフォーカスを奪わない。
+                        if (outputGainAnchor?.contains(event.target as Node)) event.preventDefault();
+                        else gainDismissedOutside.current = true;
+                    }}
+                    onCloseAutoFocus={event => {
+                        event.preventDefault();
+                        const anchor = lastGainAnchor.current;
+                        if (anchor?.closest('[inert]') || document.activeElement?.closest('#vst-panel')) return;
+                        if (gainDismissedOutside.current && anchor?.getClientRects().length) return;
+                        const target = anchor?.getClientRects().length ? anchor : document.querySelector<HTMLElement>('#master-output-gain [role="slider"]');
+                        target?.focus({ preventScroll: true });
+                    }} className="z-[200] w-64 rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-lg">
+                    <div className="flex items-center justify-between gap-4 text-sm"><span>{t('master.outputGain')}</span><span className="font-mono tabular-nums">{Math.round(outputGain)}%</span></div>
+                    <Slider aria-label={t('master.outputGain')} aria-valuetext={`${Math.round(outputGain)}%`} value={[outputGain]} onValueChange={handleOutputGainChange}
+                        min={0} max={200} step={1} onDoubleClick={() => handleOutputGainChange([100])} className="mt-4" />
+                    <button type="button" disabled={outputGain === 100} onClick={() => handleOutputGainChange([100])}
+                        className="mt-3 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">{t('header.inputGainHint')}</button>
+                    {gainMessage && <p role="alert" className="mt-3 text-xs text-warning">{gainMessage}</p>}
+                </Popover.Content></Popover.Portal>
+            </Popover.Root>
             {/* Label */}
             <div className="hidden sm:flex shrink-0 flex-col items-end justify-center min-w-[60px]">
                 <div className="flex items-center gap-2 text-muted-foreground font-bold font-mono tracking-widest text-xs">
@@ -217,6 +259,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 <MdVolumeUp aria-hidden="true" className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 <span aria-hidden="true" className="hidden lg:inline text-xs font-bold text-muted-foreground">{t('master.outputGain')}</span>
                 <Slider
+                    id="master-output-gain"
                     aria-label={t('master.outputGain')}
                     aria-valuetext={`${outputGain}%`}
                     value={[outputGain]}
@@ -235,8 +278,9 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             {hasRecentGlitch && <span role="status" title={t('master.glitch')}><MdBolt aria-hidden="true" className="w-3.5 h-3.5 text-warning" /><span className="sr-only">{t('master.glitch')}</span></span>}
 
             <button onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-expanded={detailsOpen}
-                className="shrink-0 rounded-md border border-border px-2 py-1.5 text-xs whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted">
-                {t('master.details')}
+                aria-label={t('master.details')} title={t('master.details')}
+                className="shrink-0 rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                <MdInfoOutline aria-hidden="true" className="h-4 w-4" />
             </button>
             {/* 状態は操作の後に配置し、狭い幅では独立した行へ送る。 */}
             {/* 未設定はヘッダーとホームで示すため、ここでは重ねない。 */}

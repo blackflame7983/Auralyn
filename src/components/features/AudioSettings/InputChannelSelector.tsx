@@ -4,6 +4,7 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '../../../api/audio';
 import { MdGraphicEq } from 'react-icons/md';
+import { InfoPopover } from '@/components/ui/InfoPopover';
 
 interface InputChannelSelectorProps {
     onChannelMapped?: (channels: [number, number]) => void;
@@ -128,8 +129,11 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
 
     return (
         <div className="space-y-3 p-4 bg-muted dark:bg-background/50 rounded-lg border border-border">
+            <div className="flex items-center gap-1">
             <h3 className="text-sm font-bold flex items-center gap-2 text-foreground">
                 <MdGraphicEq className="text-primary" aria-hidden="true" />{t('settings.InputChannelSelector.205')}</h3>
+                {maxChannels !== 0 && <InfoPopover label={t('settings.inputPairHelp')}>{t('settings.InputChannelSelector.210')}</InfoPopover>}
+            </div>
             <p className="text-xs text-muted-foreground">
                 {maxChannels === 0 ? t('settings.InputChannelSelector.unverified')
                     : monitorState === 'error' ? t('settings.InputChannelSelector.206')
@@ -138,7 +142,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
                             : t('settings.InputChannelSelector.209')}
             </p>
             {maxChannels !== 0 && <p id={`${groupId}-help`} className="text-xs text-muted-foreground leading-relaxed">
-                {t('settings.InputChannelSelector.210')}</p>}
+                {t('settings.inputPairHint')}</p>}
             {maxChannels !== 0 && <fieldset aria-describedby={`${groupId}-help`} aria-busy={mapping}>
                 <legend className="sr-only">{t('settings.InputChannelSelector.211')}</legend>
                 <div className={`grid grid-cols-4 gap-2 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-muted-foreground ${maxChannels && maxChannels > 16 ? 'max-h-60' : ''}`}>

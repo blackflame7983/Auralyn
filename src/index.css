@@ -59,6 +59,7 @@
   /* 動きの曲線（DESIGN.md 5.6）。出入りは ease-out、画面内の移動は ease-in-out。ease-in は使わない。 */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* 
@@ -67,6 +68,7 @@
   Dark:  Deep Black / Neon / Glows
 */
 :root {
+  color-scheme: light;
   /* Shadcn - Light Mode */
   --background: 0 0% 100%;
   --foreground: 222.2 84% 4.9%;
@@ -117,15 +119,17 @@
   --input: 214.3 31.8% 70%;
   --ring: 222.2 84% 4.9%;
 
-  /* Sharper radius for professional feel */
-  --radius: 0.35rem;
+  /* 小さな操作も角張らせず、通常ボタン10px・大きな操作12pxで揃える。 */
+  --radius: 0.75rem;
 
   /* 動きの時間。押下・ホバー・ツールチップは fast、ポップオーバー・モーダルは base。UI は 300ms 以内。 */
   --motion-fast: 150ms;
   --motion-base: 200ms;
+  --motion-panel: 240ms;
 }
 
 .dark {
+  color-scheme: dark;
   /* Aurora（既定）: BRANDING.md の Deep Abyss Blue に Mystic Purple を少し混ぜた地に、Aurora Cyan を主色、Mystic Purple を選択色にする。 */
   --background: 250 38% 7%;
   --foreground: 210 40% 96%;
@@ -212,8 +216,6 @@
   --ring: 300 100% 68%;
   /* Sharp Neon Ring */
 
-  --radius: 0.2rem;
-  /* More squared off/techy */
 }
 
 @layer base {
@@ -225,6 +227,15 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+  }
+
+  /* 展開したネイティブの候補にも、アプリの配色を渡す。 */
+  select {
+    color: hsl(var(--foreground));
+  }
+  option, optgroup {
+    color: hsl(var(--popover-foreground));
+    background-color: hsl(var(--popover));
   }
 
   /* 開閉の三角はブラウザ標準を使わず、アプリのアイコンと同じ山形にそろえる。開くと下を向く。 */
@@ -341,11 +352,124 @@
 
 
 
+/* パネル・予約幅・メーターを同じ曲線で連動させ、退場の最後にホームが跳ねないようにする。
+   予約幅だけはレイアウトを遷移させる。ホーム全体を scale で伸ばして文字を変形させない。 */
+.app-shell {
+  --visible-meter-width: 0px;
+  --vst-panel-width: 0px;
+}
+.app-shell[data-large-meter] {
+  --visible-meter-width: 64px;
+}
+.app-shell[data-large-meter]:has(.large-meter-motion[data-detailed]) {
+  --visible-meter-width: 96px;
+}
+.app-shell[data-vst-open] {
+  --vst-panel-width: 420px;
+}
+.home-main {
+  padding-right: calc(1rem + var(--visible-meter-width));
+}
+.sound-chain, .live-strip { container-type: inline-size; }
+.live-output-summary { display: none; }
+@container (min-width: 1080px) {
+  .live-meter-pair { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1rem; }
+  .live-output-summary { display: flex; }
+}
+.sound-chain-row {
+  grid-template-columns: minmax(10rem, 12rem) minmax(0, 1fr) auto;
+}
+/* ウィンドウ幅ではなく、メーター等を除いた実際の作業幅で切り替える。 */
+@container (max-width: 760px) {
+  .sound-chain-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .sound-chain-controls { grid-column: 1 / -1; grid-row: 2; }
+  .sound-chain-action { grid-column: 2; grid-row: 1; }
+}
+@media (min-width: 1024px) {
+  .home-main { padding-right: calc(1.5rem + var(--visible-meter-width)); }
+}
+.app-shell[data-large-meter] .home-main {
+  padding-right: calc(12px + var(--visible-meter-width));
+}
+.app-shell[data-meter-suspended] .large-meter-motion {
+  visibility: hidden;
+  pointer-events: none;
+}
+.vst-panel-space {
+  flex: 0 0 auto;
+  width: 0;
+  transition: width var(--motion-panel) var(--ease-drawer);
+}
+.vst-panel-space[data-state="open"] {
+  /* 狭い窓のホームは縮めない。余白が増えるにつれ、パネル用の幅を少しずつ空ける。 */
+  width: clamp(0px, calc(100vw - 1020px - var(--visible-meter-width)), 420px);
+}
+.vst-panel-motion {
+  opacity: 1;
+  transform: translateX(0);
+  transition: transform var(--motion-panel) var(--ease-drawer), opacity var(--motion-panel) var(--ease-drawer);
+}
+.vst-panel-motion[data-state="closed"] {
+  opacity: 0;
+  transform: translateX(100%);
+  pointer-events: none;
+}
+@starting-style {
+  .vst-panel-motion {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+.large-meter-motion {
+  /* 親の幅指定は開閉時だけ変わる。フレームごとにCSS変数を更新せず translate を遷移させる。 */
+  /* 広い窓でもホーム（最大1180px）の右隣へ置く。ホームの左右余白の差と12pxの間隔を含める。 */
+  translate: calc(-1 * (var(--vst-panel-width, 0px) + max(0px, (100vw - var(--vst-panel-width, 0px) - var(--visible-meter-width, 64px) - 1180px - 36px) / 2))) 0;
+  transition: translate var(--motion-panel) var(--ease-drawer);
+}
+.vst-panel-scrim {
+  animation: surface-appear var(--motion-base) ease-out;
+}
+@keyframes surface-appear {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.modal-overlay-base,
+.app-dialog[data-state="open"],
+[data-radix-menu-content][data-state="open"] {
+  animation: surface-appear var(--motion-base) ease-out;
+}
+@keyframes surface-disappear {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+/* Radix の Presence に終了だけを任せ、選択した操作は待たせない。 */
+[data-radix-menu-content][data-state="closed"] {
+  animation: surface-disappear var(--motion-fast) ease-in;
+  pointer-events: none;
+}
+[data-panel-instant] .vst-panel-space,
+[data-panel-instant] .vst-panel-motion,
+[data-panel-instant] .large-meter-motion {
+  transition: none;
+}
+
 /*
   動きを減らす設定（DESIGN.md 5.6）。全体を0秒にせず、色と不透明度の変化は残し、
   移動・拡大と繰り返しの動きだけを止める。ユーティリティより後に効くよう layer の外に置く。
 */
 @media (prefers-reduced-motion: reduce) {
+  .vst-panel-space {
+    transition: none;
+  }
+  .vst-panel-motion,
+  .vst-panel-motion[data-state="closed"] {
+    transform: none;
+    transition-property: opacity;
+  }
+  .large-meter-motion {
+    transition: none;
+  }
+
   *,
   ::before,
   ::after {
@@ -357,6 +481,12 @@
   .animate-bounce,
   .animate-ping,
   .aurora-glow {
+    animation: none;
+  }
+  .vst-panel-scrim,
+  .modal-overlay-base,
+  .app-dialog[data-state],
+  [data-radix-menu-content][data-state] {
     animation: none;
   }
 }

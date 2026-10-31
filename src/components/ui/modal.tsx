@@ -36,7 +36,7 @@ export function Modal({ title, onClose, children, dismissible = true, initialFoc
                 <Dialog.Content
                     ref={contentRef}
                     asChild
-                    className="text-foreground"
+                    className="app-dialog text-foreground"
                     aria-modal="true"
                     aria-describedby={undefined}
                     onPointerDownOutside={event => event.preventDefault()}

@@ -142,7 +142,7 @@ describe('セットアップの接続チェック', () => {
     const openListeningOutput = async () => {
         await openWizard();
         await screen.findByRole('button', { name: 'OBSで配信' });
-        fireEvent.click(screen.getByRole('button', { name: 'ヘッドホンで試す' }));
+        fireEvent.click(screen.getByRole('button', { name: '自分で聴く' }));
         const next = screen.getByRole('button', { name: /次へ/ });
         await waitFor(() => expect(next).toBeEnabled());
         fireEvent.click(next);
@@ -157,7 +157,7 @@ describe('セットアップの接続チェック', () => {
         expect(screen.getByText(/Windows の既定の物理出力を確認できませんでした/)).toBeInTheDocument();
         expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
         if (scenario === '既定不明の複数物理出力') {
-            fireEvent.click(screen.getByRole('button', { name: /ヘッドホン\/スピーカー/ }));
+            fireEvent.click(screen.getByRole('button', { name: /ヘッドホン・スピーカー/ }));
             const select = screen.getByRole('combobox', { name: 'ヘッドホン・スピーカー' });
             expect(select).toHaveValue('');
             fireEvent.change(select, { target: { value: 'ヘッドホン' } });

@@ -105,7 +105,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </div>
 
                     {/* 音声状態は表示専用。設定は共通ボタンから開く。 */}
-                    <DeviceStatus
+                    {(!isEngineRunning || engineProcessReady === false || engineProcessReady === null) && <DeviceStatus
                         stats={stats}
                         host={currentHost}
                         sampleRate={currentSampleRate}
@@ -113,7 +113,7 @@ export const Header: React.FC<HeaderProps> = ({
                         isRunning={isEngineRunning}
                         processReady={engineProcessReady}
                         showDetails={!isBeginnerMode}
-                    />
+                    />}
                 </div>
 
                 <div className="flex items-center gap-2 xl:gap-4 shrink-0 pl-2">
@@ -121,7 +121,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <button
-                                aria-pressed={isGlobalMuted}
+                                id="emergency-mute" aria-pressed={isGlobalMuted}
                                 onClick={handleToggleMute}
                                 aria-label={t('header.emergency')}
                                 aria-describedby={isGlobalMuted ? 'header-mute-state' : undefined}
@@ -149,7 +149,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 type="button"
                                 onClick={onOpenWizard}
                                 aria-label={t('header.setupOpen')}
-                                className="p-2 rounded-lg border border-input bg-background text-foreground hover:bg-muted transition-colors"
+                                className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                             >
                                 <MdAutoFixHigh aria-hidden="true" className="w-5 h-5" />
                             </button>

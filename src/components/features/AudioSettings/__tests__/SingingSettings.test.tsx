@@ -80,6 +80,9 @@ it.each(['ja', 'en'] as const)('歌向けON/OFFは全値を保持し、短いプ
     } }));
     expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
     const legacy = screen.getByRole('button', { name: message(locale, 'settings.AudioSettingsModal.098') });
+    await waitFor(() => expect(legacy).toBeDisabled());
+    expect(screen.getAllByText(message(locale, 'settings.fxOffHint')).length).toBeGreaterThan(0);
+    fireEvent.click(toggle);
     await waitFor(() => expect(legacy).toBeEnabled());
     expect(screen.getByText(message(locale, 'settings.AudioSettingsModal.092'))).toBeVisible();
     for (const key of ['settings.AudioSettingsModal.099', 'settings.AudioSettingsModal.100'] as const) {
@@ -98,7 +101,7 @@ it.each([true, false])('音づくりの基本を先に置き、歌向けの欄�
     expect(noise.compareDocumentPosition(builtIn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(noise).toHaveFocus();
     expect(screen.getByText('歌向けに整える').closest('details')).not.toHaveAttribute('open');
-    expect(screen.getByText('本番の歌・雑談モード').closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByText('モード登録').closest('details')).not.toHaveAttribute('open');
     expect(screen.queryByRole('combobox', { name: '表示言語' })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('tab', { name: '外観' }), { key: 'Enter' });
     expect(screen.getByRole('combobox', { name: '表示言語' })).toBeInTheDocument();
@@ -112,7 +115,12 @@ it('プロファイル適用でモードが変わっても音づくりの表示�
     render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const noise = await screen.findByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.107') });
     await waitFor(() => expect(noise).toBeEnabled());
-    await waitFor(() => expect(screen.getByRole('button', { name: message('ja', 'master.nrLow') })).toHaveAttribute('aria-pressed', 'true'));
+    const low = screen.getByRole('button', { name: message('ja', 'master.nrLow') });
+    await waitFor(() => expect(low).toBeEnabled());
+    expect(low).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(message('ja', 'settings.noiseOffHint'))).toBeVisible();
+    fireEvent.click(screen.getByText(message('ja', 'settings.noiseDetails')));
+    expect(await screen.findByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.129') })).toBeEnabled();
     act(() => { window.dispatchEvent(new CustomEvent('profile-fx-applied', { detail: {
         noiseControl: { enabled: true, mode: 'venue', strength: 1.1, voiceGuard: true },
         builtinFx: { preset: 'warm', enabled: false, amount: 0.4 },
@@ -121,6 +129,8 @@ it('プロファイル適用でモードが変わっても音づくりの表示�
     expect(screen.getByRole('button', { name: message('ja', 'master.nrVenue') })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: message('ja', 'master.nrLow') })).toHaveAttribute('aria-pressed', 'false');
     expect(noise).toBeChecked();
+    expect(low).toBeEnabled();
+    expect(screen.getByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.129') })).toBeEnabled();
     fireEvent.click(noise);
     await waitFor(() => expect(setNoise).toHaveBeenCalledWith({ active: false, mode: 'venue', strength: 1.1, voiceGuard: true }));
 });

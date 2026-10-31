@@ -12,7 +12,7 @@ import { SoundChain } from '../SoundChain';
 import { VstChainItems } from '../VstChainItems';
 
 vi.mock('../VoiceQuickControls', () => ({
-    useVoiceQuick: (_running: boolean, enabled: boolean) => ({ stats: enabled ? {} : null }),
+    useVoiceQuick: (_running: boolean, enabled: boolean) => ({ stats: enabled ? {} : null, noiseOn: true, chainOn: true }),
     NoiseSwitch: () => <span>noise-switch</span>, NoiseQuick: () => <span>noise-quick</span>,
     BuiltinSwitch: () => <span>builtin-switch</span>, BuiltinQuick: () => <span>builtin-quick</span>,
 }));
@@ -39,6 +39,11 @@ it('外部 VST を使っていないと確認できたら薄い1行と追加の�
     expect(row).toHaveTextContent('外部 VST'); expect(row).toHaveTextContent('使っていません');
     expect(row.querySelector('[data-on]')).toHaveAttribute('data-on', 'false');
     expect(screen.queryByRole('button', { name: 'VST を編集' })).not.toBeInTheDocument();
+    const hint = message('ja', 'chain.vstEmptyHint');
+    expect(screen.queryByText(hint)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '外部 VST' }));
+    expect(screen.getByRole('dialog', { name: '外部 VST' })).toHaveTextContent(hint);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: '追加' }));
     expect(p.onOpenVst).toHaveBeenCalledOnce();
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: null, running: true }}><SoundChain {...p} vst={vst} /></RuntimeStatsContext.Provider>);
@@ -66,6 +71,15 @@ it.each(['ja', 'en'] as const)('声の処理を音の流れの順に行カード
     fireEvent.click(screen.getByRole('button', { name: message(locale, 'flow.info') }));
     expect(screen.getByRole('dialog')).toHaveTextContent(message(locale, 'flow.scope'));
     expect(screen.getByRole('dialog')).toHaveTextContent(message(locale, 'flow.monitorPath'));
+});
+
+it('内蔵ボイスチェーンの意味を見出し横の情報ボタンから確認できる', () => {
+    render(<SoundChain {...props()} />);
+    const description = message('ja', 'settings.AudioSettingsModal.096');
+    expect(screen.queryByText(description)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'settings.builtinHelp') }));
+    expect(screen.getByRole('dialog', { name: message('ja', 'settings.builtinHelp') })).toHaveTextContent(description);
+    expect(screen.getByRole('heading', { name: '内蔵ボイスチェーン' })).toBeInTheDocument();
 });
 
 it('音声処理中は声の段にその場の操作を出し、設定状態の文字は重ねない', () => {
@@ -128,7 +142,7 @@ it('VST の行から右パネルの VST 構成を開き、見出しから聴き�
     expect(screen.queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'VST を編集' })); expect(p.onOpenVst).toHaveBeenCalledOnce();
     expect(screen.getAllByRole('listitem')[2]).toHaveTextContent('vst-items');
-    fireEvent.click(screen.getByRole('button', { name: '録音して聴き比べる' })); expect(p.onListen).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '録音して比較' })); expect(p.onListen).toHaveBeenCalledOnce();
     // 毎回は使わない OBS 連携と詳しい調整は、見出しに並べず「その他の操作」にまとめる。
     expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
     const more = screen.getByRole('button', { name: 'その他の操作' });

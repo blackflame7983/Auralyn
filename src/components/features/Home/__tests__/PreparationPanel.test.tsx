@@ -9,11 +9,41 @@ import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 
 afterEach(cleanup);
+it('定期確認では確認中文字を出さず、手動確認が長引いたときだけ表示する', async () => {
+    vi.useFakeTimers();
+    try {
+        const model = fixture();
+        model.checking = true;
+        model.observation.availability = 'unknown';
+        let finish!: () => void;
+        model.refresh = vi.fn(() => new Promise<null>(resolve => { finish = () => resolve(null); }));
+        render(<PreparationPanel model={model} {...callbacks()} />);
+        expect(screen.queryByText('状態を確認中')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.refresh') }));
+        act(() => vi.advanceTimersByTime(599));
+        expect(screen.queryByText('状態を確認中')).not.toBeInTheDocument();
+        act(() => vi.advanceTimersByTime(1));
+        expect(screen.getByText('状態を確認中')).toBeInTheDocument();
+        await act(async () => { finish(); });
+        expect(screen.queryByText('状態を確認中')).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+});
 const fixture = (): PreparationModel => ({ context: { ...context }, observation: buildPreparationObservation(audioState, runtime(), liveStatus, context), records: {}, checking: false, confirming: false,
     confirm: vi.fn().mockResolvedValue(undefined), unconfirm: vi.fn(), refresh: vi.fn(), reset: vi.fn(), changeContext: vi.fn() });
 const callbacks = () => ({ onSettings: vi.fn(), onSound: vi.fn(), onListen: vi.fn(), onObs: vi.fn(), onCall: vi.fn(), onTroubleshoot: vi.fn(), audioReady: true });
 const expand = (locale: 'ja' | 'en' = 'ja') => fireEvent.click(screen.getByRole('button', { name: message(locale, 'prep.steps') }));
 const checked = (model: PreparationModel, stage: 'sound' | 'listen') => { model.records[stage] = { at: 1, target: 'Mic', key: model.observation.keys![stage], expired: false }; };
+
+it('ミュート・音量ゼロでは機器の再設定ではなく本番操作の確認へ案内する', () => {
+    const model = fixture(); model.observation.availability = 'muted';
+    const props = callbacks(); const checkOutput = vi.fn();
+    render(<PreparationPanel model={model} {...props} onCheckOutput={checkOutput} />);
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
+    fireEvent.click(screen.getByRole('button', { name: 'ミュート・出力音量を確認' }));
+    expect(checkOutput).toHaveBeenCalledOnce();
+    expect(props.onSettings).not.toHaveBeenCalled();
+    expect(model.confirm).not.toHaveBeenCalled();
+});
 
 it.each(['ja', 'en'] as const)('会場の再生注意は閉じた条件パネルの外にあり、次の操作・明示確認を分ける (%s)', locale => {
     const model = fixture(); model.context.location = 'venue'; model.context.signal = 'mixed';
@@ -104,10 +134,12 @@ it.each(['unconfigured', 'stopped', 'unknown'] as const)('%sでは最初から�
     render(<PreparationPanel model={model} {...callbacks()} />);
     expect(screen.getByRole('button', { name: message('ja', 'prep.steps') })).toHaveAttribute('aria-expanded', 'true');
 });
-it('ミュート・音量ゼロでは手順を開き、直す入口を見せる', () => {
+it('ミュート・音量ゼロでは手順を自動展開せず、手動で確認できる', () => {
     const model = fixture(); model.observation = { ...model.observation, availability: 'muted' };
     render(<PreparationPanel model={model} {...callbacks()} />);
-    expect(screen.getByRole('button', { name: message('ja', 'prep.steps') })).toHaveAttribute('aria-expanded', 'true');
+    const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
     expect(screen.getByRole('button', { name: message('ja', 'shell.configure') })).toBeInTheDocument();
 });
 it('起動時の状態不明から正常になったら、操作していなければ畳む', () => {
@@ -155,6 +187,7 @@ it('問題中に閉じても、別の問題へ変わったら開き直す', () =
     const view = render(<PreparationPanel model={model} {...callbacks()} />);
     const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
     fireEvent.click(toggle);
+    fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     for (const availability of ['pending', 'muted'] as const) {
         model.observation = { ...ready, availability };
@@ -167,6 +200,7 @@ it('ミュートで開いている手順は、反映待ちの間も閉じない'
     model.observation = { ...ready, availability: 'muted' };
     const view = render(<PreparationPanel model={model} {...callbacks()} />);
     const toggle = screen.getByRole('button', { name: message('ja', 'prep.steps') });
+    fireEvent.click(toggle);
     for (const availability of ['pending', 'muted'] as const) {
         model.observation = { ...ready, availability };
         view.rerender(<PreparationPanel model={model} {...callbacks()} />);

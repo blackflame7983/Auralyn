@@ -49,7 +49,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
-it('測定の詳細は選んだときだけ開き、閉じると開始した測定を取り消す', async () => {
+it.each(['周囲の音を測定', 'ノイズ低減の詳細'])('測定の詳細は選んだときだけ開き、%sを閉じると開始した測定を取り消す', async closeLabel => {
     vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue({ noiseReductionEnabled: true, noiseReductionMode: 'low', builtInEffectsEnabled: false } as EngineRuntimeStats);
     let value = noiseMeasurementFixture();
     const request = vi.spyOn(noiseMeasurementApi, 'request').mockImplementation(async req => {
@@ -57,6 +57,8 @@ it('測定の詳細は選んだときだけ開き、閉じると開始した測�
         return value;
     });
     render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    expect(screen.getByText('ノイズ低減の詳細').closest('details')).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('ノイズ低減の詳細'));
     await screen.findByRole('button', { name: '測定値で調整' });
     expect(screen.getByText('周囲の音を測定').closest('details')).not.toHaveAttribute('open');
     expect(screen.queryByRole('button', { name: '3秒測定' })).not.toBeInTheDocument();
@@ -66,8 +68,8 @@ it('測定の詳細は選んだときだけ開き、閉じると開始した測�
     await waitFor(() => expect(start).toBeEnabled());
     fireEvent.click(start);
     await waitFor(() => expect(request).toHaveBeenCalledWith({ action: 'start', epoch: 'measurement-engine', generation: '0' }));
-    await screen.findByText(/測定中/);
-    fireEvent.click(screen.getByText('周囲の音を測定'));
+    await screen.findByText(/^周囲の音を測定中/);
+    fireEvent.click(screen.getByText(closeLabel));
     await waitFor(() => expect(request).toHaveBeenCalledWith({ action: 'cancel', epoch: 'measurement-engine', generation: '1' }));
     expect(screen.queryByRole('button', { name: '3秒測定' })).not.toBeInTheDocument();
 });
@@ -139,6 +141,7 @@ it('数値の詳細を出さない間はノイズ低減の強さを弱／強だ�
 it('ノイズ低減OFF中に強度を変更してもONにせず、タッチ・ペンのpointer操作で確定する', async () => {
     localStorage.setItem('vst_host_beginner_mode', 'false');
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    fireEvent.click(screen.getByText('ノイズ低減の詳細'));
     const slider = await screen.findByRole('slider', { name: 'ノイズ低減の抑制強度' });
     await waitFor(() => expect(slider).toBeEnabled());
     fireEvent.change(slider, { target: { value: '100' } });
@@ -153,6 +156,7 @@ it('ノイズ低減OFF中に強度を変更してもONにせず、タッチ・�
 
 it('声を守るの変更でも明示したON/OFF状態を維持する', async () => {
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    fireEvent.click(screen.getByText('ノイズ低減の詳細'));
     const guard = await screen.findByRole('switch', { name: '声を守る' });
     await waitFor(() => expect(guard).toBeEnabled());
     fireEvent.click(guard);
@@ -177,7 +181,8 @@ it('学習の中止失敗を未処理のPromise拒否にせず、状態再取得
         return noiseMeasurementFixture('capturing', '2');
     });
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    fireEvent.click(screen.getByText('周囲の音を測定'));
+    fireEvent.click(screen.getByText('ノイズ低減の詳細'));
+    fireEvent.click(await screen.findByText('周囲の音を測定'));
     const cancel = await screen.findByRole('button', { name: '測定を中止' });
     await waitFor(() => expect(cancel).toBeEnabled());
     fireEvent.click(cancel);
@@ -192,7 +197,8 @@ it('不正な入力で学習が失敗したら、以前のプロファイルを�
         noiseProfileRms: 0.01,
     } as EngineRuntimeStats);
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    fireEvent.click(screen.getByText('周囲の音を測定'));
+    fireEvent.click(screen.getByText('ノイズ低減の詳細'));
+    fireEvent.click(await screen.findByText('周囲の音を測定'));
     expect(await screen.findByText('この測定は利用できません。条件を確認して測り直してください。')).toBeInTheDocument();
     expect(screen.queryByText(/学習済み RMS/)).not.toBeInTheDocument();
 });

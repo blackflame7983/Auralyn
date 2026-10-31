@@ -88,20 +88,20 @@ it('本番モードは未登録ならメインに出さず、定期確認もし�
     const { result } = renderHook(() => useLiveModes());
     render(<LiveModeBar model={result.current} />);
     await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
-    expect(screen.queryByRole('region', { name: '本番モード' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'モード切替' })).not.toBeInTheDocument();
     expect(request).toHaveBeenCalledOnce();
     vi.useRealTimers();
 });
 
-it('登録済みなら歌・雑談の切替と本番保護をメインに出し、保護の名前は固定する', async () => {
+it('登録済みならモード切替と本番保護をメインに出し、保護の名前は固定する', async () => {
     const config: BuiltinConfig = { ...singing, active: true };
     vi.spyOn(liveModesApi, 'request').mockResolvedValue(liveSnapshot({ running: true, definitions: { schemaVersion: 1, version: '1', singing: config, talk: null } }));
     const protect = vi.spyOn(liveModesApi, 'protect').mockResolvedValue(liveSnapshot({ running: true, armed: true, definitions: { schemaVersion: 1, version: '1', singing: config, talk: null } }));
     function Bar() { return <LiveModeBar model={useLiveModes()} />; }
     render(<Bar />);
-    await screen.findByRole('region', { name: '本番モード' });
-    expect(screen.getByRole('button', { name: '歌' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: '雑談' })).toBeDisabled();
+    await screen.findByRole('region', { name: 'モード切替' });
+    expect(screen.getByRole('button', { name: '歌唱モード' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '雑談モード' })).toBeDisabled();
     const guard = screen.getByRole('button', { name: '本番保護' });
     expect(guard).toHaveAttribute('aria-pressed', 'false');
     await act(async () => fireEvent.click(guard));

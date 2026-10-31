@@ -13,6 +13,7 @@ import { receiverDeviceNotice } from '@/lib/audioRouting';
 import { renderNotice } from '../AudioSettings/settingsNotice';
 
 interface Props {
+    onCheckOutput?: () => void;
     model: PreparationModel; onSettings: () => void; onSound: () => void; onListen: () => void;
     onObs: () => void; onCall: () => void; onTroubleshoot: () => void; audioReady: boolean; signalSummary?: ReactNode;
     /** 音声が使えないときの状態文（ヘッダーと同じ文言）。畳んだときの状態表示にも使う。 */
@@ -34,7 +35,7 @@ const availabilityTones: Record<Availability, StatusTone> = { ready: 'ok', unkno
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
-export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, audioReady, signalSummary, statusText, devices }: Props) {
+export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices }: Props) {
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
@@ -53,15 +54,28 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
     // userOpen は利用者の選択。null の間だけ問題の有無で自動に開閉する。
     // 手順内を操作したら開いたままにし、一時的な状態不明を経てもフォーカスを失わせない。
     const [userOpen, setUserOpen] = useState<boolean | null>(null);
+    const [manualChecking, setManualChecking] = useState(false);
+    const [showChecking, setShowChecking] = useState(false);
+    useEffect(() => {
+        if (!manualChecking) { setShowChecking(false); return; }
+        const timer = window.setTimeout(() => setShowChecking(true), 600);
+        return () => window.clearTimeout(timer);
+    }, [manualChecking]);
+    const refreshManually = async () => {
+        setManualChecking(true);
+        try { await model.refresh(); } finally { setManualChecking(false); }
+    };
     // 閉じた後でも、別の問題が起きたら開き直す。
     useEffect(() => { if (problem) setUserOpen(old => old === false ? null : old); }, [problem]);
-    const open = userOpen ?? problem !== null;
+    // ミュートは本番帯の警告から直接直せる。毎回チェックリストを押し広げない。
+    const open = userOpen ?? (problem !== null && observation.availability !== 'muted');
     const next = nextPreparationStage(observation, records, context);
     const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
     const needsTarget = next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim();
-    const action = needsTarget ? () => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); } : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? () => { void model.refresh(); } : onSettings
+    const mutedOutput = observation.availability === 'muted' && Boolean(onCheckOutput);
+    const action = mutedOutput ? onCheckOutput! : needsTarget ? () => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); } : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? () => { void refreshManually(); } : onSettings
         : next === 'sound' ? onSound : next === 'listen' ? onListen : receiver;
-    const actionLabel: MessageKey = needsTarget ? 'prep.targetAction' : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? 'prep.refresh' : 'shell.configure'
+    const actionLabel: MessageKey = mutedOutput ? 'prep.checkOutput' : needsTarget ? 'prep.targetAction' : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? 'prep.refresh' : 'shell.configure'
         : next === 'sound' ? (music ? 'wizard.musicSound' : 'shell.sound') : next === 'listen' ? (music ? 'wizard.musicListen' : 'home.voiceCheck') : context.usage === 'listening' ? 'prep.localReceiver' : 'prep.checkReceiver';
     const acknowledgeLabels: Record<PreparationStage, MessageKey> = { sound: 'prep.ackSound', listen: 'prep.ackListen', receiver: 'prep.ackReceiver' };
     const pending = checking || confirming;
@@ -94,7 +108,7 @@ export function PreparationPanel({ model, onSettings, onSound, onListen, onObs, 
                 </span>}
             </div>
             <div className="flex items-center gap-2">
-                <span role="status" className="text-sm text-muted-foreground">{checking ? t('prep.checking') : next === 'done' ? t('prep.sessionChecked') : ''}</span>
+                <span role="status" className="text-sm text-muted-foreground">{showChecking ? t('prep.checking') : next === 'done' ? t('prep.sessionChecked') : ''}</span>
                 <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={stepsId} onClick={() => setUserOpen(!open)}
                     className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted">
                     {t('prep.steps')}<MdExpandMore aria-hidden="true" className={`h-4 w-4 ${open ? 'rotate-180' : ''}`} />

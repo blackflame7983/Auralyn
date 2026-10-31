@@ -169,7 +169,7 @@ it('遅い診断中のlocale切替は再測定せず、結果とコピーはク�
 it('セットアップで選んだ用途を初期値にし、別の用途にも切り替えられる', () => {
     localStorage.setItem('vst_host_setup_goal', 'listening');
     render(<TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /ヘッドホンで試すで診断する/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /自分で聴くで診断する/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /OBSで配信/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '用途を変える' }));
     expect(screen.getByRole('button', { name: /OBSで配信/ })).toBeInTheDocument();

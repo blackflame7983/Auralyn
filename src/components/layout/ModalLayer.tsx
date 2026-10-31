@@ -27,6 +27,7 @@ const markWizardDone = () => {
 };
 
 interface UIState {
+    settingsSection?: 'liveModes';
     settingsTab?: 'audio' | 'obs' | 'sound';
     isSettingsOpen: boolean;
     setIsSettingsOpen: (v: boolean) => void;
@@ -133,6 +134,7 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onPreviewSinging={() => { setSingingPreview(true); ui.setIsSettingsOpen(false); ui.setIsVoiceCheckOpen(true); }}
                         onSaveSingingProfile={() => { ui.setIsSettingsOpen(false); ui.setIsPresetManagerOpen(true); }}
                         initialTab={ui.settingsTab ?? 'audio'}
+                        initialSection={ui.settingsSection}
                         isOpen={ui.isSettingsOpen}
                         onClose={() => {
                             ui.setIsSettingsOpen(false);

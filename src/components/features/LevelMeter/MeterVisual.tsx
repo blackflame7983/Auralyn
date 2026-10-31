@@ -1,4 +1,5 @@
 import { useMessages } from '@/i18n/LocaleProvider';
+import { MdWarningAmber } from 'react-icons/md';
 import { CLIP_LEVEL, WARNING_LEVEL, meterStatusLabel, toDbfs, type MeterReading } from '@/hooks/useMeterLevels';
 
 export function MeterVisual({ reading, label, orientation = 'vertical', height = 32, width = 8, showValues = false, scale = false, stackValues = false }: {
@@ -7,7 +8,8 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
     const t = useMessages();
     const current = reading.state === 'live' || reading.state === 'silent';
     const amplitude = current ? Math.max(...reading.levels) : 0;
-    const db = toDbfs(amplitude);
+    // 無音通知の後もバーはなめらかに減衰するが、その残値を極端なdBFS値として表示しない。
+    const db = toDbfs(reading.state === 'silent' ? 0 : amplitude);
     const text = current ? `${Number.isFinite(db) ? db.toFixed(1) : '−∞'} dBFS` : t(meterStatusLabel(reading.state));
     const bars = orientation === 'horizontal' ? [Math.max(...reading.levels)] : reading.levels;
     const peaks = orientation === 'horizontal' ? [Math.max(...reading.peak)] : reading.peak;
@@ -16,7 +18,7 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
     return <div className={`flex min-w-0 items-center gap-1 ${stacked ? 'h-full min-h-0 flex-col' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`}>
         <div role="meter" aria-label={label} aria-valuemin={-60} aria-valuemax={0}
             aria-valuenow={current ? Math.max(-60, Math.min(0, Number.isFinite(db) ? db : -60)) : undefined}
-            aria-valuetext={text} title={t(meterStatusLabel(reading.state))}
+            aria-valuetext={text} title={t(reading.state === 'waiting' || reading.state === 'stale' ? 'meter.waitingHelp' : meterStatusLabel(reading.state))}
             className={`flex min-w-0 gap-1 ${stacked ? 'min-h-0 flex-1' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`} style={{ height: stacked ? undefined : height }}>
             {bars.map((value, i) => {
                 const pct = current ? Math.min(100, Math.max(0, value * 100)) : 0;
@@ -30,11 +32,22 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
                 </div>;
             })}
             {stacked && scale && <div aria-hidden="true" className="relative h-full w-8 shrink-0 text-xs text-muted-foreground font-mono">
-                {[0, -6, -12, -24, -48].map(mark => <span key={mark} className="absolute left-1 -translate-y-1/2" style={{ bottom: `calc(${Math.pow(10, mark / 20) * 100}% - 0.5em)` }}>{mark}</span>)}
+                {/* 上端の0と下端の目盛りも、この欄の中へ収める。状態表示や値の欄へはみ出させない。 */}
+                {[0, -6, -12, -24, -48].map(mark => <span key={mark} className="absolute left-1 leading-4"
+                    style={{ top: `clamp(0px, calc(${100 - Math.pow(10, mark / 20) * 100}% - 0.5rem), calc(100% - 1rem))` }}>{mark}</span>)}
             </div>}
         </div>
-        {showValues && current && <span className="text-xs font-mono text-muted-foreground whitespace-nowrap">{text}</span>}
+        {/* 桁数・無音・更新待ちでバーの長さを変えないよう、値の欄は常に同じ幅と高さを確保する。 */}
+        {showValues && <span title={text} className="inline-block h-4 w-[12ch] shrink-0 truncate text-right text-xs leading-4 font-mono tabular-nums text-muted-foreground">{orientation === 'horizontal' && reading.state !== 'live' ? t(meterStatusLabel(reading.state)) : current ? text : ''}</span>}
         {scale && <span className="sr-only">0, −6, −12, −24, −48 dBFS</span>}
-        {reading.clipped && <button type="button" onClick={reading.resetClip} className="shrink-0 rounded border border-destructive/50 px-1 text-xs font-semibold text-destructive-text" aria-label={t('meter.clearClipNamed', { name: label })}>{t('meter.clip')}</button>}
+        {/* 警告の有無で横バーの幅・縦バーの高さを変えない。解除操作の場所も固定する。 */}
+        <span className="inline-flex h-5 w-6 shrink-0 items-center justify-center">
+            {reading.clipped && <button type="button" onClick={reading.resetClip}
+                title={`${t('meter.clip')} — ${t('meter.clearClipNamed', { name: label })}`}
+                className="rounded border border-destructive/50 p-0.5 text-destructive-text hover:bg-destructive/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                aria-label={t('meter.clearClipNamed', { name: label })}>
+                <MdWarningAmber aria-hidden="true" className="h-4 w-4" /><span className="sr-only">{t('meter.clip')}</span>
+            </button>}
+        </span>
     </div>;
 }
