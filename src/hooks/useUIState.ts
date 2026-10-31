@@ -3,7 +3,7 @@ import { useState } from 'react';
 export const useUIState = () => {
     const [isSettingsOpen, setSettingsOpen] = useState(false);
     const [settingsTab, setSettingsTab] = useState<'audio' | 'obs' | 'sound'>('audio');
-    const [settingsSection, setSettingsSection] = useState<'liveModes'>();
+    const [settingsSection, setSettingsSection] = useState<'liveModes' | 'singing'>();
     const setIsSettingsOpen = (open: boolean) => {
         setSettingsSection(undefined);
         setSettingsTab('audio');
@@ -14,8 +14,8 @@ export const useUIState = () => {
         setSettingsTab('obs');
         setSettingsOpen(true);
     };
-    const openSoundSettings = () => {
-        setSettingsSection(undefined);
+    const openSoundSettings = (section?: 'liveModes' | 'singing') => {
+        setSettingsSection(section);
         setSettingsTab('sound');
         setSettingsOpen(true);
     };

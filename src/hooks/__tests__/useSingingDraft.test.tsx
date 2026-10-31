@@ -30,13 +30,15 @@ it.each([undefined, null])('旧設定の残響%sはOFFで表示し、操作し�
     const toggle = await screen.findByRole('checkbox', { name: '残響を有効にする' });
     await waitFor(() => expect(toggle).toBeEnabled());
     expect(toggle).not.toBeChecked();
+    expect(screen.getByRole('spinbutton', { name: '響きの量（%）' })).not.toBeVisible();
+    fireEvent.click(screen.getByText('数値を細かく調整'));
     expect(screen.getByRole('spinbutton', { name: '響きの量（%）' })).toHaveValue(8);
     fireEvent.click(toggle);
     fireEvent.change(screen.getByRole('spinbutton', { name: '残響の長さ（秒）' }), { target: { value: '1.8' } });
     expect(current.config.active).toBe(false);
     expect(current.config.preset).toBe('broadcast');
     expect(vi.mocked(builtinApi.request).mock.calls.every(([request]) => request.action === 'snapshot')).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'この下書きをマイクの音へ適用' }));
+    fireEvent.click(screen.getByRole('button', { name: 'この音をマイクへ適用' }));
     await waitFor(() => expect(current.config.reverb).toEqual({ ...defaultReverb, enabled: true, decaySeconds: 1.8 }));
     expect(current.config.active).toBe(false);
     expect(current.config.singing).toBeNull();
@@ -67,8 +69,9 @@ it('残響だけの下書きから候補入口を使え、保存操作は下書�
     const toggle = await screen.findByRole('checkbox', { name: '残響を有効にする' });
     await waitFor(() => expect(toggle).toBeEnabled());
     fireEvent.click(toggle);
-    fireEvent.click(screen.getByRole('button', { name: '内蔵ボイスチェーンの候補を独立試聴' }));
+    fireEvent.click(screen.getByRole('button', { name: '試しに聴く' }));
     expect(preview).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByText('再取得・下書きのリセット・保存'));
     fireEvent.click(screen.getByRole('button', { name: '適用済み設定をプロファイルへ保存' }));
     expect(save).toHaveBeenCalledOnce();
     expect(current.config.reverb).toBeUndefined();
@@ -137,11 +140,12 @@ it('歌設定ON/OFFは全値を保ち、編集後の再取得でも古いundoを
 });
 it('停止中は保持設定を表示し、数値入力が下書きだけ変え品質合格を表示しない', async () => {
     render(<Controls />);
-    const defaults = await screen.findByRole('button', { name: '歌向けの初期値を下書きに入れる' });
+    const defaults = await screen.findByRole('button', { name: '歌向けの音から始める' });
     await waitFor(() => expect(defaults).toBeEnabled());
     fireEvent.click(defaults);
+    fireEvent.click(screen.getByText('数値を細かく調整'));
     fireEvent.change(screen.getByRole('spinbutton', { name: '低音の整理（Hz）' }), { target: { value: '130' } });
-    expect(screen.getByText(/下書き：低音 130/)).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: '低音の整理（Hz）' })).toHaveValue(130);
     expect(screen.getByRole('status')).toHaveTextContent('次回の音声開始時');
     expect(vi.mocked(builtinApi.request).mock.calls.every(([request]) => request.action === 'snapshot')).toBe(true);
 });

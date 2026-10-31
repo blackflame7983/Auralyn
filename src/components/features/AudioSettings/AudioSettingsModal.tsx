@@ -42,7 +42,7 @@ interface AudioSettingsModalProps {
   onPreviewSinging?: () => void;
   onSaveSingingProfile?: () => void;
   initialTab?: 'audio' | 'obs' | 'sound';
-  initialSection?: 'liveModes';
+  initialSection?: 'liveModes' | 'singing';
   isOpen: boolean;
   onClose: () => void;
   onConfigChange: (config: Partial<import('../../../lib/audioPreferences').AudioPreferences> & { host: string }, options?: { audioStarted: true }) => void | Promise<void>;
@@ -81,7 +81,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const getBeginnerMode = () => localStorage.getItem('vst_host_beginner_mode') !== 'false';
   const { theme, setTheme } = useTheme();
   const [isApplying, setLoading] = useState(false);
-  const [preparingMode, setPreparingMode] = useState<'singing' | 'talk' | null>(null);
+  const [preparingMode, setPreparingMode] = useState<'singing' | 'talk' | null>(initialSection === 'singing' ? 'singing' : null);
   const reviewRequired = localStorage.getItem(REVIEW_KEY) === 'true';
   const [migrationConfirmed, setMigrationConfirmed] = useState(false);
   const importedPlugins = useMemo(() => {
@@ -134,9 +134,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   useEffect(() => {
     if (isOpen && initialTab === 'sound') {
       const frame = requestAnimationFrame(() => {
-        const target = initialSection === 'liveModes' ? settingsBody.current?.querySelector<HTMLElement>('#live-mode-settings') : soundStart.current;
+        const target = initialSection ? settingsBody.current?.querySelector<HTMLDetailsElement>(initialSection === 'liveModes' ? '#live-mode-settings' : '#singing-settings') : soundStart.current;
+        if (target instanceof HTMLDetailsElement) target.open = true;
         target?.scrollIntoView?.({ block: 'start' });
-        if (initialSection === 'liveModes') target?.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
+        if (initialSection) target?.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
       });
       return () => cancelAnimationFrame(frame);
     }
