@@ -3,6 +3,27 @@ import { test, expect } from './tauriFixture';
 
 test.describe('通常のホーム表示', () => {
     test.use({ liveHome: true, registeredModes: false });
+    test('マイク音量を開いて横並びから重ね表示へ縮めると、閉じてVST操作へ移る', async ({ page }) => {
+        await page.setViewportSize({ width: 1920, height: 768 });
+        await page.addInitScript(() => {
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('auralyn_vst_panel_open', 'true');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+        });
+        await page.goto('/');
+        await expect(page.locator('#vst-panel')).toBeVisible();
+        await page.getByRole('button', { name: 'マイク音量 100%', exact: true }).click();
+        const popup = page.getByRole('dialog', { name: 'マイク音量', exact: true });
+        await expect(popup.getByRole('slider')).toBeFocused();
+        await page.setViewportSize({ width: 960, height: 640 });
+        await expect(page.locator('main')).toHaveAttribute('inert', '');
+        await expect(popup).not.toBeVisible();
+        await expect(page.locator('#plugin-rack-heading')).toBeFocused();
+        await page.keyboard.press('Escape');
+        await expect(page.locator('#vst-panel')).toHaveCount(0);
+        await expect(page.locator('#vst-panel-toggle')).toBeFocused();
+        expect(await page.evaluate(() => (window as any).__e2eOutputGainWrites)).toEqual([]);
+    });
     test('広い画面は入出力を並べ、狭い画面は出力の操作をフッターに保つ', async ({ page }, testInfo) => {
         await page.addInitScript(() => {
             localStorage.setItem('vst_host_wizard_done', 'true');

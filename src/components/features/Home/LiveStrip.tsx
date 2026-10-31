@@ -15,11 +15,12 @@ const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', disc
 
 // 本番中に見る3つ（声のレベル、送り先、歌・雑談）だけを最上段に置く（DESIGN.md 1.3、2.5）。
 // 入力機器の名前は送り先の手前に1つだけ出し、押すと機器の設定を開く。確認の手順は準備状況に任せる。
-export function LiveStrip({ model, running, liveControls, meterAction, onOpenDevices, onCheckOutput, onAdjustOutput, outputGainOpen = false, inputName, outputName }: {
+export function LiveStrip({ model, running, liveControls, meterAction, onOpenDevices, onCheckOutput, onAdjustOutput, outputGainOpen = false, controlsDisabled = false, inputName, outputName }: {
     model: PreparationModel; running: boolean; liveControls?: ReactNode; meterAction?: ReactNode; onOpenDevices?: () => void;
     onCheckOutput?: () => void;
     onAdjustOutput?: (anchor: HTMLButtonElement) => void;
     outputGainOpen?: boolean;
+    controlsDisabled?: boolean;
     /** 準備の観測で機器を取れない間に使う、AppShell が持つ機器名。 */
     inputName?: string; outputName?: string;
 }) {
@@ -41,7 +42,7 @@ export function LiveStrip({ model, running, liveControls, meterAction, onOpenDev
             <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues />
             {/* 無音は「声が来ていない」本番事故の手がかりなので、dBFS 値だけにせず言葉でも示す。 */}
             {/* マイク音量と音量チェックはメーターに関わる操作なので、上部に単独で置かずメーターの横に置く。 */}
-            <InputGainControl />
+            <InputGainControl disabled={controlsDisabled} />
             {meterAction}
         </div>
         {/* 広い作業幅では入出力を隣接させる。同じ観測値を共有し、出力音量の操作はフッターへ集約する。 */}
