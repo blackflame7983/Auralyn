@@ -191,6 +191,9 @@ function AppContent() {
             reason={pluginsApi.sessionProtectionReason}
             busy={pluginsApi.isLoading || pluginsApi.isScanning || isInitializing}
             onRetry={pluginsApi.retrySessionRestore}
+            missingRecovery={pluginsApi.missingRecovery}
+            onCheckMissing={pluginsApi.checkMissingPlugins}
+            onSaveWithoutMissing={pluginsApi.saveWithoutMissingPlugins}
             unrestored={pluginsApi.sessionUnrestored}
           />
         </>}

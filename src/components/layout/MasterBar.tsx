@@ -38,13 +38,18 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     const [simple] = useBeginnerMode();
     const meter = useSharedMeter(isRunning, 'output');
     const isClipping = meter.clipped;
+    const detailsButtonRef = useRef<HTMLButtonElement>(null);
     const [stats, setStats] = useState<EngineRuntimeStats | null>(null);
     const [hasRecentGlitch, setHasRecentGlitch] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
     const glitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const previousGlitchCount = useRef<number | null>(null);
     const statsGeneration = useRef(0);
-    useEffect(() => { statsGeneration.current++; setStats(null); }, [isRunning]);
+    useEffect(() => {
+        statsGeneration.current++; setStats(null); previousGlitchCount.current = null;
+        if (glitchTimer.current) clearTimeout(glitchTimer.current);
+        setHasRecentGlitch(false);
+    }, [isRunning]);
 
     // Master output gain (persisted)
     const [outputGain, setOutputGain] = useState<number>(() => {
@@ -153,6 +158,9 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
         };
         // mount直後のstatusはLSへ公開しない。初回bootstrap待ちの保存音量を保持する。
         const unlisten = listen('audio-started', () => {
+            statsGeneration.current++; previousGlitchCount.current = null;
+            if (glitchTimer.current) clearTimeout(glitchTimer.current);
+            setHasRecentGlitch(false);
             void applyGain();
         });
         const initialize = async () => {
@@ -188,7 +196,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
         let disposed = false;
         let fetching = false;
         let expiry: ReturnType<typeof setTimeout> | undefined;
-        const invalidate = () => { statsGeneration.current++; setStats(null); onStatsChange?.(null); };
+        const invalidate = () => { statsGeneration.current++; previousGlitchCount.current = null; setStats(null); onStatsChange?.(null); };
         const visibility = () => { if (document.hidden) invalidate(); };
         document.addEventListener('visibilitychange', visibility);
         const stops = ['audio-stopped', 'audio-error', 'audio-stream-error'].map(name => listen(name, invalidate));
@@ -202,7 +210,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 if (prev !== null && next.glitchCount > prev) {
                     setHasRecentGlitch(true);
                     if (glitchTimer.current) clearTimeout(glitchTimer.current);
-                    glitchTimer.current = setTimeout(() => setHasRecentGlitch(false), 1500);
+                    glitchTimer.current = setTimeout(() => setHasRecentGlitch(false), 10000);
                 }
                 previousGlitchCount.current = next.glitchCount;
                 setStats(next);
@@ -285,9 +293,11 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                 </span>
             </div>
 
-            {hasRecentGlitch && <span role="status" title={t('master.glitch')}><MdBolt aria-hidden="true" className="w-3.5 h-3.5 text-warning" /><span className="sr-only">{t('master.glitch')}</span></span>}
+            {hasRecentGlitch && <button type="button" onClick={() => { detailsButtonRef.current?.focus(); setDetailsOpen(true); }} aria-haspopup="dialog" aria-expanded={detailsOpen}
+                aria-label={t('master.recentDropout')} title={t('master.recentDropout')}
+                className="rounded p-1 text-warning hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"><MdBolt aria-hidden="true" className="h-4 w-4" /></button>}
 
-            <button onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-expanded={detailsOpen}
+            <button ref={detailsButtonRef} onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-expanded={detailsOpen}
                 aria-label={t('master.details')} title={t('master.details')}
                 className="shrink-0 rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
                 <MdInfoOutline aria-hidden="true" className="h-4 w-4" />

@@ -72,3 +72,17 @@ it('−3 dBFS は注意色、0 dBFS 到達は危険色とクリップ表示に�
     expect(screen.getByTitle('Left').firstElementChild).toHaveClass('bg-meter-danger');
     expect(screen.getByRole('button', { name: /クリップ表示を消す/ })).toBeInTheDocument();
 });
+
+it('共有クリップは10秒後に弱い色へ変わり、秒数と解除操作を維持する', () => {
+    render(<MeterProvider running><LevelMeter running type="output" /><LevelMeter running type="output" /></MeterProvider>);
+    emit('audio-level', { input: [0, 0], output: [1, 0] });
+    act(() => vi.advanceTimersByTime(16));
+    expect(screen.getAllByRole('button', { name: /クリップ表示を消す/ })[0]).toHaveClass('text-meter-danger');
+    act(() => vi.advanceTimersByTime(10000));
+    const buttons = screen.getAllByRole('button', { name: /クリップ表示を消す/ });
+    expect(buttons[0]).toHaveClass('text-muted-foreground');
+    expect(buttons[0]).toHaveAttribute('title', expect.stringContaining('10秒前'));
+    expect(buttons[1]).toHaveClass('text-muted-foreground');
+    fireEvent.click(buttons[0]);
+    expect(screen.queryAllByRole('button', { name: /クリップ表示を消す/ })).toHaveLength(0);
+});

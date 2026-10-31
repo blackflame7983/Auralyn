@@ -90,3 +90,14 @@ it('実メーターのlocale切替で購読・timeout・無音状態を作り直
     expect(screen.getByLabelText('入力レベル: 無音')).toBe(meter);
     expect(vi.mocked(listen).mock.calls).toHaveLength(subscriptions);
 });
+
+ it('最後のクリップからの経過秒を更新し、再検出・手動解除・再開始でリセットする', () => {
+    const { result } = renderHook(() => useMeterLevels({ running: true, type: 'input' }));
+    level(1); tick(16); tick(9984);
+    expect(result.current).toMatchObject({ clipped: true, clipSecondsAgo: 10 });
+    level(1); tick(16); expect(result.current.clipSecondsAgo).toBe(0);
+    act(() => result.current.resetClip()); tick(16);
+    expect(result.current).toMatchObject({ clipped: false, clipSecondsAgo: null });
+    level(1); tick(16); emit('audio-started');
+    expect(result.current).toMatchObject({ clipped: false, clipSecondsAgo: null });
+});

@@ -338,3 +338,42 @@ it.each([null, false])('稼働表示が残っていてもready=%sを正常色・
     expect(state.className).not.toContain('text-success');
     expect(screen.queryByText('原音')).not.toBeInTheDocument();
 });
+
+it('音切れ増加の表示は10秒保持し、詳細を開けて、再開始やカウンタ減少を誤検出しない', async () => {
+    let count = 4;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => ({ glitchCount: count, enabledPluginCount: 0, activePluginCount: 0 } as EngineRuntimeStats));
+    const view = render(<MasterBar isRunning />);
+    await act(async () => { finishListening(); await vi.advanceTimersByTimeAsync(0); });
+    count = 5; await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    const button = screen.getByRole('button', { name: '直近で音切れを検出' });
+    expect(button).toHaveAttribute('title', '直近で音切れを検出');
+    button.focus(); fireEvent.click(button);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(9000); });
+    expect(screen.getByRole('button', { name: '直近で音切れを検出' })).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.queryByRole('button', { name: '直近で音切れを検出' })).toBeNull();
+    count = 0; await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.queryByRole('button', { name: '直近で音切れを検出' })).toBeNull();
+    view.rerender(<MasterBar isRunning={false} />);
+    count = 10; view.rerender(<MasterBar isRunning />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.queryByRole('button', { name: '直近で音切れを検出' })).toBeNull();
+});
+
+it('音切れ表示が詳細を開いている間に消えても常設の入口へフォーカスを戻す', async () => {
+    let count = 0;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => ({ glitchCount: count, enabledPluginCount: 0, activePluginCount: 0 } as EngineRuntimeStats));
+    render(<MasterBar isRunning />);
+    await act(async () => { finishListening(); await vi.advanceTimersByTimeAsync(0); });
+    count = 1;
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    const button = screen.getByRole('button', { name: '直近で音切れを検出' });
+    button.focus(); fireEvent.click(button);
+    await act(async () => { await vi.advanceTimersByTimeAsync(11000); });
+    expect(button.isConnected).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByRole('button', { name: message('ja', 'master.details') })).toHaveFocus();
+});

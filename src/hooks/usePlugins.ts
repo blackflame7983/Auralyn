@@ -212,6 +212,78 @@ export const usePlugins = () => {
     const retrySessionRestore = useCallback(async () => { await retrySavedSession(); }, [retrySavedSession]);
     retryRef.current = retrySessionRestore;
 
+    // 確認画面は原本と検出結果を保持し、実行時に両方を再照合する。
+    const [missingRecovery, setMissingRecovery] = useState<{ saved: string; missing: boolean[]; names: string[]; generation: number } | null>(null);
+    const checkMissingPlugins = useCallback(async () => {
+        if (manualRecoveryPending.current || sessionRestorePending.current || retryPending.current || rackRestoreBusy()) throw new Error('busy');
+        manualRecoveryPending.current = true;
+        const generation = restoreGeneration.current;
+        setIsLoading(true);
+        setMissingRecovery(null);
+        try {
+            if (localStorage.getItem(PLUGIN_SESSION_PROTECTED_KEY) !== 'true') throw new Error('unprotected');
+            const saved = localStorage.getItem(PLUGIN_SESSION_KEY);
+            if (saved === null) throw new Error('missing source');
+            const items = parsePluginSession(JSON.parse(saved));
+            const missing = await audioApi.missingVstPaths(items.map(item => item.path));
+            if (!mounted.current || generation !== restoreGeneration.current || localStorage.getItem(PLUGIN_SESSION_KEY) !== saved || localStorage.getItem(PLUGIN_SESSION_PROTECTED_KEY) !== 'true' || missing.length !== items.length) throw new Error('changed');
+            const names = items.filter((_, index) => missing[index]).map(item => item.name || item.path);
+            setMissingRecovery({ saved, missing, names, generation });
+        } finally {
+            manualRecoveryPending.current = false;
+            if (mounted.current && generation === restoreGeneration.current) setIsLoading(false);
+        }
+    }, []);
+
+    const saveWithoutMissingPlugins = useCallback(async () => {
+        if (!missingRecovery || missingRecovery.generation !== restoreGeneration.current || !missingRecovery.names.length || manualRecoveryPending.current || sessionRestorePending.current || retryPending.current || rackRestoreBusy()) throw new Error('busy');
+        manualRecoveryPending.current = true;
+        const release = beginRackRestore();
+        const generation = missingRecovery.generation;
+        setIsLoading(true);
+        const check = () => {
+            if (!mounted.current || generation !== restoreGeneration.current || localStorage.getItem(PLUGIN_SESSION_KEY) !== missingRecovery.saved || localStorage.getItem(PLUGIN_SESSION_PROTECTED_KEY) !== 'true') throw new Error('changed');
+        };
+        try {
+            check();
+            const items = parsePluginSession(JSON.parse(missingRecovery.saved));
+            const missing = await audioApi.missingVstPaths(items.map(item => item.path)); check();
+            if (missing.length !== items.length || missing.some((value, index) => value !== missingRecovery.missing[index])) throw new Error('changed');
+            const remaining = items.filter((_, index) => !missing[index]);
+            const rack = await audioApi.sessionRack({ action: 'snapshot' }); check();
+            if (rack.status !== 'snapshot' || rack.plugins.length !== remaining.length || rack.plugins.some((plugin, index) => plugin.path !== remaining[index].path)) throw new Error('rack mismatch');
+            const session = await Promise.all(rack.plugins.map(async (plugin, index) => ({ ...remaining[index], enabled: plugin.enabled, muted: plugin.muted, gain: plugin.gain, state: await audioApi.getPluginState(plugin.id) })));
+            check();
+            // 毎回固有名で原本を退避し、既存の自動バックアップは上書きしない。
+            protectPluginSession(missingRecovery.saved);
+            const backupName = `VST-recovery-${crypto.randomUUID()}`;
+            const backupKey = `vst_host_session_recovery_${backupName}`;
+            if (localStorage.getItem(backupKey) !== null) throw new Error('backup exists');
+            localStorage.setItem(backupKey, missingRecovery.saved);
+            if (localStorage.getItem(backupKey) !== missingRecovery.saved) throw new Error('backup failed');
+            await audioApi.saveVstRecoveryProfile(backupName, items); check();
+            const retained = await audioApi.sessionRack({ action: 'retain', generation: rack.generation, revision: rack.revision, ids: rack.plugins.map(plugin => plugin.id), inputGain: null }); check();
+            if (retained.status !== 'finished') throw new Error('rack changed');
+            localStorage.setItem(PLUGIN_SESSION_KEY, JSON.stringify(session));
+            try {
+                localStorage.removeItem(PLUGIN_SESSION_PROTECTED_KEY);
+            } catch (error) {
+                // 保護解除を保存できない場合は原文へ戻し、同じ確認から再試行できるようにする。
+                localStorage.setItem(PLUGIN_SESSION_KEY, missingRecovery.saved);
+                throw error;
+            }
+            setMissingRecovery(null);
+            setSessionRestoreStatus('success');
+            setSessionPersistenceProtected(false);
+            setIsSessionLoaded(true);
+            setError(null);
+        } finally {
+            release();
+            manualRecoveryPending.current = false;
+            if (mounted.current && generation === restoreGeneration.current) setIsLoading(false);
+        }
+    }, [missingRecovery]);
+
     const restoreSession = useCallback(async (explicit = true) => {
         await restoreSavedSession(undefined, explicit);
     }, [restoreSavedSession]);
@@ -772,6 +844,7 @@ export const usePlugins = () => {
         sessionPersistenceProtected,
         sessionProtectionReason,
         sessionUnrestored,
-        retrySessionRestore
+        retrySessionRestore,
+        missingRecovery, checkMissingPlugins, saveWithoutMissingPlugins
     };
 };

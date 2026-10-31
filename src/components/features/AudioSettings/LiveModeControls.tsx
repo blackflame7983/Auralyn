@@ -6,18 +6,25 @@ import { SavePurposeHelp } from '../Presets/SavePurposeHelp';
 
 function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode: 'singing' | 'talk') => void }) {
     const t = useMessages();
+    const [confirmReverb, setConfirmReverb] = useState(false);
+    const [nextMode, setNextMode] = useState<'singing' | 'talk' | null>(null);
     const name = (mode: 'singing' | 'talk' | null) => mode === 'singing' ? t('settings.LiveModeControls.212') : mode === 'talk' ? t('settings.LiveModeControls.213') : t('settings.LiveModeControls.214');
     useEffect(() => model.activate(), [model.activate]);
     const { snapshot: value, busy, error } = model;
+    const save = async (mode: 'singing' | 'talk', disableReverb = false) => {
+        setNextMode(null);
+        setConfirmReverb(false);
+        const result = await model.saveApplied(mode, disableReverb);
+        setConfirmReverb(result === 'reverb');
+        if (result === true) setNextMode(mode === 'singing' ? 'talk' : 'singing');
+    };
     const sameSettings = value?.definitions.singing && value.definitions.talk
         && JSON.stringify(value.definitions.singing) === JSON.stringify(value.definitions.talk);
     return <div className="space-y-3 p-3 text-sm">
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <p>{t('settings.mode.registerHint')}</p>
+            <p>{t('settings.mode.registerHintNew')}</p>
             <SavePurposeHelp />
         </div>
-        {/* 登録を二重の折りたたみに隠さない。保存条件は実行ボタンより先に伝える。 */}
-        <p className="text-xs text-muted-foreground">{t('settings.mode.registrationScope')}</p>
         <div className="divide-y divide-border">
             {(['singing', 'talk'] as const).map(mode => {
                 const Icon = mode === 'singing' ? MdMusicNote : MdMic;
@@ -31,12 +38,20 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
                     <div className="flex flex-wrap gap-2">
                     {onAdjust && <button type="button" onClick={() => onAdjust(mode)} aria-label={t('settings.mode.adjustNamed', { mode: name(mode) })}
                         className="rounded-md border border-border px-3 py-2 text-xs hover:bg-muted">{t('settings.mode.adjust')}</button>}
-                    <button type="button" disabled={busy || !value} onClick={() => void model.saveApplied(mode)} aria-label={t('settings.mode.save', { mode: name(mode) })}
+                    <button type="button" disabled={busy || !value} onClick={() => void save(mode)} aria-label={t('settings.mode.save', { mode: name(mode) })}
                         className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50"><MdSave aria-hidden="true" />{t('settings.mode.registerAction')}</button>
                     </div>
                 </div>;
             })}
         </div>
+        {confirmReverb && <div className="space-y-2 rounded-md border border-border p-3" role="group" aria-label={t('settings.mode.reverbConfirm')}>
+            <p>{t('settings.mode.reverbConfirm')}</p>
+            <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={busy} onClick={() => void save('talk', true)} className="rounded-md border border-border px-3 py-2 text-xs">{t('settings.mode.registerWithoutReverb')}</button>
+                <button type="button" disabled={busy} onClick={() => setConfirmReverb(false)} className="rounded-md border border-border px-3 py-2 text-xs">{t('settings.mode.cancelRegistration')}</button>
+            </div>
+        </div>}
+        {nextMode && onAdjust && <button type="button" onClick={() => { setNextMode(null); onAdjust(nextMode); }} className="rounded-md border border-border px-3 py-2 text-xs">{t('settings.mode.adjustOther', { mode: name(nextMode) })}</button>}
         {sameSettings && <p className="text-xs text-muted-foreground">{t('settings.mode.sameSettings')}</p>}
         <p role="status">{!value ? t('settings.LiveModeControls.216') : value.phase === 'partial' ? t('liveOutput.partial') : value.phase === 'custom' ? t('settings.LiveModeControls.217')
             : !value.running || value.phase === 'stopped' ? t('settings.LiveModeControls.218', { arg0: name(value.target) })
