@@ -5,7 +5,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { audioApi, VstPlugin, type RackPlugin } from '../api/audio';
 import { Plugin } from '../components/features/PluginRack/PluginCard';
 import { usePluginProfiles } from './usePluginProfiles';
-import { restorePluginSession, parsePluginSession, SessionRackConflict, type PluginSessionRestoreResult } from '../lib/restorePluginSession';
+import { restorePluginSession, parsePluginSession, unrestoredPluginNames, SessionRackConflict, type PluginSessionRestoreResult } from '../lib/restorePluginSession';
 import { toast } from 'sonner';
 import { REVIEW_KEY } from '../api/migration';
 import { usePluginSessionPersistence, protectPluginSession, PLUGIN_SESSION_KEY, PLUGIN_SESSION_PROTECTED_KEY } from './usePluginSessionPersistence';
@@ -734,6 +734,11 @@ export const usePlugins = () => {
     const sessionProtectionReason = sessionPersistenceProtected && sessionRestoreStatus !== 'pending'
         ? t('pluginNotices.protected')
         : null;
+    // 引継ぎ中は実ラックが正なので、保存済みとの差を「読み込めていない」と示さない。
+    let sessionUnrestored: string[] = [];
+    if (sessionPersistenceProtected && sessionRestoreStatus !== 'pending' && sessionRestoreStatus !== 'retained') {
+        try { sessionUnrestored = unrestoredPluginNames(localStorage.getItem(PLUGIN_SESSION_KEY), plugins); } catch { /* 読めない保存値から推定しない。 */ }
+    }
     return {
         plugins,
         availablePlugins,
@@ -766,6 +771,7 @@ export const usePlugins = () => {
         sessionRestoreStatus,
         sessionPersistenceProtected,
         sessionProtectionReason,
+        sessionUnrestored,
         retrySessionRestore
     };
 };

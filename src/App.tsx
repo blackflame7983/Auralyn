@@ -131,6 +131,7 @@ function AppContent() {
       onReorder={pluginsApi.reorderPlugins}
       onOpenPresets={() => ui.setIsPresetManagerOpen(true)}
       onOpenTemplates={() => ui.setIsTemplateWizardOpen(true)}
+      unrestored={pluginsApi.sessionUnrestored}
       headerAction={<>
         <InfoPopover label={t('info.rack')}>{t('app.rackHint')}</InfoPopover>
         <button type="button" onClick={() => setVstPanelOpen(false)} aria-label={t('rack.closePanel')} title={t('rack.closePanel')}
@@ -189,6 +190,7 @@ function AppContent() {
             reason={pluginsApi.sessionProtectionReason}
             busy={pluginsApi.isLoading || pluginsApi.isScanning || isInitializing}
             onRetry={pluginsApi.retrySessionRestore}
+            unrestored={pluginsApi.sessionUnrestored}
           />
         </>}
       >

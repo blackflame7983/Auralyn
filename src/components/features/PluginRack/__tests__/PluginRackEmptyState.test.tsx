@@ -44,3 +44,10 @@ it.each([false, true])('ラック経由でも稼働確認=%sを空状態へ引�
     expect(screen.queryByRole('button', { name: 'セットアップを開く' })).not.toBeInTheDocument();
     expect(add.classList.contains('bg-primary')).toBe(audioReady);
 });
+
+it('保存済みのVSTを読み込めていない空ラックは「まだない」と表示せず、名前を示す', () => {
+    render(<PluginRackEmptyState onAddClick={vi.fn()} onOpenTemplates={vi.fn()} unrestored={['Ozone 12 Equalizer']} />);
+    expect(screen.getByRole('heading', { name: '保存済みのVSTを読み込めていません' })).toBeInTheDocument();
+    expect(screen.getByText('読み込めていないVST：Ozone 12 Equalizer')).toBeInTheDocument();
+    expect(screen.queryByText('VSTエフェクトはまだありません')).toBeNull();
+});
