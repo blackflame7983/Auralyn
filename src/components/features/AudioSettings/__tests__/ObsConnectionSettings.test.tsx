@@ -40,10 +40,11 @@ it('接続応答待ちと接続中は入力を固定し、切断後に編集で�
     await act(async () => {});
     expect(screen.getByRole('spinbutton', { name: 'OBSポート' })).toBeDisabled();
     await act(async () => resolve());
+    const summary = screen.getByText(/接続先：localhost:4455/);
+    expect(summary).toHaveAttribute('role', 'status');
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+    fireEvent.click(summary);
     expect(screen.getByRole('spinbutton', { name: 'OBSポート' })).toBeDisabled();
-    expect(screen.getByText('接続済み')).toHaveAttribute('role', 'status');
-    expect(screen.queryByRole('button', { name: /接続済み/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText('接続済み'));
     expect(invoke).not.toHaveBeenCalledWith('disconnect_obs');
     fireEvent.click(screen.getByRole('button', { name: '切断' }));
     await waitFor(() => expect(screen.getByRole('spinbutton', { name: 'OBSポート' })).toBeEnabled());
@@ -81,4 +82,16 @@ it.each(['ja','en'] as const)('接続開始locale=%sのtoastを保ち、pending/
     act(()=>{store.setLocale('ja');});
     expect(hint).toHaveTextContent(obsConnectionFailure(failure,5544));expect(invoke).toHaveBeenCalledTimes(calls);
     expect(vi.mocked(invoke).mock.calls.filter(([command])=>command==='connect_obs')).toHaveLength(1);
+});
+
+it('接続済みの再表示は要約を閉じて表示し、手動で開いた状態は再描画で維持する', async () => {
+    vi.mocked(invoke).mockImplementation(async command => command === 'obs_connection_status' ? true : undefined);
+    const view = open();
+    const summary = await screen.findByText(/接続先：localhost:4455/);
+    const details = summary.closest('details')!;
+    expect(details).not.toHaveAttribute('open');
+    fireEvent.click(summary);
+    expect(details).toHaveAttribute('open');
+    view.rerender(<ObsConnectionSettings showConfirm={vi.fn()} onClose={vi.fn()} />);
+    expect(details).toHaveAttribute('open');
 });

@@ -29,16 +29,16 @@ afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 it.each([
     { operation: '保存して開始', host: 'Wasapi', failAt: null },
-    { operation: '音声エンジンを再起動', host: 'Wasapi', failAt: null },
+    { operation: '音声処理を再起動', host: 'Wasapi', failAt: null },
     { operation: '通常再起動', host: 'Wasapi', failAt: null },
     { operation: '保存して開始', host: 'ASIO', failAt: null },
-    { operation: '音声エンジンを再起動', host: 'ASIO', failAt: null },
+    { operation: '音声処理を再起動', host: 'ASIO', failAt: null },
     { operation: '保存して開始', host: 'ASIO', failAt: 'start' },
-    { operation: '音声エンジンを再起動', host: 'ASIO', failAt: 'start' },
+    { operation: '音声処理を再起動', host: 'ASIO', failAt: 'start' },
     { operation: '保存して開始', host: 'ASIO', failAt: 'channels' },
-    { operation: '音声エンジンを再起動', host: 'ASIO', failAt: 'channels' },
+    { operation: '音声処理を再起動', host: 'ASIO', failAt: 'channels' },
     { operation: '保存して開始', host: 'ASIO', failAt: 'complete' },
-    { operation: '音声エンジンを再起動', host: 'ASIO', failAt: 'complete' },
+    { operation: '音声処理を再起動', host: 'ASIO', failAt: 'complete' },
 ])('$host・$operation・初回失敗=$failAt: 確認後の開始成功時だけ各VSTを1回復元する', async ({ operation, host, failAt }) => {
     localStorage.clear();
     if (operation !== '通常再起動') localStorage.setItem(REVIEW_KEY, 'true');
@@ -130,7 +130,7 @@ it.each([
             expect(localStorage.getItem(REVIEW_KEY)).toBe('true');
             expect(screen.getByRole('button', { name: '保存して開始' })).toBeDisabled();
             await openSystemTab();
-            expect(screen.getByRole('button', { name: '音声エンジンを再起動' })).toBeDisabled();
+            expect(screen.getByRole('button', { name: '音声処理を再起動' })).toBeDisabled();
             fireEvent.keyDown(screen.getByRole('tab', { name: 'オーディオ' }), { key: 'Enter' });
             expect(enginePaths).toEqual([]);
             expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
@@ -143,7 +143,7 @@ it.each([
         if (operation === '保存して開始') fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
         else {
             await openSystemTab();
-            fireEvent.click(screen.getByRole('button', { name: '音声エンジンを再起動' }));
+            fireEvent.click(screen.getByRole('button', { name: '音声処理を再起動' }));
             fireEvent.click(await screen.findByRole('button', { name: '再起動する' }));
         }
     };

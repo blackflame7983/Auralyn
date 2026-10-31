@@ -48,7 +48,10 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await expect(saveSinging).toBeInViewport();
     await expect(saveTalk).toBeInViewport();
     await expect.poll(() => page.evaluate(() => (window as any).__e2eModeWrites.length)).toBe(0);
-    await expect(section).toContainText('雑談は残響をOFF');
+    await section.getByRole('button', { name: 'モード登録とプロファイル保存の違い' }).click();
+    const help = page.getByRole('dialog', { name: 'モード登録とプロファイル保存の違い' });
+    await expect(help).toContainText('雑談では残響をOFFにします');
+    await page.keyboard.press('Escape');
     await page.screenshot({ path: testInfo.outputPath('live-registration.png') });
     await saveSinging.click();
     await expect(section.getByText('登録済み', { exact: true })).toHaveCount(1);
@@ -80,7 +83,7 @@ test('設定の通常操作を先に置き、アイコンと必要時の説明�
         const tab = dialog.getByRole('tab', { name, exact: true });
         await expect(tab.locator('svg[aria-hidden=true]')).toHaveCount(1);
     }
-    const driver = dialog.getByRole('combobox', { name: 'オーディオドライバ', exact: true });
+    const driver = dialog.getByRole('combobox', { name: '接続方式', exact: true });
     const permissions = dialog.getByText('マイクのアクセス許可を確認する', { exact: true });
     expect(await driver.evaluate((element) => Boolean(element.compareDocumentPosition(document.querySelector('[role=tabpanel] details:last-child')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
     await expect(driver).toBeInViewport();

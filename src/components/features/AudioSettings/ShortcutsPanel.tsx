@@ -40,6 +40,8 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
     const t = useMessages();
     const [values, setValues] = useState<Values>({});
     const [saved, setSaved] = useState<Values>({});
+    // 起動時の登録失敗は値の変更と別に保持し、競合解消後の再登録を可能にする。
+    const [registrationFailed, setRegistrationFailed] = useState(false);
     const [ready, setReady] = useState(false);
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState<SettingsNotice[]>([]);
@@ -96,10 +98,16 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
             if (!active || !status) return;
             const loaded = Object.fromEntries(status.bindings.map(b => [b.action, b.shortcut]));
             setValues(loaded); setSaved(loaded);
+            setRegistrationFailed(status.errors.some(error => error.code === 'registerFailed'));
             setMessage(status.errors.flatMap(error => shortcutErrorNotices(error, 'settings.ShortcutsPanel.373'))); setReady(true);
         }).catch(error => { if (active) setMessage(shortcutErrorNotices(error, 'settings.ShortcutsPanel.373')); });
         return () => { active = false; };
     }, []);
+    const dirty = (Object.keys(actions) as Action[]).some(action => {
+        const current = values[action]?.trim() ?? '';
+        const previous = saved[action]?.trim() ?? '';
+        return (current ? normalized(current) : '') !== (previous ? normalized(previous) : '');
+    });
     const save = async () => {
         const bindings = (Object.entries(values) as [Action, string][]).filter(([, value]) => value.trim()).map(([action, shortcut]) => ({ action, shortcut: shortcut.trim() }));
         if (bindings.length > 8) { setMessage([notice('settings.ShortcutsPanel.374')]); return; }
@@ -117,6 +125,7 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
             const status = await invoke<Status>('save_shortcuts', { bindings });
             const applied = Object.fromEntries(status.bindings.map(b => [b.action, b.shortcut]));
             setValues(applied); setSaved(applied);
+            setRegistrationFailed(status.errors.some(error => error.code === 'registerFailed'));
             setMessage(status.errors.length ? status.errors.flatMap(error => shortcutErrorNotices(error, 'settings.ShortcutsPanel.377')) : [notice('settings.ShortcutsPanel.376')]);
         } catch (error) {
             setMessage(shortcutErrorNotices(error, 'settings.ShortcutsPanel.377'));
@@ -158,11 +167,6 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
             <p>{t('shortcuts.streamDeckHint')}</p>
             <InfoPopover label={t('shortcuts.details')}><p>{t('settings.ShortcutsPanel.379')}</p><p className="mt-2">{t('settings.ShortcutsPanel.380')}</p></InfoPopover>
         </div>
-        <div className="sticky top-0 z-10 flex flex-wrap gap-2 border-b border-border bg-card py-2">
-            <button type="button" className="rounded border px-3 py-2 text-sm disabled:opacity-50" disabled={!ready || busy} onClick={() => void save()}>{t('settings.ShortcutsPanel.390')}</button>
-            <button type="button" className="rounded border px-3 py-2 text-sm disabled:opacity-50" disabled={!ready || busy} onClick={() => { setValues(saved); setMessage([notice('settings.ShortcutsPanel.391')]); }}>{t('settings.ShortcutsPanel.392')}</button>
-            {message.length > 0 && <p role="status" className="basis-full whitespace-pre-wrap break-words text-sm">{message.map(part => renderNotice(t, part)).join('\n')}</p>}
-        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{(Object.entries(actions) as [Action, (typeof actions)[Action]][]).map(([action, labelKey]) => {
             const label = t(labelKey);
             const pair = split(values[action] ?? '');
@@ -194,6 +198,10 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
                 {values[action] && <button type="button" aria-label={`${t('settings.ShortcutsPanel.389')}${label}`} className="rounded border border-border px-2 py-1 text-muted-foreground hover:text-destructive-text disabled:opacity-50" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('shortcuts.unbind')}</button>}
             </fieldset>;
         })}</div>
-
+        <div className="sticky bottom-0 z-10 flex flex-wrap gap-2 border-t border-border bg-card py-2">
+            <button type="button" className="rounded border px-3 py-2 text-sm disabled:opacity-50" disabled={!ready || busy || (!dirty && !registrationFailed) || !!capturing} onClick={() => void save()}>{t('settings.ShortcutsPanel.390')}</button>
+            <button type="button" className="rounded border px-3 py-2 text-sm disabled:opacity-50" disabled={!ready || busy || !dirty || !!capturing} onClick={() => { setValues(saved); setMessage([notice('settings.ShortcutsPanel.391')]); }}>{t('settings.ShortcutsPanel.392')}</button>
+            {message.length > 0 && <p role="status" className="basis-full whitespace-pre-wrap break-words text-sm">{message.map(part => renderNotice(t, part)).join('\n')}</p>}
+        </div>
     </section>;
 }

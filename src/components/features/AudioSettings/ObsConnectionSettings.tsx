@@ -2,7 +2,7 @@ import { preparationReach } from '@/lib/preparation';
 import { message, type MessageKey } from '@/i18n/messages';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { obsApi, type ObsAudioReachResult } from '../../../api/obs';
@@ -25,6 +25,7 @@ interface ObsConnectionSettingsProps {
 // OBS接続の寿命はこのタブの表示に合わせ、音声デバイス設定とは独立して管理する。
 export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, onOpenTroubleshoot }: ObsConnectionSettingsProps) {
     const t = useMessages();
+    const reasonId = useId();
     const { locale } = useLocale();
   const [loading, setLoading] = useState(false);
   const [endpoint] = useState(readObsEndpoint);
@@ -32,6 +33,8 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
   const [obsPort, setObsPort] = useState(endpoint.port);
   const [obsPassword, setObsPassword] = useState('');
   const [isObsConnected, setIsObsConnected] = useState(false);
+  const isObsConnectedRef = useRef(isObsConnected);
+  isObsConnectedRef.current = isObsConnected;
   const obsInUse = useObsUsage(true);
   const [obsStatusLoading, setObsStatusLoading] = useState(true);
   const [obsConnectionHint, setObsConnectionHint] = useState<SettingsNotice | null>(null);
@@ -51,6 +54,8 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
   const reachContext = useRef(0);
   const reachListeners = useRef(false);
   const connectionRevision = useRef(0);
+  const connectionDetails = useRef<HTMLDetailsElement>(null);
+  const connectionDetailsTouched = useRef(false);
 
   // 翻訳の変更では購読・接続・確認をやり直さない。自己toneの通知もいったん
   // staleにしてからnativeの終了後witnessを照合し、通知を一括無視しない。
@@ -91,8 +96,16 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
         reachExpiredRef.current = true; setReachExpired(true);
       }
     };
+    const refreshConnection = () => {
+      const revision = connectionRevision.current;
+      void obsApi.connectionStatus().then(connected => {
+        if (!active || revision !== connectionRevision.current || typeof connected !== 'boolean') return;
+        if (isObsConnectedRef.current && !connected && connectionDetails.current) connectionDetails.current.open = true;
+        setIsObsConnected(connected);
+      }).catch(() => {});
+    };
     const subscriptions = ['obs://timing-invalidated', 'obs://reach-invalidated', 'audio-started', 'audio-stopped', 'audio-stream-error', 'audio-error', 'global-bypass-changed', 'audio-conditions-changed']
-      .map(event => listen(event, invalidate));
+      .map(event => listen(event, () => { invalidate(); if (event === 'obs://timing-invalidated') refreshConnection(); }));
     void Promise.all(subscriptions).then(() => {
       if (active) { reachListeners.current = true; setReachListenersReady(true); }
     }).catch(() => {
@@ -140,7 +153,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
     let active = true;
     setObsStatusLoading(true);
     obsApi.connectionStatus()
-      .then(connected => { if (active) setIsObsConnected(connected); })
+      .then(connected => { if (active) { setIsObsConnected(connected); if (!connectionDetailsTouched.current && connectionDetails.current) connectionDetails.current.open = !connected; } })
       .catch(() => { if (active) setObsConnectionHint(notice('settings.ObsConnectionSettings.266')); })
       .finally(() => { if (active) setObsStatusLoading(false); });
     return () => { active = false; connectionRevision.current += 1; };
@@ -159,6 +172,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
       await obsApi.connect({ host: obsHost, port: obsPort, password: obsPassword });
       if (revision !== connectionRevision.current || document.hidden) return;
       setIsObsConnected(true);
+      if (connectionDetails.current) connectionDetails.current.open = false;
       setObsConnectionHint(null);
       toast.success(notify('settings.ObsConnectionSettings.267'));
       localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: obsHost, port: obsPort, password: obsPassword }));
@@ -189,6 +203,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
     try {
       await obsApi.disconnect();
       setIsObsConnected(false);
+      if (connectionDetails.current) connectionDetails.current.open = true;
       setObsConnectionHint(null);
 
       toast.info(t('settings.ObsConnectionSettings.270'));
@@ -250,23 +265,23 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
             <div className="space-y-4">
               {/* 接続 → 到達確認 → 設定の変更 → 連動 の順に並べる。 */}
               <section aria-label={t('obs.section.connect')} className="rounded-xl border border-border p-4 space-y-3">
-                <h3 className="text-sm font-bold text-foreground">{t('obs.section.connect')}</h3>
                 {isObsConnected && (
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/50 p-3">
-                    <span role="status" className="text-sm font-medium">{t('settings.ObsConnectionSettings.291')}</span>
                     <Button
                       type="button"
                       variant="outline"
                       onClick={handleDisconnectObs}
                       disabled={obsSetupLoading || obsReachLoading}
+                      aria-describedby={obsSetupLoading || obsReachLoading ? `${reasonId}-disconnect` : undefined}
                     >
                       {t('settings.ObsConnectionSettings.292')}
                     </Button>
+                    {(obsSetupLoading || obsReachLoading) && <p id={`${reasonId}-disconnect`} className="text-xs text-muted-foreground">{t('settings.obs.operationBusy')}</p>}
                   </div>
                 )}
                 {/* 入力欄は接続中も残し、接続先の確認だけできるよう折りたたむ。 */}
-                <details open={!isObsConnected} className="space-y-3">
-                  <summary className="cursor-pointer text-sm font-medium">{t('obs.target')}</summary>
+                <details ref={connectionDetails} open className="space-y-3">
+                  <summary onClick={() => { connectionDetailsTouched.current = true; }} className="cursor-pointer text-sm font-medium">{t('obs.section.connect')}{isObsConnected && <span role="status"> — {t('settings.obs.connectedTarget', { host: obsHost, port: obsPort })} · {t('settings.ObsConnectionSettings.291')}</span>}</summary>
                   <div className="space-y-4 pt-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-muted-foreground">{t('settings.ObsConnectionSettings.280')}</label>
@@ -358,11 +373,16 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                       type="button"
                       onClick={handleObsReachCheck}
                       disabled={obsSetupLoading || obsReachLoading || !reachListenersReady}
+                      aria-describedby={[
+                        obsSetupLoading || obsReachLoading ? `${reasonId}-reach-busy` : null,
+                        !reachListenersReady ? `${reasonId}-reach-monitor` : null,
+                      ].filter(Boolean).join(' ') || undefined}
                       className="w-full py-2 bg-muted border border-border text-foreground rounded-lg hover:bg-muted/80 transition font-bold disabled:opacity-50"
                     >
                       {obsReachLoading ? t('settings.ObsConnectionSettings.299') : t('settings.ObsConnectionSettings.300')}
                     </button>
-                    {!reachListenersReady && <p role="status" className="text-xs text-muted-foreground">{t('obsReach.monitorUnavailable')}</p>}
+                    {(obsSetupLoading || obsReachLoading) && <p id={`${reasonId}-reach-busy`} className="text-xs text-muted-foreground">{t('settings.obs.operationBusy')}</p>}
+                    {!reachListenersReady && <p id={`${reasonId}-reach-monitor`} role="status" className="text-xs text-muted-foreground">{t('obsReach.monitorUnavailable')}</p>}
 
                     {obsReachResult && (
                       <div className="text-xs bg-muted/50 border border-border rounded-md p-3 space-y-2">
