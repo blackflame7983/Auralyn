@@ -188,7 +188,9 @@ fn severity_rank(severity: &str) -> u8 {
 
 fn frame_rms(interleaved: &[f32]) -> Vec<f32> {
     interleaved
-        .chunks_exact(CHANNELS)
+        .as_chunks::<CHANNELS>()
+        .0
+        .iter()
         .map(|frame| ((frame[0] * frame[0] + frame[1] * frame[1]) * 0.5).sqrt())
         .collect()
 }
@@ -205,7 +207,7 @@ fn detect_clips(interleaved: &[f32], sample_rate_hz: u32) -> ClipReport {
     let mut in_run = false;
     let mut clipped_samples = 0usize;
 
-    for (i, frame) in interleaved.chunks_exact(CHANNELS).enumerate() {
+    for (i, frame) in interleaved.as_chunks::<CHANNELS>().0.iter().enumerate() {
         if frame.iter().any(|s| s.abs() >= CLIP_SAMPLE_THRESHOLD) {
             clipped_samples += 1;
             if !in_run {
@@ -433,8 +435,8 @@ fn band_deltas_from_spectra(
             let low_bin = (low / bin_hz).floor() as usize;
             let high_bin = (high / bin_hz).ceil() as usize;
 
-            let raw_e = band_energy(&raw_mag, low_bin, high_bin);
-            let proc_e = band_energy(&proc_mag, low_bin, high_bin);
+            let raw_e = band_energy(raw_mag, low_bin, high_bin);
+            let proc_e = band_energy(proc_mag, low_bin, high_bin);
             let delta_db = 10.0 * (proc_e / raw_e.max(MIN_EPS)).log10();
 
             BandDeltaDb {
@@ -462,7 +464,10 @@ fn stereo_magnitude_spectrum(
     let mut magnitude = vec![0.0; buffer.len() / 2 + 1];
     for channel in 0..CHANNELS {
         buffer.fill(Complex::new(0.0, 0.0));
-        for (slot, frame) in buffer.iter_mut().zip(interleaved.chunks_exact(CHANNELS)) {
+        for (slot, frame) in buffer
+            .iter_mut()
+            .zip(interleaved.as_chunks::<CHANNELS>().0.iter())
+        {
             slot.re = frame[channel];
         }
         fft.process_with_scratch(buffer, scratch);
@@ -727,8 +732,18 @@ mod tests {
                 .collect()
         }
         fn stereo(input: &[f32], fft_size: usize) -> Vec<f32> {
-            let left: Vec<_> = input.chunks_exact(CHANNELS).map(|f| f[0]).collect();
-            let right: Vec<_> = input.chunks_exact(CHANNELS).map(|f| f[1]).collect();
+            let left: Vec<_> = input
+                .as_chunks::<CHANNELS>()
+                .0
+                .iter()
+                .map(|f| f[0])
+                .collect();
+            let right: Vec<_> = input
+                .as_chunks::<CHANNELS>()
+                .0
+                .iter()
+                .map(|f| f[1])
+                .collect();
             spectrum(&left, fft_size)
                 .into_iter()
                 .zip(spectrum(&right, fft_size))
@@ -756,7 +771,7 @@ mod tests {
         for frames in [0, 1, 255, 256, 257, 4096] {
             let raw = sine_stereo(1000.0, sr, frames, 0.4);
             let mut processed = sine_stereo(3000.0, sr, frames, 0.2);
-            for frame in processed.chunks_exact_mut(2) {
+            for frame in processed.as_chunks_mut::<2>().0.iter_mut() {
                 frame[1] *= -0.5;
             }
             let calls = Cell::new(0);
@@ -814,8 +829,18 @@ mod tests {
         let sr = 8_000;
         let frames = 8_000;
         let same = sine_stereo(1000.0, sr, frames, 0.4);
-        let opposite: Vec<f32> = same.chunks_exact(2).flat_map(|f| [f[0], -f[1]]).collect();
-        let one_side: Vec<f32> = same.chunks_exact(2).flat_map(|f| [f[0], 0.0]).collect();
+        let opposite: Vec<f32> = same
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .flat_map(|f| [f[0], -f[1]])
+            .collect();
+        let one_side: Vec<f32> = same
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .flat_map(|f| [f[0], 0.0])
+            .collect();
         let scaled_same: Vec<f32> = same.iter().map(|s| s * 0.5).collect();
         let scaled_opposite: Vec<f32> = opposite.iter().map(|s| s * 0.5).collect();
         let scaled_one_side: Vec<f32> = one_side.iter().map(|s| s * 0.5).collect();
