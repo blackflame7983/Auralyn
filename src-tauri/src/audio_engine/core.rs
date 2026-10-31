@@ -65,6 +65,9 @@ use super::plugins::MAX_PLUGINS;
 use super::queue_diagnostics::{self, QueueDiagnostics, QueueSnapshot, QueueState};
 #[cfg(test)]
 mod latency_tests;
+#[cfg(test)]
+#[path = "core/user_event_tests.rs"]
+mod user_event_tests;
 use super::test_tone::RtTestTone;
 use super::voice_check::preview as voice_preview;
 use super::voice_check::{
@@ -248,6 +251,7 @@ struct LoopbackProbeOutcome {
 
 // Custom Event for Winit Loop
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)] // Box候補の追加確保と配送時間を比較し、現行を維持する。user_event_tests参照。
 pub enum UserEvent {
     Command(Command),
     Shutdown,
