@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { shortcutErrorNotices, type ShortcutError } from '@/lib/shortcutNotice';
+import { formatShortcut } from '@/lib/shortcutLabel';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 
 const actions = {
@@ -171,7 +172,7 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
                     onClick={() => { setMessage([]); capture(capturing === action ? null : action); }}
                     onKeyDown={event => handleCapture(event, action)} onBlur={() => { if (capturing === action) capture(null); }}
                     className="rounded border border-border px-2 py-1.5 text-left aria-pressed:border-selection aria-pressed:bg-muted disabled:cursor-not-allowed disabled:opacity-50">
-                    {capturing === action ? t(armed ? 'shortcuts.captureWaiting' : 'shortcuts.capturePreparing') : values[action] || t('shortcuts.captureEmpty')}
+                    {capturing === action ? t(armed ? 'shortcuts.captureWaiting' : 'shortcuts.capturePreparing') : formatShortcut(values[action] ?? '') || t('shortcuts.captureEmpty')}
                 </button>
                 {/* キー入力で登録できない場合の代替手段。既定では閉じて入力方式を1つに見せる。 */}
                 <details>
@@ -189,7 +190,8 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
                     </select></label>
                 </div>
                 </details>
-                <button type="button" aria-label={`${t('settings.ShortcutsPanel.389')}${label}`} disabled={!values[action]} className="rounded border border-border px-2 py-1 text-muted-foreground hover:text-destructive-text disabled:opacity-50" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('shortcuts.unbind')}</button>
+                {/* 未登録の項目には外す対象がないため出さず、同じボタンの羅列を避ける。 */}
+                {values[action] && <button type="button" aria-label={`${t('settings.ShortcutsPanel.389')}${label}`} className="rounded border border-border px-2 py-1 text-muted-foreground hover:text-destructive-text disabled:opacity-50" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('shortcuts.unbind')}</button>}
             </fieldset>;
         })}</div>
 

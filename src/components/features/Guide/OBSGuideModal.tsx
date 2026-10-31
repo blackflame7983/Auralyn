@@ -6,6 +6,7 @@ import { ObsMixCheck } from './ObsMixCheck';
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { ShortcutError } from '@/lib/shortcutNotice';
+import { formatShortcut } from '@/lib/shortcutLabel';
 import { MdVideocam, MdClose, MdLightbulb, MdSettings, MdCheckCircle, MdArrowForward, MdArrowBack, MdHeadphones, MdMic } from 'react-icons/md';
 
 interface OBSGuideModalProps {
@@ -42,7 +43,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                 .then(status => {
                     const binding = status.bindings.find(item => item.action === 'muteToggle');
                     if (active && binding && !status.errors.some(error => error.shortcut === binding.shortcut || !error.shortcut)) {
-                        setMuteShortcut(binding.shortcut.replace(/Key(?=[A-Z])/g, '').replace(/Digit(?=\d)/g, ''));
+                        setMuteShortcut(formatShortcut(binding.shortcut));
                     }
                 }).catch(() => { /* 未取得・未登録のキーは案内しない。 */ });
         }

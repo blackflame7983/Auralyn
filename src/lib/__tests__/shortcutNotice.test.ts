@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { message } from '@/i18n/messages';
 import { renderShortcutError } from '../shortcutNotice';
+import { formatShortcut } from '../shortcutLabel';
 
 it.each([
     ['tooManyBindings', 'Up to 8'],
@@ -9,7 +10,7 @@ it.each([
     ['duplicateBinding', 'cannot be registered twice'],
     ['stateUnavailable', 'Could not retrieve shortcut settings'],
     ['loadFailed', 'Could not read the saved shortcut settings'],
-    ['registerFailed', 'Could not register Alt+KeyM'],
+    ['registerFailed', 'Could not register Alt + M'],
     ['registrationConflict', 'Check for conflicts with other apps'],
     ['saveFailed', 'Could not save shortcut settings'],
     ['unregisterFailed', 'Could not unregister a previous shortcut'],
@@ -26,4 +27,11 @@ it.each([
 
 it.each(['旧Hostの日本語', { code: 'futureError', detail: 'OS raw 実名' }, { code: 'toString' }, new Error('外部エラー')])('未知のエラー %j を翻訳済み扱いにしない', error => {
     expect(renderShortcutError((key, args) => message('en', key, args), error)).toMatch(/^Original detail \(untranslated\): /);
+});
+
+it.each([
+    ['Alt+KeyM', 'Alt + M'], ['Control+Shift+Digit1', 'Ctrl + Shift + 1'], ['Super+ArrowUp', 'Windows + ↑'],
+    ['Control+Alt+F12', 'Ctrl + Alt + F12'], ['Alt+Space', 'Alt + Space'], ['', ''],
+])('保存値 %s をキー刻印に近い %s で表示する', (stored, shown) => {
+    expect(formatShortcut(stored)).toBe(shown);
 });

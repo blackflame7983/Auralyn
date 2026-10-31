@@ -29,7 +29,7 @@ it('キー入力で既存形式を作り、重複と OS 予約を検出し保存
     fireEvent.keyDown(input, { key: 'F4', code: 'F4', altKey: true });
     expect(screen.getByRole('status')).toHaveTextContent('OS の予約操作');
     fireEvent.keyDown(input, { key: 'z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
-    expect(input).toHaveTextContent('Control+Shift+KeyZ');
+    expect(input).toHaveTextContent('Ctrl + Shift + Z');
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
     await screen.findByText('キー設定を保存しました。');
     expect(invoke).toHaveBeenCalledWith('save_shortcuts', { bindings: [
@@ -43,7 +43,7 @@ it('未対応キーと Escape は登録せず、取り消して既存の値を�
     fireEvent.click(input); await waitFor(() => expect(invoke).toHaveBeenCalledWith('begin_shortcut_capture')); fireEvent.keyDown(input, { key: 'a', code: 'KeyA' });
     expect(screen.getByRole('status')).toHaveTextContent('対応していません');
     fireEvent.keyDown(input, { key: 'Escape', code: 'Escape' });
-    expect(input).toHaveTextContent('Alt+KeyM');
+    expect(input).toHaveTextContent('Alt + M');
     expect(invoke).not.toHaveBeenCalledWith('save_shortcuts', expect.anything());
 });
 it('保存済みの修飾キー順が異なっても同じ組合せを重複として検出する', async () => {
@@ -124,17 +124,17 @@ it('ノイズ低減の切替は既定キーなしで明示登録し、noiseToggl
     ] });
 });
 
-it('起動時の登録エラーは言語切替で再取得せず翻訳し、OS詳細とキー名を原文で保持する', async () => {
+it('起動時の登録エラーは言語切替で再取得せず翻訳し、OS詳細を原文で保持し、キー名は刻印表記にする', async () => {
     const store = createLocaleStore(() => 'ja', () => true);
     vi.mocked(invoke).mockResolvedValue({ bindings: initial, errors: [
         { code: 'registerFailed', shortcut: 'Alt+KeyM', detail: 'OS 1409: 予約済み' },
         { code: 'unregisterFailed', detail: 'OS 1419' },
     ] });
     render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
-    await screen.findByText(/Alt\+KeyMを登録できませんでした/);
+    await screen.findByText(/Alt \+ Mを登録できませんでした/);
     fireEvent.change(screen.getByLabelText('ミュートを切り替えるの通常キー'), { target: { value: 'KeyN' } });
     act(() => { store.setLocale('en'); });
-    expect(screen.getByRole('status')).toHaveTextContent('Could not register Alt+KeyM.');
+    expect(screen.getByRole('status')).toHaveTextContent('Could not register Alt + M.');
     expect(screen.getByRole('status')).toHaveTextContent('Could not unregister a previous shortcut.');
     expect(screen.getByRole('status')).toHaveTextContent('Original detail (untranslated): OS 1409: 予約済み');
     expect(screen.getByLabelText('Toggle mute regular key')).toHaveValue('KeyN');
@@ -212,7 +212,7 @@ it('開始応答待ちの入力は無視し、解除後の遅い応答も解放�
     expect(input).toHaveTextContent('キー入力を準備しています。まだキーを押さないでください。');
     fireEvent.keyDown(input, { key: 'z', code: 'KeyZ', altKey: true });
     fireEvent.blur(input);
-    expect(input).toHaveTextContent('Alt+KeyM');
+    expect(input).toHaveTextContent('Alt + M');
     await act(async () => finish('42'));
     expect(invoke).toHaveBeenCalledWith('end_shortcut_capture', { token: '42' });
 });
@@ -298,8 +298,8 @@ it('ウィンドウが非アクティブになると入力を終了しセッシ�
 });
 
 it.each([
-    ['Alt+Control+KeyM', 'Control+Alt+KeyM'],
-    ['Ctrl+KeyM', 'Control+KeyM'],
+    ['Alt+Control+KeyM', 'Ctrl + Alt + M'],
+    ['Ctrl+KeyM', 'Ctrl + M'],
 ])('登録済みネイティブ入力 %s は同操作に正規化し別操作との重複を検出する', async (stored, canonical) => {
     let receive!: (event: { payload: { token: string; shortcut: string } }) => void;
     vi.mocked(listen).mockImplementation(async (_name, callback) => { receive = callback as typeof receive; return () => {}; });

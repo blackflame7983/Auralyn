@@ -38,7 +38,7 @@ it('ホットキーの入力中に Escape すると入力だけを取り消し�
     fireEvent.keyDown(button, { key: 'Escape', code: 'Escape' });
     expect(onClose).not.toHaveBeenCalled();
     expect(button).toHaveAttribute('aria-pressed', 'false');
-    expect(button).toHaveTextContent('Alt+KeyM');
+    expect(button).toHaveTextContent('Alt + M');
 });
 it('設定画面の遅延根拠は手動停止で失効し、遅い旧stats応答を受理しない', async () => {
     localStorage.setItem('vst_host_beginner_mode', 'false');
