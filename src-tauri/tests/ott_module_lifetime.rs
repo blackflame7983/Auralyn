@@ -5,10 +5,12 @@ use windows::Win32::System::Ole::{OleInitialize, OleUninitialize};
 #[test]
 #[ignore = "OTT 1.37のインストールが必要。明示指定して実行する"]
 fn ott_processors_survive_other_instance_retirement_and_module_pinning() {
+    // SAFETY: このテストスレッドで予約引数を None として初期化する。成功時は後続の guard が解除する。
     unsafe { OleInitialize(None) }.expect("STA初期化");
     struct OleGuard;
     impl Drop for OleGuard {
         fn drop(&mut self) {
+            // SAFETY: guard は初期化成功後に同じテストスレッドで作成され、一度だけ破棄される。
             unsafe { OleUninitialize() };
         }
     }

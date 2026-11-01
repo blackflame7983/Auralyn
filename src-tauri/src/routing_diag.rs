@@ -148,6 +148,8 @@ pub fn collect_routing_diagnostics(engine_sample_rate_hz: Option<u32>) -> Routin
         }
     }
 
+    // SAFETY: COM インターフェースは取得したスレッド内で使い、取得した文字列と音声形式の領域は使用後に解放する。
+    // COM 初期化または列挙に失敗した場合は API のエラーを処理する。
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         let enumerator: IMMDeviceEnumerator =

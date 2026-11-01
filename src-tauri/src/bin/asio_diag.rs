@@ -1,3 +1,4 @@
+#![warn(clippy::undocumented_unsafe_blocks)]
 use cpal::traits::{DeviceTrait, HostTrait};
 use serde::Serialize;
 
