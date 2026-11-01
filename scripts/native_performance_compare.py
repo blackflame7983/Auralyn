@@ -52,6 +52,13 @@ def validate_result(result, plan):
     for expected, actual in zip(plan, steps):
         if not isinstance(actual, dict) or actual.get("label") != expected["label"]:
             raise ValueError("probe steps do not match the plan")
+        if "command" in expected:
+            response = actual.get("response")
+            if (not isinstance(response, dict) or not isinstance(response.get("type"), str)
+                    or not response["type"] or response["type"] == "Error"):
+                raise ValueError("probe command was rejected or has no valid response")
+            if "expect" in expected and response["type"] != expected["expect"]:
+                raise ValueError("probe response does not match the expected type")
         if "measure_seconds" not in expected:
             continue
         m = actual.get("measurement")

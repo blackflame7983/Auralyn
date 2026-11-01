@@ -36,7 +36,10 @@ class CompareTests(unittest.TestCase):
             sample["cpu_one_core_percent"] = float("nan")
         if self.mode == "window":
             sample["elapsed"] = 0.5
-        result = {"binary": str(binary), "plan": self.plan, "steps": [{"label": "start"}, {"label": "active", "measurement": {"samples": [sample]}}], "errors": [], "exit_code": 0}
+        response = {"type": "Error" if self.mode == "command_error" else "Success"}
+        result = {"binary": str(binary), "plan": self.plan, "steps": [{"label": "start", "response": response}, {"label": "active", "measurement": {"samples": [sample]}}], "errors": [], "exit_code": 0}
+        if self.mode == "missing_response":
+            del result["steps"][0]["response"]
         (directory / "result.json").write_text(json.dumps(result), encoding="utf-8")
         return subprocess.CompletedProcess(args, 1 if self.mode == "failure" else 0, "out", "err")
 
@@ -55,7 +58,7 @@ class CompareTests(unittest.TestCase):
         self.assertEqual((self.base / "output" / "01-before.stdout.log").read_text(encoding="utf-8"), "out")
 
     def test_failed_and_invalid_trials_are_not_aggregated(self):
-        for mode in ("failure", "nan", "window"):
+        for mode in ("failure", "nan", "window", "command_error", "missing_response"):
             with self.subTest(mode=mode):
                 self.mode = mode
                 summary = self.run_compare(self.base / mode)
@@ -88,6 +91,13 @@ class CompareTests(unittest.TestCase):
         with patch.object(compare.subprocess, "run", side_effect=changed):
             summary = compare.run(self.before, self.after, self.plan_path, self.base / "changed", 3)
         self.assertTrue(all(t["status"] == "failed" for t in summary["trials"]))
+        self.assertEqual(summary["aggregate"]["before"]["active"]["repeats"], 0)
+
+    def test_expected_response_is_checked_again(self):
+        self.plan[0]["expect"] = "Started"
+        self.plan_path.write_text(json.dumps(self.plan), encoding="utf-8")
+        summary = self.run_compare()
+        self.assertEqual(summary["status"], "failed")
         self.assertEqual(summary["aggregate"]["before"]["active"]["repeats"], 0)
 
 
