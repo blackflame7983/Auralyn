@@ -159,7 +159,8 @@ Rustライブラリ566件成功・3件ignored、各binの試験とIPC/EOF統合1
 ## 証拠と再現
 
 反復ごとの数値、集計、検証用バイナリのハッシュは[集計JSON](verification/native-functional-20261101.json)にも記録する。
-生のログ・計画・JSON時系列・WAV・画像・バイナリSHA-256は、専用worktreeの `test-results/native-functional-20261101/` に保持する。
+生のログ等は当初 `test-results/native-functional-20261101/` に保持していたが、後続のブラウザ再検証で既定outputDirが初期化され失われた。
+上記のGit管理下の集計JSONは残る。消失内容、再発防止、修正後の実出力再検証は[PR前検証記録](FUNCTIONAL_ISSUES_PR_REVIEW_2026-11.md)を参照。
 通常設定と録音を含むため、この領域はGitへ追加しない。
 `scripts/native_audio_probe.py` は、明示したsidecarとJSON計画を使う実機プローブ。実行には検証環境のPythonとpsutilが必要。
 録音の数値確認には検証環境のsoundfile・NumPyを使用した。製品の依存関係は変更していない。

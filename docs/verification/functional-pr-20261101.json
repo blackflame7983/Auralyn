@@ -1,0 +1,106 @@
+{
+  "source_head": "d601ebecac40d269bf7a65a69aaddc94baab860d",
+  "base": "75556b2d2e1925dfb07cd0b4a0f1ee886138486d",
+  "date": "2026-11-01",
+  "gate": "PASS",
+  "review": {
+    "initial_p1": 1,
+    "initial_p2": 2,
+    "resolved": [
+      "6664524",
+      "d601ebe"
+    ],
+    "remaining_p0_p2": 0
+  },
+  "verification": {
+    "frontend_files": 137,
+    "frontend_passed": 1447,
+    "browser_passed": 26,
+    "rust_lib_passed": 568,
+    "rust_lib_ignored": 3,
+    "queue_contract_passed": 2,
+    "msix_contract_passed": 2,
+    "ipc_passed": 1,
+    "hardware_or_gui_integration_ignored": 2,
+    "tsc": "passed",
+    "vite_build": "passed",
+    "cargo_build_three_bins": "passed",
+    "cargo_check_all_targets": "passed",
+    "cargo_clippy_all_targets_deny_warnings": "passed",
+    "cargo_fmt": "passed",
+    "release_scripts_prior_passed": 56
+  },
+  "native_ui": {
+    "isolated": true,
+    "draft": [
+      6,
+      7
+    ],
+    "saved_channels": [
+      0,
+      1
+    ],
+    "events": {
+      "audio-stopped": 1,
+      "audio-started": 1,
+      "audio-channel-scan": 1
+    },
+    "errors": [],
+    "exit": 0
+  },
+  "external_output": {
+    "sender_physical_input_channels": 1,
+    "sender_physical_output_channels": 2,
+    "sender_normalized_input_pair": [
+      0,
+      0
+    ],
+    "recording": {
+      "sample_rate": 48000,
+      "frames": 72000,
+      "channels": 2,
+      "peak": [
+        0.03162384033203125,
+        0.03162384033203125
+      ],
+      "left_right_difference": 0.0,
+      "raw_processed_difference": 0.0,
+      "frequency_hz": [
+        996.6666666666666,
+        996.6666666666666
+      ]
+    },
+    "exit_codes": [
+      0,
+      0
+    ],
+    "glitch_count": 5,
+    "underflow_callbacks": 3,
+    "zero_filled_frames": 1570
+  },
+  "binary_sha256": {
+    "audio_engine.exe": "6becca8c848741178c44fbabaac4c8c7a01748aa4c01fb7f174c0770b1e2447e",
+    "AuralynHost.exe": "021cea11f003b4a6f15957d371d755b87e333886dbf658c56f0a2e9b65adf5ad",
+    "plugin_scanner.exe": "c064a3c5e0d04f1bcc99cf4ae9fd4125f508592c22600ec0be41ee971a78d359"
+  },
+  "settings": {
+    "before_files": 7732,
+    "after_files": 7732,
+    "changed": [],
+    "missing": [],
+    "added": [],
+    "matched": true
+  },
+  "evidence_root": "C:\\Users\\black\\AppData\\Local\\Temp\\Auralyn-functional-pr-7but4rk_",
+  "prior_evidence_loss": {
+    "deleted_scope": "Git-untracked test-results artifacts, including prior native logs/recordings/copied binaries",
+    "retained": "Git-managed source and docs/verification/native-functional-20261101.json",
+    "mitigation": "dedicated external output directory; never initialize an evidence parent as Playwright outputDir"
+  },
+  "limitations": [
+    "generated test tone; not microphone speech",
+    "no proof of zero dropouts or long-duration stability",
+    "asymmetric ASIO hardware not available",
+    "prior timing/memory figures not remeasured in this PR check"
+  ]
+}
