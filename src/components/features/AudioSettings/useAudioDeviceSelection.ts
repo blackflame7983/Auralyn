@@ -115,8 +115,12 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
   const selectedOutputDevice = filteredOutputs.find(device => audioDeviceKey(device) === selectedOutputKey);
   const selectedInput = selectedInputDevice?.name ?? '';
   const selectedOutput = selectedOutputDevice?.name ?? '';
-  const setSelectedInput = (name: string) => setSelectedInputKey(uniqueByName(filteredInputs, name) ? audioDeviceKey(uniqueByName(filteredInputs, name)!) : '');
-  const setSelectedOutput = (name: string) => setSelectedOutputKey(uniqueByName(filteredOutputs, name) ? audioDeviceKey(uniqueByName(filteredOutputs, name)!) : '');
+  const selectNamedDevice = (list: AudioDevice[], name: string, targetHost: string) => {
+    const device = uniqueByName(list.filter(item => item.host.toLowerCase() === targetHost.toLowerCase()), name);
+    return device ? audioDeviceKey(device) : '';
+  };
+  const setSelectedInput = (name: string, targetHost = selectedHost) => setSelectedInputKey(selectNamedDevice(devices.inputs, name, targetHost));
+  const setSelectedOutput = (name: string, targetHost = selectedHost) => setSelectedOutputKey(selectNamedDevice(devices.outputs, name, targetHost));
 
   // Determine active device for capabilities (Buffer Size)
   const activeDevice = useMemo(() => {

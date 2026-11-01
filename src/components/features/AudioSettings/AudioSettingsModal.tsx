@@ -92,6 +92,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const { theme, setTheme } = useTheme();
   const [isApplying, setLoading] = useState(false);
   const [connectionRetry, setConnectionRetry] = useState(false);
+  // システム再起動の途中失敗は、接続画面からの再試行でもVST復元まで引き継ぐ。
+  const retryRestart = useRef(false);
   const [preparingMode, setPreparingMode] = useState<'singing' | 'talk' | null>(initialSection === 'singing' ? 'singing' : null);
   const reviewRequired = localStorage.getItem(REVIEW_KEY) === 'true';
   const [migrationConfirmed, setMigrationConfirmed] = useState(false);
@@ -416,6 +418,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
   const handleSave = async () => {
     if (!canSaveConnection || isApplying) return;
+    if (retryRestart.current) { await performRestart(); return; }
     setLoading(true);
     try {
       await connection.apply(false);
@@ -432,7 +435,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   };
 
   const performRestart = async () => {
-
+    retryRestart.current = true;
     setLoading(true);
     try {
       await connection.apply(true);
@@ -444,9 +447,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         await onEngineRestarted();
         toast.success(t('settings.AudioSettingsModal.019'));
       }
+      retryRestart.current = false;
+      setConnectionRetry(false);
       onClose();
       // Optional: formatting toast success
     } catch (err) {
+      setConnectionRetry(true);
       setActiveTab('audio');
       console.error('Failed to restart engine:', err);
       setError(err instanceof ConnectionApplyError ? notice(err.stage === 'channels' ? 'settings.connectionChannelsIncomplete' : 'settings.connectionSaveIncomplete', { arg0: err.message }) : notice('settings.AudioSettingsModal.020', { arg0: String(err) }));
@@ -502,8 +508,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (p) {
       setPresetName(name);
       if (p.host) setSelectedHost(p.host);
-      if (p.input) setSelectedInput(p.input);
-      if (p.output) setSelectedOutput(p.output); // Might trigger useEffect to auto-correct if invalid
+      if (p.input) setSelectedInput(p.input, p.host ?? selectedHost);
+      if (p.output) setSelectedOutput(p.output, p.host ?? selectedHost); // Might trigger useEffect to auto-correct if invalid
       if (p.bufferSize) setSelectedBufferSize(p.bufferSize);
       if (p.sampleRate) setSelectedSampleRate(p.sampleRate);
     }
