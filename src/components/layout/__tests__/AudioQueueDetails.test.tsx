@@ -1,5 +1,6 @@
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
+import { message } from '@/i18n/messages';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it } from 'vitest';
 import type { QueueDiagnosticsSnapshot } from '@/api/audio';
@@ -17,6 +18,21 @@ const snapshot = (changes: Partial<QueueDiagnosticsSnapshot> = {}): QueueDiagnos
     ...changes,
 });
 afterEach(cleanup);
+it.each(['ja', 'en'] as const)('開始時と稼働後の不足を分け、旧engineの欠測を0にしない (%s)', locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    const view = render(<LocaleProvider store={store}><AudioQueueDetails snapshot={snapshot({ startupZeroFilledOutputFrames: 100, startupUnderflowCallbacks: 1 })} isRunning /></LocaleProvider>);
+    expect(screen.getByText('100 / 24')).toBeInTheDocument();
+    expect(screen.getByText('1 / 1')).toBeInTheDocument();
+    view.rerender(<LocaleProvider store={store}><AudioQueueDetails snapshot={snapshot()} isRunning /></LocaleProvider>);
+    for (const key of ['audioQueue.startupFrames', 'audioQueue.startupReads'] as const) {
+        expect(screen.getByText(message(locale, key)).nextElementSibling).toHaveTextContent(locale === 'ja' ? '不明 / 不明' : 'Unknown / Unknown');
+    }
+    view.rerender(<LocaleProvider store={store}><AudioQueueDetails snapshot={snapshot({ startupZeroFilledOutputFrames: 125, startupUnderflowCallbacks: -1 })} isRunning /></LocaleProvider>);
+    for (const key of ['audioQueue.startupFrames', 'audioQueue.startupReads'] as const) {
+        expect(screen.getByText(message(locale, key)).nextElementSibling).toHaveTextContent(locale === 'ja' ? '不明 / 不明' : 'Unknown / Unknown');
+    }
+});
+
 it('出力rateによる音声量を別枠で表示し、frameとslotとepochを区別する', () => {
     render(<AudioQueueDetails snapshot={snapshot()} isRunning />);
     const section = screen.getByRole('region', { name: '音声キューの観測' });

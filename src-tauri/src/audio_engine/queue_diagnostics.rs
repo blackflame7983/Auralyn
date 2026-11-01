@@ -56,6 +56,11 @@ pub struct QueueSnapshot {
     pub zero_filled_output_frames: u64,
     pub queue_read_callbacks: u64,
     pub underflow_callbacks: u64,
+    /// 最初にqueueの実入力を消費するcallbackまでの不足分。総数にも含む。
+    #[serde(default)]
+    pub startup_zero_filled_output_frames: Option<u64>,
+    #[serde(default)]
+    pub startup_underflow_callbacks: Option<u64>,
 }
 
 // producer/consumer間の不要なcache line共有を避け、sample単位では更新しない。
@@ -78,6 +83,8 @@ struct OutputCounters {
     zero_filled: AtomicU64,
     callbacks: AtomicU64,
     underflows: AtomicU64,
+    startup_zero_filled: AtomicU64,
+    startup_underflows: AtomicU64,
     recovery_discarded: AtomicU64,
     recoveries: AtomicU64,
     recovery_status: AtomicU64,
@@ -196,7 +203,8 @@ impl QueueDiagnostics {
         self.output
             .requested
             .fetch_add(requested as u64, Ordering::Relaxed);
-        self.output
+        let previously_consumed = self
+            .output
             .consumed
             .fetch_add(consumed as u64, Ordering::Relaxed);
         self.output
@@ -205,6 +213,16 @@ impl QueueDiagnostics {
         self.output.callbacks.fetch_add(1, Ordering::Relaxed);
         if consumed < requested {
             self.output.underflows.fetch_add(1, Ordering::Relaxed);
+            // 単一consumerの消費実績で区切る。待機や先読み、音声の遅延は加えない。
+            // 最初の部分読出しで不足した分も開始区間に含め、以降は稼働後の不足とする。
+            if previously_consumed == 0 {
+                self.output
+                    .startup_zero_filled
+                    .fetch_add((requested - consumed) as u64, Ordering::Relaxed);
+                self.output
+                    .startup_underflows
+                    .fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
 
@@ -268,6 +286,12 @@ impl QueueDiagnostics {
             zero_filled_output_frames: self.output.zero_filled.load(Ordering::Relaxed),
             queue_read_callbacks: self.output.callbacks.load(Ordering::Relaxed),
             underflow_callbacks: self.output.underflows.load(Ordering::Relaxed),
+            startup_zero_filled_output_frames: Some(
+                self.output.startup_zero_filled.load(Ordering::Relaxed),
+            ),
+            startup_underflow_callbacks: Some(
+                self.output.startup_underflows.load(Ordering::Relaxed),
+            ),
         }
     }
 }
@@ -404,6 +428,43 @@ pub(crate) fn push_mapped_frames(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn startup_shortages_are_included_in_totals_and_end_after_first_consumption() {
+        use super::{QueueDiagnostics, QueueState};
+        let q = QueueDiagnostics::new("startup".into(), 48_000, 48_000, 1, 2, 4096);
+        assert_eq!(
+            crate::dsp_verification_allocator::allocation_counts(|| {
+                q.record_output(100, 0);
+                q.record_output(100, 40);
+                q.record_output(100, 100);
+                q.record_output(100, 0);
+            }),
+            (0, 0)
+        );
+        let s = q.snapshot(QueueState::Running, Some(0), None);
+        assert_eq!(s.startup_zero_filled_output_frames, Some(160));
+        assert_eq!(s.startup_underflow_callbacks, Some(2));
+        assert_eq!(s.zero_filled_output_frames, 260);
+        assert_eq!(s.underflow_callbacks, 3);
+        let next = QueueDiagnostics::new("next".into(), 48_000, 48_000, 1, 2, 4096).snapshot(
+            QueueState::Running,
+            Some(0),
+            None,
+        );
+        assert_eq!(next.startup_zero_filled_output_frames, Some(0));
+        let mut legacy = serde_json::to_value(&s).expect("snapshot JSON");
+        legacy
+            .as_object_mut()
+            .expect("object")
+            .remove("startupZeroFilledOutputFrames");
+        legacy
+            .as_object_mut()
+            .expect("object")
+            .remove("startupUnderflowCallbacks");
+        let old: super::QueueSnapshot = serde_json::from_value(legacy).expect("legacy snapshot");
+        assert!(old.startup_zero_filled_output_frames.is_none());
+    }
+
     #[test]
     fn selected_input_reaches_actual_output_and_meter_without_rt_allocations() {
         for (asio, input, output, pair, targets) in [

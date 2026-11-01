@@ -330,11 +330,18 @@ test('細身・詳細メーターはホームの近くに並び、目盛りが�
             expect(box.x - content.x - content.width).toBeGreaterThanOrEqual(8);
             const track = (await meter.getByRole('meter').boundingBox())!;
             const status = (await meter.getByRole('status').boundingBox())!;
-            for (const mark of ['0', '-6', '-12', '-24', '-48']) {
-                const tick = (await meter.getByText(mark, { exact: true }).boundingBox())!;
+            // 高さに応じて末尾の文字目盛りは間引かれる。表示された全ラベルの包含と間隔を検査する。
+            for (const mark of ['0', '-6', '-12']) await expect(meter.getByText(mark, { exact: true })).toBeVisible();
+            await expect(meter.getByText('0, −6, −12, −24, −48 dBFS', { exact: true })).toHaveCount(1);
+            const ticks = await meter.getByText(/^(0|-6|-12|-24|-48)$/).all();
+            let previousBottom = -Infinity;
+            for (const label of ticks) {
+                const tick = (await label.boundingBox())!;
                 expect(tick.y).toBeGreaterThanOrEqual(track.y - 1);
                 expect(tick.y).toBeGreaterThanOrEqual(status.y + status.height + 4);
                 expect(tick.y + tick.height).toBeLessThanOrEqual(track.y + track.height + 1);
+                expect(tick.y - previousBottom).toBeGreaterThanOrEqual(3);
+                previousBottom = tick.y + tick.height;
             }
             if (width === 960 || width === 2560) await page.screenshot({ path: testInfo.outputPath(`meter-spacing-${width}-${detailed ? 'detail' : 'slim'}.png`) });
             if (detailed) await meter.getByRole('button', { name: 'ミニモード', exact: true }).click();
@@ -389,6 +396,8 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
     });
     await page.goto('/');
     const toggle = page.locator('#vst-panel-toggle');
+    await expect(toggle).toBeVisible();
+    const closedMainWidth = (await page.locator('main').boundingBox())!.width;
     await toggle.click();
     const panel = page.locator('#vst-panel');
     await expect(panel).toHaveAttribute('data-state', 'open');
@@ -405,12 +414,13 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
     await expect(page.getByRole('complementary')).toBeVisible();
     const widths = await panel.evaluate(async e => {
         const main = document.querySelector('main')!;
-        const samples = [{ time: 0, width: main.getBoundingClientRect().width }];
+        const reserved = document.querySelector('.vst-panel-space')!;
+        const samples = [{ time: 0, width: main.getBoundingClientRect().width, reserved: reserved.getBoundingClientRect().width }];
         const start = performance.now();
         (e.querySelector('button[aria-label="VST 構成を閉じる"]') as HTMLButtonElement).click();
         await new Promise<void>(resolve => {
             const frame = () => {
-                samples.push({ time: performance.now() - start, width: main.getBoundingClientRect().width });
+                samples.push({ time: performance.now() - start, width: main.getBoundingClientRect().width, reserved: reserved.getBoundingClientRect().width });
                 if (performance.now() - start >= 360) resolve();
                 else requestAnimationFrame(frame);
             };
@@ -420,9 +430,19 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
     });
     const first = widths[0].width, last = widths[widths.length - 1].width;
     if (width <= 1020) expect(Math.abs(last - first)).toBeLessThan(1);
-    else expect(last - first).toBeGreaterThan(200);
+    else {
+        // 広い窓ではホームの最大幅に達するため、固定200pxでなく開く前の作業幅へ戻ることを確認する。
+        expect(last - first).toBeGreaterThan(1);
+        expect(Math.abs(last - closedMainWidth)).toBeLessThan(1);
+    }
     // 途中の幅が存在し、パネルを外す最後の瞬間にも数百pxの飛びがない。
-    if (width > 1020) expect(widths.filter(s => s.width > first + 1 && s.width < last - 1).length).toBeGreaterThan(2);
+    if (width > 1020) {
+        // main幅は最大幅で頭打ちになるため、予約領域自体が途中の幅を経て閉じることも追う。
+        const reservedStart = widths[0].reserved;
+        expect(reservedStart).toBeGreaterThan(200);
+        expect(widths[widths.length - 1].reserved).toBeLessThan(1);
+        expect(widths.filter(s => s.reserved > 1 && s.reserved < reservedStart - 1).length).toBeGreaterThan(2);
+    }
     const late = widths.filter(s => s.time > 200);
     expect(Math.max(...late.slice(1).map((s, i) => Math.abs(s.width - late[i].width)))).toBeLessThan(15);
     await expect(panel).toHaveCount(0);

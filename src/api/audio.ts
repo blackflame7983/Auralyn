@@ -374,6 +374,9 @@ export interface QueueDiagnosticsSnapshot {
     acceptedOutputFrames: number; droppedOutputFrames: number;
     requestedOutputFrames: number; consumedOutputFrames: number; zeroFilledOutputFrames: number;
     queueReadCallbacks: number; underflowCallbacks: number;
+    /** 最初に実入力を消費するcallbackまで。総ゼロ埋め数にも含まれる。旧engineでは未取得。 */
+    startupZeroFilledOutputFrames?: number | null;
+    startupUnderflowCallbacks?: number | null;
 }
 
 export interface LatencyMetadata {

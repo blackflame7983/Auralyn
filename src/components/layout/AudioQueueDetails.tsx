@@ -6,6 +6,10 @@ import type { QueueDiagnosticsSnapshot } from '@/api/audio';
 export function AudioQueueDetails({ snapshot: q, isRunning }: { snapshot?: QueueDiagnosticsSnapshot | null; isRunning: boolean }) {
     const t = useMessages();
     const count = (value: number) => Number.isFinite(value) && value >= 0 ? value.toLocaleString() : t('audioQueue.unknown');
+    const splitCount = (total: number, startup: number | null | undefined) => {
+        const known = startup != null && Number.isFinite(startup) && startup >= 0 && Number.isFinite(total) && startup <= total;
+        return known ? `${count(startup)} / ${count(total - startup)}` : `${t('audioQueue.unknown')} / ${t('audioQueue.unknown')}`;
+    };
     const frames = (value: number | null) => value === null ? t('audioQueue.unknown') : `${count(value)} frame`;
     const duration = (value: number | null) => value !== null && Number.isFinite(value) && value >= 0 ? t('audioQueue.durationEquivalent', { arg0: value.toFixed(2) }) : t('audioQueue.durationUnknown');
     if (!q) return <section aria-label={t('audioQueue.title')}><h3 className="font-semibold">{t('audioQueue.title')}</h3><p className="text-sm text-muted-foreground">{t('audioQueue.missing')}</p></section>;
@@ -30,10 +34,13 @@ export function AudioQueueDetails({ snapshot: q, isRunning }: { snapshot?: Queue
         [t('audioQueue.acceptedFrames'), `${count(q.acceptedOutputFrames)} / ${count(q.droppedOutputFrames)}`],
         [t('audioQueue.readFrames'), `${count(q.requestedOutputFrames)} / ${count(q.consumedOutputFrames)} / ${count(q.zeroFilledOutputFrames)}`],
         [t('audioQueue.underflows'), `${count(q.underflowCallbacks)} / ${count(q.queueReadCallbacks)}`],
+        [t('audioQueue.startupFrames'), splitCount(q.zeroFilledOutputFrames, q.startupZeroFilledOutputFrames)],
+        [t('audioQueue.startupReads'), splitCount(q.underflowCallbacks, q.startupUnderflowCallbacks)],
     ];
     return <section aria-label={t('audioQueue.title')} className="space-y-2">
         <h3 className="font-semibold">{t('audioQueue.title')}</h3>
         <p role="status" className="text-sm">{state}</p>
+        <p className="text-xs text-muted-foreground">{t('audioQueue.startupHelp')}</p>
         <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">{rows.map(([label, value]) => <div key={label} className="contents"><dt className="text-muted-foreground">{label}</dt><dd className="break-words text-right">{value}</dd></div>)}</dl>
         <p className="text-xs text-muted-foreground">{t('audioQueue.recoveryLimitations')}</p>
         <p className="break-all text-xs text-muted-foreground">{t('audioQueue.epoch')}{q.epoch}</p>

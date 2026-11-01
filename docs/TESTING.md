@@ -6,6 +6,18 @@
 
 ## 自動テストの層と実行方法
 
+### Pull Requestの自動チェック
+
+`.github/workflows/frontend-quality.yml` はPR、main更新、手動実行でWindows上のフロント品質を確認する。
+Node.js 24とlockfileを使い、全Vitest、TypeScript、Vite、配布スクリプト試験、配布方針チェック、ChromiumのIPCモック試験を実行する。
+ローカルでの対応コマンドは下表と `docs/BUILD_GUIDE.md` を参照する。
+失敗したブラウザの証拠は `ci-artifacts/browser` から7日間のartifactへ保存する。
+既存証拠を含む `test-results` の初期化を避け、公開・デバイス開始・通常設定の変更は行わない。
+
+このjobはRustビルド、実Tauri、ASIO/WASAPI、聴感、長時間運転の合格を表さない。
+workflowの追加とGitHub上での実行成功は別に記録する。branch protectionへの必須チェック登録はリポジトリ管理者が設定する。
+Actionsは公式リポジトリのcommitへ固定し、更新時は [checkout](https://github.com/actions/checkout)、[setup-node](https://github.com/actions/setup-node)、[upload-artifact](https://github.com/actions/upload-artifact) の対応runner・Node要件を確認する。
+
 | 層 | 目的 | 実行 |
 | --- | --- | --- |
 | 単体（Node / Rust） | 計算・変換・バリデーション・IPC引数・状態遷移 | `npm run test:unit`、下記Rust検証 |

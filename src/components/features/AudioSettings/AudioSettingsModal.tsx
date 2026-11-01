@@ -1,36 +1,28 @@
 import { InfoPopover } from '@/components/ui/InfoPopover';
-import { PeakProtectionPanel } from './PeakProtectionPanel';
-import { NoiseMeasurementPanel } from './NoiseMeasurementPanel';
+import { SoundSettings, useSoundSettings } from './SoundSettings';
+import { SystemSettings, useSystemSettings } from './SystemSettings';
 import { LiveOutputPanel } from './LiveOutputPanel';
 import { MonitorTrial } from './MonitorTrial';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { LanguageSelector } from '@/i18n/LanguageSelector';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useSingingDraft, type SingingDraft } from '../../../hooks/useSingingDraft';
-import { SingingControls } from './SingingControls';
-import { LatencyDetails } from '@/components/layout/LatencyDetails';
-import { LiveModeControls } from './LiveModeControls';
 import { useLiveModes, type LiveModesModel } from '@/hooks/useLiveModes';
 import { Modal } from '../../ui/modal';
 import { MicrophonePermissionGuide } from './MicrophonePermissionGuide';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage, MdMic, MdGraphicEq, MdCast, MdKeyboard, MdTune } from 'react-icons/md';
+import { MdClose, MdSettings, MdRefresh, MdWarning, MdLightbulb, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage, MdMic, MdGraphicEq, MdCast, MdKeyboard, MdTune } from 'react-icons/md';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { audioApi, BuiltInEffectsPreset, EngineTuningConfig, NoiseControlMode } from '../../../api/audio';
-import { autostartApi } from '../../../api/autostart';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Switch } from "@/components/ui/switch";
 import { Label } from '@/components/ui/label';
 import { useTheme } from '../../../hooks/useTheme';
 import { InputChannelSelector } from './InputChannelSelector';
 import { ObsConnectionSettings } from './ObsConnectionSettings';
 import { APP_INFO } from '../../../constants/appInfo';
-import { MigrationPanel } from './MigrationPanel';
 import { ShortcutsPanel } from './ShortcutsPanel';
-import { UpdatePreferences } from './UpdatePreferences';
 import { AuroraDisplaySwitch, DisplayPurposeSelector, NumericDetailsSwitch } from './DisplayPurposeSelector';
 import { REVIEW_KEY } from '@/api/migration';
 import { readAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
@@ -38,7 +30,7 @@ import { segmentButtonClass } from '@/components/ui/segment';
 import { audioDeviceKey, useAudioDeviceSelection } from './useAudioDeviceSelection';
 import { ConnectionApplyError, useAudioConnectionController } from './useAudioConnectionController';
 import { formatSampleRate, sampleRateOptions } from './sampleRateOptions';
-import { refreshRuntimeStatsChecked, useRuntimeStats } from '@/hooks/useRuntimeStats';
+import { useRuntimeStats } from '@/hooks/useRuntimeStats';
 
 interface AudioSettingsModalProps {
   liveModel?: LiveModesModel;
@@ -94,7 +86,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [connectionRetry, setConnectionRetry] = useState(false);
   // システム再起動の途中失敗は、接続画面からの再試行でもVST復元まで引き継ぐ。
   const retryRestart = useRef(false);
-  const [preparingMode, setPreparingMode] = useState<'singing' | 'talk' | null>(initialSection === 'singing' ? 'singing' : null);
   const reviewRequired = localStorage.getItem(REVIEW_KEY) === 'true';
   const [migrationConfirmed, setMigrationConfirmed] = useState(false);
   const importedPlugins = useMemo(() => {
@@ -189,15 +180,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [presetName, setPresetName] = useState('');
 
   // Autostart State
-  const [autostartEnabled, setAutostartEnabled] = useState(false);
-  const [autostartCanChange, setAutostartCanChange] = useState(false);
-  const [autostartReason, setAutostartReason] = useState<SettingsNotice | null>(null);
-  const [engineTuningConfig, setEngineTuningConfig] = useState<EngineTuningConfig>({
-    enableAffinityPinning: false,
-    affinityMask: null,
-    enableRealtimePriority: false,
-    enableTimeCriticalAudioThreads: false,
-  });
   const engineStats = useRuntimeStats(isOpen);
   const streamRunning = isAudioRunning ?? engineStats?.latencyMetadata?.streamRunning === true;
   // 停止中は「開始」が必要。稼働中の変更なし保存だけを抑止する。
@@ -215,64 +197,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     return () => cancelAnimationFrame(frame);
   }, [isOpen, initialSection, loading, error, activeTab]);
 
-  const [systemSaving, setSystemSaving] = useState(false);
-  const [statsLoading, setStatsLoading] = useState(false);
-  const [noiseMode, setNoiseMode] = useState<NoiseControlMode>('smart');
-  const [noiseMeasurementOpen, setNoiseMeasurementOpen] = useState(false);
-  const [noiseAdvancedOpen, setNoiseAdvancedOpen] = useState(false);
-  const [noiseStrength, setNoiseStrength] = useState(80);
-  const [noiseVoiceGuard, setNoiseVoiceGuard] = useState(true);
-  const [noiseActionBusy, setNoiseActionBusy] = useState(false);
-  const noiseStrengthEditing = useRef(false);
-  const [builtInEffectsEnabled, setBuiltInEffectsEnabled] = useState(false);
-  const [builtInEffectsPreset, setBuiltInEffectsPreset] = useState<BuiltInEffectsPreset>('broadcast');
-  const [builtInEffectsAmount, setBuiltInEffectsAmount] = useState(70);
-  const builtInEffectsAmountEditing = useRef(false);
-
-  useEffect(() => {
-    if (!engineStats) return;
-    const mode = engineStats.noiseReductionMode as NoiseControlMode;
-    if (['low', 'high', 'smart', 'venue'].includes(mode)) {
-      setNoiseMode(mode);
-    }
-    setNoiseVoiceGuard(engineStats.noiseVoiceGuard ?? true);
-    setBuiltInEffectsEnabled(!!engineStats.builtInEffectsEnabled);
-    if (!builtInEffectsAmountEditing.current && Number.isFinite(engineStats.builtInEffectsAmount)) {
-      setBuiltInEffectsAmount(Math.round(engineStats.builtInEffectsAmount * 100));
-    }
-    if (['broadcast', 'warm', 'bright', 'singing'].includes(engineStats.builtInEffectsPreset)) {
-      setBuiltInEffectsPreset(engineStats.builtInEffectsPreset as BuiltInEffectsPreset);
-    }
-    if (!noiseStrengthEditing.current && engineStats.noiseControlStrength > 0) {
-      setNoiseStrength(Math.round(engineStats.noiseControlStrength * 100));
-    }
-  }, [engineStats]);
-
-  // プロファイル適用時にノイズ/内蔵 FX のローカル state を同期
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as {
-        noiseControl?: { enabled: boolean; mode: string; strength: number; voiceGuard: boolean };
-        builtinFx?: { preset: string; enabled: boolean; amount: number };
-      } | undefined;
-      if (!detail) return;
-      if (detail.noiseControl) {
-        const nc = detail.noiseControl;
-        if (['low', 'high', 'smart', 'venue'].includes(nc.mode)) setNoiseMode(nc.mode as NoiseControlMode);
-        setNoiseStrength(Math.round(nc.strength * 100));
-        setNoiseVoiceGuard(nc.voiceGuard);
-      }
-      if (detail.builtinFx) {
-        const fx = detail.builtinFx;
-        setBuiltInEffectsEnabled(fx.enabled);
-        if (['broadcast', 'warm', 'bright', 'singing'].includes(fx.preset)) setBuiltInEffectsPreset(fx.preset as BuiltInEffectsPreset);
-        if (Number.isFinite(fx.amount)) setBuiltInEffectsAmount(Math.round(fx.amount * 100));
-      }
-    };
-    window.addEventListener('profile-fx-applied', handler);
-    return () => window.removeEventListener('profile-fx-applied', handler);
-  }, []);
-
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -287,140 +211,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     setConfirmDialog({ ...opts, isOpen: true });
   };
 
+  const sound = useSoundSettings(engineStats, singingModel, initialSection);
+  const system = useSystemSettings({ isOpen, currentSampleRate, currentBufferSize, isBeginnerMode, showConfirm });
+
   const sampleRates = sampleRateOptions(selectedInputDevice, selectedOutputDevice, isAsio, selectedSampleRate, currentSampleRate);
-
-  // Load settings from localStorage on mount/open
-  useEffect(() => {
-    if (isOpen) {
-      autostartApi.getStatus().then(s => {
-        setAutostartEnabled(s.enabled);
-        setAutostartCanChange(s.canChange);
-        setAutostartReason(s.reason ?? null);
-      }).catch(() => {
-        setAutostartCanChange(false);
-        setAutostartReason(notice('settings.AudioSettingsModal.000'));
-      });
-      audioApi.getEngineTuningConfig()
-        .then((config) => { if (config && typeof config === 'object') setEngineTuningConfig(config); })
-        .catch((e) => {
-          console.error('Failed to load engine tuning config', e);
-        });
-
-    }
-  }, [isOpen, currentSampleRate, currentBufferSize]);
-
-  const refreshEngineRuntimeStats = async () => {
-    setStatsLoading(true);
-    try {
-      await refreshRuntimeStatsChecked();
-    } catch (e) {
-      console.error('Failed to refresh engine runtime stats', e);
-      toast.error(t('settings.AudioSettingsModal.001'));
-    } finally {
-      setStatsLoading(false);
-    }
-  };
-
-  const applyNoiseControlConfig = async (next?: Partial<{ active: boolean; mode: NoiseControlMode; strength: number; voiceGuard: boolean }>) => {
-    const active = next?.active ?? !!engineStats?.noiseReductionEnabled;
-    const mode = next?.mode ?? noiseMode;
-    const strength = next?.strength ?? noiseStrength;
-    const voiceGuard = next?.voiceGuard ?? noiseVoiceGuard;
-    setNoiseActionBusy(true);
-    try {
-      await audioApi.setNoiseControlConfig({
-        active,
-        mode,
-        strength: Math.max(25, Math.min(125, strength)) / 100,
-        voiceGuard,
-      });
-      await refreshRuntimeStatsChecked();
-      toast.success(active ? t('settings.AudioSettingsModal.002') : t('settings.AudioSettingsModal.003'));
-    } catch (e) {
-      console.error('Failed to apply noise control config', e);
-      toast.error(t('settings.AudioSettingsModal.004'));
-    } finally {
-      setNoiseActionBusy(false);
-    }
-  };
-
-  const commitNoiseStrength = (value: string) => {
-    if (!noiseStrengthEditing.current) return;
-    noiseStrengthEditing.current = false;
-    void applyNoiseControlConfig({ strength: Number(value) });
-  };
-
-  const applyBuiltInEffects = async (next?: Partial<{ active: boolean; preset: BuiltInEffectsPreset; amount: number }>) => {
-    if (singingModel.snapshot && !next?.preset && next?.amount === undefined) {
-      await singingModel.setAppliedActive(next?.active ?? singingModel.snapshot.config.active);
-      return;
-    }
-    const active = next?.active ?? singingModel.snapshot?.config.active ?? builtInEffectsEnabled;
-    const preset = next?.preset ?? singingModel.snapshot?.config.preset ?? builtInEffectsPreset;
-    const amount = next?.amount ?? (singingModel.snapshot ? singingModel.snapshot.config.amount * 100 : builtInEffectsAmount);
-    try {
-      await audioApi.setBuiltInEffects({
-        active,
-        preset,
-        amount: Math.max(0, Math.min(100, amount)) / 100,
-      });
-      await refreshRuntimeStatsChecked();
-      await singingModel.refresh();
-      toast.success(active ? t('settings.AudioSettingsModal.008') : t('settings.AudioSettingsModal.009'));
-    } catch (e) {
-      console.error('Failed to apply built-in effects', e);
-      toast.error(t('settings.AudioSettingsModal.010'));
-    }
-  };
-
-  const commitBuiltInEffectsAmount = (value: string) => {
-    if (!builtInEffectsAmountEditing.current) return;
-    builtInEffectsAmountEditing.current = false;
-    void applyBuiltInEffects({ amount: Number(value) });
-  };
-
-  const saveEngineTuningConfig = async () => {
-    const normalized: EngineTuningConfig = {
-      ...engineTuningConfig,
-      affinityMask: engineTuningConfig.affinityMask?.trim() || null,
-    };
-
-    setSystemSaving(true);
-    try {
-      await audioApi.setEngineTuningConfig(normalized);
-      setEngineTuningConfig(normalized);
-      toast.success(t('settings.AudioSettingsModal.011'));
-    } catch (e) {
-      console.error('Failed to save engine tuning config', e);
-      toast.error(t('settings.AudioSettingsModal.012'));
-    } finally {
-      setSystemSaving(false);
-    }
-  };
-
-
-
-  const handleDangerousToggle = (
-    key: 'enableRealtimePriority' | 'enableTimeCriticalAudioThreads',
-    checked: boolean,
-    title: SettingsNotice,
-    warning: SettingsNotice
-  ) => {
-    if (!checked) {
-      setEngineTuningConfig((prev) => ({ ...prev, [key]: false }));
-      return;
-    }
-
-    showConfirm({
-      title: notice('settings.AudioSettingsModal.013', { arg0: title }),
-      description: notice('settings.warning', { warning, hint: isBeginnerMode ? notice('settings.AudioSettingsModal.015') : '' }),
-      confirmLabel: notice('settings.AudioSettingsModal.016'),
-      variant: 'destructive',
-      onConfirm: () => {
-        setEngineTuningConfig((prev) => ({ ...prev, [key]: true }));
-      },
-    });
-  };
 
   const selectedBufferMs = Number.isFinite(selectedBufferSize) && selectedBufferSize > 0 && Number.isFinite(selectedSampleRate) && selectedSampleRate > 0
     ? selectedBufferSize / selectedSampleRate * 1000 : null;
@@ -919,252 +713,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <details className="rounded border border-border p-3 space-y-3">
               <summary className="cursor-pointer font-semibold">{t('structure.monitor')}</summary>
             <LiveOutputPanel outputs={devices.outputs} disabled={loading} onBusyChange={setLoading} />
-            <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await refreshEngineRuntimeStats(); }} />
+            <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await system.refreshEngineRuntimeStats(); }} />
             </details>
             {!error && <MicrophonePermissionGuide />}
           </TabsContent>
 
-          <TabsContent value="sound" className="space-y-4">
-            <p className="text-sm text-muted-foreground">{t('settings.AudioSettingsModal.092')}</p>
-            {!engineStats && <p role="status" className="text-sm text-muted-foreground">{t('settings.AudioSettingsModal.094')}</p>}
-            <fieldset disabled={!engineStats || noiseActionBusy} className="min-w-0 space-y-4">
-                {/* Noise reduction */}
-                <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-1">
-                      <h3 ref={soundStart} tabIndex={-1} className="text-sm font-bold text-foreground">{t('settings.AudioSettingsModal.105')}</h3>
-                      <InfoPopover label={t('info.noise')}>
-                    <div className="space-y-1.5">
-                      <p>
-                        <span className="font-bold">{t('settings.AudioSettingsModal.108')}</span> {t('settings.AudioSettingsModal.109')}</p>
-                      <p>
-                        <span className="font-bold">{t('settings.AudioSettingsModal.110')}</span> {t('settings.AudioSettingsModal.111')}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {t('settings.AudioSettingsModal.112')}{onOpenVoiceCheck ? (
-                          <>
-                            {' '}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onClose();
-                                onOpenVoiceCheck();
-                              }}
-                              className="underline underline-offset-2 hover:text-foreground font-medium"
-                            >
-                              {t('settings.AudioSettingsModal.113')}</button>
-                          </>
-                        ) : (
-                          t('settings.AudioSettingsModal.114')
-                        )}
-                      </p>
-                    </div>
-                      </InfoPopover>
-                    </div>
-                    <Switch
-                      checked={!!engineStats?.noiseReductionEnabled}
-                      onCheckedChange={(checked) => applyNoiseControlConfig({ active: checked })}
-                      aria-label={t('settings.AudioSettingsModal.107')}
-                    />
-                  </div>
-
-                  {!engineStats?.noiseReductionEnabled && <p className="text-xs text-muted-foreground">{t('settings.noiseOffHint')}</p>}
-                  <div className="min-w-0 space-y-4">
-                  <fieldset className="max-w-[22rem] space-y-2"><legend className="sr-only">{t('structure.noise.standard')}</legend>
-                    <div className="inline-flex gap-1.5">
-                      {([
-                        ['low', t('master.nrLow')],
-                        ['high', t('master.nrHigh')]
-                      ] as Array<[NoiseControlMode, string]>).map(([mode, label]) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        aria-pressed={noiseMode === mode}
-                        onClick={() => {
-                          setNoiseMode(mode);
-                          setNoiseMeasurementOpen(mode === 'smart' || mode === 'venue');
-                          applyNoiseControlConfig({ mode });
-                        }}
-                        className={segmentButtonClass(noiseMode === mode)}
-                      >
-                        {label}
-                      </button>
-                      ))}
-                    </div>
-                  </fieldset>
-                  {(noiseMode === 'low' || noiseMode === 'high') && <p className="text-xs text-muted-foreground">{t(noiseMode === 'low' ? 'settings.AudioSettingsModal.117' : 'settings.AudioSettingsModal.118')}</p>}
-                  <details open={noiseAdvancedOpen} onToggle={event => setNoiseAdvancedOpen(event.currentTarget.open)} className="border-t border-border pt-3">
-                    <summary className="cursor-pointer text-sm font-medium">
-                      {t('settings.noiseDetails')}
-                      {(noiseMode === 'smart' || noiseMode === 'venue') && <span className="ml-3 text-xs font-normal text-muted-foreground">{t(noiseMode === 'smart' ? 'master.nrLearn' : 'master.nrVenue')}</span>}
-                    </summary>
-                    {noiseAdvancedOpen && <div className="space-y-4 pt-4">
-                  <fieldset className="max-w-[22rem] space-y-2"><legend className="text-xs font-medium">{t('structure.noise.adaptive')}</legend>
-                    <div className="grid grid-cols-2 gap-2">
-                      {([
-                        ['smart', t('master.nrLearn')],
-                        ['venue', t('master.nrVenue')]
-                      ] as Array<[NoiseControlMode, string]>).map(([mode, label]) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        aria-pressed={noiseMode === mode}
-                        onClick={() => {
-                          setNoiseMode(mode);
-                          setNoiseMeasurementOpen(mode === 'smart' || mode === 'venue');
-                          applyNoiseControlConfig({ mode });
-                        }}
-                        className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
-                          noiseMode === mode
-                            ? engineStats?.noiseReductionEnabled ? 'border-selection bg-selection/15 text-selection' : 'border-muted-foreground/50 bg-muted text-foreground'
-                            : 'border-input bg-background text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                      ))}
-                    </div>
-                  </fieldset>
-                  {(noiseMode === 'smart' || noiseMode === 'venue') && <p className="max-w-prose text-xs text-muted-foreground leading-relaxed">{t(noiseMode === 'smart' ? 'settings.AudioSettingsModal.115' : 'settings.AudioSettingsModal.116')}</p>}
-
-                  {/* 強さはふだん弱／強の2択だけにし、数値の強さは外観の「数値の詳細を表示」で出す。 */}
-                  {!isBeginnerMode && <div className="max-w-[22rem] space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">{t('settings.AudioSettingsModal.119')}</span>
-                      <span className="font-mono text-foreground">{noiseStrength}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={25}
-                      max={125}
-                      step={5}
-                      value={noiseStrength}
-                      onChange={(e) => {
-                        noiseStrengthEditing.current = true;
-                        setNoiseStrength(Number(e.target.value));
-                      }}
-                      onPointerUp={(e) => commitNoiseStrength(e.currentTarget.value)}
-                      onKeyUp={(e) => commitNoiseStrength(e.currentTarget.value)}
-                      onBlur={(e) => commitNoiseStrength(e.currentTarget.value)}
-                      className="w-full accent-primary"
-                      aria-label={t('settings.AudioSettingsModal.120')}
-                    />
-                  </div>}
-
-                  <details open={noiseMeasurementOpen} onToggle={event => setNoiseMeasurementOpen(event.currentTarget.open)} className="rounded-md border border-border p-3 text-sm">
-                    <summary className="font-semibold">{t('measurement.title')}</summary>
-                    {/* 閉じると測定欄を外し、その欄が開始した測定だけを既存の後片付けで取り消す。 */}
-                    {noiseMeasurementOpen && <NoiseMeasurementPanel embedded />}
-                  </details>
-
-                  <div className="flex items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2">
-                    <div>
-                      <Label className="text-xs font-bold text-foreground">{t('settings.AudioSettingsModal.127')}</Label>
-                      <InfoPopover label={t('info.voiceGuard')}>{t('settings.AudioSettingsModal.128')}</InfoPopover>
-                    </div>
-                    <Switch
-                      checked={noiseVoiceGuard}
-                      className={engineStats?.noiseReductionEnabled ? undefined : 'data-[state=checked]:bg-muted data-[state=checked]:border-muted-foreground/50 [&_[data-state=checked]]:bg-muted-foreground'}
-                      onCheckedChange={(checked) => {
-                        setNoiseVoiceGuard(checked);
-                        applyNoiseControlConfig({ voiceGuard: checked });
-                      }}
-                      aria-label={t('settings.AudioSettingsModal.129')}
-                    />
-                  </div>
-                    </div>}
-                  </details>
-                  </div>
-                </div>
-
-                {/* Built-in Effects */}
-                <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-1">
-                      <h3 className="text-sm font-bold text-foreground">{t('settings.AudioSettingsModal.095')}</h3>
-                      <InfoPopover label={t('settings.builtinHelp')}>{t('settings.AudioSettingsModal.096')}</InfoPopover>
-                    </div>
-                    <Switch
-                      disabled={!singingModel.snapshot || singingModel.busy}
-                      checked={singingModel.snapshot?.config.active ?? builtInEffectsEnabled}
-                      onCheckedChange={(checked) => {
-                        applyBuiltInEffects({ active: checked });
-                      }}
-                      aria-label={t('settings.AudioSettingsModal.097')}
-                    />
-                  </div>
-
-                  {singingModel.snapshot && !singingModel.snapshot.config.active && <p className="text-xs text-muted-foreground">{t('settings.fxOffHint')}</p>}
-                  <fieldset disabled={!singingModel.snapshot?.config.active || singingModel.busy} className="space-y-4 disabled:opacity-50">
-                  <div className="inline-flex max-w-full flex-wrap gap-1.5">
-                    {([
-                      ['broadcast', t('settings.AudioSettingsModal.098')],
-                      ['warm', t('settings.AudioSettingsModal.099')],
-                      ['bright', t('settings.AudioSettingsModal.100')],
-                    ] as Array<[BuiltInEffectsPreset, string]>).map(([preset, label]) => (
-                      <button
-                        key={preset}
-                        type="button" aria-pressed={(singingModel.snapshot?.config.preset ?? builtInEffectsPreset) === preset}
-                        disabled={!singingModel.snapshot || singingModel.busy}
-                        onClick={() => {
-                          applyBuiltInEffects({ active: true, preset });
-                        }}
-                        className={segmentButtonClass((singingModel.snapshot?.config.preset ?? builtInEffectsPreset) === preset)}
-                      >
-                        {label}</button>
-                    ))}
-                  </div>
-
-                  <div className="w-full max-w-[22rem] space-y-2">
-                    {singingModel.snapshot?.config.preset === 'singing' && <p className="text-xs">{t('settings.AudioSettingsModal.102')}</p>}
-                    <div className="flex items-center gap-2 text-[13px]">
-                      <span className="text-muted-foreground">{t('settings.AudioSettingsModal.103')}</span>
-                      <span className="order-last w-10 shrink-0 text-right font-mono tabular-nums text-foreground">{builtInEffectsAmount}%</span>
-                    <input
-                      type="range"
-                      disabled={singingModel.snapshot?.config.preset === 'singing' || !singingModel.snapshot || singingModel.busy}
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={builtInEffectsAmount}
-                      onChange={(e) => {
-                        builtInEffectsAmountEditing.current = true;
-                        setBuiltInEffectsAmount(Number(e.target.value));
-                      }}
-                      onPointerUp={(e) => commitBuiltInEffectsAmount(e.currentTarget.value)}
-                      onKeyUp={(e) => commitBuiltInEffectsAmount(e.currentTarget.value)}
-                      onBlur={(e) => commitBuiltInEffectsAmount(e.currentTarget.value)}
-                      className="min-w-0 flex-1 accent-primary"
-                      aria-label={t('settings.AudioSettingsModal.104')}
-                    />
-                    </div>
-                  </div>
-                  </fieldset>
-                </div>
-
-            </fieldset>
-            {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="h-10 px-4 rounded-md border border-input text-sm hover:bg-muted">{t('settings.AudioSettingsModal.093')}</button>}
-            <LiveModeControls model={providedLive ?? localLive} initiallyOpen={initialSection === 'liveModes'} onAdjust={mode => {
-              setPreparingMode(mode);
-              const target = mode === 'singing' ? settingsBody.current?.querySelector<HTMLDetailsElement>('#singing-settings') : soundStart.current;
-              if (target instanceof HTMLDetailsElement) target.open = true;
-              target?.scrollIntoView?.({ block: 'start' });
-              (target instanceof HTMLDetailsElement ? target.querySelector('summary') : target)?.focus({ preventScroll: true });
-            }} />
-            <details id="singing-settings" className="rounded border border-border p-3 space-y-3">
-              <summary className="cursor-pointer font-semibold">{t('structure.singing')}</summary>
-              <SingingControls showHeading={false} model={singingModel} onPreview={onPreviewSinging} onSaveProfile={onSaveSingingProfile} />
-              {preparingMode === 'singing' && <button type="button" className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted" onClick={() => {
-                const target = settingsBody.current?.querySelector<HTMLDetailsElement>('#live-mode-settings');
-                if (target) { target.open = true; target.scrollIntoView?.({ block: 'start' }); target.querySelector('summary')?.focus({ preventScroll: true }); }
-              }}>{t('settings.mode.return')}</button>}
-            </details>
-            {/* 出力の安全装置は上級設定。数値の詳細を出さない間は閉じた欄に置く。 */}
-            {isBeginnerMode ? <details className="rounded border border-border p-3 space-y-3">
-              <summary className="cursor-pointer font-semibold">{t('peak.title')}</summary>
-              <PeakProtectionPanel />
-            </details> : <PeakProtectionPanel />}
-          </TabsContent>
-
+          <SoundSettings model={sound} engineStats={engineStats} singingModel={singingModel} liveModel={providedLive ?? localLive}
+            isBeginnerMode={isBeginnerMode} settingsBody={settingsBody} soundStart={soundStart}
+            onClose={onClose} onOpenVoiceCheck={onOpenVoiceCheck} onPreviewSinging={onPreviewSinging} onSaveSingingProfile={onSaveSingingProfile} />
           <TabsContent value="obs" className="space-y-4">
             <ObsConnectionSettings
               showConfirm={showConfirm}
@@ -1238,295 +794,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           <TabsContent value="shortcuts" className="space-y-4">
             <ShortcutsPanel onCaptureChange={setCapturingShortcut} />
           </TabsContent>
-          <TabsContent value="system" className="space-y-4">
-            {onOpenWizard && <section className="rounded-xl border border-border p-4 space-y-3">
-              <h3 className="font-semibold">{t('settings.system.setup')}</h3>
-              <p className="text-xs text-muted-foreground">{t('settings.system.setupDescription')}</p>
-              <button type="button" disabled={loading} onClick={() => { onClose(); onOpenWizard(); }} className="rounded-md border border-border px-3 py-2 text-sm">{t('settings.AudioSettingsModal.198')}</button>
-            </section>}
-
-            {/* Startup Settings */}
-            <section className="p-4 bg-muted/20 border border-border rounded-xl flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-foreground">{t('settings.AudioSettingsModal.142')}</h3>
-                <div className="text-xs text-muted-foreground mt-0.5">{autostartReason ? renderNotice(t, autostartReason) : t('settings.AudioSettingsModal.143')}</div>
-              </div>
-              <div className="flex items-center">
-                <Switch
-                  aria-label={t('settings.AudioSettingsModal.144')}
-                    checked={autostartEnabled}
-                  onCheckedChange={async (checked) => {
-                    setLoading(true);
-                    try {
-                      await autostartApi.setEnabled(checked);
-                      const s = await autostartApi.getStatus();
-                      setAutostartEnabled(s.enabled);
-                      setAutostartCanChange(s.canChange);
-                      setAutostartReason(s.reason ?? null);
-                      if (s.enabled === checked) {
-                        toast.success(checked ? t('settings.AudioSettingsModal.145') : t('settings.AudioSettingsModal.146'));
-                      }
-                    } catch (e) {
-                      console.error(e);
-                      toast.error(t('settings.AudioSettingsModal.147'));
-                      setAutostartCanChange(false);
-                      setAutostartReason(notice('settings.AudioSettingsModal.148'));
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                  disabled={loading || !autostartCanChange}
-                />
-              </div>
-            </section>
-
-            <UpdatePreferences />
-            <section className="rounded-xl border border-border p-4 space-y-2">
-              <h3 className="font-semibold">{t('structure.restart')}</h3>
-              <p className="text-xs text-muted-foreground">{t('settings.system.restartDescription')}</p>
-                <button
-                  onClick={handleRestart}
-                  disabled={loading || !selectedInputDevice || !selectedOutputDevice || (reviewRequired && !migrationConfirmed)}
-                  className="px-3 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive-text border border-input hover:border-destructive/30 rounded-md transition text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {t('settings.AudioSettingsModal.196')}</button>
-            </section>
-            <details className="rounded-xl border border-border p-4 space-y-3">
-              <summary className="cursor-pointer"><h3 className="inline font-semibold">{t('structure.optimization')}</h3></summary>
-            {/* Engine Tuning */}
-            <div className="space-y-2">
-              <h4 className="text-sm font-bold text-foreground flex items-center gap-2 px-1">
-                <MdSettings className="w-4 h-4 text-primary" />
-                {t('settings.AudioSettingsModal.149')}</h4>
-              <div className="p-4 bg-muted/20 border border-border rounded-xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{t('settings.AudioSettingsModal.150')}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.151')}</div>
-                  </div>
-                  <Switch
-                    aria-label={t('settings.AudioSettingsModal.152')}
-                    checked={engineTuningConfig.enableAffinityPinning}
-                    onCheckedChange={(checked) =>
-                      setEngineTuningConfig((prev) => ({ ...prev, enableAffinityPinning: checked }))
-                    }
-                    disabled={systemSaving}
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">{t('settings.AudioSettingsModal.153')}</label>
-                  <input
-                    aria-label={t('settings.AudioSettingsModal.154')}
-                    type="text"
-                    value={engineTuningConfig.affinityMask ?? ''}
-                    onChange={(e) =>
-                      setEngineTuningConfig((prev) => ({ ...prev, affinityMask: e.target.value || null }))
-                    }
-                    placeholder={t('settings.AudioSettingsModal.155')}
-                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                    disabled={systemSaving}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{t('settings.AudioSettingsModal.156')}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.157')}</div>
-                  </div>
-                  <Switch
-                    aria-label={t('settings.AudioSettingsModal.158')}
-                    checked={engineTuningConfig.enableRealtimePriority}
-                    onCheckedChange={(checked) =>
-                      handleDangerousToggle(
-                        'enableRealtimePriority',
-                        checked,
-                        notice('settings.AudioSettingsModal.159'),
-                        notice('settings.AudioSettingsModal.160')
-                      )
-                    }
-                    disabled={systemSaving}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{t('settings.AudioSettingsModal.161')}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.162')}</div>
-                  </div>
-                  <Switch
-                    aria-label={t('settings.AudioSettingsModal.163')}
-                    checked={engineTuningConfig.enableTimeCriticalAudioThreads}
-                    onCheckedChange={(checked) =>
-                      handleDangerousToggle(
-                        'enableTimeCriticalAudioThreads',
-                        checked,
-                        notice('settings.AudioSettingsModal.164'),
-                        notice('settings.AudioSettingsModal.165')
-                      )
-                    }
-                    disabled={systemSaving}
-                  />
-                </div>
-
-                <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded border border-border">
-                  {t('settings.AudioSettingsModal.166')}</div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={saveEngineTuningConfig}
-                    disabled={systemSaving}
-                    className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition"
-                  >
-                    {systemSaving ? t('settings.AudioSettingsModal.167') : t('settings.AudioSettingsModal.168')}
-                  </button>
-
-                </div>
-
-
-              </div>
-            </div>
-
-            </details>
-            <details className="rounded-xl border border-border p-4 space-y-3">
-              <summary className="cursor-pointer"><h3 className="inline font-semibold">{t('structure.diagnostics')}</h3></summary>
-              <button
-                    onClick={refreshEngineRuntimeStats}
-                    disabled={statsLoading}
-                    className="px-3 py-1.5 text-xs border border-input rounded-md text-muted-foreground hover:text-foreground hover:border-primary/40 disabled:opacity-50 transition flex items-center gap-1"
-                  >
-                    <MdRefresh className="w-3 h-3" />
-                    {statsLoading ? t('settings.AudioSettingsModal.169') : t('settings.AudioSettingsModal.170')}
-                  </button>
-<table className="w-full text-sm">
-                <caption className="sr-only">{t('structure.statistics')}</caption>
-                <tbody>
-                <tr className="border-b border-border">
-                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.171')}</th>
-                <td className="py-2 text-right tabular-nums">{engineStats?.activePluginCount ?? '-'}</td>
-                </tr>
-                <tr className="border-b border-border">
-                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.172')}</th>
-                <td className="py-2 text-right tabular-nums">{engineStats?.enabledPluginCount ?? '-'}</td>
-                </tr>
-                <tr className="border-b border-border">
-                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.173')}</th>
-                <td className="py-2 text-right tabular-nums">{engineStats?.pendingUnloadCount ?? '-'}</td>
-                </tr>
-                <tr className="border-b border-border">
-                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.174')}</th>
-                <td className="py-2 text-right tabular-nums">{engineStats?.burnedLibraryCount ?? '-'}</td>
-                </tr>
-                <tr className="border-b border-border">
-                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.175')}</th>
-                <td className="py-2 text-right tabular-nums">{engineStats ? `${(engineStats.maxJitterUs / 1000).toFixed(2)}ms` : '-'}</td>
-                </tr>
-                <tr className="border-b border-border">
-                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.176')}</th>
-                <td className="py-2 text-right tabular-nums">{engineStats?.glitchCount ?? '-'}</td>
-                </tr>
-                <tr className="border-b border-border">
-                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.177')}</th>
-                <td className="py-2 text-right tabular-nums">{engineStats
-                        ? (engineStats.noiseReductionEnabled
-                          ? t('settings.AudioSettingsModal.178', { arg0: engineStats.noiseReductionMode === 'high' ? t('master.nrHigh') : engineStats.noiseReductionMode === 'smart' ? t('master.nrLearn') : engineStats.noiseReductionMode === 'venue' ? t('master.nrVenue') : t('master.nrLow') })
-                          : 'OFF')
-                        : '-'}</td>
-                </tr>
-                </tbody>
-                </table>
-            <LatencyDetails stats={engineStats} isRunning={!connection.knownStopped} />
-            </details>
-            {/* Plugin Management */}
-            <section className="rounded-xl border border-border p-4 space-y-4">
-              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                <MdExtension className="w-4 h-4 text-primary" />
-                {t('settings.AudioSettingsModal.179')}</h3>
-              <div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{t('settings.AudioSettingsModal.180')}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.181')}</div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      showConfirm({
-                        title: notice('settings.AudioSettingsModal.182'),
-                        description: notice('settings.AudioSettingsModal.183'),
-                        confirmLabel: notice('settings.AudioSettingsModal.184'),
-                        variant: 'destructive',
-                        onConfirm: async () => {
-                          setLoading(true);
-                          try {
-                            await audioApi.clearBlacklist();
-                            toast.success(t('settings.AudioSettingsModal.185'));
-                          } catch (e) {
-                            console.error(e);
-                            toast.error(t('settings.AudioSettingsModal.186'));
-                          } finally {
-                            setLoading(false);
-                          }
-                        },
-                      });
-                    }}
-                    className="px-3 py-1.5 text-xs text-destructive-text bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 rounded-md transition-colors whitespace-nowrap"
-                  >
-                    {t('settings.AudioSettingsModal.187')}</button>
-                </div>
-              </div>
-            </section>
-
-            <details className="rounded-xl border border-border p-4 space-y-3">
-              <summary className="cursor-pointer"><h3 className="inline font-semibold">{t('structure.migration')}</h3></summary>
-              <MigrationPanel />
-            </details>
-
-            {/* Factory Reset */}
-            <section className="rounded-xl border border-border p-4 space-y-4">
-              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                <MdRefresh className="w-4 h-4 text-destructive-text" />
-                {t('settings.AudioSettingsModal.188')}</h3>
-              <div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{t('settings.AudioSettingsModal.189')}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.190')}</div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      showConfirm({
-                        title: notice('settings.AudioSettingsModal.191'),
-                        description: notice('settings.AudioSettingsModal.192'),
-                        confirmLabel: notice('settings.AudioSettingsModal.193'),
-                        variant: 'destructive',
-                        onConfirm: async () => {
-                          try {
-                            await audioApi.stop().catch(() => {});
-                            // Clear all vst_host_ prefixed localStorage keys
-                            const keysToRemove: string[] = [];
-                            for (let i = 0; i < localStorage.length; i++) {
-                              const key = localStorage.key(i);
-                              if (key && key.startsWith('vst_host_')) {
-                                keysToRemove.push(key);
-                              }
-                            }
-                            keysToRemove.forEach(key => localStorage.removeItem(key));
-                            // Reload the app
-                            window.location.reload();
-                          } catch (e) {
-                            console.error("Reset failed:", e);
-                            toast.error(t('settings.AudioSettingsModal.194'));
-                          }
-                        },
-                      });
-                    }}
-                    className="px-3 py-1.5 text-xs text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-md transition-colors whitespace-nowrap"
-                  >
-                    {t('settings.AudioSettingsModal.195')}</button>
-                </div>
-              </div>
-            </section>
-          </TabsContent>
+          <SystemSettings model={system} engineStats={engineStats} loading={loading} setLoading={setLoading} showConfirm={showConfirm}
+            onClose={onClose} onOpenWizard={onOpenWizard} handleRestart={handleRestart}
+            canRestart={!!selectedInputDevice && !!selectedOutputDevice && (!reviewRequired || migrationConfirmed)} knownStopped={connection.knownStopped} />
           </div>
         </Tabs>
         {activeTab === 'audio' && !loading && !error && (
