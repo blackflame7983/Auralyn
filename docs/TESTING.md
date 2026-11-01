@@ -38,6 +38,12 @@ Actionsは公式リポジトリのcommitへ固定し、更新時は [checkout](h
 | 実Tauri / 実sidecar（IPCモックなし） | UIからRustへの保存、Host終了・再起動後の復元、実エンジン応答と画面反映 | `npm run test:e2e:native` |
 
 `npm test -- --run --maxWorkers=4` はNodeとjsdomの両方を実行する。
+
+`scripts/native-obs-timeout-check.cjs <製品Host.exe> <新規出力先>` は、音声停止・一時利用領域で実OBS接続待ち中の設定画面closeと別IPCの応答を検査する。相手はloopbackの無応答handshakeで、実OBS・通常資格情報を使わない。DOMの非表示回帰試験、物理トレイ復帰、聴感の確認とは別の証拠である。
+
+更新ありのCSP経路は `scripts/native-updater-fixture-check.cjs prepare|dry-run|run <新規updater-fixture-名前>` を使う専用fixtureで確認できる。`prepare` は試験用鍵・asInvokerのmarker用PE・feed/configを作る。秘密鍵はcommitや検証artifactへ含めない。`run` 前に生成configを `TAURI_CONFIG` に指定してcustom-protocolのrelease Hostとsidecarをビルドし、fixtureのbinへ同じbuildをコピーする。製品CSPを変更しない。`AURALYN_TEST_PYTHON` はインストール済みPythonの絶対パスを明示する。`dry-run` はレジストリを変更せず、`run` は専用GUIDのUninstall metadataを一時作成し、値・型・子キーの一致を照合して単一削除する。通常のインストール先や既存レジストリ値を使わない。生成物は毎回新規とし、失敗時も所有記録と通常profileの前後hashを確認する。
+
+署名CLIのhelpは環境変数の値を表示しうるため、署名鍵のある親環境のままCLIを起動しない。fixtureハーネスは子の環境をallowlist化し、signerの出力を破棄する。`run` の成功は署名付き試験PEの取得・起動までで、実NSISによる新版導入・再起動・設定保持の合格ではない。
 同時worker数は既定で4に制限する。CPU数が多い環境でもDOM環境を過剰に同時起動せず、必要ならCLIの `--maxWorkers` で変更する。
 Node対象は `vitest.config.ts` に明示し、DOM・Storageを使うテストへブラウザの偽物を足してNode化しない。
 単純なReact setterの確認を増やさず、アプリ固有の設定タブ選択などの契約を検証する。

@@ -113,7 +113,7 @@ NRは対応rateならOFFでも制御側で事前確保し、ON／OFF／resetでR
 `scripts/loopback_measurements.py` はデバイスを起動せず、計測計画と非発声の計測用信号を作成し、別途録音した WAV を解析する。Python の numpy、scipy、soundfile が必要。出力先は毎回存在しない新規ディレクトリを指定し、既存ファイルは上書きしない。
 
 ```powershell
-python scripts/loopback_measurements.py prepare out/plan --rate 48000 --device "機器名" --driver "ドライバーと版" --build "ビルド識別子" --routing "配線と経路" --buffers 128 256 512
+python scripts/loopback_measurements.py prepare out/plan --rate 48000 --device "機器名" --driver "ドライバーと版" --build "ビルド識別子" --routing "配線と経路" --buffers 64 128 256 512
 python scripts/loopback_measurements.py a1 recording-a1.wav out/a1
 python scripts/loopback_measurements.py a3 recording-a3.wav out/a3
 python -m unittest discover -s scripts -p test_loopback_measurements.py -v
