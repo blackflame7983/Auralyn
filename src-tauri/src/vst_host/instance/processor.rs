@@ -46,6 +46,7 @@ impl VstProcessor {
             output_buffer.fill(0.0);
             return;
         }
+        // SAFETY: create_processor が add_ref した processor と DLL を保持する。フレーム数と作業バッファ長を上で検証し、呼び出し中は各バッファが生存する。
         unsafe {
             let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.ptr);
 
@@ -187,6 +188,7 @@ impl VstProcessor {
             return;
         }
 
+        // SAFETY: create_processor が add_ref した processor と DLL を保持する。上で各チャネルの長さとフレーム数を検証し、呼び出し中はスライスが生存する。
         unsafe {
             let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.ptr);
 
@@ -264,6 +266,7 @@ impl VstProcessor {
 impl Drop for VstProcessor {
     fn drop(&mut self) {
         // println!("BP: VstProcessor Drop Start {:p}", self.ptr);
+        // SAFETY: create_processor で追加した processor の COM 参照を一度だけ解放し、DLL はこの drop 中も保持される。
         unsafe {
             if !self.ptr.is_null() {
                 let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.ptr);

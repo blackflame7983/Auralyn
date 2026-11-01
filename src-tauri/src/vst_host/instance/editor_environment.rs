@@ -29,6 +29,7 @@ fn apply_editor_env(cwd_dir: &Path, dll_dir: &Path) {
     // - CWD: Bundle型では Contents/Resources を相対参照するケースがあるため、Contents を優先
     // - DllDirectory: 依存DLLはバイナリ配置ディレクトリ（例: Contents/x86_64-win）にあることが多い
     let _ = std::env::set_current_dir(cwd_dir);
+    // SAFETY: wide は NUL 終端され、SetDllDirectoryW の呼び出しが戻るまで生存する。
     unsafe {
         let wide = path_to_wide_null(dll_dir);
         let _ = SetDllDirectoryW(PCWSTR(wide.as_ptr()));
@@ -40,6 +41,7 @@ fn restore_editor_env(baseline_cwd: Option<PathBuf>, baseline_dll_dir: Option<Ve
         let _ = std::env::set_current_dir(prev);
     }
 
+    // SAFETY: 保存済みの wide は取得時に NUL 終端され、呼び出しが戻るまで生存する。None は API が受け付ける null。
     unsafe {
         match baseline_dll_dir {
             Some(wide) => {
@@ -60,6 +62,7 @@ impl EditorEnvGuard {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if mgr.stack.is_empty() {
             mgr.baseline_cwd = std::env::current_dir().ok();
+            // SAFETY: 戻り値は所有する Vec にコピーされ、呼び出し中はマネージャのロックを保持する。
             mgr.baseline_dll_dir = unsafe { get_dll_directory_wide() };
         }
         mgr.next_id = mgr.next_id.wrapping_add(1);
@@ -260,6 +263,7 @@ mod tests {
         }
         // CWDはプロセス全体に作用するため、他のテストと同じプロセスでは変更しない。
         let baseline_cwd = std::env::current_dir().unwrap();
+        // SAFETY: 取得関数は API 用のバッファを自身で確保し、結果を所有する Vec として返す。
         let baseline_dll = unsafe { get_dll_directory_wide() };
         let root = std::env::temp_dir().join(format!("auralyn-editor-env-{}", std::process::id()));
         let first_dir = root.join("first");
@@ -272,6 +276,7 @@ mod tests {
         assert_eq!(std::env::current_dir().unwrap(), second_dir);
         drop(second);
         assert_eq!(std::env::current_dir().unwrap(), baseline_cwd);
+        // SAFETY: 取得関数は API 用のバッファを自身で確保し、結果を所有する Vec として返す。
         assert_eq!(unsafe { get_dll_directory_wide() }, baseline_dll);
         std::fs::remove_dir(first_dir).unwrap();
         std::fs::remove_dir(second_dir).unwrap();

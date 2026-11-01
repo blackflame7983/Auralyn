@@ -69,6 +69,7 @@ pub(super) fn debug_dump_hwnd_children(root: HWND, max: usize) {
         BOOL(1)
     }
 
+    // SAFETY: root は呼び出し元が渡した HWND で、RECT と列挙コールバック用の値は同期呼び出し中生存する。
     unsafe {
         let mut client = RECT::default();
         let _ = GetClientRect(root, &mut client);
@@ -89,6 +90,7 @@ pub(super) fn debug_dump_hwnd_children(root: HWND, max: usize) {
 }
 
 pub(super) fn register_editor_view(view: *mut c_void, container_hwnd: isize) {
+    // SAFETY: container_hwnd は登録対象の HWND であり、GetAncestor はハンドルを保持しない。
     let top_hwnd = unsafe {
         let container = HWND(container_hwnd as *mut c_void);
         let top = GetAncestor(container, GA_ROOT);
@@ -217,6 +219,7 @@ pub(super) unsafe fn move_resize_child_hwnd(
 
 pub(super) fn hwnd_class_name(hwnd: HWND) -> String {
     let mut class_buf = [0u16; 128];
+    // SAFETY: class_buf は 128 要素の書き込み可能な UTF-16 配列で、API にスライス長が渡る。
     let class_len = unsafe { GetClassNameW(hwnd, &mut class_buf) };
     if class_len <= 0 {
         return String::new();
@@ -226,6 +229,7 @@ pub(super) fn hwnd_class_name(hwnd: HWND) -> String {
 
 #[allow(dead_code)]
 pub(super) fn find_primary_plugin_child_hwnd(container: HWND) -> Option<HWND> {
+    // SAFETY: container は呼び出し元が渡す HWND で、列挙したハンドルは API の戻り値を使用する。
     unsafe {
         let mut current: HWND =
             FindWindowExW(Some(container), None, PCWSTR::null(), PCWSTR::null())
