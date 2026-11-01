@@ -85,7 +85,7 @@ Tauri本体・sidecar・WebView2子プロセスの**合計**で測る。sidecar�
 | B-5 | 長時間でのメモリ増加 | 定量 | 4〜8時間の連続運転でprivate bytesの推移を見る | 増加が頭打ちになる | 実測可能 |
 | B-6 | インストールサイズ・ディスク使用量 | 定量 | インストーラー、展開後、設定・キャッシュの合計 | 記録のみ | 実測可能 |
 
-既存の道具：[ネイティブ性能の比較](NATIVE_PERFORMANCE_COMPARE.md)はsidecar単体のCPUとprivate bytesを測る。B-1〜B-3のプロセス合計、B-4、B-5は測定手段がまだない。過去の測定は[DSPのリリース性能](DSP_RELEASE_PERFORMANCE.md)を参照する。
+既存の道具：[ネイティブ性能の比較](NATIVE_PERFORMANCE_COMPARE.md)はsidecar単体のCPUとprivate bytesを測る。`scripts/measure-release-trial.ps1` は、HostのPIDを指定するとHostと子孫プロセス（WebView2を含む）のCPU・private bytes・working setを一定間隔で記録し、B-1・B-2・B-5に使える。B-3（GPU）とB-4（音が届くまでの時間）は測定手段がまだない。過去の測定は[DSPのリリース性能](DSP_RELEASE_PERFORMANCE.md)を参照する。
 
 ## C. 安定性・堅牢性
 
@@ -181,4 +181,4 @@ F-3は構造上、OBS内で完結する製品が有利。手数の差を記録�
 2. 評価条件（環境・構成・入力信号・VSTの固定リスト）を記録する。
 3. 測定手段のない指標（B-1〜B-5のプロセス合計、A-1の全通過時間など）の道具を用意する。
 4. Auralynを先に測り、同じ条件で比較先を測る。実機で測れない比較先は資料比較として分けて記録する。
-5. 結果は確認日・コミット・試行回数・ばらつきと合わせて別の記録に残し、本書には結果を書き込まない。
+5. 結果は確認日・コミット・試行回数・ばらつきと合わせて別の記録に残し、本書には結果を書き込まない。初回の記録は[2026-11-01の評価結果](EVALUATION_2026-11-01.md)。
