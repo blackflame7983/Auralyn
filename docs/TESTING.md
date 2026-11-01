@@ -2,6 +2,8 @@
 
 本アプリケーションの品質、安定性、および使いやすさを確認するための自動・手動テストの手順です。
 
+類似アプリとの比較やリソース使用量を含む評価の軸は [EVALUATION_CRITERIA.md](EVALUATION_CRITERIA.md) に定める。
+
 ホームの状態別主操作（#160〜#163）は `e2e/browser/home-actions.spec.ts` で確認する。960×640 の開始操作、機器IDの引継ぎ、開始失敗と開始後の設定失敗、設定からの復旧後の警告解除、送り先選択へのスクロール・キーボードフォーカス、3テーマのセグメント寸法と注意域メーターを扱う。本番保護中の経路維持と入力ペアの再適用禁止は `src/lib/__tests__/startHomeAudio.test.ts` で確認する。これらはIPCモック・ローカル試験であり、実機での開始・実音声の到達は別途確認する。
 
 ASIOの入出力（#205〜#207）は `e2e/browser/asio-routing.spec.ts` で、入力3/4と独立出力1/2、同番号へ返すinsert、保存後の再表示を確認する。設定画面のDOM試験では初回接続・旧設定の互換モード・同名機器ID・保存のみの再試行を扱う。`useAudioConnectionController.test.tsx` は実レート／バッファの同期で選択機器が戻らないことも確認する。Rustの `channel_routing_tests` と `queue_diagnostics` は開始前の範囲検証、異なる入出力数、最初のフレームの転送先とRT無割当を確認する。
