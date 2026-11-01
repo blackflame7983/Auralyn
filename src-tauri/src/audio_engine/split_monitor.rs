@@ -89,6 +89,10 @@ pub struct Controls {
     pub dropped: AtomicU64,
 }
 impl Controls {
+    pub(crate) fn input_pair(&self) -> [usize; 2] {
+        let channels = self.channels.load(Ordering::Acquire);
+        [channels as u32 as usize, (channels >> 32) as usize]
+    }
     fn reserve_measurement(&self) {
         let _ = self
             .measurement

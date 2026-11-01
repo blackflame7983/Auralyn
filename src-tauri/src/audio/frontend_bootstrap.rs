@@ -12,6 +12,7 @@ pub(super) struct Startup {
     pub(super) output_gain: Option<f32>,
     pub(super) session_claimed: bool,
     pub(super) warmup_error: Option<String>,
+    pub(super) deferred_config: Option<ActiveAudioConfig>,
 }
 impl Startup {
     pub(super) fn cancel(&mut self) {
@@ -38,9 +39,50 @@ pub(crate) struct Config {
     pub host: String,
     pub input: Option<String>,
     pub output: Option<String>,
+    #[serde(default)]
+    pub input_id: Option<String>,
+    #[serde(default)]
+    pub output_id: Option<String>,
     pub buffer_size: Option<u32>,
     pub sample_rate: Option<u32>,
     pub input_channels: Option<[usize; 2]>,
+    #[serde(default)]
+    pub output_routing: Option<crate::ipc::OutputRouting>,
+}
+fn input_pair_matches(config: &Config, active: &ActiveAudioConfig, requested: [usize; 2]) -> bool {
+    let actual = active.routing.and_then(|routing| routing.input_channels);
+    actual == Some(requested)
+        || (config.host.eq_ignore_ascii_case("wasapi")
+            && active.host.eq_ignore_ascii_case("wasapi")
+            && requested == [0, 1]
+            && actual == Some([0, 0]))
+}
+fn merge_deferred_ids(config: &mut Config, deferred: Option<&ActiveAudioConfig>) {
+    if let Some(previous) = deferred.filter(|previous| {
+        config.host.eq_ignore_ascii_case(&previous.host)
+            && config.input == previous.input
+            && config.output == previous.output
+    }) {
+        if config.input_id.is_none() {
+            config.input_id = previous.input_id.clone();
+        }
+        if config.output_id.is_none() {
+            config.output_id = previous.output_id.clone();
+        }
+    }
+}
+fn output_routing_matches(
+    config: &Config,
+    active: &ActiveAudioConfig,
+    requested: crate::ipc::OutputRouting,
+    actual: crate::ipc::OutputRouting,
+) -> bool {
+    use crate::ipc::OutputRouting;
+    actual == requested
+        || (config.host.eq_ignore_ascii_case("wasapi")
+            && active.host.eq_ignore_ascii_case("wasapi")
+            && requested == (OutputRouting::Independent { channels: [0, 1] })
+            && actual == (OutputRouting::Independent { channels: [0, 0] }))
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -221,6 +263,23 @@ impl AudioHost {
         if running {
             // warmup自身の開始だけが初回pair/gain適用を許可する。既存の任意稼働には触れない。
             if self.frontend_bootstrap.warmup_succeeded {
+                if let (Some(config), Some(active)) = (
+                    request.config.as_ref(),
+                    self.active_config
+                        .as_ref()
+                        .filter(|config| config.routing.is_some()),
+                ) {
+                    let current = active.routing.expect("routing checked above");
+                    if config.output_routing.is_some_and(|output| {
+                        !output_routing_matches(config, active, output, current.output_routing)
+                    }) || (config.output_routing.is_some()
+                        && config
+                            .input_channels
+                            .is_some_and(|input| !input_pair_matches(config, active, input)))
+                    {
+                        return Err(anyhow!("自動開始した入出力と保存設定が異なります。設定を確認して再開してください"));
+                    }
+                }
                 let generation = self.engine_generation;
                 let mut commands = Vec::new();
                 if self.frontend_bootstrap.input_gain.is_none() {
@@ -238,10 +297,19 @@ impl AudioHost {
                     .as_ref()
                     .and_then(|config| config.input_channels)
                 {
-                    commands.push(IpcCommand::SetInputChannels {
-                        left: channels[0],
-                        right: channels[1],
-                    });
+                    if !request
+                        .config
+                        .as_ref()
+                        .zip(self.active_config.as_ref())
+                        .is_some_and(|(config, active)| {
+                            input_pair_matches(config, active, channels)
+                        })
+                    {
+                        commands.push(IpcCommand::SetInputChannels {
+                            left: channels[0],
+                            right: channels[1],
+                        });
+                    }
                 }
                 for command in commands {
                     validate_start_generation(generation, self.engine_generation)?;
@@ -275,13 +343,17 @@ impl AudioHost {
                 error: None,
             });
         }
-        let Some(config) = request.config.filter(|config| !config.host.is_empty()) else {
+        let Some(mut config) = request.config.filter(|config| !config.host.is_empty()) else {
             return Ok(Reply {
                 outcome: Outcome::Inactive,
                 initial_page: true,
                 error: None,
             });
         };
+        merge_deferred_ids(
+            &mut config,
+            self.frontend_bootstrap.deferred_config.as_ref(),
+        );
         self.frontend_bootstrap.automatic_attempted = true;
         // warmupがconfig無しでchildだけを準備した場合の、一度だけのfallback。
         if self.child.is_none() {
@@ -296,7 +368,11 @@ impl AudioHost {
             .frontend_bootstrap
             .output_gain
             .unwrap_or(request.output_gain);
-        self.start_internal_guarded(
+        let routing = crate::ipc::ChannelRouting {
+            input_channels: config.input_channels,
+            output_routing: config.output_routing.unwrap_or_default(),
+        };
+        self.start_internal_guarded_with_ids(
             Some(config.host),
             config.input,
             config.output,
@@ -306,10 +382,14 @@ impl AudioHost {
                 input_gain,
                 output_gain,
                 input_channels: config.input_channels.unwrap_or([0, 1]),
+                output_routing: config.output_routing.unwrap_or_default(),
                 muted: self.is_global_muted,
                 bypassed: false,
             }),
             Some(generation),
+            config.input_id,
+            config.output_id,
+            Some(routing),
         )?;
         self.frontend_bootstrap.input_gain = Some(input_gain);
         self.frontend_bootstrap.output_gain = Some(output_gain);
@@ -330,9 +410,12 @@ pub(super) mod tests {
                 host: "ASIO".into(),
                 input: None,
                 output: None,
+                input_id: None,
+                output_id: None,
                 sample_rate: Some(96000),
                 buffer_size: Some(512),
                 input_channels: Some([6, 7]),
+                output_routing: None,
             }),
             input_gain: 0.3,
             output_gain: 0.2,
@@ -393,16 +476,26 @@ pub(super) mod tests {
         with_host(
             |command| match command {
                 IpcCommand::AutoGain { .. } => status(false, false, 0.4),
+                IpcCommand::StartIdentityCapability => {
+                    IpcResponse::StartIdentityCapability { version: 2 }
+                }
                 IpcCommand::Start {
                     initial_controls: Some(controls),
+                    channel_routing: Some(routing),
                     ..
                 } => {
                     assert_eq!(controls.input_channels, [6, 7]);
                     assert_eq!(controls.input_gain, 0.6);
                     assert_eq!(controls.output_gain, 0.4);
+                    assert_eq!(routing.input_channels, Some([6, 7]));
+                    assert_eq!(
+                        routing.output_routing,
+                        crate::ipc::OutputRouting::Independent { channels: [0, 1] }
+                    );
                     IpcResponse::Started {
                         sample_rate: 96000,
                         buffer_size: 512,
+                        routing: Some(routing),
                         input_id: None,
                         output_id: None,
                     }
@@ -418,7 +511,10 @@ pub(super) mod tests {
                     std::process::id(),
                     crate::audio_engine::restoration::unix_ms()
                 ));
-                let response = host.frontend_bootstrap(request()).unwrap();
+                let mut first_request = request();
+                first_request.config.as_mut().unwrap().output_routing =
+                    Some(crate::ipc::OutputRouting::Independent { channels: [0, 1] });
+                let response = host.frontend_bootstrap(first_request).unwrap();
                 assert_eq!(response.outcome, Outcome::Started);
                 assert!(response.initial_page);
                 let count = calls.lock().unwrap().len();
@@ -435,6 +531,179 @@ pub(super) mod tests {
                     1
                 );
                 let _ = std::fs::remove_file(&host.last_config_path);
+            },
+        );
+    }
+    #[cfg(windows)]
+    #[test]
+    fn legacy_warmup_waits_for_saved_pair_and_gains_before_first_start() {
+        use super::super::session_rack::tests::with_host;
+        with_host(
+            |command| match command {
+                IpcCommand::AutoGain { .. } => status(false, false, 1.0),
+                IpcCommand::StartIdentityCapability => {
+                    IpcResponse::StartIdentityCapability { version: 2 }
+                }
+                IpcCommand::Start {
+                    initial_controls: Some(controls),
+                    channel_routing: Some(routing),
+                    input_id,
+                    output_id,
+                    ..
+                } => {
+                    assert_eq!(controls.input_channels, [2, 3]);
+                    assert_eq!((controls.input_gain, controls.output_gain), (0.3, 0.2));
+                    assert_eq!(routing.input_channels, Some([2, 3]));
+                    assert_eq!(input_id.as_deref(), Some("saved-input-id"));
+                    assert_eq!(output_id.as_deref(), Some("saved-output-id"));
+                    IpcResponse::Started {
+                        sample_rate: 96000,
+                        buffer_size: 512,
+                        routing: Some(routing),
+                        input_id,
+                        output_id,
+                    }
+                }
+                _ => panic!("旧設定は先に再生やチャンネル変更をしない"),
+            },
+            |host, calls| {
+                host.last_config_path = std::env::temp_dir().join(format!(
+                    "legacy-warmup-{}-{}.json",
+                    std::process::id(),
+                    crate::audio_engine::restoration::unix_ms()
+                ));
+                std::fs::write(&host.last_config_path, r#"{"host":"ASIO","input":null,"output":null,"input_id":"saved-input-id","output_id":"saved-output-id","buffer_size":512,"sample_rate":96000}"#).unwrap();
+                host.warmup().unwrap();
+                assert!(!host.frontend_bootstrap.automatic_attempted);
+                assert!(calls
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .all(|cmd| !matches!(cmd, IpcCommand::Start { .. })));
+                let mut request = request();
+                let config = request.config.as_mut().unwrap();
+                config.input_channels = Some([2, 3]);
+                assert_eq!(
+                    host.frontend_bootstrap(request).unwrap().outcome,
+                    Outcome::Started
+                );
+                let observed = calls.lock().unwrap();
+                assert_eq!(
+                    observed
+                        .iter()
+                        .filter(|cmd| matches!(cmd, IpcCommand::Start { .. }))
+                        .count(),
+                    1
+                );
+                assert!(!observed
+                    .iter()
+                    .any(|cmd| matches!(cmd, IpcCommand::SetInputChannels { .. })));
+                let _ = std::fs::remove_file(&host.last_config_path);
+            },
+        );
+    }
+    #[test]
+    fn deferred_ids_only_fill_missing_ids_for_matching_devices() {
+        let previous = ActiveAudioConfig {
+            host: "ASIO".into(),
+            input: Some("mic".into()),
+            output: Some("speakers".into()),
+            input_id: Some("old-input".into()),
+            output_id: Some("old-output".into()),
+            ..Default::default()
+        };
+        let mut config = request().config.unwrap();
+        config.input = previous.input.clone();
+        config.output = previous.output.clone();
+        config.input_id = Some("new-input".into());
+        merge_deferred_ids(&mut config, Some(&previous));
+        assert_eq!(config.input_id.as_deref(), Some("new-input"));
+        assert_eq!(config.output_id.as_deref(), Some("old-output"));
+        config.input = Some("different mic".into());
+        config.input_id = None;
+        config.output_id = None;
+        merge_deferred_ids(&mut config, Some(&previous));
+        assert!(config.input_id.is_none() && config.output_id.is_none());
+        config.input = previous.input.clone();
+        config.host = "WASAPI".into();
+        merge_deferred_ids(&mut config, Some(&previous));
+        assert!(config.input_id.is_none() && config.output_id.is_none());
+    }
+    #[test]
+    fn bootstrap_config_accepts_old_data_and_explicit_camel_case_ids() {
+        let old = serde_json::json!({"host":"ASIO","input":null,"output":null,"bufferSize":512,"sampleRate":48000,"inputChannels":[2,3]});
+        let mut config: Config = serde_json::from_value(old.clone()).unwrap();
+        assert!(config.input_id.is_none() && config.output_id.is_none());
+        let mut newer = old;
+        newer["inputId"] = serde_json::json!("input-id");
+        newer["outputId"] = serde_json::json!("output-id");
+        config = serde_json::from_value(newer).unwrap();
+        assert_eq!(config.input_id.as_deref(), Some("input-id"));
+        assert_eq!(config.output_id.as_deref(), Some("output-id"));
+    }
+    #[cfg(windows)]
+    #[test]
+    fn wasapi_mono_warmup_accepts_logical_stereo_without_late_input_change() {
+        use super::super::session_rack::tests::with_host;
+        with_host(
+            |command| match command {
+                IpcCommand::AutoGain { .. } => status(true, false, 0.4),
+                _ => panic!("一致した接続は変更しない"),
+            },
+            |host, calls| {
+                host.frontend_bootstrap.warmup_succeeded = true;
+                host.frontend_bootstrap.automatic_attempted = true;
+                host.frontend_bootstrap.input_gain = Some(0.3);
+                host.frontend_bootstrap.output_gain = Some(0.4);
+                host.active_config = Some(ActiveAudioConfig {
+                    host: "WASAPI".into(),
+                    routing: Some(crate::ipc::ChannelRouting {
+                        input_channels: Some([0, 0]),
+                        output_routing: crate::ipc::OutputRouting::Independent { channels: [0, 0] },
+                    }),
+                    ..Default::default()
+                });
+                let mut request = request();
+                let config = request.config.as_mut().unwrap();
+                config.host = "WASAPI".into();
+                config.input_channels = Some([0, 1]);
+                config.output_routing =
+                    Some(crate::ipc::OutputRouting::Independent { channels: [0, 1] });
+                assert_eq!(
+                    host.frontend_bootstrap(request).unwrap().outcome,
+                    Outcome::Attached
+                );
+                assert!(!calls
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|cmd| matches!(cmd, IpcCommand::SetInputChannels { .. })));
+            },
+        );
+    }
+    #[cfg(windows)]
+    #[test]
+    fn frontend_bootstrap_does_not_silently_replace_running_warmup_routing() {
+        use super::super::session_rack::tests::with_host;
+        with_host(
+            |command| match command {
+                IpcCommand::AutoGain { .. } => status(true, false, 0.4),
+                _ => panic!("接続不一致時は操作しない"),
+            },
+            |host, _| {
+                host.frontend_bootstrap.warmup_succeeded = true;
+                host.frontend_bootstrap.automatic_attempted = true;
+                host.active_config = Some(ActiveAudioConfig {
+                    routing: Some(crate::ipc::ChannelRouting {
+                        input_channels: Some([2, 3]),
+                        output_routing: crate::ipc::OutputRouting::Insert,
+                    }),
+                    ..Default::default()
+                });
+                let mut request = request();
+                request.config.as_mut().unwrap().output_routing =
+                    Some(crate::ipc::OutputRouting::Independent { channels: [0, 1] });
+                assert!(host.frontend_bootstrap(request).is_err());
             },
         );
     }
@@ -608,6 +877,9 @@ mod warmup_failure_tests {
         with_host(
             |command| match command {
                 IpcCommand::Start { .. } => IpcResponse::Error("fixture start failure".into()),
+                IpcCommand::StartIdentityCapability => {
+                    IpcResponse::StartIdentityCapability { version: 2 }
+                }
                 IpcCommand::SetGlobalMute { .. } => IpcResponse::Success,
                 IpcCommand::AutoGain { .. } => status(false, false, 1.),
                 _ => panic!("unexpected IPC"),
@@ -618,7 +890,7 @@ mod warmup_failure_tests {
                     std::process::id(),
                     crate::audio_engine::restoration::unix_ms()
                 ));
-                std::fs::write(&host.last_config_path, r#"{"host":"ASIO","input":null,"output":null,"buffer_size":512,"sample_rate":96000}"#).unwrap();
+                std::fs::write(&host.last_config_path, r#"{"host":"ASIO","input":null,"output":null,"buffer_size":512,"sample_rate":96000,"routing":{"inputChannels":[0,1],"outputRouting":{"mode":"legacy"}}}"#).unwrap();
                 let reply = host.frontend_bootstrap(request()).unwrap();
                 assert_eq!(reply.outcome, Outcome::Inactive);
                 assert!(reply.error.is_some());

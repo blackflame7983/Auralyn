@@ -20,6 +20,8 @@ pub struct EngineCapture {
     pub fixed_buffer_request_frames: Option<u32>,
     pub plugins: Vec<CapturedPlugin>,
     pub input_channels: Vec<usize>,
+    #[serde(default)]
+    pub output_routing: crate::ipc::OutputRouting,
     pub input_gain: f32,
     pub output_gain: f32,
     pub global_mute: bool,

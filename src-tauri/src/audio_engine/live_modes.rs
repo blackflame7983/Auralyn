@@ -545,9 +545,12 @@ pub(crate) fn guard(
     }
     let blocked = match command {
         Command::Start {
-            initial_controls, ..
+            initial_controls,
+            channel_routing,
+            ..
         } => {
             initial_controls.is_some()
+                || channel_routing.is_some()
                 || StartSpec::from_command(command)
                     .is_none_or(|requested| !requested.concrete() || bound != Some(&requested))
         }
@@ -827,9 +830,18 @@ mod tests {
             sample_rate: Some(96_000),
             buffer_size: Some(512),
             initial_controls: None,
+            channel_routing: None,
         };
         let bound = StartSpec::from_command(&start).unwrap();
         assert!(guard(true, Some(&bound), &start).is_ok());
+        let mut routed = start.clone();
+        if let Command::Start {
+            channel_routing, ..
+        } = &mut routed
+        {
+            *channel_routing = Some(crate::ipc::ChannelRouting::default());
+        }
+        assert!(guard(true, Some(&bound), &routed).is_err());
         for command in [
             Command::BeginDeviceScan,
             Command::LoadPlugin { path: "x".into() },
@@ -844,6 +856,7 @@ mod tests {
                 sample_rate: Some(96_000),
                 buffer_size: Some(512),
                 initial_controls: None,
+                channel_routing: None,
             },
         ] {
             assert!(guard(true, Some(&bound), &command).is_err());

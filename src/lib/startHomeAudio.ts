@@ -2,6 +2,7 @@ import { audioApi } from '@/api/audio';
 import { liveModesApi } from '@/api/liveModes';
 import type { AudioPreferences } from './audioPreferences';
 import { FixedClientError } from './clientError';
+import { channelRoutingFor } from './audioChannelRouting';
 
 export class HomeAudioStartError extends Error {
     constructor(readonly started: boolean, readonly cause: unknown) {
@@ -23,13 +24,15 @@ export async function startHomeAudio(saved: AudioPreferences, persist: (config: 
             config = { ...saved, host: actual.host, input: actual.input, output: actual.output, inputId: actual.input_id,
                 outputId: actual.output_id, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size };
         }
-        const result = await audioApi.start(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId);
+        const result = mode.armed
+            ? await audioApi.start(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId)
+            : await audioApi.start(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId, undefined, channelRoutingFor(config));
         started = true;
         // 保護中に古いUIのチャンネル選択を再適用しない。
         if (!mode.armed) {
-            const channels: [number, number] = config.host.toLowerCase() === 'asio' ? config.inputChannels ?? [0, 1] : [0, 1];
-            await audioApi.setInputChannels(...channels);
-            await persist({ ...config, sampleRate: result.sample_rate, bufferSize: result.buffer_size, inputChannels: channels });
+            const routing = result.routing ?? channelRoutingFor(config);
+            await persist({ ...config, sampleRate: result.sample_rate, bufferSize: result.buffer_size,
+                inputChannels: routing.inputChannels ?? [0, 1], outputRouting: routing.outputRouting });
         }
     } catch (error) { throw new HomeAudioStartError(started, error); }
 }

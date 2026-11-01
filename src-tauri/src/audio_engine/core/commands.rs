@@ -240,7 +240,7 @@ impl Engine {
                 }
             }
             Command::StartIdentityCapability => {
-                self.send_response(Response::StartIdentityCapability { version: 1 });
+                self.send_response(Response::StartIdentityCapability { version: 2 });
             }
             Command::PeakProtection { config } => {
                 if let Some(config) = config {
@@ -439,6 +439,7 @@ impl Engine {
                 buffer_size,
                 sample_rate,
                 initial_controls,
+                channel_routing,
             } => {
                 if let Some(controls) = initial_controls {
                     if let Err(error) = self.prepare_initial_controls(controls) {
@@ -446,6 +447,9 @@ impl Engine {
                         return;
                     }
                 }
+                let channel_routing =
+                    channel_routing.or_else(|| initial_controls.map(|controls| controls.routing()));
+                self.prepare_start_routing(channel_routing);
                 let mut bound = crate::audio_engine::live_modes::StartSpec {
                     host: host.clone(),
                     input: input.clone(),
@@ -480,6 +484,10 @@ impl Engine {
                         self.send_response(Response::Started {
                             sample_rate: self.current_sample_rate as u32,
                             buffer_size: self.current_block_size as u32,
+                            routing: Some(crate::ipc::ChannelRouting {
+                                input_channels: Some([self.input_channel_l, self.input_channel_r]),
+                                output_routing: self.output_routing,
+                            }),
                             input_id: self
                                 .device_manager
                                 .active_input
@@ -778,6 +786,12 @@ impl Engine {
                     self.send_error("入力チャンネルが範囲外です".into());
                     return;
                 };
+                if self.output_stream.is_some()
+                    && self.validate_output_for_input([left, right]).is_err()
+                {
+                    self.send_error("選択した入力に対応する出力がありません".into());
+                    return;
+                }
                 self.builtin.invalidate_history_with_reason(
                     crate::audio_engine::history::Reason::InputChanged,
                 );

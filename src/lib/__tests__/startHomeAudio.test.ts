@@ -17,9 +17,9 @@ function setup(armed = false) {
 it('通常の開始は機器IDとASIO入力ペアを保ち、実際のレートとバッファを保存する', async () => {
     const { start, channels, persist } = setup();
     await startHomeAudio(config, persist);
-    expect(start).toHaveBeenCalledWith('ASIO', 'Saved mic', 'Saved out', 512, 48000, 'saved-in', 'saved-out');
-    expect(channels).toHaveBeenCalledWith(6, 7);
-    expect(persist).toHaveBeenCalledWith({ ...config, sampleRate: 96000, bufferSize: 256 });
+    expect(start).toHaveBeenCalledWith('ASIO', 'Saved mic', 'Saved out', 512, 48000, 'saved-in', 'saved-out', undefined, { inputChannels: [6, 7], outputRouting: { mode: 'legacy' } });
+    expect(channels).not.toHaveBeenCalled();
+    expect(persist).toHaveBeenCalledWith({ ...config, sampleRate: 96000, bufferSize: 256, outputRouting: { mode: 'legacy' } });
 });
 
 it('本番保護中は保持済み機器で再開し、古いUIの入力ペアを再適用しない', async () => {
@@ -49,7 +49,7 @@ it.each(['ja', 'en'] as const)('保護中の確認失敗は原因の翻訳キー
         .toBe(message(locale, 'clientErrors.homeProtectedConfigUnverified'));
 });
 
-it.each(['start', 'channels', 'persist'])('開始と開始後の部分失敗を区別する: %s', async stage => {
+it.each(['start', 'persist'])('開始と開始後の部分失敗を区別する: %s', async stage => {
     const { start, channels, persist } = setup();
     ({ start, channels, persist })[stage as 'start' | 'channels' | 'persist'].mockRejectedValueOnce(new Error('injected'));
     await expect(startHomeAudio(config, persist)).rejects.toMatchObject({ started: stage !== 'start', message: 'injected' });

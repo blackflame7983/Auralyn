@@ -7,6 +7,7 @@ import { audioApi } from '../api/audio';
 import { REVIEW_KEY } from '../api/migration';
 import { readAudioPreferences } from '../lib/audioPreferences';
 import { liveModesApi } from '../api/liveModes';
+import { channelRoutingFor } from '@/lib/audioChannelRouting';
 
 // 重複通知をまとめ、失敗した要求自体から次の再試行を予約する。
 export function useAudioRecovery() {
@@ -57,14 +58,14 @@ export function useAudioRecovery() {
                     // ストリームだけを再開する。プロセスを破棄するとVSTとパラメーターも失う。
                     startingGeneration = current;
                     try {
-                        await audioApi.start(recovery.host, recovery.input, recovery.output, recovery.bufferSize, recovery.sampleRate, recovery.inputId, recovery.outputId);
+                        if (mode.armed) await audioApi.start(recovery.host, recovery.input, recovery.output, recovery.bufferSize, recovery.sampleRate, recovery.inputId, recovery.outputId);
+                        else await audioApi.start(recovery.host, recovery.input, recovery.output, recovery.bufferSize, recovery.sampleRate, recovery.inputId, recovery.outputId, undefined, channelRoutingFor(recovery));
                     } finally {
                         // 古い要求の終了で、後から始まった復旧のStart所有権を解除しない。
                         if (startingGeneration === current) startingGeneration = null;
                     }
                     if (!valid()) return;
                     // 保護中は保持済み経路をそのまま再開し、古いUI選択でchを変更しない。
-                    if (!mode.armed && config.inputChannels) await audioApi.setInputChannels(...config.inputChannels);
                     if (!valid()) return;
                     recovering = false;
                     toast.success(t('audioNotices.reconnected'));

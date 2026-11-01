@@ -1,6 +1,25 @@
 //! 制御スレッドだけで採取する。component stateの内部変動とcontroller別stateは保証外。
 use super::*;
 impl Engine {
+    pub(super) fn prepare_start_routing(&mut self, routing: Option<crate::ipc::ChannelRouting>) {
+        self.start_routing = routing;
+        if let Some(routing) = routing {
+            self.output_routing = routing.output_routing;
+        }
+    }
+    pub(super) fn validate_output_for_input(&self, input: [usize; 2]) -> Result<()> {
+        crate::ipc::ChannelRouting {
+            input_channels: Some(input),
+            output_routing: self.output_routing,
+        }
+        .resolve(
+            self.current_host_is_asio,
+            self.current_input_channels,
+            self.current_channels,
+        )
+        .map(|_| ())
+        .map_err(|error| anyhow!(error))
+    }
     pub(super) fn prepare_initial_controls(
         &mut self,
         controls: crate::ipc::StartControls,
@@ -16,6 +35,7 @@ impl Engine {
         self.global_bypass = controls.bypassed;
         // 既定WASAPI/ch2では正規化しない。開始先が確定した箇所で処理する。
         [self.input_channel_l, self.input_channel_r] = controls.input_channels;
+        self.output_routing = controls.output_routing;
         Ok(())
     }
     pub(super) fn normalize_start_channels(&mut self) {
@@ -24,6 +44,36 @@ impl Engine {
             [self.input_channel_l, self.input_channel_r],
             self.current_input_channels,
         );
+    }
+    pub(super) fn resolve_start_channels(&mut self) -> Result<()> {
+        if let Some(routing) = self.start_routing {
+            let (resolved, _) = routing
+                .resolve(
+                    self.current_host_is_asio,
+                    self.current_input_channels,
+                    self.current_channels,
+                )
+                .map_err(|error| anyhow!(error))?;
+            [self.input_channel_l, self.input_channel_r] =
+                resolved.input_channels.expect("resolved input channels");
+            self.output_routing = resolved.output_routing;
+        } else {
+            if self.output_routing == crate::ipc::OutputRouting::Legacy {
+                self.normalize_start_channels();
+            }
+            let (resolved, _) = crate::ipc::ChannelRouting {
+                input_channels: Some([self.input_channel_l, self.input_channel_r]),
+                output_routing: self.output_routing,
+            }
+            .resolve(
+                self.current_host_is_asio,
+                self.current_input_channels,
+                self.current_channels,
+            )
+            .map_err(|error| anyhow!(error))?;
+            self.output_routing = resolved.output_routing;
+        }
+        Ok(())
     }
     pub(super) fn capture_bundle_state(&self) -> Result<crate::bundle::EngineCapture> {
         let running = self.output_stream.is_some();
@@ -98,6 +148,7 @@ impl Engine {
             },
             plugins,
             input_channels: vec![self.input_channel_l, self.input_channel_r],
+            output_routing: self.output_routing,
             input_gain: self.voice_input_gain,
             output_gain: self.output_gain,
             global_mute: self.global_mute,
@@ -124,6 +175,137 @@ impl Engine {
 mod tests {
     use super::*;
     #[test]
+    fn protected_same_spec_restart_without_routing_preserves_held_output() {
+        use crate::ipc::{ChannelRouting, Command, OutputRouting};
+        let start = Command::Start {
+            host: "ASIO".into(),
+            input: Some("input".into()),
+            output: Some("output".into()),
+            input_id: None,
+            output_id: None,
+            buffer_size: Some(512),
+            sample_rate: Some(48000),
+            initial_controls: None,
+            channel_routing: None,
+        };
+        let bound = crate::audio_engine::live_modes::StartSpec::from_command(&start).unwrap();
+        assert!(crate::audio_engine::live_modes::guard(true, Some(&bound), &start).is_ok());
+        for (routing, output) in [
+            (OutputRouting::Independent { channels: [0, 1] }, [0, 1]),
+            (OutputRouting::Insert, [2, 3]),
+        ] {
+            let mut engine = Engine::new();
+            engine.current_host_is_asio = true;
+            engine.current_input_channels = 4;
+            engine.current_channels = 4;
+            [engine.input_channel_l, engine.input_channel_r] = [2, 3];
+            engine.output_routing = routing;
+            engine.prepare_start_routing(None);
+            engine.resolve_start_channels().unwrap();
+            assert_eq!(engine.output_routing, routing);
+            assert_eq!(
+                crate::audio_engine::queue_diagnostics::routed_output_pair(
+                    routing,
+                    true,
+                    [engine.input_channel_l, engine.input_channel_r],
+                    4
+                ),
+                output
+            );
+        }
+        let mut engine = Engine::new();
+        engine.current_host_is_asio = true;
+        engine.current_input_channels = 4;
+        engine.current_channels = 2;
+        [engine.input_channel_l, engine.input_channel_r] = [2, 3];
+        engine.output_routing = OutputRouting::Insert;
+        engine.prepare_start_routing(None);
+        assert!(engine.resolve_start_channels().is_err());
+        engine.prepare_start_routing(Some(ChannelRouting {
+            input_channels: Some([2, 3]),
+            output_routing: OutputRouting::Independent { channels: [0, 1] },
+        }));
+        engine.resolve_start_channels().unwrap();
+        assert_eq!(
+            engine.output_routing,
+            OutputRouting::Independent { channels: [0, 1] }
+        );
+        engine.current_input_channels = 2;
+        engine.prepare_start_routing(None);
+        assert!(engine.resolve_start_channels().is_err());
+    }
+    #[test]
+    fn input_changes_require_insert_outputs_and_keep_independent_output() {
+        use crate::ipc::OutputRouting;
+        let mut engine = Engine::new();
+        engine.current_host_is_asio = true;
+        engine.current_input_channels = 4;
+        engine.current_channels = 2;
+        engine.output_routing = OutputRouting::Insert;
+        assert!(engine.validate_output_for_input([2, 3]).is_err());
+        assert!(engine.validate_output_for_input([0, 1]).is_ok());
+        engine.output_routing = OutputRouting::Independent { channels: [0, 1] };
+        assert!(engine.validate_output_for_input([2, 3]).is_ok());
+        assert_eq!(
+            engine.output_routing,
+            OutputRouting::Independent { channels: [0, 1] }
+        );
+    }
+    #[test]
+    fn controls_only_start_checks_output_bounds_and_insert_before_callbacks() {
+        use crate::ipc::OutputRouting;
+        let mut engine = Engine::new();
+        engine.current_host_is_asio = true;
+        engine.current_input_channels = 4;
+        engine.current_channels = 2;
+        let mut controls = crate::ipc::StartControls {
+            input_gain: 0.5,
+            output_gain: 0.6,
+            input_channels: [2, 3],
+            output_routing: OutputRouting::Insert,
+            muted: true,
+            bypassed: true,
+        };
+        engine.prepare_initial_controls(controls).unwrap();
+        engine.start_routing = Some(controls.routing());
+        assert!(engine.resolve_start_channels().is_err());
+        controls.output_routing = OutputRouting::Independent { channels: [0, 2] };
+        engine.start_routing = Some(controls.routing());
+        assert!(engine.resolve_start_channels().is_err());
+        controls.output_routing = OutputRouting::Independent { channels: [0, 1] };
+        engine.start_routing = Some(controls.routing());
+        engine.resolve_start_channels().unwrap();
+        assert_eq!([engine.input_channel_l, engine.input_channel_r], [2, 3]);
+        assert_eq!(engine.output_routing, controls.output_routing);
+        assert!(engine.global_mute && engine.global_bypass);
+    }
+    #[test]
+    fn explicit_start_routing_resolves_before_callback_without_changing_controls() {
+        let mut engine = Engine::new();
+        engine.current_host_is_asio = true;
+        engine.current_input_channels = 4;
+        engine.current_channels = 4;
+        engine.input_channel_l = 0;
+        engine.input_channel_r = 1;
+        engine.voice_input_gain = 0.4;
+        engine.global_mute = true;
+        engine.global_bypass = true;
+        engine.start_routing = Some(crate::ipc::ChannelRouting {
+            input_channels: Some([2, 3]),
+            output_routing: crate::ipc::OutputRouting::Independent { channels: [0, 1] },
+        });
+        engine.resolve_start_channels().unwrap();
+        assert_eq!([engine.input_channel_l, engine.input_channel_r], [2, 3]);
+        assert_eq!(engine.voice_input_gain, 0.4);
+        assert!(engine.global_mute && engine.global_bypass);
+        engine.start_routing.as_mut().unwrap().input_channels = Some([2, 4]);
+        assert!(engine.resolve_start_channels().is_err());
+        engine.start_routing.as_mut().unwrap().input_channels = Some([2, 3]);
+        engine.start_routing.as_mut().unwrap().output_routing =
+            crate::ipc::OutputRouting::Independent { channels: [0, 4] };
+        assert!(engine.resolve_start_channels().is_err());
+    }
+    #[test]
     fn fresh_start_controls_reach_actual_asio_normalization_and_first_callback_levels() {
         for channels in [[4, 5], [6, 6]] {
             let mut engine = Engine::new();
@@ -133,6 +315,7 @@ mod tests {
                     input_gain: 0.,
                     output_gain: 0.,
                     input_channels: channels,
+                    output_routing: crate::ipc::OutputRouting::Legacy,
                     muted: true,
                     bypassed: true,
                 })
@@ -153,6 +336,7 @@ mod tests {
                 input_gain: 0.,
                 output_gain: 0.,
                 input_channels: [4, 5],
+                output_routing: crate::ipc::OutputRouting::Legacy,
                 muted: false,
                 bypassed: false,
             })

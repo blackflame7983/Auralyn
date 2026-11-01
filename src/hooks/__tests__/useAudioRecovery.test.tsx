@@ -62,7 +62,8 @@ it('中止済みの旧snapshot応答が新しい復旧Startの停止通知除外
     await act(async () => oldSnapshot());
     notify('audio-stopped'); // 新しいStart自身の停止通知。
     await act(async () => finishStart());
-    expect(audioApi.setInputChannels).toHaveBeenCalledExactlyOnceWith(4, 5);
+    expect(audioApi.setInputChannels).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalledWith('ASIO', 'mic', 'out', 512, 48000, undefined, undefined, undefined, { inputChannels: [4, 5], outputRouting: { mode: 'legacy' } });
     expect(toast.success).toHaveBeenCalledOnce();
 });
 it('本番保護中は保存済み自動deviceではなくHostの具体的な実設定だけで復旧する', async () => {
@@ -108,7 +109,8 @@ it('重複エラーと遅い開始応答でも要求を並行させず、チャ�
     await tick(20_000);
     expect(start).toHaveBeenCalledOnce();
     await act(async () => finish());
-    expect(audioApi.setInputChannels).toHaveBeenCalledWith(4, 5);
+    expect(audioApi.setInputChannels).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalledWith('ASIO', 'mic', 'out', 512, 48000, undefined, undefined, undefined, { inputChannels: [4, 5], outputRouting: { mode: 'legacy' } });
     expect(toast.success).toHaveBeenCalledOnce();
 });
 

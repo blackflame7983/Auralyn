@@ -336,6 +336,7 @@ mod tests {
                 sample_rate: Some(96000),
                 buffer_size: Some(512),
                 initial_controls: None,
+                channel_routing: None,
             },
             Command::LoadPlugin { path: "vst".into() },
             Command::PlayVoiceCheck {

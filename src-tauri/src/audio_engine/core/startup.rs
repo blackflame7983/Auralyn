@@ -261,17 +261,14 @@ impl InputCallback {
 fn measure_output_loudness(
     data: &[f32],
     channels: usize,
-    is_asio: bool,
-    rt_input_l: usize,
-    rt_input_r: usize,
+    output_pair: [usize; 2],
     rt_loudness: &mut LoudnessMeter,
     loudness_prod: &mut <HeapRb<LoudnessReading> as Split>::Prod,
 ) {
     // 最終ゲイン・ミュート・試聴を含め、デバイスへ実際に渡す値で測る。
     // 測定していない間はフィルター・補間・走査を実行しない。
     if rt_loudness.id.is_some() {
-        let [output_l, output_r] =
-            queue_diagnostics::output_pair(is_asio, [rt_input_l, rt_input_r], channels);
+        let [output_l, output_r] = output_pair;
         for frame in data.chunks_exact(channels) {
             let l = frame.get(output_l).copied().unwrap_or(0.0);
             // 同じ物理チャンネルをL/Rへ選んだ場合は二重に加算しない。
@@ -394,6 +391,7 @@ struct CommandContext<'a> {
     rt_input_gain: &'a mut f32,
     rt_input_l: &'a mut usize,
     rt_input_r: &'a mut usize,
+    rt_physical_input: &'a mut [usize; 2],
     separated: bool,
     rt_noise_control: &'a mut Option<RtNoiseControl>,
     rt_noise_learning: &'a mut RtNoiseLearning,
@@ -436,6 +434,7 @@ fn apply_commands(context: CommandContext<'_>) -> bool {
         rt_input_gain,
         rt_input_l,
         rt_input_r,
+        rt_physical_input,
         separated,
         rt_noise_control,
         rt_noise_learning,
@@ -646,6 +645,7 @@ fn apply_commands(context: CommandContext<'_>) -> bool {
             }
             AudioThreadMessage::StartAutoGainCapture(id) => rt_capture.start(id),
             AudioThreadMessage::SetInputChannels(l, r) => {
+                *rt_physical_input = [l, r];
                 if !separated {
                     *rt_input_l = l;
                     *rt_input_r = r;
@@ -931,7 +931,7 @@ impl Engine {
         );
 
         self.current_input_channels = in_stream_config.channels as usize;
-        self.normalize_start_channels();
+        self.resolve_start_channels()?;
 
         // 今回の要求・固定サイズ検出後に全処理段の上限を揃える。
         let effective_fixed_block = match out_stream_config.buffer_size {
@@ -1099,6 +1099,8 @@ impl Engine {
             self.current_sample_rate as u32,
         );
         let mut rt_input_l = self.input_channel_l;
+        let mut rt_physical_input = [self.input_channel_l, self.input_channel_r];
+        let rt_output_routing = self.output_routing;
         let mut rt_input_r = self.input_channel_r;
         let rt_sample_rate_hz = self.current_sample_rate.round().clamp(8_000.0, 192_000.0) as u32;
         let mut rt_noise_control = RtNoiseControl::prepare(
@@ -1467,6 +1469,7 @@ impl Engine {
                         rt_input_gain: &mut rt_input_gain,
                         rt_input_l: &mut rt_input_l,
                         rt_input_r: &mut rt_input_r,
+                        rt_physical_input: &mut rt_physical_input,
                         separated,
                         rt_noise_control: &mut rt_noise_control,
                         rt_noise_learning: &mut rt_noise_learning,
@@ -1837,11 +1840,16 @@ impl Engine {
                         });
                     } else if rt_test_tone.is_active() {
                         data.fill(0.0);
-                        let output_pair = super::super::queue_diagnostics::output_pair(
-                            is_asio,
-                            [rt_input_l, rt_input_r],
-                            channels,
-                        );
+                        let output_pair = if separated {
+                            [0, 1]
+                        } else {
+                            super::super::queue_diagnostics::routed_output_pair(
+                                rt_output_routing,
+                                is_asio,
+                                rt_physical_input,
+                                channels,
+                            )
+                        };
                         let mut out_max_l = 0.0f32;
                         let mut out_max_r = 0.0f32;
 
@@ -1867,11 +1875,16 @@ impl Engine {
                         });
                     } else if rt_voice_check.is_playback_active() {
                         data.fill(0.0);
-                        let output_pair = super::super::queue_diagnostics::output_pair(
-                            is_asio,
-                            [rt_input_l, rt_input_r],
-                            channels,
-                        );
+                        let output_pair = if separated {
+                            [0, 1]
+                        } else {
+                            super::super::queue_diagnostics::routed_output_pair(
+                                rt_output_routing,
+                                is_asio,
+                                rt_physical_input,
+                                channels,
+                            )
+                        };
                         let mut out_max_l = 0.0f32;
                         let mut out_max_r = 0.0f32;
 
@@ -1900,11 +1913,16 @@ impl Engine {
                         data.fill(0.0);
 
                         // 入力選択とは独立した、実際に存在する出力ペアへ送る。
-                        let output_pair = super::super::queue_diagnostics::output_pair(
-                            is_asio,
-                            [rt_input_l, rt_input_r],
-                            channels,
-                        );
+                        let output_pair = if separated {
+                            [0, 1]
+                        } else {
+                            super::super::queue_diagnostics::routed_output_pair(
+                                rt_output_routing,
+                                is_asio,
+                                rt_physical_input,
+                                channels,
+                            )
+                        };
 
                         let mut out_max_l = 0.0f32;
                         let mut out_max_r = 0.0f32;
@@ -1961,9 +1979,16 @@ impl Engine {
                     measure_output_loudness(
                         data,
                         channels,
-                        is_asio,
-                        rt_input_l,
-                        rt_input_r,
+                        if separated {
+                            [0, 1]
+                        } else {
+                            super::super::queue_diagnostics::routed_output_pair(
+                                rt_output_routing,
+                                is_asio,
+                                rt_physical_input,
+                                channels,
+                            )
+                        },
                         &mut rt_loudness,
                         &mut loudness_prod,
                     );
@@ -2007,6 +2032,7 @@ impl Engine {
             let output_result = if let (Some(mut monitor), Some(queue), Some(controls)) =
                 (monitor_renderer, broadcast_queue, worker_controls)
             {
+                let monitor_controls = controls.clone();
                 match crate::audio_engine::split_monitor::Worker::start_gated(
                     move |data| {
                         let ticket = output_silence.ticket();
@@ -2030,7 +2056,14 @@ impl Engine {
                             move |data: &mut [f32], info| {
                                 monitor
                                     .get_mut()
-                                    .render_gated(data, Some(info), &monitor_silence)
+                                    .render_gated(data, Some(info), &monitor_silence);
+                                let pair = super::super::queue_diagnostics::routed_output_pair(
+                                    rt_output_routing,
+                                    is_asio,
+                                    monitor_controls.input_pair(),
+                                    2,
+                                );
+                                super::super::queue_diagnostics::route_stereo_monitor(data, pair);
                             },
                             err_fn_ipc,
                             None,

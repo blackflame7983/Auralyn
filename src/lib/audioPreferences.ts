@@ -1,4 +1,5 @@
 import type { AudioDevice, AudioDeviceList } from '../api/audio';
+import { readOutputRouting, type OutputRouting } from './audioChannelRouting';
 
 export interface AudioPreferences {
     host: string;
@@ -7,6 +8,7 @@ export interface AudioPreferences {
     sampleRate?: number;
     bufferSize?: number;
     inputChannels?: [number, number];
+    outputRouting?: OutputRouting;
     inputId?: string;
     outputId?: string;
 }
@@ -26,6 +28,7 @@ export function readAudioPreferences(): AudioPreferences | null {
         if (!value || typeof value !== 'object' || !('host' in value)
             || typeof value.host !== 'string' || !value.host.trim()) return null;
         const config = value as Record<string, unknown>;
+        if (config.outputRouting !== undefined && !readOutputRouting(config.outputRouting)) return null;
         const text = (key: string) => typeof config[key] === 'string' ? config[key] as string : undefined;
         const positive = (key: string, fallback: number, max: number) => {
             const n = config[key];
@@ -39,7 +42,7 @@ export function readAudioPreferences(): AudioPreferences | null {
             host: value.host, input: text('input'), output: text('output'),
             sampleRate: positive('sampleRate', 48_000, 768_000),
             bufferSize: positive('bufferSize', 512, 4096),
-            inputChannels, inputId: text('inputId'), outputId: text('outputId'),
+            inputChannels, outputRouting: readOutputRouting(config.outputRouting), inputId: text('inputId'), outputId: text('outputId'),
         };
     } catch {
         return null;

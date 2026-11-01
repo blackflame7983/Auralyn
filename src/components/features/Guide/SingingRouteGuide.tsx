@@ -25,8 +25,8 @@ export function SingingRouteGuide({ hardware, route: controlledRoute, onRouteCha
     const route = controlledRoute ?? localRoute;
     const chooseRoute = (value: SingingRoute) => { setLocalRoute(value); onRouteChange?.(value); setSymptom('none'); };
     const config = readAudioPreferences();
-    const legacyFingerprint = JSON.stringify([config?.host, config?.inputId, config?.outputId, config?.inputChannels, config?.sampleRate, config?.bufferSize, hardware]);
-    const fingerprint = route === 'direct' ? JSON.stringify(['direct', config?.host, config?.inputId, config?.outputId, config?.inputChannels, config?.sampleRate, config?.bufferSize]) : legacyFingerprint;
+    const legacyFingerprint = JSON.stringify([config?.host, config?.inputId, config?.outputId, config?.inputChannels, config?.outputRouting, config?.sampleRate, config?.bufferSize, hardware]);
+    const fingerprint = route === 'direct' ? JSON.stringify(['direct', config?.host, config?.inputId, config?.outputId, config?.inputChannels, config?.outputRouting, config?.sampleRate, config?.bufferSize]) : legacyFingerprint;
     const [saved, setSaved] = useState<Partial<Record<SingingRoute, string>>>({});
     const [checked, setChecked] = useState<Record<string, boolean>>({});
     const [symptom, setSymptom] = useState('none');

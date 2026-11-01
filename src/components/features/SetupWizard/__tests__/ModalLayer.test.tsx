@@ -84,6 +84,7 @@ describe('セットアップと親画面の連携', () => {
         await waitFor(() => expect(screen.getByTestId('audio-config')).toHaveTextContent(`${rate}/${buffer}`));
         expect(JSON.parse(localStorage.getItem('vst_host_audio_config') || '{}')).toEqual({
             host: 'WASAPI', input: mic.name, output: cable.name, sampleRate: rate, bufferSize: buffer,
+            outputRouting: { mode: 'independent', channels: [0, 1] },
         });
         expect(localStorage.getItem('vst_host_wizard_done')).toBe('true');
         expect(screen.getByTestId('tutorial-step')).toHaveTextContent('click_add_effect');

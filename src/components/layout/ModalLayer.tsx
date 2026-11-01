@@ -4,6 +4,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import { useObsUsage } from '../../hooks/useObsUsage';
 import { VstPlugin } from '../../api/audio';
 import { audioApi } from '../../api/audio';
+import { channelRoutingFor } from '@/lib/audioChannelRouting';
 import type { Plugin } from '../features/PluginRack/PluginCard';
 
 // Lazy load modals
@@ -69,6 +70,7 @@ interface AudioConfig {
     sampleRate?: number;
     bufferSize?: number;
     inputChannels?: [number, number];
+    outputRouting?: import('@/lib/audioChannelRouting').OutputRouting;
 }
 
 interface PluginsApi {
@@ -253,7 +255,8 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         }}
                         onApplyConfig={(host, input, output, actualConfig) => {
                             // 起動時の自動調整を含む実値を画面と保存設定へ反映する。
-                            const config = { host, input, output, sampleRate: actualConfig.sample_rate, bufferSize: actualConfig.buffer_size };
+                            const config = { host, input, output, sampleRate: actualConfig.sample_rate, bufferSize: actualConfig.buffer_size,
+                                inputChannels: actualConfig.routing?.inputChannels, outputRouting: actualConfig.routing?.outputRouting };
                             handleConfigUpdate(config);
                             localStorage.setItem('vst_host_audio_config', JSON.stringify(config));
                             markWizardDone();
@@ -313,9 +316,9 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onClose={() => ui.setIsRecoveryModalOpen(false)}
                         error={ui.crashError}
                         onKeepStopped={pluginsApi.keepSessionStopped}
-                        onWithoutPlugins={() => pluginsApi.resumeWithoutPlugins(() => audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000))}
+                        onWithoutPlugins={() => pluginsApi.resumeWithoutPlugins(() => audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000, audioConfig.inputId, audioConfig.outputId, undefined, channelRoutingFor(audioConfig)))}
                         onRecover={async (_safeMode, excludePath) => {
-                            await pluginsApi.recoverSession(excludePath, () => audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000));
+                            await pluginsApi.recoverSession(excludePath, () => audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000, audioConfig.inputId, audioConfig.outputId, undefined, channelRoutingFor(audioConfig)));
                         }}
                     />
                 </Suspense>

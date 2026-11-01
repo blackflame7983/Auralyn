@@ -61,7 +61,7 @@ export function buildPreparationObservation(state: AudioStateInfo, stats: Engine
     if ((live.config.splitProcessing && !live.config.deviceId) || (live.config.deviceId && live.sink?.active !== true)) return unavailable('failed');
     const input = [state.config.host, state.config.input, state.config.sample_rate, state.config.buffer_size, p.inputGain, p.inputChannels];
     const sound = key([p.engineEpoch, stats.latencyMetadata.streamEpoch, input, p.processingRevision, p.nrBackend, p.nrModel, context.location, context.signal]);
-    const listen = key([sound, state.config.output, p.outputGain, p.outputRevision, p.routingRevision, p.muted, live.config, live.broadcastEpoch]);
+    const listen = key([sound, state.config.output, p.outputRouting, p.outputGain, p.outputRevision, p.routingRevision, p.muted, live.config, live.broadcastEpoch]);
     return { ...base, availability: p.controlsPending ? 'pending' : p.muted || p.outputGain === 0 ? 'muted' : 'ready', inputGain: p.inputGain, routing: live.config,
         keys: { sound, listen, receiver: key([listen, context.usage, context.receiver.trim(), obs?.verification?.operationId, obsCurrent]) } };
 }

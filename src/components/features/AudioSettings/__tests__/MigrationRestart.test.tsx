@@ -62,12 +62,12 @@ it.each([
         if (command === 'auto_gain') return { running: true, streamFailed: false };
         if (command === 'get_autostart_status') return { enabled: false };
         if (command === 'start_audio' || command === 'restart_audio_engine') {
-            if (rejectOnce && failAt === 'start') {
+            if (rejectOnce && (failAt === 'start' || failAt === 'channels')) {
                 rejectOnce = false;
                 throw new Error('試験用のstart失敗');
             }
             started = true;
-            channelsApplied = false;
+            channelsApplied = !!(args as { channelRouting?: unknown }).channelRouting;
             if (command === 'restart_audio_engine') {
                 enginePaths = []; engineGeneration += 1; rackRevision = 0;
                 sessionToken = undefined; restoreEligible = true;
@@ -174,7 +174,8 @@ it.each([
     expect(completions).toHaveLength(operation === '通常再起動' ? 0 : failAt === 'complete' ? 2 : 1);
     if (host === 'ASIO') {
         expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([6, 7]);
-        expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 6, right: 7 });
+        expect(invoke).toHaveBeenCalledWith(expect.stringMatching(/start_audio|restart_audio_engine/), expect.objectContaining({ channelRouting: expect.objectContaining({ inputChannels: [6, 7] }) }));
+        expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
     }
     const loads = vi.mocked(invoke).mock.calls.filter(([command, args]) => command === 'session_rack' && (args as { request: SessionRackRequest }).request.action === 'add');
     expect(loads.map(([, args]) => (args as { request: { request: { path: string } } }).request.request.path)).toEqual(paths);

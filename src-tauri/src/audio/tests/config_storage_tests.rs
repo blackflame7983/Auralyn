@@ -197,6 +197,7 @@ fn start_command() -> IpcCommand {
         buffer_size: None,
         sample_rate: None,
         initial_controls: None,
+        channel_routing: None,
     }
 }
 
@@ -221,7 +222,7 @@ fn identity_bound_start_requires_new_engine_before_any_start_is_sent() {
                     0 => Err(anyhow!("old engine")),
                     1 => Ok(IpcResponse::Error("unsupported".into())),
                     2 => Ok(IpcResponse::Success),
-                    _ => Ok(IpcResponse::StartIdentityCapability { version: 2 }),
+                    _ => Ok(IpcResponse::StartIdentityCapability { version: 0 }),
                 }
             })?;
             sent.push(start.clone());
@@ -253,6 +254,25 @@ fn identity_bound_start_requires_new_engine_before_any_start_is_sent() {
 }
 
 #[test]
+fn routing_start_requires_version_two_even_without_device_ids() {
+    let mut start = start_command();
+    if let IpcCommand::Start {
+        channel_routing, ..
+    } = &mut start
+    {
+        *channel_routing = Some(crate::ipc::ChannelRouting::default());
+    }
+    assert!(require_identity_capability(&start, |_| {
+        Ok(IpcResponse::StartIdentityCapability { version: 1 })
+    })
+    .is_err());
+    assert!(require_identity_capability(&start, |_| {
+        Ok(IpcResponse::StartIdentityCapability { version: 2 })
+    })
+    .is_ok());
+}
+
+#[test]
 fn start_sends_retained_mute_before_start_in_both_states() {
     for active in [false, true] {
         let mut sent = Vec::new();
@@ -261,6 +281,7 @@ fn start_sends_retained_mute_before_start_in_both_states() {
                 IpcResponse::Started {
                     sample_rate: 48000,
                     buffer_size: 512,
+                    routing: None,
                     input_id: None,
                     output_id: None,
                 }
@@ -289,11 +310,28 @@ fn bundle_start_keeps_initial_controls_in_one_request_and_rejects_retired_genera
             input_gain: 0.,
             output_gain: 0.,
             input_channels: [4, 5],
+            output_routing: crate::ipc::OutputRouting::Legacy,
             muted: true,
             bypassed: true,
         });
     }
     let json = serde_json::to_value(&command).unwrap();
+    let mut legacy_controls = json.clone();
+    legacy_controls["payload"]["initial_controls"]
+        .as_object_mut()
+        .unwrap()
+        .remove("outputRouting");
+    let old: IpcCommand = serde_json::from_value(legacy_controls).unwrap();
+    assert!(matches!(
+        old,
+        IpcCommand::Start {
+            initial_controls: Some(crate::ipc::StartControls {
+                output_routing: crate::ipc::OutputRouting::Legacy,
+                ..
+            }),
+            ..
+        }
+    ));
     let parsed: IpcCommand = serde_json::from_value(json).unwrap();
     assert!(matches!(
         parsed,
@@ -365,6 +403,7 @@ fn start_is_not_sent_after_mute_rejection_or_connection_loss() {
                 _ => Ok(IpcResponse::Started {
                     sample_rate: 48000,
                     buffer_size: 512,
+                    routing: None,
                     input_id: None,
                     output_id: None,
                 }),
@@ -932,6 +971,7 @@ fn saving_packaged_audio_config_does_not_read_or_overwrite_standalone() {
         output_id: None,
         sample_rate: Some(96000),
         buffer_size: Some(512),
+        routing: None,
     };
     persist_audio_config(&standalone, &legacy).unwrap();
     let before = std::fs::read(&standalone).unwrap();

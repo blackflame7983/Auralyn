@@ -14,6 +14,7 @@ fn start(host: &str) -> Command {
         buffer_size: None,
         sample_rate: None,
         initial_controls: None,
+        channel_routing: None,
     }
 }
 
