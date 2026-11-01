@@ -330,11 +330,18 @@ test('細身・詳細メーターはホームの近くに並び、目盛りが�
             expect(box.x - content.x - content.width).toBeGreaterThanOrEqual(8);
             const track = (await meter.getByRole('meter').boundingBox())!;
             const status = (await meter.getByRole('status').boundingBox())!;
-            for (const mark of ['0', '-6', '-12', '-24', '-48']) {
-                const tick = (await meter.getByText(mark, { exact: true }).boundingBox())!;
+            // 高さに応じて末尾の文字目盛りは間引かれる。表示された全ラベルの包含と間隔を検査する。
+            for (const mark of ['0', '-6', '-12']) await expect(meter.getByText(mark, { exact: true })).toBeVisible();
+            await expect(meter.getByText('0, −6, −12, −24, −48 dBFS', { exact: true })).toHaveCount(1);
+            const ticks = await meter.getByText(/^(0|-6|-12|-24|-48)$/).all();
+            let previousBottom = -Infinity;
+            for (const label of ticks) {
+                const tick = (await label.boundingBox())!;
                 expect(tick.y).toBeGreaterThanOrEqual(track.y - 1);
                 expect(tick.y).toBeGreaterThanOrEqual(status.y + status.height + 4);
                 expect(tick.y + tick.height).toBeLessThanOrEqual(track.y + track.height + 1);
+                expect(tick.y - previousBottom).toBeGreaterThanOrEqual(3);
+                previousBottom = tick.y + tick.height;
             }
             if (width === 960 || width === 2560) await page.screenshot({ path: testInfo.outputPath(`meter-spacing-${width}-${detailed ? 'detail' : 'slim'}.png`) });
             if (detailed) await meter.getByRole('button', { name: 'ミニモード', exact: true }).click();
