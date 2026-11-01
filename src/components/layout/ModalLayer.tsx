@@ -27,12 +27,14 @@ const markWizardDone = () => {
 };
 
 interface UIState {
-    settingsSection?: 'liveModes' | 'singing';
+    settingsSection?: 'liveModes' | 'singing' | 'audioTuning';
     settingsTab?: 'audio' | 'obs' | 'sound';
+    settingsNeedsRetry?: boolean;
     isSettingsOpen: boolean;
     setIsSettingsOpen: (v: boolean) => void;
     openSoundSettings: (section?: 'liveModes' | 'singing') => void;
     openObsSettings: () => void;
+    openAudioTuning: () => void;
     isBrowserOpen: boolean;
     setIsBrowserOpen: (v: boolean) => void;
     isOBSGuideOpen: boolean;
@@ -62,6 +64,8 @@ interface AudioConfig {
     host: string;
     input?: string;
     output?: string;
+    inputId?: string;
+    outputId?: string;
     sampleRate?: number;
     bufferSize?: number;
     inputChannels?: [number, number];
@@ -129,6 +133,9 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
             {ui.isSettingsOpen && (
                 <Suspense fallback={null}>
                     <AudioSettingsModal
+                        allowConnectionRetry={ui.settingsNeedsRetry ?? false}
+                        isAudioRunning={isAudioRunning}
+                        currentConfig={audioConfig}
                         liveModel={liveModel}
                         singingModel={singingModel}
                         onPreviewSinging={() => { setSingingPreview(true); ui.setIsSettingsOpen(false); ui.setIsVoiceCheckOpen(true); }}
@@ -346,6 +353,11 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         manualCandidate={singingPreview}
                         onSaveSingingProfile={() => { setSingingPreview(false); ui.setIsVoiceCheckOpen(false); ui.setIsPresetManagerOpen(true); }}
                         onClose={() => { ui.setIsVoiceCheckOpen(false); if (singingPreview) { setSingingPreview(false); ui.openSoundSettings('singing'); } }}
+                        onOpenAudioTuning={() => {
+                            setSingingPreview(false);
+                            ui.setIsVoiceCheckOpen(false);
+                            ui.openAudioTuning();
+                        }}
                         onOpenSoundSettings={() => {
                             setSingingPreview(false);
                             ui.setIsVoiceCheckOpen(false);

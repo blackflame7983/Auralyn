@@ -214,3 +214,16 @@ it('typedの全outcomeは結果を表示するだけで復元を実行しない'
     expect(obsApi.restoreSetup).not.toHaveBeenCalled();
     expect(obsApi.applySetup).not.toHaveBeenCalled();
 });
+
+it.each(['ja', 'en'] as const)('未接続の理由を表示し、確認と復元に関連付ける (%s)', async locale => {
+    vi.mocked(obsApi.setupHistory).mockResolvedValue([{ ...history, restorable: false }]);
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><ObsSafeSetup connected={false} disabled onBusyChange={() => {}} /></LocaleProvider>);
+    const reason = locale === 'ja' ? 'OBSに接続すると使えます。' : 'Connect to OBS to use this.';
+    const preview = screen.getByRole('button', { name: locale === 'ja' ? '変更予定を確認する' : 'Review proposed changes' });
+    expect(screen.getByText(reason)).toBeVisible();
+    expect(preview).toBeDisabled();
+    expect(preview).toHaveAccessibleDescription(reason);
+    const undo = await screen.findByRole('button', { name: locale === 'ja' ? '変更 #7 を元に戻す' : /Undo change #7/ });
+    expect(undo).toHaveAccessibleDescription(expect.stringContaining(reason));
+});

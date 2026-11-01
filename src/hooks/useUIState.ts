@@ -3,26 +3,43 @@ import { useState } from 'react';
 export const useUIState = () => {
     const [isSettingsOpen, setSettingsOpen] = useState(false);
     const [settingsTab, setSettingsTab] = useState<'audio' | 'obs' | 'sound'>('audio');
-    const [settingsSection, setSettingsSection] = useState<'liveModes' | 'singing'>();
+    const [settingsSection, setSettingsSection] = useState<'liveModes' | 'singing' | 'audioTuning'>();
+    const [settingsNeedsRetry, setSettingsNeedsRetry] = useState(false);
     const setIsSettingsOpen = (open: boolean) => {
+        setSettingsNeedsRetry(false);
         setSettingsSection(undefined);
         setSettingsTab('audio');
         setSettingsOpen(open);
     };
     const openObsSettings = () => {
+        setSettingsNeedsRetry(false);
         setSettingsSection(undefined);
         setSettingsTab('obs');
         setSettingsOpen(true);
     };
+    const openAudioTuning = () => {
+        setSettingsNeedsRetry(false);
+        setSettingsSection('audioTuning');
+        setSettingsTab('audio');
+        setSettingsOpen(true);
+    };
     const openSoundSettings = (section?: 'liveModes' | 'singing') => {
+        setSettingsNeedsRetry(false);
         // イベントハンドラーとして渡された場合も、選択イベントを移動先へ持ち込まない。
         setSettingsSection(section === 'liveModes' || section === 'singing' ? section : undefined);
         setSettingsTab('sound');
         setSettingsOpen(true);
     };
     const openLiveModeSettings = () => {
+        setSettingsNeedsRetry(false);
         setSettingsTab('sound');
         setSettingsSection('liveModes');
+        setSettingsOpen(true);
+    };
+    const openAudioSettingsRetry = () => {
+        setSettingsSection(undefined);
+        setSettingsTab('audio');
+        setSettingsNeedsRetry(true);
         setSettingsOpen(true);
     };
     const [isBrowserOpen, setIsBrowserOpen] = useState(false);
@@ -43,8 +60,11 @@ export const useUIState = () => {
         setIsSettingsOpen,
         settingsTab,
         settingsSection,
+        settingsNeedsRetry,
+        openAudioSettingsRetry,
         openLiveModeSettings,
         openObsSettings,
+        openAudioTuning,
         openSoundSettings,
         isBrowserOpen,
         setIsBrowserOpen,

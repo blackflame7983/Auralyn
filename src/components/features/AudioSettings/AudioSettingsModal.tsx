@@ -33,6 +33,8 @@ import { ShortcutsPanel } from './ShortcutsPanel';
 import { UpdatePreferences } from './UpdatePreferences';
 import { AuroraDisplaySwitch, DisplayPurposeSelector, NumericDetailsSwitch } from './DisplayPurposeSelector';
 import { REVIEW_KEY } from '@/api/migration';
+import { readAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
+import { segmentButtonClass } from '@/components/ui/segment';
 import { audioDeviceKey, useAudioDeviceSelection } from './useAudioDeviceSelection';
 import { ConnectionApplyError, useAudioConnectionController } from './useAudioConnectionController';
 import { formatSampleRate, sampleRateOptions } from './sampleRateOptions';
@@ -44,7 +46,10 @@ interface AudioSettingsModalProps {
   onPreviewSinging?: () => void;
   onSaveSingingProfile?: () => void;
   initialTab?: 'audio' | 'obs' | 'sound';
-  initialSection?: 'liveModes' | 'singing';
+  initialSection?: 'liveModes' | 'singing' | 'audioTuning';
+  isAudioRunning?: boolean;
+  allowConnectionRetry?: boolean;
+  currentConfig?: AudioPreferences;
   isOpen: boolean;
   onClose: () => void;
   onConfigChange: (config: Partial<import('../../../lib/audioPreferences').AudioPreferences> & { host: string }, options?: { audioStarted: true }) => void | Promise<void>;
@@ -75,6 +80,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   currentSampleRate,
   currentBufferSize,
   currentInputChannels,
+  currentConfig,
+  isAudioRunning,
+  allowConnectionRetry = false,
 }) => {
     const t = useMessages();
   const localSinging = useSingingDraft();
@@ -83,6 +91,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const getBeginnerMode = () => localStorage.getItem('vst_host_beginner_mode') !== 'false';
   const { theme, setTheme } = useTheme();
   const [isApplying, setLoading] = useState(false);
+  const [connectionRetry, setConnectionRetry] = useState(false);
   const [preparingMode, setPreparingMode] = useState<'singing' | 'talk' | null>(initialSection === 'singing' ? 'singing' : null);
   const reviewRequired = localStorage.getItem(REVIEW_KEY) === 'true';
   const [migrationConfirmed, setMigrationConfirmed] = useState(false);
@@ -106,12 +115,32 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     output: selectedOutputDevice, sampleRate: selectedSampleRate, bufferSize: selectedBufferSize, isAsio,
     currentChannels: currentInputChannels, onConfigChange });
   const loading = isApplying || devicesLoading;
+  const savedConnection = useMemo(() => {
+    const saved = currentConfig ?? readAudioPreferences();
+    return saved ? { ...saved, sampleRate: currentSampleRate ?? saved.sampleRate,
+      bufferSize: currentBufferSize ?? saved.bufferSize } : null;
+  }, [isOpen, currentConfig, currentSampleRate, currentBufferSize]);
+  const changedFields = !savedConnection ? [t('settings.connection.new')] : [
+    selectedHost.toLowerCase() !== savedConnection.host.toLowerCase() && t('settings.AudioSettingsModal.032'),
+    (selectedInput !== (savedConnection.input ?? '') || (savedConnection.inputId && selectedInputDevice?.id !== savedConnection.inputId)) && t('settings.AudioSettingsModal.038'),
+    ((isAsio ? selectedInput : selectedOutput) !== (savedConnection.output ?? '') || (savedConnection.outputId && selectedOutputDevice?.id !== savedConnection.outputId)) && t('settings.AudioSettingsModal.041'),
+    selectedBufferSize !== (savedConnection.bufferSize ?? 512) && t('settings.AudioSettingsModal.047'),
+    selectedSampleRate !== (savedConnection.sampleRate ?? 48000) && t('settings.AudioSettingsModal.060'),
+    (isAsio && connection.channels.some((channel, index) => channel !== (savedConnection.inputChannels ?? currentInputChannels ?? [0, 1])[index])) && t('settings.InputChannelSelector.205'),
+  ].filter((value): value is string => typeof value === 'string');
+  const hasConnectionChanges = changedFields.length > 0;
 
   // Simple/Advanced Mode
   const [isAdvancedMode, setIsAdvancedMode] = useState(() => {
     // Initialize from localStorage
     return localStorage.getItem('vst_host_settings_advanced') === 'true';
   });
+  useEffect(() => {
+    if (isOpen && ![128, 512, 1024].includes(selectedBufferSize)) setIsAdvancedMode(true);
+  }, [isOpen, selectedBufferSize]);
+  const tuningDetails = useRef<HTMLDetailsElement>(null);
+  const [tuningOpen, setTuningOpen] = useState(initialSection === 'audioTuning' || !getBeginnerMode()
+    || localStorage.getItem('vst_host_settings_advanced') === 'true');
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'audio' | 'sound' | 'obs' | 'appearance' | 'system' | 'shortcuts'>(initialTab);
@@ -168,6 +197,22 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     enableTimeCriticalAudioThreads: false,
   });
   const engineStats = useRuntimeStats(isOpen);
+  const streamRunning = isAudioRunning ?? engineStats?.latencyMetadata?.streamRunning === true;
+  // 停止中は「開始」が必要。稼働中の変更なし保存だけを抑止する。
+  const canSaveConnection = !streamRunning || hasConnectionChanges || reviewRequired || allowConnectionRetry || connectionRetry;
+  useEffect(() => {
+    if (!isBeginnerMode || (engineStats?.glitchCount ?? 0) > 0 || initialSection === 'audioTuning') setTuningOpen(true);
+  }, [isBeginnerMode, engineStats?.glitchCount, initialSection]);
+  useEffect(() => {
+    if (!isOpen || initialSection !== 'audioTuning' || loading || error || activeTab !== 'audio') return;
+    setTuningOpen(true);
+    const frame = requestAnimationFrame(() => {
+      tuningDetails.current?.scrollIntoView?.({ block: 'start' });
+      tuningDetails.current?.querySelector<HTMLElement>('[data-tuning-control]')?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isOpen, initialSection, loading, error, activeTab]);
+
   const [systemSaving, setSystemSaving] = useState(false);
   const [statsLoading, setStatsLoading] = useState(false);
   const [noiseMode, setNoiseMode] = useState<NoiseControlMode>('smart');
@@ -370,12 +415,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     ? selectedBufferSize / selectedSampleRate * 1000 : null;
 
   const handleSave = async () => {
+    if (!canSaveConnection || isApplying) return;
     setLoading(true);
     try {
       await connection.apply(false);
+      setConnectionRetry(false);
       // toast.success('オーディオエンジンを起動しました'); // Assuming toast is available
       onClose();
     } catch (err) {
+      if (err instanceof ConnectionApplyError) setConnectionRetry(true);
       console.error('Failed to start audio:', err);
       setError(err instanceof ConnectionApplyError ? notice(err.stage === 'channels' ? 'settings.connectionChannelsIncomplete' : 'settings.connectionSaveIncomplete', { arg0: err.message }) : notice('settings.AudioSettingsModal.017', { arg0: String(err) }));
     } finally {
@@ -538,7 +586,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <label className="text-sm font-medium text-muted-foreground">{t('settings.AudioSettingsModal.032')}</label>
                     <button
                       onClick={() => fetchDevices(true)}
-                      className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
+                      className="link-button min-h-6 min-w-6 rounded-md border border-input px-2 py-1 text-xs text-primary hover:bg-muted flex items-center gap-1 transition-colors"
                       title={t('settings.AudioSettingsModal.033')}
                     >
                       <MdRefresh className="w-3 h-3" />
@@ -555,6 +603,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       <option key={host} value={host}>{host}</option>
                     ))}
                   </select>
+                  <p className="text-xs text-muted-foreground">{t(isAsio ? 'settings.connection.asioHint' : 'settings.connection.wasapiHint')}</p>
                 </div>
 
                 {/* Input Device */}
@@ -614,17 +663,27 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </div>
                 )}
 
-                {/* Simple / Advanced Mode Toggle */}
-                <div className="flex justify-end items-center mb-2">
+                <details ref={tuningDetails} open={tuningOpen} onToggle={event => setTuningOpen(event.currentTarget.open)} className="rounded-xl border border-border p-3 space-y-3">
+                  <summary className="cursor-pointer font-semibold text-sm">
+                    {t('settings.audioTuning.title')}
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">{t([128, 512, 1024].includes(selectedBufferSize)
+                      ? selectedBufferSize === 128 ? 'settings.AudioSettingsModal.048' : selectedBufferSize === 512 ? 'settings.AudioSettingsModal.051' : 'settings.AudioSettingsModal.054'
+                      : 'settings.bufferCustom', { size: selectedBufferSize })} · {selectedSampleRate / 1000} kHz</span>
+                  </summary>
+                {/* 切替は対象の見出しと同じ行に置く。 */}
+                <div className="flex flex-wrap justify-between items-center gap-2">
+                  <h3 className="text-sm font-medium">{t('settings.AudioSettingsModal.047')}</h3>
                   <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-lg">
                     <button
+                      type="button" data-tuning-control aria-pressed={!isAdvancedMode}
                       onClick={() => setIsAdvancedMode(false)}
-                      className={`text-xs px-3 py-1 rounded transition ${!isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
+                      className={segmentButtonClass(!isAdvancedMode)}
                     >
                       {t('settings.AudioSettingsModal.045')}</button>
                     <button
+                      type="button" aria-pressed={isAdvancedMode}
                       onClick={() => setIsAdvancedMode(true)}
-                      className={`text-xs px-3 py-1 rounded transition ${isAdvancedMode ? 'bg-background shadow text-primary font-bold' : 'text-muted-foreground hover:text-foreground'}`}
+                      className={segmentButtonClass(isAdvancedMode)}
                     >
                       {t('settings.AudioSettingsModal.046')}</button>
                   </div>
@@ -635,7 +694,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <div className="space-y-4">
                     {/* Latency Profile */}
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-muted-foreground">{t('settings.AudioSettingsModal.047')}</label>
                       <div className="grid grid-cols-3 gap-2">
                         {[
                           { label: t('settings.AudioSettingsModal.048'), value: 128, desc: t('settings.AudioSettingsModal.050') },
@@ -683,6 +741,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                           { label: t('settings.AudioSettingsModal.063'), value: 44100, desc: t('settings.AudioSettingsModal.064') },
                         ].map((profile) => (
                           <button
+                            type="button" aria-pressed={selectedSampleRate === profile.value}
                             key={profile.value}
                             onClick={() => setSelectedSampleRate(profile.value)}
                             className={`
@@ -792,6 +851,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 )}
 
                 </>}
+                </details>
                 {/* Preset Section */}
                 <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-3">
                   <div className="flex items-center justify-between">
@@ -895,7 +955,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   {!engineStats?.noiseReductionEnabled && <p className="text-xs text-muted-foreground">{t('settings.noiseOffHint')}</p>}
                   <div className="min-w-0 space-y-4">
                   <fieldset className="max-w-[22rem] space-y-2"><legend className="sr-only">{t('structure.noise.standard')}</legend>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="inline-flex gap-1.5">
                       {([
                         ['low', t('master.nrLow')],
                         ['high', t('master.nrHigh')]
@@ -909,11 +969,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                           setNoiseMeasurementOpen(mode === 'smart' || mode === 'venue');
                           applyNoiseControlConfig({ mode });
                         }}
-                        className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
-                          noiseMode === mode
-                            ? engineStats?.noiseReductionEnabled ? 'border-selection bg-selection/15 text-selection' : 'border-muted-foreground/50 bg-muted text-foreground'
-                            : 'border-input bg-background text-muted-foreground hover:text-foreground'
-                        }`}
+                        className={segmentButtonClass(noiseMode === mode)}
                       >
                         {label}
                       </button>
@@ -1024,7 +1080,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
                   {singingModel.snapshot && !singingModel.snapshot.config.active && <p className="text-xs text-muted-foreground">{t('settings.fxOffHint')}</p>}
                   <fieldset disabled={!singingModel.snapshot?.config.active || singingModel.busy} className="space-y-4 disabled:opacity-50">
-                  <div className="grid max-w-[22rem] grid-cols-3 gap-2">
+                  <div className="inline-flex max-w-full flex-wrap gap-1.5">
                     {([
                       ['broadcast', t('settings.AudioSettingsModal.098')],
                       ['warm', t('settings.AudioSettingsModal.099')],
@@ -1032,15 +1088,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     ] as Array<[BuiltInEffectsPreset, string]>).map(([preset, label]) => (
                       <button
                         key={preset}
+                        type="button" aria-pressed={(singingModel.snapshot?.config.preset ?? builtInEffectsPreset) === preset}
                         disabled={!singingModel.snapshot || singingModel.busy}
                         onClick={() => {
                           applyBuiltInEffects({ active: true, preset });
                         }}
-                        className={`px-3 py-2 rounded-md border text-xs font-bold transition-colors ${
-                          (singingModel.snapshot?.config.preset ?? builtInEffectsPreset) === preset
-                            ? 'border-selection bg-selection/15 text-selection'
-                            : 'border-input bg-background text-muted-foreground hover:text-foreground'
-                        }`}
+                        className={segmentButtonClass((singingModel.snapshot?.config.preset ?? builtInEffectsPreset) === preset)}
                       >
                         {label}</button>
                     ))}
@@ -1111,11 +1164,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <div>
                 <h3 className="text-sm font-medium mb-3 flex items-center gap-2 text-foreground">
                   <MdPalette className="w-4 h-4 text-primary" /> {t('settings.AudioSettingsModal.130')}</h3>
-                <RadioGroup value={theme} onValueChange={(v) => setTheme(v as any)} className="space-y-3">
+                <RadioGroup value={theme} onValueChange={(v) => setTheme(v as any)} className="grid auto-rows-fr gap-3">
                   <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('light')}>
                     <RadioGroupItem value="light" id="theme-light" />
                     <Label htmlFor="theme-light" className="cursor-pointer flex-1">
                       <span className="font-bold block">{t('header.light')}</span>
+                      <span className="text-xs text-muted-foreground">{t('settings.AudioSettingsModal.131')}</span>
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('dark')}>
@@ -1166,12 +1220,16 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <ShortcutsPanel onCaptureChange={setCapturingShortcut} />
           </TabsContent>
           <TabsContent value="system" className="space-y-4">
-            {onOpenWizard && <button type="button" disabled={loading} onClick={() => { onClose(); onOpenWizard(); }} className="rounded-md border border-border px-3 py-2 text-sm">{t('settings.AudioSettingsModal.198')}</button>}
+            {onOpenWizard && <section className="rounded-xl border border-border p-4 space-y-3">
+              <h3 className="font-semibold">{t('settings.system.setup')}</h3>
+              <p className="text-xs text-muted-foreground">{t('settings.system.setupDescription')}</p>
+              <button type="button" disabled={loading} onClick={() => { onClose(); onOpenWizard(); }} className="rounded-md border border-border px-3 py-2 text-sm">{t('settings.AudioSettingsModal.198')}</button>
+            </section>}
 
             {/* Startup Settings */}
-            <div className="p-4 bg-muted/20 border border-border rounded-xl flex items-center justify-between">
+            <section className="p-4 bg-muted/20 border border-border rounded-xl flex items-center justify-between">
               <div>
-                <label className="text-sm font-bold text-foreground block">{t('settings.AudioSettingsModal.142')}</label>
+                <h3 className="text-sm font-bold text-foreground">{t('settings.AudioSettingsModal.142')}</h3>
                 <div className="text-xs text-muted-foreground mt-0.5">{autostartReason ? renderNotice(t, autostartReason) : t('settings.AudioSettingsModal.143')}</div>
               </div>
               <div className="flex items-center">
@@ -1201,11 +1259,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   disabled={loading || !autostartCanChange}
                 />
               </div>
-            </div>
+            </section>
 
             <UpdatePreferences />
-            <section className="space-y-2">
+            <section className="rounded-xl border border-border p-4 space-y-2">
               <h3 className="font-semibold">{t('structure.restart')}</h3>
+              <p className="text-xs text-muted-foreground">{t('settings.system.restartDescription')}</p>
                 <button
                   onClick={handleRestart}
                   disabled={loading || !selectedInputDevice || !selectedOutputDevice || (reviewRequired && !migrationConfirmed)}
@@ -1213,8 +1272,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 >
                   {t('settings.AudioSettingsModal.196')}</button>
             </section>
-            <details className="rounded border border-border p-3 space-y-3">
-              <summary className="cursor-pointer font-semibold">{t('structure.optimization')}</summary>
+            <details className="rounded-xl border border-border p-4 space-y-3">
+              <summary className="cursor-pointer"><h3 className="inline font-semibold">{t('structure.optimization')}</h3></summary>
             {/* Engine Tuning */}
             <div className="space-y-2">
               <h4 className="text-sm font-bold text-foreground flex items-center gap-2 px-1">
@@ -1310,8 +1369,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             </div>
 
             </details>
-            <details className="rounded border border-border p-3 space-y-3">
-              <summary className="cursor-pointer font-semibold">{t('structure.diagnostics')}</summary>
+            <details className="rounded-xl border border-border p-4 space-y-3">
+              <summary className="cursor-pointer"><h3 className="inline font-semibold">{t('structure.diagnostics')}</h3></summary>
               <button
                     onClick={refreshEngineRuntimeStats}
                     disabled={statsLoading}
@@ -1359,16 +1418,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 </table>
             <LatencyDetails stats={engineStats} isRunning={!connection.knownStopped} />
             </details>
-            <details className="rounded border border-border p-3 space-y-3">
-              <summary className="cursor-pointer font-semibold">{t('structure.migration')}</summary>
-              <MigrationPanel />
-            </details>
             {/* Plugin Management */}
-            <div className="space-y-2">
-              <h4 className="text-sm font-bold text-foreground flex items-center gap-2 px-1">
+            <section className="rounded-xl border border-border p-4 space-y-4">
+              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                 <MdExtension className="w-4 h-4 text-primary" />
-                {t('settings.AudioSettingsModal.179')}</h4>
-              <div className="p-4 bg-muted/20 border border-border rounded-xl space-y-4">
+                {t('settings.AudioSettingsModal.179')}</h3>
+              <div>
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-medium text-foreground">{t('settings.AudioSettingsModal.180')}</div>
@@ -1400,14 +1455,19 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     {t('settings.AudioSettingsModal.187')}</button>
                 </div>
               </div>
-            </div>
+            </section>
+
+            <details className="rounded-xl border border-border p-4 space-y-3">
+              <summary className="cursor-pointer"><h3 className="inline font-semibold">{t('structure.migration')}</h3></summary>
+              <MigrationPanel />
+            </details>
 
             {/* Factory Reset */}
-            <div className="space-y-2">
-              <h4 className="text-sm font-bold text-foreground flex items-center gap-2 px-1">
+            <section className="rounded-xl border border-border p-4 space-y-4">
+              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                 <MdRefresh className="w-4 h-4 text-destructive-text" />
-                {t('settings.AudioSettingsModal.188')}</h4>
-              <div className="p-4 bg-muted/20 border border-border rounded-xl space-y-4">
+                {t('settings.AudioSettingsModal.188')}</h3>
+              <div>
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-medium text-foreground">{t('settings.AudioSettingsModal.189')}</div>
@@ -1441,23 +1501,26 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         },
                       });
                     }}
-                    className="px-3 py-1.5 text-xs text-destructive-text bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 rounded-md transition-colors whitespace-nowrap"
+                    className="px-3 py-1.5 text-xs text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-md transition-colors whitespace-nowrap"
                   >
                     {t('settings.AudioSettingsModal.195')}</button>
                 </div>
               </div>
-            </div>
+            </section>
           </TabsContent>
           </div>
         </Tabs>
         {activeTab === 'audio' && !loading && !error && (
           <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-2 flex items-center justify-end gap-3">
             {/* 稼働中の保存は再起動になり、音が途切れることを押す前に示す。 */}
-            {engineStats?.latencyMetadata?.streamRunning === true && <span id="settings-save-restart" className="text-xs text-muted-foreground">{t('settings.saveRestartHint')}</span>}
-            <button onClick={handleSave} disabled={loading || !selectedInputDevice || !selectedOutputDevice || (reviewRequired && !migrationConfirmed)}
-              aria-describedby={engineStats?.latencyMetadata?.streamRunning === true ? 'settings-save-restart' : undefined}
+            <div className="min-w-0 space-y-1 text-xs text-muted-foreground" id="settings-connection-changes">
+              <p>{allowConnectionRetry || connectionRetry ? t('settings.connection.retry') : hasConnectionChanges ? t('settings.connection.changes', { fields: changedFields.join('、') }) : t('settings.connection.unchanged')}</p>
+              {streamRunning && <p id="settings-save-restart">{t('settings.saveRestartHint')}</p>}
+            </div>
+            <button onClick={handleSave} disabled={loading || !selectedInputDevice || !selectedOutputDevice || !canSaveConnection || (reviewRequired && !migrationConfirmed)}
+              aria-describedby={`settings-connection-changes${streamRunning ? ' settings-save-restart' : ''}`}
               className="rounded-md bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-              {t(engineStats?.latencyMetadata?.streamRunning === true ? 'settings.saveRestart' : 'settings.AudioSettingsModal.197')}
+              {t(streamRunning ? 'settings.saveRestart' : 'settings.AudioSettingsModal.197')}
             </button>
           </div>
         )}

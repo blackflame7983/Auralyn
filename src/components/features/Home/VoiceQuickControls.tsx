@@ -5,6 +5,7 @@ import { refreshRuntimeStats, useRuntimeStats } from '@/hooks/useRuntimeStats';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import { segmentButtonClass } from '@/components/ui/segment';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { audioApi, type BuiltInEffectsPreset, type NoiseControlMode } from '@/api/audio';
 import { builtinApi } from '@/api/builtinEffects';
@@ -68,8 +69,7 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
 }
 export type VoiceQuick = ReturnType<typeof useVoiceQuick>;
 
-const segment = (selected: boolean) => cn('min-w-16 whitespace-nowrap rounded-md border px-2 py-2 text-[13px] font-bold transition-colors disabled:opacity-50',
-    selected ? 'border-selection bg-selection/15 text-selection' : 'border-input bg-background text-muted-foreground hover:text-foreground');
+const segment = segmentButtonClass;
 
 // 段の見出し行の右端に置くスイッチ。
 export function NoiseSwitch({ q }: { q: VoiceQuick }) {

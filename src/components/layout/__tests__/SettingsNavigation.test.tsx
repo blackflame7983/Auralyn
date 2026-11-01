@@ -8,7 +8,7 @@ import { useUIState } from '@/hooks/useUIState';
 
 // 遷移先の設定操作は実行せず、実際の画面とUI状態を経由したタブ選択を確認する。
 vi.mock('@/components/features/AudioSettings/AudioSettingsModal', () => ({
-    AudioSettingsModal: ({ initialTab }: { initialTab: string }) => <h2>設定タブ: {initialTab}</h2>,
+    AudioSettingsModal: ({ initialTab, initialSection, isAudioRunning, currentConfig, allowConnectionRetry }: { initialTab: string; initialSection?: string; isAudioRunning?: boolean; currentConfig: { host: string }; allowConnectionRetry?: boolean }) => <><h2>設定タブ: {initialTab}</h2><p>設定欄: {initialSection ?? 'none'} / {isAudioRunning ? 'running' : 'stopped'} / {currentConfig.host}</p><p>再試行: {String(allowConnectionRetry)}</p></>,
 }));
 let streamRunning: boolean;
 let adviceKey: string;
@@ -17,11 +17,19 @@ function AppModals() {
     return <>
         <button onClick={() => ui.setIsTemplateWizardOpen(true)}>テンプレートを開く</button>
         <button onClick={() => ui.setIsVoiceCheckOpen(true)}>試聴を開く</button>
-        <ModalLayer ui={ui} audioConfig={{ host: 'WASAPI' }} handleConfigUpdate={vi.fn()}
+        <button onClick={ui.openAudioSettingsRetry}>設定反映を再試行</button>
+        <ModalLayer ui={ui} isAudioRunning audioConfig={{ host: 'WASAPI' }} handleConfigUpdate={vi.fn()}
             pluginsApi={{ availablePlugins: [], isScanning: false, scanPlugins: vi.fn() } as unknown as ComponentProps<typeof ModalLayer>['pluginsApi']}
             onPluginAdded={vi.fn()} />
     </>;
 }
+
+it('再試行入口の状態を設定モーダルに渡す', async () => {
+    render(<AppModals />);
+    fireEvent.click(screen.getByRole('button', { name: '設定反映を再試行' }));
+    expect(await screen.findByText('再試行: true')).toBeVisible();
+    expect(screen.getByRole('heading', { name: '設定タブ: audio' })).toBeVisible();
+});
 
 beforeEach(() => {
     streamRunning = true;
@@ -68,8 +76,9 @@ it.each(['high_freq_attenuation', 'noise_floor_high', 'noise_suppression_weak', 
         });
         fireEvent.click(screen.getByRole('button', { name: '品質チェックを実行' }));
         const target = key === 'dropout_detected' ? 'audio' : 'sound';
-        fireEvent.click(await screen.findByRole('button', { name: target === 'sound' ? '音づくりを開く' : '設定を開く' }));
+        fireEvent.click(await screen.findByRole('button', { name: target === 'sound' ? '音づくりを開く' : '途切れにくくする' }));
         await screen.findByRole('heading', { name: `設定タブ: ${target}` });
+        if (key === 'dropout_detected') expect(screen.getByText('設定欄: audioTuning / running / WASAPI')).toBeInTheDocument();
         expect(screen.queryByRole('dialog', { name: 'ボイスチェック' })).not.toBeInTheDocument();
     },
 );

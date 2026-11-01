@@ -40,9 +40,10 @@ export function formatAdvice(advice: QualityAdvice, t: ReturnType<typeof useMess
             return advice.messageKey;
     }
 }
-export function adviceSettingsTarget(messageKey: string): 'audio' | 'sound' | null {
+export function adviceSettingsTarget(messageKey: string): 'audio' | 'sound' | 'audioTuning' | null {
+    if (messageKey === 'dropout_detected') return 'audioTuning';
     if (['high_freq_attenuation', 'noise_floor_high', 'noise_suppression_weak'].includes(messageKey)) return 'sound';
-    if (['clip_detected', 'dropout_detected', 'loudness_low', 'loudness_high'].includes(messageKey)) return 'audio';
+    if (['clip_detected', 'loudness_low', 'loudness_high'].includes(messageKey)) return 'audio';
     return null;
 }
 export function adviceSeverityClass(severity: string): string {

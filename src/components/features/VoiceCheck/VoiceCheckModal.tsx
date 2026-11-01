@@ -19,9 +19,10 @@ interface VoiceCheckModalProps {
     isOpen: boolean;
     onClose: () => void;
     onOpenAudioSettings?: () => void;
+    onOpenAudioTuning?: () => void;
     onOpenSoundSettings?: () => void;
 }
-export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClose, onOpenAudioSettings, onOpenSoundSettings, singingModel, manualCandidate = Boolean(singingModel), onSaveSingingProfile }) => {
+export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClose, onOpenAudioSettings, onOpenAudioTuning, onOpenSoundSettings, singingModel, manualCandidate = Boolean(singingModel), onSaveSingingProfile }) => {
     const t = useMessages();
     const { vcState, source, loopPlayback, setLoopPlayback, maxMs, rawPeaks, processedPeaks,
         busy, qualityReport, analyzing, streamStatus, recordingError,
@@ -316,7 +317,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                                     <ul className="space-y-2">
                                         {qualityReport.advices.map((advice, i) => {
                                             const target = adviceSettingsTarget(advice.messageKey);
-                                            const openSettings = target === 'sound' ? onOpenSoundSettings : target === 'audio' ? onOpenAudioSettings : undefined;
+                                            const openSettings = target === 'sound' ? onOpenSoundSettings : target === 'audio' ? onOpenAudioSettings : target === 'audioTuning' ? onOpenAudioTuning : undefined;
                                             return (
                                             <li
                                                 key={`${advice.messageKey}-${i}`}
@@ -332,7 +333,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                                                         onClick={openSettings}
                                                         className="mt-2 text-xs font-semibold underline underline-offset-2 hover:opacity-80"
                                                     >
-                                                        {target === 'sound' ? t('voice.copy.102') : t('voice.copy.103')}
+                                                        {target === 'sound' ? t('voice.copy.102') : target === 'audioTuning' ? t('settings.audioTuning.open') : t('voice.copy.103')}
                                                     </button>
                                                 )}
                                             </li>

@@ -343,11 +343,14 @@ it.each([null, false])('稼働表示が残っていてもready=%sを正常色・
 
 it('音切れ増加の表示は10秒保持し、詳細を開けて、再開始やカウンタ減少を誤検出しない', async () => {
     let count = 4;
+    const openAudioTuning = vi.fn();
     vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => ({ glitchCount: count, enabledPluginCount: 0, activePluginCount: 0 } as EngineRuntimeStats));
-    const view = render(<MasterBar isRunning />);
+    const view = render(<MasterBar isRunning onOpenAudioTuning={openAudioTuning} />);
     await act(async () => { finishListening(); await vi.advanceTimersByTimeAsync(0); });
     count = 5; await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
     const button = screen.getByRole('button', { name: '直近で音切れを検出' });
+    fireEvent.click(screen.getByRole('button', { name: '途切れにくくする' }));
+    expect(openAudioTuning).toHaveBeenCalledOnce();
     expect(button).toHaveAttribute('title', '直近で音切れを検出');
     button.focus(); fireEvent.click(button);
     expect(screen.getByRole('dialog')).toBeInTheDocument();

@@ -116,11 +116,17 @@ it.each([false, true])('別経路の稼働で開始失敗を解除し、遅い�
 });
 
 it('開始後の設定失敗は、別経路で稼働しても残し、設定で復旧したら解除する', async () => {
-    const props = { ...commonProps, currentInput: 'Mic', currentOutput: 'Out', onStartAudio: vi.fn().mockRejectedValue(new HomeAudioStartError(true, new Error('Channel failed'))) };
+    const retry = vi.fn(); const settings = vi.fn();
+    const props = { ...commonProps, currentInput: 'Mic', currentOutput: 'Out', onOpenSettings: settings, onOpenAudioSettingsRetry: retry, onStartAudio: vi.fn().mockRejectedValue(new HomeAudioStartError(true, new Error('Channel failed'))) };
     const view = render(<AppShell {...props} isEngineRunning={false}><p>rack</p></AppShell>);
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '音声を開始' })));
     view.rerender(<AppShell {...props} isEngineRunning><p>rack</p></AppShell>);
     expect(screen.getByRole('alert')).toHaveTextContent(message('ja', 'home.startIncomplete'));
+    fireEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: message('ja', 'home.changeDevices') }));
+    expect(retry).toHaveBeenCalledOnce();
+    expect(settings).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /Mic/ }));
+    expect(settings).toHaveBeenCalledOnce();
     act(() => window.dispatchEvent(new Event('audio-settings-started')));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });

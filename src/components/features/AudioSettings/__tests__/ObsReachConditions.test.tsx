@@ -130,10 +130,33 @@ it('StrictModeの遅い購読失敗は確認を許可せず、localeで再購読
     await screen.findByRole('button', { name: message('ja', 'settings.ObsConnectionSettings.300') });
     await act(async () => { reject(new Error('listener unavailable')); });
     expect(screen.getByRole('button', { name: message('ja', 'settings.ObsConnectionSettings.300') })).toBeDisabled();
+    expect(screen.getByRole('button', { name: message('ja', 'settings.ObsConnectionSettings.300') })).toHaveAccessibleDescription(message('ja', 'obsReach.monitorUnavailable'));
     const calls = vi.mocked(listen).mock.calls.length;
     act(() => { view.store.setLocale('en'); });
     expect(listen).toHaveBeenCalledTimes(calls);
     expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'obs_check_audio_reach')).toHaveLength(0);
+});
+
+it.each(['ja', 'en'] as const)('到達確認中の操作禁止理由を切断と確認へ関連付ける (%s)', async locale => {
+    let finish!: (result: ObsAudioReachResult) => void;
+    vi.mocked(invoke).mockImplementation(command => {
+        if (command === 'obs_connection_status') return Promise.resolve(true);
+        if (command === 'obs_check_audio_reach') return new Promise(resolve => { finish = resolve; });
+        return Promise.resolve(true);
+    });
+    const view = open();
+    const button = await screen.findByRole('button', { name: message('ja', 'settings.ObsConnectionSettings.300') });
+    await waitFor(() => expect(button).toBeEnabled());
+    act(() => { view.store.setLocale(locale); });
+    fireEvent.click(button);
+    act(() => { confirm?.(); });
+    const reason = message(locale, 'settings.obs.operationBusy');
+    const disconnect = screen.getByRole('button', { name: message(locale, 'settings.ObsConnectionSettings.292') });
+    const checking = screen.getByRole('button', { name: message(locale, 'settings.ObsConnectionSettings.299') });
+    expect(disconnect).toBeDisabled(); expect(disconnect).toHaveAccessibleDescription(reason);
+    expect(checking).toBeDisabled(); expect(checking).toHaveAccessibleDescription(reason);
+    expect(screen.getAllByText(reason)).toHaveLength(2);
+    await act(async () => { finish(success); });
 });
 
 it('切断・再接続後も以前のrecordを現在の成功へ戻さない', async () => {
@@ -236,4 +259,14 @@ it.each(['falsePoll', 'event', 'readFailure'])('%sは再確認dialogの古いcon
     }
     await act(async () => { await retry?.(); });
     expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'obs_check_audio_reach')).toHaveLength(1);
+});
+
+it('接続が失われた通知後は入力を開き、再接続できる', async () => {
+    open();
+    const summary = await screen.findByText(/接続先：localhost:4455/);
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+    vi.mocked(invoke).mockImplementation(async command => command === 'obs_connection_status' ? false : undefined);
+    await act(async () => { events.get('obs://timing-invalidated')?.(); });
+    expect(screen.getByRole('textbox', { name: 'OBSホスト名' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '接続' })).toBeEnabled();
 });
