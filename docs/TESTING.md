@@ -420,6 +420,20 @@ cargo clippy --locked --all-targets
 cargo test --locked --lib measure_fixed_period_publication_cost -- --ignored --nocapture
 ```
 
+実機の連続運転には `python scripts/native_stability_probe.py <audio_engine.exe> <plan.json> <新規出力先>` を使う。
+planは `durationSeconds`、`expectedPlugins`、JSON-RPCの `start`、`setup`（`command` と期待する応答 `expected` の配列）を明示する。
+既定機器へ任せず機器ID・rate・routing・初期ゲイン・ミュートを固定し、停止時の通常設定を変更しない専用sidecarを使う。
+各観測窓でstream epochとplugin件数を照合し、入力・要求・消費frameの停滞、zero fillやdropの増加を失敗とする。
+`python -m unittest discover -s scripts -p test_native_stability_probe.py` はこの検証器の停滞・欠落検出を確認し、実機の代用にはしない。
+
+停止中の製品HostのCPU比較には `node scripts/native-window-trial.cjs <AuralynHost.exe> <新規出力先> 60` を使う。
+Windowsの一時利用領域で、通常表示→最小化→トレイを各60秒測定する。`psutil` とPlaywrightが必要である。
+デバッガーは測定中に切断するが、デバッグ可能な起動とtimer/IPC観測のラップは残るため、無観測状態と同じとは扱わない。
+CPUは1論理コア=100%、Hostと観測した子孫の標本平均、最大メモリは同時点の子孫合計の標本最大である。
+複数回の順序を交互にし、機器・ビルド・sourceとbinaryのhash・他アプリの条件・ページエラーを残す。
+Win32で強制表示する末尾の復帰は実際のトレイクリックの受入ではない。`resumed` を成功条件と誤認せず、実際の復帰経路を別途確認する。
+`--ablate` は隔離した停止中Hostでtimerと背景glowだけを段階的に停止する診断用であり、処理中の音声へ使わない。
+
 通常のcallback、配信queue満杯、mute世代、モード切替、配信workerの停止注入でRTのalloc/free 0を確認する。clock差の試験は数値列の合成であり、実clockの長時間安定や聴感の合格とは区別する。通常設定やOBS collectionを変更して試験を代用しない。
 
 

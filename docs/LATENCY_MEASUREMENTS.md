@@ -4,6 +4,31 @@
 異率では別のoptional `resamplerBatchTiming` で、batchが揃った入力callbackから生成出力frameの実queue読出完了までだけを観測する。過去入力の蓄積待ち全体や、原信号の各sampleへの点対応は未測定である。DSPを通った実信号の出力到達を結ぶ測定も未実装である。
 現時点でアプリは全通過時間やOBSの映像同期差を測定していない。
 
+## 配線なしの実機確認（2026-11-01、#211）
+
+利用者の指定により物理ループバック配線と発声は行っていない。
+ASIO・WASAPIの起動、実callback長、処理frameの進行、録音内容を確認したが、物理的な往復遅延や段別の信号通過時間の基準値は未取得である。
+詳しい条件と結果は [実機確認記録](verification/issues-210-216-20261101.md) を参照する。
+
+96kHzのASIOで64／128／256／512frameを要求したところ、Creative Sound Blaster ASIOは384frame、Voicemeeter Insert Virtual ASIOは512frameで開始し、callback診断もそれぞれ384／512frameだった。
+Creativeの384frame指定も含む計9回の開始とframe進行を確認した。
+要求した64frame等を、そのまま実稼働バッファや往復遅延の測定条件として記載しない。
+仮想CABLEのWASAPIは48kHz・512frame要求だが、観測callback長は480〜1056frameだった。
+
+NR high・内蔵broadcast/0.7・OTT 3本で、Creative ASIOのsidecarとVoicemeeter ASIOの製品Hostをそれぞれ1時間運転した。
+両方で入力・要求・消費frameの進行が続き、観測区間内のqueue underflow・zero fill・drop・recoveryの増分は0だった。
+製品Hostは最小化中も音声処理を継続し、通常表示への復帰後も稼働していた。
+これはキューの継続性の確認であり、1時間分の連続WAVから音切れ回数を数えた結果ではない。
+製品Hostの録音は開始付近と中間の各5秒・加工前後の計4ファイルだけで、終端の録音は取得していない。
+開始付近は無音、中間は信号があり、固定素材ではなく音源の同定・聴感評価も行っていない。
+`glitchCount` はcallback進入間隔の揺らぎを数える既存指標であり、音切れ回数へ読み替えない。
+
+物理配線が用意できた場合は、同じ機器・レート・ドライバー設定を固定して出力→入力を接続し、送信基準と受信信号を共通clockで記録する。
+フィードバック経路を切り、低い送出レベルの既知信号で、ASIOの実対応bufferとWASAPI、NR OFF/ON、VST 0/1/3本を各5回以上比較する。
+到達位置の検出方法・閾値・未検出・試行数・範囲を残し、DSPの非線形処理や相関peakの曖昧さを区別する。
+段別の差は同一経路の対照構成との差として示し、NRの10msフレーム周期やVST申告値とは別に扱う。
+固定素材の1時間連続録音と欠損解析も残っているため、#211は未完了である。
+
 ## 表示と互換性
 
 既存の `noiseReductionLatencySamples/Ms` は、NR設定ON時の約10msのフレーム長計算を互換保持する。
