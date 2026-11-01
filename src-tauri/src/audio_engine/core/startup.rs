@@ -1455,8 +1455,11 @@ impl Engine {
                         });
                     } else if rt_test_tone.is_active() {
                         data.fill(0.0);
-                        let target_l = rt_input_l;
-                        let target_r = rt_input_r;
+                        let output_pair = super::super::queue_diagnostics::output_pair(
+                            is_asio,
+                            [rt_input_l, rt_input_r],
+                            channels,
+                        );
                         let mut out_max_l = 0.0f32;
                         let mut out_max_r = 0.0f32;
 
@@ -1467,22 +1470,10 @@ impl Engine {
                             let main_r = tone_r * gain;
                             let [main_l, main_r] = rt_peak.process([main_l, main_r]);
 
-                            if target_l < channels {
-                                let out_idx = i * channels + target_l;
-                                if out_idx < data.len() {
-                                    data[out_idx] = main_l;
-                                }
-                            }
-                            if target_r < channels {
-                                let out_idx = i * channels + target_r;
-                                if out_idx < data.len() {
-                                    data[out_idx] = main_r;
-                                }
-                            }
-
-                            let sent = dsp::sent_sample_levels(
-                                &data[i * channels..(i + 1) * channels],
-                                [target_l, target_r],
+                            let sent = super::super::queue_diagnostics::write_output_frame(
+                                &mut data[i * channels..(i + 1) * channels],
+                                output_pair,
+                                [main_l, main_r],
                             );
                             out_max_l = out_max_l.max(sent[0]);
                             out_max_r = out_max_r.max(sent[1]);
@@ -1494,8 +1485,11 @@ impl Engine {
                         });
                     } else if rt_voice_check.is_playback_active() {
                         data.fill(0.0);
-                        let target_l = rt_input_l;
-                        let target_r = rt_input_r;
+                        let output_pair = super::super::queue_diagnostics::output_pair(
+                            is_asio,
+                            [rt_input_l, rt_input_r],
+                            channels,
+                        );
                         let mut out_max_l = 0.0f32;
                         let mut out_max_r = 0.0f32;
 
@@ -1506,22 +1500,10 @@ impl Engine {
                             let main_r = main_r * gain;
                             let [main_l, main_r] = rt_peak.process([main_l, main_r]);
 
-                            if target_l < channels {
-                                let out_idx = i * channels + target_l;
-                                if out_idx < data.len() {
-                                    data[out_idx] = main_l;
-                                }
-                            }
-                            if target_r < channels {
-                                let out_idx = i * channels + target_r;
-                                if out_idx < data.len() {
-                                    data[out_idx] = main_r;
-                                }
-                            }
-
-                            let sent = dsp::sent_sample_levels(
-                                &data[i * channels..(i + 1) * channels],
-                                [target_l, target_r],
+                            let sent = super::super::queue_diagnostics::write_output_frame(
+                                &mut data[i * channels..(i + 1) * channels],
+                                output_pair,
+                                [main_l, main_r],
                             );
                             out_max_l = out_max_l.max(sent[0]);
                             out_max_r = out_max_r.max(sent[1]);
@@ -1535,10 +1517,12 @@ impl Engine {
                         // Initialize output with silence
                         data.fill(0.0);
 
-                        // Map processed "Main" (0/1) back to the selected physical device channels
-                        // (Symmetric Routing / Insert Logic)
-                        let target_l = rt_input_l;
-                        let target_r = rt_input_r;
+                        // 入力選択とは独立した、実際に存在する出力ペアへ送る。
+                        let output_pair = super::super::queue_diagnostics::output_pair(
+                            is_asio,
+                            [rt_input_l, rt_input_r],
+                            channels,
+                        );
 
                         let mut out_max_l = 0.0f32;
                         let mut out_max_r = 0.0f32;
@@ -1577,22 +1561,10 @@ impl Engine {
                             let main_l = main_l * monitor_gain;
                             let main_r = main_r * monitor_gain;
                             // Left
-                            if target_l < channels {
-                                let out_idx = i * channels + target_l;
-                                if out_idx < data.len() {
-                                    data[out_idx] = main_l;
-                                }
-                            }
-                            // Right
-                            if target_r < channels {
-                                let out_idx = i * channels + target_r;
-                                if out_idx < data.len() {
-                                    data[out_idx] = main_r;
-                                }
-                            }
-                            let sent = dsp::sent_sample_levels(
-                                &data[i * channels..(i + 1) * channels],
-                                [target_l, target_r],
+                            let sent = super::super::queue_diagnostics::write_output_frame(
+                                &mut data[i * channels..(i + 1) * channels],
+                                output_pair,
+                                [main_l, main_r],
                             );
                             out_max_l = out_max_l.max(sent[0]);
                             out_max_r = out_max_r.max(sent[1]);
@@ -1607,13 +1579,18 @@ impl Engine {
                     // 最終ゲイン・ミュート・試聴を含め、デバイスへ実際に渡す値で測る。
                     // 測定していない間はフィルター・補間・走査を実行しない。
                     if rt_loudness.id.is_some() {
+                        let [output_l, output_r] = queue_diagnostics::output_pair(
+                            is_asio,
+                            [rt_input_l, rt_input_r],
+                            channels,
+                        );
                         for frame in data.chunks_exact(channels) {
-                            let l = frame.get(rt_input_l).copied().unwrap_or(0.0);
+                            let l = frame.get(output_l).copied().unwrap_or(0.0);
                             // 同じ物理チャンネルをL/Rへ選んだ場合は二重に加算しない。
-                            let r = if rt_input_r == rt_input_l {
+                            let r = if output_r == output_l {
                                 0.0
                             } else {
-                                frame.get(rt_input_r).copied().unwrap_or(0.0)
+                                frame.get(output_r).copied().unwrap_or(0.0)
                             };
                             if let Some(reading) = rt_loudness.sample([l, r]) {
                                 let _ = loudness_prod.try_push(reading);

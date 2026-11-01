@@ -272,6 +272,34 @@ impl QueueDiagnostics {
     }
 }
 
+/// ASIO insertの有効な同番号出力を維持し、届かないペアは主出力へ写す。
+/// WASAPIの入力番号やmonoの複製は、物理出力の番号に流用しない。
+pub(crate) fn output_pair(asio: bool, input_pair: [usize; 2], channels: usize) -> [usize; 2] {
+    if asio && input_pair.iter().all(|&channel| channel < channels) {
+        input_pair
+    } else {
+        [0, usize::from(channels > 1)]
+    }
+}
+
+/// 通常音声・録音再生・テストトーンで共用する最終出力と、その実送出レベル。
+pub(crate) fn write_output_frame(
+    frame: &mut [f32],
+    pair: [usize; 2],
+    samples: [f32; 2],
+) -> [f32; 2] {
+    if let Some(left) = frame.get_mut(pair[0]) {
+        *left = samples[0];
+    }
+    // monoの同一端子を右側で上書きしない。
+    if pair[1] != pair[0] {
+        if let Some(right) = frame.get_mut(pair[1]) {
+            *right = samples[1];
+        }
+    }
+    super::core::dsp::sent_sample_levels(frame, pair)
+}
+
 /// 同一フレームの選択値を取り出す。加工前録音と処理入力の共通点。
 pub(crate) fn selected_pair(frame: &[f32], channels: [usize; 2], gain: f32) -> [f32; 2] {
     channels.map(|ch| frame.get(ch).copied().unwrap_or(0.0) * gain)
@@ -376,6 +404,55 @@ pub(crate) fn push_mapped_frames(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn selected_input_reaches_actual_output_and_meter_without_rt_allocations() {
+        for (asio, input, output, pair, targets) in [
+            (true, 8, 2, [2, 3], [0, 1]),
+            (true, 2, 8, [0, 1], [0, 1]),
+            (true, 22, 22, [6, 7], [6, 7]),
+            (false, 1, 2, [0, 0], [0, 1]),
+            (true, 3, 3, [2, 2], [2, 2]),
+            (true, 3, 2, [2, 2], [0, 1]),
+            (false, 2, 1, [0, 1], [0, 0]),
+        ] {
+            let frame: Vec<_> = (1..=input).map(|n| n as f32).collect();
+            let mut planar = vec![vec![0.0]; output.max(2)];
+            let mut device = vec![0.0; output];
+            assert_eq!(
+                crate::dsp_verification_allocator::allocation_counts(|| {
+                    let raw = super::route_input_frame(&frame, pair, 0.5, &mut planar, 0, output);
+                    let actual_targets = super::output_pair(asio, pair, output);
+                    assert_eq!(actual_targets, targets);
+                    let sent = super::write_output_frame(&mut device, actual_targets, raw);
+                    assert_eq!(device[targets[0]], raw[0]);
+                    assert_eq!(sent[0], raw[0].abs());
+                    if targets[0] != targets[1] {
+                        assert_eq!(device[targets[1]], raw[1]);
+                        assert_eq!(sent[1], raw[1].abs());
+                    } else {
+                        assert_eq!(sent[1], 0.0);
+                    }
+                    for (index, value) in device.iter().enumerate() {
+                        if !targets.contains(&index) {
+                            assert_eq!(*value, 0.0);
+                        }
+                    }
+                }),
+                (0, 0)
+            );
+        }
+    }
+
+    #[test]
+    fn mono_device_keeps_processed_left_instead_of_overwriting_with_right() {
+        let mut frame = [0.0];
+        assert_eq!(
+            super::write_output_frame(&mut frame, [0, 0], [0.25, 0.75]),
+            [0.25, 0.0]
+        );
+        assert_eq!(frame, [0.25]);
+    }
+
     #[test]
     fn normal_route_and_raw_pair_match_for_physical_and_output_shapes() {
         for (input, output) in [(8, 2), (8, 8), (2, 8), (1, 2), (3, 2), (3, 1)] {
