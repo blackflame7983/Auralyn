@@ -101,7 +101,13 @@ async fn connect_obs(
 }
 
 #[tauri::command]
-async fn disconnect_obs(app: AppHandle, state: State<'_, obs::ObsState>) -> Result<(), String> {
+async fn disconnect_obs(
+    app: AppHandle,
+    state: State<'_, obs::ObsState>,
+    credentials: State<'_, obs_credentials::Credentials>,
+) -> Result<(), String> {
+    // 復号待ちの接続も含めて停止する。ロック順は接続と同じ資格情報→client。
+    let _guard = credentials.0.lock().await;
     obs::disconnect_obs(app, state).await
 }
 
