@@ -1,0 +1,112 @@
+# 再評価で残った修正・確認への対応
+
+2026-11-01に開始し、2026-11-02に確認した。対象はPR #217の作業ブランチで、未pushの`4f9537d`を起点とする。
+評価ブランチの未公開文書を本PRへコピーしていない。数値とhashは[結果JSON](remaining-acceptance-20261102.json)を参照する。
+ここにいう実機確認は、通常設定から隔離したWindows上の実Host・実Rust IPCである。通常配信経路・聴感の合格とは区別する。
+
+## PR #217：OBS接続待ちと画面応答
+
+`connect_obs`と`disconnect_obs`の資格情報→clientというロック順を維持した。
+実際の接続に使う`connect_client`へ5秒の期限を集約し、TCPを受理してもWebSocketへ応答しないローカル相手で試験した。
+Rustの回帰試験で、接続のタイムアウトと待機socketの解放が成功した。
+
+製品CSP・グローバルAPI非公開のrelease Hostでも、隔離した保存済み資格情報を読み込んで同じ無応答相手へ接続した。
+実設定画面を接続待ち中に閉じられ、描画frameは約1.7ms、frame＋別のnative IPCは約3.6msで応答した。
+接続は約5006.6msでタイムアウトし、明示切断は残り約4680.7msを待って完了、最後の接続状態はfalseだった。
+非表示・閉じる処理が未完了の切断Promiseを待って固まらないことは、別途DOM回帰試験でも確認した。
+
+5秒は一つのネットワーク接続試行の期限であり、資格情報ファイルI/O、先行操作の待ち行列、既存の到達確認終了まで含む総期限ではない。
+複数の先行接続がある場合に切断IPCの応答が常に5秒以内になる、という保証にはしない。
+旧PR先頭`55adc33`のfrontend／rustsec CIは成功済みだが、今回の追加commitのpush・CIは承認待ちである。
+
+## #210：復帰と既存ホットキー
+
+製品release HostでVoicemeeter Insert Virtual ASIO、96kHz／512frame、入力7/8→出力1/2を使用した。
+出力gain=0・mute=trueを基本にし、ホットキーでmuteを切り替えた間もgain=0を維持した。発声や音声録音は行っていない。
+
+タスクバーを操作対象として返さない操作APIの制約から、トレイのクリックとメニュー選択は利用者が行い、直後の状態は実WebView／Rustから取得した。
+
+| 経路 | 非表示中 | 復帰後 | 追加確認 |
+| --- | --- | --- | --- |
+| 実トレイアイコンのクリック | appHidden=true | appHidden=false | stream稼働、状態IPCと入力メーターの更新再開 |
+| 実トレイメニュー「表示」 | appHidden=true | appHidden=false | stream稼働、入力メーターの更新再開 |
+| 既存Alt+M／Alt+P | appHidden=trueのまま | 表示復帰の機能ではない | 別アプリから実入力しmute／bypassの変化と原状復帰を確認 |
+
+表示復帰用ホットキーは現行機能に存在せず、利用者指定により追加していない。
+復帰後の追加観測でも約1.2秒間に状態取得が進み、入力メーターは約-19.57→-13.43dBFSへ変化した。
+Windowsの表示経路がnative通知を欠く場合に備えて、JSのfocus／DOM再表示でも`get_window_activity`を再取得する。
+古い取得応答・重なる取得・新しいnative通知の順序を守り、非表示中のメーターに保持した値を復帰時に反映する回帰試験を追加した。
+
+最新変更後のCPU・最大メモリ比較や音切れの聴感判定は再実施していない。
+既存の各60秒×3回の比較は[前回記録](issues-210-216-20261101.md)に保持する。
+今回依頼の復帰経路と既存キー操作を確認できたため、#210のクローズを提案する。実クローズは承認後とする。
+
+## #212：製品CSP下の外部リンクと更新あり
+
+実セットアップ画面の「VB-CABLEをダウンロード」を操作し、実`open_url`呼出し1回と、既定Chromeで`https://vb-audio.com/Cable/`の新規タブ「VB-Audio Virtual Apps」を確認した。
+このボタンは仮想出力がない条件でだけ表示されるため、デバイス一覧のoutputsだけを試験用に空にした。
+ドライバー・OSデバイスは変更しておらず、外部起動のIPCとブラウザは置換していない。完全に自然な機器構成での表示条件の確認とは分ける。
+
+更新ありの試験は、製品CSP／withGlobalTauri=falseを保ち、試験用identifier、全保存先override、loopback feed、一時公開鍵だけを追加したrelease Hostで実施した。
+HTTP許可は試験用configだけに限定し、通常の設定・CI・MSIXを変更していない。
+専用Uninstall GUIDキーを原子的に新規作成し、temp実行先に限って製品のインストール先検査を通した。
+自作の署名済みPEはasInvokerで、指定した新規markerだけを書き、通常のインストール処理を行わない。
+
+- 実`check_update`はversion 99.0.0と適用可能を返した。
+- 実`download_update`で署名付きデータを取得した。
+- 実`install_update`から試験PEが起動し、markerとHostのexit 0を確認した。
+- 実応答CSPに製品directiveのsourceが保たれ、Tauri生成hash／nonceが追加されていることを確認した。任意の追加許可を除いた完全なCSP集合一致の試験ではない。
+- 専用レジストリキーは値の型・内容・余分な値／子キーがないことを照合して単一削除。通常プロファイル7732ファイルは試験前後のSHA-256がすべて一致した。
+
+準備時の最初の試行はPythonのHANDLE構築エラーでHost起動前に失敗し、作成直後の空の専用キーを照合して除去した。
+次の試行は隔離したWindows環境変数によるWebView2検出失敗で終了し、専用キーの自動除去を確認した。
+環境のallowlistを維持しつつWindows実行に必要な場所を渡した最終試行が成功した。失敗記録も保持している。
+
+得られた証拠は署名付きfixtureの取得・検証・起動までである。実NSISによる新版導入、更新後の再起動・設定保持、公開feedの更新ではない。
+CSPが外部起動と更新取得・起動を阻害しない範囲を確認できたため、#212のクローズを提案する。実クローズは承認後とする。
+
+## #215の続き：unsafe lint
+
+新規Issueを増やさず、既存のSAFETY契約整備の続きとして実施した。
+libと6つのbinのcrate rootに警告を設定し、src外のテスト・exampleも含めて、ポインタの寿命、thread、所有権、Win32 handleの保持を記録した。
+外部DLLはVST3 ABI準拠を前提とする信頼境界であり、scanner分離がメモリ安全性を保証するとは書いていない。
+この変更はコメントとlint属性だけで、RT callbackの割当・lock・I/Oや音声ロジックを変えていない。
+`cargo clippy --locked --all-targets -- -D warnings -W clippy::undocumented_unsafe_blocks`の警告は0だった。
+
+## #211：配線前の準備
+
+ASIO／WASAPI、要求buffer、NR OFF／ON、VST 0／3本を各5回測る計画と、非発声の固定信号を生成する道具を追加した。
+要求bufferと実callback長は分け、共通clockの2ch参照録音から求める相対lagを、そのまま物理往復遅延とは呼ばない。
+連続録音はストリーム処理し、10ms単位の大幅減衰と、1ms以上の連続digital zeroを別々の疑い区間として数える。
+参照不活性・短時間・非有限値・曖昧な相関を成功の0ms／欠損0回に変換しない。
+既知delay、逆相、ノイズ、周期曖昧、無音、4ms欠損・窓境界を跨ぐ欠損を含む合成7試験が成功した。
+削除frame、両ch同時欠損、NRによる正当な減衰を完全に分類する解析ではない。
+物理配線・各条件の実測・固定素材の1時間実録音は行っていない。#211は未完了のまま残す。
+
+## #214：照合のみ
+
+MSIX作成コード・CI・署名設定を変更していない。RELEASE_PLAN 1.1／1.2はMSIX主軸、移行中のNSIS維持、未署名検証版は明示する方針である。
+現在の試作manifestはName／Publisher／PublisherDisplayNameが明示的にローカル試験用で、Partner Centerの正式値ではない。
+例のversion 1.1.0.0は4要素で末尾0だが、試作script自体はローカル更新試験用の末尾非0も許す。Store提出条件の保証には使わない。
+正式提出では[予約したIdentity](https://learn.microsoft.com/en-us/windows/apps/publish/view-app-identity-details)との一致と、[Storeのversion条件](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/package-version-numbering?pivots=store-installer-msix)を別途確認する。
+READMEには現行直接配布EXEの署名状態の明記を見つけていない。公開中EXEを今回取得して署名確認したわけでもないため、現行公開版を未署名と断定しない。
+Store提出・署名・SmartScreenの改善を確認済みにはせず、H-1の実証は残る。
+
+## 評価軸への反映
+
+| 軸ID | 今回追加した根拠 | 判定への影響 |
+| --- | --- | --- |
+| A-1／A-2 | 各5回の計画、相対lagと不明値の解析 | 準備完了、物理実測は未評価のまま |
+| A-3 | 欠損の疑い解析と合成検証 | 準備完了、実1時間録音の欠損数・聴感は未評価 |
+| B-1／E-5 | 実トレイ2経路、状態取得・メーター再開 | 復帰経路の未確認を解消。CPUの新しい測定値は追加しない |
+| E-6／G-1／G-2 | 接続timeout中の実UI・native IPC応答、既存実キー入力 | 今回の条件で成功。一般的なUI遅延の基準値ではない |
+| D-4 | crate全体／all-targetsのunsafe lint 0 | 対象module限定から維持範囲を拡張 |
+| I-1／I-3／H-2 | 製品CSPで外部起動と署名付き更新fixture | CSP経路の根拠を追加。実NSIS更新全体の合格ではない |
+| H-1 | MSIXの正式Identity／version条件と文書の照合 | 方針確認のみ、署名・提出の実証は未了 |
+
+## 実行上のセキュリティ事項
+
+更新試験の調査時、署名CLIのhelpが親環境の署名鍵関連値をツール実行記録へ無マスクで表示した。
+利用者へ報告し、値の転記・commit・検証artifactへの保存はしていない。以降の署名・Host子プロセスは環境をallowlist化した。
+本番鍵の変更・再発行は実施していない。鍵の扱いが決まるまで、更新配布の信頼性に関するIの判断は保留する。
+この事象をアプリのDPAPI保存試験の成功で打ち消さない。
