@@ -127,7 +127,8 @@ it('復元の受理値が原本と異なる場合は原本を保持し、期待�
     await waitFor(() => expect(restore).toBeEnabled());
     fireEvent.click(restore);
     await screen.findByRole('alert');
-    expect(audioApi.start).toHaveBeenCalledWith('WASAPI', 'mic', 'phones', 512, 48000, 'i', 'o', expect.objectContaining({is_running:true}));
+    expect(audioApi.start).toHaveBeenCalledWith('WASAPI', 'mic', 'phones', 512, 48000, 'i', 'o', expect.objectContaining({is_running:true}),
+        { inputChannels: [0, 1], outputRouting: { mode: 'independent', channels: [0, 1] } });
     expect(localStorage.getItem('auralyn_monitor_trial_original_v1')).not.toBeNull();
 });
 

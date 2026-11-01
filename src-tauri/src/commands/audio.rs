@@ -281,6 +281,8 @@ pub(crate) struct AudioStartOptions {
     sample_rate: Option<u32>,
     input_id: Option<String>,
     output_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    channel_routing: Option<crate::ipc::ChannelRouting>,
 }
 
 fn command_field<'de, T: serde::Deserialize<'de>, R: tauri::Runtime>(
@@ -308,6 +310,7 @@ impl<'de, R: tauri::Runtime> tauri::ipc::CommandArg<'de, R> for AudioStartOption
             sample_rate: command_field(&command, "sampleRate")?,
             input_id: command_field(&command, "inputId")?,
             output_id: command_field(&command, "outputId")?,
+            channel_routing: command_field(&command, "channelRouting")?,
         })
     }
 }
@@ -326,6 +329,7 @@ pub(crate) async fn start_audio(
         sample_rate,
         input_id,
         output_id,
+        channel_routing,
     } = options;
     let state = state.0.clone();
     super::run_blocking(move || {
@@ -349,6 +353,7 @@ pub(crate) async fn start_audio(
                 sample_rate,
                 input_id,
                 output_id,
+                channel_routing,
             )
             .map_err(|e| audio::localize_audio_error(e.to_string()))
     })
@@ -538,6 +543,7 @@ pub(crate) async fn restart_audio_engine(
         sample_rate,
         input_id,
         output_id,
+        channel_routing,
     } = options;
     let state = state.0.clone();
     super::run_blocking(move || {
@@ -568,6 +574,7 @@ pub(crate) async fn restart_audio_engine(
                 sample_rate,
                 input_id,
                 output_id,
+                channel_routing,
             )
             .map_err(|e| audio::localize_audio_error(e.to_string()))
     })
@@ -1038,6 +1045,15 @@ mod start_options_ipc_tests {
         });
         let expected_state =
             json!({ "is_running": true, "condition_witness": { "revision": "9" } });
+        let mut routed = options.clone();
+        routed["channelRouting"] = json!({ "inputChannels": [2, 3], "outputRouting": { "mode": "independent", "channels": [0, 1] } });
+        assert_eq!(
+            invoke(tauri::ipc::InvokeBody::Json(routed.clone()))
+                .unwrap()
+                .deserialize::<Value>()
+                .unwrap(),
+            json!({ "options": routed, "expectedState": null })
+        );
         let mut payload = options.clone();
         payload["expectedState"] = expected_state.clone();
         assert_eq!(

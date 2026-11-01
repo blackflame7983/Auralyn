@@ -215,6 +215,13 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
       }
     }
     return () => { active.current = false; requestRevision.current++; };
+  }, [isOpen]);
+
+  // 開始結果の補正は数値だけへ同期する。機器の下書きを保存済み値へ戻さない。
+  useEffect(() => {
+    if (!isOpen) return;
+    if (currentSampleRate) setSelectedSampleRate(currentSampleRate);
+    if (currentBufferSize) setSelectedBufferSize(currentBufferSize);
   }, [isOpen, currentSampleRate, currentBufferSize]);
 
   useEffect(() => {

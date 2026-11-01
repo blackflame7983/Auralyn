@@ -147,6 +147,7 @@ fn captured() -> Captured {
         fixed_buffer_request_frames: None,
         plugins: vec![],
         input_channels: vec![0, 1],
+        output_routing: crate::ipc::OutputRouting::Legacy,
         input_gain: 0.,
         output_gain: 0.,
         global_mute: true,
@@ -179,6 +180,103 @@ fn captured() -> Captured {
         engine,
         active: None,
     }
+}
+
+#[test]
+fn output_routing_roundtrip_preview_partial_and_undo_intent() {
+    use crate::ipc::OutputRouting;
+    let mut before = captured();
+    before.engine.input_channels = vec![2, 3];
+    before.engine.output_routing = OutputRouting::Independent { channels: [0, 1] };
+    let audio = ProfileAudioConfig {
+        host: "ASIO".into(),
+        input_device: None,
+        output_device: None,
+        sample_rate: 48000,
+        buffer_size: 512,
+        input_channels: vec![2, 3],
+        output_routing: before.engine.output_routing,
+        input_gain_db: 0.0,
+        master_gain_db: 0.0,
+    };
+    before.preset.audio_config = Some(audio.clone());
+    let mut target = BundleV1 {
+        schema_version: 1,
+        revision: "1".into(),
+        name: "test".into(),
+        categories: ProfileSaveCategories {
+            include_audio_config: true,
+            ..Default::default()
+        },
+        embedded_auralyn_preset: before.preset.clone(),
+        obs: None,
+        confirmation: None,
+        level_intent: Some(bundle::LevelIntent {
+            input_gain: 0.0,
+            output_gain: 0.0,
+        }),
+    };
+    target.embedded_auralyn_preset.noise_control = None;
+    target.embedded_auralyn_preset.builtin_fx = None;
+    target
+        .embedded_auralyn_preset
+        .audio_config
+        .as_mut()
+        .unwrap()
+        .output_routing = OutputRouting::Insert;
+    let json = serde_json::to_value(&target).unwrap();
+    let decoded: BundleV1 = serde_json::from_value(json).unwrap();
+    assert_eq!(
+        decoded
+            .embedded_auralyn_preset
+            .audio_config
+            .as_ref()
+            .unwrap()
+            .output_routing,
+        OutputRouting::Insert
+    );
+    assert!(!selected_matches(&decoded, &before));
+    let rows = preview_diff(&before, &decoded);
+    let output_row = rows.iter().find(|r| r.label == "出力チャンネル").unwrap();
+    assert_eq!(output_row.status, "changed");
+    assert_eq!(
+        output_row.before_text.as_ref().unwrap().code,
+        "bundle.value.outputIndependent"
+    );
+    assert_eq!(
+        output_row.after_text.as_ref().unwrap().code,
+        "bundle.value.outputInsert"
+    );
+    assert_eq!(
+        selected_start_intent(&decoded, &before)
+            .unwrap()
+            .output_routing,
+        OutputRouting::Insert
+    );
+    target.embedded_auralyn_preset.audio_config = Some(audio);
+    assert_eq!(
+        selected_start_intent(&target, &before)
+            .unwrap()
+            .output_routing,
+        OutputRouting::Independent { channels: [0, 1] }
+    );
+    target.embedded_auralyn_preset.audio_config = None;
+    target.level_intent = None;
+    target.categories.include_audio_config = false;
+    assert_eq!(
+        selected_start_intent(&target, &before)
+            .unwrap()
+            .output_routing,
+        before.engine.output_routing
+    );
+    let mut old = serde_json::to_value(before.preset.audio_config.as_ref().unwrap()).unwrap();
+    old.as_object_mut().unwrap().remove("outputRouting");
+    assert_eq!(
+        serde_json::from_value::<ProfileAudioConfig>(old)
+            .unwrap()
+            .output_routing,
+        OutputRouting::Legacy
+    );
 }
 #[test]
 fn partial_and_skipped_are_not_complete_and_state_or_flags_change_is_conflict() {
@@ -220,6 +318,7 @@ fn checked_save_requires_a_running_unmuted_settled_stream_and_the_exact_observed
         routing_revision: "2".into(),
         input_gain: 1.0,
         input_channels: [0, 1],
+        output_routing: crate::ipc::OutputRouting::Legacy,
         output_gain: 1.0,
         output_revision: "3".into(),
         muted: false,

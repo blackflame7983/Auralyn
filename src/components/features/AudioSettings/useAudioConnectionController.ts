@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi, type AudioConfig, type AudioDevice, type AudioStateInfo } from '@/api/audio';
 import type { AudioPreferences } from '@/lib/audioPreferences';
+import type { ChannelRouting, OutputRouting } from '@/lib/audioChannelRouting';
 
 interface Options {
     isOpen: boolean;
@@ -12,6 +13,7 @@ interface Options {
     bufferSize: number;
     isAsio: boolean;
     currentChannels?: [number, number];
+    currentOutputRouting?: OutputRouting;
     onConfigChange: (config: Partial<AudioPreferences> & { host: string }, options?: { audioStarted: true }) => void | Promise<void>;
 }
 
@@ -21,13 +23,24 @@ export class ConnectionApplyError extends Error {
     }
 }
 
-type Pending = { restart: boolean; requestedKey: string; actualKey: string; host: string; input: AudioDevice; output: AudioDevice; result: AudioConfig; stage: 'channels' | 'save' };
+type Pending = { restart: boolean; requestedKey: string; actualKey: string; host: string; input: AudioDevice; output: AudioDevice; result: AudioConfig; config: AudioPreferences; stage: 'save' };
 
 export function useAudioConnectionController(options: Options) {
-    const { isOpen, host, input, output, sampleRate, bufferSize, isAsio, currentChannels, onConfigChange } = options;
+    const { isOpen, host, input, output, sampleRate, bufferSize, isAsio, currentChannels, currentOutputRouting, onConfigChange } = options;
     const deviceKey = host && input ? `${host}\u0000${input.id ?? input.name}` : '';
-    const [draft, setDraft] = useState<{ key: string; channels: [number, number] } | null>(null);
-    const channels: [number, number] = draft?.key === deviceKey ? draft.channels : draft === null ? (currentChannels ?? [0, 1]) : [0, 1];
+    const firstPair: [number, number] = [0, input?.channels === 1 ? 0 : 1];
+    const firstOutputPair: [number, number] = [0, output?.channels === 1 ? 0 : 1];
+    const initialOutput: OutputRouting = currentOutputRouting ?? (currentChannels ? { mode: 'legacy' } : { mode: 'independent', channels: firstOutputPair });
+    const [draft, setDraft] = useState<{ key: string; channels: [number, number]; automatic: boolean; outputRouting: OutputRouting } | null>(null);
+    const selected = draft?.key === deviceKey ? draft : {
+        channels: draft === null ? currentChannels ?? firstPair : firstPair,
+        automatic: draft !== null || !currentChannels,
+        outputRouting: draft === null ? initialOutput : { mode: 'independent', channels: firstOutputPair } as OutputRouting,
+    };
+    const channels = selected.channels;
+    const outputRouting = selected.outputRouting;
+    const routing: ChannelRouting = isAsio ? { inputChannels: selected.automatic ? undefined : channels, outputRouting }
+        : { inputChannels: [0, 1], outputRouting: { mode: 'independent', channels: [0, 1] } };
     const [actual, setActual] = useState<{ host: string; id: string } | null>(null);
     const [knownStopped, setKnownStopped] = useState(false);
     const pending = useRef<Pending | null>(null);
@@ -41,8 +54,10 @@ export function useAudioConnectionController(options: Options) {
             || (config.input_id && selected.input.id ? config.input_id !== selected.input.id : !!config.input && config.input !== selected.input.name)
             || (config.output_id && selected.output.id ? config.output_id !== selected.output.id : !!config.output && config.output !== selected.output.name);
     };
-    const makeKey = (rate: number, buffer: number) => JSON.stringify([host, input?.name, input?.id, output?.name, output?.id, buffer, rate, isAsio ? channels : [0, 1]]);
+    const makeKey = (rate: number, buffer: number, resolvedOutput = routing.outputRouting) => JSON.stringify([host, input?.name, input?.id, output?.name, output?.id, buffer, rate, { ...routing, outputRouting: resolvedOutput }]);
     const draftKey = makeKey(sampleRate, bufferSize);
+    const latestDraftKey = useRef(draftKey);
+    latestDraftKey.current = draftKey;
     useEffect(() => {
         const attempt = pending.current;
         if (attempt && attempt.requestedKey !== draftKey && attempt.actualKey !== draftKey) pending.current = null;
@@ -50,9 +65,19 @@ export function useAudioConnectionController(options: Options) {
     useEffect(() => {
         if (!isOpen) { setDraft(null); return; }
         if (deviceKey) setDraft(previous => previous?.key === deviceKey ? previous : {
-            key: deviceKey, channels: previous === null ? (currentChannels ?? [0, 1]) : [0, 1],
+            key: deviceKey, channels: previous === null ? (currentChannels ?? firstPair) : firstPair,
+            automatic: previous !== null || !currentChannels,
+            outputRouting: previous === null ? initialOutput : { mode: 'independent', channels: firstOutputPair },
         });
     }, [isOpen, deviceKey]);
+    useEffect(() => {
+        if (input?.channels === 1) setDraft(previous => previous?.automatic ? { ...previous, channels: [0, 0] } : previous);
+    }, [input?.channels]);
+    useEffect(() => {
+        if (output?.channels === 1) setDraft(previous => previous?.outputRouting.mode === 'independent'
+            && previous.outputRouting.channels[0] === 0 && previous.outputRouting.channels[1] === 1
+            ? { ...previous, outputRouting: { mode: 'independent', channels: [0, 0] } } : previous);
+    }, [output?.channels]);
     useEffect(() => {
         if (!isOpen) { setActual(null); setKnownStopped(false); pending.current = null; return; }
         let active = true;
@@ -92,7 +117,6 @@ export function useAudioConnectionController(options: Options) {
     const monitorInput = !!(isOpen && input?.id && actual && host.toLowerCase() === actual.host.toLowerCase() && input.id === actual.id);
     const apply = async (restart: boolean) => {
         if (!input || !output) throw new Error('Input or output device is not selected');
-        const inputChannels: [number, number] = isAsio ? channels : [0, 1];
         let attempt = pending.current && pending.current.restart === restart &&
             (pending.current.requestedKey === draftKey || pending.current.actualKey === draftKey) ? pending.current : null;
         if (!attempt) {
@@ -101,30 +125,31 @@ export function useAudioConnectionController(options: Options) {
             const beforeStart = stoppedRevision.current;
             startedState.current = null;
             startVerification.current = null;
-            const result = await start(host, input.name, output.name, bufferSize, sampleRate, input.id, output.id);
+            const result = await start(host, input.name, output.name, bufferSize, sampleRate, input.id, output.id, undefined, routing);
             await startVerification.current;
             if (beforeStart !== stoppedRevision.current) throw new Error('Audio stopped during start');
             if (startedState.current && differentConnection(startedState.current, { host, input, output })) throw new Error('Audio connection changed during start');
-            attempt = { restart, requestedKey: draftKey, actualKey: makeKey(result.sample_rate, result.buffer_size), host, input, output, result, stage: 'channels' };
+            const actualKey = makeKey(result.sample_rate, result.buffer_size, result.routing?.outputRouting);
+            if (latestDraftKey.current !== draftKey && latestDraftKey.current !== actualKey) throw new Error('Audio settings changed during start');
+            const actualRouting = result.routing ?? routing;
+            const config: AudioPreferences = { host, input: input.name, output: output.name, inputId: input.id, outputId: output.id,
+                sampleRate: result.sample_rate, bufferSize: result.buffer_size,
+                inputChannels: actualRouting.inputChannels ?? channels, outputRouting: actualRouting.outputRouting };
+            attempt = { restart, requestedKey: draftKey, actualKey, host, input, output, result, config, stage: 'save' };
             pending.current = attempt;
             setKnownStopped(false);
-        }
-        if (attempt.stage === 'channels') {
-            try { await audioApi.setInputChannels(...inputChannels); }
-            catch (error) { throw new ConnectionApplyError('channels', error); }
-            await startVerification.current;
-            if (pending.current !== attempt) throw new ConnectionApplyError('channels', 'Audio state changed');
-            attempt.stage = 'save';
         }
         await startVerification.current;
         if (pending.current !== attempt) throw new ConnectionApplyError(attempt.stage, 'Audio state changed');
         try {
-            await onConfigChange({ host, input: input.name, output: output.name, inputId: input.id, outputId: output.id,
-                sampleRate: attempt.result.sample_rate, bufferSize: attempt.result.buffer_size, inputChannels }, { audioStarted: true });
+            await onConfigChange(attempt.config, { audioStarted: true });
         } catch (error) { throw new ConnectionApplyError('save', error); }
         await startVerification.current;
         if (pending.current !== attempt) throw new ConnectionApplyError('save', 'Audio state changed');
         pending.current = null;
     };
-    return { deviceKey, channels, monitorInput, knownStopped, setChannels: (next: [number, number]) => setDraft({ key: deviceKey, channels: next }), apply };
+    return { deviceKey, channels, outputRouting, monitorInput, knownStopped,
+        setChannels: (next: [number, number]) => setDraft({ key: deviceKey, channels: next, automatic: false, outputRouting }),
+        setRoutingForDevice: (key: string, next: ChannelRouting) => setDraft({ key, channels: next.inputChannels ?? [0, 1], automatic: !next.inputChannels, outputRouting: next.outputRouting }),
+        setOutputRouting: (next: OutputRouting) => setDraft({ key: deviceKey, channels, automatic: selected.automatic, outputRouting: next }), apply };
 }

@@ -3,6 +3,18 @@ import { readAudioPreferences, readCachedAudioDevices, deviceIdsForUpdate } from
 
 afterEach(() => localStorage.clear());
 
+it.each([{ mode: 'legacy' }, { mode: 'insert' }, { mode: 'independent', channels: [0, 1] }])('返却方式を保存値から復元する: %j', outputRouting => {
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', inputChannels: [6, 7], outputRouting }));
+    expect(readAudioPreferences()?.outputRouting).toEqual(outputRouting);
+});
+
+it('旧設定へ新しい出力先を推測して足さず、不正な明示出力では自動開始しない', () => {
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', inputChannels: [6, 7] }));
+    expect(readAudioPreferences()?.outputRouting).toBeUndefined();
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', outputRouting: { mode: 'independent', channels: [-1, 2] } }));
+    expect(readAudioPreferences()).toBeNull();
+});
+
 it('完全な選択の未知IDを古いIDへ戻さず、ペアだけの部分更新では保持する', () => {
     const previous = { host: 'ASIO', input: 'same name', output: 'same name', inputId: 'old-in', outputId: 'old-out' };
     expect(deviceIdsForUpdate(previous, { host: 'ASIO', input: 'same name', output: 'same name', inputId: undefined, outputId: undefined }))

@@ -87,6 +87,7 @@ pub struct AudioConfig {
     pub sample_rate: u32,
     pub buffer_size: u32,
     pub channels: u32,
+    pub routing: Option<crate::ipc::ChannelRouting>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -100,6 +101,8 @@ pub struct ActiveAudioConfig {
     pub output_id: Option<String>,
     pub buffer_size: Option<u32>,
     pub sample_rate: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routing: Option<crate::ipc::ChannelRouting>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -208,6 +211,9 @@ pub struct AudioHost {
 }
 
 impl AudioHost {
+    pub(crate) fn global_mute_intent(&self) -> bool {
+        self.is_global_muted
+    }
     pub(crate) fn checked_snapshot_supported(&mut self) -> Result<()> {
         self.preflight_live_changes()?;
         anyhow::ensure!(self.live_modes.target.is_none() && self.live_output(None)?.config == Default::default(), "確認済み保存・復帰は単一出力・カスタム音作りが対象です。モニター分離や歌/雑談は各設定で管理してください");
@@ -1041,6 +1047,7 @@ impl AudioHost {
         sample_rate: Option<u32>,
         input_id: Option<String>,
         output_id: Option<String>,
+        channel_routing: Option<crate::ipc::ChannelRouting>,
     ) -> Result<AudioConfig> {
         self.frontend_bootstrap.cancel();
         self.start_internal_guarded_with_ids(
@@ -1053,6 +1060,7 @@ impl AudioHost {
             None,
             input_id,
             output_id,
+            channel_routing,
         )
     }
 
@@ -1098,6 +1106,7 @@ impl AudioHost {
             expected_generation,
             None,
             None,
+            None,
         )
     }
 
@@ -1113,11 +1122,14 @@ impl AudioHost {
         expected_generation: Option<u64>,
         input_id: Option<String>,
         output_id: Option<String>,
+        channel_routing: Option<crate::ipc::ChannelRouting>,
     ) -> Result<AudioConfig> {
         self.guard_mode_vst()?;
         if let Some(controls) = initial_controls {
             controls.validate().map_err(|e| anyhow!(e))?;
         }
+        let channel_routing =
+            channel_routing.or_else(|| initial_controls.map(|controls| controls.routing()));
         crate::desktop_integration::check_microphone_access(host_name.as_deref())
             .map_err(|error| anyhow!(error))?;
         let cmd = IpcCommand::Start {
@@ -1129,6 +1141,7 @@ impl AudioHost {
             buffer_size,
             sample_rate,
             initial_controls,
+            channel_routing,
         };
 
         log::info!("Sending Start Command: {:?}", cmd);
@@ -1177,9 +1190,14 @@ impl AudioHost {
             IpcResponse::Started {
                 sample_rate,
                 buffer_size,
+                routing,
                 input_id: actual_input_id,
                 output_id: actual_output_id,
             } => {
+                if channel_routing.is_some() && routing.is_none() {
+                    let _ = self.execute_running_command(IpcCommand::Stop);
+                    return Err(anyhow!("音声エンジンが接続設定の確認に対応していません"));
+                }
                 if input_id
                     .as_ref()
                     .is_some_and(|id| Some(id) != actual_input_id.as_ref())
@@ -1202,6 +1220,7 @@ impl AudioHost {
                     output_id: actual_output_id,
                     buffer_size: Some(buffer_size),
                     sample_rate: Some(sample_rate),
+                    routing,
                 };
 
                 // Persist for fast auto-start on next launch
@@ -1217,6 +1236,7 @@ impl AudioHost {
                 Ok(AudioConfig {
                     sample_rate,
                     buffer_size,
+                    routing,
                     channels: 2, // Hardcoded for now, or fetch?
                 })
             }
@@ -1719,6 +1739,7 @@ impl AudioHost {
             None,
             input_id,
             output_id,
+            None,
         )
     }
 
@@ -2204,6 +2225,16 @@ impl AudioHost {
         match std::fs::read_to_string(path) {
             Ok(json) => {
                 match serde_json::from_str::<ActiveAudioConfig>(&json) {
+                    Ok(config)
+                        if !config.host.is_empty()
+                            && config
+                                .routing
+                                .is_none_or(|routing| routing.input_channels.is_none()) =>
+                    {
+                        // 旧形式には入力ペアがない。frontendから保存済みの選択が届くまで開始しない。
+                        log::debug!("入力ペアを受け取るまで旧設定の自動開始を待機します");
+                        self.frontend_bootstrap.deferred_config = Some(config);
+                    }
                     Ok(config) if !config.host.is_empty() => {
                         self.frontend_bootstrap.automatic_attempted = true;
                         log::info!("Auto-starting audio with last config: {:?}", config);
@@ -2218,6 +2249,7 @@ impl AudioHost {
                             Some(generation),
                             config.input_id,
                             config.output_id,
+                            config.routing,
                         ) {
                             Ok(res) => {
                                 self.frontend_bootstrap.warmup_succeeded = true;
@@ -2313,20 +2345,33 @@ fn require_identity_capability(
     start: &IpcCommand,
     mut send: impl FnMut(IpcCommand) -> Result<IpcResponse>,
 ) -> Result<()> {
-    if !matches!(
+    let needs_routing = matches!(
         start,
         IpcCommand::Start {
-            input_id: Some(_),
-            ..
-        } | IpcCommand::Start {
-            output_id: Some(_),
+            channel_routing: Some(_),
             ..
         }
-    ) {
+    );
+    if !needs_routing
+        && !matches!(
+            start,
+            IpcCommand::Start {
+                input_id: Some(_),
+                ..
+            } | IpcCommand::Start {
+                output_id: Some(_),
+                ..
+            }
+        )
+    {
         return Ok(());
     }
     match send(IpcCommand::StartIdentityCapability) {
-        Ok(IpcResponse::StartIdentityCapability { version: 1 }) => Ok(()),
+        Ok(IpcResponse::StartIdentityCapability { version })
+            if version >= if needs_routing { 2 } else { 1 } =>
+        {
+            Ok(())
+        }
         _ => Err(anyhow!(
             "音声エンジンが機器IDの照合に対応していません。再起動して設定を確認してください"
         )),

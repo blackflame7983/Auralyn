@@ -28,6 +28,8 @@ pub struct ProfileAudioConfig {
     pub sample_rate: u32,
     pub buffer_size: u32,
     pub input_channels: Vec<usize>,
+    #[serde(default)]
+    pub output_routing: crate::ipc::OutputRouting,
     pub input_gain_db: f32,
     pub master_gain_db: f32,
 }
@@ -101,6 +103,8 @@ pub struct ProfileSaveCategories {
 #[serde(rename_all = "camelCase")]
 pub struct ProfileAudioExtras {
     pub input_channels: Option<Vec<usize>>,
+    #[serde(default)]
+    pub output_routing: crate::ipc::OutputRouting,
     pub input_gain_db: Option<f32>,
     pub master_gain_db: Option<f32>,
 }
@@ -540,6 +544,7 @@ mod tests {
                 sample_rate: 48000,
                 buffer_size: 512,
                 input_channels: vec![0, 1],
+                output_routing: crate::ipc::OutputRouting::Legacy,
                 input_gain_db: 0.0,
                 master_gain_db: -3.0,
             }),
@@ -621,6 +626,7 @@ mod tests {
             sample_rate: 48000,
             buffer_size: 512,
             input_channels: vec![0, 1],
+            output_routing: crate::ipc::OutputRouting::Legacy,
             input_gain_db: 0.0,
             master_gain_db: 0.0,
         };

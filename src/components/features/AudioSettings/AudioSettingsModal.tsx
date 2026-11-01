@@ -20,6 +20,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { useTheme } from '../../../hooks/useTheme';
 import { InputChannelSelector } from './InputChannelSelector';
+import { OutputChannelSelector } from './OutputChannelSelector';
+import { readOutputRouting } from '@/lib/audioChannelRouting';
 import { ObsConnectionSettings } from './ObsConnectionSettings';
 import { APP_INFO } from '../../../constants/appInfo';
 import { ShortcutsPanel } from './ShortcutsPanel';
@@ -104,9 +106,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const selectedOutputDevice = isAsio
     ? asioOutputs.find(device => !!selectedInputDevice?.id && device.id === selectedInputDevice.id) ?? (asioOutputs.length === 1 ? asioOutputs[0] : undefined)
     : selectedOutputFromSelection;
+  const storedConfig = currentConfig?.host ? currentConfig : readAudioPreferences();
   const connection = useAudioConnectionController({ isOpen, host: selectedHost, input: selectedInputDevice,
     output: selectedOutputDevice, sampleRate: selectedSampleRate, bufferSize: selectedBufferSize, isAsio,
-    currentChannels: currentInputChannels, onConfigChange });
+    currentChannels: currentInputChannels ?? storedConfig?.inputChannels,
+    currentOutputRouting: storedConfig?.outputRouting ?? (storedConfig ? { mode: 'legacy' } : undefined), onConfigChange });
   const loading = isApplying || devicesLoading;
   const savedConnection = useMemo(() => {
     const saved = currentConfig ?? readAudioPreferences();
@@ -120,6 +124,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     selectedBufferSize !== (savedConnection.bufferSize ?? 512) && t('settings.AudioSettingsModal.047'),
     selectedSampleRate !== (savedConnection.sampleRate ?? 48000) && t('settings.AudioSettingsModal.060'),
     (isAsio && connection.channels.some((channel, index) => channel !== (savedConnection.inputChannels ?? currentInputChannels ?? [0, 1])[index])) && t('settings.InputChannelSelector.205'),
+    (isAsio && JSON.stringify(connection.outputRouting) !== JSON.stringify(savedConnection.outputRouting ?? { mode: 'legacy' })) && t('settings.routing.title'),
   ].filter((value): value is string => typeof value === 'string');
   const hasConnectionChanges = changedFields.length > 0;
 
@@ -299,7 +304,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         input: selectedInput,
         output: selectedOutput,
         bufferSize: selectedBufferSize,
-        sampleRate: selectedSampleRate
+        sampleRate: selectedSampleRate,
+        inputId: selectedInputDevice?.id,
+        outputId: selectedOutputDevice?.id,
+        inputChannels: connection.channels,
+        outputRouting: connection.outputRouting,
       }
     };
     setPresets(newPresets);
@@ -311,10 +320,21 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (p) {
       setPresetName(name);
       if (p.host) setSelectedHost(p.host);
-      if (p.input) setSelectedInput(p.input, p.host ?? selectedHost);
-      if (p.output) setSelectedOutput(p.output, p.host ?? selectedHost); // Might trigger useEffect to auto-correct if invalid
+      if (p.inputId) setSelectedInputKey(`id:${p.inputId}`);
+      else if (p.input) setSelectedInput(p.input, p.host ?? selectedHost);
+      if (p.outputId) setSelectedOutputKey(`id:${p.outputId}`);
+      else if (p.output) setSelectedOutput(p.output, p.host ?? selectedHost);
       if (p.bufferSize) setSelectedBufferSize(p.bufferSize);
       if (p.sampleRate) setSelectedSampleRate(p.sampleRate);
+      const matches = devices.inputs.filter(device => device.host.toLowerCase() === (p.host ?? selectedHost).toLowerCase()
+        && (p.inputId ? device.id === p.inputId : device.name === p.input));
+      if (matches.length === 1) {
+        const device = matches[0];
+        connection.setRoutingForDevice(`${device.host}\u0000${device.id ?? device.name}`, {
+          inputChannels: p.inputChannels,
+          outputRouting: readOutputRouting(p.outputRouting) ?? { mode: 'legacy' },
+        });
+      }
     }
   };
 
@@ -444,6 +464,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       monitorEnabled={connection.monitorInput}
                       onChannelMapped={connection.setChannels}
                     />
+                    <OutputChannelSelector value={connection.outputRouting} maxChannels={selectedOutputDevice?.channels ?? 0}
+                      disabled={isApplying} onChange={connection.setOutputRouting} />
                   </div>
                 )}
 

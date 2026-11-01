@@ -79,10 +79,10 @@ test.describe('設定済みの停止中', () => {
         await expect(page.getByRole('button', { name: '音声を開始', exact: true })).toHaveCount(0);
         await expect(error).toHaveCount(0);
     });
-    test('音声開始後の設定失敗を、開始自体の失敗と区別する', async ({ page }) => {
+    test('音声開始後の保存失敗を、開始自体の失敗と区別する', async ({ page }) => {
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-        await page.evaluate(() => { (window as any).__e2eChannelFailure = true; });
+        await page.evaluate(() => { (window as any).__e2eSaveFailure = true; });
         await page.getByRole('button', { name: '音声を開始', exact: true }).click();
         const error = page.getByRole('alert').filter({ hasText: '音声は開始しましたが' });
         await expect(error).toBeVisible();
@@ -91,7 +91,7 @@ test.describe('設定済みの停止中', () => {
         await error.getByRole('button', { name: '入出力を変更' }).click();
         await expect(page.getByRole('dialog', { name: '設定', exact: true })).toBeVisible();
         expect(await page.evaluate(() => (window as any).__e2eStarts.length)).toBe(1);
-        await page.evaluate(() => { (window as any).__e2eChannelFailure = false; });
+        await page.evaluate(() => { (window as any).__e2eSaveFailure = false; });
         await page.getByRole('button', { name: '保存して再起動', exact: true }).click();
         await expect(page.getByRole('dialog', { name: '設定', exact: true })).toHaveCount(0);
         await expect(error).toHaveCount(0);

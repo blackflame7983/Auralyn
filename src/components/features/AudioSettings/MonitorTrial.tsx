@@ -5,6 +5,7 @@ import { liveModesApi } from '@/api/liveModes';
 import { readAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { LatencyDetails } from '@/components/layout/LatencyDetails';
+import { channelRoutingFor, readOutputRouting } from '@/lib/audioChannelRouting';
 
 const condition = (s: EngineRuntimeStats) => JSON.stringify([s.queueDiagnostics?.epoch, s.latencyMetadata?.streamEpoch, s.latencyMetadata?.comparisonRevision, s.resamplerCohortTiming?.requestedRevision, s.latencyMetadata?.stageBreakdown]);
 export function monitorAdvice(s: EngineRuntimeStats) {
@@ -36,6 +37,7 @@ function validOriginal(value: unknown): value is AudioPreferences {
     return text(item.host) && text(item.inputId) && text(item.outputId) && text(item.input) && text(item.output)
         && Number.isSafeInteger(item.sampleRate) && (item.sampleRate as number) > 0 && (item.sampleRate as number) <= 768000
         && Number.isSafeInteger(item.bufferSize) && (item.bufferSize as number) > 0 && (item.bufferSize as number) <= 4096
+        && (item.outputRouting === undefined || readOutputRouting(item.outputRouting) !== undefined)
         && (channels === undefined || (Array.isArray(channels) && channels.length === 2 && channels.every(n => Number.isSafeInteger(n) && n >= 0 && n <= 65535)));
 }
 function readRecovery(): RecoveryRecord {
@@ -112,9 +114,10 @@ export function MonitorTrial({ devices, onApplied, onBusyChange, disabled = fals
         } catch { setDeviceMissing(false); setError(true); } finally { operation.current = false; setBusy(false); }
     }
     async function start(config: AudioPreferences, expectedState?: AudioStateInfo) {
-        const actual = await audioApi.start(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId, expectedState);
-        const applied = { ...config, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size };
-        if (config.inputChannels) await audioApi.setInputChannels(...config.inputChannels);
+        const actual = await audioApi.start(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId, expectedState, channelRoutingFor(config));
+        const routing = actual.routing ?? channelRoutingFor(config);
+        const applied = { ...config, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size,
+            inputChannels: routing.inputChannels, outputRouting: routing.outputRouting };
         await onApplied(applied);
         return applied;
     }

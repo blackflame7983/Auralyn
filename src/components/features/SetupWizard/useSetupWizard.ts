@@ -8,6 +8,7 @@ import { getVstPanelOpen, saveVstPanelOpen } from '../../../hooks/useVstPanel';
 import { toast } from 'sonner';
 import { listen } from '@tauri-apps/api/event';
 import { isVirtualOutput, verifiedDefaultOutput, recommendMicrophone, type WizardConfig, type WizardState, type UserGoal, type SetupWizardModalProps } from './wizardModel';
+import type { ChannelRouting } from '@/lib/audioChannelRouting';
 
 // ウィザードの選択・音声操作・開始前状態の復元を描画から分離する。
 export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardModalProps) {
@@ -53,7 +54,8 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                         init.config.input || undefined,
                         init.config.output || undefined,
                         init.config.buffer_size || undefined,
-                        init.config.sample_rate || undefined
+                        init.config.sample_rate || undefined,
+                        init.config.input_id, init.config.output_id, undefined, init.config.routing
                     );
                     toast.info(createElement(LocalizedMessage, { id: 'guide.copy.241' }));
                 } else {
@@ -86,6 +88,9 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         input: null,
         output: null,
         outputMode: 'default'
+    });
+    const initialRouting = (): ChannelRouting => ({
+        outputRouting: { mode: 'independent', channels: [0, config.output?.channels === 1 ? 0 : 1] },
     });
 
     const [availableInputs, setAvailableInputs] = useState<AudioDevice[]>([]);
@@ -288,8 +293,8 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         setAudioStartError('');
         hasTouchedEngineRef.current = true;
         try {
-            await audioApi.start(config.host, config.input.name, config.output.name);
-            await audioApi.setInputChannels(0, 1); // Reset channels to default to avoid silence from old config
+            await audioApi.start(config.host, config.input.name, config.output.name, undefined, undefined,
+                config.input.id, config.output.id, undefined, initialRouting());
             setIsTestingSound(true);
             setRunningInput(config.input.name);
             toast.success(createElement(LocalizedMessage, { id: 'guide.copy.251' }));
@@ -347,8 +352,9 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                 setInputLevel(0);
             }
 
-            const actualConfig = await audioApi.start(config.host, config.input.name, config.output.name);
-            await audioApi.setInputChannels(0, 1); // Reset channels for safety
+            const startedConfig = await audioApi.start(config.host, config.input.name, config.output.name, undefined, undefined,
+                config.input.id, config.output.id, undefined, initialRouting());
+            const actualConfig = { ...startedConfig, routing: startedConfig.routing ?? initialRouting() };
             if (config.goal === 'music') {
                 const stats = await audioApi.getEngineRuntimeStats();
                 const mode = stats.noiseReductionMode;
@@ -378,7 +384,8 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
             }
             if (config.goal === 'music') {
                 const expected: Record<string, string> = {
-                    vst_host_audio_config: JSON.stringify({ host: config.host, input: config.input.name, output: config.output.name, sampleRate: actualConfig.sample_rate, bufferSize: actualConfig.buffer_size }),
+                    vst_host_audio_config: JSON.stringify({ host: config.host, input: config.input.name, output: config.output.name, sampleRate: actualConfig.sample_rate, bufferSize: actualConfig.buffer_size,
+                        inputChannels: actualConfig.routing.inputChannels, outputRouting: actualConfig.routing.outputRouting }),
                     vst_host_wizard_done: 'true', vst_host_setup_goal: 'music',
                     ...(panelChoice ? { vst_host_beginner_mode: 'false' } : {}),
                 };

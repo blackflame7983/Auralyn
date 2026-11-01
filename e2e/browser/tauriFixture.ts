@@ -30,6 +30,11 @@ export const test = base.extend<{ transport: void; stoppedHome: boolean; liveHom
             Object.assign(window, { __e2eStarts: starts });
             let outputMuted = true;
             let outputGain = 1;
+            const saveItem = Storage.prototype.setItem;
+            Storage.prototype.setItem = function(key, value) {
+                if ((window as any).__e2eSaveFailure && key === 'vst_host_audio_config') throw new Error('テスト用: 音声設定の保存失敗');
+                return saveItem.call(this, key, value);
+            };
             const gainWrites: number[] = [];
             Object.assign(window, { __e2eOutputGainWrites: gainWrites, __e2eSetOutputGain: (value: number) => { outputGain = value; window.dispatchEvent(new CustomEvent('output-gain-sync', { detail: value * 100 })); } });
             Object.assign(window, { __e2eSetOutputMuted: (muted: boolean) => {
@@ -50,7 +55,8 @@ export const test = base.extend<{ transport: void; stoppedHome: boolean; liveHom
                         if ((window as any).__e2eStartFailure) throw new Error('テスト用: 機器が見つかりません');
                         audioRunning = true;
                         (window as any).__e2eEmit('audio-started', { sample_rate: 48000, buffer_size: 512 });
-                        return { host: 'WASAPI', input: mic.name, output: output.name, sample_rate: 48000, buffer_size: 512 };
+                        return { host: 'WASAPI', input: mic.name, output: output.name, sample_rate: 48000, buffer_size: 512,
+                            routing: args.channelRouting ? { ...args.channelRouting, inputChannels: args.channelRouting.inputChannels ?? [0, 1] } : undefined };
                     }
                     case 'set_input_channels':
                         if ((window as any).__e2eChannelFailure) throw new Error('テスト用: 入力チャンネルの反映失敗');

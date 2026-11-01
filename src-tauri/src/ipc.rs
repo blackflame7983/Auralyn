@@ -1,5 +1,187 @@
 use serde::{Deserialize, Serialize};
 
+/// 入力と物理出力の対応。旧データでは従来の条件付き insert を維持する。
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "mode", rename_all = "camelCase")]
+pub enum OutputRouting {
+    #[default]
+    Legacy,
+    Independent {
+        channels: [usize; 2],
+    },
+    Insert,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelRouting {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_channels: Option<[usize; 2]>,
+    #[serde(default)]
+    pub output_routing: OutputRouting,
+}
+
+impl ChannelRouting {
+    /// 実際のストリーム構成確定後、callback の生成前に解決する。
+    pub fn resolve(
+        mut self,
+        asio: bool,
+        inputs: usize,
+        outputs: usize,
+    ) -> Result<(Self, [usize; 2]), String> {
+        if inputs == 0 || outputs == 0 {
+            return Err("入出力チャンネルがありません".into());
+        }
+        let first_input = [0, usize::from(inputs > 1)];
+        let input = match self.input_channels {
+            None => first_input,
+            Some([0, 1]) if !asio && inputs == 1 => [0, 0],
+            Some(pair)
+                if pair.iter().all(|&channel| channel < inputs)
+                    && (asio || pair.iter().all(|&channel| channel < 2)) =>
+            {
+                pair
+            }
+            Some(_) => return Err("入力チャンネルが範囲外です".into()),
+        };
+        let first_output = [0, usize::from(outputs > 1)];
+        // 未取得の能力を持つ機器の既定ステレオ指定だけは mono に畳む。
+        if asio
+            && outputs == 1
+            && self.output_routing == (OutputRouting::Independent { channels: [0, 1] })
+        {
+            self.output_routing = OutputRouting::Independent { channels: [0, 0] };
+        }
+        if !asio && matches!(self.output_routing, OutputRouting::Independent { .. }) {
+            self.output_routing = OutputRouting::Independent {
+                channels: first_output,
+            };
+        }
+        let output = match self.output_routing {
+            OutputRouting::Legacy if asio && input.iter().all(|&channel| channel < outputs) => {
+                input
+            }
+            OutputRouting::Legacy => first_output,
+            OutputRouting::Independent { channels } if asio => {
+                if !channels.iter().all(|&channel| channel < outputs) {
+                    return Err("出力チャンネルが範囲外です".into());
+                }
+                channels
+            }
+            OutputRouting::Independent { .. } => first_output,
+            OutputRouting::Insert if asio && input.iter().all(|&channel| channel < outputs) => {
+                input
+            }
+            OutputRouting::Insert => {
+                return Err("insert に対応する出力チャンネルがありません".into())
+            }
+        };
+        Ok((
+            Self {
+                input_channels: Some(input),
+                ..self
+            },
+            output,
+        ))
+    }
+}
+
+#[cfg(test)]
+mod channel_routing_tests {
+    use super::{ChannelRouting, OutputRouting};
+
+    #[test]
+    fn old_data_defaults_to_legacy_and_resolves_first_pair() {
+        let routing: ChannelRouting = serde_json::from_str("{}").unwrap();
+        assert_eq!(routing.output_routing, OutputRouting::Legacy);
+        assert_eq!(
+            routing.resolve(true, 4, 4).unwrap().0.input_channels,
+            Some([0, 1])
+        );
+    }
+
+    #[test]
+    fn independent_insert_and_legacy_choose_distinct_outputs() {
+        let routing = ChannelRouting {
+            input_channels: Some([2, 3]),
+            output_routing: OutputRouting::Independent { channels: [0, 1] },
+        };
+        assert_eq!(routing.resolve(true, 4, 4).unwrap().1, [0, 1]);
+        assert_eq!(
+            ChannelRouting {
+                output_routing: OutputRouting::Insert,
+                ..routing
+            }
+            .resolve(true, 4, 4)
+            .unwrap()
+            .1,
+            [2, 3]
+        );
+        assert_eq!(
+            ChannelRouting {
+                output_routing: OutputRouting::Legacy,
+                ..routing
+            }
+            .resolve(true, 4, 2)
+            .unwrap()
+            .1,
+            [0, 1]
+        );
+    }
+
+    #[test]
+    fn rejects_missing_physical_channels_and_collapses_mono() {
+        let input = ChannelRouting {
+            input_channels: Some([2, 3]),
+            output_routing: OutputRouting::Insert,
+        };
+        assert!(input.resolve(true, 2, 4).is_err());
+        assert!(input.resolve(true, 4, 2).is_err());
+        let output = ChannelRouting {
+            input_channels: Some([0, 1]),
+            output_routing: OutputRouting::Independent { channels: [2, 3] },
+        };
+        assert!(output.resolve(true, 4, 2).is_err());
+        let (resolved, pair) = output.resolve(false, 1, 1).unwrap();
+        assert_eq!(resolved.input_channels, Some([0, 0]));
+        assert_eq!(pair, [0, 0]);
+        assert!(input.resolve(false, 4, 4).is_err());
+        let default_output = ChannelRouting {
+            input_channels: None,
+            output_routing: OutputRouting::Independent { channels: [0, 1] },
+        };
+        let (resolved, pair) = default_output.resolve(true, 1, 1).unwrap();
+        assert_eq!(pair, [0, 0]);
+        assert_eq!(
+            resolved.output_routing,
+            OutputRouting::Independent { channels: [0, 0] }
+        );
+        assert!(ChannelRouting {
+            output_routing: OutputRouting::Independent { channels: [0, 2] },
+            ..default_output
+        }
+        .resolve(true, 1, 1)
+        .is_err());
+    }
+
+    #[test]
+    fn routing_json_round_trips() {
+        let routing = ChannelRouting {
+            input_channels: Some([2, 3]),
+            output_routing: OutputRouting::Independent { channels: [0, 1] },
+        };
+        let value = serde_json::to_value(routing).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({"inputChannels": [2, 3], "outputRouting": {"mode": "independent", "channels": [0, 1]}})
+        );
+        assert_eq!(
+            serde_json::from_value::<ChannelRouting>(value).unwrap(),
+            routing
+        );
+    }
+}
+
 /// 準備画面の確認を結び付ける制御側の状態。音声の到達や聴感を保証しない。
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -9,6 +191,8 @@ pub struct PreparationSnapshot {
     pub routing_revision: String,
     pub input_gain: f32,
     pub input_channels: [usize; 2],
+    #[serde(default)]
+    pub output_routing: OutputRouting,
     pub output_gain: f32,
     pub output_revision: String,
     pub muted: bool,
@@ -24,10 +208,18 @@ pub struct StartControls {
     pub input_gain: f32,
     pub output_gain: f32,
     pub input_channels: [usize; 2],
+    #[serde(default)]
+    pub output_routing: OutputRouting,
     pub muted: bool,
     pub bypassed: bool,
 }
 impl StartControls {
+    pub fn routing(&self) -> ChannelRouting {
+        ChannelRouting {
+            input_channels: Some(self.input_channels),
+            output_routing: self.output_routing,
+        }
+    }
     pub fn validate(&self) -> Result<(), String> {
         if [self.input_gain, self.output_gain]
             .iter()
@@ -269,6 +461,8 @@ pub enum Command {
         sample_rate: Option<u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         initial_controls: Option<StartControls>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        channel_routing: Option<ChannelRouting>,
     },
     Stop,
     LoadPlugin {
@@ -438,6 +632,8 @@ pub enum Response {
     Started {
         sample_rate: u32,
         buffer_size: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        routing: Option<ChannelRouting>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         input_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { StrictMode } from 'react';
 import { toast } from 'sonner';
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), success: vi.fn(), error: vi.fn() } }));
-const config = { host: 'ASIO', input: 'selected', output: 'selected', sampleRate: 96000, bufferSize: 512, inputChannels: [6, 7] };
+const config = { host: 'ASIO', input: 'selected', output: 'selected', inputId: 'saved-input', outputId: 'saved-output', sampleRate: 96000, bufferSize: 512, inputChannels: [6, 7] };
 const state = { is_running: true, config: { host: 'ASIO', sample_rate: 96000, buffer_size: 512 } };
 const running = { running: true, streamFailed: false };
 const attached = { outcome: 'attached', initialPage: false, error: null };
@@ -36,7 +36,7 @@ function native(extra?: (command: string) => unknown) {
 function noLegacyMutation() {
     expect(vi.mocked(invoke).mock.calls.some(([command]) => ['start_audio', 'restart_audio_engine', 'set_input_channels', 'set_input_gain', 'set_output_gain'].includes(command))).toBe(false);
 }
-it('初回cold開始はsaved pairとgainを一つのnative要求へ渡し、通常Start/pairを送らない', async () => {
+it('初回cold開始は保存済み機器ID・pair・gainを一つのnative要求へ渡し、通常Start/pairを送らない', async () => {
     native(command => command === 'audio_frontend_bootstrap' ? { outcome: 'started', initialPage: true, error: null } : undefined);
     const { useAudioConfig } = await import('../useAudioConfig'); const { result } = renderHook(() => useAudioConfig(vi.fn()));
     await waitFor(() => expect(result.current.isEngineRunning).toBe(true));

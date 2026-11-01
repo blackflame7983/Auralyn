@@ -349,6 +349,7 @@ enum DiffField {
     Rate,
     Buffer,
     Channels,
+    OutputRouting,
     InputGain,
     OutputGain,
     Noise,
@@ -368,6 +369,7 @@ impl DiffField {
             Self::Rate => "bundle.field.sampleRate",
             Self::Buffer => "bundle.field.buffer",
             Self::Channels => "bundle.field.channels",
+            Self::OutputRouting => "bundle.field.outputRouting",
             Self::InputGain => "bundle.field.inputGain",
             Self::OutputGain => "bundle.field.outputGain",
             Self::Noise => "bundle.field.noise",
@@ -382,6 +384,30 @@ impl DiffField {
 }
 fn raw_text(value: &str, fallback: &str) -> UiText {
     UiText::new("bundle.value.raw", fallback).text("value", value)
+}
+fn output_routing_text(routing: crate::ipc::OutputRouting) -> String {
+    match routing {
+        crate::ipc::OutputRouting::Legacy => "従来の接続".into(),
+        crate::ipc::OutputRouting::Insert => "入力と同じチャンネル".into(),
+        crate::ipc::OutputRouting::Independent { channels } => {
+            format!(
+                "出力 {} / {}",
+                channels[0].saturating_add(1),
+                channels[1].saturating_add(1)
+            )
+        }
+    }
+}
+fn output_routing_ui_text(routing: crate::ipc::OutputRouting, fallback: &str) -> UiText {
+    match routing {
+        crate::ipc::OutputRouting::Legacy => UiText::new("bundle.value.outputLegacy", fallback),
+        crate::ipc::OutputRouting::Insert => UiText::new("bundle.value.outputInsert", fallback),
+        crate::ipc::OutputRouting::Independent { channels } => {
+            UiText::new("bundle.value.outputIndependent", fallback)
+                .number("left", channels[0].saturating_add(1) as f64)
+                .number("right", channels[1].saturating_add(1) as f64)
+        }
+    }
 }
 fn device_text(value: &Option<String>, fallback: &str) -> UiText {
     match value {
@@ -484,6 +510,10 @@ fn diff_value_texts(
                 UiText::new("bundle.value.zeroBasedChannels", new)
                     .text("channels", format!("{:?}", v.input_channels))
             }),
+        ),
+        DiffField::OutputRouting => (
+            Some(output_routing_ui_text(before.engine.output_routing, old)),
+            audio.map(|v| output_routing_ui_text(v.output_routing, new)),
         ),
         DiffField::InputGain | DiffField::OutputGain => {
             let (old_value, new_value) = if matches!(field, DiffField::InputGain) {
@@ -668,6 +698,15 @@ fn preview_diff(before: &Captured, bundle: &BundleV1) -> Vec<DiffRow> {
         Some(format!("{:?}（0始まり）", before.engine.input_channels)),
         audio
             .map(|c| format!("{:?}（0始まり）", c.input_channels))
+            .unwrap_or_default(),
+    );
+    row(
+        DiffField::OutputRouting,
+        "出力チャンネル",
+        selected,
+        Some(output_routing_text(before.engine.output_routing)),
+        audio
+            .map(|c| output_routing_text(c.output_routing))
             .unwrap_or_default(),
     );
     for (field, label, old, new) in [
@@ -859,6 +898,7 @@ fn capture(host: &mut audio::AudioHost) -> Result<(Captured, ControlWitness), St
             sample_rate: c.sample_rate?,
             buffer_size: c.buffer_size?,
             input_channels: engine.input_channels.clone(),
+            output_routing: engine.output_routing,
             input_gain_db: linear_db(engine.input_gain),
             master_gain_db: linear_db(engine.output_gain),
         })
@@ -960,6 +1000,7 @@ fn selected_matches(target: &BundleV1, after: &Captured) -> bool {
                 && current.sample_rate == audio.sample_rate
                 && current.buffer_size == audio.buffer_size
                 && current.input_channels == audio.input_channels
+                && current.output_routing == audio.output_routing
         })
     } else {
         true
@@ -999,24 +1040,7 @@ fn apply_selected(
     if replace_empty {
         host.unload_all_plugins(&ids).map_err(|e| e.to_string())?;
     }
-    let level = target.level_intent.as_ref();
-    let channels = target
-        .embedded_auralyn_preset
-        .audio_config
-        .as_ref()
-        .map_or(before.engine.input_channels.as_slice(), |c| {
-            c.input_channels.as_slice()
-        });
-    let initial = profile::StartIntent {
-        input_gain: level.map_or(before.engine.input_gain, |l| l.input_gain),
-        output_gain: level.map_or(before.engine.output_gain, |l| l.output_gain),
-        input_channels: [
-            *channels.first().ok_or("入力チャンネルが不正です")?,
-            *channels.get(1).ok_or("入力チャンネルが不正です")?,
-        ],
-        muted: before.engine.global_mute,
-        bypassed: before.engine.global_bypass,
-    };
+    let initial = selected_start_intent(target, before)?;
     let mut summary = profile::apply_profile_with_start_intent_and_ids(
         root,
         host,
@@ -1047,6 +1071,28 @@ fn apply_selected(
         }
     }
     Ok(summary)
+}
+
+fn selected_start_intent(
+    target: &BundleV1,
+    before: &Captured,
+) -> Result<profile::StartIntent, String> {
+    let level = target.level_intent.as_ref();
+    let audio = target.embedded_auralyn_preset.audio_config.as_ref();
+    let channels = audio.map_or(before.engine.input_channels.as_slice(), |c| {
+        c.input_channels.as_slice()
+    });
+    Ok(profile::StartIntent {
+        input_gain: level.map_or(before.engine.input_gain, |l| l.input_gain),
+        output_gain: level.map_or(before.engine.output_gain, |l| l.output_gain),
+        input_channels: [
+            *channels.first().ok_or("入力チャンネルが不正です")?,
+            *channels.get(1).ok_or("入力チャンネルが不正です")?,
+        ],
+        output_routing: audio.map_or(before.engine.output_routing, |c| c.output_routing),
+        muted: before.engine.global_mute,
+        bypassed: before.engine.global_bypass,
+    })
 }
 
 async fn capture_async(

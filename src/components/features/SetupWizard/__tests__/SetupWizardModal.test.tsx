@@ -427,7 +427,7 @@ describe('セットアップの接続チェック', () => {
         fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
         await screen.findByRole('heading', { name: '音声設定を保存しました' });
-        expect(onApplyConfig).toHaveBeenCalledWith('WASAPI', mic.name, cable.name, { sample_rate: 48000, buffer_size: 512, channels: 2 });
+        expect(onApplyConfig).toHaveBeenCalledWith('WASAPI', mic.name, cable.name, expect.objectContaining({ sample_rate: 48000, buffer_size: 512, channels: 2, routing: { outputRouting: { mode: 'independent', channels: [0, 1] } } }));
         vi.mocked(invoke).mockClear();
         fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
         expect(onClose).toHaveBeenCalledOnce();
@@ -617,7 +617,7 @@ describe('PC audio purpose', () => {
         });
         const { onApplyConfig } = await openWizard();
         onApplyConfig.mockImplementation((host, input, output, actual) => {
-            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input, output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size }));
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input, output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size, inputChannels: actual.routing?.inputChannels, outputRouting: actual.routing?.outputRouting }));
             localStorage.setItem('vst_host_wizard_done', 'true');
         });
         await toConfirm();
@@ -649,7 +649,7 @@ describe('PC audio purpose', () => {
         onApplyConfig.mockImplementation(async (host, input, output, actual) => {
             await pending;
             if (result === 'reject') throw new Error('save failure');
-            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input, output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size }));
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input, output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size, inputChannels: actual.routing?.inputChannels, outputRouting: actual.routing?.outputRouting }));
             if (result !== 'readback') localStorage.setItem('vst_host_wizard_done', 'true');
         });
         await toConfirm();
@@ -673,7 +673,7 @@ describe('PC audio purpose', () => {
         });
         const { onApplyConfig } = await openWizard();
         onApplyConfig.mockImplementation((host, input, output, actual) => {
-            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input, output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size }));
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input, output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size, inputChannels: actual.routing?.inputChannels, outputRouting: actual.routing?.outputRouting }));
             localStorage.setItem('vst_host_wizard_done', 'true');
         });
         await toConfirm();
@@ -700,7 +700,7 @@ describe('PC audio purpose', () => {
         });
         const { onApplyConfig } = await openWizard();
         onApplyConfig.mockImplementation((host, input, output, actual) => {
-            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input, output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size }));
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host, input, output, sampleRate: actual.sample_rate, bufferSize: actual.buffer_size, inputChannels: actual.routing?.inputChannels, outputRouting: actual.routing?.outputRouting }));
             throw new Error('save failure');
         });
         await toConfirm(); fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));

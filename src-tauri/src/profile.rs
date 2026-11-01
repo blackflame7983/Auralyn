@@ -12,6 +12,30 @@ use std::path::Path;
 
 pub(crate) type StartIntent = crate::ipc::StartControls;
 
+fn audio_start_intent(
+    audio: &ProfileAudioConfig,
+    previous: Option<StartIntent>,
+    muted: bool,
+    bypassed: bool,
+) -> Result<StartIntent, String> {
+    let [left, right] = audio.input_channels.as_slice() else {
+        return Err("入力チャンネルが不正です".into());
+    };
+    let controls = previous.unwrap_or(StartIntent {
+        input_gain: presets::db_to_linear(audio.input_gain_db),
+        output_gain: presets::db_to_linear(audio.master_gain_db),
+        input_channels: [*left, *right],
+        output_routing: audio.output_routing,
+        muted,
+        bypassed,
+    });
+    Ok(StartIntent {
+        input_channels: [*left, *right],
+        output_routing: audio.output_routing,
+        ..controls
+    })
+}
+
 /// 現在のランタイム状態からフルプロファイルを収集する
 pub fn capture_current_profile(
     host: &mut AudioHost,
@@ -23,10 +47,29 @@ pub fn capture_current_profile(
     let stats = host.get_engine_runtime_stats().map_err(|e| e.to_string())?;
 
     let extras = audio_extras.unwrap_or_default();
-    let input_channels = extras
-        .input_channels
-        .filter(|c| c.len() >= 2)
+    let input_channels = stats
+        .preparation
+        .as_ref()
+        .map(|p| p.input_channels.to_vec())
+        .or_else(|| {
+            state
+                .config
+                .as_ref()
+                .and_then(|c| c.routing.and_then(|r| r.input_channels.map(|p| p.to_vec())))
+        })
+        .or_else(|| extras.input_channels.filter(|c| c.len() >= 2))
         .unwrap_or_else(|| vec![0, 1]);
+    let output_routing = stats
+        .preparation
+        .as_ref()
+        .map(|p| p.output_routing)
+        .or_else(|| {
+            state
+                .config
+                .as_ref()
+                .and_then(|c| c.routing.map(|r| r.output_routing))
+        })
+        .unwrap_or(extras.output_routing);
 
     // エンジン停止中は架空のデバイス設定を作らない（audioConfig を含めない）
     let audio_config = state.config.map(|active| ProfileAudioConfig {
@@ -36,6 +79,7 @@ pub fn capture_current_profile(
         sample_rate: active.sample_rate.unwrap_or(48000),
         buffer_size: active.buffer_size.unwrap_or(512),
         input_channels,
+        output_routing,
         input_gain_db: extras.input_gain_db.unwrap_or(0.0),
         master_gain_db: extras.master_gain_db.unwrap_or(0.0),
     });
@@ -239,6 +283,9 @@ pub(crate) fn apply_profile_with_start_intent_and_ids(
         }
 
         if can_apply_audio {
+            if resolved.input_channels.len() != 2 {
+                return Err("入力チャンネルが不正です".into());
+            }
             let differs = presets::audio_config_differs(
                 current.map(|c| c.host.as_str()),
                 current.and_then(|c| c.input.as_deref()),
@@ -252,41 +299,53 @@ pub(crate) fn apply_profile_with_start_intent_and_ids(
                 current.and_then(|c| c.input_id.as_ref()) != Some(input_id)
                     || current.and_then(|c| c.output_id.as_ref()) != Some(output_id)
             });
-            if differs || id_differs {
+            let current_routing = pre_stats
+                .preparation
+                .as_ref()
+                .map(|p| crate::ipc::ChannelRouting {
+                    input_channels: Some(p.input_channels),
+                    output_routing: p.output_routing,
+                })
+                .or_else(|| current.and_then(|c| c.routing));
+            let requested_routing = crate::ipc::ChannelRouting {
+                input_channels: Some([resolved.input_channels[0], resolved.input_channels[1]]),
+                output_routing: resolved.output_routing,
+            };
+            if differs || id_differs || current_routing != Some(requested_routing) {
                 summary.needs_engine_restart = true;
-                if let Some(intent) = start_intent {
-                    let result = if let Some((input_id, output_id)) = &device_ids {
-                        host.start_bundle_with_device_ids(
-                            Some(resolved.host.clone()),
-                            resolved.input_device.clone(),
-                            resolved.output_device.clone(),
-                            Some(resolved.buffer_size),
-                            Some(resolved.sample_rate),
-                            intent,
-                            Some(input_id.clone()),
-                            Some(output_id.clone()),
-                        )
-                    } else {
-                        host.start_bundle(
-                            Some(resolved.host.clone()),
-                            resolved.input_device.clone(),
-                            resolved.output_device.clone(),
-                            Some(resolved.buffer_size),
-                            Some(resolved.sample_rate),
-                            intent,
-                        )
-                    };
-                    result.map_err(|e| e.to_string())?;
-                } else {
-                    host.kill_engine();
-                    host.start(
+                let intent = audio_start_intent(
+                    &resolved,
+                    start_intent,
+                    host.global_mute_intent(),
+                    pre_stats.global_bypass,
+                )?;
+                let result = if let Some((input_id, output_id)) = &device_ids {
+                    host.start_bundle_with_device_ids(
                         Some(resolved.host.clone()),
                         resolved.input_device.clone(),
                         resolved.output_device.clone(),
                         Some(resolved.buffer_size),
                         Some(resolved.sample_rate),
+                        intent,
+                        Some(input_id.clone()),
+                        Some(output_id.clone()),
                     )
-                    .map_err(|e| e.to_string())?;
+                } else {
+                    host.start_bundle(
+                        Some(resolved.host.clone()),
+                        resolved.input_device.clone(),
+                        resolved.output_device.clone(),
+                        Some(resolved.buffer_size),
+                        Some(resolved.sample_rate),
+                        intent,
+                    )
+                };
+                let started = result.map_err(|e| e.to_string())?;
+                if let Some(routing) = started.routing {
+                    resolved.output_routing = routing.output_routing;
+                    if let Some(channels) = routing.input_channels {
+                        resolved.input_channels = channels.to_vec();
+                    }
                 }
 
                 // 再起動で消えた設定のうち、プロファイルに含まれない
@@ -321,10 +380,6 @@ pub(crate) fn apply_profile_with_start_intent_and_ids(
             }
 
             // ゲイン・チャンネルはエンジン再起動の有無に関わらず適用
-            if resolved.input_channels.len() >= 2 {
-                host.set_input_channels(resolved.input_channels[0], resolved.input_channels[1])
-                    .map_err(|e| e.to_string())?;
-            }
             host.set_input_gain(start_intent.map_or_else(
                 || presets::db_to_linear(resolved.input_gain_db),
                 |intent| intent.input_gain,
@@ -390,4 +445,44 @@ pub(crate) fn apply_profile_with_start_intent_and_ids(
     }
 
     Ok(summary)
+}
+
+#[cfg(test)]
+mod routing_tests {
+    use super::*;
+    use crate::ipc::OutputRouting;
+
+    #[test]
+    fn profile_start_intent_uses_saved_pair_and_preserves_mute_bypass_and_bundle_levels() {
+        let config = ProfileAudioConfig {
+            host: "ASIO".into(),
+            input_device: None,
+            output_device: None,
+            sample_rate: 48000,
+            buffer_size: 512,
+            input_channels: vec![2, 3],
+            output_routing: OutputRouting::Independent { channels: [0, 1] },
+            input_gain_db: 0.0,
+            master_gain_db: 0.0,
+        };
+        let previous = StartIntent {
+            input_gain: 0.25,
+            output_gain: 0.5,
+            input_channels: [0, 1],
+            output_routing: OutputRouting::Insert,
+            muted: true,
+            bypassed: true,
+        };
+        let intent = audio_start_intent(&config, Some(previous), false, false).unwrap();
+        assert_eq!(intent.input_channels, [2, 3]);
+        assert_eq!(intent.output_routing, config.output_routing);
+        assert_eq!((intent.input_gain, intent.output_gain), (0.25, 0.5));
+        assert!(intent.muted && intent.bypassed);
+        let normal = audio_start_intent(&config, None, true, true).unwrap();
+        assert!(normal.muted && normal.bypassed);
+        assert_eq!((normal.input_gain, normal.output_gain), (1.0, 1.0));
+        let mut invalid = config;
+        invalid.input_channels.pop();
+        assert!(audio_start_intent(&invalid, None, false, false).is_err());
+    }
 }

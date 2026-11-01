@@ -24,6 +24,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
 
     const handleConfigUpdate = (config: Partial<AudioConfig> & { host: string }, options?: { audioStarted: true }) => {
         const { host, input, output, sampleRate, bufferSize, inputChannels } = config;
+        const outputRouting = config.outputRouting ?? audioConfig.outputRouting;
 
         const channels: [number, number] | undefined =
             host.toLowerCase() === 'asio' ? (inputChannels ?? audioConfig.inputChannels) : [0, 1];
@@ -36,6 +37,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
             sampleRate: sampleRate ?? prev.sampleRate,
             bufferSize: bufferSize ?? prev.bufferSize,
             inputChannels: channels,
+            outputRouting,
             ...deviceIdsForUpdate(prev, config),
         }));
 
@@ -47,6 +49,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
             sampleRate: sampleRate ?? audioConfig.sampleRate,
             bufferSize: bufferSize ?? audioConfig.bufferSize,
             inputChannels: channels,
+            outputRouting,
             ...deviceIdsForUpdate(audioConfig, config),
         };
         localStorage.setItem('vst_host_audio_config', JSON.stringify(newConfig));
@@ -92,7 +95,9 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
                 if (!initializationPromise) {
                     initializationPromise = audioApi.frontendBootstrap({
                         config: config?.host ? { host: config.host, input: config.input, output: config.output,
-                            sampleRate: config.sampleRate, bufferSize: config.bufferSize, inputChannels: config.inputChannels } : null,
+                            inputId: config.inputId, outputId: config.outputId,
+                            sampleRate: config.sampleRate, bufferSize: config.bufferSize, inputChannels: config.inputChannels,
+                            outputRouting: config.outputRouting } : null,
                         inputGain: Number(localStorage.getItem('vst_host_input_gain') ?? '100') / 100,
                         outputGain: Number(localStorage.getItem('vst_host_output_gain') ?? '100') / 100,
                     });
@@ -247,6 +252,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
                 sampleRate: number;
                 bufferSize: number;
                 inputChannels?: number[];
+                outputRouting?: import('@/lib/audioChannelRouting').OutputRouting;
             }>).detail;
             if (!ac) return;
             setAudioConfig(prev => ({
@@ -259,6 +265,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
                 inputChannels: ac.inputChannels?.length === 2
                     ? [ac.inputChannels[0], ac.inputChannels[1]] as [number, number]
                     : prev.inputChannels,
+                outputRouting: ac.outputRouting ?? { mode: 'legacy' },
             }));
             setIsEngineRunning(true);
         };

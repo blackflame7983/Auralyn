@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { readOutputRouting, type OutputRouting } from '@/lib/audioChannelRouting';
 
 export interface PresetPlugin {
     path: string;
@@ -12,6 +13,7 @@ export interface PresetPlugin {
 }
 
 export interface ProfileAudioConfig {
+    outputRouting?: OutputRouting;
     host: string;
     inputDevice?: string;
     outputDevice?: string;
@@ -56,6 +58,7 @@ export interface ProfileSaveCategories {
 }
 
 export interface ProfileAudioExtras {
+    outputRouting?: OutputRouting;
     inputChannels?: number[];
     inputGainDb?: number;
     masterGainDb?: number;
@@ -114,8 +117,10 @@ export function gatherProfileAudioExtras(): ProfileAudioExtras {
     const inputGainPct = Number(localStorage.getItem('vst_host_input_gain') ?? '100');
     const outputGainPct = Number(localStorage.getItem('vst_host_output_gain') ?? '100');
     let inputChannels: number[] | undefined;
+    let outputRouting: OutputRouting | undefined;
     try {
         const cfg = JSON.parse(localStorage.getItem('vst_host_audio_config') ?? '{}');
+        outputRouting = readOutputRouting(cfg.outputRouting);
         if (Array.isArray(cfg.inputChannels) && cfg.inputChannels.length >= 2) {
             inputChannels = cfg.inputChannels;
         }
@@ -125,6 +130,7 @@ export function gatherProfileAudioExtras(): ProfileAudioExtras {
 
     return {
         inputChannels,
+        outputRouting,
         inputGainDb: pctToDb(inputGainPct),
         masterGainDb: pctToDb(outputGainPct),
     };
@@ -236,6 +242,7 @@ export function syncLocalStateFromProfile(summary: ApplyProfileSummary): void {
                 sampleRate: ac.sampleRate,
                 bufferSize: ac.bufferSize,
                 inputChannels: ac.inputChannels?.length >= 2 ? ac.inputChannels : prev.inputChannels,
+                outputRouting: ac.outputRouting ?? { mode: 'legacy' },
             };
             localStorage.setItem('vst_host_audio_config', JSON.stringify(next));
         } catch { /* ignore */ }

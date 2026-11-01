@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { ChannelRouting, OutputRouting } from '@/lib/audioChannelRouting';
 
 export interface AudioDevice {
     /** 現在取得済みの既定ch/F32対応範囲。未取得と空の対応表を区別する。 */
@@ -31,9 +32,10 @@ export interface AudioConfig {
     sample_rate: number;
     buffer_size: number;
     channels: number;
+    routing?: ChannelRouting;
 }
 export interface FrontendBootstrapRequest {
-    config: { host: string; input?: string; output?: string; sampleRate?: number; bufferSize?: number; inputChannels?: [number, number] } | null;
+    config: { host: string; input?: string; output?: string; inputId?: string; outputId?: string; sampleRate?: number; bufferSize?: number; inputChannels?: [number, number]; outputRouting?: OutputRouting } | null;
     inputGain: number;
     outputGain: number;
 }
@@ -70,7 +72,7 @@ export const audioApi = {
     getDevices: async (forceRefresh: boolean = false): Promise<AudioDeviceList> => {
         return await invoke("get_audio_devices", { forceRefresh });
     },
-    start: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string, expectedState?: AudioStateInfo): Promise<AudioConfig> => {
+    start: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string, expectedState?: AudioStateInfo, channelRouting?: ChannelRouting): Promise<AudioConfig> => {
         return await invoke("start_audio", {
             host,
             input,
@@ -80,6 +82,7 @@ export const audioApi = {
             inputId,
             outputId,
             ...(expectedState ? {expectedState} : {}),
+            ...(channelRouting ? { channelRouting } : {}),
         });
     },
     stop: async () => {
@@ -110,7 +113,7 @@ export const audioApi = {
     setGain: async (id: string, value: number) => {
         return await invoke("set_gain", { id, value });
     },
-    restart: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string, expectedState?: AudioStateInfo): Promise<AudioConfig> => {
+    restart: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string, expectedState?: AudioStateInfo, channelRouting?: ChannelRouting): Promise<AudioConfig> => {
         return await invoke("restart_audio_engine", {
             host,
             input,
@@ -120,6 +123,7 @@ export const audioApi = {
             inputId,
             outputId,
             ...(expectedState ? {expectedState} : {}),
+            ...(channelRouting ? { channelRouting } : {}),
         });
     },
     openEditor: async (id: string) => {
@@ -229,6 +233,7 @@ export const audioApi = {
 };
 
 export interface ActiveAudioConfig {
+    routing?: ChannelRouting;
     host: string;
     input: string | null;
     output: string | null;
@@ -443,6 +448,7 @@ export interface PreparationSnapshot {
     engineEpoch: string; processingRevision: string; routingRevision: string; inputGain: number; inputChannels: [number, number];
     outputGain: number; outputRevision: string; muted: boolean; controlsPending: boolean;
     nrBackend: string; nrModel: string;
+    outputRouting?: OutputRouting;
 }
 export interface EngineRuntimeStats {
     preparation?: PreparationSnapshot | null;

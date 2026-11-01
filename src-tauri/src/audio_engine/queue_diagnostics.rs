@@ -306,6 +306,27 @@ pub(crate) fn output_pair(asio: bool, input_pair: [usize; 2], channels: usize) -
     }
 }
 
+/// 検証済みの構成を callback 内で割り当てずに出力へ写す。
+pub(crate) fn routed_output_pair(
+    routing: crate::ipc::OutputRouting,
+    asio: bool,
+    input_pair: [usize; 2],
+    channels: usize,
+) -> [usize; 2] {
+    match routing {
+        crate::ipc::OutputRouting::Independent { channels: pair } if asio => pair,
+        _ => output_pair(asio, input_pair, channels),
+    }
+}
+
+pub(crate) fn route_stereo_monitor(data: &mut [f32], pair: [usize; 2]) {
+    for frame in data.as_chunks_mut::<2>().0 {
+        let samples = [frame[0], frame[1]];
+        frame.fill(0.0);
+        write_output_frame(frame, pair, samples);
+    }
+}
+
 /// 通常音声・録音再生・テストトーンで共用する最終出力と、その実送出レベル。
 pub(crate) fn write_output_frame(
     frame: &mut [f32],
@@ -502,6 +523,61 @@ mod tests {
                 (0, 0)
             );
         }
+    }
+
+    #[test]
+    fn independent_and_insert_route_first_frame_without_old_input_or_allocations() {
+        use crate::ipc::OutputRouting;
+        for (routing, expected) in [
+            (
+                OutputRouting::Independent { channels: [0, 1] },
+                [3.0, 4.0, 0.0, 0.0],
+            ),
+            (OutputRouting::Insert, [0.0, 0.0, 3.0, 4.0]),
+        ] {
+            let input = [90.0, 80.0, 3.0, 4.0];
+            let mut planar = vec![vec![0.0]; 4];
+            let mut output = [0.0; 4];
+            assert_eq!(
+                crate::dsp_verification_allocator::allocation_counts(|| {
+                    let samples = super::route_input_frame(&input, [2, 3], 1.0, &mut planar, 0, 4);
+                    let pair = super::routed_output_pair(routing, true, [2, 3], 4);
+                    super::write_output_frame(&mut output, pair, samples);
+                }),
+                (0, 0)
+            );
+            assert_eq!(output, expected);
+        }
+    }
+
+    #[test]
+    fn split_monitor_keeps_logical_stereo_and_routes_physical_output() {
+        use crate::ipc::OutputRouting;
+        let physical_input = [2, 3];
+        let pair = super::routed_output_pair(
+            OutputRouting::Independent { channels: [1, 0] },
+            true,
+            physical_input,
+            2,
+        );
+        let mut monitor = [0.25, 0.75];
+        assert_eq!(
+            crate::dsp_verification_allocator::allocation_counts(|| super::route_stereo_monitor(
+                &mut monitor,
+                pair
+            )),
+            (0, 0)
+        );
+        assert_eq!(monitor, [0.75, 0.25]);
+        assert_eq!(
+            super::routed_output_pair(
+                OutputRouting::Independent { channels: [1, 0] },
+                true,
+                [0, 1],
+                2
+            ),
+            pair
+        );
     }
 
     #[test]

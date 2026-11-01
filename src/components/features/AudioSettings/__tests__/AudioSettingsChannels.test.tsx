@@ -46,6 +46,61 @@ afterEach(() => {
     localStorage.clear();
 });
 
+it('初回の空configは独立出力1/2で始まり、入力3/4を選んでも出力を変えない', async () => {
+    localStorage.removeItem('vst_host_audio_config');
+    const update = vi.fn();
+    render(<AudioSettingsModal isOpen currentConfig={{ host: '' }} onClose={() => {}} onConfigChange={update} />);
+    await screen.findByRole('radio', { name: '入力チャンネル 3/4' });
+    expect(screen.getByRole('combobox', { name: '音声の返却方法' })).toHaveValue('independent');
+    fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 3/4' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('start_audio', expect.objectContaining({
+        channelRouting: { inputChannels: [2, 3], outputRouting: { mode: 'independent', channels: [0, 1] } },
+    })));
+});
+
+it('設定プリセットは同名機器のIDと独立した入力・出力ペアを復元する', async () => {
+    const twin = ['driver-A', 'driver-B'].map(id => ({ name: 'ASIO device', id, host: 'ASIO', channels: 8 }));
+    vi.mocked(invoke).mockImplementation(async cmd => {
+        if (cmd === 'get_audio_devices') return { inputs: twin, outputs: twin };
+        if (cmd === 'start_audio') return { sample_rate: 48000, buffer_size: 512, channels: 2 };
+        return null;
+    });
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'ASIO device', output: 'ASIO device', inputId: 'driver-A', outputId: 'driver-A' }));
+    localStorage.setItem('vst_host_audio_presets', JSON.stringify({ other: {
+        host: 'ASIO', input: 'ASIO device', output: 'ASIO device', inputId: 'driver-B', outputId: 'driver-B',
+        inputChannels: [4, 5], outputRouting: { mode: 'independent', channels: [2, 3] },
+    } }));
+    const update = vi.fn();
+    render(<AudioSettingsModal isOpen onClose={() => {}} onConfigChange={update} />);
+    await screen.findByRole('radio', { name: '入力チャンネル 5/6' });
+    fireEvent.change(screen.getByRole('combobox', { name: '入出力プリセット' }), { target: { value: 'other' } });
+    expect(screen.getByRole('radio', { name: '入力チャンネル 5/6' })).toBeChecked();
+    expect(screen.getByRole('combobox', { name: '出力チャンネル' })).toHaveValue('2,3');
+    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({
+        inputId: 'driver-B', outputId: 'driver-B', inputChannels: [4, 5], outputRouting: { mode: 'independent', channels: [2, 3] },
+    }), { audioStarted: true }));
+});
+
+it.each(['independent', 'insert'] as const)('入力3/4と出力の返却方法を別々に開始・保存する: %s', async mode => {
+    const update = vi.fn();
+    render(<AudioSettingsModal isOpen onClose={() => {}} onConfigChange={update} currentInputChannels={[6, 7]} />);
+    await screen.findByRole('radio', { name: '入力チャンネル 3/4' });
+    expect(screen.getByRole('combobox', { name: '音声の返却方法' })).toHaveValue('legacy');
+    fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 3/4' }));
+    fireEvent.change(screen.getByRole('combobox', { name: '音声の返却方法' }), { target: { value: mode } });
+    if (mode === 'independent') expect(screen.getByRole('combobox', { name: '出力チャンネル' })).toHaveValue('0,1');
+    expect(update).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    const outputRouting = mode === 'independent' ? { mode, channels: [0, 1] } : { mode };
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('start_audio', expect.objectContaining({
+        channelRouting: { inputChannels: [2, 3], outputRouting },
+    })));
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ inputChannels: [2, 3], outputRouting }), { audioStarted: true });
+    expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
+});
+
 it.each([2, 64])('未取得のチャンネルは選べず、取得後は実際の%ich分だけを表示する', async channels => {
     const view = render(<InputChannelSelector maxChannels={0} initialChannels={[2, 3]} />);
     expect(screen.queryAllByRole('radio')).toHaveLength(0);
@@ -106,7 +161,8 @@ it.each(['保存して開始', '音声処理を再起動'])(
                 expect.objectContaining({ host: 'Wasapi', inputChannels: [0, 1] }), { audioStarted: true }
             )
         );
-        expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 0, right: 1 });
+        expect(invoke).toHaveBeenCalledWith(expect.stringMatching(/start_audio|restart_audio_engine/), expect.objectContaining({ channelRouting: expect.objectContaining({ inputChannels: [0, 1] }) }));
+        expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
     }
 );
 
@@ -127,7 +183,8 @@ it('ASIOを維持する保存では6/7を維持する', async () => {
             expect.objectContaining({ host: 'ASIO', inputChannels: [6, 7] }), { audioStarted: true }
         )
     );
-    expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 6, right: 7 });
+    expect(invoke).toHaveBeenCalledWith(expect.stringMatching(/start_audio|restart_audio_engine/), expect.objectContaining({ channelRouting: expect.objectContaining({ inputChannels: [6, 7] }) }));
+        expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
 });
 
 it('入力ペアは同じ名前の標準ラジオとして選択・復元できる', async () => {
@@ -239,7 +296,8 @@ it('ペア変更は下書きであり、保存開始後にのみ適用する', a
     expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
     fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
     await waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({ inputChannels: [2, 3] }), { audioStarted: true }));
-    expect(invoke).toHaveBeenCalledWith('set_input_channels', { left: 2, right: 3 });
+    expect(invoke).toHaveBeenCalledWith(expect.stringMatching(/start_audio|restart_audio_engine/), expect.objectContaining({ channelRouting: expect.objectContaining({ inputChannels: [2, 3] }) }));
+        expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
 });
 
 
@@ -446,22 +504,23 @@ it('IDを保存していない同名機器は勝手に選択しない', async ()
 });
 
 
-it('開始後の入力設定失敗を明示し、同じ下書きの再試行で開始を繰り返さない', async () => {
+it('開始前の入力検証で拒否されたら保存せず、開始要求から再試行する', async () => {
     let fail = true;
     vi.mocked(invoke).mockImplementation(async command => {
         if (command === 'get_audio_devices') return devices;
+        if (command === 'start_audio' && fail) { fail = false; throw new Error('routing rejected'); }
         if (command === 'start_audio') return { sample_rate: 48000, buffer_size: 512, channels: 2 };
-        if (command === 'set_input_channels' && fail) { fail = false; throw new Error('channels failed'); }
         return null;
     });
     const save = vi.fn();
     render(<AudioSettingsModal isOpen onClose={() => {}} onConfigChange={save} currentInputChannels={[6, 7]} />);
     await screen.findByRole('option', { name: 'ASIO device' });
     fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
-    await screen.findByText(/音声は開始済みですが、入力チャンネルの設定が完了していません/);
+    await screen.findByText(/routing rejected/);
+    expect(save).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '設定に戻って再試行' }));
     fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
     await waitFor(() => expect(save).toHaveBeenCalledOnce());
-    expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'start_audio')).toHaveLength(1);
-    expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'set_input_channels')).toHaveLength(2);
+    expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'start_audio')).toHaveLength(2);
+    expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
 });

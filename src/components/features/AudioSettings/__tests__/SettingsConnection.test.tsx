@@ -28,7 +28,7 @@ it.each(['channels', 'save'] as const)('システム再起動の%s失敗から�
     const restart = vi.spyOn(audioApi, 'restart').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
     const start = vi.spyOn(audioApi, 'start');
     const channels = vi.spyOn(audioApi, 'setInputChannels').mockResolvedValue(undefined);
-    if (stage === 'channels') channels.mockRejectedValueOnce(new Error('input setting failed'));
+    if (stage === 'channels') restart.mockRejectedValueOnce(new Error('input setting failed'));
     const save = vi.fn().mockResolvedValue(undefined);
     if (stage === 'save') save.mockRejectedValueOnce(new Error('storage failed'));
     const restored = vi.fn().mockResolvedValue(undefined);
@@ -48,9 +48,9 @@ it.each(['channels', 'save'] as const)('システム再起動の%s失敗から�
     expect(restored).not.toHaveBeenCalled();
     fireEvent.click(retry);
     await waitFor(() => expect(closed).toHaveBeenCalledOnce());
-    expect(restart).toHaveBeenCalledOnce();
+    expect(restart).toHaveBeenCalledTimes(stage === 'channels' ? 2 : 1);
     expect(start).not.toHaveBeenCalled();
-    expect(channels).toHaveBeenCalledTimes(stage === 'channels' ? 2 : 1);
+    expect(channels).not.toHaveBeenCalled();
     expect(save).toHaveBeenCalledTimes(stage === 'save' ? 2 : 1);
     expect(restored).toHaveBeenCalledOnce();
 });
@@ -76,7 +76,7 @@ it.each(['ASIO', 'Wasapi'])('別hostのプリセットで先頭以外の入出�
     fireEvent.change(screen.getByRole('combobox', { name: '入出力プリセット' }), { target: { value: 'target' } });
     await waitFor(() => expect(input).toHaveValue(`id:${targetHost}-2`));
     fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
-    await waitFor(() => expect(start).toHaveBeenCalledWith(targetHost, `${targetHost} device 2`, `${targetHost} device 2`, 512, 48000, `${targetHost}-2`, `${targetHost}-2`));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(targetHost, `${targetHost} device 2`, `${targetHost} device 2`, 512, 48000, `${targetHost}-2`, `${targetHost}-2`, undefined, expect.objectContaining({ outputRouting: expect.any(Object) })));
 });
 
 it('稼働中の変更なし保存を抑止し、変更を戻すと再び抑止する', async () => {
@@ -136,7 +136,7 @@ it.each([false, true])('入力ペアの下書きだけでは保存せず、明�
     expect(save).toBeEnabled();
     fireEvent.click(save);
     const selected = changeDevice ? 'Device B' : 'Device A';
-    await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', selected, selected, 512, 48000, undefined, undefined));
+    await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', selected, selected, 512, 48000, undefined, undefined, undefined, expect.objectContaining({ inputChannels: [2, 3] })));
     await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ host: 'ASIO', input: selected, output: selected, inputChannels: [2, 3] }), { audioStarted: true }));
 });
 
