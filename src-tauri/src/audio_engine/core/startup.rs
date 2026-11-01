@@ -1,5 +1,8 @@
 //! 起動時の非RT準備とストリーム構築。資源の回収・再試行は lifecycle に従う。
 use super::*;
+#[path = "startup_callbacks.rs"]
+mod callbacks;
+use callbacks::*;
 
 struct ResolvedDevices {
     input: cpal::Device,
@@ -74,627 +77,6 @@ fn validate_device_ids(device_ids: &(Option<String>, Option<String>)) -> Result<
     Ok(())
 }
 
-struct CallbackBuffers {
-    input: Vec<f32>,
-    planar_a: Vec<Vec<f32>>,
-    planar_b: Vec<Vec<f32>>,
-}
-
-impl CallbackBuffers {
-    fn new(input_channels: usize, output_channels: usize, max_frames: usize) -> Self {
-        let max_ch = output_channels.max(2);
-        Self {
-            input: vec![0.0; max_frames.saturating_mul(input_channels.max(2))],
-            planar_a: (0..max_ch).map(|_| vec![0.0; max_frames]).collect(),
-            planar_b: (0..max_ch).map(|_| vec![0.0; max_frames]).collect(),
-        }
-    }
-}
-
-struct PluginControls {
-    bypassed: [bool; MAX_PLUGINS],
-    muted: [bool; MAX_PLUGINS],
-    gains: [Smoother; MAX_PLUGINS],
-    order: [u8; MAX_PLUGINS],
-    order_len: usize,
-}
-
-// 入力callbackが所有する状態。構築時に確保し、処理時は借用だけを行う。
-struct InputCallback {
-    scan_control: Arc<super::super::channel_scan::Control>,
-    rt_channel_scan: super::super::channel_scan::ChannelScan,
-    channel_prod: <HeapRb<super::super::channel_scan::Snapshot> as Split>::Prod,
-    channels: usize,
-    input_silence: Arc<crate::audio_engine::mode_silence::Shared>,
-    input_silence_reset: u64,
-    resampler: Option<crate::audio_engine::resampling::StreamResampler>,
-    input_timing: Option<crate::audio_engine::frame_timing::InputRecorder>,
-    input_process_failed: Arc<AtomicBool>,
-    input_resampling_failed: Arc<AtomicBool>,
-    input_queue_diagnostics: Arc<QueueDiagnostics>,
-    mmcss_set_in: Arc<AtomicBool>,
-    audio_prod: <Arc<HeapRb<f32>> as Split>::Prod,
-    batch_timing: bool,
-}
-
-impl InputCallback {
-    fn process(&mut self, data: &[f32], info: &cpal::InputCallbackInfo) {
-        let Self {
-            scan_control,
-            rt_channel_scan,
-            channel_prod,
-            channels,
-            input_silence,
-            input_silence_reset,
-            resampler,
-            input_timing,
-            input_process_failed,
-            input_resampling_failed,
-            input_queue_diagnostics,
-            mmcss_set_in,
-            audio_prod,
-            batch_timing,
-        } = self;
-        let scan_gain = scan_control.sync(&mut *rt_channel_scan);
-        if rt_channel_scan.enabled() {
-            for frame in data.chunks_exact(*channels) {
-                for (channel, sample) in frame.iter().enumerate() {
-                    rt_channel_scan.observe(channel, *sample * scan_gain);
-                }
-            }
-            rt_channel_scan.finish_block(data.len() / *channels, &mut *channel_prod);
-        }
-        if input_silence.pause_input(|| {
-            if *input_silence_reset != input_silence.ticket() {
-                if let Some(resampler) = &mut *resampler {
-                    resampler.discard_history();
-                }
-                if let Some(timing) = &mut *input_timing {
-                    timing.invalidate();
-                }
-                *input_silence_reset = input_silence.ticket();
-            }
-        }) {
-            return;
-        }
-        let timing_arrival = input_timing.as_ref().map_or(0, |timing| timing.now_ns());
-        let received_frames = data.len() / *channels;
-        if let Some(timing) = &mut *input_timing {
-            timing.record_span(received_frames, timing_arrival);
-        }
-        if input_process_failed.load(Ordering::Acquire) {
-            input_queue_diagnostics.record_input(received_frames, 0, 0, 0, 0);
-            return;
-        }
-        if !mmcss_set_in.load(Ordering::Relaxed) {
-            unsafe {
-                use windows::Win32::System::Threading::{
-                    GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_HIGHEST,
-                    THREAD_PRIORITY_TIME_CRITICAL,
-                };
-                let priority = if time_critical_audio_threads_enabled() {
-                    THREAD_PRIORITY_TIME_CRITICAL
-                } else {
-                    THREAD_PRIORITY_HIGHEST
-                };
-                let _ = SetThreadPriority(GetCurrentThread(), priority);
-            }
-            mmcss_set_in.store(true, Ordering::Relaxed);
-        }
-
-        // Push interleaved samples as full frames to preserve channel alignment.
-        // 分割された出力でも、このコールバックの転送上限は1回だけ決める。
-        let mut remaining_frames = None;
-        let mut accepted_prefix = crate::audio_engine::frame_timing::AcceptedPrefix::default();
-        let mut generated_frames = 0;
-        let mut offered_frames = 0;
-        let mut accepted_frames = 0;
-        let mut max_observed_slots = 0;
-        let mut push_frames =
-            |samples: &[f32],
-             in_channels: usize,
-             cohort: Option<crate::audio_engine::resampling::CohortEmission>| {
-                let pushed = queue_diagnostics::push_mapped_frames(
-                    &mut *audio_prod,
-                    samples,
-                    in_channels,
-                    in_channels,
-                    &mut remaining_frames,
-                );
-                if let Some(timing) = &mut *input_timing {
-                    if *batch_timing {
-                        timing.record_emission(cohort, pushed.accepted);
-                    } else {
-                        timing.record_direct_emission(pushed.offered, pushed.accepted);
-                    }
-                }
-                accepted_prefix.record(pushed.offered, pushed.accepted);
-                generated_frames += pushed.offered;
-                offered_frames += pushed.offered;
-                accepted_frames += pushed.accepted;
-                max_observed_slots = max_observed_slots.max(pushed.observed_slots);
-            };
-
-        // If resampler is active, process
-        if let Some(res) = &mut *resampler {
-            // We assume input data matches configured channels
-            // エラーは固定サイズのenum。RT側で文字列化・ログ出力しない。
-            res.process_realtime_observed(
-                data,
-                |output, cohort| push_frames(output, *channels, cohort),
-                input_process_failed,
-                input_resampling_failed,
-            );
-        } else {
-            // Passthrough
-            push_frames(data, *channels, None);
-        }
-        input_queue_diagnostics.record_input(
-            received_frames,
-            generated_frames,
-            offered_frames,
-            accepted_frames,
-            max_observed_slots,
-        );
-        if let Some(timing) = &mut *input_timing {
-            if *batch_timing
-                && (!accepted_prefix.valid() || input_process_failed.load(Ordering::Acquire))
-            {
-                // 音声は既存経路のまま。生成prefixを保証できない観測だけを失効する。
-                timing.invalidate();
-            }
-            timing.record(
-                if *batch_timing {
-                    generated_frames
-                } else {
-                    received_frames
-                },
-                accepted_frames,
-                timing_arrival,
-                Some(info.timestamp().callback),
-            );
-        }
-    }
-}
-
-// 実際の出力値から測定し、無効な間は走査しない。RTでの確保は行わない。
-fn measure_output_loudness(
-    data: &[f32],
-    channels: usize,
-    output_pair: [usize; 2],
-    rt_loudness: &mut LoudnessMeter,
-    loudness_prod: &mut <HeapRb<LoudnessReading> as Split>::Prod,
-) {
-    // 最終ゲイン・ミュート・試聴を含め、デバイスへ実際に渡す値で測る。
-    // 測定していない間はフィルター・補間・走査を実行しない。
-    if rt_loudness.id.is_some() {
-        let [output_l, output_r] = output_pair;
-        for frame in data.chunks_exact(channels) {
-            let l = frame.get(output_l).copied().unwrap_or(0.0);
-            // 同じ物理チャンネルをL/Rへ選んだ場合は二重に加算しない。
-            let r = if output_r == output_l {
-                0.0
-            } else {
-                frame.get(output_r).copied().unwrap_or(0.0)
-            };
-            if let Some(reading) = rt_loudness.sample([l, r]) {
-                let _ = loudness_prod.try_push(reading);
-            }
-        }
-    }
-}
-
-// 選択入力をplanarへ変換し、同じ信号を録音とメーターへ渡す。
-#[allow(clippy::too_many_arguments)]
-fn route_and_meter_input(
-    frames: usize,
-    queue_input_channels: usize,
-    input_buf: &[f32],
-    rt_input_l: usize,
-    rt_input_r: usize,
-    rt_input_gain: f32,
-    planar_buf_a: &mut [Vec<f32>],
-    channels: usize,
-    rt_voice_check: &mut RtVoiceCheck,
-) -> ([f32; 2], u64) {
-    // De-interleave & Metering
-    let mut in_max_l = 0.0;
-    let mut in_max_r = 0.0;
-
-    let record_block_start = rt_voice_check.block_record_start();
-
-    for i in 0..frames {
-        // 入力の選択値を先に取得してから、出力形状のplanarへ配置する。
-        let frame = &input_buf[i * queue_input_channels..(i + 1) * queue_input_channels];
-        let [sample_l, sample_r] = queue_diagnostics::route_input_frame(
-            frame,
-            [rt_input_l, rt_input_r],
-            rt_input_gain,
-            planar_buf_a,
-            i,
-            channels,
-        );
-
-        // Main Metering (Post-Routing)
-        let abs_l = sample_l.abs();
-        if abs_l > in_max_l {
-            in_max_l = abs_l;
-        }
-
-        let abs_r = sample_r.abs();
-        if abs_r > in_max_r {
-            in_max_r = abs_r;
-        }
-
-        if rt_voice_check.is_recording_active() {
-            rt_voice_check.record_raw_at(record_block_start + i as u64, sample_l, sample_r);
-        }
-    }
-
-    ([in_max_l, in_max_r], record_block_start)
-}
-
-// callbackでは退避失敗したprocessorを保持し続け、解放しない。
-fn flush_pending_retire(
-    pending_retire: &mut [Option<DisposedProcessor>; MAX_PLUGINS],
-    retire_prod: &mut <HeapRb<DisposedProcessor> as Split>::Prod,
-) {
-    // Flush any pending retire messages first (never drop VST objects in RT thread)
-    for slot in pending_retire.iter_mut() {
-        if let Some(retired) = slot.take() {
-            match retire_prod.try_push(retired) {
-                Ok(()) => {}
-                Err(retired) => {
-                    *slot = Some(retired);
-                    break;
-                }
-            }
-        }
-    }
-}
-
-fn remove_from_order(order: &mut [u8; MAX_PLUGINS], len: &mut usize, idx: u8) {
-    let mut write = 0usize;
-    for read in 0..*len {
-        let v = order[read];
-        if v != idx {
-            order[write] = v;
-            write += 1;
-        }
-    }
-    *len = write;
-}
-
-// 受信済みコマンドの適用先はcallback中だけ借用する。所有値は既存の保持先に残す。
-struct CommandContext<'a> {
-    consumer: &'a mut <HeapRb<AudioThreadMessage> as Split>::Cons,
-    retire_prod: &'a mut <HeapRb<DisposedProcessor> as Split>::Prod,
-    pending_rejected: &'a mut crate::audio_engine::deferred_drop::DeferredDrop<DisposedProcessor>,
-    pending_retire: &'a mut [Option<DisposedProcessor>; MAX_PLUGINS],
-    rt_processors: &'a mut [Option<VstProcessor>; MAX_PLUGINS],
-    rt_active_count: &'a mut usize,
-    rt_gains: &'a mut [Smoother; MAX_PLUGINS],
-    rt_bypassed: &'a mut [bool; MAX_PLUGINS],
-    rt_muted: &'a mut [bool; MAX_PLUGINS],
-    rt_order: &'a mut [u8; MAX_PLUGINS],
-    rt_order_len: &'a mut usize,
-    rt_cohort_change_applied: &'a mut bool,
-    output_timing: &'a mut Option<crate::audio_engine::frame_timing::OutputRecorder>,
-    worker_generation_controls: Option<&'a crate::audio_engine::split_monitor::Controls>,
-    measurement_ready: bool,
-    upstream_first_frame: u64,
-    rt_voice: &'a mut crate::audio_engine::live_modes::RtVoice,
-    rt_reverb: &'a mut crate::audio_engine::reverb::Reverb,
-    live_shared: &'a crate::audio_engine::live_modes::Shared,
-    rt_global_mute: &'a mut bool,
-    rt_global_bypass: &'a mut bool,
-    rt_input_gain: &'a mut f32,
-    rt_input_l: &'a mut usize,
-    rt_input_r: &'a mut usize,
-    rt_physical_input: &'a mut [usize; 2],
-    separated: bool,
-    rt_noise_control: &'a mut Option<RtNoiseControl>,
-    rt_noise_learning: &'a mut RtNoiseLearning,
-    output_nr_failed: &'a AtomicBool,
-    noise_applied_revision: &'a AtomicU64,
-    builtin_applied: &'a AtomicU64,
-    rt_loudness: &'a mut LoudnessMeter,
-    loudness_start: &'a mut crate::audio_engine::queue_recovery::MeasurementGate,
-    queue_recovery: &'a crate::audio_engine::queue_recovery::Recovery,
-    measurement_processed: &'a mut u64,
-    rt_output_gain: &'a mut Smoother,
-    rt_capture: &'a mut auto_gain::RtCapture,
-    rt_voice_check: &'a mut RtVoiceCheck,
-    rt_test_tone: &'a mut RtTestTone,
-}
-
-fn apply_commands(context: CommandContext<'_>) -> bool {
-    let CommandContext {
-        consumer,
-        retire_prod,
-        pending_rejected,
-        pending_retire,
-        rt_processors,
-        rt_active_count,
-        rt_gains,
-        rt_bypassed,
-        rt_muted,
-        rt_order,
-        rt_order_len,
-        rt_cohort_change_applied,
-        output_timing,
-        worker_generation_controls,
-        measurement_ready,
-        upstream_first_frame,
-        rt_voice,
-        rt_reverb,
-        live_shared,
-        rt_global_mute,
-        rt_global_bypass,
-        rt_input_gain,
-        rt_input_l,
-        rt_input_r,
-        rt_physical_input,
-        separated,
-        rt_noise_control,
-        rt_noise_learning,
-        output_nr_failed,
-        noise_applied_revision,
-        builtin_applied,
-        rt_loudness,
-        loudness_start,
-        queue_recovery,
-        measurement_processed,
-        rt_output_gain,
-        rt_capture,
-        rt_voice_check,
-        rt_test_tone,
-    } = context;
-    // Process Commands
-    // 返却待ちの拒否値がある間は次の所有値を受け取らない。
-    // キュー満杯でも保持数を固定し、RT側でprocessorをDropしない。
-    while measurement_ready && pending_rejected.flush_to(retire_prod) {
-        if consumer.try_peek().is_some_and(|msg| {
-            matches!(
-                msg,
-                AudioThreadMessage::StartVoiceCheckRecording { .. }
-                    | AudioThreadMessage::StartAutoGainCapture(_)
-                    | AudioThreadMessage::SetLoudnessMeasurement(Some(_))
-            )
-        }) && worker_generation_controls
-            .is_some_and(|c| !c.measurement_ready_at(c.measurement_ticket(), upstream_first_frame))
-        {
-            break;
-        }
-        let Some(msg) = consumer.try_pop() else {
-            break;
-        };
-        if msg.changes_cohort() {
-            *rt_cohort_change_applied = match &msg {
-                AudioThreadMessage::AddProcessor { index, .. } => {
-                    let slot = *index as usize;
-                    slot < MAX_PLUGINS && rt_processors[slot].is_none()
-                }
-                AudioThreadMessage::RemoveProcessor { index } => {
-                    let slot = *index as usize;
-                    slot < MAX_PLUGINS
-                }
-                AudioThreadMessage::SetBypass { index, .. }
-                | AudioThreadMessage::SetMute { index, .. }
-                | AudioThreadMessage::SetGain { index, .. } => (*index as usize) < MAX_PLUGINS,
-                _ => true,
-            };
-        }
-        match msg {
-            AudioThreadMessage::CohortWindow { revision } => {
-                if let Some(timing) = &mut *output_timing {
-                    timing.complete_cohort_window(revision, *rt_cohort_change_applied);
-                }
-            }
-            AudioThreadMessage::AddProcessor {
-                index,
-                processor,
-                initial_gain,
-                initial_bypassed,
-                initial_muted,
-            } => {
-                let slot = index as usize;
-                if slot < MAX_PLUGINS && rt_processors[slot].is_none() {
-                    rt_processors[slot] = Some(processor);
-                    *rt_active_count += 1;
-                    rt_gains[slot] = Smoother::new_ramp(0.0, initial_gain);
-                    rt_bypassed[slot] = initial_bypassed;
-                    rt_muted[slot] = initial_muted;
-                } else {
-                    pending_rejected.defer(DisposedProcessor::Rejected(processor), retire_prod);
-                }
-            }
-            AudioThreadMessage::RemoveProcessor { index } => {
-                let slot = index as usize;
-                if slot < MAX_PLUGINS {
-                    if pending_retire[slot].is_none() {
-                        if let Some(proc) = rt_processors[slot].take() {
-                            let retired = DisposedProcessor::Retired(RetiredProcessor {
-                                index,
-                                processor: proc,
-                            });
-                            if let Err(retired) = retire_prod.try_push(retired) {
-                                pending_retire[slot] = Some(retired);
-                            };
-                            *rt_active_count = rt_active_count.saturating_sub(1);
-                        }
-                    }
-                    rt_muted[slot] = false;
-                    rt_bypassed[slot] = false;
-                    rt_gains[slot] = Smoother::new(1.0);
-                    remove_from_order(rt_order, rt_order_len, index);
-                }
-            }
-            AudioThreadMessage::ReorderProcessors { order, len } => {
-                *rt_order = order;
-                *rt_order_len = (len as usize).min(MAX_PLUGINS);
-            }
-            AudioThreadMessage::SetBypass { index, active } => {
-                let slot = index as usize;
-                if slot < MAX_PLUGINS {
-                    rt_bypassed[slot] = active;
-                }
-            }
-            AudioThreadMessage::SetMute { index, active } => {
-                let slot = index as usize;
-                if slot < MAX_PLUGINS {
-                    rt_muted[slot] = active;
-                }
-            }
-            AudioThreadMessage::SetGain { index, value } => {
-                let slot = index as usize;
-                if slot < MAX_PLUGINS {
-                    rt_gains[slot].set_target(value);
-                }
-            }
-            AudioThreadMessage::LiveMode {
-                voice,
-                revision,
-                builtin_revision,
-                reverb,
-                talk,
-                frames,
-            } => {
-                rt_voice.start(voice, revision, builtin_revision, frames);
-                if talk {
-                    rt_reverb.set_transport(0.0, 1.0);
-                } else {
-                    rt_reverb.update(reverb);
-                }
-                live_shared.accepted.fetch_max(revision, Ordering::Release);
-            }
-            AudioThreadMessage::SetGlobalMute(active) => {
-                if *rt_global_mute != active {
-                    if let Some(control) = &mut *rt_noise_control {
-                        control.reset_state();
-                    }
-                }
-                *rt_global_mute = active;
-                if active {
-                    rt_reverb.reset();
-                }
-            }
-            AudioThreadMessage::SetGlobalBypass(active) => {
-                *rt_global_bypass = active;
-            }
-            AudioThreadMessage::SetInputGain(val) => {
-                if !separated {
-                    *rt_input_gain = val;
-                }
-            }
-            AudioThreadMessage::StartNoiseLearning {
-                duration_frames,
-                generation,
-                window_frames,
-            } => {
-                rt_noise_learning.start_with_generation(duration_frames, generation, window_frames);
-            }
-            AudioThreadMessage::CancelNoiseLearning => {
-                rt_noise_learning.cancel();
-            }
-            AudioThreadMessage::SetNoiseControl {
-                revision,
-                active,
-                mode,
-                strength,
-                voice_guard,
-            } => {
-                if active && rt_noise_control.is_none() {
-                    output_nr_failed.store(true, Ordering::Release);
-                    return false;
-                }
-                if let Some(control) = &mut *rt_noise_control {
-                    control.configure(NoiseSettings {
-                        enabled: active,
-                        mode,
-                        strength: strength.clamp(0.25, 1.25),
-                        voice_guard,
-                    });
-                }
-                noise_applied_revision.store(revision, Ordering::Release);
-            }
-            AudioThreadMessage::SetBuiltInEffects {
-                active,
-                preset,
-                amount,
-                singing,
-                reverb,
-                revision,
-            } => {
-                rt_voice.update_normal(active, preset, amount.clamp(0.0, 1.0), singing);
-                rt_reverb.update(reverb);
-                builtin_applied.store(revision, Ordering::Release);
-            }
-            AudioThreadMessage::SetLoudnessMeasurement(id) => {
-                rt_loudness.reset(loudness_start.request(id, queue_recovery));
-            }
-            AudioThreadMessage::MeasurementReservation(ticket) => {
-                *measurement_processed = ticket;
-            }
-            AudioThreadMessage::SetOutputGain { value, revision } => {
-                rt_output_gain.set_target(value);
-                rt_capture
-                    .shared
-                    .applied_revision
-                    .store(revision, Ordering::Release);
-            }
-            AudioThreadMessage::StartAutoGainCapture(id) => rt_capture.start(id),
-            AudioThreadMessage::SetInputChannels(l, r) => {
-                *rt_physical_input = [l, r];
-                if !separated {
-                    *rt_input_l = l;
-                    *rt_input_r = r;
-                }
-            }
-            AudioThreadMessage::StartVoiceCheckRecording {
-                buffers,
-                max_frames,
-            } => {
-                rt_voice_check.start_recording(buffers, max_frames);
-            }
-            AudioThreadMessage::StopVoiceCheckRecording => {
-                rt_voice_check.stop_recording();
-            }
-            AudioThreadMessage::PlayVoiceCheck {
-                source,
-                loop_playback,
-            } => {
-                if rt_voice_check.is_playback_active() {
-                    rt_voice_check.set_playback_source(source);
-                    rt_voice_check.set_loop_playback(loop_playback);
-                } else {
-                    rt_voice_check.start_playback(source, loop_playback);
-                }
-            }
-            AudioThreadMessage::StopVoiceCheckPlayback => {
-                rt_voice_check.stop_playback();
-            }
-            AudioThreadMessage::VoiceCheckTransportAck(revision) => {
-                rt_voice_check.acknowledge_transport(revision);
-            }
-            AudioThreadMessage::PlayTestTone {
-                freq_hz,
-                duration_ms,
-                level_db,
-            } => {
-                rt_voice_check.stop_playback();
-                rt_test_tone.start(freq_hz, duration_ms, level_db);
-            }
-            AudioThreadMessage::StopTestTone => {
-                rt_test_tone.stop();
-            }
-            AudioThreadMessage::Stop => {}
-        }
-    }
-
-    true
-}
-
 impl Engine {
     // 非RTで機器一覧へ今回の選択結果を登録する。
     #[allow(clippy::too_many_arguments, deprecated)]
@@ -728,7 +110,11 @@ impl Engine {
             is_input: true,
             buffer_size_range: in_buf_range,
             channels: in_stream_config.channels,
-            sample_rate_ranges: in_capabilities.f32_rate_ranges(),
+            sample_rate_ranges: if self.current_host_is_asio {
+                in_capabilities.native_rate_ranges()
+            } else {
+                in_capabilities.f32_rate_ranges()
+            },
             is_default: false,
         });
 
@@ -739,7 +125,11 @@ impl Engine {
             is_input: false,
             buffer_size_range: out_buf_range,
             channels: out_stream_config.channels,
-            sample_rate_ranges: out_capabilities.f32_rate_ranges(),
+            sample_rate_ranges: if self.current_host_is_asio {
+                out_capabilities.native_rate_ranges()
+            } else {
+                out_capabilities.f32_rate_ranges()
+            },
             is_default: false,
         });
     }
@@ -787,6 +177,79 @@ impl Engine {
             order: rt_order,
             order_len: rt_order_len,
         }
+    }
+
+    // 機器の選択後、処理に使う構成と固定容量を確定する。
+    fn prepare_stream_geometry(
+        &mut self,
+        in_stream_config: &mut cpal::StreamConfig,
+        out_stream_config: &mut cpal::StreamConfig,
+        out_capabilities: &capabilities::CapabilitySnapshot,
+        in_capabilities: &capabilities::CapabilitySnapshot,
+        is_asio: bool,
+        policy: lifecycle::StartupPolicy,
+    ) -> Result<(bool, Option<u32>)> {
+        dsp::NoiseGeometry::guard(out_stream_config.sample_rate, self.noise_reduction_enabled)
+            .map_err(|e| anyhow!(e))?;
+        self.current_sample_rate = out_stream_config.sample_rate as f64;
+        self.current_block_size = match out_stream_config.buffer_size {
+            cpal::BufferSize::Fixed(s) => s as usize,
+            _ => 512,
+        };
+        self.current_channels = out_stream_config.channels as usize;
+        self.current_host_is_asio = is_asio;
+
+        // Force detection of Locked Buffer Size (ASIO)
+        let default_max_block = out_capabilities.default_buffer_range().map(|(_, max)| max);
+        if let Some((min, max)) = out_capabilities.default_buffer_range() {
+            log::debug!("[Config] Device Buffer Range: min={}, max={}", min, max);
+            if let Some(locked) = out_capabilities.locked_buffer_override(self.current_block_size) {
+                log::info!(
+                    "[Config] Detected Locked Buffer Size override: {} -> {}",
+                    self.current_block_size,
+                    locked
+                );
+                self.current_block_size = locked as usize;
+                out_stream_config.buffer_size = cpal::BufferSize::Fixed(locked);
+                in_stream_config.buffer_size = cpal::BufferSize::Fixed(locked);
+            }
+        }
+
+        // ASIOの最後のprepareで別bufferを再適用しない。locked補正後の出力を正本にする。
+        if is_asio {
+            in_stream_config.buffer_size = out_stream_config.buffer_size;
+        }
+        let preferred_input = policy
+            .prefer_same_rate_input(self.current_host_is_asio)
+            .then(|| {
+                in_capabilities.same_rate_input(in_stream_config, out_stream_config.sample_rate)
+            })
+            .flatten();
+        let used_preferred_input = preferred_input.is_some();
+        if let Some(config) = preferred_input {
+            *in_stream_config = config;
+        }
+        // 起動試行の選択結果だけを非RTで記録する。実機の同率受理はbuild/play成功と照合する。
+        log::debug!(
+            "[Config] Selected rates: input={} output={} input_channels={} preferred_input={}",
+            in_stream_config.sample_rate,
+            out_stream_config.sample_rate,
+            in_stream_config.channels,
+            used_preferred_input
+        );
+
+        self.current_input_channels = in_stream_config.channels as usize;
+        self.resolve_start_channels()?;
+
+        // 今回の要求・固定サイズ検出後に全処理段の上限を揃える。
+        let effective_fixed_block = match out_stream_config.buffer_size {
+            cpal::BufferSize::Fixed(frames) => Some(frames),
+            cpal::BufferSize::Default => None,
+        };
+        self.fixed_buffer_request_frames = effective_fixed_block;
+        self.configure_processing_capacity(effective_fixed_block, default_max_block)?;
+
+        Ok((used_preferred_input, effective_fixed_block))
     }
 
     #[allow(deprecated)]
@@ -859,8 +322,10 @@ impl Engine {
             ) {
                 Ok(config) => in_stream_config = config,
                 Err(error) => {
-                    if let Some(next_policy) = policy.retry_default_output() {
-                        let fallback_rate = out_capabilities.default_rate();
+                    if let Some((next_policy, fallback_rate)) = policy
+                        .retry_default_output()
+                        .zip(out_capabilities.default_retry_rate())
+                    {
                         lifecycle::release_devices_before_retry((in_dev, out_dev), || {
                             self.clear_audio_resources()
                         });
@@ -881,65 +346,25 @@ impl Engine {
             }
         }
 
-        dsp::NoiseGeometry::guard(out_stream_config.sample_rate, self.noise_reduction_enabled)
-            .map_err(|e| anyhow!(e))?;
-        self.current_sample_rate = out_stream_config.sample_rate as f64;
-        self.current_block_size = match out_stream_config.buffer_size {
-            cpal::BufferSize::Fixed(s) => s as usize,
-            _ => 512,
+        let input_format = if is_asio {
+            in_capabilities.native_format()
+        } else {
+            cpal::SampleFormat::F32
         };
-        self.current_channels = out_stream_config.channels as usize;
-        self.current_host_is_asio = is_asio;
-
-        // Force detection of Locked Buffer Size (ASIO)
-        let default_max_block = out_capabilities.default_buffer_range().map(|(_, max)| max);
-        if let Some((min, max)) = out_capabilities.default_buffer_range() {
-            log::debug!("[Config] Device Buffer Range: min={}, max={}", min, max);
-            if let Some(locked) = out_capabilities.locked_buffer_override(self.current_block_size) {
-                log::info!(
-                    "[Config] Detected Locked Buffer Size override: {} -> {}",
-                    self.current_block_size,
-                    locked
-                );
-                self.current_block_size = locked as usize;
-                out_stream_config.buffer_size = cpal::BufferSize::Fixed(locked);
-                in_stream_config.buffer_size = cpal::BufferSize::Fixed(locked);
-            }
-        }
-
-        // ASIOの最後のprepareで別bufferを再適用しない。locked補正後の出力を正本にする。
-        if is_asio {
-            in_stream_config.buffer_size = out_stream_config.buffer_size;
-        }
-        let preferred_input = policy
-            .prefer_same_rate_input(self.current_host_is_asio)
-            .then(|| {
-                in_capabilities.same_rate_input(&in_stream_config, out_stream_config.sample_rate)
-            })
-            .flatten();
-        let used_preferred_input = preferred_input.is_some();
-        if let Some(config) = preferred_input {
-            in_stream_config = config;
-        }
-        // 起動試行の選択結果だけを非RTで記録する。実機の同率受理はbuild/play成功と照合する。
-        log::debug!(
-            "[Config] Selected rates: input={} output={} input_channels={} preferred_input={}",
-            in_stream_config.sample_rate,
-            out_stream_config.sample_rate,
-            in_stream_config.channels,
-            used_preferred_input
-        );
-
-        self.current_input_channels = in_stream_config.channels as usize;
-        self.resolve_start_channels()?;
-
-        // 今回の要求・固定サイズ検出後に全処理段の上限を揃える。
-        let effective_fixed_block = match out_stream_config.buffer_size {
-            cpal::BufferSize::Fixed(frames) => Some(frames),
-            cpal::BufferSize::Default => None,
+        let output_format = if is_asio {
+            out_capabilities.native_format()
+        } else {
+            cpal::SampleFormat::F32
         };
-        self.fixed_buffer_request_frames = effective_fixed_block;
-        self.configure_processing_capacity(effective_fixed_block, default_max_block)?;
+
+        let (used_preferred_input, effective_fixed_block) = self.prepare_stream_geometry(
+            &mut in_stream_config,
+            &mut out_stream_config,
+            &out_capabilities,
+            &in_capabilities,
+            is_asio,
+            policy,
+        )?;
 
         self.register_start_devices(
             host_name_str,
@@ -1048,13 +473,7 @@ impl Engine {
         });
         let mut processors_vec = processors_vec?;
 
-        let PluginControls {
-            bypassed: mut rt_bypassed,
-            muted: mut rt_muted,
-            gains: mut rt_gains,
-            order: mut rt_order,
-            order_len: mut rt_order_len,
-        } = self.prepare_plugin_controls();
+        let mut plugin_controls = self.prepare_plugin_controls();
 
         let channels_len = out_stream_config.channels as usize;
         let max_frames_per_callback = self.processing_block_capacity;
@@ -1451,11 +870,11 @@ impl Engine {
                         pending_retire,
                         rt_processors,
                         rt_active_count: &mut rt_active_count,
-                        rt_gains: &mut rt_gains,
-                        rt_bypassed: &mut rt_bypassed,
-                        rt_muted: &mut rt_muted,
-                        rt_order: &mut rt_order,
-                        rt_order_len: &mut rt_order_len,
+                        rt_gains: &mut plugin_controls.gains,
+                        rt_bypassed: &mut plugin_controls.bypassed,
+                        rt_muted: &mut plugin_controls.muted,
+                        rt_order: &mut plugin_controls.order,
+                        rt_order_len: &mut plugin_controls.order_len,
                         rt_cohort_change_applied: &mut rt_cohort_change_applied,
                         output_timing: &mut output_timing,
                         worker_generation_controls: worker_generation_controls.as_deref(),
@@ -1663,102 +1082,15 @@ impl Engine {
                         }
                     }
 
-                    // --- 2. Ping-Pong Processing Loop ---
-                    // We toggle between using `planar_buf_a` and `planar_buf_b` as input/output
-                    // Current Data is always in `current_buffer_index` (0 -> A, 1 -> B)
-
-                    let mut current_source_is_a = true; // True usually implies result is in A
-
-                    // Global Bypass: Skip all plugin processing (A/B comparison mode)
-                    // Input remains in planar_buf_a, so current_source_is_a stays true.
-                    if !rt_global_bypass && rt_active_count > 0 && rt_order_len > 0 {
-                        for &index in &rt_order[..rt_order_len] {
-                            let idx = index as usize;
-                            if idx >= MAX_PLUGINS {
-                                continue;
-                            }
-
-                            // Bypass Check
-                            if rt_bypassed[idx] {
-                                // Soft Bypass: Explicitly copy input buffer to output buffer
-                                // This ensures the processing chain continuity ("Ping-Pong" flow)
-                                // and guarantees valid data in the target buffer, resolving "Silence" issues.
-                                let (in_bufs, out_bufs) = if current_source_is_a {
-                                    (&planar_buf_a, &mut planar_buf_b)
-                                } else {
-                                    (&planar_buf_b, &mut planar_buf_a)
-                                };
-
-                                for ch in 0..channels {
-                                    // Safety bounds check
-                                    if ch < in_bufs.len()
-                                        && ch < out_bufs.len()
-                                        && in_bufs[ch].len() >= frames
-                                        && out_bufs[ch].len() >= frames
-                                    {
-                                        out_bufs[ch][..frames]
-                                            .copy_from_slice(&in_bufs[ch][..frames]);
-                                    }
-                                }
-
-                                // Toggle source to maintain chain state (A -> B or B -> A)
-                                current_source_is_a = !current_source_is_a;
-                                continue;
-                            }
-
-                            // Mute Check
-                            if rt_muted[idx] {
-                                // If muted, we need to zero out the current buffer
-                                if current_source_is_a {
-                                    for channel in &mut planar_buf_a[..channels] {
-                                        channel[..frames].fill(0.0);
-                                    }
-                                } else {
-                                    for channel in &mut planar_buf_b[..channels] {
-                                        channel[..frames].fill(0.0);
-                                    }
-                                }
-                                continue;
-                            }
-
-                            // Process
-                            if let Some(proc) = rt_processors[idx].as_mut() {
-                                let (in_bufs, out_bufs) = if current_source_is_a {
-                                    (&planar_buf_a, &mut planar_buf_b)
-                                } else {
-                                    (&planar_buf_b, &mut planar_buf_a)
-                                };
-
-                                // Call new process_planar
-                                proc.process_planar(in_bufs, out_bufs, frames);
-
-                                // Toggle
-                                current_source_is_a = !current_source_is_a;
-
-                                // Apply Gain (Smoother)
-                                let smoother = &mut rt_gains[idx];
-                                // Optimization: Check if gain is effectively 1.0 (no change needed)
-                                if (smoother.current() - 1.0).abs() > 0.0001
-                                    || (smoother.target() - 1.0).abs() > 0.0001
-                                {
-                                    let target_buf = if current_source_is_a {
-                                        &mut planar_buf_a
-                                    } else {
-                                        &mut planar_buf_b
-                                    };
-
-                                    let mut frame_idx = 0;
-                                    while frame_idx < frames {
-                                        let gain = smoother.next();
-                                        for channel in &mut target_buf[..channels] {
-                                            channel[frame_idx] *= gain;
-                                        }
-                                        frame_idx += 1;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    let current_source_is_a = plugin_controls.process(PluginBlock {
+                        processors: rt_processors,
+                        planar_buf_a: &mut planar_buf_a,
+                        planar_buf_b: &mut planar_buf_b,
+                        channels,
+                        frames,
+                        active_count: rt_active_count,
+                        global_bypass: rt_global_bypass,
+                    });
 
                     // --- 3. Result Interleaving & Output Metering ---
                     let final_buf = if current_source_is_a {
@@ -2051,8 +1383,12 @@ impl Engine {
                 ) {
                     Ok(worker) => {
                         self.split_worker = Some(worker);
-                        out_dev.build_output_stream(
+                        native_stream::build_output(
+                            &out_dev,
                             &out_stream_config,
+                            output_format,
+                            max_frames_per_callback,
+                            self.stream_failed.clone(),
                             move |data: &mut [f32], info| {
                                 monitor
                                     .get_mut()
@@ -2066,14 +1402,17 @@ impl Engine {
                                 super::super::queue_diagnostics::route_stereo_monitor(data, pair);
                             },
                             err_fn_ipc,
-                            None,
                         )
                     }
                     Err(_) => Err(cpal::BuildStreamError::DeviceNotAvailable),
                 }
             } else {
-                out_dev.build_output_stream(
+                native_stream::build_output(
+                    &out_dev,
                     &out_stream_config,
+                    output_format,
+                    max_frames_per_callback,
+                    self.stream_failed.clone(),
                     move |data: &mut [f32], info| {
                         let ticket = output_silence.ticket();
                         process_output(data, Some(info));
@@ -2084,7 +1423,6 @@ impl Engine {
                         );
                     },
                     err_fn_ipc,
-                    None,
                 )
             };
             capabilities::report_phase("output_build", output_build_started);
@@ -2109,8 +1447,12 @@ impl Engine {
         };
         let build_input = || {
             let input_build_started = Instant::now();
-            let input_result = in_dev.build_input_stream(
+            let input_result = native_stream::build_input(
+                &in_dev,
                 &in_stream_config,
+                input_format,
+                max_frames_per_callback,
+                self.stream_failed.clone(),
                 move |data: &[f32], info: &cpal::InputCallbackInfo| {
                     input_callback.process(data, info);
                 },
@@ -2124,7 +1466,6 @@ impl Engine {
                         println!("IPC:{}", json);
                     }
                 },
-                None,
             );
             capabilities::report_phase("input_build", input_build_started);
             input_result
@@ -2148,7 +1489,10 @@ impl Engine {
                 let detailed_msg = format!("{} (Original: {})", error_jp, e);
                 log::error!("Failed to build output stream: {}", detailed_msg);
 
-                if let Some(next_policy) = policy.retry_default_output() {
+                if let Some((next_policy, fallback_rate)) = policy
+                    .retry_default_output()
+                    .zip(out_capabilities.default_retry_rate())
+                {
                     log::warn!(
                         "[Config] Fallback! Retrying with Default: {} Hz",
                         out_capabilities.default_rate()
@@ -2161,7 +1505,7 @@ impl Engine {
                             host_name: retry_host_out,
                             input_name: retry_input_out,
                             output_name: retry_output_out,
-                            sample_rate: Some(out_capabilities.default_rate()),
+                            sample_rate: Some(fallback_rate),
                             buffer_size: None,
                             device_ids: device_ids.clone(),
                         },
@@ -2204,7 +1548,10 @@ impl Engine {
                     );
                 }
                 // 既定入力も拒否された場合は、従来どおり出力の既定設定へ一度だけ戻す。
-                if let Some(next_policy) = policy.retry_default_output() {
+                if let Some((next_policy, fallback_rate)) = policy
+                    .retry_default_output()
+                    .zip(out_capabilities.default_retry_rate())
+                {
                     log::warn!("[Config] Input fallback: retrying after output cleanup");
                     // 再試行より前にローカル出力とcallback所有値を回収する。
                     lifecycle::release_devices_before_retry((in_dev, out_dev), || {
@@ -2215,7 +1562,7 @@ impl Engine {
                             host_name: retry_host_in,
                             input_name: retry_input_in,
                             output_name: retry_output_in,
-                            sample_rate: Some(out_capabilities.default_rate()),
+                            sample_rate: Some(fallback_rate),
                             buffer_size: None,
                             device_ids: device_ids.clone(),
                         },
@@ -2225,16 +1572,50 @@ impl Engine {
                 return Err(anyhow!("Input Stream Build Failed: {}", detailed_msg));
             }
         };
-        // ASIO互換の出力→入力play順を維持し、両方成功した場合だけ公開する。
-        let mut starting_output = true;
+        // ASIO共有driverの順序は維持する。WASAPIは入力到着後に出力を開始する。
         let streams = capabilities::timed("stream_play", || {
-            StreamPair::start(output_stream, input_stream, |stream: &cpal::Stream| {
-                let direction = if starting_output { "Output" } else { "Input" };
-                starting_output = false;
-                stream
-                    .play()
-                    .map_err(|error| anyhow!("{} Stream play() failed: {}", direction, error))
-            })
+            if is_asio {
+                let mut starting_output = true;
+                StreamPair::start(output_stream, input_stream, |stream: &cpal::Stream| {
+                    let direction = if starting_output { "Output" } else { "Input" };
+                    starting_output = false;
+                    stream
+                        .play()
+                        .map_err(|error| anyhow!("{} Stream play() failed: {}", direction, error))
+                })
+            } else {
+                let queue = self
+                    .queue_observer
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("入力キューがありません"))?;
+                let channels = self.current_input_channels;
+                let target = self
+                    .current_block_size
+                    .saturating_mul(2)
+                    .min(queue.capacity().get() / channels);
+                let mut starting_input = true;
+                StreamPair::start_input_first(
+                    output_stream,
+                    input_stream,
+                    |stream: &cpal::Stream| {
+                        let direction = if starting_input { "Input" } else { "Output" };
+                        starting_input = false;
+                        stream.play().map_err(|error| {
+                            anyhow!("{} Stream play() failed: {}", direction, error)
+                        })
+                    },
+                    || {
+                        let frames = lifecycle::wait_for_input(
+                            target,
+                            self.current_sample_rate as u32,
+                            || queue.occupied_len() / channels,
+                            || self.stream_failed.load(Ordering::Acquire),
+                        )?;
+                        log::debug!("[StartupInput] ready_frames={frames} target_frames={target}");
+                        Ok(())
+                    },
+                )
+            }
         })?;
         let (input_stream, output_stream) = streams.commit();
         self.input_stream = Some(input_stream);
