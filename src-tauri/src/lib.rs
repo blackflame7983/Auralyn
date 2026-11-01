@@ -28,6 +28,7 @@ mod shortcuts;
 mod storage;
 mod temporary_session;
 mod updates;
+mod window_activity;
 pub mod vst_host;
 #[tauri::command]
 async fn get_autostart_status(
@@ -300,6 +301,7 @@ pub fn run() {
                             let _ = window.show();
                             let _ = window.unminimize();
                             let _ = window.set_focus();
+                            let _ = window_activity::publish(&window.as_ref().window());
                         }
                     }
                     "mute_toggle" => {
@@ -328,6 +330,7 @@ pub fn run() {
                             let _ = window.show();
                             let _ = window.unminimize();
                             let _ = window.set_focus();
+                            let _ = window_activity::publish(&window.as_ref().window());
                         }
                     }
                 })
@@ -362,8 +365,10 @@ pub fn run() {
                 // Notify user (only once per session) that app is still running in tray
                 let _ = window.emit("minimized-to-tray", ());
             }
+            let _ = window_activity::publish(window);
         })
         .invoke_handler(tauri::generate_handler![
+            window_activity::get_window_activity,
             commands::audio::peak_protection,
             temporary_session::temporary_session_status,
             temporary_session::acknowledge_session_review,

@@ -1,3 +1,4 @@
+import { initializeAppVisibility } from './lib/appVisibility';
 import { initializeTemporarySession } from './lib/temporarySession';
 import { FixedClientError, renderClientError } from './lib/clientError';
 import { LocaleProvider, useMessages } from './i18n/LocaleProvider';
@@ -21,4 +22,5 @@ function render(content: React.ReactNode, withTheme = true) {
   if (withTheme) initializeLocaleBridge();
   root.render(<React.StrictMode><LocaleProvider>{withTheme ? <ThemeProvider>{content}</ThemeProvider> : content}</LocaleProvider></React.StrictMode>);
 }
+initializeAppVisibility();
 initializeTemporarySession().then(() => bootstrapMigration()).then(() => render(<App />)).catch(error => render(<BootstrapFailure error={error} />, false));

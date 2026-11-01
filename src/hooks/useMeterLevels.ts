@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import type { MessageKey } from '@/i18n/messages';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
@@ -17,7 +18,7 @@ export function useMeterLevels({ running, type = 'output', enabled = true }: { r
     const [reading, setReading] = useState<Omit<MeterReading, 'resetClip'>>(() => empty(running ? 'waiting' : 'stopped'));
     const published = useRef(reading);
     const publish = useCallback((next: Omit<MeterReading, 'resetClip'>) => {
-        if (document.hidden) return;
+        if (isAppHidden()) return;
         const previous = published.current;
         if (previous.state === next.state && previous.clipped === next.clipped &&
             (previous.clipSecondsAgo ?? null) === (next.clipSecondsAgo ?? null) &&
@@ -61,7 +62,7 @@ export function useMeterLevels({ running, type = 'output', enabled = true }: { r
             listen('audio-started', () => { if (!active) return; accepting = true; clipped.current = false; lastClipAt.current = null; clear('waiting'); }),
         ];
         const update = () => {
-            if (!active || document.hidden) return;
+            if (!active || isAppHidden()) return;
             const age = clipAge();
             if (current.clipSecondsAgo !== age || current.clipped !== clipped.current) {
                 current = { ...current, clipped: clipped.current, clipSecondsAgo: age };
@@ -85,8 +86,8 @@ export function useMeterLevels({ running, type = 'output', enabled = true }: { r
             publish(current);
         };
         const timer = setInterval(update, 16);
-        document.addEventListener('visibilitychange', update);
-        return () => { active = false; clearInterval(timer); document.removeEventListener('visibilitychange', update); subscriptions.forEach(p => { void p.then(unlisten => unlisten()).catch(() => {}); }); };
+        addAppVisibilityListener(update);
+        return () => { active = false; clearInterval(timer); removeAppVisibilityListener(update); subscriptions.forEach(p => { void p.then(unlisten => unlisten()).catch(() => {}); }); };
     }, [running, type, enabled, publish]);
     return { ...(running ? reading : { ...empty('stopped', clipped.current), clipSecondsAgo: reading.clipSecondsAgo }), resetClip };
 }

@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useCallback, useSyncExternalStore } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi, type EngineRuntimeStats } from '@/api/audio';
@@ -28,7 +29,7 @@ export function invalidateRuntimeStats() {
 }
 // 明示的な更新は、進行中の古い取得の後に新しい取得を待つ。
 export function refreshRuntimeStats(force = false): Promise<void> {
-    if (!listeners.size || document.hidden || subscriptionFailed) return Promise.resolve();
+    if (!listeners.size || isAppHidden() || subscriptionFailed) return Promise.resolve();
     if (inFlight) {
         if (force) { revision++; queued = true; }
         return inFlight;
@@ -40,7 +41,7 @@ export function refreshRuntimeStats(force = false): Promise<void> {
             const requestRevision = revision;
             try {
                 const next = await audioApi.getEngineRuntimeStats();
-                if (listeners.size && !document.hidden && !subscriptionFailed && revision === requestRevision) {
+                if (listeners.size && !isAppHidden() && !subscriptionFailed && revision === requestRevision) {
                     acceptedSerial++;
                     acceptedRevision = requestRevision;
                     acceptedSession = requestSession;
@@ -51,7 +52,7 @@ export function refreshRuntimeStats(force = false): Promise<void> {
             } catch {
                 if (listeners.size && revision === requestRevision) invalidateRuntimeStats();
             }
-        } while (queued && listeners.size && requestSession === subscriptionSession && !document.hidden && !subscriptionFailed);
+        } while (queued && listeners.size && requestSession === subscriptionSession && !isAppHidden() && !subscriptionFailed);
     };
     const request = run().finally(() => { if (inFlight === request) inFlight = null; });
     inFlight = request;
@@ -61,11 +62,11 @@ export async function refreshRuntimeStatsChecked(): Promise<EngineRuntimeStats> 
     const before = acceptedSerial;
     const session = subscriptionSession;
     await refreshRuntimeStats(true);
-    if (!snapshot || document.hidden || subscriptionFailed || acceptedSerial <= before || acceptedRevision !== revision || acceptedSession !== session || session !== subscriptionSession) throw new Error('Runtime stats are unavailable');
+    if (!snapshot || isAppHidden() || subscriptionFailed || acceptedSerial <= before || acceptedRevision !== revision || acceptedSession !== session || session !== subscriptionSession) throw new Error('Runtime stats are unavailable');
     return snapshot;
 }
 function visibility() {
-    if (document.hidden) invalidateRuntimeStats();
+    if (isAppHidden()) invalidateRuntimeStats();
     else void refreshRuntimeStats(true);
 }
 function external(event: Event) {
@@ -77,7 +78,7 @@ function started() { invalidateRuntimeStats(); void refreshRuntimeStats(true); }
 function subscribe(listener: () => void) {
     listeners.add(listener);
     if (listeners.size === 1) {
-        document.addEventListener('visibilitychange', visibility);
+        addAppVisibilityListener(visibility);
         window.addEventListener('profile-fx-applied', external);
         const session = ++subscriptionSession;
         subscriptionFailed = false;
@@ -101,7 +102,7 @@ function subscribe(listener: () => void) {
             invalidateRuntimeStats();
             queued = false;
             clearInterval(interval);
-            document.removeEventListener('visibilitychange', visibility);
+            removeAppVisibilityListener(visibility);
             window.removeEventListener('profile-fx-applied', external);
             subscriptions.forEach(item => void item.then(stop => stop()).catch(() => {}));
             subscriptions = [];

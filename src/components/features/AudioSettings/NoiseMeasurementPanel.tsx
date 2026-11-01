@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { noiseMeasurementApi, type NoiseMeasurementRequest, type NoiseMeasurementSnapshot } from '@/api/noiseMeasurement';
@@ -32,12 +33,12 @@ export function NoiseMeasurementPanel({ embedded = false }: { embedded?: boolean
         active.current = true;
         let live = true;
         const refresh = async () => {
-            if (!live || document.hidden || writing.current || reading.current) return;
+            if (!live || isAppHidden() || writing.current || reading.current) return;
             reading.current = true;
             const version = serial.current;
             try {
                 const next = await noiseMeasurementApi.request({ action: 'snapshot' });
-                if (live && active.current && version === serial.current && !document.hidden) {
+                if (live && active.current && version === serial.current && !isAppHidden()) {
                     if (!next || typeof next.generation !== 'string' || !(next.state in stateLabels)) throw Error('Unknown measurement state');
                     if (lastGeneration.current !== `${next.epoch}:${next.generation}`) setQuiet(false);
                     lastGeneration.current = `${next.epoch}:${next.generation}`;
@@ -49,7 +50,7 @@ export function NoiseMeasurementPanel({ embedded = false }: { embedded?: boolean
         };
         const hidden = () => {
             serial.current++; setQuiet(false);
-            if (document.hidden) { cancelOwned(); setSnapshot(null); }
+            if (isAppHidden()) { cancelOwned(); setSnapshot(null); }
             else void refresh();
         };
         const changed = () => { if (!live) return; serial.current++; setQuiet(false); setSnapshot(null); void refresh(); };
@@ -62,21 +63,21 @@ export function NoiseMeasurementPanel({ embedded = false }: { embedded?: boolean
         const subscriptions = ['audio-started', 'audio-stopped', 'audio-error', 'audio-stream-error'].map(event => listen(event, changed));
         subscriptions.push(listen('audio-conditions-changed', conditionsChanged));
         const timer = setInterval(() => { void refresh(); }, 500);
-        document.addEventListener('visibilitychange', hidden);
+        addAppVisibilityListener(hidden);
         void refresh();
         return () => {
             live = false; active.current = false; serial.current++; cancelOwned(); clearInterval(timer);
-            document.removeEventListener('visibilitychange', hidden);
+            removeAppVisibilityListener(hidden);
             subscriptions.forEach(p => { void p.then(stop => stop()).catch(() => {}); });
         };
     }, []);
     const run = async (request: NoiseMeasurementRequest) => {
-        if (writing.current || document.hidden) return;
+        if (writing.current || isAppHidden()) return;
         writing.current = true; const version = ++serial.current; setBusy(true); setQuiet(false);
         try {
             const next = await noiseMeasurementApi.request(request);
             if (request.action === 'start') {
-                if (!active.current || version !== serial.current || document.hidden) {
+                if (!active.current || version !== serial.current || isAppHidden()) {
                     void noiseMeasurementApi.request({ action: 'cancel', epoch: next.epoch, generation: next.generation }).catch(() => {}); return;
                 }
                 owned.current = {epoch: next.epoch, generation: next.generation};
@@ -84,7 +85,7 @@ export function NoiseMeasurementPanel({ embedded = false }: { embedded?: boolean
             if (active.current && version === serial.current) {
                 const events = conditionEvents.current;
                 const latest = request.action === 'snapshot' ? next : await noiseMeasurementApi.request({ action: 'snapshot' });
-                if (active.current && version === serial.current && events === conditionEvents.current && !document.hidden) {
+                if (active.current && version === serial.current && events === conditionEvents.current && !isAppHidden()) {
                     setSnapshot(latest); setError(false);
                     if (latest.state !== 'capturing' || latest.epoch !== owned.current?.epoch || latest.generation !== owned.current?.generation) owned.current = null;
                     if (request.action === 'approve') window.dispatchEvent(new Event('profile-fx-applied'));

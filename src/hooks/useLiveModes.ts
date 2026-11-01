@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { message, type MessageKey } from '@/i18n/messages';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -27,7 +28,7 @@ export function useLiveModes(externalBusy = false) {
     const current = useRef(snapshot); current.current = snapshot;
     useEffect(() => { mounted.current = true; return () => { mounted.current = false; serial.current++; }; }, []);
     const refresh = useCallback(async (clearError = true) => {
-        if (writing.current || reading.current || document.hidden) return;
+        if (writing.current || reading.current || isAppHidden()) return;
         reading.current = true;
         const request = ++serial.current;
         try {
@@ -43,9 +44,9 @@ export function useLiveModes(externalBusy = false) {
         const event = listen('live-modes-invalidated', update);
         void event.catch(() => { if (active) setError({ key: 'liveNotices.eventsFailed' }); });
         const timer = setInterval(update, 500);
-        document.addEventListener('visibilitychange', update);
+        addAppVisibilityListener(update);
         update();
-        return () => { active = false; serial.current++; clearInterval(timer); document.removeEventListener('visibilitychange', update); void event.then(stop => stop()).catch(() => {}); };
+        return () => { active = false; serial.current++; clearInterval(timer); removeAppVisibilityListener(update); void event.then(stop => stop()).catch(() => {}); };
     }, [users > 0, refresh]);
     const change = async (action: () => Promise<LiveModeSnapshot>, recovery = false) => {
         if (writing.current || (!recovery && transactionBlocksChanges(current.current?.transaction))) return false;

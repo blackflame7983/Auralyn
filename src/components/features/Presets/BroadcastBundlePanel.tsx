@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { audioApi, type PreparationSnapshot } from '@/api/audio';
 import { type PreparationContext, readPreparationContext } from '@/lib/preparation';
 import { formatObsText } from '@/lib/obsUiText';
@@ -61,11 +62,11 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
         const contextChanged = () => { version.current++; setCheckedExpected(null); setCheckedContext(null); setCheckedAcknowledged(false); setPlan(null); };
         window.addEventListener('preparation-purpose-changed', contextChanged);
         window.addEventListener('preparation-external-change', contextChanged);
-        const hidden = () => { if (document.hidden) { version.current += 1; setPlan(null); setCheckedExpected(null); setCheckedAcknowledged(false); } };
-        document.addEventListener('visibilitychange', hidden);
+        const hidden = () => { if (isAppHidden()) { version.current += 1; setPlan(null); setCheckedExpected(null); setCheckedAcknowledged(false); } };
+        addAppVisibilityListener(hidden);
         return () => {
             alive.current = false; version.current += 1; listVersion.current += 1;
-            document.removeEventListener('visibilitychange', hidden);
+            removeAppVisibilityListener(hidden);
             window.removeEventListener('preparation-purpose-changed', contextChanged);
             window.removeEventListener('preparation-external-change', contextChanged);
             subscriptions.forEach(p => { void p.then(unlisten => unlisten()).catch(() => {}); });

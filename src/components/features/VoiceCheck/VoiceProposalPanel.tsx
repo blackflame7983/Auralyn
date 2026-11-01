@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useEffect, useRef, useState } from 'react';
 import type { SingingDraft } from '@/hooks/useSingingDraft';
 import { defaultProposalPreferences, proposalPreferencesEqual, type ProposalPreferences, type ProposalPreferenceRequest, type BuiltinCandidate, type ProposalMessage, type VoiceProposal } from '@/api/voiceCheckPreview';
@@ -49,13 +50,15 @@ export function VoiceProposalPanel({ model, candidate, disabled, previewActive, 
         let attempts = 0;
         let inFlight = false;
         let active = true;
-        const timer = setInterval(() => {
-            if (!active || document.hidden || inFlight) return;
+        const poll = () => {
+            if (!active || isAppHidden() || inFlight) return;
             if (attempts++ >= 40) { clearInterval(timer); setPollExpired(true); return; }
             inFlight = true;
             void model.refresh().finally(() => { inFlight = false; });
-        }, 250);
-        return () => { active = false; clearInterval(timer); };
+        };
+        const timer = setInterval(poll, 250);
+        addAppVisibilityListener(poll);
+        return () => { active = false; clearInterval(timer); removeAppVisibilityListener(poll); };
     }, [model.snapshot?.pending, model.refresh]);
     const alive = useRef(true);
     const request = useRef(0);
@@ -72,7 +75,7 @@ export function VoiceProposalPanel({ model, candidate, disabled, previewActive, 
         setPreparing(true);
         try {
             const snapshot = await model.refresh();
-            if (!alive.current || version !== request.current || recording.current !== id || !snapshot || snapshot.pending || document.hidden) return;
+            if (!alive.current || version !== request.current || recording.current !== id || !snapshot || snapshot.pending || isAppHidden()) return;
             await prepare({ epoch: snapshot.epoch, revision: snapshot.revision, draftRevision: model.draftRevision }, { preferences: {...preferences}, preferencesRevision });
         } finally { if (alive.current && version === request.current) setPreparing(false); }
     };

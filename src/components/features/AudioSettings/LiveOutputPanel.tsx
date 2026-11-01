@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { defaultSinging, defaultReverb } from '@/api/builtinEffects';
 import { useEffect, useRef, useState } from 'react';
 import type { AudioDevice } from '@/api/audio';
@@ -36,14 +37,17 @@ export function LiveOutputPanel({ outputs, onBusyChange, disabled = false }: { d
     useEffect(() => {
         if (!status) return;
         let active = true; let reading = false;
-        const timer = setInterval(async () => {
-            if (!active || reading || busyNow.current || document.hidden) return;
+        const read = async () => {
+            if (!active || reading || busyNow.current || isAppHidden()) return;
             reading = true; const ticket = sequence.current;
             try { const next = await liveOutputApi.request(); if (active && ticket === sequence.current) setStatus(next); }
             catch { if (active && ticket === sequence.current) { setStatus(value => value ? { ...value, sink: null, error: 'unavailable' } : null); setError(true); } }
             finally { reading = false; }
-        }, 1000);
-        return () => { active = false; clearInterval(timer); };
+        };
+        const visible = () => { if (!isAppHidden()) void read(); };
+        const timer = setInterval(() => void read(), 1000);
+        addAppVisibilityListener(visible);
+        return () => { active = false; clearInterval(timer); removeAppVisibilityListener(visible); };
     }, [Boolean(status)]);
     async function request(save = false) {
         sequence.current++;

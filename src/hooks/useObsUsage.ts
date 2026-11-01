@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useMessages } from '../i18n/LocaleProvider';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -20,11 +21,11 @@ const disconnect = (t: ReturnType<typeof useMessages>) => {
 // OBSを操作する画面がなくなったら通信を止める。再表示だけでは再接続しない。
 export function useObsUsage(active: boolean, holdWhileHidden = false) {
     const t = useMessages();
-    const [visible, setVisible] = useState(() => !document.hidden);
+    const [visible, setVisible] = useState(() => !isAppHidden());
     useEffect(() => {
-        const update = () => setVisible(!document.hidden);
-        document.addEventListener('visibilitychange', update);
-        return () => document.removeEventListener('visibilitychange', update);
+        const update = () => setVisible(!isAppHidden());
+        addAppVisibilityListener(update);
+        return () => removeAppVisibilityListener(update);
     }, []);
     const used = active && (visible || holdWhileHidden);
     useEffect(() => {

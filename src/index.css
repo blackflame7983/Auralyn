@@ -658,3 +658,10 @@
   --error-border: hsl(var(--destructive-text) / 0.4);
   --error-text: hsl(var(--destructive-text));
 }
+
+/* 非表示でも購読は維持し、描画アニメーションだけを一時停止する。 */
+html[data-app-hidden="true"] *,
+html[data-app-hidden="true"] *::before,
+html[data-app-hidden="true"] *::after {
+  animation-play-state: paused !important;
+}

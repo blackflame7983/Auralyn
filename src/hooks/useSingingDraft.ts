@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -61,12 +62,14 @@ export function useSingingDraft() {
         const invalidate = () => {
             setDraftRevision(value => value + 1);
             setSnapshot(current => current ? { ...current, undoToken: null, redoToken: null } : null);
-            if (!document.hidden) void refresh();
+            if (!isAppHidden()) void refresh();
         };
+        const visible = () => { if (!isAppHidden()) void refresh(); };
+        addAppVisibilityListener(visible);
         window.addEventListener('profile-fx-applied', invalidate);
         const native = subscriptions.filter(event => event !== 'profile-fx-applied').map(event => listen(event, invalidate));
         void Promise.all(native).catch(() => setError(notice('voice.copy.132')));
-        return () => { window.removeEventListener('profile-fx-applied', invalidate); native.forEach(item => void item.then(stop => stop()).catch(() => {})); };
+        return () => { removeAppVisibilityListener(visible); window.removeEventListener('profile-fx-applied', invalidate); native.forEach(item => void item.then(stop => stop()).catch(() => {})); };
     }, [Boolean(snapshot), users > 0, refresh]);
     const transact = async (kind: 'apply' | 'undo' | 'redo' | 'proposal', config?: BuiltinConfig, proposal?: VoiceProposal) => {
         const current = state.current.snapshot;

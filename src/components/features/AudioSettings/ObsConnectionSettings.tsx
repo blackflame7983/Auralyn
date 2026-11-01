@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { preparationReach } from '@/lib/preparation';
 import { message, type MessageKey } from '@/i18n/messages';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
@@ -62,10 +63,10 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
   const revalidateReach = async (record = reachRecord.current, invalidate = true) => {
     const version = ++reachValidation.current;
     if (invalidate) setReachCurrent(false);
-    if (!record?.verification || !reachListeners.current || document.hidden || reachExpiredRef.current) return false;
+    if (!record?.verification || !reachListeners.current || isAppHidden() || reachExpiredRef.current) return false;
     try {
       const current = await obsApi.audioReachCurrent(record.verification.operationId);
-      if (!reachAlive.current || version !== reachValidation.current || document.hidden || !reachListeners.current || reachRecord.current !== record) return false;
+      if (!reachAlive.current || version !== reachValidation.current || isAppHidden() || !reachListeners.current || reachRecord.current !== record) return false;
       setReachCurrent(current === true);
       if (current !== true) { reachContext.current += 1; reachExpiredRef.current = true; setReachExpired(true); }
       return current === true;
@@ -87,7 +88,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
       void revalidateReach();
     };
     const visibility = () => {
-      if (document.hidden) {
+      if (isAppHidden()) {
         reachRequest.current += 1;
         reachContext.current += 1;
         reachValidation.current += 1;
@@ -112,12 +113,12 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
       if (active) { reachContext.current += 1; reachListeners.current = false; setReachListenersReady(false); setReachCurrent(false); }
     });
     window.addEventListener('profile-fx-applied', invalidate);
-    document.addEventListener('visibilitychange', visibility);
+    addAppVisibilityListener(visibility);
     return () => {
       active = false; reachAlive.current = false; reachListeners.current = false;
       reachRequest.current += 1; reachValidation.current += 1; reachContext.current += 1;
       window.removeEventListener('profile-fx-applied', invalidate);
-      document.removeEventListener('visibilitychange', visibility);
+      removeAppVisibilityListener(visibility);
       subscriptions.forEach(subscription => { void subscription.then(stop => stop()).catch(() => {}); });
     };
   }, []);
@@ -129,7 +130,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      if (!active || document.hidden || reachExpiredRef.current) return;
+      if (!active || isAppHidden() || reachExpiredRef.current) return;
       await revalidateReach(reachRecord.current, false);
       if (active && !reachExpiredRef.current) timer = setTimeout(() => { void poll(); }, 3000);
     };
@@ -170,14 +171,14 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
     setLoading(true);
     try {
       await obsApi.connect({ host: obsHost, port: obsPort, password: obsPassword });
-      if (revision !== connectionRevision.current || document.hidden) return;
+      if (revision !== connectionRevision.current || isAppHidden()) return;
       setIsObsConnected(true);
       if (connectionDetails.current) connectionDetails.current.open = false;
       setObsConnectionHint(null);
       toast.success(notify('settings.ObsConnectionSettings.267'));
       localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: obsHost, port: obsPort, password: obsPassword }));
     } catch (e) {
-      if (revision !== connectionRevision.current || document.hidden) return;
+      if (revision !== connectionRevision.current || isAppHidden()) return;
       const hint = obsConnectionFailureNotice(e, attemptedPort);
 
       setObsConnectionHint(hint);
@@ -220,7 +221,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
       description: notice('settings.ObsConnectionSettings.272'),
       confirmLabel: notice('settings.ObsConnectionSettings.273'),
       onConfirm: async () => {
-        if (!reachAlive.current || !reachListeners.current || document.hidden) return;
+        if (!reachAlive.current || !reachListeners.current || isAppHidden()) return;
         if (connection !== connectionRevision.current || context !== reachContext.current) {
           toast.info(t('obsReach.stale'));
           return;
@@ -234,11 +235,11 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
         setReachCurrent(false);
         try {
           const result = await obsApi.checkAudioReach(2000);
-          if (!reachAlive.current || request !== reachRequest.current || document.hidden) return;
+          if (!reachAlive.current || request !== reachRequest.current || isAppHidden()) return;
           reachRecord.current = result;
           setObsReachResult(result);
           const current = await revalidateReach(result);
-          if (!reachAlive.current || request !== reachRequest.current || document.hidden) return;
+          if (!reachAlive.current || request !== reachRequest.current || isAppHidden()) return;
           if (current || result.reached === 'unsupported') preparationReach.record(result);
           if (result.reached === 'unsupported') {
             toast.info(t('settings.ObsConnectionSettings.274'), {
@@ -252,7 +253,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
             });
           }
         } catch (e) {
-          if (reachAlive.current && request === reachRequest.current && !document.hidden) toast.error(t('settings.ObsConnectionSettings.279'));
+          if (reachAlive.current && request === reachRequest.current && !isAppHidden()) toast.error(t('settings.ObsConnectionSettings.279'));
         } finally {
           if (reachAlive.current && request === reachRequest.current) setObsReachLoading(false);
         }
