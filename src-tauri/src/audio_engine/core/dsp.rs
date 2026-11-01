@@ -246,7 +246,7 @@ pub(super) fn finite_audio_sample(sample: f32) -> f32 {
     }
 }
 
-pub(super) fn sent_sample_levels(frame: &[f32], targets: [usize; 2]) -> [f32; 2] {
+pub(crate) fn sent_sample_levels(frame: &[f32], targets: [usize; 2]) -> [f32; 2] {
     [
         frame.get(targets[0]).copied().unwrap_or(0.0).abs(),
         if targets[0] == targets[1] {

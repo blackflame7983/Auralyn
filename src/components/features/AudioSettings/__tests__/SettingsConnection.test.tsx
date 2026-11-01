@@ -24,6 +24,61 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.mocked(invoke).mockReset(); });
 
+it.each(['channels', 'save'] as const)('システム再起動の%s失敗から接続画面で再試行してVST復元まで完了する', async stage => {
+    const restart = vi.spyOn(audioApi, 'restart').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
+    const start = vi.spyOn(audioApi, 'start');
+    const channels = vi.spyOn(audioApi, 'setInputChannels').mockResolvedValue(undefined);
+    if (stage === 'channels') channels.mockRejectedValueOnce(new Error('input setting failed'));
+    const save = vi.fn().mockResolvedValue(undefined);
+    if (stage === 'save') save.mockRejectedValueOnce(new Error('storage failed'));
+    const restored = vi.fn().mockResolvedValue(undefined);
+    const closed = vi.fn();
+    render(<AudioSettingsModal isOpen isAudioRunning currentConfig={config} onClose={closed} onConfigChange={save} onEngineRestarted={restored} />);
+    await screen.findByRole('button', { name: '保存して再起動' });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム' }), { button: 0, ctrlKey: false });
+    const button = await screen.findByRole('button', { name: '音声処理を再起動' });
+    await waitFor(() => expect(button).toBeEnabled());
+    button.focus();
+    fireEvent.click(button);
+    fireEvent.click(await screen.findByRole('button', { name: '再起動する' }));
+    await screen.findByText(stage === 'channels' ? /input setting failed/ : /storage failed/);
+    fireEvent.click(await screen.findByRole('button', { name: '設定に戻って再試行' }));
+    const retry = await screen.findByRole('button', { name: '保存して再起動' });
+    expect(retry).toBeEnabled();
+    expect(restored).not.toHaveBeenCalled();
+    fireEvent.click(retry);
+    await waitFor(() => expect(closed).toHaveBeenCalledOnce());
+    expect(restart).toHaveBeenCalledOnce();
+    expect(start).not.toHaveBeenCalled();
+    expect(channels).toHaveBeenCalledTimes(stage === 'channels' ? 2 : 1);
+    expect(save).toHaveBeenCalledTimes(stage === 'save' ? 2 : 1);
+    expect(restored).toHaveBeenCalledOnce();
+});
+
+it.each(['ASIO', 'Wasapi'])('別hostのプリセットで先頭以外の入出力を復元する（変更前=%s）', async previousHost => {
+    const targetHost = previousHost === 'ASIO' ? 'Wasapi' : 'ASIO';
+    const items = ['ASIO', 'Wasapi'].flatMap(host => [1, 2].map(index => ({
+        host, name: `${host} device ${index}`, id: `${host}-${index}`, channels: 4,
+    })));
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: previousHost, input: `${previousHost} device 1`, output: `${previousHost} device 1`, sampleRate: 48000, bufferSize: 512 }));
+    localStorage.setItem('vst_host_audio_presets', JSON.stringify({ target: {
+        host: targetHost, input: `${targetHost} device 2`, output: `${targetHost} device 2`, sampleRate: 48000, bufferSize: 512,
+    } }));
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'get_audio_devices') return { inputs: items, outputs: items };
+        if (command === 'get_autostart_status') return { enabled: false };
+        return null;
+    });
+    const start = vi.spyOn(audioApi, 'start').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
+    render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const input = await screen.findByRole('combobox', { name: 'マイク入力' });
+    await waitFor(() => expect(input).toHaveValue(`id:${previousHost}-1`));
+    fireEvent.change(screen.getByRole('combobox', { name: '入出力プリセット' }), { target: { value: 'target' } });
+    await waitFor(() => expect(input).toHaveValue(`id:${targetHost}-2`));
+    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(targetHost, `${targetHost} device 2`, `${targetHost} device 2`, 512, 48000, `${targetHost}-2`, `${targetHost}-2`));
+});
+
 it('稼働中の変更なし保存を抑止し、変更を戻すと再び抑止する', async () => {
     const start = vi.spyOn(audioApi, 'start');
     render(<AudioSettingsModal isOpen isAudioRunning currentConfig={config} onClose={vi.fn()} onConfigChange={vi.fn()} />);
@@ -48,7 +103,7 @@ it('停止中の変更なしでも明示開始できる', async () => {
     expect(await screen.findByRole('button', { name: '保存して開始' })).toBeEnabled();
 });
 
-it('IDなしASIO設定の入力ペア変更で未適用の接続先まで保存せず、接続先の適用を続けられる', async () => {
+it.each([false, true])('入力ペアの下書きだけでは保存せず、明示適用後に接続先とともに保存する（機器変更=%s）', async changeDevice => {
     const applied: AudioPreferences = { host: 'ASIO', input: 'Device A', output: 'Device A', sampleRate: 48000, bufferSize: 512, inputChannels: [0, 1] };
     localStorage.setItem('vst_host_audio_config', JSON.stringify(applied));
     vi.mocked(invoke).mockImplementation(async command => {
@@ -64,8 +119,8 @@ it('IDなしASIO設定の入力ペア変更で未適用の接続先まで保存�
     function Parent() {
         const [current, setCurrent] = useState(applied);
         return <AudioSettingsModal isOpen isAudioRunning currentConfig={current} currentInputChannels={current.inputChannels}
-            onClose={vi.fn()} onConfigChange={update => {
-                changed(update);
+            onClose={vi.fn()} onConfigChange={(update, options) => {
+                changed(update, options);
                 setCurrent(previous => ({ ...previous, ...update }));
             }} />;
     }
@@ -74,13 +129,15 @@ it('IDなしASIO設定の入力ペア変更で未適用の接続先まで保存�
     await waitFor(() => expect(input).toHaveValue('Device A'));
     const save = screen.getByRole('button', { name: '保存して再起動' });
     expect(save).toBeDisabled();
-    fireEvent.change(input, { target: { value: 'Device B' } });
+    if (changeDevice) fireEvent.change(input, { target: { value: 'Device B' } });
     fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 3/4' }));
-    await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
-    expect(changed).toHaveBeenLastCalledWith({ host: 'ASIO', inputChannels: [2, 3] });
+    expect(changed).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
     expect(save).toBeEnabled();
     fireEvent.click(save);
-    await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', 'Device B', 'Device B', 512, 48000, undefined, undefined));
+    const selected = changeDevice ? 'Device B' : 'Device A';
+    await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', selected, selected, 512, 48000, undefined, undefined));
+    await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ host: 'ASIO', input: selected, output: selected, inputChannels: [2, 3] }), { audioStarted: true }));
 });
 
 it('設定画面内で開始後の反映に失敗しても、稼働中の同じ設定を再試行できる', async () => {

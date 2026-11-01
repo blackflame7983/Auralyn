@@ -11,6 +11,15 @@ export interface AudioPreferences {
     outputId?: string;
 }
 
+// 完全な機器選択でIDが不明なら古いIDを引き継がず、ペアだけの部分更新では保持する。
+export function deviceIdsForUpdate(previous: AudioPreferences, update: Partial<AudioPreferences> & { host: string }) {
+    const changedHost = previous.host.toLowerCase() !== update.host.toLowerCase();
+    const resolve = (side: 'input' | 'output', id: 'inputId' | 'outputId') =>
+        id in update ? update[id] : changedHost || (update[side] !== undefined && update[side] !== previous[side])
+            ? undefined : previous[id];
+    return { inputId: resolve('input', 'inputId'), outputId: resolve('output', 'outputId') };
+}
+
 export function readAudioPreferences(): AudioPreferences | null {
     try {
         const value: unknown = JSON.parse(localStorage.getItem('vst_host_audio_config') ?? 'null');
@@ -53,7 +62,12 @@ export function readCachedAudioDevices(): AudioDeviceList {
                         && typeof d.id === 'string' && d.id.length > 0 && d.buffer_size_range == null));
         };
         if (value && Array.isArray(value.inputs) && Array.isArray(value.outputs)) {
-            return { inputs: value.inputs.filter(validDevice), outputs: value.outputs.filter(validDevice) };
+            // 前回の能力は現在の機器・接続条件を証明しない。
+            const withoutRates = (device: AudioDevice) => {
+                const { sample_rate_ranges: _stale, ...rest } = device;
+                return rest;
+            };
+            return { inputs: value.inputs.filter(validDevice).map(withoutRates), outputs: value.outputs.filter(validDevice).map(withoutRates) };
         }
     } catch { /* キャッシュ破損時も設定を開き、実際のデバイスを再取得できるようにする。 */ }
     return { inputs: [], outputs: [] };

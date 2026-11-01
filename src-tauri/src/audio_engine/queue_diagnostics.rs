@@ -32,6 +32,8 @@ pub struct QueueSnapshot {
     pub output_rate_hz: u32,
     pub input_channels: u16,
     pub output_channels: u16,
+    #[serde(default)]
+    pub queue_channels: Option<u16>,
     pub capacity_slots: u64,
     pub capacity_frames: u64,
     pub capacity_remainder_slots: u64,
@@ -89,6 +91,7 @@ pub struct QueueDiagnostics {
     output_rate: u32,
     input_channels: u16,
     output_channels: u16,
+    queue_channels: u16,
     capacity_slots: usize,
     input: InputCounters,
     output: OutputCounters,
@@ -109,10 +112,31 @@ impl QueueDiagnostics {
             output_rate,
             input_channels,
             output_channels,
+            queue_channels: output_channels,
             capacity_slots,
             input: InputCounters::default(),
             output: OutputCounters::default(),
         }
+    }
+
+    pub fn new_input_queue(
+        epoch: String,
+        input_rate: u32,
+        output_rate: u32,
+        input_channels: u16,
+        output_channels: u16,
+        capacity_slots: usize,
+    ) -> Self {
+        let mut result = Self::new(
+            epoch,
+            input_rate,
+            output_rate,
+            input_channels,
+            output_channels,
+            capacity_slots,
+        );
+        result.queue_channels = input_channels;
+        result
     }
 
     /// 1入力callback分をまとめて記録する。音声queueの受入判断には使わない。
@@ -191,7 +215,7 @@ impl QueueDiagnostics {
         current_slots: Option<usize>,
         queued_slots_at_stop: Option<usize>,
     ) -> QueueSnapshot {
-        let ch = u64::from(self.output_channels).max(1);
+        let ch = u64::from(self.queue_channels).max(1);
         let capacity_slots = self.capacity_slots as u64;
         let valid_slots = |slots: Option<usize>| {
             slots
@@ -221,6 +245,7 @@ impl QueueDiagnostics {
             output_rate_hz: self.output_rate,
             input_channels: self.input_channels,
             output_channels: self.output_channels,
+            queue_channels: Some(self.queue_channels),
             capacity_slots,
             capacity_frames: capacity_slots / ch,
             capacity_remainder_slots: capacity_slots % ch,
@@ -245,6 +270,59 @@ impl QueueDiagnostics {
             underflow_callbacks: self.output.underflows.load(Ordering::Relaxed),
         }
     }
+}
+
+/// ASIO insertの有効な同番号出力を維持し、届かないペアは主出力へ写す。
+/// WASAPIの入力番号やmonoの複製は、物理出力の番号に流用しない。
+pub(crate) fn output_pair(asio: bool, input_pair: [usize; 2], channels: usize) -> [usize; 2] {
+    if asio && input_pair.iter().all(|&channel| channel < channels) {
+        input_pair
+    } else {
+        [0, usize::from(channels > 1)]
+    }
+}
+
+/// 通常音声・録音再生・テストトーンで共用する最終出力と、その実送出レベル。
+pub(crate) fn write_output_frame(
+    frame: &mut [f32],
+    pair: [usize; 2],
+    samples: [f32; 2],
+) -> [f32; 2] {
+    if let Some(left) = frame.get_mut(pair[0]) {
+        *left = samples[0];
+    }
+    // monoの同一端子を右側で上書きしない。
+    if pair[1] != pair[0] {
+        if let Some(right) = frame.get_mut(pair[1]) {
+            *right = samples[1];
+        }
+    }
+    super::core::dsp::sent_sample_levels(frame, pair)
+}
+
+/// 同一フレームの選択値を取り出す。加工前録音と処理入力の共通点。
+pub(crate) fn selected_pair(frame: &[f32], channels: [usize; 2], gain: f32) -> [f32; 2] {
+    channels.map(|ch| frame.get(ch).copied().unwrap_or(0.0) * gain)
+}
+
+/// 選択された2chを先頭へ配置し、余剰出力には入力を流さない。
+pub(crate) fn route_input_frame(
+    frame: &[f32],
+    selected: [usize; 2],
+    gain: f32,
+    planar: &mut [Vec<f32>],
+    index: usize,
+    output_channels: usize,
+) -> [f32; 2] {
+    let pair = selected_pair(frame, selected, gain);
+    for channel in planar.iter_mut().take(output_channels).skip(2) {
+        channel[index] = 0.0;
+    }
+    planar[0][index] = pair[0];
+    if output_channels >= 2 {
+        planar[1][index] = pair[1];
+    }
+    pair
 }
 
 /// f32ごとに公開されるqueueから、完全なoutput frameだけを読む。
@@ -326,6 +404,163 @@ pub(crate) fn push_mapped_frames(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn selected_input_reaches_actual_output_and_meter_without_rt_allocations() {
+        for (asio, input, output, pair, targets) in [
+            (true, 8, 2, [2, 3], [0, 1]),
+            (true, 2, 8, [0, 1], [0, 1]),
+            (true, 22, 22, [6, 7], [6, 7]),
+            (false, 1, 2, [0, 0], [0, 1]),
+            (true, 3, 3, [2, 2], [2, 2]),
+            (true, 3, 2, [2, 2], [0, 1]),
+            (false, 2, 1, [0, 1], [0, 0]),
+        ] {
+            let frame: Vec<_> = (1..=input).map(|n| n as f32).collect();
+            let mut planar = vec![vec![0.0]; output.max(2)];
+            let mut device = vec![0.0; output];
+            assert_eq!(
+                crate::dsp_verification_allocator::allocation_counts(|| {
+                    let raw = super::route_input_frame(&frame, pair, 0.5, &mut planar, 0, output);
+                    let actual_targets = super::output_pair(asio, pair, output);
+                    assert_eq!(actual_targets, targets);
+                    let sent = super::write_output_frame(&mut device, actual_targets, raw);
+                    assert_eq!(device[targets[0]], raw[0]);
+                    assert_eq!(sent[0], raw[0].abs());
+                    if targets[0] != targets[1] {
+                        assert_eq!(device[targets[1]], raw[1]);
+                        assert_eq!(sent[1], raw[1].abs());
+                    } else {
+                        assert_eq!(sent[1], 0.0);
+                    }
+                    for (index, value) in device.iter().enumerate() {
+                        if !targets.contains(&index) {
+                            assert_eq!(*value, 0.0);
+                        }
+                    }
+                }),
+                (0, 0)
+            );
+        }
+    }
+
+    #[test]
+    fn mono_device_keeps_processed_left_instead_of_overwriting_with_right() {
+        let mut frame = [0.0];
+        assert_eq!(
+            super::write_output_frame(&mut frame, [0, 0], [0.25, 0.75]),
+            [0.25, 0.0]
+        );
+        assert_eq!(frame, [0.25]);
+    }
+
+    #[test]
+    fn normal_route_and_raw_pair_match_for_physical_and_output_shapes() {
+        for (input, output) in [(8, 2), (8, 8), (2, 8), (1, 2), (3, 2), (3, 1)] {
+            let frame: Vec<_> = (0..input).map(|i| (i + 1) as f32).collect();
+            let mut planar = vec![vec![0.0; 1]; output];
+            for left in 0..input {
+                for right in 0..input {
+                    assert_eq!(
+                        crate::dsp_verification_allocator::allocation_counts(|| {
+                            let raw = super::route_input_frame(
+                                &frame,
+                                [left, right],
+                                0.5,
+                                &mut planar,
+                                0,
+                                output,
+                            );
+                            assert_eq!(raw, [frame[left] * 0.5, frame[right] * 0.5]);
+                            assert_eq!(planar[0][0], raw[0]);
+                            if output >= 2 {
+                                assert_eq!(planar[1][0], raw[1]);
+                            }
+                            assert!(planar.iter().skip(2).all(|channel| channel[0] == 0.0));
+                        }),
+                        (0, 0)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unselected_physical_signal_never_reaches_extra_outputs() {
+        for (input, output, selected) in [
+            (8, 8, [6, 7]),
+            (8, 2, [0, 0]),
+            (2, 8, [0, 0]),
+            (3, 8, [2, 2]),
+            (3, 1, [0, 0]),
+        ] {
+            for active in 0..input {
+                if selected.contains(&active) {
+                    continue;
+                }
+                let mut frame = vec![0.0; input];
+                frame[active] = 1.0;
+                let mut planar = vec![vec![7.0]; output];
+                let raw = super::route_input_frame(&frame, selected, 1.0, &mut planar, 0, output);
+                assert_eq!(raw, [0.0, 0.0]);
+                assert!(planar.iter().all(|channel| channel[0] == 0.0));
+            }
+        }
+    }
+
+    #[test]
+    fn physical_queue_routes_all_pairs_across_wrap_and_full_without_allocating() {
+        use ringbuf::{traits::*, HeapRb};
+        for channels in [1, 2, 3, 8] {
+            let (mut tx, mut rx) = HeapRb::new(channels * 2).split();
+            let samples: Vec<f32> = (0..channels * 3).map(|i| (i + 1) as f32).collect();
+            let mut output = vec![0.0; channels * 2];
+            let counts = crate::dsp_verification_allocator::allocation_counts(|| {
+                for _ in 0..3 {
+                    let mut budget = None;
+                    let pushed = super::push_mapped_frames(
+                        &mut tx,
+                        &samples,
+                        channels,
+                        channels,
+                        &mut budget,
+                    );
+                    assert_eq!((pushed.offered, pushed.accepted), (3, 2));
+                    assert_eq!(
+                        super::read_complete_frames(&mut rx, &mut output, channels),
+                        2
+                    );
+                    for frame in 0..2 {
+                        let values = &output[frame * channels..(frame + 1) * channels];
+                        for left in 0..channels {
+                            for right in 0..channels {
+                                let pair = super::selected_pair(values, [left, right], 0.5);
+                                assert_eq!(
+                                    pair,
+                                    [
+                                        samples[frame * channels + left] * 0.5,
+                                        samples[frame * channels + right] * 0.5
+                                    ]
+                                );
+                            }
+                        }
+                    }
+                }
+            });
+            assert_eq!(counts, (0, 0));
+            let d = super::QueueDiagnostics::new_input_queue(
+                "input".into(),
+                48000,
+                48000,
+                channels as u16,
+                2,
+                channels * 2,
+            );
+            let snap = d.snapshot(super::QueueState::Running, Some(channels), None);
+            assert_eq!(snap.queue_channels, Some(channels as u16));
+            assert_eq!((snap.capacity_frames, snap.current_frames), (2, Some(1)));
+        }
+    }
+
     #[test]
     fn legacy_runtime_stats_with_queue_object_keeps_missing_recovery_unknown() {
         use serde_json::json;

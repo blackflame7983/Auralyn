@@ -22,7 +22,7 @@ impl Engine {
         [self.input_channel_l, self.input_channel_r] = normalized_channels(
             self.current_host_is_asio,
             [self.input_channel_l, self.input_channel_r],
-            self.current_channels,
+            self.current_input_channels,
         );
     }
     pub(super) fn capture_bundle_state(&self) -> Result<crate::bundle::EngineCapture> {
@@ -139,7 +139,7 @@ mod tests {
                 .unwrap();
             assert_eq!([engine.input_channel_l, engine.input_channel_r], channels);
             engine.current_host_is_asio = true;
-            engine.current_channels = 22;
+            engine.current_input_channels = 22;
             engine.normalize_start_channels();
             assert_eq!([engine.input_channel_l, engine.input_channel_r], channels);
             let (muted, input_gain, mut output_gain) = engine.initial_callback_levels();

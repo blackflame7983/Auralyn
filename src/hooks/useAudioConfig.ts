@@ -6,7 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { audioApi, type FrontendBootstrapReply } from '../api/audio';
 import { REVIEW_KEY } from '../api/migration';
-import { readAudioPreferences, type AudioPreferences as AudioConfig } from '../lib/audioPreferences';
+import { readAudioPreferences, deviceIdsForUpdate, type AudioPreferences as AudioConfig } from '../lib/audioPreferences';
 
 let initializationPromise: Promise<FrontendBootstrapReply> | null = null;
 
@@ -23,7 +23,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
     const initializationActive = useRef(true);
 
     const handleConfigUpdate = (config: Partial<AudioConfig> & { host: string }, options?: { audioStarted: true }) => {
-        const { host, input, output, sampleRate, bufferSize, inputChannels, inputId, outputId } = config;
+        const { host, input, output, sampleRate, bufferSize, inputChannels } = config;
 
         const channels: [number, number] | undefined =
             host.toLowerCase() === 'asio' ? (inputChannels ?? audioConfig.inputChannels) : [0, 1];
@@ -36,8 +36,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
             sampleRate: sampleRate ?? prev.sampleRate,
             bufferSize: bufferSize ?? prev.bufferSize,
             inputChannels: channels,
-            inputId: inputId ?? prev.inputId,
-            outputId: outputId ?? prev.outputId
+            ...deviceIdsForUpdate(prev, config),
         }));
 
         // Save User Preference to localStorage immediately on manual update
@@ -48,8 +47,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
             sampleRate: sampleRate ?? audioConfig.sampleRate,
             bufferSize: bufferSize ?? audioConfig.bufferSize,
             inputChannels: channels,
-            inputId: inputId ?? audioConfig.inputId,
-            outputId: outputId ?? audioConfig.outputId
+            ...deviceIdsForUpdate(audioConfig, config),
         };
         localStorage.setItem('vst_host_audio_config', JSON.stringify(newConfig));
         const acknowledge = options?.audioStarted ? acknowledgeSessionStart() : Promise.resolve();

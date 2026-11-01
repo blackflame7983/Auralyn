@@ -25,7 +25,36 @@ beforeEach(() => {
     vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue({ builtInEffectsEnabled: true, builtInEffectsPreset: 'singing', builtInEffectsAmount: 0.6 } as EngineRuntimeStats);
     vi.spyOn(audioApi, 'setBuiltInEffects').mockResolvedValue(undefined);
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.mocked(invoke).mockReset(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.mocked(invoke).mockReset(); });
+
+it.each(['mouse', 'touch', 'pen', 'keyboard', 'blur'] as const)('内蔵FX量の編集中は定期統計で戻さず、%sで選択値を一度だけ確定して同期を再開する', async input => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    current.config.preset = 'broadcast';
+    let amount = 0.6;
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => ({
+        builtInEffectsEnabled: true, builtInEffectsPreset: 'broadcast', builtInEffectsAmount: amount,
+    } as EngineRuntimeStats));
+    vi.mocked(audioApi.setBuiltInEffects).mockImplementation(async config => { amount = config.amount; });
+    render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const slider = await screen.findByRole('slider', { name: message('ja', 'settings.AudioSettingsModal.104') });
+    await waitFor(() => { expect(slider).toBeEnabled(); expect(slider).toHaveValue('60'); });
+    fireEvent.change(slider, { target: { value: '85' } });
+    const requests = vi.mocked(audioApi.getEngineRuntimeStats).mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(vi.mocked(audioApi.getEngineRuntimeStats).mock.calls.length).toBeGreaterThan(requests);
+    expect(slider).toHaveValue('85');
+    expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
+    if (input === 'keyboard') fireEvent.keyUp(slider, { key: 'ArrowRight' });
+    else if (input === 'blur') fireEvent.blur(slider);
+    else fireEvent.pointerUp(slider, { pointerType: input });
+    await waitFor(() => expect(audioApi.setBuiltInEffects).toHaveBeenCalledExactlyOnceWith({ active: true, preset: 'broadcast', amount: 0.85 }));
+    fireEvent.blur(slider);
+    expect(audioApi.setBuiltInEffects).toHaveBeenCalledTimes(1);
+    amount = 0.4;
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(slider).toHaveValue('40');
+});
+
 it('ホットキーの入力中に Escape すると入力だけを取り消し、設定は閉じない', async () => {
     vi.mocked(invoke).mockImplementation(async command => command === 'get_shortcuts' ? { bindings: [{ action: 'muteToggle', shortcut: 'Alt+KeyM' }], errors: [] } : null);
     const onClose = vi.fn();
@@ -121,6 +150,7 @@ it('プロファイル適用でモードが変わっても音づくりの表示�
     expect(screen.getByText(message('ja', 'settings.noiseOffHint'))).toBeVisible();
     fireEvent.click(screen.getByText(message('ja', 'settings.noiseDetails')));
     expect(await screen.findByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.129') })).toBeEnabled();
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({ noiseReductionEnabled: true, noiseReductionActive: true, noiseReductionMode: 'venue', noiseControlStrength: 1.1, noiseVoiceGuard: true, builtInEffectsEnabled: false, builtInEffectsPreset: 'warm', builtInEffectsAmount: 0.4 } as EngineRuntimeStats);
     act(() => { window.dispatchEvent(new CustomEvent('profile-fx-applied', { detail: {
         noiseControl: { enabled: true, mode: 'venue', strength: 1.1, voiceGuard: true },
         builtinFx: { preset: 'warm', enabled: false, amount: 0.4 },
@@ -133,4 +163,15 @@ it('プロファイル適用でモードが変わっても音づくりの表示�
     expect(screen.getByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.129') })).toBeEnabled();
     fireEvent.click(noise);
     await waitFor(() => expect(setNoise).toHaveBeenCalledWith({ active: false, mode: 'venue', strength: 1.1, voiceGuard: true }));
+});
+
+
+it('統計の取得失敗は停止と断定せず根拠未取得として示す', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    vi.mocked(audioApi.getEngineRuntimeStats).mockRejectedValue(new Error('offline'));
+    render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    fireEvent.keyDown(await screen.findByRole('tab', { name: 'システム' }), { key: 'Enter' });
+    fireEvent.click(screen.getByText('診断情報'));
+    expect(await screen.findByText(/根拠情報を未取得です/)).toBeInTheDocument();
+    expect(screen.queryByText(/音声は停止中・未確認です/)).not.toBeInTheDocument();
 });

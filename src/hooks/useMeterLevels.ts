@@ -15,9 +15,20 @@ const empty = (state: MeterState, clipped = false) => ({ levels: [0, 0] as Pair,
 // レベル通知は到達確認ではない。連続するゼロ通知はエンジン側で省略される。
 export function useMeterLevels({ running, type = 'output', enabled = true }: { running: boolean; type?: 'input' | 'output'; large?: boolean; enabled?: boolean }): MeterReading {
     const [reading, setReading] = useState<Omit<MeterReading, 'resetClip'>>(() => empty(running ? 'waiting' : 'stopped'));
+    const published = useRef(reading);
+    const publish = useCallback((next: Omit<MeterReading, 'resetClip'>) => {
+        if (document.hidden) return;
+        const previous = published.current;
+        if (previous.state === next.state && previous.clipped === next.clipped &&
+            (previous.clipSecondsAgo ?? null) === (next.clipSecondsAgo ?? null) &&
+            previous.levels.every((value, i) => value === next.levels[i]) &&
+            previous.peak.every((value, i) => value === next.peak[i])) return;
+        published.current = next;
+        setReading(next);
+    }, []);
     const clipped = useRef(false);
     const lastClipAt = useRef<number | null>(null);
-    const resetClip = useCallback(() => { clipped.current = false; lastClipAt.current = null; setReading(value => ({ ...value, clipped: false, clipSecondsAgo: null })); }, []);
+    const resetClip = useCallback(() => { clipped.current = false; lastClipAt.current = null; publish({ ...published.current, clipped: false, clipSecondsAgo: null }); }, [publish]);
     useEffect(() => {
         if (!enabled) return;
         let active = true;
@@ -30,7 +41,7 @@ export function useMeterLevels({ running, type = 'output', enabled = true }: { r
         const clear = (state: MeterState) => {
             target = [0, 0];
             current = { ...empty(state, clipped.current), clipSecondsAgo: clipAge() };
-            if (active) setReading(current);
+            if (active) publish(current);
         };
         // 新しい稼働開始では前の区間のクリップを引き継がない。
         if (running) { clipped.current = false; lastClipAt.current = null; }
@@ -49,25 +60,33 @@ export function useMeterLevels({ running, type = 'output', enabled = true }: { r
             ...['audio-stopped', 'audio-error', 'audio-stream-error'].map(name => listen(name, stop)),
             listen('audio-started', () => { if (!active) return; accepting = true; clipped.current = false; lastClipAt.current = null; clear('waiting'); }),
         ];
-        const timer = setInterval(() => {
-            if (!active) return;
+        const update = () => {
+            if (!active || document.hidden) return;
             const age = clipAge();
             if (current.clipSecondsAgo !== age || current.clipped !== clipped.current) {
                 current = { ...current, clipped: clipped.current, clipSecondsAgo: age };
-                setReading(current);
+                publish(current);
             }
-            if (!accepting) return;
+            if (!accepting) { publish(current); return; }
             const now = Date.now();
             if (current.state === 'live' && now - receivedAt >= METER_TIMEOUT_MS) { clear('stale'); return; }
-            if (current.state !== 'live' && current.state !== 'silent') return;
-            const levels = current.levels.map((n, i) => n + (target[i] - n) * (target[i] > n ? .8 : .4)) as Pair;
+            if (current.state !== 'live' && current.state !== 'silent') { publish(current); return; }
+            const levels = current.levels.map((n, i) => {
+                const next = n + (target[i] - n) * (target[i] > n ? .8 : .4);
+                return target[i] === 0 && next < .0001 ? 0 : next;
+            }) as Pair;
             const decay = now - peakAt >= 2000;
             if (decay) peakAt = now;
-            const peak = current.peak.map((n, i) => Math.max(decay ? n * .9 : n, target[i])) as Pair;
+            const peak = current.peak.map((n, i) => {
+                const next = Math.max(decay ? n * .9 : n, target[i]);
+                return target[i] === 0 && next < .0001 ? 0 : next;
+            }) as Pair;
             current = { ...current, levels, peak, clipped: clipped.current };
-            setReading(current);
-        }, 16);
-        return () => { active = false; clearInterval(timer); subscriptions.forEach(p => { void p.then(unlisten => unlisten()).catch(() => {}); }); };
-    }, [running, type, enabled]);
+            publish(current);
+        };
+        const timer = setInterval(update, 16);
+        document.addEventListener('visibilitychange', update);
+        return () => { active = false; clearInterval(timer); document.removeEventListener('visibilitychange', update); subscriptions.forEach(p => { void p.then(unlisten => unlisten()).catch(() => {}); }); };
+    }, [running, type, enabled, publish]);
     return { ...(running ? reading : { ...empty('stopped', clipped.current), clipSecondsAgo: reading.clipSecondsAgo }), resetClip };
 }

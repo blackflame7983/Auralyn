@@ -44,6 +44,7 @@ impl DeviceManager {
             let id = Some(cpal::DeviceId(cpal::HostId::Asio, name.clone()).to_string());
             for is_input in [true, false] {
                 devices.push(DeviceInfo {
+                    sample_rate_ranges: None,
                     name: name.clone(),
                     host: "ASIO".into(),
                     id: id.clone(),
@@ -596,6 +597,7 @@ mod scan_tests {
 
     fn device(name: &str) -> DeviceInfo {
         DeviceInfo {
+            sample_rate_ranges: None,
             name: name.into(),
             host: "ASIO".into(),
             id: None,

@@ -1,7 +1,7 @@
 import { notice, type SettingsNotice } from './settingsNotice';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { audioApi, type AudioDeviceList } from '../../../api/audio';
+import { audioApi, type AudioDevice, type AudioDeviceList } from '../../../api/audio';
 import { readAudioPreferences, readCachedAudioDevices } from '../../../lib/audioPreferences';
 
 interface SelectionOptions {
@@ -22,6 +22,12 @@ const normalizeHosts = (devices: AudioDeviceList): AudioDeviceList => {
   return { ...devices, inputs: devices.inputs.map(normalize), outputs: devices.outputs.map(normalize) };
 };
 
+export const audioDeviceKey = (device: AudioDevice) => device.id ? `id:${device.id}` : device.name;
+const uniqueByName = (devices: AudioDevice[], name: string) => {
+  const matches = devices.filter(device => device.name === name);
+  return matches.length === 1 ? matches[0] : undefined;
+};
+
 // 一覧の取得・選択復元・バッファ候補を画面の描画と適用処理から分離する。
 export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBufferSize, onError }: SelectionOptions) {
   const requestRevision = useRef(0);
@@ -29,8 +35,8 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
   const [loading, setLoading] = useState(false);
   const [devices, setDevices] = useState<AudioDeviceList>(() => normalizeHosts(readCachedAudioDevices()));
   const [selectedHost, setSelectedHost] = useState<string>('');
-  const [selectedInput, setSelectedInput] = useState<string>('');
-  const [selectedOutput, setSelectedOutput] = useState<string>('');
+  const [selectedInputKey, setSelectedInputKey] = useState('');
+  const [selectedOutputKey, setSelectedOutputKey] = useState('');
   const [selectedBufferSize, setSelectedBufferSize] = useState<number>(currentBufferSize || 512);
   const [selectedSampleRate, setSelectedSampleRate] = useState<number>(currentSampleRate || 48000);
   const restoreDeviceSelection = (result: AudioDeviceList) => {
@@ -39,8 +45,7 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
 
       const saved = readAudioPreferences();
       const currentHost = saved?.host ?? '';
-      const currentInput = saved?.input ?? '';
-      const currentOutput = saved?.output ?? '';
+
 
       if (hosts.length > 0) {
         // If we don't have a host, or the current one is invalid, pick a default
@@ -58,20 +63,18 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
           // Ensure state is synced with effective host (fixes closure staleness)
           setSelectedHost(effectiveHost);
 
-          // Restore I/O if valid for this host
-          if (currentInput) {
-            const isValidInput = result.inputs.some(d => d.host.toLowerCase() === effectiveHost.toLowerCase() && d.name === currentInput);
-            if (isValidInput) setSelectedInput(currentInput);
-          }
-          if (currentOutput) {
-            const isValidOutput = result.outputs.some(d => d.host.toLowerCase() === effectiveHost.toLowerCase() && d.name === currentOutput);
-            if (isValidOutput) setSelectedOutput(currentOutput);
-          }
+          const restore = (list: AudioDevice[], name?: string, id?: string) => {
+            const candidates = list.filter(device => device.host.toLowerCase() === effectiveHost.toLowerCase());
+            const device = id ? candidates.find(item => item.id === id) : name ? uniqueByName(candidates, name) : undefined;
+            return device ? audioDeviceKey(device) : '';
+          };
+          setSelectedInputKey(restore(result.inputs, saved?.input, saved?.inputId));
+          setSelectedOutputKey(restore(result.outputs, saved?.output, saved?.outputId));
         }
       } else {
         setSelectedHost('');
-        setSelectedInput('');
-        setSelectedOutput('');
+        setSelectedInputKey('');
+        setSelectedOutputKey('');
       }
   };
 
@@ -108,15 +111,26 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
     devices.outputs.filter(d => d.host === selectedHost),
     [devices.outputs, selectedHost]);
 
+  const selectedInputDevice = filteredInputs.find(device => audioDeviceKey(device) === selectedInputKey);
+  const selectedOutputDevice = filteredOutputs.find(device => audioDeviceKey(device) === selectedOutputKey);
+  const selectedInput = selectedInputDevice?.name ?? '';
+  const selectedOutput = selectedOutputDevice?.name ?? '';
+  const selectNamedDevice = (list: AudioDevice[], name: string, targetHost: string) => {
+    const device = uniqueByName(list.filter(item => item.host.toLowerCase() === targetHost.toLowerCase()), name);
+    return device ? audioDeviceKey(device) : '';
+  };
+  const setSelectedInput = (name: string, targetHost = selectedHost) => setSelectedInputKey(selectNamedDevice(devices.inputs, name, targetHost));
+  const setSelectedOutput = (name: string, targetHost = selectedHost) => setSelectedOutputKey(selectNamedDevice(devices.outputs, name, targetHost));
+
   // Determine active device for capabilities (Buffer Size)
   const activeDevice = useMemo(() => {
     if (!selectedHost) return null;
     // For ASIO, Input and Output are typically same driver properties.
     // We prefer Input device info if available.
-    return filteredInputs.find(d => d.name === selectedInput)
-      || filteredOutputs.find(d => d.name === selectedOutput)
+    return selectedInputDevice
+      || selectedOutputDevice
       || (filteredInputs.length > 0 ? filteredInputs[0] : null);
-  }, [selectedHost, selectedInput, selectedOutput, filteredInputs, filteredOutputs]);
+  }, [selectedHost, selectedInputDevice, selectedOutputDevice, filteredInputs]);
 
   // Calculate supported buffer sizes based on active device
   const supportedBufferSizes = useMemo(() => {
@@ -168,30 +182,18 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
   }, [canChangeBufferSize, supportedBufferSizes, selectedBufferSize, currentBufferSize]);
 
 
-  // Auto-select first device logic needs to be careful not to overwrite saved input/output
-  // ONLY auto-select if selectedInput/Output is empty or invalid for the new host
+  // 同名候補が複数ある場合、名前だけで機器を決めない。
   useEffect(() => {
-    if (selectedHost) {
-      // 出力だけが残った再検出でも、消失した入力の選択を残さない。
-
-      // Check if current selectedInput is valid for this host
-      const isInputValid = filteredInputs.some(d => d.name === selectedInput);
-      if (!isInputValid) {
-        if (filteredInputs.length > 0) setSelectedInput(filteredInputs[0].name);
-        else setSelectedInput('');
-      }
-
-      // For ASIO, sync Output with Input
-      if (!isAsio) {
-        const isOutputValid = filteredOutputs.some(d => d.name === selectedOutput);
-        if (!isOutputValid) {
-          if (filteredOutputs.length > 0) setSelectedOutput(filteredOutputs[0].name);
-          else setSelectedOutput('');
-        }
-      }
+    if (!selectedHost) return;
+    if (!filteredInputs.some(device => audioDeviceKey(device) === selectedInputKey)) {
+      const first = filteredInputs[0];
+      setSelectedInputKey(first && uniqueByName(filteredInputs, first.name) ? audioDeviceKey(first) : '');
     }
-  }, [selectedHost, filteredInputs, filteredOutputs, isAsio]);
-
+    if (!filteredOutputs.some(device => audioDeviceKey(device) === selectedOutputKey)) {
+      const first = filteredOutputs[0];
+      setSelectedOutputKey(first && uniqueByName(filteredOutputs, first.name) ? audioDeviceKey(first) : '');
+    }
+  }, [selectedHost, filteredInputs, filteredOutputs, selectedInputKey, selectedOutputKey]);
 
   useEffect(() => {
     active.current = isOpen;
@@ -200,8 +202,8 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
       const saved = readAudioPreferences();
       if (saved) {
         setSelectedHost(saved.host);
-        setSelectedInput(saved.input ?? '');
-        setSelectedOutput(saved.output ?? '');
+        setSelectedInputKey(saved.inputId ? `id:${saved.inputId}` : saved.input ?? '');
+        setSelectedOutputKey(saved.outputId ? `id:${saved.outputId}` : saved.output ?? '');
       }
       setSelectedSampleRate(currentSampleRate ?? saved?.sampleRate ?? 48000);
       setSelectedBufferSize(currentBufferSize ?? saved?.bufferSize ?? 512);
@@ -229,8 +231,8 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
   }, [isOpen]);
 
   return {
-    devices, selectedHost, setSelectedHost, selectedInput, setSelectedInput,
-    selectedOutput, setSelectedOutput, selectedBufferSize, setSelectedBufferSize,
+    devices, selectedHost, setSelectedHost, selectedInput, setSelectedInput, selectedInputKey, setSelectedInputKey, selectedInputDevice,
+    selectedOutput, setSelectedOutput, selectedOutputKey, setSelectedOutputKey, selectedOutputDevice, selectedBufferSize, setSelectedBufferSize,
     selectedSampleRate, setSelectedSampleRate, fetchDevices, isAsio,
     filteredInputs, filteredOutputs, activeDevice, supportedBufferSizes, canChangeBufferSize, loading,
   };

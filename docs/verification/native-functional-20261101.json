@@ -1,0 +1,855 @@
+{
+  "schema": 1,
+  "date": "2026-11-01",
+  "baseline": "c18f2b028107a0bc189149c6360f20af2d2f78f6",
+  "before_extra_fixes": "def096a",
+  "fft_fix": "4305cdf",
+  "reconfiguration_fix": "5f2ec4c",
+  "environment": {
+    "logical_cpu_count": 16,
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.12.12 | packaged by Anaconda, Inc. | (main, Oct 21 2025, 20:05:38) [MSC v.1929 64 bit (AMD64)]",
+    "current_commit": "def096a",
+    "baseline_commit": "c18f2b0",
+    "build_profile": "dev",
+    "tauri_config": {
+      "identifier": "com.auralyn.test.functional",
+      "devUrl": "http://127.0.0.1:1427",
+      "externalBin": []
+    },
+    "cpu_basis": "one logical core = 100 percent",
+    "sampling_ms": {
+      "engine": 100,
+      "tree": 200
+    }
+  },
+  "binary_sha256": {
+    "baseline": {
+      "audio_engine.exe": "ed5359daab2599eb7ad7e67bba0fe2bd78f44cfa1f5c2dafb53f78704d0f4120",
+      "AuralynHost.exe": "62d7ee9075e5cca04e2724c813218f20a83cd93c4a04f3395fa9d64f114217a7",
+      "plugin_scanner.exe": "6378cce3ce5f207bd673dbbeb3b651bf96184939c7be02d591e1a428afdc564f"
+    },
+    "current": {
+      "audio_engine.exe": "2f28a9485e89c092c4b4b7c4446f5c3fe0135a793b4d86581d375610ab53d71f",
+      "AuralynHost.exe": "fb82a405d2ce51edc389e11d50013db37f15fbed4c8da912751e665ccfe07a25",
+      "plugin_scanner.exe": "b44d861b1ea704a3df532ec6ffe776cf460e01a20bae0b8b46a592812cfa2d06"
+    },
+    "final": {
+      "audio_engine.exe": "a3d799246153962fbb75ad0f38d25005ead82be0d6da9f83018076b829b31524",
+      "AuralynHost.exe": "3148bd8aa961d4e13d30d7ef5f67fc24f5489edd0e2df9cc5eb7cd62d0c9e803",
+      "plugin_scanner.exe": "4eca48286bc14375412f14ffbd19cf26c8a4ae6ce7127ae41bf4cafe87350fda"
+    },
+    "verified": {
+      "audio_engine.exe": "8a98cc512d85196c3377a134adb1fd2cc0368b6371bc7b9999244986ac2e51aa",
+      "AuralynHost.exe": "88e6f0ffe48fda6e593c0dc358f065d13d285c7b9fd86529840f5d1da5b5f5c8",
+      "plugin_scanner.exe": "2382074fbfa4e28b76b9861abfe2493f8528f44977a6ad29ee15a0c15d9bb1b2"
+    }
+  },
+  "engine_performance": {
+    "baseline": {
+      "default": {
+        "cpu_mean_one_core_percent": 32.67916666666667,
+        "cpu_runs": [
+          32.35666666666667,
+          33.858333333333334,
+          31.8225
+        ],
+        "max_private_mib": 11.84375,
+        "channel_event_runs": [
+          241,
+          240,
+          240
+        ]
+      },
+      "scan-on-measure": {
+        "cpu_mean_one_core_percent": 32.72527777777778,
+        "cpu_runs": [
+          32.62416666666667,
+          32.69583333333333,
+          32.85583333333334
+        ],
+        "max_private_mib": 11.84375,
+        "channel_event_runs": [
+          235,
+          236,
+          236
+        ]
+      },
+      "scan-off-measure": {
+        "cpu_mean_one_core_percent": 32.50527777777778,
+        "cpu_runs": [
+          32.943333333333335,
+          31.183333333333334,
+          33.38916666666667
+        ],
+        "max_private_mib": 11.91015625,
+        "channel_event_runs": [
+          0,
+          0,
+          0
+        ]
+      },
+      "record30": {
+        "cpu_mean_one_core_percent": 33.70970873786408,
+        "cpu_runs": [
+          33.70970873786408
+        ],
+        "max_private_mib": 55.9453125,
+        "channel_event_runs": [
+          0
+        ]
+      }
+    },
+    "current": {
+      "default": {
+        "cpu_mean_one_core_percent": 31.801388888888887,
+        "cpu_runs": [
+          32.651666666666664,
+          31.153333333333332,
+          31.59916666666667
+        ],
+        "max_private_mib": 15.515625,
+        "channel_event_runs": [
+          0,
+          0,
+          0
+        ]
+      },
+      "scan-on-measure": {
+        "cpu_mean_one_core_percent": 34.37694444444445,
+        "cpu_runs": [
+          33.086666666666666,
+          34.91916666666667,
+          35.125
+        ],
+        "max_private_mib": 15.515625,
+        "channel_event_runs": [
+          119,
+          120,
+          119
+        ]
+      },
+      "scan-off-measure": {
+        "cpu_mean_one_core_percent": 32.17305555555556,
+        "cpu_runs": [
+          32.405833333333334,
+          33.211666666666666,
+          30.901666666666667
+        ],
+        "max_private_mib": 15.58203125,
+        "channel_event_runs": [
+          0,
+          0,
+          0
+        ]
+      },
+      "record30": {
+        "cpu_mean_one_core_percent": 33.4705501618123,
+        "cpu_runs": [
+          33.4705501618123
+        ],
+        "max_private_mib": 59.62109375,
+        "channel_event_runs": [
+          0
+        ]
+      }
+    }
+  },
+  "app_performance": {
+    "baseline": {
+      "stopped-home": {
+        "runs": 3,
+        "cpu_one_core_mean_percent": 56.85024038461538,
+        "cpu_runs": [
+          56.58307692307692,
+          56.396875,
+          57.57076923076923
+        ],
+        "max_private_mib": 359.13671875,
+        "max_working_set_mib": 572.4609375,
+        "runtime_stats_requests": [
+          15,
+          15,
+          15
+        ],
+        "channel_scan_events": [
+          0,
+          0,
+          0
+        ]
+      },
+      "running-home-silence": {
+        "runs": 3,
+        "cpu_one_core_mean_percent": 89.63169386169386,
+        "cpu_runs": [
+          89.61212121212121,
+          89.97538461538461,
+          89.30757575757576
+        ],
+        "max_private_mib": 362.10546875,
+        "max_working_set_mib": 596.46484375,
+        "runtime_stats_requests": [
+          38,
+          39,
+          38
+        ],
+        "channel_scan_events": [
+          0,
+          0,
+          0
+        ]
+      },
+      "running-audio-settings": {
+        "runs": 3,
+        "cpu_one_core_mean_percent": 86.24858585858586,
+        "cpu_runs": [
+          86.2560606060606,
+          88.16969696969697,
+          84.32000000000001
+        ],
+        "max_private_mib": 363.52734375,
+        "max_working_set_mib": 594.7421875,
+        "runtime_stats_requests": [
+          23,
+          23,
+          23
+        ],
+        "channel_scan_events": [
+          306,
+          307,
+          306
+        ]
+      },
+      "running-system-settings": {
+        "runs": 3,
+        "cpu_one_core_mean_percent": 82.85793317793318,
+        "cpu_runs": [
+          81.60151515151514,
+          85.57076923076923,
+          81.40151515151516
+        ],
+        "max_private_mib": 357.61328125,
+        "max_working_set_mib": 600.0,
+        "runtime_stats_requests": [
+          22,
+          22,
+          22
+        ],
+        "channel_scan_events": [
+          0,
+          0,
+          0
+        ]
+      },
+      "recording-30-seconds": {
+        "runs": 1,
+        "cpu_one_core_mean_percent": 108.89555555555555,
+        "cpu_runs": [
+          108.89555555555555
+        ],
+        "max_private_mib": 422.984375,
+        "max_working_set_mib": 674.671875,
+        "runtime_stats_requests": [
+          48
+        ],
+        "channel_scan_events": [
+          0
+        ]
+      },
+      "analysis-30-seconds": {
+        "runs": 1,
+        "cpu_one_core_mean_percent": 135.2153846153846,
+        "cpu_runs": [
+          135.2153846153846
+        ],
+        "max_private_mib": 621.7265625,
+        "max_working_set_mib": 841.01953125,
+        "runtime_stats_requests": [
+          22
+        ],
+        "channel_scan_events": [
+          0
+        ]
+      }
+    },
+    "current": {
+      "stopped-home": {
+        "runs": 3,
+        "cpu_one_core_mean_percent": 56.89020202020202,
+        "cpu_runs": [
+          55.24545454545454,
+          56.76,
+          58.665151515151514
+        ],
+        "max_private_mib": 369.12890625,
+        "max_working_set_mib": 576.19140625,
+        "runtime_stats_requests": [
+          15,
+          15,
+          15
+        ],
+        "channel_scan_events": [
+          0,
+          0,
+          0
+        ]
+      },
+      "running-home-silence": {
+        "runs": 3,
+        "cpu_one_core_mean_percent": 85.6949494949495,
+        "cpu_runs": [
+          83.77727272727273,
+          88.01060606060605,
+          85.2969696969697
+        ],
+        "max_private_mib": 366.19921875,
+        "max_working_set_mib": 603.0546875,
+        "runtime_stats_requests": [
+          31,
+          32,
+          31
+        ],
+        "channel_scan_events": [
+          0,
+          0,
+          0
+        ]
+      },
+      "running-audio-settings": {
+        "runs": 3,
+        "cpu_one_core_mean_percent": 85.21104118104118,
+        "cpu_runs": [
+          84.0469696969697,
+          87.30615384615385,
+          84.28
+        ],
+        "max_private_mib": 371.140625,
+        "max_working_set_mib": 601.55078125,
+        "runtime_stats_requests": [
+          15,
+          15,
+          15
+        ],
+        "channel_scan_events": [
+          154,
+          152,
+          153
+        ]
+      },
+      "running-system-settings": {
+        "runs": 3,
+        "cpu_one_core_mean_percent": 81.63025641025641,
+        "cpu_runs": [
+          82.29230769230769,
+          81.58307692307692,
+          81.01538461538462
+        ],
+        "max_private_mib": 360.6640625,
+        "max_working_set_mib": 606.7265625,
+        "runtime_stats_requests": [
+          15,
+          15,
+          15
+        ],
+        "channel_scan_events": [
+          0,
+          0,
+          0
+        ]
+      },
+      "recording-30-seconds": {
+        "runs": 1,
+        "cpu_one_core_mean_percent": 103.06962962962963,
+        "cpu_runs": [
+          103.06962962962963
+        ],
+        "max_private_mib": 424.60546875,
+        "max_working_set_mib": 658.0234375,
+        "runtime_stats_requests": [
+          31
+        ],
+        "channel_scan_events": [
+          0
+        ]
+      },
+      "analysis-30-seconds": {
+        "runs": 1,
+        "cpu_one_core_mean_percent": 153.02923076923076,
+        "cpu_runs": [
+          153.02923076923076
+        ],
+        "max_private_mib": 602.82421875,
+        "max_working_set_mib": 839.43359375,
+        "runtime_stats_requests": [
+          16
+        ],
+        "channel_scan_events": [
+          0
+        ]
+      }
+    }
+  },
+  "analysis_30_seconds": {
+    "baseline": {
+      "wall_ms": 4899.730499999991,
+      "resource_summary": {
+        "cpu_one_core_mean_percent": 135.2153846153846,
+        "max_working_set_bytes": 881872896,
+        "max_private_bytes": 651927552,
+        "root_lifetime_peak_working_set_bytes": 234450944,
+        "root_lifetime_peak_commit_bytes": 225652736
+      },
+      "all_band_deltas_zero": true
+    },
+    "before_extra_fix": {
+      "wall_ms": 7369.634900000005,
+      "resource_summary": {
+        "cpu_one_core_mean_percent": 153.02923076923076,
+        "max_working_set_bytes": 880209920,
+        "max_private_bytes": 632107008,
+        "root_lifetime_peak_working_set_bytes": 243785728,
+        "root_lifetime_peak_commit_bytes": 222523392
+      },
+      "all_band_deltas_zero": true
+    },
+    "after_fft_fix": {
+      "wall_ms": 2447.3090000000084,
+      "resource_summary": {
+        "cpu_one_core_mean_percent": 119.96,
+        "max_working_set_bytes": 774160384,
+        "max_private_bytes": 511803392,
+        "root_lifetime_peak_working_set_bytes": 141008896,
+        "root_lifetime_peak_commit_bytes": 111611904
+      },
+      "all_band_deltas_zero": true
+    }
+  },
+  "asio_vst_wav": {
+    "selected-7-8": {
+      "rate": 96000,
+      "frames": 288000,
+      "peak_raw": [
+        0.26519775390625,
+        0.2781486511230469
+      ],
+      "peak_processed": [
+        0.26519775390625,
+        0.2781486511230469
+      ],
+      "max_difference": 0.0,
+      "rms_difference": 0.0,
+      "finite": true
+    },
+    "selected-21-22": {
+      "rate": 96000,
+      "frames": 96000,
+      "peak_raw": [
+        0.0,
+        0.0
+      ],
+      "peak_processed": [
+        0.0,
+        0.0
+      ],
+      "max_difference": 0.0,
+      "rms_difference": 0.0,
+      "finite": true
+    },
+    "vst-active": {
+      "rate": 96000,
+      "frames": 480000,
+      "peak_raw": [
+        0.54327392578125,
+        0.5350914001464844
+      ],
+      "peak_processed": [
+        0.4203791320323944,
+        0.3791009783744812
+      ],
+      "max_difference": 0.5709995552897453,
+      "rms_difference": 0.10179153596221238,
+      "finite": true
+    },
+    "vst-bypass": {
+      "rate": 96000,
+      "frames": 288000,
+      "peak_raw": [
+        0.2579994201660156,
+        0.2686004638671875
+      ],
+      "peak_processed": [
+        0.2579994201660156,
+        0.2686004638671875
+      ],
+      "max_difference": 0.0,
+      "rms_difference": 0.0,
+      "finite": true
+    }
+  },
+  "short_asio_gate": [
+    {
+      "gate_ms": 24.204200017265975,
+      "peaks": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.15955353,
+        0.15008163,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "detected": true
+    },
+    {
+      "gate_ms": 21.87430000049062,
+      "peaks": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.24911499,
+        0.20890427,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "detected": true
+    },
+    {
+      "gate_ms": 20.57219998096116,
+      "peaks": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.19976044,
+        0.18838501,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "detected": true
+    },
+    {
+      "gate_ms": 20.564199978252873,
+      "peaks": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.18695831,
+        0.16155243,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "detected": true
+    },
+    {
+      "gate_ms": 20.754999975906685,
+      "peaks": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.47618103,
+        0.47483826,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "detected": true
+    }
+  ],
+  "high_asio_input": {
+    "selected_pair": [
+      14,
+      15
+    ],
+    "recording": {
+      "rate": 96000,
+      "frames": 192000,
+      "peak_hz": 997.0,
+      "peak": [
+        0.015850067138671875,
+        0.015850067138671875
+      ],
+      "equal": true
+    },
+    "exit_code": 0
+  },
+  "ui": {
+    "draft": {
+      "before": [
+        6,
+        7
+      ],
+      "after": [
+        6,
+        7
+      ]
+    },
+    "applied_channels": [
+      0,
+      1
+    ],
+    "saved_channels": [
+      0,
+      1
+    ],
+    "after_restart_events": {
+      "audio-stopped": 1,
+      "audio-started": 1,
+      "audio-channel-scan": 13
+    },
+    "exit": 0
+  },
+  "wasapi_tone": {
+    "rate": 48000,
+    "frames": 96000,
+    "channels": 2,
+    "peak": [
+      0.12589263916015625,
+      0.12589263916015625
+    ],
+    "peak_hz": 997.0,
+    "max_raw_processed_difference": 0.0,
+    "finite": true,
+    "scan_peaks": [
+      0.12589264,
+      0.12589264,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "mono_startup_and_steady": {
+    "baseline": {
+      "startup": {
+        "inputChannels": 1,
+        "outputChannels": 2,
+        "underflowCallbacks": 17,
+        "zeroFilledOutputFrames": 7114
+      },
+      "steady": {
+        "inputChannels": 1,
+        "outputChannels": 2,
+        "underflowCallbacks": 17,
+        "zeroFilledOutputFrames": 7114
+      }
+    },
+    "verified": {
+      "startup": {
+        "inputChannels": 1,
+        "outputChannels": 2,
+        "underflowCallbacks": 5,
+        "zeroFilledOutputFrames": 2530
+      },
+      "steady": {
+        "inputChannels": 1,
+        "outputChannels": 2,
+        "underflowCallbacks": 5,
+        "zeroFilledOutputFrames": 2530
+      }
+    }
+  },
+  "unavailable_physical_asio": {
+    "realtek": {
+      "baseline": {
+        "type": "Error",
+        "payload": "ASIO出力の既定ch・F32・選択rateの対応を確認できません"
+      },
+      "verified": {
+        "type": "Error",
+        "payload": "ASIO出力の既定ch・F32・選択rateの対応を確認できません"
+      }
+    },
+    "creative": {
+      "baseline": {
+        "type": "Error",
+        "payload": "ASIO出力の既定ch・F32・選択rateの対応を確認できません"
+      },
+      "verified": {
+        "type": "Error",
+        "payload": "ASIO出力の既定ch・F32・選択rateの対応を確認できません"
+      }
+    }
+  },
+  "settings_preservation": {
+    "before_files": 7732,
+    "after_files": 7732,
+    "changed": [],
+    "missing": [],
+    "added": [],
+    "matched": true
+  },
+  "packed_fft_rejected": {
+    "frames": 256,
+    "sample_rate": 48000,
+    "band_hz": 8000,
+    "candidate_delta_db": -99.65872,
+    "reference_delta_db": -99.62707,
+    "existing_tolerance_db": 0.0001
+  },
+  "checks": {
+    "rust_lib_passed": 566,
+    "rust_lib_ignored": 3,
+    "ipc_integration_passed": 1,
+    "hardware_default_device_integration_ignored": 1,
+    "clippy_all_targets_deny_warnings": "passed",
+    "cargo_build_three_bins": "passed",
+    "cargo_fmt": "passed"
+  },
+  "limitations": [
+    "debug build; not signed release",
+    "CPU one logical core = 100 percent",
+    "sampled aggregate working set double counts shared pages",
+    "30-second analysis each revision measured once",
+    "no speech, listening, normal OBS mix or long-duration proof",
+    "WASAPI startup zero fill remains; no growth in measured steady interval"
+  ]
+}

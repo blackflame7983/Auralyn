@@ -150,6 +150,7 @@ pub struct Monitor {
     timing: Option<super::frame_timing::OutputRecorder>,
     diagnostics: Arc<super::queue_diagnostics::QueueDiagnostics>,
     input_buffer: Vec<f32>,
+    input_channels: usize,
     recovery: super::queue_recovery::Recovery,
     input: AudioRx,
     broadcast: AudioTx,
@@ -166,6 +167,7 @@ pub struct Monitor {
     generation: u64,
 }
 impl Controller {
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     pub fn prepare(
         input: AudioRx,
@@ -190,6 +192,55 @@ impl Controller {
         ),
         initial_state: Option<&State>,
     ) -> Result<(Self, CallbackOwner<Monitor>, GainRx)> {
+        Self::prepare_with_input_channels(
+            input,
+            broadcast,
+            timing,
+            diagnostics,
+            max_frames,
+            config,
+            rate,
+            input_gain,
+            output_gain,
+            channels,
+            muted,
+            _bypassed,
+            levels,
+            main_failed,
+            mode,
+            revision,
+            peak,
+            initial_state,
+            2,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_with_input_channels(
+        input: AudioRx,
+        broadcast: AudioTx,
+        timing: Option<super::frame_timing::OutputRecorder>,
+        diagnostics: Arc<super::queue_diagnostics::QueueDiagnostics>,
+        max_frames: usize,
+        config: &Config,
+        rate: u32,
+        input_gain: f32,
+        output_gain: f32,
+        channels: [usize; 2],
+        muted: bool,
+        _bypassed: bool,
+        levels: Arc<AtomicU64>,
+        main_failed: Arc<AtomicBool>,
+        mode: Option<Mode>,
+        revision: u64,
+        peak: (
+            super::peak_protection::Config,
+            Arc<super::peak_protection::Shared>,
+        ),
+        initial_state: Option<&State>,
+        input_channels: usize,
+    ) -> Result<(Self, CallbackOwner<Monitor>, GainRx)> {
+        anyhow::ensure!(input_channels > 0, "入力チャンネル数が不正です");
         let selected = if mode == Some(Mode::Talk) {
             &config.monitor_talk
         } else {
@@ -223,13 +274,18 @@ impl Controller {
             offered: AtomicU64::new(0),
             dropped: AtomicU64::new(0),
         });
-        let recovery =
-            super::queue_recovery::Recovery::new(input.capacity().get() / 2, rate as usize, 1, 3);
+        let recovery = super::queue_recovery::Recovery::new(
+            input.capacity().get() / input_channels,
+            rate as usize,
+            1,
+            3,
+        );
         let (recovery_gains, gains) = HeapRb::new(broadcast.capacity().get() / 2).split();
         let (monitor, owner) = callback_owner(Monitor {
             timing,
             diagnostics,
-            input_buffer: vec![0.0; max_frames * 2],
+            input_buffer: vec![0.0; max_frames * input_channels],
+            input_channels,
             recovery,
             input,
             broadcast,
@@ -395,7 +451,8 @@ impl Monitor {
     ) {
         let ticket = gate.ticket();
         if gate.drain_monitor_input() {
-            self.input.skip(self.input.occupied_len());
+            self.input
+                .skip(self.input.occupied_len() / self.input_channels * self.input_channels);
             self.input_buffer.fill(0.0);
             if let Some(timing) = &mut self.timing {
                 timing.invalidate_recovery();
@@ -414,7 +471,7 @@ impl Monitor {
         let begin = self.timing.as_ref().map_or(0, |t| t.now_ns());
         data.fill(0.0);
         self.peak.sync(&self.peak_shared);
-        if data.len() > self.input_buffer.len() {
+        if data.len() / 2 > self.input_buffer.len() / self.input_channels {
             self.main_failed.store(true, Ordering::Release);
             return;
         }
@@ -474,7 +531,7 @@ impl Monitor {
             f32::from_bits(levels as u32)
         };
         let skip = self.recovery.begin_block(
-            self.input.occupied_len() / 2,
+            self.input.occupied_len() / self.input_channels,
             data.len() / 2,
             self.diagnostics.max_burst(),
             muted || self.shared.measurement_blocked(),
@@ -484,7 +541,7 @@ impl Monitor {
                 timing.invalidate_recovery();
             }
         }
-        let skipped = self.input.skip(skip * 2) / 2;
+        let skipped = self.input.skip(skip * self.input_channels) / self.input_channels;
         self.diagnostics.record_recovery(
             skipped,
             self.recovery.status(),
@@ -493,19 +550,19 @@ impl Monitor {
         );
         let consumed = super::queue_diagnostics::read_complete_frames(
             &mut self.input,
-            &mut self.input_buffer[..data.len()],
-            2,
+            &mut self.input_buffer[..data.len() / 2 * self.input_channels],
+            self.input_channels,
         );
         let read = self.timing.as_ref().map_or(0, |t| t.now_ns());
         self.diagnostics.record_output(data.len() / 2, consumed);
         let frames = data.len() / 2;
         for (index, output) in data.as_chunks_mut::<2>().0.iter_mut().enumerate() {
-            let pair = [
-                self.input_buffer[index * 2],
-                self.input_buffer[index * 2 + 1],
-            ];
             let common = selected.map(|ch| {
-                let value = pair.get(ch).copied().unwrap_or(0.0);
+                let value = if ch < self.input_channels {
+                    self.input_buffer[index * self.input_channels + ch]
+                } else {
+                    0.0
+                };
                 if value.is_finite() {
                     (f64::from(value) * f64::from(input_gain))
                         .clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
@@ -653,6 +710,13 @@ mod tests {
         fixture_with_state(None)
     }
     fn fixture_with_state(initial_state: Option<&State>) -> Fixture {
+        fixture_with_channels(initial_state, 2, [1, 0])
+    }
+    fn fixture_with_channels(
+        initial_state: Option<&State>,
+        input_channels: usize,
+        selected: [usize; 2],
+    ) -> Fixture {
         let (input, consumer) = HeapRb::new(8192).split();
         let queue = Arc::new(HeapRb::new(32768));
         let (producer, broadcast_consumer) = queue.clone().split();
@@ -664,7 +728,7 @@ mod tests {
             monitor_talk: Some(builtin::Config::default()),
             ..Config::default()
         };
-        let (controller, renderer, gains) = Controller::prepare(
+        let (controller, renderer, gains) = Controller::prepare_with_input_channels(
             consumer,
             producer,
             None,
@@ -681,7 +745,7 @@ mod tests {
             48_000,
             0.5,
             1.0,
-            [1, 0],
+            selected,
             false,
             false,
             Arc::new(AtomicU64::new(1.0f32.to_bits() as u64)),
@@ -690,6 +754,7 @@ mod tests {
             1,
             Default::default(),
             initial_state,
+            input_channels,
         )
         .unwrap();
         (
@@ -701,6 +766,32 @@ mod tests {
             gains,
         )
     }
+    #[test]
+    fn monitor_routes_physical_channels_to_broadcast_without_allocating() {
+        for channels in [1, 2, 3, 8] {
+            for left in 0..channels {
+                for right in 0..channels {
+                    let (_controller, mut renderer, mut input, _queue, mut broadcast, _gains) =
+                        fixture_with_channels(None, channels, [left, right]);
+                    for ch in 0..channels {
+                        input.try_push((ch + 1) as f32 * 0.1).unwrap();
+                    }
+                    let mut output = [0.0; 2];
+                    assert_eq!(
+                        crate::dsp_verification_allocator::allocation_counts(|| {
+                            renderer.get_mut().render(&mut output, None);
+                        }),
+                        (0, 0)
+                    );
+                    assert!((broadcast.try_pop().unwrap() - (left + 1) as f32 * 0.05).abs() < 1e-6);
+                    assert!(
+                        (broadcast.try_pop().unwrap() - (right + 1) as f32 * 0.05).abs() < 1e-6
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn mode_silence_monitor_acks_after_zero_output_and_stops_worker_input_before_drain() {
         use crate::audio_engine::mode_silence::{self, Request};

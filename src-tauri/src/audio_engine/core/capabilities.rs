@@ -12,6 +12,24 @@ pub(super) struct CapabilitySnapshot {
 }
 
 impl CapabilitySnapshot {
+    /// 一覧のために機器を開き直さず、この起動試行で取得できた能力だけを渡す。
+    pub(super) fn f32_rate_ranges(&self) -> Option<Vec<(u32, u32)>> {
+        let supported = self.supported.as_ref()?;
+        let mut ranges: Vec<_> = supported
+            .iter()
+            .filter(|range| {
+                range.channels() == self.default.channels()
+                    && range.sample_format() == SampleFormat::F32
+            })
+            .map(|range| (range.min_sample_rate(), range.max_sample_rate()))
+            .collect();
+        if self.default.sample_format() == SampleFormat::F32 {
+            ranges.push((self.default.sample_rate(), self.default.sample_rate()));
+        }
+        ranges.sort_unstable();
+        ranges.dedup();
+        Some(ranges)
+    }
     pub(super) fn capture<I: Iterator<Item = SupportedStreamConfigRange>>(
         default: impl FnOnce() -> Result<SupportedStreamConfig>,
         supported: impl FnOnce() -> Result<I>,
@@ -126,13 +144,6 @@ impl CapabilitySnapshot {
         })
     }
 
-    pub(super) fn max_channels(&self) -> u16 {
-        self.supported
-            .as_ref()
-            .and_then(|supported| supported.iter().map(|range| range.channels()).max())
-            .unwrap_or(2)
-    }
-
     pub(super) fn buffer_range(&self) -> Option<(u32, u32)> {
         let mut min_buffer = u32::MAX;
         let mut max_buffer = 0;
@@ -167,6 +178,30 @@ mod tests {
     use super::*;
     use cpal::SampleFormat;
     use std::cell::Cell;
+
+    #[test]
+    fn rate_ranges_are_only_known_default_channels_f32_capabilities() {
+        let mut snapshot = CapabilitySnapshot {
+            default: default(48_000, 2, SupportedBufferSize::Unknown),
+            supported: None,
+        };
+        assert_eq!(snapshot.f32_rate_ranges(), None);
+        snapshot.supported = Some(vec![
+            range(2, 44_100, 96_000, SupportedBufferSize::Unknown),
+            range(8, 192_000, 192_000, SupportedBufferSize::Unknown),
+            SupportedStreamConfigRange::new(
+                2,
+                192_000,
+                192_000,
+                SupportedBufferSize::Unknown,
+                SampleFormat::I16,
+            ),
+        ]);
+        assert_eq!(
+            snapshot.f32_rate_ranges(),
+            Some(vec![(44_100, 96_000), (48_000, 48_000)])
+        );
+    }
 
     #[test]
     fn asio_uses_one_output_selected_rate_for_both_build_configs_and_one_default_retry() {
@@ -436,7 +471,8 @@ mod tests {
                 .same_rate_input(&snapshot.input_config(Some(256)), 96_000)
                 .unwrap();
             assert_eq!((preferred.sample_rate, preferred.channels), (96_000, 2));
-            assert_eq!(snapshot.max_channels(), 8);
+            // 別構成の最大8chではなく、今回使う既定2chの能力を提示する。
+            assert_eq!(snapshot.default.channels(), 2);
             assert_eq!(snapshot.buffer_range(), Some((64, 2048)));
             assert_eq!(snapshot.default_buffer_range(), Some((512, 512)));
             assert_eq!(snapshot.locked_buffer_override(256), Some(512));
@@ -470,7 +506,7 @@ mod tests {
                 snapshot.output_config(Some(192_000), Some(512)).sample_rate,
                 44_100 * attempt
             );
-            assert_eq!(snapshot.max_channels(), 2);
+            assert_eq!(snapshot.f32_rate_ranges(), None);
             assert!(snapshot
                 .same_rate_input(&snapshot.input_config(None), 96_000)
                 .is_none());

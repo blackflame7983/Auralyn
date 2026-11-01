@@ -2,7 +2,7 @@ mod common;
 
 use common::EngineProcess;
 use std::{thread, time::Duration};
-use vst_host_lib::ipc::{Command, Response};
+use vst_host_lib::ipc::{Command, EngineEvent, Response};
 
 fn start(host: &str) -> Command {
     Command::Start {
@@ -60,6 +60,18 @@ fn audio_engine_hardware_recording_lifecycle() {
     assert!(
         matches!(response, Response::Started { .. }),
         "audio start failed: {response:?}"
+    );
+    engine.take_events();
+    assert!(matches!(
+        engine.request(start("Wasapi")),
+        Response::Started { .. }
+    ));
+    assert!(
+        !engine
+            .take_events()
+            .iter()
+            .any(|event| matches!(event, EngineEvent::Stopped)),
+        "同じStart内の再設定を利用者の停止として通知してはいけない"
     );
     assert!(matches!(
         engine.request(Command::StartVoiceCheckRecording { max_ms: 2000 }),

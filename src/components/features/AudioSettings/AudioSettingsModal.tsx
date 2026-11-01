@@ -12,13 +12,12 @@ import { LatencyDetails } from '@/components/layout/LatencyDetails';
 import { LiveModeControls } from './LiveModeControls';
 import { useLiveModes, type LiveModesModel } from '@/hooks/useLiveModes';
 import { Modal } from '../../ui/modal';
-import { listen } from '@tauri-apps/api/event';
 import { MicrophonePermissionGuide } from './MicrophonePermissionGuide';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { MdClose, MdRefresh, MdSettings, MdWarning, MdLightbulb, MdExtension, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage, MdMic, MdGraphicEq, MdCast, MdKeyboard, MdTune } from 'react-icons/md';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { audioApi, BuiltInEffectsPreset, EngineRuntimeStats, EngineTuningConfig, NoiseControlMode } from '../../../api/audio';
+import { audioApi, BuiltInEffectsPreset, EngineTuningConfig, NoiseControlMode } from '../../../api/audio';
 import { autostartApi } from '../../../api/autostart';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -34,9 +33,12 @@ import { ShortcutsPanel } from './ShortcutsPanel';
 import { UpdatePreferences } from './UpdatePreferences';
 import { AuroraDisplaySwitch, DisplayPurposeSelector, NumericDetailsSwitch } from './DisplayPurposeSelector';
 import { REVIEW_KEY } from '@/api/migration';
-import { useAudioDeviceSelection } from './useAudioDeviceSelection';
 import { readAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
 import { segmentButtonClass } from '@/components/ui/segment';
+import { audioDeviceKey, useAudioDeviceSelection } from './useAudioDeviceSelection';
+import { ConnectionApplyError, useAudioConnectionController } from './useAudioConnectionController';
+import { formatSampleRate, sampleRateOptions } from './sampleRateOptions';
+import { refreshRuntimeStatsChecked, useRuntimeStats } from '@/hooks/useRuntimeStats';
 
 interface AudioSettingsModalProps {
   liveModel?: LiveModesModel;
@@ -90,6 +92,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const { theme, setTheme } = useTheme();
   const [isApplying, setLoading] = useState(false);
   const [connectionRetry, setConnectionRetry] = useState(false);
+  // システム再起動の途中失敗は、接続画面からの再試行でもVST復元まで引き継ぐ。
+  const retryRestart = useRef(false);
   const [preparingMode, setPreparingMode] = useState<'singing' | 'talk' | null>(initialSection === 'singing' ? 'singing' : null);
   const reviewRequired = localStorage.getItem(REVIEW_KEY) === 'true';
   const [migrationConfirmed, setMigrationConfirmed] = useState(false);
@@ -99,12 +103,19 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   }, []);
   const [error, setError] = useState<SettingsNotice | null>(null);
   const {
-    devices, selectedHost, setSelectedHost, selectedInput, setSelectedInput,
-    selectedOutput, setSelectedOutput, selectedBufferSize, setSelectedBufferSize,
+    devices, selectedHost, setSelectedHost, selectedInput, setSelectedInput, selectedInputKey, setSelectedInputKey, selectedInputDevice,
+    selectedOutput, setSelectedOutput, selectedOutputKey, setSelectedOutputKey, selectedOutputDevice: selectedOutputFromSelection, selectedBufferSize, setSelectedBufferSize,
     selectedSampleRate, setSelectedSampleRate, fetchDevices, isAsio,
-    filteredInputs, filteredOutputs, activeDevice, supportedBufferSizes,
+    filteredInputs, filteredOutputs, supportedBufferSizes,
     canChangeBufferSize, loading: devicesLoading,
   } = useAudioDeviceSelection({ isOpen, currentSampleRate, currentBufferSize, onError: setError });
+  const asioOutputs = filteredOutputs.filter(device => device.name === selectedInputDevice?.name);
+  const selectedOutputDevice = isAsio
+    ? asioOutputs.find(device => !!selectedInputDevice?.id && device.id === selectedInputDevice.id) ?? (asioOutputs.length === 1 ? asioOutputs[0] : undefined)
+    : selectedOutputFromSelection;
+  const connection = useAudioConnectionController({ isOpen, host: selectedHost, input: selectedInputDevice,
+    output: selectedOutputDevice, sampleRate: selectedSampleRate, bufferSize: selectedBufferSize, isAsio,
+    currentChannels: currentInputChannels, onConfigChange });
   const loading = isApplying || devicesLoading;
   const savedConnection = useMemo(() => {
     const saved = currentConfig ?? readAudioPreferences();
@@ -113,10 +124,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   }, [isOpen, currentConfig, currentSampleRate, currentBufferSize]);
   const changedFields = !savedConnection ? [t('settings.connection.new')] : [
     selectedHost.toLowerCase() !== savedConnection.host.toLowerCase() && t('settings.AudioSettingsModal.032'),
-    (selectedInput !== (savedConnection.input ?? '') || (savedConnection.inputId && filteredInputs.find(device => device.name === selectedInput)?.id !== savedConnection.inputId)) && t('settings.AudioSettingsModal.038'),
-    ((isAsio ? selectedInput : selectedOutput) !== (savedConnection.output ?? '') || (savedConnection.outputId && filteredOutputs.find(device => device.name === (isAsio ? selectedInput : selectedOutput))?.id !== savedConnection.outputId)) && t('settings.AudioSettingsModal.041'),
+    (selectedInput !== (savedConnection.input ?? '') || (savedConnection.inputId && selectedInputDevice?.id !== savedConnection.inputId)) && t('settings.AudioSettingsModal.038'),
+    ((isAsio ? selectedInput : selectedOutput) !== (savedConnection.output ?? '') || (savedConnection.outputId && selectedOutputDevice?.id !== savedConnection.outputId)) && t('settings.AudioSettingsModal.041'),
     selectedBufferSize !== (savedConnection.bufferSize ?? 512) && t('settings.AudioSettingsModal.047'),
     selectedSampleRate !== (savedConnection.sampleRate ?? 48000) && t('settings.AudioSettingsModal.060'),
+    (isAsio && connection.channels.some((channel, index) => channel !== (savedConnection.inputChannels ?? currentInputChannels ?? [0, 1])[index])) && t('settings.InputChannelSelector.205'),
   ].filter((value): value is string => typeof value === 'string');
   const hasConnectionChanges = changedFields.length > 0;
 
@@ -186,7 +198,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     enableRealtimePriority: false,
     enableTimeCriticalAudioThreads: false,
   });
-  const [engineStats, setEngineStats] = useState<EngineRuntimeStats | null>(null);
+  const engineStats = useRuntimeStats(isOpen);
   const streamRunning = isAudioRunning ?? engineStats?.latencyMetadata?.streamRunning === true;
   // 停止中は「開始」が必要。稼働中の変更なし保存だけを抑止する。
   const canSaveConnection = !streamRunning || hasConnectionChanges || reviewRequired || allowConnectionRetry || connectionRetry;
@@ -202,17 +214,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     });
     return () => cancelAnimationFrame(frame);
   }, [isOpen, initialSection, loading, error, activeTab]);
-  const statsGeneration = useRef(0);
-  useEffect(() => {
-    if (!isOpen) return;
-    const invalidate = () => {
-      statsGeneration.current++;
-      setEngineStats(current => current ? { ...current, latencyMetadata: current.latencyMetadata ? { ...current.latencyMetadata, streamRunning: false } : undefined } : null);
-    };
-    const subscriptions = ['audio-started', 'audio-stopped', 'audio-error', 'audio-stream-error'].map(event => listen(event, invalidate));
-    void Promise.all(subscriptions).catch(() => {});
-    return () => { statsGeneration.current++; subscriptions.forEach(item => void item.then(stop => stop()).catch(() => {})); };
-  }, [isOpen]);
+
   const [systemSaving, setSystemSaving] = useState(false);
   const [statsLoading, setStatsLoading] = useState(false);
   const [noiseMode, setNoiseMode] = useState<NoiseControlMode>('smart');
@@ -225,6 +227,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [builtInEffectsEnabled, setBuiltInEffectsEnabled] = useState(false);
   const [builtInEffectsPreset, setBuiltInEffectsPreset] = useState<BuiltInEffectsPreset>('broadcast');
   const [builtInEffectsAmount, setBuiltInEffectsAmount] = useState(70);
+  const builtInEffectsAmountEditing = useRef(false);
 
   useEffect(() => {
     if (!engineStats) return;
@@ -234,7 +237,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     }
     setNoiseVoiceGuard(engineStats.noiseVoiceGuard ?? true);
     setBuiltInEffectsEnabled(!!engineStats.builtInEffectsEnabled);
-    if (Number.isFinite(engineStats.builtInEffectsAmount)) setBuiltInEffectsAmount(Math.round(engineStats.builtInEffectsAmount * 100));
+    if (!builtInEffectsAmountEditing.current && Number.isFinite(engineStats.builtInEffectsAmount)) {
+      setBuiltInEffectsAmount(Math.round(engineStats.builtInEffectsAmount * 100));
+    }
     if (['broadcast', 'warm', 'bright', 'singing'].includes(engineStats.builtInEffectsPreset)) {
       setBuiltInEffectsPreset(engineStats.builtInEffectsPreset as BuiltInEffectsPreset);
     }
@@ -251,37 +256,18 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         builtinFx?: { preset: string; enabled: boolean; amount: number };
       } | undefined;
       if (!detail) return;
-      // engineStatsの同期effectが古い値で表示を戻さないよう、通知された設定をまとめて統計値へも反映する。
-      const patch: Partial<EngineRuntimeStats> = {};
       if (detail.noiseControl) {
         const nc = detail.noiseControl;
-        if (['low', 'high', 'smart', 'venue'].includes(nc.mode)) {
-          setNoiseMode(nc.mode as NoiseControlMode);
-          patch.noiseReductionMode = nc.mode;
-        }
+        if (['low', 'high', 'smart', 'venue'].includes(nc.mode)) setNoiseMode(nc.mode as NoiseControlMode);
         setNoiseStrength(Math.round(nc.strength * 100));
         setNoiseVoiceGuard(nc.voiceGuard);
-        Object.assign(patch, {
-          noiseReductionEnabled: nc.enabled,
-          noiseReductionActive: nc.enabled,
-          noiseControlStrength: nc.strength,
-          noiseVoiceGuard: nc.voiceGuard,
-        });
       }
       if (detail.builtinFx) {
         const fx = detail.builtinFx;
         setBuiltInEffectsEnabled(fx.enabled);
-        patch.builtInEffectsEnabled = fx.enabled;
-        if (['broadcast', 'warm', 'bright', 'singing'].includes(fx.preset)) {
-          setBuiltInEffectsPreset(fx.preset as BuiltInEffectsPreset);
-          patch.builtInEffectsPreset = fx.preset;
-        }
-        if (Number.isFinite(fx.amount)) {
-          setBuiltInEffectsAmount(Math.round(fx.amount * 100));
-          patch.builtInEffectsAmount = fx.amount;
-        }
+        if (['broadcast', 'warm', 'bright', 'singing'].includes(fx.preset)) setBuiltInEffectsPreset(fx.preset as BuiltInEffectsPreset);
+        if (Number.isFinite(fx.amount)) setBuiltInEffectsAmount(Math.round(fx.amount * 100));
       }
-      setEngineStats(current => current ? { ...current, ...patch } : current);
     };
     window.addEventListener('profile-fx-applied', handler);
     return () => window.removeEventListener('profile-fx-applied', handler);
@@ -301,15 +287,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     setConfirmDialog({ ...opts, isOpen: true });
   };
 
-  // 代表値以外で稼働していても、表示と保存時の要求値を一致させる。
-  const sampleRates = Array.from(new Set([
-    44100, 48000, 96000,
-    ...(Number.isSafeInteger(selectedSampleRate) && selectedSampleRate > 0 ? [selectedSampleRate] : []),
-  ])).sort((a, b) => a - b);
+  const sampleRates = sampleRateOptions(selectedInputDevice, selectedOutputDevice, isAsio, selectedSampleRate, currentSampleRate);
 
   // Load settings from localStorage on mount/open
   useEffect(() => {
-    const generation = statsGeneration.current;
     if (isOpen) {
       autostartApi.getStatus().then(s => {
         setAutostartEnabled(s.enabled);
@@ -324,20 +305,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         .catch((e) => {
           console.error('Failed to load engine tuning config', e);
         });
-      audioApi.getEngineRuntimeStats()
-        .then(stats => { if (generation === statsGeneration.current) setEngineStats(stats); })
-        .catch((e) => {
-          console.error('Failed to load engine runtime stats', e);
-        });
+
     }
   }, [isOpen, currentSampleRate, currentBufferSize]);
 
   const refreshEngineRuntimeStats = async () => {
-    const generation = statsGeneration.current;
     setStatsLoading(true);
     try {
-      const stats = await audioApi.getEngineRuntimeStats();
-      if (generation === statsGeneration.current) setEngineStats(stats);
+      await refreshRuntimeStatsChecked();
     } catch (e) {
       console.error('Failed to refresh engine runtime stats', e);
       toast.error(t('settings.AudioSettingsModal.001'));
@@ -359,9 +334,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         strength: Math.max(25, Math.min(125, strength)) / 100,
         voiceGuard,
       });
-      const generation = statsGeneration.current;
-      const stats = await audioApi.getEngineRuntimeStats();
-      if (generation === statsGeneration.current) setEngineStats(stats);
+      await refreshRuntimeStatsChecked();
       toast.success(active ? t('settings.AudioSettingsModal.002') : t('settings.AudioSettingsModal.003'));
     } catch (e) {
       console.error('Failed to apply noise control config', e);
@@ -391,15 +364,19 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         preset,
         amount: Math.max(0, Math.min(100, amount)) / 100,
       });
-      const generation = statsGeneration.current;
-      const stats = await audioApi.getEngineRuntimeStats();
-      if (generation === statsGeneration.current) setEngineStats(stats);
+      await refreshRuntimeStatsChecked();
       await singingModel.refresh();
       toast.success(active ? t('settings.AudioSettingsModal.008') : t('settings.AudioSettingsModal.009'));
     } catch (e) {
       console.error('Failed to apply built-in effects', e);
       toast.error(t('settings.AudioSettingsModal.010'));
     }
+  };
+
+  const commitBuiltInEffectsAmount = (value: string) => {
+    if (!builtInEffectsAmountEditing.current) return;
+    builtInEffectsAmountEditing.current = false;
+    void applyBuiltInEffects({ amount: Number(value) });
   };
 
   const saveEngineTuningConfig = async () => {
@@ -450,90 +427,27 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
   const handleSave = async () => {
     if (!canSaveConnection || isApplying) return;
+    if (retryRestart.current) { await performRestart(); return; }
     setLoading(true);
-    let started = false;
     try {
-      // For ASIO, Output must match Input
-      const finalOutput = isAsio ? selectedInput : selectedOutput;
-
-      // Find device IDs
-      const inputDev = filteredInputs.find(d => d.name === selectedInput);
-      const outputDev = filteredOutputs.find(d => d.name === finalOutput);
-      const inputId = inputDev?.id;
-      const outputId = outputDev?.id;
-
-      const res = await audioApi.start(
-        selectedHost,
-        selectedInput || undefined,
-        finalOutput || undefined,
-        selectedBufferSize,
-        selectedSampleRate,
-        inputId,
-        outputId
-      );
-      started = true;
-
-      // Save to localStorage REMOVED (Handled by App.tsx Listener)
-      // We rely on the App to listen for "Started" event to persist actual SampleRate/BufferSize.
-      // This prevents overwriting the actual Fallback values with our requested values.
-
-      // Notify parent to update persistence with ALL params
-      const inputChannels: [number, number] = isAsio ? (currentInputChannels ?? [0, 1]) : [0, 1];
-      await audioApi.setInputChannels(inputChannels[0], inputChannels[1]);
-      await onConfigChange({
-        inputChannels,
-        host: selectedHost,
-        input: selectedInput || undefined,
-        output: finalOutput || undefined,
-        sampleRate: res.sample_rate,
-        bufferSize: res.buffer_size,
-        inputId,
-        outputId
-      }, { audioStarted: true });
+      await connection.apply(false);
       setConnectionRetry(false);
       // toast.success('オーディオエンジンを起動しました'); // Assuming toast is available
       onClose();
     } catch (err) {
-      if (started) setConnectionRetry(true);
+      if (err instanceof ConnectionApplyError) setConnectionRetry(true);
       console.error('Failed to start audio:', err);
-      setError(notice('settings.AudioSettingsModal.017', { arg0: String(err) }));
+      setError(err instanceof ConnectionApplyError ? notice(err.stage === 'channels' ? 'settings.connectionChannelsIncomplete' : 'settings.connectionSaveIncomplete', { arg0: err.message }) : notice('settings.AudioSettingsModal.017', { arg0: String(err) }));
     } finally {
       setLoading(false);
     }
   };
 
   const performRestart = async () => {
-
+    retryRestart.current = true;
     setLoading(true);
     try {
-      const finalOutput = isAsio ? selectedInput : selectedOutput;
-      const inputDev = filteredInputs.find(d => d.name === selectedInput);
-      const outputDev = filteredOutputs.find(d => d.name === finalOutput);
-      const inputId = inputDev?.id;
-      const outputId = outputDev?.id;
-
-      const res = await audioApi.restart(
-        selectedHost,
-        selectedInput || undefined,
-        finalOutput || undefined,
-        selectedBufferSize,
-        selectedSampleRate,
-        inputId,
-        outputId
-      );
-
-      const inputChannels: [number, number] = isAsio ? (currentInputChannels ?? [0, 1]) : [0, 1];
-      await audioApi.setInputChannels(inputChannels[0], inputChannels[1]);
-      await onConfigChange({
-        inputChannels,
-        host: selectedHost,
-        input: selectedInput || undefined,
-        output: finalOutput || undefined,
-        sampleRate: res.sample_rate,
-        bufferSize: res.buffer_size,
-        inputId,
-        outputId
-      }, { audioStarted: true });
+      await connection.apply(true);
 
       // The restart kills the sidecar process (plugins are lost), so restore them from session.
       // 移行確認完了時はonConfigChangeが復元を開始するため、通常再起動の復元と重ねない。
@@ -542,12 +456,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         await onEngineRestarted();
         toast.success(t('settings.AudioSettingsModal.019'));
       }
+      retryRestart.current = false;
+      setConnectionRetry(false);
       onClose();
       // Optional: formatting toast success
     } catch (err) {
+      setConnectionRetry(true);
       setActiveTab('audio');
       console.error('Failed to restart engine:', err);
-      setError(notice('settings.AudioSettingsModal.020', { arg0: String(err) }));
+      setError(err instanceof ConnectionApplyError ? notice(err.stage === 'channels' ? 'settings.connectionChannelsIncomplete' : 'settings.connectionSaveIncomplete', { arg0: err.message }) : notice('settings.AudioSettingsModal.020', { arg0: String(err) }));
     } finally {
       setLoading(false);
     }
@@ -600,8 +517,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (p) {
       setPresetName(name);
       if (p.host) setSelectedHost(p.host);
-      if (p.input) setSelectedInput(p.input);
-      if (p.output) setSelectedOutput(p.output); // Might trigger useEffect to auto-correct if invalid
+      if (p.input) setSelectedInput(p.input, p.host ?? selectedHost);
+      if (p.output) setSelectedOutput(p.output, p.host ?? selectedHost); // Might trigger useEffect to auto-correct if invalid
       if (p.bufferSize) setSelectedBufferSize(p.bufferSize);
       if (p.sampleRate) setSelectedSampleRate(p.sampleRate);
     }
@@ -711,17 +628,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </label>
                   <select
                     aria-label={t('settings.AudioSettingsModal.039')}
-                    value={selectedInput}
-                    onChange={(e) => {
-                      setSelectedInput(e.target.value);
-                      if (isAsio) setSelectedOutput(e.target.value);
-                    }}
+                    value={selectedInputKey}
+                    onChange={(e) => setSelectedInputKey(e.target.value)}
                     disabled={filteredInputs.length === 0}
                     className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select disabled:opacity-50"
                   >
-                    {filteredInputs.length === 0 && <option value="">{t('settings.AudioSettingsModal.040')}</option>}
+                    {!selectedInputKey && <option value="">{t(filteredInputs.length ? 'settings.selectDevice' : 'settings.AudioSettingsModal.040')}</option>}
                     {filteredInputs.map((device, i) => (
-                      <option key={`${device.name}-${i}`} value={device.name}>{device.name}</option>
+                      <option key={`${audioDeviceKey(device)}-${i}`} value={audioDeviceKey(device)} disabled={!device.id && filteredInputs.filter(item => item.name === device.name).length > 1}>{device.name}{filteredInputs.filter(item => item.name === device.name).length > 1 && device.id ? ` (${device.id})` : ''}</option>
                     ))}
                   </select>
                 </div>
@@ -730,12 +644,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {isAsio && (
                   <div>
                     <InputChannelSelector
-                      initialChannels={currentInputChannels}
-                      maxChannels={activeDevice?.channels}
-                      onChannelMapped={(channels) => {
-                        // 即時反映したペアだけを保存し、未適用の接続先・レートを混ぜない。
-                        onConfigChange({ host: savedConnection?.host ?? selectedHost, inputChannels: channels });
-                      }}
+                      key={connection.deviceKey}
+                      initialChannels={connection.channels}
+                      maxChannels={selectedInputDevice?.channels ?? 0}
+                      monitorEnabled={connection.monitorInput}
+                      onChannelMapped={connection.setChannels}
                     />
                   </div>
                 )}
@@ -746,14 +659,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <label className="text-sm font-medium text-muted-foreground">{t('settings.AudioSettingsModal.041')}</label>
                     <select
                     aria-label={t('settings.AudioSettingsModal.042')}
-                      value={selectedOutput}
-                      onChange={(e) => setSelectedOutput(e.target.value)}
+                      value={selectedOutputKey}
+                      onChange={(e) => setSelectedOutputKey(e.target.value)}
                       disabled={filteredOutputs.length === 0}
                       className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select disabled:opacity-50"
                     >
-                      {filteredOutputs.length === 0 && <option value="">{t('settings.AudioSettingsModal.043')}</option>}
+                      {!selectedOutputKey && <option value="">{t(filteredOutputs.length ? 'settings.selectDevice' : 'settings.AudioSettingsModal.043')}</option>}
                       {filteredOutputs.map((device, i) => (
-                        <option key={`${device.name}-${i}`} value={device.name}>{device.name}</option>
+                        <option key={`${audioDeviceKey(device)}-${i}`} value={audioDeviceKey(device)} disabled={!device.id && filteredOutputs.filter(item => item.name === device.name).length > 1}>{device.name}{filteredOutputs.filter(item => item.name === device.name).length > 1 && device.id ? ` (${device.id})` : ''}</option>
                       ))}
                     </select>
                   </div>
@@ -896,10 +809,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         onChange={(e) => setSelectedSampleRate(Number(e.target.value))}
                         className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select"
                       >
-                        {sampleRates.map(rate => (
-                          <option key={rate} value={rate}>{(rate / 1000).toFixed(1)} kHz</option>
+                        {sampleRates.options.map(({ rate, supported }) => (
+                          <option key={rate} value={rate} disabled={!supported}>{formatSampleRate(rate)} kHz{!supported ? ` ${t('settings.rateUnsupported')}` : ''}</option>
                         ))}
                       </select>
+                      {(sampleRates.inputUnknown || sampleRates.outputUnknown) && <p className="text-xs text-muted-foreground">
+                        {t(sampleRates.inputUnknown && sampleRates.outputUnknown ? 'settings.rateUnknownBoth' : sampleRates.inputUnknown ? 'settings.rateUnknownInput' : 'settings.rateUnknownOutput')}
+                      </p>}
+                      {!sampleRates.options.find(option => option.rate === selectedSampleRate)?.supported && <p className="text-xs text-warning">{t('settings.rateSelectedUnsupported')}</p>}
                       {!isAsio && (
                         <div className="text-xs text-warning/90 flex items-start gap-1.5 bg-warning/10 p-1.5 rounded border border-warning/20 mt-2">
                           <MdWarning className="w-3 h-3 mt-0.5 shrink-0" />
@@ -1209,9 +1126,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       max={100}
                       step={5}
                       value={builtInEffectsAmount}
-                      onChange={(e) => setBuiltInEffectsAmount(Number(e.target.value))}
-                      onMouseUp={() => applyBuiltInEffects({ amount: builtInEffectsAmount })}
-                      onKeyUp={() => applyBuiltInEffects({ amount: builtInEffectsAmount })}
+                      onChange={(e) => {
+                        builtInEffectsAmountEditing.current = true;
+                        setBuiltInEffectsAmount(Number(e.target.value));
+                      }}
+                      onPointerUp={(e) => commitBuiltInEffectsAmount(e.currentTarget.value)}
+                      onKeyUp={(e) => commitBuiltInEffectsAmount(e.currentTarget.value)}
+                      onBlur={(e) => commitBuiltInEffectsAmount(e.currentTarget.value)}
                       className="min-w-0 flex-1 accent-primary"
                       aria-label={t('settings.AudioSettingsModal.104')}
                     />
@@ -1365,7 +1286,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <p className="text-xs text-muted-foreground">{t('settings.system.restartDescription')}</p>
                 <button
                   onClick={handleRestart}
-                  disabled={loading || (reviewRequired && !migrationConfirmed)}
+                  disabled={loading || !selectedInputDevice || !selectedOutputDevice || (reviewRequired && !migrationConfirmed)}
                   className="px-3 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive-text border border-input hover:border-destructive/30 rounded-md transition text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('settings.AudioSettingsModal.196')}</button>
@@ -1514,7 +1435,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 </tr>
                 </tbody>
                 </table>
-            <LatencyDetails stats={engineStats} />
+            <LatencyDetails stats={engineStats} isRunning={!connection.knownStopped} />
             </details>
             {/* Plugin Management */}
             <section className="rounded-xl border border-border p-4 space-y-4">
@@ -1615,7 +1536,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <p>{allowConnectionRetry || connectionRetry ? t('settings.connection.retry') : hasConnectionChanges ? t('settings.connection.changes', { fields: changedFields.join('、') }) : t('settings.connection.unchanged')}</p>
               {streamRunning && <p id="settings-save-restart">{t('settings.saveRestartHint')}</p>}
             </div>
-            <button onClick={handleSave} disabled={loading || !canSaveConnection || (reviewRequired && !migrationConfirmed)}
+            <button onClick={handleSave} disabled={loading || !selectedInputDevice || !selectedOutputDevice || !canSaveConnection || (reviewRequired && !migrationConfirmed)}
               aria-describedby={`settings-connection-changes${streamRunning ? ' settings-save-restart' : ''}`}
               className="rounded-md bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
               {t(streamRunning ? 'settings.saveRestart' : 'settings.AudioSettingsModal.197')}

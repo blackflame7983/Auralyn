@@ -109,11 +109,12 @@ it('OBS履歴の実名と制御tokenは英訳せず、英語の復元操作だ�
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('obs_restore_setup', { id: 4 }));
 });
 
-it('入力radioの動的ARIAを切り替えても信号監視を再起動せず、同じch番号だけを送る', async () => {
+it('入力radioの言語切替で監視を再起動せず、選択を下書きに渡す', async () => {
     const store = createLocaleStore(() => 'ja', () => true);
     vi.spyOn(audioApi, 'setChannelScan').mockResolvedValue(undefined);
     vi.spyOn(audioApi, 'setInputChannels').mockResolvedValue(undefined);
-    render(<LocaleProvider store={store}><InputChannelSelector maxChannels={4} /></LocaleProvider>);
+    const mapped = vi.fn();
+    render(<LocaleProvider store={store}><InputChannelSelector maxChannels={4} onChannelMapped={mapped} /></LocaleProvider>);
     await waitFor(() => expect(audioApi.setChannelScan).toHaveBeenCalledWith(true));
     const pair = screen.getByRole('radio', { name: '入力チャンネル 3/4' });
     act(() => { store.setLocale('en'); });
@@ -121,7 +122,8 @@ it('入力radioの動的ARIAを切り替えても信号監視を再起動せず�
     expect(audioApi.setChannelScan).toHaveBeenCalledTimes(1);
     fireEvent.click(pair);
     await waitFor(() => expect(pair).toBeChecked());
-    expect(audioApi.setInputChannels).toHaveBeenCalledExactlyOnceWith(2, 3);
+    expect(mapped).toHaveBeenCalledExactlyOnceWith([2, 3]);
+    expect(audioApi.setInputChannels).not.toHaveBeenCalled();
 });
 
 it('危険設定の確認dialogもkeyから再翻訳し、確認前に設定を書き換えない', async () => {

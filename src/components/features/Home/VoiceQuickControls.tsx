@@ -1,56 +1,28 @@
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { useMessages } from '@/i18n/LocaleProvider';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { useRef, useState } from 'react';
+import { refreshRuntimeStats, useRuntimeStats } from '@/hooks/useRuntimeStats';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { segmentButtonClass } from '@/components/ui/segment';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { audioApi, type BuiltInEffectsPreset, type EngineRuntimeStats, type NoiseControlMode } from '@/api/audio';
+import { audioApi, type BuiltInEffectsPreset, type NoiseControlMode } from '@/api/audio';
 import { builtinApi } from '@/api/builtinEffects';
 
-const STATS_INTERVAL_MS = 2000;
 const quickPresets: BuiltInEffectsPreset[] = ['broadcast', 'warm', 'bright'];
 
 // チェーン列のノイズ低減・内蔵ボイスチェーンの段で、よく使う声の調整だけを直接操作する。
 // 学習・会場・声を守る・歌向けなどの細かい調整は、設定の音づくりで行う。
 // enabled が false の間（音声未準備・音楽鑑賞）は状態を取りに行かない。
-export function useVoiceQuick(running: boolean, enabled = true) {
+export function useVoiceQuick(_running: boolean, enabled = true) {
     const t = useMessages();
-    const [stats, setStats] = useState<EngineRuntimeStats | null>(null);
+    const stats = useRuntimeStats(enabled);
     const [busy, setBusy] = useState(false);
     const [amount, setAmount] = useState<number | null>(null);
-    const generation = useRef(0);
-    // 無効にした後に終わった操作の再取得で、古い状態を残さない。
     const active = useRef(enabled);
     active.current = enabled;
-
-    const refresh = useCallback(async () => {
-        if (!active.current) return;
-        const request = ++generation.current;
-        try {
-            const next = await audioApi.getEngineRuntimeStats();
-            if (request === generation.current && active.current) setStats(next);
-        } catch {
-            if (request === generation.current && active.current) setStats(null);
-        }
-    }, []);
-
-    useEffect(() => {
-        if (!enabled) { generation.current++; setStats(null); return; }
-        void refresh();
-        const timer = setInterval(() => { if (!document.hidden) void refresh(); }, STATS_INTERVAL_MS);
-        const onExternal = () => void refresh();
-        window.addEventListener('profile-fx-applied', onExternal);
-        const subscriptions = ['audio-started', 'audio-stopped'].map(event => listen(event, onExternal));
-        return () => {
-            generation.current++;
-            clearInterval(timer);
-            window.removeEventListener('profile-fx-applied', onExternal);
-            subscriptions.forEach(item => void item.then(stop => stop()).catch(() => {}));
-        };
-    }, [refresh, running, enabled]);
+    const refresh = async () => { if (active.current) await refreshRuntimeStats(true); };
 
     const run = async (action: () => Promise<unknown>, success: string) => {
         if (busy) return;
@@ -59,7 +31,7 @@ export function useVoiceQuick(running: boolean, enabled = true) {
             await action();
             await refresh();
             // 音づくりタブや歌向けの下書きへ、外部で値が変わったことを知らせる。
-            window.dispatchEvent(new CustomEvent('profile-fx-applied'));
+            window.dispatchEvent(new CustomEvent('profile-fx-applied', { detail: { runtimeStatsRefreshed: active.current } }));
             toast.success(success);
         } catch (error) {
             console.error('Failed to apply quick voice setting', error);
