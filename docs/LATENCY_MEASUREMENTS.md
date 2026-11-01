@@ -107,3 +107,26 @@ latencyMetadata.stageBreakdownはoptional、schemaVersion=1、queryBasis=queried
 NRの480frame／48kモデルは10msの分析フレーム周期という計算根拠であり、wet履歴やdry/wet混合の各信号の待ち時間はunknown。内蔵IIR位相／コンプ状態／reverb tailもunknownであり、decayやdelay-line長を固定通過時間へ換算しない。これらをcohort／rawの分位やVST申告へ足した新しい総遅延は作らない。
 
 NRは対応rateならOFFでも制御側で事前確保し、ON／OFF／resetでRT再確保しない。最大3840frameの可変4配列payloadは61440Bであり、nnnoiselessモデル・FFT・state・固定配列・allocator等を含む総保持量ではない。非対応rateでのNR有効化は両setterともintent／queue更新前に拒否し、停止中の保存意図は次Start時に検証する。OFFではNR専用のrate拒否を増やさないが、他DSPや機器の対応範囲を広げるものではない。万一未準備のONがRTへ届いた場合は無音と固定atomic通知から制御側停止へ移り、別rate処理やpanicへ置換しない。profile復元の既存エラー伝播を維持し、拒否を成功summaryへ追加しない。
+
+## #211 配線前の計測準備とオフライン解析
+
+`scripts/loopback_measurements.py` はデバイスを起動せず、計測計画と非発声の計測用信号を作成し、別途録音した WAV を解析する。Python の numpy、scipy、soundfile が必要。出力先は毎回存在しない新規ディレクトリを指定し、既存ファイルは上書きしない。
+
+```powershell
+python scripts/loopback_measurements.py prepare out/plan --rate 48000 --device "機器名" --driver "ドライバーと版" --build "ビルド識別子" --routing "配線と経路" --buffers 128 256 512
+python scripts/loopback_measurements.py a1 recording-a1.wav out/a1
+python scripts/loopback_measurements.py a3 recording-a3.wav out/a3
+python -m unittest discover -s scripts -p test_loopback_measurements.py -v
+```
+
+plan は ASIO／WASAPI、指定した要求 buffer、NR OFF／ON、VST 0／3本の各組合せにつき5回を示す。各 backend・機器の実対応値を確認して指定する。要求値は実 callback 長ではなく、WASAPI の512要求も観測するまで unknown である。実際の rate、機器、ドライバー、build、経路、NR・VST 設定、callback 長と各試行の結果を別途記録する。VST 1本の比較も必要な場合は追加試行として記録する。
+
+A1 はフィードバック経路を切り、送出レベルを安全な低さから確認する。生成された `fixture.wav` は人声ではなく、固定 seed の3秒間の計測信号である。送信基準と処理後を同じ ADC clock の外部録音機で同時録音し、左を reference、右を processed とする2ch WAV を用意する。配線図、機器の入出力、録音レート、ゲイン、外部録音機、クロックと、直結などの校正条件を記録する。同一 clock を確認できない録音は比較根拠にしない。各条件5回の結果と不明な試行を残す。
+
+A1 の絶対相関は極性反転も許容し、processed の reference に対する相対 lag を返す。peak が0.2未満、1ms以上離れた競合 peak が最大の80%以上、無音、短時間、非有限値は unknown とする。閾値を満たしても信号経路・DSPで誤検出はあり得るため波形と校正を確認する。この lag は録音した2経路の差であり、校正なしに物理端子の往復遅延や OBS 同期値とは呼ばない。
+
+A3 は固定の非無音素材を1時間以上流し、同一録音の左 reference・右 processed を保存する。10ms窓ごとに reference RMS が0.01以上のとき processed RMS がその1%以下なら疑い区間とし、連続窓を結合する。JSON に区間開始、長さ、件数、参照が不活性または非有限で未解析の時間を出す。1時間未満、参照活性なし、非有限値は unknown であり、いずれも合格判定ではない。録音全体を一括ロードしない。
+
+上記の10ms減衰判定とは別に、processed のサンプルが正確に0である連続区間をブロック境界を越えて追跡する。1ms以上で、その区間内の reference RMS が0.01以上のものを `digitalZeroIntervals` と `digitalZeroIntervalCount` に報告する。1サンプルのゼロ交差は数えない。参照が不活性な時間を含む1時間以上の録音は `partial`、参照活性なし・非有限値・1時間未満は `unknown` とし、完全な解析としない。ゼロ区間の参照活性は区間全体のRMSによる判定であり、区間内の各瞬間の活性を保証しない。短いゼロ、非ゼロの小振幅、参照の不活性や欠落はこの検出では見逃し得る。2種類の件数は重複し得るため足し合わせない。
+
+この検出は NR の抑制、意図的ミュート、DSP による減衰と欠損を区別できない。削除された frame、両チャンネル同時の欠損、閾値や窓より短い変化は検出できる保証がない。素材と設定、未解析範囲を確認し、疑い箇所の波形・聴感と他の観測を照合する。`suspectedIntervalCount` は確定音切れ回数ではなく、既存 `glitchCount` とも別である。これらは配線・実測待ちの準備であり、物理遅延、実際の音切れ回数、聴感の合格は未確認である。
