@@ -19,6 +19,7 @@ mod dsp_verification_allocator;
 pub mod ipc;
 mod migration;
 pub mod obs;
+mod obs_credentials;
 pub mod obs_setup;
 #[cfg(windows)]
 mod process_job;
@@ -28,8 +29,8 @@ mod shortcuts;
 mod storage;
 mod temporary_session;
 mod updates;
-mod window_activity;
 pub mod vst_host;
+mod window_activity;
 #[tauri::command]
 async fn get_autostart_status(
     distribution: State<'_, desktop_integration::Distribution>,
@@ -71,11 +72,32 @@ fn open_url(url: String) -> Result<(), String> {
 async fn connect_obs(
     app: AppHandle,
     state: State<'_, obs::ObsState>,
+    credentials: State<'_, obs_credentials::Credentials>,
     host: String,
     port: u16,
     password: Option<String>,
+    remember: Option<bool>,
 ) -> Result<(), String> {
-    obs::connect_obs(app, state, host, port, password).await
+    let _guard = credentials.0.lock().await;
+    let endpoint = obs_credentials::Endpoint::new(host, port)?;
+    let password = obs_credentials::resolve(&app, endpoint.clone(), password).await?;
+    obs::connect_obs(
+        app.clone(),
+        state.clone(),
+        endpoint.host.clone(),
+        endpoint.port,
+        password.clone(),
+    )
+    .await?;
+    if remember.unwrap_or(false) {
+        if let Err(error) =
+            obs_credentials::remember(&app, endpoint, password.unwrap_or_default()).await
+        {
+            let _ = obs::disconnect_obs(app, state).await;
+            return Err(error);
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -240,6 +262,7 @@ pub fn run() {
         .manage(shortcuts::Shortcuts::default())
         .manage(updates::Updates::default())
         .manage(obs_state)
+        .manage(obs_credentials::Credentials::default())
         .manage(commands::bundles::BundleState::default())
         .on_page_load(|webview, payload| {
             if webview.label() == "main"
@@ -369,6 +392,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             window_activity::get_window_activity,
+            obs_credentials::get_obs_credentials,
+            obs_credentials::migrate_obs_credentials,
+            obs_credentials::clear_obs_credentials,
             commands::audio::peak_protection,
             temporary_session::temporary_session_status,
             temporary_session::acknowledge_session_review,

@@ -33,6 +33,11 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
   const [obsHost, setObsHost] = useState(endpoint.host);
   const [obsPort, setObsPort] = useState(endpoint.port);
   const [obsPassword, setObsPassword] = useState('');
+  const [savedCredentials, setSavedCredentials] = useState<{ host: string; port: number } | null>(null);
+  const [credentialStatusLoading, setCredentialStatusLoading] = useState(true);
+  const [credentialReadFailed, setCredentialReadFailed] = useState(false);
+  const [useSavedPassword, setUseSavedPassword] = useState(true);
+  const savedPasswordAvailable = savedCredentials?.host === obsHost.trim().toLowerCase() && savedCredentials?.port === obsPort;
   const [isObsConnected, setIsObsConnected] = useState(false);
   const isObsConnectedRef = useRef(isObsConnected);
   isObsConnectedRef.current = isObsConnected;
@@ -139,11 +144,11 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
   }, [obsReachResult, obsInUse, reachListenersReady, reachExpired]);
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('vst_host_obs_config') ?? 'null');
-      if (!saved || typeof saved !== 'object') return;
-      if (typeof saved.password === 'string') setObsPassword(saved.password);
-    } catch { /* 保存データが壊れていても、接続先を入力して再設定できるようにする。 */ }
+    let active = true;
+    void obsApi.savedCredentials().then(value => { if (active) setSavedCredentials(value ?? null); })
+      .catch(() => { if (active) { setCredentialReadFailed(true); setObsConnectionHint(notice('obs.credentialsUnavailable')); } })
+      .finally(() => { if (active) setCredentialStatusLoading(false); });
+    return () => { active = false; };
   }, []);
 
   // 再表示では接続を作り直さず、バックエンドが保持する接続・履歴へ戻る。
@@ -170,13 +175,17 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
     const revision = connectionRevision.current;
     setLoading(true);
     try {
-      await obsApi.connect({ host: obsHost, port: obsPort, password: obsPassword });
+      await obsApi.connect({ host: obsHost, port: obsPort, password: savedPasswordAvailable && useSavedPassword ? undefined : obsPassword, remember: true });
+      // 秘密はJSの入力欄から除き、再接続はネイティブ側の保存値を使う。
+      setObsPassword('');
+      setSavedCredentials({ host: obsHost.trim().toLowerCase(), port: obsPort });
+      setUseSavedPassword(true);
+      localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: obsHost.trim(), port: obsPort }));
       if (revision !== connectionRevision.current || isAppHidden()) return;
       setIsObsConnected(true);
       if (connectionDetails.current) connectionDetails.current.open = false;
       setObsConnectionHint(null);
       toast.success(notify('settings.ObsConnectionSettings.267'));
-      localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: obsHost, port: obsPort, password: obsPassword }));
     } catch (e) {
       if (revision !== connectionRevision.current || isAppHidden()) return;
       const hint = obsConnectionFailureNotice(e, attemptedPort);
@@ -315,10 +324,12 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                       disabled={loading || isObsConnected}
                       type="password"
                       value={obsPassword}
-                      onChange={(e) => setObsPassword(e.target.value)}
+                      onChange={(e) => { setObsPassword(e.target.value); setUseSavedPassword(false); }}
                       className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       placeholder={t('settings.ObsConnectionSettings.286')}
                     />
+                    {savedPasswordAvailable && <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" disabled={loading || isObsConnected} checked={useSavedPassword} onChange={event => setUseSavedPassword(event.target.checked)} />{t('obs.useSavedPassword')}</label>}
+                    {(savedCredentials || credentialReadFailed) && <button type="button" disabled={loading || isObsConnected} className="text-xs underline" onClick={() => { void obsApi.clearCredentials().then(() => { setSavedCredentials(null); setUseSavedPassword(false); setCredentialReadFailed(false); }).catch(() => setObsConnectionHint(notice('obs.credentialsUnavailable'))); }}>{t('obs.forgetPassword')}</button>}
                   </div>
 
                     {isObsConnected && <p className="text-xs text-muted-foreground">{t('settings.ObsConnectionSettings.287')}</p>}
@@ -328,7 +339,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                 {!isObsConnected && (
                   <button
                     onClick={handleConnectObs}
-                    disabled={loading || obsStatusLoading}
+                    disabled={loading || obsStatusLoading || credentialStatusLoading}
                     className="w-full py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-bold"
                   >
                     {obsStatusLoading ? t('settings.ObsConnectionSettings.288') : loading ? t('settings.ObsConnectionSettings.289') : t('settings.ObsConnectionSettings.290')}

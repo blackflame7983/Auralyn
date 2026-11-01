@@ -22,6 +22,12 @@ describe('obsApi', () => {
         expect(await obsApi.connectionStatus()).toBe(true);
         expect(mockedInvoke).toHaveBeenCalledExactlyOnceWith('obs_connection_status');
     });
+    it('未指定だけが保存済み認証を要求し、空文字は認証なしの明示入力として送る', async () => {
+        await obsApi.connect({ host: 'localhost', port: 4455 });
+        expect(mockedInvoke).toHaveBeenLastCalledWith('connect_obs', { host: 'localhost', port: 4455, password: null });
+        await obsApi.connect({ host: 'localhost', port: 4455, password: '', remember: true });
+        expect(mockedInvoke).toHaveBeenLastCalledWith('connect_obs', { host: 'localhost', port: 4455, password: '', remember: true });
+    });
 
     describe('previewSetup', () => {
         it('変更なしで予定だけを取得する', async () => {

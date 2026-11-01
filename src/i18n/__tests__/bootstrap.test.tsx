@@ -16,6 +16,7 @@ it('移行完了までlocale初期化・描画・native同期を始めず、完�
     localStorage.setItem('vst_host_locale', 'en');
     await import('../../main');
     expect(document.documentElement.lang).toBe('ja'); expect(mocks.render).not.toHaveBeenCalled(); expect(mocks.bridge).not.toHaveBeenCalled();
+    await waitFor(() => expect(mocks.migration).toHaveBeenCalledOnce());
     finish(); await waitFor(() => expect(mocks.render).toHaveBeenCalledOnce());
     expect(document.documentElement.lang).toBe('en'); expect(mocks.bridge).toHaveBeenCalledOnce();
 });
