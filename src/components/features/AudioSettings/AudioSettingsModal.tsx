@@ -227,6 +227,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [builtInEffectsEnabled, setBuiltInEffectsEnabled] = useState(false);
   const [builtInEffectsPreset, setBuiltInEffectsPreset] = useState<BuiltInEffectsPreset>('broadcast');
   const [builtInEffectsAmount, setBuiltInEffectsAmount] = useState(70);
+  const builtInEffectsAmountEditing = useRef(false);
 
   useEffect(() => {
     if (!engineStats) return;
@@ -236,7 +237,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     }
     setNoiseVoiceGuard(engineStats.noiseVoiceGuard ?? true);
     setBuiltInEffectsEnabled(!!engineStats.builtInEffectsEnabled);
-    if (Number.isFinite(engineStats.builtInEffectsAmount)) setBuiltInEffectsAmount(Math.round(engineStats.builtInEffectsAmount * 100));
+    if (!builtInEffectsAmountEditing.current && Number.isFinite(engineStats.builtInEffectsAmount)) {
+      setBuiltInEffectsAmount(Math.round(engineStats.builtInEffectsAmount * 100));
+    }
     if (['broadcast', 'warm', 'bright', 'singing'].includes(engineStats.builtInEffectsPreset)) {
       setBuiltInEffectsPreset(engineStats.builtInEffectsPreset as BuiltInEffectsPreset);
     }
@@ -368,6 +371,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       console.error('Failed to apply built-in effects', e);
       toast.error(t('settings.AudioSettingsModal.010'));
     }
+  };
+
+  const commitBuiltInEffectsAmount = (value: string) => {
+    if (!builtInEffectsAmountEditing.current) return;
+    builtInEffectsAmountEditing.current = false;
+    void applyBuiltInEffects({ amount: Number(value) });
   };
 
   const saveEngineTuningConfig = async () => {
@@ -1117,9 +1126,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       max={100}
                       step={5}
                       value={builtInEffectsAmount}
-                      onChange={(e) => setBuiltInEffectsAmount(Number(e.target.value))}
-                      onMouseUp={() => applyBuiltInEffects({ amount: builtInEffectsAmount })}
-                      onKeyUp={() => applyBuiltInEffects({ amount: builtInEffectsAmount })}
+                      onChange={(e) => {
+                        builtInEffectsAmountEditing.current = true;
+                        setBuiltInEffectsAmount(Number(e.target.value));
+                      }}
+                      onPointerUp={(e) => commitBuiltInEffectsAmount(e.currentTarget.value)}
+                      onKeyUp={(e) => commitBuiltInEffectsAmount(e.currentTarget.value)}
+                      onBlur={(e) => commitBuiltInEffectsAmount(e.currentTarget.value)}
                       className="min-w-0 flex-1 accent-primary"
                       aria-label={t('settings.AudioSettingsModal.104')}
                     />
