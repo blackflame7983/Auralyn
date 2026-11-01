@@ -24,6 +24,18 @@ Zodのメジャーoverride、Jimpの旧版への変更、Rust変更、署名付�
 6. npm / Cargo のライセンス一覧を再生成・確認し、ローカルパスが混入していないか、GPL配布・対応ソースの条件を満たすかを確認する。
 7. アプリ番号は [VERSIONING.md](VERSIONING.md) で別途判断する。更新を検討しただけでは番号を変更しない。
 
+## RustSec の継続監査
+
+依存更新時とリリース前は、最新の RustSec Advisory Database を取得して `cargo audit --file src-tauri/Cargo.lock` を必ず実行し、結果と残る指摘を記録する。インストールは `cargo install cargo-audit --version 0.22.2 --locked`。PR・main 更新・週次・手動の CI でも同じ lockfile を監査する。ASIO SDK やアプリのビルドは不要。
+
+脆弱性が見つかった場合は逆依存と修正版を調査し、更新後に再監査する。例外は advisory ID ごとに影響の根拠、理由、対応担当と期限を記録して再評価し、一括無視しない。警告も内容と利用経路を確認する。監査は既知の advisory と lockfile の照合であり、攻撃成立や安全性の証明ではない。署名・インストーラー・実機の検証とは別に実施する。
+
+一次情報: [cargo-audit](https://github.com/rustsec/rustsec/tree/main/cargo-audit)、[RustSec Advisory Database](https://github.com/RustSec/advisory-db)。
+
+2026-11-01 の監査（cargo-audit 0.22.2、DB `2295466c4e9df26647fd67d8fa1c705ac2fc7f81`）は 671 依存を照合し、脆弱性 5 件・警告 6 件で失敗した。対象は rustls-webpki 0.103.15（[0382](https://rustsec.org/advisories/RUSTSEC-2026-0382)、0.103.16 以上）、webpki-root-certs 1.0.6（[0383](https://rustsec.org/advisories/RUSTSEC-2026-0383)、1.0.10 以上）、zip 4.6.1（[0367](https://rustsec.org/advisories/RUSTSEC-2026-0367)・[0368](https://rustsec.org/advisories/RUSTSEC-2026-0368)・[0369](https://rustsec.org/advisories/RUSTSEC-2026-0369)、9.0.0 以上）。zip は tauri-plugin-updater 経由であり、メジャー更新の互換性確認が必要。警告は保守停止 4 件、unsound 2 件。
+
+同日の限定更新で tauri-plugin-updater を 2.14.1 とし、その依存 zip を 9.2.1 に更新。rustls-webpki を 0.103.16、webpki-root-certs を 1.0.10 に更新した。再監査は脆弱性 5 件から 0 件となり成功した。さらに Tokio を 1.49.0 から修正版 1.51.6 へ限定更新し、最終監査は脆弱性 0 件・警告 5 件（保守停止 4、glib の unsound 1）で成功した。残る proc-macro-error / glib / zbus_names / zvariant / zvariant_derive は Windows 向けの実依存木に含まれないことを `cargo tree --locked --target x86_64-pc-windows-msvc` で確認した。Linux 側上流の GTK / zbus 更新が必要なため今回の Windows 修正へ混ぜない。例外や ignore は追加していない。これらは監査時点の結果である。
+
 ## npm の観測
 
 `npm outdated --json` と `npm audit --json` を実行。audit は計6パッケージ（high 4 / moderate 2）、critical 0。
@@ -48,7 +60,7 @@ Viteの変更は [公式移行ガイド](https://vite.dev/guide/migration)。Tau
 ## Rust の観測
 
 Cargo.lock と crates.io API の `max_stable_version` / `repository` を照合した候補。
-Cargo 全推移依存の outdated / RustSec 監査は未実施。最新版へコンパイルできることや互換性は未確認。
+この初回調査時点では Cargo 全推移依存の outdated / RustSec 監査は未実施。後続の監査は末尾の記録を参照。最新版へコンパイルできることや互換性は未確認。
 
 | 対象 | 現在 → 調査時最新安定版 | 判断 |
 | --- | --- | --- |

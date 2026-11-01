@@ -18,6 +18,8 @@ WASAPIは入力を先に開始し、制御スレッドで要求バッファ2個�
 
 ### Pull Requestの自動チェック
 
+`.github/workflows/rustsec-audit.yml` は PR・main 更新・週次・手動で `src-tauri/Cargo.lock` を最新の RustSec DB と照合する。ローカルでも依存更新時とリリース前に `cargo audit --file src-tauri/Cargo.lock` を実行する。導入と例外の扱いは [DEPENDENCY_MAINTENANCE.md](DEPENDENCY_MAINTENANCE.md) を参照する。これは署名、実機、Rustビルドの検証とは別であり、GitHub 上の実行結果と branch protection 設定は別途確認する。
+
 `.github/workflows/frontend-quality.yml` はPR、main更新、手動実行でWindows上のフロント品質を確認する。
 Node.js 24とlockfileを使い、全Vitest、TypeScript、Vite、配布スクリプト試験、配布方針チェック、ChromiumのIPCモック試験を実行する。
 ローカルでの対応コマンドは下表と `docs/BUILD_GUIDE.md` を参照する。
