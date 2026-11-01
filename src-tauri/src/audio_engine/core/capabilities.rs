@@ -119,16 +119,34 @@ impl CapabilitySnapshot {
     ) -> Result<StreamConfig> {
         anyhow::ensure!(
             output_capabilities.supports_default_channels_f32(output),
-            "ASIO出力の既定ch・F32・選択rateの対応を確認できません"
+            "ASIO出力の既定ch・F32・選択rateの対応を確認できません。{}",
+            output_capabilities.f32_support_help()
         );
         let mut input = input.clone();
         input.sample_rate = output.sample_rate;
         input.buffer_size = output.buffer_size;
         anyhow::ensure!(
             self.supports_default_channels_f32(&input),
-            "ASIO入力の既定ch・F32・共通rateの対応を確認できません"
+            "ASIO入力の既定ch・F32・共通rateの対応を確認できません。{}",
+            self.f32_support_help()
         );
         Ok(input)
+    }
+
+    fn f32_support_help(&self) -> &'static str {
+        // 一覧が欠測なら未対応とは断定しない。ASIO backendはnative形式との一致が必要。
+        if self.default.sample_format() != SampleFormat::F32
+            && self.supported.as_ref().is_some_and(|ranges| {
+                !ranges.iter().any(|range| {
+                    range.channels() == self.default.channels()
+                        && range.sample_format() == SampleFormat::F32
+                })
+            })
+        {
+            "この機器が報告した音声形式は本アプリでは未対応です。接続方式をWASAPIに変更するか、別のASIO機器を選んでください。"
+        } else {
+            "選択した構成での対応を確認できません。機器の対応情報を再検出し、対応する周波数を選ぶか、接続方式をWASAPIへ変更してください。"
+        }
     }
 
     pub(super) fn default_buffer_range(&self) -> Option<(u32, u32)> {
@@ -177,6 +195,72 @@ pub(super) fn report_phase(phase: &str, started: Instant) {
 mod tests {
     use super::*;
     use cpal::SampleFormat;
+
+    #[test]
+    fn asio_help_distinguishes_known_native_format_from_missing_capabilities() {
+        let native =
+            SupportedStreamConfig::new(2, 48_000, SupportedBufferSize::Unknown, SampleFormat::I32);
+        let ranges = vec![SupportedStreamConfigRange::new(
+            2,
+            48_000,
+            48_000,
+            SupportedBufferSize::Unknown,
+            SampleFormat::I32,
+        )];
+        let mut snapshot = CapabilitySnapshot {
+            default: native,
+            supported: Some(ranges),
+        };
+        assert!(snapshot.f32_support_help().contains("未対応"));
+        assert!(snapshot.f32_support_help().contains("WASAPI"));
+        snapshot.supported = None;
+        assert!(!snapshot.f32_support_help().contains("未対応"));
+        assert!(snapshot.f32_support_help().contains("再検出"));
+    }
+
+    #[test]
+    #[ignore = "明示したインストール済みASIOの能力を観測する。stream開始成功の試験ではない"]
+    fn asio_native_capability_report() {
+        use cpal::traits::{DeviceTrait, HostTrait};
+        let host = cpal::host_from_id(cpal::HostId::Asio).expect("ASIO host");
+        let mut observed = 0;
+        for device in host.devices().expect("ASIO devices") {
+            let name = device
+                .description()
+                .expect("driver description")
+                .name()
+                .to_string();
+            if ![
+                "Realtek ASIO",
+                "Creative Sound Blaster ASIO",
+                "Voicemeeter Insert Virtual ASIO",
+            ]
+            .contains(&name.as_str())
+            {
+                continue;
+            }
+            observed += 1;
+            let output = CapabilitySnapshot::capture(
+                || device.default_output_config().map_err(Into::into),
+                || device.supported_output_configs().map_err(Into::into),
+            );
+            let input = CapabilitySnapshot::capture(
+                || device.default_input_config().map_err(Into::into),
+                || device.supported_input_configs().map_err(Into::into),
+            );
+            let describe = |result: &Result<CapabilitySnapshot>| match result {
+                Ok(snapshot) => {
+                    serde_json::json!({"default": format!("{:?}", snapshot.default), "supported": format!("{:?}", snapshot.supported), "f32Help": snapshot.f32_support_help()})
+                }
+                Err(error) => serde_json::json!({"error": error.to_string()}),
+            };
+            println!(
+                "ASIO_CAPABILITIES {}",
+                serde_json::json!({"driver": name, "input": describe(&input), "output": describe(&output)})
+            );
+        }
+        assert!(observed > 0, "指定したASIO driverが未導入");
+    }
     use std::cell::Cell;
 
     #[test]
