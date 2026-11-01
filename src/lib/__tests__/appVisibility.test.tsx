@@ -77,3 +77,38 @@ it('DOM が表示中でも native 非表示ではメーターを更新せず復�
     emit('app://window-activity', true);
     expect(result.current.clipped).toBe(true);
 });
+
+it('native通知のない表示復帰でもfocusで再取得しメーターを再開する', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+    stop = initializeAppVisibility();
+    await flush();
+    const { result } = renderHook(() => useMeterLevels({ running: true }));
+    await flush();
+    emit('app://window-activity', false);
+    emit('audio-level', { input: [1.2, 1.2], output: [1.2, 1.2] });
+    expect(result.current.clipped).toBe(false);
+    act(() => window.dispatchEvent(new Event('focus')));
+    await flush();
+    expect(isAppHidden()).toBe(false);
+    expect(result.current.clipped).toBe(true);
+});
+
+it('重なるfocus取得は最新応答を使い、新しいnative通知も上書きしない', async () => {
+    stop = initializeAppVisibility();
+    await flush();
+    const resolves: Array<(value: boolean) => void> = [];
+    vi.mocked(invoke).mockImplementation(() => new Promise<boolean>(resolve => { resolves.push(resolve); }) as any);
+    act(() => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('focus')); });
+    await act(async () => resolves[1](true));
+    await act(async () => resolves[0](false));
+    expect(isAppHidden()).toBe(false);
+    act(() => window.dispatchEvent(new Event('focus')));
+    emit('app://window-activity', false);
+    await act(async () => resolves[2](true));
+    expect(isAppHidden()).toBe(true);
+    stop(); stop = undefined;
+    const calls = vi.mocked(invoke).mock.calls.length;
+    act(() => window.dispatchEvent(new Event('focus')));
+    expect(invoke).toHaveBeenCalledTimes(calls);
+});

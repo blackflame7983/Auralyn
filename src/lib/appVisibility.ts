@@ -23,6 +23,7 @@ export function initializeAppVisibility(): () => void {
     if (!isTauri()) return () => {};
     let active = true;
     let revision = 0;
+    let request = 0;
     let unlisten: UnlistenFn | undefined;
     const updateDataset = () => { document.documentElement.dataset.appHidden = String(isAppHidden()); };
     const updateNative = (hidden: boolean) => {
@@ -31,8 +32,22 @@ export function initializeAppVisibility(): () => void {
         updateDataset();
         if (before !== isAppHidden()) document.dispatchEvent(new Event(activityEvent));
     };
+    const refresh = async () => {
+        const currentRequest = ++request;
+        const currentRevision = revision;
+        try {
+            const visible = await invoke<boolean>('get_window_activity');
+            if (active && request === currentRequest && revision === currentRevision) updateNative(!visible);
+        } catch {
+            // 取得失敗を表示復帰の成功とみなさず、次のnative通知・focusで再確認する。
+        }
+    };
+    // OSからの直接表示など、native通知だけでは拾えない復帰経路も照合する。
+    const focus = () => { void refresh(); };
+    const visibility = () => { updateDataset(); if (!document.hidden) void refresh(); };
     updateDataset();
-    document.addEventListener('visibilitychange', updateDataset);
+    document.addEventListener('visibilitychange', visibility);
+    window.addEventListener('focus', focus);
     void (async () => {
         try {
             const stop = await listen<boolean>('app://window-activity', event => {
@@ -42,9 +57,7 @@ export function initializeAppVisibility(): () => void {
             });
             if (!active) { stop(); return; }
             unlisten = stop;
-            const requestRevision = revision;
-            const visible = await invoke<boolean>('get_window_activity');
-            if (active && revision === requestRevision) updateNative(!visible);
+            await refresh();
         } catch {
             // 非対応環境では DOM の可視性を維持する。
         }
@@ -52,7 +65,8 @@ export function initializeAppVisibility(): () => void {
     return () => {
         active = false;
         unlisten?.();
-        document.removeEventListener('visibilitychange', updateDataset);
+        document.removeEventListener('visibilitychange', visibility);
+        window.removeEventListener('focus', focus);
         updateNative(false);
         delete document.documentElement.dataset.appHidden;
     };
