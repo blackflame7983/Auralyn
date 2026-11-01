@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
@@ -11,6 +11,7 @@ beforeEach(() => {
     vi.mocked(invoke).mockImplementation(async command => {
         if (command === 'get_audio_devices') return { inputs: [], outputs: [] };
         if (command === 'get_engine_runtime_stats') return { noiseReductionEnabled: false, builtInEffectsEnabled: false };
+        if (command === 'get_engine_tuning_config') return { enableAffinityPinning: false, affinityMask: null, enableRealtimePriority: false, enableTimeCriticalAudioThreads: false };
         if (command === 'get_autostart_status') return { enabled: false, canChange: true };
         return null;
     });
@@ -43,4 +44,26 @@ it.each(['ja', 'en'] as const)('ライトテーマにも説明を表示する (%
     render(<LocaleProvider store={store}><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);
     fireEvent.mouseDown(screen.getByRole('tab', { name: locale === 'ja' ? '外観' : 'Appearance' }), { button: 0, ctrlKey: false });
     expect(screen.getByText(locale === 'ja' ? '明るい背景に、青緑を差し色にします。' : 'A light background with teal accents.')).toBeVisible();
+});
+
+it('音づくりとシステムの詳細・未保存値をタブ移動と閉じて再表示した後も保持する', async () => {
+    const props = { onClose: vi.fn(), onConfigChange: vi.fn(), initialTab: 'sound' as const };
+    const view = render(<AudioSettingsModal {...props} isOpen />);
+    fireEvent.click(screen.getByText('ノイズ低減の詳細'));
+    await waitFor(() => expect(screen.getByText('ノイズ低減の詳細').closest('details')).toHaveAttribute('open'));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム' }), { button: 0, ctrlKey: false });
+    const optimization = screen.getByText('音声処理の最適化').closest('details')!;
+    fireEvent.click(within(optimization).getByText('音声処理の最適化'));
+    await waitFor(() => expect(optimization).toHaveAttribute('open'));
+    const mask = screen.getByRole('textbox', { name: 'アフィニティマスク' });
+    fireEvent.change(mask, { target: { value: '0x3' } });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: '音づくり' }), { button: 0, ctrlKey: false });
+    expect(screen.getByText('ノイズ低減の詳細').closest('details')).toHaveAttribute('open');
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム' }), { button: 0, ctrlKey: false });
+    expect(screen.getByText('音声処理の最適化').closest('details')).toHaveAttribute('open');
+    expect(screen.getByRole('textbox', { name: 'アフィニティマスク' })).toHaveValue('0x3');
+    view.rerender(<AudioSettingsModal {...props} isOpen={false} />);
+    view.rerender(<AudioSettingsModal {...props} isOpen />);
+    expect(screen.getByText('音声処理の最適化').closest('details')).toHaveAttribute('open');
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'アフィニティマスク' })).toHaveValue('0x3'));
 });
