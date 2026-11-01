@@ -335,6 +335,37 @@ it('同じチャンネル数の別機器では下書きと信号表示を引き�
     expect(screen.getByText(/現在の接続と異なる/)).toBeInTheDocument();
 });
 
+it('稼働中の同名機器から別IDとレート・バッファを下書きしてもペア選択で保存せず、再表示で元の設定を戻す', async () => {
+    const twin = ['a', 'b'].map(id => ({ name: 'ASIO device', id, host: 'ASIO', channels: 4 }));
+    const original = JSON.stringify({ host: 'ASIO', input: 'ASIO device', output: 'ASIO device', inputId: 'a', outputId: 'a', sampleRate: 48000, bufferSize: 512, inputChannels: [0, 1] });
+    localStorage.setItem('vst_host_audio_config', original);
+    localStorage.setItem('vst_host_settings_advanced', 'true');
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'get_audio_devices') return { inputs: twin, outputs: twin };
+        if (command === 'get_audio_state') return { is_running: true, config: { host: 'ASIO', input_id: 'a' } };
+        if (command === 'auto_gain') return { running: true, streamFailed: false };
+        return null;
+    });
+    const save = vi.fn();
+    const props = { onClose: vi.fn(), onConfigChange: save, currentInputChannels: [0, 1] as [number, number], currentSampleRate: 48000, currentBufferSize: 512 };
+    const view = render(<AudioSettingsModal isOpen {...props} />);
+    const b = await screen.findByRole('option', { name: 'ASIO device (b)' });
+    fireEvent.change(b.closest('select')!, { target: { value: 'id:b' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'サンプルレート' }), { target: { value: '96000' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'バッファサイズ' }), { target: { value: '256' } });
+    fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 3/4' }));
+    expect(save).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
+    expect(localStorage.getItem('vst_host_audio_config')).toBe(original);
+    view.rerender(<AudioSettingsModal isOpen={false} {...props} />);
+    view.rerender(<AudioSettingsModal isOpen {...props} />);
+    const a = await screen.findByRole('option', { name: 'ASIO device (a)' });
+    await waitFor(() => expect(a.closest('select')).toHaveValue('id:a'));
+    expect(screen.getByRole('radio', { name: '入力チャンネル 1/2' })).toBeChecked();
+    expect(screen.getByRole('combobox', { name: 'サンプルレート' })).toHaveValue('48000');
+    expect(screen.getByRole('combobox', { name: 'バッファサイズ' })).toHaveValue('512');
+});
+
 
 it('遅い監視開始を待ってから最後の停止を送り、監視を復活させない', async () => {
     let finish!: () => void;
