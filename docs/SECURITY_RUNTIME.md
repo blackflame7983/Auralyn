@@ -9,3 +9,15 @@ Vite が生成するローカルスクリプトや HTML 内のテーマ初期化
 `npm run test:e2e:native` と `scripts/issue179-native-session.mjs` は隔離ビルドでのみ `withGlobalTauri: true` に上書きする。MCP 等、明示的にグローバル API が必要なデバッグでは `npm run tauri -- dev --config src-tauri/tauri.debug-global.conf.json` を使う。通常の開発・配布設定にこの上書きを混ぜない。設定の静的テストとビルドは、WebView での CSP 強制、IPC、更新、外部リンク、実機音声の動作を保証しない。
 
 参照: [Tauri CSP](https://v2.tauri.app/security/csp/)、[Tauri 設定](https://v2.tauri.app/reference/config/)、[Tauri JavaScript API](https://v2.tauri.app/reference/javascript/api/)。
+
+## OBS パスワードの保存と復旧
+
+設定画面から保存するパスワードは、Rust が Windows のユーザー単位の DPAPI で暗号化し、`app_config_dir/obs-credentials.dpapi` へ保存する。接続先も暗号化データに含め、ホスト名とポートが一致する場合だけ保存値を使う。通常版・MSIX・一時利用はそれぞれの設定保存先を使い、別の保存先へフォールバックしない。
+
+画面へ返すのは保存先のホスト名とポートだけで、復号したパスワードは返さない。入力欄は保存後に空にする。保存値を使う場合と、空欄で認証なしを指定する場合を区別する。セットアップの入力は一時的な接続用で、保存しない。
+
+旧 `localStorage` の移行は、保存領域を確認した後、一般設定の移行より前に実行する。暗号化保存を終えてから旧値を削除し、接続先だけを再保存する。暗号化や接続先の再保存に失敗しても平文へ戻さない。再保存の容量不足で旧値を残さないよう、削除と再保存を別の操作にする。起動失敗の案内から再試行し、必要なら OBS 設定で接続先とパスワードを入力し直す。
+
+設定エクスポート・配信設定・プロファイルの許可リストに、このファイルやパスワードを追加しない。一時利用の保存値は一時領域に限定する。旧版へ戻しても平文の保存値を復元しないため、OBS パスワードの再入力が必要になる場合がある。
+
+DPAPI は保存時の保護であり、同じ Windows ユーザーで任意コードを実行できるプログラムからの隔離ではない。旧 `localStorage` キーの削除も、過去の LevelDB 領域やバックアップの物理消去を意味しない。[CryptProtectData の仕様](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata)を参照。

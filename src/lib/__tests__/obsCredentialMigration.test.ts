@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { migrateObsCredentials } from '../obsCredentialMigration';
 
 const key = 'vst_host_obs_config';
-afterEach(() => { localStorage.clear(); vi.mocked(invoke).mockReset(); });
+afterEach(() => { localStorage.clear(); vi.mocked(invoke).mockReset(); vi.restoreAllMocks(); });
 it('描画前にnativeへ移行し、localStorageは接続先だけへ置き換える', async () => {
     localStorage.setItem(key, JSON.stringify({ host: 'studio-pc', port: 4455, password: 'OBS_SECRET_CANARY', unknown: 'OBS_SECRET_CANARY' }));
     vi.mocked(invoke).mockResolvedValue(undefined);
@@ -31,4 +31,11 @@ it('パスワードのない接続先は変更しない', async () => {
     localStorage.setItem(key, endpoint);
     await migrateObsCredentials();
     expect(invoke).not.toHaveBeenCalled(); expect(localStorage.getItem(key)).toBe(endpoint);
+});
+it('接続先の再保存が容量超過でも、その前に旧平文を除去する', async () => {
+    localStorage.setItem(key, JSON.stringify({ host: 'localhost', port: 4455, password: 'OBS_SECRET_CANARY' }));
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    await expect(migrateObsCredentials()).rejects.toMatchObject({ code: 'obs.credentialMigration' });
+    expect(localStorage.getItem(key)).toBeNull();
 });

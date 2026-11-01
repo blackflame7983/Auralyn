@@ -7,7 +7,10 @@ export async function migrateObsCredentials(): Promise<void> {
     const key = 'vst_host_obs_config';
     let legacy: unknown;
     try { legacy = JSON.parse(localStorage.getItem(key) ?? 'null'); }
-    catch { localStorage.removeItem(key); return; }
+    catch {
+        try { localStorage.removeItem(key); } catch { throw new FixedClientError('obs.credentialMigration'); }
+        return;
+    }
     if (!legacy || typeof legacy !== 'object' || !('password' in legacy)) return;
     const endpoint = readObsEndpoint();
     try {
@@ -17,6 +20,10 @@ export async function migrateObsCredentials(): Promise<void> {
     } catch { throw new FixedClientError('obs.credentialMigration'); }
     finally {
         // 未知の追加キーも保存し直さない。成功通知は平文除去後だけに返る。
-        localStorage.setItem(key, JSON.stringify(endpoint));
+        try {
+            // 容量超過などで接続先の再保存だけが失敗しても、旧平文を残さない。
+            localStorage.removeItem(key);
+            localStorage.setItem(key, JSON.stringify(endpoint));
+        } catch { throw new FixedClientError('obs.credentialMigration'); }
     }
 }
