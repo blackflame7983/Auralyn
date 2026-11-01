@@ -42,6 +42,9 @@ test('実UI→Tauri→保存→Host再起動で言語を復元し、実エンジ
         await expect.poll(() => context.pages().some(value => value.url().startsWith('http://127.0.0.1:1427')), { timeout: 20_000 }).toBe(true);
         page = context.pages().find(value => value.url().startsWith('http://127.0.0.1:1427'))!;
         page.on('pageerror', error => errors.push(error.message));
+        const globalAvailable = await page.evaluate(() => typeof (window as any).__TAURI__?.core?.invoke === 'function');
+        console.log(`native E2E専用設定: __TAURI__=${globalAvailable}`);
+        expect(globalAvailable).toBe(true);
         await expect(page.getByRole('dialog')).toBeVisible({ timeout: 15_000 });
     }
     async function quit() {
