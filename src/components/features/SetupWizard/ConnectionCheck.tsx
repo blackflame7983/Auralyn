@@ -1,3 +1,4 @@
+import { isAppHidden } from '@/lib/appVisibility';
 import { preparationReach } from '@/lib/preparation';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -83,11 +84,11 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
             try {
                 await obsApi.connect({ host: host.trim(), port: portNumber, password });
                 // 利用を終えた接続の遅い応答で、切断後の画面を接続済みに戻さない。
-                if (revision !== connectionRevisionRef.current || document.hidden) return;
+                if (revision !== connectionRevisionRef.current || isAppHidden()) return;
                 setConnected(true);
                 setMessage(notice('guide.copy.259'));
             } catch {
-                if (revision !== connectionRevisionRef.current || document.hidden) return;
+                if (revision !== connectionRevisionRef.current || isAppHidden()) return;
                 setMessage(
                     notice('guide.copy.260'),
                 );
@@ -102,14 +103,14 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
             setMessage(notice('guide.copy.261'));
             try {
                 if (!(await onStartAudio())) {
-                    if (connectionRevision !== connectionRevisionRef.current || document.hidden)
+                    if (connectionRevision !== connectionRevisionRef.current || isAppHidden())
                         return;
                     setMessage(notice('guide.copy.262'));
                     return;
                 }
-                if (connectionRevision !== connectionRevisionRef.current || document.hidden) return;
+                if (connectionRevision !== connectionRevisionRef.current || isAppHidden()) return;
                 const next = await obsApi.checkAudioReach(1500);
-                if (connectionRevision !== connectionRevisionRef.current || document.hidden) return;
+                if (connectionRevision !== connectionRevisionRef.current || isAppHidden()) return;
                 if (revision !== audioRevisionRef.current) {
                     setMessage(notice('guide.copy.263'));
                     return;
@@ -130,7 +131,7 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                     );
                 }
             } catch {
-                if (connectionRevision !== connectionRevisionRef.current || document.hidden) return;
+                if (connectionRevision !== connectionRevisionRef.current || isAppHidden()) return;
                 setConnected(false);
                 setMessage(
                     notice('guide.copy.267'),

@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { clientErrorNotice } from '@/lib/clientError';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -140,7 +141,7 @@ export function useVoiceCheck(isOpen: boolean, candidateDraft?: CandidateDraft, 
     }, [isOpen]);
     useEffect(() => {
         const hide = () => {
-            if (!document.hidden) return;
+            if (!isAppHidden()) return;
             sessionGeneration.current += 1;
             stateRevision.current += 1;
             analysisGeneration.current += 1;
@@ -150,13 +151,13 @@ export function useVoiceCheck(isOpen: boolean, candidateDraft?: CandidateDraft, 
             setBusy(false);
             audioApi.stopVoiceCheck().catch(() => setRecordingError(notice('voice.copy.117')));
         };
-        if (isOpen) document.addEventListener('visibilitychange', hide);
+        if (isOpen) addAppVisibilityListener(hide);
         if (!isOpen) {
             audioApi.stopVoiceCheck().catch(() => {});
         }
         // 条件レンダリングによるアンマウント時（閉じた瞬間）にも確実に停止する
         return () => {
-            document.removeEventListener('visibilitychange', hide);
+            removeAppVisibilityListener(hide);
             // 独立試聴は自身のsessionで閉じる。旧通常出力の停止を混ぜると、
             // StrictModeの後始末通知が新しい試聴まで失効させる。
             audioApi.stopVoiceCheck().catch(() => {});
@@ -356,7 +357,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         const stopping = closePreview();
         const generation = preparing.current;
         await stopping;
-        if (!alive.current || document.hidden || generation !== preparing.current) return;
+        if (!alive.current || isAppHidden() || generation !== preparing.current) return;
         const session = createVoicePreviewSession();
         controller.current = session;
         const version = ++revision.current;
@@ -438,7 +439,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         let listening = true;
         let polling = false;
         const timer = setInterval(() => {
-            if (polling || mutating.current || document.hidden || !controller.current?.ready) return;
+            if (polling || mutating.current || isAppHidden() || !controller.current?.ready) return;
             polling = true;
             const pendingCandidate = candidateRef.current;
             const action: VoicePreviewAction = pendingCandidate && candidatePreparing.current
@@ -446,8 +447,8 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
             void runPreview(action).finally(() => { polling = false; });
         }, 250);
         const interrupt = () => { if (listening) void closePreview(); };
-        const hide = () => { if (document.hidden) interrupt(); };
-        document.addEventListener('visibilitychange', hide);
+        const hide = () => { if (isAppHidden()) interrupt(); };
+        addAppVisibilityListener(hide);
         const conditionChanged = () => {
             if (!listening) return;
             conditionEvents.current++;
@@ -461,7 +462,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
             listening = false;
             alive.current = false;
             clearInterval(timer);
-            document.removeEventListener('visibilitychange', hide);
+            removeAppVisibilityListener(hide);
             subscriptions.forEach(subscription => void subscription.then(unlisten => unlisten()).catch(() => {}));
             void closePreview(true);
         };
@@ -499,7 +500,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
     const prepareProposal = async (basis: ProposalBasis, preferences?: ProposalPreferenceRequest) => {
         const current = snapshotRef.current;
         const session = controller.current;
-        if (!current?.recordingId || !session?.ready || mutating.current || document.hidden) return;
+        if (!current?.recordingId || !session?.ready || mutating.current || isAppHidden()) return;
         const version = revision.current;
         if (current.state === 'playing' || current.state === 'stopping') {
             if (!await runPreview({ action: 'stop' })) return;
@@ -514,7 +515,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
     };
     const prepareNoise = async (variant: 'current' | 'weaker' | 'stronger') => {
         const current = snapshotRef.current;
-        if (!current?.recordingId || !current.noiseBasis || current.noisePending || current.recordingStale || !controller.current?.ready || mutating.current || document.hidden) return;
+        if (!current?.recordingId || !current.noiseBasis || current.noisePending || current.recordingStale || !controller.current?.ready || mutating.current || isAppHidden()) return;
         if (current.state === 'playing' || current.state === 'stopping') {
             if (!await runPreview({ action: 'stop' })) return;
             if (snapshotRef.current?.noiseBasis !== current.noiseBasis) return;
@@ -527,7 +528,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
     };
     const applyNoise = async () => {
         const candidate = candidateRef.current, current = snapshotRef.current;
-        if (!candidate?.noise || candidate.state !== 'ready' || candidateMode !== 'noise' || !current?.noiseBasis || mutating.current || document.hidden) return;
+        if (!candidate?.noise || candidate.state !== 'ready' || candidateMode !== 'noise' || !current?.noiseBasis || mutating.current || isAppHidden()) return;
         if (current.state === 'playing' || current.state === 'stopping') {
             if (!await runPreview({ action: 'stop' })) return;
         }
@@ -537,7 +538,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
     };
     const undoNoise = async () => {
         const token = snapshotRef.current?.noiseUndoToken;
-        if (!token || mutating.current || document.hidden) return;
+        if (!token || mutating.current || isAppHidden()) return;
         if (snapshotRef.current?.state === 'playing' || snapshotRef.current?.state === 'stopping') {
             if (!await runPreview({ action: 'stop' })) return;
         }
@@ -547,7 +548,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
     };
     const redoNoise = async () => {
         const token = snapshotRef.current?.noiseRedoToken;
-        if (!token || mutating.current || document.hidden) return;
+        if (!token || mutating.current || isAppHidden()) return;
         if (snapshotRef.current?.state === 'playing' || snapshotRef.current?.state === 'stopping') {
             if (!await runPreview({ action: 'stop' })) return;
         }

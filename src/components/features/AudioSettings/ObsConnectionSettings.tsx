@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { preparationReach } from '@/lib/preparation';
 import { message, type MessageKey } from '@/i18n/messages';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
@@ -32,6 +33,11 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
   const [obsHost, setObsHost] = useState(endpoint.host);
   const [obsPort, setObsPort] = useState(endpoint.port);
   const [obsPassword, setObsPassword] = useState('');
+  const [savedCredentials, setSavedCredentials] = useState<{ host: string; port: number } | null>(null);
+  const [credentialStatusLoading, setCredentialStatusLoading] = useState(true);
+  const [credentialReadFailed, setCredentialReadFailed] = useState(false);
+  const [useSavedPassword, setUseSavedPassword] = useState(true);
+  const savedPasswordAvailable = savedCredentials?.host === obsHost.trim().toLowerCase() && savedCredentials?.port === obsPort;
   const [isObsConnected, setIsObsConnected] = useState(false);
   const isObsConnectedRef = useRef(isObsConnected);
   isObsConnectedRef.current = isObsConnected;
@@ -62,10 +68,10 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
   const revalidateReach = async (record = reachRecord.current, invalidate = true) => {
     const version = ++reachValidation.current;
     if (invalidate) setReachCurrent(false);
-    if (!record?.verification || !reachListeners.current || document.hidden || reachExpiredRef.current) return false;
+    if (!record?.verification || !reachListeners.current || isAppHidden() || reachExpiredRef.current) return false;
     try {
       const current = await obsApi.audioReachCurrent(record.verification.operationId);
-      if (!reachAlive.current || version !== reachValidation.current || document.hidden || !reachListeners.current || reachRecord.current !== record) return false;
+      if (!reachAlive.current || version !== reachValidation.current || isAppHidden() || !reachListeners.current || reachRecord.current !== record) return false;
       setReachCurrent(current === true);
       if (current !== true) { reachContext.current += 1; reachExpiredRef.current = true; setReachExpired(true); }
       return current === true;
@@ -87,7 +93,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
       void revalidateReach();
     };
     const visibility = () => {
-      if (document.hidden) {
+      if (isAppHidden()) {
         reachRequest.current += 1;
         reachContext.current += 1;
         reachValidation.current += 1;
@@ -112,12 +118,12 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
       if (active) { reachContext.current += 1; reachListeners.current = false; setReachListenersReady(false); setReachCurrent(false); }
     });
     window.addEventListener('profile-fx-applied', invalidate);
-    document.addEventListener('visibilitychange', visibility);
+    addAppVisibilityListener(visibility);
     return () => {
       active = false; reachAlive.current = false; reachListeners.current = false;
       reachRequest.current += 1; reachValidation.current += 1; reachContext.current += 1;
       window.removeEventListener('profile-fx-applied', invalidate);
-      document.removeEventListener('visibilitychange', visibility);
+      removeAppVisibilityListener(visibility);
       subscriptions.forEach(subscription => { void subscription.then(stop => stop()).catch(() => {}); });
     };
   }, []);
@@ -129,7 +135,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      if (!active || document.hidden || reachExpiredRef.current) return;
+      if (!active || isAppHidden() || reachExpiredRef.current) return;
       await revalidateReach(reachRecord.current, false);
       if (active && !reachExpiredRef.current) timer = setTimeout(() => { void poll(); }, 3000);
     };
@@ -138,11 +144,11 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
   }, [obsReachResult, obsInUse, reachListenersReady, reachExpired]);
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('vst_host_obs_config') ?? 'null');
-      if (!saved || typeof saved !== 'object') return;
-      if (typeof saved.password === 'string') setObsPassword(saved.password);
-    } catch { /* 保存データが壊れていても、接続先を入力して再設定できるようにする。 */ }
+    let active = true;
+    void obsApi.savedCredentials().then(value => { if (active) setSavedCredentials(value ?? null); })
+      .catch(() => { if (active) { setCredentialReadFailed(true); setObsConnectionHint(notice('obs.credentialsUnavailable')); } })
+      .finally(() => { if (active) setCredentialStatusLoading(false); });
+    return () => { active = false; };
   }, []);
 
   // 再表示では接続を作り直さず、バックエンドが保持する接続・履歴へ戻る。
@@ -169,15 +175,19 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
     const revision = connectionRevision.current;
     setLoading(true);
     try {
-      await obsApi.connect({ host: obsHost, port: obsPort, password: obsPassword });
-      if (revision !== connectionRevision.current || document.hidden) return;
+      await obsApi.connect({ host: obsHost, port: obsPort, password: savedPasswordAvailable && useSavedPassword ? undefined : obsPassword, remember: true });
+      // 秘密はJSの入力欄から除き、再接続はネイティブ側の保存値を使う。
+      setObsPassword('');
+      setSavedCredentials({ host: obsHost.trim().toLowerCase(), port: obsPort });
+      setUseSavedPassword(true);
+      localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: obsHost.trim(), port: obsPort }));
+      if (revision !== connectionRevision.current || isAppHidden()) return;
       setIsObsConnected(true);
       if (connectionDetails.current) connectionDetails.current.open = false;
       setObsConnectionHint(null);
       toast.success(notify('settings.ObsConnectionSettings.267'));
-      localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: obsHost, port: obsPort, password: obsPassword }));
     } catch (e) {
-      if (revision !== connectionRevision.current || document.hidden) return;
+      if (revision !== connectionRevision.current || isAppHidden()) return;
       const hint = obsConnectionFailureNotice(e, attemptedPort);
 
       setObsConnectionHint(hint);
@@ -220,7 +230,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
       description: notice('settings.ObsConnectionSettings.272'),
       confirmLabel: notice('settings.ObsConnectionSettings.273'),
       onConfirm: async () => {
-        if (!reachAlive.current || !reachListeners.current || document.hidden) return;
+        if (!reachAlive.current || !reachListeners.current || isAppHidden()) return;
         if (connection !== connectionRevision.current || context !== reachContext.current) {
           toast.info(t('obsReach.stale'));
           return;
@@ -234,11 +244,11 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
         setReachCurrent(false);
         try {
           const result = await obsApi.checkAudioReach(2000);
-          if (!reachAlive.current || request !== reachRequest.current || document.hidden) return;
+          if (!reachAlive.current || request !== reachRequest.current || isAppHidden()) return;
           reachRecord.current = result;
           setObsReachResult(result);
           const current = await revalidateReach(result);
-          if (!reachAlive.current || request !== reachRequest.current || document.hidden) return;
+          if (!reachAlive.current || request !== reachRequest.current || isAppHidden()) return;
           if (current || result.reached === 'unsupported') preparationReach.record(result);
           if (result.reached === 'unsupported') {
             toast.info(t('settings.ObsConnectionSettings.274'), {
@@ -252,7 +262,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
             });
           }
         } catch (e) {
-          if (reachAlive.current && request === reachRequest.current && !document.hidden) toast.error(t('settings.ObsConnectionSettings.279'));
+          if (reachAlive.current && request === reachRequest.current && !isAppHidden()) toast.error(t('settings.ObsConnectionSettings.279'));
         } finally {
           if (reachAlive.current && request === reachRequest.current) setObsReachLoading(false);
         }
@@ -314,10 +324,12 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                       disabled={loading || isObsConnected}
                       type="password"
                       value={obsPassword}
-                      onChange={(e) => setObsPassword(e.target.value)}
+                      onChange={(e) => { setObsPassword(e.target.value); setUseSavedPassword(false); }}
                       className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       placeholder={t('settings.ObsConnectionSettings.286')}
                     />
+                    {savedPasswordAvailable && <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" disabled={loading || isObsConnected} checked={useSavedPassword} onChange={event => setUseSavedPassword(event.target.checked)} />{t('obs.useSavedPassword')}</label>}
+                    {(savedCredentials || credentialReadFailed) && <button type="button" disabled={loading || isObsConnected} className="text-xs underline" onClick={() => { void obsApi.clearCredentials().then(() => { setSavedCredentials(null); setUseSavedPassword(false); setCredentialReadFailed(false); }).catch(() => setObsConnectionHint(notice('obs.credentialsUnavailable'))); }}>{t('obs.forgetPassword')}</button>}
                   </div>
 
                     {isObsConnected && <p className="text-xs text-muted-foreground">{t('settings.ObsConnectionSettings.287')}</p>}
@@ -327,7 +339,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                 {!isObsConnected && (
                   <button
                     onClick={handleConnectObs}
-                    disabled={loading || obsStatusLoading}
+                    disabled={loading || obsStatusLoading || credentialStatusLoading}
                     className="w-full py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-bold"
                   >
                     {obsStatusLoading ? t('settings.ObsConnectionSettings.288') : loading ? t('settings.ObsConnectionSettings.289') : t('settings.ObsConnectionSettings.290')}

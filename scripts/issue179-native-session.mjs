@@ -18,6 +18,8 @@ const config = {
     build: { devUrl: 'http://127.0.0.1:1427' },
     bundle: { externalBin: [] },
     app: {
+        // この隔離検証だけが __TAURI__ を使う。製品設定では公開しない。
+        withGlobalTauri: true,
         appDirectoriesOverride: { config: join(root, 'config'), data: join(root, 'data'), localData: join(root, 'webview'), cache: join(root, 'cache'), log: join(root, 'logs') },
         security: { capabilities: ['default', { identifier: 'e2e-exit', windows: ['main'], permissions: ['process:allow-exit'] }] },
     },

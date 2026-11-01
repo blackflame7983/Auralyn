@@ -50,9 +50,11 @@ impl EditorManager {
             if msg == WM_ERASEBKGND {
                 return LRESULT(1);
             }
+            // SAFETY: OS がウィンドウプロシージャに渡した引数をそのまま既定処理へ渡す。
             unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
         }
 
+        // SAFETY: クラス名は静的な終端付き文字列で、構造体とモジュールは登録呼び出し中有効。
         unsafe {
             log::debug!(
                 "[EditorManager] ensure_container_class: Checking registration for hinstance={:?}",
@@ -98,6 +100,7 @@ impl EditorManager {
     }
 
     fn create_container_hwnd(parent: HWND, width: i32, height: i32) -> Result<HWND> {
+        // SAFETY: 呼び出し元が保持する親 HWND と、登録済みの静的クラス名を渡す。
         unsafe {
             let hinstance = GetModuleHandleW(None)
                 .map(|m| HINSTANCE(m.0))
@@ -177,6 +180,7 @@ impl EditorManager {
 
                     // [Win32 Fix] Enforce WS_CLIPCHILDREN | WS_CLIPSIBLINGS
                     // This is CRITICAL for preventing black screens where the child (VST) is not clipped/painted correctly.
+                    // SAFETY: win の借用から取得した親 HWND はこの操作中有効。
                     unsafe {
                         let current_style = GetWindowLongPtrA(parent_hwnd, GWL_STYLE) as u32;
                         let new_style = current_style | WS_CLIPCHILDREN.0 | WS_CLIPSIBLINGS.0;
@@ -229,6 +233,7 @@ impl EditorManager {
 
                 // 子ウィンドウ（コンテナ）も即座に追従させる（winitイベントが来る前のチラつき防止）
                 if let Some(child) = self.editor_children.get(&id) {
+                    // SAFETY: 作成直後に保持した子 HWND を親 win の生存中に操作する。
                     unsafe {
                         let _ = SetWindowPos(
                             *child,
@@ -255,6 +260,7 @@ impl EditorManager {
     pub fn handle_close_requested(&mut self, window_id: WindowId) -> Option<String> {
         if let Some(plugin_id) = self.window_id_to_plugin.remove(&window_id) {
             if let Some(child) = self.editor_children.remove(&plugin_id) {
+                // SAFETY: 管理表から取り出した子 HWND を、親を破棄する前に一度だけ破棄する。
                 unsafe {
                     let _ = DestroyWindow(child);
                 }
@@ -274,6 +280,7 @@ impl EditorManager {
             return;
         };
 
+        // SAFETY: 管理表の子 HWND と親ウィンドウはイベント処理中保持されている。
         unsafe {
             let _ = SetWindowPos(
                 *child,
@@ -290,6 +297,7 @@ impl EditorManager {
     // Explicit close (e.g. unload plugin)
     pub fn close_editor(&mut self, plugin_id: &str) {
         if let Some(child) = self.editor_children.remove(plugin_id) {
+            // SAFETY: 管理表から取り出した子 HWND を、親を破棄する前に一度だけ破棄する。
             unsafe {
                 let _ = DestroyWindow(child);
             }

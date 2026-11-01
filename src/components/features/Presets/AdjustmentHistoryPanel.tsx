@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useEffect, useId, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi } from '@/api/audio';
@@ -43,8 +44,8 @@ export function AdjustmentHistoryPanel({ onVoiceCheck }: { onVoiceCheck?: () => 
         void Promise.all(events).then(() => { if (alive.current) setEventsReady(true); }).catch(() => {if(alive.current) {setKnown(false);setEventsReady(false);}});
         window.addEventListener('profile-fx-applied', invalidate);
         window.addEventListener('output-gain-sync', invalidate);
-        document.addEventListener('visibilitychange', invalidate);
-        return () => { alive.current = false; generation.current++; events.forEach(e => void e.then(stop => stop()).catch(() => {})); window.removeEventListener('profile-fx-applied', invalidate); window.removeEventListener('output-gain-sync', invalidate); document.removeEventListener('visibilitychange', invalidate); };
+        addAppVisibilityListener(invalidate);
+        return () => { alive.current = false; generation.current++; events.forEach(e => void e.then(stop => stop()).catch(() => {})); window.removeEventListener('profile-fx-applied', invalidate); window.removeEventListener('output-gain-sync', invalidate); removeAppVisibilityListener(invalidate); };
     }, []);
     const load = async (version: number) => {
         const stream = await audioApi.getAudioStreamState();
@@ -52,10 +53,10 @@ export function AdjustmentHistoryPanel({ onVoiceCheck }: { onVoiceCheck?: () => 
         if (alive.current && version === generation.current) setStream(streamState);
         // すべて既存Engineへの読み取り専用要求。停止中も履歴の失効根拠を確認する。
         const [builtin, gain, noise, live] = await Promise.all([builtinApi.request({action: 'snapshot'}), readOutputGainStatus(), voicePreviewApi.request({action: 'history_status', clientId: 'recovery-hub', sessionId: 0, operationId: 0, epoch: null}), liveModesApi.request({action: 'snapshot'})]);
-        if (alive.current && version === generation.current && !document.hidden) { setSnapshot({builtin, gain, noise, protected: live.armed}); setKnown(true); }
+        if (alive.current && version === generation.current && !isAppHidden()) { setSnapshot({builtin, gain, noise, protected: live.armed}); setKnown(true); }
     };
     const run = async (action?: () => Promise<unknown>) => {
-        if (pending.current || document.hidden || !eventsReady) return;
+        if (pending.current || isAppHidden() || !eventsReady) return;
         // 操作したボタンが無効になっても、キーボードの現在位置を失わない。
         if (action && sectionRef.current?.contains(document.activeElement)) sectionRef.current.focus();
         pending.current = true; setBusy(true); setKnown(false); setFailed(false);

@@ -63,6 +63,7 @@ test('native E2Eは通常Cargo成果物を保ち、現行Hostとsidecarを隔離
     assert.equal(playwright.binary, path.join(cargo.root, 'bin/AuralynHost.exe'));
     assert.deepEqual(playwright.config, cargo.config);
     assert.equal(cargo.config.identifier, 'com.auralyn.test.e2e');
+    assert.equal(cargo.config.app.withGlobalTauri, true);
     assert.equal(cargo.config.app.appDirectoriesOverride.config, path.join(cargo.root, 'config'));
     assert.equal(playwright.args.at(-1), 'playwright.native.config.ts');
 });

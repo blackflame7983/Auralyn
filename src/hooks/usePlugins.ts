@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { explicitSessionStartRequired } from '@/lib/temporarySession';
 import { useMessages } from '../i18n/LocaleProvider';
 import { pluginNotice, renderPluginNotice, defaultPluginMessages, type PluginNotice } from '../lib/pluginNotice';
@@ -520,8 +521,8 @@ export const usePlugins = () => {
             setSessionRestoreStatus('failed');
             setError(pluginNotice('pluginNotices.restoreFailedProtected', undefined, true));
         };
-        const visibility = () => { if (document.visibilityState === 'visible' && rackSync.current?.retrySnapshot) void synchronize(); };
-        document.addEventListener('visibilitychange', visibility);
+        const visibility = () => { if (!isAppHidden() && rackSync.current?.retrySnapshot) void synchronize(); };
+        addAppVisibilityListener(visibility);
         const subscriptions = [
             listen('session-rack-change-started', () => { protect('changing'); }),
             listen('session-rack-change-cancelled', cancelled),
@@ -530,7 +531,7 @@ export const usePlugins = () => {
         subscriptions.forEach(subscription => { void subscription.then(dispose => { if (active) disposers.push(dispose); else dispose(); }).catch(() => {}); });
         return () => {
             active = false;
-            document.removeEventListener('visibilitychange', visibility);
+            removeAppVisibilityListener(visibility);
             disposers.forEach(dispose => dispose());
         };
     }, [hydrateRack]);

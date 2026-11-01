@@ -1,3 +1,4 @@
+#![warn(clippy::undocumented_unsafe_blocks)]
 use vst3::Interface;
 use vst3::Steinberg::Vst::IContextMenu;
 use vst3::Steinberg::Vst::IParameterFinder;

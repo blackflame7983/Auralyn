@@ -18,6 +18,8 @@ WASAPIは入力を先に開始し、制御スレッドで要求バッファ2個�
 
 ### Pull Requestの自動チェック
 
+`.github/workflows/rustsec-audit.yml` は PR・main 更新・週次・手動で `src-tauri/Cargo.lock` を最新の RustSec DB と照合する。ローカルでも依存更新時とリリース前に `cargo audit --file src-tauri/Cargo.lock` を実行する。導入と例外の扱いは [DEPENDENCY_MAINTENANCE.md](DEPENDENCY_MAINTENANCE.md) を参照する。これは署名、実機、Rustビルドの検証とは別であり、GitHub 上の実行結果と branch protection 設定は別途確認する。
+
 `.github/workflows/frontend-quality.yml` はPR、main更新、手動実行でWindows上のフロント品質を確認する。
 Node.js 24とlockfileを使い、全Vitest、TypeScript、Vite、配布スクリプト試験、配布方針チェック、ChromiumのIPCモック試験を実行する。
 ローカルでの対応コマンドは下表と `docs/BUILD_GUIDE.md` を参照する。
@@ -36,6 +38,12 @@ Actionsは公式リポジトリのcommitへ固定し、更新時は [checkout](h
 | 実Tauri / 実sidecar（IPCモックなし） | UIからRustへの保存、Host終了・再起動後の復元、実エンジン応答と画面反映 | `npm run test:e2e:native` |
 
 `npm test -- --run --maxWorkers=4` はNodeとjsdomの両方を実行する。
+
+`scripts/native-obs-timeout-check.cjs <製品Host.exe> <新規出力先>` は、音声停止・一時利用領域で実OBS接続待ち中の設定画面closeと別IPCの応答を検査する。相手はloopbackの無応答handshakeで、実OBS・通常資格情報を使わない。DOMの非表示回帰試験、物理トレイ復帰、聴感の確認とは別の証拠である。
+
+更新ありのCSP経路は `scripts/native-updater-fixture-check.cjs prepare|dry-run|run <新規updater-fixture-名前>` を使う専用fixtureで確認できる。`prepare` は試験用鍵・asInvokerのmarker用PE・feed/configを作る。秘密鍵はcommitや検証artifactへ含めない。`run` 前に生成configを `TAURI_CONFIG` に指定してcustom-protocolのrelease Hostとsidecarをビルドし、fixtureのbinへ同じbuildをコピーする。製品CSPを変更しない。`AURALYN_TEST_PYTHON` はインストール済みPythonの絶対パスを明示する。`dry-run` はレジストリを変更せず、`run` は専用GUIDのUninstall metadataを一時作成し、値・型・子キーの一致を照合して単一削除する。通常のインストール先や既存レジストリ値を使わない。生成物は毎回新規とし、失敗時も所有記録と通常profileの前後hashを確認する。
+
+署名CLIのhelpは環境変数の値を表示しうるため、署名鍵のある親環境のままCLIを起動しない。fixtureハーネスは子の環境をallowlist化し、signerの出力を破棄する。`run` の成功は署名付き試験PEの取得・起動までで、実NSISによる新版導入・再起動・設定保持の合格ではない。
 同時worker数は既定で4に制限する。CPU数が多い環境でもDOM環境を過剰に同時起動せず、必要ならCLIの `--maxWorkers` で変更する。
 Node対象は `vitest.config.ts` に明示し、DOM・Storageを使うテストへブラウザの偽物を足してNode化しない。
 単純なReact setterの確認を増やさず、アプリ固有の設定タブ選択などの契約を検証する。
@@ -417,6 +425,20 @@ cargo clippy --locked --all-targets
 # 任意の非RT集計時間計測。実機・Engine全体の比較ではない
 cargo test --locked --lib measure_fixed_period_publication_cost -- --ignored --nocapture
 ```
+
+実機の連続運転には `python scripts/native_stability_probe.py <audio_engine.exe> <plan.json> <新規出力先>` を使う。
+planは `durationSeconds`、`expectedPlugins`、JSON-RPCの `start`、`setup`（`command` と期待する応答 `expected` の配列）を明示する。
+既定機器へ任せず機器ID・rate・routing・初期ゲイン・ミュートを固定し、停止時の通常設定を変更しない専用sidecarを使う。
+各観測窓でstream epochとplugin件数を照合し、入力・要求・消費frameの停滞、zero fillやdropの増加を失敗とする。
+`python -m unittest discover -s scripts -p test_native_stability_probe.py` はこの検証器の停滞・欠落検出を確認し、実機の代用にはしない。
+
+停止中の製品HostのCPU比較には `node scripts/native-window-trial.cjs <AuralynHost.exe> <新規出力先> 60` を使う。
+Windowsの一時利用領域で、通常表示→最小化→トレイを各60秒測定する。`psutil` とPlaywrightが必要である。
+デバッガーは測定中に切断するが、デバッグ可能な起動とtimer/IPC観測のラップは残るため、無観測状態と同じとは扱わない。
+CPUは1論理コア=100%、Hostと観測した子孫の標本平均、最大メモリは同時点の子孫合計の標本最大である。
+複数回の順序を交互にし、機器・ビルド・sourceとbinaryのhash・他アプリの条件・ページエラーを残す。
+Win32で強制表示する末尾の復帰は実際のトレイクリックの受入ではない。`resumed` を成功条件と誤認せず、実際の復帰経路を別途確認する。
+`--ablate` は隔離した停止中Hostでtimerと背景glowだけを段階的に停止する診断用であり、処理中の音声へ使わない。
 
 通常のcallback、配信queue満杯、mute世代、モード切替、配信workerの停止注入でRTのalloc/free 0を確認する。clock差の試験は数値列の合成であり、実clockの長時間安定や聴感の合格とは区別する。通常設定やOBS collectionを変更して試験を代用しない。
 

@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { peakProtectionApi, type PeakStatus } from '@/api/peakProtection';
@@ -17,7 +18,7 @@ export function PeakProtectionPanel() {
     useEffect(() => {
         alive.current = true; let active = true; let reading = false;
         const read = async () => {
-            if (reading || writing.current || document.hidden) return;
+            if (reading || writing.current || isAppHidden()) return;
             reading = true; const serial = version.current;
             try {
                 const next = await peakProtectionApi.request();
@@ -27,11 +28,13 @@ export function PeakProtectionPanel() {
         };
         const invalidate = () => { version.current++; setStatus(null); void read(); };
         const subscriptions = ['audio-started', 'audio-stopped', 'audio-error', 'audio-stream-error'].map(e => listen(e, invalidate));
+        const visible = () => { if (!isAppHidden()) void read(); };
+        addAppVisibilityListener(visible);
         void read(); const timer = setInterval(() => { void read(); }, 500);
-        return () => { active = false; alive.current = false; version.current++; clearInterval(timer); subscriptions.forEach(p => { void p.then(fn => fn()).catch(() => {}); }); };
+        return () => { active = false; alive.current = false; version.current++; clearInterval(timer); removeAppVisibilityListener(visible); subscriptions.forEach(p => { void p.then(fn => fn()).catch(() => {}); }); };
     }, []);
     const apply = async (enabled: boolean) => {
-        if (!status || writing.current || document.hidden) return;
+        if (!status || writing.current || isAppHidden()) return;
         writing.current = true; setBusy(true); setFailed(false); const serial = ++version.current;
         try {
             const next = await peakProtectionApi.request(enabled ? { enabled, ceilingDb: ceiling, releaseMs: release } : { ...status.config, enabled });

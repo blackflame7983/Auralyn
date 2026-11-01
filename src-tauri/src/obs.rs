@@ -427,6 +427,16 @@ pub fn peak_db_from_meter_levels(levels: &[[f32; 3]]) -> f32 {
     mul_to_db(peak_mul)
 }
 
+const CONNECT_TIMEOUT: StdDuration = StdDuration::from_secs(5);
+
+// 応答しないTCP/認証handshakeを含む接続試行だけを制限する。資格情報I/Oや待ち行列全体の期限ではない。
+async fn connect_client(host: &str, port: u16, password: Option<String>) -> Result<Client, String> {
+    tokio::time::timeout(CONNECT_TIMEOUT, Client::connect(host, port, password))
+        .await
+        .map_err(|_| "OBS への接続がタイムアウトしました".to_string())?
+        .map_err(|e| format!("Failed to connect to OBS: {}", e))
+}
+
 pub async fn connect_obs(
     app: AppHandle,
     state: tauri::State<'_, ObsState>,
@@ -439,13 +449,7 @@ pub async fn connect_obs(
     let stopped = stop_connection(&state, &mut client_guard).await;
     let _ = app.emit("obs://timing-invalidated", ());
     stopped?;
-    let client = tokio::time::timeout(
-        StdDuration::from_secs(5),
-        Client::connect(&host, port, password.clone()),
-    )
-    .await
-    .map_err(|_| "OBS への接続がタイムアウトしました".to_string())?
-    .map_err(|e| format!("Failed to connect to OBS: {}", e))?;
+    let client = connect_client(&host, port, password.clone()).await?;
 
     let events = client.events().map_err(|e| e.to_string())?;
 
@@ -891,6 +895,33 @@ async fn observe_audio_reach(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn unresponsive_obs_handshake_times_out_and_releases_socket() {
+        use tokio::io::AsyncReadExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let started = std::time::Instant::now();
+        let attempt = tokio::spawn(async move { connect_client("127.0.0.1", port, None).await });
+        // TCPだけ受理してWebSocketへ返答しない。外部OBSや音声デバイスを使わない。
+        let (mut socket, _) = tokio::time::timeout(StdDuration::from_secs(2), listener.accept())
+            .await
+            .unwrap()
+            .unwrap();
+        let error = tokio::time::timeout(CONNECT_TIMEOUT + StdDuration::from_secs(2), attempt)
+            .await
+            .expect("接続試行が期限内に終了する")
+            .unwrap()
+            .err()
+            .expect("応答なしは成功しない");
+        assert_eq!(error, "OBS への接続がタイムアウトしました");
+        assert!(started.elapsed() >= CONNECT_TIMEOUT);
+        let mut request = Vec::new();
+        tokio::time::timeout(StdDuration::from_secs(2), socket.read_to_end(&mut request))
+            .await
+            .expect("timeoutで接続待ちsocketも解放する")
+            .unwrap();
+    }
 
     #[test]
     fn reach_target_settings_aba_advances_generation_without_meter_or_other_source_noise() {

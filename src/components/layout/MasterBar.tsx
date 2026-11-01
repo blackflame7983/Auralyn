@@ -1,4 +1,5 @@
 import { clientErrorNotice, type ClientErrorNotice } from '@/lib/clientError';
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { renderNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
@@ -142,7 +143,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
         };
         window.addEventListener('output-gain-sync', sync);
         const refresh = async () => {
-            if (refreshing) return;
+            if (refreshing || isAppHidden()) return;
             refreshing = true;
             try {
                 if (restorePending) await applyGain();
@@ -178,10 +179,13 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             }
         };
         void initialize();
+        const visibility = () => { if (!isAppHidden()) void refresh(); };
+        addAppVisibilityListener(visibility);
 
         return () => {
             disposed = true;
             clearInterval(timer);
+            removeAppVisibilityListener(visibility);
             window.removeEventListener('output-gain-sync', sync);
             void unlisten.then(f => f()).catch(() => {});
         };

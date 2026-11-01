@@ -24,6 +24,7 @@ fn classify_package_result(result: WIN32_ERROR, length: u32) -> Distribution {
 pub fn detect_distribution() -> Distribution {
     let mut length = 0;
     // 名前そのものは取得・公開せず、パッケージIDの有無だけを確認する。
+    // SAFETY: length は呼び出し中有効な出力先で、名前バッファは指定せず必要長だけを取得する。
     let result = unsafe { GetCurrentPackageFullName(&mut length, None) };
     classify_package_result(result, length)
 }

@@ -90,6 +90,7 @@ mod tests {
             let deadline = Instant::now() + Duration::from_secs(15);
             let status = loop {
                 // single-instanceの転送通知を実際のWindowsメッセージループで受ける。
+                // SAFETY: message は呼び出し中有効で、取得成功時だけ同じメッセージを翻訳・配送する。
                 unsafe {
                     let mut message = MSG::default();
                     while PeekMessageW(&mut message, None, 0, 0, PM_REMOVE).as_bool() {

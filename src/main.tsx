@@ -1,4 +1,6 @@
 import { initializeTemporarySession } from './lib/temporarySession';
+import { initializeAppVisibility } from './lib/appVisibility';
+import { migrateObsCredentials } from './lib/obsCredentialMigration';
 import { FixedClientError, renderClientError } from './lib/clientError';
 import { LocaleProvider, useMessages } from './i18n/LocaleProvider';
 import { initializeLocale } from './i18n/locale';
@@ -21,4 +23,5 @@ function render(content: React.ReactNode, withTheme = true) {
   if (withTheme) initializeLocaleBridge();
   root.render(<React.StrictMode><LocaleProvider>{withTheme ? <ThemeProvider>{content}</ThemeProvider> : content}</LocaleProvider></React.StrictMode>);
 }
-initializeTemporarySession().then(() => bootstrapMigration()).then(() => render(<App />)).catch(error => render(<BootstrapFailure error={error} />, false));
+initializeAppVisibility();
+initializeTemporarySession().then(() => migrateObsCredentials()).then(() => bootstrapMigration()).then(() => render(<App />)).catch(error => render(<BootstrapFailure error={error} />, false));

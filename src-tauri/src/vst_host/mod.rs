@@ -1,3 +1,5 @@
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 pub mod blacklist;
 pub mod c_api;
 pub mod instance;

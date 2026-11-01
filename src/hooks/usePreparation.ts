@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { noiseMeasurementApi } from '@/api/noiseMeasurement';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
@@ -38,7 +39,7 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
         setRecords(old => Object.fromEntries(Object.entries(old).map(([stage, receipt]) => [stage, { ...receipt, expired: true }])));
     }, []);
     const refresh = useCallback((): Promise<PreparationObservation | null> => {
-        if (!alive.current || !runningRef.current || eventStopped.current || blockedRef.current || document.hidden || !listenersReady.current) return Promise.resolve(null);
+        if (!alive.current || !runningRef.current || eventStopped.current || blockedRef.current || isAppHidden() || !listenersReady.current) return Promise.resolve(null);
         if (inFlight.current) return inFlight.current;
         const version = generation.current;
         const capturedContext = currentContext.current;
@@ -61,11 +62,11 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
                     if (observationStamp(before) !== observationStamp(after) || JSON.stringify(state) !== JSON.stringify(finalState)) throw new Error('Audio conditions changed while reading');
                     next = buildPreparationObservation(state, after, live, capturedContext, capturedContext.usage === 'obs' ? receipt : null, obsCurrent);
                 }
-                if (!alive.current || version !== generation.current || blockedRef.current || document.hidden) return null;
+                if (!alive.current || version !== generation.current || blockedRef.current || isAppHidden()) return null;
                 accept(next);
                 return next;
             } catch {
-                if (alive.current && version === generation.current && !document.hidden) accept(emptyObservation());
+                if (alive.current && version === generation.current && !isAppHidden()) accept(emptyObservation());
                 return null;
             } finally {
                 inFlight.current = null;
@@ -94,7 +95,7 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
             void refresh();
         };
         const visibility = () => {
-            if (document.hidden) { expireAll(); preparationReach.clear(); accept(emptyObservation()); }
+            if (isAppHidden()) { expireAll(); preparationReach.clear(); accept(emptyObservation()); }
             else void refresh();
         };
         const purposeChanged = () => {
@@ -125,7 +126,7 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
             }
             refreshConditions();
         });
-        document.addEventListener('visibilitychange', visibility);
+        addAppVisibilityListener(visibility);
         window.addEventListener('preparation-external-change', external);
         window.addEventListener('profile-fx-applied', refreshConditions);
         window.addEventListener('preparation-purpose-changed', purposeChanged);
@@ -133,7 +134,7 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
         return () => {
             active = false; alive.current = false; listenersReady.current = false; generation.current += 1;
             clearInterval(timer); unsubscribe();
-            document.removeEventListener('visibilitychange', visibility);
+            removeAppVisibilityListener(visibility);
             window.removeEventListener('preparation-external-change', external);
             window.removeEventListener('profile-fx-applied', refreshConditions);
             window.removeEventListener('preparation-purpose-changed', purposeChanged);
@@ -161,7 +162,7 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
         void refresh();
     };
     const confirm = async (stage: PreparationStage) => {
-        if (confirming || blockedRef.current || document.hidden) return;
+        if (confirming || blockedRef.current || isAppHidden()) return;
         const version = generation.current;
         const expectedKey = currentObservation.current.keys?.[stage];
         setConfirming(true);
@@ -169,7 +170,7 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
             const next = await refresh();
             const ctx = currentContext.current;
             if (!next?.keys || next.keys[stage] !== expectedKey || next.availability !== 'ready' || version !== generation.current || !ctx.usage
-                || (stage === 'receiver' && ctx.usage !== 'listening' && !ctx.receiver.trim()) || blockedRef.current || document.hidden) return;
+                || (stage === 'receiver' && ctx.usage !== 'listening' && !ctx.receiver.trim()) || blockedRef.current || isAppHidden()) return;
             setRecords(old => ({ ...old, [stage]: { key: next.keys![stage], at: Date.now(), target: stage === 'receiver' ? ctx.receiver : next.config?.input ?? '', expired: false } }));
         } finally { if (alive.current) setConfirming(false); }
     };

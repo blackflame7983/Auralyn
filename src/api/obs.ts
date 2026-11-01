@@ -8,6 +8,7 @@ export interface ObsConfig {
     host: string;
     port: number;
     password?: string;
+    remember?: boolean;
 }
 
 export interface ObsUiText { code: string; args: Record<string, string | number | boolean>; fallbackJa: string }
@@ -96,10 +97,13 @@ export const obsApi = {
             invoke('connect_obs', {
                 host: config.host,
                 port: config.port,
-                password: config.password || null,
+                password: config.password ?? null,
+                ...(config.remember === undefined ? {} : { remember: config.remember }),
             }),
         );
     },
+    savedCredentials: (): Promise<{ host: string; port: number } | null> => invoke('get_obs_credentials'),
+    clearCredentials: (): Promise<void> => invoke('clear_obs_credentials'),
     disconnect: async (): Promise<void> => {
         return await connectionCommand(() => invoke('disconnect_obs'));
     },

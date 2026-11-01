@@ -1,4 +1,5 @@
 import { useMessages } from '@/i18n/LocaleProvider';
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import React, { useEffect, useState } from 'react';
 import { useTutorial } from '../../../contexts/TutorialContext';
 import * as Popover from '@radix-ui/react-popover';
@@ -22,6 +23,7 @@ export const TutorialOverlay: React.FC<Props> = ({ targetId, step, content, alig
     const [rect, setRect] = useState<DOMRect | null>(null);
 
     const updateRect = () => {
+        if (isAppHidden()) { setIsOpen(false); return; }
         const el = document.getElementById(targetId);
         if (el) {
             const newRect = el.getBoundingClientRect();
@@ -36,15 +38,18 @@ export const TutorialOverlay: React.FC<Props> = ({ targetId, step, content, alig
     };
 
     useEffect(() => {
+        if (currentStep !== step) { setIsOpen(false); setTargetElement(null); return; }
         updateRect();
 
         // Polling for dynamic elements & Resize/Scroll listening
         const interval = setInterval(updateRect, 100);
+        addAppVisibilityListener(updateRect);
         window.addEventListener('resize', updateRect);
         window.addEventListener('scroll', updateRect, true);
 
         return () => {
             clearInterval(interval);
+            removeAppVisibilityListener(updateRect);
             window.removeEventListener('resize', updateRect);
             window.removeEventListener('scroll', updateRect, true);
         };

@@ -20,6 +20,7 @@ fn record_allocation(deallocation: bool) {
     });
 }
 
+// SAFETY: 割り当て操作は引数と結果を変えず System に委譲し、計数はスレッドローカルに限定する。
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         record_allocation(false);

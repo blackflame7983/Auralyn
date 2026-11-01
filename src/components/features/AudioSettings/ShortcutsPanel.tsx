@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
@@ -61,9 +62,9 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
         session.current = current;
         const timer = window.setTimeout(() => { if (!cancelled) capture(null); }, 30000);
         const onWindowBlur = () => capture(null);
-        const onVisibilityChange = () => { if (document.hidden) capture(null); };
+        const onVisibilityChange = () => { if (isAppHidden()) capture(null); };
         window.addEventListener('blur', onWindowBlur);
-        document.addEventListener('visibilitychange', onVisibilityChange);
+        addAppVisibilityListener(onVisibilityChange);
         const begin = async () => {
             try {
                 unlisten = await listen<{ token: string; shortcut: string }>('shortcut-captured', event => {
@@ -87,7 +88,7 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
             current.active = false;
             window.clearTimeout(timer);
             window.removeEventListener('blur', onWindowBlur);
-            document.removeEventListener('visibilitychange', onVisibilityChange);
+            removeAppVisibilityListener(onVisibilityChange);
             unlisten?.();
             if (token) void invoke('end_shortcut_capture', { token }).catch(() => {});
         };

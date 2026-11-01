@@ -41,7 +41,7 @@ pub struct VoiceCheckBuffers {
     sample_rate_hz: u32,
 }
 
-// 書き込み権は一度だけclaim_writerで渡す。共有スライスは書き手が封印した後だけ公開し、
+// SAFETY: 書き込み権は一度だけclaim_writerで渡す。共有スライスは書き手が封印した後だけ公開し、
 // Release/Acquireで両バッファの全書き込みを読取側へ公開する。封印後は再利用しない。
 unsafe impl Sync for VoiceCheckBuffers {}
 
@@ -70,7 +70,8 @@ impl VoiceCheckBuffers {
         }
         let frames = self.completed_frames.load(Ordering::Relaxed) as usize;
         let length = frames * VOICE_CHECK_CHANNELS;
-        // SEALED以降は書き込み権を再発行せず、writerも書き込まない。
+        // SAFETY: SEALED を Acquire で確認後は writer が書かず、書き込み権も再発行されない。
+        // frames は容量以下に制限され、返すスライスの寿命は self に結び付く。
         unsafe {
             Some(Recording {
                 raw: &(&*self.raw.get())[..length],
@@ -102,7 +103,8 @@ impl RecordingWriter {
         } else {
             &self.buffers.raw
         };
-        // このtokenだけが書き手であり、共有読取はまだ公開されていない。
+        // SAFETY: この token が唯一の書き手で、封印前は共有読取されない。
+        // frame は容量未満で、両バッファには容量分のステレオ要素がある。
         unsafe {
             let samples = &mut *cell.get();
             samples[index] = left;

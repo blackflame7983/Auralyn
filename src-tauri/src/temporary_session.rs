@@ -70,6 +70,7 @@ pub(crate) fn initialize(config: &mut tauri::Config) -> Result<Mode, String> {
         };
         // 旧Hostが停止するまでsingle-instance pluginや音声を初期化しない。
         // 既に終了しているPIDはERROR_INVALID_PARAMETERになる。それ以外は起動を止める。
+        // SAFETY: OpenProcess 成功時のハンドルを待機中保持し、結果にかかわらず一度閉じる。
         unsafe {
             match OpenProcess(PROCESS_SYNCHRONIZE, false, pid) {
                 Ok(handle) => {

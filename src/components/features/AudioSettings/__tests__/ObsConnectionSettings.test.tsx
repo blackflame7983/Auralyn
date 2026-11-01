@@ -12,9 +12,10 @@ vi.mock('sonner',()=>({toast:{info:vi.fn(),success:vi.fn(),error:vi.fn()}}));
 afterEach(async () => { cleanup(); await act(async () => {}); vi.restoreAllMocks(); vi.mocked(invoke).mockReset(); localStorage.clear(); });
 const open = () => render(<ObsConnectionSettings showConfirm={vi.fn()} onClose={vi.fn()} />);
 it('保存済みの接続先を使い、失敗時に秘密を含むエラーを転記しない', async () => {
-    localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: 'studio-pc', port: 5544, password: 'secret' }));
+    localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: 'studio-pc', port: 5544 }));
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'get_obs_credentials') return {host:'studio-pc',port:5544};
         if (command === 'obs_connection_status') return false;
         if (command === 'connect_obs') throw new Error('connection refused secret');
     });
@@ -23,7 +24,7 @@ it('保存済みの接続先を使い、失敗時に秘密を含むエラーを�
     expect(screen.getByRole('textbox', { name: 'OBSホスト名' })).toHaveValue('studio-pc');
     fireEvent.click(screen.getByRole('button', { name: '接続' }));
     expect(await screen.findByText(/接続が拒否されました/)).toHaveTextContent('5544');
-    expect(invoke).toHaveBeenCalledWith('connect_obs', { host: 'studio-pc', port: 5544, password: 'secret' });
+    expect(invoke).toHaveBeenCalledWith('connect_obs', { host: 'studio-pc', port: 5544, password: null, remember: true });
     expect(errorLog).not.toHaveBeenCalled();
     expect(screen.queryByText(/connection refused secret/)).not.toBeInTheDocument();
 });
@@ -53,7 +54,7 @@ it('接続応答待ちと接続中は入力を固定し、切断後に編集で�
 it.each(['ja','en'] as const)('接続開始locale=%sのtoastを保ち、pending/失敗中のlocaleで入力やIPCを作り直さない',async startedLocale=>{
     const currentLocale=startedLocale==='ja'?'en':'ja';
     const store=createLocaleStore(()=>startedLocale,()=>true);
-    localStorage.setItem('vst_host_obs_config',JSON.stringify({host:'exact-studio',port:5544,password:'OBS_SECRET_CANARY'}));
+    localStorage.setItem('vst_host_obs_config',JSON.stringify({host:'exact-studio',port:5544}));
     let reject!: (error:unknown)=>void;
     vi.mocked(invoke).mockImplementation(command=>command==='obs_connection_status'?Promise.resolve(false):command==='connect_obs'?new Promise<void>((_,fail)=>{reject=fail;}):Promise.resolve());
     const guide=vi.fn();const view=render(<LocaleProvider store={store}><ObsConnectionSettings showConfirm={vi.fn()} onClose={vi.fn()} onOpenOBSGuide={guide}/></LocaleProvider>);
@@ -62,6 +63,7 @@ it.each(['ja','en'] as const)('接続開始locale=%sのtoastを保ち、pending/
     const host=screen.getByRole('textbox',{name:message(startedLocale,'settings.ObsConnectionSettings.281')});
     const port=screen.getByRole('spinbutton',{name:message(startedLocale,'settings.ObsConnectionSettings.283')});
     const password=screen.getByLabelText(message(startedLocale,'settings.ObsConnectionSettings.285'));
+    fireEvent.change(password,{target:{value:'OBS_SECRET_CANARY'}});
     fireEvent.click(connect);await act(async()=>{});
     const calls=vi.mocked(invoke).mock.calls.length;
     act(()=>{store.setLocale(currentLocale);});
@@ -78,7 +80,7 @@ it.each(['ja','en'] as const)('接続開始locale=%sのtoastを保ち、pending/
     expect(toastCall[1]?.description).toBe(message(startedLocale,notice.key,notice.args));
     expect(JSON.stringify(toastCall)).not.toContain('OBS_SECRET_CANARY');
     expect(JSON.stringify(toastCall)).not.toContain('do-not-copy');
-    expect(localStorage.getItem('vst_host_obs_config')).toBe(JSON.stringify({host:'exact-studio',port:5544,password:'OBS_SECRET_CANARY'}));
+    expect(localStorage.getItem('vst_host_obs_config')).toBe(JSON.stringify({host:'exact-studio',port:5544}));
     act(()=>{store.setLocale('ja');});
     expect(hint).toHaveTextContent(obsConnectionFailure(failure,5544));expect(invoke).toHaveBeenCalledTimes(calls);
     expect(vi.mocked(invoke).mock.calls.filter(([command])=>command==='connect_obs')).toHaveLength(1);

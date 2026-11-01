@@ -1,4 +1,5 @@
 import { explicitSessionStartRequired, acknowledgeSessionStart } from '@/lib/temporarySession';
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useMessages } from '../i18n/LocaleProvider';
 import { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
@@ -200,7 +201,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         let active = true;
         let checking = false;
         const refresh = async () => {
-            if (checking) return;
+            if (checking || isAppHidden()) return;
             checking = true;
             const request = engineRevision.current;
             try {
@@ -235,9 +236,12 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         const started = listen('audio-started', () => { engineRevision.current += 1; setEngineProcessReady(true); });
         void refresh();
         const timer = setInterval(() => void refresh(), 2000);
+        const visibility = () => { if (isAppHidden()) engineRevision.current += 1; else void refresh(); };
+        addAppVisibilityListener(visibility);
         return () => {
             active = false;
             clearInterval(timer);
+            removeAppVisibilityListener(visibility);
             [...subscriptions, started].forEach(promise => { void promise.then(unlisten => unlisten()); });
         };
     }, []);

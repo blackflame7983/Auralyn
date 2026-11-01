@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { clientErrorNotice } from '@/lib/clientError';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -52,7 +53,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
         void poll();
         const timer = setInterval(() => void poll(), 250);
         const hide = () => {
-            if (!document.hidden) return;
+            if (!isAppHidden()) return;
             ++epoch.current;
             setClosedForVisibility(true);
             void gainCommand({ action: 'cancel' })
@@ -63,13 +64,13 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                     if (!stopped) setError(clientErrorNotice(e));
                 });
         };
-        document.addEventListener('visibilitychange', hide);
+        addAppVisibilityListener(hide);
         return () => {
             stopped = true;
             alive.current = false;
             ++epoch.current;
             clearInterval(timer);
-            document.removeEventListener('visibilitychange', hide);
+            removeAppVisibilityListener(hide);
             void gainCommand({ action: 'cancel' }).catch(() => {
                 toast.error(
                     t('autoGain.stopUnconfirmedNotice'),
