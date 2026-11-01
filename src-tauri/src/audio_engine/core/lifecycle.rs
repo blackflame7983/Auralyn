@@ -165,6 +165,24 @@ pub(super) fn release_devices_before_retry<D>(devices: (D, D), cleanup: impl FnO
 }
 
 impl<S> StreamPair<S> {
+    /// WASAPIは入力を準備してから出力を開始する。待機は制御スレッドだけで行う。
+    /// ASIOの共有driverには使わず、従来の出力→入力順を維持する。
+    pub(super) fn start_input_first<E>(
+        output: S,
+        input: S,
+        mut play: impl FnMut(&S) -> Result<(), E>,
+        ready: impl FnOnce() -> Result<(), E>,
+    ) -> Result<Self, E> {
+        let pair = Self {
+            input: Some(input),
+            output: Some(output),
+        };
+        play(pair.input.as_ref().expect("生成済み入力"))?;
+        ready()?;
+        play(pair.output.as_ref().expect("生成済み出力"))?;
+        Ok(pair)
+    }
+
     pub(super) fn start<E>(
         output: S,
         input: S,
@@ -191,6 +209,118 @@ impl<S> Drop for StreamPair<S> {
     fn drop(&mut self) {
         self.input.take();
         self.output.take();
+    }
+}
+
+/// 出力開始前の入力到着待ち。音声callbackには待機や追加の状態を持ち込まない。
+/// 必要な入力だけを残して出力を開始し、未到着をゼロ埋めで成功扱いにしない。
+pub(super) fn wait_for_input(
+    target_frames: usize,
+    rate: u32,
+    mut queued_frames: impl FnMut() -> usize,
+    mut failed: impl FnMut() -> bool,
+) -> anyhow::Result<usize> {
+    anyhow::ensure!(target_frames > 0 && rate > 0, "入力の準備条件が不正です");
+    let timeout = std::time::Duration::from_secs_f64(
+        (3.0 * target_frames as f64 / rate as f64).clamp(0.1, 1.0),
+    );
+    let started = std::time::Instant::now();
+    loop {
+        anyhow::ensure!(!failed(), "入力の準備中に音声機器が停止しました");
+        let frames = queued_frames();
+        if frames >= target_frames {
+            return Ok(frames);
+        }
+        anyhow::ensure!(
+            started.elapsed() < timeout,
+            "入力音声の到着を確認できません。入力機器の接続を確認してください"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+#[cfg(test)]
+mod input_start_tests {
+    use super::*;
+    use std::{cell::RefCell, rc::Rc};
+
+    struct TestStream(&'static str, Rc<RefCell<Vec<String>>>);
+    impl Drop for TestStream {
+        fn drop(&mut self) {
+            self.1.borrow_mut().push(format!("drop {}", self.0));
+        }
+    }
+
+    #[test]
+    fn input_first_failure_never_starts_output_and_releases_input_before_output() {
+        for fail_at in ["input", "ready", "output", "none"] {
+            let events = Rc::new(RefCell::new(Vec::new()));
+            let result = StreamPair::start_input_first(
+                TestStream("output", events.clone()),
+                TestStream("input", events.clone()),
+                |stream| {
+                    events.borrow_mut().push(stream.0.to_string());
+                    if stream.0 == fail_at {
+                        Err(())
+                    } else {
+                        Ok(())
+                    }
+                },
+                || {
+                    events.borrow_mut().push("ready".into());
+                    if fail_at == "ready" {
+                        Err(())
+                    } else {
+                        Ok(())
+                    }
+                },
+            );
+            if fail_at == "none" {
+                assert_eq!(*events.borrow(), ["input", "ready", "output"]);
+                let (input, output) = result.unwrap().commit();
+                drop(input);
+                drop(output);
+            } else {
+                assert!(result.is_err());
+                let recorded = events.borrow();
+                assert_eq!(
+                    &recorded[recorded.len() - 2..],
+                    ["drop input", "drop output"]
+                );
+                if fail_at != "output" {
+                    assert!(!recorded.iter().any(|event| event == "output"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn input_wait_observes_complete_queue_and_rejects_failure_even_if_data_exists() {
+        let mut polls = 0;
+        assert_eq!(
+            wait_for_input(
+                512,
+                48_000,
+                || {
+                    polls += 1;
+                    polls * 256
+                },
+                || false
+            )
+            .unwrap(),
+            512
+        );
+        assert!(wait_for_input(512, 48_000, || 1024, || true).is_err());
+        assert!(wait_for_input(0, 48_000, || 0, || false).is_err());
+        assert!(wait_for_input(512, 0, || 512, || false).is_err());
+    }
+
+    #[test]
+    fn missing_input_times_out_instead_of_reporting_a_started_output() {
+        let started = std::time::Instant::now();
+        let result = wait_for_input(1, 48_000, || 0, || false);
+        assert!(result.unwrap_err().to_string().contains("到着"));
+        assert!(started.elapsed() >= std::time::Duration::from_millis(100));
     }
 }
 

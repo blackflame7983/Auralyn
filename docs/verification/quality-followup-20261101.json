@@ -1,0 +1,1281 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-01",
+  "baseCommit": "a7eecca713f7355e37f8f32314d5979c04142ef0",
+  "implementationHead": "8e4b275a80da189b6cb30d5472fd4b1f721139c5",
+  "scope": "Windows dev build, isolated storage, no speech; not release, audibility or normal ASIO/OBS mix acceptance",
+  "environment": {
+    "os": "Windows 11 Pro 10.0.26300",
+    "node": "24.22.1",
+    "rust": "1.99.1",
+    "python": "3.12.12",
+    "cargoProfile": "dev",
+    "cargoProfileDevDebug": "0",
+    "frontend": "shared Vite dev server, same unchanged frontend source",
+    "cpuUnit": "one logical core = 100%",
+    "memorySamplingSeconds": 0.1,
+    "tauriConfigSha256": "7eeb18fb6848a91733b48b5373d8f585ab9f1ff15411de98a08654ddb1031db3"
+  },
+  "issues": [
+    190,
+    200,
+    201,
+    202,
+    72,
+    179
+  ],
+  "newIssuesCreated": 0,
+  "binaries": {
+    "before": {
+      "audio_engine.exe": "572bc7f6c5a981ccf81b0161a35fd45c7418e18d51cd83e91a9a829d624f9a1d",
+      "AuralynHost.exe": "674157e2cd49d9e6cb978aca5275e0bb36e8567e1abcfdda3bc79ce6d073d7b3",
+      "plugin_scanner.exe": "221d90617c11c875ca9cd145827fabc10fd79cbb7f8c508e1e31233ff2910d0f"
+    },
+    "after": {
+      "audio_engine.exe": "77c34f6eb3e3989eb0d1d5b4a0cca4dac731a34a7bfcd2255cc940505ed1d39f",
+      "AuralynHost.exe": "4eabffeb6ce490247ef23085a6b4745ac802fb209dd7f08fae24218334b03a02",
+      "plugin_scanner.exe": "0f829610b4f3152675bdc7f30e0dd2e6a6a4a68b044ebf66e9aa74070efdc661"
+    }
+  },
+  "sourceCandidate": [
+    {
+      "path": "docs/NATIVE_PERFORMANCE_COMPARE.md",
+      "sha256": "d12e42dadb8e4ed6024b1aa3cb231573c3f21f0039079b0954381d3af1df95e0"
+    },
+    {
+      "path": "scripts/native_audio_probe.py",
+      "sha256": "db319bfcc8b29d8b4f8980728937be72ba14d8efe85389d8e791694160608d59"
+    },
+    {
+      "path": "scripts/native_performance_compare.py",
+      "sha256": "db9b653c55fa0535727bea42a26deb068d37ee6a74eb756ccb7e71e7970d473b"
+    },
+    {
+      "path": "scripts/test_native_audio_probe.py",
+      "sha256": "0f137970728052513ca11dfe81bfc596fe1e0030d725a02f986b13fad71598a1"
+    },
+    {
+      "path": "scripts/test_native_performance_compare.py",
+      "sha256": "f5e2a239ddff678ae551cf98cb10363792f8c70aa9aba2a800c18218c58cecf7"
+    },
+    {
+      "path": "src-tauri/src/audio_engine/core.rs",
+      "sha256": "fea65209244c6633db3fbfc77003986b6faf1c609a6383145186848e362a990f"
+    },
+    {
+      "path": "src-tauri/src/audio_engine/core/capabilities.rs",
+      "sha256": "97a2ff1ea3ef42df3fc3d15929d4c717447ec47a3d1010583ccefd4883c6f128"
+    },
+    {
+      "path": "src-tauri/src/audio_engine/core/lifecycle.rs",
+      "sha256": "4c76c2c63b8daf77b7cbeab1bbb53db17345ff03e36bd053ca6abde7e7bba87c"
+    },
+    {
+      "path": "src-tauri/src/audio_engine/core/native_stream.rs",
+      "sha256": "51aa3b88f1e4ebf76805a31ef3b898d73d231bb243f58df9bf37eb2ea6c88c0d"
+    },
+    {
+      "path": "src-tauri/src/audio_engine/core/startup.rs",
+      "sha256": "a8d903ef7b438e5783ab4593fb57469fd64099e8397dac186d7bd80e31aff883"
+    },
+    {
+      "path": "src-tauri/src/audio_engine/core/startup_callbacks.rs",
+      "sha256": "b8a72634a350e33bcc9fa00995553e4f873567858c04f833d6b3d22304145a9e"
+    }
+  ],
+  "verification": {
+    "rustFullTest": {
+      "command": "cargo test --locked",
+      "workdir": "C:\\Users\\black\\.codex\\worktrees\\2995\\VSTHost-quality-followup\\src-tauri",
+      "environment": {
+        "CARGO_TARGET_DIR": "C:\\Users\\black\\AppData\\Local\\Temp\\Auralyn-quality-followup-20261101\\cargo-target",
+        "CARGO_PROFILE_DEV_DEBUG": "0",
+        "TAURI_CONFIG": "{\"identifier\": \"com.auralyn.test.quality\", \"build\": {\"devUrl\": \"http://127.0.0.1:1427\"}, \"bundle\": {\"externalBin\": []}, \"app\": {\"appDirectoriesOverride\": {\"config\": \"C:\\\\Users\\\\black\\\\AppData\\\\Local\\\\Temp\\\\Auralyn-quality-followup-20261101\\\\host-config\", \"data\": \"C:\\\\Users\\\\black\\\\AppData\\\\Local\\\\Temp\\\\Auralyn-quality-followup-20261101\\\\host-data\", \"localData\": \"C:\\\\Users\\\\black\\\\AppData\\\\Local\\\\Temp\\\\Auralyn-quality-followup-20261101\\\\host-webview\", \"cache\": \"C:\\\\Users\\\\black\\\\AppData\\\\Local\\\\Temp\\\\Auralyn-quality-followup-20261101\\\\host-cache\", \"log\": \"C:\\\\Users\\\\black\\\\AppData\\\\Local\\\\Temp\\\\Auralyn-quality-followup-20261101\\\\host-logs\"}, \"security\": {\"capabilities\": [\"default\", {\"identifier\": \"quality-exit\", \"windows\": [\"main\"], \"permissions\": [\"process:allow-exit\"]}]}}}"
+      },
+      "startedUtc": "2026-11-01T07:47:09.2692672Z",
+      "endedUtc": "2026-11-01T07:47:45.8313082Z",
+      "exitCode": 0,
+      "log": "C:\\Users\\black\\AppData\\Local\\Temp\\Auralyn-quality-followup-20261101\\verifier\\cargo-test-locked-full.log",
+      "logSha256": "8e3f29975c1ec9ee40c7c8039df55cab93a1ae3c7a9a84ac58647e5b1c7f358f"
+    },
+    "rustLibPassed": 595,
+    "rustLibIgnored": 4,
+    "deviceIntegrationIgnored": 3,
+    "pythonTestsPassed": 12,
+    "frontendSourceChanged": false,
+    "newBranchGithubCiRun": false,
+    "independentCodeReview": "PASS",
+    "independentVerification": "source and binary hashes matched; independent full cargo test exit 0; report artifacts checked separately",
+    "commands": [
+      {
+        "command": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
+        "cwd": "worktree root",
+        "exitCode": 0,
+        "log": "fmt-final.log",
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "exitStatusSource": "parent tool execution"
+      },
+      {
+        "command": "cargo build --locked --bin AuralynHost --bin audio_engine --bin plugin_scanner",
+        "cwd": "baseline src-tauri",
+        "exitCode": 0,
+        "log": "build-before.log",
+        "logSha256": "6726ae69e01c87e3999324ff485e1fe49fd2dd2b830e1404a08c316817721526",
+        "exitStatusSource": "parent tool execution"
+      },
+      {
+        "command": "cargo build --manifest-path src-tauri/Cargo.toml --locked --bin AuralynHost --bin audio_engine --bin plugin_scanner",
+        "cwd": "worktree root",
+        "exitCode": 0,
+        "log": "build-after.log",
+        "logSha256": "6e66b1b02efc596ff156c1da385ed0a43a77ec0e6b24bc9f26bc693686fbf5f1",
+        "exitStatusSource": "parent tool execution"
+      },
+      {
+        "command": "cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets",
+        "cwd": "worktree root",
+        "exitCode": 0,
+        "log": "check.log",
+        "logSha256": "dac381c4f10c49bad4020816143945fbb6f8c2fe1b6cee518794a95a4ebc0efa",
+        "exitStatusSource": "parent tool execution"
+      },
+      {
+        "command": "cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings",
+        "cwd": "worktree root",
+        "exitCode": 0,
+        "log": "clippy-final.log",
+        "logSha256": "1c02cff7ffc75d0b2032cadda997b586e985798a3f0524abdf66bb472e4ce127",
+        "exitStatusSource": "parent tool execution"
+      },
+      {
+        "command": "python -m unittest discover -s scripts -p 'test_native*py'",
+        "cwd": "worktree root",
+        "exitCode": 0,
+        "log": "python-tests.log",
+        "logSha256": "b44b894c066856e24fc5c60e32e4d62947336ee27ea0c88b3a95df43709e9542",
+        "exitStatusSource": "parent tool execution"
+      }
+    ],
+    "historicalFailures": [
+      "Early refactor omitted the effective fixed block from its return value; corrected before final full tests",
+      "Initial OBS harness requested state before ready; final isolated trial succeeded",
+      "Realtek originally retried unavailable default rate 0; final attempt preserves its input device error"
+    ],
+    "manualCapabilityReport": {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml --locked --lib asio_native_capability_report -- --ignored --nocapture",
+      "exitCode": 0,
+      "count": 1,
+      "scope": "capability observation, not a stream-start test"
+    }
+  },
+  "nativeAsio": [
+    {
+      "driver": "Voicemeeter Insert Virtual ASIO",
+      "rate": 96000,
+      "buffer": 512,
+      "inputPair": [
+        2,
+        3
+      ],
+      "mode": "independent",
+      "status": "success",
+      "failure": null,
+      "started": {
+        "sample_rate": 96000,
+        "buffer_size": 512,
+        "routing": {
+          "inputChannels": [
+            2,
+            3
+          ],
+          "outputRouting": {
+            "mode": "independent",
+            "channels": [
+              0,
+              1
+            ]
+          }
+        },
+        "input_id": "asio:Voicemeeter Insert Virtual ASIO",
+        "output_id": "asio:Voicemeeter Insert Virtual ASIO"
+      },
+      "recordings": {
+        "raw": {
+          "sampleRate": 96000,
+          "frames": 192000,
+          "channels": 2,
+          "peak": 0.0
+        },
+        "processed": {
+          "sampleRate": 96000,
+          "frames": 192000,
+          "channels": 2,
+          "peak": 0.0
+        }
+      },
+      "rawWetDifferenceRms": 0.0,
+      "exitCode": 0,
+      "errors": [],
+      "inputPairIndexBase": 0,
+      "sampleFormat": "F32",
+      "diagnostics": {
+        "glitchCount": 209,
+        "callback": {
+          "count": 475,
+          "minFrames": 512,
+          "maxFrames": 512,
+          "totalProcessingUs": 165666,
+          "maxProcessingUs": 685
+        },
+        "zeroFilledOutputFrames": 0,
+        "underflowCallbacks": 0,
+        "consumedOutputFrames": 243200,
+        "requestedOutputFrames": 243200
+      }
+    },
+    {
+      "driver": "Voicemeeter Insert Virtual ASIO",
+      "rate": 96000,
+      "buffer": 512,
+      "inputPair": [
+        6,
+        7
+      ],
+      "mode": "insert",
+      "status": "success",
+      "failure": null,
+      "started": {
+        "sample_rate": 96000,
+        "buffer_size": 512,
+        "routing": {
+          "inputChannels": [
+            6,
+            7
+          ],
+          "outputRouting": {
+            "mode": "insert"
+          }
+        },
+        "input_id": "asio:Voicemeeter Insert Virtual ASIO",
+        "output_id": "asio:Voicemeeter Insert Virtual ASIO"
+      },
+      "recordings": {
+        "raw": {
+          "sampleRate": 96000,
+          "frames": 192000,
+          "channels": 2,
+          "peak": 0.9850502014160156
+        },
+        "processed": {
+          "sampleRate": 96000,
+          "frames": 192000,
+          "channels": 2,
+          "peak": 0.9850502014160156
+        }
+      },
+      "rawWetDifferenceRms": 0.0,
+      "exitCode": 0,
+      "errors": [],
+      "inputPairIndexBase": 0,
+      "sampleFormat": "F32",
+      "diagnostics": {
+        "glitchCount": 205,
+        "callback": {
+          "count": 440,
+          "minFrames": 512,
+          "maxFrames": 512,
+          "totalProcessingUs": 104784,
+          "maxProcessingUs": 425
+        },
+        "zeroFilledOutputFrames": 0,
+        "underflowCallbacks": 0,
+        "consumedOutputFrames": 225280,
+        "requestedOutputFrames": 225280
+      }
+    },
+    {
+      "driver": "Creative Sound Blaster ASIO",
+      "rate": 96000,
+      "buffer": 384,
+      "inputPair": [
+        4,
+        5
+      ],
+      "mode": "independent",
+      "status": "success",
+      "failure": null,
+      "started": {
+        "sample_rate": 96000,
+        "buffer_size": 384,
+        "routing": {
+          "inputChannels": [
+            4,
+            5
+          ],
+          "outputRouting": {
+            "mode": "independent",
+            "channels": [
+              0,
+              1
+            ]
+          }
+        },
+        "input_id": "asio:Creative Sound Blaster ASIO",
+        "output_id": "asio:Creative Sound Blaster ASIO"
+      },
+      "recordings": {
+        "raw": {
+          "sampleRate": 96000,
+          "frames": 194304,
+          "channels": 2,
+          "peak": 0.643692135810852
+        },
+        "processed": {
+          "sampleRate": 96000,
+          "frames": 194304,
+          "channels": 2,
+          "peak": 0.643692135810852
+        }
+      },
+      "rawWetDifferenceRms": 0.0,
+      "exitCode": 0,
+      "errors": [],
+      "inputPairIndexBase": 0,
+      "sampleFormat": "I32",
+      "diagnostics": {
+        "glitchCount": 234,
+        "callback": {
+          "count": 595,
+          "minFrames": 384,
+          "maxFrames": 384,
+          "totalProcessingUs": 68272,
+          "maxProcessingUs": 647
+        },
+        "zeroFilledOutputFrames": 0,
+        "underflowCallbacks": 0,
+        "consumedOutputFrames": 228480,
+        "requestedOutputFrames": 228480
+      }
+    },
+    {
+      "driver": "Realtek ASIO",
+      "rate": 48000,
+      "buffer": 1024,
+      "inputPair": [
+        0,
+        1
+      ],
+      "mode": "independent",
+      "status": "failed",
+      "failure": "RuntimeError(\"start: {'type': 'Error', 'payload': 'Input Stream Build Failed: デバイスが見つかりません。切断されたか、他アプリが排他制御している可能性があります。 (Original: The requested device is no longer available. For example, it has been unplugged.)'}\")",
+      "started": null,
+      "recordings": null,
+      "rawWetDifferenceRms": null,
+      "exitCode": 0,
+      "errors": [],
+      "inputPairIndexBase": 0,
+      "sampleFormat": "I16 input / I24 output"
+    },
+    {
+      "driver": "Voicemeeter Insert Virtual ASIO",
+      "rate": 96000,
+      "buffer": 512,
+      "inputPair": [
+        6,
+        7
+      ],
+      "mode": "independent",
+      "status": "success",
+      "failure": null,
+      "started": {
+        "sample_rate": 96000,
+        "buffer_size": 512,
+        "routing": {
+          "inputChannels": [
+            6,
+            7
+          ],
+          "outputRouting": {
+            "mode": "independent",
+            "channels": [
+              0,
+              1
+            ]
+          }
+        },
+        "input_id": "asio:Voicemeeter Insert Virtual ASIO",
+        "output_id": "asio:Voicemeeter Insert Virtual ASIO"
+      },
+      "recordings": {
+        "raw": {
+          "sampleRate": 96000,
+          "frames": 192000,
+          "channels": 2,
+          "peak": 0.9682655334472656
+        },
+        "processed": {
+          "sampleRate": 96000,
+          "frames": 192000,
+          "channels": 2,
+          "peak": 0.435344398021698
+        }
+      },
+      "rawWetDifferenceRms": 0.16596987464730542,
+      "exitCode": 0,
+      "errors": [],
+      "inputPairIndexBase": 0,
+      "sampleFormat": "F32",
+      "diagnostics": {
+        "glitchCount": 214,
+        "callback": {
+          "count": 469,
+          "minFrames": 512,
+          "maxFrames": 512,
+          "totalProcessingUs": 149513,
+          "maxProcessingUs": 1000
+        },
+        "zeroFilledOutputFrames": 0,
+        "underflowCallbacks": 0,
+        "consumedOutputFrames": 240128,
+        "requestedOutputFrames": 240128
+      }
+    }
+  ],
+  "obs": {
+    "status": "success",
+    "scope": "isolated portable OBS, synthetic tone through CABLE; not normal ASIO mix or audibility",
+    "baseline": {
+      "peak": 0.0,
+      "meterValues": 34
+    },
+    "tone": {
+      "peak": 0.003162384033203125,
+      "meterValues": 98
+    },
+    "afterTone": {
+      "peak": 0.0,
+      "meterValues": 40
+    },
+    "started": {
+      "sample_rate": 48000,
+      "buffer_size": 512,
+      "routing": {
+        "inputChannels": [
+          0,
+          1
+        ],
+        "outputRouting": {
+          "mode": "independent",
+          "channels": [
+            0,
+            1
+          ]
+        }
+      },
+      "input_id": "wasapi:{0.0.1.00000000}.{257211c9-6b02-4dce-a3dd-724f77ba4cfa}",
+      "output_id": "wasapi:{0.0.0.00000000}.{7336ebbb-3009-481c-846d-a2c8f44b2951}"
+    },
+    "audioExitCode": 0,
+    "audioErrors": [],
+    "obsExitCode": 0,
+    "forcedObsExit": null
+  },
+  "performance": {
+    "status": "success",
+    "order": [
+      "before",
+      "after",
+      "after",
+      "before",
+      "before",
+      "after"
+    ],
+    "engineWarmupSeconds": 2,
+    "engineWindowSecondsPerCondition": 10,
+    "engineAggregate": {
+      "before": {
+        "default": {
+          "status": "available",
+          "repeats": 3,
+          "cpu_one_core_mean_percent": 23.157666666666668,
+          "cpu_one_core_range_percent": [
+            22.149,
+            24.914
+          ],
+          "cpu_one_core_stdev_percent": 1.2464777931792006,
+          "max_private_bytes": 16269312,
+          "max_working_set_bytes": 31854592,
+          "os_peak_working_set_bytes": 31854592,
+          "os_peak_commit_bytes": 16277504
+        },
+        "scan-on": {
+          "status": "available",
+          "repeats": 3,
+          "cpu_one_core_mean_percent": 27.379408163265307,
+          "cpu_one_core_range_percent": [
+            25.863000000000003,
+            29.56122448979592
+          ],
+          "cpu_one_core_stdev_percent": 1.5814112077585736,
+          "max_private_bytes": 16707584,
+          "max_working_set_bytes": 34856960,
+          "os_peak_working_set_bytes": 34856960,
+          "os_peak_commit_bytes": 16707584
+        },
+        "scan-off": {
+          "status": "available",
+          "repeats": 3,
+          "cpu_one_core_mean_percent": 23.512122448979593,
+          "cpu_one_core_range_percent": [
+            20.447,
+            28.968367346938777
+          ],
+          "cpu_one_core_stdev_percent": 3.8679473703657714,
+          "max_private_bytes": 16707584,
+          "max_working_set_bytes": 34865152,
+          "os_peak_working_set_bytes": 34865152,
+          "os_peak_commit_bytes": 16707584
+        }
+      },
+      "after": {
+        "default": {
+          "status": "available",
+          "repeats": 3,
+          "cpu_one_core_mean_percent": 22.991666666666667,
+          "cpu_one_core_range_percent": [
+            22.215999999999998,
+            23.7
+          ],
+          "cpu_one_core_stdev_percent": 0.60770844617757,
+          "max_private_bytes": 16363520,
+          "max_working_set_bytes": 32096256,
+          "os_peak_working_set_bytes": 32096256,
+          "os_peak_commit_bytes": 16371712
+        },
+        "scan-on": {
+          "status": "available",
+          "repeats": 3,
+          "cpu_one_core_mean_percent": 25.24836082474227,
+          "cpu_one_core_range_percent": [
+            24.315,
+            26.636082474226807
+          ],
+          "cpu_one_core_stdev_percent": 1.0005627690908299,
+          "max_private_bytes": 16363520,
+          "max_working_set_bytes": 32157696,
+          "os_peak_working_set_bytes": 32157696,
+          "os_peak_commit_bytes": 16371712
+        },
+        "scan-off": {
+          "status": "available",
+          "repeats": 3,
+          "cpu_one_core_mean_percent": 26.123662131519275,
+          "cpu_one_core_range_percent": [
+            21.705,
+            29.732653061224493
+          ],
+          "cpu_one_core_stdev_percent": 3.3269083755675246,
+          "max_private_bytes": 16445440,
+          "max_working_set_bytes": 32219136,
+          "os_peak_working_set_bytes": 32219136,
+          "os_peak_commit_bytes": 16445440
+        }
+      }
+    },
+    "engineTrials": [
+      {
+        "version": "before",
+        "round": 1,
+        "status": "success",
+        "measurements": {
+          "default": {
+            "cpu_one_core_mean_percent": 22.41,
+            "max_private_bytes": 16269312,
+            "max_working_set_bytes": 31854592,
+            "os_peak_working_set_bytes": 31854592,
+            "os_peak_commit_bytes": 16277504
+          },
+          "scan-on": {
+            "cpu_one_core_mean_percent": 25.863000000000003,
+            "max_private_bytes": 16269312,
+            "max_working_set_bytes": 31916032,
+            "os_peak_working_set_bytes": 31916032,
+            "os_peak_commit_bytes": 16277504
+          },
+          "scan-off": {
+            "cpu_one_core_mean_percent": 20.447,
+            "max_private_bytes": 16338944,
+            "max_working_set_bytes": 31965184,
+            "os_peak_working_set_bytes": 31965184,
+            "os_peak_commit_bytes": 16347136
+          }
+        },
+        "glitchCount": 2826,
+        "callbackCount": 6025,
+        "zeroFilledOutputFrames": 0
+      },
+      {
+        "version": "after",
+        "round": 1,
+        "status": "success",
+        "measurements": {
+          "default": {
+            "cpu_one_core_mean_percent": 23.059,
+            "max_private_bytes": 16355328,
+            "max_working_set_bytes": 32083968,
+            "os_peak_working_set_bytes": 32083968,
+            "os_peak_commit_bytes": 16363520
+          },
+          "scan-on": {
+            "cpu_one_core_mean_percent": 26.636082474226807,
+            "max_private_bytes": 16355328,
+            "max_working_set_bytes": 32149504,
+            "os_peak_working_set_bytes": 32149504,
+            "os_peak_commit_bytes": 16363520
+          },
+          "scan-off": {
+            "cpu_one_core_mean_percent": 29.732653061224493,
+            "max_private_bytes": 16445440,
+            "max_working_set_bytes": 32219136,
+            "os_peak_working_set_bytes": 32219136,
+            "os_peak_commit_bytes": 16445440
+          }
+        },
+        "glitchCount": 2526,
+        "callbackCount": 6018,
+        "zeroFilledOutputFrames": 0
+      },
+      {
+        "version": "after",
+        "round": 2,
+        "status": "success",
+        "measurements": {
+          "default": {
+            "cpu_one_core_mean_percent": 22.215999999999998,
+            "max_private_bytes": 16363520,
+            "max_working_set_bytes": 32096256,
+            "os_peak_working_set_bytes": 32096256,
+            "os_peak_commit_bytes": 16371712
+          },
+          "scan-on": {
+            "cpu_one_core_mean_percent": 24.315,
+            "max_private_bytes": 16363520,
+            "max_working_set_bytes": 32157696,
+            "os_peak_working_set_bytes": 32157696,
+            "os_peak_commit_bytes": 16371712
+          },
+          "scan-off": {
+            "cpu_one_core_mean_percent": 21.705,
+            "max_private_bytes": 16433152,
+            "max_working_set_bytes": 32206848,
+            "os_peak_working_set_bytes": 32206848,
+            "os_peak_commit_bytes": 16441344
+          }
+        },
+        "glitchCount": 2878,
+        "callbackCount": 6024,
+        "zeroFilledOutputFrames": 0
+      },
+      {
+        "version": "before",
+        "round": 2,
+        "status": "success",
+        "measurements": {
+          "default": {
+            "cpu_one_core_mean_percent": 22.149,
+            "max_private_bytes": 16240640,
+            "max_working_set_bytes": 31834112,
+            "os_peak_working_set_bytes": 31834112,
+            "os_peak_commit_bytes": 16248832
+          },
+          "scan-on": {
+            "cpu_one_core_mean_percent": 29.56122448979592,
+            "max_private_bytes": 16240640,
+            "max_working_set_bytes": 31899648,
+            "os_peak_working_set_bytes": 31899648,
+            "os_peak_commit_bytes": 16248832
+          },
+          "scan-off": {
+            "cpu_one_core_mean_percent": 28.968367346938777,
+            "max_private_bytes": 16310272,
+            "max_working_set_bytes": 31948800,
+            "os_peak_working_set_bytes": 31948800,
+            "os_peak_commit_bytes": 16318464
+          }
+        },
+        "glitchCount": 2563,
+        "callbackCount": 6029,
+        "zeroFilledOutputFrames": 0
+      },
+      {
+        "version": "before",
+        "round": 3,
+        "status": "success",
+        "measurements": {
+          "default": {
+            "cpu_one_core_mean_percent": 24.914,
+            "max_private_bytes": 16265216,
+            "max_working_set_bytes": 31850496,
+            "os_peak_working_set_bytes": 31850496,
+            "os_peak_commit_bytes": 16273408
+          },
+          "scan-on": {
+            "cpu_one_core_mean_percent": 26.714000000000002,
+            "max_private_bytes": 16707584,
+            "max_working_set_bytes": 34856960,
+            "os_peak_working_set_bytes": 34856960,
+            "os_peak_commit_bytes": 16707584
+          },
+          "scan-off": {
+            "cpu_one_core_mean_percent": 21.121,
+            "max_private_bytes": 16707584,
+            "max_working_set_bytes": 34865152,
+            "os_peak_working_set_bytes": 34865152,
+            "os_peak_commit_bytes": 16707584
+          }
+        },
+        "glitchCount": 2766,
+        "callbackCount": 6025,
+        "zeroFilledOutputFrames": 0
+      },
+      {
+        "version": "after",
+        "round": 3,
+        "status": "success",
+        "measurements": {
+          "default": {
+            "cpu_one_core_mean_percent": 23.7,
+            "max_private_bytes": 16330752,
+            "max_working_set_bytes": 32083968,
+            "os_peak_working_set_bytes": 32083968,
+            "os_peak_commit_bytes": 16338944
+          },
+          "scan-on": {
+            "cpu_one_core_mean_percent": 24.794,
+            "max_private_bytes": 16330752,
+            "max_working_set_bytes": 32145408,
+            "os_peak_working_set_bytes": 32145408,
+            "os_peak_commit_bytes": 16338944
+          },
+          "scan-off": {
+            "cpu_one_core_mean_percent": 26.933333333333334,
+            "max_private_bytes": 16400384,
+            "max_working_set_bytes": 32194560,
+            "os_peak_working_set_bytes": 32194560,
+            "os_peak_commit_bytes": 16408576
+          }
+        },
+        "glitchCount": 2738,
+        "callbackCount": 6017,
+        "zeroFilledOutputFrames": 0
+      }
+    ],
+    "hostWarmupSeconds": 3,
+    "hostWindowSeconds": 15,
+    "hostAggregate": {
+      "before": {
+        "repeats": 3,
+        "cpuMean": 42.31587232604182,
+        "cpuRange": [
+          33.55897435897436,
+          59.35982905982906
+        ],
+        "cpuStdev": 12.053423665110104,
+        "max_private_bytes": 522932224,
+        "max_working_set_bytes": 788389888,
+        "root_lifetime_peak_working_set_bytes": 56545280,
+        "root_lifetime_peak_commit_bytes": 9252864
+      },
+      "after": {
+        "repeats": 3,
+        "cpuMean": 36.55619041583025,
+        "cpuRange": [
+          33.72627118644068,
+          40.009821428571435
+        ],
+        "cpuStdev": 2.6028847077635633,
+        "max_private_bytes": 523190272,
+        "max_working_set_bytes": 783159296,
+        "root_lifetime_peak_working_set_bytes": 47403008,
+        "root_lifetime_peak_commit_bytes": 9203712
+      }
+    },
+    "hostTrials": [
+      {
+        "version": "before",
+        "name": "host-r1-before",
+        "status": "success",
+        "exitCode": 0,
+        "errors": [],
+        "metrics": {
+          "cpu_one_core_mean_percent": 34.02881355932203,
+          "max_working_set_bytes": 788389888,
+          "max_private_bytes": 508600320,
+          "root_lifetime_peak_working_set_bytes": 56545280,
+          "root_lifetime_peak_commit_bytes": 9015296
+        },
+        "processCountRange": [
+          10,
+          10
+        ],
+        "unprimedChildSamples": 0,
+        "disappearedChildSamples": 0
+      },
+      {
+        "version": "after",
+        "name": "host-r2-after",
+        "status": "success",
+        "exitCode": 0,
+        "errors": [],
+        "metrics": {
+          "cpu_one_core_mean_percent": 33.72627118644068,
+          "max_working_set_bytes": 768045056,
+          "max_private_bytes": 523190272,
+          "root_lifetime_peak_working_set_bytes": 47403008,
+          "root_lifetime_peak_commit_bytes": 9203712
+        },
+        "processCountRange": [
+          10,
+          10
+        ],
+        "unprimedChildSamples": 0,
+        "disappearedChildSamples": 0
+      },
+      {
+        "version": "after",
+        "name": "host-r3-after",
+        "status": "success",
+        "exitCode": 0,
+        "errors": [],
+        "metrics": {
+          "cpu_one_core_mean_percent": 40.009821428571435,
+          "max_working_set_bytes": 777863168,
+          "max_private_bytes": 515624960,
+          "root_lifetime_peak_working_set_bytes": 44974080,
+          "root_lifetime_peak_commit_bytes": 9097216
+        },
+        "processCountRange": [
+          10,
+          10
+        ],
+        "unprimedChildSamples": 0,
+        "disappearedChildSamples": 0
+      },
+      {
+        "version": "before",
+        "name": "host-r4-before",
+        "status": "success",
+        "exitCode": 0,
+        "errors": [],
+        "metrics": {
+          "cpu_one_core_mean_percent": 59.35982905982906,
+          "max_working_set_bytes": 766164992,
+          "max_private_bytes": 513286144,
+          "root_lifetime_peak_working_set_bytes": 45027328,
+          "root_lifetime_peak_commit_bytes": 9228288
+        },
+        "processCountRange": [
+          10,
+          10
+        ],
+        "unprimedChildSamples": 0,
+        "disappearedChildSamples": 0
+      },
+      {
+        "version": "before",
+        "name": "host-r5-before",
+        "status": "success",
+        "exitCode": 0,
+        "errors": [],
+        "metrics": {
+          "cpu_one_core_mean_percent": 33.55897435897436,
+          "max_working_set_bytes": 773017600,
+          "max_private_bytes": 522932224,
+          "root_lifetime_peak_working_set_bytes": 47255552,
+          "root_lifetime_peak_commit_bytes": 9252864
+        },
+        "processCountRange": [
+          10,
+          10
+        ],
+        "unprimedChildSamples": 0,
+        "disappearedChildSamples": 0
+      },
+      {
+        "version": "after",
+        "name": "host-r6-after",
+        "status": "success",
+        "exitCode": 0,
+        "errors": [],
+        "metrics": {
+          "cpu_one_core_mean_percent": 35.932478632478634,
+          "max_working_set_bytes": 783159296,
+          "max_private_bytes": 522231808,
+          "root_lifetime_peak_working_set_bytes": 45006848,
+          "root_lifetime_peak_commit_bytes": 9097216
+        },
+        "processCountRange": [
+          10,
+          10
+        ],
+        "unprimedChildSamples": 0,
+        "disappearedChildSamples": 0
+      }
+    ],
+    "limits": [
+      "private and working set are sampled sums; shared working set pages can be double counted",
+      "OS lifetime peaks refer to individual processes; not an instantaneous peak for the whole app",
+      "CPU ranges overlap; no uniform speed or memory reduction established",
+      "No build, tests or OBS ran concurrently with performance comparison"
+    ]
+  },
+  "wasapi": [
+    {
+      "version": "before",
+      "name": "wasapi-r1-before",
+      "mono": false,
+      "startMs": 425.04279999411665,
+      "sampleRate": 48000,
+      "inputChannels": 2,
+      "outputChannels": 2,
+      "earlyAfterSeconds": 2,
+      "laterAfterSeconds": 5,
+      "earlyTotalZeroFrames": 2527,
+      "startupZeroFrames": 2527,
+      "laterZeroFrameDelta": 0,
+      "earlyQueueMs": 10.0,
+      "laterQueueMs": 10.0,
+      "receivedFramesDuringLaterWindow": 144000,
+      "requestedFramesDuringLaterWindow": 144000
+    },
+    {
+      "version": "before",
+      "name": "wasapi-r1-before",
+      "mono": true,
+      "startMs": 41.237600002205,
+      "sampleRate": 48000,
+      "inputChannels": 1,
+      "outputChannels": 2,
+      "earlyAfterSeconds": 2,
+      "laterAfterSeconds": 5,
+      "earlyTotalZeroFrames": 2050,
+      "startupZeroFrames": 2016,
+      "laterZeroFrameDelta": 2390,
+      "earlyQueueMs": 20.0,
+      "laterQueueMs": 20.0,
+      "receivedFramesDuringLaterWindow": 141610,
+      "requestedFramesDuringLaterWindow": 144000
+    },
+    {
+      "version": "after",
+      "name": "wasapi-r2-after",
+      "mono": false,
+      "startMs": 464.55070000956766,
+      "sampleRate": 48000,
+      "inputChannels": 2,
+      "outputChannels": 2,
+      "earlyAfterSeconds": 2,
+      "laterAfterSeconds": 5,
+      "earlyTotalZeroFrames": 127,
+      "startupZeroFrames": 0,
+      "laterZeroFrameDelta": 0,
+      "earlyQueueMs": 10.0,
+      "laterQueueMs": 0.0,
+      "receivedFramesDuringLaterWindow": 144000,
+      "requestedFramesDuringLaterWindow": 144480
+    },
+    {
+      "version": "after",
+      "name": "wasapi-r2-after",
+      "mono": true,
+      "startMs": 77.44380002259277,
+      "sampleRate": 48000,
+      "inputChannels": 1,
+      "outputChannels": 2,
+      "earlyAfterSeconds": 2,
+      "laterAfterSeconds": 5,
+      "earlyTotalZeroFrames": 610,
+      "startupZeroFrames": 0,
+      "laterZeroFrameDelta": 2674,
+      "earlyQueueMs": 0.0,
+      "laterQueueMs": 10.0,
+      "receivedFramesDuringLaterWindow": 141806,
+      "requestedFramesDuringLaterWindow": 144000
+    },
+    {
+      "version": "after",
+      "name": "wasapi-r3-after",
+      "mono": false,
+      "startMs": 494.29940001573414,
+      "sampleRate": 48000,
+      "inputChannels": 2,
+      "outputChannels": 2,
+      "earlyAfterSeconds": 2,
+      "laterAfterSeconds": 5,
+      "earlyTotalZeroFrames": 0,
+      "startupZeroFrames": 0,
+      "laterZeroFrameDelta": 0,
+      "earlyQueueMs": 17.354166666666668,
+      "laterQueueMs": 17.354166666666668,
+      "receivedFramesDuringLaterWindow": 144000,
+      "requestedFramesDuringLaterWindow": 144000
+    },
+    {
+      "version": "after",
+      "name": "wasapi-r3-after",
+      "mono": true,
+      "startMs": 77.63620000332594,
+      "sampleRate": 48000,
+      "inputChannels": 1,
+      "outputChannels": 2,
+      "earlyAfterSeconds": 2,
+      "laterAfterSeconds": 5,
+      "earlyTotalZeroFrames": 130,
+      "startupZeroFrames": 0,
+      "laterZeroFrameDelta": 0,
+      "earlyQueueMs": 10.0,
+      "laterQueueMs": 20.0,
+      "receivedFramesDuringLaterWindow": 144000,
+      "requestedFramesDuringLaterWindow": 143520
+    },
+    {
+      "version": "before",
+      "name": "wasapi-r4-before",
+      "mono": false,
+      "startMs": 487.73769999388605,
+      "sampleRate": 48000,
+      "inputChannels": 2,
+      "outputChannels": 2,
+      "earlyAfterSeconds": 2,
+      "laterAfterSeconds": 5,
+      "earlyTotalZeroFrames": 2527,
+      "startupZeroFrames": 2527,
+      "laterZeroFrameDelta": 0,
+      "earlyQueueMs": 10.0,
+      "laterQueueMs": 10.0,
+      "receivedFramesDuringLaterWindow": 144000,
+      "requestedFramesDuringLaterWindow": 144000
+    },
+    {
+      "version": "before",
+      "name": "wasapi-r4-before",
+      "mono": true,
+      "startMs": 38.755300018237904,
+      "sampleRate": 48000,
+      "inputChannels": 1,
+      "outputChannels": 2,
+      "earlyAfterSeconds": 2,
+      "laterAfterSeconds": 5,
+      "earlyTotalZeroFrames": 4440,
+      "startupZeroFrames": 2016,
+      "laterZeroFrameDelta": 0,
+      "earlyQueueMs": 18.270833333333332,
+      "laterQueueMs": 10.0,
+      "receivedFramesDuringLaterWindow": 144000,
+      "requestedFramesDuringLaterWindow": 144000
+    },
+    {
+      "version": "before",
+      "name": "wasapi-r5-before",
+      "mono": false,
+      "startMs": 408.5024000087287,
+      "sampleRate": 48000,
+      "inputChannels": 2,
+      "outputChannels": 2,
+      "earlyAfterSeconds": 2,
+      "laterAfterSeconds": 5,
+      "earlyTotalZeroFrames": 2527,
+      "startupZeroFrames": 2496,
+      "laterZeroFrameDelta": 0,
+      "earlyQueueMs": 10.0,
+      "laterQueueMs": 10.0,
+      "receivedFramesDuringLaterWindow": 144000,
+      "requestedFramesDuringLaterWindow": 144000
+    },
+    {
+      "version": "before",
+      "name": "wasapi-r5-before",
+      "mono": true,
+      "startMs": 38.163699995493516,
+      "sampleRate": 48000,
+      "inputChannels": 1,
+      "outputChannels": 2,
+      "earlyAfterSeconds": 2,
+      "laterAfterSeconds": 5,
+      "earlyTotalZeroFrames": 7878,
+      "startupZeroFrames": 2016,
+      "laterZeroFrameDelta": 1528,
+      "earlyQueueMs": 10.0,
+      "laterQueueMs": 2.0416666666666665,
+      "receivedFramesDuringLaterWindow": 142090,
+      "requestedFramesDuringLaterWindow": 144000
+    },
+    {
+      "version": "after",
+      "name": "wasapi-r6-after",
+      "mono": false,
+      "startMs": 465.33109998563305,
+      "sampleRate": 48000,
+      "inputChannels": 2,
+      "outputChannels": 2,
+      "earlyAfterSeconds": 2,
+      "laterAfterSeconds": 5,
+      "earlyTotalZeroFrames": 127,
+      "startupZeroFrames": 0,
+      "laterZeroFrameDelta": 0,
+      "earlyQueueMs": 0.0,
+      "laterQueueMs": 0.0,
+      "receivedFramesDuringLaterWindow": 144000,
+      "requestedFramesDuringLaterWindow": 144000
+    },
+    {
+      "version": "after",
+      "name": "wasapi-r6-after",
+      "mono": true,
+      "startMs": 76.71719999052584,
+      "sampleRate": 48000,
+      "inputChannels": 1,
+      "outputChannels": 2,
+      "earlyAfterSeconds": 2,
+      "laterAfterSeconds": 5,
+      "earlyTotalZeroFrames": 1090,
+      "startupZeroFrames": 0,
+      "laterZeroFrameDelta": 0,
+      "earlyQueueMs": 20.0,
+      "laterQueueMs": 20.0,
+      "receivedFramesDuringLaterWindow": 144000,
+      "requestedFramesDuringLaterWindow": 144000
+    }
+  ],
+  "soak": {
+    "status": "success",
+    "durationSeconds": 300,
+    "conditions": {
+      "driver": "Creative Sound Blaster ASIO",
+      "format": "I32",
+      "rate": 96000,
+      "buffer": 384,
+      "inputPair": [
+        4,
+        5
+      ],
+      "outputPair": [
+        0,
+        1
+      ],
+      "muted": true,
+      "outputGain": 0,
+      "plugin": "OTT.vst3"
+    },
+    "acceptance": {
+      "errorEvents": 0,
+      "exitCode": 0,
+      "additionalZeroFilledFrames": 0,
+      "pluginActiveDuringRun": 1
+    },
+    "exitCode": 0,
+    "errors": [],
+    "failure": null,
+    "completedWindows": 20,
+    "observedSeconds": 301.0736270000052,
+    "maxPrivateBytes": 18767872,
+    "firstWindowMaxPrivateBytes": 18698240,
+    "lastWindowMaxPrivateBytes": 18718720,
+    "osPeakCommitBytes": 21299200,
+    "cpuOneCoreMeanPercent": 10.8932728918413,
+    "initialZeroFrames": 0,
+    "finalZeroFrames": 0,
+    "initialGlitchCount": 206,
+    "finalGlitchCount": 30347
+  },
+  "preservation": {
+    "protected-before-check.json": {
+      "count": 68,
+      "changed": []
+    },
+    "obs-user-protected-check.json": {
+      "count": 657,
+      "changed": []
+    }
+  },
+  "evidenceRoot": "C:\\Users\\black\\AppData\\Local\\Temp\\Auralyn-quality-followup-20261101",
+  "rawArtifacts": [
+    {
+      "path": "asio-capabilities-final.log",
+      "sha256": "71433d5a9160e807a32c797088981560ab059324ccd3c8fdf2519c52c8784722"
+    },
+    {
+      "path": "native-final/native-matrix.json",
+      "sha256": "764cf6f8914b1642c4b3b0d232e39e6b614cd2f314f3d2771673d2fd6d48e1df"
+    },
+    {
+      "path": "obs-reach-final/result.json",
+      "sha256": "5a1a70566a8f3fe5775adff3c06ef983904748934715ca155ee7aac7d26ce4f1"
+    },
+    {
+      "path": "measurements-summary.json",
+      "sha256": "6b3e9078351f42a330fe3fde08714a1627463ec24526ccd968e396afbe4f1280"
+    },
+    {
+      "path": "engine-compare/summary.json",
+      "sha256": "da2b73bd0eba7da0060e862a5aa92e723854d0b2423947b4ceb6a3c8919c5ff1"
+    },
+    {
+      "path": "engine-performance-plan.json",
+      "sha256": "1ab99258f81010cf103650837ac09db22a8edad3dc96d80c02b3c4bfb0906139"
+    },
+    {
+      "path": "host-trial.cjs",
+      "sha256": "d7351417013aca3d544b6e8e985f77c33eed53a2ff35cb88613086d5e4162374"
+    },
+    {
+      "path": "run_wasapi_starts.py",
+      "sha256": "bdaa2a238f887f79359e2eed3ae492958998c2dca75d48b28d3e3d6fa386bc8d"
+    },
+    {
+      "path": "run_native_matrix.py",
+      "sha256": "4c160c19ad5702fe7416a7bdaee5ee1116fdb33ce7fa62c700f10d815080dd22"
+    },
+    {
+      "path": "run_measurements.py",
+      "sha256": "c24aac8a71bfe96b2c38c84d045e7254707dad2d3b0249c3df2c521713efbc26"
+    },
+    {
+      "path": "obs_reach.py",
+      "sha256": "1bb9be359dfed0a4d1b6a24c0efe322d9ee4f8541c7db72547080f61eb85f5a2"
+    },
+    {
+      "path": "soak.py",
+      "sha256": "618d59e91561d859203cccc8540aa8bded36afe56167e5a2b19b17aacc8344c4"
+    },
+    {
+      "path": "fmt-final.metadata.json",
+      "sha256": "b7a32fc1e03302527bd0c246acbe6be553fbb9ab2d94b5f8ab227ffb08882fcf"
+    },
+    {
+      "path": "verifier/cargo-test-locked-full.log",
+      "sha256": "8e3f29975c1ec9ee40c7c8039df55cab93a1ae3c7a9a84ac58647e5b1c7f358f"
+    },
+    {
+      "path": "soak-i32-ott/result.json",
+      "sha256": "19543f6343ab3cc5c89245137ca04dd900a469e8b02a79733a9ebb3478b1e56d"
+    }
+  ],
+  "asioCapabilities": [
+    {
+      "driver": "Creative Sound Blaster ASIO",
+      "input": "SupportedStreamConfig { channels: 6, sample_rate: 96000, buffer_size: Range { min: 384, max: 384 }, sample_format: I32 }",
+      "output": "SupportedStreamConfig { channels: 4, sample_rate: 96000, buffer_size: Range { min: 384, max: 384 }, sample_format: I32 }"
+    },
+    {
+      "driver": "Realtek ASIO",
+      "input": "SupportedStreamConfig { channels: 2, sample_rate: 0, buffer_size: Range { min: 1024, max: 1024 }, sample_format: I16 }",
+      "output": "SupportedStreamConfig { channels: 8, sample_rate: 0, buffer_size: Range { min: 1024, max: 1024 }, sample_format: I24 }"
+    },
+    {
+      "driver": "Voicemeeter Insert Virtual ASIO",
+      "input": "SupportedStreamConfig { channels: 22, sample_rate: 96000, buffer_size: Range { min: 512, max: 512 }, sample_format: F32 }",
+      "output": "SupportedStreamConfig { channels: 22, sample_rate: 96000, buffer_size: Range { min: 512, max: 512 }, sample_format: F32 }"
+    }
+  ]
+}

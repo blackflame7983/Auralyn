@@ -31,7 +31,9 @@ class CompareTests(unittest.TestCase):
         binary, plan_path, directory = map(Path, args[-3:])
         self.calls.append(binary.name)
         directory.mkdir()
-        sample = {"elapsed": 1.1, "cpu_one_core_percent": 10 if binary == self.before else 20, "private_bytes": 100}
+        sample = {"elapsed": 1.1, "cpu_one_core_percent": 10 if binary == self.before else 20, "private_bytes": 100, "working_set_bytes": 120, "os_peak_working_set_bytes": 140, "os_peak_commit_bytes": 160}
+        if self.mode == "missing_peak":
+            del sample["os_peak_commit_bytes"]
         if self.mode == "nan":
             sample["cpu_one_core_percent"] = float("nan")
         if self.mode == "window":
@@ -53,12 +55,13 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(summary["status"], "success")
         self.assertEqual(summary["aggregate"]["before"]["active"]["repeats"], 3)
         self.assertEqual(summary["aggregate"]["after"]["active"]["cpu_one_core_mean_percent"], 20)
+        self.assertEqual(summary["aggregate"]["after"]["active"]["os_peak_commit_bytes"], 160)
         self.assertEqual(summary["provenance"]["plan"]["sha256"], compare.digest(self.plan_path))
         self.assertEqual(json.loads((self.base / "output" / "summary.json").read_text(encoding="utf-8")), summary)
         self.assertEqual((self.base / "output" / "01-before.stdout.log").read_text(encoding="utf-8"), "out")
 
     def test_failed_and_invalid_trials_are_not_aggregated(self):
-        for mode in ("failure", "nan", "window", "command_error", "missing_response"):
+        for mode in ("failure", "nan", "window", "command_error", "missing_response", "missing_peak"):
             with self.subTest(mode=mode):
                 self.mode = mode
                 summary = self.run_compare(self.base / mode)
@@ -92,6 +95,14 @@ class CompareTests(unittest.TestCase):
             summary = compare.run(self.before, self.after, self.plan_path, self.base / "changed", 3)
         self.assertTrue(all(t["status"] == "failed" for t in summary["trials"]))
         self.assertEqual(summary["aggregate"]["before"]["active"]["repeats"], 0)
+
+    def test_invalid_measurement_durations(self):
+        for duration in (0, -1, 0.01, float("nan"), float("inf")):
+            with self.subTest(duration=duration):
+                self.plan[1]["measure_seconds"] = duration
+                self.plan_path.write_text(json.dumps(self.plan), encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    compare.load_plan(self.plan_path)
 
     def test_expected_response_is_checked_again(self):
         self.plan[0]["expect"] = "Started"

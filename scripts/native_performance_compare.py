@@ -34,8 +34,8 @@ def load_plan(path):
             raise ValueError("every step requires a nonempty label")
         if "measure_seconds" in step:
             duration = step["measure_seconds"]
-            if not number(duration) or duration <= 0 or step["label"] in labels:
-                raise ValueError("measurement durations must be positive and labels unique")
+            if not number(duration) or duration < 0.1 or step["label"] in labels:
+                raise ValueError("measurement durations must be at least 0.1 seconds and labels unique")
             labels.add(step["label"])
     if not labels:
         raise ValueError("plan requires at least one measurement")
@@ -66,7 +66,7 @@ def validate_result(result, plan):
         if not isinstance(samples, list) or not samples:
             raise ValueError("measurement has no samples")
         for sample in samples:
-            if not isinstance(sample, dict) or any(not number(sample.get(key)) or sample[key] < 0 for key in ("elapsed", "cpu_one_core_percent", "private_bytes")):
+            if not isinstance(sample, dict) or any(not number(sample.get(key)) or sample[key] < 0 for key in ("elapsed", "cpu_one_core_percent", "private_bytes", "working_set_bytes", "os_peak_working_set_bytes", "os_peak_commit_bytes")):
                 raise ValueError("invalid measurement sample")
         if any(samples[i]["elapsed"] <= samples[i - 1]["elapsed"] for i in range(1, len(samples))) or samples[-1]["elapsed"] < expected["measure_seconds"]:
             raise ValueError("incomplete measurement window")
@@ -74,7 +74,10 @@ def validate_result(result, plan):
         private = max(s["private_bytes"] for s in samples)
         if not number(cpu) or not number(private):
             raise ValueError("invalid aggregate")
-        measurements[expected["label"]] = {"cpu_one_core_mean_percent": cpu, "max_private_bytes": private}
+        measurements[expected["label"]] = {"cpu_one_core_mean_percent": cpu, "max_private_bytes": private,
+            "max_working_set_bytes": max(s["working_set_bytes"] for s in samples),
+            "os_peak_working_set_bytes": max(s["os_peak_working_set_bytes"] for s in samples),
+            "os_peak_commit_bytes": max(s["os_peak_commit_bytes"] for s in samples)}
     return measurements
 
 
@@ -91,7 +94,8 @@ def aggregate(trials, labels):
             result[version][label] = {"status": "available", "repeats": len(values),
                 "cpu_one_core_mean_percent": statistics.mean(cpus), "cpu_one_core_range_percent": [min(cpus), max(cpus)],
                 "cpu_one_core_stdev_percent": statistics.pstdev(cpus),
-                "max_private_bytes": max(v["max_private_bytes"] for v in values)}
+                "max_private_bytes": max(v["max_private_bytes"] for v in values),
+                **{key: max(v[key] for v in values) for key in ("max_working_set_bytes", "os_peak_working_set_bytes", "os_peak_commit_bytes")}}
     return result
 
 

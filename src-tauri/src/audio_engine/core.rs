@@ -25,6 +25,8 @@ mod capabilities;
 mod commands;
 #[path = "core/lifecycle.rs"]
 pub(super) mod lifecycle;
+#[path = "core/native_stream.rs"]
+mod native_stream;
 #[path = "core/session_rack.rs"]
 mod session_rack;
 #[path = "core/startup.rs"]

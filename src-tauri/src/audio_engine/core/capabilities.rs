@@ -30,6 +30,31 @@ impl CapabilitySnapshot {
         ranges.dedup();
         Some(ranges)
     }
+    pub(super) fn native_format(&self) -> SampleFormat {
+        self.default.sample_format()
+    }
+
+    /// ASIO は native 形式と既定チャンネルに一致する範囲のみを公開する。
+    pub(super) fn native_rate_ranges(&self) -> Option<Vec<(u32, u32)>> {
+        let supported = self.supported.as_ref()?;
+        let format = self.native_format();
+        let mut ranges: Vec<_> = supported
+            .iter()
+            .filter(|range| {
+                range.channels() == self.default.channels()
+                    && range.sample_format() == format
+                    && range.max_sample_rate() > 0
+            })
+            .map(|range| (range.min_sample_rate().max(1), range.max_sample_rate()))
+            .collect();
+        if self.default.sample_rate() > 0 {
+            ranges.push((self.default.sample_rate(), self.default.sample_rate()));
+        }
+        ranges.sort_unstable();
+        ranges.dedup();
+        Some(ranges)
+    }
+
     pub(super) fn capture<I: Iterator<Item = SupportedStreamConfigRange>>(
         default: impl FnOnce() -> Result<SupportedStreamConfig>,
         supported: impl FnOnce() -> Result<I>,
@@ -92,25 +117,30 @@ impl CapabilitySnapshot {
         self.default.sample_rate()
     }
 
-    /// 既定configそのもの、または同じ既定chの明示F32 rangeだけを証拠にする。
-    /// defaultの形式が別でも、明示F32対応があればbuildでの受理を試せる。
-    fn supports_default_channels_f32(&self, config: &StreamConfig) -> bool {
-        config.channels > 0
+    /// rate 0 は未取得値。無効な再試行で元の機器エラーを上書きしない。
+    pub(super) fn default_retry_rate(&self) -> Option<u32> {
+        (self.default_rate() > 0).then_some(self.default_rate())
+    }
+
+    /// native 形式の既定構成または同一形式・ch の range のみを根拠とする。
+    fn supports_native(&self, config: &StreamConfig) -> bool {
+        let format = self.native_format();
+        super::native_stream::supported_format(format)
+            && config.channels > 0
             && config.channels == self.default.channels()
             && config.sample_rate > 0
-            && ((self.default.sample_format() == SampleFormat::F32
-                && config.sample_rate == self.default.sample_rate())
+            && (config.sample_rate == self.default.sample_rate()
                 || self.supported.as_ref().is_some_and(|ranges| {
                     ranges.iter().any(|range| {
                         range.channels() == config.channels
-                            && range.sample_format() == SampleFormat::F32
+                            && range.sample_format() == format
                             && range.min_sample_rate() <= config.sample_rate
                             && range.max_sample_rate() >= config.sample_rate
                     })
                 }))
     }
 
-    /// ASIOの共有driverへ別rate/bufferを順に設定しない。入力の既定chは維持する。
+    /// ASIO の共有 driver では入出力の rate と buffer を揃える。
     pub(super) fn asio_input_config(
         &self,
         output_capabilities: &Self,
@@ -118,35 +148,27 @@ impl CapabilitySnapshot {
         output: &StreamConfig,
     ) -> Result<StreamConfig> {
         anyhow::ensure!(
-            output_capabilities.supports_default_channels_f32(output),
-            "ASIO出力の既定ch・F32・選択rateの対応を確認できません。{}",
-            output_capabilities.f32_support_help()
+            super::native_stream::supported_format(output_capabilities.native_format()),
+            "ASIO出力の音声形式 {:?} は未対応です。接続方式をWASAPIに変更してください。",
+            output_capabilities.native_format()
+        );
+        anyhow::ensure!(
+            super::native_stream::supported_format(self.native_format()),
+            "ASIO入力の音声形式 {:?} は未対応です。接続方式をWASAPIに変更してください。",
+            self.native_format()
+        );
+        anyhow::ensure!(
+            output_capabilities.supports_native(output),
+            "ASIO出力の既定ch・native形式・選択rateの対応を確認できません。"
         );
         let mut input = input.clone();
         input.sample_rate = output.sample_rate;
         input.buffer_size = output.buffer_size;
         anyhow::ensure!(
-            self.supports_default_channels_f32(&input),
-            "ASIO入力の既定ch・F32・共通rateの対応を確認できません。{}",
-            self.f32_support_help()
+            self.supports_native(&input),
+            "ASIO入力の既定ch・native形式・共通rateの対応を確認できません。"
         );
         Ok(input)
-    }
-
-    fn f32_support_help(&self) -> &'static str {
-        // 一覧が欠測なら未対応とは断定しない。ASIO backendはnative形式との一致が必要。
-        if self.default.sample_format() != SampleFormat::F32
-            && self.supported.as_ref().is_some_and(|ranges| {
-                !ranges.iter().any(|range| {
-                    range.channels() == self.default.channels()
-                        && range.sample_format() == SampleFormat::F32
-                })
-            })
-        {
-            "この機器が報告した音声形式は本アプリでは未対応です。接続方式をWASAPIに変更するか、別のASIO機器を選んでください。"
-        } else {
-            "選択した構成での対応を確認できません。機器の対応情報を再検出し、対応する周波数を選ぶか、接続方式をWASAPIへ変更してください。"
-        }
     }
 
     pub(super) fn default_buffer_range(&self) -> Option<(u32, u32)> {
@@ -197,25 +219,14 @@ mod tests {
     use cpal::SampleFormat;
 
     #[test]
-    fn asio_help_distinguishes_known_native_format_from_missing_capabilities() {
-        let native =
-            SupportedStreamConfig::new(2, 48_000, SupportedBufferSize::Unknown, SampleFormat::I32);
-        let ranges = vec![SupportedStreamConfigRange::new(
-            2,
-            48_000,
-            48_000,
-            SupportedBufferSize::Unknown,
-            SampleFormat::I32,
-        )];
+    fn missing_default_rate_never_replaces_the_selected_rate_in_a_retry() {
         let mut snapshot = CapabilitySnapshot {
-            default: native,
-            supported: Some(ranges),
+            default: default(0, 2, SupportedBufferSize::Unknown),
+            supported: None,
         };
-        assert!(snapshot.f32_support_help().contains("未対応"));
-        assert!(snapshot.f32_support_help().contains("WASAPI"));
-        snapshot.supported = None;
-        assert!(!snapshot.f32_support_help().contains("未対応"));
-        assert!(snapshot.f32_support_help().contains("再検出"));
+        assert_eq!(snapshot.default_retry_rate(), None);
+        snapshot.default = default(48_000, 2, SupportedBufferSize::Unknown);
+        assert_eq!(snapshot.default_retry_rate(), Some(48_000));
     }
 
     #[test]
@@ -250,7 +261,7 @@ mod tests {
             );
             let describe = |result: &Result<CapabilitySnapshot>| match result {
                 Ok(snapshot) => {
-                    serde_json::json!({"default": format!("{:?}", snapshot.default), "supported": format!("{:?}", snapshot.supported), "f32Help": snapshot.f32_support_help()})
+                    serde_json::json!({"default": format!("{:?}", snapshot.default), "supported": format!("{:?}", snapshot.supported)})
                 }
                 Err(error) => serde_json::json!({"error": error.to_string()}),
             };
@@ -383,19 +394,95 @@ mod tests {
         };
         assert!(different_format
             .asio_input_config(&known, &different_format.input_config(None), &out48)
-            .is_ok());
+            .is_err());
         assert!(different_format
             .asio_input_config(
                 &known,
                 &different_format.input_config(None),
                 &known.output_config(None, None)
             )
-            .is_err());
+            .is_ok());
         let mut wrong_channels = known.input_config(None);
         wrong_channels.channels = 1;
         assert!(known
             .asio_input_config(&known, &wrong_channels, &out48)
             .is_err());
+    }
+
+    #[test]
+    fn asio_native_formats_require_matching_channel_format_and_nonzero_rate() {
+        for format in [
+            SampleFormat::F32,
+            SampleFormat::I16,
+            SampleFormat::I24,
+            SampleFormat::I32,
+        ] {
+            let snapshot = CapabilitySnapshot {
+                default: SupportedStreamConfig::new(
+                    2,
+                    48_000,
+                    SupportedBufferSize::Unknown,
+                    format,
+                ),
+                supported: Some(vec![
+                    SupportedStreamConfigRange::new(
+                        2,
+                        88_200,
+                        96_000,
+                        SupportedBufferSize::Unknown,
+                        format,
+                    ),
+                    SupportedStreamConfigRange::new(
+                        1,
+                        44_100,
+                        44_100,
+                        SupportedBufferSize::Unknown,
+                        format,
+                    ),
+                    SupportedStreamConfigRange::new(
+                        2,
+                        32_000,
+                        32_000,
+                        SupportedBufferSize::Unknown,
+                        SampleFormat::U16,
+                    ),
+                ]),
+            };
+            assert_eq!(snapshot.native_format(), format);
+            assert_eq!(
+                snapshot.native_rate_ranges(),
+                Some(vec![(48_000, 48_000), (88_200, 96_000)])
+            );
+            let mut config = snapshot.input_config(None);
+            assert!(snapshot
+                .asio_input_config(&snapshot, &config, &config)
+                .is_ok());
+            config.sample_rate = 96_000;
+            assert!(snapshot
+                .asio_input_config(&snapshot, &config, &config)
+                .is_ok());
+            for rate in [0, 32_000, 44_100, 96_001] {
+                config.sample_rate = rate;
+                assert!(snapshot
+                    .asio_input_config(&snapshot, &config, &config)
+                    .is_err());
+            }
+        }
+        let unsupported = CapabilitySnapshot {
+            default: SupportedStreamConfig::new(
+                2,
+                48_000,
+                SupportedBufferSize::Unknown,
+                SampleFormat::F64,
+            ),
+            supported: None,
+        };
+        let config = unsupported.input_config(None);
+        let error = unsupported
+            .asio_input_config(&unsupported, &config, &config)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("WASAPI"));
     }
 
     #[test]
