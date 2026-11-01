@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
+import { StrictMode } from 'react';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { AudioSettingsModal } from '../AudioSettingsModal';
@@ -17,6 +18,19 @@ beforeEach(() => {
     });
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+it.each(['音声処理の最適化', '診断情報', '設定の移行'])('StrictModeでも%sを開閉し、タブ移動後に開閉状態を保持する', async name => {
+    render(<StrictMode><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} /></StrictMode>);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム' }), { button: 0, ctrlKey: false });
+    const details = screen.getByText(name).closest('details')!;
+    fireEvent.click(within(details).getByText(name));
+    await waitFor(() => expect(details).toHaveAttribute('open'));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: '外観' }), { button: 0, ctrlKey: false });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム' }), { button: 0, ctrlKey: false });
+    expect(screen.getByText(name).closest('details')).toHaveAttribute('open');
+    fireEvent.click(screen.getByText(name));
+    await waitFor(() => expect(screen.getByText(name).closest('details')).not.toHaveAttribute('open'));
+});
 
 it.each(['ja', 'en'] as const)('システム操作の対象と確認を区別する (%s)', async locale => {
     const store = createLocaleStore(() => locale, () => true);

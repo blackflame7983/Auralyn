@@ -177,7 +177,10 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                 >
                   {t('settings.AudioSettingsModal.196')}</button>
             </section>
-            <details open={openSections.optimization} onToggle={event => setOpenSections(prev => ({ ...prev, optimization: event.currentTarget.open }))} className="rounded-xl border border-border p-4 space-y-3">
+            <details open={openSections.optimization} onToggle={event => {
+              const open = event.currentTarget.open;
+              setOpenSections(prev => ({ ...prev, optimization: open }));
+            }} className="rounded-xl border border-border p-4 space-y-3">
               <summary className="cursor-pointer"><h3 className="inline font-semibold">{t('structure.optimization')}</h3></summary>
             {/* Engine Tuning */}
             <div className="space-y-2">
@@ -274,7 +277,10 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             </div>
 
             </details>
-            <details open={openSections.diagnostics} onToggle={event => setOpenSections(prev => ({ ...prev, diagnostics: event.currentTarget.open }))} className="rounded-xl border border-border p-4 space-y-3">
+            <details open={openSections.diagnostics} onToggle={event => {
+              const open = event.currentTarget.open;
+              setOpenSections(prev => ({ ...prev, diagnostics: open }));
+            }} className="rounded-xl border border-border p-4 space-y-3">
               <summary className="cursor-pointer"><h3 className="inline font-semibold">{t('structure.diagnostics')}</h3></summary>
               <button
                     onClick={refreshEngineRuntimeStats}
@@ -362,7 +368,10 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
               </div>
             </section>
 
-            <details open={openSections.migration} onToggle={event => setOpenSections(prev => ({ ...prev, migration: event.currentTarget.open }))} className="rounded-xl border border-border p-4 space-y-3">
+            <details open={openSections.migration} onToggle={event => {
+              const open = event.currentTarget.open;
+              setOpenSections(prev => ({ ...prev, migration: open }));
+            }} className="rounded-xl border border-border p-4 space-y-3">
               <summary className="cursor-pointer"><h3 className="inline font-semibold">{t('structure.migration')}</h3></summary>
               <MigrationPanel />
             </details>
