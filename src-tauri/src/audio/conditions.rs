@@ -187,6 +187,7 @@ pub(super) fn command_changes(command: &Command) -> bool {
         Command::NoiseMeasurement { request } => !matches!(request, crate::audio_engine::core::noise_learning::Request::Snapshot),
         Command::VoiceCheckPreview { request } => matches!(request.action, crate::audio_engine::voice_check::preview::Action::ApplyNoise { .. } | crate::audio_engine::voice_check::preview::Action::UndoNoise { .. } | crate::audio_engine::voice_check::preview::Action::RedoNoise { .. }),
         Command::LiveOutput { config } => config.is_some(),
+        Command::ModeMonitor { request } => matches!(request, crate::audio_engine::split_monitor::Request::Restore { .. }),
         Command::AutoGain { request } => matches!(
             request,
             Request::Initialize { .. } | Request::Apply { .. } | Request::Restore { .. } | Request::UndoHistory { .. } | Request::RedoHistory { .. }
@@ -198,6 +199,15 @@ pub(super) fn command_changes(command: &Command) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn monitor_snapshot_is_readonly_and_restore_invalidates_conditions() {
+        assert!(!command_changes(&Command::ModeMonitor {
+            request: crate::audio_engine::split_monitor::Request::Snapshot
+        }));
+        assert!(command_changes(&Command::ModeMonitor {
+            request: crate::audio_engine::split_monitor::Request::Restore { state: None }
+        }));
+    }
     #[test]
     fn nr_measurement_and_peak_reads_preserve_witness_but_explicit_adoption_invalidates_it() {
         use crate::audio_engine::core::noise_learning::Request as Noise;

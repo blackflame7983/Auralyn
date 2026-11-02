@@ -2,6 +2,7 @@ pub(crate) mod conditions;
 pub(crate) mod frontend_bootstrap;
 mod live_modes;
 mod mode_vst;
+mod output_bundle;
 pub(crate) mod process_inputs;
 mod replies;
 mod session_rack;
@@ -211,6 +212,8 @@ pub struct AudioHost {
     process_inputs: process_inputs::Inputs,
     is_global_muted: bool,
     engine_tuning: EngineTuningConfig,
+    bundle_output_override: Option<crate::audio_engine::live_output::Config>,
+    output_gain_initialized: bool,
     #[cfg(windows)]
     engine_job: Option<win_job::Job>,
 }
@@ -220,6 +223,14 @@ impl AudioHost {
         self.is_global_muted
     }
     pub(crate) fn checked_snapshot_supported(&mut self) -> Result<()> {
+        self.output_snapshot_supported()?;
+        anyhow::ensure!(
+            self.live_output(None)?.config == Default::default(),
+            "確認済み保存・復帰で分離出力を含める場合は、出力構成も保存してください"
+        );
+        Ok(())
+    }
+    pub(crate) fn output_snapshot_supported(&mut self) -> Result<()> {
         self.preflight_live_changes()?;
         anyhow::ensure!(
             self.active_config
@@ -228,7 +239,22 @@ impl AudioHost {
                 .is_none_or(|s| *s == crate::input_source::Config::default()),
             "この入力は確認済み保存・復帰に未対応です。VST単体の設定を保存してください"
         );
-        anyhow::ensure!(self.live_modes.target.is_none() && self.live_output(None)?.config == Default::default(), "確認済み保存・復帰は単一出力・カスタム音作りが対象です。モニター分離や歌/雑談は各設定で管理してください");
+        anyhow::ensure!(
+            self.live_modes.target.is_none(),
+            "歌／雑談モードの保存・復帰には未対応です。カスタム構成を使用してください"
+        );
+        let config = self.live_output(None)?.config;
+        if config.split_processing {
+            match self.execute_running_command(IpcCommand::ModeMonitor {
+                request: crate::audio_engine::split_monitor::Request::Snapshot,
+            })? {
+                IpcResponse::ModeMonitor(snapshot) => {
+                    crate::bundle::output_configuration::validate_custom_monitor(&config, &snapshot)
+                        .map_err(anyhow::Error::msg)?
+                }
+                _ => return Err(anyhow!("現在の自分用処理を確認できません")),
+            }
+        }
         Ok(())
     }
     pub(crate) fn preflight_runtime_checkpoint(&mut self) -> Result<()> {
@@ -367,6 +393,8 @@ impl AudioHost {
             process_inputs: Default::default(),
             is_global_muted: recovery_muted,
             engine_tuning: EngineTuningConfig::default(),
+            bundle_output_override: None,
+            output_gain_initialized: false,
             #[cfg(windows)]
             engine_job: None,
         }
@@ -593,6 +621,7 @@ impl AudioHost {
 
         self.stdin = Some(stdin);
         self.child = Some(child);
+        self.output_gain_initialized = false;
         self.engine_generation = self.engine_generation.wrapping_add(1);
         self.device_scan = None;
 
@@ -1266,9 +1295,16 @@ impl AudioHost {
         }
         require_identity_capability(&cmd, |probe| self.execute_running_command(probe))?;
         let live_path = self.last_config_path.with_file_name("live_output.json");
-        if live_path.exists() {
-            let config: crate::audio_engine::live_output::Config =
-                serde_json::from_slice(&std::fs::read(live_path)?)?;
+        let live_config = if let Some(config) = &self.bundle_output_override {
+            Some(config.clone())
+        } else if live_path.exists() {
+            Some(serde_json::from_slice::<
+                crate::audio_engine::live_output::Config,
+            >(&std::fs::read(live_path)?)?)
+        } else {
+            None
+        };
+        if let Some(config) = live_config {
             config.validate()?;
             match self.execute_running_command(IpcCommand::LiveOutput {
                 config: Some(config),
@@ -1339,6 +1375,7 @@ impl AudioHost {
                 self.remember_input_source(input_source);
                 if let Some(controls) = initial_controls {
                     self.is_global_muted = controls.muted;
+                    self.output_gain_initialized = true;
                 }
 
                 Ok(AudioConfig {
@@ -1686,6 +1723,7 @@ impl AudioHost {
     pub fn set_output_gain(&mut self, value: f32) -> Result<()> {
         match self.execute_command(IpcCommand::SetOutputGain { value })? {
             IpcResponse::Success => {
+                self.output_gain_initialized = true;
                 // プリセットからの変更も、RT反映前に成功として保存させない。
                 for _ in 0..100 {
                     let state = self.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
@@ -1717,6 +1755,20 @@ impl AudioHost {
             &request,
             crate::audio_engine::auto_gain::Request::Initialize { .. }
         );
+        let explicit_gain_update = matches!(
+            &request,
+            crate::audio_engine::auto_gain::Request::Apply { .. }
+                | crate::audio_engine::auto_gain::Request::Restore { .. }
+                | crate::audio_engine::auto_gain::Request::UndoHistory { .. }
+                | crate::audio_engine::auto_gain::Request::RedoHistory { .. }
+        );
+        // Engine側も明示設定後のInitializeを無視する。Hostでも読取にし、
+        // 再起動通知に伴う遅い初期化で復帰・Undoのwitnessを自己失効させない。
+        let request = if initializing && self.output_gain_initialized {
+            crate::audio_engine::auto_gain::Request::Status
+        } else {
+            request
+        };
         if matches!(request, crate::audio_engine::auto_gain::Request::Cancel)
             && self.reap_confirmed_stopped_connection()?
         {
@@ -1760,8 +1812,14 @@ impl AudioHost {
         };
         match response {
             IpcResponse::AutoGain(state) => {
+                if explicit_gain_update {
+                    self.output_gain_initialized = true;
+                }
                 if initializing && !state.stream_failed {
                     self.frontend_bootstrap.output_gain = Some(state.gain);
+                    if state.running {
+                        self.output_gain_initialized = true;
+                    }
                 }
                 Ok(state)
             }
@@ -2276,6 +2334,7 @@ impl AudioHost {
     }
 
     pub fn kill_engine(&mut self) {
+        self.output_gain_initialized = false;
         if self.mode_vst.busy() {
             self.cancel_mode_vst("音声エンジンが終了したため手動復旧が必要です");
         }

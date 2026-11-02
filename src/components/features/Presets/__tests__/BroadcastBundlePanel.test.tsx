@@ -25,6 +25,30 @@ beforeEach(() => {
     vi.mocked(bundleApi.save).mockResolvedValue(undefined);
 });
 afterEach(cleanup);
+it.each(['missingDevices', 'missingPlugins'] as const)('分離出力の%sを先に示し、適用を禁止する', async kind => {
+    vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, output: { before: null, after: { deviceId: 'cable', monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, restartRequired: true, [kind]: ['missing fixture'] } });
+    render(<BroadcastBundlePanel onOperation={vi.fn()} />);
+    await showPlan();
+    expect(screen.getByRole('alert')).toHaveTextContent('missing fixture');
+    expect(screen.getByRole('button', { name: 'この変更予定を適用する' })).toBeDisabled();
+});
+it('分離出力を含めると全カテゴリを固定し、差分には再起動と両枝の値を示す', async () => {
+    vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, output: { before: { deviceId: null, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, after: { deviceId: 'broadcast-id', monitorTrim: 0, broadcastTrim: 0.5, monitorMuted: true, splitProcessing: false }, restartRequired: true } });
+    render(<BroadcastBundlePanel />);
+    await screen.findByRole('option', { name: '歌枠' });
+    fireEvent.click(screen.getByRole('checkbox', { name: message('ja', 'bundle.output.include') }));
+    expect(screen.getByRole('checkbox', { name: '入出力・音量' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: '入出力・音量' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), { target: { value: 'output' } });
+    fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
+    await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('output', { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }, null, false, undefined, true));
+    await showPlan();
+    const diff = screen.getByRole('region', { name: message('ja', 'bundle.output.diff') });
+    expect(diff).toHaveTextContent(message('ja', 'bundle.output.restart'));
+    expect(diff).toHaveTextContent('broadcast-id');
+    expect(diff).toHaveTextContent(message('ja', 'bundle.output.monitorTrim'));
+    expect(diff).toHaveTextContent(message('ja', 'bundle.output.broadcastTrim'));
+});
 it.each([false, true])('一時退避の読込可能=%sを区別し、未完了を復帰可能と表示しない', async readable => {
     vi.mocked(bundleApi.recovery).mockResolvedValue({ id: 'runtime-private-id', readable, runtimeCheckpoint: true });
     vi.mocked(bundleApi.recoveryPreview).mockResolvedValue({ ...plan, name: 'runtime-private-id' });

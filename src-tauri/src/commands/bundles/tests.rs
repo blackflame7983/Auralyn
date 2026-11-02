@@ -1,10 +1,104 @@
 use super::*;
 #[test]
+fn output_configuration_and_external_file_changes_invalidate_the_preview() {
+    let mut before = captured();
+    before.output = Some(bundle::OutputConfiguration {
+        version: 1,
+        devices: bundle::RecoveryDevices {
+            input_id: "mic".into(),
+            output_id: "monitor".into(),
+        },
+        config: Default::default(),
+    });
+    let mut after = before.clone();
+    assert!(unchanged(&before, &after));
+    after.output.as_mut().unwrap().config.broadcast_trim = 0.5;
+    assert!(!unchanged(&before, &after));
+    after = before.clone();
+    after.output_revision = "external edit".into();
+    assert!(!unchanged(&before, &after));
+}
+#[test]
+fn output_restore_requires_current_mute_and_exact_primary_and_secondary_ids() {
+    let mut current = captured();
+    current.engine.running = true;
+    current.active = Some(audio::ActiveAudioConfig {
+        host: "WASAPI".into(),
+        input: Some("Mic".into()),
+        output: Some("Monitor".into()),
+        input_id: Some("mic-id".into()),
+        output_id: Some("monitor-id".into()),
+        ..Default::default()
+    });
+    let mut saved = BundleV1 {
+        output: Some(bundle::OutputConfiguration {
+            version: 1,
+            devices: active_devices(current.active.as_ref()).unwrap(),
+            config: crate::audio_engine::live_output::Config {
+                device_id: Some("broadcast-id".into()),
+                ..Default::default()
+            },
+        }),
+        schema_version: 2,
+        revision: "1".into(),
+        name: "output".into(),
+        categories: ProfileSaveCategories {
+            include_plugins: true,
+            include_audio_config: true,
+            include_noise_control: true,
+            include_builtin_fx: true,
+        },
+        embedded_auralyn_preset: current.preset.clone(),
+        obs: None,
+        confirmation: None,
+        level_intent: None,
+    };
+    saved.embedded_auralyn_preset.audio_config = Some(ProfileAudioConfig {
+        host: "WASAPI".into(),
+        input_device: Some("Mic".into()),
+        output_device: Some("Monitor".into()),
+        sample_rate: 48000,
+        buffer_size: 512,
+        input_channels: vec![0, 1],
+        output_routing: Default::default(),
+        input_gain_db: 0.,
+        master_gain_db: 0.,
+    });
+    let device = |name: &str, id: &str, is_input| audio::AudioDevice {
+        sample_rate_ranges: None,
+        name: name.into(),
+        host: "WASAPI".into(),
+        id: Some(id.into()),
+        is_input,
+        channels: 2,
+        buffer_size_range: None,
+        index: 0,
+        is_default: false,
+    };
+    let mut devices = audio::AudioDeviceList {
+        inputs: vec![device("Mic", "mic-id", true)],
+        outputs: vec![
+            device("Monitor", "monitor-id", false),
+            device("Cable", "broadcast-id", false),
+        ],
+    };
+    validate_output_devices(&saved, &current, &devices).unwrap();
+    current.engine.global_mute = false;
+    assert!(validate_output_devices(&saved, &current, &devices).is_err());
+    current.engine.global_mute = true;
+    devices.outputs[1].id = Some("replacement-id".into());
+    assert!(validate_output_devices(&saved, &current, &devices).is_err());
+    devices.outputs[1].id = Some("broadcast-id".into());
+    current.active.as_mut().unwrap().input_id = Some("same-name-new-id".into());
+    assert!(validate_output_devices(&saved, &current, &devices).is_err());
+}
+#[test]
 fn saved_preview_rejects_same_revision_edits_and_different_operation() {
     let before = captured();
     let plan = Preview {
         id: "preview".into(),
         bundle: BundleV1 {
+            output: None,
             schema_version: 1,
             revision: "1".into(),
             name: "original".into(),
@@ -69,6 +163,7 @@ fn runtime_restore_requires_explicit_start_and_current_mute() {
 fn runtime_restore_accepts_only_default_equivalent_omitted_fx_fields() {
     let mut before = captured();
     let mut target = BundleV1 {
+        output: None,
         schema_version: 1,
         revision: "1".into(),
         name: "fx".into(),
@@ -280,6 +375,8 @@ fn captured() -> Captured {
         },
     };
     Captured {
+        output: None,
+        output_revision: "absent".into(),
         preset: Preset {
             plugins_included: Some(true),
             schema_version: 2,
@@ -313,6 +410,7 @@ fn output_routing_roundtrip_preview_partial_and_undo_intent() {
     };
     before.preset.audio_config = Some(audio.clone());
     let mut target = BundleV1 {
+        output: None,
         schema_version: 1,
         revision: "1".into(),
         name: "test".into(),
@@ -458,6 +556,7 @@ fn checked_save_requires_a_running_unmuted_settled_stream_and_the_exact_observed
 fn preview_and_result_expose_differences_without_opaque_state_or_default_buffer_claim() {
     let before = captured();
     let target = BundleV1 {
+        output: None,
         schema_version: 1,
         revision: "1".into(),
         name: "test".into(),
@@ -559,6 +658,7 @@ fn selected_backup_does_not_include_untouched_categories_and_empty_rack_is_expli
     assert!(backup.builtin_fx.is_none());
     assert!(backup.audio_config.is_none());
     let target = BundleV1 {
+        output: None,
         schema_version: 1,
         revision: "1".into(),
         name: "empty".into(),

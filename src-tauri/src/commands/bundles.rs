@@ -85,11 +85,14 @@ struct Captured {
     engine: EngineCapture,
     preset: Preset,
     active: Option<audio::ActiveAudioConfig>,
+    output: Option<bundle::OutputConfiguration>,
+    output_revision: String,
 }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreviewView {
+    pub output: Option<OutputPreview>,
     pub id: String,
     pub name: String,
     pub revision: String,
@@ -98,6 +101,61 @@ pub(crate) struct PreviewView {
     pub running: bool,
     pub auralyn: Vec<DiffRow>,
     pub confirmation: Option<bundle::Confirmation>,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OutputPreview {
+    before: Option<crate::audio_engine::live_output::Config>,
+    after: crate::audio_engine::live_output::Config,
+    restart_required: bool,
+    missing_devices: Vec<String>,
+    missing_plugins: Vec<String>,
+}
+fn missing_output_plugins(bundle: &BundleV1) -> Result<Vec<String>, String> {
+    let mut missing = Vec::new();
+    for plugin in &bundle.embedded_auralyn_preset.plugins {
+        match std::path::Path::new(&plugin.path).try_exists() {
+            Ok(true) => {}
+            Ok(false) => missing.push(plugin.name.clone()),
+            Err(_) => {
+                return Err("VSTファイルを確認できません。アクセス権を確認してください".into())
+            }
+        }
+    }
+    Ok(missing)
+}
+fn missing_output_devices(bundle: &BundleV1, devices: &audio::AudioDeviceList) -> Vec<String> {
+    let Some(output) = &bundle.output else {
+        return vec![];
+    };
+    let mut missing = Vec::new();
+    for (list, id) in [
+        (&devices.inputs, &output.devices.input_id),
+        (&devices.outputs, &output.devices.output_id),
+    ] {
+        if list
+            .iter()
+            .filter(|device| device.id.as_ref() == Some(id))
+            .count()
+            != 1
+        {
+            missing.push(id.clone());
+        }
+    }
+    if let Some(id) = &output.config.device_id {
+        if devices
+            .outputs
+            .iter()
+            .filter(|device| {
+                device.host.eq_ignore_ascii_case("wasapi") && device.id.as_ref() == Some(id)
+            })
+            .count()
+            != 1
+        {
+            missing.push(id.clone());
+        }
+    }
+    missing
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -217,6 +275,8 @@ pub(crate) enum Request {
         obs: Option<Vec<obs_setup::bundle::Selection>>,
         #[serde(default)]
         checked: Option<Box<CheckedClaim>>,
+        #[serde(default)]
+        include_output: bool,
     },
     Preview {
         name: String,
@@ -262,6 +322,7 @@ fn validate_checked_conditions(
 async fn validate_checked(
     host: Arc<Mutex<audio::AudioHost>>,
     claim: &CheckedClaim,
+    include_output: bool,
 ) -> Result<(), String> {
     let expected = claim.expected.clone();
     super::run_blocking(move || {
@@ -276,8 +337,12 @@ async fn validate_checked(
             stats.preparation.as_deref(),
             &expected,
         )?;
-        host.checked_snapshot_supported()
-            .map_err(|e| e.to_string())?;
+        if include_output {
+            host.output_snapshot_supported()
+        } else {
+            host.checked_snapshot_supported()
+        }
+        .map_err(|e| e.to_string())?;
         Ok(())
     })
     .await
@@ -906,6 +971,15 @@ fn capture(host: &mut audio::AudioHost) -> Result<(Captured, ControlWitness), St
     let engine = host.capture_bundle_state().map_err(|e| e.to_string())?;
     witness.validate()?;
     let active = host.get_state().config;
+    let (output_config, output_revision) = host
+        .capture_bundle_output(engine.running)
+        .map_err(|e| e.to_string())?;
+    witness.validate()?;
+    let output = active_devices(active.as_ref()).map(|devices| bundle::OutputConfiguration {
+        version: 1,
+        devices,
+        config: output_config,
+    });
     let audio_config = active.clone().and_then(|c| {
         engine.fixed_buffer_request_frames?;
         Some(ProfileAudioConfig {
@@ -934,6 +1008,8 @@ fn capture(host: &mut audio::AudioHost) -> Result<(Captured, ControlWitness), St
             engine,
             preset,
             active,
+            output,
+            output_revision,
         },
         witness,
     ))
@@ -968,6 +1044,7 @@ pub(crate) fn preserve_temporary_runtime(
         include_builtin_fx: true,
     };
     let original = BundleV1 {
+        output: None,
         schema_version: 1,
         revision: bundle::revision(),
         name,
@@ -1008,6 +1085,8 @@ fn select(mut preset: Preset, categories: &ProfileSaveCategories) -> Result<Pres
 fn unchanged(before: &Captured, after: &Captured) -> bool {
     // opaque component stateも除外しない。処理由来の変動でも保守的に競合にする。
     before.engine == after.engine
+        && before.output == after.output
+        && before.output_revision == after.output_revision
         && before.preset == after.preset
         && before.active.as_ref().map(|a| (&a.input_id, &a.output_id))
             == after.active.as_ref().map(|a| (&a.input_id, &a.output_id))
@@ -1020,6 +1099,53 @@ fn complete(summary: &ApplyProfileSummary) -> bool {
 fn validate_runtime_restore(before: &Captured) -> Result<(), String> {
     if !before.engine.running || !before.engine.global_mute {
         return Err("元の機器を明示開始してミュートし、差分を取り直してください。復帰後もミュートを維持します".into());
+    }
+    Ok(())
+}
+fn validate_output_devices(
+    target: &BundleV1,
+    current: &Captured,
+    devices: &audio::AudioDeviceList,
+) -> Result<(), String> {
+    let Some(output) = &target.output else {
+        return Ok(());
+    };
+    validate_runtime_restore(current)?;
+    let audio = target
+        .embedded_auralyn_preset
+        .audio_config
+        .as_ref()
+        .ok_or("入出力設定がありません")?;
+    if active_devices(current.active.as_ref()).as_ref() != Some(&output.devices)
+        || !current.active.as_ref().is_some_and(|a| {
+            a.host.eq_ignore_ascii_case(&audio.host)
+                && a.input == audio.input_device
+                && a.output == audio.output_device
+        })
+        || !recovery_device_matches(
+            &devices.inputs,
+            &audio.host,
+            &audio.input_device,
+            &output.devices.input_id,
+        )
+        || !recovery_device_matches(
+            &devices.outputs,
+            &audio.host,
+            &audio.output_device,
+            &output.devices.output_id,
+        )
+        || output.config.device_id.as_ref().is_some_and(|id| {
+            devices
+                .outputs
+                .iter()
+                .filter(|d| d.host.eq_ignore_ascii_case("wasapi") && d.id.as_ref() == Some(id))
+                .count()
+                != 1
+        })
+    {
+        return Err(
+            "保存した主入出力と配信用出力をIDで特定できません。機器を明示選択してください".into(),
+        );
     }
     Ok(())
 }
@@ -1091,7 +1217,11 @@ fn selected_matches(target: &BundleV1, after: &Captured) -> bool {
     let level_matches = target.level_intent.as_ref().is_none_or(|level| {
         level.input_gain == after.engine.input_gain && level.output_gain == after.engine.output_gain
     });
-    plugins_match
+    target
+        .output
+        .as_ref()
+        .is_none_or(|output| after.output.as_ref() == Some(output))
+        && plugins_match
         && audio_matches
         && level_matches
         && preset
@@ -1105,6 +1235,50 @@ fn selected_matches(target: &BundleV1, after: &Captured) -> bool {
 }
 
 fn apply_selected(
+    root: &std::path::Path,
+    host: &mut audio::AudioHost,
+    target: &BundleV1,
+    before: &Captured,
+    device_ids: Option<bundle::RecoveryDevices>,
+) -> Result<ApplyProfileSummary, String> {
+    if let Some(output) = &target.output {
+        let audio = target
+            .embedded_auralyn_preset
+            .audio_config
+            .as_ref()
+            .ok_or("入出力設定がありません")?;
+        let initial = selected_start_intent(target, before)?;
+        return host.with_bundle_output(&output.config, &before.output_revision, |host| {
+            // 出力ファイルの旧値を使わず、最初のcallbackから現在のミュートを保持する。
+            host.start_bundle_with_device_ids(
+                Some(audio.host.clone()),
+                audio.input_device.clone(),
+                audio.output_device.clone(),
+                Some(audio.buffer_size),
+                Some(audio.sample_rate),
+                initial,
+                Some(output.devices.input_id.clone()),
+                Some(output.devices.output_id.clone()),
+            )
+            .map_err(|e| e.to_string())?;
+            let mut restarted = before.clone();
+            restarted.engine.plugins.clear();
+            restarted.preset.plugins.clear();
+            let mut summary =
+                apply_selected_core(root, host, target, &restarted, Some(output.devices.clone()))?;
+            if !complete(&summary) {
+                return Err(
+                    "VST・入出力をすべて復帰できません。音声を停止し原本を保持しています".into(),
+                );
+            }
+            summary.needs_engine_restart = true;
+            Ok(summary)
+        });
+    }
+    apply_selected_core(root, host, target, before, device_ids)
+}
+
+fn apply_selected_core(
     root: &std::path::Path,
     host: &mut audio::AudioHost,
     target: &BundleV1,
@@ -1241,6 +1415,7 @@ pub(crate) async fn broadcast_bundle(
             categories,
             obs: selection,
             checked,
+            include_output,
         } => {
             bundle::validate_name(&name)?;
             bundle::ensure_save_allowed(&root, &name, overwrite)?;
@@ -1255,9 +1430,35 @@ pub(crate) async fn broadcast_bundle(
                         "確認済み保存にはAuralynの全カテゴリを選び、OBSを外してください".into(),
                     );
                 }
-                validate_checked(host.clone(), claim).await?;
+                validate_checked(host.clone(), claim, include_output).await?;
             }
             let (captured, witness) = capture_async(host.clone()).await?;
+            if include_output {
+                let c = &categories;
+                if !(c.include_plugins
+                    && c.include_audio_config
+                    && c.include_noise_control
+                    && c.include_builtin_fx)
+                {
+                    return Err("分離出力の保存には全カテゴリが必要です".into());
+                }
+                let source = host.clone();
+                super::run_blocking(move || {
+                    source
+                        .lock()
+                        .map_err(|_| "音声状態を取得できません")?
+                        .output_snapshot_supported()
+                        .map_err(|e| e.to_string())
+                })
+                .await?;
+            } else if categories.include_audio_config
+                && captured
+                    .output
+                    .as_ref()
+                    .is_some_and(|output| output.config != Default::default())
+            {
+                return Err("分離出力の設定も保存することを選んでください。出力構成を省略して保存できません".into());
+            }
             let saved_obs = if let Some(selection) = selection {
                 Some(obs_setup::bundle::capture(&obs, &selection).await?)
             } else {
@@ -1272,7 +1473,7 @@ pub(crate) async fn broadcast_bundle(
                 );
             }
             if let Some(claim) = &checked {
-                validate_checked(host, claim).await?;
+                validate_checked(host, claim, include_output).await?;
             }
             let confirmation = checked.map(|claim| bundle::Confirmation {
                 checked_at_unix_ms: std::time::SystemTime::now()
@@ -1285,8 +1486,18 @@ pub(crate) async fn broadcast_bundle(
                 preparation: claim.expected,
             });
             let bundle = BundleV1 {
+                output: if include_output {
+                    Some(
+                        captured
+                            .output
+                            .clone()
+                            .ok_or("主入出力の機器IDを取得できません")?,
+                    )
+                } else {
+                    None
+                },
                 confirmation,
-                schema_version: 1,
+                schema_version: if include_output { 2 } else { 1 },
                 revision: bundle::revision(),
                 name,
                 categories: categories.clone(),
@@ -1314,7 +1525,19 @@ pub(crate) async fn broadcast_bundle(
                 }
                 _ => unreachable!(),
             };
-            let (before, witness) = capture_async(host).await?;
+            let (before, witness) = capture_async(host.clone()).await?;
+            let output_preview = if let Some(output) = &bundle.output {
+                let devices = super::audio::enumerate_devices_async(host.clone(), true).await?;
+                Some(OutputPreview {
+                    before: before.output.as_ref().map(|o| o.config.clone()),
+                    after: output.config.clone(),
+                    restart_required: true,
+                    missing_devices: missing_output_devices(&bundle, &devices),
+                    missing_plugins: missing_output_plugins(&bundle)?,
+                })
+            } else {
+                None
+            };
             let obs_plan = if let Some(saved) = &bundle.obs {
                 Some(obs_setup::bundle::preview(&obs, saved).await?)
             } else {
@@ -1322,6 +1545,7 @@ pub(crate) async fn broadcast_bundle(
             };
             witness.validate()?;
             let view = PreviewView {
+                output: output_preview,
                 id: bundle::revision(),
                 name: bundle.name.clone(),
                 revision: bundle.revision.clone(),
@@ -1407,14 +1631,19 @@ pub(crate) async fn broadcast_bundle(
                 })
                 .await?;
             }
-            if plan.bundle.confirmation.is_some() {
+            if plan.bundle.confirmation.is_some() || plan.bundle.output.is_some() {
                 let checked_host = host.clone();
+                let include_output = plan.bundle.output.is_some();
                 super::run_blocking(move || {
-                    checked_host
+                    let mut host = checked_host
                         .lock()
-                        .map_err(|_| "音声状態を取得できません")?
-                        .checked_snapshot_supported()
-                        .map_err(|e| e.to_string())
+                        .map_err(|_| "音声状態を取得できません")?;
+                    if include_output {
+                        host.output_snapshot_supported()
+                    } else {
+                        host.checked_snapshot_supported()
+                    }
+                    .map_err(|e| e.to_string())
                 })
                 .await?;
             }
@@ -1422,8 +1651,19 @@ pub(crate) async fn broadcast_bundle(
                 return Err("確認済み構成を呼び戻す前に緊急ミュートを有効にし、差分を取り直してください。復元後も確認するまでミュートを維持します".into());
             }
             if plan.bundle.categories.include_audio_config {
-                let devices =
-                    super::audio::enumerate_devices_async(host.clone(), recovering).await?;
+                let devices = super::audio::enumerate_devices_async(
+                    host.clone(),
+                    recovering || plan.bundle.output.is_some(),
+                )
+                .await?;
+                validate_output_devices(&plan.bundle, &plan.before, &devices)?;
+                if plan.bundle.output.is_some() && !missing_output_plugins(&plan.bundle)?.is_empty()
+                {
+                    return Err(
+                        "保存したVSTが見つかりません。ファイルを確認して差分を取り直してください"
+                            .into(),
+                    );
+                }
                 if recovering {
                     let target = plan
                         .bundle
@@ -1618,7 +1858,17 @@ async fn apply_owned(
     witness.validate()?;
     let backup =
         BundleV1 {
-            schema_version: 1,
+            output: if plan.bundle.output.is_some() {
+                Some(
+                    before
+                        .output
+                        .clone()
+                        .ok_or("変更前の出力構成を退避できません")?,
+                )
+            } else {
+                None
+            },
+            schema_version: if plan.bundle.output.is_some() { 2 } else { 1 },
             revision: bundle::revision(),
             name: plan.id.clone(),
             categories: plan.bundle.categories.clone(),

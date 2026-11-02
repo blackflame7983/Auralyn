@@ -2,6 +2,12 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { bundleApi, BundleClientError } from '../bundles';
 beforeEach(() => { vi.mocked(invoke).mockReset(); });
+it('分離出力は明示選択した保存だけに含める', async () => {
+    vi.mocked(invoke).mockResolvedValue({ type: 'saved' });
+    const categories = { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true };
+    await bundleApi.save('output', categories, null, false, undefined, true);
+    expect(invoke).toHaveBeenLastCalledWith('broadcast_bundle', { request: { action: 'save', name: 'output', categories, obs: null, overwrite: false, includeOutput: true } });
+});
 it('上書き許可は既定falseで、明示trueだけをbackendへ渡す', async () => {
     vi.mocked(invoke).mockResolvedValue({type: 'saved'});
     const categories = {includePlugins: true, includeAudioConfig: false, includeNoiseControl: false, includeBuiltinFx: false};

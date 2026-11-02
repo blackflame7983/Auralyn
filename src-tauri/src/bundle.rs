@@ -3,6 +3,8 @@ use crate::vst_host::presets::{Preset, PresetPlugin, ProfileSaveCategories};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+pub(crate) mod output_configuration;
+pub(crate) use output_configuration::OutputConfiguration;
 
 const MAX_BUNDLE_BYTES: usize = 64 * 1024 * 1024;
 
@@ -34,6 +36,8 @@ pub struct EngineCapture {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BundleV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) output: Option<OutputConfiguration>,
     /// 利用者による確認の履歴。現在の信号到達・復元後の合格を意味しない。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confirmation: Option<Confirmation>,
@@ -77,8 +81,23 @@ pub fn validate_name(name: &str) -> Result<(), String> {
 }
 pub fn validate(bundle: &BundleV1) -> Result<(), String> {
     validate_name(&bundle.name)?;
-    if bundle.schema_version != 1 || bundle.revision.is_empty() {
+    if !matches!(
+        (bundle.schema_version, bundle.output.is_some()),
+        (1, false) | (2, true)
+    ) || bundle.revision.is_empty()
+    {
         return Err("対応していない配信状態です".into());
+    }
+    if let Some(output) = &bundle.output {
+        output.validate()?;
+        let c = &bundle.categories;
+        if !(c.include_plugins
+            && c.include_audio_config
+            && c.include_noise_control
+            && c.include_builtin_fx)
+        {
+            return Err("分離出力の保存には全カテゴリが必要です".into());
+        }
     }
     if bundle.embedded_auralyn_preset.plugins.len() > crate::audio_engine::plugins::MAX_PLUGINS {
         return Err("VST数の上限を超えています".into());
@@ -326,6 +345,7 @@ fn validate_runtime_original(original: &BundleV1) -> Result<(), String> {
         && categories.include_audio_config
         && categories.include_noise_control
         && categories.include_builtin_fx)
+        || original.output.is_some()
         || original.obs.is_some()
         || original.confirmation.is_some()
         || original
@@ -545,6 +565,49 @@ pub fn list(root: &Path) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn output_bundle_roundtrips_and_never_accepts_mixed_or_incomplete_schemas() {
+        let mut value = runtime_sample();
+        assert!(validate(&value).is_ok());
+        value.output = Some(OutputConfiguration {
+            version: 1,
+            devices: RecoveryDevices {
+                input_id: "mic-id".into(),
+                output_id: "monitor-id".into(),
+            },
+            config: crate::audio_engine::live_output::Config {
+                device_id: Some("broadcast-id".into()),
+                monitor_trim: 0.0,
+                broadcast_trim: 0.4,
+                monitor_muted: true,
+                ..Default::default()
+            },
+        });
+        assert!(validate(&value).is_err()); // 旧schemaへ新しい値を混ぜない。
+        value.schema_version = 2;
+        validate(&value).unwrap();
+        let root = std::env::temp_dir().join(format!("auralyn-output-schema-{}", revision()));
+        save_with_overwrite(&root, &value, false).unwrap();
+        let stored = load(&root, &value.name).unwrap();
+        assert_eq!(stored.output, value.output);
+        let mut invalid = value.clone();
+        invalid.output = None;
+        assert!(validate(&invalid).is_err());
+        invalid = value.clone();
+        invalid.output.as_mut().unwrap().version = 2;
+        assert!(validate(&invalid).is_err());
+        invalid = value.clone();
+        invalid.categories.include_builtin_fx = false;
+        invalid.embedded_auralyn_preset.builtin_fx = None;
+        assert!(validate(&invalid).is_err());
+        invalid = value.clone();
+        invalid.output.as_mut().unwrap().config.device_id = Some("monitor-id".into());
+        assert!(validate(&invalid).is_err());
+        assert!(validate_runtime_original(&value).is_err()); // 一時退避の旧範囲を広げない。
+        std::fs::remove_file(path(&root, &value.name).unwrap()).unwrap();
+        std::fs::remove_dir(root.join("broadcast-bundles")).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
     #[test]
     fn runtime_capture_intent_survives_interruption_and_blocks_replacement() {
         let root = std::env::temp_dir().join(format!("auralyn-runtime-intent-{}", revision()));
@@ -776,6 +839,7 @@ mod tests {
     }
     fn sample() -> BundleV1 {
         BundleV1 {
+            output: None,
             schema_version: 1,
             revision: revision(),
             name: "歌配信".into(),
