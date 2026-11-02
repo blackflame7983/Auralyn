@@ -6,6 +6,9 @@ import re
 import struct
 from pathlib import Path
 
+SUBFORMAT_PCM = bytes.fromhex("0100000000001000800000aa00389b71")
+SUBFORMAT_FLOAT = bytes.fromhex("0300000000001000800000aa00389b71")
+
 
 def identifier(value):
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value):
@@ -31,9 +34,9 @@ def wav_info(path):
             if start + length + (length % 2) > size + 8:
                 raise ValueError("WAVデータが不足しています")
             if name == b"fmt ":
-                if fmt is not None or length < 16:
+                if fmt is not None or not 16 <= length <= 40:
                     raise ValueError("不正な形式です")
-                fmt = source.read(16)
+                fmt = source.read(length)
             elif name == b"data":
                 if data is not None:
                     raise ValueError("複数のdataは未対応です")
@@ -41,7 +44,19 @@ def wav_info(path):
             source.seek(start + length + length % 2)
         if fmt is None or data is None:
             raise ValueError("形式または音声がありません")
-        tag, channels, rate, byte_rate, align, bits = struct.unpack("<HHIIHH", fmt)
+        tag, channels, rate, byte_rate, align, bits = struct.unpack("<HHIIHH", fmt[:16])
+        if tag == 0xfffe:
+            if len(fmt) != 40:
+                raise ValueError("拡張WAVの形式長が不正です")
+            extra, valid_bits, mask = struct.unpack("<HHI", fmt[16:24])
+            subtype = fmt[24:40]
+            if (extra != 22 or valid_bits != bits or subtype not in (SUBFORMAT_PCM, SUBFORMAT_FLOAT)
+                    or mask & ~0x3ffff or (mask and mask.bit_count() != channels)):
+                raise ValueError("拡張WAVの形式が未対応または不正です")
+            tag = 1 if subtype == SUBFORMAT_PCM else 3
+        else:
+            # 従来どおり基本16バイトだけを出力する。
+            fmt = fmt[:16]
         if (tag not in (1, 3) or not channels or not rate or bits not in (8, 16, 24, 32)
                 or (tag == 3 and bits != 32) or align != channels * (bits // 8)
                 or byte_rate != rate * align or not data[1] or data[1] % align):
@@ -53,7 +68,7 @@ def copy_pcm(source_path, target_path, info):
     # 元ファイル名や付随チャンクを配布せず、PCMだけを新規WAVへ書く。
     fmt, (offset, length) = info
     with source_path.open("rb") as source, target_path.open("xb") as target:
-        target.write(struct.pack("<4sI4s4sI", b"RIFF", 36 + length + length % 2, b"WAVE", b"fmt ", 16))
+        target.write(struct.pack("<4sI4s4sI", b"RIFF", 20 + len(fmt) + length + length % 2, b"WAVE", b"fmt ", len(fmt)))
         target.write(fmt)
         target.write(struct.pack("<4sI", b"data", length))
         source.seek(offset)
