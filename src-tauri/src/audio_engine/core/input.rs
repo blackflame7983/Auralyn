@@ -287,4 +287,52 @@ mod tests {
             123
         );
     }
+
+    #[test]
+    fn stream_cleanup_retains_learning_ownership_across_restart_and_input_changes() {
+        let mut engine = Engine::new();
+        engine.bind_noise_input(Some("wasapi:microphone".into()));
+        let microphone = engine.noise_learning.clone();
+        microphone.profile_rms_ppm.store(1_411, Ordering::Release);
+        microphone.applied_mix_ppm.store(550_000, Ordering::Release);
+        microphone.has_applied_mix.store(true, Ordering::Release);
+        microphone.profile_valid.store(true, Ordering::Release);
+
+        // 同一入力の停止・再開でも、値を捨てたり確認済みとして復活させたりしない。
+        engine.clear_audio_resources();
+        engine.bind_noise_input(Some("wasapi:microphone".into()));
+        assert!(Arc::ptr_eq(&engine.noise_learning, &microphone));
+        assert!(!microphone.profile_valid.load(Ordering::Acquire));
+        assert_eq!(microphone.profile_rms(), 0.001411);
+        assert_eq!(microphone.applied_mix(), 0.55);
+
+        engine.clear_audio_resources();
+        engine.bind_noise_input(Some("process:player".into()));
+        let process = engine.noise_learning.clone();
+        assert!(!Arc::ptr_eq(&process, &microphone));
+        process.profile_rms_ppm.store(8_485, Ordering::Release);
+        process.applied_mix_ppm.store(680_000, Ordering::Release);
+        process.has_applied_mix.store(true, Ordering::Release);
+        process.profile_valid.store(true, Ordering::Release);
+
+        // 通常停止と開始失敗の双方が通る回収を繰り返しても、退避値を失わない。
+        engine.clear_audio_resources();
+        engine.clear_audio_resources();
+        engine.bind_noise_input(Some("wasapi:microphone".into()));
+        assert!(Arc::ptr_eq(&engine.noise_learning, &microphone));
+        assert_eq!(engine.noise_learning.profile_rms(), 0.001411);
+        assert_eq!(engine.noise_learning.applied_mix(), 0.55);
+        assert!(engine
+            .noise_learning
+            .has_applied_mix
+            .load(Ordering::Acquire));
+        assert!(!engine.noise_learning.profile_valid.load(Ordering::Acquire));
+
+        engine.clear_audio_resources();
+        engine.bind_noise_input(Some("process:player".into()));
+        assert!(Arc::ptr_eq(&engine.noise_learning, &process));
+        assert_eq!(engine.noise_learning.profile_rms(), 0.008485);
+        assert_eq!(engine.noise_learning.applied_mix(), 0.68);
+        assert!(!engine.noise_learning.profile_valid.load(Ordering::Acquire));
+    }
 }

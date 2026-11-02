@@ -1,22 +1,27 @@
 # プロセス入力をChrome・VLCで試聴する
 
-2026-11-02の未コミット版向け。本人用の返しは、指定された **Voicemeeter Input** を使う。
+[原音比較の切替改善](COMPARISON_SWITCH_TRANSITION.md)と、2026-11-03の[停止後の学習値保持の修正](PROCESS_INPUT_LEARNING_RETENTION_2026-11-03.md)を含む版向け。本人用の返しは、指定された **Voicemeeter Input** を使う。
 通常版と設定・WebView2・実行ファイルを分けた試聴環境を用意した。
 先に「起動」から「聞き比べ」までを読み、終了時にはWindows側の経路を戻す。
 自動検証の条件と結果は[連続運転の記録](PROCESS_LOOPBACK_ACCEPTANCE_2026-11-02.md)を参照する。
 
 ## 専用ランチャーから起動する
 
-リポジトリ直下の`test-results/process-input-audition-20261102/Start-Audition.cmd`を実行する。
+リポジトリ直下の`test-results/process-input-audition-learningfix-20261102/Start-Audition.cmd`を実行する。
 このPCでは次の場所にある。
 
 ```text
-D:\Programming\App\VSTHost\test-results\process-input-audition-20261102\Start-Audition.cmd
+D:\Programming\App\VSTHost\test-results\process-input-audition-learningfix-20261102\Start-Audition.cmd
 ```
 
 開発サーバーは不要。音声停止中で起動し、前回のアプリには自動接続しない。
 通常版の`src-tauri/bin`は差し替えていないため、今回の試聴にはこのランチャーを使う。
 試聴環境の`state`内に保存した設定は通常版の設定から独立している。
+以前の試聴環境と各65分の証拠も保持している。原音比較の短いfadeは利用者の再試聴で許容範囲と確認済み。
+最新のEngineは停止時の学習値保持を修正したもので、各65分に使ったEngineとは異なる。最新の確認範囲は[修正・検証記録](PROCESS_INPUT_LEARNING_RETENTION_2026-11-03.md)を参照する。
+
+Chromeの音声serviceが終了した場合、Chrome側で再生が停止することがある。再生ボタンだけで音が戻らなければ元のページを読み直す。
+専用Chromeでは読み直し後にAuralynの対象再選択なしで取得が戻ったが、通常のプロファイル・各配信サイトでの保証にはしない。
 
 ## 原音と返しを別の出力先へ分ける
 

@@ -1,5 +1,8 @@
 #[path = "core/noise_comparison.rs"]
 mod noise_comparison;
+#[cfg(test)]
+#[path = "core/noise_evaluation.rs"]
+mod noise_evaluation;
 #[path = "core/noise_learning.rs"]
 pub mod noise_learning;
 use noise_learning::{NoiseLearningShared, RtNoiseLearning};
@@ -1802,7 +1805,8 @@ impl Engine {
         self.gain_main_device = None;
         self.gain_shared.settled.store(false, Ordering::Release);
         self.device_manager.clear_active_devices();
-        self.noise_input_identity = None;
+        // 学習値の所有元は停止中も残す。次の入力へのbindで退避・復帰するため、
+        // 識別だけ消すと通常停止や開始失敗の後に既存の学習値を見失う。
         self.noise_learning.cancel_capture();
         let recorded_frames = self
             .voice_check_buffers

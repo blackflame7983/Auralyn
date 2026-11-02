@@ -96,4 +96,4 @@
 
 - [CODING_GUIDELINES.md](./CODING_GUIDELINES.md) — 開発・UX 全般
 - [PROPOSALS_AI_NOISE_HOST.md](./PROPOSALS_AI_NOISE_HOST.md) — ノイズ機能の技術・UI メモ
-- [plans/PLAN_06_COPY_INVENTORY.md](./plans/PLAN_06_COPY_INVENTORY.md) — 文言棚卸し一覧
+- [TESTING.md](./TESTING.md) — 現行の文言・操作・検証範囲の確認。過去の棚卸しにある固定行番号で判断せず、変更する画面と本ガイドラインを照合する。

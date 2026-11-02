@@ -51,21 +51,35 @@ try {
             const raw = readFileSync(commandPath, 'utf8');
             if (raw !== last) {
                 const command = JSON.parse(raw);
-                await page.evaluate(async action => {
+                await page.evaluate(async command => {
+                    const { action } = command;
                     const { audio, mediaKind } = window.auralynSource;
                     if (action === 'pause') {
                         if (mediaKind === 'audio-element') audio.pause(); else await audio.suspend();
                     } else if (action === 'play') {
                         if (mediaKind === 'audio-element') await audio.play(); else await audio.resume();
+                    } else if (action === 'route') {
+                        const output = (await navigator.mediaDevices.enumerateDevices()).find(device =>
+                            device.kind === 'audiooutput' && device.label === command.endpointName);
+                        if (!output) throw new Error('変更先の出力が見つかりません');
+                        await audio.setSinkId(output.deviceId);
+                    } else if (action === 'reload' && mediaKind === 'audio-element') {
+                        const position = audio.currentTime;
+                        audio.load();
+                        await audio.play();
+                        audio.currentTime = Math.min(position, audio.duration || position);
                     }
                     else throw new Error('unknown action');
-                }, command.action);
+                }, command);
+                writeFileSync(join(root, 'chrome-control-ack.json'), JSON.stringify({ epoch: command.epoch, action: command.action }));
                 last = raw;
             }
         }
         const status = await page.evaluate(() => {
             const { audio, mediaKind } = window.auralynSource;
-            return { state: mediaKind === 'audio-element' ? (audio.paused ? 'paused' : 'running') : audio.state, position: audio.currentTime };
+            return { state: mediaKind === 'audio-element' ? (audio.paused ? 'paused' : 'running') : audio.state,
+                position: audio.currentTime, readyState: audio.readyState, networkState: audio.networkState,
+                errorCode: audio.error?.code ?? null };
         });
         writeFileSync(join(root, 'chrome-heartbeat.json'), JSON.stringify({ time: Date.now(), ...status }));
         await new Promise(resolve => setTimeout(resolve, 500));

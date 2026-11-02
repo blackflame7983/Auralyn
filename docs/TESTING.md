@@ -93,6 +93,13 @@ GUI応答の成功だけでは描画欠け・DPI・聴感・OBSへの到達を�
 
 ## 現行の検証手順（2026-10-15 改訂）
 
+プロセス入力の改善版での長時間運転・異常時停止は[2026-11-02の後続記録](PROCESS_LOOPBACK_FOLLOWUP_2026-11-02.md)を参照する。
+停止後の学習値保持、実素材の声用途、Chrome音声子プロセス終了後の確認は[2026-11-03の修正・検証記録](PROCESS_INPUT_LEARNING_RETENTION_2026-11-03.md)を参照する。
+明示runnerは`scripts/verify_process_material_nr.py`。PythonのNumPy・SoundFile、Node.js、インストール済みChrome、既存probe、未使用のCABLE Inputと別の原音用出力を必要とする。`--engine`、`--probe`、`--material`、`--raw-endpoint`、`--output-endpoint`、新規の`--output-dir`を指定する。物理マイクを開かず、通常のアプリ設定を使用しない。
+許諾済み配信のNR比較は[素材評価手順](NR_MATERIAL_EVALUATION_2026-11-02.md)を使う。
+`export_same_input_noise_candidates`は素材評価専用のignored試験で、`AURALYN_NR_EVALUATION_INPUT`へ絶対パスのfloat32ステレオWAV（最大10秒）、`AURALYN_NR_EVALUATION_OUTPUT`へ未作成の絶対パスを指定して明示実行する。
+通常アプリの設定と学習結果を使わず、製品の既存候補生成処理を評価する。通常の自動テストで素材や音声デバイスを要求しない。
+
 固定ゲインの提案・聞き比べは [AUTO_GAIN.md](AUTO_GAIN.md) の検証境界も参照する。
 
 以下の過去ログ・チェック済み項目は当時の記録です。現在のHEADの動作保証として扱わず、変更に応じて再確認してください。
@@ -464,3 +471,10 @@ Chrome・VLCと実VSTによる連続試験は `scripts/verify_process_app_soak.p
 監視JSONのWindowsでの読み取り競合は再試行し、表示用snapshotの競合だけで運転を止めず、`samples.jsonl`へ詳細を追記する。
 自動試験で扱うミュートは所有するguardで復元し、通常のWindows既定・返し用出力の設定を保持する。
 条件・警告・最終結果は[Chrome・VLCの確認記録](PROCESS_LOOPBACK_ACCEPTANCE_2026-11-02.md)、利用者の聴感確認は[試聴手順](PROCESS_LOOPBACK_AUDITION.md)に分ける。
+
+## 原音比較の切替fade
+
+実装と境界は[切替処理の改善](COMPARISON_SWITCH_TRANSITION.md)を参照する。
+`audio_engine::comparison`のRust試験で逆極性の経路、複数rateと可変block、連打・取消、空ラック、起動時、RT無割当を確認する。
+`verify_process_app_soak.py --comparison-switches`は実VST経路の音量比と64回の連打後の復帰を確認する明示試験である。
+波形試験や入出力メーターを、クリックが耳で消えた証拠として扱わない。改善前の65分記録も改善版の長時間検証には使わない。

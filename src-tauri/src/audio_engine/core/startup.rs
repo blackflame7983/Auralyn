@@ -243,7 +243,7 @@ struct CommandContext<'a> {
     rt_reverb: &'a mut crate::audio_engine::reverb::Reverb,
     live_shared: &'a crate::audio_engine::live_modes::Shared,
     rt_global_mute: &'a mut bool,
-    rt_global_bypass: &'a mut bool,
+    rt_comparison: &'a mut crate::audio_engine::comparison::Transition,
     rt_input_gain: &'a mut f32,
     rt_input_l: &'a mut usize,
     rt_input_r: &'a mut usize,
@@ -286,7 +286,7 @@ fn apply_commands(context: CommandContext<'_>) -> bool {
         rt_reverb,
         live_shared,
         rt_global_mute,
-        rt_global_bypass,
+        rt_comparison,
         rt_input_gain,
         rt_input_l,
         rt_input_r,
@@ -317,8 +317,10 @@ fn apply_commands(context: CommandContext<'_>) -> bool {
                     | AudioThreadMessage::StartAutoGainCapture(_)
                     | AudioThreadMessage::SetLoudnessMeasurement(Some(_))
             )
-        }) && worker_generation_controls
-            .is_some_and(|c| !c.measurement_ready_at(c.measurement_ticket(), upstream_first_frame))
+        }) && (!rt_comparison.settled()
+            || worker_generation_controls.is_some_and(|c| {
+                !c.measurement_ready_at(c.measurement_ticket(), upstream_first_frame)
+            }))
         {
             break;
         }
@@ -436,7 +438,7 @@ fn apply_commands(context: CommandContext<'_>) -> bool {
                 }
             }
             AudioThreadMessage::SetGlobalBypass(active) => {
-                *rt_global_bypass = active;
+                rt_comparison.request(active);
             }
             AudioThreadMessage::SetInputGain(val) => {
                 if !separated {
@@ -1005,7 +1007,10 @@ impl Engine {
         );
         let (mut rt_global_mute, mut rt_input_gain, mut rt_output_gain) =
             self.initial_callback_levels();
-        let mut rt_global_bypass = self.global_bypass;
+        let mut rt_comparison = crate::audio_engine::comparison::Transition::new(
+            self.global_bypass,
+            self.current_sample_rate as u32,
+        );
         self.stream_failed.store(false, Ordering::Release);
         self.gain_main_device = out_dev.id().ok().map(|id| id.to_string());
         let (capture_tx, capture_rx) = auto_gain::capture_queue();
@@ -1404,7 +1409,7 @@ impl Engine {
                         rt_reverb,
                         live_shared: &live_shared,
                         rt_global_mute: &mut rt_global_mute,
-                        rt_global_bypass: &mut rt_global_bypass,
+                        rt_comparison: &mut rt_comparison,
                         rt_input_gain: &mut rt_input_gain,
                         rt_input_l: &mut rt_input_l,
                         rt_input_r: &mut rt_input_r,
@@ -1646,9 +1651,10 @@ impl Engine {
 
                     let mut current_source_is_a = true; // True usually implies result is in A
 
-                    // Global Bypass: Skip all plugin processing (A/B comparison mode)
-                    // Input remains in planar_buf_a, so current_source_is_a stays true.
-                    if !rt_global_bypass && rt_active_count > 0 && rt_order_len > 0 {
+                    // 比較切替はfade-out完了後の境界で行う。元の経路は無音になるまで維持する。
+                    rt_comparison.begin_block(frames, rt_active_count > 0 && rt_order_len > 0);
+                    let comparison_settled = rt_comparison.settled();
+                    if !rt_comparison.bypassed() && rt_active_count > 0 && rt_order_len > 0 {
                         for &index in &rt_order[..rt_order_len] {
                             let idx = index as usize;
                             if idx >= MAX_PLUGINS {
@@ -1739,10 +1745,11 @@ impl Engine {
 
                     // --- 3. Result Interleaving & Output Metering ---
                     let final_buf = if current_source_is_a {
-                        &planar_buf_a
+                        &mut planar_buf_a
                     } else {
-                        &planar_buf_b
+                        &mut planar_buf_b
                     };
+                    rt_comparison.apply(final_buf, channels, frames);
 
                     if rt_capture.is_active() {
                         let invalid = rt_global_mute
@@ -1789,7 +1796,8 @@ impl Engine {
                         rt_voice_check.advance_recording(frames);
                     }
 
-                    let cohort_normal_mic = !rt_global_mute
+                    let cohort_normal_mic = comparison_settled
+                        && !rt_global_mute
                         && !rt_test_tone.is_active()
                         && !rt_voice_check.is_playback_active();
                     if let Some(sender) = &mut live_sender {

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Auralyn NR比較</title>
+<style>
+body{font:16px/1.8 system-ui,sans-serif;max-width:860px;margin:40px auto;padding:0 20px;color:#202c32;background:#f5f7f7}main{background:white;border:1px solid #d4dfdc;border-radius:16px;padding:28px}h1{font-size:26px;margin-top:0}button,select{font:inherit;padding:10px 14px;border:1px solid #a9bbb4;border-radius:8px;background:white;color:inherit;cursor:pointer}button:disabled{opacity:.5;cursor:default}button[aria-pressed=true],#play{background:#116c59;color:white}fieldset{border:0;padding:12px 0;display:flex;flex-wrap:wrap;gap:8px}legend,label{font-weight:600}input{vertical-align:middle}.muted{color:#54665f;font-size:14px}#status{min-height:2em}#error{color:#a02222}a{color:#116c59}
+</style>
+<main><h1>Auralyn NR比較</h1>
+<p>同じ録音から作った候補を、再生位置を保ったまま聞き比べます。再生ボタンを押すまで音は出ません。</p>
+<p id="source" class="muted"></p>
+<label>比較する区間 <select id="clip" disabled></select></label>
+<fieldset><legend>処理</legend>
+<button data-mode="off" aria-pressed="true">未処理</button><button data-mode="current" aria-pressed="false">現行設定</button>
+<button data-mode="weaker" aria-pressed="false">抑制を弱めた候補</button><button data-mode="stronger" aria-pressed="false">抑制を強めた候補</button>
+</fieldset>
+<p><button id="play" disabled>再生</button> <button id="stop" disabled>停止</button></p>
+<label>試聴音量 <input id="volume" type="range" min="0" max="100" value="25"> <output id="volume-value">25%</output></label>
+<p id="status" role="status">準備中…</p><p id="error" role="alert"></p>
+<p class="muted">基準は現行NRの弱モード・強度0.8。候補は同じ方式で強度を0.6／1.0に変えています。全候補に共通の減衰をかけ、音量合わせはしていません。</p>
+<p>声の聞き取りやすさ、小声・語尾の欠け、ゲーム音や周囲の声の変化、金属的な響きを確認してください。元の配信でのNR処理は不明です。声だけの原音がないため、声の劣化を数値で判定した結果ではありません。</p>
+</main>
+<script type="module">
+const $=id=>document.getElementById(id);
+const modes=['off','current','weaker','stronger'];
+let manifest,context,master,buffers={},nodes=[],gains={},selected='off',startedAt=0,duration=0,safety=1,playing=false,revision=0;
+const position=()=>playing?Math.max(0,context.currentTime-startedAt)%duration:0;
+window.auralynNR={snapshot:()=>({playing,selected,position:position(),startedAt,bufferCount:Object.keys(buffers).length,contextState:context?.state})};
+const showError=error=>{$('error').textContent=String(error);};
+async function audio(){
+ if(context)return;
+ context=new AudioContext();
+ const outputs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audiooutput');
+ const output=outputs.find(d=>d.label===manifest.outputName);
+ if(!output)throw new Error('Voicemeeter Inputが見つかりません。接続を確認して開き直してください。');
+ await context.setSinkId(output.deviceId);
+ master=context.createGain();master.gain.value=0;master.connect(context.destination);
+}
+function stop(){
+ revision++;for(const node of nodes){try{node.stop();}catch{}node.disconnect();}nodes=[];gains={};playing=false;
+ $('stop').disabled=true;$('play').textContent='再生';
+}
+async function load(){
+ stop();const current=revision;$('play').disabled=true;$('status').textContent='区間を読み込んでいます…';
+ await audio();const clip=manifest.clips[Number($('clip').value)];
+ const loaded=await Promise.all(modes.map(async mode=>[mode,await context.decodeAudioData(await (await fetch('/'+clip.variants[mode].file)).arrayBuffer())]));
+ if(current!==revision)return;
+ buffers=Object.fromEntries(loaded);duration=buffers.off.duration;
+ if(modes.some(mode=>buffers[mode].length!==buffers.off.length))throw new Error('比較音声の長さが一致しません');
+ safety=Math.min(1,0.5/Math.max(...modes.map(mode=>clip.variants[mode].peak),1e-8));
+ master.gain.value=safety*Number($('volume').value)/100;
+ $('play').disabled=false;$('status').textContent='準備できました。返し先：Voicemeeter Input';
+}
+function choose(mode){
+ selected=mode;
+ for(const button of document.querySelectorAll('[data-mode]'))button.setAttribute('aria-pressed',String(button.dataset.mode===mode));
+ if(playing){const now=context.currentTime;for(const [name,gain] of Object.entries(gains)){gain.gain.cancelAndHoldAtTime(now);gain.gain.linearRampToValueAtTime(name===mode?1:0,now+0.01);}}
+}
+$('play').onclick=async()=>{try{
+ if(playing)return;
+ await context.resume();startedAt=context.currentTime+0.04;playing=true;
+ for(const mode of modes){const node=context.createBufferSource();node.buffer=buffers[mode];node.loop=true;const gain=context.createGain();gain.gain.value=mode===selected?1:0;node.connect(gain);gain.connect(master);node.start(startedAt);nodes.push(node);gains[mode]=gain;}
+ $('stop').disabled=false;$('play').textContent='再生中';
+}catch(error){stop();showError(error);}};
+$('stop').onclick=()=>{stop();$('status').textContent='停止しました';};
+$('clip').onchange=()=>load().catch(showError);
+$('volume').oninput=()=>{const value=Number($('volume').value);$('volume-value').textContent=value+'%';if(master){master.gain.cancelAndHoldAtTime(context.currentTime);master.gain.linearRampToValueAtTime(safety*value/100,context.currentTime+0.01);}};
+for(const button of document.querySelectorAll('[data-mode]'))button.onclick=()=>choose(button.dataset.mode);
+try{
+ manifest=await (await fetch('/manifest.json')).json();
+ const link=document.createElement('a');link.href=manifest.sourceUrl;link.textContent=manifest.sourceTitle;link.target='_blank';link.rel='noreferrer';$('source').append('対象：',link);
+ manifest.clips.forEach((clip,index)=>{const option=document.createElement('option');option.value=String(index);option.textContent=clip.label;$('clip').append(option);});
+ $('clip').disabled=false;await load();
+}catch(error){showError(error);$('status').textContent='準備できませんでした';}
+setInterval(()=>{if(playing)$('status').textContent='再生中 '+position().toFixed(1)+' / '+duration.toFixed(1)+'秒 · 返し先：Voicemeeter Input';},200);
+window.addEventListener('pagehide',stop);
+</script></html>

@@ -1,11 +1,12 @@
 // 埋込みフロントの試聴用アプリを、開発サーバーなしで起動・確認する。
 import { chromium, expect } from '@playwright/test';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 const [directory, cliPath, exerciseSources] = process.argv.slice(2);
+const cdpOnly = process.argv.includes('--cdp-only');
 if (!directory || !cliPath) throw new Error('audition-directory mcp-cli-path が必要です');
 const root = resolve(directory);
 const results = join(root, 'verification-' + Date.now()); mkdirSync(results);
@@ -20,22 +21,29 @@ const cli = args => {
     return result.stdout;
 };
 let browser, page, connected = false;
-const summary = { passed: false, mode: exerciseSources ?? 'prepare' };
+const summary = { passed: false, mode: exerciseSources ?? 'prepare', automation: cdpOnly ? 'isolated-cdp' : 'tauri-mcp',
+    sharedMcpDriverUntouched: cdpOnly };
+const screenshot = async file => {
+    if (cdpOnly) await page.screenshot({ path: file });
+    else cli(['webview-screenshot', '--file', file]);
+};
 try {
     await expect.poll(async () => { if (child.exitCode !== null) throw new Error('Host exited'); try { return (await fetch(`http://127.0.0.1:${port}/json/version`)).ok; } catch { return false; } }, { timeout: 30_000 }).toBe(true);
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
     await expect.poll(() => { summary.pages = browser.contexts()[0].pages().map(page => page.url()); return summary.pages.some(url => /^https?:\/\/tauri\.localhost/.test(url)); }, { timeout: 20_000 }).toBe(true);
     page = browser.contexts()[0].pages().find(page => /^https?:\/\/tauri\.localhost/.test(page.url()));
     summary.url = page.url();
-    const ports = JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-Command', `@(Get-NetTCPConnection -OwningProcess ${child.pid} -State Listen | Select-Object -ExpandProperty LocalPort) | ConvertTo-Json -Compress`], { encoding: 'utf8', windowsHide: true }));
-    const bridge = (Array.isArray(ports) ? ports : [ports]).filter(port => port >= 9223 && port <= 9323);
-    if (bridge.length !== 1) throw new Error('own bridge not identified');
-    cli(['driver-session', 'start', '--host', '127.0.0.1', '--port', String(bridge[0])]); connected = true;
-    const status = cli(['driver-session', 'status', '--json']);
-    writeFileSync(join(results, 'driver-status.json'), status);
-    const envelope = JSON.parse(status);
-    const state = envelope.text ? JSON.parse(envelope.text) : envelope;
-    if (!state.connected) throw new Error('bridge not connected');
+    if (!cdpOnly) {
+        const ports = JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-Command', `@(Get-NetTCPConnection -OwningProcess ${child.pid} -State Listen | Select-Object -ExpandProperty LocalPort) | ConvertTo-Json -Compress`], { encoding: 'utf8', windowsHide: true }));
+        const bridge = (Array.isArray(ports) ? ports : [ports]).filter(port => port >= 9223 && port <= 9323);
+        if (bridge.length !== 1) throw new Error('own bridge not identified');
+        cli(['driver-session', 'start', '--host', '127.0.0.1', '--port', String(bridge[0])]); connected = true;
+        const status = cli(['driver-session', 'status', '--json']);
+        writeFileSync(join(results, 'driver-status.json'), status);
+        const envelope = JSON.parse(status);
+        const state = envelope.text ? JSON.parse(envelope.text) : envelope;
+        if (!state.connected) throw new Error('bridge not connected');
+    }
     const invoke = (command, args = {}) => page.evaluate(({ command, args }) => window.__TAURI__.core.invoke(command, args), { command, args });
     summary.profiles = await invoke('list_profiles');
     if (!summary.profiles.some(profile => profile.name === '入力試聴 TDR Nova')) throw new Error('prepared profile missing');
@@ -51,7 +59,9 @@ try {
     const preferred = source && output ? { host: output.host, output: output.name, outputId: output.id, sampleRate: 48000, bufferSize: 512,
         inputSource: { kind: 'process_loopback', config: { appKey: source.appKey, appName: source.name,
             rawEndpointId: source.routes.find(route => route.name.startsWith('1 - FS2333')).id, purpose: 'music' } } }
-        : await page.evaluate(() => JSON.parse(localStorage.getItem('vst_host_audio_config')));
+        : existsSync(join(root, 'initial-preferences.json'))
+            ? JSON.parse(readFileSync(join(root, 'initial-preferences.json'), 'utf8'))
+            : await page.evaluate(() => JSON.parse(localStorage.getItem('vst_host_audio_config')));
     if (preferred?.inputSource?.kind !== 'process_loopback') throw new Error('saved process input preferences missing');
     await page.evaluate(value => {
         localStorage.setItem('vst_host_wizard_done', 'true');
@@ -65,7 +75,7 @@ try {
     await expect(page.getByRole('combobox', { name: '入力元', exact: true })).toHaveValue('process', { timeout: 20_000 });
     await expect(page.getByRole('combobox', { name: '入力の用途' })).toHaveValue('music');
     summary.preferred = preferred;
-    cli(['webview-screenshot', '--file', join(results, 'audition-ready.png')]);
+    await screenshot(join(results, 'audition-ready.png'));
     await page.getByRole('button', { name: '設定画面を閉じる', exact: true }).click();
     const rackToggle = page.getByRole('button', { name: 'VST を編集', exact: true });
     if (await rackToggle.getAttribute('aria-expanded') !== 'true') await rackToggle.click();
@@ -77,7 +87,7 @@ try {
     summary.profileUiApplied = true;
     summary.streamAfterUi = await invoke('auto_gain', { request: { action: 'status' } });
     if (summary.streamAfterUi.running) throw new Error('profile UI started audio');
-    cli(['webview-screenshot', '--file', join(results, 'profile-ready.png')]);
+    await screenshot(join(results, 'profile-ready.png'));
     if (exerciseSources === '--exercise-sources') {
         summary.realAppStarts = [];
         await page.keyboard.press('Escape');
@@ -96,7 +106,7 @@ try {
             const stats = await invoke('get_engine_runtime_stats');
             if (stats.enabledPluginCount !== 1 || stats.processInput.failed) throw new Error('real app pipeline failed');
             summary.realAppStarts.push({ appName, stats, state: await invoke('get_audio_state') });
-            cli(['webview-screenshot', '--file', join(results, appName + '-running.png')]);
+            await screenshot(join(results, appName + '-running.png'));
             await invoke('stop_audio');
         }
         await invoke('set_global_mute', { active: false });

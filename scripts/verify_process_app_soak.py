@@ -212,6 +212,29 @@ def verify(args, root: Path, summary: dict) -> None:
         summary['resumed'] = resumed
         if resumed['inputPeak'] <= 0 or resumed['outputPeak'] <= 0:
             raise RuntimeError('実アプリの一時停止後に信号が戻りません')
+        if args.comparison_switches:
+            # 小音量素材のまま、ラックの減衰でVST経路とbypass経路を数値で区別する。
+            engine.request({'type': 'SetGain', 'payload': {'id': loaded['payload']['id'], 'value': 0.25}})
+            summary['comparisonSwitches'] = []
+            for active in [False, True, False, True, False]:
+                engine.request({'type': 'SetGlobalBypass', 'payload': {'active': active}})
+                sample(engine, 0.15)
+                observation = sample(engine, 0.3)
+                ratio = observation['outputPeak'] / max(observation['inputPeak'], 1e-12)
+                expected = 1.0 if active else 0.25
+                if abs(ratio - expected) > 0.06 or observation['runtime']['enabled_plugin_count'] != (0 if active else 1):
+                    raise RuntimeError('原音比較の経路・音量が安定しません: ' + str(ratio))
+                summary['comparisonSwitches'].append({'bypassed': active, 'peakRatio': ratio})
+            for index in range(64):
+                engine.request({'type': 'SetGlobalBypass', 'payload': {'active': index % 2 == 0}})
+            sample(engine, 0.15)
+            settled = sample(engine, 0.3)
+            settled_ratio = settled['outputPeak'] / max(settled['inputPeak'], 1e-12)
+            if settled['runtime']['global_bypass'] or settled['runtime']['enabled_plugin_count'] != 1 or abs(settled_ratio - 0.25) > 0.06:
+                raise RuntimeError('原音比較の連打後に最後の要求へ戻りません')
+            summary['comparisonRapidToggleCount'] = 64
+            summary['comparisonRapidSettledPeakRatio'] = settled_ratio
+            engine.request({'type': 'SetGain', 'payload': {'id': loaded['payload']['id'], 'value': 1.0}})
         engine.request({'type': 'SetGlobalMute', 'payload': {'active': True}})
         sample(engine, 1)
         baseline = engine.request({'type': 'GetRuntimeStats'})['payload']
@@ -301,6 +324,7 @@ def main() -> int:
     parser.add_argument('--node', default='node')
     parser.add_argument('--chrome-helper', type=Path, default=Path('scripts/process-loopback-chrome-source.mjs'))
     parser.add_argument('--chrome-media-kind', choices=['webaudio', 'audio-element'], default='webaudio')
+    parser.add_argument('--comparison-switches', action='store_true', help='実VST経路と原音比較の切替・連打を追加確認する')
     parser.add_argument('--output-dir', type=Path)
     args = parser.parse_args()
     if not 1 <= args.seconds <= 6600:
