@@ -1,7 +1,9 @@
+import { readInputSource, type InputSource } from './inputSource';
 import type { AudioDevice, AudioDeviceList } from '../api/audio';
 import { readOutputRouting, type OutputRouting } from './audioChannelRouting';
 
 export interface AudioPreferences {
+    inputSource?: InputSource;
     host: string;
     input?: string;
     output?: string;
@@ -28,6 +30,8 @@ export function readAudioPreferences(): AudioPreferences | null {
         if (!value || typeof value !== 'object' || !('host' in value)
             || typeof value.host !== 'string' || !value.host.trim()) return null;
         const config = value as Record<string, unknown>;
+        const inputSource = config.inputSource === undefined ? undefined : readInputSource(config.inputSource);
+        if (config.inputSource !== undefined && !inputSource) return null;
         if (config.outputRouting !== undefined && !readOutputRouting(config.outputRouting)) return null;
         const text = (key: string) => typeof config[key] === 'string' ? config[key] as string : undefined;
         const positive = (key: string, fallback: number, max: number) => {
@@ -39,6 +43,7 @@ export function readAudioPreferences(): AudioPreferences | null {
             : Array.isArray(pair) && pair.length === 2 && pair.every(n => Number.isSafeInteger(n) && n >= 0)
                 ? [pair[0], pair[1]] : undefined;
         return {
+            inputSource,
             host: value.host, input: text('input'), output: text('output'),
             sampleRate: positive('sampleRate', 48_000, 768_000),
             bufferSize: positive('bufferSize', 512, 4096),

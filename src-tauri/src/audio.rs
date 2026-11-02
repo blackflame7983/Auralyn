@@ -2,6 +2,7 @@ pub(crate) mod conditions;
 pub(crate) mod frontend_bootstrap;
 mod live_modes;
 mod mode_vst;
+pub(crate) mod process_inputs;
 mod replies;
 mod session_rack;
 use anyhow::{anyhow, Result};
@@ -92,6 +93,8 @@ pub struct AudioConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct ActiveAudioConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_source: Option<crate::input_source::Config>,
     pub host: String,
     pub input: Option<String>,
     pub output: Option<String>,
@@ -131,6 +134,7 @@ pub struct EngineTuningConfig {
 #[derive(Debug, Serialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct EngineRuntimeStats {
+    pub process_input: Option<Box<crate::audio_engine::process_capture::Snapshot>>,
     pub preparation: Option<Box<crate::ipc::PreparationSnapshot>>,
     pub active_plugin_count: u32,
     pub enabled_plugin_count: u32,
@@ -204,6 +208,7 @@ pub struct AudioHost {
     frontend_bootstrap: frontend_bootstrap::Startup,
     device_scan: Option<DeviceScanTicket>,
     active_config: Option<ActiveAudioConfig>,
+    process_inputs: process_inputs::Inputs,
     is_global_muted: bool,
     engine_tuning: EngineTuningConfig,
     #[cfg(windows)]
@@ -216,6 +221,13 @@ impl AudioHost {
     }
     pub(crate) fn checked_snapshot_supported(&mut self) -> Result<()> {
         self.preflight_live_changes()?;
+        anyhow::ensure!(
+            self.active_config
+                .as_ref()
+                .and_then(|c| c.input_source.as_ref())
+                .is_none_or(|s| *s == crate::input_source::Config::default()),
+            "この入力は確認済み保存・復帰に未対応です。VST単体の設定を保存してください"
+        );
         anyhow::ensure!(self.live_modes.target.is_none() && self.live_output(None)?.config == Default::default(), "確認済み保存・復帰は単一出力・カスタム音作りが対象です。モニター分離や歌/雑談は各設定で管理してください");
         Ok(())
     }
@@ -338,6 +350,7 @@ impl AudioHost {
             frontend_bootstrap: frontend_bootstrap::Startup::default(),
             device_scan: None,
             active_config: None,
+            process_inputs: Default::default(),
             is_global_muted: recovery_muted,
             engine_tuning: EngineTuningConfig::default(),
             #[cfg(windows)]
@@ -1124,15 +1137,55 @@ impl AudioHost {
         output_id: Option<String>,
         channel_routing: Option<crate::ipc::ChannelRouting>,
     ) -> Result<AudioConfig> {
+        let source = self.resolve_input_source(None)?;
+        self.start_internal_with_source(
+            host_name,
+            input_name,
+            output_name,
+            buffer_size,
+            sample_rate,
+            initial_controls,
+            expected_generation,
+            input_id,
+            output_id,
+            channel_routing,
+            source,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start_internal_with_source(
+        &mut self,
+        host_name: Option<String>,
+        input_name: Option<String>,
+        output_name: Option<String>,
+        buffer_size: Option<u32>,
+        sample_rate: Option<u32>,
+        initial_controls: Option<crate::ipc::StartControls>,
+        expected_generation: Option<u64>,
+        input_id: Option<String>,
+        output_id: Option<String>,
+        channel_routing: Option<crate::ipc::ChannelRouting>,
+        input_source: Option<crate::input_source::Start>,
+    ) -> Result<AudioConfig> {
         self.guard_mode_vst()?;
         if let Some(controls) = initial_controls {
             controls.validate().map_err(|e| anyhow!(e))?;
         }
         let channel_routing =
             channel_routing.or_else(|| initial_controls.map(|controls| controls.routing()));
-        crate::desktop_integration::check_microphone_access(host_name.as_deref())
-            .map_err(|error| anyhow!(error))?;
+        let process = input_source
+            .as_ref()
+            .is_some_and(|s| matches!(s.source, crate::input_source::Config::ProcessLoopback(_)));
+        if !process {
+            crate::desktop_integration::check_microphone_access(host_name.as_deref())
+                .map_err(anyhow::Error::msg)?;
+        }
+        if let Some(source) = &input_source {
+            source.validate().map_err(anyhow::Error::msg)?;
+        }
         let cmd = IpcCommand::Start {
+            input_source: input_source.clone(),
             host: host_name.clone().unwrap_or("ASIO".to_string()),
             input: input_name.clone(),
             output: output_name.clone(),
@@ -1144,6 +1197,36 @@ impl AudioHost {
             channel_routing,
         };
 
+        if input_source
+            .as_ref()
+            .is_some_and(|s| s.source != crate::input_source::Config::default())
+        {
+            let path = self.last_config_path.with_file_name("live_output.json");
+            if path.exists() {
+                let config: crate::audio_engine::live_output::Config =
+                    serde_json::from_slice(&std::fs::read(path)?)?;
+                anyhow::ensure!(
+                    !config.split_processing,
+                    "この入力は処理分離に未対応です。音声設定で通常の処理経路を選んでください"
+                );
+            }
+        }
+        if (input_source
+            .as_ref()
+            .is_some_and(|s| s.source != crate::input_source::Config::default())
+            || self
+                .active_config
+                .as_ref()
+                .and_then(|c| c.input_source.as_ref())
+                .is_some_and(|s| *s != crate::input_source::Config::default()))
+            && self.reader_active.load(Ordering::Acquire)
+        {
+            let status = self.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
+            anyhow::ensure!(
+                !status.running,
+                "音声を停止してから入力元・用途を変更してください"
+            );
+        }
         log::info!("Sending Start Command: {:?}", cmd);
 
         if let Some(expected) = expected_generation {
@@ -1164,6 +1247,9 @@ impl AudioHost {
         let generation = self.engine_generation;
         self.sync_live_modes()?;
         self.guard_live_command(&cmd)?;
+        if input_source.is_some() {
+            crate::input_source::require_capability(|probe| self.execute_running_command(probe))?;
+        }
         require_identity_capability(&cmd, |probe| self.execute_running_command(probe))?;
         let live_path = self.last_config_path.with_file_name("live_output.json");
         if live_path.exists() {
@@ -1198,6 +1284,12 @@ impl AudioHost {
                     let _ = self.execute_running_command(IpcCommand::Stop);
                     return Err(anyhow!("音声エンジンが接続設定の確認に対応していません"));
                 }
+                if process && actual_input_id.is_some() {
+                    let _ = self.execute_running_command(IpcCommand::Stop);
+                    return Err(anyhow!(
+                        "アプリ入力で開始したことを確認できません。音声エンジンを更新してください"
+                    ));
+                }
                 if input_id
                     .as_ref()
                     .is_some_and(|id| Some(id) != actual_input_id.as_ref())
@@ -1213,6 +1305,7 @@ impl AudioHost {
                 }
                 // Update active config
                 let config = ActiveAudioConfig {
+                    input_source: input_source.as_ref().map(|s| s.source.clone()),
                     host: host_name.clone().unwrap_or("ASIO".to_string()),
                     input: input_name,
                     output: output_name,
@@ -1229,6 +1322,7 @@ impl AudioHost {
                 }
 
                 self.active_config = Some(config);
+                self.remember_input_source(input_source);
                 if let Some(controls) = initial_controls {
                     self.is_global_muted = controls.muted;
                 }
@@ -2050,6 +2144,7 @@ impl AudioHost {
 
         match self.execute_running_command(IpcCommand::GetRuntimeStats)? {
             IpcResponse::RuntimeStats {
+                process_input,
                 preparation,
                 active_plugin_count,
                 enabled_plugin_count,
@@ -2087,6 +2182,7 @@ impl AudioHost {
                 built_in_singing,
                 built_in_reverb,
             } => Ok(EngineRuntimeStats {
+                process_input,
                 preparation,
                 active_plugin_count,
                 enabled_plugin_count,
@@ -2225,6 +2321,18 @@ impl AudioHost {
         match std::fs::read_to_string(path) {
             Ok(json) => {
                 match serde_json::from_str::<ActiveAudioConfig>(&json) {
+                    Ok(config)
+                        if config
+                            .input_source
+                            .as_ref()
+                            .is_some_and(|s| *s != crate::input_source::Config::default()) =>
+                    {
+                        self.frontend_bootstrap.automatic_attempted = true;
+                        self.frontend_bootstrap.warmup_error = Some(
+                            "保存した入力は自動開始しません。音声設定で入力を確認してください。"
+                                .into(),
+                        );
+                    }
                     Ok(config)
                         if !config.host.is_empty()
                             && config

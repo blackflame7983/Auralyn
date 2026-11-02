@@ -23,6 +23,8 @@ mod bundle_capture;
 mod capabilities;
 #[path = "core/commands.rs"]
 mod commands;
+#[path = "core/input.rs"]
+mod input;
 #[path = "core/lifecycle.rs"]
 pub(super) mod lifecycle;
 #[path = "core/session_rack.rs"]
@@ -276,6 +278,7 @@ fn time_critical_audio_threads_enabled() -> bool {
 }
 
 struct AudioStartRequest {
+    input_source: Option<crate::input_source::Start>,
     host_name: Option<String>,
     input_name: Option<String>,
     output_name: Option<String>,
@@ -310,7 +313,10 @@ pub struct Engine {
     restored_monitor: Option<super::split_monitor::State>,
     split_worker: Option<super::split_monitor::Worker>,
     mode_silence: super::mode_silence::Controller,
-    input_stream: Option<cpal::Stream>,
+    input_stream: Option<input::InputStream>,
+    input_source: Option<crate::input_source::Start>,
+    process_shared: Option<Arc<super::process_capture::Shared>>,
+    process_renderer_owner: Option<ControlOwner<super::process_capture::clock::Renderer>>,
     output_stream: Option<cpal::Stream>,
 
     // Sub-Modules
@@ -366,6 +372,7 @@ pub struct Engine {
     noise_control_strength: f32,
     noise_voice_guard: bool,
     noise_learning: Arc<NoiseLearningShared>,
+    input_learning: std::collections::BTreeMap<String, Arc<NoiseLearningShared>>,
     noise_measurement: noise_learning::Controller,
     noise_undo: Option<noise_comparison::Undo>,
     noise_history_reason: super::history::Reason,
@@ -413,6 +420,9 @@ impl Engine {
             split_worker: None,
             mode_silence: Default::default(),
             input_stream: None,
+            input_source: None,
+            process_shared: None,
+            process_renderer_owner: None,
             gain_shared: Arc::new(auto_gain::Shared::default()),
             gain_capture_rx: None,
             gain_revision: std::time::SystemTime::now()
@@ -475,6 +485,7 @@ impl Engine {
             noise_control_strength: 1.0,
             noise_voice_guard: true,
             noise_learning: Arc::new(NoiseLearningShared::new()),
+            input_learning: Default::default(),
             noise_measurement: noise_learning::Controller::default(),
             noise_undo: None,
             noise_history_reason: Default::default(),
@@ -582,6 +593,10 @@ impl Engine {
                     let resampling_failed = self.resampling_failed.swap(false, Ordering::AcqRel);
                     let block_capacity_failed = self.block_capacity_failed.swap(false, Ordering::AcqRel);
                     let nr_failed = self.nr_failed.swap(false, Ordering::AcqRel);
+                    if let Some(message) = self.input_stream.as_ref().and_then(input::InputStream::failure_message) {
+                        self.stop_audio();
+                        self.send_event(EngineEvent::Error(message.into()));
+                    }
                     if resampling_failed || block_capacity_failed || nr_failed {
                         self.stop_audio();
                         let reason = match (resampling_failed, block_capacity_failed) {
@@ -1201,6 +1216,7 @@ impl Engine {
     ) -> Result<()> {
         self.start_audio_impl(
             AudioStartRequest {
+                input_source: None,
                 host_name,
                 input_name: input_device,
                 output_name: output_device,
@@ -1261,6 +1277,9 @@ impl Engine {
     }
 
     fn queue_snapshot(&self) -> Option<QueueSnapshot> {
+        if self.process_shared.is_some() {
+            return None;
+        }
         self.queue_diagnostics.as_ref().map(|diagnostics| {
             diagnostics.snapshot(
                 self.queue_state,
@@ -1308,6 +1327,11 @@ impl Engine {
         &self,
         report: (u32, Option<u32>, bool, Vec<crate::ipc::VstLatencyStage>),
     ) -> crate::ipc::LatencyMetadata {
+        let nr_enabled = self.noise_reduction_enabled
+            && self
+                .input_source
+                .as_ref()
+                .is_none_or(|s| s.source.purpose() != crate::input_source::Purpose::Music);
         let nominal = (self.current_sample_rate.is_finite() && self.current_sample_rate > 0.0)
             .then(|| self.current_sample_rate.round() as u32);
         // NR生成時と同じ設定rate。1フレームの長さであり、各sampleの待ち時間ではない。
@@ -1347,7 +1371,7 @@ impl Engine {
             vst_known_subtotal_samples: current.then_some(known_subtotal).flatten(),
             vst_subtotal_overflow: current && overflow,
             nr: crate::ipc::NrLatencyStage {
-                enabled: self.noise_reduction_enabled,
+                enabled: nr_enabled,
                 configured_rate_hz: current.then_some(nr_rate).flatten(),
                 frame_samples: current.then(|| geometry.map(|g| g.frames as u32)).flatten(),
                 frame_period_ms: if current {
@@ -1398,7 +1422,7 @@ impl Engine {
             stream_running: current,
             nominal_sample_rate_hz: nominal,
             fixed_buffer_request_frames: self.fixed_buffer_request_frames,
-            nr_configured_enabled: self.noise_reduction_enabled,
+            nr_configured_enabled: nr_enabled,
             nr_processing_rate_hz: nr_rate,
             nr_processing_frame_samples: geometry.map(|g| g.frames as u32),
             vst_reported_latency_samples,
@@ -1726,6 +1750,10 @@ impl Engine {
         }
         self.input_stream = None;
         self.output_stream = None;
+        if let Some(mut owner) = self.process_renderer_owner.take() {
+            drop(owner.take());
+        }
+        self.process_shared = None;
         self.split_worker = None;
         self.split_monitor = None;
         self.live_output = None;

@@ -178,6 +178,7 @@ mod tests {
     fn protected_same_spec_restart_without_routing_preserves_held_output() {
         use crate::ipc::{ChannelRouting, Command, OutputRouting};
         let start = Command::Start {
+            input_source: None,
             host: "ASIO".into(),
             input: Some("input".into()),
             output: Some("output".into()),

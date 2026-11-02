@@ -181,7 +181,7 @@ function AppContent() {
         currentSampleRate={audioConfig.sampleRate}
         currentBufferSize={audioConfig.bufferSize}
         preparationBlocked={isModalOpen || isInitializing}
-        currentInput={audioConfig.input}
+        currentInput={audioConfig.inputSource?.kind === 'process_loopback' ? audioConfig.inputSource.config.appName : audioConfig.input}
         currentOutput={audioConfig.output}
         liveControls={displayPurpose === 'voice' ? <LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} /> : undefined}
         vstChain={<VstChainItems plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}

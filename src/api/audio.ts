@@ -1,3 +1,4 @@
+import type { InputSource, InputSourceRequest, ProcessInputCandidate } from '@/lib/inputSource';
 import { invoke } from "@tauri-apps/api/core";
 import type { ChannelRouting, OutputRouting } from '@/lib/audioChannelRouting';
 
@@ -35,7 +36,7 @@ export interface AudioConfig {
     routing?: ChannelRouting;
 }
 export interface FrontendBootstrapRequest {
-    config: { host: string; input?: string; output?: string; inputId?: string; outputId?: string; sampleRate?: number; bufferSize?: number; inputChannels?: [number, number]; outputRouting?: OutputRouting } | null;
+    config: { host: string; input?: string; output?: string; inputId?: string; outputId?: string; sampleRate?: number; bufferSize?: number; inputChannels?: [number, number]; outputRouting?: OutputRouting; inputSource?: InputSource } | null;
     inputGain: number;
     outputGain: number;
 }
@@ -60,6 +61,7 @@ export type SessionRackReply = { status: 'snapshot'; generation: string; revisio
     | { status: 'failed'; message: string };
 
 export const audioApi = {
+    processInputSources: (): Promise<ProcessInputCandidate[]> => invoke('get_process_input_sources'),
     frontendBootstrap: async (request: FrontendBootstrapRequest): Promise<FrontendBootstrapReply> => invoke('audio_frontend_bootstrap', { request }),
     sessionRack: async (request: SessionRackRequest): Promise<SessionRackReply> => invoke('session_rack', { request }),
     missingVstPaths: async (paths: string[]): Promise<boolean[]> => invoke('missing_vst_paths', { paths }),
@@ -72,7 +74,7 @@ export const audioApi = {
     getDevices: async (forceRefresh: boolean = false): Promise<AudioDeviceList> => {
         return await invoke("get_audio_devices", { forceRefresh });
     },
-    start: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string, expectedState?: AudioStateInfo, channelRouting?: ChannelRouting): Promise<AudioConfig> => {
+    start: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string, expectedState?: AudioStateInfo, channelRouting?: ChannelRouting, inputSource?: InputSourceRequest): Promise<AudioConfig> => {
         return await invoke("start_audio", {
             host,
             input,
@@ -83,6 +85,7 @@ export const audioApi = {
             outputId,
             ...(expectedState ? {expectedState} : {}),
             ...(channelRouting ? { channelRouting } : {}),
+            ...(inputSource ? { inputSource } : {}),
         });
     },
     stop: async () => {
@@ -113,7 +116,7 @@ export const audioApi = {
     setGain: async (id: string, value: number) => {
         return await invoke("set_gain", { id, value });
     },
-    restart: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string, expectedState?: AudioStateInfo, channelRouting?: ChannelRouting): Promise<AudioConfig> => {
+    restart: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string, expectedState?: AudioStateInfo, channelRouting?: ChannelRouting, inputSource?: InputSourceRequest): Promise<AudioConfig> => {
         return await invoke("restart_audio_engine", {
             host,
             input,
@@ -124,6 +127,7 @@ export const audioApi = {
             outputId,
             ...(expectedState ? {expectedState} : {}),
             ...(channelRouting ? { channelRouting } : {}),
+            ...(inputSource ? { inputSource } : {}),
         });
     },
     openEditor: async (id: string) => {
@@ -233,6 +237,7 @@ export const audioApi = {
 };
 
 export interface ActiveAudioConfig {
+    input_source?: InputSource;
     routing?: ChannelRouting;
     host: string;
     input: string | null;
@@ -451,6 +456,7 @@ export interface PreparationSnapshot {
     outputRouting?: OutputRouting;
 }
 export interface EngineRuntimeStats {
+    processInput?: { capturedFrames: number; nonzeroFrames: number; failed: boolean; waitingForAudio: boolean; inputRateHz: number; correctionLimitPpm: number };
     preparation?: PreparationSnapshot | null;
     resamplerCohortTiming?: ResamplerCohortTimingSnapshot | null;
     frameTiming?: FrameTimingSnapshot | null;

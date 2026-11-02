@@ -5838,6 +5838,7 @@ dependencies = [
  "vst3",
  "walkdir",
  "windows",
+ "windows-core",
  "winit",
  "winreg 0.52.0",
 ]

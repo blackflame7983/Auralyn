@@ -43,7 +43,28 @@ pub fn capture_current_profile(
     plugins: Vec<PresetPlugin>,
     audio_extras: Option<ProfileAudioExtras>,
 ) -> Result<Preset, String> {
+    capture_profile_parts(host, name, plugins, audio_extras, true)
+}
+
+fn capture_profile_parts(
+    host: &mut AudioHost,
+    name: String,
+    plugins: Vec<PresetPlugin>,
+    audio_extras: Option<ProfileAudioExtras>,
+    include_audio: bool,
+) -> Result<Preset, String> {
     let state = host.get_state();
+    if include_audio
+        && state
+            .config
+            .as_ref()
+            .and_then(|c| c.input_source.as_ref())
+            .is_some_and(|s| *s != crate::input_source::Config::default())
+    {
+        return Err(
+            "この入力の接続設定はプロファイル保存に未対応です。VSTだけを保存してください".into(),
+        );
+    }
     let stats = host.get_engine_runtime_stats().map_err(|e| e.to_string())?;
 
     let extras = audio_extras.unwrap_or_default();
@@ -72,17 +93,20 @@ pub fn capture_current_profile(
         .unwrap_or(extras.output_routing);
 
     // エンジン停止中は架空のデバイス設定を作らない（audioConfig を含めない）
-    let audio_config = state.config.map(|active| ProfileAudioConfig {
-        host: active.host.clone(),
-        input_device: active.input.clone(),
-        output_device: active.output.clone(),
-        sample_rate: active.sample_rate.unwrap_or(48000),
-        buffer_size: active.buffer_size.unwrap_or(512),
-        input_channels,
-        output_routing,
-        input_gain_db: extras.input_gain_db.unwrap_or(0.0),
-        master_gain_db: extras.master_gain_db.unwrap_or(0.0),
-    });
+    let audio_config = state
+        .config
+        .filter(|_| include_audio)
+        .map(|active| ProfileAudioConfig {
+            host: active.host.clone(),
+            input_device: active.input.clone(),
+            output_device: active.output.clone(),
+            sample_rate: active.sample_rate.unwrap_or(48000),
+            buffer_size: active.buffer_size.unwrap_or(512),
+            input_channels,
+            output_routing,
+            input_gain_db: extras.input_gain_db.unwrap_or(0.0),
+            master_gain_db: extras.master_gain_db.unwrap_or(0.0),
+        });
 
     let noise_control = ProfileNoiseControl {
         enabled: stats.noise_reduction_enabled,
@@ -104,7 +128,7 @@ pub fn capture_current_profile(
         name,
         &ProfileSaveCategories {
             include_plugins: true,
-            include_audio_config: true,
+            include_audio_config: include_audio,
             include_noise_control: true,
             include_builtin_fx: true,
         },
@@ -122,8 +146,20 @@ pub fn backup_current_profile(
     plugins: Vec<PresetPlugin>,
     audio_extras: Option<ProfileAudioExtras>,
 ) -> Result<(), String> {
-    let backup =
-        capture_current_profile(host, BACKUP_PROFILE_NAME.to_string(), plugins, audio_extras)?;
+    // 接続を含めないVST構成の適用では、新入力の経路を変更せず音作りだけを退避する。
+    let include_audio = host
+        .get_state()
+        .config
+        .as_ref()
+        .and_then(|c| c.input_source.as_ref())
+        .is_none_or(|s| *s == crate::input_source::Config::default());
+    let backup = capture_profile_parts(
+        host,
+        BACKUP_PROFILE_NAME.to_string(),
+        plugins,
+        audio_extras,
+        include_audio,
+    )?;
     presets::save_preset(config_dir, BACKUP_PROFILE_NAME, &backup)
 }
 
@@ -197,6 +233,18 @@ pub(crate) fn apply_profile_with_start_intent_and_ids(
     start_intent: Option<StartIntent>,
     device_ids: Option<(String, String)>,
 ) -> Result<ApplyProfileSummary, String> {
+    if profile.audio_config.is_some()
+        && host
+            .get_state()
+            .config
+            .as_ref()
+            .and_then(|c| c.input_source.as_ref())
+            .is_some_and(|s| *s != crate::input_source::Config::default())
+    {
+        return Err(
+            "この入力でのプロファイル復元に未対応です。音声設定で機器入力を選んでください".into(),
+        );
+    }
     if device_ids.is_some() && start_intent.is_none() {
         return Err("機器ID付きの復旧には開始時の操作条件が必要です".into());
     }

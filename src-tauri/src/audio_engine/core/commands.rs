@@ -7,6 +7,61 @@ impl Engine {
         cmd: Command,
         target: &winit::event_loop::EventLoopWindowTarget<T>,
     ) {
+        if let Err(error) = self.validate_input_start(&cmd) {
+            self.send_error(error.to_string());
+            return;
+        }
+        let music = self
+            .input_source
+            .as_ref()
+            .is_some_and(|s| s.source.purpose() == crate::input_source::Purpose::Music);
+        if music
+            && matches!(
+                &cmd,
+                Command::StartNoiseLearning { .. }
+                    | Command::StartVoiceCheckRecording { .. }
+                    | Command::PlayVoiceCheck { .. }
+                    | Command::NoiseMeasurement {
+                        request: noise_learning::Request::Start { .. }
+                    }
+                    | Command::AutoGain {
+                        request: auto_gain::Request::Begin { .. }
+                    }
+                    | Command::AutoGain {
+                        request: auto_gain::Request::Apply { .. }
+                    }
+                    | Command::SetChannelScan { active: true }
+            )
+        {
+            self.send_error(
+                "音楽の入力では声向けの測定を使用できません。入力の用途を確認してください".into(),
+            );
+            return;
+        }
+        if self
+            .input_source
+            .as_ref()
+            .is_some_and(|s| s.source != crate::input_source::Config::default())
+            && (matches!(
+                &cmd,
+                Command::ConfigureLiveModes { armed: true, .. } | Command::CaptureBundleState
+            ) || matches!(&cmd, Command::LiveMode { request } if !matches!(request,
+                    crate::audio_engine::live_modes::Request::Snapshot | crate::audio_engine::live_modes::Request::Disarm { .. })))
+        {
+            self.send_error("この入力は歌・雑談モードや配信状態の保存に未対応です。音声設定で入力を確認してください".into());
+            return;
+        }
+        if self
+            .input_source
+            .as_ref()
+            .is_some_and(|s| s.source != crate::input_source::Config::default())
+            && matches!(&cmd, Command::LiveOutput { config: Some(c) } if c.split_processing)
+        {
+            self.send_error(
+                "この入力は処理分離に未対応です。単一の処理経路を使ってください".into(),
+            );
+            return;
+        }
         // 拒否時に保存intent/条件revision/pending queueを部分更新しない。
         let nr_enable = match &cmd {
             Command::SetNoiseReduction { active, .. }
@@ -14,7 +69,7 @@ impl Engine {
             _ => None,
         };
         if let Some(active) = nr_enable {
-            if self.output_stream.is_some() {
+            if self.output_stream.is_some() && !music {
                 if let Err(error) =
                     dsp::NoiseGeometry::guard(self.current_sample_rate as u32, active)
                 {
@@ -166,6 +221,7 @@ impl Engine {
                 | Command::ConfigureLiveModes { .. }
                 | Command::GetDevices
                 | Command::StartIdentityCapability
+                | Command::ProcessInputCapability
                 | Command::BeginDeviceScan
                 | Command::PollDeviceScan { .. }
                 | Command::CancelDeviceScan { .. }
@@ -241,6 +297,9 @@ impl Engine {
             }
             Command::StartIdentityCapability => {
                 self.send_response(Response::StartIdentityCapability { version: 2 });
+            }
+            Command::ProcessInputCapability => {
+                self.send_response(Response::ProcessInputCapability { version: 1 });
             }
             Command::PeakProtection { config } => {
                 if let Some(config) = config {
@@ -431,6 +490,7 @@ impl Engine {
                 }
             }
             Command::Start {
+                input_source,
                 host,
                 input,
                 output,
@@ -459,13 +519,17 @@ impl Engine {
                     rate: sample_rate,
                     buffer: buffer_size,
                 };
-                match self.start_audio_with_ids(
-                    Some(host),
-                    input,
-                    output,
-                    sample_rate,
-                    buffer_size,
-                    (input_id, output_id),
+                match self.start_audio_impl(
+                    AudioStartRequest {
+                        host_name: Some(host),
+                        input_name: input,
+                        output_name: output,
+                        sample_rate,
+                        buffer_size,
+                        device_ids: (input_id, output_id),
+                        input_source,
+                    },
+                    lifecycle::StartupPolicy::default(),
                 ) {
                     Ok(_) => {
                         bound.rate = Some(self.current_sample_rate as u32);
@@ -952,7 +1016,7 @@ impl Engine {
                     self.plugin_manager.enabled_plugin_count(self.global_bypass);
                 let latency_report = self.plugin_manager.latency_report(self.global_bypass);
                 let total_plugin_latency_samples = latency_report.0;
-                let noise_reduction_latency_samples = if self.noise_reduction_enabled {
+                let noise_reduction_latency_samples = if self.noise_reduction_enabled && !music {
                     ((self.current_sample_rate / 100.0).round() as u32).max(1)
                 } else {
                     0
@@ -975,6 +1039,7 @@ impl Engine {
                     0.0
                 };
                 self.send_response(Response::RuntimeStats {
+                    process_input: self.process_shared.as_ref().map(|s| Box::new(s.snapshot())),
                     preparation: Some(Box::new(self.preparation_snapshot())),
                     active_plugin_count,
                     enabled_plugin_count,
@@ -1005,7 +1070,7 @@ impl Engine {
                     total_chain_latency_samples,
                     total_chain_latency_ms,
                     noise_reduction_enabled: self.noise_reduction_enabled,
-                    noise_reduction_active: self.noise_reduction_enabled,
+                    noise_reduction_active: !music && self.noise_reduction_enabled,
                     noise_reduction_mode: self.noise_control_mode.as_str().to_string(),
                     noise_learning_state: self.noise_learning.state_label().to_string(),
                     noise_learning_progress: self.noise_learning.progress(),

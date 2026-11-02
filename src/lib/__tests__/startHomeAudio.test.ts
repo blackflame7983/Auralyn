@@ -22,6 +22,19 @@ it('通常の開始は機器IDとASIO入力ペアを保ち、実際のレート�
     expect(persist).toHaveBeenCalledWith({ ...config, sampleRate: 96000, bufferSize: 256, outputRouting: { mode: 'legacy' } });
 });
 
+it('ホームの再開もアプリ入力の指定を渡し、再選択要求をマイク開始へ読み替えない', async () => {
+    const { start, persist } = setup();
+    const source = { kind: 'process_loopback' as const, config: { appKey: 'a'.repeat(64), appName: 'player.exe', rawEndpointId: 'raw', purpose: 'music' as const } };
+    const saved = { host: 'WASAPI', output: 'out', outputId: 'out-id', inputSource: source };
+    start.mockRejectedValueOnce(new Error('アプリを選び直してください'));
+    await expect(startHomeAudio(saved, persist)).rejects.toMatchObject({ started: false });
+    expect(start).toHaveBeenCalledOnce();
+    expect(start.mock.calls[0][1]).toBeUndefined();
+    expect(start.mock.calls[0][5]).toBeUndefined();
+    expect(start.mock.calls[0][9]).toEqual({ source });
+    expect(persist).not.toHaveBeenCalled();
+});
+
 it('本番保護中は保持済み機器で再開し、古いUIの入力ペアを再適用しない', async () => {
     const { start, channels, persist } = setup(true);
     vi.spyOn(audioApi, 'getAudioState').mockResolvedValue({ is_running: true, config: {

@@ -76,7 +76,7 @@ it.each(['ASIO', 'Wasapi'])('別hostのプリセットで先頭以外の入出�
     fireEvent.change(screen.getByRole('combobox', { name: '入出力プリセット' }), { target: { value: 'target' } });
     await waitFor(() => expect(input).toHaveValue(`id:${targetHost}-2`));
     fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
-    await waitFor(() => expect(start).toHaveBeenCalledWith(targetHost, `${targetHost} device 2`, `${targetHost} device 2`, 512, 48000, `${targetHost}-2`, `${targetHost}-2`, undefined, expect.objectContaining({ outputRouting: expect.any(Object) })));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(targetHost, `${targetHost} device 2`, `${targetHost} device 2`, 512, 48000, `${targetHost}-2`, `${targetHost}-2`, undefined, expect.objectContaining({ outputRouting: expect.any(Object) }), { source: { kind: "device", config: { purpose: "voice" } } }));
 });
 
 it('稼働中の変更なし保存を抑止し、変更を戻すと再び抑止する', async () => {
@@ -136,7 +136,7 @@ it.each([false, true])('入力ペアの下書きだけでは保存せず、明�
     expect(save).toBeEnabled();
     fireEvent.click(save);
     const selected = changeDevice ? 'Device B' : 'Device A';
-    await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', selected, selected, 512, 48000, undefined, undefined, undefined, expect.objectContaining({ inputChannels: [2, 3] })));
+    await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', selected, selected, 512, 48000, undefined, undefined, undefined, expect.objectContaining({ inputChannels: [2, 3] }), { source: { kind: "device", config: { purpose: "voice" } } }));
     await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ host: 'ASIO', input: selected, output: selected, inputChannels: [2, 3] }), { audioStarted: true }));
 });
 

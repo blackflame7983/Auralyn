@@ -7,6 +7,7 @@ pub mod editors;
 pub mod frame_timing;
 pub mod loopback_probe;
 pub mod plugins;
+pub(crate) mod process_capture;
 pub mod queue_diagnostics;
 pub mod resampling;
 pub mod test_tone;

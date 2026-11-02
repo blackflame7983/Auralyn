@@ -16,6 +16,7 @@ mod desktop_integration;
 mod display_locale;
 #[cfg(any(test, feature = "dsp-verification"))]
 mod dsp_verification_allocator;
+pub mod input_source;
 pub mod ipc;
 mod migration;
 pub mod obs;
@@ -393,6 +394,7 @@ pub fn run() {
             commands::audio::scan_plugins,
             commands::audio::clear_blacklist,
             commands::audio::start_audio,
+            commands::audio::get_process_input_sources,
             commands::audio::stop_audio,
             commands::audio::load_plugin,
             commands::audio::restore_plugin,

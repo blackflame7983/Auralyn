@@ -446,10 +446,13 @@ pub enum Command {
     },
     /// このEngineがStart時の実デバイスID照合に対応することを確認する。
     StartIdentityCapability,
+    ProcessInputCapability,
     AutoGain {
         request: crate::audio_engine::auto_gain::Request,
     },
     Start {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input_source: Option<crate::input_source::Start>,
         host: String,
         input: Option<String>,
         output: Option<String>,
@@ -629,6 +632,9 @@ pub enum Response {
     StartIdentityCapability {
         version: u32,
     },
+    ProcessInputCapability {
+        version: u32,
+    },
     Started {
         sample_rate: u32,
         buffer_size: u32,
@@ -646,6 +652,8 @@ pub enum Response {
         vendor: String,
     },
     RuntimeStats {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        process_input: Option<Box<crate::audio_engine::process_capture::Snapshot>>,
         #[serde(default)]
         preparation: Option<Box<PreparationSnapshot>>,
         active_plugin_count: u32,
@@ -786,6 +794,8 @@ mod tests {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "kind", content = "data")]
+// 制御スレッドの直列IPC。頻出するメーターイベントごとのBox確保は追加しない。
+#[allow(clippy::large_enum_variant)]
 pub enum OutputMessage {
     Response(Response),
     Event(EngineEvent),

@@ -822,6 +822,7 @@ mod tests {
     fn live_modes_protection_blocks_pre_start_changes_but_allows_exact_recovery_stop_and_mute() {
         use crate::ipc::Command;
         let start = Command::Start {
+            input_source: None,
             host: "ASIO".into(),
             input: Some("input".into()),
             output: Some("output".into()),
@@ -848,6 +849,7 @@ mod tests {
             Command::UnloadPlugin { id: "x".into() },
             Command::ReorderPlugins { order: vec![] },
             Command::Start {
+                input_source: None,
                 host: "ASIO".into(),
                 input: None,
                 output: Some("output".into()),

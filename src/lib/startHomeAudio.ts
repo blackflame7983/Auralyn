@@ -26,7 +26,7 @@ export async function startHomeAudio(saved: AudioPreferences, persist: (config: 
         }
         const result = mode.armed
             ? await audioApi.start(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId)
-            : await audioApi.start(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId, undefined, channelRoutingFor(config));
+            : await audioApi.start(config.host, config.input, config.output, config.bufferSize, config.sampleRate, config.inputId, config.outputId, undefined, channelRoutingFor(config), ...(config.inputSource ? [{ source: config.inputSource }] as const : []));
         started = true;
         // 保護中に古いUIのチャンネル選択を再適用しない。
         if (!mode.armed) {

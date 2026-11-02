@@ -168,6 +168,7 @@ pub(super) fn command_changes(command: &Command) -> bool {
         | Command::BeginDeviceScan
         | Command::PollDeviceScan { .. }
         | Command::CancelDeviceScan { .. }
+        | Command::ProcessInputCapability
         | Command::GetRuntimeStats
         | Command::GetFrameTimingTrace { .. }
         | Command::GetPluginState { .. }
@@ -328,6 +329,7 @@ mod tests {
             Command::SetInputGain { value: 1.0 },
             Command::SetGlobalMute { active: true },
             Command::Start {
+                input_source: None,
                 host: "ASIO".into(),
                 input: None,
                 output: None,

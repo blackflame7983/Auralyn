@@ -431,3 +431,36 @@ cargo test --locked --lib measure_fixed_period_publication_cost -- --ignored --n
 - `cargo test --locked --lib mode_silence` はcallback末尾の無音ACK、入力停止→キュー排出→出力排出の順序、分離monitorと配信出力、古い送出block、不一致ID・世代・異常、レート変換のcarry破棄を確認する。callback処理の割当/解放が0であることを測る。耳までの無音成立時刻を測った試験ではない。
 - 登録・失敗後の操作再開・手動復旧は `useLiveModes.test.tsx`、新ラックIDの同期と保存原本の保護は `usePluginsRackInvalidated.test.tsx` で確認する。`e2e/browser/live-mode-vst.spec.ts` はプロファイル関連付け、切替中の二重操作禁止、緊急ミュートへの到達、復旧の明示操作と完了後の操作再開を実ブラウザ・IPCモックで確認する。
 - 完了時にはRust全体のtest/check/clippy/fmtとフロント全体・型・buildを実行する。実Tauri・複数の実VST・WASAPI/ASIO・実出力録音・OBS連動で、無音区間、旧音の混入、失敗時復旧、停止・緊急ミュートの優先、再起動の手動復旧、キーボード・読み上げを別途受入する。対象経路・VST/ドライバー/レート/bufferを記録し、未実施なら未確認とする。
+
+## プロセス単独入力の段階0 probe
+
+製品UIと分離した検証exampleを`process-loopback-probe` featureでビルドする。
+取得・取消・対象終了・録音の保護と、原音の二重再生を防ぐ経路の合否を別々に扱う。
+コマンドと実機確認の境界は[段階0の記録](PROCESS_LOOPBACK_STAGE0.md)を参照する。
+単体試験は`src-tauri`で`cargo test --locked --example process_loopback_probe --features process-loopback-probe`。
+実機runnerの実行は音声ストリームを開始するため、通常の自動テストへ追加しない。
+既存runnerの`single_endpoint_gate`は、アプリのセッションミュート／音量ゼロを使った当初の同一再生先での試験である。別再生先への割当てや出力デバイス側のミュートは実行しない。
+[見直した計画](plans/PROCESS_LOOPBACK_AND_MIXING.md)では、別再生先での原音抑止と取得の両立、使えない環境での仮想ケーブル入力を追加の検証対象にする。
+原音が耳へ届かず、加工後の本人用出力は聴けること、他アプリが混入しないこと、切断時の挙動と元の設定への戻し方を記録する。未加工／加工後の比較は一つの返し経路で行う。
+SGMの説明書や既存runnerの成功を新経路の実機合格へ読み替えない。追加の別再生先試験は `scripts/verify_process_loopback_route.py` で明示実行し、出力デバイス側のミュートと復元を確認する。
+
+
+## プロセス単独入力の段階1
+
+実装と確認範囲は[段階1の記録](PROCESS_LOOPBACK_STAGE1.md)を参照する。
+Rustは `cargo test --locked --all-targets --features process-loopback-probe` と同条件のClippy（`-- -D warnings`）、フロントはVitest・TypeScript・Viteで確認する。
+`e2e/browser/process-input.spec.ts` はIPCモックで、候補選択、保存時に機器入力と候補IDを混同しないこと、再選択、用途の保持、機器入力への明示切替と狭い画面を確認する。
+`ProcessInputPanel.test.tsx` は一覧更新の非同期応答中に用途を変更しても古い下書きへ戻さず、同じアプリの再生先変更では出力先だけを再選択することを確認する。
+
+`scripts/verify_process_engine_input.py` は実Engine、`scripts/verify_process_audio_engine.py` は実ケーブル入力（`--purpose voice|music`）、`scripts/verify-process-input-native.mjs` は実UI→Host→Engine→保存を確認する明示実行用の入口である。
+通常の自動テストから音声を開始しない。実行時は、原音用の未使用・非既定の再生先と本人用出力を指定し、所有する小音量sourceだけを使う。
+実Tauri runnerは保存先・WebView2・実行ファイルを隔離する。MCP CLIの接続先は起動したHostのPIDに対応するポートから選び、接続状態を確認してから操作する。
+結果の音声データ、出力デバイス側のミュート、実際の聴感、Chrome等の個別アプリ、製品の1時間運転、ASIOマイク実機はそれぞれ別の確認として記録する。
+
+Chrome・VLCと実VSTによる連続試験は `scripts/verify_process_app_soak.py` で明示実行する。
+`--seconds 3900`で65分、ChromeのHTML音声は`--chrome-media-kind audio-element`を指定する。
+出力デバイスのミュートとアプリのミュートを区別し、開始時の非ゼロ信号、一時停止・再開、VST稼働を確認する。
+長時間の本人用出力はEngineの全体ミュートを使う。処理の稼働と聴感を同じ合否にしない。
+監視JSONのWindowsでの読み取り競合は再試行し、表示用snapshotの競合だけで運転を止めず、`samples.jsonl`へ詳細を追記する。
+自動試験で扱うミュートは所有するguardで復元し、通常のWindows既定・返し用出力の設定を保持する。
+条件・警告・最終結果は[Chrome・VLCの確認記録](PROCESS_LOOPBACK_ACCEPTANCE_2026-11-02.md)、利用者の聴感確認は[試聴手順](PROCESS_LOOPBACK_AUDITION.md)に分ける。

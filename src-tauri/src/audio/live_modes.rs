@@ -288,6 +288,15 @@ impl AudioHost {
         }
     }
     pub fn live_modes(&mut self, mut request: Request) -> Result<Snapshot> {
+        anyhow::ensure!(
+            matches!(&request, Request::Snapshot | Request::Disarm { .. })
+                || self
+                    .active_config
+                    .as_ref()
+                    .and_then(|c| c.input_source.as_ref())
+                    .is_none_or(|s| *s == crate::input_source::Config::default()),
+            "この入力は歌・雑談モードに未対応です。音声設定で入力を確認してください"
+        );
         if matches!(request, Request::Snapshot) && self.mode_vst.blocked() {
             return Ok(self.mode_vst_snapshot());
         }

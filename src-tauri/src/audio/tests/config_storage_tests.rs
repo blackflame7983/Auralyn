@@ -189,6 +189,7 @@ fn restore_requires_matching_operation_and_engine_generation_and_valid_input() {
 
 fn start_command() -> IpcCommand {
     IpcCommand::Start {
+        input_source: None,
         host: "ASIO".into(),
         input: None,
         output: None,
@@ -964,6 +965,7 @@ fn saving_packaged_audio_config_does_not_read_or_overwrite_standalone() {
     let standalone = root.join("legacy/last_audio_config.json");
     let packaged = root.join("package/LocalState/Auralyn/last_audio_config.json");
     let legacy = ActiveAudioConfig {
+        input_source: None,
         host: "ASIO".into(),
         input: Some("Legacy Input".into()),
         output: None,
