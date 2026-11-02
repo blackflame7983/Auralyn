@@ -234,7 +234,6 @@ pub fn run() {
     );
 
     builder
-        .manage(mode)
         .manage(distribution)
         .manage(migration::Preview::default())
         .manage(shortcuts::Shortcuts::default())
@@ -250,9 +249,12 @@ pub fn run() {
                 }
             }
         })
-        .setup(|app| {
+        .setup(move |app| {
             // app_config_dirはMSIXではpackage専用、通常版では従来のRoaming AppData。
             let config_dir = app.path().app_config_dir()?;
+            let mut mode = mode.clone();
+            mode.bind_config_root(&config_dir);
+            app.manage(mode);
             let locale_path = config_dir.join("display-locale.json");
             let read_path = locale_path.clone();
             let locale = tauri::async_runtime::block_on(commands::run_blocking(move || {

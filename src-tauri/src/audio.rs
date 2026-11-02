@@ -231,6 +231,20 @@ impl AudioHost {
         anyhow::ensure!(self.live_modes.target.is_none() && self.live_output(None)?.config == Default::default(), "確認済み保存・復帰は単一出力・カスタム音作りが対象です。モニター分離や歌/雑談は各設定で管理してください");
         Ok(())
     }
+    pub(crate) fn preflight_runtime_checkpoint(&mut self) -> Result<()> {
+        self.check_can_interrupt()?;
+        anyhow::ensure!(
+            self.session_restore.is_none(),
+            "VSTの復元を完了してから退避してください"
+        );
+        self.checked_snapshot_supported()?;
+        let stats = self.get_engine_runtime_stats()?;
+        anyhow::ensure!(
+            stats.noise_learning_state != "capturing",
+            "周囲の音の測定を終了してから退避してください"
+        );
+        Ok(())
+    }
     pub fn peak_protection(
         &mut self,
         config: Option<crate::audio_engine::peak_protection::Config>,

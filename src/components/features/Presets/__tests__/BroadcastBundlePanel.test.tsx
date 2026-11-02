@@ -1,4 +1,5 @@
 import { audioApi } from '@/api/audio';
+import { message } from '@/i18n/messages';
 import { runtime } from '@/__tests__/fixtures/preparation';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
@@ -24,6 +25,25 @@ beforeEach(() => {
     vi.mocked(bundleApi.save).mockResolvedValue(undefined);
 });
 afterEach(cleanup);
+it.each([false, true])('一時退避の読込可能=%sを区別し、未完了を復帰可能と表示しない', async readable => {
+    vi.mocked(bundleApi.recovery).mockResolvedValue({ id: 'runtime-private-id', readable, runtimeCheckpoint: true });
+    vi.mocked(bundleApi.recoveryPreview).mockResolvedValue({ ...plan, name: 'runtime-private-id' });
+    const operation = vi.fn();
+    render(<BroadcastBundlePanel onOperation={operation} />);
+    await screen.findByRole('region', { name: message('ja', 'bundle.recoveryTitle') });
+    const hint = screen.queryByText(message('ja', 'temporary.checkpointRecovery'));
+    if (readable) {
+        expect(hint).toBeVisible();
+        fireEvent.click(screen.getByRole('button', { name: message('ja', 'bundle.recoveryPreview') }));
+        await screen.findByText(new RegExp(message('ja', 'temporary.checkpointTitle')));
+        expect(screen.queryByText(/runtime-private-id/)).not.toBeInTheDocument();
+    } else {
+        expect(hint).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: message('ja', 'bundle.recoveryPreview') })).not.toBeInTheDocument();
+    }
+    expect(operation).not.toHaveBeenCalled();
+    expect(bundleApi.resolveRecovery).not.toHaveBeenCalled();
+});
 async function showPlan() {
     await screen.findByRole('option', { name: '歌枠' });
     fireEvent.change(screen.getByLabelText('保存済みOBS込みプロファイル'), { target: { value: '歌枠' } });

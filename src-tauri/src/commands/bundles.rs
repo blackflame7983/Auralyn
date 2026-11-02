@@ -26,6 +26,21 @@ struct Preview {
     obs: Option<obs_setup::Plan>,
     recovery_id: Option<String>,
 }
+fn validate_saved_preview(
+    plan: &Preview,
+    id: &str,
+    current: &BundleV1,
+    recovery_id: Option<&str>,
+) -> Result<(), String> {
+    // revisionを据え置いた外部編集も、確認済みの内容として適用しない。
+    if plan.id != id
+        || plan.recovery_id.as_deref() != recovery_id
+        || bundle::content_digest(current)? != bundle::content_digest(&plan.bundle)?
+    {
+        return Err("保存内容または変更予定が変わりました。再確認してください".into());
+    }
+    Ok(())
+}
 struct Operation {
     id: String,
     backup: BundleV1,
@@ -283,6 +298,7 @@ pub(crate) enum Response {
 pub(crate) struct RecoveryView {
     pub id: Option<String>,
     pub readable: bool,
+    pub runtime_checkpoint: bool,
 }
 
 fn recovery_view(root: &std::path::Path) -> Result<Option<RecoveryView>, String> {
@@ -291,9 +307,9 @@ fn recovery_view(root: &std::path::Path) -> Result<Option<RecoveryView>, String>
     }
     match bundle::read_recovery(root) {
         Ok(Some(receipt)) => {
-            let readable =
-                bundle::load(&root.join("broadcast-bundle-backups"), &receipt.backup_name).is_ok();
+            let readable = bundle::load_recovery_backup(root, &receipt).is_ok();
             Ok(Some(RecoveryView {
+                runtime_checkpoint: receipt.runtime.is_some(),
                 id: Some(receipt.backup_name),
                 readable,
             }))
@@ -301,6 +317,7 @@ fn recovery_view(root: &std::path::Path) -> Result<Option<RecoveryView>, String>
         _ => Ok(Some(RecoveryView {
             id: None,
             readable: false,
+            runtime_checkpoint: false,
         })),
     }
 }
@@ -921,6 +938,52 @@ fn capture(host: &mut audio::AudioHost) -> Result<(Captured, ControlWitness), St
         witness,
     ))
 }
+
+/// 通常設定の原本領域に退避し、既存の手動復旧だけから取り出す。音声は変更しない。
+pub(crate) fn preserve_temporary_runtime(
+    root: &std::path::Path,
+    host: &mut audio::AudioHost,
+) -> Result<(), String> {
+    if bundle::recovery_exists(root)? {
+        return Err("未解決の復旧原本があります。先に確認してください".into());
+    }
+    host.preflight_runtime_checkpoint()
+        .map_err(|e| e.to_string())?;
+    let initial = host.conditions().control_snapshot()?;
+    let devices = active_devices(host.get_state().config.as_ref())
+        .ok_or("元の入出力機器IDを確認できません。退避せず、現在の音声を維持しています")?;
+    let name = format!("runtime-{}", bundle::revision());
+    let reservation = bundle::reserve_runtime_intent(root, &name, devices, initial.engine_epoch())?;
+    let (before, witness) = capture(host)?;
+    let (after, _) = capture(host)?;
+    initial.validate()?;
+    witness.validate()?;
+    if !unchanged(&before, &after) {
+        return Err("取得中に設定またはVSTが変わりました。現在の音声を維持しています".into());
+    }
+    let categories = ProfileSaveCategories {
+        include_plugins: true,
+        include_audio_config: true,
+        include_noise_control: true,
+        include_builtin_fx: true,
+    };
+    let original = BundleV1 {
+        schema_version: 1,
+        revision: bundle::revision(),
+        name,
+        categories: categories.clone(),
+        confirmation: None,
+        level_intent: Some(bundle::LevelIntent {
+            input_gain: before.engine.input_gain,
+            output_gain: before.engine.output_gain,
+        }),
+        embedded_auralyn_preset: select(before.preset, &categories)?,
+        obs: None,
+    };
+    bundle::finish_runtime_recovery(root, &original, reservation, before.engine.control_revision)?;
+    // 保存中にStop等が要求された場合も、退避した原本を保持して再起動を拒否する。
+    witness.validate()
+}
 fn linear_db(value: f32) -> f32 {
     20.0 * value.max(0.000_001).log10()
 }
@@ -954,6 +1017,12 @@ fn complete(summary: &ApplyProfileSummary) -> bool {
         && summary.missing_plugins.is_empty()
         && summary.skipped_categories.is_empty()
 }
+fn validate_runtime_restore(before: &Captured) -> Result<(), String> {
+    if !before.engine.running || !before.engine.global_mute {
+        return Err("元の機器を明示開始してミュートし、差分を取り直してください。復帰後もミュートを維持します".into());
+    }
+    Ok(())
+}
 fn blocks_next_apply(result: &ResultView) -> bool {
     result.undo_pending && !result.complete
 }
@@ -975,6 +1044,20 @@ fn verify_undo_snapshot(
         return Err("復元直前にVSTまたは制御設定が変わりました。原本を保持しています".into());
     }
     Ok(())
+}
+
+fn builtin_matches(expected: &ProfileBuiltinFx, actual: &ProfileBuiltinFx) -> bool {
+    // apply_profileが旧省略形式を既定値で設定する場合と同じ意味で照合する。
+    // 無効な処理でも、既定値と異なる保持パラメーターの差は省略しない。
+    expected.enabled == actual.enabled
+        && expected.preset == actual.preset
+        && expected.amount == actual.amount
+        && expected.reverb.unwrap_or_default() == actual.reverb.unwrap_or_default()
+        && if expected.preset == "singing" {
+            expected.singing.unwrap_or_default() == actual.singing.unwrap_or_default()
+        } else {
+            expected.singing == actual.singing
+        }
 }
 
 fn selected_matches(target: &BundleV1, after: &Captured) -> bool {
@@ -1018,7 +1101,7 @@ fn selected_matches(target: &BundleV1, after: &Captured) -> bool {
         && preset
             .builtin_fx
             .as_ref()
-            .is_none_or(|fx| *fx == after.engine.builtin)
+            .is_none_or(|fx| builtin_matches(fx, &after.engine.builtin))
 }
 
 fn apply_selected(
@@ -1226,8 +1309,7 @@ pub(crate) async fn broadcast_bundle(
                 Request::Preview { name } => (bundle::load(&root, &name)?, None),
                 Request::RecoveryPreview => {
                     let receipt = bundle::read_recovery(&root)?.ok_or("復旧原本がありません")?;
-                    let original =
-                        bundle::load(&root.join("broadcast-bundle-backups"), &receipt.backup_name)?;
+                    let original = bundle::load_recovery_backup(&root, &receipt)?;
                     (original, Some(receipt.backup_name))
                 }
                 _ => unreachable!(),
@@ -1283,18 +1365,15 @@ pub(crate) async fn broadcast_bundle(
                 None
             };
             let expected_recovery = receipt.as_ref().map(|r| r.backup_name.clone());
-            if plan.id != id
-                || plan.recovery_id != expected_recovery
-                || (if recovering {
-                    bundle::load(&root.join("broadcast-bundle-backups"), &plan.bundle.name)?
-                } else {
-                    bundle::load(&root, &plan.bundle.name)?
-                })
-                .revision
-                    != plan.bundle.revision
-            {
-                return Err("保存内容または変更予定が変わりました。再確認してください".into());
-            }
+            let current_saved = if recovering {
+                bundle::load_recovery_backup(
+                    &root,
+                    receipt.as_ref().ok_or("復旧原本がありません")?,
+                )?
+            } else {
+                bundle::load(&root, &plan.bundle.name)?
+            };
+            validate_saved_preview(&plan, &id, &current_saved, expected_recovery.as_deref())?;
             if recovering
                 && !plan.before.engine.running
                 && plan.bundle.categories.include_audio_config
@@ -1313,6 +1392,21 @@ pub(crate) async fn broadcast_bundle(
                 return Err("現在のOBSミュートを解除する復元はできません。受け側と現在の状態を確認してください".into());
             }
             plan.witness.validate()?;
+            if receipt
+                .as_ref()
+                .is_some_and(|receipt| receipt.runtime.is_some())
+            {
+                validate_runtime_restore(&plan.before)?;
+                let check_host = host.clone();
+                super::run_blocking(move || {
+                    check_host
+                        .lock()
+                        .map_err(|_| "音声状態を取得できません")?
+                        .checked_snapshot_supported()
+                        .map_err(|e| e.to_string())
+                })
+                .await?;
+            }
             if plan.bundle.confirmation.is_some() {
                 let checked_host = host.clone();
                 super::run_blocking(move || {

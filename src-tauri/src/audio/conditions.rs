@@ -31,6 +31,9 @@ pub(crate) struct ControlWitness {
     epoch: u64,
 }
 impl ControlWitness {
+    pub(crate) fn engine_epoch(&self) -> u64 {
+        self.epoch
+    }
     pub(crate) fn validate(&self) -> Result<(), String> {
         if self.conditions.pending.load(Ordering::SeqCst) != 0
             || self.conditions.revision.load(Ordering::SeqCst) != self.revision

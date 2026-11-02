@@ -14,6 +14,13 @@ pub(crate) struct Mode {
     discard: Option<PathBuf>,
 }
 
+impl Mode {
+    pub(crate) fn bind_config_root(&mut self, root: &Path) {
+        // 未完了・読み取り不能も自動再開へ読み替えない。値の復帰は別の明示操作。
+        self.review_only |= crate::bundle::recovery_exists(root).unwrap_or(true);
+    }
+}
+
 fn parse(args: &[String]) -> Result<(Mode, Option<u32>), String> {
     let mut mode = Mode::default();
     let mut parent = None;
@@ -229,9 +236,14 @@ pub(crate) async fn restart_temporary_session(
     app: AppHandle,
     mode: State<'_, Mode>,
     temporary: bool,
+    preserve_runtime: Option<bool>,
 ) -> Result<(), String> {
     if mode.temporary == temporary {
         return Err("利用状態が変更されています".into());
+    }
+    let preserve_runtime = preserve_runtime.unwrap_or(false);
+    if preserve_runtime && (!temporary || mode.temporary) {
+        return Err("未保存設定の退避は通常設定から一時利用を始めるときだけ指定できます".into());
     }
     if temporary
         && mode
@@ -242,10 +254,18 @@ pub(crate) async fn restart_temporary_session(
         return Err("前回の一時ファイルが残っています。表示された専用領域を確認・削除してから、新しい一時利用を始めてください".into());
     }
     let previous_directory = mode.directory.clone();
+    let snapshot_root = if preserve_runtime {
+        Some(app.path().app_config_dir().map_err(|e| e.to_string())?)
+    } else {
+        None
+    };
     let state = app.state::<crate::audio::AudioState>().0.clone();
     crate::commands::run_blocking(move || {
         let mut audio = state.lock().map_err(|_| "音声状態を取得できません")?;
         audio.preflight_live_changes().map_err(|e| e.to_string())?;
+        if let Some(root) = snapshot_root {
+            crate::commands::bundles::preserve_temporary_runtime(&root, &mut audio)?;
+        }
         // 旧エンジンを終了してから再起動する。再生・録音の継続は引き継がない。
         audio.prepare_update().map_err(|e| e.to_string())?;
         let started = (|| -> Result<(), String> {
@@ -304,6 +324,24 @@ pub(crate) async fn restart_temporary_session(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unfinished_or_corrupt_recovery_forces_review_without_loading_or_deleting_it() {
+        let root = std::env::temp_dir().join(format!(
+            "auralyn-runtime-review-{}",
+            crate::bundle::revision()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let mut mode = Mode::default();
+        mode.bind_config_root(&root);
+        assert!(!mode.review_only);
+        let receipt = root.join("broadcast-bundle-recovery.json");
+        std::fs::write(&receipt, b"interrupted capture").unwrap();
+        mode.bind_config_root(&root);
+        assert!(mode.review_only && !mode.temporary);
+        assert_eq!(std::fs::read(&receipt).unwrap(), b"interrupted capture");
+        std::fs::remove_file(receipt).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
     #[test]
     fn temporary_overrides_every_native_and_webview_root_without_changing_identity() {
         let base = std::env::temp_dir().join("auralyn-isolation-test");

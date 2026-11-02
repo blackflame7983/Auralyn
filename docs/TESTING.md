@@ -478,3 +478,23 @@ Chrome・VLCと実VSTによる連続試験は `scripts/verify_process_app_soak.p
 `audio_engine::comparison`のRust試験で逆極性の経路、複数rateと可変block、連打・取消、空ラック、起動時、RT無割当を確認する。
 `verify_process_app_soak.py --comparison-switches`は実VST経路の音量比と64回の連打後の復帰を確認する明示試験である。
 波形試験や入出力メーターを、クリックが耳で消えた証拠として扱わない。改善前の65分記録も改善版の長時間検証には使わない。
+
+## 未保存設定の退避と手動復帰（Issue #221）
+
+[復帰範囲の契約](UNSAVED_RUNTIME_RESTORE.md)と[先行対応の記録](UNSAVED_RUNTIME_ACCEPTANCE_2026-11-03.md)を参照する。
+Rust全対象・probeとClippy、全Vitest、TypeScript、Viteに加え、`e2e/browser/temporary-runtime.spec.ts` を実行する。
+退避なしの従来操作、範囲を変えた後の再確認、拒否時の保存値保持、未完了原本を成功表示しないことを確認する。
+
+実機runnerは通常の自動テストに含めない。未使用・非既定・非ミュートのCABLE Input、Voicemeeter Input、TDR Novaとendpoint列挙用probeが必要。
+`CARGO_TARGET_DIR`を専用ビルド領域に設定し、現行ソースのEngineを`cargo build --locked --bin audio_engine`で先にビルドする。
+続いて `node scripts/prepare-process-input-audition.mjs <新しい専用アプリ領域>` でHost・scanner・フロントを分離ビルドし、次を明示実行する。
+
+```powershell
+node scripts/verify-unsaved-runtime-native.mjs <専用アプリ領域> <新しい証拠領域> <process_loopback_monitor_probe.exeの絶対パス>
+```
+
+runnerは物理マイクを開かず、CABLE Output→Voicemeeter Inputを全体ミュートで開始する。
+TEMP/TMPを子プロセスごと隔離し、通常の一時領域・既定機器・共有MCPドライバーを変更しない。
+再起動後の停止、通常設定の不変、原本の照合、Stop・ミュート・後編集での拒否、明示復帰後のVST状態を確認する。
+既存証拠は上書きせず、同じ所有アプリを再利用する場合だけ `--reuse-owned-app` を指定する。
+削除待ちが出た場合は対象パスと原本を保持し、削除成功や共有PC全体の合格へ読み替えない。

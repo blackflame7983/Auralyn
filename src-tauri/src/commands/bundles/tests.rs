@@ -1,5 +1,117 @@
 use super::*;
 #[test]
+fn saved_preview_rejects_same_revision_edits_and_different_operation() {
+    let before = captured();
+    let plan = Preview {
+        id: "preview".into(),
+        bundle: BundleV1 {
+            schema_version: 1,
+            revision: "1".into(),
+            name: "original".into(),
+            categories: ProfileSaveCategories {
+                include_plugins: true,
+                include_noise_control: true,
+                include_builtin_fx: true,
+                ..Default::default()
+            },
+            embedded_auralyn_preset: before.preset.clone(),
+            obs: None,
+            confirmation: None,
+            level_intent: None,
+        },
+        before,
+        witness: Arc::new(audio::conditions::Conditions::default())
+            .control_snapshot()
+            .unwrap(),
+        obs: None,
+        recovery_id: Some("original".into()),
+    };
+    let validate =
+        |saved: &BundleV1| validate_saved_preview(&plan, "preview", saved, Some("original"));
+    validate(&plan.bundle).unwrap();
+    let mut edited = plan.bundle.clone();
+    edited
+        .embedded_auralyn_preset
+        .noise_control
+        .as_mut()
+        .unwrap()
+        .strength = 0.5;
+    assert_eq!(edited.revision, plan.bundle.revision);
+    assert!(validate(&edited).is_err());
+    edited = plan.bundle.clone();
+    edited.embedded_auralyn_preset.plugins.push(PresetPlugin {
+        path: "test".into(),
+        name: "test".into(),
+        vendor: String::new(),
+        version: String::new(),
+        enabled: true,
+        muted: false,
+        gain: 1.,
+        state: Some("opaque edit".into()),
+    });
+    assert!(validate(&edited).is_err());
+    assert!(validate_saved_preview(&plan, "old-preview", &plan.bundle, Some("original")).is_err());
+    assert!(validate_saved_preview(&plan, "preview", &plan.bundle, None).is_err());
+}
+#[test]
+fn runtime_restore_requires_explicit_start_and_current_mute() {
+    let mut current = captured();
+    assert!(validate_runtime_restore(&current).is_err());
+    current.engine.running = true;
+    current.engine.global_mute = false;
+    assert!(validate_runtime_restore(&current).is_err());
+    current.engine.global_mute = true;
+    validate_runtime_restore(&current).unwrap();
+    current.engine.global_bypass = true;
+    validate_runtime_restore(&current).unwrap();
+}
+#[test]
+fn runtime_restore_accepts_only_default_equivalent_omitted_fx_fields() {
+    let mut before = captured();
+    let mut target = BundleV1 {
+        schema_version: 1,
+        revision: "1".into(),
+        name: "fx".into(),
+        categories: ProfileSaveCategories {
+            include_builtin_fx: true,
+            ..Default::default()
+        },
+        embedded_auralyn_preset: before.preset.clone(),
+        obs: None,
+        confirmation: None,
+        level_intent: None,
+    };
+    before.engine.builtin.reverb = Some(Default::default());
+    assert!(selected_matches(&target, &before));
+    before.engine.builtin.reverb.as_mut().unwrap().enabled = true;
+    assert!(!selected_matches(&target, &before));
+    before.engine.builtin.reverb.as_mut().unwrap().enabled = false;
+    before.engine.builtin.reverb.as_mut().unwrap().mix = 0.2;
+    assert!(!selected_matches(&target, &before)); // 無効でも既定値と異なる保持値を無視しない。
+    before.engine.builtin.reverb = Some(Default::default());
+    before.engine.builtin.preset = "singing".into();
+    before.engine.builtin.singing = Some(Default::default());
+    target
+        .embedded_auralyn_preset
+        .builtin_fx
+        .as_mut()
+        .unwrap()
+        .preset = "singing".into();
+    assert!(selected_matches(&target, &before));
+    before.engine.builtin.singing.as_mut().unwrap().dynamics = 0.9;
+    assert!(!selected_matches(&target, &before));
+}
+#[test]
+fn runtime_capture_without_existing_engine_does_not_create_backup_or_spawn_audio() {
+    let root =
+        std::env::temp_dir().join(format!("auralyn-runtime-no-engine-{}", bundle::revision()));
+    let mut host = audio::AudioHost::new(root.clone());
+    assert!(preserve_temporary_runtime(&root, &mut host).is_err());
+    assert!(!host.get_state().is_running);
+    assert!(!bundle::recovery_exists(&root).unwrap());
+    assert!(!root.exists());
+}
+#[test]
 fn recovery_device_identity_rejects_same_name_replacement_and_missing_id() {
     let device = audio::AudioDevice {
         sample_rate_ranges: None,

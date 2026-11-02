@@ -14,7 +14,7 @@ export interface CheckedClaim { expected: import('./audio').PreparationSnapshot;
 export interface CheckedReceipt { checkedAtUnixMs: number; usage: string; location: string; preparation: import('./audio').PreparationSnapshot }
 export interface BundlePreview { confirmation?: CheckedReceipt | null; id: string; name: string; revision: string; categories: string[]; running: boolean; auralyn: (ObsTypedChange & { label: string; status: 'same' | 'changed' | 'notSelected' | 'unknown'; before: string; after: string })[]; obs: ObsChange[] }
 export interface BundleResult { id: string; complete: boolean; undoPending: boolean; auralyn: string; obs: string[]; auralynText?: ObsUiText | null; obsTexts?: ObsUiText[] | null; summary: ApplyProfileSummary | null; current?: ApplyProfileSummary | null }
-export interface BundleRecovery { id: string | null; readable: boolean }
+export interface BundleRecovery { id: string | null; readable: boolean; runtimeCheckpoint?: boolean }
 export type BundleOperation = { action: 'apply' | 'undo' | 'recovery_apply'; id: string };
 type Reply = { type: 'names'; value: string[] } | { type: 'filters'; value: BundleFilter[] } | { type: 'saved' } | { type: 'preview'; value: BundlePreview } | { type: 'result'; value: BundleResult | null } | { type: 'recovery'; value: BundleRecovery | null };
 async function request(request: unknown): Promise<Reply> { return invoke('broadcast_bundle', { request }); }
