@@ -15,7 +15,7 @@ const appRoot = resolve(appDirectory), root = resolve(evidenceDirectory), probe 
 const binary = join(appRoot, 'bin', 'AuralynHost.exe'), configRoot = join(appRoot, 'state', 'config');
 if (existsSync(root)) throw new Error('既存の証拠は置き換えません');
 mkdirSync(root, { recursive: true });
-const temporaryRoot = join(root, 'os-temp'); mkdirSync(temporaryRoot);
+let temporaryRoot = join(root, 'os-temp'); mkdirSync(temporaryRoot);
 const parse = text => { try { return JSON.parse(text); } catch { throw new Error('JSONを確認できません'); } };
 const read = file => parse(readFileSync(file, 'utf8'));
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -72,8 +72,45 @@ async function switchedFrom(parent) {
     if (browser) await browser.close().catch(() => {});
     await attach();
 }
+async function restartSession(temporary, preserveRuntime = false) {
+    const parent = currentPid;
+    await page.evaluate(args => {
+        // Hostの正常終了でIPC応答より先にWebViewが閉じても、新Hostへの接続で判定する。
+        window.__restartError = null;
+        void window.__TAURI__.core.invoke('restart_temporary_session', args).catch(error => { window.__restartError = String(error); });
+    }, { temporary, preserveRuntime });
+    try { await switchedFrom(parent); }
+    catch (error) {
+        const detail = await page.evaluate(() => window.__restartError).catch(() => null);
+        throw new Error(detail || String(error));
+    }
+}
+function ownedScratch(mode) {
+    const scratch = resolve(mode.directory);
+    assert(scratch.startsWith(temporaryRoot + sep) && /^Auralyn-temporary-[a-f0-9]{32}$/i.test(scratch.split(sep).at(-1)));
+    assert(!lstatSync(scratch).isSymbolicLink());
+    return scratch;
+}
 async function settle() {
-    await expect.poll(async () => { const stats = await invoke('get_engine_runtime_stats'); return stats.preparation?.controlsPending === false; }, { timeout: 10000 }).toBe(true);
+    let previous, stableSince = Date.now();
+    await expect.poll(async () => {
+        const stats = await invoke('get_engine_runtime_stats');
+        const current = JSON.stringify(stats.preparation);
+        if (stats.preparation?.controlsPending !== false || stats.pendingUnloadCount !== 0 || current !== previous) stableSince = Date.now();
+        previous = current;
+        return Date.now() - stableSince >= 500;
+    }, { timeout: 10000, intervals: [100] }).toBe(true);
+}
+async function recoveryPreview() {
+    // UIからの初期制御が反映中なら、読み取りだけを有限に取り直す。適用は再試行しない。
+    for (let attempt = 0; attempt < 20; attempt++) {
+        await settle();
+        try { return await bundle({ action: 'recovery_preview' }); }
+        catch (error) {
+            if (!/反映を待ってください/.test(String(error)) || attempt === 19) throw error;
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
 }
 async function assertStopped() {
     // get_audio_state.is_runningはsidecarの存在を表す。実ストリームと区別する。
@@ -115,7 +152,14 @@ try {
     await page.reload();
     await expect.poll(() => invoke('get_audio_state')).toBeTruthy();
     await invoke('set_global_mute', { active: true });
-    await invoke('start_audio', start);
+    await invoke('start_audio', { ...start, inputSource: { source: { kind: 'device', config: { purpose: 'music' } } } });
+    await settle();
+    await assert.rejects(() => invoke('restart_temporary_session', { temporary: true, preserveRuntime: true }), /未対応/);
+    assert((await invoke('get_engine_runtime_stats')).latencyMetadata.streamRunning);
+    assert(!existsSync(recoveryFile));
+    results.unsupportedInputRejectedBeforeStop = true;
+    await invoke('stop_audio');
+    await invoke('start_audio', { ...start, inputSource: { source: { kind: 'device', config: { purpose: 'voice' } } } });
     await invoke('set_input_gain', { value: 0.7 });
     await invoke('set_output_gain', { value: 0.25 });
     await invoke('set_noise_control_config', { active: true, mode: 'low', strength: 0.6, voiceGuard: true });
@@ -136,9 +180,7 @@ try {
     phase('temporary-isolated');
     const temporaryMode = await invoke('temporary_session_status');
     assert(temporaryMode.temporary && temporaryMode.reviewOnly);
-    const scratch = resolve(temporaryMode.directory);
-    assert(scratch.startsWith(temporaryRoot + sep) && /^Auralyn-temporary-[a-f0-9]{32}$/i.test(scratch.split(sep).at(-1)));
-    assert(!lstatSync(scratch).isSymbolicLink());
+    const scratch = ownedScratch(temporaryMode);
     assert.equal((await assertStopped()).plugins.length, 0);
     results.temporaryStartsStopped = true;
     const receipt = read(join(configRoot, 'broadcast-bundle-recovery.json'));
@@ -182,26 +224,26 @@ try {
     const modified = parse(originalBytes); modified.embeddedAuralynPreset.noiseControl.strength = 0.9;
     try {
         writeFileSync(originalPath, JSON.stringify(modified));
-        await assert.rejects(() => bundle({ action: 'recovery_preview' }));
+        await assert.rejects(() => bundle({ action: 'recovery_preview' }), /退避した未保存設定が変更/);
     } finally {
         writeFileSync(originalPath, originalBytes);
     }
     results.modifiedOriginalRejected = true;
-    let preview = await bundle({ action: 'recovery_preview' });
+    let preview = await recoveryPreview();
     await invoke('stop_audio');
-    await assert.rejects(() => bundle({ action: 'recovery_apply', id: preview.value.id }));
+    await assert.rejects(() => bundle({ action: 'recovery_apply', id: preview.value.id }), /音声世代|停止中/);
     await assertStopped();
     results.stopInvalidatesPreview = true;
     await invoke('start_audio', start);
     await settle();
     await invoke('set_global_mute', { active: false });
     await settle();
-    preview = await bundle({ action: 'recovery_preview' });
-    await assert.rejects(() => bundle({ action: 'recovery_apply', id: preview.value.id }));
+    preview = await recoveryPreview();
+    await assert.rejects(() => bundle({ action: 'recovery_apply', id: preview.value.id }), /ミュート/);
     results.unmutedRestoreRejected = true;
     await invoke('set_global_mute', { active: true });
     await settle();
-    preview = await bundle({ action: 'recovery_preview' });
+    preview = await recoveryPreview();
     const receiptBytes = readFileSync(recoveryFile);
     try {
         // 原本と検証値の両方が外部編集されても、古い差分は使用しない。
@@ -210,13 +252,40 @@ try {
         editedReceipt.runtime.sha256 = hash(JSON.stringify(modified));
         writeFileSync(recoveryFile, JSON.stringify(editedReceipt));
         assert((await bundle({ action: 'recovery_status' })).value?.readable, '編集した試験原本の検証値が一致しません');
-        await assert.rejects(() => bundle({ action: 'recovery_apply', id: preview.value.id }));
+        await assert.rejects(() => bundle({ action: 'recovery_apply', id: preview.value.id }), /保存内容または変更予定が変わりました/);
         results.sameRevisionPreviewEditRejected = true;
     } finally {
         writeFileSync(originalPath, originalBytes);
         writeFileSync(recoveryFile, receiptBytes);
     }
-    preview = await bundle({ action: 'recovery_preview' });
+    try {
+        const mismatched = parse(receiptBytes);
+        mismatched.devices.inputId = 'unavailable-fixture-input';
+        writeFileSync(recoveryFile, JSON.stringify(mismatched));
+        preview = await recoveryPreview();
+        await assert.rejects(() => bundle({ action: 'recovery_apply', id: preview.value.id }), /機器IDが元の機器と異なります/);
+        assert((await invoke('session_rack', { request: { action: 'snapshot' } })).running);
+        results.wrongDeviceIdentityRejected = true;
+    } finally {
+        writeFileSync(recoveryFile, receiptBytes);
+    }
+    try {
+        const missingVst = parse(originalBytes), missingReceipt = parse(receiptBytes);
+        missingVst.embeddedAuralynPreset.plugins[0].path = join(root, 'not-installed-fixture.vst3');
+        missingReceipt.runtime.sha256 = hash(JSON.stringify(missingVst));
+        writeFileSync(originalPath, JSON.stringify(missingVst));
+        writeFileSync(recoveryFile, JSON.stringify(missingReceipt));
+        preview = await recoveryPreview();
+        const partial = await bundle({ action: 'recovery_apply', id: preview.value.id });
+        assert(partial.value && !partial.value.complete && partial.value.summary?.missingPlugins.length === 1);
+        assert((await bundle({ action: 'recovery_status' })).value?.id === receipt.backupName);
+        assert((await invoke('get_engine_runtime_stats')).preparation.muted);
+        results.missingPluginKeepsOriginalAndMute = true;
+    } finally {
+        writeFileSync(originalPath, originalBytes);
+        writeFileSync(recoveryFile, receiptBytes);
+    }
+    preview = await recoveryPreview();
     const applied = await bundle({ action: 'recovery_apply', id: preview.value.id });
     results.restoreResult = applied.value;
     const afterApply = await invoke('get_engine_runtime_stats');
@@ -236,6 +305,62 @@ try {
     results.restoreCompletedMuted = true;
     results.restoredPluginCount = stats.activePluginCount;
     await page.screenshot({ path: join(root, 'regular-restored.png') });
+    phase('empty-source-launch');
+    // 削除待ちの前回領域を無視せず、独立した試験用TEMPで次のケースを開始する。
+    await invoke('stop_audio');
+    const completedPid = currentPid;
+    await page.evaluate(() => { void window.__TAURI__.core.invoke('plugin:process|exit', { code: 0 }); });
+    await expect.poll(() => ownedProcesses().some(process => process.ProcessId === completedPid)).toBe(false);
+    await browser.close().catch(() => {});
+    temporaryRoot = join(root, 'empty-case-os-temp'); mkdirSync(temporaryRoot);
+    environment.TEMP = temporaryRoot; environment.TMP = temporaryRoot;
+    const emptyHost = spawn(binary, ['--auralyn-review'], { cwd: appRoot, env: environment, windowsHide: true, stdio: 'ignore' });
+    currentPid = emptyHost.pid;
+    await attach();
+    await assertStopped();
+    await invoke('set_global_mute', { active: true });
+    await invoke('start_audio', start);
+    await invoke('set_input_gain', { value: 0 });
+    await invoke('set_output_gain', { value: 0 });
+    await invoke('set_global_bypass', { active: true });
+    await settle();
+    phase('empty-capture-enter');
+    await restartSession(true, true);
+    const emptyTemporary = await invoke('temporary_session_status');
+    assert(emptyTemporary.temporary && emptyTemporary.reviewOnly);
+    ownedScratch(emptyTemporary); // 製品の専用領域破棄より前に絶対パスと所有範囲を検証する。
+    await assertStopped();
+    const emptyReceipt = read(recoveryFile);
+    const emptyPath = join(configRoot, 'broadcast-bundle-backups', 'broadcast-bundles', emptyReceipt.backupName + '.json');
+    const emptyBytes = readFileSync(emptyPath), emptyOriginal = parse(emptyBytes);
+    assert.equal(emptyOriginal.embeddedAuralynPreset.plugins.length, 0);
+    assert.equal(emptyOriginal.levelIntent.inputGain, 0);
+    assert.equal(emptyOriginal.levelIntent.outputGain, 0);
+    results.emptyRackAndZeroGainCaptured = true;
+    phase('empty-return-regular');
+    await restartSession(false);
+    await assertStopped();
+    await invoke('set_global_mute', { active: true });
+    await invoke('start_audio', start);
+    await invoke('load_plugin', { path: 'C:/Program Files/Common Files/VST3/TDR Nova.vst3' });
+    await invoke('set_input_gain', { value: 1 });
+    await invoke('set_output_gain', { value: 1 });
+    await invoke('set_global_bypass', { active: false });
+    await settle();
+    phase('empty-preview-restore');
+    preview = await recoveryPreview();
+    const emptyApplied = await bundle({ action: 'recovery_apply', id: preview.value.id });
+    assert(emptyApplied.value?.complete);
+    const emptyStats = await invoke('get_engine_runtime_stats');
+    assert.equal(emptyStats.activePluginCount, 0);
+    assert.equal(emptyStats.preparation.inputGain, 0);
+    assert.equal(emptyStats.preparation.outputGain, 0);
+    assert(emptyStats.preparation.muted && emptyStats.globalBypass === false);
+    assert.equal((await bundle({ action: 'recovery_status' })).value, null);
+    assert.equal(hash(readFileSync(emptyPath)), hash(emptyBytes));
+    assert.equal(hash(readFileSync(originalPath)), results.originalSha256);
+    results.emptyRackAndExactZeroGainRestored = true;
+    results.currentGlobalBypassPreserved = true;
     await invoke('stop_audio');
     await page.evaluate(() => { void window.__TAURI__.core.invoke('plugin:process|exit', { code: 0 }); });
     results.passed = true;
