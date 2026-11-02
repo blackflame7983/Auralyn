@@ -244,7 +244,7 @@
     "Signed fixture launcher is not a real NSIS/new-version installation",
     "External-link UI device-list outputs only were fixture-filtered; open_url and browser were real",
     "No new CPU/max-memory comparison; prior 3x60-second comparison is retained",
-    "Signing environment values were exposed by CLI help during preparation; rotation is pending and values are not included here"
+    "Signing environment values were exposed by CLI help during preparation; the user confirmed the key is not for production and rotation is unnecessary; values are not included here"
   ],
   "evidence": [
     {

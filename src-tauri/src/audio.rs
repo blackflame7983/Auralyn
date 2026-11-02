@@ -210,14 +210,73 @@ pub struct AudioHost {
     engine_job: Option<win_job::Job>,
 }
 
+fn checked_snapshot_config_supported(
+    mode_selected: bool,
+    config: Option<&crate::audio_engine::live_output::Config>,
+) -> Result<()> {
+    anyhow::ensure!(
+        !mode_selected && config.is_some_and(|value| *value == Default::default()),
+        "確認済み保存・復帰は単一出力・カスタム音作りが対象です。モニター分離や歌/雑談は各設定で管理してください"
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod checked_snapshot_scope_tests {
+    use super::*;
+    use crate::audio_engine::live_output::Config;
+
+    #[test]
+    fn checked_snapshot_rejects_unknown_modes_and_nondefault_output() {
+        let default = Config::default();
+        assert!(checked_snapshot_config_supported(false, Some(&default)).is_ok());
+        assert!(checked_snapshot_config_supported(false, None).is_err());
+        assert!(checked_snapshot_config_supported(true, Some(&default)).is_err());
+        let split_output = Config {
+            device_id: Some("broadcast".into()),
+            ..default.clone()
+        };
+        let split_processing = Config {
+            split_processing: true,
+            ..default.clone()
+        };
+        let monitor_trim = Config {
+            monitor_trim: 0.5,
+            ..default.clone()
+        };
+        let broadcast_trim = Config {
+            broadcast_trim: 0.5,
+            ..default
+        };
+        for config in [split_output, split_processing, monitor_trim, broadcast_trim] {
+            assert!(checked_snapshot_config_supported(false, Some(&config)).is_err());
+        }
+    }
+
+    #[test]
+    fn checked_snapshot_preflight_rejects_protected_without_starting_engine() {
+        let mut host =
+            AudioHost::new(std::env::temp_dir().join("auralyn-checked-snapshot-preflight"));
+        host.reader_active.store(true, Ordering::Release);
+        host.live_modes.armed = true;
+        assert!(host.checked_snapshot_supported().is_err());
+        assert!(host.child.is_none());
+    }
+}
+
 impl AudioHost {
     pub(crate) fn global_mute_intent(&self) -> bool {
         self.is_global_muted
     }
     pub(crate) fn checked_snapshot_supported(&mut self) -> Result<()> {
         self.preflight_live_changes()?;
-        anyhow::ensure!(self.live_modes.target.is_none() && self.live_output(None)?.config == Default::default(), "確認済み保存・復帰は単一出力・カスタム音作りが対象です。モニター分離や歌/雑談は各設定で管理してください");
-        Ok(())
+        let mode_selected = self.live_modes.target.is_some();
+        let config = if mode_selected {
+            None
+        } else {
+            Some(self.live_output(None)?.config)
+        };
+        checked_snapshot_config_supported(mode_selected, config.as_ref())
     }
     pub fn peak_protection(
         &mut self,
