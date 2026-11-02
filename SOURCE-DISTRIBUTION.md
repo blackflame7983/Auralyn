@@ -67,3 +67,14 @@ ASIO source in the archive is the same source selected for the binary build.
 Do not bundle proprietary VST plug-ins or third-party ASIO drivers with the
 Auralyn release. Users install and license those independent components
 separately.
+
+## Planned OBS source plugin (not shipped)
+
+An independently distributed GPL-2.0-or-later OBS source plugin is proposed in
+[the design](docs/OBS_SOURCE_PLUGIN_DESIGN.md). It would communicate with the
+GPL-3.0-only Auralyn process through local IPC, with no libobs linkage in Auralyn.
+The plugin needs its own exact-commit source archive, dependency notices,
+checksums, source manifest, and build instructions beside its binary.
+The current release uploader and policy do not package or publish this plugin.
+Implementation and distribution changes follow design agreement; this section
+does not change the current application's license or source release gates.
