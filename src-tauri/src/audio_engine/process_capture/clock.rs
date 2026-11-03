@@ -78,12 +78,46 @@ impl<C: Consumer<Item = f32>> FrameQueue for MappedInterleaved<'_, C> {
     }
 }
 
+#[cfg(test)]
 fn correction(queued: usize) -> f64 {
-    let error = (queued as f64 - TARGET as f64) / TARGET as f64;
+    correction_at(queued, TARGET)
+}
+
+fn correction_at(queued: usize, target: usize) -> f64 {
+    let error = (queued as f64 - target as f64) / TARGET as f64;
     -(error * 0.004).clamp(-LIMIT, LIMIT)
 }
 
+// 1 callback全体とSRCの先読みを満たす。実行中の確保は行わない。
+fn callback_target(input_rate: u32, output_rate: u32, frames: usize) -> usize {
+    let output = frames.div_ceil(BLOCK) * BLOCK;
+    TARGET
+        + (output as f64 * f64::from(input_rate) / f64::from(output_rate) / (1.0 - LIMIT)).ceil()
+            as usize
+        + 260
+}
+
+pub fn queue_capacity(input_rate: u32, output_rate: u32, max_frames: usize) -> Result<usize> {
+    ensure!(
+        (8000..=192000).contains(&input_rate),
+        "入力のrateが範囲外です"
+    );
+    ensure!(
+        (8000..=192000).contains(&output_rate),
+        "返しのrateが範囲外です"
+    );
+    ensure!(
+        (1..=65_536).contains(&max_frames),
+        "出力の処理単位が範囲外です"
+    );
+    // 初回の蓄積が入力packet単位で閾値を越えても保持できる余裕を取る。
+    Ok(CAPACITY.max(2 * callback_target(input_rate, output_rate, max_frames) + BLOCK))
+}
+
 pub struct Renderer {
+    input_rate: u32,
+    output_rate: u32,
+    capacity: usize,
     resampler: SincFixedOut<f32>,
     input: Vec<Vec<f32>>,
     output: Vec<Vec<f32>>,
@@ -106,12 +140,23 @@ impl Renderer {
         self.failed = false;
         self.failed_underrun = false;
     }
+    #[cfg(test)]
     pub fn new(output_rate: u32) -> Result<Self> {
         Self::with_rates(48000, output_rate)
     }
 
     // 二入力では、機器から届くrateを保持したまま出力の時計へ追従する。
+    #[cfg(test)]
     pub fn with_rates(input_rate: u32, output_rate: u32) -> Result<Self> {
+        Self::with_rates_and_capacity(input_rate, output_rate, CAPACITY)
+    }
+
+    pub fn with_rates_and_capacity(
+        input_rate: u32,
+        output_rate: u32,
+        capacity: usize,
+    ) -> Result<Self> {
+        ensure!(capacity >= CAPACITY, "入力キューの容量が不足しています");
         ensure!(
             (8000..=192000).contains(&input_rate),
             "入力のrateが範囲外です"
@@ -143,6 +188,9 @@ impl Renderer {
         let input = vec![vec![0.0; max_input]; 2];
         let output = resampler.output_buffer_allocate(true);
         Ok(Self {
+            input_rate,
+            output_rate,
+            capacity,
             resampler,
             input,
             output,
@@ -164,29 +212,35 @@ impl Renderer {
             return;
         }
         self.max_queued = self.max_queued.max(rx.frames());
-        if rx.frames() >= CAPACITY - BLOCK {
+        let frames = samples.len() / 2;
+        if frames == 0 {
+            return;
+        }
+        let target = callback_target(self.input_rate, self.output_rate, frames);
+        if target >= self.capacity - BLOCK || rx.frames() >= self.capacity - BLOCK {
+            self.failed = true;
+            return;
+        }
+        if !self.primed {
+            if rx.frames() < target {
+                self.waiting += frames as u64;
+                return;
+            }
+            self.primed = true;
+        }
+        // callback内の消費によるキューの減少をクロック差と誤認しない。
+        let ratio = 1.0 + correction_at(rx.frames(), target);
+        self.correction_ppm = (ratio - 1.0) * 1_000_000.0;
+        if self
+            .resampler
+            .set_resample_ratio_relative(ratio, true)
+            .is_err()
+        {
             self.failed = true;
             return;
         }
         for frame in samples.as_chunks_mut::<2>().0 {
             if self.cursor == BLOCK {
-                if !self.primed {
-                    if rx.frames() < TARGET {
-                        self.waiting += 1;
-                        continue;
-                    }
-                    self.primed = true;
-                }
-                let ratio = 1.0 + correction(rx.frames());
-                self.correction_ppm = (ratio - 1.0) * 1_000_000.0;
-                if self
-                    .resampler
-                    .set_resample_ratio_relative(ratio, true)
-                    .is_err()
-                {
-                    self.failed = true;
-                    return;
-                }
                 let needed = self.resampler.input_frames_next();
                 if needed > self.input[0].len() || rx.frames() < needed {
                     // 無期限の旧音再生や、破棄を繰り返して速度差を隠す回復はしない。
@@ -256,7 +310,7 @@ mod tests {
         let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
         let mut renderer = Renderer::new(48000).unwrap();
         let mut output = [0.0; BLOCK * 2];
-        for _ in 0..TARGET + 512 {
+        for _ in 0..TARGET + 1024 {
             tx.try_push([0.2, -0.2]).unwrap();
         }
         renderer.render(&mut output, &mut Stereo(&mut rx));
@@ -270,7 +324,7 @@ mod tests {
         assert_eq!(counts, (0, 0));
         assert!(!renderer.failed);
         assert_eq!(output, [0.0; BLOCK * 2]);
-        for _ in 0..TARGET + 512 {
+        for _ in 0..TARGET + 1024 {
             tx.try_push([-0.1, 0.1]).unwrap();
         }
         renderer.render(&mut output, &mut Stereo(&mut rx));
@@ -380,7 +434,7 @@ mod tests {
             let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
             let mut renderer = Renderer::new(rate).unwrap();
             let mut output = [0.0; 512];
-            for _ in 0..TARGET + 512 {
+            for _ in 0..TARGET + 1024 {
                 tx.try_push([0.25, -0.25]).unwrap();
             }
             let counts = crate::vst_host::instance::allocation_counts(|| {
@@ -403,5 +457,106 @@ mod tests {
             renderer.render(&mut output, &mut Stereo(&mut rx));
             assert_eq!(output, [0.0; 512]);
         }
+    }
+}
+
+#[cfg(test)]
+mod callback_size_tests {
+    use super::*;
+    use ringbuf::{
+        traits::{Observer, Producer, Split},
+        HeapRb,
+    };
+
+    #[test]
+    fn priming_waits_for_the_whole_callback_and_real_depletion_still_fails() {
+        for (input, output, frames) in [
+            (192000, 16000, 256),
+            (48000, 48000, 4096),
+            (48000, 48000, 8192),
+        ] {
+            let capacity = queue_capacity(input, output, frames).unwrap();
+            let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(capacity).split();
+            let mut renderer = Renderer::with_rates_and_capacity(input, output, capacity).unwrap();
+            let mut data = vec![0.0; frames * 2];
+            for _ in 0..TARGET {
+                tx.try_push([0.1, -0.1]).unwrap();
+            }
+            let counts = crate::vst_host::instance::allocation_counts(|| {
+                renderer.render(&mut data, &mut Stereo(&mut rx))
+            });
+            assert_eq!(counts, (0, 0));
+            assert!(!renderer.failed && !renderer.failed_underrun);
+            assert_eq!(renderer.rendered, 0);
+            assert!(data.iter().all(|value| *value == 0.0));
+            while rx.occupied_len() < callback_target(input, output, frames) {
+                tx.try_push([0.1, -0.1]).unwrap();
+            }
+            let counts = crate::vst_host::instance::allocation_counts(|| {
+                renderer.render(&mut data, &mut Stereo(&mut rx))
+            });
+            assert_eq!(counts, (0, 0));
+            assert!(!renderer.failed, "{input}/{output}, {frames}");
+            assert_eq!(renderer.rendered, frames as u64);
+            while rx.try_pop().is_some() {}
+            renderer.render(&mut data, &mut Stereo(&mut rx));
+            assert!(renderer.failed && renderer.failed_underrun);
+            renderer.wait_for_audio();
+            renderer.render(&mut data, &mut Stereo(&mut rx));
+            assert!(!renderer.failed);
+        }
+    }
+
+    #[test]
+    fn large_callbacks_follow_clock_drift_without_sawtooth_correction_or_allocation() {
+        for ppm in [-1500.0, 1500.0] {
+            let frames = 8192;
+            let capacity = queue_capacity(48000, 48000, frames).unwrap();
+            let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(capacity).split();
+            let mut renderer = Renderer::with_rates_and_capacity(48000, 48000, capacity).unwrap();
+            let mut data = vec![0.0; frames * 2];
+            for _ in 0..callback_target(48000, 48000, frames) {
+                tx.try_push([0.1, -0.1]).unwrap();
+            }
+            renderer.render(&mut data, &mut Stereo(&mut rx));
+            let mut fraction = 0.0;
+            for _ in 0..256 {
+                fraction += frames as f64 * (1.0 + ppm / 1_000_000.0);
+                let incoming = fraction as usize;
+                fraction -= incoming as f64;
+                for _ in 0..incoming {
+                    tx.try_push([0.1, -0.1]).unwrap();
+                }
+                let counts = crate::vst_host::instance::allocation_counts(|| {
+                    renderer.render(&mut data, &mut Stereo(&mut rx))
+                });
+                assert_eq!(counts, (0, 0));
+                assert!(!renderer.failed, "{ppm}");
+                assert!(data.iter().all(|value| value.is_finite()));
+            }
+            assert_eq!(renderer.underruns, 0);
+        }
+    }
+
+    #[test]
+    fn maximum_callback_capacity_is_reserved_before_rendering() {
+        assert!(queue_capacity(192000, 8000, 0).is_err());
+        assert!(queue_capacity(192000, 8000, 65_537).is_err());
+        let frames = 65_536;
+        let capacity = queue_capacity(192000, 8000, frames).unwrap();
+        assert!(capacity > callback_target(192000, 8000, frames) + BLOCK);
+        assert!(capacity > CAPACITY);
+        let mut renderer = Renderer::with_rates_and_capacity(192000, 8000, capacity).unwrap();
+        let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(capacity).split();
+        for _ in 0..callback_target(192000, 8000, frames) {
+            tx.try_push([0.1, -0.1]).unwrap();
+        }
+        let mut data = vec![0.0; frames * 2];
+        let counts = crate::vst_host::instance::allocation_counts(|| {
+            renderer.render(&mut data, &mut Stereo(&mut rx))
+        });
+        assert_eq!(counts, (0, 0));
+        assert!(!renderer.failed);
+        assert_eq!(renderer.rendered, frames as u64);
     }
 }

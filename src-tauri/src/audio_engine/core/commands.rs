@@ -236,52 +236,7 @@ impl Engine {
                 }
             }
         }
-        if !matches!(
-            &cmd,
-            Command::PeakProtection { config: None }
-                | Command::LiveOutput { config: None }
-                | Command::LiveMode { .. }
-                | Command::ModeSilence { .. }
-                | Command::ModeMonitor { .. }
-                | Command::ConfigureLiveModes { .. }
-                | Command::GetDevices
-                | Command::StartIdentityCapability
-                | Command::ProcessInputCapability
-                | Command::BeginDeviceScan
-                | Command::PollDeviceScan { .. }
-                | Command::CancelDeviceScan { .. }
-                | Command::GetRuntimeStats
-                | Command::NoiseMeasurement {
-                    request: noise_learning::Request::Snapshot
-                }
-                | Command::GetFrameTimingTrace { .. }
-                | Command::GetPluginState { .. }
-                | Command::CaptureBundleState
-                | Command::CaptureMixingBundleState
-                | Command::ProcessingState
-                | Command::PostMixStatus
-                | Command::GetPluginRack
-                | Command::AutoGain { .. }
-                | Command::SetOutputGain { .. }
-                | Command::SetLoudnessMeasurement { .. }
-                | Command::SetChannelScan { .. }
-                | Command::StopVoiceCheckPlayback
-                | Command::StopVoiceCheckRecording
-                | Command::VoiceCheckPreview { .. }
-                | Command::BuiltinEffects {
-                    request: crate::audio_engine::builtin::Request::Snapshot
-                }
-        ) {
-            self.invalidate_auto_gain_with_reason(match &cmd {
-                Command::Start { .. } | Command::Stop => {
-                    crate::audio_engine::history::Reason::StreamChanged
-                }
-                Command::SetInputGain { .. } | Command::SetInputChannels { .. } => {
-                    crate::audio_engine::history::Reason::InputChanged
-                }
-                _ => crate::audio_engine::history::Reason::ConditionsChanged,
-            });
-        }
+        self.invalidate_auto_gain_for_command(&cmd);
         if self.peak_config.enabled
             && matches!(
                 &cmd,

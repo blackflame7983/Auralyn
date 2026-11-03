@@ -30,11 +30,16 @@ impl Controller {
         max_frames: usize,
     ) -> Result<(Self, Render)> {
         start.validate().map_err(anyhow::Error::msg)?;
-        let queue = Arc::new(HeapRb::<f32>::new(process_capture::clock::CAPACITY * 2));
-        let (mut tx, rx) = queue.clone().split();
         let failed = Arc::new(AtomicBool::new(false));
-        let (stream, shared, rate) = match &start.config.source {
+        let (stream, shared, rate, queue, rx) = match &start.config.source {
             Source::ProcessLoopback(config) => {
+                let capacity = process_capture::clock::queue_capacity(
+                    process_capture::RATE,
+                    output_rate,
+                    max_frames,
+                )?;
+                let queue = Arc::new(HeapRb::<f32>::new(capacity * 2));
+                let (tx, rx) = queue.clone().split();
                 let target = start
                     .target
                     .clone()
@@ -50,7 +55,13 @@ impl Controller {
                     tx,
                     shared.clone(),
                 )?;
-                (Stream::Process(stream), shared, process_capture::RATE)
+                (
+                    Stream::Process(stream),
+                    shared,
+                    process_capture::RATE,
+                    queue,
+                    rx,
+                )
             }
             Source::Device(config) => {
                 crate::desktop_integration::check_microphone_access(Some("WASAPI"))
@@ -79,6 +90,10 @@ impl Controller {
                 );
                 let stream_config: cpal::StreamConfig = supported.into();
                 let rate = stream_config.sample_rate;
+                let capacity =
+                    process_capture::clock::queue_capacity(rate, output_rate, max_frames)?;
+                let queue = Arc::new(HeapRb::<f32>::new(capacity * 2));
+                let (mut tx, rx) = queue.clone().split();
                 let shared = Arc::new(process_capture::Shared::for_mixing(
                     failed.clone(),
                     rate,
@@ -112,11 +127,15 @@ impl Controller {
                     },
                     None,
                 )?;
-                (Stream::Device(stream), shared, rate)
+                (Stream::Device(stream), shared, rate, queue, rx)
             }
         };
         let render = Render {
-            renderer: process_capture::clock::Renderer::with_rates(rate, output_rate)?,
+            renderer: process_capture::clock::Renderer::with_rates_and_capacity(
+                rate,
+                output_rate,
+                queue.capacity().get() / 2,
+            )?,
             queue: rx,
             samples: vec![0.0; max_frames * 2],
             shared,

@@ -933,7 +933,15 @@ impl Engine {
         self.channel_rx = Some(channel_cons);
 
         let audio_rb_frames = if is_process || adaptive_primary {
-            crate::audio_engine::process_capture::clock::CAPACITY
+            crate::audio_engine::process_capture::clock::queue_capacity(
+                if is_process {
+                    crate::audio_engine::process_capture::RATE
+                } else {
+                    in_stream_config.sample_rate
+                },
+                out_stream_config.sample_rate,
+                self.processing_block_capacity,
+            )?
         } else {
             (self.current_sample_rate as usize / 2).max(4096)
         };
@@ -1283,9 +1291,10 @@ impl Engine {
                 )?;
                 let clock = adaptive_primary
                     .then(|| {
-                        crate::audio_engine::process_capture::clock::Renderer::with_rates(
+                        crate::audio_engine::process_capture::clock::Renderer::with_rates_and_capacity(
                             in_stream_config.sample_rate,
                             out_stream_config.sample_rate,
+                            audio_rb_frames,
                         )
                     })
                     .transpose()?;
@@ -1345,10 +1354,13 @@ impl Engine {
         });
         self.process_shared = process_shared.clone();
         let mut process_renderer = if is_process {
-            let (callback, owner) =
-                callback_owner(crate::audio_engine::process_capture::clock::Renderer::new(
+            let (callback, owner) = callback_owner(
+                crate::audio_engine::process_capture::clock::Renderer::with_rates_and_capacity(
+                    crate::audio_engine::process_capture::RATE,
                     out_stream_config.sample_rate,
-                )?);
+                    audio_rb_frames,
+                )?,
+            );
             self.process_renderer_owner = Some(owner);
             Some(callback)
         } else {
