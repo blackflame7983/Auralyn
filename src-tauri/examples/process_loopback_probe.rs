@@ -145,6 +145,9 @@ fn run() -> Result<()> {
         Some("endpoints") if args.len() == 1 => {
             println!("{}", serde_json::to_string_pretty(&endpoints::list()?)?);
         }
+        Some("capture-endpoints") if args.len() == 1 => {
+            println!("{}", serde_json::to_string_pretty(&endpoints::list_capture()?)?);
+        }
         Some("hold-endpoint-muted") if args.len() == 4 => {
             ensure!(Path::new(&args[3]).is_absolute(), "readyの保存先は絶対パスで指定してください");
             endpoints::hold_muted(&args[1], Duration::from_secs(args[2].parse()?), Path::new(&args[3]))?;

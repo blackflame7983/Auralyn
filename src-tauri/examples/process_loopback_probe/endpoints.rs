@@ -12,9 +12,9 @@ use windows::{
     Win32::{
         Devices::FunctionDiscovery::PKEY_Device_FriendlyName,
         Media::Audio::{
-            eCommunications, eConsole, eMultimedia, eRender, AudioSessionStateActive,
+            eCapture, eCommunications, eConsole, eMultimedia, eRender, AudioSessionStateActive,
             Endpoints::IAudioEndpointVolume, IAudioSessionControl2, IAudioSessionManager2,
-            IMMDevice, IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
+            IMMDevice, IMMDeviceEnumerator, IMMEndpoint, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
         },
         System::Com::{
             CoCreateInstance, CoTaskMemFree, StructuredStorage::PropVariantToStringAlloc,
@@ -55,6 +55,7 @@ fn get(id: &str) -> Result<IMMDevice> {
 }
 
 fn describe(device: &IMMDevice) -> Result<Snapshot> {
+    let flow = unsafe { device.cast::<IMMEndpoint>()?.GetDataFlow()? };
     let id = identifier(device)?;
     let store = unsafe { device.OpenPropertyStore(STGM(0))? };
     let value = unsafe { store.GetValue(&PKEY_Device_FriendlyName)? };
@@ -78,7 +79,7 @@ fn describe(device: &IMMDevice) -> Result<Snapshot> {
         (eMultimedia, "multimedia"),
         (eCommunications, "communications"),
     ] {
-        if let Ok(default) = unsafe { enumerator.GetDefaultAudioEndpoint(eRender, role) } {
+        if let Ok(default) = unsafe { enumerator.GetDefaultAudioEndpoint(flow, role) } {
             if identifier(&default)? == id {
                 default_roles.push(name.to_owned());
             }
@@ -97,6 +98,14 @@ fn describe(device: &IMMDevice) -> Result<Snapshot> {
 
 pub fn list() -> Result<Vec<Snapshot>> {
     let devices = unsafe { enumerator()?.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)? };
+    (0..unsafe { devices.GetCount()? })
+        .map(|i| describe(&unsafe { devices.Item(i)? }))
+        .collect()
+}
+
+// 音声streamを開かず、試験用の録音端点が他用途で使われていないか照会する。
+pub fn list_capture() -> Result<Vec<Snapshot>> {
+    let devices = unsafe { enumerator()?.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)? };
     (0..unsafe { devices.GetCount()? })
         .map(|i| describe(&unsafe { devices.Item(i)? }))
         .collect()
@@ -124,8 +133,8 @@ impl Drop for Restore {
 
 pub fn hold_muted(id: &str, duration: Duration, ready: &Path) -> Result<()> {
     ensure!(
-        (1..=7200).contains(&duration.as_secs()),
-        "ミュート試験は1〜7200秒です"
+        (1..=14_400).contains(&duration.as_secs()),
+        "ミュート試験は1〜14400秒です"
     );
     let device = get(id)?;
     let before = describe(&device)?;

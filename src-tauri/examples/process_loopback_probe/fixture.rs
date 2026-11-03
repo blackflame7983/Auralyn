@@ -26,7 +26,7 @@ pub fn run(
         "試験音の周波数が範囲外です"
     );
     ensure!(
-        duration >= Duration::from_secs(1) && duration <= Duration::from_secs(3600),
+        duration >= Duration::from_secs(1) && duration <= Duration::from_secs(14_400),
         "試験時間が範囲外です"
     );
     let host = cpal::host_from_id(cpal::HostId::Wasapi)?;
