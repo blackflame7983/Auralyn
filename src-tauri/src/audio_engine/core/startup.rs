@@ -1101,7 +1101,6 @@ impl Engine {
         self.stats_max_jitter = stats_max_jitter.clone();
         self.stats_glitches = stats_glitches.clone();
 
-        let mut last_callback: Option<(Instant, usize)> = None;
         let callback_rate = self.current_sample_rate as u32;
         let callback_diagnostics = Arc::new(CallbackDiagnostics::default());
         self.callback_diagnostics = callback_diagnostics.clone();
@@ -1390,6 +1389,7 @@ impl Engine {
         };
         let build_output = || {
             let output_build_started = Instant::now();
+            let mut output_cadence = OutputCadence::new(callback_rate);
             let mut process_output =
                 move |data: &mut [f32], info: Option<&cpal::OutputCallbackInfo>| {
                     if dsp_silence.drain_worker() {
@@ -1492,19 +1492,6 @@ impl Engine {
                     flush_pending_retire(pending_retire, &mut retire_prod);
 
                     let now = Instant::now();
-                    if let Some((previous, previous_frames)) = last_callback {
-                        let (late, missed) = callback_lateness(
-                            now.duration_since(previous),
-                            previous_frames,
-                            callback_rate,
-                        );
-                        stats_max_jitter.fetch_max(late, Ordering::Relaxed);
-                        if missed {
-                            stats_glitches.fetch_add(1, Ordering::Relaxed);
-                        }
-                    }
-                    last_callback = Some((now, actual_frames));
-
                     if !mmcss_set_out.load(Ordering::Relaxed) {
                         unsafe {
                             use windows::Win32::System::Threading::{
@@ -1625,8 +1612,8 @@ impl Engine {
                         (frames, 0)
                     } else if let Some(renderer) = &mut process_renderer {
                         use crate::audio_engine::process_capture::clock::Interleaved;
-                        let before = audio_cons.occupied_len() / 2;
                         let renderer = renderer.get_mut();
+                        let before = renderer.rendered;
                         renderer
                             .render(&mut input_buf[..to_read], &mut Interleaved(&mut audio_cons));
                         if renderer.failed {
@@ -1651,7 +1638,7 @@ impl Engine {
                         if let Some(shared) = &process_output_shared {
                             shared.rendered(renderer, audio_cons.occupied_len() / 2);
                         }
-                        (before.saturating_sub(audio_cons.occupied_len() / 2), 0)
+                        (renderer.rendered.saturating_sub(before) as usize, 0)
                     } else if let Some(timing) = &output_timing {
                         queue_diagnostics::read_complete_frames_observed(
                             &mut audio_cons,
@@ -1669,7 +1656,11 @@ impl Engine {
                             0,
                         )
                     };
-                    output_queue_diagnostics.record_output(frames, consumed_frames);
+                    // 分離時の主入力キューは本人用callbackだけが読む。
+                    // 配信workerまで加えると読出しと不足を二重計上してしまう。
+                    if !separated {
+                        output_queue_diagnostics.record_output(frames, consumed_frames);
+                    }
 
                     let ([in_max_l, in_max_r], record_block_start) = route_and_meter_input(
                         frames,
@@ -2212,6 +2203,11 @@ impl Engine {
                         out_dev.build_output_stream(
                             &out_stream_config,
                             move |data: &mut [f32], info| {
+                                output_cadence.record(
+                                    data.len() / channels_len,
+                                    &stats_max_jitter,
+                                    &stats_glitches,
+                                );
                                 monitor
                                     .get_mut()
                                     .render_gated(data, Some(info), &monitor_silence);
@@ -2233,6 +2229,11 @@ impl Engine {
                 out_dev.build_output_stream(
                     &out_stream_config,
                     move |data: &mut [f32], info| {
+                        output_cadence.record(
+                            data.len() / channels_len,
+                            &stats_max_jitter,
+                            &stats_glitches,
+                        );
                         let ticket = output_silence.ticket();
                         process_output(data, Some(info));
                         output_silence.finish(

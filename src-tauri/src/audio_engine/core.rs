@@ -41,7 +41,7 @@ mod startup;
 use super::auto_gain::{self, Session as GainSession};
 use super::auto_gain_preview;
 use super::callback_diagnostics::{
-    callback_lateness, normalized_channels, requested_channels, CallbackDiagnostics,
+    normalized_channels, requested_channels, CallbackDiagnostics, OutputCadence,
 };
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};

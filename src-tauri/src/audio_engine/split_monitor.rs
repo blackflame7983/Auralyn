@@ -586,50 +586,56 @@ impl Monitor {
             self.recovery.target(),
             self.recovery.high(),
         );
-        let consumed =
-            if self.input_clock.is_some() && gate.is_some_and(|gate| gate.pause_sources()) {
-                self.clock_buffer[..data.len()].fill(0.0);
-                if let Some(clock) = &mut self.input_clock {
-                    clock.wait_for_audio();
-                }
-                0
-            } else if let Some(clock) = &mut self.input_clock {
-                use super::process_capture::clock::MappedInterleaved;
-                let before = self.input.occupied_len() / self.input_channels;
-                clock.render(
-                    &mut self.clock_buffer[..data.len()],
-                    &mut MappedInterleaved {
-                        queue: &mut self.input,
-                        channels: self.input_channels,
-                        selected,
-                    },
+        let paused = self.input_clock.is_some() && gate.is_some_and(|gate| gate.pause_sources());
+        let consumed = if paused {
+            self.clock_buffer[..data.len()].fill(0.0);
+            if let Some(clock) = &mut self.input_clock {
+                clock.wait_for_audio();
+            }
+            0
+        } else if let Some(clock) = &mut self.input_clock {
+            use super::process_capture::clock::MappedInterleaved;
+            let before = clock.rendered;
+            clock.render(
+                &mut self.clock_buffer[..data.len()],
+                &mut MappedInterleaved {
+                    queue: &mut self.input,
+                    channels: self.input_channels,
+                    selected,
+                },
+            );
+            if let Some(shared) = &self.clock_shared {
+                shared.primary_queued.store(
+                    (self.input.occupied_len() / self.input_channels) as u64,
+                    Ordering::Relaxed,
                 );
-                if let Some(shared) = &self.clock_shared {
-                    shared.primary_queued.store(
-                        (self.input.occupied_len() / self.input_channels) as u64,
-                        Ordering::Relaxed,
-                    );
-                    shared
-                        .primary_correction
-                        .store(clock.correction_ppm.round() as i32, Ordering::Relaxed);
-                    shared
-                        .primary_underruns
-                        .store(clock.underruns, Ordering::Relaxed);
-                }
-                if clock.failed {
-                    self.main_failed.store(true, Ordering::Release);
-                    return;
-                }
-                before.saturating_sub(self.input.occupied_len() / self.input_channels)
-            } else {
-                super::queue_diagnostics::read_complete_frames(
-                    &mut self.input,
-                    &mut self.input_buffer[..data.len() / 2 * self.input_channels],
-                    self.input_channels,
-                )
-            };
+                shared
+                    .primary_correction
+                    .store(clock.correction_ppm.round() as i32, Ordering::Relaxed);
+                shared
+                    .primary_underruns
+                    .store(clock.underruns, Ordering::Relaxed);
+            }
+            if clock.failed {
+                self.main_failed.store(true, Ordering::Release);
+                // 途中まで変換できても、このcallbackは全体を無音のまま返す。
+                self.diagnostics.record_output(data.len() / 2, 0);
+                return;
+            }
+            // SRCは入力をまとめて先読みするため、queue残量差は出力不足ではない。
+            // producerの同時追加にも影響されない、実際に生成した出力frameで数える。
+            clock.rendered.saturating_sub(before) as usize
+        } else {
+            super::queue_diagnostics::read_complete_frames(
+                &mut self.input,
+                &mut self.input_buffer[..data.len() / 2 * self.input_channels],
+                self.input_channels,
+            )
+        };
         let read = self.timing.as_ref().map_or(0, |t| t.now_ns());
-        self.diagnostics.record_output(data.len() / 2, consumed);
+        if !paused {
+            self.diagnostics.record_output(data.len() / 2, consumed);
+        }
         if let Some(shared) = &self.clock_shared {
             shared.primary_queued.store(
                 (self.input.occupied_len() / self.input_channels) as u64,
@@ -1290,6 +1296,95 @@ mod tests {
         release_tx.send(()).unwrap();
         drop(worker);
         drop(renderer);
+        drop(controller);
+    }
+    #[test]
+    fn adaptive_monitor_counts_rendered_frames_instead_of_src_prefetch() {
+        use super::super::queue_diagnostics::QueueState;
+        for input_rate in [44100, 48000, 96000] {
+            let (controller, mut monitor, mut input, _queue, mut broadcast) = fixture();
+            let monitor = monitor.get_mut();
+            monitor.input_clock = Some(
+                super::super::process_capture::clock::Renderer::with_rates(input_rate, 48000)
+                    .unwrap(),
+            );
+            monitor.clock_buffer = vec![0.0; 512 * 2];
+            for _ in 0..2048 {
+                input.try_push(0.1).unwrap();
+                input.try_push(-0.1).unwrap();
+            }
+            let mut output = [0.0; 512 * 2];
+            let mut fractional = 0.0;
+            for _ in 0..100 {
+                fractional += 512.0 * f64::from(input_rate) / 48000.0;
+                let incoming = fractional as usize;
+                fractional -= incoming as f64;
+                for _ in 0..incoming {
+                    input.try_push(0.1).unwrap();
+                    input.try_push(-0.1).unwrap();
+                }
+                assert_eq!(
+                    crate::vst_host::instance::allocation_counts(
+                        || monitor.render(&mut output, None)
+                    ),
+                    (0, 0)
+                );
+                broadcast.skip(broadcast.occupied_len());
+            }
+            let snapshot =
+                monitor
+                    .diagnostics
+                    .snapshot(QueueState::Running, Some(input.occupied_len()), None);
+            assert_eq!(snapshot.queue_read_callbacks, 100);
+            assert_eq!(snapshot.requested_output_frames, 51200);
+            assert_eq!(snapshot.consumed_output_frames, 51200);
+            assert_eq!(snapshot.zero_filled_output_frames, 0);
+            assert_eq!(snapshot.underflow_callbacks, 0);
+            assert!(!monitor.main_failed.load(Ordering::Acquire));
+            // SRCの途中不足で全体無音化した一回分も、診断から落とさない。
+            monitor.input.skip(monitor.input.occupied_len());
+            monitor.render(&mut output, None);
+            let failed = monitor
+                .diagnostics
+                .snapshot(QueueState::Failed, Some(0), None);
+            assert!(monitor.main_failed.load(Ordering::Acquire));
+            assert!(output.iter().all(|sample| *sample == 0.0));
+            assert_eq!(failed.queue_read_callbacks, 101);
+            assert_eq!(failed.zero_filled_output_frames, 512);
+            assert_eq!(failed.underflow_callbacks, 1);
+            drop(controller);
+        }
+    }
+    #[test]
+    fn intentional_src_pause_does_not_report_queue_underflow() {
+        let (controller, mut monitor, _input, _queue, _broadcast) = fixture();
+        let monitor = monitor.get_mut();
+        monitor.input_clock =
+            Some(super::super::process_capture::clock::Renderer::new(48000).unwrap());
+        monitor.clock_buffer = vec![0.0; 1024];
+        let mut gate = super::super::mode_silence::Controller::default();
+        gate.request(
+            super::super::mode_silence::Request::Begin { id: "pause".into() },
+            1,
+            true,
+            true,
+            false,
+            false,
+        )
+        .unwrap();
+        gate.invalidate();
+        assert!(gate.shared.pause_sources());
+        let mut output = [1.0; 1024];
+        monitor.render_gated(&mut output, None, &gate.shared);
+        let snapshot = monitor.diagnostics.snapshot(
+            super::super::queue_diagnostics::QueueState::Running,
+            Some(0),
+            None,
+        );
+        assert_eq!(snapshot.queue_read_callbacks, 0);
+        assert_eq!(snapshot.zero_filled_output_frames, 0);
+        assert!(!monitor.main_failed.load(Ordering::Acquire));
+        assert!(output.iter().all(|sample| *sample == 0.0));
         drop(controller);
     }
     #[test]

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,6 +66,40 @@ pub fn callback_lateness(elapsed: Duration, previous_frames: usize, rate: u32) -
     (late, late > period / 2)
 }
 
+/// OSから呼ばれた出力callbackだけを観測する。配信workerの追い付き処理は含めない。
+pub struct OutputCadence {
+    previous: Option<(Instant, usize)>,
+    rate: u32,
+}
+impl OutputCadence {
+    pub fn new(rate: u32) -> Self {
+        Self {
+            previous: None,
+            rate,
+        }
+    }
+    pub fn record(&mut self, frames: usize, max_late: &AtomicU64, late_count: &AtomicU64) {
+        self.record_at(Instant::now(), frames, max_late, late_count);
+    }
+    fn record_at(
+        &mut self,
+        now: Instant,
+        frames: usize,
+        max_late: &AtomicU64,
+        late_count: &AtomicU64,
+    ) {
+        if let Some((previous, previous_frames)) = self.previous {
+            let (late, missed) =
+                callback_lateness(now.duration_since(previous), previous_frames, self.rate);
+            max_late.fetch_max(late, Ordering::Relaxed);
+            if missed {
+                late_count.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        self.previous = Some((now, frames));
+    }
+}
+
 pub fn normalized_channels(asio: bool, selected: [usize; 2], channels: usize) -> [usize; 2] {
     if asio && selected.iter().all(|c| *c < channels) {
         selected
@@ -96,6 +130,21 @@ pub fn requested_channels(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn output_cadence_uses_actual_device_blocks_and_excludes_startup() {
+        let mut cadence = OutputCadence::new(48000);
+        let max = AtomicU64::new(0);
+        let count = AtomicU64::new(0);
+        let start = Instant::now();
+        cadence.record_at(start, 960, &max, &count);
+        cadence.record_at(start + Duration::from_millis(20), 480, &max, &count);
+        cadence.record_at(start + Duration::from_millis(30), 480, &max, &count);
+        assert_eq!(max.load(Ordering::Relaxed), 0);
+        assert_eq!(count.load(Ordering::Relaxed), 0);
+        cadence.record_at(start + Duration::from_millis(47), 480, &max, &count);
+        assert_eq!(max.load(Ordering::Relaxed), 7000);
+        assert_eq!(count.load(Ordering::Relaxed), 1);
+    }
     #[test]
     fn actual_buffer_sizes_do_not_count_as_late() {
         assert_eq!(
