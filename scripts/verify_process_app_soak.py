@@ -108,7 +108,7 @@ def sample(engine: Engine, duration: float) -> dict:
     stats = engine.request({'type': 'GetRuntimeStats'})['payload']
     meters = [event['payload'] for event in engine.events if event['type'] == 'LevelMeter']
     result = {'runtime': stats, 'inputPeak': max((max(m['input']) for m in meters), default=0),
-              'outputPeak': max((max(m['output']) for m in meters), default=0)}
+              'outputPeak': max((max(m['output']) for m in meters), default=0), 'meterEvents': len(meters)}
     engine.events.clear()
     return result
 

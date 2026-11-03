@@ -17,13 +17,13 @@ from verify_process_loopback_probe import execute, start_source, stop_owned
 
 
 class Engine:
-    def __init__(self, binary: Path, directory: Path):
+    def __init__(self, binary: Path, directory: Path, arguments=()):
         self.events: list[dict] = []
         self.messages: queue.Queue = queue.Queue()
         self.stderr = (directory / "engine.stderr").open("x", encoding="utf-8")
         environment = dict(os.environ, AURALYN_DISABLE_PERF_TWEAKS="1",
                            APPDATA=str(directory / "appdata"), LOCALAPPDATA=str(directory / "localappdata"))
-        self.process = subprocess.Popen([str(binary)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        self.process = subprocess.Popen([str(binary), *arguments], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=self.stderr, text=True, encoding="utf-8", env=environment,
                                         creationflags=subprocess.CREATE_NO_WINDOW)
         self.reader = threading.Thread(target=self.read, args=(directory,), daemon=True)
@@ -64,14 +64,19 @@ class Engine:
         raise TimeoutError("Engineから応答がありません")
 
     def close(self) -> None:
-        if self.process.poll() is None:
-            self.process.stdin.close()
-            try:
-                self.process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                stop_owned(self.process)
-        self.reader.join(timeout=3)
-        self.stderr.close()
+        try:
+            if self.process.poll() is None:
+                # 壊れたpipeのcloseが失敗しても、所有するEngineの終了は最後まで試みる。
+                try:
+                    self.process.stdin.close()
+                finally:
+                    try:
+                        self.process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        stop_owned(self.process)
+        finally:
+            self.reader.join(timeout=3)
+            self.stderr.close()
 
 
 def verify_cable(engine_binary: Path, probe: Path, directory: Path, summary: dict, purpose: str = "voice") -> None:

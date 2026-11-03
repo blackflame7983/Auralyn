@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, lstatSync } from 'node:fs';
+import { join, resolve, sep, basename } from 'node:path';
 
 const RAW = '{0.0.0.00000000}.{bc439acc-6788-4e71-9a65-8b63b8f82edc}';
 const BROADCAST = '{0.0.0.00000000}.{0cb27868-ba34-4251-8fba-35e4ea3706b9}';
@@ -207,4 +207,123 @@ export async function exercisePostMixNative({ getPage, invoke, snapshot, token, 
     await expect.poll(async () => !(await state()).enabled).toBe(true);
     await close.click(); await invoke('start_audio', start); await checkMuted();
     await expect.poll(async () => (await snapshot()).running, { timeout: 20000 }).toBe(true);
+}
+
+// 一時利用への切替は既存の全体 apply/Undo 試験と分離し、復旧原本だけを対象にする。
+export async function exercisePostMixCheckpoint({ invoke, snapshot, token, start, selectSource, root, configRoot, results, checkMuted, assertStopped, phase, switchSession, postVst = VST }) {
+    const postRequest = request => invoke('post_mix', { request });
+    const postState = () => postRequest({ action: 'snapshot' });
+    const postEdit = async (action, fields = {}) => {
+        const current = await postState();
+        return postRequest({ action, expectedEpoch: current.epoch, expectedRevision: current.revision, ...fields });
+    };
+    const bundle = request => invoke('broadcast_bundle', { request });
+    const categories = { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true };
+    const secretHashes = saved => ({ voice: digest(saved.embeddedAuralynPreset.plugins[0].state), post: digest(saved.mixing.postMix.plugins[0].state) });
+    const savedPath = name => join(configRoot, 'broadcast-bundles', `${name}.json`);
+    const read = path => JSON.parse(readFileSync(path, 'utf8'));
+    phase('checkpoint-racks-prepare');
+    await checkMuted(); await invoke('stop_audio'); await assertStopped();
+    await postEdit('restore_saved');
+    await postEdit('add', { path: postVst });
+    await postEdit('enable', { enabled: true });
+    await postEdit('save');
+    await invoke('load_plugin', { path: VST });
+    await invoke('start_audio', start); await checkMuted();
+    await expect.poll(async () => (await postState()).running, { timeout: 20000 }).toBe(true);
+    const voice = await invoke('session_rack', { request: { action: 'snapshot' } });
+    assert.equal(voice.plugins.length, 1);
+    await invoke('set_gain', { id: voice.plugins[0].id, value: 0.42 });
+    let post = await postState(); await postEdit('gain', { id: post.plugins[0].id, value: 0.37 });
+    const mix = await snapshot();
+    const levels = { ...mix.config.levels, offsetMs: 73 };
+    await invoke('mixing', { request: { action: 'levels', ...token(mix), levels } });
+    await expect.poll(async () => {
+        const current = await snapshot(), stats = await checkMuted();
+        return !current.pending && !current.failed && current.config?.levels.offsetMs === 73 && !stats.preparation.controlsPending;
+    }, { timeout: 15000 }).toBe(true);
+    const baselineName = `checkpoint-baseline-${process.pid}`;
+    await bundle({ action: 'save', name: baselineName, categories, obs: null, includeOutput: true, includeLive: true, includeMixing: true });
+    const baseline = read(savedPath(baselineName));
+    assert.equal(baseline.schemaVersion, 5);
+    assert.equal(baseline.embeddedAuralynPreset.plugins.length, 1);
+    assert.equal(baseline.mixing.postMix.plugins.length, 1);
+    const normalizePath = path => path.replaceAll('\\', '/').toLowerCase();
+    assert.equal(normalizePath(baseline.embeddedAuralynPreset.plugins[0].path), normalizePath(VST));
+    assert.equal(normalizePath(baseline.mixing.postMix.plugins[0].path), normalizePath(postVst));
+    const hashes = secretHashes(baseline);
+    if (normalizePath(postVst) !== normalizePath(VST)) {
+        assert.notEqual(hashes.voice, hashes.post, '声用と配信用の state が同一のため取り違えを検出できません');
+        results.checkpointDistinctRackStates = true;
+    }
+    results.checkpointExpectedHashes = hashes;
+    phase('checkpoint-enter-temporary');
+    await switchSession(true, true); await assertStopped();
+    const temporary = await invoke('temporary_session_status');
+    assert(temporary.temporary && temporary.reviewOnly);
+    const scratch = resolve(temporary.directory);
+    assert(scratch.startsWith(join(root, 'os-temp') + sep) && /^Auralyn-temporary-[a-f0-9]{32}$/i.test(basename(scratch)) && !lstatSync(scratch).isSymbolicLink());
+    const receiptPath = join(configRoot, 'broadcast-bundle-recovery.json');
+    const receipt = read(receiptPath);
+    assert.equal(receipt.version, 1); assert.equal(receipt.runtime?.version, 3);
+    assert.match(receipt.runtime.sha256, /^[a-f0-9]{64}$/i);
+    assert.equal(receipt.devices?.inputId, start.inputId);
+    assert.equal(receipt.devices?.outputId, start.outputId);
+    const backupPath = join(configRoot, 'broadcast-bundle-backups', 'broadcast-bundles', `${receipt.backupName}.json`);
+    const backupBytes = readFileSync(backupPath), backup = JSON.parse(backupBytes);
+    const backupDigest = digest(backupBytes);
+    assert.equal(backup.schemaVersion, 5);
+    assert.deepEqual(secretHashes(backup), hashes);
+    assert.equal(normalizePath(backup.embeddedAuralynPreset.plugins[0].path), normalizePath(VST));
+    assert.equal(normalizePath(backup.mixing.postMix.plugins[0].path), normalizePath(postVst));
+    assert.deepEqual(backup.mixing.input.levels, levels);
+    assert.equal(backup.mixing.postMix.plugins[0].gain, 0.37);
+    assert(!/"(?:pid|created|candidateId|target)"/i.test(JSON.stringify(backup.mixing)));
+    assert(!JSON.stringify(receipt).includes(baseline.mixing.postMix.plugins[0].state));
+    results.checkpointOrigin3AndBothRackHashes = true;
+    phase('checkpoint-return-normal');
+    await switchSession(false); await assertStopped();
+    const returned = await invoke('temporary_session_status');
+    assert(!returned.temporary && returned.reviewOnly);
+    results.checkpointTemporaryScratchRemoved = !existsSync(scratch);
+    if (!results.checkpointTemporaryScratchRemoved) {
+        assert(returned.cleanupPending && resolve(returned.cleanupPending) === scratch);
+        results.checkpointTemporaryCleanupFailureReported = true;
+    }
+    await invoke('set_global_mute', { active: true });
+    await assert.rejects(() => invoke('start_audio', start));
+    const recovery = await bundle({ action: 'recovery_status' });
+    assert(recovery.value?.readable && recovery.value?.runtimeCheckpoint);
+    await postEdit('restore_saved');
+    await selectSource();
+    await invoke('start_audio', start); await checkMuted();
+    await expect.poll(async () => {
+        const current = await snapshot(), stats = await checkMuted();
+        return current.running && !current.failed && !stats.preparation.controlsPending;
+    }, { timeout: 20000 }).toBe(true);
+    phase('checkpoint-explicit-recovery');
+    const preview = await bundle({ action: 'recovery_preview' });
+    assert(!JSON.stringify(preview).includes(baseline.mixing.postMix.plugins[0].state));
+    const restored = await bundle({ action: 'recovery_apply', id: preview.value.id });
+    let reason = String(restored.value?.auralyn ?? '');
+    for (const secret of [baseline.embeddedAuralynPreset.plugins[0].state, baseline.mixing.postMix.plugins[0].state]) {
+        if (secret) reason = reason.replaceAll(secret, '[state]');
+    }
+    reason = reason.replace(/[A-Za-z0-9+/]{100,}={0,2}/g, '[state]');
+    results.checkpointRecovery = { complete: !!restored.value?.complete, undoPending: !!restored.value?.undoPending, reason };
+    assert(restored.value?.complete); await checkMuted();
+    assert.equal((await snapshot()).config.levels.offsetMs, 73);
+    post = await postState(); assert.equal(post.plugins[0].gain, 0.37);
+    const afterName = `checkpoint-restored-${process.pid}`;
+    await bundle({ action: 'save', name: afterName, categories, obs: null, includeOutput: true, includeLive: true, includeMixing: true });
+    const after = read(savedPath(afterName));
+    assert.deepEqual(secretHashes(after), hashes);
+    assert.equal(normalizePath(after.embeddedAuralynPreset.plugins[0].path), normalizePath(VST));
+    assert.equal(normalizePath(after.mixing.postMix.plugins[0].path), normalizePath(postVst));
+    assert.deepEqual(after.mixing.input.levels, levels);
+    assert.equal(after.embeddedAuralynPreset.plugins[0].gain, 0.42);
+    assert.equal(after.mixing.postMix.plugins[0].gain, 0.37);
+    assert.equal(digest(readFileSync(backupPath)), backupDigest);
+    assert.equal((await bundle({ action: 'recovery_status' })).value, null);
+    results.checkpointRestoredBothRacksMutedAndOriginalRetained = true;
 }
