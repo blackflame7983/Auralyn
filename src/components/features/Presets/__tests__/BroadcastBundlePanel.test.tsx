@@ -58,14 +58,14 @@ it('本番モードの保存では全カテゴリと出力を固定し、選択�
     expect(diff).toHaveTextContent(message('ja', 'bundle.live.restoreHint'));
 });
 it.each(['missingDevices', 'missingPlugins'] as const)('分離出力の%sを先に示し、適用を禁止する', async kind => {
-    vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, output: { before: null, after: { deviceId: 'cable', monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, restartRequired: true, [kind]: ['missing fixture'] } });
+    vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, output: { before: null, after: { deviceId: 'cable', monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, restartRequired: true, [kind]: ['missing fixture'], ...(kind === 'missingDevices' ? { missingDeviceLabels: [{ role: 'primaryInput' as const, name: 'Missing microphone' }] } : {}) } });
     render(<BroadcastBundlePanel onOperation={vi.fn()} />);
     await showPlan();
-    expect(screen.getByRole('alert')).toHaveTextContent('missing fixture');
+    expect(screen.getByRole('alert')).toHaveTextContent(kind === 'missingDevices' ? 'Missing microphone' : 'missing fixture');
     expect(screen.getByRole('button', { name: 'この変更予定を適用する' })).toBeDisabled();
 });
 it('分離出力を含めると全カテゴリを固定し、差分には再起動と両枝の値を示す', async () => {
-    vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, output: { before: { deviceId: null, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, after: { deviceId: 'broadcast-id', monitorTrim: 0, broadcastTrim: 0.5, monitorMuted: true, splitProcessing: false }, restartRequired: true } });
+    vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, output: { before: { deviceId: null, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, afterDeviceName: 'Broadcast cable', after: { deviceId: 'broadcast-id', monitorTrim: 0, broadcastTrim: 0.5, monitorMuted: true, splitProcessing: false }, restartRequired: true } });
     render(<BroadcastBundlePanel />);
     await screen.findByRole('option', { name: '歌枠' });
     fireEvent.click(screen.getByRole('radio', { name: new RegExp(message('ja', 'bundle.scope.output')) }));
@@ -75,7 +75,7 @@ it('分離出力を含めると全カテゴリを固定し、差分には再起�
     await showPlan();
     const diff = screen.getByRole('region', { name: message('ja', 'bundle.output.diff') });
     expect(diff).toHaveTextContent(message('ja', 'bundle.output.restart'));
-    expect(diff).toHaveTextContent('broadcast-id');
+    expect(diff).toHaveTextContent('Broadcast cable'); expect(diff).not.toHaveTextContent('broadcast-id');
     expect(diff).toHaveTextContent(message('ja', 'bundle.output.monitorTrim'));
     expect(diff).toHaveTextContent(message('ja', 'bundle.output.broadcastTrim'));
 });

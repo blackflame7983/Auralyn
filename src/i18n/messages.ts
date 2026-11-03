@@ -1,6 +1,14 @@
 import type { Locale } from './locale';
 
 const ja = {
+    "bundle.device.unknown": "不明な機器（{role}）",
+    "bundle.device.role.accompanimentInput": "オケ入力",
+    "bundle.device.role.originalOutput": "原音の出力先",
+    "bundle.device.role.primaryInput": "主入力",
+    "bundle.device.role.primaryOutput": "自分用の出力先",
+    "bundle.device.role.broadcastOutput": "配信用の出力先",
+    "bundle.device.role.device": "入出力",
+
     "mixingUi.runtimeFailure": "「{operation}」に失敗しました。原因: {cause}。現在の状態を確認してください。",
     "mixingUi.gainUnapplied": "表示中の音量に、まだ反映されていない変更があります。",
     "mixingUi.retryGain": "音量の変更を再試行",
@@ -447,7 +455,7 @@ const ja = {
     "bundle.output.scope": "声用途の機器入力を個別設定で使う場合に、主入出力、配信用出力、枝ごとの処理・音量、自分用ミュートを全カテゴリと保存します。処理を分けている間は、自分用処理が登録済みの歌向け設定と異なると保存できません。歌／雑談モード、本番保護、ピーク保護、学習結果は戻しません。",
     "bundle.output.diff": "分離出力の差分",
     "bundle.output.restart": "音声を再起動し、VSTを読み直します。元の主入出力を明示開始して全体ミュートし、差分を取り直してから復帰してください。両出力への実際の音の到達は別に確認してください。",
-    "bundle.output.device": "配信用出力の機器ID",
+    "bundle.output.device": "配信用の出力先",
     "bundle.output.split": "枝別の処理分離",
     "bundle.output.monitorTrim": "自分用の音量",
     "bundle.output.broadcastTrim": "配信用の音量",
@@ -3041,6 +3049,14 @@ const ja = {
 } as const;
 export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
+    "bundle.device.unknown": "Unknown device ({role})",
+    "bundle.device.role.accompanimentInput": "accompaniment input",
+    "bundle.device.role.originalOutput": "original audio output",
+    "bundle.device.role.primaryInput": "primary input",
+    "bundle.device.role.primaryOutput": "monitor output",
+    "bundle.device.role.broadcastOutput": "broadcast output",
+    "bundle.device.role.device": "audio routing",
+
     "mixingUi.runtimeFailure": "{operation} failed: {cause}. Check the current state.",
     "mixingUi.gainUnapplied": "Some displayed volume changes have not been applied yet.",
     "mixingUi.retryGain": "Retry volume changes",
@@ -3488,7 +3504,7 @@ const en: Record<MessageKey, string> = {
     "bundle.output.scope": "For voice device input using individual settings, saves all categories plus primary and broadcast outputs, branch processing and volume, and monitor mute. With split processing, active monitor processing must match registered singing settings. Modes, live protection, peak protection and learned noise are excluded.",
     "bundle.output.diff": "Separate output differences",
     "bundle.output.restart": "Audio will restart and VSTs will reload. Explicitly start the original primary devices, mute all audio and review fresh differences before restoring. Check actual audio delivery to both outputs separately.",
-    "bundle.output.device": "Broadcast output device ID",
+    "bundle.output.device": "Broadcast output",
     "bundle.output.split": "Separate branch processing",
     "bundle.output.monitorTrim": "Monitor volume",
     "bundle.output.broadcastTrim": "Broadcast volume",

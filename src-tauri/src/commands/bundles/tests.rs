@@ -1162,3 +1162,186 @@ fn mixing_preview_exposes_fields_without_plugin_state_and_detects_missing_input(
     assert_eq!(json["after"]["postMix"]["plugins"][0]["name"], "plugin");
     assert!(!json.to_string().contains("private-state"));
 }
+
+fn preview_test_device(name: &str, id: &str, is_input: bool) -> audio::AudioDevice {
+    audio::AudioDevice {
+        name: name.into(),
+        host: "WASAPI".into(),
+        id: Some(id.into()),
+        is_input,
+        channels: 2,
+        index: 0,
+        is_default: false,
+        sample_rate_ranges: None,
+        buffer_size_range: None,
+    }
+}
+fn preview_test_mixing(id: &str) -> bundle::MixingConfiguration {
+    let mut mix = empty_mixing();
+    mix.input = Some(serde_json::from_value(serde_json::json!({
+        "version": 1, "source": { "kind": "device", "config": { "host": "WASAPI", "inputId": id, "inputChannels": [0, 1] } },
+        "levels": { "voice": { "gain": 1.0, "muted": false }, "accompaniment": { "gain": 1.0, "muted": false }, "monitorAccompaniment": true, "offsetMs": 0 }
+    })).unwrap());
+    mix
+}
+#[test]
+fn mixing_display_names_resolve_each_id_without_changing_the_configuration() {
+    let before = preview_test_mixing("wasapi:old");
+    let after = preview_test_mixing("wasapi:new");
+    let mut devices = audio::AudioDeviceList {
+        inputs: vec![
+            preview_test_device("Old cable", "wasapi:old", true),
+            preview_test_device("Renamed cable", "wasapi:new", true),
+        ],
+        outputs: vec![],
+    };
+    let view = mixing_preview(&before, &after, &devices, vec![]);
+    assert_eq!(view.before.input_device_name.as_deref(), Some("Old cable"));
+    assert_eq!(
+        view.after.input_device_name.as_deref(),
+        Some("Renamed cable")
+    );
+    assert!(view.missing_devices.is_empty());
+    assert_eq!(view.before.input.as_ref(), before.input.as_ref());
+    assert_eq!(view.after.input.as_ref(), after.input.as_ref());
+    // 同名の機器が残っていても、異なるIDの欠落を名前で代替しない。
+    devices.inputs[0].name = "Renamed cable".into();
+    devices.inputs.pop();
+    let missing = mixing_preview(&before, &after, &devices, vec![]);
+    assert_eq!(missing.missing_devices, vec!["wasapi:new"]);
+    assert!(missing.after.input_device_name.is_none());
+    assert_eq!(missing.missing_device_labels[0].role, "accompanimentInput");
+    assert!(missing.missing_device_labels[0].name.is_none());
+    let json = serde_json::to_value(&missing.missing_device_labels).unwrap();
+    assert!(json[0].get("id").is_none());
+}
+#[test]
+fn missing_process_accompaniment_labels_the_original_output_without_exposing_its_id() {
+    let mut target = empty_mixing();
+    target.input = Some(crate::audio_engine::mixing::Config {
+        version: 1,
+        source: crate::audio_engine::mixing::Source::ProcessLoopback(process_config().source),
+        levels: Default::default(),
+    });
+    let view = mixing_preview(
+        &empty_mixing(),
+        &target,
+        &audio::AudioDeviceList {
+            inputs: vec![],
+            outputs: vec![],
+        },
+        vec![],
+    );
+    assert_eq!(view.missing_devices, vec!["wasapi:raw-id"]);
+    assert_eq!(view.missing_device_labels[0].role, "originalOutput");
+    assert!(view.missing_device_labels[0].name.is_none());
+    assert!(view.after.input_device_name.is_none());
+}
+#[test]
+fn output_preview_names_and_missing_labels_preserve_ids_and_use_saved_primary_names() {
+    let mut before = captured();
+    before.output = Some(bundle::OutputConfiguration {
+        version: 1,
+        devices: bundle::RecoveryDevices {
+            input_id: "wasapi:mic".into(),
+            output_id: "wasapi:monitor".into(),
+        },
+        config: crate::audio_engine::live_output::Config {
+            device_id: Some("wasapi:before".into()),
+            ..Default::default()
+        },
+    });
+    let mut saved = BundleV1 {
+        schema_version: 2,
+        revision: "1".into(),
+        name: "test".into(),
+        categories: Default::default(),
+        embedded_auralyn_preset: before.preset.clone(),
+        output: before.output.clone(),
+        mixing: None,
+        process: None,
+        live: None,
+        obs: None,
+        confirmation: None,
+        level_intent: None,
+    };
+    saved.output.as_mut().unwrap().config.device_id = Some("wasapi:after".into());
+    saved.embedded_auralyn_preset.audio_config = Some(ProfileAudioConfig {
+        host: "WASAPI".into(),
+        input_device: Some("Saved microphone".into()),
+        output_device: Some("Saved headphones".into()),
+        sample_rate: 48000,
+        buffer_size: 512,
+        input_channels: vec![0, 1],
+        output_routing: Default::default(),
+        input_gain_db: 0.,
+        master_gain_db: 0.,
+    });
+    let mut devices = audio::AudioDeviceList {
+        inputs: vec![],
+        outputs: vec![
+            preview_test_device("Previous output", "wasapi:before", false),
+            preview_test_device("Broadcast cable", "wasapi:after", false),
+        ],
+    };
+    let view = build_output_preview(before.output.as_ref(), &saved, &devices, vec![]).unwrap();
+    assert_eq!(view.before_device_name.as_deref(), Some("Previous output"));
+    assert_eq!(view.after_device_name.as_deref(), Some("Broadcast cable"));
+    assert_eq!(view.missing_devices, vec!["wasapi:mic", "wasapi:monitor"]);
+    assert_eq!(
+        view.missing_device_labels[0].name.as_deref(),
+        Some("Saved microphone")
+    );
+    assert_eq!(
+        view.missing_device_labels[1].name.as_deref(),
+        Some("Saved headphones")
+    );
+    assert_eq!(view.missing_device_labels[0].role, "primaryInput");
+    assert_eq!(view.missing_device_labels[1].role, "primaryOutput");
+    assert_eq!(view.after.device_id.as_deref(), Some("wasapi:after"));
+    devices.outputs.pop();
+    let missing = build_output_preview(before.output.as_ref(), &saved, &devices, vec![]).unwrap();
+    assert_eq!(missing.missing_devices[2], "wasapi:after");
+    assert_eq!(missing.missing_device_labels[2].role, "broadcastOutput");
+    assert!(missing.after_device_name.is_none());
+    assert!(missing.missing_device_labels[2].name.is_none());
+    assert!(build_output_preview(
+        None,
+        &BundleV1 {
+            output: None,
+            ..saved
+        },
+        &devices,
+        vec![]
+    )
+    .is_none());
+}
+#[test]
+fn preview_display_name_does_not_guess_from_duplicate_ids_or_names() {
+    let devices = vec![
+        preview_test_device("Cable", "wasapi:one", false),
+        preview_test_device("Cable", "wasapi:two", false),
+    ];
+    assert_eq!(
+        preview_device_name(
+            &devices,
+            Some("wasapi"),
+            Some("wasapi:two"),
+            Some("Old name")
+        ),
+        Some("Cable".into())
+    );
+    assert_eq!(
+        preview_device_name(&devices, None, Some("wasapi:missing"), Some("Saved cable")),
+        Some("Saved cable".into())
+    );
+    assert!(preview_device_name(&devices, None, Some("wasapi:missing"), None).is_none());
+    assert!(preview_device_name(
+        &[devices[0].clone(), devices[0].clone()],
+        None,
+        Some("wasapi:one"),
+        Some("Saved cable")
+    )
+    .is_none());
+    assert!(preview_device_name(&devices, Some("asio"), Some("wasapi:one"), None).is_none());
+}

@@ -1,3 +1,4 @@
+import { deviceDisplayName, missingDeviceNames } from './deviceDisplay';
 import type { BundlePreview } from '@/api/bundles';
 import type { LiveOutputConfig } from '@/api/liveOutput';
 import { defaultSinging, defaultReverb, type BuiltinConfig } from '@/api/builtinEffects';
@@ -17,7 +18,6 @@ export function OutputConfigurationDiff({ output }: { output: NonNullable<Bundle
     const on = (value: boolean | undefined) => value ? 'ON' : 'OFF';
     const branch = (value: BuiltinConfig | null | undefined) => describeBuiltin(t, value);
     const rows: [MessageKey, (value: LiveOutputConfig) => string][] = [
-        ['bundle.output.device', value => value.deviceId ?? t('bundle.output.none')],
         ['bundle.output.split', value => on(value.splitProcessing)],
         ['bundle.output.monitorTrim', value => `${Math.round(value.monitorTrim * 100)}%`],
         ['bundle.output.broadcastTrim', value => `${Math.round(value.broadcastTrim * 100)}%`],
@@ -27,12 +27,15 @@ export function OutputConfigurationDiff({ output }: { output: NonNullable<Bundle
     ];
     return <section aria-label={t('bundle.output.diff')} className="space-y-2">
         <p>{t('bundle.output.restart')}</p>
-        {!!output.missingDevices?.length && <p role="alert">{t('bundle.output.missingDevices', { names: output.missingDevices.join(' / ') })}</p>}
+        {!!output.missingDevices?.length && <p role="alert">{t('bundle.output.missingDevices', { names: missingDeviceNames(t, output.missingDevices.length, output.missingDeviceLabels) })}</p>}
         {!!output.missingPlugins?.length && <p role="alert">{t('bundle.output.missingPlugins', { names: output.missingPlugins.join(' / ') })}</p>}
         <table className="w-full table-fixed text-xs text-left"><caption>{t('bundle.output.diff')}</caption>
             <colgroup><col className="w-1/4" /><col className="w-[37.5%]" /><col className="w-[37.5%]" /></colgroup>
             <thead><tr><th className="p-2">{t('presets.copy.153')}</th><th className="p-2">{t('presets.copy.154')}</th><th className="p-2">{t('presets.copy.155')}</th></tr></thead>
-            <tbody>{rows.map(([label, value]) => <tr key={label}>
+            <tbody><tr><th scope="row" className="p-2 align-top border-t">{t('bundle.output.device')}</th>
+                <td className="p-2 align-top border-t break-words">{!output.before ? t('presets.copy.160') : !output.before.deviceId ? t('bundle.output.none') : deviceDisplayName(t, output.beforeDeviceName, 'broadcastOutput')}</td>
+                <td className="p-2 align-top border-t break-words">{!output.after.deviceId ? t('bundle.output.none') : deviceDisplayName(t, output.afterDeviceName, 'broadcastOutput')}</td>
+            </tr>{rows.map(([label, value]) => <tr key={label}>
                 <th scope="row" className="p-2 align-top border-t">{t(label)}</th>
                 <td className="p-2 align-top border-t break-all">{output.before ? value(output.before) : t('presets.copy.160')}</td>
                 <td className="p-2 align-top border-t break-all">{value(output.after)}</td>

@@ -17,7 +17,7 @@ for (const liveModes of [false, true]) test(`分離出力と本番モード=${li
                     before: { deviceId: null, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false },
                     after: { deviceId: 'wasapi:fixture-broadcast-output', monitorTrim: 0, broadcastTrim: 0.5, monitorMuted: true, splitProcessing: true,
                         monitorSinging: { active: true, preset: 'singing', amount: 0.6, singing: { lowCutHz: 90, dynamics: 0.4, brightnessDb: 1 }, reverb: { enabled: false, mix: 0.1, decaySeconds: 1.2, damping: 0.6 } }, monitorTalk: null },
-                    restartRequired: true, missingDevices: [], missingPlugins: [],
+                    beforeDeviceName: null, afterDeviceName: '配信用ケーブル', restartRequired: true, missingDevices: [], missingPlugins: [],
                 } } };
                 default: return original(command, args);
             }
@@ -41,7 +41,8 @@ for (const liveModes of [false, true]) test(`分離出力と本番モード=${li
     await page.getByRole('button', { name: '変更予定を確認', exact: true }).click();
     const diff = page.getByRole('region', { name: '分離出力の差分', exact: true });
     await expect(diff).toContainText('音声を再起動し、VSTを読み直します');
-    await expect(diff).toContainText('wasapi:fixture-broadcast-output');
+    await expect(diff).toContainText('配信用ケーブル');
+    await expect(diff).not.toContainText('wasapi:fixture-broadcast-output');
     await expect(diff).toContainText('自分用の音量');
     await expect(diff).toContainText('配信用の音量');
     await expect(diff).toContainText('90 Hz');

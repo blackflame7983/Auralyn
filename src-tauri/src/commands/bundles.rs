@@ -119,11 +119,13 @@ pub(crate) struct MixingPreview {
     missing_devices: Vec<String>,
     missing_plugins: Vec<String>,
     plugin_state_changed: bool,
+    missing_device_labels: Vec<PreviewDeviceLabel>,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MixingSummary {
     input: Option<crate::audio_engine::mixing::Config>,
+    input_device_name: Option<String>,
     post_mix: MixingPostSummary,
 }
 #[derive(Clone, Serialize)]
@@ -132,15 +134,55 @@ struct MixingPostSummary {
     enabled: bool,
     plugins: Vec<crate::audio::post_mix::SavedPlugin>,
 }
-impl From<&bundle::MixingConfiguration> for MixingSummary {
-    fn from(value: &bundle::MixingConfiguration) -> Self {
-        Self {
-            input: value.input.clone(),
-            post_mix: MixingPostSummary {
-                enabled: value.post_mix.enabled,
-                plugins: value.post_mix.plugins.iter().map(Into::into).collect(),
-            },
-        }
+// 表示名は識別に使わない。IDの一致が一意な機器だけを現在名へ解決する。
+fn preview_device_name(
+    devices: &[audio::AudioDevice],
+    host: Option<&str>,
+    id: Option<&str>,
+    saved_name: Option<&str>,
+) -> Option<String> {
+    let id = id?;
+    let mut matches = devices.iter().filter(|device| {
+        device.id.as_deref() == Some(id)
+            && host.is_none_or(|host| device.host.eq_ignore_ascii_case(host))
+    });
+    match (matches.next(), matches.next()) {
+        (Some(device), None) => Some(device.name.as_str()),
+        (None, _) => saved_name,
+        _ => None,
+    }
+    .filter(|name| !name.trim().is_empty())
+    .map(str::to_owned)
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewDeviceLabel {
+    // 欠落判定用のIDと、翻訳する用途・任意の機器名を分ける。
+    #[serde(skip)]
+    id: String,
+    role: &'static str,
+    name: Option<String>,
+}
+fn mixing_summary(
+    value: &bundle::MixingConfiguration,
+    devices: &audio::AudioDeviceList,
+) -> MixingSummary {
+    let input_device_name = value.input.as_ref().and_then(|input| match &input.source {
+        crate::audio_engine::mixing::Source::Device(device) => preview_device_name(
+            &devices.inputs,
+            Some(&device.host),
+            Some(&device.input_id),
+            None,
+        ),
+        crate::audio_engine::mixing::Source::ProcessLoopback(_) => None,
+    });
+    MixingSummary {
+        input: value.input.clone(),
+        input_device_name,
+        post_mix: MixingPostSummary {
+            enabled: value.post_mix.enabled,
+            plugins: value.post_mix.plugins.iter().map(Into::into).collect(),
+        },
     }
 }
 fn mixing_preview(
@@ -150,15 +192,20 @@ fn mixing_preview(
     missing_plugins: Vec<String>,
 ) -> MixingPreview {
     use crate::audio_engine::mixing::Source;
-    let missing_devices = target
+    let missing_device_labels: Vec<PreviewDeviceLabel> = target
         .input
         .as_ref()
         .map(|input| {
-            let (list, id) = match &input.source {
-                Source::Device(device) => (&devices.inputs, device.input_id.clone()),
+            let (list, id, role) = match &input.source {
+                Source::Device(device) => (
+                    &devices.inputs,
+                    device.input_id.clone(),
+                    "accompanimentInput",
+                ),
                 Source::ProcessLoopback(process) => (
                     &devices.outputs,
                     format!("wasapi:{}", process.raw_endpoint_id),
+                    "originalOutput",
                 ),
             };
             if list
@@ -169,14 +216,22 @@ fn mixing_preview(
             {
                 vec![]
             } else {
-                vec![id]
+                vec![PreviewDeviceLabel {
+                    name: preview_device_name(list, Some("wasapi"), Some(&id), None),
+                    id,
+                    role,
+                }]
             }
         })
         .unwrap_or_default();
     MixingPreview {
-        before: current.into(),
-        after: target.into(),
-        missing_devices,
+        before: mixing_summary(current, devices),
+        after: mixing_summary(target, devices),
+        missing_devices: missing_device_labels
+            .iter()
+            .map(|device| device.id.clone())
+            .collect(),
+        missing_device_labels,
         missing_plugins,
         plugin_state_changed: current.post_mix.plugins.iter().map(|p| &p.state).ne(target
             .post_mix
@@ -225,9 +280,44 @@ impl From<&bundle::LiveConfiguration> for LiveSummary {
 pub(crate) struct OutputPreview {
     before: Option<crate::audio_engine::live_output::Config>,
     after: crate::audio_engine::live_output::Config,
+    before_device_name: Option<String>,
+    after_device_name: Option<String>,
+    missing_device_labels: Vec<PreviewDeviceLabel>,
     restart_required: bool,
     missing_devices: Vec<String>,
     missing_plugins: Vec<String>,
+}
+fn build_output_preview(
+    current: Option<&bundle::OutputConfiguration>,
+    bundle: &BundleV1,
+    devices: &audio::AudioDeviceList,
+    missing_plugins: Vec<String>,
+) -> Option<OutputPreview> {
+    let output = bundle.output.as_ref()?;
+    let missing_device_labels = missing_output_device_labels(bundle, devices);
+    Some(OutputPreview {
+        before: current.map(|o| o.config.clone()),
+        after: output.config.clone(),
+        before_device_name: preview_device_name(
+            &devices.outputs,
+            Some("wasapi"),
+            current.and_then(|o| o.config.device_id.as_deref()),
+            None,
+        ),
+        after_device_name: preview_device_name(
+            &devices.outputs,
+            Some("wasapi"),
+            output.config.device_id.as_deref(),
+            None,
+        ),
+        restart_required: true,
+        missing_devices: missing_device_labels
+            .iter()
+            .map(|device| device.id.clone())
+            .collect(),
+        missing_device_labels,
+        missing_plugins,
+    })
 }
 fn missing_output_plugins(bundle: &BundleV1) -> Result<Vec<String>, String> {
     let mut missing = Vec::new();
@@ -255,14 +345,28 @@ fn missing_output_plugins(bundle: &BundleV1) -> Result<Vec<String>, String> {
     }
     Ok(missing)
 }
-fn missing_output_devices(bundle: &BundleV1, devices: &audio::AudioDeviceList) -> Vec<String> {
+fn missing_output_device_labels(
+    bundle: &BundleV1,
+    devices: &audio::AudioDeviceList,
+) -> Vec<PreviewDeviceLabel> {
     let Some(output) = &bundle.output else {
         return vec![];
     };
     let mut missing = Vec::new();
-    for (list, id) in [
-        (&devices.inputs, &output.devices.input_id),
-        (&devices.outputs, &output.devices.output_id),
+    let saved = bundle.embedded_auralyn_preset.audio_config.as_ref();
+    for (list, id, role, saved_name) in [
+        (
+            &devices.inputs,
+            &output.devices.input_id,
+            "primaryInput",
+            saved.and_then(|config| config.input_device.as_deref()),
+        ),
+        (
+            &devices.outputs,
+            &output.devices.output_id,
+            "primaryOutput",
+            saved.and_then(|config| config.output_device.as_deref()),
+        ),
     ] {
         if list
             .iter()
@@ -270,7 +374,11 @@ fn missing_output_devices(bundle: &BundleV1, devices: &audio::AudioDeviceList) -
             .count()
             != 1
         {
-            missing.push(id.clone());
+            missing.push(PreviewDeviceLabel {
+                id: id.clone(),
+                role,
+                name: preview_device_name(list, None, Some(id), saved_name),
+            });
         }
     }
     if let Some(id) = &output.config.device_id {
@@ -283,7 +391,11 @@ fn missing_output_devices(bundle: &BundleV1, devices: &audio::AudioDeviceList) -
             .count()
             != 1
         {
-            missing.push(id.clone());
+            missing.push(PreviewDeviceLabel {
+                id: id.clone(),
+                role: "broadcastOutput",
+                name: preview_device_name(&devices.outputs, Some("wasapi"), Some(id), None),
+            });
         }
     }
     missing
@@ -2129,15 +2241,14 @@ pub(crate) async fn broadcast_bundle(
             } else {
                 None
             };
-            let output_preview = if let Some(output) = &bundle.output {
+            let output_preview = if bundle.output.is_some() {
                 let devices = super::audio::enumerate_devices_async(host.clone(), true).await?;
-                Some(OutputPreview {
-                    before: before.output.as_ref().map(|o| o.config.clone()),
-                    after: output.config.clone(),
-                    restart_required: true,
-                    missing_devices: missing_output_devices(&bundle, &devices),
-                    missing_plugins: missing_output_plugins(&bundle)?,
-                })
+                build_output_preview(
+                    before.output.as_ref(),
+                    &bundle,
+                    &devices,
+                    missing_output_plugins(&bundle)?,
+                )
             } else {
                 None
             };
