@@ -420,7 +420,11 @@ mod expected_start_tests {
 }
 
 #[tauri::command]
-pub(crate) async fn stop_audio(state: State<'_, audio::AudioState>) -> Result<(), String> {
+pub(crate) async fn stop_audio(
+    state: State<'_, audio::AudioState>,
+    conditions: State<'_, audio::conditions::ConditionState>,
+) -> Result<(), String> {
+    let _interrupt = conditions.0.interrupt_restore();
     let state = state.0.clone();
     super::run_blocking(move || {
         let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
@@ -666,7 +670,11 @@ pub(crate) async fn set_plugin_state(
 }
 
 #[tauri::command]
-pub(crate) async fn toggle_global_mute(state: State<'_, audio::AudioState>) -> Result<(), String> {
+pub(crate) async fn toggle_global_mute(
+    state: State<'_, audio::AudioState>,
+    conditions: State<'_, audio::conditions::ConditionState>,
+) -> Result<(), String> {
+    let _interrupt = conditions.0.interrupt_restore();
     let state = state.0.clone();
     super::run_blocking(move || {
         let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
@@ -678,8 +686,10 @@ pub(crate) async fn toggle_global_mute(state: State<'_, audio::AudioState>) -> R
 #[tauri::command]
 pub(crate) async fn set_global_mute(
     state: State<'_, audio::AudioState>,
+    conditions: State<'_, audio::conditions::ConditionState>,
     active: bool,
 ) -> Result<(), String> {
+    let _interrupt = conditions.0.interrupt_restore();
     let state = state.0.clone();
     super::run_blocking(move || {
         let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;

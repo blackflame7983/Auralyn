@@ -3,7 +3,7 @@ use super::*;
 use crate::audio_engine::live_output::Config;
 use sha2::{Digest, Sha256};
 
-fn output_file_bytes(path: &std::path::Path) -> Result<Option<Vec<u8>>> {
+pub(super) fn output_file_bytes(path: &std::path::Path) -> Result<Option<Vec<u8>>> {
     use std::io::Read;
     let file = match std::fs::File::open(path) {
         Ok(file) => file,
@@ -18,7 +18,7 @@ fn output_file_bytes(path: &std::path::Path) -> Result<Option<Vec<u8>>> {
     );
     Ok(Some(bytes))
 }
-fn file_revision(bytes: &Option<Vec<u8>>) -> String {
+pub(super) fn file_revision(bytes: &Option<Vec<u8>>) -> String {
     bytes.as_ref().map_or_else(
         || "absent".into(),
         |bytes| format!("{:x}", Sha256::digest(bytes)),
@@ -80,11 +80,16 @@ impl AudioHost {
         &mut self,
         config: &Config,
         expected_revision: &str,
+        include_modes: bool,
         operation: impl FnOnce(&mut Self) -> std::result::Result<T, String>,
     ) -> std::result::Result<T, String> {
         config.validate().map_err(|e| e.to_string())?;
-        self.output_snapshot_supported()
-            .map_err(|e| e.to_string())?;
+        if include_modes {
+            self.full_snapshot_supported()
+        } else {
+            self.output_snapshot_supported()
+        }
+        .map_err(|e| e.to_string())?;
         let path = self.last_config_path.with_file_name("live_output.json");
         let previous = output_file_bytes(&path).map_err(|e| e.to_string())?;
         if file_revision(&previous) != expected_revision {
@@ -238,6 +243,7 @@ mod tests {
         host.reader_active.store(true, Ordering::Release);
         host.is_global_muted = true;
         host.bundle_change_generation = Some(host.engine_generation);
+        host.bundle_interrupt = Some(host.conditions.restore_interrupt());
         let slot = host.pending_reply_tx.clone();
         let worker = std::thread::spawn(move || {
             let mut stopped = false;
@@ -267,7 +273,7 @@ mod tests {
             stopped
         });
         let result: std::result::Result<(), String> =
-            host.with_bundle_output(&Config::default(), "absent", |_| {
+            host.with_bundle_output(&Config::default(), "absent", false, |_| {
                 Err("owned restore failure".into())
             });
         assert_eq!(result.unwrap_err(), "owned restore failure");

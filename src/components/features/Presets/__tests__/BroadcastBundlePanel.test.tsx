@@ -25,6 +25,23 @@ beforeEach(() => {
     vi.mocked(bundleApi.save).mockResolvedValue(undefined);
 });
 afterEach(cleanup);
+it('本番モードの保存では全カテゴリと出力を固定し、選択と関連VSTの差分を示す', async () => {
+    vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, live: { before: null, after: { definitions: { schemaVersion: 1, version: '2', singing: null, talk: null, profiles: { singing: { name: '歌VST', revision: 'a'.repeat(64) } } }, target: 'singing', monitor: null, singingPlugins: 1, talkPlugins: null } } });
+    render(<BroadcastBundlePanel />);
+    await screen.findByRole('option', { name: '歌枠' });
+    fireEvent.click(screen.getByRole('checkbox', { name: message('ja', 'bundle.live.include') }));
+    expect(screen.getByRole('checkbox', { name: message('ja', 'bundle.output.include') })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: message('ja', 'bundle.output.include') })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: '入出力・音量' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), { target: { value: 'modes' } });
+    fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
+    await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('modes', { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }, null, false, undefined, true, true));
+    await showPlan();
+    const diff = screen.getByRole('region', { name: message('ja', 'bundle.live.diff') });
+    expect(diff).toHaveTextContent('歌VST');
+    expect(diff).toHaveTextContent('VST 1件');
+    expect(diff).toHaveTextContent(message('ja', 'bundle.live.restoreHint'));
+});
 it.each(['missingDevices', 'missingPlugins'] as const)('分離出力の%sを先に示し、適用を禁止する', async kind => {
     vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, output: { before: null, after: { deviceId: 'cable', monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, restartRequired: true, [kind]: ['missing fixture'] } });
     render(<BroadcastBundlePanel onOperation={vi.fn()} />);

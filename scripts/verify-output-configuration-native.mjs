@@ -9,6 +9,7 @@ import { createServer } from 'node:net';
 import { once } from 'node:events';
 
 const [appDirectory, evidenceDirectory, suppliedProbe] = process.argv.slice(2);
+const liveModes = process.argv.includes('--live-modes');
 const reuseOwnedApp = process.argv.includes('--reuse-owned-app');
 if (!appDirectory || !evidenceDirectory || !suppliedProbe) throw new Error('app-directory new-evidence-directory probe が必要です');
 const appRoot = resolve(appDirectory), root = resolve(evidenceDirectory), probe = resolve(suppliedProbe);
@@ -111,7 +112,7 @@ try {
     const secondary = list.outputs.find(d => d.id === 'wasapi:' + secondaryEndpoint.id);
     assert(input && output && secondary);
     const start = { host: output.host, input: input.name, output: output.name, inputId: input.id, outputId: output.id, sampleRate: 48000, bufferSize: 512 };
-    await page.evaluate(value => { localStorage.setItem('vst_host_wizard_done', 'true'); localStorage.setItem('vst_host_audio_config', JSON.stringify(value)); }, start);
+    await page.evaluate(value => { localStorage.setItem('vst_host_wizard_done', 'true'); localStorage.setItem('vst_host_tutorial_completed', 'true'); localStorage.setItem('vst_host_audio_config', JSON.stringify(value)); }, start);
     await page.reload();
     await expect.poll(() => invoke('get_audio_state')).toBeTruthy();
     await invoke('set_global_mute', { active: true });
@@ -122,7 +123,18 @@ try {
     const branch = preset => ({ active: false, preset, amount: 0.6, singing: null, reverb: { enabled: false, mix: 0.08, decaySeconds: 1.2, damping: 0.5 } });
     const a = { splitProcessing: true, monitorSinging: branch('singing'), monitorTalk: branch('broadcast'), deviceId: secondary.id, monitorTrim: 0.2, broadcastTrim: 0.4, monitorMuted: true };
     const b = { splitProcessing: false, monitorSinging: null, monitorTalk: null, deviceId: null, monitorTrim: 0.7, broadcastTrim: 0.8, monitorMuted: false };
-    const savedName = 'output-' + process.pid;
+    const savedName = (liveModes ? 'modes-' : 'output-') + process.pid;
+    let regularProfilePath, editedRegularProfile;
+    let modeSequence = 0;
+    const modeStatus = () => invoke('live_modes', { request: { action: 'snapshot' } });
+    const saveModes = async (singing, talk) => { const current = await modeStatus(); return invoke('live_modes', { request: { action: 'save', expectedVersion: current.definitions.version, singing, talk } }); };
+    const bindMode = async (mode, name) => { const current = await modeStatus(); return invoke('live_modes', { request: { action: 'bind_profile', expectedVersion: current.definitions.version, mode, name } }); };
+    const selectMode = async mode => {
+        const current = await modeStatus();
+        await invoke('live_modes', { request: { action: mode + '_on', intent: { clientId: 'native-bundle-modes', sequence: ++modeSequence, expectedEpoch: current.epoch } } });
+        await expect.poll(async () => { const value = await modeStatus(); return value.target === mode && value.applied === mode && value.phase === 'settled' && !value.transaction; }, { timeout: 20000 }).toBe(true);
+        await settle();
+    };
     const categories = { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true };
     const route = async config => { await invoke('stop_audio'); await invoke('live_output', { config }); await invoke('start_audio', start); await settle(); };
     phase('configure-split-output');
@@ -131,23 +143,45 @@ try {
     await invoke('set_output_gain', { value: 0.25 });
     await invoke('set_noise_control_config', { active: true, mode: 'low', strength: 0.6, voiceGuard: true });
     await settle();
+    if (liveModes) {
+        phase('configure-linked-modes');
+        const rack = await invoke('session_rack', { request: { action: 'snapshot' } });
+        const plugin = { path: 'C:/Program Files/Common Files/VST3/TDR Nova.vst3', name: 'TDR Nova', vendor: 'Tokyo Dawn Labs', version: '', enabled: true, muted: false, gain: 0.65, state: await invoke('get_plugin_state', { id: rack.plugins[0].id }) };
+        const normalName = 'native-mode-singing-' + process.pid, emptyName = 'native-mode-talk-' + process.pid;
+        regularProfilePath = join(configRoot, 'presets', normalName + '.json');
+        writeFileSync(regularProfilePath, JSON.stringify({ schemaVersion: 2, name: normalName, pluginsIncluded: true, plugins: [plugin] }));
+        writeFileSync(join(configRoot, 'presets', emptyName + '.json'), JSON.stringify({ schemaVersion: 2, name: emptyName, pluginsIncluded: true, plugins: [] }));
+        await saveModes(branch('broadcast'), { ...branch('warm'), amount: 0.25 });
+        await bindMode('singing', normalName); await bindMode('talk', emptyName);
+        await selectMode('singing');
+        results.originalProfilePath = regularProfilePath;
+    }
     phase('save-output-ui');
-    await assert.rejects(() => bundle({ action: 'save', name: 'must-not-drop-output', categories, obs: null }), /分離出力/);
+    await assert.rejects(() => bundle({ action: 'save', name: 'must-not-drop-output', categories, obs: null }), /分離出力|歌／雑談/);
     results.legacySaveDoesNotDropOutput = true;
     await openProfiles();
     await page.getByRole('button', { name: 'OBS込みプロファイル', exact: true }).click();
     await page.getByRole('checkbox', { name: '分離出力・枝別処理の設定も保存する', exact: true }).check();
+    if (liveModes) await page.getByRole('checkbox', { name: '歌／雑談モードと関連VSTも保存する', exact: true }).check();
     await page.getByLabel('OBS込みプロファイル名', { exact: true }).fill(savedName);
     await page.getByRole('button', { name: '現在のOBS込みプロファイルを保存', exact: true }).click();
     const originalPath = join(configRoot, 'broadcast-bundles', savedName + '.json');
     await expect.poll(() => existsSync(originalPath)).toBe(true);
     const originalBytes = readFileSync(originalPath), original = parse(originalBytes);
-    assert.equal(original.schemaVersion, 2);
+    assert.equal(original.schemaVersion, liveModes ? 3 : 2);
+    if (liveModes) { assert.equal(original.live.target, "singing"); assert.equal(original.live.singingPlugins.length, 1); assert.deepEqual(original.live.talkPlugins, []); }
     assert.deepEqual(original.output.config, a);
     assert(original.output.devices.inputId === input.id && original.output.devices.outputId === output.id);
     assert.equal(original.embeddedAuralynPreset.plugins.length, 1);
     results.savedThroughRealUi = true;
     await route(b);
+    if (liveModes) {
+        await saveModes({ ...branch('bright'), amount: 0.1 }, { ...branch('broadcast'), amount: 0.35 });
+        await bindMode('singing', null); await selectMode('talk');
+        // 通常のプロファイルを後編集しても、保存したAの内容だけを専用領域へ復帰する。
+        const changed = read(regularProfilePath); changed.plugins[0].gain = 0.15;
+        editedRegularProfile = JSON.stringify(changed); writeFileSync(regularProfilePath, editedRegularProfile);
+    }
     await invoke('set_input_gain', { value: 1 });
     await invoke('set_output_gain', { value: 0.5 });
     await settle();
@@ -174,6 +208,14 @@ try {
     const restoredId = applied.current.loadedPluginInstances[0].id;
     assert.equal(hash(await invoke('get_plugin_state', { id: restoredId })), hash(original.embeddedAuralynPreset.plugins[0].state));
     assert.equal((await bundle({ action: 'recovery_status' })).value, null);
+    if (liveModes) {
+        const mode = await modeStatus();
+        assert.equal(mode.target, 'singing'); assert.equal(mode.applied, 'singing'); assert(!mode.armed);
+        assert(mode.definitions.profiles.singing.snapshot && mode.definitions.profiles.talk.snapshot);
+        assert.equal(readFileSync(regularProfilePath, 'utf8'), editedRegularProfile);
+        assert(!JSON.stringify((await bundle({ action: 'preview', name: savedName })).value.live).includes(original.embeddedAuralynPreset.plugins[0].state));
+        results.selectedModeAndPrivateBindingsRestored = true;
+    }
     results.bothBranchesAndVstRestoredMuted = true;
     phase('conditional-undo');
     const undone = await bundle({ action: 'undo', id: applied.id });
@@ -181,7 +223,26 @@ try {
     assert(undone.value?.complete && !undone.value.undoPending);
     assert.deepEqual((await invoke('live_output', { config: null })).config, b);
     assert((await invoke('get_engine_runtime_stats')).preparation.muted);
+    if (liveModes) { assert.equal((await modeStatus()).target, 'talk'); assert.equal((await invoke('get_engine_runtime_stats')).activePluginCount, 0); results.modeUndoRestoredPreviousSelection = true; }
     results.outputUndoRestoredPreviousRoute = true;
+    if (liveModes) {
+        for (const command of ['stop_audio', 'set_global_mute']) {
+            phase('interrupt-' + command);
+            const planned = await bundle({ action: 'preview', name: savedName });
+            const applying = bundle({ action: 'apply', id: planned.value.id });
+            await expect.poll(() => existsSync(join(configRoot, 'broadcast-bundle-recovery.json')), { intervals: [10], timeout: 5000 }).toBe(true);
+            await invoke(command, command === 'set_global_mute' ? { active: true } : {});
+            const interrupted = await applying;
+            assert(interrupted.value && !interrupted.value.complete && interrupted.value.undoPending);
+            await assertStopped();
+            assert((await bundle({ action: 'recovery_status' })).value?.readable);
+            await invoke('start_audio', start); await settle();
+            const plannedRecovery = await recoveryPreview();
+            assert((await bundle({ action: 'recovery_apply', id: plannedRecovery.value.id })).value.complete);
+            assert.equal((await modeStatus()).target, 'talk');
+        }
+        results.stopAndMuteInterruptOwnedRestore = true;
+    }
     const liveFile = join(configRoot, 'live_output.json');
     const priorLive = readFileSync(liveFile);
     phase('external-edit');
@@ -192,6 +253,24 @@ try {
         assert.equal((await bundle({ action: 'recovery_status' })).value, null);
         results.externalOutputEditRejected = true;
     } finally { writeFileSync(liveFile, priorLive); }
+    if (liveModes) {
+        phase('external-mode-edit');
+        const modeFile = join(configRoot, 'live_modes.json'), previous = readFileSync(modeFile);
+        preview = await bundle({ action: 'preview', name: savedName });
+        try { writeFileSync(modeFile, previous.toString() + '\n'); await assert.rejects(() => bundle({ action: 'apply', id: preview.value.id }), /変更されました/); results.externalModeEditRejected = true; }
+        finally { writeFileSync(modeFile, previous); }
+        phase('missing-linked-vst');
+        try {
+            const missing = parse(originalBytes); missing.live.singingPlugins[0].path = join(root, 'missing-linked.vst3');
+            // 保存形式の内容識別子も整合させ、欠落検知そのものを試す。
+            missing.live.definitions.profiles.singing.revision = hash(JSON.stringify([true, missing.live.singingPlugins]));
+            writeFileSync(originalPath, JSON.stringify(missing));
+            preview = await bundle({ action: 'preview', name: savedName });
+            assert.equal(preview.value.output.missingPlugins.length, 1);
+            await assert.rejects(() => bundle({ action: 'apply', id: preview.value.id }), /VSTが見つかりません/);
+            results.missingLinkedVstRejected = true;
+        } finally { writeFileSync(originalPath, originalBytes); }
+    }
     phase('missing-device');
     try {
         const missing = parse(originalBytes); missing.output.config.deviceId = 'wasapi:unavailable-fixture';
@@ -230,6 +309,43 @@ try {
     assert.equal((await bundle({ action: 'recovery_status' })).value, null);
     assert.equal(hash(readFileSync(originalPath)), hash(originalBytes));
     results.explicitRecoveryRestoresBothBranches = true;
+    if (liveModes) {
+        assert.equal((await modeStatus()).target, 'talk');
+        phase('restored-binding-restart');
+        preview = await bundle({ action: 'preview', name: savedName });
+        assert((await bundle({ action: 'apply', id: preview.value.id })).value.complete);
+        await invoke('stop_audio');
+        await page.evaluate(() => { void window.__TAURI__.core.invoke('plugin:process|exit', { code: 0 }); });
+        await expect.poll(() => ownedProcesses().length).toBe(0);
+        await browser.close();
+        const restarted = spawn(binary, ['--auralyn-review'], { cwd: appRoot, env: environment, windowsHide: true, stdio: 'ignore' }); currentPid = restarted.pid;
+        await attach(); await assertStopped();
+        await invoke('set_global_mute', { active: true }); await invoke('start_audio', start); await settle();
+        await selectMode('talk'); assert.equal((await invoke('get_engine_runtime_stats')).activePluginCount, 0);
+        await selectMode('singing'); assert.equal((await invoke('get_engine_runtime_stats')).activePluginCount, 1);
+        assert.equal(readFileSync(regularProfilePath, 'utf8'), editedRegularProfile);
+        assert((await invoke('get_engine_runtime_stats')).preparation.muted);
+        results.privateBindingsSurviveHostRestartAndNormalProfileEdit = true;
+        phase('retained-custom-monitor');
+        await selectMode('talk');
+        await invoke('set_built_in_effects', { active: false, preset: 'bright', amount: 0.2, singing: null }); await settle();
+        assert.equal((await modeStatus()).target, null);
+        const customName = savedName + '-custom';
+        await bundle({ action: 'save', name: customName, categories, obs: null, includeOutput: true, includeLive: true });
+        const custom = read(join(configRoot, 'broadcast-bundles', customName + '.json'));
+        assert.equal(custom.live.target, null); assert.equal(custom.live.monitor.mode, 'talk');
+        preview = await bundle({ action: 'preview', name: savedName });
+        const toSinging = await bundle({ action: 'apply', id: preview.value.id }); assert(toSinging.value.complete);
+        assert((await bundle({ action: 'undo', id: toSinging.value.id })).value.complete);
+        assert.equal((await modeStatus()).target, null);
+        const verifiedName = savedName + '-custom-restored';
+        await bundle({ action: 'save', name: verifiedName, categories, obs: null, includeOutput: true, includeLive: true });
+        const restoredCustom = read(join(configRoot, 'broadcast-bundles', verifiedName + '.json'));
+        assert.deepEqual(restoredCustom.live.monitor, custom.live.monitor);
+        assert.equal(restoredCustom.embeddedAuralynPreset.plugins.length, 0);
+        results.retainedCustomMonitorSurvivesFullRestoreAndUndo = true;
+
+    }
     await invoke('stop_audio');
     await page.evaluate(() => { void window.__TAURI__.core.invoke('plugin:process|exit', { code: 0 }); });
     results.passed = true;

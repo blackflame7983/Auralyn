@@ -15,7 +15,7 @@ pub enum Mode {
     Singing,
     Talk,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Definitions {
     pub schema_version: u32,
@@ -36,7 +36,7 @@ impl Default for Definitions {
         }
     }
 }
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProfileBindings {
     #[serde(default)]
@@ -44,11 +44,14 @@ pub struct ProfileBindings {
     #[serde(default)]
     pub talk: Option<ProfileBinding>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProfileBinding {
     pub name: String,
     pub revision: String,
+    /// 復帰したVST内容は通常プロファイルと別に保持する。PCMやstateをUIへ返さない。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<String>,
 }
 impl Definitions {
     pub fn validate(mut self) -> Result<Self, String> {
@@ -70,6 +73,10 @@ impl Definitions {
                     .is_err()
                 || binding.revision.len() != 64
                 || !binding.revision.bytes().all(|b| b.is_ascii_hexdigit())
+                || binding
+                    .snapshot
+                    .as_ref()
+                    .is_some_and(|s| s != &binding.revision)
             {
                 return Err("プロファイル参照が不正です".into());
             }
@@ -199,6 +206,34 @@ pub struct Snapshot {
     pub error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transaction: Option<TransactionSnapshot>,
+}
+impl Snapshot {
+    pub(crate) fn include_monitor_progress(&mut self, accepted: u64, completed: u64, failed: bool) {
+        self.accepted_revision = self
+            .accepted_revision
+            .parse::<u64>()
+            .unwrap_or(0)
+            .min(accepted)
+            .to_string();
+        self.completed_revision = self
+            .completed_revision
+            .parse::<u64>()
+            .unwrap_or(0)
+            .min(completed)
+            .to_string();
+        if failed {
+            self.phase = "partial".into();
+            self.applied = None;
+            return;
+        }
+        // カスタム構成は本人用処理を保持するため、モード選択とは完了世代が異なる。
+        if self.target.is_some() && self.completed_revision != self.revision {
+            self.applied = None;
+            if self.running {
+                self.phase = "transitioning".into();
+            }
+        }
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -574,6 +609,22 @@ pub(crate) fn guard(
 mod tests {
     use super::*;
     #[test]
+    fn custom_monitor_keeps_its_own_generation_without_becoming_a_pending_mode_switch() {
+        let mut controller = Controller::new();
+        controller.custom(); // 個別編集で本人用処理の完了世代とは分かれる。
+        let mut custom = controller.snapshot("fixture".into(), true);
+        custom.include_monitor_progress(1, 1, false);
+        assert_eq!(custom.phase, "custom");
+        controller.definitions.singing = Some(Default::default());
+        controller.select(Mode::Singing).unwrap();
+        let mut selected = controller.snapshot("fixture".into(), true);
+        selected.include_monitor_progress(1, 1, false);
+        assert_eq!(selected.phase, "transitioning");
+        assert_eq!(selected.applied, None);
+        custom.include_monitor_progress(1, 1, true);
+        assert_eq!(custom.phase, "partial");
+    }
+    #[test]
     fn profile_bindings_accept_legacy_and_validate_name_and_revision() {
         let old: Definitions =
             serde_json::from_str(r#"{"schemaVersion":1,"version":"1","singing":null,"talk":null}"#)
@@ -581,6 +632,7 @@ mod tests {
         assert!(old.profiles.singing.is_none());
         let mut definitions = old;
         definitions.profiles.singing = Some(ProfileBinding {
+            snapshot: None,
             name: "歌用".into(),
             revision: "a".repeat(64),
         });

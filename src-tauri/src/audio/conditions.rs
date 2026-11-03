@@ -11,6 +11,7 @@ pub(crate) struct Conditions {
     pending: AtomicU64,
     running: AtomicBool,
     engine_epoch: AtomicU64,
+    interrupt: AtomicU64,
 }
 
 #[derive(Clone)]
@@ -45,7 +46,7 @@ impl ControlWitness {
     }
 }
 
-pub(super) struct Pending(Arc<Conditions>);
+pub(crate) struct Pending(Arc<Conditions>);
 impl Drop for Pending {
     fn drop(&mut self) {
         self.0.revision.fetch_add(1, Ordering::SeqCst);
@@ -54,6 +55,14 @@ impl Drop for Pending {
 }
 
 impl Conditions {
+    /// Hostのmutex待ちより先に停止・ミュートの意図を記録し、復帰側を中断する。
+    pub(crate) fn interrupt_restore(self: &Arc<Self>) -> Pending {
+        self.interrupt.fetch_add(1, Ordering::SeqCst);
+        self.begin()
+    }
+    pub(super) fn restore_interrupt(&self) -> u64 {
+        self.interrupt.load(Ordering::SeqCst)
+    }
     pub(crate) fn control_snapshot(self: &Arc<Self>) -> Result<ControlWitness, String> {
         let witness = ControlWitness {
             conditions: self.clone(),
@@ -199,6 +208,21 @@ pub(super) fn command_changes(command: &Command) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn queued_stop_or_mute_blocks_fresh_witnesses_until_its_handler_finishes() {
+        let conditions = Arc::new(Conditions::default());
+        conditions.lifecycle(true);
+        let old = conditions.control_snapshot().unwrap();
+        let before = conditions.restore_interrupt();
+        let queued = conditions.interrupt_restore();
+        assert_ne!(before, conditions.restore_interrupt());
+        assert!(old.validate().is_err());
+        assert!(conditions.control_snapshot().is_err());
+        assert!(conditions.snapshot().is_err());
+        drop(queued);
+        assert!(conditions.control_snapshot().is_ok());
+        assert!(old.validate().is_err());
+    }
     #[test]
     fn monitor_snapshot_is_readonly_and_restore_invalidates_conditions() {
         assert!(!command_changes(&Command::ModeMonitor {

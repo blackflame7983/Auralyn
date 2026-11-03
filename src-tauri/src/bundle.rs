@@ -5,6 +5,8 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 pub(crate) mod output_configuration;
 pub(crate) use output_configuration::OutputConfiguration;
+pub(crate) mod live_configuration;
+pub(crate) use live_configuration::LiveConfiguration;
 
 const MAX_BUNDLE_BYTES: usize = 64 * 1024 * 1024;
 
@@ -36,6 +38,8 @@ pub struct EngineCapture {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BundleV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) live: Option<LiveConfiguration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) output: Option<OutputConfiguration>,
     /// 利用者による確認の履歴。現在の信号到達・復元後の合格を意味しない。
@@ -82,8 +86,12 @@ pub fn validate_name(name: &str) -> Result<(), String> {
 pub fn validate(bundle: &BundleV1) -> Result<(), String> {
     validate_name(&bundle.name)?;
     if !matches!(
-        (bundle.schema_version, bundle.output.is_some()),
-        (1, false) | (2, true)
+        (
+            bundle.schema_version,
+            bundle.output.is_some(),
+            bundle.live.is_some()
+        ),
+        (1, false, false) | (2, true, false) | (3, true, true)
     ) || bundle.revision.is_empty()
     {
         return Err("対応していない配信状態です".into());
@@ -97,6 +105,17 @@ pub fn validate(bundle: &BundleV1) -> Result<(), String> {
             && c.include_builtin_fx)
         {
             return Err("分離出力の保存には全カテゴリが必要です".into());
+        }
+    }
+    if let Some(live) = &bundle.live {
+        live.validate(bundle.output.as_ref().ok_or("出力構成がありません")?)?;
+        if !bundle
+            .embedded_auralyn_preset
+            .builtin_fx
+            .as_ref()
+            .is_some_and(|actual| live.matches_builtin(actual))
+        {
+            return Err("選択中モードと配信用の内蔵設定が一致しません".into());
         }
     }
     if bundle.embedded_auralyn_preset.plugins.len() > crate::audio_engine::plugins::MAX_PLUGINS {
@@ -346,6 +365,7 @@ fn validate_runtime_original(original: &BundleV1) -> Result<(), String> {
         && categories.include_noise_control
         && categories.include_builtin_fx)
         || original.output.is_some()
+        || original.live.is_some()
         || original.obs.is_some()
         || original.confirmation.is_some()
         || original
@@ -590,6 +610,21 @@ mod tests {
         save_with_overwrite(&root, &value, false).unwrap();
         let stored = load(&root, &value.name).unwrap();
         assert_eq!(stored.output, value.output);
+        let mut full = value.clone();
+        full.live = Some(LiveConfiguration {
+            version: 1,
+            definitions: Default::default(),
+            target: None,
+            monitor: None,
+            singing_plugins: None,
+            talk_plugins: None,
+        });
+        assert!(validate(&full).is_err());
+        full.schema_version = 3;
+        validate(&full).unwrap();
+        save_with_overwrite(&root, &full, true).unwrap();
+        assert_eq!(load(&root, &full.name).unwrap().live, full.live);
+        assert!(validate_runtime_original(&full).is_err());
         let mut invalid = value.clone();
         invalid.output = None;
         assert!(validate(&invalid).is_err());
@@ -839,6 +874,7 @@ mod tests {
     }
     fn sample() -> BundleV1 {
         BundleV1 {
+            live: None,
             output: None,
             schema_version: 1,
             revision: revision(),

@@ -1,5 +1,6 @@
 pub(crate) mod conditions;
 pub(crate) mod frontend_bootstrap;
+mod live_bundle;
 mod live_modes;
 mod mode_vst;
 mod output_bundle;
@@ -213,6 +214,8 @@ pub struct AudioHost {
     is_global_muted: bool,
     engine_tuning: EngineTuningConfig,
     bundle_output_override: Option<crate::audio_engine::live_output::Config>,
+    bundle_monitor_override: Option<Option<crate::audio_engine::split_monitor::State>>,
+    bundle_interrupt: Option<u64>,
     output_gain_initialized: bool,
     #[cfg(windows)]
     engine_job: Option<win_job::Job>,
@@ -231,17 +234,10 @@ impl AudioHost {
         Ok(())
     }
     pub(crate) fn output_snapshot_supported(&mut self) -> Result<()> {
-        self.preflight_live_changes()?;
-        anyhow::ensure!(
-            self.active_config
-                .as_ref()
-                .and_then(|c| c.input_source.as_ref())
-                .is_none_or(|s| *s == crate::input_source::Config::default()),
-            "この入力は確認済み保存・復帰に未対応です。VST単体の設定を保存してください"
-        );
+        self.full_snapshot_supported()?;
         anyhow::ensure!(
             self.live_modes.target.is_none(),
-            "歌／雑談モードの保存・復帰には未対応です。カスタム構成を使用してください"
+            "歌／雑談モードも保存することを選んでください"
         );
         let config = self.live_output(None)?.config;
         if config.split_processing {
@@ -255,6 +251,17 @@ impl AudioHost {
                 _ => return Err(anyhow!("現在の自分用処理を確認できません")),
             }
         }
+        Ok(())
+    }
+    pub(crate) fn full_snapshot_supported(&mut self) -> Result<()> {
+        self.preflight_live_changes()?;
+        anyhow::ensure!(
+            self.active_config
+                .as_ref()
+                .and_then(|c| c.input_source.as_ref())
+                .is_none_or(|s| *s == crate::input_source::Config::default()),
+            "この入力は確認済み保存・復帰に未対応です。VST単体の設定を保存してください"
+        );
         Ok(())
     }
     pub(crate) fn preflight_runtime_checkpoint(&mut self) -> Result<()> {
@@ -394,6 +401,8 @@ impl AudioHost {
             is_global_muted: recovery_muted,
             engine_tuning: EngineTuningConfig::default(),
             bundle_output_override: None,
+            bundle_monitor_override: None,
+            bundle_interrupt: None,
             output_gain_initialized: false,
             #[cfg(windows)]
             engine_job: None,
@@ -1314,6 +1323,15 @@ impl AudioHost {
                 _ => return Err(anyhow!("二系統出力の保存構成を反映できません")),
             }
         }
+        if let Some(state) = self.bundle_monitor_override.clone() {
+            match self.execute_running_command(IpcCommand::ModeMonitor {
+                request: crate::audio_engine::split_monitor::Request::Restore { state },
+            })? {
+                IpcResponse::ModeMonitor(snapshot) if !snapshot.failed && !snapshot.pending => {}
+                IpcResponse::Error(error) => return Err(anyhow!(error)),
+                _ => return Err(anyhow!("開始前に自分用処理を復帰できません")),
+            }
+        }
         let muted = self.is_global_muted;
         validate_start_generation(generation, self.engine_generation)?;
         let response = if initial_controls.is_some() {
@@ -1911,6 +1929,10 @@ impl AudioHost {
 
     fn validate_bundle_connection(&self) -> Result<()> {
         if let Some(expected) = self.bundle_change_generation {
+            anyhow::ensure!(
+                self.bundle_interrupt == Some(self.conditions.restore_interrupt()),
+                "停止・ミュート操作が優先されたため、配信状態の復帰を中断しました"
+            );
             validate_start_generation(expected, self.engine_generation)?;
             anyhow::ensure!(
                 self.reader_active.load(Ordering::Acquire),
@@ -1928,12 +1950,14 @@ impl AudioHost {
             return Err("配信状態の変更が重複しています".into());
         }
         self.bundle_change_generation = Some(self.engine_generation);
+        self.bundle_interrupt = Some(self.conditions.restore_interrupt());
         let result = self
             .validate_bundle_connection()
             .map_err(|e| e.to_string())
             .and_then(|()| operation(self));
         let intact = self.validate_bundle_connection().map_err(|e| e.to_string());
         self.bundle_change_generation = None;
+        self.bundle_interrupt = None;
         let value = result?;
         intact?;
         Ok(value)

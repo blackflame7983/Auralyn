@@ -1524,29 +1524,11 @@ impl Engine {
             self.output_stream.is_some(),
         );
         if let Some(monitor) = &self.split_monitor {
-            snapshot.accepted_revision = snapshot
-                .accepted_revision
-                .parse::<u64>()
-                .unwrap_or(0)
-                .min(monitor.shared.accepted.load(Ordering::Acquire))
-                .to_string();
-            snapshot.completed_revision = snapshot
-                .completed_revision
-                .parse::<u64>()
-                .unwrap_or(0)
-                .min(monitor.shared.completed.load(Ordering::Acquire))
-                .to_string();
-            if monitor.shared.failed.load(Ordering::Acquire) {
-                snapshot.phase = "partial".into();
-                snapshot.applied = None;
-                return snapshot;
-            }
-            if snapshot.completed_revision != snapshot.revision {
-                snapshot.applied = None;
-                if snapshot.running {
-                    snapshot.phase = "transitioning".into();
-                }
-            }
+            snapshot.include_monitor_progress(
+                monitor.shared.accepted.load(Ordering::Acquire),
+                monitor.shared.completed.load(Ordering::Acquire),
+                monitor.shared.failed.load(Ordering::Acquire),
+            );
         }
         snapshot
     }

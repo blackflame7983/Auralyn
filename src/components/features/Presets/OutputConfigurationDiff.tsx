@@ -4,16 +4,18 @@ import { defaultSinging, defaultReverb, type BuiltinConfig } from '@/api/builtin
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
 
+export function describeBuiltin(t: ReturnType<typeof useMessages>, value: BuiltinConfig | null | undefined) {
+    const on = (value: boolean | undefined) => value ? 'ON' : 'OFF';
+    if (!value) return t('bundle.output.none');
+    const singing = value.singing ?? defaultSinging, reverb = value.reverb ?? defaultReverb;
+    return t('bundle.output.fxSummary', { active: on(value.active), preset: value.preset, amount: value.amount,
+        lowCut: singing.lowCutHz, dynamics: singing.dynamics, brightness: singing.brightnessDb,
+        reverb: on(reverb.enabled), mix: reverb.mix, decay: reverb.decaySeconds, damping: reverb.damping });
+}
 export function OutputConfigurationDiff({ output }: { output: NonNullable<BundlePreview['output']> }) {
     const t = useMessages();
     const on = (value: boolean | undefined) => value ? 'ON' : 'OFF';
-    const branch = (value: BuiltinConfig | null | undefined) => {
-        if (!value) return t('bundle.output.none');
-        const singing = value.singing ?? defaultSinging, reverb = value.reverb ?? defaultReverb;
-        return t('bundle.output.fxSummary', { active: on(value.active), preset: value.preset, amount: value.amount,
-            lowCut: singing.lowCutHz, dynamics: singing.dynamics, brightness: singing.brightnessDb,
-            reverb: on(reverb.enabled), mix: reverb.mix, decay: reverb.decaySeconds, damping: reverb.damping });
-    };
+    const branch = (value: BuiltinConfig | null | undefined) => describeBuiltin(t, value);
     const rows: [MessageKey, (value: LiveOutputConfig) => string][] = [
         ['bundle.output.device', value => value.deviceId ?? t('bundle.output.none')],
         ['bundle.output.split', value => on(value.splitProcessing)],

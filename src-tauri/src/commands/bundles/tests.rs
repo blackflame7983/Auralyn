@@ -1,5 +1,33 @@
 use super::*;
 #[test]
+fn live_preview_never_serializes_embedded_component_state() {
+    let mut live = bundle::LiveConfiguration {
+        version: 1,
+        definitions: Default::default(),
+        target: None,
+        monitor: None,
+        singing_plugins: Some(vec![]),
+        talk_plugins: None,
+    };
+    live.singing_plugins.as_mut().unwrap().push(PresetPlugin {
+        path: "fixture.vst3".into(),
+        name: "fixture".into(),
+        vendor: String::new(),
+        version: String::new(),
+        enabled: true,
+        muted: false,
+        gain: 1.0,
+        state: Some("opaque-component-never-send-to-ui".into()),
+    });
+    let value = LivePreview {
+        before: Some((&live).into()),
+        after: (&live).into(),
+    };
+    let json = serde_json::to_string(&value).unwrap();
+    assert!(json.contains("singingPlugins\":1"));
+    assert!(!json.contains("opaque-component"));
+}
+#[test]
 fn output_configuration_and_external_file_changes_invalidate_the_preview() {
     let mut before = captured();
     before.output = Some(bundle::OutputConfiguration {
@@ -17,6 +45,9 @@ fn output_configuration_and_external_file_changes_invalidate_the_preview() {
     after = before.clone();
     after.output_revision = "external edit".into();
     assert!(!unchanged(&before, &after));
+    after = before.clone();
+    after.live_revision = "external mode edit".into();
+    assert!(!unchanged(&before, &after));
 }
 #[test]
 fn output_restore_requires_current_mute_and_exact_primary_and_secondary_ids() {
@@ -31,6 +62,7 @@ fn output_restore_requires_current_mute_and_exact_primary_and_secondary_ids() {
         ..Default::default()
     });
     let mut saved = BundleV1 {
+        live: None,
         output: Some(bundle::OutputConfiguration {
             version: 1,
             devices: active_devices(current.active.as_ref()).unwrap(),
@@ -98,6 +130,7 @@ fn saved_preview_rejects_same_revision_edits_and_different_operation() {
     let plan = Preview {
         id: "preview".into(),
         bundle: BundleV1 {
+            live: None,
             output: None,
             schema_version: 1,
             revision: "1".into(),
@@ -163,6 +196,7 @@ fn runtime_restore_requires_explicit_start_and_current_mute() {
 fn runtime_restore_accepts_only_default_equivalent_omitted_fx_fields() {
     let mut before = captured();
     let mut target = BundleV1 {
+        live: None,
         output: None,
         schema_version: 1,
         revision: "1".into(),
@@ -375,6 +409,8 @@ fn captured() -> Captured {
         },
     };
     Captured {
+        live: None,
+        live_revision: "absent".into(),
         output: None,
         output_revision: "absent".into(),
         preset: Preset {
@@ -410,6 +446,7 @@ fn output_routing_roundtrip_preview_partial_and_undo_intent() {
     };
     before.preset.audio_config = Some(audio.clone());
     let mut target = BundleV1 {
+        live: None,
         output: None,
         schema_version: 1,
         revision: "1".into(),
@@ -556,6 +593,7 @@ fn checked_save_requires_a_running_unmuted_settled_stream_and_the_exact_observed
 fn preview_and_result_expose_differences_without_opaque_state_or_default_buffer_claim() {
     let before = captured();
     let target = BundleV1 {
+        live: None,
         output: None,
         schema_version: 1,
         revision: "1".into(),
@@ -658,6 +696,7 @@ fn selected_backup_does_not_include_untouched_categories_and_empty_rack_is_expli
     assert!(backup.builtin_fx.is_none());
     assert!(backup.audio_config.is_none());
     let target = BundleV1 {
+        live: None,
         output: None,
         schema_version: 1,
         revision: "1".into(),
