@@ -1,6 +1,7 @@
 import { audioApi, type PreparationSnapshot } from '@/api/audio';
 import { OutputConfigurationDiff } from './OutputConfigurationDiff';
 import { LiveConfigurationDiff } from './LiveConfigurationDiff';
+import { ProcessConfigurationDiff } from './ProcessConfigurationDiff';
 import { type PreparationContext, readPreparationContext } from '@/lib/preparation';
 import { formatObsText } from '@/lib/obsUiText';
 import type { MessageKey } from '@/i18n/messages';
@@ -33,6 +34,7 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
     const [includeObs, setIncludeObs] = useState(false);
     const [includeOutput, setIncludeOutput] = useState(false);
     const [includeLive, setIncludeLive] = useState(false);
+    const [includeProcess, setIncludeProcess] = useState(false);
     const [sources, setSources] = useState<string[]>([]);
     const [obs, setObs] = useState<BundleObsSelection[]>([]);
     const [filters, setFilters] = useState<Map<string, BundleFilter[]>>(new Map());
@@ -115,11 +117,13 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
         <p className="text-xs text-muted-foreground">{t('presets.copy.123')}</p>
         <fieldset disabled={busy} className="space-y-2 border rounded p-3"><legend>{t('presets.copy.124')}</legend>
             <label className="block">{t('presets.copy.125')}<input className="block w-full border rounded bg-background p-2" value={name} onChange={e => { invalidate(); setName(e.target.value); }} maxLength={120} /></label>
-            <div className="grid grid-cols-2 gap-2">{categoryLabels.map(([key, label]) => <label key={key}><input type="checkbox" disabled={checkedOnly || includeOutput} checked={categories[key]} onChange={e => { invalidate(); setCategories(c => ({ ...c, [key]: e.target.checked })); }} /> {t(label)}</label>)}</div>
-            <label className="flex gap-2"><input type="checkbox" checked={includeOutput} disabled={includeLive} onChange={e => { invalidate(); setIncludeOutput(e.target.checked); if (e.target.checked) setCategories({ includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }); }} />{t('bundle.output.include')}</label>
+            <div className="grid grid-cols-2 gap-2">{categoryLabels.map(([key, label]) => <label key={key}><input type="checkbox" disabled={checkedOnly || includeOutput || includeProcess} checked={categories[key]} onChange={e => { invalidate(); setCategories(c => ({ ...c, [key]: e.target.checked })); }} /> {t(label)}</label>)}</div>
+            <label className="flex gap-2"><input type="checkbox" checked={includeOutput} disabled={includeLive || includeProcess} onChange={e => { invalidate(); setIncludeOutput(e.target.checked); if (e.target.checked) setCategories({ includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }); }} />{t('bundle.output.include')}</label>
             {includeOutput && !includeLive && <p className="text-xs">{t('bundle.output.scope')}</p>}
-            <label className="flex gap-2"><input type="checkbox" checked={includeLive} onChange={e => { invalidate(); setIncludeLive(e.target.checked); if (e.target.checked) { setIncludeOutput(true); setCategories({ includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }); } }} />{t('bundle.live.include')}</label>
+            <label className="flex gap-2"><input type="checkbox" checked={includeLive} disabled={includeProcess} onChange={e => { invalidate(); setIncludeLive(e.target.checked); if (e.target.checked) { setIncludeOutput(true); setCategories({ includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }); } }} />{t('bundle.live.include')}</label>
             {includeLive && <p className="text-xs">{t('bundle.live.scope')}</p>}
+            <label className="flex gap-2"><input type="checkbox" checked={includeProcess} onChange={e => { invalidate(); setIncludeProcess(e.target.checked); if (e.target.checked) { setIncludeOutput(false); setIncludeLive(false); setCategories({ includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }); } }} />{t('bundle.process.include')}</label>
+            {includeProcess && <p className="text-xs">{t('bundle.process.scope')}</p>}
             <p className="text-xs">{t('presets.copy.126')}</p>
             <label className="block"><input type="checkbox" checked={includeObs} disabled={checkedOnly} onChange={e => { invalidate(); setIncludeObs(e.target.checked); }} /> {t('presets.copy.127')}</label>
             {includeObs && <div className="space-y-2">
@@ -137,7 +141,7 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
                 })}
             </div>}
             {checkedOnly && <div className="space-y-2">
-                <p className="text-xs">{t(includeLive ? 'bundle.live.scope' : includeOutput ? 'bundle.output.scope' : 'recovery.checkedScope')}</p>
+                <p className="text-xs">{t(includeProcess ? 'bundle.process.scope' : includeLive ? 'bundle.live.scope' : includeOutput ? 'bundle.output.scope' : 'recovery.checkedScope')}</p>
                 <button type="button" className="border rounded p-2" onClick={() => void run(async () => {
                     const current = version.current; const context = readPreparationContext();
                     const stats = await audioApi.getEngineRuntimeStats(); const expected = stats.preparation;
@@ -148,7 +152,7 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
             </div>}
             {existingName !== undefined && <label className="block"><input type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)} /> {t('presets.copy.141')}</label>}
             <button type="button" className="border rounded p-2" disabled={(checkedOnly && (!checkedExpected || !checkedAcknowledged)) || !listReady || !name.trim() || !Object.values(categories).some(Boolean) || (includeObs && obs.length === 0) || (existingName !== undefined && !overwrite)} onClick={() => void run(async () => {
-                if (!listReady) return; const saveName = existingName ?? name.trim(); const confirmedOverwrite = existingName !== undefined && overwrite; if (checkedOnly && JSON.stringify(readPreparationContext()) !== JSON.stringify(checkedContext)) throw new Error(t('recovery.readFailed')); const checked = checkedOnly && checkedExpected && checkedContext ? { expected: checkedExpected, usage: checkedContext.usage, location: checkedContext.location } : undefined; invalidate(); if (includeLive) await bundleApi.save(saveName, categories, includeObs ? obs : null, confirmedOverwrite, checked, true, true); else if (includeOutput) await bundleApi.save(saveName, categories, includeObs ? obs : null, confirmedOverwrite, checked, true); else if (checked) await bundleApi.save(saveName, categories, null, confirmedOverwrite, checked); else await bundleApi.save(saveName, categories, includeObs ? obs : null, confirmedOverwrite);
+                if (!listReady) return; const saveName = existingName ?? name.trim(); const confirmedOverwrite = existingName !== undefined && overwrite; if (checkedOnly && JSON.stringify(readPreparationContext()) !== JSON.stringify(checkedContext)) throw new Error(t('recovery.readFailed')); const checked = checkedOnly && checkedExpected && checkedContext ? { expected: checkedExpected, usage: checkedContext.usage, location: checkedContext.location } : undefined; invalidate(); if (includeProcess) await bundleApi.save(saveName, categories, includeObs ? obs : null, confirmedOverwrite, checked, false, false, true); else if (includeLive) await bundleApi.save(saveName, categories, includeObs ? obs : null, confirmedOverwrite, checked, true, true); else if (includeOutput) await bundleApi.save(saveName, categories, includeObs ? obs : null, confirmedOverwrite, checked, true); else if (checked) await bundleApi.save(saveName, categories, null, confirmedOverwrite, checked); else await bundleApi.save(saveName, categories, includeObs ? obs : null, confirmedOverwrite);
                 const items = await list(); if (alive.current) { setNames(items); setMessage({ kind: 'success', notice: notice('presets.copy.142') }); }
             })}>{t('presets.copy.143')}</button>
         </fieldset>
@@ -172,10 +176,11 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
             <table className="w-full text-xs text-left"><caption>{t('presets.copy.152')}</caption><thead><tr><th>{t('presets.copy.153')}</th><th>{t('presets.copy.154')}</th><th>{t('presets.copy.155')}</th><th>{t('presets.copy.156')}</th></tr></thead><tbody>{plan.auralyn.map((row,i) => <tr key={i}><th scope="row">{formatObsText(t, row.labelText, row.label)}</th><td className="break-all">{formatObsText(t, row.beforeText, row.before)}</td><td className="break-all">{formatObsText(t, row.afterText, row.after)}</td><td>{{same: t('presets.copy.157'), changed: t('presets.copy.158'), notSelected: t('presets.copy.159'), unknown: t('presets.copy.160')}[row.status]}</td></tr>)}</tbody></table>
             {plan.output && <OutputConfigurationDiff output={plan.output} />}
             {plan.live && <LiveConfigurationDiff live={plan.live} />}
+            {plan.process && <ProcessConfigurationDiff process={plan.process} running={plan.running} />}
 
             {plan.obs.length > 0 && <ul>{plan.obs.map((c,i) => <li key={i}>{c.source}：{formatObsText(t, c.labelText, c.label)} {formatObsText(t, c.beforeText, c.beforeDisplay ?? c.before)} → {formatObsText(t, c.afterText, c.afterDisplay ?? c.after)}</li>)}</ul>}
             {planIsRecovery && <p>{t('bundle.recoveryApplyHint')}</p>}
-            <button type="button" className="border rounded p-2" disabled={busy || !onOperation || !!plan.output?.missingDevices?.length || !!plan.output?.missingPlugins?.length || !recoveryReady || (!planIsRecovery && (!!recovery || !!(result?.undoPending && !result.complete)))} onClick={() => void operate({ action: planIsRecovery ? 'recovery_apply' : 'apply', id: plan.id })}>{t(planIsRecovery ? 'bundle.recoveryApply' : 'presets.copy.161')}</button></div>}
+            <button type="button" className="border rounded p-2" disabled={busy || !onOperation || (plan.process != null && (!plan.running || !plan.process.selectionMatches || !!plan.process.missingDevices.length || !!plan.process.missingPlugins.length)) || !!plan.output?.missingDevices?.length || !!plan.output?.missingPlugins?.length || !recoveryReady || (!planIsRecovery && (!!recovery || !!(result?.undoPending && !result.complete)))} onClick={() => void operate({ action: planIsRecovery ? 'recovery_apply' : 'apply', id: plan.id })}>{t(planIsRecovery ? 'bundle.recoveryApply' : 'presets.copy.161')}</button></div>}
         {result && <div className="border rounded p-3 space-y-2" aria-label={t('presets.copy.162')}><p>{formatObsText(t, result.auralynText, result.auralyn)}</p>{result.summary && <ul>
             {result.summary.appliedCategories.map(category => <li key={category}>Auralyn {categoryName(category)}{t('presets.copy.163')}</li>)}
             {result.summary.skippedCategories.map(category => <li key={category}>Auralyn {categoryName(category)}{t('presets.copy.164')}</li>)}

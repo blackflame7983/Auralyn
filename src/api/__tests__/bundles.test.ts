@@ -2,6 +2,12 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { bundleApi, BundleClientError } from '../bundles';
 beforeEach(() => { vi.mocked(invoke).mockReset(); });
+it('プロセス入力は明示保存だけに含め、分離出力や本番モードと区別する', async () => {
+    vi.mocked(invoke).mockResolvedValue({ type: 'saved' });
+    const categories = { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true };
+    await bundleApi.save('process', categories, null, false, undefined, false, false, true);
+    expect(invoke).toHaveBeenLastCalledWith('broadcast_bundle', { request: { action: 'save', name: 'process', categories, obs: null, overwrite: false, includeProcess: true } });
+});
 it('本番モードと関連VSTも明示選択した保存だけに含める', async () => {
     vi.mocked(invoke).mockResolvedValue({ type: 'saved' });
     const categories = { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true };

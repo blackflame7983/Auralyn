@@ -7,6 +7,8 @@ pub(crate) mod output_configuration;
 pub(crate) use output_configuration::OutputConfiguration;
 pub(crate) mod live_configuration;
 pub(crate) use live_configuration::LiveConfiguration;
+pub(crate) mod process_configuration;
+pub(crate) use process_configuration::ProcessConfiguration;
 
 const MAX_BUNDLE_BYTES: usize = 64 * 1024 * 1024;
 
@@ -38,6 +40,8 @@ pub struct EngineCapture {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BundleV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) process: Option<ProcessConfiguration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) live: Option<LiveConfiguration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -89,9 +93,13 @@ pub fn validate(bundle: &BundleV1) -> Result<(), String> {
         (
             bundle.schema_version,
             bundle.output.is_some(),
-            bundle.live.is_some()
+            bundle.live.is_some(),
+            bundle.process.is_some()
         ),
-        (1, false, false) | (2, true, false) | (3, true, true)
+        (1, false, false, false)
+            | (2, true, false, false)
+            | (3, true, true, false)
+            | (4, false, false, true)
     ) || bundle.revision.is_empty()
     {
         return Err("対応していない配信状態です".into());
@@ -105,6 +113,25 @@ pub fn validate(bundle: &BundleV1) -> Result<(), String> {
             && c.include_builtin_fx)
         {
             return Err("分離出力の保存には全カテゴリが必要です".into());
+        }
+    }
+    if let Some(process) = &bundle.process {
+        process.validate()?;
+        let c = &bundle.categories;
+        let audio = bundle
+            .embedded_auralyn_preset
+            .audio_config
+            .as_ref()
+            .ok_or("入出力設定がありません")?;
+        if !(c.include_plugins
+            && c.include_audio_config
+            && c.include_noise_control
+            && c.include_builtin_fx)
+            || !audio.host.eq_ignore_ascii_case("wasapi")
+            || audio.input_device.is_some()
+            || audio.output_device.is_none()
+        {
+            return Err("プロセス入力の保存にはWASAPIの単独出力と全カテゴリが必要です".into());
         }
     }
     if let Some(live) = &bundle.live {
@@ -366,6 +393,7 @@ fn validate_runtime_original(original: &BundleV1) -> Result<(), String> {
         && categories.include_builtin_fx)
         || original.output.is_some()
         || original.live.is_some()
+        || original.process.is_some()
         || original.obs.is_some()
         || original.confirmation.is_some()
         || original
@@ -644,6 +672,48 @@ mod tests {
         std::fs::remove_dir(root).unwrap();
     }
     #[test]
+    fn process_bundle_roundtrip_requires_all_categories_and_never_mixes_device_or_mode_schema() {
+        let mut value = runtime_sample();
+        value.schema_version = 4;
+        value.process = Some(ProcessConfiguration {
+            version: 1,
+            source: crate::input_source::ProcessConfig {
+                app_key: "a".repeat(64),
+                app_name: "player.exe".into(),
+                raw_endpoint_id: "raw-id".into(),
+                purpose: crate::input_source::Purpose::Music,
+            },
+            output_id: "wasapi:monitor-id".into(),
+        });
+        let audio = value.embedded_auralyn_preset.audio_config.as_mut().unwrap();
+        audio.host = "Wasapi".into();
+        audio.input_device = None;
+        audio.output_device = Some("Monitor".into());
+        validate(&value).unwrap();
+        let root = std::env::temp_dir().join(format!("auralyn-process-schema-{}", revision()));
+        save(&root, &value).unwrap();
+        assert_eq!(load(&root, &value.name).unwrap().process, value.process);
+        assert!(validate_runtime_original(&value).is_err());
+        let mut invalid = value.clone();
+        invalid.schema_version = 1;
+        assert!(validate(&invalid).is_err());
+        invalid = value.clone();
+        invalid.categories.include_plugins = false;
+        invalid.embedded_auralyn_preset.plugins.clear();
+        assert!(validate(&invalid).is_err());
+        invalid = value.clone();
+        invalid
+            .embedded_auralyn_preset
+            .audio_config
+            .as_mut()
+            .unwrap()
+            .input_device = Some("must-not-select-microphone".into());
+        assert!(validate(&invalid).is_err());
+        std::fs::remove_file(path(&root, &value.name).unwrap()).unwrap();
+        std::fs::remove_dir(root.join("broadcast-bundles")).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+    #[test]
     fn runtime_capture_intent_survives_interruption_and_blocks_replacement() {
         let root = std::env::temp_dir().join(format!("auralyn-runtime-intent-{}", revision()));
         let reservation = reserve_runtime_intent(
@@ -874,6 +944,7 @@ mod tests {
     }
     fn sample() -> BundleV1 {
         BundleV1 {
+            process: None,
             live: None,
             output: None,
             schema_version: 1,

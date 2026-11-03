@@ -62,6 +62,14 @@ pub struct Request {
 }
 
 impl Config {
+    pub(crate) fn supports_bundle_capture(&self) -> bool {
+        matches!(
+            self,
+            Self::Device {
+                purpose: Purpose::Voice
+            } | Self::ProcessLoopback(_)
+        )
+    }
     pub fn validate(&self) -> Result<(), String> {
         if let Self::ProcessLoopback(c) = self {
             if c.app_key.len() != 64 || !c.app_key.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -117,6 +125,23 @@ pub(crate) fn require_capability(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn process_capture_support_does_not_enable_unsupported_music_device_restore() {
+        assert!(Config::default().supports_bundle_capture());
+        assert!(!Config::Device {
+            purpose: Purpose::Music
+        }
+        .supports_bundle_capture());
+        for purpose in [Purpose::Voice, Purpose::Music] {
+            assert!(Config::ProcessLoopback(ProcessConfig {
+                app_key: "a".repeat(64),
+                app_name: "player.exe".into(),
+                raw_endpoint_id: "raw".into(),
+                purpose
+            })
+            .supports_bundle_capture());
+        }
+    }
 
     #[test]
     fn old_engine_cannot_ignore_process_selection_and_start_a_microphone() {

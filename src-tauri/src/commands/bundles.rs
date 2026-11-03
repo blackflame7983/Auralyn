@@ -82,6 +82,8 @@ fn recovery_device_matches(
 }
 #[derive(Clone)]
 struct Captured {
+    process: Option<bundle::ProcessConfiguration>,
+    process_target: Option<crate::input_source::Target>,
     live: Option<bundle::LiveConfiguration>,
     live_revision: String,
     engine: EngineCapture,
@@ -94,6 +96,7 @@ struct Captured {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreviewView {
+    pub process: Option<ProcessPreview>,
     pub live: Option<LivePreview>,
     pub output: Option<OutputPreview>,
     pub id: String,
@@ -104,6 +107,15 @@ pub(crate) struct PreviewView {
     pub running: bool,
     pub auralyn: Vec<DiffRow>,
     pub confirmation: Option<bundle::Confirmation>,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProcessPreview {
+    before: Option<bundle::ProcessConfiguration>,
+    after: bundle::ProcessConfiguration,
+    selection_matches: bool,
+    missing_devices: Vec<String>,
+    missing_plugins: Vec<String>,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -314,6 +326,8 @@ pub(crate) enum Request {
         include_output: bool,
         #[serde(default)]
         include_live: bool,
+        #[serde(default)]
+        include_process: bool,
     },
     Preview {
         name: String,
@@ -361,6 +375,7 @@ async fn validate_checked(
     claim: &CheckedClaim,
     include_output: bool,
     include_live: bool,
+    include_process: bool,
 ) -> Result<(), String> {
     let expected = claim.expected.clone();
     super::run_blocking(move || {
@@ -375,7 +390,9 @@ async fn validate_checked(
             stats.preparation.as_deref(),
             &expected,
         )?;
-        if include_live {
+        if include_process {
+            host.process_snapshot_supported()
+        } else if include_live {
             host.full_snapshot_supported()
         } else if include_output {
             host.output_snapshot_supported()
@@ -1011,6 +1028,12 @@ fn capture(host: &mut audio::AudioHost) -> Result<(Captured, ControlWitness), St
     let engine = host.capture_bundle_state().map_err(|e| e.to_string())?;
     witness.validate()?;
     let active = host.get_state().config;
+    let (process, process_target) = host
+        .capture_bundle_process()
+        .map_err(|e| e.to_string())?
+        .map_or((None, None), |(process, target)| {
+            (Some(process), Some(target))
+        });
     let (output_config, output_revision) = host
         .capture_bundle_output(engine.running)
         .map_err(|e| e.to_string())?;
@@ -1057,6 +1080,8 @@ fn capture(host: &mut audio::AudioHost) -> Result<(Captured, ControlWitness), St
     };
     Ok((
         Captured {
+            process,
+            process_target,
             live,
             live_revision,
             engine,
@@ -1098,6 +1123,7 @@ pub(crate) fn preserve_temporary_runtime(
         include_builtin_fx: true,
     };
     let original = BundleV1 {
+        process: None,
         live: None,
         output: None,
         schema_version: 1,
@@ -1140,6 +1166,8 @@ fn select(mut preset: Preset, categories: &ProfileSaveCategories) -> Result<Pres
 fn unchanged(before: &Captured, after: &Captured) -> bool {
     // opaque component stateも除外しない。処理由来の変動でも保守的に競合にする。
     before.engine == after.engine
+        && before.process == after.process
+        && before.process_target == after.process_target
         && before.live == after.live
         && before.live_revision == after.live_revision
         && before.output == after.output
@@ -1203,6 +1231,58 @@ fn validate_output_devices(
         return Err(
             "保存した主入出力と配信用出力をIDで特定できません。機器を明示選択してください".into(),
         );
+    }
+    Ok(())
+}
+fn missing_process_devices(
+    saved: &bundle::ProcessConfiguration,
+    devices: &audio::AudioDeviceList,
+) -> Vec<String> {
+    [
+        &saved.output_id,
+        &format!("wasapi:{}", saved.source.raw_endpoint_id),
+    ]
+    .into_iter()
+    .filter(|id| {
+        devices
+            .outputs
+            .iter()
+            .filter(|d| d.host.eq_ignore_ascii_case("wasapi") && d.id.as_ref() == Some(*id))
+            .count()
+            != 1
+    })
+    .cloned()
+    .collect()
+}
+fn validate_process_selection(
+    target: &BundleV1,
+    current: &Captured,
+    devices: &audio::AudioDeviceList,
+) -> Result<(), String> {
+    let Some(saved) = &target.process else {
+        if target.categories.include_audio_config && current.process.is_some() {
+            return Err(
+                "現在の入力はプロセス入力です。プロセス設定を含む保存形式を使用してください".into(),
+            );
+        }
+        return Ok(());
+    };
+    validate_runtime_restore(current)?;
+    let audio = target
+        .embedded_auralyn_preset
+        .audio_config
+        .as_ref()
+        .ok_or("返し先の設定がありません")?;
+    if current.process.as_ref() != Some(saved)
+        || current.process_target.is_none()
+        || !current.active.as_ref().is_some_and(|a| {
+            a.host.eq_ignore_ascii_case(&audio.host)
+                && a.input.is_none()
+                && a.output == audio.output_device
+        })
+        || !missing_process_devices(saved, devices).is_empty()
+    {
+        return Err("保存したアプリ・用途・原音用出力・返し先と現在の明示選択が異なります。音声設定で選び直してください".into());
     }
     Ok(())
 }
@@ -1275,9 +1355,13 @@ fn selected_matches(target: &BundleV1, after: &Captured) -> bool {
         level.input_gain == after.engine.input_gain && level.output_gain == after.engine.output_gain
     });
     target
-        .live
+        .process
         .as_ref()
-        .is_none_or(|live| after.live.as_ref() == Some(live))
+        .is_none_or(|process| after.process.as_ref() == Some(process))
+        && target
+            .live
+            .as_ref()
+            .is_none_or(|live| after.live.as_ref() == Some(live))
         && target
             .output
             .as_ref()
@@ -1302,6 +1386,40 @@ fn apply_selected(
     before: &Captured,
     device_ids: Option<bundle::RecoveryDevices>,
 ) -> Result<ApplyProfileSummary, String> {
+    if let Some(process) = &target.process {
+        let audio = target
+            .embedded_auralyn_preset
+            .audio_config
+            .as_ref()
+            .ok_or("入出力設定がありません")?;
+        let initial = selected_start_intent(target, before)?;
+        return host.process_bundle_scope(&before.output_revision, |host| {
+            host.start_bundle_process(process, audio, initial)
+                .map_err(|e| e.to_string())?;
+            let mut restarted = before.clone();
+            restarted.engine.plugins.clear();
+            restarted.preset.plugins.clear();
+            restarted.engine.input_channels = audio.input_channels.clone();
+            restarted.engine.output_routing = audio.output_routing;
+            // 機器入力だけを扱う既存profileの開始経路へ戻さず、音作りの共通処理を使う。
+            let mut sound = target.clone();
+            sound.embedded_auralyn_preset.audio_config = None;
+            let mut summary = apply_selected_core(root, host, &sound, &restarted, None)?;
+            if !complete(&summary) {
+                return Err(
+                    "プロセス入力のVST・処理をすべて復帰できません。停止し原本を保持しています"
+                        .into(),
+                );
+            }
+            let mut applied_audio = audio.clone();
+            applied_audio.input_gain_db = linear_db(initial.input_gain);
+            applied_audio.master_gain_db = linear_db(initial.output_gain);
+            summary.applied_audio_config = Some(applied_audio);
+            summary.applied_categories.push("audioConfig".into());
+            summary.needs_engine_restart = true;
+            Ok(summary)
+        });
+    }
     if let Some(live) = &target.live {
         let output = target.output.as_ref().ok_or("出力構成がありません")?;
         return host.with_bundle_live(live, output, &before.live_revision, |host| {
@@ -1504,7 +1622,11 @@ pub(crate) async fn broadcast_bundle(
             checked,
             include_output,
             include_live,
+            include_process,
         } => {
+            if include_process && (include_output || include_live) {
+                return Err("プロセス入力と処理分離・本番モードの同時保存には未対応です".into());
+            }
             if include_live && !include_output {
                 return Err("本番モードの保存には出力構成も含めてください".into());
             }
@@ -1521,9 +1643,29 @@ pub(crate) async fn broadcast_bundle(
                         "確認済み保存にはAuralynの全カテゴリを選び、OBSを外してください".into(),
                     );
                 }
-                validate_checked(host.clone(), claim, include_output, include_live).await?;
+                validate_checked(
+                    host.clone(),
+                    claim,
+                    include_output,
+                    include_live,
+                    include_process,
+                )
+                .await?;
             }
             let (captured, witness) = capture_async(host.clone()).await?;
+            if include_process {
+                let source = host.clone();
+                super::run_blocking(move || {
+                    source
+                        .lock()
+                        .map_err(|_| "音声状態を取得できません")?
+                        .process_snapshot_supported()
+                        .map_err(|e| e.to_string())
+                })
+                .await?;
+            } else if categories.include_audio_config && captured.process.is_some() {
+                return Err("プロセス入力の設定も保存することを選んでください".into());
+            }
             if include_output {
                 let c = &categories;
                 if !(c.include_plugins
@@ -1574,7 +1716,8 @@ pub(crate) async fn broadcast_bundle(
                 );
             }
             if let Some(claim) = &checked {
-                validate_checked(host, claim, include_output, include_live).await?;
+                validate_checked(host, claim, include_output, include_live, include_process)
+                    .await?;
             }
             let confirmation = checked.map(|claim| bundle::Confirmation {
                 checked_at_unix_ms: std::time::SystemTime::now()
@@ -1587,6 +1730,16 @@ pub(crate) async fn broadcast_bundle(
                 preparation: claim.expected,
             });
             let bundle = BundleV1 {
+                process: if include_process {
+                    Some(
+                        captured
+                            .process
+                            .clone()
+                            .ok_or("プロセス入力の実値を取得できません")?,
+                    )
+                } else {
+                    None
+                },
                 live: if include_live {
                     Some(captured.live.clone().ok_or("本番モードを取得できません")?)
                 } else {
@@ -1603,7 +1756,9 @@ pub(crate) async fn broadcast_bundle(
                     None
                 },
                 confirmation,
-                schema_version: if include_live {
+                schema_version: if include_process {
+                    4
+                } else if include_live {
                     3
                 } else if include_output {
                     2
@@ -1638,6 +1793,18 @@ pub(crate) async fn broadcast_bundle(
                 _ => unreachable!(),
             };
             let (before, witness) = capture_async(host.clone()).await?;
+            let process_preview = if let Some(process) = &bundle.process {
+                let devices = super::audio::enumerate_devices_async(host.clone(), true).await?;
+                Some(ProcessPreview {
+                    before: before.process.clone(),
+                    after: process.clone(),
+                    selection_matches: before.process.as_ref() == Some(process),
+                    missing_devices: missing_process_devices(process, &devices),
+                    missing_plugins: missing_output_plugins(&bundle)?,
+                })
+            } else {
+                None
+            };
             let output_preview = if let Some(output) = &bundle.output {
                 let devices = super::audio::enumerate_devices_async(host.clone(), true).await?;
                 Some(OutputPreview {
@@ -1657,6 +1824,7 @@ pub(crate) async fn broadcast_bundle(
             };
             witness.validate()?;
             let view = PreviewView {
+                process: process_preview,
                 live: bundle.live.as_ref().map(|live| LivePreview {
                     before: before.live.as_ref().map(Into::into),
                     after: live.into(),
@@ -1747,15 +1915,21 @@ pub(crate) async fn broadcast_bundle(
                 })
                 .await?;
             }
-            if plan.bundle.confirmation.is_some() || plan.bundle.output.is_some() {
+            if plan.bundle.confirmation.is_some()
+                || plan.bundle.output.is_some()
+                || plan.bundle.process.is_some()
+            {
                 let checked_host = host.clone();
                 let include_output = plan.bundle.output.is_some();
                 let include_live = plan.bundle.live.is_some();
+                let include_process = plan.bundle.process.is_some();
                 super::run_blocking(move || {
                     let mut host = checked_host
                         .lock()
                         .map_err(|_| "音声状態を取得できません")?;
-                    if include_live {
+                    if include_process {
+                        host.process_snapshot_supported()
+                    } else if include_live {
                         host.full_snapshot_supported()
                     } else if include_output {
                         host.output_snapshot_supported()
@@ -1781,18 +1955,20 @@ pub(crate) async fn broadcast_bundle(
             if plan.bundle.categories.include_audio_config {
                 let devices = super::audio::enumerate_devices_async(
                     host.clone(),
-                    recovering || plan.bundle.output.is_some(),
+                    recovering || plan.bundle.output.is_some() || plan.bundle.process.is_some(),
                 )
                 .await?;
                 validate_output_devices(&plan.bundle, &plan.before, &devices)?;
-                if plan.bundle.output.is_some() && !missing_output_plugins(&plan.bundle)?.is_empty()
+                validate_process_selection(&plan.bundle, &plan.before, &devices)?;
+                if (plan.bundle.output.is_some() || plan.bundle.process.is_some())
+                    && !missing_output_plugins(&plan.bundle)?.is_empty()
                 {
                     return Err(
                         "保存したVSTが見つかりません。ファイルを確認して差分を取り直してください"
                             .into(),
                     );
                 }
-                if recovering {
+                if recovering && plan.bundle.process.is_none() {
                     let target = plan
                         .bundle
                         .embedded_auralyn_preset
@@ -1986,6 +2162,16 @@ async fn apply_owned(
     witness.validate()?;
     let backup =
         BundleV1 {
+            process: if plan.bundle.process.is_some() {
+                Some(
+                    before
+                        .process
+                        .clone()
+                        .ok_or("変更前のプロセス設定を取得できません")?,
+                )
+            } else {
+                None
+            },
             live: if plan.bundle.live.is_some() {
                 Some(
                     before
@@ -2006,7 +2192,9 @@ async fn apply_owned(
             } else {
                 None
             },
-            schema_version: if plan.bundle.live.is_some() {
+            schema_version: if plan.bundle.process.is_some() {
+                4
+            } else if plan.bundle.live.is_some() {
                 3
             } else if plan.bundle.output.is_some() {
                 2
@@ -2192,7 +2380,10 @@ async fn undo_owned(
     if !unchanged(&expected, &current) {
         return Err("後からVST状態または設定が変わりました。上書きせず原本を保持しています".into());
     }
-    if history.backup.categories.include_audio_config && history.original_devices.is_none() {
+    if history.backup.categories.include_audio_config
+        && history.original_devices.is_none()
+        && history.backup.process.is_none()
+    {
         return Err("復旧原本に機器IDがありません。機器を手動で確認してください".into());
     }
     // OBSを先に戻し、競合/結果不明が残る間はAuralynを変更しない。

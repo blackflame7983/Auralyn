@@ -42,10 +42,13 @@ impl Engine {
             .input_source
             .as_ref()
             .is_some_and(|s| s.source != crate::input_source::Config::default())
-            && (matches!(
-                &cmd,
-                Command::ConfigureLiveModes { armed: true, .. } | Command::CaptureBundleState
-            ) || matches!(&cmd, Command::LiveMode { request } if !matches!(request,
+            && (matches!(&cmd, Command::ConfigureLiveModes { armed: true, .. })
+                || (matches!(&cmd, Command::CaptureBundleState)
+                    && self
+                        .input_source
+                        .as_ref()
+                        .is_some_and(|s| !s.source.supports_bundle_capture()))
+                || matches!(&cmd, Command::LiveMode { request } if !matches!(request,
                     crate::audio_engine::live_modes::Request::Snapshot | crate::audio_engine::live_modes::Request::Disarm { .. })))
         {
             self.send_error("この入力は歌・雑談モードや配信状態の保存に未対応です。音声設定で入力を確認してください".into());

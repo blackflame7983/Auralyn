@@ -4,6 +4,7 @@ mod live_bundle;
 mod live_modes;
 mod mode_vst;
 mod output_bundle;
+mod process_bundle;
 pub(crate) mod process_inputs;
 mod replies;
 mod session_rack;

@@ -25,6 +25,27 @@ beforeEach(() => {
     vi.mocked(bundleApi.save).mockResolvedValue(undefined);
 });
 afterEach(cleanup);
+it('停止中のプロセスは選択情報が一致しても適用せず、明示開始を案内する', async () => {
+    vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, running: false, process: { before: null, after: { version: 1, source: { appKey: 'a'.repeat(64), appName: 'player.exe', rawEndpointId: 'raw-id', purpose: 'voice' }, outputId: 'wasapi:monitor' }, selectionMatches: true, missingDevices: [], missingPlugins: [] } });
+    render(<BroadcastBundlePanel onOperation={vi.fn()} />); await showPlan();
+    expect(screen.getByRole('button', { name: 'この変更予定を適用する' })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent('明示選択して開始');
+});
+it.each([true, false])('プロセス入力を明示保存し、現在の選択一致=%sを差分と適用可否へ反映する', async matches => {
+    vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, process: { before: null, after: { version: 1, source: { appKey: 'a'.repeat(64), appName: 'player.exe', rawEndpointId: 'raw-id', purpose: 'music' }, outputId: 'wasapi:monitor' }, selectionMatches: matches, missingDevices: [], missingPlugins: [] } });
+    render(<BroadcastBundlePanel onOperation={vi.fn()} />);
+    await screen.findByRole('option', { name: '歌枠' });
+    fireEvent.click(screen.getByRole('checkbox', { name: message('ja', 'bundle.process.include') }));
+    expect(screen.getByRole('checkbox', { name: '入出力・音量' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: message('ja', 'bundle.live.include') })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: message('ja', 'bundle.output.include') })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), { target: { value: 'process' } });
+    fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
+    await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('process', { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }, null, false, undefined, false, false, true));
+    await showPlan();
+    const diff = screen.getByRole('region', { name: message('ja', 'bundle.process.diff') }); expect(diff).toHaveTextContent('player.exe'); expect(diff).toHaveTextContent('raw-id');
+    expect(screen.getByRole('button', { name: 'この変更予定を適用する' }).hasAttribute('disabled')).toBe(!matches);
+});
 it('本番モードの保存では全カテゴリと出力を固定し、選択と関連VSTの差分を示す', async () => {
     vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, live: { before: null, after: { definitions: { schemaVersion: 1, version: '2', singing: null, talk: null, profiles: { singing: { name: '歌VST', revision: 'a'.repeat(64) } } }, target: 'singing', monitor: null, singingPlugins: 1, talkPlugins: null } } });
     render(<BroadcastBundlePanel />);

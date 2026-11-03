@@ -1,5 +1,6 @@
 // 分離出力の明示実機試験。設定・TEMP・WebViewを隔離し、両出力を全体ミュートで確認する。
 import assert from 'node:assert/strict';
+import { exerciseProcessBundle } from './verify-process-bundle-native.mjs';
 import { chromium, expect } from '@playwright/test';
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -9,6 +10,7 @@ import { createServer } from 'node:net';
 import { once } from 'node:events';
 
 const [appDirectory, evidenceDirectory, suppliedProbe] = process.argv.slice(2);
+const processInput = process.argv.includes('--process-input');
 const liveModes = process.argv.includes('--live-modes');
 const reuseOwnedApp = process.argv.includes('--reuse-owned-app');
 if (!appDirectory || !evidenceDirectory || !suppliedProbe) throw new Error('app-directory new-evidence-directory probe が必要です');
@@ -103,6 +105,16 @@ try {
     currentPid = host.pid;
     await attach();
     if (existsSync(join(configRoot, 'broadcast-bundle-recovery.json'))) { const receipt = read(join(configRoot, 'broadcast-bundle-recovery.json')); await bundle({ action: 'recovery_resolve', id: receipt.backupName }); assert(existsSync(join(configRoot, 'broadcast-bundle-backups', 'broadcast-bundles', receipt.backupName + '.json'))); }
+    if (processInput) {
+        await exerciseProcessBundle({ getPage: () => page, invoke, bundle, root, configRoot, probe, raw: cable, monitor: outputEndpoint, results, phase, settle, assertStopped, openProfiles,
+            restartHost: async () => {
+                await page.evaluate(() => { void window.__TAURI__.core.invoke('plugin:process|exit', { code: 0 }); });
+                await expect.poll(() => ownedProcesses().length).toBe(0); await browser.close();
+                const restarted = spawn(binary, ['--auralyn-review'], { cwd: appRoot, env: environment, windowsHide: true, stdio: 'ignore' }); currentPid = restarted.pid; await attach();
+            },
+        });
+        results.passed = true;
+    } else {
     await assertStopped();
     const list = await invoke('get_audio_devices', { forceRefresh: true });
     const input = list.inputs.find(d => d.host.toLowerCase() === 'wasapi' && d.name.startsWith('CABLE Output'));
@@ -349,6 +361,7 @@ try {
     await invoke('stop_audio');
     await page.evaluate(() => { void window.__TAURI__.core.invoke('plugin:process|exit', { code: 0 }); });
     results.passed = true;
+    }
 
 } catch (error) {
     results.error = String(error);

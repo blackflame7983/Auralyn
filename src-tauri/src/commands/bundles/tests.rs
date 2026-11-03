@@ -1,4 +1,110 @@
 use super::*;
+fn process_config() -> bundle::ProcessConfiguration {
+    bundle::ProcessConfiguration {
+        version: 1,
+        source: crate::input_source::ProcessConfig {
+            app_key: "a".repeat(64),
+            app_name: "player.exe".into(),
+            raw_endpoint_id: "raw-id".into(),
+            purpose: crate::input_source::Purpose::Voice,
+        },
+        output_id: "wasapi:monitor-id".into(),
+    }
+}
+#[test]
+fn process_identity_and_volatile_generation_changes_invalidate_a_preview() {
+    let mut before = captured();
+    before.process = Some(process_config());
+    before.process_target = Some(crate::input_source::Target {
+        pid: 10,
+        created: 100,
+    });
+    let mut after = before.clone();
+    assert!(unchanged(&before, &after));
+    after.process_target.as_mut().unwrap().created += 1;
+    assert!(!unchanged(&before, &after));
+    after = before.clone();
+    after.process.as_mut().unwrap().source.purpose = crate::input_source::Purpose::Music;
+    assert!(!unchanged(&before, &after));
+}
+#[test]
+fn process_restore_requires_current_choice_mute_and_both_exact_output_devices() {
+    let mut current = captured();
+    current.process = Some(process_config());
+    current.process_target = Some(crate::input_source::Target {
+        pid: 10,
+        created: 100,
+    });
+    current.engine.running = true;
+    current.active = Some(audio::ActiveAudioConfig {
+        host: "Wasapi".into(),
+        output: Some("Monitor".into()),
+        output_id: Some("wasapi:monitor-id".into()),
+        ..Default::default()
+    });
+    let mut saved = BundleV1 {
+        process: current.process.clone(),
+        live: None,
+        output: None,
+        schema_version: 4,
+        revision: "1".into(),
+        name: "process".into(),
+        categories: ProfileSaveCategories {
+            include_audio_config: true,
+            include_plugins: true,
+            include_noise_control: true,
+            include_builtin_fx: true,
+        },
+        embedded_auralyn_preset: current.preset.clone(),
+        level_intent: Some(bundle::LevelIntent {
+            input_gain: 1.,
+            output_gain: 1.,
+        }),
+        confirmation: None,
+        obs: None,
+    };
+    saved.embedded_auralyn_preset.audio_config = Some(ProfileAudioConfig {
+        host: "Wasapi".into(),
+        input_device: None,
+        output_device: Some("Monitor".into()),
+        sample_rate: 48000,
+        buffer_size: 512,
+        input_channels: vec![0, 1],
+        output_routing: Default::default(),
+        input_gain_db: 0.,
+        master_gain_db: 0.,
+    });
+    let device = |name: &str, id: &str| audio::AudioDevice {
+        name: name.into(),
+        host: "Wasapi".into(),
+        id: Some(id.into()),
+        is_input: false,
+        channels: 2,
+        index: 0,
+        is_default: false,
+        sample_rate_ranges: None,
+        buffer_size_range: None,
+    };
+    let mut devices = audio::AudioDeviceList {
+        inputs: vec![],
+        outputs: vec![
+            device("Raw", "wasapi:raw-id"),
+            device("Monitor", "wasapi:monitor-id"),
+        ],
+    };
+    validate_process_selection(&saved, &current, &devices).unwrap();
+    current.engine.global_mute = false;
+    assert!(validate_process_selection(&saved, &current, &devices).is_err());
+    current.engine.global_mute = true;
+    devices.outputs[0].id = Some("wasapi:another-raw-id".into());
+    assert!(validate_process_selection(&saved, &current, &devices).is_err());
+    devices.outputs[0].id = Some("wasapi:raw-id".into());
+    current.process.as_mut().unwrap().source.purpose = crate::input_source::Purpose::Music;
+    assert!(validate_process_selection(&saved, &current, &devices).is_err());
+    current.process = Some(process_config());
+    current.process_target = None;
+    assert!(validate_process_selection(&saved, &current, &devices).is_err());
+}
 #[test]
 fn live_preview_never_serializes_embedded_component_state() {
     let mut live = bundle::LiveConfiguration {
@@ -62,6 +168,7 @@ fn output_restore_requires_current_mute_and_exact_primary_and_secondary_ids() {
         ..Default::default()
     });
     let mut saved = BundleV1 {
+        process: None,
         live: None,
         output: Some(bundle::OutputConfiguration {
             version: 1,
@@ -130,6 +237,7 @@ fn saved_preview_rejects_same_revision_edits_and_different_operation() {
     let plan = Preview {
         id: "preview".into(),
         bundle: BundleV1 {
+            process: None,
             live: None,
             output: None,
             schema_version: 1,
@@ -196,6 +304,7 @@ fn runtime_restore_requires_explicit_start_and_current_mute() {
 fn runtime_restore_accepts_only_default_equivalent_omitted_fx_fields() {
     let mut before = captured();
     let mut target = BundleV1 {
+        process: None,
         live: None,
         output: None,
         schema_version: 1,
@@ -409,6 +518,8 @@ fn captured() -> Captured {
         },
     };
     Captured {
+        process: None,
+        process_target: None,
         live: None,
         live_revision: "absent".into(),
         output: None,
@@ -446,6 +557,7 @@ fn output_routing_roundtrip_preview_partial_and_undo_intent() {
     };
     before.preset.audio_config = Some(audio.clone());
     let mut target = BundleV1 {
+        process: None,
         live: None,
         output: None,
         schema_version: 1,
@@ -593,6 +705,7 @@ fn checked_save_requires_a_running_unmuted_settled_stream_and_the_exact_observed
 fn preview_and_result_expose_differences_without_opaque_state_or_default_buffer_claim() {
     let before = captured();
     let target = BundleV1 {
+        process: None,
         live: None,
         output: None,
         schema_version: 1,
@@ -696,6 +809,7 @@ fn selected_backup_does_not_include_untouched_categories_and_empty_rack_is_expli
     assert!(backup.builtin_fx.is_none());
     assert!(backup.audio_config.is_none());
     let target = BundleV1 {
+        process: None,
         live: None,
         output: None,
         schema_version: 1,

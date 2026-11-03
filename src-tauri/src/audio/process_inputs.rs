@@ -6,7 +6,7 @@ use crate::input_source::{Config, Request, Start, Target};
 pub(super) struct Inputs {
     serial: u64,
     candidates: std::collections::HashMap<String, (Config, Target)>,
-    selected: Option<Start>,
+    pub(super) selected: Option<Start>,
 }
 
 #[derive(Serialize)]
