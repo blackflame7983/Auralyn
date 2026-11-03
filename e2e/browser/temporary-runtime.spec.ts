@@ -29,8 +29,10 @@ test('未保存設定の退避範囲を確認し、開始失敗後も同じ画�
     await panel.getByRole('checkbox', { name: '対応する未保存設定を退避してから開始する' }).check();
     await expect(acknowledgement).not.toBeChecked();
     await expect(start).toBeDisabled();
+    await expect(panel.getByText('現在の音声設定を退避します。通常設定へ戻した後、復旧画面から手動で戻します。')).toBeVisible();
+    await panel.getByText('対象範囲', { exact: true }).click();
     await expect(panel).toContainText('分離出力・歌／雑談モード・関連VSTも退避');
-    await expect(panel).toContainText('プロセス入力は標準の単独出力');
+    await expect(panel).toContainText('アプリ入力は1つの返し先で');
     await expect(panel).toContainText('自動復帰しません');
     await acknowledgement.check();
     const audioBefore = await page.evaluate(() => localStorage.getItem('vst_host_audio_config'));

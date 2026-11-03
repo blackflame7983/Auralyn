@@ -5,7 +5,7 @@ use crate::vst_host::presets::PresetPlugin;
 use std::path::{Path, PathBuf};
 
 type Saved = crate::bundle::mixing_configuration::PostMixPreset;
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SavedPlugin {
     path: String,
@@ -42,7 +42,37 @@ pub(crate) struct Snapshot {
     error: Option<String>,
     transport_latency_frames: u32,
     declared_plugin_latency_frames: Option<u32>,
+    attached: Option<bool>,
+    ready: Option<bool>,
+    failed: Option<bool>,
+    processed_packets: Option<u64>,
+    sample_rate: Option<u32>,
 }
+impl Snapshot {
+    fn apply_status(&mut self, response: IpcResponse) {
+        if let IpcResponse::PostMixStatus {
+            attached,
+            ready,
+            failed,
+            sample_rate,
+            transport_latency_frames,
+            declared_plugin_latency_frames,
+            processed_packets,
+        } = response
+        {
+            self.attached = Some(attached);
+            self.ready = Some(ready);
+            self.failed = Some(failed);
+            self.sample_rate = sample_rate;
+            self.processed_packets = processed_packets;
+            self.transport_latency_frames = transport_latency_frames;
+            if ready && !failed {
+                self.declared_plugin_latency_frames = declared_plugin_latency_frames;
+            }
+        }
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(
     tag = "action",
@@ -688,6 +718,11 @@ impl State {
                 .or_else(|| self.unchanged().err().map(|e| e.to_string())),
             transport_latency_frames: crate::audio_engine::post_mix::TRANSPORT_LATENCY_FRAMES,
             declared_plugin_latency_frames: None,
+            attached: None,
+            ready: None,
+            failed: None,
+            processed_packets: None,
+            sample_rate: None,
         })
     }
 }
@@ -911,15 +946,7 @@ impl AudioHost {
         }
         let mut snapshot = state.snapshot()?;
         if self.reader_active.load(Ordering::Acquire) && self.post_mix.enabled() {
-            if let IpcResponse::PostMixStatus {
-                ready: true,
-                failed: false,
-                declared_plugin_latency_frames,
-                ..
-            } = self.execute_running_command(IpcCommand::PostMixStatus)?
-            {
-                snapshot.declared_plugin_latency_frames = declared_plugin_latency_frames;
-            }
+            snapshot.apply_status(self.execute_running_command(IpcCommand::PostMixStatus)?);
         }
         Ok(snapshot)
     }
@@ -945,6 +972,29 @@ mod tests {
     use super::*;
     fn temporary() -> PathBuf {
         std::env::temp_dir().join(format!("auralyn-post-mix-{}", crate::bundle::revision()))
+    }
+    #[test]
+    fn status_transfer_preserves_actual_rate_and_failure() {
+        let mut host = AudioHost::new(temporary());
+        let mut snapshot = host.post_mix(Request::Snapshot).unwrap();
+        assert!(snapshot.attached.is_none());
+        snapshot.apply_status(IpcResponse::PostMixStatus {
+            attached: true,
+            ready: false,
+            failed: true,
+            sample_rate: Some(44100),
+            transport_latency_frames: 256,
+            declared_plugin_latency_frames: Some(42),
+            processed_packets: Some(9),
+        });
+        let json = serde_json::to_value(snapshot).unwrap();
+        assert_eq!(json["attached"], true);
+        assert_eq!(json["ready"], false);
+        assert_eq!(json["failed"], true);
+        assert_eq!(json["sampleRate"], 44100);
+        assert_eq!(json["processedPackets"], 9);
+        assert_eq!(json["transportLatencyFrames"], 256);
+        assert!(json["declaredPluginLatencyFrames"].is_null());
     }
     #[test]
     fn cold_saved_state_does_not_spawn_or_expose_vst_state() {

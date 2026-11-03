@@ -28,7 +28,7 @@ const markWizardDone = () => {
 };
 
 interface UIState {
-    settingsSection?: 'liveModes' | 'singing' | 'audioTuning';
+    settingsSection?: 'liveModes' | 'singing' | 'audioTuning' | 'mixing';
     settingsTab?: 'audio' | 'obs' | 'sound';
     settingsNeedsRetry?: boolean;
     isSettingsOpen: boolean;

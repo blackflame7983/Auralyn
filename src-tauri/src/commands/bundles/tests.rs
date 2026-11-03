@@ -925,17 +925,29 @@ fn mixing_revision_selection_and_opaque_diff_are_checked() {
     }
     assert!(validate_mixing_selection(&target, &before).is_err());
     target.mixing.as_mut().unwrap().post_mix.plugins[0].state = Some("new-private-state".into());
-    let rows = preview_diff(&before, &target);
-    let encoded = serde_json::to_string(&rows).unwrap();
-    assert!(!encoded.contains("private-state"));
-    assert!(!encoded.contains("private-device-id"));
-    assert_eq!(
-        rows.iter()
-            .find(|row| row.label == "ミックス後VST状態")
-            .unwrap()
-            .status,
-        "changed"
+    let devices = audio::AudioDeviceList {
+        inputs: vec![],
+        outputs: vec![],
+    };
+    let preview = mixing_preview(
+        before.mixing.as_ref().unwrap(),
+        target.mixing.as_ref().unwrap(),
+        &devices,
+        vec![],
     );
+    let value = serde_json::to_value(preview).unwrap();
+    assert!(!value.to_string().contains("private-state"));
+    assert_eq!(value["pluginStateChanged"], true);
+    assert_eq!(
+        value["before"]["input"]["source"]["config"]["inputId"],
+        "private-device-id"
+    );
+    assert_eq!(
+        value["after"]["input"]["source"]["config"]["inputId"],
+        "other"
+    );
+    assert_eq!(value["before"]["postMix"]["plugins"][0]["name"], "first");
+    assert_eq!(value["after"]["postMix"]["plugins"][1]["name"], "second");
     target.mixing = None;
     assert!(validate_mixing_selection(&target, &before).is_err());
 }
@@ -1103,4 +1115,50 @@ fn prepared_voice_does_not_restart_for_mismatched_route_or_device() {
         &devices,
         initial
     ));
+}
+
+#[test]
+fn mixing_preview_exposes_fields_without_plugin_state_and_detects_missing_input() {
+    let current = empty_mixing();
+    let mut target = empty_mixing();
+    target.input = Some(serde_json::from_value(serde_json::json!({
+        "version": 1, "source": { "kind": "device", "config": { "host": "WASAPI", "inputId": "wasapi:missing", "inputChannels": [0, 1] } },
+        "levels": { "voice": { "gain": 0.5, "muted": true }, "accompaniment": { "gain": 1.0, "muted": false }, "monitorAccompaniment": false, "offsetMs": -12 }
+    })).unwrap());
+    target
+        .post_mix
+        .plugins
+        .push(crate::vst_host::presets::PresetPlugin {
+            path: "missing.vst3".into(),
+            name: "plugin".into(),
+            vendor: "vendor".into(),
+            version: "1".into(),
+            enabled: true,
+            muted: false,
+            gain: 0.8,
+            state: Some("private-state".into()),
+        });
+    let devices = audio::AudioDeviceList {
+        inputs: vec![],
+        outputs: vec![],
+    };
+    let json = serde_json::to_value(mixing_preview(
+        &current,
+        &target,
+        &devices,
+        vec!["plugin".into()],
+    ))
+    .unwrap();
+    assert_eq!(json["after"]["input"]["levels"]["voice"]["gain"], 0.5);
+    assert_eq!(json["after"]["input"]["levels"]["voice"]["muted"], true);
+    assert_eq!(
+        json["after"]["input"]["levels"]["monitorAccompaniment"],
+        false
+    );
+    assert_eq!(json["after"]["input"]["levels"]["offsetMs"], -12);
+    assert_eq!(json["missingDevices"][0], "wasapi:missing");
+    assert_eq!(json["missingPlugins"][0], "plugin");
+    assert_eq!(json["pluginStateChanged"], true);
+    assert_eq!(json["after"]["postMix"]["plugins"][0]["name"], "plugin");
+    assert!(!json.to_string().contains("private-state"));
 }

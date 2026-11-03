@@ -35,10 +35,7 @@ it.each([true, false])('プロセス入力を明示保存し、現在の選択�
     vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, process: { before: null, after: { version: 1, source: { appKey: 'a'.repeat(64), appName: 'player.exe', rawEndpointId: 'raw-id', purpose: 'music' }, outputId: 'wasapi:monitor' }, selectionMatches: matches, missingDevices: [], missingPlugins: [] } });
     render(<BroadcastBundlePanel onOperation={vi.fn()} />);
     await screen.findByRole('option', { name: '歌枠' });
-    fireEvent.click(screen.getByRole('checkbox', { name: message('ja', 'bundle.process.include') }));
-    expect(screen.getByRole('checkbox', { name: '入出力・音量' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: message('ja', 'bundle.live.include') })).toBeDisabled();
-    expect(screen.getByRole('checkbox', { name: message('ja', 'bundle.output.include') })).toBeDisabled();
+    fireEvent.click(screen.getByRole('radio', { name: new RegExp(message('ja', 'bundle.scope.process')) }));
     fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), { target: { value: 'process' } });
     fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
     await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('process', { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }, null, false, undefined, false, false, true));
@@ -50,10 +47,7 @@ it('本番モードの保存では全カテゴリと出力を固定し、選択�
     vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, live: { before: null, after: { definitions: { schemaVersion: 1, version: '2', singing: null, talk: null, profiles: { singing: { name: '歌VST', revision: 'a'.repeat(64) } } }, target: 'singing', monitor: null, singingPlugins: 1, talkPlugins: null } } });
     render(<BroadcastBundlePanel />);
     await screen.findByRole('option', { name: '歌枠' });
-    fireEvent.click(screen.getByRole('checkbox', { name: message('ja', 'bundle.live.include') }));
-    expect(screen.getByRole('checkbox', { name: message('ja', 'bundle.output.include') })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: message('ja', 'bundle.output.include') })).toBeDisabled();
-    expect(screen.getByRole('checkbox', { name: '入出力・音量' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('radio', { name: new RegExp(message('ja', 'bundle.scope.live')) }));
     fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), { target: { value: 'modes' } });
     fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
     await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('modes', { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }, null, false, undefined, true, true));
@@ -74,9 +68,7 @@ it('分離出力を含めると全カテゴリを固定し、差分には再起�
     vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, output: { before: { deviceId: null, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, after: { deviceId: 'broadcast-id', monitorTrim: 0, broadcastTrim: 0.5, monitorMuted: true, splitProcessing: false }, restartRequired: true } });
     render(<BroadcastBundlePanel />);
     await screen.findByRole('option', { name: '歌枠' });
-    fireEvent.click(screen.getByRole('checkbox', { name: message('ja', 'bundle.output.include') }));
-    expect(screen.getByRole('checkbox', { name: '入出力・音量' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: '入出力・音量' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('radio', { name: new RegExp(message('ja', 'bundle.scope.output')) }));
     fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), { target: { value: 'output' } });
     fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
     await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('output', { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }, null, false, undefined, true));
@@ -338,10 +330,7 @@ it('読めない原本も明示確認するまでは解除しない', async () =
 it('ミックス保存は出力・本番モードと全カテゴリを含める', async () => {
     render(<BroadcastBundlePanel />);
     await screen.findByRole('option', { name: '歌枠' });
-    fireEvent.click(screen.getByRole('checkbox', { name: message('ja', 'bundle.mixing.include') }));
-    expect(screen.getByRole('checkbox', { name: message('ja', 'bundle.live.include') })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: message('ja', 'bundle.output.include') })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: '入出力・音量' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('radio', { name: new RegExp(message('ja', 'bundle.scope.mixing')) }));
     fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), { target: { value: 'mix' } });
     fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
     await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('mix', { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }, null, false, undefined, true, true, false, true));

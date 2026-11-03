@@ -28,7 +28,7 @@ it.each([false, true])('詳細・かんたん表示で操作名と有効状態�
     render(<PluginCard simpleMode={simpleMode}
         plugin={{ id: '1', name: 'OTT', path: 'ott', vendor: '', version: '', enabled: true, hasEditor: false, muted: true, gain: 1 }}
         onToggle={onToggle} onMute={onMute} onGainChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} />);
-    expect(screen.getByRole('slider', { name: 'OTTのゲイン' })).toHaveAttribute('aria-valuetext', '0.0 dB');
+    expect(screen.getByRole('slider', { name: 'OTTのゲイン' })).toHaveAttribute('aria-valuetext', '100%');
     const toggle = screen.getByRole('switch', { name: 'OTTを有効にする' });
     expect(toggle).toBeChecked();
     fireEvent.click(toggle);

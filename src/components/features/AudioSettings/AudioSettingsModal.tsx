@@ -5,6 +5,7 @@ import { SoundSettings, useSoundSettings } from './SoundSettings';
 import { SystemSettings, useSystemSettings } from './SystemSettings';
 import { LiveOutputPanel } from './LiveOutputPanel';
 import { MixingPanel } from './MixingPanel';
+import { PostMixPanel } from './PostMixPanel';
 import { MonitorTrial } from './MonitorTrial';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { LanguageSelector } from '@/i18n/LanguageSelector';
@@ -43,7 +44,7 @@ interface AudioSettingsModalProps {
   onPreviewSinging?: () => void;
   onSaveSingingProfile?: () => void;
   initialTab?: 'audio' | 'obs' | 'sound';
-  initialSection?: 'liveModes' | 'singing' | 'audioTuning';
+  initialSection?: 'liveModes' | 'singing' | 'audioTuning' | 'mixing';
   isAudioRunning?: boolean;
   allowConnectionRetry?: boolean;
   currentConfig?: AudioPreferences;
@@ -127,8 +128,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       bufferSize: currentBufferSize ?? saved.bufferSize } : null;
   }, [isOpen, currentConfig, currentSampleRate, currentBufferSize]);
   const changedFields = !savedConnection ? [t('settings.connection.new')] : [
-    JSON.stringify(inputSource.source) !== JSON.stringify(savedConnection.inputSource ?? deviceInput()) && '入力元・用途',
-    processInput && inputSource.candidateId && 'アプリの選択',
+    JSON.stringify(inputSource.source) !== JSON.stringify(savedConnection.inputSource ?? deviceInput()) && t('processInput.changed'),
+    processInput && inputSource.candidateId && t('processInput.appChanged'),
     selectedHost.toLowerCase() !== savedConnection.host.toLowerCase() && t('settings.AudioSettingsModal.032'),
     !processInput && (selectedInput !== (savedConnection.input ?? '') || (savedConnection.inputId && selectedInputDevice?.id !== savedConnection.inputId)) && t('settings.AudioSettingsModal.038'),
     ((isAsio ? selectedInput : selectedOutput) !== (savedConnection.output ?? '') || (savedConnection.outputId && selectedOutputDevice?.id !== savedConnection.outputId)) && t('settings.AudioSettingsModal.041'),
@@ -176,12 +177,20 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   }, []);
 
   const settingsBody = useRef<HTMLDivElement>(null);
+  const [loadOutput, setLoadOutput] = useState(false);
+  const outputFocusPending = useRef(false);
+  useEffect(() => {
+    if (!loading && outputFocusPending.current) {
+      const control = settingsBody.current?.querySelector<HTMLElement>('#live-output-settings select');
+      if (control) { outputFocusPending.current = false; control.scrollIntoView?.({ block: 'center' }); control.focus(); }
+    }
+  }, [loading, loadOutput]);
   const soundStart = useRef<HTMLHeadingElement>(null);
   useEffect(() => { settingsBody.current?.scrollTo?.({ top: 0 }); }, [activeTab]);
   useEffect(() => {
-    if (isOpen && initialTab === 'sound') {
+    if (isOpen && (initialTab === 'sound' || initialSection === 'mixing')) {
       const frame = requestAnimationFrame(() => {
-        const target = initialSection ? settingsBody.current?.querySelector<HTMLDetailsElement>(initialSection === 'liveModes' ? '#live-mode-settings' : '#singing-settings') : soundStart.current;
+        const target = initialSection ? settingsBody.current?.querySelector<HTMLDetailsElement>(initialSection === 'mixing' ? '#mixing-settings' : initialSection === 'liveModes' ? '#live-mode-settings' : '#singing-settings') : soundStart.current;
         if (target instanceof HTMLDetailsElement) target.open = true;
         target?.scrollIntoView?.({ block: 'start' });
         if (initialSection) target?.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
@@ -227,7 +236,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     setConfirmDialog({ ...opts, isOpen: true });
   };
 
-  const sound = useSoundSettings(engineStats, singingModel, initialSection);
+  const sound = useSoundSettings(engineStats, singingModel, initialSection === 'mixing' ? undefined : initialSection);
   const system = useSystemSettings({ isOpen, currentSampleRate, currentBufferSize, isBeginnerMode, showConfirm });
 
   const sampleRates = sampleRateOptions(selectedInputDevice, selectedOutputDevice, isAsio, selectedSampleRate, currentSampleRate);
@@ -331,7 +340,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     const p = presets[name];
     if (p) {
       const source = p.inputSource === undefined ? deviceInput() : readInputSource(p.inputSource);
-      if (!source) { setError('このプリセットの入力形式に対応していません。音声設定で選び直してください。'); return; }
+      if (!source) { setError(t('processInput.presetUnsupported')); return; }
       setInputSource({ source });
       setNeedsDeviceChoice(!p.inputId && !p.input && source.kind === 'device');
       setPresetName(name);
@@ -451,10 +460,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <p className="text-xs text-muted-foreground">{t(isAsio ? 'settings.connection.asioHint' : 'settings.connection.wasapiHint')}</p>
                 </div>
 
-                <ProcessInputPanel value={inputSource} onChange={next => {
+                <div id="primary-input-settings" tabIndex={-1}><ProcessInputPanel value={inputSource} onChange={next => {
                   if (processInput && next.source.kind === 'device') setNeedsDeviceChoice(true);
                   setInputSource(next);
-                }} disabled={isApplying} isAsio={isAsio} status={engineStats?.processInput} />
+                }} disabled={isApplying} isAsio={isAsio} status={engineStats?.processInput} /></div>
                 {/* Input Device */}
                 {!processInput && <div className="space-y-2">
                   <label className="text-sm font-medium text-muted-foreground">
@@ -509,7 +518,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </div>
                 )}
 
-                {processInput && <p className="text-xs text-muted-foreground">加工後の音を返す出力先です。原音の再生先とは別の機器を選んでください。</p>}
+                {processInput && <p className="text-xs text-muted-foreground">{t('processInput.outputHelp')}</p>}
                 {isAsio && (
                   <div className="text-xs text-muted-foreground mt-2 p-2 bg-muted rounded border border-border">
                     <p>{t('settings.AudioSettingsModal.044')}</p>
@@ -754,11 +763,22 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
               </div>
             )}
-            <details className="rounded border border-border p-3 space-y-3">
+            <details id="live-output-settings" onToggle={e => { if (e.currentTarget.open) setLoadOutput(true); }} className="rounded-xl border border-border p-4 space-y-3">
+              <summary className="cursor-pointer font-semibold">{t('liveOutput.title')}</summary>
+              <LiveOutputPanel autoLoad={loadOutput} outputs={devices.outputs} disabled={loading} onBusyChange={setLoading} />
+            </details>
+            <section aria-label={t('mixingHome.open')} className="space-y-3">
+              <h3 className="font-semibold">{t('mixingHome.open')}</h3>
+              <MixingPanel inputs={devices.inputs} primaryInputId={selectedInputDevice?.id} primaryIsVoiceDevice={inputSource.source.kind === 'device' && inputSource.source.config.purpose === 'voice'} disabled={loading} initiallyOpen={initialSection === 'mixing'} onNavigate={target => {
+                const el = settingsBody.current?.querySelector<HTMLElement>(target === 'output' ? '#live-output-settings' : '#primary-input-settings');
+                if (el instanceof HTMLDetailsElement) { el.open = true; outputFocusPending.current = true; setLoadOutput(true); }
+                el?.scrollIntoView({ block: 'start' }); (el?.querySelector<HTMLElement>('summary, select') ?? el)?.focus({ preventScroll: true });
+              }} />
+              <PostMixPanel mainRunning={engineStats?.latencyMetadata?.streamRunning === true} disabled={loading} />
+            </section>
+            <details className="rounded-xl border border-border p-4 space-y-3">
               <summary className="cursor-pointer font-semibold">{t('structure.monitor')}</summary>
-            <LiveOutputPanel outputs={devices.outputs} disabled={loading} onBusyChange={setLoading} />
-            <MixingPanel inputs={devices.inputs} primaryInputId={selectedInputDevice?.id} primaryIsVoiceDevice={inputSource.source.kind === 'device' && inputSource.source.config.purpose === 'voice'} disabled={loading} onBusyChange={setLoading} />
-            <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await system.refreshEngineRuntimeStats(); }} />
+              <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await system.refreshEngineRuntimeStats(); }} />
             </details>
             {!error && <MicrophonePermissionGuide />}
           </TabsContent>

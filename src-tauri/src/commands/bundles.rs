@@ -98,6 +98,7 @@ struct Captured {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreviewView {
+    pub mixing: Option<MixingPreview>,
     pub process: Option<ProcessPreview>,
     pub live: Option<LivePreview>,
     pub output: Option<OutputPreview>,
@@ -109,6 +110,80 @@ pub(crate) struct PreviewView {
     pub running: bool,
     pub auralyn: Vec<DiffRow>,
     pub confirmation: Option<bundle::Confirmation>,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MixingPreview {
+    before: MixingSummary,
+    after: MixingSummary,
+    missing_devices: Vec<String>,
+    missing_plugins: Vec<String>,
+    plugin_state_changed: bool,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MixingSummary {
+    input: Option<crate::audio_engine::mixing::Config>,
+    post_mix: MixingPostSummary,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MixingPostSummary {
+    enabled: bool,
+    plugins: Vec<crate::audio::post_mix::SavedPlugin>,
+}
+impl From<&bundle::MixingConfiguration> for MixingSummary {
+    fn from(value: &bundle::MixingConfiguration) -> Self {
+        Self {
+            input: value.input.clone(),
+            post_mix: MixingPostSummary {
+                enabled: value.post_mix.enabled,
+                plugins: value.post_mix.plugins.iter().map(Into::into).collect(),
+            },
+        }
+    }
+}
+fn mixing_preview(
+    current: &bundle::MixingConfiguration,
+    target: &bundle::MixingConfiguration,
+    devices: &audio::AudioDeviceList,
+    missing_plugins: Vec<String>,
+) -> MixingPreview {
+    use crate::audio_engine::mixing::Source;
+    let missing_devices = target
+        .input
+        .as_ref()
+        .map(|input| {
+            let (list, id) = match &input.source {
+                Source::Device(device) => (&devices.inputs, device.input_id.clone()),
+                Source::ProcessLoopback(process) => (
+                    &devices.outputs,
+                    format!("wasapi:{}", process.raw_endpoint_id),
+                ),
+            };
+            if list
+                .iter()
+                .filter(|d| d.host.eq_ignore_ascii_case("wasapi") && d.id.as_ref() == Some(&id))
+                .count()
+                == 1
+            {
+                vec![]
+            } else {
+                vec![id]
+            }
+        })
+        .unwrap_or_default();
+    MixingPreview {
+        before: current.into(),
+        after: target.into(),
+        missing_devices,
+        missing_plugins,
+        plugin_state_changed: current.post_mix.plugins.iter().map(|p| &p.state).ne(target
+            .post_mix
+            .plugins
+            .iter()
+            .map(|p| &p.state)),
+    }
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -994,86 +1069,6 @@ fn preview_diff(before: &Captured, bundle: &BundleV1) -> Vec<DiffRow> {
         ),
         String::new(),
     );
-    if let Some(target) = &bundle.mixing {
-        let current = before.mixing.clone().unwrap_or_else(empty_mixing);
-        let describe_input = |config: &bundle::MixingConfiguration| match &config.input {
-            None => "オケ無効".to_owned(),
-            Some(input) => {
-                let source = match &input.source {
-                    crate::audio_engine::mixing::Source::Device(_) => "機器入力",
-                    crate::audio_engine::mixing::Source::ProcessLoopback(_) => "アプリの音楽入力",
-                };
-                format!(
-                    "{} / 声 {:.2} / オケ {:.2} / 時間差 {} ms",
-                    source,
-                    input.levels.voice.gain,
-                    input.levels.accompaniment.gain,
-                    input.levels.offset_ms
-                )
-            }
-        };
-        let describe_rack = |config: &bundle::MixingConfiguration| {
-            let plugins = config
-                .post_mix
-                .plugins
-                .iter()
-                .map(|p| {
-                    format!(
-                        "{} ({} / {} / gain {:.2})",
-                        p.name,
-                        if p.enabled { "有効" } else { "無効" },
-                        if p.muted { "ミュート" } else { "送出" },
-                        p.gain
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(" → ");
-            format!(
-                "{} / {}",
-                if config.post_mix.enabled {
-                    "有効"
-                } else {
-                    "無効"
-                },
-                plugins
-            )
-        };
-        for (label, old, new, changed) in [
-            (
-                "オケ入力・音量",
-                describe_input(&current),
-                describe_input(target),
-                current.input != target.input,
-            ),
-            (
-                "ミックス後VST",
-                describe_rack(&current),
-                describe_rack(target),
-                current.post_mix != target.post_mix,
-            ),
-            (
-                "ミックス後VST状態",
-                "値は表示しません".into(),
-                "値は表示しません".into(),
-                current.post_mix.plugins.iter().map(|p| &p.state).ne(target
-                    .post_mix
-                    .plugins
-                    .iter()
-                    .map(|p| &p.state)),
-            ),
-        ] {
-            rows.push(DiffRow {
-                label: label.into(),
-                status: if changed { "changed" } else { "same" }.into(),
-                before: old,
-                after: new,
-                field_code: None,
-                label_text: None,
-                before_text: None,
-                after_text: None,
-            });
-        }
-    }
     rows
 }
 fn noise_description(value: &ProfileNoiseControl) -> String {
@@ -2146,6 +2141,17 @@ pub(crate) async fn broadcast_bundle(
             } else {
                 None
             };
+            let mixing_preview = if let Some(mixing) = &bundle.mixing {
+                let devices = super::audio::enumerate_devices_async(host.clone(), true).await?;
+                Some(mixing_preview(
+                    &before.mixing.clone().unwrap_or_else(empty_mixing),
+                    mixing,
+                    &devices,
+                    missing_output_plugins(&bundle)?,
+                ))
+            } else {
+                None
+            };
             let obs_plan = if let Some(saved) = &bundle.obs {
                 Some(obs_setup::bundle::preview(&obs, saved).await?)
             } else {
@@ -2153,6 +2159,7 @@ pub(crate) async fn broadcast_bundle(
             };
             witness.validate()?;
             let view = PreviewView {
+                mixing: mixing_preview,
                 process: process_preview,
                 live: bundle.live.as_ref().map(|live| LivePreview {
                     before: before.live.as_ref().map(Into::into),

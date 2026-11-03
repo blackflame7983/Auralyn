@@ -19,8 +19,8 @@ export function OutputConfigurationDiff({ output }: { output: NonNullable<Bundle
     const rows: [MessageKey, (value: LiveOutputConfig) => string][] = [
         ['bundle.output.device', value => value.deviceId ?? t('bundle.output.none')],
         ['bundle.output.split', value => on(value.splitProcessing)],
-        ['bundle.output.monitorTrim', value => String(value.monitorTrim)],
-        ['bundle.output.broadcastTrim', value => String(value.broadcastTrim)],
+        ['bundle.output.monitorTrim', value => `${Math.round(value.monitorTrim * 100)}%`],
+        ['bundle.output.broadcastTrim', value => `${Math.round(value.broadcastTrim * 100)}%`],
         ['bundle.output.monitorMute', value => on(value.monitorMuted)],
         ['bundle.output.singing', value => branch(value.monitorSinging)],
         ['bundle.output.talk', value => branch(value.monitorTalk)],

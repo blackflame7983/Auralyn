@@ -7,7 +7,7 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
-export function LiveOutputPanel({ outputs, onBusyChange, disabled = false }: { disabled?: boolean; outputs: AudioDevice[]; onBusyChange?: (busy: boolean) => void }) {
+export function LiveOutputPanel({ outputs, onBusyChange, disabled = false, autoLoad = false }: { autoLoad?: boolean; disabled?: boolean; outputs: AudioDevice[]; onBusyChange?: (busy: boolean) => void }) {
     const t = useMessages();
     const sequence = useRef(0);
     const busyNow = useRef(false);
@@ -45,11 +45,12 @@ export function LiveOutputPanel({ outputs, onBusyChange, disabled = false }: { d
         }, 1000);
         return () => { active = false; clearInterval(timer); };
     }, [Boolean(status)]);
+    useEffect(() => { if (autoLoad) void request(); return () => { sequence.current++; }; }, [autoLoad]);
     async function request(save = false) {
-        sequence.current++;
+        const ticket = ++sequence.current;
         setBusy(true); setError(false);
-        try { const received = await liveOutputApi.request(save ? draft : null); if (save && status) setPrevious(status.config); focusAfterSave.current = save; setStatus(received); setDraft(received.config); setConfirmed(false); }
-        catch { focusAfterSave.current = false; setError(true); } finally { setBusy(false); }
+        try { const received = await liveOutputApi.request(save ? draft : null); if (ticket !== sequence.current) return; if (save && status) setPrevious(status.config); focusAfterSave.current = save; setStatus(received); setDraft(received.config); setConfirmed(false); }
+        catch { if (ticket === sequence.current) { focusAfterSave.current = false; setError(true); } } finally { if (ticket === sequence.current) setBusy(false); }
     }
     return <section className="space-y-3 border border-border rounded p-3" aria-label={t('liveOutput.title')}>
         <h3 className="font-semibold">{t('liveOutput.title')}</h3>

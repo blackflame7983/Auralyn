@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { useMessages } from '@/i18n/LocaleProvider';
+import { Button } from '@/components/ui/button';
+import { MixingError } from './mixingUi';
 import { audioApi } from '@/api/audio';
 import { type InputSourceRequest, type ProcessInputCandidate } from '@/lib/inputSource';
 
@@ -6,6 +9,7 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status }:
     value: InputSourceRequest; onChange: (value: InputSourceRequest) => void; disabled: boolean; isAsio: boolean;
     status?: { failed: boolean; waitingForAudio: boolean };
 }) {
+    const t = useMessages();
     const [apps, setApps] = useState<ProcessInputCandidate[]>([]);
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
@@ -42,53 +46,53 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status }:
     };
     const field = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm';
     return <fieldset disabled={disabled} className="space-y-3 rounded-xl border border-border p-3">
-        <legend className="px-1 text-sm font-medium">入力元と用途</legend>
-        <label className="block text-sm">入力元
+        <legend className="px-1 text-sm font-medium">{t('processInput.title')}</legend>
+        <label className="block text-sm">{t('processInput.source')}
             <select className={field} value={process ? 'process' : 'device'} onChange={e => {
                 if (e.target.value === 'device') onChange({ source: { kind: 'device', config: { purpose: value.source.config.purpose } } });
                 else { onChange({ source: { kind: 'process_loopback', config: { appKey: '', appName: '', rawEndpointId: '', purpose: value.source.config.purpose } } }); void refresh(); }
             }}>
-                <option value="device">マイク・仮想ケーブル</option>
-                <option value="process" disabled={isAsio}>アプリの音声（WASAPI）</option>
+                <option value="device">{t('processInput.device')}</option>
+                <option value="process" disabled={isAsio}>{t('processInput.process')}</option>
             </select>
         </label>
         {process && <>
-            {status && <p role="status" className="text-sm">{status.failed ? 'アプリ音声の取得が停止しています。入力を選び直してください。' : status.waitingForAudio ? 'アプリの音声を待っています。' : 'アプリ音声を取得しています。'}</p>}
-            <p className="text-xs text-muted-foreground">再生アプリを別の出力先へ送り、その出力先をWindowsでミュートしてください。アプリ自体をミュートすると取得音も消えます。別の出力先を用意できない場合は仮想ケーブルを使ってください。</p>
-            {isAsio && <p role="alert" className="text-sm text-destructive">アプリ入力を使うにはWASAPIを選んでください。</p>}
-            <label className="block text-sm">再生中のアプリ
+            {status && <p role="status" className="text-sm">{t(status.failed ? 'processInput.failed' : status.waitingForAudio ? 'processInput.waiting' : 'processInput.capturing')}</p>}
+            <p className="text-xs text-muted-foreground">{t('processInput.routeHelp')}</p>
+            {isAsio && <p role="alert" className="text-sm text-destructive">{t('processInput.asio')}</p>}
+            <label className="block text-sm">{t('processInput.app')}
                 <select className={field} value={selected?.id ?? ''} onChange={e => selectApp(e.target.value)}>
-                    <option value="">{processConfig?.appName ? `${processConfig?.appName} を選び直す` : 'アプリを選択'}</option>
-                    {apps.map((app, i) => <option key={app.id} value={app.id}>{app.name}{apps.filter(a => a.name === app.name).length > 1 ? `（候補 ${i + 1}）` : ''}</option>)}
+                    <option value="">{processConfig?.appName ? t('processInput.reselect', { name: processConfig.appName }) : t('processInput.choose')}</option>
+                    {apps.map((app, i) => <option key={app.id} value={app.id}>{app.name}{apps.filter(a => a.name === app.name).length > 1 ? t('processInput.candidate', { number: i + 1 }) : ''}</option>)}
                 </select>
             </label>
-            <button type="button" disabled={busy} onClick={() => void refresh()} className="rounded-md border border-input px-3 py-2 text-sm">{busy ? '取得中…' : 'アプリ一覧を更新'}</button>
-            <p className="text-xs text-muted-foreground">音声を再生してから一覧を更新してください。選択したアプリとその子プロセスが対象です。Chromeのタブ単位では選べません。</p>
-            {selected && <label className="block text-sm">原音の出力先
+            <Button variant="outline" type="button" disabled={busy} onClick={() => void refresh()} className="rounded-md border border-input px-3 py-2 text-sm">{t(busy ? 'processInput.loading' : 'processInput.refresh')}</Button>
+            <p className="text-xs text-muted-foreground">{t('processInput.refreshHelp')}</p>
+            {selected && <label className="block text-sm">{t('processInput.raw')}
                 <select className={field} value={processConfig?.rawEndpointId} onChange={e => {
                     if (value.source.kind === 'process_loopback') onChange({ ...value, source: { ...value.source, config: { ...value.source.config, rawEndpointId: e.target.value } } });
                 }}>
-                    {!selected.routes.some(route => route.id === processConfig?.rawEndpointId) && <option value="">原音の出力先を選択</option>}
-                    {selected.routes.map(route => <option key={route.id} value={route.id}>{route.name}（{route.muted ? 'ミュート済み' : 'ミュートが必要'}）</option>)}
+                    {!selected.routes.some(route => route.id === processConfig?.rawEndpointId) && <option value="">{t('processInput.chooseRaw')}</option>}
+                    {selected.routes.map(route => <option key={route.id} value={route.id}>{route.name}（{t(route.muted ? 'processInput.muted' : 'processInput.muteNeeded')}）</option>)}
                 </select>
             </label>}
-            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+            <MixingError error={error ? { operation: 'processInput.refresh', raw: error } : null} />
         </>}
         <details className="text-xs text-muted-foreground">
-            <summary className="cursor-pointer">仮想ケーブルを使う場合の接続</summary>
-            <p className="mt-2">「マイク・仮想ケーブル」を選び、再生アプリの出力をケーブルの再生側へ、Auralynの入力をケーブルの録音側へ設定します。VB-CABLEでは、それぞれCABLE InputとCABLE Outputです。未導入の場合は先に仮想ケーブルの準備が必要です。加工後の出力を同じ入力ケーブルへ戻すと音が循環するため、返し用の別機器を選んでください。</p>
+            <summary className="cursor-pointer">{t('processInput.cable')}</summary>
+            <p className="mt-2">{t('processInput.cableHelp')}</p>
         </details>
-        <label className="block text-sm">入力の用途
+        <label className="block text-sm">{t('processInput.purpose')}
             <select className={field} value={value.source.config.purpose} onChange={e => {
                 const purpose = e.target.value as 'voice' | 'music';
                 onChange({ ...value, source: value.source.kind === 'process_loopback'
                     ? { kind: 'process_loopback', config: { ...value.source.config, purpose } }
                     : { kind: 'device', config: { purpose } } });
             }}>
-                <option value="voice">声（ノイズ低減・ノイズ学習を使用）</option>
-                <option value="music">音楽（VSTを使用、声向けの処理は省略）</option>
+                <option value="voice">{t('processInput.voice')}</option>
+                <option value="music">{t('processInput.music')}</option>
             </select>
         </label>
-        <p className="text-xs text-muted-foreground">入力元や用途を変えるときは、音声を停止してから適用してください。原音との比較には同じ返し経路を使います。VSTのバイパスはVSTだけが対象で、声のノイズ低減は音作りの設定で切り替えます。</p>
+        {(process || value.source.config.purpose === 'music') && <p className="text-xs text-muted-foreground">{t('processInput.purposeHelp')}</p>}
     </fieldset>;
 }

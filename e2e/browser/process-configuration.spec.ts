@@ -25,8 +25,8 @@ for (const [matches, running] of [[true, true], [false, true], [true, false]]) t
     if (await rack.getAttribute('aria-expanded') !== 'true') await rack.click();
     await page.getByRole('button', { name: 'プロファイル管理', exact: true }).click();
     await page.getByRole('button', { name: 'OBS込みプロファイル', exact: true }).click();
-    await page.getByRole('checkbox', { name: 'プロセス入力の設定も保存する', exact: true }).check();
-    await expect(page.getByRole('checkbox', { name: '歌／雑談モードと関連VSTも保存する', exact: true })).toBeDisabled();
+    await page.getByRole('radio', { name: /アプリ入力/ }).check();
+    await expect(page.getByRole('radio', { name: /歌／雑談モードまで/ })).not.toBeChecked();
     await page.getByLabel('OBS込みプロファイル名', { exact: true }).fill('new-process');
     await page.getByRole('button', { name: '現在のOBS込みプロファイルを保存', exact: true }).click();
     await expect.poll(() => page.evaluate(() => (window as any).__processSaves.length)).toBe(1);

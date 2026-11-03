@@ -3,7 +3,7 @@ import { useState } from 'react';
 export const useUIState = () => {
     const [isSettingsOpen, setSettingsOpen] = useState(false);
     const [settingsTab, setSettingsTab] = useState<'audio' | 'obs' | 'sound'>('audio');
-    const [settingsSection, setSettingsSection] = useState<'liveModes' | 'singing' | 'audioTuning'>();
+    const [settingsSection, setSettingsSection] = useState<'liveModes' | 'singing' | 'audioTuning' | 'mixing'>();
     const [settingsNeedsRetry, setSettingsNeedsRetry] = useState(false);
     const setIsSettingsOpen = (open: boolean) => {
         setSettingsNeedsRetry(false);
@@ -23,6 +23,7 @@ export const useUIState = () => {
         setSettingsTab('audio');
         setSettingsOpen(true);
     };
+    const openMixingSettings = () => { setSettingsNeedsRetry(false); setSettingsSection('mixing'); setSettingsTab('audio'); setSettingsOpen(true); };
     const openSoundSettings = (section?: 'liveModes' | 'singing') => {
         setSettingsNeedsRetry(false);
         // イベントハンドラーとして渡された場合も、選択イベントを移動先へ持ち込まない。
@@ -65,6 +66,7 @@ export const useUIState = () => {
         openLiveModeSettings,
         openObsSettings,
         openAudioTuning,
+        openMixingSettings,
         openSoundSettings,
         isBrowserOpen,
         setIsBrowserOpen,

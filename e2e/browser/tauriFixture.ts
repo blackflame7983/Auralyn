@@ -43,6 +43,8 @@ export const test = base.extend<{ transport: void; stoppedHome: boolean; liveHom
             } });
             Object.assign(window, { __e2eModeWrites: modeWrites });
             const invoke = async (command: string, args: Record<string, any> = {}) => {
+                if (command === 'mixing' && args?.request?.action === 'snapshot') return { epoch: 'mix-empty', revision: '0', config: null, savedConfig: null, running: false, error: null, accompaniment: null, primaryClock: null, voicePeak: [0, 0], accompanimentPeak: [0, 0], mixPeak: [0, 0], knownVoiceProcessingFrames: null, pending: false, failed: false };
+                if (command === 'post_mix' && args?.request?.action === 'snapshot') return { epoch: 'post-empty', revision: '0', enabled: false, running: false, savedPlugins: [], plugins: [], restored: false, error: null, transportLatencyFrames: 0, declaredPluginLatencyFrames: null, attached: null, ready: null, failed: null, processedPackets: null, sampleRate: null };
                 if (liveHome && command === 'live_output') return { config: { deviceId: null, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, sink: null, error: null };
                 switch (command) {
                     case 'temporary_session_status': return { temporary: false, reviewOnly: false, directory: null };

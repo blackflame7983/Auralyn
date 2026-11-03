@@ -1,3 +1,4 @@
+import { MixingLiveControl } from '@/components/features/Home/MixingLiveControl';
 import { readPreparationContext } from '@/lib/preparation';
 import { useDisplayPurpose } from './hooks/useDisplayPurpose';
 import { InfoPopover } from '@/components/ui/InfoPopover';
@@ -183,7 +184,7 @@ function AppContent() {
         preparationBlocked={isModalOpen || isInitializing}
         currentInput={audioConfig.inputSource?.kind === 'process_loopback' ? audioConfig.inputSource.config.appName : audioConfig.input}
         currentOutput={audioConfig.output}
-        liveControls={displayPurpose === 'voice' ? <LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} /> : undefined}
+        liveControls={<div className="flex flex-wrap items-center gap-2">{displayPurpose === 'voice' && <LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} />}<MixingLiveControl running={audioReady} blocked={isModalOpen || isInitializing} onSettings={ui.openMixingSettings} /></div>}
         vstChain={<VstChainItems plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
         vstUnrestored={pluginsApi.sessionUnrestored}
         vstPanel={pluginRack}

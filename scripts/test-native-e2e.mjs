@@ -3,6 +3,8 @@ import { mkdtempSync, mkdirSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
+const mixingUi = process.argv.includes('--mixing-ui');
+if (process.argv.slice(2).some(arg => arg !== '--mixing-ui')) throw new Error('対応するオプションは --mixing-ui だけです');
 if (process.platform !== 'win32') throw new Error('実TauriのE2EはWindows 11 x64で実行してください');
 const root = mkdtempSync(join(tmpdir(), 'Auralyn-e2e-'));
 // debug設定とTAURI_CONFIGが異なる試験で、通常開発のCargo成果物を入れ替えない。
@@ -14,11 +16,11 @@ const config = {
     bundle: { externalBin: [] },
     app: {
         appDirectoriesOverride: { config: join(root, 'config'), data: join(root, 'data'), localData: join(root, 'webview'), cache: join(root, 'cache'), log: join(root, 'logs') },
-        security: { capabilities: ['default', { identifier: 'e2e-exit', windows: ['main'], permissions: ['process:allow-exit'] }] },
+        security: { capabilities: ['default', { identifier: 'e2e-exit', windows: ['main'], permissions: ['process:allow-exit', ...(mixingUi ? ['core:webview:allow-set-webview-zoom'] : [])] }] },
     },
 };
 const env = { ...process.env, CARGO_TARGET_DIR: target, CARGO_PROFILE_DEV_DEBUG: '0',
-    TAURI_CONFIG: JSON.stringify(config), AURALYN_E2E_ROOT: root };
+    TAURI_CONFIG: JSON.stringify(config), AURALYN_E2E_ROOT: root, AURALYN_MIXING_UI_ZOOM: mixingUi ? '1' : '' };
 function run(command, args, cwd) {
     const result = spawnSync(command, args, { cwd, env, stdio: 'inherit', windowsHide: true });
     if (result.error) throw result.error;
@@ -32,4 +34,4 @@ for (const name of ['AuralynHost', 'audio_engine', 'plugin_scanner']) {
 }
 env.AURALYN_E2E_BINARY = join(root, 'bin', 'AuralynHost.exe');
 console.log(`E2Eの隔離領域（失敗時の調査用に保持）: ${root}`);
-run(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', '--config', 'playwright.native.config.ts'], process.cwd());
+run(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', ...(mixingUi ? ['e2e/native/mixing-ui.spec.ts'] : []), '--config', 'playwright.native.config.ts'], process.cwd());

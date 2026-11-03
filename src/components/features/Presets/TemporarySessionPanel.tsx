@@ -1,3 +1,4 @@
+import { ScopeDisclosure } from '@/components/features/AudioSettings/mixingUi';
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionMode } from '@/lib/temporarySession';
@@ -15,7 +16,7 @@ export function TemporarySessionPanel() {
         <summary className="cursor-pointer font-medium">{t(mode.temporary ? 'temporary.active' : 'temporary.title')}</summary>
         <p className="text-sm">{t('temporary.scope')}</p>
         <p className="text-sm text-muted-foreground">{t('temporary.outside')}</p>
-        <p className="text-sm">{t(mode.temporary ? 'temporary.exitScope' : preserveRuntime ? 'temporary.checkpointScope' : 'temporary.startScope')}</p>
+        {!mode.temporary && preserveRuntime ? <ScopeDisclosure summary="temporary.checkpointSummary" detail="temporary.checkpointScope" /> : <p className="text-sm">{t(mode.temporary ? 'temporary.exitScope' : 'temporary.startScope')}</p>}
         {mode.directory && <p className="break-all text-xs">{t('temporary.directory', { path: mode.directory })}</p>}
         {!mode.temporary && <label className="flex gap-2 text-sm"><input type="checkbox" checked={preserveRuntime} disabled={busy}
             onChange={e => { setPreserveRuntime(e.target.checked); setAcknowledged(false); setFailed(false); }} />{t('temporary.preserveRuntime')}</label>}

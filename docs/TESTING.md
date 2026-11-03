@@ -535,3 +535,14 @@ runtime 1とruntime 2、原本schemaとの一致、機器IDの後編集、原本
 
 ブラウザテストは開始時に出力先を消すため、`playwright.config.ts`の`outputDir`を`test-results/browser-output`へ限定する。
 `test-results`直下や実Hostの試験環境を`--output`に指定しない。実Hostのログ・原本・バイナリはこの専用出力先の外に置く。
+
+
+## 配信ミックスのUI（Issue #234〜#254）
+
+[対応と確認記録](UI_MIXING_ACCEPTANCE_2026-11-03.md)を参照する。
+`e2e/browser/mixing.spec.ts` はオケを開かない配信VSTの入口、自動取得、音量・ミュートの連続操作、失敗時の実値表示、キーボード並べ替え、日英と150%を確認する。
+DOM試験は編集内容の保持、revisionの競合、遅い応答、入力ペア、保存範囲の要求互換、専用差分表、診断を扱う。
+
+`npm run test:e2e:native -- --mixing-ui` は保存先を分離した実HostでTDR Novaを使い、音声を開始せず追加・並べ替え・初期化と実WebView2の150%を確認する。
+ズーム権限はこの明示試験の隔離Hostだけに付ける。
+実スクリーンリーダーの発話、実機音声、稼働中のホーム状態は、自動試験の成功に含めない。

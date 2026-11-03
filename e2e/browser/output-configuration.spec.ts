@@ -28,8 +28,8 @@ for (const liveModes of [false, true]) test(`分離出力と本番モード=${li
     if (await rack.getAttribute('aria-expanded') !== 'true') await rack.click();
     await page.getByRole('button', { name: 'プロファイル管理', exact: true }).click();
     await page.getByRole('button', { name: 'OBS込みプロファイル', exact: true }).click();
-    await page.getByRole('checkbox', { name: '分離出力・枝別処理の設定も保存する', exact: true }).check();
-    if (liveModes) await page.getByRole('checkbox', { name: '歌／雑談モードと関連VSTも保存する', exact: true }).check();
+    await page.getByRole('radio', { name: /分離出力まで/ }).check();
+    if (liveModes) await page.getByRole('radio', { name: /歌／雑談モードまで/ }).check();
     await page.getByLabel('OBS込みプロファイル名', { exact: true }).fill('new-output');
     await page.getByRole('button', { name: '現在のOBS込みプロファイルを保存', exact: true }).click();
     await expect.poll(() => page.evaluate(() => (window as any).__outputSaves.length)).toBe(1);
@@ -42,8 +42,8 @@ for (const liveModes of [false, true]) test(`分離出力と本番モード=${li
     const diff = page.getByRole('region', { name: '分離出力の差分', exact: true });
     await expect(diff).toContainText('音声を再起動し、VSTを読み直します');
     await expect(diff).toContainText('wasapi:fixture-broadcast-output');
-    await expect(diff).toContainText('自分用のtrim');
-    await expect(diff).toContainText('配信用のtrim');
+    await expect(diff).toContainText('自分用の音量');
+    await expect(diff).toContainText('配信用の音量');
     await expect(diff).toContainText('90 Hz');
     if (liveModes) { const modeDiff = page.getByRole('region', { name: '歌／雑談モードの差分', exact: true }); await expect(modeDiff).toContainText('歌向けTDR Nova'); await expect(modeDiff).toContainText('VST 1件'); await expect(modeDiff).toContainText('全体ミュートを維持'); }
     const apply = page.getByRole('button', { name: 'この変更予定を適用する', exact: true });
