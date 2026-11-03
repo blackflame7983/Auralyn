@@ -771,8 +771,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <h3 className="font-semibold">{t('mixingHome.open')}</h3>
               <MixingPanel inputs={devices.inputs} primaryInputId={selectedInputDevice?.id} primaryIsVoiceDevice={inputSource.source.kind === 'device' && inputSource.source.config.purpose === 'voice'} disabled={loading} initiallyOpen={initialSection === 'mixing'} onNavigate={target => {
                 const el = settingsBody.current?.querySelector<HTMLElement>(target === 'output' ? '#live-output-settings' : '#primary-input-settings');
-                if (el instanceof HTMLDetailsElement) { el.open = true; outputFocusPending.current = true; setLoadOutput(true); }
-                el?.scrollIntoView({ block: 'start' }); (el?.querySelector<HTMLElement>('summary, select') ?? el)?.focus({ preventScroll: true });
+                // 読み込み済みなら出力先の選択へ直接移し、未取得の場合だけ取得後のフォーカス移動を予約する。
+                const select = target === 'output' && !loading && loadOutput ? el?.querySelector<HTMLElement>('select') : null;
+                if (el instanceof HTMLDetailsElement) { el.open = true; outputFocusPending.current = !loadOutput || loading; setLoadOutput(true); }
+                el?.scrollIntoView({ block: 'start' }); (select ?? el?.querySelector<HTMLElement>('summary, select') ?? el)?.focus({ preventScroll: true });
               }} />
               <PostMixPanel mainRunning={engineStats?.latencyMetadata?.streamRunning === true} disabled={loading} />
             </section>

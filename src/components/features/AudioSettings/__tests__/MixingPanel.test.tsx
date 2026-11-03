@@ -47,10 +47,13 @@ it('有効な1始まりの入力ペアだけを選び、機器変更時は先頭
 });
 it('経路が同じ再適用は確認を要求せず、経路変更は改めて確認する', async () => {
     const request = await setup(); const confirm = () => screen.getByRole('checkbox', { name: /配信先と原音/ });
+    // 開いた直後の適用中の経路は確認済みとして扱う。
+    expect(screen.queryByRole('checkbox', { name: /配信先と原音/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: '入力ペア' }), { target: { value: '2,3' } });
     fireEvent.click(confirm()); fireEvent.click(screen.getByRole('button', { name: '入力元を適用' }));
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
     expect(screen.getByRole('button', { name: '入力元を適用' })).toBeEnabled(); expect(screen.queryByRole('checkbox', { name: /配信先と原音/ })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: '入力ペア' }), { target: { value: '2,3' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '入力ペア' }), { target: { value: '0,1' } });
     expect(confirm()).not.toBeChecked(); expect(screen.getByRole('button', { name: '入力元を適用' })).toHaveAccessibleDescription(/経路の確認/);
 });
 it('停止中は停止要求を出さず、動作中は無効理由として伝える', async () => {

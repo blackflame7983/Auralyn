@@ -197,7 +197,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                         "bg-muted/40 text-muted-foreground"
                     )}
                     disabled={disabled || structureDisabled}
-                        aria-label={t('rack.card.reorder', { arg0: plugin.name })}
+                    aria-label={t('rack.card.reorder', { arg0: plugin.name })}
                     title={t('rack.card.reorderHint')}
                 >
                     <MdDragIndicator className="w-4 h-4 opacity-50 hover:opacity-100" />
@@ -210,7 +210,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                         <Switch
                             aria-label={t('rack.card.enable', { arg0: plugin.name })}
                             disabled={disabled}
-                                checked={plugin.enabled}
+                            checked={plugin.enabled}
                             onCheckedChange={(checked) => onToggle(plugin.id, checked)}
                             className="shrink-0"
                         />
@@ -232,7 +232,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                     className={cn("h-8 shrink-0 text-xs", plugin.muted && "bg-destructive/10 text-destructive-text border-destructive/50 hover:bg-destructive/20 hover:text-destructive-text dark:hover:text-destructive-text ")}
                                     aria-label={t('rack.card.muteAccessible', { arg0: plugin.name })}
                                     disabled={disabled}
-                                aria-pressed={plugin.muted}
+                                    aria-pressed={plugin.muted}
                                     onClick={() => onMute(plugin.id, !plugin.muted)}
                                 >
                                     {t('rack.card.mute')}
@@ -262,7 +262,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                     className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive-text transition-colors"
                                     aria-label={t('rack.card.removeAccessible', { arg0: plugin.name })}
                                     disabled={disabled || structureDisabled}
-                                        onClick={handleDelete}
+                                    onClick={handleDelete}
                                 >
                                     <MdClose className="w-5 h-5" />
                                 </Button>
@@ -282,7 +282,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                     <Slider
                                         aria-label={t('rack.card.gainAccessible', { arg0: plugin.name })}
                                         aria-valuetext={`${Math.round(plugin.gain * 100)}%`}
-                                    disabled={disabled}
+                                        disabled={disabled}
                                         defaultValue={[plugin.gain]}
                                         max={2}
                                         step={0.01}

@@ -40,13 +40,15 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     const confirmed = confirmedRoute === routeKey;
     const validLevels = validMixLevels(levels);
     const editable = !disabled && !busy;
-    const draftFrom = (config: MixConfig | null) => {
+    // 適用中の機器経路は確認済みとして扱い、同じ経路の再適用で確認を求めない。
+    const draftFrom = (config: MixConfig | null, active = false) => {
         const source = config?.source; setLevels(config?.levels ?? initialLevels());
         setKind(source?.kind === 'process_loopback' ? 'process' : 'device');
         setDevice(source?.kind === 'device' ? source.config.inputId : ''); setChannels(source?.kind === 'device' ? source.config.inputChannels : [0, 1]);
-        setCandidate(''); setRoute(''); setConfirmedRoute(''); dirty.current = false; initialized.current = true;
+        setCandidate(''); setRoute(''); dirty.current = false; initialized.current = true;
+        setConfirmedRoute(active && source?.kind === 'device' ? JSON.stringify([primaryInputId, 'device', [source.config.inputId, source.config.inputChannels]]) : '');
     };
-    async function read() { const next = await resource.run('mixingUi.read'); if (next && !dirty.current && !initialized.current) draftFrom(next.config ?? next.savedConfig); }
+    async function read() { const next = await resource.run('mixingUi.read'); if (next && !dirty.current && !initialized.current) draftFrom(next.config ?? next.savedConfig, !!next.config); }
     useEffect(() => { if (open && !attempted.current && !disabled) { attempted.current = true; void read(); } return () => { attempted.current = false; }; }, [open, disabled]);
     async function run(action: 'reload' | 'reset' | 'configure' | 'disable' | 'levels', value = levelsRef.current) {
         if (disabled || (action === 'reset' && (!resetConfirmed || snapshot?.running)) || ((action === 'levels' || action === 'configure') && !validMixLevels(value))) return null;
@@ -64,7 +66,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
             return mixingApi.request({ action: 'configure', ...expected, config, ...(config?.source.kind === 'process_loopback' ? { candidateId: candidate } : {}) });
         });
         if (next && !next.error) {
-            if (action === 'reload' || action === 'reset') draftFrom(next.config ?? next.savedConfig);
+            if (action === 'reload' || action === 'reset') draftFrom(next.config ?? next.savedConfig, !!next.config);
             if (action === 'reset') { setApps([]); setResetConfirmed(false); setResetSuccess(true); }
             window.dispatchEvent(new Event('mixing-settings-changed'));
         }

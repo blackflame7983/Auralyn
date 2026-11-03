@@ -6,6 +6,8 @@ export function MixingConfigurationDiff({ mixing }: { mixing: BundleMixingPrevie
     const t = useMessages();
     const on = (v: boolean | undefined) => v ? 'ON' : 'OFF';
     const volume = (v: number | undefined) => v == null ? t('mixing.none') : `${Math.round(v * 100)}%`;
+    // 不足VSTは声のラックも含むため、出力の差分表と重複しないよう配信VSTの分だけを示す。
+    const missingPlugins = mixing.missingPlugins.filter(name => mixing.after.postMix.plugins.some(p => p.name === name));
     const rows: [MessageKey, (v: BundleMixingSummary) => string][] = [
         ['mixing.source', v => !v.input ? t('mixing.none') : v.input.source.kind === 'device' ? `${t('mixing.device')} · ${v.input.source.config.inputId} · ${v.input.source.config.inputChannels.map(c => c + 1).join('–')}` : v.input.source.config.appName],
         ['mixingUi.voiceVolume', v => volume(v.input?.levels.voice.gain)],
@@ -18,7 +20,7 @@ export function MixingConfigurationDiff({ mixing }: { mixing: BundleMixingPrevie
     ];
     return <section aria-label={t('bundle.mixing.diff')} className="space-y-2">
         {!!mixing.missingDevices.length && <p role="alert">{t('bundle.output.missingDevices', { names: mixing.missingDevices.join(' / ') })}</p>}
-        {!!mixing.missingPlugins.length && <p role="alert">{t('bundle.output.missingPlugins', { names: mixing.missingPlugins.join(' / ') })}</p>}
+        {!!missingPlugins.length && <p role="alert">{t('bundle.output.missingPlugins', { names: missingPlugins.join(' / ') })}</p>}
         <table className="w-full table-fixed text-left text-xs"><caption>{t('bundle.mixing.diff')}</caption><thead><tr><th className="p-2">{t('presets.copy.153')}</th><th className="p-2">{t('presets.copy.154')}</th><th className="p-2">{t('presets.copy.155')}</th></tr></thead>
             <tbody>{rows.map(([label, value]) => <tr key={label}><th scope="row" className="border-t p-2 align-top">{t(label)}</th>{[mixing.before, mixing.after].map((v, i) => <td key={i} className="break-all border-t p-2 align-top">{value(v)}</td>)}</tr>)}
             {Array.from({ length: Math.max(mixing.before.postMix.plugins.length, mixing.after.postMix.plugins.length) }, (_, index) => <tr key={index}><th scope="row" className="border-t p-2 align-top">{t('bundle.mixing.plugin', { number: index + 1 })}</th>{[mixing.before, mixing.after].map((v, i) => { const p = v.postMix.plugins[index]; return <td key={i} className="break-words border-t p-2 align-top">{p ? `${p.name} · ${t('bundle.mixing.enabled')} ${on(p.enabled)} · ${t('mixing.mute')} ${on(p.muted)} · ${volume(p.gain)}` : t('postMix.none')}</td>; })}</tr>)}
