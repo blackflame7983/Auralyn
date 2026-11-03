@@ -335,3 +335,35 @@ it('ミックス保存は出力・本番モードと全カテゴリを含める'
     fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
     await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('mix', { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }, null, false, undefined, true, true, false, true));
 });
+
+
+it.each([false, true])('動作中のミックス差分から明示適用できる（原本の復旧=%s）', async recovery => {
+    const summary = { input: null, postMix: { enabled: false, plugins: [] } };
+    const mixingPlan: BundlePreview = { ...plan, obs: [], running: true, mixing: {
+        before: summary, after: summary, missingDevices: [], missingPlugins: [], pluginStateChanged: false,
+    } };
+    vi.mocked(bundleApi.preview).mockResolvedValue(mixingPlan);
+    vi.mocked(bundleApi.recoveryPreview).mockResolvedValue(mixingPlan);
+    if (recovery) vi.mocked(bundleApi.recovery).mockResolvedValue({ id: 'original-1', readable: true, runtimeCheckpoint: true });
+    const operation = vi.fn().mockResolvedValue(result);
+    render(<BroadcastBundlePanel onOperation={operation} />);
+    if (recovery) fireEvent.click(await screen.findByRole('button', { name: message('ja', 'bundle.recoveryPreview') }));
+    else await showPlan();
+    const apply = await screen.findByRole('button', { name: message('ja', recovery ? 'bundle.recoveryApply' : 'presets.copy.161') });
+    await waitFor(() => expect(apply).toBeEnabled());
+    fireEvent.click(apply);
+    await waitFor(() => expect(operation).toHaveBeenCalledWith({ action: recovery ? 'recovery_apply' : 'apply', id: 'p1' }));
+});
+
+it('停止中のミックス適用は開始とミュートを案内して禁止する', async () => {
+    const summary = { input: null, postMix: { enabled: false, plugins: [] } };
+    vi.mocked(bundleApi.preview).mockResolvedValue({ ...plan, running: false, mixing: {
+        before: summary, after: summary, missingDevices: [], missingPlugins: [], pluginStateChanged: false,
+    } });
+    const operation = vi.fn();
+    render(<BroadcastBundlePanel onOperation={operation} />);
+    await showPlan();
+    expect(await screen.findByRole('button', { name: message('ja', 'presets.copy.161') })).toBeDisabled();
+    expect(screen.getByText(message('ja', 'bundle.mixing.startRequired'))).toBeInTheDocument();
+    expect(operation).not.toHaveBeenCalled();
+});

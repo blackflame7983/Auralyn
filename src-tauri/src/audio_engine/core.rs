@@ -32,6 +32,8 @@ mod input;
 pub(super) mod lifecycle;
 #[path = "core/mixing.rs"]
 mod mixing_state;
+#[path = "core/native_stream.rs"]
+mod native_stream;
 #[path = "core/post_mix.rs"]
 mod post_mix;
 #[path = "core/session_rack.rs"]
@@ -722,6 +724,7 @@ impl Engine {
                         let _frames = self.frames_processed.load(Ordering::Relaxed);
 
                         // Check Priority Class
+                        // SAFETY: 現プロセスの疑似ハンドルを取得し、優先度の読み取りにだけ使う。
                         unsafe {
                             use windows::Win32::System::Threading::{
                                 GetCurrentProcess, GetPriorityClass,

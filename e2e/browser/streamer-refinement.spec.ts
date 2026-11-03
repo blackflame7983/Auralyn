@@ -100,7 +100,13 @@ test('緊急ミュートの通信失敗では外部アプリでのミュート�
     expect((await failure.boundingBox())!.y + (await failure.boundingBox())!.height).toBeLessThanOrEqual((await page.locator('footer').boundingBox())!.y);
     await page.screenshot({ path: testInfo.outputPath('mute-failure.png') });
     await expect(page.getByRole('button', { name: '緊急ミュート', exact: true })).toHaveAttribute('aria-pressed', 'false');
-    await failure.getByRole('button', { name: '設定を開く', exact: true }).click();
+    // cold loadのモジュール取得と、取得後のdialog表示を別々に確認する。
+    // 事前読込みはせず、この操作が実際に設定画面の取得を始めることも検証する。
+    const [settingsModule] = await Promise.all([
+        page.waitForResponse(response => new URL(response.url()).pathname === '/src/components/features/AudioSettings/AudioSettingsModal.tsx'),
+        failure.getByRole('button', { name: '設定を開く', exact: true }).click(),
+    ]);
+    expect(settingsModule.ok()).toBe(true);
     await expect(page.getByRole('dialog', { name: '設定', exact: true })).toBeVisible();
 });
 

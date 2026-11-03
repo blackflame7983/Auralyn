@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { obsApi } from '@/api/obs';
 import type { MessageKey } from '@/i18n/messages';
 import { AdjustmentHistoryPanel } from './AdjustmentHistoryPanel';
@@ -28,22 +29,22 @@ export function RecoveryActionsPanel({ onOperation, onVoiceCheck, onSettings }: 
             generation.current++;
             setStream('unknown'); setDiagnostics([]);
         };
-        const hidden = () => { if (document.hidden) invalidate(); };
+        const hidden = () => { if (isAppHidden()) invalidate(); };
         const subscriptions = ['audio-started', 'audio-stopped', 'audio-error', 'audio-stream-error']
             .map(event => listen(event, invalidate));
         void Promise.all(subscriptions).then(() => { if (active) setEventsReady(true); }).catch(() => { if (active) { invalidate(); setEventsReady(false); } });
-        document.addEventListener('visibilitychange', hidden);
+        addAppVisibilityListener(hidden);
         return () => {
             active = false; alive.current = false; generation.current++;
-            document.removeEventListener('visibilitychange', hidden);
+            removeAppVisibilityListener(hidden);
             subscriptions.forEach(subscription => { void subscription.then(unlisten => unlisten()).catch(() => {}); });
         };
     }, []);
     const inspect = async () => {
-        if (!alive.current || !eventsReady || pending.current || document.hidden) return;
+        if (!alive.current || !eventsReady || pending.current || isAppHidden()) return;
         pending.current = true;
         const version = ++generation.current;
-        const current = () => alive.current && version === generation.current && !document.hidden;
+        const current = () => alive.current && version === generation.current && !isAppHidden();
         setBusy(true); setStream('unknown'); setDiagnostics([]);
         try {
             const state = await audioApi.getAudioStreamState();

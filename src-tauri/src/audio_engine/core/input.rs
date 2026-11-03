@@ -88,6 +88,7 @@ impl InputCallback {
             return;
         }
         if !mmcss_set_in.load(Ordering::Relaxed) {
+            // SAFETY: GetCurrentThreadの疑似ハンドルをこのcallbackスレッド内だけで優先度設定に使用する。
             unsafe {
                 use windows::Win32::System::Threading::{
                     GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_HIGHEST,

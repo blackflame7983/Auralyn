@@ -67,6 +67,7 @@ fn rollback_settings(
     } else {
         let disposition = FILE_DISPOSITION_INFO { DeleteFile: true };
         // 内容照合後に、開いたファイル自体だけを削除予約する。
+        // SAFETY: fileはDELETE権限付きで所有し、dispositionは呼出し完了まで有効な構造体と正しいサイズを渡す。
         unsafe {
             SetFileInformationByHandle(
                 HANDLE(file.as_raw_handle()),

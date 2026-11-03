@@ -196,12 +196,15 @@ pub struct Controller {
 
 fn route_device(id: &str) -> Result<IMMDevice> {
     let enumerator: IMMDeviceEnumerator =
+        // SAFETY: 呼出元のMTAガードが生存するスレッドで、型に対応するdevice enumeratorを生成する。
         unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)? };
     let id: Vec<u16> = id.encode_utf16().chain(Some(0)).collect();
+    // SAFETY: nul終端したidのバッファを呼出し完了まで保持し、MTA内のenumeratorを使用する。
     let device = unsafe { enumerator.GetDevice(PCWSTR(id.as_ptr()))? };
     let endpoint: windows::Win32::Media::Audio::IMMEndpoint =
         windows::core::Interface::cast(&device)?;
     ensure!(
+        // SAFETY: 所有deviceからcastに成功したendpoint参照を、同じMTA内で使用する。
         unsafe { endpoint.GetDataFlow()? } == eRender,
         "原音の出力先が再生機器ではありません"
     );
@@ -210,7 +213,9 @@ fn route_device(id: &str) -> Result<IMMDevice> {
 
 fn validate_route(device: &IMMDevice, volume: &IAudioEndpointVolume) -> Result<()> {
     ensure!(
+        // SAFETY: 呼出元がMTAガードとdevice参照を保持した状態で、現在の機器状態を取得する。
         unsafe { device.GetState()? } == DEVICE_STATE_ACTIVE
+            // SAFETY: 同じMTA内で保持するvolume参照から読み取りだけを行う。
             && unsafe { volume.GetMute()?.as_bool() },
         "原音用の出力先が使えないか、ミュートが解除されました"
     );
@@ -330,6 +335,7 @@ impl Controller {
             let result = (|| -> Result<()> {
                 let _apartment = support::Apartment::new()?;
                 let device = route_device(&config.raw_endpoint_id)?;
+                // SAFETY: この監視スレッドのMTAガード内でdeviceを所有し、対応するvolume参照を取得する。
                 let volume: IAudioEndpointVolume = unsafe { device.Activate(CLSCTX_ALL, None)? };
                 let mut tick = 0;
                 while support::wait(&[watch_cancel.raw()], Duration::from_millis(100))?.is_none() {

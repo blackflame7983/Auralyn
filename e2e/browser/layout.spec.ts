@@ -490,11 +490,33 @@ test.describe('メーター数値の幅', () => {
         const large = page.locator('.large-meter-motion');
         const input = page.getByRole('meter', { name: 'マイクの入力レベル', exact: true });
         const output = page.getByRole('meter', { name: '出力', exact: true });
-        const emit = (value: number) => page.evaluate(value => (window as any).__e2eEmit('audio-level', { input: [value, value], output: [value, value] }), value);
+        // 実機と同様に通知を継続し、段階ごとに目標値を切り替える。
+        await page.evaluate(() => {
+            const state = { value: null as number | null };
+            (window as any).__layoutMeterState = state;
+            setInterval(() => {
+                if (state.value !== null) (window as any).__e2eEmit('audio-level', { input: [state.value, state.value], output: [state.value, state.value] });
+            }, 100);
+        });
+        const emit = (value: number | null) => page.evaluate(value => {
+            (window as any).__layoutMeterState.value = value;
+            (window as any).__e2eEmit('audio-level', value === null ? { input: [], output: [] } : { input: [value, value], output: [value, value] });
+        }, value);
         for (const detailed of [false, true]) {
             if (detailed) await large.getByRole('button', { name: '詳細表示', exact: true }).click();
+            await expect(large).toBeVisible();
+            await expect(large.getByRole('button', { name: detailed ? 'ミニモード' : '詳細表示', exact: true })).toBeVisible();
+            await large.evaluate(async element => { await Promise.all(element.getAnimations().map(animation => animation.finished.catch(() => {}))); });
+            await expect(output).toHaveCount(2);
+            for (const locator of [input, output.nth(0), output.nth(1)]) {
+                await expect(locator).toBeVisible();
+                await (await locator.elementHandle())!.waitForElementState('stable');
+            }
             await emit(0.1);
-            await expect(input).toHaveAttribute('aria-valuenow', '-20');
+            await expect.poll(async () => {
+                const value = await input.getAttribute('aria-valuenow');
+                return value !== null && Number.isFinite(Number(value)) && Math.abs(Number(value) + 20) < 0.05;
+            }).toBe(true);
             const baseline = await Promise.all([input, output.nth(0), output.nth(1)].map(locator => locator.boundingBox()));
             await emit(1.2);
             const resets = page.getByRole('button', { name: /クリップ表示を消す/ });
@@ -505,6 +527,7 @@ test.describe('メーター数値の幅', () => {
             }
             await page.screenshot({ path: testInfo.outputPath(`clip-${detailed ? 'detail' : 'slim'}.png`) });
             // 出力は2か所で共有し、入力の履歴とは独立して解除する。
+            await emit(0.1);
             await large.getByRole('button', { name: /クリップ表示を消す/ }).click();
             await expect(resets).toHaveCount(1);
             await resets.click();
@@ -514,7 +537,7 @@ test.describe('メーター数値の幅', () => {
                 expect(await locator.boundingBox()).toEqual(baseline[i]);
             }
             // 不正なレベル通知は更新待ちになり、状態欄で縦バーを縮めない。
-            await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [], output: [] }));
+            await emit(null);
             await expect(large.getByRole('status')).toHaveText('未受信');
             expect(await large.getByRole('meter').boundingBox()).toEqual(baseline[1]);
         }

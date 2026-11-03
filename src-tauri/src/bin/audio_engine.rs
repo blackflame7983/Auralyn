@@ -1,3 +1,4 @@
+#![warn(clippy::undocumented_unsafe_blocks)]
 // Hide console window on Windows release builds
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -49,6 +50,7 @@ fn main() {
 
     // Prevent OS-level crash/error dialogs that can freeze a real-time audio app.
     // (e.g. "DLL load failed" message boxes, GP fault error boxes)
+    // SAFETY: 定義済みフラグのみを渡し、ポインタや借用は渡さない。
     unsafe {
         use windows::Win32::System::Diagnostics::Debug::{
             SetErrorMode, SEM_FAILCRITICALERRORS, SEM_NOGPFAULTERRORBOX, SEM_NOOPENFILEERRORBOX,
@@ -59,6 +61,7 @@ fn main() {
     // [CRITICAL] Initialize COM as STA (Single-Threaded Apartment) immediately.
     // VSTGUI on Windows requires STA for proper GDI+/Drag-n-Drop functionality.
     // Must be done before ANY other crate (like winit/cpal) implicitly initializes COM.
+    // SAFETY: 現在のメインスレッドで予約引数を None として初期化し、結果を確認する。
     unsafe {
         use windows::Win32::System::Ole::OleInitialize;
         // OleInitialize calls CoInitializeEx(NULL, COINIT_APARTMENTTHREADED) internally.
@@ -95,6 +98,8 @@ fn main() {
     }));
 
     // Initialize COM strictly as STA for VST3 GUI support
+    // SAFETY: 出力構造体と設定値は呼び出し中生存し、現プロセスの疑似ハンドルを使う。
+    // DLL の関数はライブラリを保持している間だけ呼び出す。
     unsafe {
         use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
         use windows::Win32::System::SystemInformation::{GetSystemInfo, SYSTEM_INFO};

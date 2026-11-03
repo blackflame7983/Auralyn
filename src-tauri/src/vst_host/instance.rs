@@ -280,7 +280,7 @@ unsafe extern "system" fn context_menu_popup(_this: *mut c_void, _x: i32, _y: i3
     K_RESULT_OK
 }
 
-static mut MOCK_CONTEXT_MENU_VTBL: crate::vst_host::c_api::IContextMenuVtbl =
+static MOCK_CONTEXT_MENU_VTBL: crate::vst_host::c_api::IContextMenuVtbl =
     crate::vst_host::c_api::IContextMenuVtbl {
         base: FUnknownVtbl {
             query_interface: context_menu_query_interface,
@@ -298,17 +298,15 @@ static mut MOCK_CONTEXT_MENU_VTBL: crate::vst_host::c_api::IContextMenuVtbl =
 struct MockContextMenu {
     vtbl: *const crate::vst_host::c_api::IContextMenuVtbl,
 }
-static mut GLOBAL_MOCK_CONTEXT_MENU: MockContextMenu = MockContextMenu {
-    vtbl: std::ptr::null(),
+// SAFETY: vtable は不変の static を指し、生成後にフィールドは変更されない。
+unsafe impl Sync for MockContextMenu {}
+
+static GLOBAL_MOCK_CONTEXT_MENU: MockContextMenu = MockContextMenu {
+    vtbl: &MOCK_CONTEXT_MENU_VTBL,
 };
 
 fn get_mock_context_menu_ptr() -> *mut c_void {
-    unsafe {
-        if GLOBAL_MOCK_CONTEXT_MENU.vtbl.is_null() {
-            GLOBAL_MOCK_CONTEXT_MENU.vtbl = &raw const MOCK_CONTEXT_MENU_VTBL;
-        }
-        &raw mut GLOBAL_MOCK_CONTEXT_MENU as *mut c_void
-    }
+    (&raw const GLOBAL_MOCK_CONTEXT_MENU).cast_mut().cast()
 }
 
 // --- Mock IParameterFinder ---
@@ -341,7 +339,7 @@ unsafe extern "system" fn param_finder_find_parameter(
     K_RESULT_FALSE
 }
 
-static mut MOCK_PARAM_FINDER_VTBL: crate::vst_host::c_api::IParameterFinderVtbl =
+static MOCK_PARAM_FINDER_VTBL: crate::vst_host::c_api::IParameterFinderVtbl =
     crate::vst_host::c_api::IParameterFinderVtbl {
         base: FUnknownVtbl {
             query_interface: param_finder_query_interface,
@@ -355,17 +353,15 @@ static mut MOCK_PARAM_FINDER_VTBL: crate::vst_host::c_api::IParameterFinderVtbl 
 struct MockParameterFinder {
     vtbl: *const crate::vst_host::c_api::IParameterFinderVtbl,
 }
-static mut GLOBAL_MOCK_PARAM_FINDER: MockParameterFinder = MockParameterFinder {
-    vtbl: std::ptr::null(),
+// SAFETY: vtable は不変の static を指し、生成後にフィールドは変更されない。
+unsafe impl Sync for MockParameterFinder {}
+
+static GLOBAL_MOCK_PARAM_FINDER: MockParameterFinder = MockParameterFinder {
+    vtbl: &MOCK_PARAM_FINDER_VTBL,
 };
 
 fn get_mock_param_finder_ptr() -> *mut c_void {
-    unsafe {
-        if GLOBAL_MOCK_PARAM_FINDER.vtbl.is_null() {
-            GLOBAL_MOCK_PARAM_FINDER.vtbl = &raw const MOCK_PARAM_FINDER_VTBL;
-        }
-        &raw mut GLOBAL_MOCK_PARAM_FINDER as *mut c_void
-    }
+    (&raw const GLOBAL_MOCK_PARAM_FINDER).cast_mut().cast()
 }
 
 unsafe extern "system" fn host_query_interface(
@@ -381,6 +377,7 @@ unsafe extern "system" fn host_query_interface(
     // Default to null unless we match something.
     *obj = std::ptr::null_mut();
 
+    // SAFETY: VST3 の queryInterface 呼び出し契約では iid は有効な TUID を指し、null は直前に拒否する。
     let iid_slice = unsafe { *iid };
 
     use vst3::Interface;
@@ -535,7 +532,7 @@ unsafe extern "system" fn timer_on_timer(_this: *mut c_void, _id: *mut c_void) -
     0 // kResultOk
 }
 
-static mut MOCK_TIMER_HANDLER_VTBL: ITimerHandlerVtbl = ITimerHandlerVtbl {
+static MOCK_TIMER_HANDLER_VTBL: ITimerHandlerVtbl = ITimerHandlerVtbl {
     base: FUnknownVtbl {
         query_interface: host_query_interface,
         add_ref: host_add_ref,
@@ -548,16 +545,15 @@ static mut MOCK_TIMER_HANDLER_VTBL: ITimerHandlerVtbl = ITimerHandlerVtbl {
 struct MockTimerHandler {
     vtbl: *const ITimerHandlerVtbl,
 }
-static mut GLOBAL_MOCK_TIMER_HANDLER: MockTimerHandler = MockTimerHandler {
-    vtbl: std::ptr::null(),
+// SAFETY: vtable は不変の static を指し、生成後にフィールドは変更されない。
+unsafe impl Sync for MockTimerHandler {}
+
+static GLOBAL_MOCK_TIMER_HANDLER: MockTimerHandler = MockTimerHandler {
+    vtbl: &MOCK_TIMER_HANDLER_VTBL,
 };
+
 fn get_mock_timer_handler_ptr() -> *mut c_void {
-    unsafe {
-        if GLOBAL_MOCK_TIMER_HANDLER.vtbl.is_null() {
-            GLOBAL_MOCK_TIMER_HANDLER.vtbl = &raw const MOCK_TIMER_HANDLER_VTBL;
-        }
-        std::ptr::addr_of_mut!(GLOBAL_MOCK_TIMER_HANDLER) as *mut c_void
-    }
+    (&raw const GLOBAL_MOCK_TIMER_HANDLER).cast_mut().cast()
 }
 
 // --- Mock Host Application ---
@@ -574,6 +570,7 @@ unsafe extern "system" fn host_get_name(_this: *mut c_void, name: *mut c_char) -
         return K_RESULT_OK;
     }
 
+    // SAFETY: VST3 の呼び出し元が有効な host を渡し、null は既定名の分岐で処理済み。名前は host の寿命中有効。
     let name_buf = unsafe { &(*host).name_u16 };
     std::ptr::copy_nonoverlapping(name_buf.as_ptr(), name_u16_ptr, name_buf.len());
     K_RESULT_OK
@@ -621,7 +618,9 @@ unsafe extern "system" fn host_create_instance(
 
     use vst3::Steinberg::Vst::{IAttributeList, IMessage};
 
+    // SAFETY: VST3 の createInstance 契約では cid は有効な TUID を指し、null は直前に拒否する。
     let cid_slice = unsafe { *cid };
+    // SAFETY: VST3 の createInstance 契約では iid は有効な TUID を指し、null は直前に拒否する。
     let iid_slice = unsafe { *iid };
 
     // IMessage factory (Some plugins request CID=kBHostMessage, IID=IMessage)
@@ -710,7 +709,7 @@ unsafe extern "system" fn support_is_supported(_this: *mut c_void, iid: *const T
     K_RESULT_OK
 }
 
-static mut MOCK_INTERFACE_SUPPORT_VTBL: IPlugInterfaceSupportVtbl = IPlugInterfaceSupportVtbl {
+static MOCK_INTERFACE_SUPPORT_VTBL: IPlugInterfaceSupportVtbl = IPlugInterfaceSupportVtbl {
     base: FUnknownVtbl {
         query_interface: host_query_interface,
         add_ref: host_add_ref,
@@ -723,22 +722,21 @@ static mut MOCK_INTERFACE_SUPPORT_VTBL: IPlugInterfaceSupportVtbl = IPlugInterfa
 struct MockPlugInterfaceSupport {
     vtbl: *const IPlugInterfaceSupportVtbl,
 }
-static mut GLOBAL_MOCK_INTERFACE_SUPPORT: MockPlugInterfaceSupport = MockPlugInterfaceSupport {
-    vtbl: std::ptr::null(),
+// SAFETY: vtable は不変の static を指し、生成後にフィールドは変更されない。
+unsafe impl Sync for MockPlugInterfaceSupport {}
+
+static GLOBAL_MOCK_INTERFACE_SUPPORT: MockPlugInterfaceSupport = MockPlugInterfaceSupport {
+    vtbl: &MOCK_INTERFACE_SUPPORT_VTBL,
 };
+
 fn get_mock_plug_interface_support_ptr() -> *mut c_void {
-    unsafe {
-        if GLOBAL_MOCK_INTERFACE_SUPPORT.vtbl.is_null() {
-            GLOBAL_MOCK_INTERFACE_SUPPORT.vtbl = &raw const MOCK_INTERFACE_SUPPORT_VTBL;
-        }
-        std::ptr::addr_of_mut!(GLOBAL_MOCK_INTERFACE_SUPPORT) as *mut c_void
-    }
+    (&raw const GLOBAL_MOCK_INTERFACE_SUPPORT).cast_mut().cast()
 }
 
 pub static GLOBAL_CURRENT_PLUGIN_PATH: Mutex<Option<String>> = Mutex::new(None);
 
 // use crate::vst_host::c_api::IHostApplicationVtbl; // Moved to top imports
-static mut MOCK_HOST_APP_VTBL: IHostApplicationVtbl = IHostApplicationVtbl {
+static MOCK_HOST_APP_VTBL: IHostApplicationVtbl = IHostApplicationVtbl {
     base: FUnknownVtbl {
         query_interface: host_query_interface,
         add_ref: host_add_ref,
@@ -758,6 +756,7 @@ unsafe extern "system" fn enum_all_child_proc(hwnd: HWND, lparam: LPARAM) -> BOO
 
 fn find_all_plugin_child_hwnds(parent: HWND) -> Vec<HWND> {
     let mut children = Vec::new();
+    // SAFETY: children は EnumChildWindows の同期コールバックが戻るまで生存し、lparam はその Vec を指す。
     unsafe {
         let lparam = LPARAM(&mut children as *mut _ as isize);
         let _ = EnumChildWindows(Some(parent), Some(enum_all_child_proc), lparam);
@@ -770,19 +769,26 @@ pub struct MockHostApplication {
     pub vtbl: *const IHostApplicationVtbl,
     pub name_u16: [u16; HOST_NAME_MAX_U16],
 }
-static mut GLOBAL_MOCK_HOST_APP: MockHostApplication = MockHostApplication {
-    vtbl: std::ptr::null(),
-    name_u16: [0u16; HOST_NAME_MAX_U16],
+// SAFETY: vtable は不変の static を指し、生成後にフィールドは変更されない。
+unsafe impl Sync for MockHostApplication {}
+
+static GLOBAL_MOCK_HOST_APP: MockHostApplication = MockHostApplication {
+    vtbl: &MOCK_HOST_APP_VTBL,
+    name_u16: {
+        let mut name = [0; HOST_NAME_MAX_U16];
+        name[0] = 65;
+        name[1] = 117;
+        name[2] = 114;
+        name[3] = 97;
+        name[4] = 108;
+        name[5] = 121;
+        name[6] = 110;
+        name
+    },
 };
 
 fn get_mock_host_app_ptr() -> *mut c_void {
-    unsafe {
-        if GLOBAL_MOCK_HOST_APP.vtbl.is_null() {
-            GLOBAL_MOCK_HOST_APP.vtbl = &raw const MOCK_HOST_APP_VTBL;
-            GLOBAL_MOCK_HOST_APP.name_u16 = encode_host_name_u16("Auralyn");
-        }
-        std::ptr::addr_of_mut!(GLOBAL_MOCK_HOST_APP) as *mut c_void
-    }
+    (&raw const GLOBAL_MOCK_HOST_APP).cast_mut().cast()
 }
 
 // Owned host application (per-plugin quirk support)
@@ -796,14 +802,17 @@ unsafe extern "system" fn host_app_query_interface(
     }
 
     use vst3::Steinberg::FUnknown;
+    // SAFETY: VST3 の queryInterface 契約では iid は有効な TUID を指し、null は直前に拒否する。
     let iid_slice = unsafe { *iid };
     if iid_slice == FUnknown::IID || iid_slice == vst3::Steinberg::Vst::IHostApplication::IID {
+        // SAFETY: VST3 の queryInterface 契約では obj は書き込み可能な出力先で、null は直前に拒否する。
         unsafe {
             *obj = this;
         }
         return K_RESULT_OK;
     }
 
+    // SAFETY: 同じ queryInterface の引数を転送し、iid と obj の null は検査済み。
     unsafe { host_query_interface(this, iid, obj) }
 }
 
@@ -831,6 +840,7 @@ unsafe fn is_owned_host_app_ptr(ptr: *mut c_void) -> bool {
         return false;
     }
     let app = ptr as *mut MockHostApplication;
+    // SAFETY: 呼び出し元は有効な MockHostApplication または null を渡す契約で、null は直前に除外する。
     unsafe { (*app).vtbl == (&raw const HOST_APP_OWNED_VTBL) }
 }
 
@@ -838,6 +848,7 @@ unsafe fn drop_owned_host_app_ptr(ptr: *mut c_void) {
     if !is_owned_host_app_ptr(ptr) {
         return;
     }
+    // SAFETY: 所有 vtable の判定後、Box::into_raw で生成した所有オブジェクトを一度だけ回収する。
     drop(unsafe { Box::from_raw(ptr as *mut MockHostApplication) });
 }
 
@@ -854,6 +865,7 @@ impl HostAppGuard {
 
 impl Drop for HostAppGuard {
     fn drop(&mut self) {
+        // SAFETY: HostAppGuard は new で生成した Box の所有権を保持し、drop で一度だけ回収する。
         unsafe { drop_owned_host_app_ptr(self.0) }
     }
 }
@@ -942,7 +954,7 @@ unsafe extern "system" fn host_resize_view(
 
 // use crate::vst_host::c_api::IPlugFrameVtbl; // Moved to top imports
 
-static mut MOCK_PLUG_FRAME_VTBL: IPlugFrameVtbl = IPlugFrameVtbl {
+static MOCK_PLUG_FRAME_VTBL: IPlugFrameVtbl = IPlugFrameVtbl {
     base: FUnknownVtbl {
         query_interface: host_query_interface, // Share same QI logic? careful. Frame QI might need to return Frame or Handler.
         add_ref: host_add_ref,
@@ -956,17 +968,15 @@ pub struct MockPlugFrame {
     pub vtbl: *const IPlugFrameVtbl,
 }
 
-static mut GLOBAL_MOCK_PLUG_FRAME: MockPlugFrame = MockPlugFrame {
-    vtbl: std::ptr::null(),
+// SAFETY: vtable は不変の static を指し、生成後にフィールドは変更されない。
+unsafe impl Sync for MockPlugFrame {}
+
+static GLOBAL_MOCK_PLUG_FRAME: MockPlugFrame = MockPlugFrame {
+    vtbl: &MOCK_PLUG_FRAME_VTBL,
 };
 
 fn get_mock_plug_frame_ptr() -> *mut c_void {
-    unsafe {
-        if GLOBAL_MOCK_PLUG_FRAME.vtbl.is_null() {
-            GLOBAL_MOCK_PLUG_FRAME.vtbl = &raw const MOCK_PLUG_FRAME_VTBL;
-        }
-        std::ptr::addr_of_mut!(GLOBAL_MOCK_PLUG_FRAME) as *mut c_void
-    }
+    (&raw const GLOBAL_MOCK_PLUG_FRAME).cast_mut().cast()
 }
 
 #[repr(C)]
@@ -974,19 +984,15 @@ pub struct MockComponentHandler {
     pub vtbl: *const IComponentHandler2Vtbl,
 }
 
+// SAFETY: vtable は不変の static を指し、生成後にフィールドは変更されない。
 unsafe impl Sync for MockComponentHandler {}
 
-static mut GLOBAL_MOCK_HANDLER: MockComponentHandler = MockComponentHandler {
-    vtbl: std::ptr::null(), // Initialized at runtime
+static GLOBAL_MOCK_HANDLER: MockComponentHandler = MockComponentHandler {
+    vtbl: &MOCK_CONNECTION_HANDLER_VTBL,
 };
 
 fn get_mock_handler_ptr() -> *mut c_void {
-    unsafe {
-        if GLOBAL_MOCK_HANDLER.vtbl.is_null() {
-            GLOBAL_MOCK_HANDLER.vtbl = &raw const MOCK_CONNECTION_HANDLER_VTBL;
-        }
-        std::ptr::addr_of_mut!(GLOBAL_MOCK_HANDLER) as *mut c_void
-    }
+    (&raw const GLOBAL_MOCK_HANDLER).cast_mut().cast()
 }
 
 // --- Mock Connection Point ---
@@ -1008,7 +1014,7 @@ unsafe extern "system" fn connection_notify(_this: *mut c_void, message: *mut c_
     K_RESULT_OK
 }
 
-static mut MOCK_CONNECTION_POINT_VTBL: crate::vst_host::c_api::IConnectionPointVtbl =
+static MOCK_CONNECTION_POINT_VTBL: crate::vst_host::c_api::IConnectionPointVtbl =
     crate::vst_host::c_api::IConnectionPointVtbl {
         base: FUnknownVtbl {
             query_interface: host_query_interface, // Share host QI? Maybe fine if we don't query via CP.
@@ -1024,16 +1030,15 @@ static mut MOCK_CONNECTION_POINT_VTBL: crate::vst_host::c_api::IConnectionPointV
 pub struct MockConnectionPoint {
     pub vtbl: *const crate::vst_host::c_api::IConnectionPointVtbl,
 }
-static mut GLOBAL_CONNECTION_POINT: MockConnectionPoint = MockConnectionPoint {
-    vtbl: std::ptr::null(),
+// SAFETY: vtable は不変の static を指し、生成後にフィールドは変更されない。
+unsafe impl Sync for MockConnectionPoint {}
+
+static GLOBAL_CONNECTION_POINT: MockConnectionPoint = MockConnectionPoint {
+    vtbl: &MOCK_CONNECTION_POINT_VTBL,
 };
+
 fn get_connection_point_ptr() -> *mut c_void {
-    unsafe {
-        if GLOBAL_CONNECTION_POINT.vtbl.is_null() {
-            GLOBAL_CONNECTION_POINT.vtbl = &raw const MOCK_CONNECTION_POINT_VTBL;
-        }
-        std::ptr::addr_of_mut!(GLOBAL_CONNECTION_POINT) as *mut c_void
-    }
+    (&raw const GLOBAL_CONNECTION_POINT).cast_mut().cast()
 }
 
 // --- Specialized Query Interface for Handler ---
@@ -1093,7 +1098,7 @@ unsafe extern "system" fn handler_query_interface(
 }
 
 // Specialized VTable using our CUSTOM QI
-static mut MOCK_CONNECTION_HANDLER_VTBL: IComponentHandler2Vtbl = IComponentHandler2Vtbl {
+static MOCK_CONNECTION_HANDLER_VTBL: IComponentHandler2Vtbl = IComponentHandler2Vtbl {
     base: FUnknownVtbl {
         query_interface: handler_query_interface,
         add_ref: host_add_ref,
@@ -1164,7 +1169,7 @@ unsafe extern "system" fn host_notify_program_list_change(
     0
 }
 
-static mut MOCK_UNIT_HANDLER_VTBL: crate::vst_host::c_api::IUnitHandlerVtbl =
+static MOCK_UNIT_HANDLER_VTBL: crate::vst_host::c_api::IUnitHandlerVtbl =
     crate::vst_host::c_api::IUnitHandlerVtbl {
         base: FUnknownVtbl {
             query_interface: host_query_interface, // Share base QI
@@ -1179,16 +1184,15 @@ static mut MOCK_UNIT_HANDLER_VTBL: crate::vst_host::c_api::IUnitHandlerVtbl =
 pub struct MockUnitHandler {
     pub vtbl: *const crate::vst_host::c_api::IUnitHandlerVtbl,
 }
-static mut GLOBAL_MOCK_UNIT_HANDLER: MockUnitHandler = MockUnitHandler {
-    vtbl: std::ptr::null(),
+// SAFETY: vtable は不変の static を指し、生成後にフィールドは変更されない。
+unsafe impl Sync for MockUnitHandler {}
+
+static GLOBAL_MOCK_UNIT_HANDLER: MockUnitHandler = MockUnitHandler {
+    vtbl: &MOCK_UNIT_HANDLER_VTBL,
 };
+
 fn get_mock_unit_handler_ptr() -> *mut c_void {
-    unsafe {
-        if GLOBAL_MOCK_UNIT_HANDLER.vtbl.is_null() {
-            GLOBAL_MOCK_UNIT_HANDLER.vtbl = &raw const MOCK_UNIT_HANDLER_VTBL;
-        }
-        std::ptr::addr_of_mut!(GLOBAL_MOCK_UNIT_HANDLER) as *mut c_void
-    }
+    (&raw const GLOBAL_MOCK_UNIT_HANDLER).cast_mut().cast()
 }
 // --- End Mock ---
 
@@ -1199,6 +1203,7 @@ struct FactoryRef(*mut c_void);
 
 impl Drop for FactoryRef {
     fn drop(&mut self) {
+        // SAFETY: FactoryRef は factory が返した COM 参照を所有し、DLL 保持中に一度 release する。
         unsafe {
             let vtbl = get_vtbl::<FUnknownVtbl>(self.0);
             (vtbl.release)(self.0);
@@ -1231,6 +1236,7 @@ impl ModuleEntry {
 impl Drop for ModuleEntry {
     fn drop(&mut self) {
         if let Some(exit) = self.exit {
+            // SAFETY: start の契約により関数ポインタの DLL はこのガードより長く生存し、初期化成功時のみ exit を保持する。
             unsafe {
                 exit();
             }
@@ -1282,8 +1288,6 @@ pub struct VstInstance {
     resources: InstanceResources,
 }
 
-unsafe impl Send for VstInstance {}
-
 pub struct VstProcessor {
     ptr: *mut c_void,
     _library: Arc<PluginLibrary>,
@@ -1303,6 +1307,9 @@ pub struct VstProcessor {
     _num_channels: usize,
 }
 
+// SAFETY: VST3 は process を処理スレッドで呼ぶ契約。create_processor は COM 参照と DLL を保持し、
+// エンジンは所有権をキューで音声側へ移し、retire 後に制御側へ返して release する。
+// バッファへの一時ポインタは process 中だけ使い、移動後に共有して同時操作しない。
 unsafe impl Send for VstProcessor {}
 
 impl VstInstance {
@@ -1313,6 +1320,7 @@ impl VstInstance {
             .ok_or_else(|| anyhow!("VST3 path must name a plugin"))?
             .to_string_lossy()
             .to_string();
+        // SAFETY: DLL のエクスポートを VST3 の ABI として扱い、lib を全インターフェースの解放まで保持する。外部 DLL が ABI を守ることが前提。
         unsafe {
             // OTT 1.37はInitDllを省くと描画資源が未初期化になり、getSizeが4x4になる。
             // 他のプラグインの初期化手順は今回変更しない。
@@ -1406,6 +1414,7 @@ impl VstInstance {
         }
         let _factory = FactoryRef(factory_ptr);
         let mut resources = InstanceResources::new(lib.clone());
+        // SAFETY: factory_ptr は呼び出し元から所有権を受けた有効な factory 参照で、resources は DLL と取得した参照を保持する。VST3 ABI を守る DLL が前提。
         unsafe {
             // Wrap Factory
             let factory_vtbl = get_vtbl::<IPluginFactoryVtbl>(factory_ptr);
@@ -1976,6 +1985,7 @@ impl VstInstance {
     pub fn finalize_connection(&mut self) -> Result<()> {
         println!("[Deferred] Finalizing connection for {}", self.name);
 
+        // SAFETY: null を除外した両インターフェースは resources が参照と DLL を保持し、リンク処理中も生存する。
         unsafe {
             if self.component.is_null() || self.controller.is_null() {
                 return Err(anyhow!(
@@ -2006,6 +2016,7 @@ impl VstInstance {
         if self.processor.is_null() || !self.resources.prepared {
             return None;
         }
+        // SAFETY: 非 null の processor は resources が COM 参照と DLL を保持し、返却する processor 用の参照を追加する。
         unsafe {
             let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.processor);
             (vtbl.base.add_ref)(self.processor);
@@ -2044,6 +2055,7 @@ impl VstInstance {
         channels: i32,
     ) -> Result<()> {
         self.stop_processing();
+        // SAFETY: null を除外した component と processor は resources が参照と DLL を保持し、設定値は FFI 呼び出し前に検証する。
         unsafe {
             if self.component.is_null() || self.processor.is_null() {
                 return Err(anyhow!("VST processing interfaces are unavailable"));
@@ -2144,6 +2156,7 @@ impl VstInstance {
     }
 
     pub fn declared_latency_samples(&self) -> Option<u32> {
+        // SAFETY: 非 null の processor は resources が COM 参照と DLL を保持している。
         unsafe {
             if self.processor.is_null() {
                 return None;
@@ -2163,6 +2176,7 @@ impl VstInstance {
     /// 接続に成功した場合は、`close_editor` が完了するまで親ウィンドウを保持すること。
     /// エディタの操作と切断は、親ウィンドウを所有する UI スレッドで行うこと。
     pub unsafe fn open_editor(&mut self, parent_window: *mut c_void) -> Result<Option<ViewRect>> {
+        // SAFETY: parent_window の有効期間と UI スレッドはこの関数の呼び出し契約による。controller と DLL は resources が保持する。
         unsafe {
             if self.controller.is_null() {
                 // If controller null, maybe use component?
@@ -2652,6 +2666,7 @@ impl VstInstance {
     }
 
     pub fn close_editor(&mut self) {
+        // SAFETY: active_view は open_editor が取得した参照で、解除と release まで DLL を保持し、null 化して二重解放を防ぐ。
         unsafe {
             if !self.active_view.is_null() {
                 println!("Closing editor for {}", self.name);
@@ -2671,6 +2686,7 @@ impl VstInstance {
     }
 
     pub fn on_window_resized(&mut self, width: u32, height: u32) -> Result<()> {
+        // SAFETY: 非 null の active_view は open_editor が取得した参照で、DLL とともに close_editor まで保持する。
         unsafe {
             if self.active_view.is_null() {
                 return Ok(());
@@ -2702,6 +2718,7 @@ impl VstInstance {
         if self.component.is_null() {
             return Err(anyhow!("Component is null"));
         }
+        // SAFETY: 非 null の component は resources が保持し、stream は同期 getState 中生存し追加参照も管理する。
         unsafe {
             let component_vtbl = get_vtbl::<IComponentVtbl>(self.component);
             let stream = StateStream::new(Vec::new());
@@ -2730,6 +2747,7 @@ impl VstInstance {
             .decode(state_b64)
             .context("Failed to decode VST state base64")?;
 
+        // SAFETY: component と非 null の controller は resources が保持し、stream は同期呼び出し中生存する。
         unsafe {
             let mut stream = StateStream::new(data);
             let stream_ptr = stream.as_ptr();
@@ -2766,6 +2784,7 @@ impl Drop for VstInstance {
         self.active_flag.store(false, Ordering::SeqCst);
         // 遅延接続の経路も含め、エディタを切り離す前に相互参照を解除する。
         if !self.component.is_null() && !self.controller.is_null() {
+            // SAFETY: component と controller は非 null で resources の参照が shutdown まで生存する。
             unsafe {
                 unlink_connection_points(self.component, self.controller);
             }
@@ -2786,6 +2805,60 @@ mod load_failure_tests;
 pub(crate) use instance_safety_tests::allocation_counts;
 #[cfg(test)]
 pub(crate) use load_failure_tests::with_mock_vst;
+
+#[cfg(test)]
+mod shared_mock_tests {
+    use super::*;
+
+    #[test]
+    fn concurrent_getters_return_stable_initialized_vtables() {
+        let getters: [fn() -> *mut c_void; 9] = [
+            get_mock_context_menu_ptr,
+            get_mock_param_finder_ptr,
+            get_mock_timer_handler_ptr,
+            get_mock_plug_interface_support_ptr,
+            get_mock_host_app_ptr,
+            get_mock_plug_frame_ptr,
+            get_mock_handler_ptr,
+            get_connection_point_ptr,
+            get_mock_unit_handler_ptr,
+        ];
+        let expected = [
+            (&raw const MOCK_CONTEXT_MENU_VTBL).cast::<c_void>() as usize,
+            (&raw const MOCK_PARAM_FINDER_VTBL).cast::<c_void>() as usize,
+            (&raw const MOCK_TIMER_HANDLER_VTBL).cast::<c_void>() as usize,
+            (&raw const MOCK_INTERFACE_SUPPORT_VTBL).cast::<c_void>() as usize,
+            (&raw const MOCK_HOST_APP_VTBL).cast::<c_void>() as usize,
+            (&raw const MOCK_PLUG_FRAME_VTBL).cast::<c_void>() as usize,
+            (&raw const MOCK_CONNECTION_HANDLER_VTBL).cast::<c_void>() as usize,
+            (&raw const MOCK_CONNECTION_POINT_VTBL).cast::<c_void>() as usize,
+            (&raw const MOCK_UNIT_HANDLER_VTBL).cast::<c_void>() as usize,
+        ];
+        let workers: Vec<_> = (0..8)
+            .map(|_| {
+                std::thread::spawn(move || {
+                    getters.map(|get| {
+                        let ptr = get();
+                        // SAFETY: 各 getter は repr(C) の静的モックを返し、先頭フィールドは有効な vtable ポインタ。
+                        let vtable = unsafe { *ptr.cast::<*const c_void>() };
+                        (ptr as usize, vtable as usize)
+                    })
+                })
+            })
+            .collect();
+        let results: Vec<_> = workers
+            .into_iter()
+            .map(|worker| worker.join().unwrap())
+            .collect();
+        for result in &results {
+            for (index, (address, vtable)) in result.iter().enumerate() {
+                assert_ne!(*address, 0);
+                assert_eq!(*vtable, expected[index]);
+                assert_eq!(*address, results[0][index].0);
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod module_entry_tests {
@@ -2829,6 +2902,7 @@ mod module_entry_tests {
         let mut factory = &vtbl as *const FUnknownVtbl;
         let factory_ptr = &mut factory as *mut _ as *mut c_void;
         let fail_load = || -> Result<(), ()> {
+            // SAFETY: init と exit はテスト内の extern system 関数で、ガードの寿命中有効。
             let _entry = unsafe { ModuleEntry::start(Some(init), Some(exit)) }.unwrap();
             let _factory = FactoryRef(factory_ptr);
             Err(())
@@ -2855,6 +2929,7 @@ mod module_entry_tests {
         }
 
         // Processorや遅延解放先が保持する間は、Instanceを落としても終了しない。
+        // SAFETY: init と exit はテスト内の extern system 関数で、最後の Arc 解放まで有効。
         let instance = Arc::new(unsafe { ModuleEntry::start(Some(init), Some(exit)) }.unwrap());
         let processor = instance.clone();
         drop(instance);
@@ -2863,11 +2938,14 @@ mod module_entry_tests {
         drop(processor);
         assert_eq!(EXIT.load(Ordering::SeqCst), 1);
 
+        // SAFETY: fail と exit はテスト内の extern system 関数で、呼び出し中有効。
         assert!(unsafe { ModuleEntry::start(Some(fail), Some(exit)) }.is_err());
         assert_eq!(INIT.load(Ordering::SeqCst), 2);
         assert_eq!(EXIT.load(Ordering::SeqCst), 1);
+        // SAFETY: exit はテスト内の extern system 関数で、init 不在のため保持も呼び出しもされない。
         drop(unsafe { ModuleEntry::start(None, Some(exit)) }.unwrap());
         assert_eq!(EXIT.load(Ordering::SeqCst), 1);
+        // SAFETY: init はテスト内の extern system 関数で、呼び出し中有効。
         drop(unsafe { ModuleEntry::start(Some(init), None) }.unwrap());
         assert_eq!(INIT.load(Ordering::SeqCst), 3);
         assert_eq!(EXIT.load(Ordering::SeqCst), 1);

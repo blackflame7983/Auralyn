@@ -6,6 +6,7 @@ python scripts/native_audio_probe.py BINARY PLAN_JSON OUTPUT_DIR
 """
 import collections
 import json
+import math
 import pathlib
 import queue
 import subprocess
@@ -14,6 +15,78 @@ import threading
 import time
 
 import psutil
+
+
+SAMPLE_INTERVAL = 0.1
+
+
+def validate_duration(seconds):
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not math.isfinite(seconds) or seconds < SAMPLE_INTERVAL:
+        raise ValueError("measurement duration must be finite and at least 0.1 seconds")
+
+
+def measure_tree(pid, seconds):
+    """稼働中の root と子プロセスを観測し、欠測時は失敗させる。"""
+    validate_duration(seconds)
+    root = psutil.Process(pid)
+    root_key = (root.pid, root.create_time())
+    root.cpu_percent(None)
+    known = {root_key: root}
+    # 既に存在する子も測定前に初期化し、最初の標本をCPU 0として平均へ入れない。
+    for process in root.children(recursive=True):
+        try:
+            known[(process.pid, process.create_time())] = process
+            process.cpu_percent(None)
+        except psutil.NoSuchProcess:
+            continue
+    samples = []
+    start = time.perf_counter()
+    while time.perf_counter() - start < seconds:
+        time.sleep(SAMPLE_INTERVAL)
+        if root.create_time() != root_key[1] or not root.is_running():
+            raise RuntimeError("root process exited or PID was reused")
+        processes = [root] + root.children(recursive=True)
+        working_set = private = cpu = 0
+        count = unprimed = disappeared = 0
+        for process in processes:
+            try:
+                key = (process.pid, process.create_time())
+                if process.pid == root.pid and key != root_key:
+                    raise RuntimeError("root PID was reused")
+                if key not in known:
+                    known[key] = process
+                    process.cpu_percent(None)
+                    unprimed += 1
+                else:
+                    cpu += known[key].cpu_percent(None)
+                memory = process.memory_info()
+                if key == root_key:
+                    root_memory = memory
+                working_set += memory.rss
+                private += memory.private
+                count += 1
+            except psutil.NoSuchProcess:
+                if process.pid == root.pid:
+                    raise RuntimeError("root process exited during measurement")
+                # 子の終了は正常だが、この標本に含まれなかったことを記録する。
+                disappeared += 1
+                continue
+        samples.append({"elapsed": time.perf_counter() - start,
+                        "cpu_one_core_percent": cpu,
+                        "working_set_bytes": working_set, "private_bytes": private,
+                        "process_count": count, "cpu_unprimed_process_count": unprimed,
+                        "disappeared_child_count": disappeared,
+                        "root_lifetime_peak_working_set_bytes": root_memory.peak_wset,
+                        "root_lifetime_peak_commit_bytes": root_memory.peak_pagefile})
+    if not samples or samples[-1]["elapsed"] < seconds:
+        raise RuntimeError("incomplete measurement")
+    return {"samples": samples,
+            "cpu_one_core_mean_percent": sum(s["cpu_one_core_percent"] for s in samples) / len(samples),
+            "max_working_set_bytes": max(s["working_set_bytes"] for s in samples),
+            "max_private_bytes": max(s["private_bytes"] for s in samples),
+            "root_lifetime_peak_working_set_bytes": max(s["root_lifetime_peak_working_set_bytes"] for s in samples),
+            "root_lifetime_peak_commit_bytes": max(s["root_lifetime_peak_commit_bytes"] for s in samples),
+            "processes": [{"pid": pid, "created": created} for pid, created in known]}
 
 
 class Probe:
@@ -66,6 +139,7 @@ class Probe:
         return self.responses.get(timeout=45)
 
     def measure(self, seconds):
+        validate_duration(seconds)
         before = self.events.copy()
         start = time.perf_counter()
         self.process.cpu_percent(None)
@@ -77,11 +151,14 @@ class Probe:
                             "cpu_one_core_percent": self.process.cpu_percent(None),
                             "working_set_bytes": memory.rss,
                             "private_bytes": memory.private,
-                            "os_peak_working_set_bytes": memory.peak_wset})
+                            "os_peak_working_set_bytes": memory.peak_wset,
+                            "os_peak_commit_bytes": memory.peak_pagefile})
         return {"samples": samples, "event_counts": dict(self.events - before),
                 "cpu_one_core_mean_percent": sum(x["cpu_one_core_percent"] for x in samples) / len(samples),
                 "max_working_set_bytes": max(x["working_set_bytes"] for x in samples),
-                "max_private_bytes": max(x["private_bytes"] for x in samples)}
+                "max_private_bytes": max(x["private_bytes"] for x in samples),
+                "os_peak_working_set_bytes": max(x["os_peak_working_set_bytes"] for x in samples),
+                "os_peak_commit_bytes": max(x["os_peak_commit_bytes"] for x in samples)}
 
     def close(self):
         if self.child.poll() is None:
@@ -108,43 +185,12 @@ def main():
             or (len(sys.argv) == 4 and sys.argv[1] != "--tree")):
         raise SystemExit("usage: native_audio_probe.py BINARY PLAN_JSON OUTPUT_DIR | --tree PID SECONDS OUTPUT_JSON")
     if sys.argv[1] == "--tree":
-        root = psutil.Process(int(sys.argv[2]))
-        duration = float(sys.argv[3])
         output = pathlib.Path(sys.argv[4])
-        known = {}
-        samples = []
-        start = time.perf_counter()
-        while time.perf_counter() - start < duration:
-            processes = [root] + root.children(recursive=True)
-            root_memory = root.memory_info()
-            working_set = private = cpu = 0
-            for process in processes:
-                try:
-                    key = (process.pid, process.create_time())
-                    if key not in known:
-                        known[key] = process
-                        process.cpu_percent(None)
-                    memory = process.memory_info()
-                    working_set += memory.rss
-                    private += memory.private
-                    cpu += known[key].cpu_percent(None)
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
-            samples.append({"elapsed": time.perf_counter() - start,
-                            "cpu_one_core_percent": cpu,
-                            "working_set_bytes": working_set,
-                            "private_bytes": private, "process_count": len(processes),
-                            "root_lifetime_peak_working_set_bytes": root_memory.peak_wset,
-                            "root_lifetime_peak_commit_bytes": root_memory.peak_pagefile})
-            time.sleep(0.2)
-        result = {"samples": samples,
-                  "cpu_one_core_mean_percent": sum(s["cpu_one_core_percent"] for s in samples[1:]) / max(1, len(samples)-1),
-                  "max_working_set_bytes": max(s["working_set_bytes"] for s in samples),
-                  "max_private_bytes": max(s["private_bytes"] for s in samples),
-                  "root_lifetime_peak_working_set_bytes": max(s["root_lifetime_peak_working_set_bytes"] for s in samples),
-                  "root_lifetime_peak_commit_bytes": max(s["root_lifetime_peak_commit_bytes"] for s in samples),
-                  "processes": [{"pid": pid, "created": created} for pid, created in known]}
-        output.write_text(json.dumps(result, indent=2), encoding="utf-8")
+        if output.exists():
+            raise FileExistsError("measurement output already exists")
+        result = measure_tree(int(sys.argv[2]), float(sys.argv[3]))
+        with output.open("x", encoding="utf-8") as stream:
+            json.dump(result, stream, indent=2)
         print(json.dumps({k:v for k,v in result.items() if k != "samples"}), flush=True)
         return
     binary, plan_path, output = map(pathlib.Path, sys.argv[1:])

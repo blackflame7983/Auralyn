@@ -14,7 +14,7 @@ for (const locale of ['ja', 'en'] as const) for (const missing of [false, true])
                     case 'list': return { type: 'names', value: ['mix'] };
                     case 'history': return { type: 'result', value: null };
                     case 'recovery_status': return { type: 'recovery', value: null };
-                    case 'preview': return { type: 'preview', value: { id: 'view', name: 'mix', revision: '1', categories: [], running: false, auralyn: [], obs: [],
+                    case 'preview': return { type: 'preview', value: { id: 'view', name: 'mix', revision: '1', categories: [], running: true, auralyn: [], obs: [],
                         mixing: { before: mix, after: mix, missingDevices: missing ? ['wasapi:{private-input-id}'] : [], missingDeviceLabels: missing ? [{ role: 'accompanimentInput', name: null }] : [], missingPlugins: [], pluginStateChanged: false },
                         output: { before: { deviceId: null, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, after: { deviceId: 'wasapi:{private-output-id}', monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, beforeDeviceName: null, afterDeviceName: missing ? null : 'Broadcast cable', restartRequired: true,
                             missingDevices: missing ? ['wasapi:missing-mic', 'wasapi:{private-output-id}'] : [], missingDeviceLabels: missing ? [{ role: 'primaryInput', name: 'Saved microphone' }, { role: 'broadcastOutput', name: null }] : [], missingPlugins: [] },

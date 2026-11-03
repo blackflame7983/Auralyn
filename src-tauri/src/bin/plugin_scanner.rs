@@ -1,3 +1,4 @@
+#![warn(clippy::undocumented_unsafe_blocks)]
 use libloading::Library;
 use serde::Serialize;
 use std::env;
@@ -24,6 +25,7 @@ struct ScanResult {
 
 fn main() {
     // Prevent OS-level crash/error dialogs that can freeze scanning indefinitely.
+    // SAFETY: 定義済みフラグのみを渡し、ポインタや借用は渡さない。
     unsafe {
         use windows::Win32::System::Diagnostics::Debug::{
             SetErrorMode, SEM_FAILCRITICALERRORS, SEM_NOGPFAULTERRORBOX, SEM_NOOPENFILEERRORBOX,
@@ -51,7 +53,9 @@ fn main() {
         });
     }
 
-    // Attempt to load
+    // SAFETY: ここからはVST3 ABI準拠のDLLを信頼する境界であり、export・vtable・
+    // 文字列終端の契約を前提とする。DLLはfactory解放まで保持し単一threadで使う。
+    // 悪意ある/非準拠DLLの安全性は保証できず、scanner分離はクラッシュの影響範囲だけを制限する。
     let result = unsafe { load_plugin_info(&path) };
 
     print_json_and_exit(result);

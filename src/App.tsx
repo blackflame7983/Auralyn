@@ -24,7 +24,6 @@ import { useAudioConfig } from './hooks/useAudioConfig';
 import { useAppEvents } from './hooks/useAppEvents';
 import { useUIState } from './hooks/useUIState';
 import { audioApi } from './api/audio';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { toast } from 'sonner';
 
 import { TutorialProvider, useTutorial } from './contexts/TutorialContext';
@@ -72,23 +71,7 @@ function AppContent() {
     audioApi.getDevices(true).catch((e) => console.error('Background device scan failed:', e));
   }, []);
 
-  // Close to tray: hide window instead of quitting
-  useEffect(() => {
-    const setupCloseHandler = async () => {
-      const unlisten = await getCurrentWindow().onCloseRequested(async (event) => {
-        event.preventDefault();
-        await getCurrentWindow().hide();
-      });
-      return unlisten;
-    };
-    let unlisten: (() => void) | undefined;
-    setupCloseHandler().then((fn) => {
-      unlisten = fn;
-    });
-    return () => {
-      unlisten?.();
-    };
-  }, []);
+  // 閉じる→トレイはRustのWindowEventに集約する。JS側からhide権限を要求しない。
 
   const handlePluginAdded = () => {
     if (tutorialEligible.current && currentStep === 'click_add_effect') {

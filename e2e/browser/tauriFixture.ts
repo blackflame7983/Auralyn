@@ -91,6 +91,8 @@ export const test = base.extend<{ transport: void; stoppedHome: boolean; liveHom
                     case 'get_engine_tuning_config': return { enableAffinityPinning: false, affinityMask: null, enableRealtimePriority: false, enableTimeCriticalAudioThreads: false };
                     case 'get_shortcuts': return { bindings: [], errors: [] };
                     case 'obs_connection_status': return false;
+                    case 'get_obs_credentials': return null;
+                    case 'get_window_activity': return true;
                     case 'obs_live_scene_status': return { connected: false, connectionGeneration: 0, sequence: 0 };
                     case 'set_loudness_measurement':
                         if (args.id !== null) throw new Error('この画面試験では音声測定を開始しません');

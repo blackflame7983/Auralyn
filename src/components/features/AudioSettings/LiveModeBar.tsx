@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect } from 'react';
 import { MdShield, MdAdd, MdEditNote, MdMic, MdMusicNote } from 'react-icons/md';
@@ -20,9 +21,9 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister }:
     useEffect(() => {
         if (registered) return;
         // 背景で起動して最初の取得を見送った場合も、前面に戻ったときに入口を表示できるようにする。
-        const visible = () => { if (!document.hidden) void refresh(false); };
-        document.addEventListener('visibilitychange', visible);
-        return () => document.removeEventListener('visibilitychange', visible);
+        const visible = () => { if (!isAppHidden()) void refresh(false); };
+        addAppVisibilityListener(visible);
+        return () => removeAppVisibilityListener(visible);
     }, [registered, refresh]);
     useEffect(() => (registered || value?.transaction ? activate() : undefined), [registered, Boolean(value?.transaction), activate]);
     if (!value) return error ? <section aria-label={t('liveBar.label')} className="flex flex-wrap items-center gap-2">

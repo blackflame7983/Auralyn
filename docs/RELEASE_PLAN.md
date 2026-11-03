@@ -64,6 +64,8 @@
 
 ## 4. 権利・ライセンス表記
 
+OBSソースプラグインは [設計案](OBS_SOURCE_PLUGIN_DESIGN.md) の合意後に別成果物として実装する。GPL-2.0以降のpluginと本体GPL-3.0-onlyを分け、IPCのみでつなぐ。pluginにも対応source・hash・manifest・依存表記・再現buildを付け、本体のsource配布ゲートは維持する。現行の仮想ケーブル経路と通話対応は保持し、未実装の直接送信を配布済み機能として案内しない。
+
 ### 4.1 必須表記
 *   **Auralyn本体**: 現行版は`GPL-3.0-only`。公式配布物にはルート`LICENSE`と`NOTICE.md`を同梱し、過去のMIT版の権利は遡及変更しない。
 *   **VST3 (Steinberg)**: VST3 SDKを使用しているため、以下の著作権表示が必須（About画面およびWebサイトのフッター/ライセンスページ）。

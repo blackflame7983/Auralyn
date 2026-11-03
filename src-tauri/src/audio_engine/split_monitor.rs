@@ -1310,7 +1310,7 @@ mod tests {
             );
             monitor.clock_buffer = vec![0.0; 512 * 2];
             // この試験は初期待機ではなく、稼働後の出力フレーム計測を検査する。
-            for _ in 0..4096 {
+            for _ in 0..3072 {
                 input.try_push(0.1).unwrap();
                 input.try_push(-0.1).unwrap();
             }

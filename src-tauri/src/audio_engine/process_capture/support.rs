@@ -19,12 +19,14 @@ use windows::{
 pub struct Apartment;
 impl Apartment {
     pub fn new() -> Result<Self> {
+        // SAFETY: この専用workerでMTAを初期化し、成功した場合だけ同スレッド内のApartmentガードを返す。
         unsafe { CoInitializeEx(None, COINIT_MULTITHREADED).ok()? };
         Ok(Self)
     }
 }
 impl Drop for Apartment {
     fn drop(&mut self) {
+        // SAFETY: 同じworkerスレッドで成功したCoInitializeExに対応して、ガードのDrop時に一度だけ解除する。
         unsafe { CoUninitialize() };
     }
 }
@@ -32,16 +34,20 @@ impl Drop for Apartment {
 pub struct Handle(pub HANDLE);
 impl Drop for Handle {
     fn drop(&mut self) {
+        // SAFETY: 生成成功後に所有したkernel handleをDropで一度だけ閉じ、以後使用しない。
         let _ = unsafe { CloseHandle(self.0) };
     }
 }
 
 pub struct Event(Handle);
 // kernel eventはスレッド間でSetEvent/Waitできる。Arcの最後の所有者だけがCloseする。
+// SAFETY: kernel eventはスレッド間の待機・通知を許容し、所有Handleの寿命は移動先まで保持される。
 unsafe impl Send for Event {}
+// SAFETY: 共有アクセスはkernelの待機・通知APIだけを使い、最後の所有者がHandleを閉じる。
 unsafe impl Sync for Event {}
 impl Event {
     pub fn new(manual_reset: bool) -> Result<Self> {
+        // SAFETY: 名前・security pointerを渡さずeventを生成し、成功時のhandleだけを所有Handleへ渡す。
         Ok(Self(Handle(unsafe {
             CreateEventW(None, manual_reset, false, None)?
         })))
@@ -50,6 +56,7 @@ impl Event {
         self.0 .0
     }
     pub fn signal(&self) -> Result<()> {
+        // SAFETY: selfが所有する生存中のevent handleだけを通知する。
         unsafe { SetEvent(self.raw())? };
         Ok(())
     }
@@ -61,6 +68,7 @@ pub fn wait(handles: &[HANDLE], duration: Duration) -> Result<Option<usize>> {
         "待機対象数が不正です"
     );
     let timeout = duration.as_millis().min(u128::from(u32::MAX - 1)) as u32;
+    // SAFETY: 個数は1〜64へ検証済みで、呼出元が所有者を保持するhandle配列を待機完了まで借用する。
     let result = unsafe { WaitForMultipleObjects(handles, false, timeout) };
     if result == WAIT_TIMEOUT {
         return Ok(None);
@@ -82,6 +90,7 @@ pub struct Process {
 impl Process {
     pub fn open(pid: u32) -> Result<Self> {
         ensure!(pid != 0, "PID 0は対象にできません");
+        // SAFETY: 0以外のPIDへ照会・同期権限だけを要求し、成功したhandleだけを所有Handleで保持する。
         let handle = Handle(unsafe {
             OpenProcess(
                 PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
@@ -93,6 +102,7 @@ impl Process {
         let mut exit = FILETIME::default();
         let mut kernel = FILETIME::default();
         let mut user = FILETIME::default();
+        // SAFETY: 照会権限付きの所有process handleと、有効なFILETIMEの書込み先を渡す。
         unsafe { GetProcessTimes(handle.0, &mut created, &mut exit, &mut kernel, &mut user)? };
         ensure!(
             exit.dwHighDateTime == 0 && exit.dwLowDateTime == 0,
@@ -107,6 +117,7 @@ impl Process {
     pub fn image(&self) -> Result<String> {
         let mut buffer = vec![0u16; 32_768];
         let mut length = buffer.len() as u32;
+        // SAFETY: 照会権限付きhandleと、lengthに指定した容量を持つ書込み可能なUTF-16バッファを渡す。
         unsafe {
             QueryFullProcessImageNameW(
                 self.handle.0,

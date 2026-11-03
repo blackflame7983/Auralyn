@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { Button } from '@/components/ui/button';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { SavePurposeHelp } from '../Presets/SavePurposeHelp';
@@ -23,7 +24,7 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
         let fetching = false;
         let refreshNeeded = false;
         const refresh = async () => {
-            if (disposed || document.hidden) return;
+            if (disposed || isAppHidden()) return;
             const requested = ++generation;
             if (fetching) { refreshNeeded = true; return; }
             fetching = true;
@@ -43,11 +44,11 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
         void Promise.all(subscriptions).then(() => { if (!disposed) void refresh(); }).catch(() => { if (!disposed) setObservedRunning(undefined); });
         refreshStream.current = () => { void refresh(); };
         const timer = setInterval(() => { if (!fetching) void refresh(); }, 1000);
-        const visibility = () => { if (document.hidden) { generation += 1; setObservedRunning(undefined); } else void refresh(); };
-        document.addEventListener('visibilitychange', visibility);
+        const visibility = () => { if (isAppHidden()) { generation += 1; setObservedRunning(undefined); } else void refresh(); };
+        addAppVisibilityListener(visibility);
         return () => {
             disposed = true; generation += 1; refreshStream.current = () => {};
-            clearInterval(timer); document.removeEventListener('visibilitychange', visibility);
+            clearInterval(timer); removeAppVisibilityListener(visibility);
             subscriptions.forEach(item => void item.then(stop => stop()).catch(() => {}));
         };
     }, [running]);
@@ -55,8 +56,10 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
     useEffect(() => { const release = model.activate(); void model.refresh(); return release; }, [model.activate, model.refresh]);
     useEffect(() => {
         if (!snapshot?.pending) return;
-        const timer = setInterval(() => { if (!document.hidden) void model.refresh(); }, 250);
-        return () => clearInterval(timer);
+        const refresh = () => { if (!isAppHidden()) void model.refresh(); };
+        const timer = setInterval(refresh, 250);
+        addAppVisibilityListener(refresh);
+        return () => { clearInterval(timer); removeAppVisibilityListener(refresh); };
     }, [snapshot?.pending, model.refresh]);
     const params = draft?.singing;
     const reverb = draft?.reverb ?? defaultReverb;

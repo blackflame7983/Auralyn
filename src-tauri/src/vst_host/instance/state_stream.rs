@@ -24,10 +24,12 @@ impl StateStream {
 
     // 呼出先の同期getStateが完了した後だけ参照する。
     pub(super) fn bytes(&self) -> &[u8] {
+        // SAFETY: new で確保した参照を self が保持し、同期 getState の完了後に読み取る。
         unsafe { &self.0.as_ref().data }
     }
 
     pub(super) fn rewind(&mut self) {
+        // SAFETY: self は new で確保した参照を保持し、同期呼び出しの間ではなく &mut self を通じて cursor を変更する。
         unsafe {
             self.0.as_mut().cursor = 0;
         }
@@ -36,6 +38,7 @@ impl StateStream {
 
 impl Drop for StateStream {
     fn drop(&mut self) {
+        // SAFETY: new で得た自分の COM 参照を一度解放し、追加参照があれば最後の release まで確保は残る。
         unsafe {
             release(self.as_ptr());
         }
@@ -215,6 +218,7 @@ mod tests {
     fn invalid_lengths_null_buffers_and_overflow_do_not_modify_state() {
         let stream = StateStream::new(vec![1, 2, 3]);
         let p = stream.as_ptr();
+        // SAFETY: stream が参照を保持し、渡す出力変数とバッファは各呼び出し中生存する。無効長と null は API の検証対象。
         unsafe {
             let mut actual = 99;
             let mut byte = 0_u8;
@@ -245,6 +249,7 @@ mod tests {
     fn retained_reference_survives_owner_and_stream_supports_seek_and_partial_reads() {
         let stream = StateStream::new(vec![1, 2, 3]);
         let mut retained = null_mut();
+        // SAFETY: stream が初期参照を保持し、query の出力先と IID は呼び出し中有効。取得した参照はテスト内で解放する。
         unsafe {
             assert_eq!(
                 query(

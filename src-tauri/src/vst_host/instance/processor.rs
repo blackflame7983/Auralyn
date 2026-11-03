@@ -13,6 +13,7 @@ impl VstProcessor {
         }
         // 専用 worker の process 呼出し間だけで実行する。VST3 準拠の実装は
         // setProcessing(true) で遅延線などを初期化する。非準拠 VST は保証できない。
+        // SAFETY: 非nullの有効なprocessorを専用workerが排他的に保持し、process呼出しの間だけVST3 vtableのsetProcessingを実行する。
         unsafe {
             let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.ptr);
             if (vtbl.set_processing)(self.ptr, 0) != K_RESULT_OK {
@@ -61,6 +62,7 @@ impl VstProcessor {
             output_buffer.fill(0.0);
             return;
         }
+        // SAFETY: create_processor が add_ref した processor と DLL を保持する。フレーム数と作業バッファ長を上で検証し、呼び出し中は各バッファが生存する。
         unsafe {
             let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.ptr);
 
@@ -202,6 +204,7 @@ impl VstProcessor {
             return;
         }
 
+        // SAFETY: create_processor が add_ref した processor と DLL を保持する。上で各チャネルの長さとフレーム数を検証し、呼び出し中はスライスが生存する。
         unsafe {
             let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.ptr);
 
@@ -279,6 +282,7 @@ impl VstProcessor {
 impl Drop for VstProcessor {
     fn drop(&mut self) {
         // println!("BP: VstProcessor Drop Start {:p}", self.ptr);
+        // SAFETY: create_processor で追加した processor の COM 参照を一度だけ解放し、DLL はこの drop 中も保持される。
         unsafe {
             if !self.ptr.is_null() {
                 let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.ptr);
@@ -378,6 +382,7 @@ mod reset_tests {
             }));
             let mut processor = VstProcessor {
                 ptr: mock.get().cast(),
+                // SAFETY: テスト用の既知のWindows DLLを保持するだけで、VST呼出し先は別途所有するmockのvtableを使う。
                 _library: Arc::new(unsafe { PluginLibrary::load("kernel32.dll", false) }.unwrap()),
                 scratch_inputs: vec![],
                 scratch_outputs: vec![],
@@ -394,6 +399,7 @@ mod reset_tests {
                 success = processor.reset_processing();
             });
             assert_eq!(counts, (0, 0));
+            // SAFETY: mockのBoxが生存し、同期的なreset完了後に同じテストスレッドだけが状態を参照する。
             let state = unsafe { &*mock.get() };
             assert_eq!(success, failure == -1);
             assert_eq!(state.calls[0], 0);

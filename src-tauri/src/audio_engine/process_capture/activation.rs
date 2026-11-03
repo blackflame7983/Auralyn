@@ -64,7 +64,9 @@ struct Payload {
 }
 // variantは不変で、唯一の生pointerは上で所有する不変のparamsを指す。
 // COM interfaceやapartment固有の資源は含まない。PropVariantClearは外部メモリを解放するため呼ばない。
+// SAFETY: payloadのBoxは完了通知まで所有され、生ポインターは移動しない不変のparamsだけを指す。COMインターフェイスは含まない。
 unsafe impl Send for Payload {}
+// SAFETY: 共有後のvariantとparamsは変更せず、Arcの最後の所有者まで両領域を保持する。
 unsafe impl Sync for Payload {}
 impl Payload {
     fn new(pid: u32) -> Result<Self> {
@@ -158,6 +160,7 @@ pub fn activate(process: &Process, timeout: Duration, cancel: &Event) -> Result<
     }
     .into();
     let deadline = Instant::now() + timeout;
+    // SAFETY: 完了handlerがpayloadを所有し、固定されたvariantとparamsは非同期操作の完了通知まで生存する。
     let operation = unsafe {
         ActivateAudioInterfaceAsync(
             VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
@@ -169,6 +172,7 @@ pub fn activate(process: &Process, timeout: Duration, cancel: &Event) -> Result<
     wait_for_completion(&completion, process, cancel, deadline)?;
     let mut status = HRESULT(0);
     let mut interface: Option<IUnknown> = None;
+    // SAFETY: 完了通知を待ったoperationを使い、statusとinterfaceは有効な書込み先として呼出し完了まで保持する。
     unsafe { operation.GetActivateResult(&mut status, &mut interface)? };
     status.ok()?;
     let client = interface

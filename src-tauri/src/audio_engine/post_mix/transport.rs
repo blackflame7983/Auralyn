@@ -83,6 +83,7 @@ impl Ring {
             return false;
         }
         // producer は空きスロットだけを書き、公開後は consumer の read 更新まで再利用しない。
+        // SAFETY: 単一producerだけが範囲内の空きslotを所有し、release公開後はconsumerの解放まで書き換えない。
         unsafe {
             *self.slots[(write % CAPACITY) as usize].get() = *packet;
         }
@@ -97,6 +98,7 @@ impl Ring {
             return false;
         }
         // acquire で完成したスロットを読み、コピー完了後に release して再利用を許す。
+        // SAFETY: 単一consumerがacquire済みの初期化済みslotをコピーし、完了後のreleaseまでproducerによる再利用を禁止する。
         unsafe {
             *packet = *self.slots[(read % CAPACITY) as usize].get();
         }
@@ -142,15 +144,19 @@ struct View {
     address: NonNull<Shared>,
 }
 // 共有データは atomic と SPSC の排他的なスロット所有権で同期する。
+// SAFETY: mappingの所有権はArcで保持し、共有領域の変更はatomicとclaimで一意化したSPSC portだけを使う。
 unsafe impl Send for View {}
+// SAFETY: 共有参照の変更はatomicとSPSC所有権で同期し、portの処理は排他的な可変借用を要求する。
 unsafe impl Sync for View {}
 impl View {
     fn shared(&self) -> &Shared {
+        // SAFETY: 成功したmappingの非nullで整列した領域を参照し、その寿命はViewのArc所有権で保持する。
         unsafe { self.address.as_ref() }
     }
 }
 impl Drop for View {
     fn drop(&mut self) {
+        // SAFETY: 最後のArcだけが所有viewをunmapし、その後に対応する所有handleを一度だけ閉じる。
         unsafe {
             let _ = UnmapViewOfFile(MEMORY_MAPPED_VIEW_ADDRESS {
                 Value: self.address.as_ptr().cast(),
@@ -160,8 +166,10 @@ impl Drop for View {
     }
 }
 fn map(handle: HANDLE) -> Result<Arc<View>> {
+    // SAFETY: 有効な所有mapping handleを指定サイズでmapし、失敗のnullは参照せず処理する。
     let address = unsafe { MapViewOfFile(handle, FILE_MAP_ALL_ACCESS, 0, 0, size_of::<Shared>()) };
     let Some(address) = NonNull::new(address.Value.cast::<Shared>()) else {
+        // SAFETY: map失敗時は所有権をViewへ移さず、引数で受け取ったhandleを一度だけ閉じる。
         unsafe {
             let _ = CloseHandle(handle);
         }
@@ -195,10 +203,12 @@ pub struct Mapping {
 impl Mapping {
     pub fn create(rate: u32) -> Result<Self> {
         ensure!(valid_rate(rate), "共有メモリのサンプルレートが不正です");
+        // SAFETY: ポインター引数を持たないWindowsのGUID生成APIを呼び、戻り値を所有する。
         let guid = unsafe { CoCreateGuid()? };
         let name = format!("{PREFIX}{guid:?}");
         ensure!(valid_name(&name), "共有メモリ名の生成に失敗しました");
         let encoded = wide(&name);
+        // SAFETY: nul終端した名前と正しいSharedサイズを渡し、生成後のmapping handleを所有する。
         let handle = unsafe {
             CreateFileMappingW(
                 INVALID_HANDLE_VALUE,
@@ -209,13 +219,16 @@ impl Mapping {
                 PCWSTR(encoded.as_ptr()),
             )?
         };
+        // SAFETY: 直前のCreateFileMappingWの結果を、別のWin32呼出しを挟まず同じスレッドで確認する。
         if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+            // SAFETY: 既存mappingと判定した生成handleは公開せず、この分岐で一度だけ閉じる。
             unsafe {
                 let _ = CloseHandle(handle);
             }
             return Err(anyhow!("共有メモリ名が既に存在します"));
         }
         let view = map(handle)?;
+        // SAFETY: 新規作成した正しいサイズのmappingを、ready公開前に一度だけ完全初期化する。
         unsafe {
             view.address.as_ptr().write(Shared::new(rate));
         }
@@ -238,6 +251,7 @@ impl Mapping {
         );
         let encoded = wide(&descriptor.name);
         let handle =
+            // SAFETY: 検証済みのnul終端した名前を呼出し中保持し、取得handleをmapの所有権へ渡す。
             unsafe { OpenFileMappingW(FILE_MAP_ALL_ACCESS.0, false, PCWSTR(encoded.as_ptr()))? };
         let view = map(handle)?;
         let shared = view.shared();

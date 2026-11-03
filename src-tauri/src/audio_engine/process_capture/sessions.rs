@@ -48,15 +48,18 @@ pub struct Route {
 }
 
 fn parents() -> Result<HashMap<u32, u32>> {
+    // SAFETY: PIDを列挙するsnapshotの生成成功後だけ所有Handleへ渡し、最後に一度だけ閉じる。
     let snapshot = Handle(unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)? });
     let mut result = HashMap::new();
     let mut entry = PROCESSENTRY32W {
         dwSize: size_of::<PROCESSENTRY32W>() as u32,
         ..Default::default()
     };
+    // SAFETY: 有効なsnapshotと、dwSizeを初期化した書込み可能なentryを渡す。
     let mut next = unsafe { Process32FirstW(snapshot.0, &mut entry) };
     while next.is_ok() {
         result.insert(entry.th32ProcessID, entry.th32ParentProcessID);
+        // SAFETY: snapshotを保持した同じ列挙中に、正しいサイズを保つentryへ次の項目を書き込む。
         next = unsafe { Process32NextW(snapshot.0, &mut entry) };
     }
     Ok(result)
@@ -88,30 +91,49 @@ fn for_each_session(
     mut visit: impl FnMut(u32, &Route, u32, &IAudioSessionControl2) -> Result<()>,
 ) -> Result<u32> {
     let enumerator: IMMDeviceEnumerator =
+        // SAFETY: 呼出元のMTAガードが生存するスレッドで、型に対応するCOMインターフェイスを生成する。
         unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)? };
+    // SAFETY: このMTAスレッドで所有するenumeratorを使用し、戻されたcollectionも所有参照で保持する。
     let endpoints = unsafe { enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)? };
+    // SAFETY: 所有するcollectionの有効なCOM参照から件数を取得する。
     let count = unsafe { endpoints.GetCount()? };
     for index in 0..count {
+        // SAFETY: GetCountが返した範囲のindexだけを使い、collectionを呼出し完了まで保持する。
         let device = unsafe { endpoints.Item(index)? };
+        // SAFETY: 所有deviceのCOM参照から、呼出元が解放するnul終端文字列を取得する。
         let id = unsafe { device.GetId()? };
+        // SAFETY: GetIdで取得した有効なnul終端文字列を、解放前にRustのStringへコピーする。
         let text = unsafe { id.to_string() };
+        // SAFETY: GetIdがCOM allocatorで確保した文字列をコピー後に一度だけ解放し、以後参照しない。
         unsafe { CoTaskMemFree(Some(id.0.cast())) };
+        // SAFETY: 所有deviceのCOM参照から読み取り用のproperty storeを取得する。
         let store = unsafe { device.OpenPropertyStore(STGM(0))? };
+        // SAFETY: 所有storeと静的なproperty keyを使い、返されたPROPVARIANTをRust側で所有する。
         let property = unsafe { store.GetValue(&PKEY_Device_FriendlyName)? };
+        // SAFETY: 生存中のPROPVARIANTからCOM allocator所有のnul終端文字列を取得する。
         let name = unsafe { PropVariantToStringAlloc(&property)? };
+        // SAFETY: 取得成功したnul終端文字列を、解放する前にRustのStringへコピーする。
         let converted = unsafe { name.to_string() };
+        // SAFETY: PropVariantToStringAllocで確保した文字列だけを、コピー後に一度だけ解放する。
         unsafe { CoTaskMemFree(Some(name.0.cast())) };
         let volume: windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume =
+            // SAFETY: MTAガード内で所有deviceを使用し、指定した型のendpoint volume参照を取得する。
             unsafe { device.Activate(CLSCTX_ALL, None)? };
         let route = Route {
             id: text?,
             name: converted?,
+            // SAFETY: 同じMTAスレッドで保持するvolumeインターフェイスから状態を読み取る。
             muted: unsafe { volume.GetMute()?.as_bool() },
         };
+        // SAFETY: MTAガード内で所有deviceを使用し、指定したsession manager参照を取得する。
         let manager: IAudioSessionManager2 = unsafe { device.Activate(CLSCTX_ALL, None)? };
+        // SAFETY: 有効な所有managerからsession列挙子を取得し、このスレッド内で保持する。
         let sessions = unsafe { manager.GetSessionEnumerator()? };
+        // SAFETY: 所有するsession列挙子の有効なCOM参照から件数を取得する。
         for session in 0..unsafe { sessions.GetCount()? } {
+            // SAFETY: GetCountの範囲内のsession番号だけを使い、返されたCOM参照を所有する。
             let control: IAudioSessionControl2 = unsafe { sessions.GetSession(session)? }.cast()?;
+            // SAFETY: 同じMTAスレッドの有効なsession control参照からPIDを取得する。
             let pid = unsafe { control.GetProcessId()? };
             if pid != 0 {
                 visit(index, &route, pid, &control)?;
@@ -125,6 +147,7 @@ pub fn list() -> Result<Vec<Candidate>> {
     let tree = parents()?;
     let mut result = BTreeMap::<(u32, u64), (Candidate, BTreeSet<u32>)>::new();
     for_each_session(|endpoint, route, pid, control| {
+        // SAFETY: 列挙中に所有するsession controlを、呼出元のMTAガードが生存する間に使用する。
         if unsafe { control.GetState()? } != AudioSessionStateActive {
             return Ok(());
         }

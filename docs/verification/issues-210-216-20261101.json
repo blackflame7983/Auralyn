@@ -1,0 +1,2005 @@
+{
+  "date": "2026-11-01",
+  "base": "44c49b57ad2467166becc432f87a13c1716fb92d",
+  "productCandidate": "a286fca",
+  "hardware": {
+    "otherApps": "User applications were preserved. Task builds and other task measurements will not run during CPU comparison.",
+    "cpu": {
+      "Name": "AMD Ryzen 7 7800X3D 8-Core Processor           ",
+      "NumberOfCores": 8,
+      "NumberOfLogicalProcessors": 16
+    },
+    "os": {
+      "Caption": "Microsoft Windows 11 Pro",
+      "Version": "10.0.26300",
+      "BuildNumber": "26300"
+    },
+    "drivers": [
+      {
+        "name": "Creative Sound Blaster ASIO",
+        "productVersion": "1.0.3.0",
+        "fileVersion": "1.1.3.0"
+      },
+      {
+        "name": "Voicemeeter Insert Virtual ASIO",
+        "productVersion": "1, 0, 2, 2",
+        "fileVersion": "1, 0, 2, 2"
+      }
+    ],
+    "utc": "2026-11-01T12:29:31.2331023Z",
+    "powerPlan": "電源設定の GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (バランス)"
+  },
+  "window": {
+    "binarySources": {
+      "before": "44c49b57",
+      "after": "a286fca"
+    },
+    "binaryHashes": {
+      "before": "7c98e24d76d4a88fc6cae8ab0baa67cad76e94c751d6bc8fb714d1d53171ff5b",
+      "after": "fc6b4326977d66930ceec7709c145a7e9eb21f14a242955ca167451016e0335f"
+    },
+    "scriptSha256": "f22721e7c2efea2be57f24f0d539b97b38626935cdfe4cd576dd748fe47034ed",
+    "order": [
+      "before",
+      "after",
+      "after",
+      "before",
+      "before",
+      "after"
+    ],
+    "cpuBasis": "One logical core=100%; arithmetic mean of sampled process-tree CPU; child first samples can be unprimed",
+    "memoryBasis": "Maximum simultaneous process-tree sum observed; not sum of per-process lifetime peaks",
+    "limitations": [
+      "Isolated stopped-audio gaming theme; not original user profile",
+      "CDP detached during measurement; remote debugging and observation wrappers remain",
+      "State order fixed visible-minimized-tray",
+      "Raw Win32 restoration after tray is not real tray-click acceptance",
+      "Process-name CPU delta includes processes present at both boundaries only"
+    ],
+    "trials": [
+      {
+        "label": "window-r1-before",
+        "version": "before",
+        "states": [
+          {
+            "state": "visible",
+            "seconds": 60.0414909000101,
+            "samples": 447,
+            "cpuMeanOneCorePercent": 23.177181208053693,
+            "cpuSampleMaxOneCorePercent": 112.5,
+            "maxPrivateMiB": 339.078125,
+            "maxWorkingSetMiB": 514.74609375,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.5722656839302981,
+              "msedgewebview2.exe": 22.396397902908486,
+              "audio_engine.exe": 0.026012076542286277
+            },
+            "unprimedChildObservations": 0,
+            "hidden": {
+              "document": false,
+              "app": null
+            },
+            "native": {
+              "hwnd": 419697468,
+              "state": "inspect",
+              "visible": true,
+              "minimized": false
+            },
+            "observationSpanSeconds": 65.43420000001788,
+            "ipcObservedPerSecond": {
+              "get_engine_runtime_stats": 0.9933643263000425,
+              "get_audio_state": 1.4824052254016018,
+              "auto_gain": 1.4824052254016018
+            },
+            "timerSynchronousWallMsPerSecond": 1.248582544881032,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9933643263000425,
+                "syncWallMsPerSecond": 0.3927609719087579,
+                "source": "()=>void ls()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9933643263000425,
+                "syncWallMsPerSecond": 0.37747844426728905,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50553991641806,
+                "syncWallMsPerSecond": 0.1849185889707765,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50553991641806,
+                "syncWallMsPerSecond": 0.14671227146119617,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.48904089910155935,
+                "syncWallMsPerSecond": 0.14518401555441093,
+                "source": "()=>void n()"
+              }
+            ]
+          },
+          {
+            "state": "minimized",
+            "seconds": 60.10712400000193,
+            "samples": 456,
+            "cpuMeanOneCorePercent": 21.952850877192983,
+            "cpuSampleMaxOneCorePercent": 87.5,
+            "maxPrivateMiB": 353.8046875,
+            "maxWorkingSetMiB": 540.47265625,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.6235867725724941,
+              "msedgewebview2.exe": 21.072036356512193,
+              "audio_engine.exe": 0.025982782190520585
+            },
+            "unprimedChildObservations": 2,
+            "hidden": {
+              "document": false,
+              "app": null
+            },
+            "native": {
+              "hwnd": 419697468,
+              "state": "inspect",
+              "visible": true,
+              "minimized": true
+            },
+            "observationSpanSeconds": 65.36769999998808,
+            "ipcObservedPerSecond": {
+              "get_engine_runtime_stats": 0.9943748976943025,
+              "get_audio_state": 1.4992113842160253,
+              "auto_gain": 1.4992113842160253
+            },
+            "timerSynchronousWallMsPerSecond": 1.252912374377432,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9943748976943025,
+                "syncWallMsPerSecond": 0.4283461088641709,
+                "source": "()=>void ls()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9943748976943025,
+                "syncWallMsPerSecond": 0.3809220749170927,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50793587659877,
+                "syncWallMsPerSecond": 0.19581536647507183,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.5048364865217227,
+                "syncWallMsPerSecond": 0.13921248786560958,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50793587659877,
+                "syncWallMsPerSecond": 0.10708652881175633,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              }
+            ]
+          },
+          {
+            "state": "tray",
+            "seconds": 60.09168049998698,
+            "samples": 465,
+            "cpuMeanOneCorePercent": 25.985806451612902,
+            "cpuSampleMaxOneCorePercent": 121.9,
+            "maxPrivateMiB": 328.00390625,
+            "maxWorkingSetMiB": 510.0234375,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.4418011322612572,
+              "msedgewebview2.exe": 25.33859435027799,
+              "audio_engine.exe": 0.025988301897721017
+            },
+            "unprimedChildObservations": 1,
+            "hidden": {
+              "document": false,
+              "app": null
+            },
+            "native": {
+              "hwnd": 419697468,
+              "state": "inspect",
+              "visible": false,
+              "minimized": false
+            },
+            "observationSpanSeconds": 65.33939999997615,
+            "ipcObservedPerSecond": {
+              "get_engine_runtime_stats": 0.9948055843797727,
+              "get_audio_state": 1.4845560259205839,
+              "auto_gain": 1.4845560259205839
+            },
+            "timerSynchronousWallMsPerSecond": 1.2733511455430846,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9948055843797727,
+                "syncWallMsPerSecond": 0.4514886869270884,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9948055843797727,
+                "syncWallMsPerSecond": 0.4285316340676316,
+                "source": "()=>void ls()"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.4897504415408112,
+                "syncWallMsPerSecond": 0.15916889450421806,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.48909540034788,
+                "syncWallMsPerSecond": 0.12243761175354972,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.48909540034788,
+                "syncWallMsPerSecond": 0.10866337821341307,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              }
+            ]
+          }
+        ],
+        "resumedDiagnosticOnly": {
+          "hidden": false
+        },
+        "knownBaselineErrors": [
+          "indow|hide not allowed by ACL",
+          "Command plugin:window|hide not allowed by ACL"
+        ],
+        "pageErrors": [
+          "indow|hide not allowed by ACL",
+          "Command plugin:window|hide not allowed by ACL"
+        ]
+      },
+      {
+        "label": "window-r2-after",
+        "version": "after",
+        "states": [
+          {
+            "state": "visible",
+            "seconds": 60.06146589998389,
+            "samples": 460,
+            "cpuMeanOneCorePercent": 2.477391304347826,
+            "cpuSampleMaxOneCorePercent": 50.0,
+            "maxPrivateMiB": 337.53515625,
+            "maxWorkingSetMiB": 535.2109375,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.5200536827203217,
+              "msedgewebview2.exe": 1.9502013102012064,
+              "audio_engine.exe": 0.0
+            },
+            "unprimedChildObservations": 0,
+            "hidden": {
+              "document": false,
+              "app": "false"
+            },
+            "native": {
+              "hwnd": 119611568,
+              "state": "inspect",
+              "visible": true,
+              "minimized": false
+            },
+            "observationSpanSeconds": 65.41680000001192,
+            "ipcObservedPerSecond": {
+              "get_engine_runtime_stats": 0.9936285480180651,
+              "get_audio_state": 1.4827995255038817,
+              "auto_gain": 1.4827995255038817
+            },
+            "timerSynchronousWallMsPerSecond": 1.2397426923298935,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9936285480180651,
+                "syncWallMsPerSecond": 0.4402538790083134,
+                "source": "()=>void bs()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9936285480180651,
+                "syncWallMsPerSecond": 0.40050873490082617,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.49159237381308,
+                "syncWallMsPerSecond": 0.15133727079521375,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.4891709774858166,
+                "syncWallMsPerSecond": 0.13605067638205406,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.49159237381308,
+                "syncWallMsPerSecond": 0.10700615314732628,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              }
+            ]
+          },
+          {
+            "state": "minimized",
+            "seconds": 60.114375600009225,
+            "samples": 459,
+            "cpuMeanOneCorePercent": 0.85119825708061,
+            "cpuSampleMaxOneCorePercent": 75.0,
+            "maxPrivateMiB": 341.98046875,
+            "maxWorkingSetMiB": 551.015625,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.1558771836038478,
+              "msedgewebview2.exe": 0.5455701426134673,
+              "audio_engine.exe": 0.0
+            },
+            "unprimedChildObservations": 2,
+            "hidden": {
+              "document": false,
+              "app": "true"
+            },
+            "native": {
+              "hwnd": 119611568,
+              "state": "inspect",
+              "visible": true,
+              "minimized": true
+            },
+            "observationSpanSeconds": 65.45430000001193,
+            "ipcObservedPerSecond": {},
+            "timerSynchronousWallMsPerSecond": 0.15277834933062015,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50162326996476,
+                "syncWallMsPerSecond": 0.07791695876418518,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.48634543489511,
+                "syncWallMsPerSecond": 0.06263912232858378,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9930592795276728,
+                "syncWallMsPerSecond": 0.0076389179901432186,
+                "source": "()=>void bs()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9930592795276728,
+                "syncWallMsPerSecond": 0.0030555668318053147,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.5041685572986647,
+                "syncWallMsPerSecond": 0.0015277834159026574,
+                "source": "()=>{w()}"
+              }
+            ]
+          },
+          {
+            "state": "tray",
+            "seconds": 60.07391659999848,
+            "samples": 461,
+            "cpuMeanOneCorePercent": 0.6911062906724512,
+            "cpuSampleMaxOneCorePercent": 55.8,
+            "maxPrivateMiB": 312.015625,
+            "maxWorkingSetMiB": 517.33203125,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.07799389564114292,
+              "msedgewebview2.exe": 0.6239511651291434,
+              "audio_engine.exe": 0.0
+            },
+            "unprimedChildObservations": 0,
+            "hidden": {
+              "document": false,
+              "app": "true"
+            },
+            "native": {
+              "hwnd": 119611568,
+              "state": "inspect",
+              "visible": false,
+              "minimized": false
+            },
+            "observationSpanSeconds": 65.43319999998808,
+            "ipcObservedPerSecond": {},
+            "timerSynchronousWallMsPerSecond": 0.1497710639571409,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50649517371526,
+                "syncWallMsPerSecond": 0.07794208435534965,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50649517371526,
+                "syncWallMsPerSecond": 0.06571587484823285,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9933795076507315,
+                "syncWallMsPerSecond": 0.001528276529985942,
+                "source": "()=>void bs()"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.4890483729972832,
+                "syncWallMsPerSecond": 0.0015282760745241521,
+                "source": "()=>{w()}"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.4890483729972832,
+                "syncWallMsPerSecond": 0.0015282760745241521,
+                "source": "()=>void n()"
+              }
+            ]
+          }
+        ],
+        "resumedDiagnosticOnly": {
+          "hidden": false,
+          "appHidden": "true"
+        },
+        "knownBaselineErrors": [],
+        "pageErrors": []
+      },
+      {
+        "label": "window-r3-after",
+        "version": "after",
+        "states": [
+          {
+            "state": "visible",
+            "seconds": 60.071510899986606,
+            "samples": 459,
+            "cpuMeanOneCorePercent": 2.9631808278867102,
+            "cpuSampleMaxOneCorePercent": 110.8,
+            "maxPrivateMiB": 334.046875,
+            "maxWorkingSetMiB": 531.421875,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.467934795974034,
+              "msedgewebview2.exe": 2.5216486227489607,
+              "audio_engine.exe": 0.0
+            },
+            "unprimedChildObservations": 1,
+            "hidden": {
+              "document": false,
+              "app": "false"
+            },
+            "native": {
+              "hwnd": 58859410,
+              "state": "inspect",
+              "visible": true,
+              "minimized": false
+            },
+            "observationSpanSeconds": 65.44269999998808,
+            "ipcObservedPerSecond": {
+              "get_engine_runtime_stats": 1.0085158466874384,
+              "get_audio_state": 1.4974932268995298,
+              "auto_gain": 1.4974932268995298
+            },
+            "timerSynchronousWallMsPerSecond": 1.3339914219488094,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9932353035558105,
+                "syncWallMsPerSecond": 0.42479909878601696,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 1.0085158466874384,
+                "syncWallMsPerSecond": 0.4125746654647434,
+                "source": "()=>void bs()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.49742140835792,
+                "syncWallMsPerSecond": 0.20323122610978708,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.5042579233437192,
+                "syncWallMsPerSecond": 0.14516516066125595,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.49742140835792,
+                "syncWallMsPerSecond": 0.14210905403867136,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              }
+            ]
+          },
+          {
+            "state": "minimized",
+            "seconds": 60.079579699988244,
+            "samples": 460,
+            "cpuMeanOneCorePercent": 0.7778260869565218,
+            "cpuSampleMaxOneCorePercent": 89.3,
+            "maxPrivateMiB": 341.9375,
+            "maxWorkingSetMiB": 548.7734375,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.15593118829017025,
+              "msedgewebview2.exe": 0.4158165021071206,
+              "audio_engine.exe": 0.0
+            },
+            "unprimedChildObservations": 2,
+            "hidden": {
+              "document": false,
+              "app": "true"
+            },
+            "native": {
+              "hwnd": 58859410,
+              "state": "inspect",
+              "visible": true,
+              "minimized": true
+            },
+            "observationSpanSeconds": 65.40790000000597,
+            "ipcObservedPerSecond": {},
+            "timerSynchronousWallMsPerSecond": 0.19569501014849724,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50009555420105,
+                "syncWallMsPerSecond": 0.08408770103297696,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50009555420105,
+                "syncWallMsPerSecond": 0.0825588315378374,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 1.0090524233310347,
+                "syncWallMsPerSecond": 0.015288672625135287,
+                "source": "()=>void bs()"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.5045262116655174,
+                "syncWallMsPerSecond": 0.0045866016508491975,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9937637502502614,
+                "syncWallMsPerSecond": 0.0045866016508491975,
+                "source": "()=>void c()"
+              }
+            ]
+          },
+          {
+            "state": "tray",
+            "seconds": 60.01480649999576,
+            "samples": 463,
+            "cpuMeanOneCorePercent": 0.49913606911447084,
+            "cpuSampleMaxOneCorePercent": 25.0,
+            "maxPrivateMiB": 311.72265625,
+            "maxWorkingSetMiB": 525.5,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.07806326912801619,
+              "msedgewebview2.exe": 0.4163374353494197,
+              "audio_engine.exe": 0.0
+            },
+            "unprimedChildObservations": 1,
+            "hidden": {
+              "document": false,
+              "app": "true"
+            },
+            "native": {
+              "hwnd": 58859410,
+              "state": "inspect",
+              "visible": false,
+              "minimized": false
+            },
+            "observationSpanSeconds": 65.2555,
+            "ipcObservedPerSecond": {},
+            "timerSynchronousWallMsPerSecond": 0.16243841597480949,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50814107623113,
+                "syncWallMsPerSecond": 0.07202458194770342,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50814107623113,
+                "syncWallMsPerSecond": 0.06895970408927489,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9960846212196673,
+                "syncWallMsPerSecond": 0.01072706451221351,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9960846212196673,
+                "syncWallMsPerSecond": 0.0076621898506995184,
+                "source": "()=>void bs()"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.49038012121583624,
+                "syncWallMsPerSecond": 0.0015324377874590728,
+                "source": "()=>{w()}"
+              }
+            ]
+          }
+        ],
+        "resumedDiagnosticOnly": {
+          "hidden": false,
+          "appHidden": "true"
+        },
+        "knownBaselineErrors": [],
+        "pageErrors": []
+      },
+      {
+        "label": "window-r4-before",
+        "version": "before",
+        "states": [
+          {
+            "state": "visible",
+            "seconds": 60.04696410000906,
+            "samples": 445,
+            "cpuMeanOneCorePercent": 23.39191011235955,
+            "cpuSampleMaxOneCorePercent": 122.8,
+            "maxPrivateMiB": 349.2265625,
+            "maxWorkingSetMiB": 522.6875,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.5981696277370645,
+              "msedgewebview2.exe": 22.522386853056425,
+              "audio_engine.exe": 0.18205162583301962
+            },
+            "unprimedChildObservations": 0,
+            "hidden": {
+              "document": false,
+              "app": null
+            },
+            "native": {
+              "hwnd": 221651322,
+              "state": "inspect",
+              "visible": true,
+              "minimized": false
+            },
+            "observationSpanSeconds": 65.53180000001193,
+            "ipcObservedPerSecond": {
+              "get_engine_runtime_stats": 0.9918848559018396,
+              "get_audio_state": 1.480197400345822,
+              "auto_gain": 1.480197400345822
+            },
+            "timerSynchronousWallMsPerSecond": 1.2528268722029139,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9918848559018396,
+                "syncWallMsPerSecond": 0.40896175660852246,
+                "source": "()=>void ls()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9918848559018396,
+                "syncWallMsPerSecond": 0.38149417580163786,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.504005688829764,
+                "syncWallMsPerSecond": 0.16480548256742522,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.48831254444398253,
+                "syncWallMsPerSecond": 0.15107169580219487,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.504005688829764,
+                "syncWallMsPerSecond": 0.14649376142313347,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              }
+            ]
+          },
+          {
+            "state": "minimized",
+            "seconds": 60.09327359998133,
+            "samples": 447,
+            "cpuMeanOneCorePercent": 22.070693512304253,
+            "cpuSampleMaxOneCorePercent": 99.8,
+            "maxPrivateMiB": 361.1640625,
+            "maxWorkingSetMiB": 552.62109375,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.5457745711057166,
+              "msedgewebview2.exe": 21.1552619466692,
+              "audio_engine.exe": 0.10395706116299362
+            },
+            "unprimedChildObservations": 1,
+            "hidden": {
+              "document": false,
+              "app": null
+            },
+            "native": {
+              "hwnd": 221651322,
+              "state": "inspect",
+              "visible": true,
+              "minimized": true
+            },
+            "observationSpanSeconds": 65.33530000001193,
+            "ipcObservedPerSecond": {
+              "get_engine_runtime_stats": 0.994868011625999,
+              "get_audio_state": 1.4999548482976601,
+              "auto_gain": 1.4999548482976601
+            },
+            "timerSynchronousWallMsPerSecond": 1.215269539078247,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.994868011625999,
+                "syncWallMsPerSecond": 0.40406946988470194,
+                "source": "()=>void ls()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.994868011625999,
+                "syncWallMsPerSecond": 0.3749887111621265,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.493016791830065,
+                "syncWallMsPerSecond": 0.18213737270279623,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.5050868366716611,
+                "syncWallMsPerSecond": 0.148464918475576,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.508322453547386,
+                "syncWallMsPerSecond": 0.10407850077254306,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              }
+            ]
+          },
+          {
+            "state": "tray",
+            "seconds": 60.056462499982445,
+            "samples": 462,
+            "cpuMeanOneCorePercent": 25.2008658008658,
+            "cpuSampleMaxOneCorePercent": 112.5,
+            "maxPrivateMiB": 336.015625,
+            "maxWorkingSetMiB": 538.15625,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.4421210676034885,
+              "msedgewebview2.exe": 24.654751299300422,
+              "audio_engine.exe": 0.05201424324746925
+            },
+            "unprimedChildObservations": 1,
+            "hidden": {
+              "document": false,
+              "app": null
+            },
+            "native": {
+              "hwnd": 221651322,
+              "state": "inspect",
+              "visible": false,
+              "minimized": false
+            },
+            "observationSpanSeconds": 65.299,
+            "ipcObservedPerSecond": {
+              "get_engine_runtime_stats": 0.9954210631096952,
+              "get_audio_state": 1.4854745095636992,
+              "auto_gain": 1.4854745095636992
+            },
+            "timerSynchronousWallMsPerSecond": 1.3170186327811568,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9954210631096952,
+                "syncWallMsPerSecond": 0.44257951983284743,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9954210631096952,
+                "syncWallMsPerSecond": 0.44104810199116257,
+                "source": "()=>void ls()"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.49005344645400384,
+                "syncWallMsPerSecond": 0.16692445346408327,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.497128593087176,
+                "syncWallMsPerSecond": 0.1546731152945827,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.497128593087176,
+                "syncWallMsPerSecond": 0.11026202481319389,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              }
+            ]
+          }
+        ],
+        "resumedDiagnosticOnly": {
+          "hidden": false
+        },
+        "knownBaselineErrors": [
+          "indow|hide not allowed by ACL",
+          "Command plugin:window|hide not allowed by ACL"
+        ],
+        "pageErrors": [
+          "indow|hide not allowed by ACL",
+          "Command plugin:window|hide not allowed by ACL"
+        ]
+      },
+      {
+        "label": "window-r5-before",
+        "version": "before",
+        "states": [
+          {
+            "state": "visible",
+            "seconds": 60.04260439999052,
+            "samples": 436,
+            "cpuMeanOneCorePercent": 23.307339449541285,
+            "cpuSampleMaxOneCorePercent": 77.6,
+            "maxPrivateMiB": 349.80078125,
+            "maxWorkingSetMiB": 522.53515625,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.02600959254747128,
+              "msedgewebview2.exe": 23.252575737439326,
+              "audio_engine.exe": 0.05201918509494256
+            },
+            "unprimedChildObservations": 0,
+            "hidden": {
+              "document": false,
+              "app": null
+            },
+            "native": {
+              "hwnd": 27467644,
+              "state": "inspect",
+              "visible": true,
+              "minimized": false
+            },
+            "observationSpanSeconds": 65.45259999999404,
+            "ipcObservedPerSecond": {
+              "get_engine_runtime_stats": 0.9930850722508491,
+              "get_audio_state": 1.4819884924358824,
+              "auto_gain": 1.4819884924358824
+            },
+            "timerSynchronousWallMsPerSecond": 1.2619819518955717,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9930850722508491,
+                "syncWallMsPerSecond": 0.3987618515420257,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9930850722508491,
+                "syncWallMsPerSecond": 0.39570620534799994,
+                "source": "()=>void ls()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.503246624280365,
+                "syncWallMsPerSecond": 0.17417184398731028,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.4889034201850334,
+                "syncWallMsPerSecond": 0.15889361165120122,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.503246624280365,
+                "syncWallMsPerSecond": 0.13444843936703452,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              }
+            ]
+          },
+          {
+            "state": "minimized",
+            "seconds": 60.08805839999695,
+            "samples": 457,
+            "cpuMeanOneCorePercent": 21.54048140043764,
+            "cpuSampleMaxOneCorePercent": 125.0,
+            "maxPrivateMiB": 361.39453125,
+            "maxWorkingSetMiB": 553.265625,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.15595633396327974,
+              "msedgewebview2.exe": 21.02811236271555,
+              "audio_engine.exe": 0.05198544465442657
+            },
+            "unprimedChildObservations": 2,
+            "hidden": {
+              "document": false,
+              "app": null
+            },
+            "native": {
+              "hwnd": 27467644,
+              "state": "inspect",
+              "visible": true,
+              "minimized": true
+            },
+            "observationSpanSeconds": 65.323,
+            "ipcObservedPerSecond": {
+              "get_engine_runtime_stats": 0.9950553403854693,
+              "get_audio_state": 1.500237282427323,
+              "auto_gain": 1.500237282427323
+            },
+            "timerSynchronousWallMsPerSecond": 1.2415228956607753,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9950553403854693,
+                "syncWallMsPerSecond": 0.41792324405684944,
+                "source": "()=>void ls()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9950553403854693,
+                "syncWallMsPerSecond": 0.38883700911403063,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.489475376207466,
+                "syncWallMsPerSecond": 0.16839398204930833,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.5051819420418536,
+                "syncWallMsPerSecond": 0.15767799981811317,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.489475376207466,
+                "syncWallMsPerSecond": 0.1056289520653183,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              }
+            ]
+          },
+          {
+            "state": "tray",
+            "seconds": 60.073663299990585,
+            "samples": 463,
+            "cpuMeanOneCorePercent": 25.53282937365011,
+            "cpuSampleMaxOneCorePercent": 89.30000000000001,
+            "maxPrivateMiB": 337.1796875,
+            "maxWorkingSetMiB": 521.21875,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.2859616246637413,
+              "msedgewebview2.exe": 25.034640413743897,
+              "audio_engine.exe": 0.07798953399920218
+            },
+            "unprimedChildObservations": 0,
+            "hidden": {
+              "document": false,
+              "app": null
+            },
+            "native": {
+              "hwnd": 27467644,
+              "state": "inspect",
+              "visible": false,
+              "minimized": false
+            },
+            "observationSpanSeconds": 65.31840000000597,
+            "ipcObservedPerSecond": {
+              "get_engine_runtime_stats": 0.9951254164216219,
+              "get_audio_state": 1.4850333137368819,
+              "auto_gain": 1.4850333137368819
+            },
+            "timerSynchronousWallMsPerSecond": 1.2768224624880338,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9951254164216219,
+                "syncWallMsPerSecond": 0.43938614841595486,
+                "source": "()=>void ls()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9951254164216219,
+                "syncWallMsPerSecond": 0.43479325941480795,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.48990789731525997,
+                "syncWallMsPerSecond": 0.16075102971909425,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50918577306895,
+                "syncWallMsPerSecond": 0.1331937089438191,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50918577306895,
+                "syncWallMsPerSecond": 0.10563639181864225,
+                "source": "()=>{if(!r||document.hidden)return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&"
+              }
+            ]
+          }
+        ],
+        "resumedDiagnosticOnly": {
+          "hidden": false
+        },
+        "knownBaselineErrors": [
+          "indow|hide not allowed by ACL",
+          "Command plugin:window|hide not allowed by ACL"
+        ],
+        "pageErrors": [
+          "indow|hide not allowed by ACL",
+          "Command plugin:window|hide not allowed by ACL"
+        ]
+      },
+      {
+        "label": "window-r6-after",
+        "version": "after",
+        "states": [
+          {
+            "state": "visible",
+            "seconds": 60.04645990001154,
+            "samples": 447,
+            "cpuMeanOneCorePercent": 2.2181208053691277,
+            "cpuSampleMaxOneCorePercent": 50.0,
+            "maxPrivateMiB": 340.984375,
+            "maxWorkingSetMiB": 534.92578125,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.26008863421161066,
+              "msedgewebview2.exe": 1.7425938492177915,
+              "audio_engine.exe": 0.18206204394812744
+            },
+            "unprimedChildObservations": 0,
+            "hidden": {
+              "document": false,
+              "app": "false"
+            },
+            "native": {
+              "hwnd": 31071048,
+              "state": "inspect",
+              "visible": true,
+              "minimized": false
+            },
+            "observationSpanSeconds": 65.411,
+            "ipcObservedPerSecond": {
+              "get_engine_runtime_stats": 0.9937166531623122,
+              "get_audio_state": 1.4829310054883735,
+              "auto_gain": 1.4829310054883735
+            },
+            "timerSynchronousWallMsPerSecond": 1.2887740586799816,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9937166531623122,
+                "syncWallMsPerSecond": 0.4295913539564321,
+                "source": "()=>void bs()"
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9937166531623122,
+                "syncWallMsPerSecond": 0.4112458136483695,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.49713350965434,
+                "syncWallMsPerSecond": 0.1605234593569889,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.48921435232606136,
+                "syncWallMsPerSecond": 0.14370671699813653,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.49713350965434,
+                "syncWallMsPerSecond": 0.13759153522485565,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              }
+            ]
+          },
+          {
+            "state": "minimized",
+            "seconds": 60.09550379999564,
+            "samples": 452,
+            "cpuMeanOneCorePercent": 0.9838495575221239,
+            "cpuSampleMaxOneCorePercent": 87.5,
+            "maxPrivateMiB": 350.2109375,
+            "maxWorkingSetMiB": 557.7734375,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.15592243477067422,
+              "msedgewebview2.exe": 0.6236897390826969,
+              "audio_engine.exe": 0.0
+            },
+            "unprimedChildObservations": 1,
+            "hidden": {
+              "document": false,
+              "app": "true"
+            },
+            "native": {
+              "hwnd": 31071048,
+              "state": "inspect",
+              "visible": true,
+              "minimized": true
+            },
+            "observationSpanSeconds": 65.33890000000596,
+            "ipcObservedPerSecond": {},
+            "timerSynchronousWallMsPerSecond": 0.14998721792234182,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.48957359244841,
+                "syncWallMsPerSecond": 0.08111553687490607,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.48957359244841,
+                "syncWallMsPerSecond": 0.053566863543693506,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9948131970387329,
+                "syncWallMsPerSecond": 0.009182890502245345,
+                "source": "()=>void bs()"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.5050590077273567,
+                "syncWallMsPerSecond": 0.0030609635007484482,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.5050590077273567,
+                "syncWallMsPerSecond": 0.0015304817503742241,
+                "source": "()=>{w()}"
+              }
+            ]
+          },
+          {
+            "state": "tray",
+            "seconds": 60.076112800015835,
+            "samples": 467,
+            "cpuMeanOneCorePercent": 0.8162740899357601,
+            "cpuSampleMaxOneCorePercent": 25.0,
+            "maxPrivateMiB": 314.265625,
+            "maxWorkingSetMiB": 524.609375,
+            "cpuByNameBoundaryDeltaOneCorePercent": {
+              "AuralynHost.exe": 0.07799611220455611,
+              "msedgewebview2.exe": 0.7279637139091903,
+              "audio_engine.exe": 0.0
+            },
+            "unprimedChildObservations": 1,
+            "hidden": {
+              "document": false,
+              "app": "true"
+            },
+            "native": {
+              "hwnd": 31071048,
+              "state": "inspect",
+              "visible": false,
+              "minimized": false
+            },
+            "observationSpanSeconds": 65.30219999998808,
+            "ipcObservedPerSecond": {},
+            "timerSynchronousWallMsPerSecond": 0.15772822419038152,
+            "busiestTimersBySynchronousWall": [
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.50937946961581,
+                "syncWallMsPerSecond": 0.07656709789863539,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 16,
+                "callsPerSecond": 62.49406604985353,
+                "syncWallMsPerSecond": 0.06737904795804601,
+                "source": "()=>{if(!r||W())return;let e=f();if((l.clipSecondsAgo!==e||l.clipped!==s.current)&&(l={...l,clipped:s.current,clipSecondsAgo:e},o(l)),!i){o(l);return}let t=Date.now();if(l.state===`live`&&t-u>=1e3){p("
+              },
+              {
+                "intervalMs": 1000,
+                "callsPerSecond": 0.9953722845480224,
+                "syncWallMsPerSecond": 0.007656710337514107,
+                "source": "()=>void c()"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.49002943239287255,
+                "syncWallMsPerSecond": 0.0030626837699052646,
+                "source": "()=>void n()"
+              },
+              {
+                "intervalMs": 2000,
+                "callsPerSecond": 0.49002943239287255,
+                "syncWallMsPerSecond": 0.0015313423413281049,
+                "source": "()=>{w()}"
+              }
+            ]
+          }
+        ],
+        "resumedDiagnosticOnly": {
+          "hidden": false,
+          "appHidden": "true"
+        },
+        "knownBaselineErrors": [],
+        "pageErrors": []
+      }
+    ],
+    "aggregate": [
+      {
+        "version": "before",
+        "state": "visible",
+        "repeats": 3,
+        "cpuMeanOneCorePercent": 23.292143589984843,
+        "cpuTrialMeanRange": [
+          23.177181208053693,
+          23.39191011235955
+        ],
+        "maxPrivateMiB": 349.80078125,
+        "maxWorkingSetMiB": 522.6875
+      },
+      {
+        "version": "before",
+        "state": "minimized",
+        "repeats": 3,
+        "cpuMeanOneCorePercent": 21.854675263311623,
+        "cpuTrialMeanRange": [
+          21.54048140043764,
+          22.070693512304253
+        ],
+        "maxPrivateMiB": 361.39453125,
+        "maxWorkingSetMiB": 553.265625
+      },
+      {
+        "version": "before",
+        "state": "tray",
+        "repeats": 3,
+        "cpuMeanOneCorePercent": 25.573167208709602,
+        "cpuTrialMeanRange": [
+          25.2008658008658,
+          25.985806451612902
+        ],
+        "maxPrivateMiB": 337.1796875,
+        "maxWorkingSetMiB": 538.15625
+      },
+      {
+        "version": "after",
+        "state": "visible",
+        "repeats": 3,
+        "cpuMeanOneCorePercent": 2.552897645867888,
+        "cpuTrialMeanRange": [
+          2.2181208053691277,
+          2.9631808278867102
+        ],
+        "maxPrivateMiB": 340.984375,
+        "maxWorkingSetMiB": 535.2109375
+      },
+      {
+        "version": "after",
+        "state": "minimized",
+        "repeats": 3,
+        "cpuMeanOneCorePercent": 0.8709579671864186,
+        "cpuTrialMeanRange": [
+          0.7778260869565218,
+          0.9838495575221239
+        ],
+        "maxPrivateMiB": 350.2109375,
+        "maxWorkingSetMiB": 557.7734375
+      },
+      {
+        "version": "after",
+        "state": "tray",
+        "repeats": 3,
+        "cpuMeanOneCorePercent": 0.6688388165742274,
+        "cpuTrialMeanRange": [
+          0.49913606911447084,
+          0.8162740899357601
+        ],
+        "maxPrivateMiB": 314.265625,
+        "maxWorkingSetMiB": 525.5
+      }
+    ],
+    "ablation": {
+      "basis": "One baseline release process, sequential 60s interventions, one trial only; not per-function CPU attribution",
+      "binarySha256": "7c98e24d76d4a88fc6cae8ab0baa67cad76e94c751d6bc8fb714d1d53171ff5b",
+      "scriptSha256": "f22721e7c2efea2be57f24f0d539b97b38626935cdfe4cd576dd748fe47034ed",
+      "states": [
+        {
+          "state": "visible",
+          "seconds": 60.03133030000026,
+          "cpuMeanOneCorePercent": 23.724719101123597,
+          "cpuByNameBoundaryDeltaOneCorePercent": {
+            "AuralynHost.exe": 0.5982952168184987,
+            "msedgewebview2.exe": 22.943320923213737,
+            "audio_engine.exe": 0.10405134205539107
+          }
+        },
+        {
+          "state": "timers-paused",
+          "seconds": 60.05405479998444,
+          "cpuMeanOneCorePercent": 20.333928571428572,
+          "cpuByNameBoundaryDeltaOneCorePercent": {
+            "AuralynHost.exe": 0.05201058214461261,
+            "msedgewebview2.exe": 19.946058252458936,
+            "audio_engine.exe": 0.0
+          }
+        },
+        {
+          "state": "timers-and-glows-paused",
+          "seconds": 60.06858469999861,
+          "cpuMeanOneCorePercent": 0.3209150326797386,
+          "cpuByNameBoundaryDeltaOneCorePercent": {
+            "AuralynHost.exe": 0.07800215388783681,
+            "msedgewebview2.exe": 0.23400646166351044,
+            "audio_engine.exe": 0.0
+          }
+        }
+      ]
+    },
+    "resumeDiagnostic": {
+      "sha256": "fc6b4326977d66930ceec7709c145a7e9eb21f14a242955ca167451016e0335f",
+      "scriptSha256": "cc673ef8c6271a0e628f14c7aee4351d1ead639657d1c1fea580abb920131ad2",
+      "resumed": {
+        "hidden": false,
+        "appHidden": "true"
+      },
+      "rawWin32ResumeActivity": true,
+      "afterNativeResize": {
+        "hidden": false,
+        "appHidden": "false"
+      },
+      "afterNativeResizeActivity": true,
+      "scope": "Raw Win32 show lacks activity notification; native resize checks publication, not real tray-click acceptance"
+    }
+  },
+  "rawEvidence": [
+    {
+      "file": "window-r1-before\\result.json",
+      "sha256": "5d440af5e17fcd1382a81d8ddfc22406237cf6bd353574c54789669e8e751810"
+    },
+    {
+      "file": "window-r1-before\\visible.json",
+      "sha256": "9c312bb3ce6d3e37b6a4f41509b50331d5899246d8e9311987bf0306234743dd"
+    },
+    {
+      "file": "window-r1-before\\minimized.json",
+      "sha256": "ee7d2c0c1bafa5f33c17e0a8337655c26b2fe8156fee23c74fe22f1ba7d786b0"
+    },
+    {
+      "file": "window-r1-before\\tray.json",
+      "sha256": "01696c8a4005b1b74d6f954d87ff9ae39a951aba8cb1e5d0bb8f42a69964da5b"
+    },
+    {
+      "file": "window-r2-after\\result.json",
+      "sha256": "ae1576355420eb7d80af27c9f2bc740ab9ed3f33942fe9330212957770427188"
+    },
+    {
+      "file": "window-r2-after\\visible.json",
+      "sha256": "0fb6de56100acb0680e23cf15cd9d320fc0bffd3cc5c50d6cb414ca20bb200e6"
+    },
+    {
+      "file": "window-r2-after\\minimized.json",
+      "sha256": "d5e5cf3c941235b4066f1c415d2597f871010ac67458bb226c0a698838e0965e"
+    },
+    {
+      "file": "window-r2-after\\tray.json",
+      "sha256": "8d72ad3307d14af433bbdb9cf0e24550964a85261f9b9eb97b96e1ef9c71f712"
+    },
+    {
+      "file": "window-r3-after\\result.json",
+      "sha256": "a136b023138b174a987c87238e72282ab348e29f41927b258649dccab54ba084"
+    },
+    {
+      "file": "window-r3-after\\visible.json",
+      "sha256": "e8d23ca3fcbc262eba127cafd87319db099142b282f255196208525c800b002b"
+    },
+    {
+      "file": "window-r3-after\\minimized.json",
+      "sha256": "e49a599a4cafdc789daef799d96c50640d95d7a1a3888a26f3cb407271bcf657"
+    },
+    {
+      "file": "window-r3-after\\tray.json",
+      "sha256": "f0b3b92110c69b7a7e34335bf3883fbe3b7ffce20e39b3a74264fe0bf1ad3d01"
+    },
+    {
+      "file": "window-r4-before\\result.json",
+      "sha256": "8da32256a128c21b3232af677177e4fc9149384e47f7c08ddd8637b4819a988d"
+    },
+    {
+      "file": "window-r4-before\\visible.json",
+      "sha256": "0458ea0c0f6897af1e1199e41e63191f44eca3b6d27d6ae9a8296b5c474f1b8a"
+    },
+    {
+      "file": "window-r4-before\\minimized.json",
+      "sha256": "b1d423dd8bcf60292f618cb11f41d80f8f1a591d9c8447fba7c412705454f07f"
+    },
+    {
+      "file": "window-r4-before\\tray.json",
+      "sha256": "579636636a9837850940c73e1b4b3cc3d0c38ac7311448549c1eaa90598e3d71"
+    },
+    {
+      "file": "window-r5-before\\result.json",
+      "sha256": "c478aafd615cef783d06fc163f9878089fac5de8f56854cf7fd0341cb51074bd"
+    },
+    {
+      "file": "window-r5-before\\visible.json",
+      "sha256": "5110cc0d48fd1b2d631f63c06502d77301ccdd22e89adc57977fc6e218ffcbdc"
+    },
+    {
+      "file": "window-r5-before\\minimized.json",
+      "sha256": "32818e412cf7dbde0a82dfccca833d5e005cf6ed44242b680d1cd3ec0d814d3e"
+    },
+    {
+      "file": "window-r5-before\\tray.json",
+      "sha256": "50c11fa6a426d90897a2558a9ed5ac86c55823cd2979662352a1421983469bcb"
+    },
+    {
+      "file": "window-r6-after\\result.json",
+      "sha256": "66d34ee5c53a9b5f01fec23e8b8027ff82d021a23065638cdde1a0f42952cf8b"
+    },
+    {
+      "file": "window-r6-after\\visible.json",
+      "sha256": "f68f412194e4cdf97e6fd4bda203e107a58393420ebf7d3185d25fb82df78c75"
+    },
+    {
+      "file": "window-r6-after\\minimized.json",
+      "sha256": "83f00a9b6040f3ec75777eb06341dd7843c9f479161f7a436e3ea75abb8afad3"
+    },
+    {
+      "file": "window-r6-after\\tray.json",
+      "sha256": "c607d19a24e7c4d2087e84ef6acc0ba77265b0da5fb94274301e00517f3df0ac"
+    },
+    {
+      "file": "stability-hour\\result.json",
+      "sha256": "5b3d538e9e3b77d7730e5de7dbe3fab79e83aa201ebe76cc4a0d173c8e9d6125"
+    },
+    {
+      "file": "native-host-hour\\result.json",
+      "sha256": "22175d003df0aabb732dab1968984ed0a2772e546e11dd06b9b6a64430712671"
+    },
+    {
+      "file": "asio-request-check\\result.json",
+      "sha256": "5438605c3df2da9d638166d27586aad0cd55bc08df6d846383cf4a8baed3f59c"
+    },
+    {
+      "file": "digital-cable-check-reviewed\\result.json",
+      "sha256": "2f48e206dc65360c710870937f5dee85f2ff8986097efd69606f0bf582948107"
+    },
+    {
+      "file": "window-ablation\\visible.json",
+      "sha256": "b466af0b72b871df5cf503e5193b91247f3863c21e89ab267498f43928a4f67f"
+    },
+    {
+      "file": "window-ablation\\timers-paused.json",
+      "sha256": "007698bbd6d3ea4444c8b583559da32b1c08b9a88d8397d74e89a040cd8213af"
+    },
+    {
+      "file": "window-ablation\\timers-and-glows-paused.json",
+      "sha256": "34a3239bc401ec204df75e1dc35a76c6d88eaf77e8545188c3f183e6daf5befa"
+    },
+    {
+      "file": "window-ablation\\result.json",
+      "sha256": "1e32d3cae63b726912dfad7faffc0974e977b6235d0171d0134d5a0ab717595b"
+    },
+    {
+      "file": "native-resume-diagnostic\\result.json",
+      "sha256": "7e191dcd1d5c142f5370b143fb9d5453f30521d910ff6df73142a7942a46bfd8"
+    }
+  ],
+  "stability": [
+    {
+      "execution": "main-equivalent dev sidecar",
+      "seconds": 3600.419365700014,
+      "windows": 120,
+      "engineSha256": "77c34f6eb3e3989eb0d1d5b4a0cca4dac731a34a7bfcd2255cc940505ed1d39f",
+      "queueDelta": {
+        "receivedInputFrames": 345610752,
+        "requestedOutputFrames": 345610752,
+        "consumedOutputFrames": 345610752,
+        "queueReadCallbacks": 900028,
+        "zeroFilledOutputFrames": 0,
+        "underflowCallbacks": 0,
+        "droppedOutputFrames": 0,
+        "recoveryCount": 0
+      },
+      "callbackDiagnostics": {
+        "count": 900587,
+        "minFrames": 384,
+        "maxFrames": 384,
+        "totalProcessingUs": 383856892,
+        "maxProcessingUs": 2286
+      },
+      "glitchCountDelta": 359986,
+      "boundary": "Callback/queue continuity only; not audible dropout count, continuous recording or physical latency"
+    },
+    {
+      "execution": "fb1f8e1 product release Host",
+      "seconds": 3600.236,
+      "windows": 119,
+      "engineSha256": "6f5231a949c2cde9e6fad8cbe3045a26216b5108ddf2a265107fb67dd4ed8650",
+      "queueDelta": {
+        "receivedInputFrames": 345765888,
+        "requestedOutputFrames": 345765888,
+        "consumedOutputFrames": 345765888,
+        "queueReadCallbacks": 675324,
+        "zeroFilledOutputFrames": 0,
+        "underflowCallbacks": 0,
+        "droppedOutputFrames": 0,
+        "recoveryCount": 0
+      },
+      "callbackDiagnostics": {
+        "count": 675721,
+        "minFrames": 512,
+        "maxFrames": 512,
+        "totalProcessingUs": 250719111,
+        "maxProcessingUs": 1577
+      },
+      "glitchCountDelta": 359198,
+      "boundary": "Callback/queue continuity only; not audible dropout count, continuous recording or physical latency",
+      "recordings": [
+        {
+          "window": 0,
+          "source": "raw",
+          "rate": 96000,
+          "frames": 480000,
+          "channels": 2,
+          "durationSeconds": 5,
+          "peak": 0,
+          "rms": 0
+        },
+        {
+          "window": 0,
+          "source": "processed",
+          "rate": 96000,
+          "frames": 480000,
+          "channels": 2,
+          "durationSeconds": 5,
+          "peak": 0,
+          "rms": 0
+        },
+        {
+          "window": 60,
+          "source": "raw",
+          "rate": 96000,
+          "frames": 480000,
+          "channels": 2,
+          "durationSeconds": 5,
+          "peak": 0.9850425720214844,
+          "rms": 0.2841954368700684
+        },
+        {
+          "window": 60,
+          "source": "processed",
+          "rate": 96000,
+          "frames": 480000,
+          "channels": 2,
+          "durationSeconds": 5,
+          "peak": 0.3915027678012848,
+          "rms": 0.0883528806666172
+        }
+      ],
+      "resumed": {
+        "hidden": false,
+        "appHidden": "false"
+      },
+      "finalStreamRunning": true
+    }
+  ],
+  "asioRequests": {
+    "engineSha256": "e4803a55c28f41a35c3593be5e6ff9a17f71fc4f5f17dec0753c0a4e0c5b51a5",
+    "cases": [
+      {
+        "driver": "Creative Sound Blaster ASIO",
+        "requestedBuffer": 64,
+        "elapsedSeconds": 2.0009043000172824,
+        "actualOutputFramesPerSecond": 95956.61321650498,
+        "pluginCount": 0,
+        "callbackDiagnostics": {
+          "count": 757,
+          "minFrames": 384,
+          "maxFrames": 384,
+          "totalProcessingUs": 7167,
+          "maxProcessingUs": 70
+        },
+        "queueBefore": {
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0
+        },
+        "queueDelta": {
+          "consumedOutputFrames": 192000,
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0,
+          "droppedOutputFrames": 0,
+          "recoveryCount": 0
+        },
+        "returnedBuffer": 384
+      },
+      {
+        "driver": "Creative Sound Blaster ASIO",
+        "requestedBuffer": 128,
+        "elapsedSeconds": 2.000800799985882,
+        "actualOutputFramesPerSecond": 95961.5769852525,
+        "pluginCount": 0,
+        "callbackDiagnostics": {
+          "count": 760,
+          "minFrames": 384,
+          "maxFrames": 384,
+          "totalProcessingUs": 7070,
+          "maxProcessingUs": 62
+        },
+        "queueBefore": {
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0
+        },
+        "queueDelta": {
+          "consumedOutputFrames": 192000,
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0,
+          "droppedOutputFrames": 0,
+          "recoveryCount": 0
+        },
+        "returnedBuffer": 384
+      },
+      {
+        "driver": "Creative Sound Blaster ASIO",
+        "requestedBuffer": 256,
+        "elapsedSeconds": 2.000787400000263,
+        "actualOutputFramesPerSecond": 95962.21967410168,
+        "pluginCount": 0,
+        "callbackDiagnostics": {
+          "count": 757,
+          "minFrames": 384,
+          "maxFrames": 384,
+          "totalProcessingUs": 7751,
+          "maxProcessingUs": 309
+        },
+        "queueBefore": {
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0
+        },
+        "queueDelta": {
+          "consumedOutputFrames": 192000,
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0,
+          "droppedOutputFrames": 0,
+          "recoveryCount": 0
+        },
+        "returnedBuffer": 384
+      },
+      {
+        "driver": "Creative Sound Blaster ASIO",
+        "requestedBuffer": 512,
+        "elapsedSeconds": 2.006057399994461,
+        "actualOutputFramesPerSecond": 95710.12275148765,
+        "pluginCount": 0,
+        "callbackDiagnostics": {
+          "count": 760,
+          "minFrames": 384,
+          "maxFrames": 384,
+          "totalProcessingUs": 7661,
+          "maxProcessingUs": 64
+        },
+        "queueBefore": {
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0
+        },
+        "queueDelta": {
+          "consumedOutputFrames": 192000,
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0,
+          "droppedOutputFrames": 0,
+          "recoveryCount": 0
+        },
+        "returnedBuffer": 384
+      },
+      {
+        "driver": "Creative Sound Blaster ASIO",
+        "requestedBuffer": 384,
+        "elapsedSeconds": 2.0004406000080053,
+        "actualOutputFramesPerSecond": 95978.85585767038,
+        "pluginCount": 3,
+        "callbackDiagnostics": {
+          "count": 787,
+          "minFrames": 384,
+          "maxFrames": 384,
+          "totalProcessingUs": 229016,
+          "maxProcessingUs": 581
+        },
+        "queueBefore": {
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0
+        },
+        "queueDelta": {
+          "consumedOutputFrames": 192000,
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0,
+          "droppedOutputFrames": 0,
+          "recoveryCount": 0
+        },
+        "returnedBuffer": 384
+      },
+      {
+        "driver": "Voicemeeter Insert Virtual ASIO",
+        "requestedBuffer": 64,
+        "elapsedSeconds": 2.0006026000191923,
+        "actualOutputFramesPerSecond": 95971.0839114965,
+        "pluginCount": 0,
+        "callbackDiagnostics": {
+          "count": 562,
+          "minFrames": 512,
+          "maxFrames": 512,
+          "totalProcessingUs": 14139,
+          "maxProcessingUs": 73
+        },
+        "queueBefore": {
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0
+        },
+        "queueDelta": {
+          "consumedOutputFrames": 192000,
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0,
+          "droppedOutputFrames": 0,
+          "recoveryCount": 0
+        },
+        "returnedBuffer": 512
+      },
+      {
+        "driver": "Voicemeeter Insert Virtual ASIO",
+        "requestedBuffer": 128,
+        "elapsedSeconds": 2.0009112999832723,
+        "actualOutputFramesPerSecond": 95956.27752294923,
+        "pluginCount": 0,
+        "callbackDiagnostics": {
+          "count": 562,
+          "minFrames": 512,
+          "maxFrames": 512,
+          "totalProcessingUs": 15218,
+          "maxProcessingUs": 72
+        },
+        "queueBefore": {
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0
+        },
+        "queueDelta": {
+          "consumedOutputFrames": 192000,
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0,
+          "droppedOutputFrames": 0,
+          "recoveryCount": 0
+        },
+        "returnedBuffer": 512
+      },
+      {
+        "driver": "Voicemeeter Insert Virtual ASIO",
+        "requestedBuffer": 256,
+        "elapsedSeconds": 2.0006295000202954,
+        "actualOutputFramesPerSecond": 95969.79350651996,
+        "pluginCount": 0,
+        "callbackDiagnostics": {
+          "count": 563,
+          "minFrames": 512,
+          "maxFrames": 512,
+          "totalProcessingUs": 15818,
+          "maxProcessingUs": 143
+        },
+        "queueBefore": {
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0
+        },
+        "queueDelta": {
+          "consumedOutputFrames": 192000,
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0,
+          "droppedOutputFrames": 0,
+          "recoveryCount": 0
+        },
+        "returnedBuffer": 512
+      },
+      {
+        "driver": "Voicemeeter Insert Virtual ASIO",
+        "requestedBuffer": 512,
+        "elapsedSeconds": 2.0008591000223532,
+        "actualOutputFramesPerSecond": 95958.78090458993,
+        "pluginCount": 3,
+        "callbackDiagnostics": {
+          "count": 583,
+          "minFrames": 512,
+          "maxFrames": 512,
+          "totalProcessingUs": 246966,
+          "maxProcessingUs": 1325
+        },
+        "queueBefore": {
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0
+        },
+        "queueDelta": {
+          "consumedOutputFrames": 192000,
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0,
+          "droppedOutputFrames": 0,
+          "recoveryCount": 0
+        },
+        "returnedBuffer": 512
+      }
+    ],
+    "scope": "Requested versus returned ASIO size and actual frame progress. Muted, outputGain=0; no physical latency evidence."
+  },
+  "digitalCable": {
+    "engineSha256": "e4803a55c28f41a35c3593be5e6ff9a17f71fc4f5f17dec0753c0a4e0c5b51a5",
+    "cases": [
+      {
+        "nr": false,
+        "rawWetDifferenceRms": 0.0,
+        "recordings": {
+          "raw": {
+            "file": "nrFalse-vst0-raw.wav",
+            "rate": 48000,
+            "frames": 211680,
+            "channels": 2,
+            "peak": 0.003162384033203125,
+            "rms": 0.001843699310066173
+          },
+          "processed": {
+            "file": "nrFalse-vst0-processed.wav",
+            "rate": 48000,
+            "frames": 211680,
+            "channels": 2,
+            "peak": 0.003162384033203125,
+            "rms": 0.001843699310066173
+          }
+        },
+        "pluginCount": 0,
+        "callbackDiagnostics": {
+          "count": 589,
+          "minFrames": 480,
+          "maxFrames": 1056,
+          "totalProcessingUs": 9618,
+          "maxProcessingUs": 98
+        },
+        "queueBefore": {
+          "zeroFilledOutputFrames": 96,
+          "underflowCallbacks": 1
+        },
+        "queueDelta": {
+          "consumedOutputFrames": 222240,
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0,
+          "droppedOutputFrames": 0,
+          "recoveryCount": 0
+        }
+      },
+      {
+        "nr": false,
+        "rawWetDifferenceRms": 0.060272253393698016,
+        "recordings": {
+          "raw": {
+            "file": "nrFalse-vst3-raw.wav",
+            "rate": 48000,
+            "frames": 211200,
+            "channels": 2,
+            "peak": 0.003162384033203125,
+            "rms": 0.0018457932338643056
+          },
+          "processed": {
+            "file": "nrFalse-vst3-processed.wav",
+            "rate": 48000,
+            "frames": 211200,
+            "channels": 2,
+            "peak": 0.5228965878486633,
+            "rms": 0.05909080346401407
+          }
+        },
+        "pluginCount": 3,
+        "callbackDiagnostics": {
+          "count": 1150,
+          "minFrames": 480,
+          "maxFrames": 1056,
+          "totalProcessingUs": 161628,
+          "maxProcessingUs": 883
+        },
+        "queueBefore": {
+          "zeroFilledOutputFrames": 96,
+          "underflowCallbacks": 1
+        },
+        "queueDelta": {
+          "consumedOutputFrames": 222240,
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0,
+          "droppedOutputFrames": 0,
+          "recoveryCount": 0
+        }
+      },
+      {
+        "nr": true,
+        "rawWetDifferenceRms": 0.04873235413897834,
+        "recordings": {
+          "raw": {
+            "file": "nrTrue-vst3-raw.wav",
+            "rate": 48000,
+            "frames": 211200,
+            "channels": 2,
+            "peak": 0.003162384033203125,
+            "rms": 0.0018457932338643056
+          },
+          "processed": {
+            "file": "nrTrue-vst3-processed.wav",
+            "rate": 48000,
+            "frames": 211200,
+            "channels": 2,
+            "peak": 0.5306709408760071,
+            "rms": 0.04702636273319157
+          }
+        },
+        "pluginCount": 3,
+        "callbackDiagnostics": {
+          "count": 1706,
+          "minFrames": 480,
+          "maxFrames": 1056,
+          "totalProcessingUs": 370907,
+          "maxProcessingUs": 976
+        },
+        "queueBefore": {
+          "zeroFilledOutputFrames": 96,
+          "underflowCallbacks": 1
+        },
+        "queueDelta": {
+          "consumedOutputFrames": 222240,
+          "zeroFilledOutputFrames": 0,
+          "underflowCallbacks": 0,
+          "droppedOutputFrames": 0,
+          "recoveryCount": 0
+        }
+      }
+    ],
+    "scope": "Two WASAPI clients on virtual CABLE. Sender inputGain=0; receiver muted outputGain=0 prevents feedback. Non-speech fixed 1kHz tone, no physical roundtrip or speech quality evidence."
+  }
+}

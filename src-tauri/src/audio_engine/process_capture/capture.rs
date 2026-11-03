@@ -48,6 +48,7 @@ impl Capture {
             cbSize: 0,
         };
         let ready = Event::new(false)?;
+        // SAFETY: 同じMTAスレッドで取得したclientへ、有効な固定フォーマットと所有イベントを渡し、Captureが双方を保持する。
         unsafe {
             client.Initialize(
                 AUDCLNT_SHAREMODE_SHARED,
@@ -62,6 +63,7 @@ impl Capture {
             )?;
             client.SetEventHandle(ready.raw())?;
         }
+        // SAFETY: Initializeに成功したclientから対応するcaptureインターフェイスを取得し、所有参照として保持する。
         let capture = unsafe { client.GetService()? };
         Ok(Self {
             capture,
@@ -88,6 +90,7 @@ impl Capture {
         mut observe: impl FnMut(&Stats),
     ) -> Result<Stats> {
         self.process.verify(self.process.created)?;
+        // SAFETY: 初期化済みclientを所有するこの取得スレッドで開始し、終了時にStopする。
         unsafe { self.client.Start()? };
         let started = Instant::now();
         let mut stats = Stats::default();
@@ -116,12 +119,14 @@ impl Capture {
                         stats.ended = "cancelled";
                         break;
                     }
+                    // SAFETY: 開始済みclientのcaptureを同じ取得スレッドで使用し、前のpacketは解放済みである。
                     if unsafe { self.capture.GetNextPacketSize()? } == 0 {
                         break;
                     }
                     let mut data = std::ptr::null_mut();
                     let mut frames = 0;
                     let mut flags = 0;
+                    // SAFETY: 取得スレッドだけがcaptureを使い、各出力変数は有効な書込み先として呼出し中保持する。
                     unsafe {
                         self.capture
                             .GetBuffer(&mut data, &mut frames, &mut flags, None, None)?
@@ -134,9 +139,11 @@ impl Capture {
                         None
                     } else {
                         // WASAPIは宣言した8 byte/frameの領域をReleaseまで貸し出す。
+                        // SAFETY: GetBufferが返した非null領域は宣言済み8 byte/frame形式で、対応するReleaseBufferまで借用する。
                         Some(unsafe { std::slice::from_raw_parts(data, frames as usize * 8) })
                     };
                     let packet = process_packet(bytes, frames, flags, &mut stats, &mut consume);
+                    // SAFETY: 成功したGetBufferごとに一度だけ同じframesで解放し、その後packet領域を参照しない。
                     let release = unsafe { self.capture.ReleaseBuffer(frames) };
                     packet?;
                     release?;
@@ -148,6 +155,7 @@ impl Capture {
             }
             Ok(())
         })();
+        // SAFETY: このスレッドが開始した所有clientをループ終了後に停止し、COM参照は呼出し中生存する。
         let stop = unsafe { self.client.Stop() };
         stats.elapsed_ms = started.elapsed().as_millis() as u64;
         if stats.ended.is_empty() {
@@ -160,6 +168,7 @@ impl Capture {
 }
 impl Drop for Capture {
     fn drop(&mut self) {
+        // SAFETY: Captureが所有するclientを破棄前に停止する。先に停止済みの場合のエラーは無視し、参照はDrop完了まで有効である。
         let _ = unsafe { self.client.Stop() };
     }
 }
@@ -231,6 +240,7 @@ mod tests {
     use super::*;
     fn sample_bytes(samples: &[f32]) -> &[u8] {
         // 有効なf32の借用を、同じ寿命のbyte表現として読むだけ。
+        // SAFETY: f32配列にpaddingはなく、元の連続領域の有効なバイト数だけを同じ借用寿命で読む。
         unsafe {
             std::slice::from_raw_parts(samples.as_ptr().cast(), std::mem::size_of_val(samples))
         }

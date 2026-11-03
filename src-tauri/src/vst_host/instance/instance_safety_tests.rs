@@ -94,6 +94,7 @@ fn fixture() -> Fixture {
     let processor = VstProcessor {
         ptr: mock.get().cast(),
         // VSTのインストールに依存せず、DLL保持フィールドだけを構成する。
+        // SAFETY: OS の kernel32 を DLL 保持の試験用にロードし、VST の初期化関数は呼ばない。
         _library: Arc::new(unsafe { PluginLibrary::load("kernel32.dll", false) }.unwrap()),
         scratch_inputs: vec![vec![0.0; 4]; 2],
         scratch_outputs: vec![vec![0.0; 4]; 2],
@@ -111,10 +112,12 @@ fn fixture() -> Fixture {
 impl Fixture {
     fn calls(&self) -> usize {
         // 模擬FFIと同じテストスレッド上で、呼出し完了後だけ読み取る。
+        // SAFETY: mock は Fixture が所有し、同期したモック呼び出し後に同じテストスレッドから読む。
         unsafe { (*self.mock.get()).calls }
     }
 
     fn fail(&mut self) {
+        // SAFETY: mock は Fixture が所有し、同期したモック呼び出しの間に同じテストスレッドから書く。
         unsafe { (*self.mock.get()).fail = true };
     }
 }
@@ -224,6 +227,7 @@ fn editor_rectangles_reject_overflow_reversal_and_empty_sizes() {
         let mut rect = rect;
         // extern callback内でpanicせず、無効引数を返すことも確認する。
         assert_eq!(
+            // SAFETY: rect は有効な書き込み可能領域で、残りの null 引数はこのコールバックが参照しない。
             unsafe { host_resize_view(std::ptr::null_mut(), std::ptr::null_mut(), &mut rect) },
             K_INVALID_ARGUMENT
         );
@@ -331,11 +335,13 @@ fn native_window_resize_rejects_frame_overflow_and_preserves_normal_client_size(
     struct Window(HWND);
     impl Drop for Window {
         fn drop(&mut self) {
+            // SAFETY: Window は作成済み HWND を所有し、同じテストスレッドの drop で一度破棄する。
             unsafe {
                 let _ = DestroyWindow(self.0);
             }
         }
     }
+    // SAFETY: 標準 STATIC クラスと NUL 終端文字列を使用し、生成した HWND は同じスレッドの Window が破棄する。
     unsafe {
         // 非表示の標準ウィンドウ。巨大なサイズを実際に適用しないことも確認する。
         let window = Window(

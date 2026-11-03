@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -42,13 +43,13 @@ export function LoudnessCheck({
     const musicRef = useRef(music); musicRef.current = music;
     useEffect(() => { if (music) setAutoGainOpen(false); }, [music]);
     const [autoGainOpen, setAutoGainOpen] = useState(false);
-    const [visible, setVisible] = useState(() => !document.hidden);
+    const [visible, setVisible] = useState(() => !isAppHidden());
     const available = enabled && visible;
     useEffect(() => { if (!available || !running) setAutoGainOpen(false); }, [available, running]);
     useEffect(() => {
-        const update = () => setVisible(!document.hidden);
-        document.addEventListener('visibilitychange', update);
-        return () => document.removeEventListener('visibilitychange', update);
+        const update = () => setVisible(!isAppHidden());
+        addAppVisibilityListener(update);
+        return () => removeAppVisibilityListener(update);
     }, []);
     const [active, setActive] = useState(false);
     const [busy, setBusy] = useState(false);

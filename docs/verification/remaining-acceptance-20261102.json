@@ -1,0 +1,272 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-11-02",
+  "startedDate": "2026-11-01",
+  "productSourceCommit": "989c0e6",
+  "obsTimeout": {
+    "checks": {
+      "cdpReady": true,
+      "productPageFound": true,
+      "isolatedReviewOnly": true,
+      "productCspAndGlobalOff": true,
+      "audioStopped": true,
+      "credentialsInitiallyEmpty": true,
+      "savedEndpoint": true,
+      "upgradeReceived": true,
+      "connectStillPendingAtUpgrade": true,
+      "settingsClosedWhilePending": true,
+      "frameAndNativeIpcRespondWhilePending": true,
+      "correctTimeout": true,
+      "approximatelyFiveSeconds": true,
+      "disconnectCompletedAndDisconnected": true,
+      "noPageErrors": true
+    },
+    "responsiveness": {
+      "frameMs": 1.699999988079071,
+      "active": true,
+      "elapsedMs": 3.5999999940395355,
+      "connectPending": true
+    },
+    "connect": {
+      "start": 3269.5,
+      "done": true,
+      "elapsedMs": 5006.5999999940395,
+      "outcome": "rejected",
+      "error": "OBS への接続がタイムアウトしました"
+    },
+    "disconnect": {
+      "done": true,
+      "start": 3595.699999988079,
+      "elapsedMs": 4680.700000017881
+    },
+    "connectionStatus": false,
+    "sha256": {
+      "binary": "f58f4ffcf9856f34b75acbbf611c4c394821c3fc2fdec1b097ff82b3f738002b",
+      "script": "27ed2906555c36a248707eb4116366487c5ebe7599d06ec9ebe55cbb67aca45d",
+      "sources": {
+        "src-tauri/src/lib.rs": "113cdcb7432115848c3312f901a55230c20b3f438980a23c0eddfe67bd93afc5",
+        "src-tauri/src/obs.rs": "a7375a3de9a92ba4a4777ee2a35502b70b51a1a2cd59dc6427acdf6f780312e3",
+        "src-tauri/src/obs_credentials.rs": "922a7f4cd8c9ce1890202eb759c35cf99d21eac8e4e42a9092bd5971b6df9a0f",
+        "src/hooks/useObsUsage.ts": "396ac68dcc4f5bcde5339534412ad655bbcae052a0fb75750118b4e45479d9ab"
+      }
+    }
+  },
+  "nativeUI": {
+    "scope": "Real product-CSP Host, real tray/shortcut UI actions, muted ASIO stream; no speech/audibility claim",
+    "userAssistedTrayActions": true,
+    "phases": [
+      {
+        "route": "real tray left click (user action)",
+        "beforeHidden": "true",
+        "after": {
+          "at": 1793545182375,
+          "hidden": false,
+          "appHidden": "false",
+          "counters": {
+            "plugin:event|listen": 10,
+            "get_engine_runtime_stats": 28,
+            "get_audio_state": 35,
+            "live_modes": 1,
+            "plugin:event|unlisten": 9,
+            "auto_gain": 21,
+            "live_output": 7
+          },
+          "levelEvents": 1520,
+          "meters": [
+            {
+              "label": "マイクの入力レベル",
+              "value": "-22.349564888212136"
+            },
+            {
+              "label": "出力",
+              "value": "-60"
+            },
+            {
+              "label": "出力",
+              "value": "-60"
+            }
+          ]
+        },
+        "streamRunning": true
+      },
+      {
+        "route": "real tray context menu Show (user action)",
+        "beforeHidden": "true",
+        "after": {
+          "at": 1793545337951,
+          "hidden": false,
+          "appHidden": "false",
+          "counters": {
+            "plugin:event|listen": 34,
+            "get_engine_runtime_stats": 117,
+            "get_audio_state": 139,
+            "live_modes": 2,
+            "plugin:event|unlisten": 33,
+            "auto_gain": 84,
+            "live_output": 28
+          },
+          "levelEvents": 7416,
+          "meters": [
+            {
+              "label": "マイクの入力レベル",
+              "value": "-20.352401955392935"
+            },
+            {
+              "label": "出力",
+              "value": "-60"
+            },
+            {
+              "label": "出力",
+              "value": "-60"
+            }
+          ]
+        },
+        "streamRunning": true
+      }
+    ],
+    "muteHotkey": {
+      "beforeMuted": true,
+      "afterMuted": false,
+      "outputGain": 0,
+      "hidden": "true",
+      "restored": true
+    },
+    "bypassHotkey": {
+      "before": false,
+      "after": true,
+      "restored": false
+    },
+    "resume": {
+      "first": {
+        "at": 1793545395450,
+        "hidden": false,
+        "appHidden": "false",
+        "counters": {
+          "plugin:event|listen": 63,
+          "get_engine_runtime_stats": 232,
+          "get_audio_state": 283,
+          "live_modes": 2,
+          "plugin:event|unlisten": 62,
+          "auto_gain": 171,
+          "live_output": 57
+        },
+        "levelEvents": 9619,
+        "meters": [
+          {
+            "label": "マイクの入力レベル",
+            "value": "-19.570413103898684"
+          },
+          {
+            "label": "出力",
+            "value": "-60"
+          },
+          {
+            "label": "出力",
+            "value": "-60"
+          }
+        ]
+      },
+      "second": {
+        "at": 1793545396661,
+        "hidden": false,
+        "appHidden": "false",
+        "counters": {
+          "plugin:event|listen": 64,
+          "get_engine_runtime_stats": 236,
+          "get_audio_state": 287,
+          "live_modes": 2,
+          "plugin:event|unlisten": 63,
+          "auto_gain": 173,
+          "live_output": 58
+        },
+        "levelEvents": 9666,
+        "meters": [
+          {
+            "label": "マイクの入力レベル",
+            "value": "-13.430366091055866"
+          },
+          {
+            "label": "出力",
+            "value": "-60"
+          },
+          {
+            "label": "出力",
+            "value": "-60"
+          }
+        ]
+      }
+    },
+    "externalLink": {
+      "deviceListFixture": true,
+      "openUrlCalls": 1,
+      "globalTauri": "undefined",
+      "browser": {
+        "name": "Chrome (default browser)",
+        "url": "https://vb-audio.com/Cable/",
+        "title": "VB-Audio Virtual Apps",
+        "tabId": "1243032854",
+        "scope": "Real screen button -> native open_url IPC; device enumeration outputs only were fixture-filtered; no driver/settings change"
+      }
+    },
+    "finalAudioRunning": false
+  },
+  "updater": {
+    "status": "success",
+    "hostExitCode": 0,
+    "markerPresent": true,
+    "scope": "signed launcher proof; not NSIS installation",
+    "version": "99.0.0",
+    "configSha256": "c62a844319f0e75790f1820cb005413ce5b3d4dd3021aed35bf88cbd3044aeaf",
+    "binaryHashes": {
+      "AuralynHost.exe": "876aab634e17bf7bbd9239bc803201a90a4210cd7e3e3e1929bc6e534c1d910e",
+      "audio_engine.exe": "5cb969c118e88713d3ecd5443ec45f7cf49bbed117fff5474a30e397d60f8a27",
+      "plugin_scanner.exe": "49597276cd789bd2498708a36a5ab2ea7fe98803bbb7b97dc1bcc498dfb260ca"
+    },
+    "fixtureSha256": "50a76f0214662cff974d8c2485dd89da8db7629f88c35cc8d5daaa1ca1400061",
+    "regularReviewOnly": true,
+    "registryFixtureRemoved": true,
+    "normalProfile": {
+      "same": true,
+      "beforeFiles": 7732,
+      "afterFiles": 7732
+    }
+  },
+  "tests": {
+    "rustLibPassed": 600,
+    "rustLibIgnored": 4,
+    "frontendPassed": 1488,
+    "clippyAllTargetsWithUnsafeLintWarnings": 0,
+    "offlineSyntheticPassed": 7
+  },
+  "scopeLimits": [
+    "No speech or physical loopback",
+    "No physical latency or continuous one-hour waveform dropout measurement",
+    "Signed fixture launcher is not a real NSIS/new-version installation",
+    "External-link UI device-list outputs only were fixture-filtered; open_url and browser were real",
+    "No new CPU/max-memory comparison; prior 3x60-second comparison is retained",
+    "Signing environment values were exposed by CLI help during preparation; the user confirmed the key is not for production and rotation is unnecessary; values are not included here"
+  ],
+  "evidence": [
+    {
+      "file": "obs-timeout-followup/result.json",
+      "sha256": "215090d9e218f59665c0c8bcbb37d956232d190f1af8c4c68a9a8abcf2d1cc5b"
+    },
+    {
+      "file": "native-ui-followup/result.json",
+      "sha256": "230ce3a1358e558a24933c54c24c14e5c438b81e7abf6d812b37fe38f3dcbc4c"
+    },
+    {
+      "file": "updater-fixture-wGvMW8/run-result.json",
+      "sha256": "d9d179e75e242f9dde88b6eebaee2b53e15997ed3fb9cf95b249444b5fda46f7"
+    },
+    {
+      "file": "updater-normal-profile-check.json",
+      "sha256": "f9cc9a26483fa4f42dfe47a998aecf60cebccf800f18f95d9a902b209a3e2e8f"
+    }
+  ],
+  "bins-followup-release": {
+    "audio_engine.exe": "94707286a385d84492b5cf4be3478f1163da8070017379615f8d1655a9bd3f68",
+    "AuralynHost.exe": "f58f4ffcf9856f34b75acbbf611c4c394821c3fc2fdec1b097ff82b3f738002b",
+    "plugin_scanner.exe": "1e1a808258be86747e4b9ada41d742bb7f764fe98957136fa0ba00d48dc1a5c3"
+  }
+}

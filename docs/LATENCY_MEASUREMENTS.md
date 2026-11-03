@@ -4,6 +4,31 @@
 異率では別のoptional `resamplerBatchTiming` で、batchが揃った入力callbackから生成出力frameの実queue読出完了までだけを観測する。過去入力の蓄積待ち全体や、原信号の各sampleへの点対応は未測定である。DSPを通った実信号の出力到達を結ぶ測定も未実装である。
 現時点でアプリは全通過時間やOBSの映像同期差を測定していない。
 
+## 配線なしの実機確認（2026-11-01、#211）
+
+利用者の指定により物理ループバック配線と発声は行っていない。
+ASIO・WASAPIの起動、実callback長、処理frameの進行、録音内容を確認したが、物理的な往復遅延や段別の信号通過時間の基準値は未取得である。
+詳しい条件と結果は [実機確認記録](verification/issues-210-216-20261101.md) を参照する。
+
+96kHzのASIOで64／128／256／512frameを要求したところ、Creative Sound Blaster ASIOは384frame、Voicemeeter Insert Virtual ASIOは512frameで開始し、callback診断もそれぞれ384／512frameだった。
+Creativeの384frame指定も含む計9回の開始とframe進行を確認した。
+要求した64frame等を、そのまま実稼働バッファや往復遅延の測定条件として記載しない。
+仮想CABLEのWASAPIは48kHz・512frame要求だが、観測callback長は480〜1056frameだった。
+
+NR high・内蔵broadcast/0.7・OTT 3本で、Creative ASIOのsidecarとVoicemeeter ASIOの製品Hostをそれぞれ1時間運転した。
+両方で入力・要求・消費frameの進行が続き、観測区間内のqueue underflow・zero fill・drop・recoveryの増分は0だった。
+製品Hostは最小化中も音声処理を継続し、通常表示への復帰後も稼働していた。
+これはキューの継続性の確認であり、1時間分の連続WAVから音切れ回数を数えた結果ではない。
+製品Hostの録音は開始付近と中間の各5秒・加工前後の計4ファイルだけで、終端の録音は取得していない。
+開始付近は無音、中間は信号があり、固定素材ではなく音源の同定・聴感評価も行っていない。
+`glitchCount` はcallback進入間隔の揺らぎを数える既存指標であり、音切れ回数へ読み替えない。
+
+物理配線が用意できた場合は、同じ機器・レート・ドライバー設定を固定して出力→入力を接続し、送信基準と受信信号を共通clockで記録する。
+フィードバック経路を切り、低い送出レベルの既知信号で、ASIOの実対応bufferとWASAPI、NR OFF/ON、VST 0/1/3本を各5回以上比較する。
+到達位置の検出方法・閾値・未検出・試行数・範囲を残し、DSPの非線形処理や相関peakの曖昧さを区別する。
+段別の差は同一経路の対照構成との差として示し、NRの10msフレーム周期やVST申告値とは別に扱う。
+固定素材の1時間連続録音と欠損解析も残っているため、#211は未完了である。
+
 ## 表示と互換性
 
 既存の `noiseReductionLatencySamples/Ms` は、NR設定ON時の約10msのフレーム長計算を互換保持する。
@@ -82,3 +107,26 @@ latencyMetadata.stageBreakdownはoptional、schemaVersion=1、queryBasis=queried
 NRの480frame／48kモデルは10msの分析フレーム周期という計算根拠であり、wet履歴やdry/wet混合の各信号の待ち時間はunknown。内蔵IIR位相／コンプ状態／reverb tailもunknownであり、decayやdelay-line長を固定通過時間へ換算しない。これらをcohort／rawの分位やVST申告へ足した新しい総遅延は作らない。
 
 NRは対応rateならOFFでも制御側で事前確保し、ON／OFF／resetでRT再確保しない。最大3840frameの可変4配列payloadは61440Bであり、nnnoiselessモデル・FFT・state・固定配列・allocator等を含む総保持量ではない。非対応rateでのNR有効化は両setterともintent／queue更新前に拒否し、停止中の保存意図は次Start時に検証する。OFFではNR専用のrate拒否を増やさないが、他DSPや機器の対応範囲を広げるものではない。万一未準備のONがRTへ届いた場合は無音と固定atomic通知から制御側停止へ移り、別rate処理やpanicへ置換しない。profile復元の既存エラー伝播を維持し、拒否を成功summaryへ追加しない。
+
+## #211 配線前の計測準備とオフライン解析
+
+`scripts/loopback_measurements.py` はデバイスを起動せず、計測計画と非発声の計測用信号を作成し、別途録音した WAV を解析する。Python の numpy、scipy、soundfile が必要。出力先は毎回存在しない新規ディレクトリを指定し、既存ファイルは上書きしない。
+
+```powershell
+python scripts/loopback_measurements.py prepare out/plan --rate 48000 --device "機器名" --driver "ドライバーと版" --build "ビルド識別子" --routing "配線と経路" --buffers 64 128 256 512
+python scripts/loopback_measurements.py a1 recording-a1.wav out/a1
+python scripts/loopback_measurements.py a3 recording-a3.wav out/a3
+python -m unittest discover -s scripts -p test_loopback_measurements.py -v
+```
+
+plan は ASIO／WASAPI、指定した要求 buffer、NR OFF／ON、VST 0／3本の各組合せにつき5回を示す。各 backend・機器の実対応値を確認して指定する。要求値は実 callback 長ではなく、WASAPI の512要求も観測するまで unknown である。実際の rate、機器、ドライバー、build、経路、NR・VST 設定、callback 長と各試行の結果を別途記録する。VST 1本の比較も必要な場合は追加試行として記録する。
+
+A1 はフィードバック経路を切り、送出レベルを安全な低さから確認する。生成された `fixture.wav` は人声ではなく、固定 seed の3秒間の計測信号である。送信基準と処理後を同じ ADC clock の外部録音機で同時録音し、左を reference、右を processed とする2ch WAV を用意する。配線図、機器の入出力、録音レート、ゲイン、外部録音機、クロックと、直結などの校正条件を記録する。同一 clock を確認できない録音は比較根拠にしない。各条件5回の結果と不明な試行を残す。
+
+A1 の絶対相関は極性反転も許容し、processed の reference に対する相対 lag を返す。peak が0.2未満、1ms以上離れた競合 peak が最大の80%以上、無音、短時間、非有限値は unknown とする。閾値を満たしても信号経路・DSPで誤検出はあり得るため波形と校正を確認する。この lag は録音した2経路の差であり、校正なしに物理端子の往復遅延や OBS 同期値とは呼ばない。
+
+A3 は固定の非無音素材を1時間以上流し、同一録音の左 reference・右 processed を保存する。10ms窓ごとに reference RMS が0.01以上のとき processed RMS がその1%以下なら疑い区間とし、連続窓を結合する。JSON に区間開始、長さ、件数、参照が不活性または非有限で未解析の時間を出す。1時間未満、参照活性なし、非有限値は unknown であり、いずれも合格判定ではない。録音全体を一括ロードしない。
+
+上記の10ms減衰判定とは別に、processed のサンプルが正確に0である連続区間をブロック境界を越えて追跡する。1ms以上で、その区間内の reference RMS が0.01以上のものを `digitalZeroIntervals` と `digitalZeroIntervalCount` に報告する。1サンプルのゼロ交差は数えない。参照が不活性な時間を含む1時間以上の録音は `partial`、参照活性なし・非有限値・1時間未満は `unknown` とし、完全な解析としない。ゼロ区間の参照活性は区間全体のRMSによる判定であり、区間内の各瞬間の活性を保証しない。短いゼロ、非ゼロの小振幅、参照の不活性や欠落はこの検出では見逃し得る。2種類の件数は重複し得るため足し合わせない。
+
+この検出は NR の抑制、意図的ミュート、DSP による減衰と欠損を区別できない。削除された frame、両チャンネル同時の欠損、閾値や窓より短い変化は検出できる保証がない。素材と設定、未解析範囲を確認し、疑い箇所の波形・聴感と他の観測を照合する。`suspectedIntervalCount` は確定音切れ回数ではなく、既存 `glitchCount` とも別である。これらは配線・実測待ちの準備であり、物理遅延、実際の音切れ回数、聴感の合格は未確認である。

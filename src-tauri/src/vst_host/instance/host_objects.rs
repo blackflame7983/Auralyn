@@ -61,7 +61,13 @@ struct MockAttributeList {
     map: Mutex<HashMap<String, AttrValue>>,
 }
 
+// SAFETY: vtbl は初期化後に変更されず、参照数は atomic、map の操作は Mutex で保護される。
+// get_binary の返すポインタは同じキーの次の更新または解放までの借用。Mutex は呼び出し中のみ保護し、
+// 返却後の並行更新は防げないため、利用側で排他が必要。
 unsafe impl Send for MockAttributeList {}
+// SAFETY: vtbl は初期化後に変更されず、参照数は atomic、map の操作は Mutex で保護される。
+// get_binary の返すポインタは同じキーの次の更新または解放までの借用。Mutex は呼び出し中のみ保護し、
+// 返却後の並行更新は防げないため、利用側で排他が必要。
 unsafe impl Sync for MockAttributeList {}
 
 unsafe fn attr_key(id: AttrID) -> Option<String> {
@@ -358,7 +364,12 @@ struct MockMessage {
     attrs: *mut c_void,                 // MockAttributeList
 }
 
+// SAFETY: vtbl は初期化後に変更されず、参照数は atomic、ID の操作は Mutex で保護される。attrs は所有する参照。
+// SDK 参考実装と同様に get_message_id のポインタは次の set または解放までの借用。
+// Mutex は呼び出し中のみ保護し、返却後の並行更新は防げないため、利用側で排他が必要。
 unsafe impl Send for MockMessage {}
+// SAFETY: vtbl と attrs は生成後に変更されず、参照数は atomic、ID と属性の操作はそれぞれ Mutex で保護される。
+// 返却した借用ポインタは次の対応する set または解放で無効になり、利用側の排他が必要。
 unsafe impl Sync for MockMessage {}
 
 unsafe extern "system" fn msg_query_interface(
@@ -470,6 +481,7 @@ mod tests {
 
     #[test]
     fn attributes_reject_invalid_binary_and_preserve_typed_values() {
+        // SAFETY: 生成した属性への参照を解放まで保持し、キーと入出力バッファは各呼び出し中生存する。
         unsafe {
             let attrs = new_mock_attribute_list();
             let key = CString::new("key").unwrap();
@@ -507,6 +519,7 @@ mod tests {
 
     #[test]
     fn retained_attributes_survive_their_message() {
+        // SAFETY: message と取得した attrs は各参照を所有し、キーと出力値は呼び出し中生存する。
         unsafe {
             let message = new_mock_message();
             let attrs = msg_get_attributes(message);

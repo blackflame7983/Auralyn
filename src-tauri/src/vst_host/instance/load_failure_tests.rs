@@ -39,6 +39,7 @@ struct State {
 }
 
 fn with_fixture(stage: Stage, body: impl FnOnce(VstInstance, &mut State)) {
+    // SAFETY: OS の kernel32 を保持期間の試験用にロードし、VST の初期化関数は呼ばない。
     let library = Arc::new(unsafe { PluginLibrary::load("kernel32.dll", false) }.unwrap());
     let mut state = State {
         stage,
@@ -49,6 +50,7 @@ fn with_fixture(stage: Stage, body: impl FnOnce(VstInstance, &mut State)) {
         host: std::ptr::null_mut(),
         component_identity: std::ptr::null_mut(),
     };
+    // SAFETY: state と静的 FACTORY vtable は生成したモックを解放するまで生存する。
     let factory = unsafe {
         object(
             &mut state,
@@ -56,6 +58,7 @@ fn with_fixture(stage: Stage, body: impl FnOnce(VstInstance, &mut State)) {
             (&FACTORY as *const IPluginFactoryVtbl).cast(),
         )
     };
+    // SAFETY: factory はモックの正しい vtable と参照を持ち、state と library は呼び出し中生存する。
     let instance = unsafe {
         VstInstance::load_from_factory(
             "mock.vst3",
@@ -589,6 +592,7 @@ fn real_loader_failure_stages_release_every_acquired_reference() {
         Stage::UnknownSuccess,
         Stage::Combined,
     ] {
+        // SAFETY: OS の kernel32 を保持期間の試験用にロードし、VST の初期化関数は呼ばない。
         let library = Arc::new(unsafe { PluginLibrary::load("kernel32.dll", false) }.unwrap());
         let mut state = State {
             stage,
@@ -599,6 +603,7 @@ fn real_loader_failure_stages_release_every_acquired_reference() {
             host: std::ptr::null_mut(),
             component_identity: std::ptr::null_mut(),
         };
+        // SAFETY: state と静的 FACTORY vtable は生成したモックを解放するまで生存する。
         let factory = unsafe {
             object(
                 &mut state,
@@ -606,6 +611,7 @@ fn real_loader_failure_stages_release_every_acquired_reference() {
                 (&FACTORY as *const IPluginFactoryVtbl).cast(),
             )
         };
+        // SAFETY: factory はモックの正しい vtable と参照を持ち、state と library は呼び出し中生存する。
         let result = unsafe {
             VstInstance::load_from_factory(
                 "mock.vst3",

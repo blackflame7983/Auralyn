@@ -1,3 +1,4 @@
+import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { audioApi, type PreparationSnapshot } from '@/api/audio';
 import { OutputConfigurationDiff } from './OutputConfigurationDiff';
 import { LiveConfigurationDiff } from './LiveConfigurationDiff';
@@ -70,11 +71,11 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
         const contextChanged = () => { version.current++; setCheckedExpected(null); setCheckedContext(null); setCheckedAcknowledged(false); setPlan(null); };
         window.addEventListener('preparation-purpose-changed', contextChanged);
         window.addEventListener('preparation-external-change', contextChanged);
-        const hidden = () => { if (document.hidden) { version.current += 1; setPlan(null); setCheckedExpected(null); setCheckedAcknowledged(false); } };
-        document.addEventListener('visibilitychange', hidden);
+        const hidden = () => { if (isAppHidden()) { version.current += 1; setPlan(null); setCheckedExpected(null); setCheckedAcknowledged(false); } };
+        addAppVisibilityListener(hidden);
         return () => {
             alive.current = false; version.current += 1; listVersion.current += 1;
-            document.removeEventListener('visibilitychange', hidden);
+            removeAppVisibilityListener(hidden);
             window.removeEventListener('preparation-purpose-changed', contextChanged);
             window.removeEventListener('preparation-external-change', contextChanged);
             subscriptions.forEach(p => { void p.then(unlisten => unlisten()).catch(() => {}); });
@@ -185,7 +186,8 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
 
             {plan.obs.length > 0 && <ul>{plan.obs.map((c,i) => <li key={i}>{c.source}：{formatObsText(t, c.labelText, c.label)} {formatObsText(t, c.beforeText, c.beforeDisplay ?? c.before)} → {formatObsText(t, c.afterText, c.afterDisplay ?? c.after)}</li>)}</ul>}
             {planIsRecovery && <p>{t('bundle.recoveryApplyHint')}</p>}
-            <Button variant="outline" type="button" className="border rounded p-2" disabled={busy || !onOperation || !!plan.mixing?.missingDevices.length || !!plan.mixing?.missingPlugins.length || (!!plan.mixing && plan.running) || (plan.process != null && (!plan.running || !plan.process.selectionMatches || !!plan.process.missingDevices.length || !!plan.process.missingPlugins.length)) || !!plan.output?.missingDevices?.length || !!plan.output?.missingPlugins?.length || !recoveryReady || (!planIsRecovery && (!!recovery || !!(result?.undoPending && !result.complete)))} onClick={() => void operate({ action: planIsRecovery ? 'recovery_apply' : 'apply', id: plan.id })}>{t(planIsRecovery ? 'bundle.recoveryApply' : 'presets.copy.161')}</Button></div>}
+            {plan.mixing && !plan.running && <p role="status">{t('bundle.mixing.startRequired')}</p>}
+            <Button variant="outline" type="button" className="border rounded p-2" disabled={busy || !onOperation || !!plan.mixing?.missingDevices.length || !!plan.mixing?.missingPlugins.length || (!!plan.mixing && !plan.running) || (plan.process != null && (!plan.running || !plan.process.selectionMatches || !!plan.process.missingDevices.length || !!plan.process.missingPlugins.length)) || !!plan.output?.missingDevices?.length || !!plan.output?.missingPlugins?.length || !recoveryReady || (!planIsRecovery && (!!recovery || !!(result?.undoPending && !result.complete)))} onClick={() => void operate({ action: planIsRecovery ? 'recovery_apply' : 'apply', id: plan.id })}>{t(planIsRecovery ? 'bundle.recoveryApply' : 'presets.copy.161')}</Button></div>}
         {result && <div className="border border-border rounded-xl p-4 space-y-2" aria-label={t('presets.copy.162')}><p>{formatObsText(t, result.auralynText, result.auralyn)}</p>{result.summary && <ul>
             {result.summary.appliedCategories.map(category => <li key={category}>Auralyn {categoryName(category)}{t('presets.copy.163')}</li>)}
             {result.summary.skippedCategories.map(category => <li key={category}>Auralyn {categoryName(category)}{t('presets.copy.164')}</li>)}

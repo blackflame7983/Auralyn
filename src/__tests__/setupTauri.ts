@@ -3,6 +3,7 @@ import { vi } from 'vitest';
 // Tauri の invoke APIをモック化
 vi.mock('@tauri-apps/api/core', () => ({
     invoke: vi.fn(),
+    isTauri: () => false,
 }));
 
 // Tauri の event APIをモック化

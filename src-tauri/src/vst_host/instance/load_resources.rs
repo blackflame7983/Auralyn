@@ -10,6 +10,7 @@ pub(super) struct InterfaceRef(pub(super) *mut c_void);
 
 impl Drop for InterfaceRef {
     fn drop(&mut self) {
+        // SAFETY: InterfaceRef は取得済みの COM 参照を一つ所有し、drop で一度だけ release する。
         unsafe { release(self.0) };
     }
 }
@@ -56,6 +57,7 @@ impl InstanceResources {
 
     pub(super) fn disconnect(&mut self) {
         if self.connected {
+            // SAFETY: connected は両接続点のリンク成功後に設定され、両インターフェースは resources が保持する。
             unsafe { unlink_connection_points(self.component, self.controller) };
             self.connected = false;
         }
@@ -64,6 +66,7 @@ impl InstanceResources {
     pub(super) fn shutdown(&mut self) {
         self.disconnect();
         self.stop_processing();
+        // SAFETY: 初期化フラグは対応するインターフェースの成功時のみ設定され、保持した参照を terminate 後に解放する。
         unsafe {
             if self.controller_initialized {
                 (get_vtbl::<IEditControllerVtbl>(self.controller).terminate)(self.controller);
@@ -86,6 +89,7 @@ impl InstanceResources {
 
     pub(super) fn stop_processing(&mut self) {
         self.prepared = false;
+        // SAFETY: 各フラグは対応するインターフェースの有効化成功時に設定され、保持中の参照を停止に使う。
         unsafe {
             if self.processing {
                 (get_vtbl::<IAudioProcessorVtbl>(self.processor).set_processing)(self.processor, 0);
