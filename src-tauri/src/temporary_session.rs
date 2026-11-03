@@ -143,6 +143,23 @@ fn configure(config: &mut tauri::Config, root: &Path) -> Result<(), String> {
 }
 
 fn discard(root: &Path) -> Result<(), String> {
+    // 終了直後のWebViewが短くファイルを保持する場合だけ、同じ対象で有限に待つ。
+    for delay_ms in [0, 100, 200, 400, 800, 1600] {
+        if delay_ms != 0 {
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        }
+        if !checked_discard_target(root)? {
+            return Ok(());
+        }
+        match std::fs::remove_dir_all(root) {
+            Ok(()) => return Ok(()),
+            Err(error) if matches!(error.raw_os_error(), Some(2 | 3 | 5 | 32 | 33 | 145)) => {}
+            Err(_) => return Err("一時保存先を削除できません".into()),
+        }
+    }
+    Err("一時保存先を削除できません".into())
+}
+fn checked_discard_target(root: &Path) -> Result<bool, String> {
     let name = root
         .file_name()
         .and_then(|s| s.to_str())
@@ -167,14 +184,14 @@ fn discard(root: &Path) -> Result<(), String> {
         .try_exists()
         .map_err(|_| "一時保存先の有無を確認できません")?
     {
-        return Ok(());
+        return Ok(false);
     }
     use std::os::windows::fs::MetadataExt;
     let metadata = std::fs::symlink_metadata(root).map_err(|_| "一時保存先を確認できません")?;
     if !metadata.is_dir() || metadata.file_attributes() & 0x400 != 0 {
         return Err("参照先が変わった一時保存先は削除しません".into());
     }
-    std::fs::remove_dir_all(root).map_err(|_| "一時保存先を削除できません".into())
+    Ok(true)
 }
 
 fn marker() -> PathBuf {
@@ -324,6 +341,67 @@ pub(crate) async fn restart_temporary_session(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn temporary_discard_retries_a_short_lived_file_lock_without_touching_a_sibling() {
+        use sha2::{Digest, Sha256};
+        use std::os::windows::fs::OpenOptionsExt;
+        let id = format!("{:x}", Sha256::digest(crate::bundle::revision().as_bytes()));
+        let id = &id[..32];
+        let root = std::env::temp_dir().join(format!("Auralyn-temporary-{id}"));
+        let sibling = std::env::temp_dir().join(format!("auralyn-kept-{id}"));
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&sibling).unwrap();
+        let locked = root.join("webview-cache");
+        let sentinel = sibling.join("original");
+        std::fs::write(&locked, b"temporary").unwrap();
+        std::fs::write(&sentinel, b"keep original").unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&locked)
+            .unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            drop(file);
+        });
+        let result = discard(&root);
+        release.join().unwrap();
+        assert_eq!(std::fs::read(&sentinel).unwrap(), b"keep original");
+        // 修正前の赤い試験でも、所有する既知のfixtureだけを個別に片付ける。
+        if locked.exists() {
+            std::fs::remove_file(&locked).unwrap();
+        }
+        if root.exists() {
+            std::fs::remove_dir(&root).unwrap();
+        }
+        std::fs::remove_file(sentinel).unwrap();
+        std::fs::remove_dir(sibling).unwrap();
+        assert!(
+            result.is_ok(),
+            "短いロックの解放後も削除を再試行しませんでした"
+        );
+    }
+    #[test]
+    fn temporary_discard_retains_a_persistently_locked_directory_and_reports_failure() {
+        use sha2::{Digest, Sha256};
+        use std::os::windows::fs::OpenOptionsExt;
+        let id = format!("{:x}", Sha256::digest(crate::bundle::revision().as_bytes()));
+        let root = std::env::temp_dir().join(format!("Auralyn-temporary-{}", &id[..32]));
+        std::fs::create_dir(&root).unwrap();
+        let path = root.join("locked");
+        std::fs::write(&path, b"keep locked").unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
+        let result = discard(&root);
+        drop(file);
+        assert_eq!(std::fs::read(&path).unwrap(), b"keep locked");
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(root).unwrap();
+        assert!(result.is_err());
+    }
     #[test]
     fn unfinished_or_corrupt_recovery_forces_review_without_loading_or_deleting_it() {
         let root = std::env::temp_dir().join(format!(
