@@ -136,6 +136,13 @@ def verify(args, root: Path, result: dict) -> None:
                 if expected not in str(error):
                     raise
                 return {'message': str(error), 'observedAfterSeconds': time.monotonic() - began}
+        # 期限超過を合格へ読み替えない。取得状態と、実際に変更できた出力を残す。
+        try:
+            result['failureRuntime'] = engine.request({'type': 'GetRuntimeStats'})['payload']
+        except RuntimeError as error:
+            result['failureRuntimeError'] = str(error)
+        current = json.loads(execute(args.probe, ['endpoints'], root, 'failure-endpoints').stdout)
+        result['failureEndpoints'] = [device for device in current if device['id'] in [raw['id'], alternate['id']]]
         raise RuntimeError('異常時の停止通知がありません: ' + expected)
 
     try:
@@ -143,7 +150,9 @@ def verify(args, root: Path, result: dict) -> None:
             ready = root / ('guard-' + str(index) + '.ready.json')
             guard = start(args.probe, ['hold-endpoint-muted', device['id'], '240', str(ready)], root, 'guard-' + str(index))
             guards.append((guard, ready))
-            wait_ready(guard, ready)
+            observed = wait_ready(guard, ready)
+            if any(observed[key] != device[key] for key in ['muted', 'volume', 'default_roles']):
+                raise RuntimeError('原音用の2機器がミュート状態を共有しているか、準備中に設定が変わりました。独立した出力先で試してください')
         engine_dir = root / 'engine'
         engine_dir.mkdir()
         engine = Engine(args.engine, engine_dir)
