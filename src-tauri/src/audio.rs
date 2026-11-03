@@ -3,8 +3,11 @@ pub(crate) mod frontend_bootstrap;
 mod live_bundle;
 mod live_modes;
 pub(crate) mod mixing;
+mod mixing_bundle;
 mod mode_vst;
 mod output_bundle;
+pub(crate) mod post_mix;
+mod post_mix_start;
 mod process_bundle;
 pub(crate) mod process_inputs;
 mod replies;
@@ -188,6 +191,11 @@ pub struct LoopbackProbeResult {
 }
 
 pub struct AudioHost {
+    post_mix: post_mix::State,
+    post_role: bool,
+    post_attached: bool,
+    bundle_mixing_override: bool,
+    bundle_prepared_voice: bool,
     conditions: Arc<conditions::Conditions>,
     last_config_path: PathBuf,
     maintenance: bool,
@@ -406,6 +414,11 @@ impl AudioHost {
             active_config: None,
             process_inputs: Default::default(),
             mixing: mixing::State::new(&config_dir),
+            post_mix: post_mix::State::new(&config_dir),
+            post_role: false,
+            post_attached: false,
+            bundle_mixing_override: false,
+            bundle_prepared_voice: false,
             is_global_muted: recovery_muted,
             engine_tuning: EngineTuningConfig::default(),
             bundle_output_override: None,
@@ -600,6 +613,9 @@ impl AudioHost {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             let mut command = Command::new(binary_path);
+            if self.post_role {
+                command.arg("--post-mix-worker");
+            }
             command
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
@@ -612,6 +628,9 @@ impl AudioHost {
         #[cfg(not(windows))]
         let mut child = {
             let mut command = Command::new(binary_path);
+            if self.post_role {
+                command.arg("--post-mix-worker");
+            }
             command
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
@@ -1360,12 +1379,23 @@ impl AudioHost {
         }
         let muted = self.is_global_muted;
         self.prepare_mixing_start()?;
+        self.prepare_post_mix_start(sample_rate)?;
         validate_start_generation(generation, self.engine_generation)?;
         let response = if initial_controls.is_some() {
-            self.start_on_existing_generation(generation, cmd)?
+            self.start_on_existing_generation(generation, cmd)
         } else {
-            start_with_mute(muted, cmd, |command| self.execute_running_command(command))?
+            start_with_mute(muted, cmd, |command| self.execute_running_command(command))
         };
+        let response = match response {
+            Ok(response) => response,
+            Err(error) => {
+                self.cancel_prepared_post_start();
+                return Err(error);
+            }
+        };
+        if !matches!(response, IpcResponse::Started { .. }) {
+            self.cancel_prepared_post_start();
+        }
         validate_start_generation(generation, self.engine_generation)?;
         match response {
             IpcResponse::Started {
@@ -1377,10 +1407,12 @@ impl AudioHost {
             } => {
                 if channel_routing.is_some() && routing.is_none() {
                     let _ = self.execute_running_command(IpcCommand::Stop);
+                    self.cancel_prepared_post_start();
                     return Err(anyhow!("音声エンジンが接続設定の確認に対応していません"));
                 }
                 if process && actual_input_id.is_some() {
                     let _ = self.execute_running_command(IpcCommand::Stop);
+                    self.cancel_prepared_post_start();
                     return Err(anyhow!(
                         "アプリ入力で開始したことを確認できません。音声エンジンを更新してください"
                     ));
@@ -1394,6 +1426,7 @@ impl AudioHost {
                 {
                     // 旧Engine等がID照合を行わない場合は即時停止し、成功としない。
                     let _ = self.execute_running_command(IpcCommand::Stop);
+                    self.cancel_prepared_post_start();
                     return Err(anyhow!(
                         "開始した機器のIDを確認できません。機器を選び直してください"
                     ));
@@ -1459,6 +1492,12 @@ impl AudioHost {
     }
 
     pub fn stop(&mut self) -> Result<()> {
+        let result = self.stop_primary();
+        let post = self.post_mix.stop();
+        result.and(post)
+    }
+
+    fn stop_primary(&mut self) -> Result<()> {
         if self.mode_vst.blocked() {
             self.cancel_mode_vst("利用者が音声を停止しました");
             self.kill_engine();
@@ -1898,7 +1937,12 @@ impl AudioHost {
 
     pub(crate) fn capture_bundle_state(&mut self) -> Result<crate::bundle::EngineCapture> {
         let generation = self.engine_generation;
-        let result = self.execute_running_command(IpcCommand::CaptureBundleState)?;
+        let command = if self.mixing.selected.is_some() {
+            IpcCommand::CaptureMixingBundleState
+        } else {
+            IpcCommand::CaptureBundleState
+        };
+        let result = self.execute_running_command(command)?;
         anyhow::ensure!(
             generation == self.engine_generation,
             "取得中に音声世代が変わりました"
@@ -1935,11 +1979,29 @@ impl AudioHost {
         input_id: Option<String>,
         output_id: Option<String>,
     ) -> Result<AudioConfig> {
+        anyhow::ensure!(
+            self.bundle_mixing_override || self.mixing.selected.is_none(),
+            "二入力の入出力を復帰する場合は、オケ・ミックス後VSTを含む全体保存を使ってください"
+        );
         intent.validate().map_err(|e| anyhow!(e))?;
         self.validate_bundle_connection()?;
         self.preflight_live_changes()?;
-        self.preserve_live_changes_for_restart();
-        self.kill_engine();
+        if self.bundle_mixing_override && self.bundle_prepared_voice {
+            anyhow::ensure!(
+                matches!(
+                    self.execute_running_command(IpcCommand::ProcessingState)?,
+                    IpcResponse::ProcessingState { present: false, .. }
+                ),
+                "準備済みの声ラックを保持したまま停止中から開始してください"
+            );
+        } else if self.bundle_mixing_override {
+            self.preserve_live_changes_for_restart();
+            // 全体復帰で明示選択した入力と、準備済みの別ラックを主Engine再起動に渡す。
+            self.kill_primary_engine();
+        } else {
+            self.preserve_live_changes_for_restart();
+            self.kill_engine();
+        }
         self.start_internal_guarded_with_ids(
             host,
             input,
@@ -2385,7 +2447,14 @@ impl AudioHost {
     }
 
     pub fn kill_engine(&mut self) {
+        self.bundle_prepared_voice = false;
+        self.post_mix.kill();
         self.mixing.selected = None;
+        self.kill_primary_engine();
+    }
+
+    fn kill_primary_engine(&mut self) {
+        self.post_attached = false;
         self.output_gain_initialized = false;
         if self.mode_vst.busy() {
             self.cancel_mode_vst("音声エンジンが終了したため手動復旧が必要です");

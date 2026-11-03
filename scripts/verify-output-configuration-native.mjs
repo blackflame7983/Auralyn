@@ -2,9 +2,10 @@
 import assert from 'node:assert/strict';
 import { exerciseProcessBundle } from './verify-process-bundle-native.mjs';
 import { exerciseMixingNative } from './verify-mixing-native.mjs';
+import { exercisePostMixNative, postMixFixture } from './verify-post-mix-native.mjs';
 import { chromium, expect } from '@playwright/test';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, openSync, closeSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:net';
@@ -12,7 +13,8 @@ import { once } from 'node:events';
 
 const [appDirectory, evidenceDirectory, suppliedProbe] = process.argv.slice(2);
 const processInput = process.argv.includes('--process-input');
-const mixing = process.argv.includes('--mixing');
+const postMix = process.argv.includes('--post-mix');
+const mixing = process.argv.includes('--mixing') || postMix;
 if (mixing && (processInput || process.argv.includes('--live-modes') || process.argv.includes('--reuse-owned-app'))) throw new Error('--mixing は専用の新規試験として実行してください');
 const liveModes = process.argv.includes('--live-modes');
 const reuseOwnedApp = process.argv.includes('--reuse-owned-app');
@@ -28,14 +30,16 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 const endpoints = () => parse(execFileSync(probe, ['endpoints'], { encoding: 'utf8', windowsHide: true }));
 const beforeEndpoints = endpoints();
 const cable = beforeEndpoints.find(device => device.name === 'CABLE Input (VB-Audio Virtual Cable)');
-assert(cable && !cable.active_processes.length && !cable.default_roles.length && !cable.muted, '未使用のCABLE Inputが必要です');
+if (!postMix) assert(cable && !cable.active_processes.length && !cable.default_roles.length && !cable.muted, '未使用のCABLE Inputが必要です');
 const outputEndpoint = beforeEndpoints.find(device => device.name === 'Voicemeeter Input (VB-Audio Voicemeeter VAIO)');
 assert(outputEndpoint, '指定された返しがありません');
 const allocation = createServer(); allocation.listen(0, '127.0.0.1'); await once(allocation, 'listening');
 const port = allocation.address().port; await new Promise(resolve => allocation.close(resolve));
-const environment = { ...process.env, TEMP: temporaryRoot, TMP: temporaryRoot, AURALYN_DISABLE_PERF_TWEAKS: '1',
+const environment = { ...process.env, ...(postMix ? { RUST_LOG: 'warn' } : {}), TEMP: temporaryRoot, TMP: temporaryRoot, AURALYN_DISABLE_PERF_TWEAKS: '1',
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1` };
 let browser, page, currentPid, debuggerEndpoint;
+let ownedStdout, ownedStderr;
+const ownedStdio = () => postMix ? ['ignore', ownedStdout, ownedStderr] : 'ignore';
 const commandJournal = [];
 const results = { passed: false, physicalMicrophoneOpened: false, audibleMonitorTested: false, sharedMcpDriverUntouched: true };
 const phase = name => { results.phase = name; writeFileSync(join(root, 'progress.json'), JSON.stringify({ phase: name })); };
@@ -104,18 +108,24 @@ try {
     assert.equal(ownedProcesses().length, 0, '試験用アプリが実行中です');
     assert(reuseOwnedApp || !existsSync(join(configRoot, 'broadcast-bundle-recovery.json')), '前の原本を確認してください');
     if (mixing) assert(!existsSync(join(configRoot, 'mixing.json')) && !existsSync(join(configRoot, 'mixing-backups')), '二入力の新規所有設定が必要です');
+    if (postMix) {
+        // sidecar の JSON-RPC stdout は host が保持し、対象の stderr だけを継承させる。
+        ownedStdout = openSync(join(root, 'owned-host.stdout.log'), 'wx', 0o600);
+        ownedStderr = openSync(join(root, 'owned-host.stderr.log'), 'wx', 0o600);
+    }
     phase('launch');
-    const host = spawn(binary, ['--auralyn-review'], { cwd: appRoot, env: environment, windowsHide: true, stdio: 'ignore' });
+    const host = spawn(binary, ['--auralyn-review'], { cwd: appRoot, env: environment, windowsHide: true, stdio: ownedStdio() });
     currentPid = host.pid;
     await attach();
     if (existsSync(join(configRoot, 'broadcast-bundle-recovery.json'))) { const receipt = read(join(configRoot, 'broadcast-bundle-recovery.json')); await bundle({ action: 'recovery_resolve', id: receipt.backupName }); assert(existsSync(join(configRoot, 'broadcast-bundle-backups', 'broadcast-bundles', receipt.backupName + '.json'))); }
     if (mixing) {
         await exerciseMixingNative({ getPage: () => page, invoke, root, configRoot, probe, beforeEndpoints, results, phase, assertStopped,
+            ...(postMix ? { fixtureOptions: postMixFixture({ probe, invoke }), onMixingReady: exercisePostMixNative } : {}),
             restartHost: async () => {
                 await page.evaluate(() => { void window.__TAURI__.core.invoke('plugin:process|exit', { code: 0 }); });
                 await expect.poll(() => ownedProcesses().length, { timeout: 35000 }).toBe(0);
                 await browser.close();
-                const restarted = spawn(binary, ['--auralyn-review'], { cwd: appRoot, env: environment, windowsHide: true, stdio: 'ignore' });
+                const restarted = spawn(binary, ['--auralyn-review'], { cwd: appRoot, env: environment, windowsHide: true, stdio: ownedStdio() });
                 currentPid = restarted.pid; await attach();
             },
         });
@@ -403,6 +413,8 @@ try {
             }
         }
     }
+    if (ownedStdout !== undefined) closeSync(ownedStdout);
+    if (ownedStderr !== undefined) closeSync(ownedStderr);
     const after = new Map(endpoints().map(device => [device.id, device]));
     results.endpointStatePreserved = beforeEndpoints.every(device => ['muted', 'volume', 'default_roles'].every(key => JSON.stringify(device[key]) === JSON.stringify(after.get(device.id)?.[key])));
     results.passed &&= results.endpointStatePreserved;

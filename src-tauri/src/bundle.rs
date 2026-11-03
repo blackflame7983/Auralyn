@@ -3,6 +3,8 @@ use crate::vst_host::presets::{Preset, PresetPlugin, ProfileSaveCategories};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+pub(crate) mod mixing_configuration;
+pub(crate) use mixing_configuration::MixingConfiguration;
 pub(crate) mod output_configuration;
 pub(crate) use output_configuration::OutputConfiguration;
 pub(crate) mod live_configuration;
@@ -40,6 +42,8 @@ pub struct EngineCapture {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BundleV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) mixing: Option<MixingConfiguration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) process: Option<ProcessConfiguration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -94,15 +98,20 @@ pub fn validate(bundle: &BundleV1) -> Result<(), String> {
             bundle.schema_version,
             bundle.output.is_some(),
             bundle.live.is_some(),
-            bundle.process.is_some()
+            bundle.process.is_some(),
+            bundle.mixing.is_some()
         ),
-        (1, false, false, false)
-            | (2, true, false, false)
-            | (3, true, true, false)
-            | (4, false, false, true)
+        (1, false, false, false, false)
+            | (2, true, false, false, false)
+            | (3, true, true, false, false)
+            | (4, false, false, true, false)
+            | (5, true, true, false, true)
     ) || bundle.revision.is_empty()
     {
         return Err("対応していない配信状態です".into());
+    }
+    if let Some(mixing) = &bundle.mixing {
+        mixing.validate()?;
     }
     if let Some(output) = &bundle.output {
         output.validate()?;
@@ -318,7 +327,7 @@ pub(crate) fn read_recovery(root: &Path) -> Result<Option<RecoveryReceipt>, Stri
         return Err("配信状態の復旧機器IDが不正です".into());
     }
     if let Some(origin) = &receipt.runtime {
-        if !matches!(origin.version, 1 | 2)
+        if !matches!(origin.version, 1..=3)
             || origin.source_epoch == 0
             || origin.source_control_revision.is_empty()
             || origin.source_control_revision.len() > 256
@@ -328,7 +337,7 @@ pub(crate) fn read_recovery(root: &Path) -> Result<Option<RecoveryReceipt>, Stri
                 .all(|c| c.is_ascii_digit() || c == b':')
             || origin.sha256.len() != 64
             || !origin.sha256.bytes().all(|c| c.is_ascii_hexdigit())
-            || (origin.version == 1 && receipt.devices.is_none())
+            || (matches!(origin.version, 1 | 3) && receipt.devices.is_none())
         {
             return Err("未保存状態の退避情報に対応していません".into());
         }
@@ -392,7 +401,7 @@ fn validate_runtime_original(original: &BundleV1) -> Result<(), String> {
         && categories.include_audio_config
         && categories.include_noise_control
         && categories.include_builtin_fx)
-        || !matches!(original.schema_version, 1 | 3 | 4)
+        || !matches!(original.schema_version, 1 | 3 | 4 | 5)
         || original.obs.is_some()
         || original.confirmation.is_some()
         || original
@@ -427,6 +436,9 @@ fn validate_runtime_scope(original: &BundleV1, receipt: &RecoveryReceipt) -> Res
             version == 2 && original.output.as_ref().map(|o| &o.devices) == receipt.devices.as_ref()
         }
         4 => version == 2 && receipt.devices.is_none() && original.process.is_some(),
+        5 => {
+            version == 3 && original.output.as_ref().map(|o| &o.devices) == receipt.devices.as_ref()
+        }
         _ => false,
     };
     if !valid {
@@ -448,20 +460,29 @@ pub(crate) fn reserve_runtime_intent(
     devices: RecoveryDevices,
     source_epoch: u64,
 ) -> Result<RuntimeReservation, String> {
-    reserve_runtime_intent_inner(root, backup_name, Some(devices), source_epoch)
+    reserve_runtime_intent_inner(root, backup_name, Some(devices), source_epoch, 1)
+}
+pub(crate) fn reserve_mixing_runtime_intent(
+    root: &Path,
+    backup_name: &str,
+    devices: RecoveryDevices,
+    source_epoch: u64,
+) -> Result<RuntimeReservation, String> {
+    reserve_runtime_intent_inner(root, backup_name, Some(devices), source_epoch, 3)
 }
 pub(crate) fn reserve_process_runtime_intent(
     root: &Path,
     backup_name: &str,
     source_epoch: u64,
 ) -> Result<RuntimeReservation, String> {
-    reserve_runtime_intent_inner(root, backup_name, None, source_epoch)
+    reserve_runtime_intent_inner(root, backup_name, None, source_epoch, 2)
 }
 fn reserve_runtime_intent_inner(
     root: &Path,
     backup_name: &str,
     devices: Option<RecoveryDevices>,
     source_epoch: u64,
+    origin_version: u8,
 ) -> Result<RuntimeReservation, String> {
     validate_name(backup_name)?;
     if devices
@@ -477,7 +498,7 @@ fn reserve_runtime_intent_inner(
         backup_name: backup_name.into(),
         devices: devices.clone(),
         runtime: Some(RuntimeOrigin {
-            version: if devices.is_some() { 1 } else { 2 },
+            version: origin_version,
             source_epoch,
             source_control_revision: "0".into(),
             sha256: "0".repeat(64),
@@ -527,7 +548,16 @@ pub(crate) fn finish_runtime_recovery(
         .runtime
         .as_mut()
         .ok_or("退避情報がありません")?;
-    origin.version = if original.schema_version == 1 { 1 } else { 2 };
+    // schema 5 の退避は予約時から版3で固定し、旧 schema に昇格させない。
+    if origin.version == 3 && original.schema_version != 5 {
+        return Err("退避原本と保存範囲が一致しません".into());
+    }
+    origin.version = match original.schema_version {
+        1 => 1,
+        5 if origin.version == 3 => 3,
+        5 => return Err("ミックス原本の予約が一致しません".into()),
+        _ => 2,
+    };
     validate_runtime_scope(original, &reservation.receipt)?;
     let backup_root = root.join("broadcast-bundle-backups");
     save_with_overwrite(&backup_root, original, false)?;
@@ -854,7 +884,7 @@ mod tests {
         let receipt = read_recovery(&root).unwrap().unwrap();
         assert!(load_recovery_backup(&root, &receipt).is_err());
         let mut unknown = serde_json::to_value(&receipt).unwrap();
-        unknown["runtime"]["version"] = serde_json::json!(3);
+        unknown["runtime"]["version"] = serde_json::json!(4);
         std::fs::write(recovery_path(&root), serde_json::to_vec(&unknown).unwrap()).unwrap();
         assert!(read_recovery(&root).is_err());
         assert!(reserve_recovery(&root, "replacement", None).is_err());
@@ -1023,6 +1053,153 @@ mod tests {
         resolve_recovery(&root, Some("original")).unwrap();
         std::fs::remove_dir_all(root).unwrap();
     }
+    fn mixing_sample() -> BundleV1 {
+        use super::mixing_configuration::PostMixPreset;
+        use crate::audio_engine::mixing::{Config, Levels};
+        let mut original = runtime_sample();
+        original.schema_version = 5;
+        original.output = Some(OutputConfiguration {
+            version: 1,
+            devices: RecoveryDevices {
+                input_id: "input-id".into(),
+                output_id: "output-id".into(),
+            },
+            config: Default::default(),
+        });
+        original.live = Some(LiveConfiguration {
+            version: 1,
+            definitions: Default::default(),
+            target: None,
+            monitor: None,
+            singing_plugins: None,
+            talk_plugins: None,
+        });
+        original.mixing = Some(MixingConfiguration {
+            version: 1,
+            input: Some(Config {
+                version: 1,
+                source: serde_json::from_value(serde_json::json!({ "kind": "device", "config": { "host": "WASAPI", "inputId": "music-id", "inputChannels": [0, 1] } })).unwrap(),
+                levels: Levels::default(),
+            }),
+            post_mix: PostMixPreset {
+                schema_version: 1,
+                role: "post_mix".into(),
+                enabled: true,
+                plugins: vec![],
+            },
+        });
+        original
+    }
+    fn private_plugin(state: &str) -> PresetPlugin {
+        PresetPlugin {
+            path: "plugin.vst3".into(),
+            name: "test".into(),
+            vendor: String::new(),
+            version: String::new(),
+            enabled: true,
+            muted: false,
+            gain: 1.0,
+            state: Some(state.into()),
+        }
+    }
+    #[test]
+    fn mixing_schema_round_trip_and_strict_input() {
+        let original = mixing_sample();
+        assert!(validate(&original).is_ok());
+        let json = serde_json::to_value(&original).unwrap();
+        let restored: BundleV1 = serde_json::from_value(json.clone()).unwrap();
+        assert!(restored.mixing == original.mixing);
+        for schema in 1..=4 {
+            let mut old = original.clone();
+            old.schema_version = schema;
+            assert!(validate(&old).is_err());
+        }
+        let mut none = original.clone();
+        none.mixing.as_mut().unwrap().input = None;
+        assert!(validate(&none).is_err());
+        none.mixing.as_mut().unwrap().post_mix.enabled = false;
+        assert!(validate(&none).is_ok());
+        for field in ["pid", "target", "instanceId"] {
+            let mut forged = json.clone();
+            forged["mixing"]["input"][field] = serde_json::json!(123);
+            assert!(serde_json::from_value::<BundleV1>(forged).is_err());
+        }
+        let mut bad = original.clone();
+        bad.mixing.as_mut().unwrap().post_mix.role = "voice".into();
+        assert!(validate(&bad).is_err());
+        bad = original.clone();
+        bad.mixing
+            .as_mut()
+            .unwrap()
+            .post_mix
+            .plugins
+            .push(private_plugin("state"));
+        bad.mixing.as_mut().unwrap().post_mix.plugins[0].gain = 2.01;
+        assert!(validate(&bad).is_err());
+    }
+    #[test]
+    fn mixing_recovery_binds_version_devices_and_both_rack_states() {
+        let root = std::env::temp_dir().join(format!("auralyn-mix-recovery-{}", revision()));
+        let mut original = mixing_sample();
+        original
+            .embedded_auralyn_preset
+            .plugins
+            .push(private_plugin("voice-secret"));
+        original
+            .mixing
+            .as_mut()
+            .unwrap()
+            .post_mix
+            .plugins
+            .push(private_plugin("post-secret"));
+        let devices = original.output.as_ref().unwrap().devices.clone();
+        let reservation =
+            reserve_mixing_runtime_intent(&root, &original.name, devices, 11).unwrap();
+        finish_runtime_recovery(&root, &original, reservation, "1:2:3:4".into()).unwrap();
+        let receipt = read_recovery(&root).unwrap().unwrap();
+        assert_eq!(receipt.runtime.as_ref().unwrap().version, 3);
+        let marker = std::fs::read(recovery_path(&root)).unwrap();
+        assert!(!String::from_utf8_lossy(&marker).contains("secret"));
+        let backup_root = root.join("broadcast-bundle-backups");
+        let backup_path = path(&backup_root, &original.name).unwrap();
+        let backup = std::fs::read(&backup_path).unwrap();
+        assert!(load_recovery_backup(&root, &receipt).is_ok());
+        let mut wrong = receipt.clone();
+        wrong.runtime.as_mut().unwrap().version = 2;
+        assert!(load_recovery_backup(&root, &wrong).is_err());
+        wrong = receipt.clone();
+        wrong.devices.as_mut().unwrap().input_id = "wrong".into();
+        assert!(load_recovery_backup(&root, &wrong).is_err());
+        for post in [false, true] {
+            let mut altered = original.clone();
+            if post {
+                altered.mixing.as_mut().unwrap().post_mix.plugins[0].state = Some("changed".into());
+            } else {
+                altered.embedded_auralyn_preset.plugins[0].state = Some("changed".into());
+            }
+            save(&backup_root, &altered).unwrap();
+            assert!(load_recovery_backup(&root, &receipt).is_err());
+            std::fs::write(&backup_path, &backup).unwrap();
+        }
+        assert_eq!(std::fs::read(recovery_path(&root)).unwrap(), marker);
+        assert_eq!(std::fs::read(&backup_path).unwrap(), backup);
+        let mut wrong_schema = original.clone();
+        wrong_schema.schema_version = 2;
+        wrong_schema.live = None;
+        wrong_schema.mixing = None;
+        assert!(validate_runtime_original(&wrong_schema).is_err());
+    }
+    #[test]
+    fn mixing_recovery_rejects_wrong_reservation_without_replacing_original() {
+        let root = std::env::temp_dir().join(format!("auralyn-mix-reservation-{}", revision()));
+        let original = mixing_sample();
+        let devices = original.output.as_ref().unwrap().devices.clone();
+        let reservation = reserve_runtime_intent(&root, &original.name, devices, 11).unwrap();
+        assert!(finish_runtime_recovery(&root, &original, reservation, "1".into()).is_err());
+        let marker = std::fs::read(recovery_path(&root)).unwrap();
+        assert!(reserve_recovery(&root, "replacement", None).is_err());
+        assert_eq!(std::fs::read(recovery_path(&root)).unwrap(), marker);
+    }
     fn runtime_sample() -> BundleV1 {
         let mut value = sample();
         value.categories = ProfileSaveCategories {
@@ -1067,6 +1244,7 @@ mod tests {
     }
     fn sample() -> BundleV1 {
         BundleV1 {
+            mixing: None,
             process: None,
             live: None,
             output: None,

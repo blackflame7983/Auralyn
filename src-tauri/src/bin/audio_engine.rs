@@ -252,7 +252,11 @@ fn main() {
     }
 
     // Normal startup
-    let engine = Engine::new();
+    let engine = if std::env::args().any(|arg| arg == "--post-mix-worker") {
+        Engine::new_post_mix()
+    } else {
+        Engine::new()
+    };
     engine.run_loop();
 }
 

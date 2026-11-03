@@ -144,6 +144,24 @@ impl Engine {
                     config.split_processing && config.device_id.is_some(),
                     "二入力では本人用と配信用の処理・出力を分けてください"
                 );
+                if let Some(crate::audio_engine::mixing::Start {
+                    config:
+                        crate::audio_engine::mixing::Config {
+                            source: crate::audio_engine::mixing::Source::ProcessLoopback(source),
+                            ..
+                        },
+                    ..
+                }) = &self.mixing_start
+                {
+                    anyhow::ensure!(
+                        config
+                            .device_id
+                            .as_deref()
+                            .and_then(|id| id.strip_prefix("wasapi:"))
+                            != Some(source.raw_endpoint_id.as_str()),
+                        "原音用と配信用には別の出力先を指定してください"
+                    );
+                }
             }
             Command::Start {
                 input_source,
@@ -173,6 +191,14 @@ impl Engine {
                     }
                     crate::audio_engine::mixing::Source::ProcessLoopback(process) => {
                         anyhow::ensure!(
+                            self.live_output_config
+                                .device_id
+                                .as_deref()
+                                .and_then(|id| id.strip_prefix("wasapi:"))
+                                != Some(process.raw_endpoint_id.as_str()),
+                            "原音用と配信用には別の出力先を指定してください"
+                        );
+                        anyhow::ensure!(
                             output_id
                                 .as_ref()
                                 .is_none_or(|output| output.strip_prefix("wasapi:")
@@ -185,5 +211,35 @@ impl Engine {
             _ => {}
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn accompaniment_raw_endpoint_cannot_also_be_the_broadcast_sink() {
+        let mut engine = Engine::new();
+        engine.mixing_start = Some(serde_json::from_value(serde_json::json!({
+            "config":{"version":1,"source":{"kind":"process_loopback","config":{"appKey":"a".repeat(64),"appName":"player.exe","rawEndpointId":"raw-id","purpose":"music"}},
+            "levels":{"voice":{"gain":1.0,"muted":false},"accompaniment":{"gain":1.0,"muted":false},"monitorAccompaniment":true,"offsetMs":0}},
+            "target":{"pid":123,"created":456}
+        })).unwrap());
+        let mut config = crate::audio_engine::live_output::Config {
+            split_processing: true,
+            device_id: Some("wasapi:raw-id".into()),
+            ..Default::default()
+        };
+        assert!(engine
+            .validate_mixing_start(&Command::LiveOutput {
+                config: Some(config.clone())
+            })
+            .is_err());
+        config.device_id = Some("wasapi:broadcast-id".into());
+        assert!(engine
+            .validate_mixing_start(&Command::LiveOutput {
+                config: Some(config)
+            })
+            .is_ok());
     }
 }

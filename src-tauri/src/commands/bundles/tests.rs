@@ -43,6 +43,7 @@ fn process_restore_requires_current_choice_mute_and_both_exact_output_devices() 
         ..Default::default()
     });
     let mut saved = BundleV1 {
+        mixing: None,
         process: current.process.clone(),
         live: None,
         output: None,
@@ -168,6 +169,7 @@ fn output_restore_requires_current_mute_and_exact_primary_and_secondary_ids() {
         ..Default::default()
     });
     let mut saved = BundleV1 {
+        mixing: None,
         process: None,
         live: None,
         output: Some(bundle::OutputConfiguration {
@@ -237,6 +239,7 @@ fn saved_preview_rejects_same_revision_edits_and_different_operation() {
     let plan = Preview {
         id: "preview".into(),
         bundle: BundleV1 {
+            mixing: None,
             process: None,
             live: None,
             output: None,
@@ -304,6 +307,7 @@ fn runtime_restore_requires_explicit_start_and_current_mute() {
 fn runtime_restore_accepts_only_default_equivalent_omitted_fx_fields() {
     let mut before = captured();
     let mut target = BundleV1 {
+        mixing: None,
         process: None,
         live: None,
         output: None,
@@ -518,6 +522,8 @@ fn captured() -> Captured {
         },
     };
     Captured {
+        mixing: None,
+        mixing_revision: "absent".into(),
         process: None,
         process_target: None,
         live: None,
@@ -557,6 +563,7 @@ fn output_routing_roundtrip_preview_partial_and_undo_intent() {
     };
     before.preset.audio_config = Some(audio.clone());
     let mut target = BundleV1 {
+        mixing: None,
         process: None,
         live: None,
         output: None,
@@ -705,6 +712,7 @@ fn checked_save_requires_a_running_unmuted_settled_stream_and_the_exact_observed
 fn preview_and_result_expose_differences_without_opaque_state_or_default_buffer_claim() {
     let before = captured();
     let target = BundleV1 {
+        mixing: None,
         process: None,
         live: None,
         output: None,
@@ -809,6 +817,7 @@ fn selected_backup_does_not_include_untouched_categories_and_empty_rack_is_expli
     assert!(backup.builtin_fx.is_none());
     assert!(backup.audio_config.is_none());
     let target = BundleV1 {
+        mixing: None,
         process: None,
         live: None,
         output: None,
@@ -840,4 +849,258 @@ fn selected_backup_does_not_include_untouched_categories_and_empty_rack_is_expli
     let mut opaque = actual.clone();
     opaque.engine.plugins[0].plugin.state = Some("changed by GUI or processing".into());
     assert!(!unchanged(&actual, &opaque));
+}
+
+#[test]
+fn mixing_revision_selection_and_opaque_diff_are_checked() {
+    use crate::audio_engine::mixing::{Config, Levels, Source};
+    let mut before = captured();
+    before.engine.running = true;
+    before.engine.global_mute = true;
+    let mut mixing = empty_mixing();
+    mixing.input = Some(Config {
+        version: 1,
+        source: serde_json::from_value(serde_json::json!({ "kind": "device", "config": { "host": "WASAPI", "inputId": "private-device-id", "inputChannels": [0, 1] } })).unwrap(),
+        levels: Levels::default(),
+    });
+    mixing.post_mix.enabled = true;
+    mixing.post_mix.plugins = vec![
+        PresetPlugin {
+            path: "first.vst3".into(),
+            name: "first".into(),
+            vendor: String::new(),
+            version: String::new(),
+            enabled: true,
+            muted: false,
+            gain: 1.0,
+            state: Some("private-state-one".into()),
+        },
+        PresetPlugin {
+            path: "second.vst3".into(),
+            name: "second".into(),
+            vendor: String::new(),
+            version: String::new(),
+            enabled: false,
+            muted: false,
+            gain: 0.5,
+            state: Some("private-state-two".into()),
+        },
+    ];
+    before.mixing = Some(mixing.clone());
+    before.mixing_revision = "epoch:1".into();
+    let mut target = BundleV1 {
+        mixing: Some(mixing),
+        process: None,
+        live: None,
+        output: None,
+        schema_version: 5,
+        revision: "revision".into(),
+        name: "test".into(),
+        categories: ProfileSaveCategories::default(),
+        embedded_auralyn_preset: before.preset.clone(),
+        obs: None,
+        confirmation: None,
+        level_intent: None,
+    };
+    assert!(validate_mixing_selection(&target, &before).is_ok());
+    let mut changed = before.clone();
+    changed.mixing_revision = "epoch:2".into();
+    assert!(!unchanged(&before, &changed));
+    changed = before.clone();
+    changed.mixing.as_mut().unwrap().post_mix.plugins.swap(0, 1);
+    assert!(!unchanged(&before, &changed));
+    before.engine.global_mute = false;
+    assert!(validate_mixing_selection(&target, &before).is_err());
+    before.engine.global_mute = true;
+    if let Source::Device(device) = &mut target
+        .mixing
+        .as_mut()
+        .unwrap()
+        .input
+        .as_mut()
+        .unwrap()
+        .source
+    {
+        device.input_id = "other".into();
+    }
+    assert!(validate_mixing_selection(&target, &before).is_err());
+    target.mixing.as_mut().unwrap().post_mix.plugins[0].state = Some("new-private-state".into());
+    let rows = preview_diff(&before, &target);
+    let encoded = serde_json::to_string(&rows).unwrap();
+    assert!(!encoded.contains("private-state"));
+    assert!(!encoded.contains("private-device-id"));
+    assert_eq!(
+        rows.iter()
+            .find(|row| row.label == "ミックス後VST状態")
+            .unwrap()
+            .status,
+        "changed"
+    );
+    target.mixing = None;
+    assert!(validate_mixing_selection(&target, &before).is_err());
+}
+
+#[test]
+fn prepared_mixing_voice_is_not_reloaded_and_explicit_empty_stays_applied() {
+    let before = captured();
+    let plugin = PresetPlugin {
+        path: "voice.vst3".into(),
+        name: "voice".into(),
+        vendor: String::new(),
+        version: String::new(),
+        enabled: true,
+        muted: false,
+        gain: 0.8,
+        state: Some("opaque".into()),
+    };
+    let mut target = BundleV1 {
+        mixing: Some(empty_mixing()),
+        process: None,
+        live: None,
+        output: None,
+        schema_version: 5,
+        revision: "1".into(),
+        name: "test".into(),
+        categories: ProfileSaveCategories {
+            include_plugins: true,
+            include_audio_config: true,
+            include_noise_control: true,
+            include_builtin_fx: true,
+        },
+        embedded_auralyn_preset: before.preset.clone(),
+        obs: None,
+        confirmation: None,
+        level_intent: Some(bundle::LevelIntent {
+            input_gain: 0.5,
+            output_gain: 0.25,
+        }),
+    };
+    target.embedded_auralyn_preset.plugins = vec![plugin.clone()];
+    target.embedded_auralyn_preset.audio_config = Some(ProfileAudioConfig {
+        host: "WASAPI".into(),
+        input_device: Some("Mic".into()),
+        output_device: Some("Out".into()),
+        sample_rate: 48_000,
+        buffer_size: 512,
+        input_channels: vec![0, 1],
+        output_routing: Default::default(),
+        input_gain_db: 0.0,
+        master_gain_db: 0.0,
+    });
+    let legacy = restore_profile(&target, false);
+    assert_eq!(legacy.plugins, vec![plugin.clone()]);
+    assert!(legacy.audio_config.is_some());
+    let stripped = restore_profile(&target, true);
+    assert!(stripped.plugins.is_empty() && stripped.audio_config.is_none());
+    assert!(stripped.noise_control == target.embedded_auralyn_preset.noise_control);
+    assert!(stripped.builtin_fx == target.embedded_auralyn_preset.builtin_fx);
+    let actual = LoadedPluginInstance {
+        id: "actual-id".into(),
+        path: plugin.path.clone(),
+        name: plugin.name.clone(),
+        vendor: String::new(),
+        version: String::new(),
+        enabled: true,
+        muted: false,
+        gain: 0.8,
+    };
+    let initial = selected_start_intent(&target, &before).unwrap();
+    let mut summary = ApplyProfileSummary::default();
+    add_prepared_summary(&mut summary, &target, &[actual], initial).unwrap();
+    assert_eq!(summary.applied_plugins, vec![plugin]);
+    assert_eq!(summary.loaded_plugin_instances[0].id, "actual-id");
+    assert!(summary.applied_categories.contains(&"plugins".into()));
+    assert!(summary.applied_categories.contains(&"audioConfig".into()));
+    assert!(complete(&summary));
+    target.embedded_auralyn_preset.plugins.clear();
+    let mut empty = ApplyProfileSummary::default();
+    add_prepared_summary(&mut empty, &target, &[], initial).unwrap();
+    assert!(empty.applied_plugins.is_empty() && empty.loaded_plugin_instances.is_empty());
+    assert!(empty.applied_categories.contains(&"plugins".into()));
+    target.embedded_auralyn_preset.plugins.push(PresetPlugin {
+        path: "missing.vst3".into(),
+        name: String::new(),
+        vendor: String::new(),
+        version: String::new(),
+        enabled: true,
+        muted: false,
+        gain: 1.0,
+        state: None,
+    });
+    assert!(
+        add_prepared_summary(&mut ApplyProfileSummary::default(), &target, &[], initial).is_err()
+    );
+}
+
+#[test]
+fn prepared_voice_does_not_restart_for_mismatched_route_or_device() {
+    let expected = ProfileAudioConfig {
+        host: "WASAPI".into(),
+        input_device: Some("Mic".into()),
+        output_device: Some("Out".into()),
+        sample_rate: 48_000,
+        buffer_size: 512,
+        input_channels: vec![0, 1],
+        output_routing: Default::default(),
+        input_gain_db: 0.0,
+        master_gain_db: 0.0,
+    };
+    let devices = bundle::RecoveryDevices {
+        input_id: "input".into(),
+        output_id: "output".into(),
+    };
+    let initial = profile::StartIntent {
+        input_gain: 1.0,
+        output_gain: 1.0,
+        input_channels: [0, 1],
+        output_routing: Default::default(),
+        muted: true,
+        bypassed: false,
+    };
+    let routing = crate::ipc::ChannelRouting {
+        input_channels: Some([0, 1]),
+        output_routing: Default::default(),
+    };
+    let started = audio::AudioConfig {
+        sample_rate: 48_000,
+        buffer_size: 512,
+        channels: 2,
+        routing: Some(routing),
+    };
+    let mut actual = audio::ActiveAudioConfig {
+        host: "WASAPI".into(),
+        input: Some("Mic".into()),
+        output: Some("Out".into()),
+        input_id: Some("input".into()),
+        output_id: Some("output".into()),
+        sample_rate: Some(48_000),
+        buffer_size: Some(512),
+        routing: Some(routing),
+        input_source: None,
+    };
+    assert!(prepared_start_matches(
+        &started,
+        Some(&actual),
+        Some(routing),
+        &expected,
+        &devices,
+        initial
+    ));
+    assert!(!prepared_start_matches(
+        &started,
+        Some(&actual),
+        None,
+        &expected,
+        &devices,
+        initial
+    ));
+    actual.output_id = Some("different".into());
+    assert!(!prepared_start_matches(
+        &started,
+        Some(&actual),
+        Some(routing),
+        &expected,
+        &devices,
+        initial
+    ));
 }

@@ -2,6 +2,21 @@
 use crate::{audio, audio_engine, desktop_integration, routing_diag, vst_host};
 use tauri::{AppHandle, Manager, State};
 
+#[tauri::command]
+pub(crate) async fn post_mix(
+    state: State<'_, audio::AudioState>,
+    request: audio::post_mix::Request,
+) -> Result<audio::post_mix::Snapshot, String> {
+    let host = state.0.clone();
+    super::run_blocking(move || {
+        host.lock()
+            .map_err(|_| "配信VSTの設定を取得できません".to_owned())?
+            .post_mix(request)
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
 // 読み込みやスキャンを行わず、明確な不在だけを返す。
 fn missing_vst_path(path: &str) -> Result<bool, String> {
     let path = std::path::Path::new(path);

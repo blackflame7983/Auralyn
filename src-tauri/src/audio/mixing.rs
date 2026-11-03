@@ -28,7 +28,7 @@ impl State {
             error,
         }
     }
-    fn unchanged(&self) -> Result<()> {
+    pub(super) fn unchanged(&self) -> Result<()> {
         anyhow::ensure!(
             self.error.is_none(),
             "ミックスの保存内容を読み直してから、オケを明示選択してください"
@@ -40,7 +40,7 @@ impl State {
         );
         Ok(())
     }
-    fn persist(&mut self, config: Option<&Config>) -> Result<()> {
+    pub(super) fn persist(&mut self, config: Option<&Config>) -> Result<()> {
         self.unchanged()?;
         let bytes = serde_json::to_vec_pretty(&config)?;
         let directory = self
@@ -60,13 +60,16 @@ impl State {
         drop(file);
         self.unchanged()?;
         std::fs::rename(&temporary, &self.path)?;
+        self.raw = Some(bytes.clone());
+        self.saved = config.cloned();
         anyhow::ensure!(
             std::fs::read(&self.path)? == bytes,
             "保存後にミックス設定が変わりました"
         );
-        self.raw = Some(bytes);
-        self.saved = config.cloned();
         Ok(())
+    }
+    pub(super) fn file_checkpoint(&self) -> (PathBuf, Option<Vec<u8>>) {
+        (self.path.clone(), self.raw.clone())
     }
 }
 fn read(path: &std::path::Path) -> Result<(Option<Vec<u8>>, Option<Config>)> {
@@ -386,7 +389,7 @@ impl AudioHost {
             error,
         })
     }
-    fn apply_engine_mixing(&mut self, start: Option<Start>) -> Result<()> {
+    pub(super) fn apply_engine_mixing(&mut self, start: Option<Start>) -> Result<()> {
         let current = self.engine_mixing_snapshot()?;
         anyhow::ensure!(
             !current.running,
@@ -409,7 +412,12 @@ impl AudioHost {
         primary: Option<&crate::input_source::Start>,
     ) -> Result<()> {
         self.mixing.unchanged()?;
-        if self.mixing.saved.is_none() {
+        let saved = if self.bundle_mixing_override {
+            self.mixing.selected.as_ref().map(|start| &start.config)
+        } else {
+            self.mixing.saved.as_ref()
+        };
+        if saved.is_none() {
             return Ok(());
         }
         anyhow::ensure!(
@@ -422,7 +430,7 @@ impl AudioHost {
             .as_ref()
             .ok_or_else(|| anyhow!("オケの入力元を音声設定で選び直してから開始してください"))?;
         anyhow::ensure!(
-            Some(&selected.config) == self.mixing.saved.as_ref(),
+            Some(&selected.config) == saved,
             "ミックス設定の保存を完了してください"
         );
         selected.validate().map_err(anyhow::Error::msg)?;
@@ -438,6 +446,9 @@ impl AudioHost {
         Ok(())
     }
     pub(super) fn prepare_mixing_start(&mut self) -> Result<()> {
+        if self.bundle_mixing_override {
+            return self.apply_engine_mixing(self.mixing.selected.clone());
+        }
         if self.mixing.saved.is_some() {
             let selected = self
                 .mixing

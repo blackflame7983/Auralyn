@@ -390,6 +390,7 @@ pub fn run() {
             commands::audio::get_audio_devices,
             commands::audio::live_output,
             commands::audio::mixing,
+            commands::audio::post_mix,
             commands::audio::get_audio_state,
             commands::audio::get_engine_tuning_config,
             commands::audio::set_engine_tuning_config,

@@ -334,3 +334,15 @@ it('読めない原本も明示確認するまでは解除しない', async () =
     fireEvent.click(screen.getByRole('checkbox',{name:/適用前の設定に戻さず/})); fireEvent.click(adopt);
     await waitFor(() => expect(bundleApi.resolveRecovery).toHaveBeenCalledWith(null));
 });
+
+it('ミックス保存は出力・本番モードと全カテゴリを含める', async () => {
+    render(<BroadcastBundlePanel />);
+    await screen.findByRole('option', { name: '歌枠' });
+    fireEvent.click(screen.getByRole('checkbox', { name: message('ja', 'bundle.mixing.include') }));
+    expect(screen.getByRole('checkbox', { name: message('ja', 'bundle.live.include') })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: message('ja', 'bundle.output.include') })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: '入出力・音量' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), { target: { value: 'mix' } });
+    fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
+    await waitFor(() => expect(bundleApi.save).toHaveBeenCalledWith('mix', { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true }, null, false, undefined, true, true, false, true));
+});

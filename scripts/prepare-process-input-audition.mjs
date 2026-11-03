@@ -12,8 +12,6 @@ if (existsSync(root)) {
     if (relative(root, resolve(root, 'frontend')).startsWith('..')) throw new Error('frontend outside owned root');
 }
 const target = resolve(process.env.CARGO_TARGET_DIR || 'src-tauri/target/native-e2e');
-const testedEngine = join(target, 'debug', 'audio_engine.exe');
-if (!existsSync(testedEngine)) throw new Error('先に実Engineをビルド・検証してください');
 mkdirSync(root, { recursive: true });
 mkdirSync(join(root, 'bin'), { recursive: true });
 const config = {
@@ -22,7 +20,7 @@ const config = {
     bundle: { externalBin: [] },
     app: {
         appDirectoriesOverride: { config: join(root, 'state', 'config'), data: join(root, 'state', 'data'), localData: join(root, 'state', 'webview'), cache: join(root, 'state', 'cache'), log: join(root, 'state', 'logs') },
-        windows: [{ label: 'main', title: 'Auralyn 入力試聴（未コミット版）', width: 1180, height: 820, minWidth: 900, minHeight: 600, dragDropEnabled: true }],
+        windows: [{ label: 'main', title: 'Auralyn 入力・ミックス試聴（開発版）', width: 1180, height: 820, minWidth: 900, minHeight: 600, dragDropEnabled: true }],
         security: { capabilities: ['default', { identifier: 'audition-exit', windows: ['main'], permissions: ['process:allow-exit'] }] },
     },
 };
@@ -34,10 +32,9 @@ function run(command, args, cwd) {
 console.log(JSON.stringify({ root, phase: 'frontend' }));
 run(process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit'], process.cwd());
 run(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--outDir', join(root, 'frontend')], process.cwd());
-// 長時間試験で実行中のengine.exeを再リンクしない。検証中と同じ実行ファイルを複写する。
-copyFileSync(testedEngine, join(root, 'bin', 'audio_engine.exe'));
-run('cargo', ['build', '--offline', '--locked', '--features', 'tauri/custom-protocol', '--bin', 'AuralynHost', '--bin', 'plugin_scanner'], resolve('src-tauri'));
-for (const name of ['AuralynHost', 'plugin_scanner']) copyFileSync(join(target, 'debug', `${name}.exe`), join(root, 'bin', `${name}.exe`));
+// 長時間試験は複写したbinで実行する。専用targetの三つのbinを同じソースで揃える。
+run('cargo', ['build', '--offline', '--locked', '--features', 'tauri/custom-protocol', '--bin', 'AuralynHost', '--bin', 'audio_engine', '--bin', 'plugin_scanner'], resolve('src-tauri'));
+for (const name of ['AuralynHost', 'audio_engine', 'plugin_scanner']) copyFileSync(join(target, 'debug', `${name}.exe`), join(root, 'bin', `${name}.exe`));
 const presets = join(root, 'state', 'config', 'presets');
 mkdirSync(presets, { recursive: true });
 const name = '入力試聴 TDR Nova';
@@ -47,6 +44,8 @@ writeFileSync(join(presets, `${name}.json`), JSON.stringify({ schemaVersion: 2, 
 writeFileSync(join(root, 'Start-Audition.cmd'), '@echo off\r\ncd /d "%~dp0"\r\nstart "" "%~dp0bin\\AuralynHost.exe" --auralyn-review\r\n', 'utf8');
 writeFileSync(join(root, 'build-config.json'), JSON.stringify(config, null, 2));
 const hash = name => createHash('sha256').update(readFileSync(join(root, 'bin', `${name}.exe`))).digest('hex');
-writeFileSync(join(root, 'build.json'), JSON.stringify({ date: '2026-11-02', root, embeddedFrontend: true, normalConfigChanged: false,
+const revision = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true });
+if (revision.status !== 0) throw new Error('ソースのコミットを確認できません');
+writeFileSync(join(root, 'build.json'), JSON.stringify({ date: new Date().toISOString(), sourceCommit: revision.stdout.trim(), sourceMayIncludeLocalChanges: true, root, embeddedFrontend: true, normalConfigChanged: false,
     normalBinChanged: false, sourceCommitCreated: false, binaries: Object.fromEntries(['AuralynHost', 'audio_engine', 'plugin_scanner'].map(name => [name, hash(name)])) }, null, 2));
 console.log(JSON.stringify({ root, ready: true, launcher: join(root, 'Start-Audition.cmd') }));

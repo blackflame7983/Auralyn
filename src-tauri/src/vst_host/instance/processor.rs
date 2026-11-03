@@ -7,6 +7,21 @@ use std::ffi::c_void;
 use std::sync::atomic::Ordering;
 
 impl VstProcessor {
+    pub(crate) fn reset_processing(&mut self) -> bool {
+        if !self.active_flag.load(Ordering::SeqCst) || self.ptr.is_null() {
+            return false;
+        }
+        // 専用 worker の process 呼出し間だけで実行する。VST3 準拠の実装は
+        // setProcessing(true) で遅延線などを初期化する。非準拠 VST は保証できない。
+        unsafe {
+            let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.ptr);
+            if (vtbl.set_processing)(self.ptr, 0) != K_RESULT_OK {
+                return false;
+            }
+            (vtbl.set_processing)(self.ptr, 1) == K_RESULT_OK
+        }
+    }
+
     fn silence_planar(outputs: &mut [Vec<f32>], num_samples: usize) {
         for channel in outputs {
             let len = num_samples.min(channel.len());
@@ -272,5 +287,122 @@ impl Drop for VstProcessor {
             }
         }
         // println!("BP: VstProcessor Drop End");
+    }
+}
+
+#[cfg(test)]
+mod reset_tests {
+    use super::*;
+    use crate::vst_host::c_api::{FUnknownVtbl, TUID};
+    use crate::vst_host::instance::PluginLibrary;
+    use crate::vst_host::instance::{K_NO_INTERFACE, K_RESULT_FALSE};
+    use std::{
+        cell::UnsafeCell,
+        sync::{atomic::AtomicBool, Arc},
+    };
+
+    #[repr(C)]
+    struct Mock {
+        vtbl: *const IAudioProcessorVtbl,
+        calls: [i32; 2],
+        len: usize,
+        tail: u32,
+        fail_state: i32,
+    }
+    unsafe extern "system" fn query(_: *mut c_void, _: *const TUID, _: *mut *mut c_void) -> i32 {
+        K_NO_INTERFACE
+    }
+    unsafe extern "system" fn ref_count(_: *mut c_void) -> u32 {
+        1
+    }
+    unsafe extern "system" fn arrangements(
+        _: *mut c_void,
+        _: *mut c_void,
+        _: i32,
+        _: *mut c_void,
+        _: i32,
+    ) -> i32 {
+        K_RESULT_OK
+    }
+    unsafe extern "system" fn arrangement(_: *mut c_void, _: i32, _: i32, _: *mut c_void) -> i32 {
+        K_RESULT_OK
+    }
+    unsafe extern "system" fn sample_size(_: *mut c_void, _: i32) -> i32 {
+        K_RESULT_OK
+    }
+    unsafe extern "system" fn samples(_: *mut c_void) -> u32 {
+        0
+    }
+    unsafe extern "system" fn setup(_: *mut c_void, _: *mut c_void) -> i32 {
+        K_RESULT_OK
+    }
+    unsafe extern "system" fn process(_: *mut c_void, _: *mut c_void) -> i32 {
+        K_RESULT_OK
+    }
+    unsafe extern "system" fn set_processing(this: *mut c_void, state: i32) -> i32 {
+        let mock = &mut *(this as *mut Mock);
+        mock.calls[mock.len] = state;
+        mock.len += 1;
+        if state == mock.fail_state {
+            return K_RESULT_FALSE;
+        }
+        if state == 1 {
+            mock.tail = 0;
+        }
+        K_RESULT_OK
+    }
+    static VTABLE: IAudioProcessorVtbl = IAudioProcessorVtbl {
+        base: FUnknownVtbl {
+            query_interface: query,
+            add_ref: ref_count,
+            release: ref_count,
+        },
+        set_bus_arrangements: arrangements,
+        get_bus_arrangement: arrangement,
+        can_process_sample_size: sample_size,
+        get_latency_samples: samples,
+        setup_processing: setup,
+        set_processing,
+        process,
+        get_tail_samples: samples,
+    };
+    #[test]
+    fn reset_clears_mock_tail_and_stops_on_failure_without_allocating() {
+        for failure in [-1, 0, 1] {
+            let mock = Box::new(UnsafeCell::new(Mock {
+                vtbl: &VTABLE,
+                calls: [-1; 2],
+                len: 0,
+                tail: 7,
+                fail_state: failure,
+            }));
+            let mut processor = VstProcessor {
+                ptr: mock.get().cast(),
+                _library: Arc::new(unsafe { PluginLibrary::load("kernel32.dll", false) }.unwrap()),
+                scratch_inputs: vec![],
+                scratch_outputs: vec![],
+                input_ptrs: vec![],
+                output_ptrs: vec![],
+                bus_inputs: vec![],
+                bus_outputs: vec![],
+                active_flag: Arc::new(AtomicBool::new(true)),
+                max_block_size: 0,
+                _num_channels: 2,
+            };
+            let mut success = false;
+            let counts = crate::vst_host::instance::allocation_counts(|| {
+                success = processor.reset_processing();
+            });
+            assert_eq!(counts, (0, 0));
+            let state = unsafe { &*mock.get() };
+            assert_eq!(success, failure == -1);
+            assert_eq!(state.calls[0], 0);
+            assert_eq!(state.len, if failure == 0 { 1 } else { 2 });
+            if failure != 0 {
+                assert_eq!(state.calls[1], 1);
+            }
+            assert_eq!(state.tail, if success { 0 } else { 7 });
+            drop(processor);
+        }
     }
 }

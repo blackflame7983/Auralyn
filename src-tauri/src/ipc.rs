@@ -412,6 +412,16 @@ pub enum SessionRackReply {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum Command {
+    ProcessingState,
+    CaptureMixingBundleState,
+    PostMixPrepare {
+        sample_rate: u32,
+    },
+    PostMixClear,
+    PostMixStatus,
+    PostMixStart {
+        descriptor: crate::audio_engine::post_mix::Descriptor,
+    },
     Mixing {
         request: crate::audio_engine::mixing::Request,
     },
@@ -600,6 +610,19 @@ pub enum Command {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum Response {
+    ProcessingState {
+        present: bool,
+        failed: bool,
+    },
+    PostMixDescriptor(crate::audio_engine::post_mix::Descriptor),
+    PostMixStatus {
+        attached: bool,
+        ready: bool,
+        failed: bool,
+        sample_rate: Option<u32>,
+        transport_latency_frames: u32,
+        declared_plugin_latency_frames: Option<u32>,
+    },
     Mixing(Box<crate::audio_engine::mixing::Snapshot>),
     ModeMonitor(Box<crate::audio_engine::split_monitor::StateSnapshot>),
     ModeSilence(crate::audio_engine::mode_silence::Snapshot),

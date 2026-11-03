@@ -32,6 +32,8 @@ mod input;
 pub(super) mod lifecycle;
 #[path = "core/mixing.rs"]
 mod mixing_state;
+#[path = "core/post_mix.rs"]
+mod post_mix;
 #[path = "core/session_rack.rs"]
 mod session_rack;
 #[path = "core/startup.rs"]
@@ -331,6 +333,12 @@ pub struct Engine {
     mixing_output_failure_reported: bool,
     process_renderer_owner: Option<ControlOwner<super::process_capture::clock::Renderer>>,
     output_stream: Option<cpal::Stream>,
+    post_role: bool,
+    processing_restart_revision: u64,
+    last_processing_preparation: &'static str,
+    post_worker: Option<post_mix::Worker>,
+    post_mapping: Option<super::post_mix::Mapping>,
+    post_renderer_owner: Option<ControlOwner<super::post_mix::ClientRenderer>>,
 
     // Sub-Modules
     pub device_manager: DeviceManager,
@@ -462,6 +470,12 @@ impl Engine {
             gain_main_device: None,
             stream_failed: Arc::new(AtomicBool::new(false)),
             output_stream: None,
+            post_role: false,
+            processing_restart_revision: crate::vst_host::instance::processing_restart_revision(),
+            last_processing_preparation: "none",
+            post_worker: None,
+            post_mapping: None,
+            post_renderer_owner: None,
             device_manager: DeviceManager::new(),
             editor_manager: EditorManager::new(),
             plugin_manager: PluginManager::new(),
@@ -609,8 +623,8 @@ impl Engine {
                 Event::UserEvent(UserEvent::Timer) => {}
                 Event::AboutToWait => {
                     if let Some(timing) = &mut self.frame_timing { timing.drain(); }
-                    self.voice_preview.poll(self.output_stream.is_some() && !self.stream_failed.load(Ordering::Acquire));
-                    if self.output_stream.is_some() && !self.stream_failed.load(Ordering::Acquire) {
+                    self.voice_preview.poll(self.processing_running() && !self.stream_failed.load(Ordering::Acquire));
+                    if self.processing_running() && !self.stream_failed.load(Ordering::Acquire) {
                         if !self.mixing_source_failure_reported && self.mixing_input_shared.as_ref().is_some_and(|source| source.failed.load(Ordering::Acquire)) {
                             self.mixing_source_failure_reported = true;
                             self.builtin.invalidate_history();
@@ -650,6 +664,7 @@ impl Engine {
                     self.flush_pending_audio_msgs();
                     self.poll_auto_gain();
                     self.poll_noise_measurement();
+                    self.poll_processing_restart();
 
                     // Retire processors off the audio callback thread (safe place to drop VST objects)
                     if let Some(retire_cons) = &mut self.retire_rx {
@@ -671,7 +686,7 @@ impl Engine {
                     let pending_ids = std::mem::take(&mut self.plugin_manager.pending_init);
                     for id in pending_ids {
                         let (sr, bs, ch) = self.processor_setup();
-                        let running = self.output_stream.is_some();
+                        let running = self.processing_running();
                         let result = (|| -> Result<Option<VstProcessor>> {
                             let instance = self.plugin_manager.get_mut(&id).ok_or_else(|| anyhow!("VSTが見つかりません"))?;
                             if running { instance.prepare_processing(sr, bs as i32, ch as i32)?; }
@@ -689,8 +704,9 @@ impl Engine {
                                     });
                                     self.queue_audio_msg(self.make_reorder_message());
                                 }
+                                self.acknowledge_processing_preparation();
                             }
-                            Ok(None) => {},
+                            Ok(None) => { self.acknowledge_processing_preparation(); },
                             Err(error) => {
                                 self.stop_audio();
                                 self.send_event(EngineEvent::Error(format!("VST {id} の遅延初期化に失敗したため音声を停止しました: {error}")));
@@ -925,7 +941,7 @@ impl Engine {
         let auto_gain_active = self.gain_preview.is_some()
             || self.gain_shared.active.load(Ordering::Acquire) != 0
             || self.gain_shared.requested.load(Ordering::Acquire) != 0;
-        let builtin = self.builtin.snapshot(self.output_stream.is_some());
+        let builtin = self.builtin.snapshot(self.processing_running());
         let noise = self.noise_candidate_settings();
         let noise_basis = self.noise_candidate_basis(&noise);
         voice_preview::Context {
@@ -945,8 +961,7 @@ impl Engine {
             buffers: self.voice_check_buffers.current().cloned(),
             metadata: self.voice_metadata.clone(),
             main_device: self.gain_main_device.clone(),
-            main_running: self.output_stream.is_some()
-                && !self.stream_failed.load(Ordering::Acquire),
+            main_running: self.processing_running() && !self.stream_failed.load(Ordering::Acquire),
             busy: auto_gain_active || self.voice_check.transport_busy(),
             auto_gain_active,
             current_revision: self.voice_revision,
@@ -958,7 +973,7 @@ impl Engine {
         request: super::builtin::Request,
     ) -> Result<super::builtin::Snapshot, String> {
         use super::builtin::Request;
-        let failed = self.output_stream.is_some() && self.stream_failed.load(Ordering::Acquire);
+        let failed = self.processing_running() && self.stream_failed.load(Ordering::Acquire);
         if failed {
             self.builtin
                 .invalidate_history_with_reason(super::history::Reason::StreamFailed);
@@ -1002,15 +1017,12 @@ impl Engine {
             }
             other => other,
         };
-        if self
-            .builtin
-            .request(request, self.output_stream.is_some())?
-        {
+        if self.builtin.request(request, self.processing_running())? {
             self.live_modes.custom();
             self.voice_revision = self.voice_revision.saturating_add(1);
             self.publish_builtin();
         }
-        let mut snapshot = self.builtin.snapshot(self.output_stream.is_some());
+        let mut snapshot = self.builtin.snapshot(self.processing_running());
         if failed {
             snapshot.error = Some("音声処理が停止しました".into());
         }
@@ -1031,7 +1043,7 @@ impl Engine {
             controls_pending: !self.pending_audio_msgs.is_empty()
                 || self.command_tx.as_ref().is_some_and(|q| !q.is_empty())
                 || !self.gain_shared.settled.load(Ordering::Acquire)
-                || (self.output_stream.is_some()
+                || (self.processing_running()
                     && self.peak_shared.pending(
                         self.live_output_config.split_processing,
                         self.live_output.is_some(),
@@ -1047,7 +1059,7 @@ impl Engine {
         duration_ms: u32,
         freq_hz: f32,
     ) -> LoopbackProbeOutcome {
-        if self.output_stream.is_none() {
+        if !self.processing_running() {
             return LoopbackProbeOutcome {
                 detected: false,
                 level_db: -120.0,
@@ -1310,7 +1322,7 @@ impl Engine {
         if let Some(sink) = &self.live_output {
             sink.mute(active);
         }
-        if self.output_stream.is_some() {
+        if self.processing_running() {
             self.queue_audio_msg(AudioThreadMessage::SetGlobalMute(active));
         }
     }
@@ -1376,7 +1388,7 @@ impl Engine {
         // NR生成時と同じ設定rate。1フレームの長さであり、各sampleの待ち時間ではない。
         let geometry = nominal.and_then(dsp::NoiseGeometry::checked);
         let nr_rate = geometry.map(|g| g.rate);
-        let current = self.output_stream.is_some()
+        let current = self.processing_running()
             && !self.stream_failed.load(Ordering::Acquire)
             && !self.nr_failed.load(Ordering::Acquire)
             && !self.resampling_failed.load(Ordering::Acquire)
@@ -1428,7 +1440,7 @@ impl Engine {
         };
         crate::ipc::LatencyMetadata {
             broadcast_state: self.live_output_config.device_id.as_ref().map(|_| {
-                if self.output_stream.is_none() || self.stream_failed.load(Ordering::Acquire) {
+                if !self.processing_running() || self.stream_failed.load(Ordering::Acquire) {
                     "stopped"
                 } else if self.live_output.as_ref().is_none_or(|s| {
                     let status = s.snapshot();
@@ -1493,7 +1505,7 @@ impl Engine {
         request: super::split_monitor::Request,
     ) -> std::result::Result<super::split_monitor::StateSnapshot, String> {
         use super::split_monitor::{Request, State, StateSnapshot};
-        let running = self.output_stream.is_some();
+        let running = self.processing_running();
         if let Request::Restore { state } = request {
             if running && !self.mode_silence.shared.active() {
                 return Err("自分用設定の復元には切替用の無音確認が必要です".into());
@@ -1557,7 +1569,7 @@ impl Engine {
     fn live_mode_snapshot(&self) -> super::live_modes::Snapshot {
         let mut snapshot = self.live_modes.snapshot(
             self.builtin.snapshot(false).epoch,
-            self.output_stream.is_some(),
+            self.processing_running(),
         );
         if let Some(monitor) = &self.split_monitor {
             snapshot.include_monitor_progress(
@@ -1605,7 +1617,7 @@ impl Engine {
                     Some("配信枝が停止しました。自分用は継続しています".into());
             }
         }
-        if let Some(job) = self.live_modes.next(self.output_stream.is_some()) {
+        if let Some(job) = self.live_modes.next(self.processing_running()) {
             let rate = self.current_sample_rate.round().clamp(8_000.0, 384_000.0) as u32;
             if let Some(monitor) = &mut self.split_monitor {
                 if let Err(error) = monitor.mode(job.mode, job.revision) {
@@ -1664,7 +1676,7 @@ impl Engine {
         self.built_in_effects_enabled = config.active;
         self.built_in_effects_preset = config.preset;
         self.built_in_effects_amount = config.amount;
-        if self.output_stream.is_some() {
+        if self.processing_running() {
             let singing = self
                 .builtin_coefficients()
                 .expect("検証済み内蔵処理とレート");
@@ -1684,13 +1696,14 @@ impl Engine {
     }
 
     fn finish_plugin_restore(&mut self, mut staged: super::restoration::StagedRestore) {
+        self.last_processing_preparation = "restore_plugin";
         if staged.expected_ids.as_ref().is_some_and(|ids| {
             !self.session_rack_matches(ids, staged.expected_rack_revision.unwrap_or(u64::MAX))
         }) {
             self.send_response(Response::RackConflict);
             return;
         }
-        let setup = self.output_stream.is_some().then(|| self.processor_setup());
+        let setup = self.processing_running().then(|| self.processor_setup());
         let processor = match staged.finish(setup) {
             Ok(processor) => processor,
             Err(error) => {
@@ -1727,6 +1740,7 @@ impl Engine {
             "VST restore phase=commit us={}",
             phase.elapsed().as_micros()
         );
+        self.acknowledge_processing_preparation();
         self.send_response(Response::PluginRestored {
             operation_id,
             plugin: crate::ipc::RestoredPlugin { id, name, prepared },
@@ -1772,6 +1786,7 @@ impl Engine {
         self.input_stream = None;
         self.mixing_source = None;
         self.output_stream = None;
+        self.post_worker = None;
         if let Some(mut owner) = self.process_renderer_owner.take() {
             drop(owner.take());
         }
@@ -1780,6 +1795,9 @@ impl Engine {
         self.mixing_source_failure_reported = false;
         self.mixing_output_failure_reported = false;
         self.split_worker = None;
+        if let Some(mut owner) = self.post_renderer_owner.take() {
+            drop(owner.take());
+        }
         if let Some(mut owner) = self.mixing_worker_owner.take() {
             drop(owner.take());
         }

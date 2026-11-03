@@ -4,6 +4,7 @@ import { liveOutputApi } from '@/api/liveOutput';
 import { mixingApi, type MixConfig, type MixLevels, type MixSnapshot } from '@/api/mixing';
 import type { ProcessInputCandidate } from '@/lib/inputSource';
 import { useMessages } from '@/i18n/LocaleProvider';
+import { PostMixPanel } from './PostMixPanel';
 
 const initialLevels = (): MixLevels => ({ voice: { gain: 1, muted: false }, accompaniment: { gain: 1, muted: false }, monitorAccompaniment: true, offsetMs: 0 });
 
@@ -148,6 +149,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
             <p>{t('mixing.meter')}: {t('mixing.voice')} {Math.max(...snapshot.voicePeak).toFixed(2)} / {t('mixing.accompaniment')} {Math.max(...snapshot.accompanimentPeak).toFixed(2)} / Mix {Math.max(...snapshot.mixPeak).toFixed(2)}</p>
             {snapshot.accompaniment?.failed ? <p role="alert">{t('mixing.accompanimentFailed')}</p> : snapshot.accompaniment?.waitingForAudio && <p role="status">{t('mixing.waiting')}</p>}
             {snapshot.pending && <p role="status">{t('mixing.pending')}</p>}{snapshot.failed && <p role="alert">{t('mixing.engineFailed')}</p>}
+            <PostMixPanel mainRunning={snapshot.running} hasMixing={!!snapshot.config} disabled={disabled || busy} />
         </div>}
         {(error || snapshot?.error) && <p role="alert" className="text-destructive-text text-sm">{t('mixing.failed')}</p>}
     </details>;

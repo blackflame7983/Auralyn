@@ -82,6 +82,8 @@ fn recovery_device_matches(
 }
 #[derive(Clone)]
 struct Captured {
+    mixing: Option<bundle::MixingConfiguration>,
+    mixing_revision: String,
     process: Option<bundle::ProcessConfiguration>,
     process_target: Option<crate::input_source::Target>,
     live: Option<bundle::LiveConfiguration>,
@@ -160,7 +162,14 @@ fn missing_output_plugins(bundle: &BundleV1) -> Result<Vec<String>, String> {
         .flat_map(|live| [&live.singing_plugins, &live.talk_plugins])
         .flatten()
         .flatten();
-    for plugin in bundle.embedded_auralyn_preset.plugins.iter().chain(bound) {
+    let post = bundle.mixing.iter().flat_map(|mix| &mix.post_mix.plugins);
+    for plugin in bundle
+        .embedded_auralyn_preset
+        .plugins
+        .iter()
+        .chain(bound)
+        .chain(post)
+    {
         match std::path::Path::new(&plugin.path).try_exists() {
             Ok(true) => {}
             Ok(false) => missing.push(plugin.name.clone()),
@@ -328,6 +337,8 @@ pub(crate) enum Request {
         include_live: bool,
         #[serde(default)]
         include_process: bool,
+        #[serde(default)]
+        include_mixing: bool,
     },
     Preview {
         name: String,
@@ -983,6 +994,86 @@ fn preview_diff(before: &Captured, bundle: &BundleV1) -> Vec<DiffRow> {
         ),
         String::new(),
     );
+    if let Some(target) = &bundle.mixing {
+        let current = before.mixing.clone().unwrap_or_else(empty_mixing);
+        let describe_input = |config: &bundle::MixingConfiguration| match &config.input {
+            None => "オケ無効".to_owned(),
+            Some(input) => {
+                let source = match &input.source {
+                    crate::audio_engine::mixing::Source::Device(_) => "機器入力",
+                    crate::audio_engine::mixing::Source::ProcessLoopback(_) => "アプリの音楽入力",
+                };
+                format!(
+                    "{} / 声 {:.2} / オケ {:.2} / 時間差 {} ms",
+                    source,
+                    input.levels.voice.gain,
+                    input.levels.accompaniment.gain,
+                    input.levels.offset_ms
+                )
+            }
+        };
+        let describe_rack = |config: &bundle::MixingConfiguration| {
+            let plugins = config
+                .post_mix
+                .plugins
+                .iter()
+                .map(|p| {
+                    format!(
+                        "{} ({} / {} / gain {:.2})",
+                        p.name,
+                        if p.enabled { "有効" } else { "無効" },
+                        if p.muted { "ミュート" } else { "送出" },
+                        p.gain
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" → ");
+            format!(
+                "{} / {}",
+                if config.post_mix.enabled {
+                    "有効"
+                } else {
+                    "無効"
+                },
+                plugins
+            )
+        };
+        for (label, old, new, changed) in [
+            (
+                "オケ入力・音量",
+                describe_input(&current),
+                describe_input(target),
+                current.input != target.input,
+            ),
+            (
+                "ミックス後VST",
+                describe_rack(&current),
+                describe_rack(target),
+                current.post_mix != target.post_mix,
+            ),
+            (
+                "ミックス後VST状態",
+                "値は表示しません".into(),
+                "値は表示しません".into(),
+                current.post_mix.plugins.iter().map(|p| &p.state).ne(target
+                    .post_mix
+                    .plugins
+                    .iter()
+                    .map(|p| &p.state)),
+            ),
+        ] {
+            rows.push(DiffRow {
+                label: label.into(),
+                status: if changed { "changed" } else { "same" }.into(),
+                before: old,
+                after: new,
+                field_code: None,
+                label_text: None,
+                before_text: None,
+                after_text: None,
+            });
+        }
+    }
     rows
 }
 fn noise_description(value: &ProfileNoiseControl) -> String {
@@ -1026,6 +1117,7 @@ fn builtin_description(value: &ProfileBuiltinFx) -> String {
 fn capture(host: &mut audio::AudioHost) -> Result<(Captured, ControlWitness), String> {
     let witness = host.conditions().control_snapshot()?;
     let engine = host.capture_bundle_state().map_err(|e| e.to_string())?;
+    let (mixing, mixing_revision) = host.capture_bundle_mixing().map_err(|e| e.to_string())?;
     witness.validate()?;
     let active = host.get_state().config;
     let (process, process_target) = host
@@ -1080,6 +1172,8 @@ fn capture(host: &mut audio::AudioHost) -> Result<(Captured, ControlWitness), St
     };
     Ok((
         Captured {
+            mixing,
+            mixing_revision,
             process,
             process_target,
             live,
@@ -1106,7 +1200,13 @@ pub(crate) fn preserve_temporary_runtime(
         .map_err(|e| e.to_string())?;
     let initial = host.conditions().control_snapshot()?;
     let name = format!("runtime-{}", bundle::revision());
-    let reservation = if host
+    let (mixing, initial_mixing_revision) =
+        host.capture_bundle_mixing().map_err(|e| e.to_string())?;
+    let reservation = if mixing.is_some() {
+        let devices = active_devices(host.get_state().config.as_ref())
+            .ok_or("元の入出力機器IDを確認できません。退避せず、現在の音声を維持しています")?;
+        bundle::reserve_mixing_runtime_intent(root, &name, devices, initial.engine_epoch())?
+    } else if host
         .capture_bundle_process()
         .map_err(|e| e.to_string())?
         .is_some()
@@ -1121,7 +1221,10 @@ pub(crate) fn preserve_temporary_runtime(
     let (after, _) = capture(host)?;
     initial.validate()?;
     witness.validate()?;
-    if !unchanged(&before, &after) {
+    if mixing != before.mixing
+        || initial_mixing_revision != before.mixing_revision
+        || !unchanged(&before, &after)
+    {
         return Err("取得中に設定またはVSTが変わりました。現在の音声を維持しています".into());
     }
     let categories = ProfileSaveCategories {
@@ -1131,14 +1234,16 @@ pub(crate) fn preserve_temporary_runtime(
         include_builtin_fx: true,
     };
     let extended = before.process.is_none()
-        && (before
-            .output
-            .as_ref()
-            .is_some_and(|o| o.config != Default::default())
+        && (before.mixing.is_some()
+            || before
+                .output
+                .as_ref()
+                .is_some_and(|o| o.config != Default::default())
             || before.live.as_ref().is_some_and(|live| {
                 live.target.is_some() || live.definitions != Default::default()
             }));
     let original = BundleV1 {
+        mixing: before.mixing.clone(),
         process: before.process.clone(),
         live: if extended {
             Some(before.live.clone().ok_or("本番設定を退避できません")?)
@@ -1150,7 +1255,9 @@ pub(crate) fn preserve_temporary_runtime(
         } else {
             None
         },
-        schema_version: if before.process.is_some() {
+        schema_version: if before.mixing.is_some() {
+            5
+        } else if before.process.is_some() {
             4
         } else if extended {
             3
@@ -1171,6 +1278,18 @@ pub(crate) fn preserve_temporary_runtime(
     bundle::finish_runtime_recovery(root, &original, reservation, before.engine.control_revision)?;
     // 保存中にStop等が要求された場合も、退避した原本を保持して再起動を拒否する。
     witness.validate()
+}
+fn empty_mixing() -> bundle::MixingConfiguration {
+    bundle::MixingConfiguration {
+        version: 1,
+        input: None,
+        post_mix: bundle::mixing_configuration::PostMixPreset {
+            schema_version: 1,
+            role: "post_mix".into(),
+            enabled: false,
+            plugins: vec![],
+        },
+    }
 }
 fn linear_db(value: f32) -> f32 {
     20.0 * value.max(0.000_001).log10()
@@ -1195,7 +1314,9 @@ fn select(mut preset: Preset, categories: &ProfileSaveCategories) -> Result<Pres
 }
 fn unchanged(before: &Captured, after: &Captured) -> bool {
     // opaque component stateも除外しない。処理由来の変動でも保守的に競合にする。
-    before.engine == after.engine
+    before.mixing == after.mixing
+        && before.mixing_revision == after.mixing_revision
+        && before.engine == after.engine
         && before.process == after.process
         && before.process_target == after.process_target
         && before.live == after.live
@@ -1384,7 +1505,12 @@ fn selected_matches(target: &BundleV1, after: &Captured) -> bool {
     let level_matches = target.level_intent.as_ref().is_none_or(|level| {
         level.input_gain == after.engine.input_gain && level.output_gain == after.engine.output_gain
     });
-    target
+    target.mixing.as_ref().is_none_or(|mixing| {
+        after
+            .mixing
+            .as_ref()
+            .map_or_else(|| *mixing == empty_mixing(), |actual| actual == mixing)
+    }) && target
         .process
         .as_ref()
         .is_none_or(|process| after.process.as_ref() == Some(process))
@@ -1409,12 +1535,64 @@ fn selected_matches(target: &BundleV1, after: &Captured) -> bool {
             .is_none_or(|fx| builtin_matches(fx, &after.engine.builtin))
 }
 
+fn validate_mixing_selection(target: &BundleV1, before: &Captured) -> Result<(), String> {
+    if target.mixing.is_none() && before.mixing.is_some() {
+        return Err(
+            "現在のミックスを退避できない保存形式です。ミックスを含む配信状態を使用してください"
+                .into(),
+        );
+    }
+    if let Some(mixing) = &target.mixing {
+        validate_runtime_restore(before)?;
+        if let Some(input) = &mixing.input {
+            if before
+                .mixing
+                .as_ref()
+                .and_then(|m| m.input.as_ref())
+                .is_none_or(|current| current.source != input.source)
+            {
+                return Err(
+                    "保存したオケの入力元を現在の音声で明示選択してから、差分を取り直してください"
+                        .into(),
+                );
+            }
+        }
+    }
+    Ok(())
+}
 fn apply_selected(
     root: &std::path::Path,
     host: &mut audio::AudioHost,
     target: &BundleV1,
     before: &Captured,
     device_ids: Option<bundle::RecoveryDevices>,
+) -> Result<ApplyProfileSummary, String> {
+    validate_mixing_selection(target, before)?;
+    if let Some(mixing) = &target.mixing {
+        validate_runtime_restore(before)?;
+        if target.output.is_none()
+            || target.live.is_none()
+            || !target.categories.include_plugins
+            || target.embedded_auralyn_preset.audio_config.is_none()
+        {
+            return Err("ミックスの復帰範囲を確認できません".into());
+        }
+        return host.with_bundle_mixing(mixing, &before.mixing_revision, |host| {
+            let prepared = host
+                .stage_bundle_voice(&target.embedded_auralyn_preset.plugins)
+                .map_err(|e| e.to_string())?;
+            apply_selected_without_mixing(root, host, target, before, device_ids, Some(&prepared))
+        });
+    }
+    apply_selected_without_mixing(root, host, target, before, device_ids, None)
+}
+fn apply_selected_without_mixing(
+    root: &std::path::Path,
+    host: &mut audio::AudioHost,
+    target: &BundleV1,
+    before: &Captured,
+    device_ids: Option<bundle::RecoveryDevices>,
+    prepared: Option<&[LoadedPluginInstance]>,
 ) -> Result<ApplyProfileSummary, String> {
     if let Some(process) = &target.process {
         let audio = target
@@ -1434,7 +1612,7 @@ fn apply_selected(
             // 機器入力だけを扱う既存profileの開始経路へ戻さず、音作りの共通処理を使う。
             let mut sound = target.clone();
             sound.embedded_auralyn_preset.audio_config = None;
-            let mut summary = apply_selected_core(root, host, &sound, &restarted, None)?;
+            let mut summary = apply_selected_core(root, host, &sound, &restarted, None, None)?;
             if !complete(&summary) {
                 return Err(
                     "プロセス入力のVST・処理をすべて復帰できません。停止し原本を保持しています"
@@ -1453,10 +1631,10 @@ fn apply_selected(
     if let Some(live) = &target.live {
         let output = target.output.as_ref().ok_or("出力構成がありません")?;
         return host.with_bundle_live(live, output, &before.live_revision, |host| {
-            apply_selected_output(root, host, target, before, device_ids)
+            apply_selected_output(root, host, target, before, device_ids, prepared)
         });
     }
-    apply_selected_output(root, host, target, before, device_ids)
+    apply_selected_output(root, host, target, before, device_ids, prepared)
 }
 fn apply_selected_output(
     root: &std::path::Path,
@@ -1464,6 +1642,7 @@ fn apply_selected_output(
     target: &BundleV1,
     before: &Captured,
     device_ids: Option<bundle::RecoveryDevices>,
+    prepared: Option<&[LoadedPluginInstance]>,
 ) -> Result<ApplyProfileSummary, String> {
     if let Some(output) = &target.output {
         let audio = target
@@ -1478,17 +1657,44 @@ fn apply_selected_output(
             target.live.is_some(),
             |host| {
                 // 出力ファイルの旧値を使わず、最初のcallbackから現在のミュートを保持する。
-                host.start_bundle_with_device_ids(
-                    Some(audio.host.clone()),
-                    audio.input_device.clone(),
-                    audio.output_device.clone(),
-                    Some(audio.buffer_size),
-                    Some(audio.sample_rate),
-                    initial,
-                    Some(output.devices.input_id.clone()),
-                    Some(output.devices.output_id.clone()),
-                )
-                .map_err(|e| e.to_string())?;
+                let started = host
+                    .start_bundle_with_device_ids(
+                        Some(audio.host.clone()),
+                        audio.input_device.clone(),
+                        audio.output_device.clone(),
+                        Some(audio.buffer_size),
+                        Some(audio.sample_rate),
+                        initial,
+                        Some(output.devices.input_id.clone()),
+                        Some(output.devices.output_id.clone()),
+                    )
+                    .map_err(|e| e.to_string())?;
+                if prepared.is_some() {
+                    let actual = host.get_state().config;
+                    let stats = host.get_engine_runtime_stats().map_err(|e| e.to_string())?;
+                    let routing = started.routing.or_else(|| {
+                        stats
+                            .preparation
+                            .as_ref()
+                            .map(|p| crate::ipc::ChannelRouting {
+                                input_channels: Some(p.input_channels),
+                                output_routing: p.output_routing,
+                            })
+                    });
+                    if !prepared_start_matches(
+                        &started,
+                        actual.as_ref(),
+                        routing,
+                        audio,
+                        &output.devices,
+                        initial,
+                    ) {
+                        return Err(
+                            "準備した声VSTの入出力が一致しません。音声を停止して原本を保持します"
+                                .into(),
+                        );
+                    }
+                }
                 let mut restarted = before.clone();
                 restarted.engine.plugins.clear();
                 restarted.preset.plugins.clear();
@@ -1498,6 +1704,7 @@ fn apply_selected_output(
                     target,
                     &restarted,
                     Some(output.devices.clone()),
+                    prepared,
                 )?;
                 if !complete(&summary) {
                     return Err(
@@ -1510,7 +1717,79 @@ fn apply_selected_output(
             },
         );
     }
-    apply_selected_core(root, host, target, before, device_ids)
+    if prepared.is_some() {
+        return Err("準備済みVSTの出力構成がありません".into());
+    }
+    apply_selected_core(root, host, target, before, device_ids, None)
+}
+
+fn prepared_start_matches(
+    started: &audio::AudioConfig,
+    actual: Option<&audio::ActiveAudioConfig>,
+    routing: Option<crate::ipc::ChannelRouting>,
+    expected: &ProfileAudioConfig,
+    devices: &bundle::RecoveryDevices,
+    initial: profile::StartIntent,
+) -> bool {
+    let Some(actual) = actual else {
+        return false;
+    };
+    !crate::vst_host::presets::audio_config_differs(
+        Some(&actual.host),
+        actual.input.as_deref(),
+        actual.output.as_deref(),
+        actual.buffer_size,
+        actual.sample_rate,
+        expected,
+    ) && actual.input_id.as_ref() == Some(&devices.input_id)
+        && actual.output_id.as_ref() == Some(&devices.output_id)
+        && started.sample_rate == expected.sample_rate
+        && started.buffer_size == expected.buffer_size
+        && routing
+            == Some(crate::ipc::ChannelRouting {
+                input_channels: Some(initial.input_channels),
+                output_routing: initial.output_routing,
+            })
+}
+
+// mixed 復帰では声ラックと入出力の開始は完了済み。共通処理による再起動・再読込を防ぐ。
+fn restore_profile(target: &BundleV1, prepared: bool) -> Preset {
+    let mut profile = target.embedded_auralyn_preset.clone();
+    if prepared {
+        profile.plugins.clear();
+        profile.audio_config = None;
+    }
+    profile
+}
+
+fn add_prepared_summary(
+    summary: &mut ApplyProfileSummary,
+    target: &BundleV1,
+    prepared: &[LoadedPluginInstance],
+    initial: profile::StartIntent,
+) -> Result<(), String> {
+    let plugins = &target.embedded_auralyn_preset.plugins;
+    if plugins.len() != prepared.len()
+        || plugins
+            .iter()
+            .zip(prepared)
+            .any(|(expected, actual)| expected.path != actual.path)
+    {
+        return Err("準備した声VSTの構成を確認できません".into());
+    }
+    let mut audio = target
+        .embedded_auralyn_preset
+        .audio_config
+        .clone()
+        .ok_or("入出力設定がありません")?;
+    audio.input_gain_db = linear_db(initial.input_gain);
+    audio.master_gain_db = linear_db(initial.output_gain);
+    summary.applied_audio_config = Some(audio);
+    summary.applied_categories.push("audioConfig".into());
+    summary.applied_plugins = plugins.clone();
+    summary.loaded_plugin_instances = prepared.to_vec();
+    summary.applied_categories.push("plugins".into());
+    Ok(())
 }
 
 fn apply_selected_core(
@@ -1519,6 +1798,7 @@ fn apply_selected_core(
     target: &BundleV1,
     before: &Captured,
     device_ids: Option<bundle::RecoveryDevices>,
+    prepared: Option<&[LoadedPluginInstance]>,
 ) -> Result<ApplyProfileSummary, String> {
     let ids = before
         .engine
@@ -1526,8 +1806,10 @@ fn apply_selected_core(
         .iter()
         .map(|p| p.id.clone())
         .collect::<Vec<_>>();
-    let replace_empty =
-        target.categories.include_plugins && target.embedded_auralyn_preset.plugins.is_empty();
+    let replace_empty = prepared.is_none()
+        && target.categories.include_plugins
+        && target.embedded_auralyn_preset.plugins.is_empty();
+    let profile = restore_profile(target, prepared.is_some());
     // 明示emptyとカテゴリ不在を混同しない。既存profileのlegacy意味は変えない。
     if replace_empty {
         host.unload_all_plugins(&ids).map_err(|e| e.to_string())?;
@@ -1536,7 +1818,7 @@ fn apply_selected_core(
     let mut summary = profile::apply_profile_with_start_intent_and_ids(
         root,
         host,
-        &target.embedded_auralyn_preset,
+        &profile,
         None,
         true,
         if target.categories.include_plugins {
@@ -1551,6 +1833,9 @@ fn apply_selected_core(
     )?;
     if replace_empty {
         summary.applied_categories.push("plugins".into());
+    }
+    if let Some(prepared) = prepared {
+        add_prepared_summary(&mut summary, target, prepared, initial)?;
     }
     if let Some(level) = &target.level_intent {
         host.set_input_gain(level.input_gain)
@@ -1653,7 +1938,11 @@ pub(crate) async fn broadcast_bundle(
             include_output,
             include_live,
             include_process,
+            include_mixing,
         } => {
+            if include_mixing && (!include_output || !include_live || include_process) {
+                return Err("ミックスの保存には出力構成と本番モード、全カテゴリが必要です".into());
+            }
             if include_process && (include_output || include_live) {
                 return Err("プロセス入力と処理分離・本番モードの同時保存には未対応です".into());
             }
@@ -1683,6 +1972,9 @@ pub(crate) async fn broadcast_bundle(
                 .await?;
             }
             let (captured, witness) = capture_async(host.clone()).await?;
+            if captured.mixing.is_some() && !include_mixing {
+                return Err("オケ・ミックス後VSTも保存することを選んでください。声用VSTだけの保存はプロファイルを使ってください".into());
+            }
             if include_process {
                 let source = host.clone();
                 super::run_blocking(move || {
@@ -1760,6 +2052,11 @@ pub(crate) async fn broadcast_bundle(
                 preparation: claim.expected,
             });
             let bundle = BundleV1 {
+                mixing: if include_mixing {
+                    Some(captured.mixing.clone().unwrap_or_else(empty_mixing))
+                } else {
+                    None
+                },
                 process: if include_process {
                     Some(
                         captured
@@ -1786,7 +2083,9 @@ pub(crate) async fn broadcast_bundle(
                     None
                 },
                 confirmation,
-                schema_version: if include_process {
+                schema_version: if include_mixing {
+                    5
+                } else if include_process {
                     4
                 } else if include_live {
                     3
@@ -1976,6 +2275,7 @@ pub(crate) async fn broadcast_bundle(
                 })
                 .await?;
             }
+            validate_mixing_selection(&plan.bundle, &plan.before)?;
             if plan.bundle.live.is_none()
                 && plan
                     .before
@@ -2198,6 +2498,11 @@ async fn apply_owned(
     witness.validate()?;
     let backup =
         BundleV1 {
+            mixing: if plan.bundle.mixing.is_some() {
+                Some(before.mixing.clone().unwrap_or_else(empty_mixing))
+            } else {
+                None
+            },
             process: if plan.bundle.process.is_some() {
                 Some(
                     before
@@ -2228,7 +2533,9 @@ async fn apply_owned(
             } else {
                 None
             },
-            schema_version: if plan.bundle.process.is_some() {
+            schema_version: if plan.bundle.mixing.is_some() {
+                5
+            } else if plan.bundle.process.is_some() {
                 4
             } else if plan.bundle.live.is_some() {
                 3

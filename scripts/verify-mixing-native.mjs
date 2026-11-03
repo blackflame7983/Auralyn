@@ -26,17 +26,23 @@ function fixture(path) {
     writeFileSync(path, bytes, { flag: 'wx' });
 }
 
-export async function exerciseMixingNative({ getPage, invoke, root, configRoot, probe, beforeEndpoints, results, phase, assertStopped, restartHost }) {
+export async function exerciseMixingNative({ getPage, invoke, root, configRoot, probe, beforeEndpoints, results, phase, assertStopped, restartHost, fixtureOptions = {}, onMixingReady }) {
     const parse = value => JSON.parse(value);
     const read = path => parse(readFileSync(path, 'utf8'));
     const probeJson = args => parse(execFileSync(probe, args, { encoding: 'utf8', windowsHide: true }));
     const endpoints = () => probeJson(['endpoints']);
     const find = id => beforeEndpoints.find(item => item.id.toLowerCase() === id.toLowerCase());
-    const raw = find(RAW_ID), sink = find(SINK_ID), monitor = find(MONITOR_ID), voice = find(VOICE_ID);
-    assert(raw && sink && monitor && voice, '指定した試験用の出力先を確認できません');
-    for (const device of [raw, sink, voice]) assert(!device.active_processes.length && !device.default_roles.length, '試験音源・出力は未使用かつ非既定が必要です');
+    const raw = find(fixtureOptions.rawId ?? RAW_ID), sink = find(fixtureOptions.sinkId ?? SINK_ID), monitor = find(fixtureOptions.monitorId ?? MONITOR_ID), voice = fixtureOptions.silentVoice ? null : find(VOICE_ID);
+    assert(raw && sink && monitor && (fixtureOptions.silentVoice || voice), '指定した試験用の出力先を確認できません');
+    assert(new Set([raw.id, sink.id, monitor.id]).size === 3, '出力先は別々である必要があります');
+    for (const device of [raw, sink, ...(voice ? [voice] : [])]) assert(!device.active_processes.length && !device.default_roles.length, '試験音源・出力は未使用かつ非既定が必要です');
     assert(monitor.default_roles.length > 0, '本人用の既定出力が指定と異なります');
     assert(!existsSync(join(configRoot, 'mixing.json')), '新規の所有設定領域が必要です');
+    if (fixtureOptions.silentVoice) {
+        // 入力端点まで読み取り確認できない場合、出力端点にも一切変更を加えない。
+        assert.equal(typeof fixtureOptions.verifyCaptureGuard, 'function', '録音端点の未使用状態を確認できません');
+        await fixtureOptions.verifyCaptureGuard('before');
+    }
     const owned = [], guards = [];
     const launch = (command, args) => {
         const child = spawn(command, args, { windowsHide: true, stdio: 'ignore' });
@@ -71,7 +77,7 @@ export async function exerciseMixingNative({ getPage, invoke, root, configRoot, 
         phase('mixing-guard');
         for (const [index, device] of [raw, sink].entries()) {
             const ready = join(root, `mix-guard-${index}.ready.json`);
-            const child = launch(probe, ['hold-endpoint-muted', device.id, '900', ready]);
+            const child = launch(probe, ['hold-endpoint-muted', device.id, String(fixtureOptions.holdSeconds ?? 900), ready]);
             guards.push({ child, ready });
             const saved = await waitFile(child, ready);
             assert.equal(saved.muted, device.muted, 'ガード前の状態が変わりました');
@@ -83,13 +89,16 @@ export async function exerciseMixingNative({ getPage, invoke, root, configRoot, 
             assert.equal(current.muted, [raw.id, sink.id].includes(original.id) ? true : original.muted, '別の出力先にもミュートが連動しています');
             assert.equal(current.volume, original.volume); assert.deepEqual(current.default_roles, original.default_roles);
         }
+        if (fixtureOptions.silentVoice) await fixtureOptions.verifyCaptureGuard('guarded');
         phase('mixing-owned-sources');
         const wave = join(root, 'mix-accompaniment.wav'); fixture(wave);
         chrome = launch(process.execPath, [resolve('scripts/process-loopback-chrome-source.mjs'), root, raw.name, wave, 'webaudio']);
         const chromeInfo = await waitFile(chrome, join(root, 'chrome.ready.json'));
         assert(chromeInfo.pid > 0 && chromeInfo.state === 'running' && chromeInfo.microphoneOpened === false);
-        const voiceProcess = launch(probe, ['source-low-volume', '900', join(root, 'mix-voice.ready.json'), voice.id, '587']);
-        await waitFile(voiceProcess, join(root, 'mix-voice.ready.json'));
+        if (voice) {
+            const voiceProcess = launch(probe, ['source-low-volume', '900', join(root, 'mix-voice.ready.json'), voice.id, '587']);
+            await waitFile(voiceProcess, join(root, 'mix-voice.ready.json'));
+        }
         let identified;
         await expect.poll(() => {
             const found = probeJson(['list']).filter(item => item.pid === chromeInfo.pid && item.name.toLowerCase() === 'chrome.exe');
@@ -105,7 +114,12 @@ export async function exerciseMixingNative({ getPage, invoke, root, configRoot, 
         const candidate = matches[0];
         results.ownedSourcePid = chromeInfo.pid;
         const list = await invoke('get_audio_devices', { forceRefresh: true });
-        const input = list.inputs.find(d => d.host.toLowerCase() === 'wasapi' && d.name.startsWith('CABLE Output'));
+        const inputs = list.inputs.filter(d => d.host.toLowerCase() === 'wasapi' && (fixtureOptions.silentVoice ? /^Voicemeeter Out A4\b/i.test(d.name) : d.name.startsWith('CABLE Output')));
+        assert.equal(inputs.length, 1, '指定した試験用入力が一意ではありません');
+        const input = inputs[0];
+        if (fixtureOptions.silentVoice) {
+            assert(!input.isDefault, '試験用入力が既定のため開始できません');
+        }
         const output = list.outputs.find(d => d.id === 'wasapi:' + monitor.id);
         const broadcast = list.outputs.find(d => d.id === 'wasapi:' + sink.id);
         assert(input?.id && output && broadcast && input.channels >= 2);
@@ -117,6 +131,11 @@ export async function exerciseMixingNative({ getPage, invoke, root, configRoot, 
         await invoke('live_output', { config: { deviceId: broadcast.id, splitProcessing: true, monitorSinging: monitorBranch, monitorTalk: monitorBranch, monitorTrim: 1, broadcastTrim: 1, monitorMuted: true } });
         await assertStopped();
         async function selectSource() {
+            if (fixtureOptions.silentVoice) {
+                const fresh = (await invoke('get_process_input_sources')).filter(item => item.appKey === identified.app_key && item.name === identified.name && item.routes.length === 1 && item.routes[0].id === raw.id && item.routes[0].muted);
+                assert.equal(fresh.length, 1, '所有Chromeの候補を再確認できません');
+                candidate.id = fresh[0].id;
+            }
             const page = getPage();
             const close = page.getByRole('button', { name: '設定画面を閉じる', exact: true });
             if (await close.isVisible()) await close.click();
@@ -155,7 +174,7 @@ export async function exerciseMixingNative({ getPage, invoke, root, configRoot, 
         await expect.poll(async () => {
             const value = await snapshot();
             await checkMuted();
-            return value.running && !value.failed && value.accompaniment && !value.accompaniment.failed && value.accompaniment.nonzeroFrames > 1000 && Math.max(...value.voicePeak) > 0 && Math.max(...value.mixPeak) > 0;
+            return value.running && !value.failed && value.accompaniment && !value.accompaniment.failed && value.accompaniment.nonzeroFrames > 1000 && (fixtureOptions.silentVoice ? Math.max(...value.voicePeak) === 0 : Math.max(...value.voicePeak) > 0) && Math.max(...value.mixPeak) > 0;
         }, { timeout: 20000, intervals: [250] }).toBe(true);
         results.initialMixing = await snapshot();
         results.initialMutedRuntime = await checkMuted();
@@ -174,9 +193,16 @@ export async function exerciseMixingNative({ getPage, invoke, root, configRoot, 
         value = { ...value, voice: { gain: 1, muted: false }, accompaniment: { gain: 1, muted: true }, offsetMs: -50 };
         const muted = await adjust(value);
         assert.equal(muted.result.config.levels.offsetMs, -50);
-        await expect.poll(async () => { const state = await snapshot(); await checkMuted(); return Math.max(...state.accompanimentPeak) === 0 && Math.max(...state.voicePeak) > 0; }, { timeout: 10000 }).toBe(true);
+        await expect.poll(async () => { const state = await snapshot(); await checkMuted(); return Math.max(...state.accompanimentPeak) === 0 && (fixtureOptions.silentVoice ? Math.max(...state.voicePeak) === 0 : Math.max(...state.voicePeak) > 0); }, { timeout: 10000 }).toBe(true);
         results.zeroGainSnapshot = zero.result; results.mutedAccompanimentSnapshot = muted.result;
         results.liveLevelsAndStaleRejection = true;
+        if (onMixingReady) {
+            await adjust({ ...value, voice: { gain: 1, muted: false }, accompaniment: { gain: 1, muted: false }, offsetMs: 0 });
+            await onMixingReady({ getPage, invoke, snapshot, token, start, selectSource, root, configRoot, results, checkMuted, assertStopped, restartHost, phase });
+            const restored = await snapshot();
+            assert(restored.running && !restored.failed, '追加試験後にミックス処理が動作していません');
+            await checkMuted();
+        }
         await invoke('stop_audio'); await assertStopped();
         phase('mixing-restart-reselection');
         await restartHost(); await assertStopped();

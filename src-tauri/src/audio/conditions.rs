@@ -204,6 +204,9 @@ pub(super) fn command_changes(command: &Command) -> bool {
         | Command::GetFrameTimingTrace { .. }
         | Command::GetPluginState { .. }
         | Command::CaptureBundleState
+        | Command::CaptureMixingBundleState
+        | Command::ProcessingState
+        | Command::PostMixStatus
         | Command::GetPluginRack
         | Command::SetLoudnessMeasurement { .. }
         | Command::SetChannelScan { .. }

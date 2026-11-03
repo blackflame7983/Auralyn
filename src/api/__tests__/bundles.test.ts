@@ -52,3 +52,10 @@ it('client応答エラーは表示keyを持ち、backendの取消や制御error�
         await expect(bundleApi.list()).rejects.toBe(token);
     }
 });
+
+it('ミックスは明示選択時だけ保存要求に含める', async () => {
+    vi.mocked(invoke).mockResolvedValue({ type: 'saved' });
+    const categories = { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true };
+    await bundleApi.save('mix', categories, null, false, undefined, true, true, false, true);
+    expect(invoke).toHaveBeenLastCalledWith('broadcast_bundle', { request: { action: 'save', name: 'mix', categories, obs: null, overwrite: false, includeOutput: true, includeLive: true, includeMixing: true } });
+});

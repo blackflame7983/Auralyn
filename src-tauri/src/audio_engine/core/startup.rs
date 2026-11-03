@@ -105,12 +105,12 @@ impl CallbackBuffers {
     }
 }
 
-struct PluginControls {
-    bypassed: [bool; MAX_PLUGINS],
-    muted: [bool; MAX_PLUGINS],
-    gains: [Smoother; MAX_PLUGINS],
-    order: [u8; MAX_PLUGINS],
-    order_len: usize,
+pub(super) struct PluginControls {
+    pub(super) bypassed: [bool; MAX_PLUGINS],
+    pub(super) muted: [bool; MAX_PLUGINS],
+    pub(super) gains: [Smoother; MAX_PLUGINS],
+    pub(super) order: [u8; MAX_PLUGINS],
+    pub(super) order_len: usize,
 }
 
 // 実際の出力値から測定し、無効な間は走査しない。RTでの確保は行わない。
@@ -428,6 +428,13 @@ fn apply_commands(context: CommandContext<'_>) -> bool {
             }
             AudioThreadMessage::SetGlobalMute(active) => {
                 if *rt_global_mute != active {
+                    if !active {
+                        for processor in rt_processors.iter_mut().flatten() {
+                            if !processor.reset_processing() {
+                                output_nr_failed.store(true, Ordering::Release);
+                            }
+                        }
+                    }
                     if let Some(control) = &mut *rt_noise_control {
                         control.reset_state();
                     }
@@ -609,7 +616,7 @@ impl Engine {
     }
 
     // callbackへ移すプラグインの固定長状態は起動スレッド上で作る。
-    fn prepare_plugin_controls(&self) -> PluginControls {
+    pub(super) fn prepare_plugin_controls(&self) -> PluginControls {
         // Pre-compute RT state (no heap in callback)
         let mut rt_bypassed: [bool; MAX_PLUGINS] = [false; MAX_PLUGINS];
         for id in &self.plugin_manager.bypassed {
@@ -668,6 +675,7 @@ impl Engine {
             buffer_size,
             device_ids,
         } = request;
+        self.last_processing_preparation = "start_audio";
         self.builtin
             .invalidate_history_with_reason(crate::audio_engine::history::Reason::StreamChanged);
         if self.output_stream.is_some() || self.input_stream.is_some() {
@@ -1040,6 +1048,7 @@ impl Engine {
             self.current_sample_rate as u32,
         );
         self.stream_failed.store(false, Ordering::Release);
+        self.processing_restart_revision = crate::vst_host::instance::processing_restart_revision();
         self.gain_main_device = out_dev.id().ok().map(|id| id.to_string());
         let (capture_tx, capture_rx) = auto_gain::capture_queue();
         self.gain_capture_rx = Some(capture_rx);
@@ -1359,6 +1368,26 @@ impl Engine {
         let output_silence = self.mode_silence.shared.clone();
         let monitor_silence = self.mode_silence.shared.clone();
         let input_silence = self.mode_silence.shared.clone();
+        let mut post_epoch = 0u64;
+        let mut post_previous = None;
+        let post_mix_controls = self.mixing_shared.clone();
+        let mut post_renderer = if let Some(mapping) = &mut self.post_mapping {
+            anyhow::ensure!(
+                separated && self.mixing_start.is_some() && mapping.ready() && !mapping.failed(),
+                "ミックス後VSTの準備が整っていません"
+            );
+            anyhow::ensure!(
+                mapping.descriptor().sample_rate == out_stream_config.sample_rate,
+                "ミックス後VSTと本人用出力のrateが変わりました。停止して設定し直してください"
+            );
+            let (callback, owner) = callback_owner(
+                crate::audio_engine::post_mix::ClientRenderer::new(mapping.client()?),
+            );
+            self.post_renderer_owner = Some(owner);
+            Some(callback)
+        } else {
+            None
+        };
         let build_output = || {
             let output_build_started = Instant::now();
             let mut process_output =
@@ -1915,6 +1944,29 @@ impl Engine {
                         mixer
                             .get_mut()
                             .process(final_buf, &broadcast_block[..frames]);
+                    }
+                    if let Some(renderer) = &mut post_renderer {
+                        let music_generation = post_mix_controls
+                            .as_ref()
+                            .and_then(|shared| shared.read())
+                            .map_or(0, |settings| settings.mute_generation);
+                        let current = (dsp_silence.ticket(), worker_generation, music_generation);
+                        if post_previous != Some(current) {
+                            post_epoch = post_epoch.wrapping_add(1);
+                            post_previous = Some(current);
+                        }
+                        let generation = post_epoch;
+                        if !renderer.get_mut().process(
+                            final_buf,
+                            frames,
+                            rt_global_mute,
+                            generation,
+                            rt_comparison.bypassed(),
+                        ) {
+                            output_stream_failed.store(true, Ordering::Release);
+                            data.fill(0.0);
+                            return;
+                        }
                     }
 
                     let cohort_normal_mic = comparison_settled
