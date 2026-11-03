@@ -1,6 +1,7 @@
 // 分離出力の明示実機試験。設定・TEMP・WebViewを隔離し、両出力を全体ミュートで確認する。
 import assert from 'node:assert/strict';
 import { exerciseProcessBundle } from './verify-process-bundle-native.mjs';
+import { exerciseMixingNative } from './verify-mixing-native.mjs';
 import { chromium, expect } from '@playwright/test';
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -11,6 +12,8 @@ import { once } from 'node:events';
 
 const [appDirectory, evidenceDirectory, suppliedProbe] = process.argv.slice(2);
 const processInput = process.argv.includes('--process-input');
+const mixing = process.argv.includes('--mixing');
+if (mixing && (processInput || process.argv.includes('--live-modes') || process.argv.includes('--reuse-owned-app'))) throw new Error('--mixing は専用の新規試験として実行してください');
 const liveModes = process.argv.includes('--live-modes');
 const reuseOwnedApp = process.argv.includes('--reuse-owned-app');
 if (!appDirectory || !evidenceDirectory || !suppliedProbe) throw new Error('app-directory new-evidence-directory probe が必要です');
@@ -100,12 +103,24 @@ try {
     assert(read(join(appRoot, 'build.json')).root === appRoot);
     assert.equal(ownedProcesses().length, 0, '試験用アプリが実行中です');
     assert(reuseOwnedApp || !existsSync(join(configRoot, 'broadcast-bundle-recovery.json')), '前の原本を確認してください');
+    if (mixing) assert(!existsSync(join(configRoot, 'mixing.json')) && !existsSync(join(configRoot, 'mixing-backups')), '二入力の新規所有設定が必要です');
     phase('launch');
     const host = spawn(binary, ['--auralyn-review'], { cwd: appRoot, env: environment, windowsHide: true, stdio: 'ignore' });
     currentPid = host.pid;
     await attach();
     if (existsSync(join(configRoot, 'broadcast-bundle-recovery.json'))) { const receipt = read(join(configRoot, 'broadcast-bundle-recovery.json')); await bundle({ action: 'recovery_resolve', id: receipt.backupName }); assert(existsSync(join(configRoot, 'broadcast-bundle-backups', 'broadcast-bundles', receipt.backupName + '.json'))); }
-    if (processInput) {
+    if (mixing) {
+        await exerciseMixingNative({ getPage: () => page, invoke, root, configRoot, probe, beforeEndpoints, results, phase, assertStopped,
+            restartHost: async () => {
+                await page.evaluate(() => { void window.__TAURI__.core.invoke('plugin:process|exit', { code: 0 }); });
+                await expect.poll(() => ownedProcesses().length, { timeout: 35000 }).toBe(0);
+                await browser.close();
+                const restarted = spawn(binary, ['--auralyn-review'], { cwd: appRoot, env: environment, windowsHide: true, stdio: 'ignore' });
+                currentPid = restarted.pid; await attach();
+            },
+        });
+        results.passed = true;
+    } else if (processInput) {
         await exerciseProcessBundle({ getPage: () => page, invoke, bundle, root, configRoot, probe, raw: cable, monitor: outputEndpoint, results, phase, settle, assertStopped, openProfiles,
             switchSession: async (temporary, preserveRuntime = false) => {
                 const parent = currentPid;

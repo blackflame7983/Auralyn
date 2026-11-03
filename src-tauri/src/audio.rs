@@ -2,6 +2,7 @@ pub(crate) mod conditions;
 pub(crate) mod frontend_bootstrap;
 mod live_bundle;
 mod live_modes;
+pub(crate) mod mixing;
 mod mode_vst;
 mod output_bundle;
 mod process_bundle;
@@ -212,6 +213,7 @@ pub struct AudioHost {
     device_scan: Option<DeviceScanTicket>,
     active_config: Option<ActiveAudioConfig>,
     process_inputs: process_inputs::Inputs,
+    mixing: mixing::State,
     is_global_muted: bool,
     engine_tuning: EngineTuningConfig,
     bundle_output_override: Option<crate::audio_engine::live_output::Config>,
@@ -403,6 +405,7 @@ impl AudioHost {
             device_scan: None,
             active_config: None,
             process_inputs: Default::default(),
+            mixing: mixing::State::new(&config_dir),
             is_global_muted: recovery_muted,
             engine_tuning: EngineTuningConfig::default(),
             bundle_output_override: None,
@@ -671,6 +674,23 @@ impl AudioHost {
                                 }
                             }
                             OutputMessage::Event(evt) => match evt {
+                                EngineEvent::MixingSourceFailed
+                                | EngineEvent::MixingOutputFailed => {
+                                    if !conditions.engine_changed(condition_epoch) {
+                                        continue;
+                                    }
+                                    if let Some(handle) = emitter_clone.lock().unwrap().as_ref() {
+                                        let _ = handle.emit("audio-conditions-changed", ());
+                                        let _ = handle.emit(
+                                            if matches!(evt, EngineEvent::MixingSourceFailed) {
+                                                "mixing-source-failed"
+                                            } else {
+                                                "mixing-output-failed"
+                                            },
+                                            (),
+                                        );
+                                    }
+                                }
                                 EngineEvent::Log(s) => log::info!("[Engine] {}", s),
                                 EngineEvent::Error(s) => {
                                     if !conditions.engine_event(condition_epoch, false) {
@@ -1226,6 +1246,7 @@ impl AudioHost {
         input_source: Option<crate::input_source::Start>,
     ) -> Result<AudioConfig> {
         self.guard_mode_vst()?;
+        self.validate_mixing_selection(input_source.as_ref())?;
         if let Some(controls) = initial_controls {
             controls.validate().map_err(|e| anyhow!(e))?;
         }
@@ -1338,6 +1359,7 @@ impl AudioHost {
             }
         }
         let muted = self.is_global_muted;
+        self.prepare_mixing_start()?;
         validate_start_generation(generation, self.engine_generation)?;
         let response = if initial_controls.is_some() {
             self.start_on_existing_generation(generation, cmd)?
@@ -2363,6 +2385,7 @@ impl AudioHost {
     }
 
     pub fn kill_engine(&mut self) {
+        self.mixing.selected = None;
         self.output_gain_initialized = false;
         if self.mode_vst.busy() {
             self.cancel_mode_vst("音声エンジンが終了したため手動復旧が必要です");

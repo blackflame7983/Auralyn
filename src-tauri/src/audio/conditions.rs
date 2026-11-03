@@ -118,6 +118,17 @@ impl Conditions {
         self.pending.fetch_sub(1, Ordering::SeqCst);
         current
     }
+    // オケだけの失敗は、停止済みの主入力を再開扱いにせず確認履歴だけ失効する。
+    pub(super) fn engine_changed(&self, epoch: u64) -> bool {
+        if self.engine_epoch.load(Ordering::SeqCst) != epoch || !self.running.load(Ordering::SeqCst)
+        {
+            return false;
+        }
+        self.pending.fetch_add(1, Ordering::SeqCst);
+        self.revision.fetch_add(2, Ordering::SeqCst);
+        self.pending.fetch_sub(1, Ordering::SeqCst);
+        self.engine_epoch.load(Ordering::SeqCst) == epoch && self.running.load(Ordering::SeqCst)
+    }
     pub(super) fn begin(self: &Arc<Self>) -> Pending {
         self.pending.fetch_add(1, Ordering::SeqCst);
         self.revision.fetch_add(1, Ordering::SeqCst);
@@ -170,6 +181,14 @@ impl Witness {
 }
 
 pub(super) fn command_changes(command: &Command) -> bool {
+    if matches!(
+        command,
+        Command::Mixing {
+            request: crate::audio_engine::mixing::Request::Snapshot
+        }
+    ) {
+        return false;
+    }
     use crate::audio_engine::auto_gain::Request;
     match command {
         Command::ConfigureLiveModes { .. } | Command::LiveMode { request: crate::audio_engine::live_modes::Request::Snapshot | crate::audio_engine::live_modes::Request::Arm { .. } | crate::audio_engine::live_modes::Request::Disarm { .. } | crate::audio_engine::live_modes::Request::Save { .. } } => false,
@@ -207,6 +226,22 @@ pub(super) fn command_changes(command: &Command) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn accompaniment_change_invalidates_witness_without_reviving_or_stopping_primary() {
+        use super::*;
+        let conditions = Arc::new(Conditions::default());
+        let epoch = conditions.new_engine();
+        assert!(conditions.engine_event(epoch, true));
+        let previous = conditions.snapshot().unwrap();
+        assert!(conditions.engine_changed(epoch));
+        assert!(previous.validate().is_err());
+        assert!(conditions.snapshot().is_ok());
+        conditions.lifecycle(false);
+        assert!(!conditions.engine_changed(epoch));
+        assert!(!conditions.running.load(Ordering::SeqCst));
+        conditions.new_engine();
+        assert!(!conditions.engine_changed(epoch));
+    }
     use super::*;
     #[test]
     fn queued_stop_or_mute_blocks_fresh_witnesses_until_its_handler_finishes() {

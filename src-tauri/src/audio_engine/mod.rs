@@ -34,6 +34,7 @@ pub mod singing_proposal;
 
 pub mod live_output;
 
+pub(crate) mod mixing;
 pub(crate) mod split_monitor;
 
 pub mod noise_candidate;

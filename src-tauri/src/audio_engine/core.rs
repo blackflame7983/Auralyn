@@ -30,6 +30,8 @@ mod commands;
 mod input;
 #[path = "core/lifecycle.rs"]
 pub(super) mod lifecycle;
+#[path = "core/mixing.rs"]
+mod mixing_state;
 #[path = "core/session_rack.rs"]
 mod session_rack;
 #[path = "core/startup.rs"]
@@ -319,6 +321,14 @@ pub struct Engine {
     input_stream: Option<input::InputStream>,
     input_source: Option<crate::input_source::Start>,
     process_shared: Option<Arc<super::process_capture::Shared>>,
+    mixing_start: Option<super::mixing::Start>,
+    mixing_revision: u64,
+    mixing_shared: Option<Arc<super::mixing::controls::Shared>>,
+    mixing_source: Option<super::mixing::input::Controller>,
+    mixing_input_shared: Option<Arc<super::process_capture::Shared>>,
+    mixing_worker_owner: Option<ControlOwner<super::mixing::runtime::Broadcast>>,
+    mixing_source_failure_reported: bool,
+    mixing_output_failure_reported: bool,
     process_renderer_owner: Option<ControlOwner<super::process_capture::clock::Renderer>>,
     output_stream: Option<cpal::Stream>,
 
@@ -425,6 +435,14 @@ impl Engine {
             input_stream: None,
             input_source: None,
             process_shared: None,
+            mixing_start: None,
+            mixing_revision: 0,
+            mixing_shared: None,
+            mixing_source: None,
+            mixing_input_shared: None,
+            mixing_worker_owner: None,
+            mixing_source_failure_reported: false,
+            mixing_output_failure_reported: false,
             process_renderer_owner: None,
             gain_shared: Arc::new(auto_gain::Shared::default()),
             gain_capture_rx: None,
@@ -592,6 +610,24 @@ impl Engine {
                 Event::AboutToWait => {
                     if let Some(timing) = &mut self.frame_timing { timing.drain(); }
                     self.voice_preview.poll(self.output_stream.is_some() && !self.stream_failed.load(Ordering::Acquire));
+                    if self.output_stream.is_some() && !self.stream_failed.load(Ordering::Acquire) {
+                        if !self.mixing_source_failure_reported && self.mixing_input_shared.as_ref().is_some_and(|source| source.failed.load(Ordering::Acquire)) {
+                            self.mixing_source_failure_reported = true;
+                            self.builtin.invalidate_history();
+                            self.preparation_routing_revision = self.preparation_routing_revision.saturating_add(1);
+                            self.send_event(EngineEvent::MixingSourceFailed);
+                        }
+                        if self.mixing_start.is_some() && !self.mixing_output_failure_reported
+                            && (self.mixing_shared.as_ref().is_some_and(|shared| shared.failed.load(Ordering::Acquire))
+                                || self.split_monitor.as_ref().is_some_and(|monitor| monitor.shared.failed.load(Ordering::Acquire))
+                                || self.live_output.as_ref().is_some_and(|sink| sink.snapshot().failed)) {
+                            self.mixing_output_failure_reported = true;
+                            if let Some(sink) = &self.live_output { sink.deactivate(); }
+                            self.builtin.invalidate_history();
+                            self.preparation_routing_revision = self.preparation_routing_revision.saturating_add(1);
+                            self.send_event(EngineEvent::MixingOutputFailed);
+                        }
+                    }
                     // RT側は固定サイズの通知だけを行い、停止と文言生成は制御側で行う。
                     let resampling_failed = self.resampling_failed.swap(false, Ordering::AcqRel);
                     let block_capacity_failed = self.block_capacity_failed.swap(false, Ordering::AcqRel);
@@ -1734,12 +1770,19 @@ impl Engine {
             sink.deactivate();
         }
         self.input_stream = None;
+        self.mixing_source = None;
         self.output_stream = None;
         if let Some(mut owner) = self.process_renderer_owner.take() {
             drop(owner.take());
         }
         self.process_shared = None;
+        self.mixing_input_shared = None;
+        self.mixing_source_failure_reported = false;
+        self.mixing_output_failure_reported = false;
         self.split_worker = None;
+        if let Some(mut owner) = self.mixing_worker_owner.take() {
+            drop(owner.take());
+        }
         self.split_monitor = None;
         self.live_output = None;
         if let Some(timing) = &mut self.frame_timing {

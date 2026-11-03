@@ -11,6 +11,10 @@ impl Engine {
             self.send_error(error.to_string());
             return;
         }
+        if let Err(error) = self.validate_mixing_start(&cmd) {
+            self.send_error(error.to_string());
+            return;
+        }
         let music = self
             .input_source
             .as_ref()
@@ -269,6 +273,10 @@ impl Engine {
             return;
         }
         match cmd {
+            Command::Mixing { request } => match self.mixing_command(request) {
+                Ok(snapshot) => self.send_response(Response::Mixing(Box::new(snapshot))),
+                Err(error) => self.send_error(error),
+            },
             Command::ModeMonitor { request } => match self.mode_monitor_command(request) {
                 Ok(snapshot) => self.send_response(Response::ModeMonitor(Box::new(snapshot))),
                 Err(error) => self.send_error(error),
@@ -1013,6 +1021,10 @@ impl Engine {
                 }
             }
             Command::GetRuntimeStats => {
+                if let Err(error) = self.sync_mixing_latency() {
+                    self.send_error(error.to_string());
+                    return;
+                }
                 let (active_plugin_count, pending_unload_count, burned_library_count) =
                     self.plugin_manager.runtime_stats();
                 let enabled_plugin_count =

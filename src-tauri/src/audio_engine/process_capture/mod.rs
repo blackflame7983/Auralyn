@@ -55,6 +55,8 @@ pub struct Snapshot {
 
 pub struct Shared {
     pub failed: Arc<AtomicBool>,
+    input_rate: u32,
+    silence: Option<Arc<super::mode_silence::Shared>>,
     code: AtomicU8,
     received: AtomicU64,
     nonzero: AtomicU64,
@@ -74,6 +76,8 @@ impl Shared {
     pub fn new(failed: Arc<AtomicBool>) -> Self {
         Self {
             failed,
+            input_rate: RATE,
+            silence: None,
             code: AtomicU8::new(0),
             received: AtomicU64::new(0),
             nonzero: AtomicU64::new(0),
@@ -90,6 +94,27 @@ impl Shared {
             nonfinite: AtomicU64::new(0),
         }
     }
+    pub(crate) fn for_mixing(
+        failed: Arc<AtomicBool>,
+        input_rate: u32,
+        silence: Arc<super::mode_silence::Shared>,
+    ) -> Self {
+        Self {
+            input_rate,
+            silence: Some(silence),
+            ..Self::new(failed)
+        }
+    }
+    pub(crate) fn observe_device(&self, frames: usize, nonzero_frames: usize) {
+        let now = self.elapsed_ms();
+        self.packet_ms.store(now, Ordering::Relaxed);
+        self.received.fetch_add(frames as u64, Ordering::Relaxed);
+        self.nonzero
+            .fetch_add(nonzero_frames as u64, Ordering::Relaxed);
+        if nonzero_frames > 0 {
+            self.activity_ms.store(now, Ordering::Relaxed);
+        }
+    }
     pub fn snapshot(&self) -> Snapshot {
         Snapshot {
             captured_frames: self.received.load(Ordering::Relaxed),
@@ -97,7 +122,7 @@ impl Shared {
             failed: self.failed.load(Ordering::Acquire),
             waiting_for_audio: self.origin.elapsed().as_millis() as u64
                 > self.activity_ms.load(Ordering::Relaxed).saturating_add(200),
-            input_rate_hz: RATE,
+            input_rate_hz: self.input_rate,
             correction_limit_ppm: 2000,
             queued_frames: self.queued.load(Ordering::Relaxed),
             rendered_frames: self.rendered.load(Ordering::Relaxed),
@@ -114,6 +139,33 @@ impl Shared {
         self.rendered.store(renderer.rendered, Ordering::Relaxed);
         self.correction
             .store(renderer.correction_ppm.round() as i32, Ordering::Relaxed);
+    }
+    pub(crate) fn render_queue(
+        &self,
+        renderer: &mut clock::Renderer,
+        queue: &mut impl clock::FrameQueue,
+        starved_at: &mut Option<u64>,
+        output: &mut [f32],
+    ) -> usize {
+        let before = queue.frames();
+        renderer.render(output, queue);
+        if renderer.failed {
+            if !renderer.failed_underrun {
+                self.failed.store(true, Ordering::Release);
+            } else {
+                let began = starved_at.get_or_insert(self.elapsed_ms());
+                if self.packet_age_ms() >= 30 {
+                    let discarded = queue.discard();
+                    self.paused(discarded);
+                    renderer.wait_for_audio();
+                    *starved_at = None;
+                } else if self.elapsed_ms().saturating_sub(*began) >= 100 {
+                    self.failed.store(true, Ordering::Release);
+                }
+            }
+        }
+        self.rendered(renderer, queue.frames());
+        before.saturating_sub(queue.frames())
     }
     pub fn paused(&self, discarded: usize) {
         self.pause_resets.fetch_add(1, Ordering::Relaxed);
@@ -215,7 +267,12 @@ impl Controller {
                 |frame| {
                     received += 1;
                     nonzero += u64::from(frame[0] != 0.0 || frame[1] != 0.0);
-                    if queue.vacant_len() < 2 || queue.push_slice(&frame) != 2 {
+                    if !worker_shared
+                        .silence
+                        .as_ref()
+                        .is_some_and(|gate| gate.pause_sources())
+                        && (queue.vacant_len() < 2 || queue.push_slice(&frame) != 2)
+                    {
                         worker_shared.fail(3, &worker_cancel);
                     }
                     if received.is_multiple_of(480) {

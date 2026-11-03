@@ -19,8 +19,19 @@ use std::sync::{
     Arc,
 };
 type AudioRx = <HeapRb<f32> as Split>::Cons;
+#[cfg(test)]
 type AudioTx = <HeapRb<f32> as Split>::Prod;
-pub type GainRx = <HeapRb<f32> as Split>::Cons;
+// 声・オケ・回復係数を一つのframeで公開する。停止時にも別キュー同士をずらさない。
+#[derive(Clone, Copy, Debug, Default)]
+pub struct BroadcastFrame {
+    pub voice: [f32; 2],
+    pub accompaniment: [f32; 2],
+    pub recovery_gain: f32,
+    pub mute_generation: u64,
+}
+pub type BroadcastQueue = Arc<HeapRb<BroadcastFrame>>;
+pub type BroadcastRx = <BroadcastQueue as Split>::Cons;
+pub type BroadcastTx = <BroadcastQueue as Split>::Prod;
 type JobRx = <HeapRb<Job> as Split>::Cons;
 type JobTx = <HeapRb<Job> as Split>::Prod;
 
@@ -157,8 +168,7 @@ pub struct Monitor {
     input_channels: usize,
     recovery: super::queue_recovery::Recovery,
     input: AudioRx,
-    broadcast: AudioTx,
-    recovery_gains: AudioTx,
+    broadcast: BroadcastTx,
     jobs: JobRx,
     shared: Arc<Controls>,
     levels: Arc<AtomicU64>,
@@ -169,13 +179,17 @@ pub struct Monitor {
     peak_shared: Arc<super::peak_protection::Shared>,
     output_gain: f32,
     generation: u64,
+    mixing: Option<super::mixing::runtime::Monitor>,
+    input_clock: Option<super::process_capture::clock::Renderer>,
+    clock_buffer: Vec<f32>,
+    clock_shared: Option<Arc<super::mixing::controls::Shared>>,
 }
 impl Controller {
     #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     pub fn prepare(
         input: AudioRx,
-        broadcast: AudioTx,
+        broadcast: BroadcastTx,
         timing: Option<super::frame_timing::OutputRecorder>,
         diagnostics: Arc<super::queue_diagnostics::QueueDiagnostics>,
         max_frames: usize,
@@ -195,7 +209,7 @@ impl Controller {
             Arc<super::peak_protection::Shared>,
         ),
         initial_state: Option<&State>,
-    ) -> Result<(Self, CallbackOwner<Monitor>, GainRx)> {
+    ) -> Result<(Self, CallbackOwner<Monitor>)> {
         Self::prepare_with_input_channels(
             input,
             broadcast,
@@ -222,7 +236,7 @@ impl Controller {
     #[allow(clippy::too_many_arguments)]
     pub fn prepare_with_input_channels(
         input: AudioRx,
-        broadcast: AudioTx,
+        broadcast: BroadcastTx,
         timing: Option<super::frame_timing::OutputRecorder>,
         diagnostics: Arc<super::queue_diagnostics::QueueDiagnostics>,
         max_frames: usize,
@@ -243,7 +257,7 @@ impl Controller {
         ),
         initial_state: Option<&State>,
         input_channels: usize,
-    ) -> Result<(Self, CallbackOwner<Monitor>, GainRx)> {
+    ) -> Result<(Self, CallbackOwner<Monitor>)> {
         anyhow::ensure!(input_channels > 0, "入力チャンネル数が不正です");
         let selected = if mode == Some(Mode::Talk) {
             &config.monitor_talk
@@ -284,7 +298,6 @@ impl Controller {
             1,
             3,
         );
-        let (recovery_gains, gains) = HeapRb::new(broadcast.capacity().get() / 2).split();
         let (monitor, owner) = callback_owner(Monitor {
             timing,
             diagnostics,
@@ -293,7 +306,6 @@ impl Controller {
             recovery,
             input,
             broadcast,
-            recovery_gains,
             jobs,
             shared: shared.clone(),
             levels,
@@ -304,6 +316,10 @@ impl Controller {
             peak_shared: peak.1,
             output_gain,
             generation: 0,
+            mixing: None,
+            input_clock: None,
+            clock_buffer: Vec::new(),
+            clock_shared: None,
         });
         Ok((
             Self {
@@ -318,7 +334,6 @@ impl Controller {
                 revision,
             },
             monitor,
-            gains,
         ))
     }
     pub fn message(&mut self, message: &AudioThreadMessage) {
@@ -443,6 +458,19 @@ impl Drop for Controller {
     }
 }
 impl Monitor {
+    pub(crate) fn configure_mixing(
+        &mut self,
+        mixing: super::mixing::runtime::Monitor,
+        clock: Option<super::process_capture::clock::Renderer>,
+        shared: Arc<super::mixing::controls::Shared>,
+    ) {
+        if clock.is_some() {
+            self.clock_buffer = vec![0.0; self.input_buffer.len() / self.input_channels * 2];
+        }
+        self.input_clock = clock;
+        self.clock_shared = Some(shared);
+        self.mixing = Some(mixing);
+    }
     #[cfg(test)]
     pub fn render(&mut self, data: &mut [f32], info: Option<&cpal::OutputCallbackInfo>) {
         self.render_inner(data, info, None);
@@ -458,6 +486,9 @@ impl Monitor {
             self.input
                 .skip(self.input.occupied_len() / self.input_channels * self.input_channels);
             self.input_buffer.fill(0.0);
+            if let Some(clock) = &mut self.input_clock {
+                clock.wait_for_audio();
+            }
             if let Some(timing) = &mut self.timing {
                 timing.invalidate_recovery();
             }
@@ -518,6 +549,9 @@ impl Monitor {
         if self.generation != generation {
             self.reverb.reset();
             self.generation = generation;
+            if let Some(clock) = &mut self.input_clock {
+                clock.wait_for_audio();
+            }
         }
         let channels = self.shared.channels.load(Ordering::Acquire);
         let selected = [channels as u32 as usize, (channels >> 32) as usize];
@@ -538,7 +572,7 @@ impl Monitor {
             self.input.occupied_len() / self.input_channels,
             data.len() / 2,
             self.diagnostics.max_burst(),
-            muted || self.shared.measurement_blocked(),
+            muted || self.shared.measurement_blocked() || self.input_clock.is_some(),
         );
         if skip > 0 {
             if let Some(timing) = &self.timing {
@@ -552,17 +586,70 @@ impl Monitor {
             self.recovery.target(),
             self.recovery.high(),
         );
-        let consumed = super::queue_diagnostics::read_complete_frames(
-            &mut self.input,
-            &mut self.input_buffer[..data.len() / 2 * self.input_channels],
-            self.input_channels,
-        );
+        let consumed =
+            if self.input_clock.is_some() && gate.is_some_and(|gate| gate.pause_sources()) {
+                self.clock_buffer[..data.len()].fill(0.0);
+                if let Some(clock) = &mut self.input_clock {
+                    clock.wait_for_audio();
+                }
+                0
+            } else if let Some(clock) = &mut self.input_clock {
+                use super::process_capture::clock::MappedInterleaved;
+                let before = self.input.occupied_len() / self.input_channels;
+                clock.render(
+                    &mut self.clock_buffer[..data.len()],
+                    &mut MappedInterleaved {
+                        queue: &mut self.input,
+                        channels: self.input_channels,
+                        selected,
+                    },
+                );
+                if let Some(shared) = &self.clock_shared {
+                    shared.primary_queued.store(
+                        (self.input.occupied_len() / self.input_channels) as u64,
+                        Ordering::Relaxed,
+                    );
+                    shared
+                        .primary_correction
+                        .store(clock.correction_ppm.round() as i32, Ordering::Relaxed);
+                    shared
+                        .primary_underruns
+                        .store(clock.underruns, Ordering::Relaxed);
+                }
+                if clock.failed {
+                    self.main_failed.store(true, Ordering::Release);
+                    return;
+                }
+                before.saturating_sub(self.input.occupied_len() / self.input_channels)
+            } else {
+                super::queue_diagnostics::read_complete_frames(
+                    &mut self.input,
+                    &mut self.input_buffer[..data.len() / 2 * self.input_channels],
+                    self.input_channels,
+                )
+            };
         let read = self.timing.as_ref().map_or(0, |t| t.now_ns());
         self.diagnostics.record_output(data.len() / 2, consumed);
+        if let Some(shared) = &self.clock_shared {
+            shared.primary_queued.store(
+                (self.input.occupied_len() / self.input_channels) as u64,
+                Ordering::Relaxed,
+            );
+        }
         let frames = data.len() / 2;
+        if let Some(mixing) = &mut self.mixing {
+            mixing.begin_block(
+                frames,
+                gate.is_some_and(|gate| gate.pause_sources()),
+                generation,
+            );
+        }
         for (index, output) in data.as_chunks_mut::<2>().0.iter_mut().enumerate() {
-            let common = selected.map(|ch| {
-                let value = if ch < self.input_channels {
+            let common = std::array::from_fn(|slot| {
+                let ch = selected[slot];
+                let value = if self.input_clock.is_some() {
+                    self.clock_buffer[index * 2 + slot]
+                } else if ch < self.input_channels {
                     self.input_buffer[index * self.input_channels + ch]
                 } else {
                     0.0
@@ -576,14 +663,17 @@ impl Monitor {
             });
             self.shared.offered.fetch_add(1, Ordering::Relaxed);
             let recovery_gain = self.recovery.next_gain();
+            let mixed = self.mixing.as_mut().map(|mixing| mixing.frame(index));
             if !self.shared.failed.load(Ordering::Acquire)
                 && !gate.is_some_and(|g| g.pause_sources())
             {
-                if self.broadcast.vacant_len() >= 2 && self.recovery_gains.vacant_len() >= 1 {
-                    // gainを先に公開し、PCMを読めるworkerには必ず同じframeの係数も届く。
-                    let _ = self.recovery_gains.try_push(recovery_gain);
-                    let _ = self.broadcast.try_push(common[0]);
-                    let _ = self.broadcast.try_push(common[1]);
+                if self.broadcast.vacant_len() >= 1 {
+                    let _ = self.broadcast.try_push(BroadcastFrame {
+                        voice: common,
+                        accompaniment: mixed.as_ref().map_or([0.0; 2], |mixed| mixed.broadcast),
+                        recovery_gain,
+                        mute_generation: mixed.as_ref().map_or(0, |mixed| mixed.mute_generation),
+                    });
                 } else {
                     self.shared.failed.store(true, Ordering::Release);
                     self.shared.dropped.fetch_add(1, Ordering::Relaxed);
@@ -591,7 +681,15 @@ impl Monitor {
             }
             // 自分用のvoice状態は一度だけ進め、配信のNR/VSTへ触れない。
             let voice = self.voice.process(common);
-            let rendered = self.reverb.process(voice, muted);
+            let mut rendered = self.reverb.process(voice, muted);
+            if let Some(mixed) = mixed {
+                for (sample, accompaniment) in rendered.iter_mut().zip(mixed.monitor) {
+                    *sample = ((f64::from(*sample) * f64::from(mixed.voice_gain))
+                        + f64::from(accompaniment))
+                    .clamp(-f64::from(f32::MAX), f64::from(f32::MAX))
+                        as f32;
+                }
+            }
             if let Some((revision, _)) = self.voice.take_completed() {
                 self.shared.completed.fetch_max(revision, Ordering::Release);
             }
@@ -614,10 +712,12 @@ impl Monitor {
             output[..2].copy_from_slice(&protected);
         }
         self.peak.report(&self.peak_shared, 1);
-        self.shared.queued.store(
-            (self.broadcast.occupied_len() / 2) as u64,
-            Ordering::Relaxed,
-        );
+        if let Some(mixing) = &self.mixing {
+            mixing.finish_block();
+        }
+        self.shared
+            .queued
+            .store(self.broadcast.occupied_len() as u64, Ordering::Relaxed);
         if !self.recovery.active() {
             self.shared.acknowledge_unity(measurement);
         }
@@ -641,7 +741,7 @@ impl Worker {
     #[cfg(test)]
     pub fn start(
         process: impl FnMut(&mut [f32]) + Send + 'static,
-        queue: Arc<HeapRb<f32>>,
+        queue: BroadcastQueue,
         controls: Arc<Controls>,
         main_failed: Arc<AtomicBool>,
         frames: usize,
@@ -657,7 +757,7 @@ impl Worker {
     }
     pub(crate) fn start_gated(
         mut process: impl FnMut(&mut [f32]) + Send + 'static,
-        queue: Arc<HeapRb<f32>>,
+        queue: BroadcastQueue,
         controls: Arc<Controls>,
         main_failed: Arc<AtomicBool>,
         frames: usize,
@@ -673,7 +773,7 @@ impl Worker {
                     && !main_failed.load(Ordering::Acquire)
                     && !controls.failed.load(Ordering::Acquire)
                 {
-                    if queue.occupied_len() < buffer.len() && !gate.drain_worker() {
+                    if queue.occupied_len() < frames && !gate.drain_worker() {
                         std::thread::sleep(std::time::Duration::from_millis(1));
                         continue;
                     }
@@ -706,9 +806,8 @@ mod tests {
         Controller,
         CallbackOwner<Monitor>,
         AudioTx,
-        Arc<HeapRb<f32>>,
-        AudioRx,
-        GainRx,
+        BroadcastQueue,
+        BroadcastRx,
     );
     fn fixture() -> Fixture {
         fixture_with_state(None)
@@ -722,7 +821,7 @@ mod tests {
         selected: [usize; 2],
     ) -> Fixture {
         let (input, consumer) = HeapRb::new(8192).split();
-        let queue = Arc::new(HeapRb::new(32768));
+        let queue = Arc::new(HeapRb::new(16384));
         let (producer, broadcast_consumer) = queue.clone().split();
         // worker用consumerはfixture中に保持し、senderの生存期間を再現する。
         let config = Config {
@@ -732,7 +831,7 @@ mod tests {
             monitor_talk: Some(builtin::Config::default()),
             ..Config::default()
         };
-        let (controller, renderer, gains) = Controller::prepare_with_input_channels(
+        let (controller, renderer) = Controller::prepare_with_input_channels(
             consumer,
             producer,
             None,
@@ -761,21 +860,14 @@ mod tests {
             input_channels,
         )
         .unwrap();
-        (
-            controller,
-            renderer,
-            input,
-            queue,
-            broadcast_consumer,
-            gains,
-        )
+        (controller, renderer, input, queue, broadcast_consumer)
     }
     #[test]
     fn monitor_routes_physical_channels_to_broadcast_without_allocating() {
         for channels in [1, 2, 3, 8] {
             for left in 0..channels {
                 for right in 0..channels {
-                    let (_controller, mut renderer, mut input, _queue, mut broadcast, _gains) =
+                    let (_controller, mut renderer, mut input, _queue, mut broadcast) =
                         fixture_with_channels(None, channels, [left, right]);
                     for ch in 0..channels {
                         input.try_push((ch + 1) as f32 * 0.1).unwrap();
@@ -787,10 +879,9 @@ mod tests {
                         }),
                         (0, 0)
                     );
-                    assert!((broadcast.try_pop().unwrap() - (left + 1) as f32 * 0.05).abs() < 1e-6);
-                    assert!(
-                        (broadcast.try_pop().unwrap() - (right + 1) as f32 * 0.05).abs() < 1e-6
-                    );
+                    let received = broadcast.try_pop().unwrap();
+                    assert!((received.voice[0] - (left + 1) as f32 * 0.05).abs() < 1e-6);
+                    assert!((received.voice[1] - (right + 1) as f32 * 0.05).abs() < 1e-6);
                 }
             }
         }
@@ -799,7 +890,7 @@ mod tests {
     #[test]
     fn mode_silence_monitor_acks_after_zero_output_and_stops_worker_input_before_drain() {
         use crate::audio_engine::mode_silence::{self, Request};
-        let (_controller, mut renderer, mut input, queue, _consumer, _gains) = fixture();
+        let (_controller, mut renderer, mut input, queue, _consumer) = fixture();
         let mut barrier = mode_silence::Controller::default();
         let request = |finish| {
             if finish {
@@ -852,7 +943,7 @@ mod tests {
     }
     #[test]
     fn common_channel_gain_runs_once_and_monitor_has_no_rt_allocation() {
-        let (controller, mut renderer, mut input, _, _, _gains) = fixture();
+        let (controller, mut renderer, mut input, _, _) = fixture();
         for _ in 0..128 {
             input.try_push(0.2).unwrap();
             input.try_push(-0.4).unwrap();
@@ -875,7 +966,7 @@ mod tests {
     }
     #[test]
     fn upstream_recovery_gain_stays_aligned_and_fades_both_outputs_once() {
-        let (controller, mut renderer, mut input, _, mut audio, mut gains) = fixture();
+        let (controller, mut renderer, mut input, _, mut audio) = fixture();
         let mut output = [0.0; 256];
         let mut skips = 0;
         let mut faded = false;
@@ -896,15 +987,15 @@ mod tests {
                 assert_eq!(previous_gain, 0.0);
             }
             for frame in output.as_chunks::<2>().0.iter() {
-                let gain = gains.try_pop().unwrap();
-                let common = [audio.try_pop().unwrap(), audio.try_pop().unwrap()];
+                let received = audio.try_pop().unwrap();
+                let gain = received.recovery_gain;
+                let common = received.voice;
                 // 録音用のPCMは変更せず、配信FX後に同じgainを一度だけ掛ける。
                 assert_eq!(common, [-0.2, 0.1]);
                 assert_eq!(*frame, common.map(|sample| sample * gain));
                 faded |= gain < 1.0;
                 previous_gain = gain;
             }
-            assert!(gains.is_empty());
             assert!(audio.is_empty());
         }
         assert!(faded);
@@ -915,7 +1006,7 @@ mod tests {
     }
     #[test]
     fn queued_old_unity_blocks_cannot_start_measurement_before_ack_frame_boundary() {
-        let (mut controller, mut renderer, mut input, _, mut audio, mut gains) = fixture();
+        let (mut controller, mut renderer, mut input, _, mut audio) = fixture();
         let mut output = [0.0; 256];
         for _ in 0..40 {
             while input.occupied_len() < 4096 {
@@ -943,9 +1034,7 @@ mod tests {
         for block in 0..48 {
             let mut unity = true;
             for _ in 0..128 {
-                unity &= gains.try_pop().unwrap() == 1.0;
-                audio.try_pop().unwrap();
-                audio.try_pop().unwrap();
+                unity &= audio.try_pop().unwrap().recovery_gain == 1.0;
             }
             saw_fade |= !unity;
             let first = block * 128;
@@ -959,7 +1048,7 @@ mod tests {
             }
         }
         assert!(started);
-        assert!(audio.is_empty() && gains.is_empty());
+        assert!(audio.is_empty());
         drop(renderer);
         drop(controller);
     }
@@ -967,7 +1056,7 @@ mod tests {
     fn measurement_reservation_waits_for_unity_and_stale_completion_cannot_release_it() {
         // 回復前、Down中、Silent到達時の各開始要求。
         for before in [0, 38, 41] {
-            let (mut controller, mut renderer, mut input, _, mut audio, mut gains) = fixture();
+            let (mut controller, mut renderer, mut input, _, mut audio) = fixture();
             let mut output = [0.0; 256];
             for _ in 0..before {
                 while input.occupied_len() < 4096 {
@@ -976,7 +1065,6 @@ mod tests {
                 }
                 renderer.get_mut().render(&mut output, None);
                 audio.skip(audio.occupied_len());
-                gains.skip(gains.occupied_len());
             }
             controller.message(&AudioThreadMessage::SetLoudnessMeasurement(Some(7)));
             let old = controller.shared.measurement_ticket();
@@ -994,7 +1082,6 @@ mod tests {
                 );
                 assert_eq!(input.occupied_len(), 4096 - output.len());
                 audio.skip(audio.occupied_len());
-                gains.skip(gains.occupied_len());
             }
             let ready = controller.shared.measurement_ticket();
             assert!(controller.shared.measurement_ready(ready));
@@ -1018,7 +1105,6 @@ mod tests {
                 }
                 renderer.get_mut().render(&mut output, None);
                 audio.skip(audio.occupied_len());
-                gains.skip(gains.occupied_len());
             }
             assert!(
                 renderer.get_mut().recovery.active() || renderer.get_mut().recovery.status() == 2
@@ -1029,7 +1115,7 @@ mod tests {
     }
     #[test]
     fn broadcast_failure_does_not_silence_monitor_and_mute_has_priority() {
-        let (mut controller, mut renderer, mut input, _, _, _gains) = fixture();
+        let (mut controller, mut renderer, mut input, _, _) = fixture();
         controller.shared.failed.store(true, Ordering::Release);
         for _ in 0..256 {
             input.try_push(0.2).unwrap();
@@ -1059,7 +1145,7 @@ mod tests {
                 ..Default::default()
             },
         };
-        let (controller, mut renderer, mut input, _, _, _gains) = fixture_with_state(Some(&state));
+        let (controller, mut renderer, mut input, _, _) = fixture_with_state(Some(&state));
         let mut expected = RtVoice::new(Voice::prepare(&state.config, 48_000).unwrap());
         for _ in 0..128 {
             input.try_push(0.2).unwrap();
@@ -1084,7 +1170,7 @@ mod tests {
     #[test]
     fn rollback_restores_captured_monitor_and_discards_failed_mode_reverb_without_rt_alloc() {
         for source_mode in [Mode::Talk, Mode::Singing] {
-            let (mut controller, mut renderer, mut input, _, _, _gains) = fixture();
+            let (mut controller, mut renderer, mut input, _, _) = fixture();
             let source = State {
                 mode: source_mode,
                 config: super::super::builtin::Config {
@@ -1132,7 +1218,7 @@ mod tests {
 
     #[test]
     fn mode_completion_is_separate_from_acceptance_and_old_acks_cannot_rewind() {
-        let (mut controller, mut renderer, mut input, _, _, _gains) = fixture();
+        let (mut controller, mut renderer, mut input, _, _) = fixture();
         controller.mode(Mode::Talk, 2).unwrap();
         assert_eq!(controller.shared.accepted.load(Ordering::Acquire), 1);
         let mut output = [0.0; 256];
@@ -1154,13 +1240,13 @@ mod tests {
     }
     #[test]
     fn blocked_broadcast_worker_does_not_block_monitor_callback() {
-        let (controller, mut renderer, mut input, queue, mut consumer, _gains) = fixture();
+        let (controller, mut renderer, mut input, queue, mut consumer) = fixture();
         let (started_tx, started_rx) = std::sync::mpsc::channel();
         let (release_tx, release_rx) = std::sync::mpsc::channel();
         let mut first = true;
         let worker = Worker::start(
             move |_| {
-                for _ in 0..256 {
+                for _ in 0..128 {
                     let _ = consumer.try_pop();
                 }
                 if first {
@@ -1228,7 +1314,7 @@ mod tests {
             2,
             8192,
         ));
-        let (mut controller, mut renderer, _gains) = Controller::prepare(
+        let (mut controller, mut renderer) = Controller::prepare(
             consumer,
             producer,
             output_timing,

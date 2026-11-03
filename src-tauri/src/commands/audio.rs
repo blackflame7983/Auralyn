@@ -129,6 +129,22 @@ pub(crate) async fn live_output(
 }
 
 #[tauri::command]
+pub(crate) async fn mixing(
+    state: State<'_, audio::AudioState>,
+    request: audio::mixing::Request,
+) -> Result<audio::mixing::Snapshot, String> {
+    let state = state.0.clone();
+    super::run_blocking(move || {
+        state
+            .lock()
+            .map_err(|_| "音声状態を取得できません")?
+            .mixing(request)
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
 pub(crate) async fn get_audio_devices(
     state: State<'_, audio::AudioState>,
     force_refresh: bool,

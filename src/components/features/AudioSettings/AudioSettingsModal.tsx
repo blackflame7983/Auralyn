@@ -4,6 +4,7 @@ import { InfoPopover } from '@/components/ui/InfoPopover';
 import { SoundSettings, useSoundSettings } from './SoundSettings';
 import { SystemSettings, useSystemSettings } from './SystemSettings';
 import { LiveOutputPanel } from './LiveOutputPanel';
+import { MixingPanel } from './MixingPanel';
 import { MonitorTrial } from './MonitorTrial';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { LanguageSelector } from '@/i18n/LanguageSelector';
@@ -756,6 +757,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <details className="rounded border border-border p-3 space-y-3">
               <summary className="cursor-pointer font-semibold">{t('structure.monitor')}</summary>
             <LiveOutputPanel outputs={devices.outputs} disabled={loading} onBusyChange={setLoading} />
+            <MixingPanel inputs={devices.inputs} primaryInputId={selectedInputDevice?.id} primaryIsVoiceDevice={inputSource.source.kind === 'device' && inputSource.source.config.purpose === 'voice'} disabled={loading} onBusyChange={setLoading} />
             <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await system.refreshEngineRuntimeStats(); }} />
             </details>
             {!error && <MicrophonePermissionGuide />}

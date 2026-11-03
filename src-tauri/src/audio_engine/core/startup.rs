@@ -720,6 +720,27 @@ impl Engine {
                 .and_then(|d| d.id().ok())
                 .map(|id| id.to_string())
         };
+        if let Some(mixing) = &self.mixing_start {
+            let input_id = in_dev
+                .as_ref()
+                .map(|input| input.id().map(|id| id.to_string()))
+                .transpose()?;
+            mixing
+                .config
+                .source
+                .validate_primary(input_id.as_deref(), &out_dev.id()?.1)
+                .map_err(anyhow::Error::msg)?;
+        }
+        // 同じASIO deviceを共有すると確認できた組だけ、従来の共通時計を使う。
+        let common_clock = is_asio
+            && in_dev.as_ref().is_some_and(|input| {
+                input
+                    .id()
+                    .ok()
+                    .zip(out_dev.id().ok())
+                    .is_some_and(|(input, output)| input == output)
+            });
+        let adaptive_primary = self.mixing_start.is_some() && !common_clock;
 
         self.bind_noise_input(noise_identity);
         log::debug!(
@@ -903,7 +924,7 @@ impl Engine {
         let (channel_prod, channel_cons) = channel_rb.split();
         self.channel_rx = Some(channel_cons);
 
-        let audio_rb_frames = if is_process {
+        let audio_rb_frames = if is_process || adaptive_primary {
             crate::audio_engine::process_capture::clock::CAPACITY
         } else {
             (self.current_sample_rate as usize / 2).max(4096)
@@ -915,7 +936,7 @@ impl Engine {
             .queue_attempt
             .checked_add(1)
             .ok_or_else(|| anyhow!("queue観測世代の上限です"))?;
-        let queue_diagnostics = Arc::new(QueueDiagnostics::new_input_queue(
+        let queue_diagnostics = QueueDiagnostics::new_input_queue(
             format!(
                 "{}:queue:{}",
                 self.builtin.snapshot(false).epoch,
@@ -926,29 +947,36 @@ impl Engine {
             in_stream_config.channels,
             out_stream_config.channels,
             audio_rb.capacity().get(),
-        ));
+        );
+        let queue_diagnostics = Arc::new(if adaptive_primary {
+            queue_diagnostics.with_raw_input_clock()
+        } else {
+            queue_diagnostics
+        });
         self.queue_diagnostics = Some(queue_diagnostics.clone());
         self.queue_observer = Some(audio_rb.clone());
         self.queue_state = QueueState::Preparing;
         self.queue_slots_at_stop = None;
         // 同率の原点・recorder構築位置は従来どおり。異率は変換準備後に別modeで構築する。
-        let (mut input_timing, mut output_timing) =
-            if !is_process && in_stream_config.sample_rate == out_stream_config.sample_rate {
-                let (timing, input, output) = crate::audio_engine::frame_timing::Observer::new(
-                    format!(
-                        "{}:queue:{}",
-                        self.builtin.snapshot(false).epoch,
-                        self.queue_attempt
-                    ),
-                    self.queue_attempt,
-                    true,
-                );
-                self.frame_timing = Some(timing);
-                (input, output)
-            } else {
-                self.frame_timing = None;
-                (None, None)
-            };
+        let (mut input_timing, mut output_timing) = if !is_process
+            && !adaptive_primary
+            && in_stream_config.sample_rate == out_stream_config.sample_rate
+        {
+            let (timing, input, output) = crate::audio_engine::frame_timing::Observer::new(
+                format!(
+                    "{}:queue:{}",
+                    self.builtin.snapshot(false).epoch,
+                    self.queue_attempt
+                ),
+                self.queue_attempt,
+                true,
+            );
+            self.frame_timing = Some(timing);
+            (input, output)
+        } else {
+            self.frame_timing = None;
+            (None, None)
+        };
         let output_queue_diagnostics = queue_diagnostics.clone();
         let input_queue_diagnostics = queue_diagnostics;
         let mut queue_recovery = crate::audio_engine::queue_recovery::Recovery::new(
@@ -1111,7 +1139,7 @@ impl Engine {
             channels
         };
 
-        let resampler = if is_process {
+        let resampler = if is_process || adaptive_primary {
             None
         } else {
             crate::audio_engine::resampling::prepare(in_rate, out_rate, channels)?
@@ -1163,20 +1191,32 @@ impl Engine {
         let mut monitor_renderer = None;
         let mut broadcast_queue = None;
         let mut worker_controls = None;
-        let mut broadcast_recovery_gains = None;
+        let mut broadcast_frames: Option<crate::audio_engine::split_monitor::BroadcastRx> = None;
+        let mut broadcast_mixer = None;
+        let mut broadcast_block = if self.live_output_config.split_processing {
+            vec![
+                crate::audio_engine::split_monitor::BroadcastFrame::default();
+                max_frames_per_callback
+            ]
+        } else {
+            Vec::new()
+        };
         let mut upstream_recovery = vec![1.0f32; max_frames_per_callback];
         if separated {
             anyhow::ensure!(channels_len == 2, "処理分離の出力構成を開始できません");
-            let queue = Arc::new(HeapRb::<f32>::new(
-                (self.current_sample_rate as usize / 5).max(2) * 2,
-            ));
+            let queue = Arc::new(
+                HeapRb::<crate::audio_engine::split_monitor::BroadcastFrame>::new(
+                    (self.current_sample_rate as usize / 5).max(2),
+                ),
+            );
             let (tx, rx) = queue.clone().split();
-            let original_consumer = std::mem::replace(&mut audio_cons, rx);
+            let unused = Arc::new(HeapRb::<f32>::new(2));
+            let original_consumer = std::mem::replace(&mut audio_cons, unused.split().1);
             let mode = self
                 .live_modes
                 .snapshot(self.builtin.snapshot(false).epoch, false)
                 .target;
-            let (controller, renderer, gains) =
+            let (controller, mut renderer) =
                 crate::audio_engine::split_monitor::Controller::prepare_with_input_channels(
                     original_consumer,
                     tx,
@@ -1198,11 +1238,68 @@ impl Engine {
                     self.restored_monitor.as_ref(),
                     channels,
                 )?;
+            if let Some(start) = self.mixing_start.clone() {
+                self.mixing_shared = Some(Arc::new(
+                    crate::audio_engine::mixing::controls::Shared::new_at(
+                        &start.config.levels,
+                        self.mixing_revision,
+                    ),
+                ));
+                self.sync_mixing_latency()?;
+                let shared = self
+                    .mixing_shared
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("ミックスの設定を取得できません"))?
+                    .clone();
+                shared
+                    .primary_input_rate
+                    .store(in_stream_config.sample_rate, Ordering::Relaxed);
+                shared
+                    .primary_output_rate
+                    .store(out_stream_config.sample_rate, Ordering::Relaxed);
+                shared
+                    .primary_adaptive
+                    .store(adaptive_primary, Ordering::Relaxed);
+                let (source, source_render) =
+                    crate::audio_engine::mixing::input::Controller::prepare(
+                        &start,
+                        out_stream_config.sample_rate,
+                        self.mode_silence.shared.clone(),
+                        max_frames_per_callback,
+                    )?;
+                let source_shared = source_render.shared.clone();
+                let monitor = crate::audio_engine::mixing::runtime::Monitor::new(
+                    source_render,
+                    shared.clone(),
+                    out_stream_config.sample_rate,
+                )?;
+                let clock = adaptive_primary
+                    .then(|| {
+                        crate::audio_engine::process_capture::clock::Renderer::with_rates(
+                            in_stream_config.sample_rate,
+                            out_stream_config.sample_rate,
+                        )
+                    })
+                    .transpose()?;
+                renderer
+                    .get_mut()
+                    .configure_mixing(monitor, clock, shared.clone());
+                let (mixer, owner) =
+                    callback_owner(crate::audio_engine::mixing::runtime::Broadcast::new(
+                        out_stream_config.sample_rate,
+                        shared,
+                        source_shared.clone(),
+                    )?);
+                self.mixing_worker_owner = Some(owner);
+                self.mixing_source = Some(source);
+                self.mixing_input_shared = Some(source_shared);
+                broadcast_mixer = Some(mixer);
+            }
             if self.live_output.is_none() {
                 controller.shared.failed.store(true, Ordering::Release);
             }
             worker_controls = Some(controller.shared.clone());
-            broadcast_recovery_gains = Some(gains);
+            broadcast_frames = Some(rx);
             self.split_monitor = Some(controller);
             monitor_renderer = Some(renderer);
             broadcast_queue = Some(queue);
@@ -1267,11 +1364,16 @@ impl Engine {
             let mut process_output =
                 move |data: &mut [f32], info: Option<&cpal::OutputCallbackInfo>| {
                     if dsp_silence.drain_worker() {
-                        audio_cons.skip(
-                            audio_cons.occupied_len() / queue_input_channels * queue_input_channels,
-                        );
-                        if let Some(gains) = &mut broadcast_recovery_gains {
-                            gains.skip(gains.occupied_len());
+                        if let Some(mixer) = &mut broadcast_mixer {
+                            mixer.get_mut().reset();
+                        }
+                        if let Some(queue) = &mut broadcast_frames {
+                            queue.skip(queue.occupied_len());
+                        } else {
+                            audio_cons.skip(
+                                audio_cons.occupied_len() / queue_input_channels
+                                    * queue_input_channels,
+                            );
                         }
                         dsp_silence.worker_drained();
                         data.fill(0.0);
@@ -1284,10 +1386,13 @@ impl Engine {
                     if let Some(controls) = &worker_generation_controls {
                         let generation = controls.generation.load(Ordering::Acquire);
                         if generation != worker_generation {
-                            let skipped = audio_cons.skip(audio_cons.occupied_len() / 2 * 2) / 2;
-                            if let Some(gains) = &mut broadcast_recovery_gains {
-                                gains.skip(skipped);
+                            if let Some(mixer) = &mut broadcast_mixer {
+                                mixer.get_mut().reset();
                             }
+                            let skipped = broadcast_frames.as_mut().map_or_else(
+                                || audio_cons.skip(audio_cons.occupied_len() / 2 * 2) / 2,
+                                |queue| queue.skip(queue.occupied_len()),
+                            );
                             upstream_consumed = upstream_consumed.saturating_add(skipped as u64);
                             worker_generation = generation;
                             data.fill(0.0);
@@ -1321,14 +1426,17 @@ impl Engine {
                         .as_ref()
                         .map(|c| c.measurement_ticket());
                     let upstream_first_frame = upstream_consumed;
-                    if let Some(gains) = &mut broadcast_recovery_gains {
-                        for gain in &mut upstream_recovery[..actual_frames] {
-                            let Some(value) = gains.try_pop() else {
+                    if let Some(queue) = &mut broadcast_frames {
+                        for (index, frame) in
+                            broadcast_block[..actual_frames].iter_mut().enumerate()
+                        {
+                            let Some(value) = queue.try_pop() else {
                                 output_stream_failed.store(true, Ordering::Release);
                                 data.fill(0.0);
                                 return;
                             };
-                            *gain = value;
+                            *frame = value;
+                            upstream_recovery[index] = value.recovery_gain;
                         }
                         upstream_consumed = upstream_consumed.saturating_add(actual_frames as u64);
                     }
@@ -1476,9 +1584,17 @@ impl Engine {
                         );
                     }
                     let to_read = frames * queue_input_channels;
-                    let (consumed_frames, timing_read) = if let Some(renderer) =
-                        &mut process_renderer
-                    {
+                    let (consumed_frames, timing_read) = if broadcast_frames.is_some() {
+                        for (output, frame) in input_buf[..to_read]
+                            .as_chunks_mut::<2>()
+                            .0
+                            .iter_mut()
+                            .zip(&broadcast_block[..frames])
+                        {
+                            *output = frame.voice;
+                        }
+                        (frames, 0)
+                    } else if let Some(renderer) = &mut process_renderer {
                         use crate::audio_engine::process_capture::clock::Interleaved;
                         let before = audio_cons.occupied_len() / 2;
                         let renderer = renderer.get_mut();
@@ -1794,6 +1910,11 @@ impl Engine {
                         }
                         // 加工前後の最終ブロックが揃ってから公開・完了通知する。
                         rt_voice_check.advance_recording(frames);
+                    }
+                    if let Some(mixer) = &mut broadcast_mixer {
+                        mixer
+                            .get_mut()
+                            .process(final_buf, &broadcast_block[..frames]);
                     }
 
                     let cohort_normal_mic = comparison_settled
@@ -2232,6 +2353,9 @@ impl Engine {
             }
         };
         // ASIO互換の出力→入力play順を維持し、両方成功した場合だけ公開する。
+        if let Some(source) = &self.mixing_source {
+            source.play()?;
+        }
         let streams = capabilities::timed("stream_play", || {
             StreamPair::start_with(
                 output_stream,

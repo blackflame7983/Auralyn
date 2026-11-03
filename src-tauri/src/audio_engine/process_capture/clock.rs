@@ -13,6 +13,7 @@ const LIMIT: f64 = 0.002;
 pub trait FrameQueue {
     fn frames(&self) -> usize;
     fn pop_frame(&mut self) -> Option<[f32; 2]>;
+    fn discard(&mut self) -> usize;
 }
 
 #[cfg(test)]
@@ -24,6 +25,9 @@ impl<C: Consumer<Item = [f32; 2]>> FrameQueue for Stereo<'_, C> {
     }
     fn pop_frame(&mut self) -> Option<[f32; 2]> {
         self.0.try_pop()
+    }
+    fn discard(&mut self) -> usize {
+        self.0.skip(self.0.occupied_len())
     }
 }
 
@@ -37,6 +41,40 @@ impl<C: Consumer<Item = f32>> FrameQueue for Interleaved<'_, C> {
             return None;
         }
         Some([self.0.try_pop()?, self.0.try_pop()?])
+    }
+    fn discard(&mut self) -> usize {
+        self.0.skip(self.frames() * 2) / 2
+    }
+}
+
+/// 全チャンネルを一度だけ消費し、選んだ組だけを独立クロックのSRCへ渡す。
+pub struct MappedInterleaved<'a, C> {
+    pub queue: &'a mut C,
+    pub channels: usize,
+    pub selected: [usize; 2],
+}
+impl<C: Consumer<Item = f32>> FrameQueue for MappedInterleaved<'_, C> {
+    fn frames(&self) -> usize {
+        self.queue.occupied_len() / self.channels.max(1)
+    }
+    fn pop_frame(&mut self) -> Option<[f32; 2]> {
+        if self.channels == 0 || self.frames() == 0 {
+            return None;
+        }
+        let mut pair = [0.0; 2];
+        for channel in 0..self.channels {
+            let value = self.queue.try_pop()?;
+            for (slot, selected) in self.selected.iter().enumerate() {
+                if channel == *selected {
+                    pair[slot] = value;
+                }
+            }
+        }
+        Some(pair)
+    }
+    fn discard(&mut self) -> usize {
+        let samples = self.frames() * self.channels;
+        self.queue.skip(samples) / self.channels.max(1)
     }
 }
 
@@ -69,12 +107,21 @@ impl Renderer {
         self.failed_underrun = false;
     }
     pub fn new(output_rate: u32) -> Result<Self> {
+        Self::with_rates(48000, output_rate)
+    }
+
+    // 二入力では、機器から届くrateを保持したまま出力の時計へ追従する。
+    pub fn with_rates(input_rate: u32, output_rate: u32) -> Result<Self> {
+        ensure!(
+            (8000..=192000).contains(&input_rate),
+            "入力のrateが範囲外です"
+        );
         ensure!(
             (8000..=192000).contains(&output_rate),
             "返しのrateが範囲外です"
         );
         let resampler = SincFixedOut::<f32>::new(
-            f64::from(output_rate) / 48000.0,
+            f64::from(output_rate) / f64::from(input_rate),
             1.01,
             SincInterpolationParameters {
                 sinc_len: 128,
@@ -88,10 +135,11 @@ impl Renderer {
         )?;
         // 固定版rubatoのinput_frames_maxは低い出力rateで過小になるため、
         // 比率の逆数とFIR履歴を含む保守的な容量を開始時に確保する。
-        let max_input = ((BLOCK as f64 * 48000.0 / f64::from(output_rate) / (1.0 - LIMIT)).ceil()
-            as usize
-            + 260)
-            .max(resampler.input_frames_max());
+        let max_input =
+            ((BLOCK as f64 * f64::from(input_rate) / f64::from(output_rate) / (1.0 - LIMIT)).ceil()
+                as usize
+                + 260)
+                .max(resampler.input_frames_max());
         let input = vec![vec![0.0; max_input]; 2];
         let output = resampler.output_buffer_allocate(true);
         Ok(Self {
@@ -266,6 +314,60 @@ mod tests {
                     assert!(!renderer.failed, "rate={rate}, ppm={ppm}");
                     assert!(rx.occupied_len() < 4096);
                     assert!(output.iter().all(|s| s.is_finite() && s.abs() < 0.12));
+                }
+                assert_eq!(renderer.underruns, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn mapped_queue_consumes_whole_frames_and_duplicates_only_the_selected_channel() {
+        let (mut tx, mut rx) = HeapRb::<f32>::new(32).split();
+        for value in [1.0, 2.0, 3.0, 4.0, 11.0, 12.0, 13.0, 14.0, 99.0] {
+            tx.try_push(value).unwrap();
+        }
+        let mut queue = MappedInterleaved {
+            queue: &mut rx,
+            channels: 4,
+            selected: [2, 2],
+        };
+        assert_eq!(queue.pop_frame(), Some([3.0, 3.0]));
+        queue.selected = [3, 0];
+        assert_eq!(queue.pop_frame(), Some([14.0, 11.0]));
+        assert_eq!(queue.pop_frame(), None);
+        assert_eq!(rx.occupied_len(), 1);
+    }
+
+    #[test]
+    fn independent_device_rates_follow_both_clock_directions_without_allocating() {
+        assert!(Renderer::with_rates(0, 48000).is_err());
+        assert!(Renderer::with_rates(48000, 192001).is_err());
+        for (input_rate, output_rate) in [(44100, 48000), (48000, 44100), (96000, 48000)] {
+            for ppm in [-1200.0, 1200.0] {
+                let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
+                let mut renderer = Renderer::with_rates(input_rate, output_rate).unwrap();
+                let mut output = [0.0; BLOCK * 2];
+                for _ in 0..TARGET {
+                    tx.try_push([0.125, -0.125]).unwrap();
+                }
+                let mut fraction = 0.0;
+                for _ in 0..3000 {
+                    fraction += BLOCK as f64 * f64::from(input_rate) / f64::from(output_rate)
+                        * (1.0 + ppm / 1_000_000.0);
+                    let incoming = fraction as usize;
+                    fraction -= incoming as f64;
+                    for _ in 0..incoming {
+                        tx.try_push([0.125, -0.125]).unwrap();
+                    }
+                    let counts = crate::vst_host::instance::allocation_counts(|| {
+                        renderer.render(&mut output, &mut Stereo(&mut rx));
+                    });
+                    assert_eq!(counts, (0, 0));
+                    assert!(!renderer.failed, "{input_rate}/{output_rate}, {ppm} ppm");
+                    assert!(rx.occupied_len() < 4096);
+                    assert!(output.as_chunks::<2>().0.iter().all(|frame| {
+                        frame[0].is_finite() && (frame[0] + frame[1]).abs() < 0.00001
+                    }));
                 }
                 assert_eq!(renderer.underruns, 0);
             }

@@ -412,6 +412,9 @@ pub enum SessionRackReply {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum Command {
+    Mixing {
+        request: crate::audio_engine::mixing::Request,
+    },
     ModeMonitor {
         request: crate::audio_engine::split_monitor::Request,
     },
@@ -597,6 +600,7 @@ pub enum Command {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum Response {
+    Mixing(Box<crate::audio_engine::mixing::Snapshot>),
     ModeMonitor(Box<crate::audio_engine::split_monitor::StateSnapshot>),
     ModeSilence(crate::audio_engine::mode_silence::Snapshot),
     PeakProtection(crate::audio_engine::peak_protection::Snapshot),
@@ -728,6 +732,8 @@ pub struct MeterLevels {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum EngineEvent {
+    MixingSourceFailed,
+    MixingOutputFailed,
     Log(String),
     Error(String),
     // Peak Meters (Input L/R, Output L/R)
