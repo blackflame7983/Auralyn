@@ -284,6 +284,10 @@ impl Mapping {
     pub fn plugin_latency_frames(&self) -> Option<u32> {
         u32::try_from(self.view.shared().latency.load(Ordering::Acquire)).ok()
     }
+    /// workerが処理し、出力キューへ公開できた累計。readyとは別に制御側で観測する。
+    pub fn processed_packets(&self) -> u64 {
+        self.view.shared().output.write.0.load(Ordering::Acquire)
+    }
     pub fn set_failed(&self) {
         self.view.shared().failed.store(1, Ordering::Release);
     }
@@ -343,6 +347,7 @@ mod tests {
         let descriptor = owner.descriptor();
         let mut worker = Mapping::open(&descriptor).unwrap().into_worker().unwrap();
         let mut client = owner.client().unwrap();
+        assert_eq!(owner.processed_packets(), 0);
         assert!(Mapping::open(&descriptor).unwrap().client().is_err());
         let mut packet = Packet::default();
         packet.samples[0] = [1.5, -1.5];
@@ -357,12 +362,15 @@ mod tests {
             assert_eq!(received.sequence, sequence);
             assert_eq!(received.samples[0], [1.5, -1.5]);
             assert!(worker.try_output(&received));
+            assert_eq!(owner.processed_packets(), sequence + 1);
         }
         assert!(!worker.try_output(&packet));
+        assert_eq!(owner.processed_packets(), CAPACITY);
         for sequence in 0..CAPACITY {
             assert!(client.try_output(&mut packet));
             assert_eq!(packet.sequence, sequence);
         }
         assert!(!client.try_output(&mut packet));
+        assert_eq!(owner.processed_packets(), CAPACITY);
     }
 }

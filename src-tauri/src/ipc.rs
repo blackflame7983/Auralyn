@@ -622,6 +622,8 @@ pub enum Response {
         sample_rate: Option<u32>,
         transport_latency_frames: u32,
         declared_plugin_latency_frames: Option<u32>,
+        #[serde(default)]
+        processed_packets: Option<u64>,
     },
     Mixing(Box<crate::audio_engine::mixing::Snapshot>),
     ModeMonitor(Box<crate::audio_engine::split_monitor::StateSnapshot>),

@@ -304,6 +304,7 @@ impl Engine {
                     transport_latency_frames:
                         crate::audio_engine::post_mix::TRANSPORT_LATENCY_FRAMES,
                     declared_plugin_latency_frames: mapping.and_then(|m| m.plugin_latency_frames()),
+                    processed_packets: mapping.map(|m| m.processed_packets()),
                 });
             }
             Command::ProcessingState => self.send_response(Response::ProcessingState {
