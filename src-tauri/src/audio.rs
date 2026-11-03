@@ -271,7 +271,11 @@ impl AudioHost {
             self.session_restore.is_none(),
             "VSTの復元を完了してから退避してください"
         );
-        self.checked_snapshot_supported()?;
+        if self.capture_bundle_process()?.is_some() {
+            self.process_snapshot_supported()?;
+        } else {
+            self.full_snapshot_supported()?;
+        }
         let stats = self.get_engine_runtime_stats()?;
         anyhow::ensure!(
             stats.noise_learning_state != "capturing",

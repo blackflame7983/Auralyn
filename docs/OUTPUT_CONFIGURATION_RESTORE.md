@@ -86,7 +86,8 @@ Host・Engine・scanner・設定・WebView2・TEMPを専用領域へ分離し、
 画面の音量初期化との競合も修正し、実機の失敗記録を成功記録で上書きしない。
 
 この先行対応後、歌／雑談の登録・選択・関連VSTは[schema 3へ拡張](LIVE_MODE_STATE_RESTORE.md)した。
-プロセス入力、一時利用前の分離出力退避、V-04の可聴確認は未完了である。
+後続で[プロセス単独入力](PROCESS_STATE_RESTORE.md)と[一時利用前の退避](EXTENDED_TEMPORARY_RESTORE.md)へ拡張した。
+機器入力の音楽用途、プロセス入力と処理分離・モードの組合せ、V-04の可聴確認は別に残す。
 
 ## 2026-11-03の確認記録
 

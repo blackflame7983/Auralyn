@@ -1105,10 +1105,18 @@ pub(crate) fn preserve_temporary_runtime(
     host.preflight_runtime_checkpoint()
         .map_err(|e| e.to_string())?;
     let initial = host.conditions().control_snapshot()?;
-    let devices = active_devices(host.get_state().config.as_ref())
-        .ok_or("元の入出力機器IDを確認できません。退避せず、現在の音声を維持しています")?;
     let name = format!("runtime-{}", bundle::revision());
-    let reservation = bundle::reserve_runtime_intent(root, &name, devices, initial.engine_epoch())?;
+    let reservation = if host
+        .capture_bundle_process()
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
+        bundle::reserve_process_runtime_intent(root, &name, initial.engine_epoch())?
+    } else {
+        let devices = active_devices(host.get_state().config.as_ref())
+            .ok_or("元の入出力機器IDを確認できません。退避せず、現在の音声を維持しています")?;
+        bundle::reserve_runtime_intent(root, &name, devices, initial.engine_epoch())?
+    };
     let (before, witness) = capture(host)?;
     let (after, _) = capture(host)?;
     initial.validate()?;
@@ -1122,11 +1130,33 @@ pub(crate) fn preserve_temporary_runtime(
         include_noise_control: true,
         include_builtin_fx: true,
     };
+    let extended = before.process.is_none()
+        && (before
+            .output
+            .as_ref()
+            .is_some_and(|o| o.config != Default::default())
+            || before.live.as_ref().is_some_and(|live| {
+                live.target.is_some() || live.definitions != Default::default()
+            }));
     let original = BundleV1 {
-        process: None,
-        live: None,
-        output: None,
-        schema_version: 1,
+        process: before.process.clone(),
+        live: if extended {
+            Some(before.live.clone().ok_or("本番設定を退避できません")?)
+        } else {
+            None
+        },
+        output: if extended {
+            Some(before.output.clone().ok_or("出力構成を退避できません")?)
+        } else {
+            None
+        },
+        schema_version: if before.process.is_some() {
+            4
+        } else if extended {
+            3
+        } else {
+            1
+        },
         revision: bundle::revision(),
         name,
         categories: categories.clone(),
@@ -1906,12 +1936,18 @@ pub(crate) async fn broadcast_bundle(
             {
                 validate_runtime_restore(&plan.before)?;
                 let check_host = host.clone();
+                let include_process = plan.bundle.process.is_some();
+                let include_live = plan.bundle.live.is_some();
                 super::run_blocking(move || {
-                    check_host
-                        .lock()
-                        .map_err(|_| "音声状態を取得できません")?
-                        .checked_snapshot_supported()
-                        .map_err(|e| e.to_string())
+                    let mut host = check_host.lock().map_err(|_| "音声状態を取得できません")?;
+                    if include_process {
+                        host.process_snapshot_supported()
+                    } else if include_live {
+                        host.full_snapshot_supported()
+                    } else {
+                        host.checked_snapshot_supported()
+                    }
+                    .map_err(|e| e.to_string())
                 })
                 .await?;
             }

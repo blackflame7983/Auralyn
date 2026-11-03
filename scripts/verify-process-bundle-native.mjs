@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { expect } from '@playwright/test';
 import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
-import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync, copyFileSync, existsSync, lstatSync } from 'node:fs';
+import { join, resolve, sep, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 
-export async function exerciseProcessBundle({ getPage, invoke, bundle, root, configRoot, probe, raw, monitor, results, phase, settle, assertStopped, openProfiles, restartHost }) {
+export async function exerciseProcessBundle({ getPage, invoke, bundle, root, configRoot, probe, raw, monitor, results, phase, settle, assertStopped, openProfiles, restartHost, switchSession }) {
     const parse = text => { try { return JSON.parse(text); } catch { throw new Error('試験用JSONを確認できません'); } };
     const read = path => parse(readFileSync(path, 'utf8'));
     const hash = value => createHash('sha256').update(value).digest('hex');
@@ -146,6 +146,31 @@ export async function exerciseProcessBundle({ getPage, invoke, bundle, root, con
         assert.equal((await invoke('get_audio_state')).config.input_source.config.purpose, 'music');
         assert((await invoke('get_engine_runtime_stats')).preparation.muted);
         results.processMusicPurposeRestored = true;
+        phase('process-temporary-enter');
+        await switchSession(true, true); await assertStopped();
+        const temporary = await invoke('temporary_session_status'); assert(temporary.temporary && temporary.reviewOnly);
+        const scratch = resolve(temporary.directory);
+        assert(scratch.startsWith(join(root, 'os-temp') + sep) && /^Auralyn-temporary-[a-f0-9]{32}$/i.test(basename(scratch)) && !lstatSync(scratch).isSymbolicLink());
+        const tempReceipt = read(receiptPath); assert.equal(tempReceipt.runtime.version, 2); assert(!tempReceipt.devices);
+        const tempOriginalPath = join(configRoot, 'broadcast-bundle-backups', 'broadcast-bundles', tempReceipt.backupName + '.json');
+        const tempOriginalBytes = readFileSync(tempOriginalPath), tempOriginal = parse(tempOriginalBytes);
+        assert.equal(tempOriginal.schemaVersion, 4); assert.equal(tempOriginal.process.source.purpose, 'music');
+        assert(!/"(?:pid|created|candidateId|target)"/.test(JSON.stringify(tempOriginal)));
+        await stopChild(source); await startSource(); // 退避時のプロセスは通常設定へ戻る前に終了済み。
+        await switchSession(false); await assertStopped();
+        const returned = await invoke('temporary_session_status'); assert(!returned.temporary && returned.reviewOnly);
+        results.processTemporaryScratchRemoved = !existsSync(scratch);
+        if (process.argv.includes("--expect-cleanup")) assert(results.processTemporaryScratchRemoved, "終了後の一時領域を削除できませんでした");
+        if (!results.processTemporaryScratchRemoved) { assert(returned.cleanupPending && resolve(returned.cleanupPending) === scratch); results.processTemporaryCleanupFailureReported = true; }
+        planned = await bundle({ action: 'recovery_preview' }); assert(!planned.value.process.selectionMatches);
+        await select('music'); planned = await recoveryPreview();
+        const recoveredTemporary = await bundle({ action: 'recovery_apply', id: planned.value.id }); assert(recoveredTemporary.value.complete);
+        assert.equal((await invoke('get_audio_state')).config.input_source.config.purpose, 'music');
+        assert((await invoke('get_engine_runtime_stats')).preparation.muted);
+        assert.equal(hash(readFileSync(tempOriginalPath)), hash(tempOriginalBytes));
+        assert.equal((await bundle({ action: 'recovery_status' })).value, null);
+        results.processTemporaryBackupRequiresNewExplicitSelection = true;
+
     } finally {
         await invoke('stop_audio').catch(() => {});
         for (const child of owned.reverse()) await stopChild(child);

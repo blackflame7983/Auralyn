@@ -107,6 +107,14 @@ try {
     if (existsSync(join(configRoot, 'broadcast-bundle-recovery.json'))) { const receipt = read(join(configRoot, 'broadcast-bundle-recovery.json')); await bundle({ action: 'recovery_resolve', id: receipt.backupName }); assert(existsSync(join(configRoot, 'broadcast-bundle-backups', 'broadcast-bundles', receipt.backupName + '.json'))); }
     if (processInput) {
         await exerciseProcessBundle({ getPage: () => page, invoke, bundle, root, configRoot, probe, raw: cable, monitor: outputEndpoint, results, phase, settle, assertStopped, openProfiles,
+            switchSession: async (temporary, preserveRuntime = false) => {
+                const parent = currentPid;
+                await page.evaluate(args => { void window.__TAURI__.core.invoke('restart_temporary_session', args); }, { temporary, preserveRuntime });
+                await expect.poll(() => ownedProcesses().filter(process => process.ExecutablePath.toLowerCase() === binary.toLowerCase() && process.ParentProcessId === parent).length, { timeout: 35000 }).toBe(1);
+                currentPid = ownedProcesses().find(process => process.ExecutablePath.toLowerCase() === binary.toLowerCase() && process.ParentProcessId === parent).ProcessId;
+                await expect.poll(() => ownedProcesses().some(process => process.ProcessId === parent), { timeout: 35000 }).toBe(false);
+                await browser.close(); await attach();
+            },
             restartHost: async () => {
                 await page.evaluate(() => { void window.__TAURI__.core.invoke('plugin:process|exit', { code: 0 }); });
                 await expect.poll(() => ownedProcesses().length).toBe(0); await browser.close();

@@ -318,7 +318,7 @@ pub(crate) fn read_recovery(root: &Path) -> Result<Option<RecoveryReceipt>, Stri
         return Err("配信状態の復旧機器IDが不正です".into());
     }
     if let Some(origin) = &receipt.runtime {
-        if origin.version != 1
+        if !matches!(origin.version, 1 | 2)
             || origin.source_epoch == 0
             || origin.source_control_revision.is_empty()
             || origin.source_control_revision.len() > 256
@@ -328,7 +328,7 @@ pub(crate) fn read_recovery(root: &Path) -> Result<Option<RecoveryReceipt>, Stri
                 .all(|c| c.is_ascii_digit() || c == b':')
             || origin.sha256.len() != 64
             || !origin.sha256.bytes().all(|c| c.is_ascii_hexdigit())
-            || receipt.devices.is_none()
+            || (origin.version == 1 && receipt.devices.is_none())
         {
             return Err("未保存状態の退避情報に対応していません".into());
         }
@@ -377,6 +377,7 @@ pub(crate) fn load_recovery_backup(
     let original = load(&root.join("broadcast-bundle-backups"), &receipt.backup_name)?;
     if let Some(origin) = &receipt.runtime {
         validate_runtime_original(&original)?;
+        validate_runtime_scope(&original, receipt)?;
         if content_digest(&original)? != origin.sha256 {
             return Err("退避した未保存設定が変更されています。原本を確認してください".into());
         }
@@ -391,9 +392,7 @@ fn validate_runtime_original(original: &BundleV1) -> Result<(), String> {
         && categories.include_audio_config
         && categories.include_noise_control
         && categories.include_builtin_fx)
-        || original.output.is_some()
-        || original.live.is_some()
-        || original.process.is_some()
+        || !matches!(original.schema_version, 1 | 3 | 4)
         || original.obs.is_some()
         || original.confirmation.is_some()
         || original
@@ -401,10 +400,11 @@ fn validate_runtime_original(original: &BundleV1) -> Result<(), String> {
             .audio_config
             .as_ref()
             .is_none_or(|audio| {
-                audio
-                    .input_device
-                    .as_ref()
-                    .is_none_or(|name| name.is_empty())
+                (original.process.is_none()
+                    && audio
+                        .input_device
+                        .as_ref()
+                        .is_none_or(|name| name.is_empty()))
                     || audio
                         .output_device
                         .as_ref()
@@ -412,6 +412,25 @@ fn validate_runtime_original(original: &BundleV1) -> Result<(), String> {
             })
     {
         return Err("未保存設定の退避範囲に対応していません".into());
+    }
+    Ok(())
+}
+fn validate_runtime_scope(original: &BundleV1, receipt: &RecoveryReceipt) -> Result<(), String> {
+    let version = receipt
+        .runtime
+        .as_ref()
+        .ok_or("未保存状態の取得元がありません")?
+        .version;
+    let valid = match original.schema_version {
+        1 => version == 1 && receipt.devices.is_some(),
+        3 => {
+            version == 2 && original.output.as_ref().map(|o| &o.devices) == receipt.devices.as_ref()
+        }
+        4 => version == 2 && receipt.devices.is_none() && original.process.is_some(),
+        _ => false,
+    };
+    if !valid {
+        return Err("退避原本と入力・出力の保存範囲が一致しません".into());
     }
     Ok(())
 }
@@ -429,17 +448,36 @@ pub(crate) fn reserve_runtime_intent(
     devices: RecoveryDevices,
     source_epoch: u64,
 ) -> Result<RuntimeReservation, String> {
+    reserve_runtime_intent_inner(root, backup_name, Some(devices), source_epoch)
+}
+pub(crate) fn reserve_process_runtime_intent(
+    root: &Path,
+    backup_name: &str,
+    source_epoch: u64,
+) -> Result<RuntimeReservation, String> {
+    reserve_runtime_intent_inner(root, backup_name, None, source_epoch)
+}
+fn reserve_runtime_intent_inner(
+    root: &Path,
+    backup_name: &str,
+    devices: Option<RecoveryDevices>,
+    source_epoch: u64,
+) -> Result<RuntimeReservation, String> {
     validate_name(backup_name)?;
-    if devices.input_id.is_empty() || devices.output_id.is_empty() || source_epoch == 0 {
+    if devices
+        .as_ref()
+        .is_some_and(|d| d.input_id.is_empty() || d.output_id.is_empty())
+        || source_epoch == 0
+    {
         return Err("未保存設定の取得元を確認できません".into());
     }
     std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
     let receipt = RecoveryReceipt {
         version: 1,
         backup_name: backup_name.into(),
-        devices: Some(devices),
+        devices: devices.clone(),
         runtime: Some(RuntimeOrigin {
-            version: 1,
+            version: if devices.is_some() { 1 } else { 2 },
             source_epoch,
             source_control_revision: "0".into(),
             sha256: "0".repeat(64),
@@ -484,6 +522,13 @@ pub(crate) fn finish_runtime_recovery(
         return Err("未保存設定の取得元が変わりました。未完了情報を保持しています".into());
     }
     validate_runtime_original(original)?;
+    let origin = reservation
+        .receipt
+        .runtime
+        .as_mut()
+        .ok_or("退避情報がありません")?;
+    origin.version = if original.schema_version == 1 { 1 } else { 2 };
+    validate_runtime_scope(original, &reservation.receipt)?;
     let backup_root = root.join("broadcast-bundle-backups");
     save_with_overwrite(&backup_root, original, false)?;
     let expected = content_digest(original)?;
@@ -652,7 +697,7 @@ mod tests {
         validate(&full).unwrap();
         save_with_overwrite(&root, &full, true).unwrap();
         assert_eq!(load(&root, &full.name).unwrap().live, full.live);
-        assert!(validate_runtime_original(&full).is_err());
+        assert!(validate_runtime_original(&full).is_ok());
         let mut invalid = value.clone();
         invalid.output = None;
         assert!(validate(&invalid).is_err());
@@ -666,7 +711,7 @@ mod tests {
         invalid = value.clone();
         invalid.output.as_mut().unwrap().config.device_id = Some("monitor-id".into());
         assert!(validate(&invalid).is_err());
-        assert!(validate_runtime_original(&value).is_err()); // 一時退避の旧範囲を広げない。
+        assert!(validate_runtime_original(&value).is_err()); // schema 2だけではモードの全状態がない。
         std::fs::remove_file(path(&root, &value.name).unwrap()).unwrap();
         std::fs::remove_dir(root.join("broadcast-bundles")).unwrap();
         std::fs::remove_dir(root).unwrap();
@@ -693,7 +738,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("auralyn-process-schema-{}", revision()));
         save(&root, &value).unwrap();
         assert_eq!(load(&root, &value.name).unwrap().process, value.process);
-        assert!(validate_runtime_original(&value).is_err());
+        assert!(validate_runtime_original(&value).is_ok());
         let mut invalid = value.clone();
         invalid.schema_version = 1;
         assert!(validate(&invalid).is_err());
@@ -809,11 +854,89 @@ mod tests {
         let receipt = read_recovery(&root).unwrap().unwrap();
         assert!(load_recovery_backup(&root, &receipt).is_err());
         let mut unknown = serde_json::to_value(&receipt).unwrap();
-        unknown["runtime"]["version"] = serde_json::json!(2);
+        unknown["runtime"]["version"] = serde_json::json!(3);
         std::fs::write(recovery_path(&root), serde_json::to_vec(&unknown).unwrap()).unwrap();
         assert!(read_recovery(&root).is_err());
         assert!(reserve_recovery(&root, "replacement", None).is_err());
         resolve_recovery(&root, None).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+    #[test]
+    fn extended_runtime_origin_binds_schema_and_device_scope_without_persisting_process_authority()
+    {
+        let mut original = runtime_sample();
+        original.schema_version = 3;
+        let devices = RecoveryDevices {
+            input_id: "input-id".into(),
+            output_id: "output-id".into(),
+        };
+        original.output = Some(OutputConfiguration {
+            version: 1,
+            devices: devices.clone(),
+            config: Default::default(),
+        });
+        original.live = Some(LiveConfiguration {
+            version: 1,
+            definitions: Default::default(),
+            target: None,
+            monitor: None,
+            singing_plugins: None,
+            talk_plugins: None,
+        });
+        let root = std::env::temp_dir().join(format!("auralyn-extended-runtime-{}", revision()));
+        let reservation = reserve_runtime_intent(&root, &original.name, devices, 9).unwrap();
+        finish_runtime_recovery(&root, &original, reservation, "1:2:3:4".into()).unwrap();
+        let receipt = read_recovery(&root).unwrap().unwrap();
+        assert_eq!(receipt.runtime.as_ref().unwrap().version, 2);
+        load_recovery_backup(&root, &receipt).unwrap();
+        let mut wrong = receipt.clone();
+        wrong.runtime.as_mut().unwrap().version = 1;
+        assert!(load_recovery_backup(&root, &wrong).is_err());
+        wrong = receipt.clone();
+        wrong.devices.as_mut().unwrap().input_id = "another-id".into();
+        assert!(load_recovery_backup(&root, &wrong).is_err());
+        resolve_recovery(&root, Some(&original.name)).unwrap();
+        let mut process = original.clone();
+        process.schema_version = 4;
+        process.output = None;
+        process.live = None;
+        process.process = Some(ProcessConfiguration {
+            version: 1,
+            source: crate::input_source::ProcessConfig {
+                app_key: "a".repeat(64),
+                app_name: "player.exe".into(),
+                raw_endpoint_id: "raw-id".into(),
+                purpose: crate::input_source::Purpose::Music,
+            },
+            output_id: "wasapi:monitor-id".into(),
+        });
+        process.name = "process-runtime".into();
+        let audio = process
+            .embedded_auralyn_preset
+            .audio_config
+            .as_mut()
+            .unwrap();
+        audio.host = "Wasapi".into();
+        audio.input_device = None;
+        audio.output_device = Some("Monitor".into());
+        let reservation = reserve_process_runtime_intent(&root, &process.name, 10).unwrap();
+        finish_runtime_recovery(&root, &process, reservation, "1:2:3:4".into()).unwrap();
+        let receipt = read_recovery(&root).unwrap().unwrap();
+        assert!(receipt.devices.is_none());
+        let stored = load_recovery_backup(&root, &receipt).unwrap();
+        assert_eq!(stored.process, process.process);
+        let marker = std::fs::read_to_string(recovery_path(&root)).unwrap();
+        assert!(!marker.contains("pid") && !marker.contains("player.exe"));
+        wrong = receipt.clone();
+        wrong.devices = original.output.as_ref().map(|o| o.devices.clone());
+        assert!(load_recovery_backup(&root, &wrong).is_err());
+        resolve_recovery(&root, Some(&process.name)).unwrap();
+        for item in [&original, &process] {
+            std::fs::remove_file(path(&root.join("broadcast-bundle-backups"), &item.name).unwrap())
+                .unwrap();
+        }
+        std::fs::remove_dir(root.join("broadcast-bundle-backups/broadcast-bundles")).unwrap();
+        std::fs::remove_dir(root.join("broadcast-bundle-backups")).unwrap();
         std::fs::remove_dir(root).unwrap();
     }
     #[test]

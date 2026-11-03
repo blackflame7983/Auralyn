@@ -2,6 +2,7 @@
 
 実装・受入の状況は、現行コード、個別の検証記録、各GitHub Issueを照合して判断する。
 戦略と優先順位は[2026-11の見直し](../STRATEGY_REVISION_2026-11.md)を参照する。
+2026-11-03の追加試験で、過去の`test-results`の内容が消失した。[原因・出力先の修正・今回の再検証](../EXTENDED_TEMPORARY_RESTORE.md#検証記録の消失と再作成を区別する)を参照し、過去の文書中の集計を現在残っている原データと混同しない。
 
 ## プロセス入力は段階1の残る受入を確認する
 
@@ -21,15 +22,15 @@
 | --- | --- | --- |
 | プロセス単独入力の残る受入 | [#233](https://github.com/blackflame7983/Auralyn/issues/233) | 遅延・待機と聴感を評価し、機器切断などを確認する。Chrome音声子プロセス終了後は元アプリ側の読み直しで復帰する条件を記録済み |
 | ゲーセン配信素材でのNR比較 | [#220](https://github.com/blackflame7983/Auralyn/issues/220)・[#93](https://github.com/blackflame7983/Auralyn/issues/93) | NRありへの好評価と実Engineでの切替を確認済み。強度と声の保持、歌の回帰、物理マイクでの学習結果保護を確認する |
-| 未保存状態の退避・復帰 | [#221](https://github.com/blackflame7983/Auralyn/issues/221) | [所有者・復帰範囲の契約](../UNSAVED_RUNTIME_RESTORE.md)と、単一出力・カスタム構成・声用途の機器入力のコード改修を完了。[確認記録](../UNSAVED_RUNTIME_ACCEPTANCE_2026-11-03.md)でVST欠落・空ラック・音量ゼロを含む実Hostの結果と、別に残るV-03を確認する |
-| 全構成の保存・復帰 | [#222](https://github.com/blackflame7983/Auralyn/issues/222) | [分離出力・枝別処理・trim](../OUTPUT_CONFIGURATION_RESTORE.md)、[歌／雑談・関連VST](../LIVE_MODE_STATE_RESTORE.md)、[プロセス単独入力](../PROCESS_STATE_RESTORE.md)の保存・復帰に対応。プロセス入力と処理分離・モードの組合せ、一時利用前の分離出力退避とV-04の実機受入は残す |
+| 未保存状態の退避・復帰 | [#221](https://github.com/blackflame7983/Auralyn/issues/221) | [共通契約](../UNSAVED_RUNTIME_RESTORE.md)から[分離出力・モード・プロセス入力の一時退避](../EXTENDED_TEMPORARY_RESTORE.md)へ拡張。初期範囲の[確認記録](../UNSAVED_RUNTIME_ACCEPTANCE_2026-11-03.md)と追加結果を区別し、V-03の共有PC・聴感の受入は別に残す |
+| 全構成の保存・復帰 | [#222](https://github.com/blackflame7983/Auralyn/issues/222) | [分離出力・枝別処理・trim](../OUTPUT_CONFIGURATION_RESTORE.md)、[歌／雑談・関連VST](../LIVE_MODE_STATE_RESTORE.md)、[プロセス単独入力](../PROCESS_STATE_RESTORE.md)と[一時退避](../EXTENDED_TEMPORARY_RESTORE.md)に対応。機器入力の音楽用途、プロセス入力と処理分離・モードの組合せは非対応を維持し、V-04の実機受入を残す |
 | 主シナリオの導線と実機評価 | [#109](https://github.com/blackflame7983/Auralyn/issues/109)・[#72](https://github.com/blackflame7983/Auralyn/issues/72) | 評価で特定した操作上の問題を改善し、同じ条件で再測定する |
 | 歌枠の遅延・音切れの基準値 | [#211](https://github.com/blackflame7983/Auralyn/issues/211)・[#219](https://github.com/blackflame7983/Auralyn/issues/219) | 物理配線と歌の固定素材を使う。プロセス入力の65分を代用にしない |
 | OBSソースプラグイン | [#223](https://github.com/blackflame7983/Auralyn/issues/223) | 先にライセンス・配布、クロック、停止・再接続、互換性を設計する |
 
-素材・実機の準備を待つ間は、一時利用前の分離出力・モード退避を拡張する。
+保存・復帰の上記対応範囲のコード改修を完了し、次はV-03／V-04の受入条件を実機と実音声で確認する。
 #221の[5条件との対応](../UNSAVED_RUNTIME_RESTORE.md#221の5条件を今回の改修範囲へ対応付ける)を明記した。契約と初期範囲のコード改修に、#222の全構成保存と共有PCの実機受入を混ぜない。
-一時利用前の退避では、プロセス入力・分離出力まで復帰可能と扱わない。
+非対応の入力用途・処理分離・モードの組合せを、対応範囲へ読み替えない。
 NRの変更や二入力への拡張は、関連する受入条件を満たしたと確認してから判断する。
 
 ## 実装済みの設計契約

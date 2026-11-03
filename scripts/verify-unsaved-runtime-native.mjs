@@ -9,6 +9,7 @@ import { createServer } from 'node:net';
 import { once } from 'node:events';
 
 const [appDirectory, evidenceDirectory, suppliedProbe] = process.argv.slice(2);
+const extended = process.argv.includes('--split-modes');
 const reuseOwnedApp = process.argv.includes('--reuse-owned-app');
 if (!appDirectory || !evidenceDirectory || !suppliedProbe) throw new Error('app-directory new-evidence-directory probe が必要です');
 const appRoot = resolve(appDirectory), root = resolve(evidenceDirectory), probe = resolve(suppliedProbe);
@@ -19,6 +20,21 @@ let temporaryRoot = join(root, 'os-temp'); mkdirSync(temporaryRoot);
 const parse = text => { try { return JSON.parse(text); } catch { throw new Error('JSONを確認できません'); } };
 const read = file => parse(readFileSync(file, 'utf8'));
 const hash = value => createHash('sha256').update(value).digest('hex');
+// Rustのf32は1.0として書かれる。数値の表記を変えず、pretty JSONだけを詰める。
+const canonicalJson = text => {
+    let result = '', quoted = false, escaped = false;
+    for (const character of text) {
+        if (quoted) {
+            result += character;
+            if (escaped) escaped = false;
+            else if (character === '\\') escaped = true;
+            else if (character === '"') quoted = false;
+        } else if (character === '"') { quoted = true; result += character; }
+        else if (!/\s/.test(character)) result += character;
+    }
+    return result;
+};
+
 const endpoints = () => parse(execFileSync(probe, ['endpoints'], { encoding: 'utf8', windowsHide: true }));
 const beforeEndpoints = endpoints();
 const cable = beforeEndpoints.find(device => device.name === 'CABLE Input (VB-Audio Virtual Cable)');
@@ -148,10 +164,11 @@ try {
     assert(input && output, '制御用のWASAPI機器を選べません');
     const start = { host: output.host, input: input.name, output: output.name, inputId: input.id, outputId: output.id,
         sampleRate: 48000, bufferSize: 512, inputChannels: [0, 1] };
-    await page.evaluate(value => { localStorage.setItem('vst_host_wizard_done', 'true'); localStorage.setItem('vst_host_audio_config', JSON.stringify(value)); }, start);
+    await page.evaluate(value => { localStorage.setItem('vst_host_wizard_done', 'true'); localStorage.setItem('vst_host_tutorial_completed', 'true'); localStorage.setItem('vst_host_audio_config', JSON.stringify(value)); }, start);
     await page.reload();
     await expect.poll(() => invoke('get_audio_state')).toBeTruthy();
     await invoke('set_global_mute', { active: true });
+    await invoke('live_output', { config: { splitProcessing: false, monitorSinging: null, monitorTalk: null, deviceId: null, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false } });
     await invoke('start_audio', { ...start, inputSource: { source: { kind: 'device', config: { purpose: 'music' } } } });
     await settle();
     await assert.rejects(() => invoke('restart_temporary_session', { temporary: true, preserveRuntime: true }), /未対応/);
@@ -160,11 +177,30 @@ try {
     results.unsupportedInputRejectedBeforeStop = true;
     await invoke('stop_audio');
     await invoke('start_audio', { ...start, inputSource: { source: { kind: 'device', config: { purpose: 'voice' } } } });
+    let extendedConfig;
+    if (extended) {
+        const secondary = list.outputs.find(device => device.id === 'wasapi:' + cable.id); assert(secondary);
+        const branch = preset => ({ active: false, preset, amount: 0.6, singing: null, reverb: { enabled: false, mix: 0.08, decaySeconds: 1.2, damping: 0.5 } });
+        extendedConfig = { splitProcessing: true, deviceId: secondary.id, monitorSinging: branch('broadcast'), monitorTalk: branch('warm'), monitorTrim: 0.2, broadcastTrim: 0.4, monitorMuted: true };
+        await invoke('stop_audio'); await invoke('live_output', { config: extendedConfig }); await invoke('start_audio', start);
+    }
     await invoke('set_input_gain', { value: 0.7 });
     await invoke('set_output_gain', { value: 0.25 });
     await invoke('set_noise_control_config', { active: true, mode: 'low', strength: 0.6, voiceGuard: true });
     const id = await invoke('load_plugin', { path: 'C:/Program Files/Common Files/VST3/TDR Nova.vst3' });
     await invoke('set_gain', { id, value: 0.4 });
+    if (extended) {
+        let live = await invoke('live_modes', { request: { action: 'snapshot' } });
+        await invoke('live_modes', { request: { action: 'save', expectedVersion: live.definitions.version, singing: extendedConfig.monitorSinging, talk: extendedConfig.monitorTalk } });
+        live = await invoke('live_modes', { request: { action: 'snapshot' } });
+        await invoke('live_modes', { request: { action: 'bind_profile', expectedVersion: live.definitions.version, mode: 'singing', name: '入力試聴 TDR Nova' } });
+        live = await invoke('live_modes', { request: { action: 'snapshot' } });
+        await invoke('live_modes', { request: { action: 'singing_on', intent: { clientId: 'native-temporary', sequence: 1, expectedEpoch: live.epoch } } });
+        await expect.poll(async () => { const mode = await invoke('live_modes', { request: { action: 'snapshot' } }); return mode.phase === 'settled' && mode.applied === 'singing' && !mode.transaction; }, { timeout: 20000 }).toBe(true);
+        const rack = await invoke('session_rack', { request: { action: 'snapshot' } });
+        await invoke('set_gain', { id: rack.plugins[0].id, value: 0.4 });
+    }
+
     await settle();
     phase('capture-and-enter-temporary');
     await openProfiles();
@@ -184,14 +220,15 @@ try {
     assert.equal((await assertStopped()).plugins.length, 0);
     results.temporaryStartsStopped = true;
     const receipt = read(join(configRoot, 'broadcast-bundle-recovery.json'));
-    assert(receipt.runtime?.version === 1 && receipt.devices.inputId === input.id && receipt.devices.outputId === output.id);
+    assert(receipt.runtime?.version === (extended ? 2 : 1) && receipt.devices.inputId === input.id && receipt.devices.outputId === output.id);
     const originalPath = join(configRoot, 'broadcast-bundle-backups', 'broadcast-bundles', receipt.backupName + '.json');
     const originalBytes = readFileSync(originalPath), original = parse(originalBytes);
     assert.equal(original.embeddedAuralynPreset.plugins.length, 1);
+    if (extended) { assert.equal(original.schemaVersion, 3); assert.deepEqual(original.output.config, extendedConfig); assert.equal(original.live.target, 'singing'); assert.equal(original.live.singingPlugins.length, 1); }
     assert(Math.abs(original.levelIntent.inputGain - 0.7) < 1e-6 && original.levelIntent.outputGain === 0.25);
     assert(Math.abs(original.embeddedAuralynPreset.noiseControl.strength - 0.6) < 1e-6);
     results.originalSha256 = hash(originalBytes);
-    await page.evaluate(() => localStorage.setItem('vst_host_wizard_done', 'true'));
+    await page.evaluate(() => { localStorage.setItem('vst_host_wizard_done', 'true'); localStorage.setItem('vst_host_tutorial_completed', 'true'); });
     await page.reload();
     await expect(page.getByRole('button', { name: '設定画面を閉じる', exact: true })).toBeVisible({ timeout: 20000 });
     await page.getByRole('button', { name: '設定画面を閉じる', exact: true }).click();
@@ -212,6 +249,7 @@ try {
     results.regularSettingsPreserved = true;
     results.returnStartsStopped = true;
     results.scratchRemoved = !existsSync(scratch);
+    if (process.argv.includes("--expect-cleanup")) assert(results.scratchRemoved, "終了後の一時領域を削除できませんでした");
     if (!results.scratchRemoved) {
         assert(returned.cleanupPending && resolve(returned.cleanupPending) === scratch);
         results.cleanupFailureReported = true;
@@ -221,9 +259,10 @@ try {
     await invoke('set_global_mute', { active: true });
     await invoke('start_audio', start);
     await settle();
-    const modified = parse(originalBytes); modified.embeddedAuralynPreset.noiseControl.strength = 0.9;
+    const modifiedText = originalBytes.toString().replace(/("strength"\s*:\s*)[-0-9.eE+]+/, (_, prefix) => prefix + "0.9");
+    assert.notEqual(modifiedText, originalBytes.toString());
     try {
-        writeFileSync(originalPath, JSON.stringify(modified));
+        writeFileSync(originalPath, modifiedText);
         await assert.rejects(() => bundle({ action: 'recovery_preview' }), /退避した未保存設定が変更/);
     } finally {
         writeFileSync(originalPath, originalBytes);
@@ -236,6 +275,7 @@ try {
     results.stopInvalidatesPreview = true;
     await invoke('start_audio', start);
     await settle();
+    if (!extended) {
     await invoke('set_global_mute', { active: false });
     await settle();
     preview = await recoveryPreview();
@@ -243,13 +283,14 @@ try {
     results.unmutedRestoreRejected = true;
     await invoke('set_global_mute', { active: true });
     await settle();
+    } else { results.unmutedCheckSkippedForFeedbackFixture = true; }
     preview = await recoveryPreview();
     const receiptBytes = readFileSync(recoveryFile);
     try {
         // 原本と検証値の両方が外部編集されても、古い差分は使用しない。
-        writeFileSync(originalPath, JSON.stringify(modified));
+        writeFileSync(originalPath, modifiedText);
         const editedReceipt = parse(receiptBytes);
-        editedReceipt.runtime.sha256 = hash(JSON.stringify(modified));
+        editedReceipt.runtime.sha256 = hash(canonicalJson(modifiedText));
         writeFileSync(recoveryFile, JSON.stringify(editedReceipt));
         assert((await bundle({ action: 'recovery_status' })).value?.readable, '編集した試験原本の検証値が一致しません');
         await assert.rejects(() => bundle({ action: 'recovery_apply', id: preview.value.id }), /保存内容または変更予定が変わりました/);
@@ -262,22 +303,24 @@ try {
         const mismatched = parse(receiptBytes);
         mismatched.devices.inputId = 'unavailable-fixture-input';
         writeFileSync(recoveryFile, JSON.stringify(mismatched));
-        preview = await recoveryPreview();
-        await assert.rejects(() => bundle({ action: 'recovery_apply', id: preview.value.id }), /機器IDが元の機器と異なります/);
+        if (extended) { await assert.rejects(() => recoveryPreview(), /保存範囲が一致しません/); }
+        else { preview = await recoveryPreview(); await assert.rejects(() => bundle({ action: 'recovery_apply', id: preview.value.id }), /機器IDが元の機器と異なります/); }
         assert((await invoke('session_rack', { request: { action: 'snapshot' } })).running);
         results.wrongDeviceIdentityRejected = true;
     } finally {
         writeFileSync(recoveryFile, receiptBytes);
     }
     try {
-        const missingVst = parse(originalBytes), missingReceipt = parse(receiptBytes);
-        missingVst.embeddedAuralynPreset.plugins[0].path = join(root, 'not-installed-fixture.vst3');
-        missingReceipt.runtime.sha256 = hash(JSON.stringify(missingVst));
-        writeFileSync(originalPath, JSON.stringify(missingVst));
+        const missingReceipt = parse(receiptBytes), sourceText = originalBytes.toString();
+        const index = sourceText.indexOf('"embeddedAuralynPreset"'); assert(index > 0);
+        const missingText = sourceText.slice(0, index) + sourceText.slice(index).replace(/("path"\s*:\s*)"(?:\\.|[^"\\])*"/, (_, prefix) => prefix + JSON.stringify(join(root, 'not-installed-fixture.vst3')));
+        assert.notEqual(missingText, sourceText);
+        missingReceipt.runtime.sha256 = hash(canonicalJson(missingText));
+        writeFileSync(originalPath, missingText);
         writeFileSync(recoveryFile, JSON.stringify(missingReceipt));
         preview = await recoveryPreview();
-        const partial = await bundle({ action: 'recovery_apply', id: preview.value.id });
-        assert(partial.value && !partial.value.complete && partial.value.summary?.missingPlugins.length === 1);
+        if (extended) { await assert.rejects(() => bundle({ action: 'recovery_apply', id: preview.value.id }), /VSTが見つかりません/); }
+        else { const partial = await bundle({ action: 'recovery_apply', id: preview.value.id }); assert(partial.value && !partial.value.complete && partial.value.summary?.missingPlugins.length === 1); }
         assert((await bundle({ action: 'recovery_status' })).value?.id === receipt.backupName);
         assert((await invoke('get_engine_runtime_stats')).preparation.muted);
         results.missingPluginKeepsOriginalAndMute = true;
@@ -303,6 +346,7 @@ try {
     assert.equal((await bundle({ action: 'recovery_status' })).value, null);
     assert.equal(hash(readFileSync(originalPath)), results.originalSha256);
     results.restoreCompletedMuted = true;
+    if (extended) { assert.deepEqual((await invoke('live_output', { config: null })).config, extendedConfig); const mode = await invoke('live_modes', { request: { action: 'snapshot' } }); assert.equal(mode.target, 'singing'); assert(mode.definitions.profiles.singing.snapshot); results.splitModesAndLinkedVstRestored = true; }
     results.restoredPluginCount = stats.activePluginCount;
     await page.screenshot({ path: join(root, 'regular-restored.png') });
     phase('empty-source-launch');

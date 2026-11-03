@@ -29,7 +29,9 @@ test('未保存設定の退避範囲を確認し、開始失敗後も同じ画�
     await panel.getByRole('checkbox', { name: '対応する未保存設定を退避してから開始する' }).check();
     await expect(acknowledgement).not.toBeChecked();
     await expect(start).toBeDisabled();
-    await expect(panel).toContainText('プロセス入力・音楽用途・分離出力は未対応');
+    await expect(panel).toContainText('分離出力・歌／雑談モード・関連VSTも退避');
+    await expect(panel).toContainText('プロセス入力は標準の単独出力');
+    await expect(panel).toContainText('自動復帰しません');
     await acknowledgement.check();
     const audioBefore = await page.evaluate(() => localStorage.getItem('vst_host_audio_config'));
     await start.click();

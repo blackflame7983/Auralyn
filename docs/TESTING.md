@@ -524,3 +524,14 @@ CABLE Output入力、Voicemeeter Inputへの返しとCABLE Inputへの配信用�
 所有するテスト再生プロセスだけを使い、未使用のCABLE Inputを原音用に一時ミュートし、必ず元へ戻す。
 実UIで保存・差分・復帰し、PIDの非保存、終了したプロセスの拒否、再起動した同じアプリの明示再選択、用途の不一致を確認する。
 Stop・VST読込失敗・Host再起動後の手動復旧と、声／音楽の用途を分けて扱う。通常の再生アプリや物理マイクは操作しない。
+
+一時利用前の拡張退避は[共通契約](EXTENDED_TEMPORARY_RESTORE.md)に従う。
+`verify-unsaved-runtime-native.mjs`に`--split-modes`を付け、分離出力と関連VST付きの歌モードを退避し、通常設定の保持と明示復帰を確認する。
+この構成では仮想ケーブルの入出力を同時に使うため、ミュート解除のケースは実行しない。従来の単独出力のrunnerでは解除時の復帰拒否も確認する。
+`verify-output-configuration-native.mjs --process-input`には、音楽用途のプロセス入力を退避して一時利用へ移り、アプリを起動し直した後に通常設定側で明示再選択して復帰するケースを含める。
+runtime 1とruntime 2、原本schemaとの一致、機器IDの後編集、原本のSHA-256はRust試験でも確認する。
+両runnerに`--expect-cleanup`を付けると、通常設定へ戻った後の所有する一時領域の削除も必須条件にする。
+短いファイルロックは有限に再試行し、解放されなければ削除失敗を通知して残す。
+
+ブラウザテストは開始時に出力先を消すため、`playwright.config.ts`の`outputDir`を`test-results/browser-output`へ限定する。
+`test-results`直下や実Hostの試験環境を`--output`に指定しない。実Hostのログ・原本・バイナリはこの専用出力先の外に置く。
