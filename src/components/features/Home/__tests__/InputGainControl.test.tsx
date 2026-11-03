@@ -38,7 +38,7 @@ it('保存済みのマイク音量を表示し、変更を保存・反映して�
 });
 
 it('大型メーターなど外部からの同期では、値を反映しても通知を返さない', async () => {
-    vi.spyOn(audioApi, 'setInputGain').mockResolvedValue(undefined);
+    const set = vi.spyOn(audioApi, 'setInputGain').mockResolvedValue(undefined);
     render(<InputGainControl />);
     const events: number[] = [];
     const listener = (event: Event) => events.push((event as CustomEvent<number>).detail);
@@ -47,7 +47,31 @@ it('大型メーターなど外部からの同期では、値を反映しても�
     await act(async () => { vi.advanceTimersByTime(60); });
     expect(screen.getByRole('button', { name: 'マイク音量 120%' })).toBeInTheDocument();
     expect(events).toEqual([]);
+    expect(set).not.toHaveBeenCalled();
     window.removeEventListener('input-gain-sync', listener);
+});
+
+it('プロファイル復帰の同期は、送信待ちの古いスライダー変更を取り消しEngineへ再送しない', async () => {
+    const set = vi.spyOn(audioApi, 'setInputGain').mockResolvedValue(undefined);
+    render(<InputGainControl />);
+    act(() => screen.getByRole('button', { name: 'マイク音量 100%' }).click());
+    act(() => screen.getByRole('button', { name: 'set150' }).click());
+    localStorage.setItem('vst_host_input_gain', '70'); // 適用結果の同期元が保存済み。
+    act(() => { window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: 70 })); });
+    await act(async () => { vi.advanceTimersByTime(60); });
+    expect(screen.getByRole('button', { name: 'マイク音量 70%' })).toBeInTheDocument();
+    expect(set).not.toHaveBeenCalled();
+    expect(localStorage.getItem('vst_host_input_gain')).toBe('70');
+});
+
+it('同じ値の適用結果でも、別の構成変更として古い送信待ちを取り消す', async () => {
+    const set = vi.spyOn(audioApi, 'setInputGain').mockResolvedValue(undefined);
+    render(<InputGainControl />);
+    act(() => screen.getByRole('button', { name: 'マイク音量 100%' }).click());
+    act(() => screen.getByRole('button', { name: 'set150' }).click());
+    act(() => { window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: 150 })); });
+    await act(async () => { vi.advanceTimersByTime(60); });
+    expect(set).not.toHaveBeenCalled();
 });
 
 it('音量変更の失敗を保存せず、同じ値で再試行できる', async () => {

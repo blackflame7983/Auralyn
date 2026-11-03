@@ -26,6 +26,7 @@ export function InputGainControl({ disabled = false }: { disabled?: boolean }) {
         const saved = localStorage.getItem('vst_host_input_gain');
         return saved ? Number(saved) : 100;
     });
+    const publishing = useRef(false);
     const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(() => {
         mounted.current = true;
@@ -39,6 +40,9 @@ export function InputGainControl({ disabled = false }: { disabled?: boolean }) {
         setInputGain(gain);
         setFailed(false);
         if (debounce.current) clearTimeout(debounce.current);
+        // 適用結果や別の操作部品からの表示同期を、Engineへの再変更にしない。
+        // 保存は同期元／実際に変更した部品がACK後に行う。
+        if (fromExternal) { debounce.current = null; return; }
         debounce.current = setTimeout(async () => {
             try {
                 await audioApi.setInputGain(gain / 100);
@@ -48,17 +52,19 @@ export function InputGainControl({ disabled = false }: { disabled?: boolean }) {
             }
         }, 50);
         // 外部からの同期では再通知せず、往復を防ぐ。
-        if (!fromExternal) window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: gain }));
+        publishing.current = true;
+        try { window.dispatchEvent(new CustomEvent('input-gain-sync', { detail: gain })); }
+        finally { publishing.current = false; }
     };
 
     useEffect(() => {
         const handler = (e: Event) => {
             const pct = (e as CustomEvent<number>).detail;
-            if (pct !== inputGain) change([pct], true);
+            if (!publishing.current) change([pct], true);
         };
         window.addEventListener('input-gain-sync', handler);
         return () => window.removeEventListener('input-gain-sync', handler);
-    }, [inputGain]);
+    }, []);
 
     return <Popover.Root open={open} onOpenChange={setOpen}>
         <TooltipProvider delayDuration={300}><Tooltip><TooltipTrigger asChild><Popover.Trigger asChild>
