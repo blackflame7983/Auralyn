@@ -11,7 +11,7 @@ import { InfoPopover } from '@/components/ui/InfoPopover';
 export function DisplayPurposeSelector() {
     const t = useMessages();
     const [purpose, setPurpose] = useDisplayPurpose();
-    return <div className="mb-3 space-y-1 text-sm">
+    return <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
         <label className="flex items-center gap-3">{t('purpose.label')}
             <select value={purpose} onChange={event => setPurpose(event.target.value as DisplayPurpose)} aria-describedby="display-purpose-hint"
                 className="rounded border border-border bg-background px-2 py-1">
