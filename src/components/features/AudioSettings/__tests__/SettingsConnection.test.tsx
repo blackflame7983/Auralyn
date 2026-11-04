@@ -24,6 +24,52 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.mocked(invoke).mockReset(); });
 
+it('空の現在設定では自動選択を変更予定にせず、初回に開始する機器を示す', async () => {
+    localStorage.removeItem('vst_host_audio_config');
+    render(<AudioSettingsModal isOpen currentConfig={{ host: '' }} onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク入力' })).toHaveValue('Mic'));
+    expect(screen.queryByText(/^変更予定：/)).not.toBeInTheDocument();
+    expect(screen.getByText('初回設定：Wasapi・Mic → Headphonesで開始します')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存して開始' })).toBeEnabled();
+});
+
+it('画面側の設定が空でも保存済みの接続を明示復帰し、音声は開始しない', async () => {
+    localStorage.clear();
+    vi.spyOn(audioApi, 'getSavedAudioConfig').mockResolvedValue({ host: 'Wasapi', input: 'Mic', output: 'Headphones', sample_rate: 48000, buffer_size: 256 });
+    const start = vi.spyOn(audioApi, 'start');
+    function Parent() {
+        const [current, setCurrent] = useState<AudioPreferences>({ host: '' });
+        return <AudioSettingsModal isOpen currentConfig={current} onClose={vi.fn()} onConfigChange={config => {
+            localStorage.setItem('vst_host_audio_config', JSON.stringify(config));
+            setCurrent(config);
+        }} />;
+    }
+    render(<Parent />);
+    fireEvent.click(await screen.findByRole('button', { name: '保存済みの音声設定を読み込む' }));
+    await screen.findByText('保存済みの音声設定を読み込みました。内容を確認してから開始してください。');
+    expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).bufferSize).toBe(256);
+    expect(start).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '保存済みの音声設定を読み込む' })).not.toBeInTheDocument();
+});
+
+it('開始失敗では保存した選択を保持し、設定を開き直して直前の接続へ戻れる', async () => {
+    vi.spyOn(audioApi, 'getDevices').mockResolvedValue({ ...devices, inputs: [...devices.inputs, { ...devices.inputs[0], name: 'Failed microphone', index: 1 }] });
+    vi.spyOn(audioApi, 'start').mockRejectedValue(new Error('Device start rejected'));
+    const before = localStorage.getItem('vst_host_audio_config');
+    const changed = vi.fn();
+    const view = render(<AudioSettingsModal isOpen currentConfig={config} onClose={vi.fn()} onConfigChange={changed} />);
+    const input = await screen.findByRole('combobox', { name: 'マイク入力' });
+    await waitFor(() => expect(input).toHaveValue('Mic'));
+    fireEvent.change(input, { target: { value: 'Failed microphone' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    await screen.findByText(/Device start rejected/);
+    expect(changed).not.toHaveBeenCalled();
+    expect(localStorage.getItem('vst_host_audio_config')).toBe(before);
+    view.unmount();
+    render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={changed} />);
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク入力' })).toHaveValue('Mic'));
+});
+
 it.each(['channels', 'save'] as const)('システム再起動の%s失敗から接続画面で再試行してVST復元まで完了する', async stage => {
     const restart = vi.spyOn(audioApi, 'restart').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
     const start = vi.spyOn(audioApi, 'start');

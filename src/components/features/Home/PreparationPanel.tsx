@@ -1,12 +1,12 @@
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
-import { MdCast, MdExpandMore, MdMusicNote, MdSettings } from 'react-icons/md';
-import { DiscordIcon } from '@/components/ui/DiscordIcon';
+import { MdExpandMore } from 'react-icons/md';
+import { destinationChoices } from '@/lib/destinationChoices';
 import { cn } from '@/lib/utils';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
-import { confirmationState, nextPreparationStage, type Availability, type PreparationStage, type PreparationUse } from '@/lib/preparation';
+import { confirmationState, nextPreparationStage, type Availability, type PreparationStage } from '@/lib/preparation';
 import { StatusDot, type StatusTone } from '@/components/ui/StatusDot';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { receiverDeviceNotice } from '@/lib/audioRouting';
@@ -97,17 +97,11 @@ export function PreparationPanel({ homeActionInStrip = false, destinationRequest
     const pending = checking || confirming;
     // 送り先は4つだけなので、選択欄ではなくセットアップと同じアイコンのボタンで選ぶ（DESIGN.md 2.2）。
     // 中身は標準のラジオボタンにし、矢印キーでの移動と読み上げを保つ。
-    const destinations: [PreparationUse, MessageKey, ReactNode][] = [
-        ['obs', 'prep.obs', <MdCast aria-hidden="true" className="h-4 w-4 shrink-0" />],
-        ['discord', 'prep.call', <DiscordIcon aria-hidden="true" className="h-4 w-4 shrink-0" />],
-        ['other', 'prep.other', <MdSettings aria-hidden="true" className="h-4 w-4 shrink-0" />],
-        ['listening', 'prep.local', <MdMusicNote aria-hidden="true" className="h-4 w-4 shrink-0" />],
-    ];
     const usagePicker = <div ref={usageRef} role="radiogroup" aria-labelledby={`${stepsId}-usage`} className={cn('grid gap-2 sm:grid-cols-2', next === 'purpose' && 'rounded-lg ring-1 ring-primary/60 p-1')}>
-        {destinations.map(([value, label, icon]) => <label key={value} className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm has-[:checked]:border-selection has-[:checked]:bg-selection/15 has-[:checked]:text-selection has-[:checked]:font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary">
+        {destinationChoices.map(({ value, label, icon: Icon }) => <label key={value} className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm has-[:checked]:border-selection has-[:checked]:bg-selection/15 has-[:checked]:text-selection has-[:checked]:font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary">
             <input type="radio" name={`${stepsId}-usage-choice`} value={value} checked={context.usage === value} className="sr-only"
                 onChange={() => model.changeContext({ usage: value, receiver: '' })} />
-            {icon}<span className="min-w-0 truncate">{t(label)}</span>
+            <Icon aria-hidden="true" className="h-4 w-4 shrink-0" /><span className="min-w-0 truncate">{t(label)}</span>
         </label>)}
     </div>;
     // 問題がなく畳んでいる間は枠を付けず、状態の1行だけにしてホームの主役（本番帯と声の処理）を目立たせる。

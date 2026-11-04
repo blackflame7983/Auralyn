@@ -30,6 +30,8 @@ npm run tauri dev
 `tauri dev` のbeforeDevCommandはVite起動のみ。エンジン・スキャナーの変更後は `npm run rebuild-engine` で両方のdebug binaryをコピーし、アプリを再起動する。
 古いsidecarの動作を最新ソースの検証と誤認しない。
 
+MCPで実アプリを撮影・操作する場合は、通常起動ではなくデバッグ用設定を指定する。通常の `tauri dev` は意図的にグローバルTauri APIを公開しない。起動・接続確認・操作の手順は [TESTING.md](TESTING.md#tauri-mcp-による実アプリの確認) を参照する。
+
 ## 検証
 
 ```powershell

@@ -24,12 +24,7 @@ use std::thread;
 use tauri::{AppHandle, Emitter};
 
 fn persist_audio_config(path: &std::path::Path, config: &ActiveAudioConfig) -> Result<()> {
-    let dir = path
-        .parent()
-        .ok_or_else(|| anyhow!("設定保存先がありません"))?;
-    std::fs::create_dir_all(dir)?;
-    std::fs::write(path, serde_json::to_string_pretty(config)?)?;
-    Ok(())
+    crate::migration::write_json(path, config).map_err(anyhow::Error::msg)
 }
 
 #[cfg(windows)]
@@ -2646,6 +2641,19 @@ impl AudioHost {
                     revision: w.revision().to_string(),
                     epoch: w.engine_epoch().to_string(),
                 }),
+        }
+    }
+
+    // 同じ配布形式の保存先だけを読む。復帰操作から呼び、音声開始や別保存先への代替はしない。
+    pub fn read_saved_audio_config(&self) -> Result<Option<ActiveAudioConfig>> {
+        match std::fs::read(&self.last_config_path) {
+            Ok(bytes) => {
+                let config: ActiveAudioConfig = serde_json::from_slice(&bytes)?;
+                anyhow::ensure!(!config.host.trim().is_empty(), "保存済み接続方式が空です");
+                Ok(Some(config))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.into()),
         }
     }
 }

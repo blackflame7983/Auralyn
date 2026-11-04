@@ -68,6 +68,30 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('セットアップの接続チェック', () => {
+    it('送り先は共通の順序で表示し、保存済み music は自分で聴くとして扱う', async () => {
+        localStorage.setItem('vst_host_setup_goal', 'music');
+        await openWizard();
+        const choices = ['OBSで配信', '通話（Discordなど）', '自分で聴く', 'その他のアプリ'].map(name => screen.getByRole('button', { name }));
+        expect(choices.slice(0, -1).every((node, index) => Boolean(node.compareDocumentPosition(choices[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+        expect(choices[2]).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(choices[2]);
+        expect(screen.getByRole('radio', { name: 'PC の音' })).toBeChecked();
+        expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
+        expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
+    });
+    it('入力がない場合は次へを無効にし、音の元に応じた理由を表示する', async () => {
+        inputs = [];
+        await openWizard();
+        fireEvent.click(screen.getByRole('button', { name: '自分で聴く' }));
+        await screen.findByText('マイクを選ぶと次へ進めます');
+        const next = screen.getByRole('button', { name: /次へ/ });
+        expect(next).toBeDisabled();
+        expect(next).toHaveAccessibleDescription('マイクを選ぶと次へ進めます');
+        fireEvent.click(screen.getByRole('radio', { name: 'PC の音' }));
+        expect(next).toHaveAccessibleDescription('PC の音の入力を選ぶと次へ進めます');
+        expect(next).toHaveClass('disabled:bg-muted', 'disabled:text-muted-foreground');
+    });
+
     it('保存後にキーボードでボイスチェック（ボイスチェック）を開き、自動録音しない', async () => {
         const onClose = vi.fn();
         const onOpenVoiceCheck = vi.fn();
@@ -590,7 +614,8 @@ describe('PC audio purpose', () => {
     const fx = { active: true, preset: 'singing', amount: 0.7, singing: { lowCutHz: 80, dynamics: 0.4, brightnessDb: 2 }, reverb: { enabled: true, mix: 0.2, decaySeconds: 1, damping: 0.4 } };
     const snapshot = { epoch: 'epoch', revision: '1', appliedRevision: '1', config: fx, pending: false, undoToken: null, error: null };
     const chooseMusic = async () => {
-        fireEvent.click(await screen.findByRole('button', { name: /PCの音にエフェクト/ }));
+        fireEvent.click(await screen.findByRole('button', { name: '自分で聴く' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'PC の音' }));
         await screen.findByRole('combobox', { name: 'PCの音の入力を選択' });
     };
     const toConfirm = async () => {

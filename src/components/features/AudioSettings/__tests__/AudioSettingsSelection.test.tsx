@@ -88,11 +88,11 @@ it.each(['周囲の音を測定', 'ノイズ低減の詳細'])('測定の詳細�
 
 it('未保存で閉じて再表示してもキャッシュからホストとデバイスを選択する', async () => {
     const first = openSettings();
-    await screen.findByRole('option', { name: 'ASIO device' });
+    await screen.findByRole('option', { name: 'USB mic' });
     first.unmount();
     openSettings();
-    await waitFor(() => expect(hostSelect()).toHaveValue('ASIO'));
-    expect(screen.getByRole('option', { name: 'ASIO device' })).toBeInTheDocument();
+    await waitFor(() => expect(hostSelect()).toHaveValue('Wasapi'));
+    expect(screen.getByRole('option', { name: 'USB mic' })).toBeInTheDocument();
     expect(screen.queryByText('対応デバイスなし')).not.toBeInTheDocument();
     expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'get_audio_devices')).toHaveLength(1);
 });
@@ -124,11 +124,11 @@ it('消えた保存ホストを使用可能なホストへ置き換え、手動�
     localStorage.setItem('vst_host_cached_devices', JSON.stringify(devices));
     localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'Removed driver' }));
     openSettings();
-    await waitFor(() => expect(hostSelect()).toHaveValue('ASIO'));
-    expect(screen.getByRole('option', { name: 'ASIO device' })).toBeInTheDocument();
-    // 手動切替も引き続き有効であることを確認する。
-    fireEvent.change(hostSelect(), { target: { value: 'Wasapi' } });
+    await waitFor(() => expect(hostSelect()).toHaveValue('Wasapi'));
     expect(screen.getByRole('option', { name: 'USB mic' })).toBeInTheDocument();
+    // 手動切替も引き続き有効であることを確認する。
+    fireEvent.change(hostSelect(), { target: { value: 'ASIO' } });
+    expect(screen.getByRole('option', { name: 'ASIO device' })).toBeInTheDocument();
 });
 
 it('処理設定の取得前は音づくりを変更しない', async () => {

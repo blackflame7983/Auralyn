@@ -1,6 +1,20 @@
 import type { Locale } from './locale';
 
 const ja = {
+    "wizard.source": "音の元",
+    "wizard.sourceMic": "マイク",
+    "wizard.sourcePc": "PC の音",
+    "wizard.selectMicToContinue": "マイクを選ぶと次へ進めます",
+    "wizard.selectPcToContinue": "PC の音の入力を選ぶと次へ進めます",
+    "wizard.loadingInputs": "入力を読み込んでいます",
+    "wizard.listeningHint": "マイクやPCの音を、自分の機器で聴きます。",
+    "settings.connection.firstStart": "初回設定：{host}・{input} → {output}で開始します",
+    "settings.connection.firstStartHint": "入力元と出力先を選ぶと、この内容を保存して開始できます。",
+    "settings.connection.restoreSaved": "保存済みの音声設定を読み込む",
+    "settings.connection.restoreHint": "画面の設定が空でも、このアプリに残る音声設定を読み込めます。読み込みだけでは音声を開始しません。",
+    "settings.connection.noSaved": "この保存先に音声設定はありません。入力元と出力先を選んでください。",
+    "settings.connection.restored": "保存済みの音声設定を読み込みました。内容を確認してから開始してください。",
+    "settings.connection.restoreFailed": "保存済みの音声設定を読み込めませんでした。入力元と出力先を選び直してください。",
     "bundle.device.unknown": "不明な機器（{role}）",
     "bundle.device.role.accompanimentInput": "オケ入力",
     "bundle.device.role.originalOutput": "原音の出力先",
@@ -3088,6 +3102,20 @@ const ja = {
 } as const;
 export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
+    "wizard.source": "Audio source",
+    "wizard.sourceMic": "Microphone",
+    "wizard.sourcePc": "PC audio",
+    "wizard.selectMicToContinue": "Select a microphone to continue",
+    "wizard.selectPcToContinue": "Select the PC audio input to continue",
+    "wizard.loadingInputs": "Loading inputs",
+    "wizard.listeningHint": "Listen to microphone or PC audio on your own device.",
+    "settings.connection.firstStart": "First setup: start with {host} · {input} → {output}",
+    "settings.connection.firstStartHint": "Choose the input and output to save these settings and start audio.",
+    "settings.connection.restoreSaved": "Load saved audio settings",
+    "settings.connection.restoreHint": "If this screen has no settings, load the audio settings kept by this app. Loading does not start audio.",
+    "settings.connection.noSaved": "No audio settings exist in this storage location. Choose an input and output.",
+    "settings.connection.restored": "Saved audio settings loaded. Review them before starting audio.",
+    "settings.connection.restoreFailed": "Could not load saved audio settings. Choose an input and output again.",
     "bundle.device.unknown": "Unknown device ({role})",
     "bundle.device.role.accompanimentInput": "accompaniment input",
     "bundle.device.role.originalOutput": "original audio output",

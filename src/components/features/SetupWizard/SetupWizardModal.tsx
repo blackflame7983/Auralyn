@@ -9,9 +9,9 @@ import { Modal } from '../../ui/modal';
 import { AudioFlow } from '../../ui/AudioFlow';
 import { InfoPopover } from '../../ui/InfoPopover';
 import React, { useEffect, useRef } from 'react';
-import { DiscordIcon } from '../../ui/DiscordIcon';
+import { destinationChoices } from '@/lib/destinationChoices';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
-import { MdCheckCircle, MdVolumeUp, MdSettings, MdCast, MdHeadphones, MdMusicNote, MdHearing, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
+import { MdCheckCircle, MdVolumeUp, MdCast, MdHearing, MdHeadphones, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
 import { invoke } from '@tauri-apps/api/core';
 import { ConnectionCheck } from './ConnectionCheck';
 import { MicrophonePermissionGuide } from '../AudioSettings/MicrophonePermissionGuide';
@@ -43,7 +43,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     return (
         <Modal title={t('wizard.title')} onClose={handleCloseRequest} dismissible={!isBusy && !isCheckingConnection}>
         <div className="modal-overlay-base">
-            <div ref={surfaceRef} className="modal-surface-base w-full max-w-3xl flex flex-col max-h-[90vh]">
+            <div ref={surfaceRef} className="modal-surface-base w-full max-w-3xl flex flex-col max-h-full">
 
                 <div className="modal-header-base shrink-0 pr-16 py-3"><p className="font-bold">{t('wizard.title')}</p></div>
                 {/* Close Button */}
@@ -134,46 +134,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
-                                <SelectionCard compact
-                                    onClick={() => selectGoal('obs')}
-                                    icon={<MdCast className="w-5 h-5 text-primary" />}
-                                    title={t('wizard.obs')}
-                                    description={t('wizard.obsHint')}
-                                    active={(config.goal ?? savedGoal) === 'obs'}
-                                    color="blue"
-                                />
-                                <SelectionCard compact
-                                    onClick={() => selectGoal('discord')}
-                                    icon={<DiscordIcon className="w-5 h-5 text-primary" />}
-                                    title={t('wizard.chat')}
-                                    description={t('wizard.chatHint')}
-                                    active={(config.goal ?? savedGoal) === 'discord'}
-                                    color="indigo"
-                                />
-                                <SelectionCard compact
-                                    onClick={() => selectGoal('listening')}
-                                    icon={<MdHearing className="w-5 h-5 text-primary" />}
-                                    title={t('wizard.music')}
-                                    description={t('wizard.musicHint')}
-                                    active={(config.goal ?? savedGoal) === 'listening'}
-                                    color="pink"
-                                />
-                                <SelectionCard compact
-                                    onClick={() => selectGoal('music')}
-                                    icon={<MdMusicNote className="w-5 h-5 text-primary" />}
-                                    title={t('wizard.musicGoal')}
-                                    description={t('wizard.musicGoalHint')}
-                                    active={(config.goal ?? savedGoal) === 'music'}
-                                    color="pink"
-                                />
-                                <SelectionCard compact
-                                    onClick={() => selectGoal('other')}
-                                    icon={<MdSettings className="w-5 h-5 text-primary" />}
-                                    title={t('wizard.manual')}
-                                    description={t('guide.copy.181')}
-                                    active={(config.goal ?? savedGoal) === 'other'}
-                                    color="emerald"
-                                />
+                                {destinationChoices.map(({ value, label, icon: Icon, hint }) => <SelectionCard compact
+                                    key={value}
+                                    onClick={() => selectGoal(value === 'listening' && (config.goal ?? savedGoal) === 'music' ? 'music' : value)}
+                                    icon={<Icon aria-hidden="true" className="w-5 h-5 text-primary" />}
+                                    title={t(label)}
+                                    description={t(hint)}
+                                    active={(config.goal ?? savedGoal) === value || (value === 'listening' && (config.goal ?? savedGoal) === 'music')}
+                                />)}
                             </div>
                         </div>
                     )}
@@ -189,7 +157,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             </div>
 
                             <div className="max-w-md mx-auto space-y-4">
-                                {config.goal === 'music' ? <p className="text-sm text-muted-foreground">{t('wizard.musicRoute')}</p> : <MicrophonePermissionGuide expanded={/アクセス.*拒否|0x80070005|access.*denied/i.test(audioStartError)} />}
+                                {(config.goal === 'listening' || config.goal === 'music') && <fieldset className="space-y-2">
+                                    <legend className="text-sm font-medium">{t('wizard.source')}</legend>
+                                    <div className="flex gap-4 text-sm">
+                                        <label className="flex items-center gap-2"><input type="radio" name="wizard-source" checked={config.goal === 'listening'} onChange={() => selectGoal('listening')} />{t('wizard.sourceMic')}</label>
+                                        <label className="flex items-center gap-2"><input type="radio" name="wizard-source" checked={config.goal === 'music'} onChange={() => selectGoal('music')} />{t('wizard.sourcePc')}</label>
+                                    </div>
+                                </fieldset>}
+                                {config.goal === 'music' && <p className="text-sm text-muted-foreground">{t('wizard.musicRoute')}</p>}
                                 {isLoadingDevices ? (
                                     <div className="py-8 text-center text-muted-foreground animate-pulse">{t('guide.copy.186')}</div>
                                 ) : (
@@ -214,6 +189,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                             </select>
                                         </div>
 
+                                        {config.goal !== 'music' && <MicrophonePermissionGuide expanded={/アクセス.*拒否|0x80070005|access.*denied/i.test(audioStartError)} />}
                                         {config.goal !== 'music' && config.input && (config.input.name === runningInput
                                             ? <div className="space-y-1">
                                                 <InputLevelBar label={t('wizard.level')} />
@@ -372,7 +348,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 unknownLabel={t('flow.unknown')}
                                 input={{ label: t('home.input'), value: config.input ? deviceDisplayName(config.input.name) : undefined }}
                                 output={{ label: t('home.output'), value: config.output ? deviceDisplayName(config.output.name) : undefined }}
-                                receiver={{ label: t('wizard.purpose'), value: t(config.goal === 'obs' ? 'wizard.obs' : config.goal === 'discord' ? 'wizard.chat' : config.goal === 'music' ? 'wizard.musicGoal' : config.goal === 'listening' ? 'wizard.music' : 'wizard.manual') }}
+                                receiver={{ label: t('wizard.purpose'), value: t(config.goal === 'obs' ? 'wizard.obs' : config.goal === 'discord' ? 'wizard.chat' : config.goal === 'music' ? 'prep.local' : config.goal === 'listening' ? 'prep.local' : 'wizard.manual') }}
                             />
 
                             {config.goal !== 'music' && <div className="flex flex-col items-center gap-3">
@@ -487,15 +463,19 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                         <button type="button" disabled={isBusy} onClick={() => void performClose(() => (onSkip || onClose)())} className={buttonVariants({ variant: 'ghost' })}>{t('wizard.skip')}</button>
                     )}
                     {state === 'input_selection' && (<>
+                            <div className="flex flex-col items-center gap-2">
+                            {(!config.input || isLoadingDevices) && <p id="wizard-input-reason" className="text-sm text-muted-foreground">{t(isLoadingDevices ? 'wizard.loadingInputs' : config.goal === 'music' ? 'wizard.selectPcToContinue' : 'wizard.selectMicToContinue')}</p>}
                             <div className="flex justify-center gap-4">
                                 <button onClick={() => setState('usage_selection')} className="px-6 py-2 text-muted-foreground hover:text-foreground">{t('common.back')}</button>
                                 <button
                                     onClick={confirmInput}
                                     disabled={!config.input || isLoadingDevices}
-                                    className={buttonVariants({ className: "gap-2" })}
+                                    aria-describedby={!config.input || isLoadingDevices ? 'wizard-input-reason' : undefined}
+                                    className={buttonVariants({ className: "gap-2 disabled:opacity-100 disabled:border disabled:border-border disabled:bg-muted disabled:text-muted-foreground" })}
                                 >
                                     {t('common.next')} <MdArrowForward />
                                 </button>
+                            </div>
                             </div>
                     </>)}
                     {state === 'output_selection' && (<>
@@ -550,7 +530,7 @@ interface SelectionCardProps {
     title: string;
     description: string;
     active: boolean;
-    color: string;
+    color?: string;
     children?: React.ReactNode;
     compact?: boolean;
 }

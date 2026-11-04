@@ -33,6 +33,7 @@ import { ShortcutsPanel } from './ShortcutsPanel';
 import { AuroraDisplaySwitch, DisplayPurposeSelector, NumericDetailsSwitch } from './DisplayPurposeSelector';
 import { REVIEW_KEY } from '@/api/migration';
 import { readAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
+import { audioApi } from '@/api/audio';
 import { segmentButtonClass } from '@/components/ui/segment';
 import { audioDeviceKey, useAudioDeviceSelection } from './useAudioDeviceSelection';
 import { ConnectionApplyError, useAudioConnectionController } from './useAudioConnectionController';
@@ -123,23 +124,53 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     currentChannels: currentInputChannels ?? storedConfig?.inputChannels,
     currentOutputRouting: storedConfig?.outputRouting ?? (storedConfig ? { mode: 'legacy' } : undefined), onConfigChange });
   const loading = isApplying || devicesLoading;
+  type ConnectionField = 'source' | 'host' | 'input' | 'output' | 'buffer' | 'rate' | 'channels' | 'routing';
+  const [editedFields, setEditedFields] = useState<ReadonlySet<ConnectionField>>(new Set());
+  const editConnection = (...fields: ConnectionField[]) => setEditedFields(previous => new Set([...previous, ...fields]));
+  useEffect(() => { if (isOpen) setEditedFields(new Set()); }, [isOpen]);
   const savedConnection = useMemo(() => {
-    const saved = currentConfig ?? readAudioPreferences();
-    return saved ? { ...saved, sampleRate: currentSampleRate ?? saved.sampleRate,
+    const saved = currentConfig?.host ? currentConfig : readAudioPreferences();
+    return saved?.host ? { ...saved, sampleRate: currentSampleRate ?? saved.sampleRate,
       bufferSize: currentBufferSize ?? saved.bufferSize } : null;
   }, [isOpen, currentConfig, currentSampleRate, currentBufferSize]);
-  const changedFields = !savedConnection ? [t('settings.connection.new')] : [
-    JSON.stringify(inputSource.source) !== JSON.stringify(savedConnection.inputSource ?? deviceInput()) && t('processInput.changed'),
-    processInput && inputSource.candidateId && t('processInput.appChanged'),
-    selectedHost.toLowerCase() !== savedConnection.host.toLowerCase() && t('settings.AudioSettingsModal.032'),
-    !processInput && (selectedInput !== (savedConnection.input ?? '') || (savedConnection.inputId && selectedInputDevice?.id !== savedConnection.inputId)) && t('settings.AudioSettingsModal.038'),
-    ((isAsio ? selectedInput : selectedOutput) !== (savedConnection.output ?? '') || (savedConnection.outputId && selectedOutputDevice?.id !== savedConnection.outputId)) && t('settings.AudioSettingsModal.041'),
-    selectedBufferSize !== (savedConnection.bufferSize ?? 512) && t('settings.AudioSettingsModal.047'),
-    selectedSampleRate !== (savedConnection.sampleRate ?? 48000) && t('settings.AudioSettingsModal.060'),
-    (isAsio && connection.channels.some((channel, index) => channel !== (savedConnection.inputChannels ?? currentInputChannels ?? [0, 1])[index])) && t('settings.InputChannelSelector.205'),
-    (isAsio && JSON.stringify(connection.outputRouting) !== JSON.stringify(savedConnection.outputRouting ?? { mode: 'legacy' })) && t('settings.routing.title'),
+  const changedFields = !savedConnection ? [] : [
+    editedFields.has('source') && JSON.stringify(inputSource.source) !== JSON.stringify(savedConnection.inputSource ?? deviceInput()) && t('processInput.changed'),
+    editedFields.has('source') && processInput && inputSource.candidateId && t('processInput.appChanged'),
+    editedFields.has('host') && selectedHost.toLowerCase() !== savedConnection.host.toLowerCase() && t('settings.AudioSettingsModal.032'),
+    editedFields.has('input') && !processInput && (selectedInput !== (savedConnection.input ?? '') || (savedConnection.inputId && selectedInputDevice?.id !== savedConnection.inputId)) && t('settings.AudioSettingsModal.038'),
+    editedFields.has('output') && ((isAsio ? selectedInput : selectedOutput) !== (savedConnection.output ?? '') || (savedConnection.outputId && selectedOutputDevice?.id !== savedConnection.outputId)) && t('settings.AudioSettingsModal.041'),
+    editedFields.has('buffer') && selectedBufferSize !== (savedConnection.bufferSize ?? 512) && t('settings.AudioSettingsModal.047'),
+    editedFields.has('rate') && selectedSampleRate !== (savedConnection.sampleRate ?? 48000) && t('settings.AudioSettingsModal.060'),
+    editedFields.has('channels') && (isAsio && connection.channels.some((channel, index) => channel !== (savedConnection.inputChannels ?? currentInputChannels ?? [0, 1])[index])) && t('settings.InputChannelSelector.205'),
+    editedFields.has('routing') && (isAsio && JSON.stringify(connection.outputRouting) !== JSON.stringify(savedConnection.outputRouting ?? { mode: 'legacy' })) && t('settings.routing.title'),
   ].filter((value): value is string => typeof value === 'string');
-  const hasConnectionChanges = changedFields.length > 0;
+  const hasConnectionChanges = !savedConnection || changedFields.length > 0;
+  const [restoreNotice, setRestoreNotice] = useState('');
+  const restoreSavedConnection = async () => {
+    if (isApplying) return;
+    setLoading(true); setRestoreNotice('');
+    try {
+      const saved = await audioApi.getSavedAudioConfig();
+      if (!saved) { setRestoreNotice(t('settings.connection.noSaved')); return; }
+      const source = saved.input_source === undefined ? deviceInput() : readInputSource(saved.input_source);
+      const routing = saved.routing?.outputRouting;
+      if (!source || (routing && !readOutputRouting(routing))) throw new Error('Invalid saved connection');
+      const restored: AudioPreferences = { host: saved.host, input: saved.input ?? undefined, output: saved.output ?? undefined,
+        inputId: saved.input_id, outputId: saved.output_id, inputSource: source,
+        sampleRate: saved.sample_rate ?? 48000, bufferSize: saved.buffer_size ?? 512,
+        inputChannels: saved.routing?.inputChannels, outputRouting: routing ?? { mode: 'legacy' } };
+      // 保存済み選択の復帰だけを通知する。音声開始済みの通知やStartは送らない。
+      await onConfigChange(restored);
+      setInputSource({ source }); setNeedsDeviceChoice(false);
+      setSelectedSampleRate(restored.sampleRate!); setSelectedBufferSize(restored.bufferSize!);
+      connection.setRoutingForDevice(`${saved.host}\u0000${saved.input_id ?? saved.input ?? ''}`, {
+        inputChannels: restored.inputChannels, outputRouting: restored.outputRouting! });
+      await fetchDevices(false);
+      setEditedFields(new Set());
+      setRestoreNotice(t('settings.connection.restored'));
+    } catch { setRestoreNotice(t('settings.connection.restoreFailed')); }
+    finally { setLoading(false); }
+  };
 
   // Simple/Advanced Mode
   const [isAdvancedMode, setIsAdvancedMode] = useState(() => {
@@ -342,6 +373,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (p) {
       const source = p.inputSource === undefined ? deviceInput() : readInputSource(p.inputSource);
       if (!source) { setError(t('processInput.presetUnsupported')); return; }
+      editConnection('source', 'host', 'input', 'output', 'buffer', 'rate', 'channels', 'routing');
       setInputSource({ source });
       setNeedsDeviceChoice(!p.inputId && !p.input && source.kind === 'device');
       setPresetName(name);
@@ -433,9 +465,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
             ) : (
               <div className="space-y-6">
-
-
+                {!savedConnection && <div className="space-y-2">
+                  <button type="button" onClick={() => void restoreSavedConnection()} disabled={isApplying} className="rounded-md border border-border px-3 py-2 text-ui-control disabled:opacity-50">{t('settings.connection.restoreSaved')}</button>
+                  <p className="text-ui-support text-muted-foreground">{t('settings.connection.restoreHint')}</p>
+                </div>}
+                {restoreNotice && <p role="status" className="text-ui-support text-muted-foreground">{restoreNotice}</p>}
                 <div id="primary-input-settings" tabIndex={-1}><ProcessInputPanel value={inputSource} onChange={next => {
+                  editConnection('source');
                   if (processInput && next.source.kind === 'device') setNeedsDeviceChoice(true);
                   setInputSource(next);
                 }} disabled={isApplying} isAsio={isAsio} status={engineStats?.processInput} /></div>
@@ -447,7 +483,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <select
                     aria-label={t('settings.AudioSettingsModal.039')}
                     value={needsDeviceChoice ? '' : selectedInputKey}
-                    onChange={(e) => { setSelectedInputKey(e.target.value); setNeedsDeviceChoice(!e.target.value); }}
+                    onChange={(e) => { editConnection('input'); setSelectedInputKey(e.target.value); setNeedsDeviceChoice(!e.target.value); }}
                     disabled={filteredInputs.length === 0}
                     className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select disabled:opacity-50 text-ui-control"
                   >
@@ -456,6 +492,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       <option key={`${audioDeviceKey(device)}-${i}`} value={audioDeviceKey(device)} disabled={!device.id && filteredInputs.filter(item => item.name === device.name).length > 1}>{device.name}{filteredInputs.filter(item => item.name === device.name).length > 1 && device.id ? ` (${device.id})` : ''}</option>
                     ))}
                   </select>
+                  {isAsio && <p className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.044')}</p>}
+                  <MicrophonePermissionGuide />
                 </div>
 
                 }
@@ -467,10 +505,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       initialChannels={connection.channels}
                       maxChannels={selectedInputDevice?.channels ?? 0}
                       monitorEnabled={connection.monitorInput}
-                      onChannelMapped={connection.setChannels}
+                      onChannelMapped={channels => { editConnection('channels'); connection.setChannels(channels); }}
                     />
                     <OutputChannelSelector value={connection.outputRouting} maxChannels={selectedOutputDevice?.channels ?? 0}
-                      disabled={isApplying} onChange={connection.setOutputRouting} />
+                      disabled={isApplying} onChange={routing => { editConnection('routing'); connection.setOutputRouting(routing); }} />
                   </div>
                 )}
 
@@ -481,7 +519,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <select
                     aria-label={t('settings.AudioSettingsModal.042')}
                       value={selectedOutputKey}
-                      onChange={(e) => setSelectedOutputKey(e.target.value)}
+                      onChange={(e) => { editConnection('output'); setSelectedOutputKey(e.target.value); }}
                       disabled={filteredOutputs.length === 0}
                       className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select disabled:opacity-50 text-ui-control"
                     >
@@ -494,11 +532,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 )}
 
                 {processInput && <p className="text-ui-support text-muted-foreground">{t('processInput.outputHelp')}</p>}
-                {isAsio && (
-                  <div className="text-ui-support text-muted-foreground mt-2 p-2 bg-muted rounded border border-border">
-                    <p>{t('settings.AudioSettingsModal.044')}</p>
-                  </div>
-                )}
 
               </div>
             )}
@@ -542,7 +575,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <select
                     aria-label={t('settings.AudioSettingsModal.035')}
                     value={selectedHost}
-                    onChange={(e) => setSelectedHost(e.target.value)}
+                    onChange={(e) => { editConnection('host'); setSelectedHost(e.target.value); }}
                     className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select text-ui-control"
                   >
                     {!selectedHost && <option value="">{t('settings.AudioSettingsModal.036')}</option>}
@@ -589,7 +622,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                               key={profile.value}
                               type="button"
                               aria-pressed={selectedBufferSize === profile.value}
-                              onClick={() => setSelectedBufferSize(profile.value)}
+                              onClick={() => { editConnection('buffer'); setSelectedBufferSize(profile.value); }}
                               disabled={disabled}
                               className={`${`
                                         flex flex-col items-center justify-center p-2 rounded-lg border transition-colors
@@ -626,7 +659,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                           <button
                             type="button" aria-pressed={selectedSampleRate === profile.value}
                             key={profile.value}
-                            onClick={() => setSelectedSampleRate(profile.value)}
+                            onClick={() => { editConnection('rate'); setSelectedSampleRate(profile.value); }}
                             className={`${`
                                         flex flex-col items-center justify-center p-2 rounded-lg border transition-colors
                                         ${selectedSampleRate === profile.value
@@ -652,7 +685,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         <select
                     aria-label={t('settings.AudioSettingsModal.066')}
                           value={selectedBufferSize}
-                          onChange={(e) => setSelectedBufferSize(Number(e.target.value))}
+                          onChange={(e) => { editConnection('buffer'); setSelectedBufferSize(Number(e.target.value)); }}
                           className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select text-ui-control"
                         >
                           {supportedBufferSizes.map(size => (
@@ -674,7 +707,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       <select
                     aria-label={t('master.rate')}
                         value={selectedSampleRate}
-                        onChange={(e) => setSelectedSampleRate(Number(e.target.value))}
+                        onChange={(e) => { editConnection('rate'); setSelectedSampleRate(Number(e.target.value)); }}
                         className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select text-ui-control"
                       >
                         {sampleRates.options.map(({ rate, supported }) => (
@@ -788,7 +821,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <summary className="cursor-pointer font-semibold">{t('structure.monitor')}</summary>
               <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await system.refreshEngineRuntimeStats(); }} />
             </details>
-            {!error && <MicrophonePermissionGuide />}
           </TabsContent>
 
           <SoundSettings model={sound} engineStats={engineStats} singingModel={singingModel} liveModel={providedLive ?? localLive}
@@ -876,7 +908,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-2 flex items-center justify-end gap-3">
             {/* 稼働中の保存は再起動になり、音が途切れることを押す前に示す。 */}
             <div className="min-w-0 space-y-1 text-ui-support text-muted-foreground" id="settings-connection-changes">
-              <p>{allowConnectionRetry || connectionRetry ? t('settings.connection.retry') : hasConnectionChanges ? t('settings.connection.changes', { fields: changedFields.join('、') }) : t('settings.connection.unchanged')}</p>
+              <p>{allowConnectionRetry || connectionRetry ? t('settings.connection.retry') : !savedConnection
+                ? inputReady && selectedOutputDevice ? t('settings.connection.firstStart', { host: selectedHost, input: processInput ? inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : '' : selectedInput, output: selectedOutputDevice.name }) : t('settings.connection.firstStartHint')
+                : changedFields.length ? t('settings.connection.changes', { fields: changedFields.join('、') }) : t('settings.connection.unchanged')}</p>
               {streamRunning && <p id="settings-save-restart">{t('settings.saveRestartHint')}</p>}
             </div>
             <button onClick={handleSave} disabled={loading || !inputReady || !selectedOutputDevice || !canSaveConnection || (reviewRequired && !migrationConfirmed)}

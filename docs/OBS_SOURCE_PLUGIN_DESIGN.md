@@ -1,6 +1,12 @@
 # OBSソースプラグインの設計案（#223）
 
-2026-11-02。設計の合意前であり、本体・プラグイン・配布物は未実装。仮想ケーブル不要という製品表示はまだ行わない。方針は [優先順位の見直し](STRATEGY_REVISION_2026-11.md)、配布の正本は [ソース配布](../SOURCE-DISTRIBUTION.md)と [リリース計画](RELEASE_PLAN.md)。
+## 現状（2026-11-04）
+
+- 本体の送信機能は `codex/obs223-production-readiness-20261103` などの未マージブランチに試作がある。main およびこの文書の更新時点の作業ブランチには入っておらず、公開済み通常版で利用できるとは扱わない。
+- 受信側は別リポジトリ [Auralyn-OBS](https://github.com/blackflame7983/Auralyn-OBS) に実装されている。Windows x64・OBS Studio 32.2.2専用の試作で、ソース名は「Auralyn PCM（試作）」。実機検証の条件と残件は同リポジトリの [README](https://github.com/blackflame7983/Auralyn-OBS/blob/main/README.md) と [配布準備](https://github.com/blackflame7983/Auralyn-OBS/blob/main/docs/DISTRIBUTION_READINESS.md) を参照する。
+- [公開Release](https://github.com/blackflame7983/Auralyn-OBS/releases)・インストーラーはまだない。配布の準備と実機・聴感等の受入は継続中で、仮想ケーブル不要という製品表示はまだ行わない。
+
+以下は2026-11-02時点の設計案であり、実装・対応版・検証結果の正本ではない。試作では通信方式、rate、補間方式やライセンスなどがこの案と異なる。現行の詳細は上記リポジトリと本体の該当ブランチを確認する。方針は [優先順位の見直し](STRATEGY_REVISION_2026-11.md)、本体の配布条件は [ソース配布](../SOURCE-DISTRIBUTION.md)と [リリース計画](RELEASE_PLAN.md)。
 
 ## 構成と責任
 
@@ -57,9 +63,9 @@ pluginは独立したversion、source commit、binary ZIP、source ZIP、SHA-256
 
 ## OBSの対象版
 
-初期の対応予定はOBS Studio **33.0.0/33.0.1、Windows x64**。2026-11-02に公式の [33.0.1 release](https://github.com/obsproject/obs-studio/releases/tag/33.0.1) を確認した。33.0系で第三者pluginの配置規則が更新されているため、旧配置を前提にせず公式の現行配置を使う。buildは33.0.0のSDK/headersに固定し、33.0.1でもload/音声/終了を確認する計画とする。現在インストール済みOBSを変更していない。
+当初案はOBS Studio **33.0.0/33.0.1、Windows x64** だったが、現行試作は上記のとおり32.2.2に限定される。33.0系への対応・動作を宣言するものではない。当初は [33.0.1 release](https://github.com/obsproject/obs-studio/releases/tag/33.0.1) と配置規則を調べ、33.0.0のSDK/headersでbuildし33.0.1も検証することを想定していた。
 
-32.x以前、次のmajor、ARM64/macOS/Linuxは初期対応へ含めない。minor/patch更新では起動・ソース保存/再表示・停止/再接続・rate変更・1時間clock試験を再実施し、major更新ではABI/loader/配置/source APIを再調査する。「対象版」は実機合格後にのみ製品の対応表へ載せる。
+32.2.2以外の版、ARM64/macOS/Linuxへの対応は宣言しない。minor/patch更新では起動・ソース保存/再表示・停止/再接続・rate変更・1時間clock試験を再実施し、major更新ではABI/loader/配置/source APIを再調査する。「対象版」は実機合格後にのみ製品の対応表へ載せる。
 
 ## 合意後に行う検証と採用ゲート
 
@@ -72,4 +78,4 @@ pluginは独立したversion、source commit、binary ZIP、source ZIP、SHA-256
 | 経路維持 | OBS pluginと通話の既存仮想ケーブル、自分用分離monitor、歌枠の守る線 | plugin試験だけで他経路を合格にしない |
 | 配布 | clean source再build、source/binaryの対応、依存表記、配置・削除・OBS更新、MSIX本体との併用 | 設計文書の存在を配布成功とはしない |
 
-初回の試作は許諾済み/自作信号を使い、実配信は行わない。A-4（clock）、C-6（誤送出）、F-3（導入手数）、G-1（OBS連携）、H-4（配布条件）、D-1（RT維持）を測る。現行仮想ケーブルとの同一作業比較と、#219の回帰を揃えて採用を判断する。#223の試作・1時間の実機受入条件は未達のまま残す。
+試作は許諾済み/自作信号を使い、実配信と区別する。A-4（clock）、C-6（誤送出）、F-3（導入手数）、G-1（OBS連携）、H-4（配布条件）、D-1（RT維持）を測る。現行仮想ケーブルとの同一作業比較と、#219の回帰を揃えて採用を判断する。個別の実機試験は進んでいるが、一般配布の受入全体を合格としない。

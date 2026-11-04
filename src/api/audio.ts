@@ -188,6 +188,7 @@ export const audioApi = {
     getAudioState: async (): Promise<AudioStateInfo> => {
         return await invoke("get_audio_state");
     },
+    getSavedAudioConfig: async (): Promise<ActiveAudioConfig | null> => invoke('get_saved_audio_config'),
     getEngineTuningConfig: async (): Promise<EngineTuningConfig> => {
         return await invoke("get_engine_tuning_config");
     },

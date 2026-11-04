@@ -102,7 +102,7 @@ it('送り先は条件パネルの外の1か所で、アイコン付きのボタ
     const group = screen.getByRole('radiogroup', { name: message('ja', 'prep.usage') });
     expect(group.closest('details')).toBeNull();
     expect(screen.getAllByRole('radiogroup', { name: message('ja', 'prep.usage') })).toHaveLength(1);
-    expect(within(group).getAllByRole('radio').map(radio => radio.getAttribute('value'))).toEqual(['obs', 'discord', 'other', 'listening']);
+    expect(within(group).getAllByRole('radio').map(radio => radio.getAttribute('value'))).toEqual(['obs', 'discord', 'listening', 'other']);
     expect(within(group).getAllByRole('radio').some(radio => (radio as HTMLInputElement).checked)).toBe(false);
     expect(view.container.querySelector('details')).not.toHaveAttribute('open');
     const call = within(group).getByRole('radio', { name: message('ja', 'prep.call') });

@@ -54,10 +54,9 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
         const effectiveHost = hosts.find(host => host.toLowerCase() === requestedHost.toLowerCase()) ?? requestedHost;
 
         if (!effectiveHost || !hosts.includes(effectiveHost)) {
-          // Saved host invalid or missing, selecting default
-          // Prioritize ASIO if available, otherwise WASAPI/default (first one)
-          const hasAsio = hosts.some(h => h.toLowerCase().includes('asio'));
-          const defaultHost = hasAsio ? hosts.find(h => h.toLowerCase().includes('asio'))! : hosts[0];
+          // 未設定では共有のWASAPIから始める。ASIOは保存済みか、利用者が選んだ場合だけ使う。
+          const defaultHost = hosts.find(h => h.toLowerCase() === 'wasapi')
+            ?? hosts.find(h => !h.toLowerCase().includes('asio')) ?? '';
           setSelectedHost(defaultHost);
         } else {
           // Ensure state is synced with effective host (fixes closure staleness)

@@ -11,6 +11,17 @@ const devices = (name: string, input = true): AudioDeviceList => ({
 beforeEach(() => { localStorage.clear(); vi.mocked(listen).mockClear(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
+it('未設定では先頭がASIOでもWASAPIを選び、ASIOは明示選択できる', async () => {
+    const wasapi = devices('Mic');
+    const asio = { ...wasapi.inputs[0], host: 'ASIO', name: 'ASIO driver' };
+    vi.spyOn(audioApi, 'getDevices').mockResolvedValue({ inputs: [asio, ...wasapi.inputs], outputs: [{ ...asio, is_input: false }, ...wasapi.outputs] });
+    const { result } = renderHook(() => useAudioDeviceSelection({ isOpen: true, onError: vi.fn() }));
+    await waitFor(() => expect(result.current.selectedHost).toBe('Wasapi'));
+    expect(result.current.isAsio).toBe(false);
+    act(() => result.current.setSelectedHost('ASIO'));
+    expect(result.current.isAsio).toBe(true);
+});
+
 it('保存したWASAPIは列挙のWasapiと一致し、先頭のASIOへ切り替わらない', async () => {
     const wasapi = devices('other mic');
     wasapi.inputs.push({ ...wasapi.inputs[0], name: 'saved mic', host: 'WASAPI', index: 2 });
@@ -28,6 +39,7 @@ it('保存したWASAPIは列挙のWasapiと一致し、先頭のASIOへ切り替
 });
 
 it.each([2, 64])('音声開始後に%iチャンネルの実能力を取得し、閉じた後は開始通知で再検出しない', async channels => {
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'Insert ASIO' }));
     const input = { name: 'Insert ASIO', host: 'ASIO', id: 'asio:Insert ASIO', channels: 0, index: 0, is_input: true, is_default: false };
     const getDevices = vi.spyOn(audioApi, 'getDevices').mockResolvedValue({ inputs: [input], outputs: [{ ...input, is_input: false }] });
     const { result, rerender } = renderHook(({ isOpen }) => useAudioDeviceSelection({ isOpen, onError: vi.fn() }), { initialProps: { isOpen: true } });
@@ -44,6 +56,7 @@ it.each([2, 64])('音声開始後に%iチャンネルの実能力を取得し、
 });
 
 it('登録名だけのキャッシュで開き直しても稼働中の機器の能力を取得する', async () => {
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'Insert ASIO' }));
     const input = { name: 'Insert ASIO', host: 'ASIO', id: 'asio:Insert ASIO', channels: 0, index: 0, is_input: true, is_default: false };
     localStorage.setItem('vst_host_cached_devices', JSON.stringify({ inputs: [input], outputs: [{ ...input, is_input: false }] }));
     const getDevices = vi.spyOn(audioApi, 'getDevices').mockResolvedValue({ inputs: [{ ...input, channels: 2 }], outputs: [{ ...input, is_input: false, channels: 2 }] });
@@ -53,6 +66,7 @@ it('登録名だけのキャッシュで開き直しても稼働中の機器の�
 });
 
 it('能力未取得でも非2冪の実稼働バッファを候補と選択値に保持する', async () => {
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'Insert ASIO' }));
     const input = { name: 'Insert ASIO', host: 'ASIO', channels: 0, index: 0, is_input: true, is_default: false };
     vi.spyOn(audioApi, 'getDevices').mockResolvedValue({ inputs: [input], outputs: [{ ...input, is_input: false }] });
     const { result } = renderHook(() => useAudioDeviceSelection({ isOpen: true, currentBufferSize: 960, onError: vi.fn() }));
