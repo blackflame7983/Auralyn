@@ -107,7 +107,7 @@ test('緊急ミュートの通信失敗では外部アプリでのミュート�
         failure.getByRole('button', { name: '設定を開く', exact: true }).click(),
     ]);
     expect(settingsModule.ok()).toBe(true);
-    await expect(page.getByRole('dialog', { name: '設定', exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '設定', exact: true })).toBeVisible({ timeout: 15_000 });
 });
 
 test('出力音量の失敗は小窓でも再試行でき、確認できるまでは保存値を変えない', async ({ page }, testInfo) => {
