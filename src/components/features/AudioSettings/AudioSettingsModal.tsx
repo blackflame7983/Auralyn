@@ -34,6 +34,7 @@ import { AuroraDisplaySwitch, DisplayPurposeSelector, NumericDetailsSwitch } fro
 import { REVIEW_KEY } from '@/api/migration';
 import { readAudioPreferences, savedAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
 import { audioApi } from '@/api/audio';
+import { displayAudioHost } from '@/lib/audioDevices';
 import { segmentButtonClass } from '@/components/ui/segment';
 import { audioDeviceKey, useAudioDeviceSelection } from './useAudioDeviceSelection';
 import { ConnectionApplyError, useAudioConnectionController } from './useAudioConnectionController';
@@ -145,6 +146,16 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     editedFields.has('routing') && (isAsio && JSON.stringify(connection.outputRouting) !== JSON.stringify(savedConnection.outputRouting ?? { mode: 'legacy' })) && t('settings.routing.title'),
   ].filter((value): value is string => typeof value === 'string');
   const hasConnectionChanges = !savedConnection || changedFields.length > 0;
+  const [savedRestoreAvailable, setSavedRestoreAvailable] = useState(false);
+  const needsSavedRestore = isOpen && !savedConnection;
+  useEffect(() => {
+    let active = true;
+    setSavedRestoreAvailable(false);
+    if (needsSavedRestore) void audioApi.getSavedAudioConfig().then(saved => {
+      if (active) setSavedRestoreAvailable(!!saved && !!savedAudioPreferences(saved));
+    }).catch(() => { /* 不在・読取不能を復帰可能として案内しない。 */ });
+    return () => { active = false; };
+  }, [needsSavedRestore]);
   const [restoreNotice, setRestoreNotice] = useState('');
   const restoreSavedConnection = async () => {
     if (isApplying) return;
@@ -463,11 +474,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
             ) : (
               <div className="space-y-6">
-                {!savedConnection && <div className="space-y-2">
-                  <button type="button" onClick={() => void restoreSavedConnection()} disabled={isApplying} className="rounded-md border border-border px-3 py-2 text-ui-control disabled:opacity-50">{t('settings.connection.restoreSaved')}</button>
-                  <p className="text-ui-support text-muted-foreground">{t('settings.connection.restoreHint')}</p>
-                </div>}
-                {restoreNotice && <p role="status" className="text-ui-support text-muted-foreground">{restoreNotice}</p>}
                 <div id="primary-input-settings" tabIndex={-1}><ProcessInputPanel value={inputSource} onChange={next => {
                   editConnection('source');
                   if (processInput && next.source.kind === 'device') setNeedsDeviceChoice(true);
@@ -531,6 +537,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
                 {processInput && <p className="text-ui-support text-muted-foreground">{t('processInput.outputHelp')}</p>}
 
+                {!savedConnection && savedRestoreAvailable && <div className="space-y-1">
+                  <button type="button" onClick={() => void restoreSavedConnection()} disabled={isApplying} className="rounded text-ui-support text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50">{t('settings.connection.restoreSaved')}</button>
+                  <p className="text-ui-support text-muted-foreground">{t('settings.connection.restoreHint')}</p>
+                </div>}
+                {restoreNotice && <p role="status" className="text-ui-support text-muted-foreground">{restoreNotice}</p>}
+
               </div>
             )}
             <details id="live-output-settings" onToggle={e => { if (e.currentTarget.open) setLoadOutput(true); }} className="rounded-xl border border-border p-4 space-y-3">
@@ -554,7 +566,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <summary className="cursor-pointer font-semibold text-sm">
                     {t('settings.audioTuning.title')}
                     {/* 現在の接続方式を見出しに出し、ASIOを探す人にもWASAPIの人にも自分の設定だと分かるようにする。サンプル数は中の詳細に置く。 */}
-                    <span className="ml-2 text-ui-support font-normal text-muted-foreground">{selectedHost} · {t([128, 512, 1024].includes(selectedBufferSize)
+                    <span className="ml-2 text-ui-support font-normal text-muted-foreground">{displayAudioHost(selectedHost)} · {t([128, 512, 1024].includes(selectedBufferSize)
                       ? selectedBufferSize === 128 ? 'settings.AudioSettingsModal.048' : selectedBufferSize === 512 ? 'settings.AudioSettingsModal.051' : 'settings.AudioSettingsModal.054'
                       : 'settings.bufferCustomShort')} · {selectedSampleRate / 1000} kHz</span>
                   </summary>
@@ -578,7 +590,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   >
                     {!selectedHost && <option value="">{t('settings.AudioSettingsModal.036')}</option>}
                     {availableHosts.map((host) => (
-                      <option key={host} value={host}>{host}</option>
+                      <option key={host} value={host}>{displayAudioHost(host)}</option>
                     ))}
                   </select>
                   <p className="text-ui-support text-muted-foreground">{t(isAsio ? 'settings.connection.asioHint' : 'settings.connection.wasapiHint')}</p>
@@ -907,7 +919,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             {/* 稼働中の保存は再起動になり、音が途切れることを押す前に示す。 */}
             <div className="min-w-0 space-y-1 text-ui-support text-muted-foreground" id="settings-connection-changes">
               <p>{allowConnectionRetry || connectionRetry ? t('settings.connection.retry') : !savedConnection
-                ? inputReady && selectedOutputDevice ? t('settings.connection.firstStart', { host: selectedHost, input: processInput ? inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : '' : selectedInput, output: selectedOutputDevice.name }) : t('settings.connection.firstStartHint')
+                ? inputReady && selectedOutputDevice ? t('settings.connection.firstStart', { host: displayAudioHost(selectedHost), input: processInput ? inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : '' : selectedInput, output: selectedOutputDevice.name }) : t('settings.connection.firstStartHint')
                 : changedFields.length ? t('settings.connection.changes', { fields: changedFields.join('、') }) : t('settings.connection.unchanged')}</p>
               {streamRunning && <p id="settings-save-restart">{t('settings.saveRestartHint')}</p>}
             </div>

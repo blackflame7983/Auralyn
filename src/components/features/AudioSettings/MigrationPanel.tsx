@@ -1,3 +1,4 @@
+import { displayAudioHost } from '@/lib/audioDevices';
 import { clientErrorNotice } from '@/lib/clientError';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -40,7 +41,7 @@ export function MigrationPanel() {
         </div>
         {summary && <div className="space-y-2 text-sm">
             <p>{t('settings.migration.counts', { version: summary.appVersion, settings: summary.settings.length, files: summary.files.length })}</p>
-            {summary.audio && <p className="break-all">{t('settings.MigrationPanel.253')}{summary.audio.host} {t('settings.MigrationPanel.254')}{summary.audio.input || t('settings.MigrationPanel.255')} {t('settings.MigrationPanel.256')}{summary.audio.output || t('settings.MigrationPanel.257')} ／{summary.audio.sampleRate || t('settings.MigrationPanel.258')}Hz・{summary.audio.bufferSize || t('settings.MigrationPanel.259')}{t('settings.MigrationPanel.260')}</p>}
+            {summary.audio && <p className="break-all">{t('settings.MigrationPanel.253')}{displayAudioHost(summary.audio.host)} {t('settings.MigrationPanel.254')}{summary.audio.input || t('settings.MigrationPanel.255')} {t('settings.MigrationPanel.256')}{summary.audio.output || t('settings.MigrationPanel.257')} ／{summary.audio.sampleRate || t('settings.MigrationPanel.258')}Hz・{summary.audio.bufferSize || t('settings.MigrationPanel.259')}{t('settings.MigrationPanel.260')}</p>}
             {!!summary.plugins?.length && <ul className="max-h-24 overflow-auto break-all text-ui-support">{summary.plugins.map((plugin, i) => <li key={i}>{plugin}</li>)}</ul>}
             <ul className="max-h-32 overflow-auto break-all text-ui-support">{summary.files.map(file => <li key={file}>{file}</li>)}</ul>
             <p className="text-ui-support">{t('settings.MigrationPanel.261')}</p>

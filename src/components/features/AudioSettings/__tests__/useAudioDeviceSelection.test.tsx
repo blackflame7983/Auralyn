@@ -11,6 +11,35 @@ const devices = (name: string, input = true): AudioDeviceList => ({
 beforeEach(() => { localStorage.clear(); vi.mocked(listen).mockClear(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
+it('未設定では先頭の再生入力・仮想出力ではなくWindowsの既定を選び、手動の未選択も保つ', async () => {
+    const input = { ...devices('Windows microphone').inputs[0], id: 'default-mic' };
+    const output = { ...devices('mic').outputs[0], name: 'Windows headphones', id: 'default-out' };
+    vi.spyOn(audioApi, 'getDevices').mockResolvedValue({ inputs: [{ ...input, name: '再生リダイレクト', id: 'playback', is_default: false }, input],
+        outputs: [{ ...output, name: 'Voicemeeter In 2', id: 'virtual', is_default: false }, output] });
+    const { result } = renderHook(() => useAudioDeviceSelection({ isOpen: true, onError: vi.fn() }));
+    await waitFor(() => expect(result.current.selectedInputKey).toBe('id:default-mic'));
+    expect(result.current.selectedOutputKey).toBe('id:default-out');
+    act(() => result.current.setSelectedInputKey(''));
+    expect(result.current.selectedInputKey).toBe('');
+});
+
+it.each(['none', 'virtual', 'ambiguous'])('既定が%sならマイクを推測せず未選択にする', async kind => {
+    const input = { ...devices('Microphone').inputs[0], is_default: kind !== 'none', name: kind === 'virtual' ? 'CABLE Output' : 'Microphone' };
+    const inputs = kind === 'ambiguous' ? [input, { ...input, name: 'Headset microphone', index: 1 }] : [input];
+    vi.spyOn(audioApi, 'getDevices').mockResolvedValue({ inputs, outputs: [{ ...devices('mic').outputs[0], is_default: false }] });
+    const { result } = renderHook(() => useAudioDeviceSelection({ isOpen: true, onError: vi.fn() }));
+    await waitFor(() => expect(result.current.devices.inputs).toHaveLength(inputs.length));
+    expect(result.current.selectedInputKey).toBe(''); expect(result.current.selectedOutputKey).toBe('');
+});
+
+it('保存済み機器が消えても別の既定マイクへ切り替えない', async () => {
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'Wasapi', inputId: 'missing', output: 'out' }));
+    vi.spyOn(audioApi, 'getDevices').mockResolvedValue(devices('Other default microphone'));
+    const { result } = renderHook(() => useAudioDeviceSelection({ isOpen: true, onError: vi.fn() }));
+    await waitFor(() => expect(result.current.selectedOutput).toBe('out'));
+    expect(result.current.selectedInputKey).toBe('');
+});
+
 it('WebViewに設定がなくても親が復帰したnativeの機器ID・レートで開ける', async () => {
     const asio = { host: 'ASIO', name: 'saved ASIO', id: 'asio:saved', channels: 22, index: 0, is_input: true, is_default: false };
     vi.spyOn(audioApi, 'getDevices').mockResolvedValue({ inputs: [asio, ...devices('other mic').inputs], outputs: [{ ...asio, is_input: false }, ...devices('other mic').outputs] });

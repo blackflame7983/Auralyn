@@ -53,6 +53,7 @@ it('初回の空configは独立出力1/2で始まり、入力3/4を選んでも�
     await screen.findByRole('option', { name: 'Cable input' });
     fireEvent.click(screen.getByText('接続方式・音切れの設定', { exact: false, selector: 'summary' }));
     fireEvent.change(screen.getByRole('combobox', { name: '接続方式' }), { target: { value: 'ASIO' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'マイク入力' }), { target: { value: 'ASIO device' } });
     await screen.findByRole('radio', { name: '入力チャンネル 3/4' });
     expect(screen.getByRole('combobox', { name: '音声の返却方法' })).toHaveValue('independent');
     fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 3/4' }));
@@ -148,13 +149,15 @@ it.each(['保存して開始', '音声処理を再起動'])(
                 currentInputChannels={[6, 7]}
             />
         );
-        await screen.findByRole('option', { name: 'Wasapi' });
+        await screen.findByRole('option', { name: 'WASAPI' });
         const host = screen
             .getAllByRole('combobox')
             .find((e) =>
                 Array.from((e as HTMLSelectElement).options).some((o) => o.value === 'Wasapi')
             )!;
         fireEvent.change(host, { target: { value: 'Wasapi' } });
+        fireEvent.change(screen.getByRole('combobox', { name: 'マイク入力' }), { target: { value: 'Cable input' } });
+        fireEvent.change(screen.getByRole('combobox', { name: '出力先' }), { target: { value: 'Test output' } });
         if (action === '音声処理を再起動') await openSystemTab();
         fireEvent.click(screen.getByRole('button', { name: action }));
         if (action === '音声処理を再起動')

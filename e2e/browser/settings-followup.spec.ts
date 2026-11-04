@@ -2,6 +2,37 @@ import { test, expect } from './tauriFixture';
 import { message } from '../../src/i18n/messages';
 
 for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark', 'gaming']) {
+    test(`既定機器と保存がない初回設定は選択を促す ${locale} ${theme}`, async ({ page }, info) => {
+        await page.addInitScript(({ locale, theme }) => {
+            localStorage.setItem('vst_host_locale', locale); localStorage.setItem('vst_host_theme', theme);
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            const invoke = (window as any).__TAURI_INTERNALS__.invoke;
+            (window as any).__TAURI_INTERNALS__.invoke = async (command: string, args: unknown) => {
+                if (command === 'get_audio_devices') {
+                    const mic = { host: 'Wasapi', name: 'Microphone choice', id: 'mic', channels: 2, index: 0, is_input: true, is_default: false };
+                    return { inputs: [mic], outputs: [{ ...mic, name: 'Output choice', id: 'out', is_input: false }] };
+                }
+                return invoke(command, args);
+            };
+        }, { locale, theme });
+        await page.goto('/');
+        await expect(page.getByText(message(locale, 'app.initializing'), { exact: true })).toHaveCount(0);
+        await page.getByRole('button', { name: message(locale, 'header.audioSettingsOpen'), exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: message(locale, 'common.settings'), exact: true });
+        const input = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.039'), exact: true });
+        const output = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.042'), exact: true });
+        await expect(input).toHaveValue(''); await expect(output).toHaveValue('');
+        await expect(dialog.getByText(message(locale, 'settings.connection.firstStartHint'), { exact: true })).toBeVisible();
+        const save = dialog.getByRole('button', { name: message(locale, 'settings.AudioSettingsModal.197'), exact: true });
+        await expect(save).toBeDisabled();
+        await expect(dialog.getByRole('button', { name: message(locale, 'settings.connection.restoreSaved'), exact: true })).toHaveCount(0);
+        await expect(dialog.getByText(message(locale, 'settings.connection.restoreHint'), { exact: true })).toHaveCount(0);
+        await input.selectOption('id:mic'); await output.selectOption('id:out');
+        await expect(save).toBeEnabled();
+        await expect(dialog.getByText(message(locale, 'settings.connection.firstStart', { host: 'WASAPI', input: 'Microphone choice', output: 'Output choice' }), { exact: true })).toBeVisible();
+        await page.screenshot({ path: info.outputPath('explicit-device-selection.png'), animations: 'disabled' });
+    });
+
     test(`WebView保存がなくても正常設定を復帰し開始失敗後も保持 ${locale} ${theme}`, async ({ page }, info) => {
         await page.addInitScript(({ locale, theme }) => {
             localStorage.setItem('vst_host_locale', locale); localStorage.setItem('vst_host_theme', theme);
@@ -44,8 +75,10 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
                     ? { host: 'WASAPI', input: 'Test microphone', output: 'Test headphones', input_id: 'mic', output_id: 'headphones', sample_rate: 48000, buffer_size: 256 } : null;
                 if (command === 'get_audio_devices') {
                     const asio = { host: 'ASIO', name: 'Test ASIO', id: 'asio:test', channels: 4, is_input: true, is_default: false, index: 0 };
-                    const mic = { ...asio, host: 'WASAPI', name: 'Test microphone', id: 'mic', channels: 2 };
-                    return { inputs: [asio, mic], outputs: [{ ...asio, is_input: false }, { ...mic, name: 'Test headphones', id: 'headphones', is_input: false }] };
+                    const mic = { ...asio, host: 'Wasapi', name: 'Test microphone', id: 'mic', channels: 2, is_default: true };
+                    const output = { ...mic, name: 'Test headphones', id: 'headphones', is_input: false };
+                    return { inputs: [asio, { ...mic, name: '再生リダイレクト', id: 'playback', is_default: false }, mic],
+                        outputs: [{ ...asio, is_input: false }, { ...output, name: 'Voicemeeter In 2', id: 'virtual', is_default: false }, output] };
                 }
                 return invoke(command, args);
             };
@@ -64,7 +97,11 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         const source = dialog.getByRole('combobox', { name: message(locale, 'processInput.source'), exact: true });
         await expect(source.locator('option[value=process]')).toBeEnabled();
         await dialog.locator('summary').filter({ hasText: message(locale, 'settings.audioTuning.title') }).click();
-        await expect(dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.035'), exact: true })).toHaveValue('WASAPI');
+        await expect(dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.035'), exact: true })).toHaveValue('Wasapi');
+        await expect(dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.039'), exact: true })).toHaveValue('id:mic');
+        await expect(dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.042'), exact: true })).toHaveValue('id:headphones');
+        await expect(dialog.getByRole('button', { name: message(locale, 'settings.connection.restoreSaved'), exact: true })).toHaveCount(0);
+        await expect(dialog.getByText(message(locale, 'settings.connection.restoreHint'), { exact: true })).toHaveCount(0);
         await dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.035'), exact: true }).selectOption('ASIO');
         const input = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.039'), exact: true });
         await expect(input.locator('..').getByText(message(locale, 'settings.AudioSettingsModal.044'), { exact: true })).toBeVisible();
@@ -73,9 +110,16 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         expect(await dialog.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
         await page.screenshot({ path: info.outputPath('asio-near-device.png'), animations: 'disabled' });
         await page.evaluate(() => { (window as any).__e2eSavedAudioAvailable = true; });
-        await dialog.getByRole('button', { name: message(locale, 'settings.connection.restoreSaved'), exact: true }).click();
+        await dialog.getByRole('button', { name: message(locale, 'settings.close'), exact: true }).click();
+        await page.getByRole('button', { name: message(locale, 'header.audioSettingsOpen'), exact: true }).click();
+        const restore = dialog.getByRole('button', { name: message(locale, 'settings.connection.restoreSaved'), exact: true });
+        await expect(restore).toBeVisible();
+        expect(await input.evaluate((el, label) => !!(el.compareDocumentPosition([...document.querySelectorAll('button')].find(button => button.textContent === label)!) & Node.DOCUMENT_POSITION_FOLLOWING), message(locale, 'settings.connection.restoreSaved'))).toBe(true);
+        await restore.click();
         await expect(dialog.getByText(message(locale, 'settings.connection.restored'), { exact: true })).toBeVisible();
-        await expect(dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.035'), exact: true })).toHaveValue('WASAPI');
+        const tuning = dialog.locator('summary').filter({ hasText: message(locale, 'settings.audioTuning.title') });
+        if (await tuning.locator('..').getAttribute('open') === null) await tuning.click();
+        await expect(dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.035'), exact: true })).toHaveValue('Wasapi');
         expect(await page.evaluate(() => (window as any).__e2eStarts)).toEqual([]);
     });
 

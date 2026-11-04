@@ -29,8 +29,19 @@ it('空の現在設定では自動選択を変更予定にせず、初回に開�
     render(<AudioSettingsModal isOpen currentConfig={{ host: '' }} onClose={vi.fn()} onConfigChange={vi.fn()} />);
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク入力' })).toHaveValue('Mic'));
     expect(screen.queryByText(/^変更予定：/)).not.toBeInTheDocument();
-    expect(screen.getByText('初回設定：Wasapi・Mic → Headphonesで開始します')).toBeInTheDocument();
+    expect(screen.getByText('初回設定：WASAPI・Mic → Headphonesで開始します')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '保存して開始' })).toBeEnabled();
+});
+
+it.each([null, 'unreadable'])('保存が%sなら復帰ボタンと説明を表示しない', async saved => {
+    localStorage.clear();
+    const read = vi.spyOn(audioApi, 'getSavedAudioConfig');
+    if (saved === null) read.mockResolvedValue(null); else read.mockRejectedValue(new Error('unreadable'));
+    render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    await waitFor(() => expect(read).toHaveBeenCalled());
+    await screen.findByRole('combobox', { name: 'マイク入力' });
+    expect(screen.queryByRole('button', { name: '保存済みの音声設定を読み込む' })).not.toBeInTheDocument();
+    expect(screen.queryByText('画面の設定が空でも、このアプリに残る音声設定を読み込めます。読み込みだけでは音声を開始しません。')).not.toBeInTheDocument();
 });
 
 it('画面側の設定が空でも保存済みの接続を明示復帰し、音声は開始しない', async () => {

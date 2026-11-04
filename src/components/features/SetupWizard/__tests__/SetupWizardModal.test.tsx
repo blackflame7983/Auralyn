@@ -75,7 +75,7 @@ describe('セットアップの接続チェック', () => {
         expect(choices.slice(0, -1).every((node, index) => Boolean(node.compareDocumentPosition(choices[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
         expect(choices[2]).toHaveAttribute('aria-pressed', 'true');
         fireEvent.click(choices[2]);
-        expect(screen.getByRole('radio', { name: 'PC の音' })).toBeChecked();
+        expect(screen.getByRole('radio', { name: 'PCの音' })).toBeChecked();
         expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
         expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
     });
@@ -87,8 +87,8 @@ describe('セットアップの接続チェック', () => {
         const next = screen.getByRole('button', { name: /次へ/ });
         expect(next).toBeDisabled();
         expect(next).toHaveAccessibleDescription('マイクを選ぶと次へ進めます');
-        fireEvent.click(screen.getByRole('radio', { name: 'PC の音' }));
-        expect(next).toHaveAccessibleDescription('PC の音の入力を選ぶと次へ進めます');
+        fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
+        expect(next).toHaveAccessibleDescription('PCの音の入力を選ぶと次へ進めます');
         expect(next).toHaveClass('disabled:bg-muted', 'disabled:text-muted-foreground');
     });
 
@@ -615,7 +615,7 @@ describe('PC audio purpose', () => {
     const snapshot = { epoch: 'epoch', revision: '1', appliedRevision: '1', config: fx, pending: false, undoToken: null, error: null };
     const chooseMusic = async () => {
         fireEvent.click(await screen.findByRole('button', { name: '自分で聴く' }));
-        fireEvent.click(screen.getByRole('radio', { name: 'PC の音' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
         await screen.findByRole('combobox', { name: 'PCの音の入力を選択' });
     };
     const toConfirm = async () => {

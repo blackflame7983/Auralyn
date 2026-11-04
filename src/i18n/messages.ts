@@ -3,9 +3,9 @@ import type { Locale } from './locale';
 const ja = {
     "wizard.source": "音の元",
     "wizard.sourceMic": "マイク",
-    "wizard.sourcePc": "PC の音",
+    "wizard.sourcePc": "PCの音",
     "wizard.selectMicToContinue": "マイクを選ぶと次へ進めます",
-    "wizard.selectPcToContinue": "PC の音の入力を選ぶと次へ進めます",
+    "wizard.selectPcToContinue": "PCの音の入力を選ぶと次へ進めます",
     "wizard.loadingInputs": "入力を読み込んでいます",
     "wizard.listeningHint": "マイクやPCの音を、自分の機器で聴きます。",
     "settings.connection.firstStart": "初回設定：{host}・{input} → {output}で開始します",

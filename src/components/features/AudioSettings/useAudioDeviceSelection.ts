@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi, type AudioDevice, type AudioDeviceList } from '../../../api/audio';
 import { readAudioPreferences, readCachedAudioDevices, type AudioPreferences } from '../../../lib/audioPreferences';
+import { defaultAudioDevice } from '@/lib/audioDevices';
 
 interface SelectionOptions {
   isOpen: boolean;
@@ -40,6 +41,18 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
   const [selectedOutputKey, setSelectedOutputKey] = useState('');
   const [selectedBufferSize, setSelectedBufferSize] = useState<number>(currentBufferSize || 512);
   const [selectedSampleRate, setSelectedSampleRate] = useState<number>(currentSampleRate || 48000);
+  const restoreKey = (list: AudioDevice[], targetHost: string, input: boolean) => {
+    const saved = readAudioPreferences() ?? currentConfig;
+    const candidates = list.filter(device => device.host.toLowerCase() === targetHost.toLowerCase());
+    if (saved?.host.toLowerCase() === targetHost.toLowerCase()) {
+      const id = input ? saved.inputId : saved.outputId;
+      const name = input ? saved.input : saved.output;
+      const device = id ? candidates.find(item => item.id === id) : name ? uniqueByName(candidates, name) : undefined;
+      return device ? audioDeviceKey(device) : '';
+    }
+    const device = defaultAudioDevice(candidates, input);
+    return device ? audioDeviceKey(device) : '';
+  };
   const restoreDeviceSelection = (result: AudioDeviceList) => {
       // Extract available hosts
       const hosts = Array.from(new Set([...result.inputs, ...result.outputs].map(d => d.host)));
@@ -63,13 +76,8 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
           // Ensure state is synced with effective host (fixes closure staleness)
           setSelectedHost(effectiveHost);
 
-          const restore = (list: AudioDevice[], name?: string, id?: string) => {
-            const candidates = list.filter(device => device.host.toLowerCase() === effectiveHost.toLowerCase());
-            const device = id ? candidates.find(item => item.id === id) : name ? uniqueByName(candidates, name) : undefined;
-            return device ? audioDeviceKey(device) : '';
-          };
-          setSelectedInputKey(restore(result.inputs, saved?.input, saved?.inputId));
-          setSelectedOutputKey(restore(result.outputs, saved?.output, saved?.outputId));
+          setSelectedInputKey(restoreKey(result.inputs, effectiveHost, true));
+          setSelectedOutputKey(restoreKey(result.outputs, effectiveHost, false));
         }
       } else {
         setSelectedHost('');
@@ -182,18 +190,12 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
   }, [canChangeBufferSize, supportedBufferSizes, selectedBufferSize, currentBufferSize]);
 
 
-  // 同名候補が複数ある場合、名前だけで機器を決めない。
+  // ホスト変更・一覧更新時だけ補完し、手動で未選択にした値を直後に戻さない。
   useEffect(() => {
     if (!selectedHost) return;
-    if (!filteredInputs.some(device => audioDeviceKey(device) === selectedInputKey)) {
-      const first = filteredInputs[0];
-      setSelectedInputKey(first && uniqueByName(filteredInputs, first.name) ? audioDeviceKey(first) : '');
-    }
-    if (!filteredOutputs.some(device => audioDeviceKey(device) === selectedOutputKey)) {
-      const first = filteredOutputs[0];
-      setSelectedOutputKey(first && uniqueByName(filteredOutputs, first.name) ? audioDeviceKey(first) : '');
-    }
-  }, [selectedHost, filteredInputs, filteredOutputs, selectedInputKey, selectedOutputKey]);
+    setSelectedInputKey(key => filteredInputs.some(device => audioDeviceKey(device) === key) ? key : restoreKey(filteredInputs, selectedHost, true));
+    setSelectedOutputKey(key => filteredOutputs.some(device => audioDeviceKey(device) === key) ? key : restoreKey(filteredOutputs, selectedHost, false));
+  }, [selectedHost, filteredInputs, filteredOutputs]);
 
   useEffect(() => {
     active.current = isOpen;

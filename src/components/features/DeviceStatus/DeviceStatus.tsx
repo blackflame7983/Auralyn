@@ -1,3 +1,4 @@
+import { displayAudioHost } from '@/lib/audioDevices';
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useRef } from 'react';
 import type { EngineRuntimeStats } from '@/api/audio';
@@ -32,7 +33,7 @@ export const DeviceStatus: React.FC<DeviceStatusProps> = ({ host, sampleRate, is
                 </span>
             </div>
             {showDetails && <span className="text-xs text-muted-foreground whitespace-nowrap" title={t('device.delayScope')}>
-                {running && host ? host : '—'} · {running && sampleRate && Number.isFinite(sampleRate) && sampleRate > 0 ? `${(sampleRate / 1000).toFixed(1)} kHz` : '—'} · {t('device.internalDelay')} {observed}
+                {running && host ? displayAudioHost(host) : '—'} · {running && sampleRate && Number.isFinite(sampleRate) && sampleRate > 0 ? `${(sampleRate / 1000).toFixed(1)} kHz` : '—'} · {t('device.internalDelay')} {observed}
             </span>}
         </div>
     );

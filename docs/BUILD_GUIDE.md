@@ -30,6 +30,8 @@ npm run tauri dev
 `tauri dev` のbeforeDevCommandはVite起動のみ。エンジン・スキャナーの変更後は `npm run rebuild-engine` で両方のdebug binaryをコピーし、アプリを再起動する。
 古いsidecarの動作を最新ソースの検証と誤認しない。
 
+`rebuild-engine`はCargoのmetadataが返す`target_directory`からコピーする。`CARGO_TARGET_DIR`を使う場合は、再ビルドと`tauri dev`を同じ値・同じターミナルで実行する。Hostは自身と同じフォルダーの`audio_engine.exe`を優先するため、別のtargetを再ビルドしても、すでに動作中のHost／sidecarは更新されない。利用中の音声を停止できる時点でアプリを終了し、再ビルド後に再起動する。実機確認では実際の子プロセスの実行パスと、コピー元／先のハッシュも記録する。
+
 MCPで実アプリを撮影・操作する場合は、通常起動ではなくデバッグ用設定を指定する。通常の `tauri dev` は意図的にグローバルTauri APIを公開しない。起動・接続確認・操作の手順は [TESTING.md](TESTING.md#tauri-mcp-による実アプリの確認) を参照する。
 
 ## 検証

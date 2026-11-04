@@ -1,3 +1,4 @@
+import { displayAudioHost } from '@/lib/audioDevices';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { preparationReach } from '@/lib/preparation';
@@ -404,7 +405,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                         {obsReachResult.verification && <div className="text-muted-foreground space-y-1">
                           <p>{t('obsReach.record', { source: obsReachResult.verification.source, time: new Date(obsReachResult.verification.checkedAtUnixMs).toLocaleString(locale) })}</p>
                           <details><summary>{t('obsReach.diagnostics')}</summary><p>{t('obsReach.conditions', { connection: obsReachResult.verification.connectionGeneration, setup: obsReachResult.verification.setupGeneration, source: obsReachResult.verification.sourceGeneration, settings: obsReachResult.verification.targetSettingsGeneration, engine: obsReachResult.verification.audioEngineEpoch, revision: obsReachResult.verification.audioConditionsRevision })}</p></details>
-                          {obsReachResult.verification.config && <p>{t('obsReach.config', { host: obsReachResult.verification.config.host, input: obsReachResult.verification.config.input ?? '—', output: obsReachResult.verification.config.output ?? '—', rate: obsReachResult.verification.config.sample_rate ?? '—', buffer: obsReachResult.verification.config.buffer_size ?? t('obsReach.defaultBuffer') })}</p>}
+                          {obsReachResult.verification.config && <p>{t('obsReach.config', { host: displayAudioHost(obsReachResult.verification.config.host), input: obsReachResult.verification.config.input ?? '—', output: obsReachResult.verification.config.output ?? '—', rate: obsReachResult.verification.config.sample_rate ?? '—', buffer: obsReachResult.verification.config.buffer_size ?? t('obsReach.defaultBuffer') })}</p>}
                         </div>}
                         <p className="text-muted-foreground">{t('obsReach.scope')}</p>
                         <p className="text-muted-foreground">{t('obsReach.monitorLimits')}</p>

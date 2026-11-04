@@ -1,3 +1,4 @@
+import { displayAudioHost } from '@/lib/audioDevices';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
@@ -110,7 +111,7 @@ export function NoiseMeasurementPanel({ embedded = false }: { embedded?: boolean
         </>}
         {snapshot?.previousAvailable && snapshot.state !== 'approved' && <p className="text-ui-support text-muted-foreground">{t('measurement.previous')}</p>}
         <details className="text-ui-support space-y-2"><summary className="cursor-pointer">{t('measurement.conditions')}</summary>
-            {snapshot?.conditions && <p>{snapshot.conditions.host} · {snapshot.conditions.input} · ch {snapshot.conditions.channels.map(ch => ch + 1).join('/')} · {Math.round(snapshot.conditions.inputGain * 100)}% · {snapshot.conditions.analysisRate} Hz</p>}
+            {snapshot?.conditions && <p>{displayAudioHost(snapshot.conditions.host)} · {snapshot.conditions.input} · ch {snapshot.conditions.channels.map(ch => ch + 1).join('/')} · {Math.round(snapshot.conditions.inputGain * 100)}% · {snapshot.conditions.analysisRate} Hz</p>}
             {snapshot?.capturedAtUnixMs && <p>{new Date(snapshot.capturedAtUnixMs).toLocaleString(locale === 'ja' ? 'ja-JP' : 'en-US')}</p>}
             {snapshot?.previous && snapshot.state !== 'approved' && <p>{t('measurement.previous')}: {snapshot.previous.conditions.input} · {snapshot.previous.capturedAtUnixMs ? new Date(snapshot.previous.capturedAtUnixMs).toLocaleString(locale === 'ja' ? 'ja-JP' : 'en-US') : '—'}</p>}
             <p>{t('measurement.limits')}</p>
