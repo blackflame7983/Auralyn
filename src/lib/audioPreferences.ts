@@ -1,5 +1,5 @@
 import { readInputSource, type InputSource } from './inputSource';
-import type { AudioDevice, AudioDeviceList } from '../api/audio';
+import type { ActiveAudioConfig, AudioDevice, AudioDeviceList } from '../api/audio';
 import { readOutputRouting, type OutputRouting } from './audioChannelRouting';
 
 export interface AudioPreferences {
@@ -27,31 +27,45 @@ export function deviceIdsForUpdate(previous: AudioPreferences, update: Partial<A
 export function readAudioPreferences(): AudioPreferences | null {
     try {
         const value: unknown = JSON.parse(localStorage.getItem('vst_host_audio_config') ?? 'null');
-        if (!value || typeof value !== 'object' || !('host' in value)
-            || typeof value.host !== 'string' || !value.host.trim()) return null;
-        const config = value as Record<string, unknown>;
-        const inputSource = config.inputSource === undefined ? undefined : readInputSource(config.inputSource);
-        if (config.inputSource !== undefined && !inputSource) return null;
-        if (config.outputRouting !== undefined && !readOutputRouting(config.outputRouting)) return null;
-        const text = (key: string) => typeof config[key] === 'string' ? config[key] as string : undefined;
-        const positive = (key: string, fallback: number, max: number) => {
-            const n = config[key];
-            return typeof n === 'number' && Number.isSafeInteger(n) && n > 0 && n <= max ? n : fallback;
-        };
-        const pair = config.inputChannels;
-        const inputChannels: [number, number] | undefined = value.host.toLowerCase() !== 'asio' ? [0, 1]
-            : Array.isArray(pair) && pair.length === 2 && pair.every(n => Number.isSafeInteger(n) && n >= 0)
-                ? [pair[0], pair[1]] : undefined;
-        return {
-            inputSource,
-            host: value.host, input: text('input'), output: text('output'),
-            sampleRate: positive('sampleRate', 48_000, 768_000),
-            bufferSize: positive('bufferSize', 512, 4096),
-            inputChannels, outputRouting: readOutputRouting(config.outputRouting), inputId: text('inputId'), outputId: text('outputId'),
-        };
+        return parseAudioPreferences(value);
     } catch {
         return null;
     }
+}
+
+// WebViewとnativeの保存形式は異なるが、復帰時も同じ入力・経路の検証を通す。
+export function savedAudioPreferences(saved: ActiveAudioConfig): AudioPreferences | null {
+    return parseAudioPreferences({
+        host: saved.host, input: saved.input, output: saved.output,
+        inputId: saved.input_id, outputId: saved.output_id, inputSource: saved.input_source,
+        sampleRate: saved.sample_rate, bufferSize: saved.buffer_size,
+        inputChannels: saved.routing?.inputChannels, outputRouting: saved.routing?.outputRouting,
+    });
+}
+
+function parseAudioPreferences(value: unknown): AudioPreferences | null {
+    if (!value || typeof value !== 'object' || !('host' in value)
+        || typeof value.host !== 'string' || !value.host.trim()) return null;
+    const config = value as Record<string, unknown>;
+    const inputSource = config.inputSource === undefined ? undefined : readInputSource(config.inputSource);
+    if (config.inputSource !== undefined && !inputSource) return null;
+    if (config.outputRouting !== undefined && !readOutputRouting(config.outputRouting)) return null;
+    const text = (key: string) => typeof config[key] === 'string' ? config[key] as string : undefined;
+    const positive = (key: string, fallback: number, max: number) => {
+        const n = config[key];
+        return typeof n === 'number' && Number.isSafeInteger(n) && n > 0 && n <= max ? n : fallback;
+    };
+    const pair = config.inputChannels;
+    const inputChannels: [number, number] | undefined = value.host.toLowerCase() !== 'asio' ? [0, 1]
+        : Array.isArray(pair) && pair.length === 2 && pair.every(n => Number.isSafeInteger(n) && n >= 0)
+            ? [pair[0], pair[1]] : undefined;
+    return {
+        inputSource,
+        host: value.host, input: text('input'), output: text('output'),
+        sampleRate: positive('sampleRate', 48_000, 768_000),
+        bufferSize: positive('bufferSize', 512, 4096),
+        inputChannels, outputRouting: readOutputRouting(config.outputRouting), inputId: text('inputId'), outputId: text('outputId'),
+    };
 }
 
 export function readCachedAudioDevices(): AudioDeviceList {

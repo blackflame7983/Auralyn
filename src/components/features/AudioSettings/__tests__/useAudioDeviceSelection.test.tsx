@@ -11,6 +11,19 @@ const devices = (name: string, input = true): AudioDeviceList => ({
 beforeEach(() => { localStorage.clear(); vi.mocked(listen).mockClear(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
+it('WebViewに設定がなくても親が復帰したnativeの機器ID・レートで開ける', async () => {
+    const asio = { host: 'ASIO', name: 'saved ASIO', id: 'asio:saved', channels: 22, index: 0, is_input: true, is_default: false };
+    vi.spyOn(audioApi, 'getDevices').mockResolvedValue({ inputs: [asio, ...devices('other mic').inputs], outputs: [{ ...asio, is_input: false }, ...devices('other mic').outputs] });
+    const { result } = renderHook(() => useAudioDeviceSelection({ isOpen: true, onError: vi.fn(), currentConfig: {
+        host: 'ASIO', inputId: 'asio:saved', outputId: 'asio:saved', sampleRate: 96000, bufferSize: 256,
+    } }));
+    await waitFor(() => expect(result.current.selectedInputDevice?.id).toBe('asio:saved'));
+    expect(result.current.selectedHost).toBe('ASIO');
+    expect(result.current.selectedOutputDevice?.id).toBe('asio:saved');
+    expect(result.current.selectedSampleRate).toBe(96000); expect(result.current.selectedBufferSize).toBe(256);
+    expect(localStorage.getItem('vst_host_audio_config')).toBeNull();
+});
+
 it('未設定では先頭がASIOでもWASAPIを選び、ASIOは明示選択できる', async () => {
     const wasapi = devices('Mic');
     const asio = { ...wasapi.inputs[0], host: 'ASIO', name: 'ASIO driver' };

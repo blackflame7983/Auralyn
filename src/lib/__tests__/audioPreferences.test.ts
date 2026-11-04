@@ -1,7 +1,16 @@
 import { afterEach, expect, it } from 'vitest';
-import { readAudioPreferences, readCachedAudioDevices, deviceIdsForUpdate } from '../audioPreferences';
+import { readAudioPreferences, savedAudioPreferences, readCachedAudioDevices, deviceIdsForUpdate } from '../audioPreferences';
 
 afterEach(() => localStorage.clear());
+
+it('nativeからの復帰も未知の入力・経路を拒否し、保存元には書き込まない', () => {
+    localStorage.setItem('vst_host_audio_config', '{broken');
+    const saved = { host: 'ASIO', input: 'native', output: null, input_id: 'asio:native', sample_rate: 96000, buffer_size: 512 };
+    expect(savedAudioPreferences(saved)).toMatchObject({ host: 'ASIO', input: 'native', inputId: 'asio:native', sampleRate: 96000 });
+    expect(savedAudioPreferences({ ...saved, input_source: { kind: 'future' } } as never)).toBeNull();
+    expect(savedAudioPreferences({ ...saved, routing: { outputRouting: { mode: 'future' } } } as never)).toBeNull();
+    expect(localStorage.getItem('vst_host_audio_config')).toBe('{broken');
+});
 
 it('アプリの保存情報を保持し、PID・未知の入力形式をマイクに読み替えない', () => {
     const source = { kind: 'process_loopback', config: { appKey: 'a'.repeat(64), appName: 'player.exe', rawEndpointId: 'raw', purpose: 'music' } };

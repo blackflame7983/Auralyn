@@ -32,7 +32,7 @@ import { APP_INFO } from '../../../constants/appInfo';
 import { ShortcutsPanel } from './ShortcutsPanel';
 import { AuroraDisplaySwitch, DisplayPurposeSelector, NumericDetailsSwitch } from './DisplayPurposeSelector';
 import { REVIEW_KEY } from '@/api/migration';
-import { readAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
+import { readAudioPreferences, savedAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
 import { audioApi } from '@/api/audio';
 import { segmentButtonClass } from '@/components/ui/segment';
 import { audioDeviceKey, useAudioDeviceSelection } from './useAudioDeviceSelection';
@@ -107,7 +107,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     selectedSampleRate, setSelectedSampleRate, fetchDevices, isAsio,
     filteredInputs, filteredOutputs, supportedBufferSizes,
     canChangeBufferSize, loading: devicesLoading,
-  } = useAudioDeviceSelection({ isOpen, currentSampleRate, currentBufferSize, onError: setError });
+  } = useAudioDeviceSelection({ isOpen, currentSampleRate, currentBufferSize, currentConfig: currentConfig?.host ? currentConfig : undefined, onError: setError });
   const asioOutputs = filteredOutputs.filter(device => device.name === selectedInputDevice?.name);
   const selectedOutputDevice = isAsio
     ? asioOutputs.find(device => !!selectedInputDevice?.id && device.id === selectedInputDevice.id) ?? (asioOutputs.length === 1 ? asioOutputs[0] : undefined)
@@ -152,13 +152,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     try {
       const saved = await audioApi.getSavedAudioConfig();
       if (!saved) { setRestoreNotice(t('settings.connection.noSaved')); return; }
-      const source = saved.input_source === undefined ? deviceInput() : readInputSource(saved.input_source);
-      const routing = saved.routing?.outputRouting;
-      if (!source || (routing && !readOutputRouting(routing))) throw new Error('Invalid saved connection');
-      const restored: AudioPreferences = { host: saved.host, input: saved.input ?? undefined, output: saved.output ?? undefined,
-        inputId: saved.input_id, outputId: saved.output_id, inputSource: source,
-        sampleRate: saved.sample_rate ?? 48000, bufferSize: saved.buffer_size ?? 512,
-        inputChannels: saved.routing?.inputChannels, outputRouting: routing ?? { mode: 'legacy' } };
+      const restored = savedAudioPreferences(saved);
+      if (!restored) throw new Error('Invalid saved connection');
+      const source = restored.inputSource ?? deviceInput();
+      restored.inputSource = source;
+      restored.outputRouting ??= { mode: 'legacy' };
       // 保存済み選択の復帰だけを通知する。音声開始済みの通知やStartは送らない。
       await onConfigChange(restored);
       setInputSource({ source }); setNeedsDeviceChoice(false);

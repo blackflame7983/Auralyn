@@ -36,6 +36,49 @@ function native(extra?: (command: string) => unknown) {
 function noLegacyMutation() {
     expect(vi.mocked(invoke).mock.calls.some(([command]) => ['start_audio', 'restart_audio_engine', 'set_input_channels', 'set_input_gain', 'set_output_gain'].includes(command))).toBe(false);
 }
+
+const nativeSaved = { host: 'ASIO', input: 'last good', output: 'last good', input_id: 'asio:good', output_id: 'asio:good',
+    sample_rate: 96000, buffer_size: 512, routing: { inputChannels: [6, 7], outputRouting: { mode: 'insert' } } };
+
+it.each([null, '{broken'])('WebView設定が%sでもnativeの正常設定を停止状態で表示し、保存や自動開始に流用しない', async stored => {
+    if (stored === null) localStorage.removeItem('vst_host_audio_config');
+    else localStorage.setItem('vst_host_audio_config', stored);
+    localStorage.removeItem('vst_host_wizard_done');
+    native(command => command === 'get_saved_audio_config' ? nativeSaved
+        : command === 'get_audio_state' ? { is_running: false, config: null } : undefined);
+    const { useAudioConfig } = await import('../useAudioConfig'); const wizard = vi.fn(), settings = vi.fn();
+    const { result } = renderHook(() => useAudioConfig(wizard, settings));
+    await waitFor(() => expect(result.current.audioConfig.host).toBe('ASIO'));
+    expect(result.current.audioConfig).toMatchObject({ input: 'last good', inputId: 'asio:good', sampleRate: 96000, inputChannels: [6, 7], outputRouting: { mode: 'insert' } });
+    expect(result.current.isEngineRunning).toBe(false);
+    expect(localStorage.getItem('vst_host_audio_config')).toBe(stored);
+    expect(wizard).not.toHaveBeenCalled(); expect(settings).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledWith('audio_frontend_bootstrap', { request: { config: null, inputGain: .35, outputGain: .3 } });
+    expect(invoke).not.toHaveBeenCalledWith('migration_complete_review'); noLegacyMutation();
+});
+
+it('移行確認待ちもnativeの設定を表示できるが、bootstrapと確認完了は送らない', async () => {
+    localStorage.removeItem('vst_host_audio_config'); localStorage.setItem('vst_host_migration_review_required', 'true');
+    native(command => command === 'get_saved_audio_config' ? nativeSaved : undefined);
+    const { useAudioConfig } = await import('../useAudioConfig'); const { result } = renderHook(() => useAudioConfig(vi.fn()));
+    await waitFor(() => expect(result.current.isInitializing).toBe(false));
+    expect(result.current.audioConfig.input).toBe('last good');
+    expect(localStorage.getItem('vst_host_migration_review_required')).toBe('true');
+    expect(invoke).not.toHaveBeenCalledWith('audio_frontend_bootstrap', expect.anything()); noLegacyMutation();
+});
+
+it('nativeの設定取得中に手動保存した新しい設定を古い正常設定へ戻さない', async () => {
+    localStorage.removeItem('vst_host_audio_config'); const held = deferred();
+    native(command => command === 'get_saved_audio_config' ? held.promise
+        : command === 'get_audio_state' ? { is_running: false, config: null } : undefined);
+    const { useAudioConfig } = await import('../useAudioConfig'); const { result } = renderHook(() => useAudioConfig(vi.fn()));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('get_saved_audio_config'));
+    await act(async () => { await result.current.handleConfigUpdate({ host: 'WASAPI', input: 'new selection' }); });
+    await act(async () => held.resolve(nativeSaved));
+    expect(result.current.audioConfig).toMatchObject({ host: 'WASAPI', input: 'new selection' });
+    expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).input).toBe('new selection');
+    noLegacyMutation();
+});
 it('初回cold開始は保存済み機器ID・pair・gainを一つのnative要求へ渡し、通常Start/pairを送らない', async () => {
     native(command => command === 'audio_frontend_bootstrap' ? { outcome: 'started', initialPage: true, error: null } : undefined);
     const { useAudioConfig } = await import('../useAudioConfig'); const { result } = renderHook(() => useAudioConfig(vi.fn()));

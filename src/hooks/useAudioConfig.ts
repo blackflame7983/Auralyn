@@ -7,7 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { audioApi, type FrontendBootstrapReply } from '../api/audio';
 import { REVIEW_KEY } from '../api/migration';
-import { readAudioPreferences, deviceIdsForUpdate, type AudioPreferences as AudioConfig } from '../lib/audioPreferences';
+import { readAudioPreferences, savedAudioPreferences, deviceIdsForUpdate, type AudioPreferences as AudioConfig } from '../lib/audioPreferences';
 
 let initializationPromise: Promise<FrontendBootstrapReply> | null = null;
 
@@ -75,6 +75,23 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         if (initializationStarted.current) return () => { initializationActive.current = false; };
         initializationStarted.current = true;
         const init = async () => {
+            let config = readAudioPreferences();
+            let recovered: AudioConfig | null = null;
+            if (!config) {
+                try {
+                    const saved = await audioApi.getSavedAudioConfig();
+                    if (!initializationActive.current) return;
+                    // 読み込み待ち中に行われた手動保存を、古いnative設定で上書きしない。
+                    config = readAudioPreferences();
+                    if (!config && saved) recovered = savedAudioPreferences(saved);
+                } catch { /* 保存先の読取失敗でも元ファイルとWebViewの値を変更しない。 */ }
+            }
+            if (!initializationActive.current) return;
+            if (recovered) {
+                // 表示を復帰するだけで、保存・Start・移行確認完了には読み替えない。
+                const restored = recovered;
+                setAudioConfig(previous => previous.host ? previous : restored);
+            }
             if (explicitSessionStartRequired() || localStorage.getItem(REVIEW_KEY) === 'true') {
                 try {
                     const saved = readAudioPreferences();
@@ -82,8 +99,8 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
                 } catch (error) { console.error('移行した音声設定を読み取れませんでした', error); }
                 setIsEngineRunning(false); setIsInitializing(false); onOpenSettings?.(); return;
             }
-            if (!localStorage.getItem('vst_host_wizard_done')) onWizardRequired();
-            const config = readAudioPreferences();
+            if (recovered) onOpenSettings?.();
+            if (!recovered && !localStorage.getItem('vst_host_wizard_done')) onWizardRequired();
             if (config?.host) {
                 if (config.host.toLowerCase() !== 'asio') config.inputChannels = [0, 1];
                 config.sampleRate ||= 48000;

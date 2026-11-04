@@ -2,12 +2,13 @@ import { notice, type SettingsNotice } from './settingsNotice';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi, type AudioDevice, type AudioDeviceList } from '../../../api/audio';
-import { readAudioPreferences, readCachedAudioDevices } from '../../../lib/audioPreferences';
+import { readAudioPreferences, readCachedAudioDevices, type AudioPreferences } from '../../../lib/audioPreferences';
 
 interface SelectionOptions {
   isOpen: boolean;
   currentSampleRate?: number;
   currentBufferSize?: number;
+  currentConfig?: AudioPreferences;
   onError: (message: SettingsNotice | null) => void;
 }
 
@@ -29,7 +30,7 @@ const uniqueByName = (devices: AudioDevice[], name: string) => {
 };
 
 // 一覧の取得・選択復元・バッファ候補を画面の描画と適用処理から分離する。
-export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBufferSize, onError }: SelectionOptions) {
+export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBufferSize, currentConfig, onError }: SelectionOptions) {
   const requestRevision = useRef(0);
   const active = useRef(false);
   const [loading, setLoading] = useState(false);
@@ -43,7 +44,7 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
       // Extract available hosts
       const hosts = Array.from(new Set([...result.inputs, ...result.outputs].map(d => d.host)));
 
-      const saved = readAudioPreferences();
+      const saved = readAudioPreferences() ?? currentConfig;
       const currentHost = saved?.host ?? '';
 
 
@@ -198,7 +199,7 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
     active.current = isOpen;
     setLoading(false);
     if (isOpen) {
-      const saved = readAudioPreferences();
+      const saved = readAudioPreferences() ?? currentConfig;
       if (saved) {
         setSelectedHost(saved.host);
         setSelectedInputKey(saved.inputId ? `id:${saved.inputId}` : saved.input ?? '');

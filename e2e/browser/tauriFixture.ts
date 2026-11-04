@@ -52,6 +52,7 @@ export const test = base.extend<{ transport: void; stoppedHome: boolean; liveHom
                     case 'begin_display_locale_session': return 1;
                     case 'set_display_locale': return true;
                     case 'audio_frontend_bootstrap': return { outcome: 'inactive', initialPage: true, error: null };
+                    case 'get_saved_audio_config': return null;
                     case 'start_audio': {
                         starts.push(args);
                         if ((window as any).__e2eStartFailure) throw new Error('テスト用: 機器が見つかりません');
