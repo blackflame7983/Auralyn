@@ -23,6 +23,20 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const options = (save: () => void | Promise<void>) => ({ isOpen: true, host: 'ASIO', input: device('in'), output: device('out'), sampleRate: 48000, bufferSize: 512, isAsio: true, currentChannels: [2, 3] as [number, number], onConfigChange: save });
 
+it('アプリ入力ではマイク名・IDを渡さず、保存失敗は再開せずに保存だけ再試行する', async () => {
+    const source = { kind: 'process_loopback' as const, config: { appKey: 'a'.repeat(64), appName: 'player.exe', rawEndpointId: 'raw', purpose: 'music' as const } };
+    const request = { source, candidateId: 'app-1' };
+    const save = vi.fn().mockRejectedValueOnce(new Error('save')).mockResolvedValue(undefined);
+    const view = renderHook(() => useAudioConnectionController({ ...options(save), host: 'WASAPI', isAsio: false, input: undefined, inputSource: request }));
+    await act(async () => { await expect(view.result.current.apply(false)).rejects.toBeInstanceOf(ConnectionApplyError); });
+    await act(async () => { await view.result.current.apply(false); });
+    expect(audioApi.start).toHaveBeenCalledOnce();
+    expect(vi.mocked(audioApi.start).mock.calls[0]).toEqual(['WASAPI', undefined, 'out', 512, 48000, undefined, 'out', undefined,
+        { inputChannels: [0, 1], outputRouting: { mode: 'independent', channels: [0, 1] } }, request]);
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ input: undefined, inputId: undefined, inputSource: source }), { audioStarted: true });
+    expect(JSON.stringify(save.mock.calls[1][0])).not.toContain('candidateId');
+});
+
 it('未取得からmono出力が判明した開始でも解決済みペアを保存し、保存だけ再試行する', async () => {
     let finish!: (config: AudioConfig) => void;
     vi.mocked(audioApi.start).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));

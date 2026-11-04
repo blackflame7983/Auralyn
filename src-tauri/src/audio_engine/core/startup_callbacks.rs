@@ -18,12 +18,12 @@ impl CallbackBuffers {
     }
 }
 
-pub(super) struct PluginControls {
-    pub(super) bypassed: [bool; MAX_PLUGINS],
-    pub(super) muted: [bool; MAX_PLUGINS],
-    pub(super) gains: [Smoother; MAX_PLUGINS],
-    pub(super) order: [u8; MAX_PLUGINS],
-    pub(super) order_len: usize,
+pub(in crate::audio_engine::core) struct PluginControls {
+    pub(in crate::audio_engine::core) bypassed: [bool; MAX_PLUGINS],
+    pub(in crate::audio_engine::core) muted: [bool; MAX_PLUGINS],
+    pub(in crate::audio_engine::core) gains: [Smoother; MAX_PLUGINS],
+    pub(in crate::audio_engine::core) order: [u8; MAX_PLUGINS],
+    pub(in crate::audio_engine::core) order_len: usize,
 }
 
 impl PluginControls {
@@ -149,164 +149,6 @@ pub(super) struct PluginBlock<'a> {
 }
 
 // 入力callbackが所有する状態。構築時に確保し、処理時は借用だけを行う。
-pub(super) struct InputCallback {
-    pub(super) scan_control: Arc<crate::audio_engine::channel_scan::Control>,
-    pub(super) rt_channel_scan: crate::audio_engine::channel_scan::ChannelScan,
-    pub(super) channel_prod: <HeapRb<crate::audio_engine::channel_scan::Snapshot> as Split>::Prod,
-    pub(super) channels: usize,
-    pub(super) input_silence: Arc<crate::audio_engine::mode_silence::Shared>,
-    pub(super) input_silence_reset: u64,
-    pub(super) resampler: Option<crate::audio_engine::resampling::StreamResampler>,
-    pub(super) input_timing: Option<crate::audio_engine::frame_timing::InputRecorder>,
-    pub(super) input_process_failed: Arc<AtomicBool>,
-    pub(super) input_resampling_failed: Arc<AtomicBool>,
-    pub(super) input_queue_diagnostics: Arc<QueueDiagnostics>,
-    pub(super) mmcss_set_in: Arc<AtomicBool>,
-    pub(super) audio_prod: <Arc<HeapRb<f32>> as Split>::Prod,
-    pub(super) batch_timing: bool,
-}
-
-impl InputCallback {
-    pub(super) fn process(&mut self, data: &[f32], info: &cpal::InputCallbackInfo) {
-        let Self {
-            scan_control,
-            rt_channel_scan,
-            channel_prod,
-            channels,
-            input_silence,
-            input_silence_reset,
-            resampler,
-            input_timing,
-            input_process_failed,
-            input_resampling_failed,
-            input_queue_diagnostics,
-            mmcss_set_in,
-            audio_prod,
-            batch_timing,
-        } = self;
-        let scan_gain = scan_control.sync(&mut *rt_channel_scan);
-        if rt_channel_scan.enabled() {
-            for frame in data.chunks_exact(*channels) {
-                for (channel, sample) in frame.iter().enumerate() {
-                    rt_channel_scan.observe(channel, *sample * scan_gain);
-                }
-            }
-            rt_channel_scan.finish_block(data.len() / *channels, &mut *channel_prod);
-        }
-        if input_silence.pause_input(|| {
-            if *input_silence_reset != input_silence.ticket() {
-                if let Some(resampler) = &mut *resampler {
-                    resampler.discard_history();
-                }
-                if let Some(timing) = &mut *input_timing {
-                    timing.invalidate();
-                }
-                *input_silence_reset = input_silence.ticket();
-            }
-        }) {
-            return;
-        }
-        let timing_arrival = input_timing.as_ref().map_or(0, |timing| timing.now_ns());
-        let received_frames = data.len() / *channels;
-        if let Some(timing) = &mut *input_timing {
-            timing.record_span(received_frames, timing_arrival);
-        }
-        if input_process_failed.load(Ordering::Acquire) {
-            input_queue_diagnostics.record_input(received_frames, 0, 0, 0, 0);
-            return;
-        }
-        if !mmcss_set_in.load(Ordering::Relaxed) {
-            // SAFETY: 現在のコールバックスレッドの疑似ハンドルと定義済み優先度を渡す。
-            unsafe {
-                use windows::Win32::System::Threading::{
-                    GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_HIGHEST,
-                    THREAD_PRIORITY_TIME_CRITICAL,
-                };
-                let priority = if time_critical_audio_threads_enabled() {
-                    THREAD_PRIORITY_TIME_CRITICAL
-                } else {
-                    THREAD_PRIORITY_HIGHEST
-                };
-                let _ = SetThreadPriority(GetCurrentThread(), priority);
-            }
-            mmcss_set_in.store(true, Ordering::Relaxed);
-        }
-
-        // Push interleaved samples as full frames to preserve channel alignment.
-        // 分割された出力でも、このコールバックの転送上限は1回だけ決める。
-        let mut remaining_frames = None;
-        let mut accepted_prefix = crate::audio_engine::frame_timing::AcceptedPrefix::default();
-        let mut generated_frames = 0;
-        let mut offered_frames = 0;
-        let mut accepted_frames = 0;
-        let mut max_observed_slots = 0;
-        let mut push_frames =
-            |samples: &[f32],
-             in_channels: usize,
-             cohort: Option<crate::audio_engine::resampling::CohortEmission>| {
-                let pushed = queue_diagnostics::push_mapped_frames(
-                    &mut *audio_prod,
-                    samples,
-                    in_channels,
-                    in_channels,
-                    &mut remaining_frames,
-                );
-                if let Some(timing) = &mut *input_timing {
-                    if *batch_timing {
-                        timing.record_emission(cohort, pushed.accepted);
-                    } else {
-                        timing.record_direct_emission(pushed.offered, pushed.accepted);
-                    }
-                }
-                accepted_prefix.record(pushed.offered, pushed.accepted);
-                generated_frames += pushed.offered;
-                offered_frames += pushed.offered;
-                accepted_frames += pushed.accepted;
-                max_observed_slots = max_observed_slots.max(pushed.observed_slots);
-            };
-
-        // If resampler is active, process
-        if let Some(res) = &mut *resampler {
-            // We assume input data matches configured channels
-            // エラーは固定サイズのenum。RT側で文字列化・ログ出力しない。
-            res.process_realtime_observed(
-                data,
-                |output, cohort| push_frames(output, *channels, cohort),
-                input_process_failed,
-                input_resampling_failed,
-            );
-        } else {
-            // Passthrough
-            push_frames(data, *channels, None);
-        }
-        input_queue_diagnostics.record_input(
-            received_frames,
-            generated_frames,
-            offered_frames,
-            accepted_frames,
-            max_observed_slots,
-        );
-        if let Some(timing) = &mut *input_timing {
-            if *batch_timing
-                && (!accepted_prefix.valid() || input_process_failed.load(Ordering::Acquire))
-            {
-                // 音声は既存経路のまま。生成prefixを保証できない観測だけを失効する。
-                timing.invalidate();
-            }
-            timing.record(
-                if *batch_timing {
-                    generated_frames
-                } else {
-                    received_frames
-                },
-                accepted_frames,
-                timing_arrival,
-                Some(info.timestamp().callback),
-            );
-        }
-    }
-}
-
 // 実際の出力値から測定し、無効な間は走査しない。RTでの確保は行わない。
 pub(super) fn measure_output_loudness(
     data: &[f32],
@@ -438,7 +280,7 @@ pub(super) struct CommandContext<'a> {
     pub(super) rt_reverb: &'a mut crate::audio_engine::reverb::Reverb,
     pub(super) live_shared: &'a crate::audio_engine::live_modes::Shared,
     pub(super) rt_global_mute: &'a mut bool,
-    pub(super) rt_global_bypass: &'a mut bool,
+    pub(super) rt_comparison: &'a mut crate::audio_engine::comparison::Transition,
     pub(super) rt_input_gain: &'a mut f32,
     pub(super) rt_input_l: &'a mut usize,
     pub(super) rt_input_r: &'a mut usize,
@@ -481,7 +323,7 @@ pub(super) fn apply_commands(context: CommandContext<'_>) -> bool {
         rt_reverb,
         live_shared,
         rt_global_mute,
-        rt_global_bypass,
+        rt_comparison,
         rt_input_gain,
         rt_input_l,
         rt_input_r,
@@ -512,8 +354,10 @@ pub(super) fn apply_commands(context: CommandContext<'_>) -> bool {
                     | AudioThreadMessage::StartAutoGainCapture(_)
                     | AudioThreadMessage::SetLoudnessMeasurement(Some(_))
             )
-        }) && worker_generation_controls
-            .is_some_and(|c| !c.measurement_ready_at(c.measurement_ticket(), upstream_first_frame))
+        }) && (!rt_comparison.settled()
+            || worker_generation_controls.is_some_and(|c| {
+                !c.measurement_ready_at(c.measurement_ticket(), upstream_first_frame)
+            }))
         {
             break;
         }
@@ -631,7 +475,7 @@ pub(super) fn apply_commands(context: CommandContext<'_>) -> bool {
                 }
             }
             AudioThreadMessage::SetGlobalBypass(active) => {
-                *rt_global_bypass = active;
+                rt_comparison.request(active);
             }
             AudioThreadMessage::SetInputGain(val) => {
                 if !separated {

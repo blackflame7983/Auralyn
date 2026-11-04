@@ -231,3 +231,55 @@ fn noise_pending_waits_for_audio_thread_ack_even_when_queue_is_empty() {
     engine.noise_applied_revision.store(5, Ordering::Release);
     assert!(!engine.voice_preview_context().noise_pending);
 }
+
+#[test]
+fn mixing_poll_preserves_auto_gain_capture_and_undo_but_edits_invalidate_them() {
+    use crate::audio_engine::mixing::{Levels, Request};
+    let mut engine = engine_with_history();
+    engine.gain_shared.requested.store(9, Ordering::Release);
+    engine.gain_shared.active.store(9, Ordering::Release);
+    engine.gain_session = Some(GainSession {
+        id: 9,
+        revision: 41,
+        phase: "recording".into(),
+        target: -20.0,
+        before: 0.8,
+        rate: 48_000,
+        samples: vec![[0.1, 0.1]; 16],
+        proposal: None,
+        error: None,
+        started: Instant::now(),
+    });
+    // 10秒の録音中にホームから毎秒届く実際のSnapshotを再現する。
+    for _ in 0..11 {
+        engine.invalidate_auto_gain_for_command(&Command::Mixing {
+            request: Request::Snapshot,
+        });
+        engine.mixing_command(Request::Snapshot).unwrap();
+    }
+    assert_eq!(engine.gain_revision, 41);
+    assert_eq!(engine.gain_shared.active.load(Ordering::Acquire), 9);
+    assert_eq!(engine.gain_shared.requested.load(Ordering::Acquire), 9);
+    let session = engine.gain_session.as_ref().unwrap();
+    assert_eq!(session.phase, "recording");
+    assert_eq!(session.samples.len(), 16);
+    assert!(session.error.is_none());
+    assert_eq!(engine.gain_history.as_ref().unwrap().id, 7);
+    for request in [
+        Request::Configure {
+            expected_epoch: "epoch".into(),
+            expected_revision: "0".into(),
+            start: None,
+        },
+        Request::Levels {
+            expected_epoch: "epoch".into(),
+            expected_revision: "0".into(),
+            levels: Levels::default(),
+        },
+    ] {
+        let mut edited = engine_with_history();
+        edited.invalidate_auto_gain_for_command(&Command::Mixing { request });
+        assert_eq!(edited.gain_revision, 42);
+        assert!(edited.gain_history.is_none());
+    }
+}

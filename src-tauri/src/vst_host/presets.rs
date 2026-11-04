@@ -18,7 +18,7 @@ pub struct PresetPlugin {
 
 /// v2 拡張: オーディオデバイス設定
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProfileAudioConfig {
     pub host: String,
     #[serde(rename = "inputDevice")]

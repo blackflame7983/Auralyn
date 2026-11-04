@@ -17,6 +17,7 @@ mod desktop_integration;
 mod display_locale;
 #[cfg(any(test, feature = "dsp-verification"))]
 mod dsp_verification_allocator;
+pub mod input_source;
 pub mod ipc;
 mod migration;
 pub mod obs;
@@ -263,7 +264,6 @@ pub fn run() {
     );
 
     builder
-        .manage(mode)
         .manage(distribution)
         .manage(migration::Preview::default())
         .manage(shortcuts::Shortcuts::default())
@@ -280,9 +280,12 @@ pub fn run() {
                 }
             }
         })
-        .setup(|app| {
+        .setup(move |app| {
             // app_config_dirはMSIXではpackage専用、通常版では従来のRoaming AppData。
             let config_dir = app.path().app_config_dir()?;
+            let mut mode = mode.clone();
+            mode.bind_config_root(&config_dir);
+            app.manage(mode);
             let locale_path = config_dir.join("display-locale.json");
             let read_path = locale_path.clone();
             let locale = tauri::async_runtime::block_on(commands::run_blocking(move || {
@@ -424,6 +427,8 @@ pub fn run() {
             desktop_integration::open_desktop_settings,
             commands::audio::get_audio_devices,
             commands::audio::live_output,
+            commands::audio::mixing,
+            commands::audio::post_mix,
             commands::audio::get_audio_state,
             commands::audio::get_engine_tuning_config,
             commands::audio::set_engine_tuning_config,
@@ -431,6 +436,7 @@ pub fn run() {
             commands::audio::scan_plugins,
             commands::audio::clear_blacklist,
             commands::audio::start_audio,
+            commands::audio::get_process_input_sources,
             commands::audio::stop_audio,
             commands::audio::load_plugin,
             commands::audio::restore_plugin,

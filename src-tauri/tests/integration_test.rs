@@ -6,6 +6,7 @@ use vst_host_lib::ipc::{Command, EngineEvent, Response};
 
 fn start(host: &str) -> Command {
     Command::Start {
+        input_source: None,
         host: host.into(),
         input: None,
         output: None,

@@ -132,7 +132,10 @@ fn restore_request(plugin: &PresetPlugin) -> crate::ipc::RestorePluginRequest {
         gain: plugin.gain,
     }
 }
-fn load_binding(root: &std::path::Path, name: &str) -> Result<(Vec<PresetPlugin>, String)> {
+pub(super) fn load_binding(
+    root: &std::path::Path,
+    name: &str,
+) -> Result<(Vec<PresetPlugin>, String)> {
     let path = presets::preset_path(root, name).map_err(|e| anyhow!(e))?;
     anyhow::ensure!(
         std::fs::metadata(&path)?.len() <= MAX_JOURNAL_BYTES,
@@ -217,6 +220,26 @@ struct Transaction {
 }
 
 impl AudioHost {
+    pub(super) fn load_bound_plugins(
+        &self,
+        binding: &model::ProfileBinding,
+    ) -> Result<Vec<PresetPlugin>> {
+        let root = self
+            .live_modes
+            .path
+            .parent()
+            .ok_or_else(|| anyhow!("保存先がありません"))?;
+        if binding.snapshot.is_some() {
+            return crate::bundle::live_configuration::read_snapshot(root, binding)
+                .map_err(anyhow::Error::msg);
+        }
+        let (plugins, revision) = load_binding(root, &binding.name)?;
+        anyhow::ensure!(
+            revision == binding.revision,
+            "登録後にVSTプロファイルが変更されました。登録し直してください"
+        );
+        Ok(plugins)
+    }
     pub(super) fn guard_mode_vst(&self) -> Result<()> {
         anyhow::ensure!(!self.mode_vst.blocked(), BUSY);
         Ok(())
@@ -275,7 +298,11 @@ impl AudioHost {
                     .parent()
                     .ok_or_else(|| anyhow!("設定保存先がありません"))?;
                 let (_, revision) = load_binding(root, &name)?;
-                Ok::<_, anyhow::Error>(model::ProfileBinding { name, revision })
+                Ok::<_, anyhow::Error>(model::ProfileBinding {
+                    name,
+                    revision,
+                    snapshot: None,
+                })
             })
             .transpose()?;
         let mut definitions = self.live_modes.definitions.clone();
@@ -315,17 +342,7 @@ impl AudioHost {
         let binding = self
             .mode_profile(mode)
             .ok_or_else(|| anyhow!("プロファイル参照がありません"))?;
-        let (destination, revision) = load_binding(
-            self.live_modes
-                .path
-                .parent()
-                .ok_or_else(|| anyhow!("保存先がありません"))?,
-            &binding.name,
-        )?;
-        anyhow::ensure!(
-            revision == binding.revision,
-            "登録後にVSTプロファイルが変更されました。登録し直してください"
-        );
+        let destination = self.load_bound_plugins(binding)?;
         let desired = self
             .live_modes
             .definitions
@@ -1407,6 +1424,7 @@ mod tests {
         assert_eq!(first, load_binding(&root, "linked").unwrap().1);
         host.live_modes.definitions.singing = Some(Default::default());
         host.live_modes.definitions.profiles.singing = Some(model::ProfileBinding {
+            snapshot: None,
             name: "linked".into(),
             revision: first,
         });

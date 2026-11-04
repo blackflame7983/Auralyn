@@ -99,9 +99,9 @@ impl<T> ControlOwner<T> {
 }
 
 /// 開始途中の失敗では、入力→出力の順に回収する。成功時だけEngineへ移す。
-pub(super) struct StreamPair<S> {
-    input: Option<S>,
-    output: Option<S>,
+pub(super) struct StreamPair<O, I = O> {
+    input: Option<I>,
+    output: Option<O>,
 }
 
 /// 入力build失敗時、呼出側へエラーが戻る前に出力を解放する。
@@ -138,11 +138,11 @@ pub(super) enum BuildPairError<E> {
 
 /// 未実行closureと生成済みstreamを、Devices/processor回収より先に解放する。
 /// 戻り値は登録順によらず出力・入力の順で、play順と混同しない。
-pub(super) fn build_pair<S, E>(
+pub(super) fn build_pair<O, I, E>(
     order: BuildOrder,
-    build_output: impl FnOnce() -> Result<S, E>,
-    build_input: impl FnOnce() -> Result<S, E>,
-) -> Result<(S, S), BuildPairError<E>> {
+    build_output: impl FnOnce() -> Result<O, E>,
+    build_input: impl FnOnce() -> Result<I, E>,
+) -> Result<(O, I), BuildPairError<E>> {
     match order {
         BuildOrder::InputFirst => {
             let input = build_input().map_err(BuildPairError::Input)?;
@@ -159,11 +159,12 @@ pub(super) fn build_pair<S, E>(
 
 /// ローカルstream/未実行closureは呼出前に破棄する。失敗buildのcallbackを
 /// driverが保持する場合も、Deviceの最終解放までreceiverを保持してから回収する。
-pub(super) fn release_devices_before_retry<D>(devices: (D, D), cleanup: impl FnOnce()) {
+pub(super) fn release_devices_before_retry<I, O>(devices: (I, O), cleanup: impl FnOnce()) {
     drop(devices);
     cleanup();
 }
 
+#[cfg(test)]
 impl<S> StreamPair<S> {
     /// WASAPIは入力を準備してから出力を開始する。待機は制御スレッドだけで行う。
     /// ASIOの共有driverには使わず、従来の出力→入力順を維持する。
@@ -173,14 +174,14 @@ impl<S> StreamPair<S> {
         mut play: impl FnMut(&S) -> Result<(), E>,
         ready: impl FnOnce() -> Result<(), E>,
     ) -> Result<Self, E> {
-        let pair = Self {
-            input: Some(input),
-            output: Some(output),
-        };
-        play(pair.input.as_ref().expect("生成済み入力"))?;
-        ready()?;
-        play(pair.output.as_ref().expect("生成済み出力"))?;
-        Ok(pair)
+        let play = std::cell::RefCell::new(&mut play);
+        Self::start_input_first_with(
+            output,
+            input,
+            |stream| (play.borrow_mut())(stream),
+            |stream| (play.borrow_mut())(stream),
+            ready,
+        )
     }
 
     pub(super) fn start<E>(
@@ -188,16 +189,49 @@ impl<S> StreamPair<S> {
         input: S,
         mut play: impl FnMut(&S) -> Result<(), E>,
     ) -> Result<Self, E> {
+        let play = std::cell::RefCell::new(&mut play);
+        Self::start_with(
+            output,
+            input,
+            |stream| (play.borrow_mut())(stream),
+            |stream| (play.borrow_mut())(stream),
+        )
+    }
+}
+
+impl<O, I> StreamPair<O, I> {
+    pub(super) fn start_input_first_with<E>(
+        output: O,
+        input: I,
+        play_output: impl FnOnce(&O) -> Result<(), E>,
+        play_input: impl FnOnce(&I) -> Result<(), E>,
+        ready: impl FnOnce() -> Result<(), E>,
+    ) -> Result<Self, E> {
         let pair = Self {
             input: Some(input),
             output: Some(output),
         };
-        play(pair.output.as_ref().expect("生成済み出力"))?;
-        play(pair.input.as_ref().expect("生成済み入力"))?;
+        play_input(pair.input.as_ref().expect("生成済み入力"))?;
+        ready()?;
+        play_output(pair.output.as_ref().expect("生成済み出力"))?;
         Ok(pair)
     }
 
-    pub(super) fn commit(mut self) -> (S, S) {
+    pub(super) fn start_with<E>(
+        output: O,
+        input: I,
+        play_output: impl FnOnce(&O) -> Result<(), E>,
+        play_input: impl FnOnce(&I) -> Result<(), E>,
+    ) -> Result<Self, E> {
+        let pair = Self {
+            input: Some(input),
+            output: Some(output),
+        };
+        play_output(pair.output.as_ref().expect("生成済み出力"))?;
+        play_input(pair.input.as_ref().expect("生成済み入力"))?;
+        Ok(pair)
+    }
+    pub(super) fn commit(mut self) -> (I, O) {
         (
             self.input.take().expect("開始済み入力"),
             self.output.take().expect("開始済み出力"),
@@ -205,7 +239,7 @@ impl<S> StreamPair<S> {
     }
 }
 
-impl<S> Drop for StreamPair<S> {
+impl<O, I> Drop for StreamPair<O, I> {
     fn drop(&mut self) {
         self.input.take();
         self.output.take();

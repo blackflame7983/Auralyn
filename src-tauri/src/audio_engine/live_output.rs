@@ -208,14 +208,21 @@ impl Receiver {
     }
     fn render(&mut self, data: &mut [f32]) {
         let ticket = self.shared.gate.ticket();
+        self.peak.sync(&self.peak_shared);
         self.render_inner(data);
+        // mute・入力待ちでも係数を進め、無音のまま設定反映を完了する。
+        // 補間後の出力を一度だけ処理する。無音経路で新しいPCMを取得しない。
+        for output in data.as_chunks_mut::<2>().0 {
+            let protected = self.peak.process([output[0], output[1]]);
+            output.copy_from_slice(&protected);
+        }
+        self.peak.report(&self.peak_shared, 2);
         self.shared
             .gate
             .finish(super::mode_silence::SINK, ticket, data);
     }
     fn render_inner(&mut self, data: &mut [f32]) {
         data.fill(0.0);
-        self.peak.sync(&self.peak_shared);
         if self.main_failed.load(Ordering::Acquire) {
             self.shared.active.store(false, Ordering::Release);
         }
@@ -276,12 +283,9 @@ impl Receiver {
                     .clamp(-f64::from(f32::MAX), f64::from(f32::MAX))
                     as f32;
             }
-            let protected = self.peak.process([output[0], output[1]]);
-            output.copy_from_slice(&protected);
             self.phase += step;
             while self.phase >= 1.0 {
                 let Some(next) = self.next() else {
-                    self.peak.report(&self.peak_shared, 2);
                     self.primed = false;
                     self.phase = 0.0;
                     self.shared
@@ -294,7 +298,6 @@ impl Receiver {
                 self.phase -= 1.0;
             }
         }
-        self.peak.report(&self.peak_shared, 2);
     }
 }
 pub struct Sink {
@@ -433,6 +436,38 @@ impl Drop for Sink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn silent_sink_paths_settle_peak_configuration_without_audio_or_rt_allocation() {
+        for path in 0..4 {
+            let (_, mut receiver, shared) = fixture(128, 64);
+            match path {
+                0 => shared.muted.store(true, Ordering::Release),
+                1 => shared.source_active.store(false, Ordering::Release),
+                2 => receiver.main_failed.store(true, Ordering::Release),
+                _ => {} // 入力待ちのprimingも無音のまま反映を進める。
+            }
+            receiver.peak_shared.publish(
+                super::super::peak_protection::Config {
+                    enabled: true,
+                    ..Default::default()
+                }
+                .prepare(48000),
+            );
+            assert!(receiver.peak_shared.sink_pending());
+            let mut output = [1.0; 512];
+            for _ in 0..4 {
+                assert_eq!(
+                    crate::vst_host::instance::allocation_counts(|| receiver.render(&mut output)),
+                    (0, 0)
+                );
+                assert!(output.iter().all(|sample| *sample == 0.0));
+            }
+            assert!(
+                !receiver.peak_shared.sink_pending(),
+                "silent path {path} must acknowledge applied settings"
+            );
+        }
+    }
     fn fixture(capacity: usize, target: usize) -> (Sender, Receiver, Arc<Shared>) {
         let shared = Arc::new(Shared::default());
         shared.active.store(true, Ordering::Release);

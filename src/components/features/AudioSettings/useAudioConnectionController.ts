@@ -1,3 +1,4 @@
+import type { InputSourceRequest } from '@/lib/inputSource';
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi, type AudioConfig, type AudioDevice, type AudioStateInfo } from '@/api/audio';
@@ -8,6 +9,7 @@ interface Options {
     isOpen: boolean;
     host: string;
     input?: AudioDevice;
+    inputSource?: InputSourceRequest;
     output?: AudioDevice;
     sampleRate: number;
     bufferSize: number;
@@ -23,10 +25,11 @@ export class ConnectionApplyError extends Error {
     }
 }
 
-type Pending = { restart: boolean; requestedKey: string; actualKey: string; host: string; input: AudioDevice; output: AudioDevice; result: AudioConfig; config: AudioPreferences; stage: 'save' };
+type Pending = { restart: boolean; requestedKey: string; actualKey: string; host: string; input?: AudioDevice; output: AudioDevice; result: AudioConfig; config: AudioPreferences; stage: 'save' };
 
 export function useAudioConnectionController(options: Options) {
-    const { isOpen, host, input, output, sampleRate, bufferSize, isAsio, currentChannels, currentOutputRouting, onConfigChange } = options;
+    const { isOpen, host, input, inputSource, output, sampleRate, bufferSize, isAsio, currentChannels, currentOutputRouting, onConfigChange } = options;
+    const process = inputSource?.source.kind === 'process_loopback';
     const deviceKey = host && input ? `${host}\u0000${input.id ?? input.name}` : '';
     const firstPair: [number, number] = [0, input?.channels === 1 ? 0 : 1];
     const firstOutputPair: [number, number] = [0, output?.channels === 1 ? 0 : 1];
@@ -47,14 +50,15 @@ export function useAudioConnectionController(options: Options) {
     const stoppedRevision = useRef(0);
     const startVerification = useRef<Promise<void> | null>(null);
     const startedState = useRef<AudioStateInfo | null>(null);
-    const differentConnection = (state: AudioStateInfo, selected: { host: string; input: AudioDevice; output: AudioDevice }) => {
+    const differentConnection = (state: AudioStateInfo, selected: { host: string; input?: AudioDevice; output: AudioDevice; config?: AudioPreferences }) => {
         const config = state.config;
         if (!config) return false;
         return !state.is_running || config.host.toLowerCase() !== selected.host.toLowerCase()
-            || (config.input_id && selected.input.id ? config.input_id !== selected.input.id : !!config.input && config.input !== selected.input.name)
+            || (selected.input && (config.input_id && selected.input.id ? config.input_id !== selected.input.id : !!config.input && config.input !== selected.input.name))
+            || (selected.config && JSON.stringify(config.input_source) !== JSON.stringify(selected.config.inputSource))
             || (config.output_id && selected.output.id ? config.output_id !== selected.output.id : !!config.output && config.output !== selected.output.name);
     };
-    const makeKey = (rate: number, buffer: number, resolvedOutput = routing.outputRouting) => JSON.stringify([host, input?.name, input?.id, output?.name, output?.id, buffer, rate, { ...routing, outputRouting: resolvedOutput }]);
+    const makeKey = (rate: number, buffer: number, resolvedOutput = routing.outputRouting) => JSON.stringify([host, input?.name, input?.id, output?.name, output?.id, buffer, rate, { ...routing, outputRouting: resolvedOutput }, inputSource]);
     const draftKey = makeKey(sampleRate, bufferSize);
     const latestDraftKey = useRef(draftKey);
     latestDraftKey.current = draftKey;
@@ -116,7 +120,7 @@ export function useAudioConnectionController(options: Options) {
     }, [isOpen]);
     const monitorInput = !!(isOpen && input?.id && actual && host.toLowerCase() === actual.host.toLowerCase() && input.id === actual.id);
     const apply = async (restart: boolean) => {
-        if (!input || !output) throw new Error('Input or output device is not selected');
+        if ((!input && !process) || !output) throw new Error('Input or output device is not selected');
         let attempt = pending.current && pending.current.restart === restart &&
             (pending.current.requestedKey === draftKey || pending.current.actualKey === draftKey) ? pending.current : null;
         if (!attempt) {
@@ -125,14 +129,15 @@ export function useAudioConnectionController(options: Options) {
             const beforeStart = stoppedRevision.current;
             startedState.current = null;
             startVerification.current = null;
-            const result = await start(host, input.name, output.name, bufferSize, sampleRate, input.id, output.id, undefined, routing);
+            const result = await start(host, process ? undefined : input?.name, output.name, bufferSize, sampleRate, process ? undefined : input?.id, output.id, undefined, routing, ...(inputSource ? [inputSource] as const : []));
             await startVerification.current;
             if (beforeStart !== stoppedRevision.current) throw new Error('Audio stopped during start');
             if (startedState.current && differentConnection(startedState.current, { host, input, output })) throw new Error('Audio connection changed during start');
             const actualKey = makeKey(result.sample_rate, result.buffer_size, result.routing?.outputRouting);
             if (latestDraftKey.current !== draftKey && latestDraftKey.current !== actualKey) throw new Error('Audio settings changed during start');
             const actualRouting = result.routing ?? routing;
-            const config: AudioPreferences = { host, input: input.name, output: output.name, inputId: input.id, outputId: output.id,
+            const config: AudioPreferences = { host, input: process ? undefined : input?.name, output: output.name, inputId: process ? undefined : input?.id, outputId: output.id,
+                inputSource: inputSource?.source,
                 sampleRate: result.sample_rate, bufferSize: result.buffer_size,
                 inputChannels: actualRouting.inputChannels ?? channels, outputRouting: actualRouting.outputRouting };
             attempt = { restart, requestedKey: draftKey, actualKey, host, input, output, result, config, stage: 'save' };

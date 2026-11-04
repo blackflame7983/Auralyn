@@ -14,6 +14,13 @@ pub(crate) struct Mode {
     discard: Option<PathBuf>,
 }
 
+impl Mode {
+    pub(crate) fn bind_config_root(&mut self, root: &Path) {
+        // 未完了・読み取り不能も自動再開へ読み替えない。値の復帰は別の明示操作。
+        self.review_only |= crate::bundle::recovery_exists(root).unwrap_or(true);
+    }
+}
+
 fn parse(args: &[String]) -> Result<(Mode, Option<u32>), String> {
     let mut mode = Mode::default();
     let mut parent = None;
@@ -137,6 +144,23 @@ fn configure(config: &mut tauri::Config, root: &Path) -> Result<(), String> {
 }
 
 fn discard(root: &Path) -> Result<(), String> {
+    // 終了直後のWebViewが短くファイルを保持する場合だけ、同じ対象で有限に待つ。
+    for delay_ms in [0, 100, 200, 400, 800, 1600] {
+        if delay_ms != 0 {
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        }
+        if !checked_discard_target(root)? {
+            return Ok(());
+        }
+        match std::fs::remove_dir_all(root) {
+            Ok(()) => return Ok(()),
+            Err(error) if matches!(error.raw_os_error(), Some(2 | 3 | 5 | 32 | 33 | 145)) => {}
+            Err(_) => return Err("一時保存先を削除できません".into()),
+        }
+    }
+    Err("一時保存先を削除できません".into())
+}
+fn checked_discard_target(root: &Path) -> Result<bool, String> {
     let name = root
         .file_name()
         .and_then(|s| s.to_str())
@@ -161,14 +185,14 @@ fn discard(root: &Path) -> Result<(), String> {
         .try_exists()
         .map_err(|_| "一時保存先の有無を確認できません")?
     {
-        return Ok(());
+        return Ok(false);
     }
     use std::os::windows::fs::MetadataExt;
     let metadata = std::fs::symlink_metadata(root).map_err(|_| "一時保存先を確認できません")?;
     if !metadata.is_dir() || metadata.file_attributes() & 0x400 != 0 {
         return Err("参照先が変わった一時保存先は削除しません".into());
     }
-    std::fs::remove_dir_all(root).map_err(|_| "一時保存先を削除できません".into())
+    Ok(true)
 }
 
 fn marker() -> PathBuf {
@@ -230,9 +254,14 @@ pub(crate) async fn restart_temporary_session(
     app: AppHandle,
     mode: State<'_, Mode>,
     temporary: bool,
+    preserve_runtime: Option<bool>,
 ) -> Result<(), String> {
     if mode.temporary == temporary {
         return Err("利用状態が変更されています".into());
+    }
+    let preserve_runtime = preserve_runtime.unwrap_or(false);
+    if preserve_runtime && (!temporary || mode.temporary) {
+        return Err("未保存設定の退避は通常設定から一時利用を始めるときだけ指定できます".into());
     }
     if temporary
         && mode
@@ -243,10 +272,18 @@ pub(crate) async fn restart_temporary_session(
         return Err("前回の一時ファイルが残っています。表示された専用領域を確認・削除してから、新しい一時利用を始めてください".into());
     }
     let previous_directory = mode.directory.clone();
+    let snapshot_root = if preserve_runtime {
+        Some(app.path().app_config_dir().map_err(|e| e.to_string())?)
+    } else {
+        None
+    };
     let state = app.state::<crate::audio::AudioState>().0.clone();
     crate::commands::run_blocking(move || {
         let mut audio = state.lock().map_err(|_| "音声状態を取得できません")?;
         audio.preflight_live_changes().map_err(|e| e.to_string())?;
+        if let Some(root) = snapshot_root {
+            crate::commands::bundles::preserve_temporary_runtime(&root, &mut audio)?;
+        }
         // 旧エンジンを終了してから再起動する。再生・録音の継続は引き継がない。
         audio.prepare_update().map_err(|e| e.to_string())?;
         let started = (|| -> Result<(), String> {
@@ -305,6 +342,85 @@ pub(crate) async fn restart_temporary_session(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn temporary_discard_retries_a_short_lived_file_lock_without_touching_a_sibling() {
+        use sha2::{Digest, Sha256};
+        use std::os::windows::fs::OpenOptionsExt;
+        let id = format!("{:x}", Sha256::digest(crate::bundle::revision().as_bytes()));
+        let id = &id[..32];
+        let root = std::env::temp_dir().join(format!("Auralyn-temporary-{id}"));
+        let sibling = std::env::temp_dir().join(format!("auralyn-kept-{id}"));
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&sibling).unwrap();
+        let locked = root.join("webview-cache");
+        let sentinel = sibling.join("original");
+        std::fs::write(&locked, b"temporary").unwrap();
+        std::fs::write(&sentinel, b"keep original").unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&locked)
+            .unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            drop(file);
+        });
+        let result = discard(&root);
+        release.join().unwrap();
+        assert_eq!(std::fs::read(&sentinel).unwrap(), b"keep original");
+        // 修正前の赤い試験でも、所有する既知のfixtureだけを個別に片付ける。
+        if locked.exists() {
+            std::fs::remove_file(&locked).unwrap();
+        }
+        if root.exists() {
+            std::fs::remove_dir(&root).unwrap();
+        }
+        std::fs::remove_file(sentinel).unwrap();
+        std::fs::remove_dir(sibling).unwrap();
+        assert!(
+            result.is_ok(),
+            "短いロックの解放後も削除を再試行しませんでした"
+        );
+    }
+    #[test]
+    fn temporary_discard_retains_a_persistently_locked_directory_and_reports_failure() {
+        use sha2::{Digest, Sha256};
+        use std::os::windows::fs::OpenOptionsExt;
+        let id = format!("{:x}", Sha256::digest(crate::bundle::revision().as_bytes()));
+        let root = std::env::temp_dir().join(format!("Auralyn-temporary-{}", &id[..32]));
+        std::fs::create_dir(&root).unwrap();
+        let path = root.join("locked");
+        std::fs::write(&path, b"keep locked").unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
+        let result = discard(&root);
+        drop(file);
+        assert_eq!(std::fs::read(&path).unwrap(), b"keep locked");
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(root).unwrap();
+        assert!(result.is_err());
+    }
+    #[test]
+    fn unfinished_or_corrupt_recovery_forces_review_without_loading_or_deleting_it() {
+        let root = std::env::temp_dir().join(format!(
+            "auralyn-runtime-review-{}",
+            crate::bundle::revision()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let mut mode = Mode::default();
+        mode.bind_config_root(&root);
+        assert!(!mode.review_only);
+        let receipt = root.join("broadcast-bundle-recovery.json");
+        std::fs::write(&receipt, b"interrupted capture").unwrap();
+        mode.bind_config_root(&root);
+        assert!(mode.review_only && !mode.temporary);
+        assert_eq!(std::fs::read(&receipt).unwrap(), b"interrupted capture");
+        std::fs::remove_file(receipt).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
     #[test]
     fn temporary_overrides_every_native_and_webview_root_without_changing_identity() {
         let base = std::env::temp_dir().join("auralyn-isolation-test");

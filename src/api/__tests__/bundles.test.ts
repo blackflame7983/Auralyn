@@ -2,6 +2,24 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { bundleApi, BundleClientError } from '../bundles';
 beforeEach(() => { vi.mocked(invoke).mockReset(); });
+it('プロセス入力は明示保存だけに含め、分離出力や本番モードと区別する', async () => {
+    vi.mocked(invoke).mockResolvedValue({ type: 'saved' });
+    const categories = { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true };
+    await bundleApi.save('process', categories, null, false, undefined, false, false, true);
+    expect(invoke).toHaveBeenLastCalledWith('broadcast_bundle', { request: { action: 'save', name: 'process', categories, obs: null, overwrite: false, includeProcess: true } });
+});
+it('本番モードと関連VSTも明示選択した保存だけに含める', async () => {
+    vi.mocked(invoke).mockResolvedValue({ type: 'saved' });
+    const categories = { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true };
+    await bundleApi.save('modes', categories, null, false, undefined, true, true);
+    expect(invoke).toHaveBeenLastCalledWith('broadcast_bundle', { request: { action: 'save', name: 'modes', categories, obs: null, overwrite: false, includeOutput: true, includeLive: true } });
+});
+it('分離出力は明示選択した保存だけに含める', async () => {
+    vi.mocked(invoke).mockResolvedValue({ type: 'saved' });
+    const categories = { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true };
+    await bundleApi.save('output', categories, null, false, undefined, true);
+    expect(invoke).toHaveBeenLastCalledWith('broadcast_bundle', { request: { action: 'save', name: 'output', categories, obs: null, overwrite: false, includeOutput: true } });
+});
 it('上書き許可は既定falseで、明示trueだけをbackendへ渡す', async () => {
     vi.mocked(invoke).mockResolvedValue({type: 'saved'});
     const categories = {includePlugins: true, includeAudioConfig: false, includeNoiseControl: false, includeBuiltinFx: false};
@@ -33,4 +51,11 @@ it('client応答エラーは表示keyを持ち、backendの取消や制御error�
         vi.mocked(invoke).mockRejectedValueOnce(token);
         await expect(bundleApi.list()).rejects.toBe(token);
     }
+});
+
+it('ミックスは明示選択時だけ保存要求に含める', async () => {
+    vi.mocked(invoke).mockResolvedValue({ type: 'saved' });
+    const categories = { includePlugins: true, includeAudioConfig: true, includeNoiseControl: true, includeBuiltinFx: true };
+    await bundleApi.save('mix', categories, null, false, undefined, true, true, false, true);
+    expect(invoke).toHaveBeenLastCalledWith('broadcast_bundle', { request: { action: 'save', name: 'mix', categories, obs: null, overwrite: false, includeOutput: true, includeLive: true, includeMixing: true } });
 });

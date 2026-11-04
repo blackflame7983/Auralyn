@@ -6,7 +6,7 @@ export interface LiveModeSnapshot {
     epoch: string; running: boolean; revision: string; acceptedRevision: string; completedRevision: string;
     target: LiveMode | null; applied: LiveMode | null; phase: 'custom' | 'stopped' | 'queued' | 'transitioning' | 'settled' | 'partial';
     armed: boolean; naturalTail: boolean; error: string | null;
-    definitions: { schemaVersion: 1; version: string; singing: BuiltinConfig | null; talk: BuiltinConfig | null; profiles?: Partial<Record<LiveMode, { name: string; revision: string } | null>> };
+    definitions: { schemaVersion: 1; version: string; singing: BuiltinConfig | null; talk: BuiltinConfig | null; profiles?: Partial<Record<LiveMode, { name: string; revision: string; snapshot?: string | null } | null>> };
     transaction?: { id: string; phase: string; target: LiveMode | null; error: string | null; recoveryAvailable: boolean } | null;
 }
 export function transactionBlocksChanges(transaction: LiveModeSnapshot['transaction']): boolean {

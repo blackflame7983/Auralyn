@@ -109,6 +109,13 @@ GUI応答の成功だけでは描画欠け・DPI・聴感・OBSへの到達を�
 
 ## 現行の検証手順（2026-10-15 改訂）
 
+プロセス入力の改善版での長時間運転・異常時停止は[2026-11-02の後続記録](PROCESS_LOOPBACK_FOLLOWUP_2026-11-02.md)を参照する。
+停止後の学習値保持、実素材の声用途、Chrome音声子プロセス終了後の確認は[2026-11-03の修正・検証記録](PROCESS_INPUT_LEARNING_RETENTION_2026-11-03.md)を参照する。
+明示runnerは`scripts/verify_process_material_nr.py`。PythonのNumPy・SoundFile、Node.js、インストール済みChrome、既存probe、未使用のCABLE Inputと別の原音用出力を必要とする。`--engine`、`--probe`、`--material`、`--raw-endpoint`、`--output-endpoint`、新規の`--output-dir`を指定する。物理マイクを開かず、通常のアプリ設定を使用しない。
+許諾済み配信のNR比較は[素材評価手順](NR_MATERIAL_EVALUATION_2026-11-02.md)を使う。
+`export_same_input_noise_candidates`は素材評価専用のignored試験で、`AURALYN_NR_EVALUATION_INPUT`へ絶対パスのfloat32ステレオWAV（最大10秒）、`AURALYN_NR_EVALUATION_OUTPUT`へ未作成の絶対パスを指定して明示実行する。
+通常アプリの設定と学習結果を使わず、製品の既存候補生成処理を評価する。通常の自動テストで素材や音声デバイスを要求しない。
+
 固定ゲインの提案・聞き比べは [AUTO_GAIN.md](AUTO_GAIN.md) の検証境界も参照する。
 
 以下の過去ログ・チェック済み項目は当時の記録です。現在のHEADの動作保証として扱わず、変更に応じて再確認してください。
@@ -461,3 +468,111 @@ Win32で強制表示する末尾の復帰は実際のトレイクリックの受
 - `cargo test --locked --lib mode_silence` はcallback末尾の無音ACK、入力停止→キュー排出→出力排出の順序、分離monitorと配信出力、古い送出block、不一致ID・世代・異常、レート変換のcarry破棄を確認する。callback処理の割当/解放が0であることを測る。耳までの無音成立時刻を測った試験ではない。
 - 登録・失敗後の操作再開・手動復旧は `useLiveModes.test.tsx`、新ラックIDの同期と保存原本の保護は `usePluginsRackInvalidated.test.tsx` で確認する。`e2e/browser/live-mode-vst.spec.ts` はプロファイル関連付け、切替中の二重操作禁止、緊急ミュートへの到達、復旧の明示操作と完了後の操作再開を実ブラウザ・IPCモックで確認する。
 - 完了時にはRust全体のtest/check/clippy/fmtとフロント全体・型・buildを実行する。実Tauri・複数の実VST・WASAPI/ASIO・実出力録音・OBS連動で、無音区間、旧音の混入、失敗時復旧、停止・緊急ミュートの優先、再起動の手動復旧、キーボード・読み上げを別途受入する。対象経路・VST/ドライバー/レート/bufferを記録し、未実施なら未確認とする。
+
+## プロセス単独入力の段階0 probe
+
+製品UIと分離した検証exampleを`process-loopback-probe` featureでビルドする。
+取得・取消・対象終了・録音の保護と、原音の二重再生を防ぐ経路の合否を別々に扱う。
+コマンドと実機確認の境界は[段階0の記録](PROCESS_LOOPBACK_STAGE0.md)を参照する。
+単体試験は`src-tauri`で`cargo test --locked --example process_loopback_probe --features process-loopback-probe`。
+実機runnerの実行は音声ストリームを開始するため、通常の自動テストへ追加しない。
+既存runnerの`single_endpoint_gate`は、アプリのセッションミュート／音量ゼロを使った当初の同一再生先での試験である。別再生先への割当てや出力デバイス側のミュートは実行しない。
+[見直した計画](plans/PROCESS_LOOPBACK_AND_MIXING.md)では、別再生先での原音抑止と取得の両立、使えない環境での仮想ケーブル入力を追加の検証対象にする。
+原音が耳へ届かず、加工後の本人用出力は聴けること、他アプリが混入しないこと、切断時の挙動と元の設定への戻し方を記録する。未加工／加工後の比較は一つの返し経路で行う。
+SGMの説明書や既存runnerの成功を新経路の実機合格へ読み替えない。追加の別再生先試験は `scripts/verify_process_loopback_route.py` で明示実行し、出力デバイス側のミュートと復元を確認する。
+
+
+## プロセス単独入力の段階1
+
+実装と確認範囲は[段階1の記録](PROCESS_LOOPBACK_STAGE1.md)を参照する。
+Rustは `cargo test --locked --all-targets --features process-loopback-probe` と同条件のClippy（`-- -D warnings`）、フロントはVitest・TypeScript・Viteで確認する。
+`e2e/browser/process-input.spec.ts` はIPCモックで、候補選択、保存時に機器入力と候補IDを混同しないこと、再選択、用途の保持、機器入力への明示切替と狭い画面を確認する。
+`ProcessInputPanel.test.tsx` は一覧更新の非同期応答中に用途を変更しても古い下書きへ戻さず、同じアプリの再生先変更では出力先だけを再選択することを確認する。
+
+`scripts/verify_process_engine_input.py` は実Engine、`scripts/verify_process_audio_engine.py` は実ケーブル入力（`--purpose voice|music`）、`scripts/verify-process-input-native.mjs` は実UI→Host→Engine→保存を確認する明示実行用の入口である。
+通常の自動テストから音声を開始しない。実行時は、原音用の未使用・非既定の再生先と本人用出力を指定し、所有する小音量sourceだけを使う。
+実Tauri runnerは保存先・WebView2・実行ファイルを隔離する。MCP CLIの接続先は起動したHostのPIDに対応するポートから選び、接続状態を確認してから操作する。
+結果の音声データ、出力デバイス側のミュート、実際の聴感、Chrome等の個別アプリ、製品の1時間運転、ASIOマイク実機はそれぞれ別の確認として記録する。
+
+Chrome・VLCと実VSTによる連続試験は `scripts/verify_process_app_soak.py` で明示実行する。
+`--seconds 3900`で65分、ChromeのHTML音声は`--chrome-media-kind audio-element`を指定する。
+出力デバイスのミュートとアプリのミュートを区別し、開始時の非ゼロ信号、一時停止・再開、VST稼働を確認する。
+長時間の本人用出力はEngineの全体ミュートを使う。処理の稼働と聴感を同じ合否にしない。
+監視JSONのWindowsでの読み取り競合は再試行し、表示用snapshotの競合だけで運転を止めず、`samples.jsonl`へ詳細を追記する。
+自動試験で扱うミュートは所有するguardで復元し、通常のWindows既定・返し用出力の設定を保持する。
+条件・警告・最終結果は[Chrome・VLCの確認記録](PROCESS_LOOPBACK_ACCEPTANCE_2026-11-02.md)、利用者の聴感確認は[試聴手順](PROCESS_LOOPBACK_AUDITION.md)に分ける。
+
+## 原音比較の切替fade
+
+実装と境界は[切替処理の改善](COMPARISON_SWITCH_TRANSITION.md)を参照する。
+`audio_engine::comparison`のRust試験で逆極性の経路、複数rateと可変block、連打・取消、空ラック、起動時、RT無割当を確認する。
+`verify_process_app_soak.py --comparison-switches`は実VST経路の音量比と64回の連打後の復帰を確認する明示試験である。
+波形試験や入出力メーターを、クリックが耳で消えた証拠として扱わない。改善前の65分記録も改善版の長時間検証には使わない。
+
+## 未保存設定の退避と手動復帰（Issue #221）
+
+[復帰範囲の契約](UNSAVED_RUNTIME_RESTORE.md)と[先行対応の記録](UNSAVED_RUNTIME_ACCEPTANCE_2026-11-03.md)を参照する。
+Rust全対象・probeとClippy、全Vitest、TypeScript、Viteに加え、`e2e/browser/temporary-runtime.spec.ts` を実行する。
+退避なしの従来操作、範囲を変えた後の再確認、拒否時の保存値保持、未完了原本を成功表示しないことを確認する。
+
+実機runnerは通常の自動テストに含めない。未使用・非既定・非ミュートのCABLE Input、Voicemeeter Input、TDR Novaとendpoint列挙用probeが必要。
+`CARGO_TARGET_DIR`を専用ビルド領域に設定し、現行ソースのEngineを`cargo build --locked --bin audio_engine`で先にビルドする。
+続いて `node scripts/prepare-process-input-audition.mjs <新しい専用アプリ領域>` でHost・scanner・フロントを分離ビルドし、次を明示実行する。
+
+```powershell
+node scripts/verify-unsaved-runtime-native.mjs <専用アプリ領域> <新しい証拠領域> <process_loopback_monitor_probe.exeの絶対パス>
+```
+
+runnerは物理マイクを開かず、CABLE Output→Voicemeeter Inputを全体ミュートで開始する。
+TEMP/TMPを子プロセスごと隔離し、通常の一時領域・既定機器・共有MCPドライバーを変更しない。
+再起動後の停止、通常設定の不変、原本の照合、Stop・ミュート・後編集での拒否、明示復帰後のVST状態を確認する。
+対象外の音楽用途での停止前拒否、機器ID不一致、VST欠落時の原本保持も確認する。
+空ラックと入出力の完全な0は、独立した試験用TEMPで退避・復帰し、復帰操作時の全体バイパスを保持することも確認する。
+設定の反映が500 ms安定してから差分を取得し、反映待ちによる読み取り失敗だけを有限に取り直す。適用の拒否は自動再試行しない。
+既存証拠は上書きせず、同じ所有アプリを再利用する場合だけ `--reuse-owned-app` を指定する。
+削除待ちが出た場合は対象パスと原本を保持し、削除成功や共有PC全体の合格へ読み替えない。
+
+## 分離出力を含む配信状態（Issue #222の先行対応）
+
+[保存・復帰の契約と実機確認の境界](OUTPUT_CONFIGURATION_RESTORE.md)を参照する。
+Rust全対象・probeとClippy、Vitest、TypeScript、Viteを確認し、`e2e/browser/output-configuration.spec.ts` で900×600の明示保存、両枝の差分、再起動案内と適用ボタンへの到達を確認する。
+原本・旧schema、機器ID、出力ファイルの外部編集、現在の自分用処理、初期化済み音量の遅い再送を別の条件として検証する。
+
+実機は前節と同じ方法で新しい専用アプリをビルドし、`scripts/verify-output-configuration-native.mjs <専用アプリ領域> <新しい証拠領域> <probeの絶対パス>` を明示実行する。
+CABLE Output入力、Voicemeeter Inputへの返しとCABLE Inputへの配信用出力を開くが、全体ミュートは解除しない。
+保存・差分・復帰は実UIを使い、Undo・欠落・外部編集・所有fixtureによるVST失敗・手動復旧を実Hostで確認する。
+同じ所有アプリの再試験だけに `--reuse-owned-app` を使い、復旧待ちを解除しても原本ファイルは残す。
+通常の自動テストには音声開始を含めず、独立した実機経路・聴感・ASIO・V-04の合格は別に記録する。
+
+歌／雑談を含むschema 3は、同じrunnerへ`--live-modes`を付け、[モード保存・復帰の契約](LIVE_MODE_STATE_RESTORE.md)を確認する。
+通常プロファイルを後編集した後の実UI保存・復帰、歌／雑談の選択と空ラックのUndo、関連VST欠落、モード定義の外部編集を扱う。
+復帰中のStop・ミュートで中断と原本保持を確認し、手動復旧後に再適用する。
+最後に専用Hostを終了・再起動し、明示開始後の通常モード操作で、専用保存先の関連VSTが両モードへ適用されることを確認する。
+新しい証拠領域を毎回使い、過去の失敗や原本は置換しない。全体ミュートを維持し、聴感受入とは分ける。
+
+プロセス単独入力のschema 4は、同じrunnerの`--process-input`で[保存・復帰の契約](PROCESS_STATE_RESTORE.md)を確認する。
+所有するテスト再生プロセスだけを使い、未使用のCABLE Inputを原音用に一時ミュートし、必ず元へ戻す。
+実UIで保存・差分・復帰し、PIDの非保存、終了したプロセスの拒否、再起動した同じアプリの明示再選択、用途の不一致を確認する。
+Stop・VST読込失敗・Host再起動後の手動復旧と、声／音楽の用途を分けて扱う。通常の再生アプリや物理マイクは操作しない。
+
+一時利用前の拡張退避は[共通契約](EXTENDED_TEMPORARY_RESTORE.md)に従う。
+`verify-unsaved-runtime-native.mjs`に`--split-modes`を付け、分離出力と関連VST付きの歌モードを退避し、通常設定の保持と明示復帰を確認する。
+この構成では仮想ケーブルの入出力を同時に使うため、ミュート解除のケースは実行しない。従来の単独出力のrunnerでは解除時の復帰拒否も確認する。
+`verify-output-configuration-native.mjs --process-input`には、音楽用途のプロセス入力を退避して一時利用へ移り、アプリを起動し直した後に通常設定側で明示再選択して復帰するケースを含める。
+runtime 1とruntime 2、原本schemaとの一致、機器IDの後編集、原本のSHA-256はRust試験でも確認する。
+両runnerに`--expect-cleanup`を付けると、通常設定へ戻った後の所有する一時領域の削除も必須条件にする。
+短いファイルロックは有限に再試行し、解放されなければ削除失敗を通知して残す。
+
+ブラウザテストは開始時に出力先を消すため、`playwright.config.ts`の`outputDir`を`test-results/browser-output`へ限定する。
+`test-results`直下や実Hostの試験環境を`--output`に指定しない。実Hostのログ・原本・バイナリはこの専用出力先の外に置く。
+
+
+## 配信ミックスのUI（Issue #234〜#254）
+
+[対応と確認記録](UI_MIXING_ACCEPTANCE_2026-11-03.md)を参照する。
+`e2e/browser/mixing.spec.ts` はオケを開かない配信VSTの入口、自動取得、音量・ミュートの連続操作、失敗時の実値表示、キーボード並べ替え、日英と150%を確認する。
+DOM試験は編集内容の保持、revisionの競合、遅い応答、入力ペア、保存範囲の要求互換、専用差分表、診断を扱う。
+
+`npm run test:e2e:native -- --mixing-ui` は保存先を分離した実HostでTDR Novaを使い、音声を開始せず追加・並べ替え・初期化と実WebView2の150%を確認する。
+ズーム権限はこの明示試験の隔離Hostだけに付ける。
+実スクリーンリーダーの発話、実機音声、稼働中のホーム状態は、自動試験の成功に含めない。

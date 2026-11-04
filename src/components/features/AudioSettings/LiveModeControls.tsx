@@ -53,6 +53,7 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
                             {profiles.map(profile => <option key={profile.name} value={profile.name}>{profile.name}</option>)}
                         </select>
                         <p className="text-xs text-muted-foreground">{t('liveTransaction.bound', { name: bound || t('liveTransaction.builtinOnly') })}</p>
+                        {value?.definitions.profiles?.[mode]?.snapshot && <p className="text-xs text-muted-foreground">{t('bundle.live.savedBinding')}</p>}
                         {selected && selection[mode] !== undefined && <p className="text-xs text-warning">{t('liveTransaction.warning')}</p>}
                         <button type="button" disabled={busy || !saved || profileError || (selected === bound && !selected)} onClick={() => void model.bindProfile(mode, selected || null).then(ok => { if (ok) setSelection(old => { const next = { ...old }; delete next[mode]; return next; }); })} className="rounded-md border border-border px-3 py-1.5 text-xs">{t('liveTransaction.saveBinding', { mode: name(mode) })}</button>
                     </div>

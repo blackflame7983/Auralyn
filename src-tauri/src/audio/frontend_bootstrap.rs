@@ -36,6 +36,8 @@ pub(crate) struct GainIntent {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Config {
+    #[serde(default)]
+    pub input_source: Option<crate::input_source::Config>,
     pub host: String,
     pub input: Option<String>,
     pub output: Option<String>,
@@ -60,6 +62,7 @@ fn input_pair_matches(config: &Config, active: &ActiveAudioConfig, requested: [u
 fn merge_deferred_ids(config: &mut Config, deferred: Option<&ActiveAudioConfig>) {
     if let Some(previous) = deferred.filter(|previous| {
         config.host.eq_ignore_ascii_case(&previous.host)
+            && config.input_source == previous.input_source
             && config.input == previous.input
             && config.output == previous.output
     }) {
@@ -350,6 +353,17 @@ impl AudioHost {
                 error: None,
             });
         };
+        if config
+            .input_source
+            .as_ref()
+            .is_some_and(|s| *s != crate::input_source::Config::default())
+        {
+            return Ok(Reply {
+                outcome: Outcome::Inactive,
+                initial_page: true,
+                error: Some("音声設定で入力を確認してから開始してください。".into()),
+            });
+        }
         merge_deferred_ids(
             &mut config,
             self.frontend_bootstrap.deferred_config.as_ref(),
@@ -407,6 +421,7 @@ pub(super) mod tests {
     pub(super) fn request() -> Request {
         Request {
             config: Some(Config {
+                input_source: None,
                 host: "ASIO".into(),
                 input: None,
                 output: None,

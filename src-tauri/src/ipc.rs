@@ -412,6 +412,19 @@ pub enum SessionRackReply {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum Command {
+    ProcessingState,
+    CaptureMixingBundleState,
+    PostMixPrepare {
+        sample_rate: u32,
+    },
+    PostMixClear,
+    PostMixStatus,
+    PostMixStart {
+        descriptor: crate::audio_engine::post_mix::Descriptor,
+    },
+    Mixing {
+        request: crate::audio_engine::mixing::Request,
+    },
     ModeMonitor {
         request: crate::audio_engine::split_monitor::Request,
     },
@@ -446,10 +459,13 @@ pub enum Command {
     },
     /// このEngineがStart時の実デバイスID照合に対応することを確認する。
     StartIdentityCapability,
+    ProcessInputCapability,
     AutoGain {
         request: crate::audio_engine::auto_gain::Request,
     },
     Start {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input_source: Option<crate::input_source::Start>,
         host: String,
         input: Option<String>,
         output: Option<String>,
@@ -594,6 +610,22 @@ pub enum Command {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum Response {
+    ProcessingState {
+        present: bool,
+        failed: bool,
+    },
+    PostMixDescriptor(crate::audio_engine::post_mix::Descriptor),
+    PostMixStatus {
+        attached: bool,
+        ready: bool,
+        failed: bool,
+        sample_rate: Option<u32>,
+        transport_latency_frames: u32,
+        declared_plugin_latency_frames: Option<u32>,
+        #[serde(default)]
+        processed_packets: Option<u64>,
+    },
+    Mixing(Box<crate::audio_engine::mixing::Snapshot>),
     ModeMonitor(Box<crate::audio_engine::split_monitor::StateSnapshot>),
     ModeSilence(crate::audio_engine::mode_silence::Snapshot),
     PeakProtection(crate::audio_engine::peak_protection::Snapshot),
@@ -629,6 +661,9 @@ pub enum Response {
     StartIdentityCapability {
         version: u32,
     },
+    ProcessInputCapability {
+        version: u32,
+    },
     Started {
         sample_rate: u32,
         buffer_size: u32,
@@ -646,6 +681,8 @@ pub enum Response {
         vendor: String,
     },
     RuntimeStats {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        process_input: Option<Box<crate::audio_engine::process_capture::Snapshot>>,
         #[serde(default)]
         preparation: Option<Box<PreparationSnapshot>>,
         active_plugin_count: u32,
@@ -720,6 +757,8 @@ pub struct MeterLevels {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum EngineEvent {
+    MixingSourceFailed,
+    MixingOutputFailed,
     Log(String),
     Error(String),
     // Peak Meters (Input L/R, Output L/R)
@@ -786,6 +825,8 @@ mod tests {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "kind", content = "data")]
+// 制御スレッドの直列IPC。頻出するメーターイベントごとのBox確保は追加しない。
+#[allow(clippy::large_enum_variant)]
 pub enum OutputMessage {
     Response(Response),
     Event(EngineEvent),

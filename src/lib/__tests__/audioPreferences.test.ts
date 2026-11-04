@@ -3,6 +3,16 @@ import { readAudioPreferences, readCachedAudioDevices, deviceIdsForUpdate } from
 
 afterEach(() => localStorage.clear());
 
+it('アプリの保存情報を保持し、PID・未知の入力形式をマイクに読み替えない', () => {
+    const source = { kind: 'process_loopback', config: { appKey: 'a'.repeat(64), appName: 'player.exe', rawEndpointId: 'raw', purpose: 'music' } };
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', inputSource: source }));
+    expect(readAudioPreferences()?.inputSource).toEqual(source);
+    for (const invalid of [{ ...source, pid: 123 }, { ...source, config: { ...source.config, pid: 123 } }, { kind: 'future' }]) {
+        localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', inputSource: invalid }));
+        expect(readAudioPreferences()).toBeNull();
+    }
+});
+
 it.each([{ mode: 'legacy' }, { mode: 'insert' }, { mode: 'independent', channels: [0, 1] }])('返却方式を保存値から復元する: %j', outputRouting => {
     localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', inputChannels: [6, 7], outputRouting }));
     expect(readAudioPreferences()?.outputRouting).toEqual(outputRouting);

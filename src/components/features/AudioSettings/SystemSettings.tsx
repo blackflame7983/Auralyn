@@ -1,3 +1,4 @@
+import { MixingDiagnostics } from './MixingDiagnostics';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { MdExtension, MdRefresh, MdSettings } from 'react-icons/md';
 import { audioApi, type EngineRuntimeStats, type EngineTuningConfig } from '../../../api/audio';
@@ -327,6 +328,7 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                 </tr>
                 </tbody>
                 </table>
+            <MixingDiagnostics open={openSections.diagnostics} />
             <LatencyDetails stats={engineStats} isRunning={!knownStopped} />
             </details>
             {/* Plugin Management */}

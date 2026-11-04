@@ -1,5 +1,6 @@
 pub mod callback_diagnostics;
 mod channel_scan;
+mod comparison;
 pub mod core;
 mod deferred_drop;
 pub mod devices;
@@ -7,6 +8,7 @@ pub mod editors;
 pub mod frame_timing;
 pub mod loopback_probe;
 pub mod plugins;
+pub(crate) mod process_capture;
 pub mod queue_diagnostics;
 pub mod resampling;
 pub mod test_tone;
@@ -32,6 +34,8 @@ pub mod singing_proposal;
 
 pub mod live_output;
 
+pub(crate) mod mixing;
+pub(crate) mod post_mix;
 pub(crate) mod split_monitor;
 
 pub mod noise_candidate;

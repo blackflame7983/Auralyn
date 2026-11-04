@@ -1,0 +1,390 @@
+use anyhow::{anyhow, ensure, Result};
+use serde::{Deserialize, Serialize};
+use std::{
+    cell::UnsafeCell,
+    mem::size_of,
+    ptr::NonNull,
+    sync::{
+        atomic::{AtomicU32, AtomicU64, Ordering},
+        Arc,
+    },
+};
+use windows::{
+    core::PCWSTR,
+    Win32::{
+        Foundation::{
+            CloseHandle, GetLastError, ERROR_ALREADY_EXISTS, HANDLE, INVALID_HANDLE_VALUE,
+        },
+        System::{
+            Com::CoCreateGuid,
+            Memory::{
+                CreateFileMappingW, MapViewOfFile, OpenFileMappingW, UnmapViewOfFile,
+                FILE_MAP_ALL_ACCESS, MEMORY_MAPPED_VIEW_ADDRESS, PAGE_READWRITE,
+            },
+        },
+    },
+};
+
+pub const BLOCK_FRAMES: usize = 512;
+pub const PROTOCOL: u32 = 1;
+pub const TRANSPORT_LATENCY_FRAMES: u32 = (BLOCK_FRAMES * 4) as u32;
+const CAPACITY: u64 = 8;
+const PREFIX: &str = "Local\\AuralynPostMix-";
+const MAGIC: u64 = 0x4155_5241_504d_4958;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Descriptor {
+    pub name: String,
+    pub sample_rate: u32,
+    pub protocol: u32,
+}
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct Packet {
+    pub sequence: u64,
+    pub generation: u64,
+    pub bypassed: u32,
+    pub samples: [[f32; 2]; BLOCK_FRAMES],
+}
+impl Default for Packet {
+    fn default() -> Self {
+        Self {
+            sequence: 0,
+            generation: 0,
+            bypassed: 0,
+            samples: [[0.0; 2]; BLOCK_FRAMES],
+        }
+    }
+}
+
+#[repr(C, align(64))]
+struct Index(AtomicU64);
+#[repr(C)]
+struct Ring {
+    read: Index,
+    write: Index,
+    slots: [UnsafeCell<Packet>; CAPACITY as usize],
+}
+impl Ring {
+    fn new() -> Self {
+        Self {
+            read: Index(AtomicU64::new(0)),
+            write: Index(AtomicU64::new(0)),
+            slots: std::array::from_fn(|_| UnsafeCell::new(Packet::default())),
+        }
+    }
+    fn push(&self, packet: &Packet) -> bool {
+        let write = self.write.0.load(Ordering::Relaxed);
+        let read = self.read.0.load(Ordering::Acquire);
+        let len = write.wrapping_sub(read);
+        if len >= CAPACITY {
+            return false;
+        }
+        // producer は空きスロットだけを書き、公開後は consumer の read 更新まで再利用しない。
+        // SAFETY: 単一producerだけが範囲内の空きslotを所有し、release公開後はconsumerの解放まで書き換えない。
+        unsafe {
+            *self.slots[(write % CAPACITY) as usize].get() = *packet;
+        }
+        self.write.0.store(write.wrapping_add(1), Ordering::Release);
+        true
+    }
+    fn pop(&self, packet: &mut Packet) -> bool {
+        let read = self.read.0.load(Ordering::Relaxed);
+        let write = self.write.0.load(Ordering::Acquire);
+        let len = write.wrapping_sub(read);
+        if len == 0 || len > CAPACITY {
+            return false;
+        }
+        // acquire で完成したスロットを読み、コピー完了後に release して再利用を許す。
+        // SAFETY: 単一consumerがacquire済みの初期化済みslotをコピーし、完了後のreleaseまでproducerによる再利用を禁止する。
+        unsafe {
+            *packet = *self.slots[(read % CAPACITY) as usize].get();
+        }
+        self.read.0.store(read.wrapping_add(1), Ordering::Release);
+        true
+    }
+}
+#[repr(C)]
+struct Shared {
+    ready: AtomicU32,
+    magic: u64,
+    protocol: u32,
+    rate: u32,
+    size: u32,
+    client_claim: AtomicU32,
+    worker_claim: AtomicU32,
+    failed: AtomicU32,
+    worker_ready: AtomicU32,
+    latency: AtomicU64,
+    input: Ring,
+    output: Ring,
+}
+impl Shared {
+    fn new(rate: u32) -> Self {
+        Self {
+            ready: AtomicU32::new(0),
+            magic: MAGIC,
+            protocol: PROTOCOL,
+            rate,
+            size: size_of::<Self>() as u32,
+            client_claim: AtomicU32::new(0),
+            worker_claim: AtomicU32::new(0),
+            failed: AtomicU32::new(0),
+            worker_ready: AtomicU32::new(0),
+            latency: AtomicU64::new(u64::MAX),
+            input: Ring::new(),
+            output: Ring::new(),
+        }
+    }
+}
+struct View {
+    handle: HANDLE,
+    address: NonNull<Shared>,
+}
+// 共有データは atomic と SPSC の排他的なスロット所有権で同期する。
+// SAFETY: mappingの所有権はArcで保持し、共有領域の変更はatomicとclaimで一意化したSPSC portだけを使う。
+unsafe impl Send for View {}
+// SAFETY: 共有参照の変更はatomicとSPSC所有権で同期し、portの処理は排他的な可変借用を要求する。
+unsafe impl Sync for View {}
+impl View {
+    fn shared(&self) -> &Shared {
+        // SAFETY: 成功したmappingの非nullで整列した領域を参照し、その寿命はViewのArc所有権で保持する。
+        unsafe { self.address.as_ref() }
+    }
+}
+impl Drop for View {
+    fn drop(&mut self) {
+        // SAFETY: 最後のArcだけが所有viewをunmapし、その後に対応する所有handleを一度だけ閉じる。
+        unsafe {
+            let _ = UnmapViewOfFile(MEMORY_MAPPED_VIEW_ADDRESS {
+                Value: self.address.as_ptr().cast(),
+            });
+            let _ = CloseHandle(self.handle);
+        }
+    }
+}
+fn map(handle: HANDLE) -> Result<Arc<View>> {
+    // SAFETY: 有効な所有mapping handleを指定サイズでmapし、失敗のnullは参照せず処理する。
+    let address = unsafe { MapViewOfFile(handle, FILE_MAP_ALL_ACCESS, 0, 0, size_of::<Shared>()) };
+    let Some(address) = NonNull::new(address.Value.cast::<Shared>()) else {
+        // SAFETY: map失敗時は所有権をViewへ移さず、引数で受け取ったhandleを一度だけ閉じる。
+        unsafe {
+            let _ = CloseHandle(handle);
+        }
+        return Err(anyhow!("共有メモリをマップできません"));
+    };
+    Ok(Arc::new(View { handle, address }))
+}
+fn valid_rate(rate: u32) -> bool {
+    (8_000..=192_000).contains(&rate)
+}
+fn wide(name: &str) -> Vec<u16> {
+    name.encode_utf16().chain(std::iter::once(0)).collect()
+}
+fn valid_name(name: &str) -> bool {
+    let Some(suffix) = name.strip_prefix(PREFIX) else {
+        return false;
+    };
+    suffix.len() == 36
+        && suffix.bytes().enumerate().all(|(i, b)| {
+            if [8, 13, 18, 23].contains(&i) {
+                b == b'-'
+            } else {
+                b.is_ascii_hexdigit()
+            }
+        })
+}
+pub struct Mapping {
+    view: Arc<View>,
+    descriptor: Descriptor,
+}
+impl Mapping {
+    pub fn create(rate: u32) -> Result<Self> {
+        ensure!(valid_rate(rate), "共有メモリのサンプルレートが不正です");
+        // SAFETY: ポインター引数を持たないWindowsのGUID生成APIを呼び、戻り値を所有する。
+        let guid = unsafe { CoCreateGuid()? };
+        let name = format!("{PREFIX}{guid:?}");
+        ensure!(valid_name(&name), "共有メモリ名の生成に失敗しました");
+        let encoded = wide(&name);
+        // SAFETY: nul終端した名前と正しいSharedサイズを渡し、生成後のmapping handleを所有する。
+        let handle = unsafe {
+            CreateFileMappingW(
+                INVALID_HANDLE_VALUE,
+                None,
+                PAGE_READWRITE,
+                0,
+                size_of::<Shared>() as u32,
+                PCWSTR(encoded.as_ptr()),
+            )?
+        };
+        // SAFETY: 直前のCreateFileMappingWの結果を、別のWin32呼出しを挟まず同じスレッドで確認する。
+        if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+            // SAFETY: 既存mappingと判定した生成handleは公開せず、この分岐で一度だけ閉じる。
+            unsafe {
+                let _ = CloseHandle(handle);
+            }
+            return Err(anyhow!("共有メモリ名が既に存在します"));
+        }
+        let view = map(handle)?;
+        // SAFETY: 新規作成した正しいサイズのmappingを、ready公開前に一度だけ完全初期化する。
+        unsafe {
+            view.address.as_ptr().write(Shared::new(rate));
+        }
+        view.shared().ready.store(1, Ordering::Release);
+        Ok(Self {
+            view,
+            descriptor: Descriptor {
+                name,
+                sample_rate: rate,
+                protocol: PROTOCOL,
+            },
+        })
+    }
+    pub fn open(descriptor: &Descriptor) -> Result<Self> {
+        ensure!(
+            valid_name(&descriptor.name)
+                && valid_rate(descriptor.sample_rate)
+                && descriptor.protocol == PROTOCOL,
+            "共有メモリの指定が不正です"
+        );
+        let encoded = wide(&descriptor.name);
+        let handle =
+            // SAFETY: 検証済みのnul終端した名前を呼出し中保持し、取得handleをmapの所有権へ渡す。
+            unsafe { OpenFileMappingW(FILE_MAP_ALL_ACCESS.0, false, PCWSTR(encoded.as_ptr()))? };
+        let view = map(handle)?;
+        let shared = view.shared();
+        ensure!(
+            shared.ready.load(Ordering::Acquire) == 1
+                && shared.magic == MAGIC
+                && shared.protocol == PROTOCOL
+                && shared.rate == descriptor.sample_rate
+                && shared.size as usize == size_of::<Shared>(),
+            "共有メモリのヘッダーが不正です"
+        );
+        Ok(Self {
+            view,
+            descriptor: descriptor.clone(),
+        })
+    }
+    pub fn descriptor(&self) -> Descriptor {
+        self.descriptor.clone()
+    }
+    pub fn client(&mut self) -> Result<ClientPort> {
+        self.view
+            .shared()
+            .client_claim
+            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| anyhow!("クライアントは既に取得済みです"))?;
+        Ok(ClientPort {
+            view: Arc::clone(&self.view),
+        })
+    }
+    pub fn into_worker(self) -> Result<WorkerPort> {
+        self.view
+            .shared()
+            .worker_claim
+            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| anyhow!("ワーカーは既に取得済みです"))?;
+        Ok(WorkerPort { view: self.view })
+    }
+    pub fn failed(&self) -> bool {
+        self.view.shared().failed.load(Ordering::Acquire) != 0
+    }
+    pub fn ready(&self) -> bool {
+        self.view.shared().worker_ready.load(Ordering::Acquire) != 0
+    }
+    pub fn plugin_latency_frames(&self) -> Option<u32> {
+        u32::try_from(self.view.shared().latency.load(Ordering::Acquire)).ok()
+    }
+    /// workerが処理し、出力キューへ公開できた累計。readyとは別に制御側で観測する。
+    pub fn processed_packets(&self) -> u64 {
+        self.view.shared().output.write.0.load(Ordering::Acquire)
+    }
+    pub fn set_failed(&self) {
+        self.view.shared().failed.store(1, Ordering::Release);
+    }
+}
+pub struct ClientPort {
+    view: Arc<View>,
+}
+impl ClientPort {
+    pub fn try_input(&mut self, packet: &Packet) -> bool {
+        self.view.shared().input.push(packet)
+    }
+    pub fn try_output(&mut self, packet: &mut Packet) -> bool {
+        self.view.shared().output.pop(packet)
+    }
+    pub fn failed(&self) -> bool {
+        self.view.shared().failed.load(Ordering::Acquire) != 0
+    }
+    pub fn set_failed(&self) {
+        self.view.shared().failed.store(1, Ordering::Release);
+    }
+}
+pub struct WorkerPort {
+    view: Arc<View>,
+}
+impl WorkerPort {
+    pub fn try_input(&mut self, packet: &mut Packet) -> bool {
+        self.view.shared().input.pop(packet)
+    }
+    pub fn try_output(&mut self, packet: &Packet) -> bool {
+        self.view.shared().output.push(packet)
+    }
+    pub fn failed(&self) -> bool {
+        self.view.shared().failed.load(Ordering::Acquire) != 0
+    }
+    pub fn set_failed(&self) {
+        self.view.shared().failed.store(1, Ordering::Release);
+    }
+    pub fn set_latency(&self, latency_frames: Option<u32>) {
+        self.view.shared().latency.store(
+            latency_frames.map_or(u64::MAX, u64::from),
+            Ordering::Release,
+        );
+    }
+    pub fn set_ready(&self, latency_frames: Option<u32>) {
+        self.set_latency(latency_frames);
+        self.view.shared().worker_ready.store(1, Ordering::Release);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn separate_views_roundtrip_and_bounded_queue() {
+        let mut owner = Mapping::create(48_000).unwrap();
+        let descriptor = owner.descriptor();
+        let mut worker = Mapping::open(&descriptor).unwrap().into_worker().unwrap();
+        let mut client = owner.client().unwrap();
+        assert_eq!(owner.processed_packets(), 0);
+        assert!(Mapping::open(&descriptor).unwrap().client().is_err());
+        let mut packet = Packet::default();
+        packet.samples[0] = [1.5, -1.5];
+        for sequence in 0..CAPACITY {
+            packet.sequence = sequence;
+            assert!(client.try_input(&packet));
+        }
+        assert!(!client.try_input(&packet));
+        for sequence in 0..CAPACITY {
+            let mut received = Packet::default();
+            assert!(worker.try_input(&mut received));
+            assert_eq!(received.sequence, sequence);
+            assert_eq!(received.samples[0], [1.5, -1.5]);
+            assert!(worker.try_output(&received));
+            assert_eq!(owner.processed_packets(), sequence + 1);
+        }
+        assert!(!worker.try_output(&packet));
+        assert_eq!(owner.processed_packets(), CAPACITY);
+        for sequence in 0..CAPACITY {
+            assert!(client.try_output(&mut packet));
+            assert_eq!(packet.sequence, sequence);
+        }
+        assert!(!client.try_output(&mut packet));
+        assert_eq!(owner.processed_packets(), CAPACITY);
+    }
+}

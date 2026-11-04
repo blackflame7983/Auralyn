@@ -2,6 +2,59 @@ use super::*;
 use auto_gain::{Request, Snapshot};
 
 impl Engine {
+    // 状態の定期取得では録音・提案・Undoの条件を変更しない。
+    pub(super) fn invalidate_auto_gain_for_command(&mut self, cmd: &Command) {
+        if !matches!(
+            cmd,
+            Command::PeakProtection { config: None }
+                | Command::LiveOutput { config: None }
+                | Command::LiveMode { .. }
+                | Command::ModeSilence { .. }
+                | Command::ModeMonitor { .. }
+                | Command::ConfigureLiveModes { .. }
+                | Command::GetDevices
+                | Command::StartIdentityCapability
+                | Command::ProcessInputCapability
+                | Command::BeginDeviceScan
+                | Command::PollDeviceScan { .. }
+                | Command::CancelDeviceScan { .. }
+                | Command::GetRuntimeStats
+                | Command::NoiseMeasurement {
+                    request: noise_learning::Request::Snapshot
+                }
+                | Command::GetFrameTimingTrace { .. }
+                | Command::GetPluginState { .. }
+                | Command::CaptureBundleState
+                | Command::CaptureMixingBundleState
+                | Command::ProcessingState
+                | Command::PostMixStatus
+                | Command::Mixing {
+                    request: crate::audio_engine::mixing::Request::Snapshot
+                }
+                | Command::GetPluginRack
+                | Command::AutoGain { .. }
+                | Command::SetOutputGain { .. }
+                | Command::SetLoudnessMeasurement { .. }
+                | Command::SetChannelScan { .. }
+                | Command::StopVoiceCheckPlayback
+                | Command::StopVoiceCheckRecording
+                | Command::VoiceCheckPreview { .. }
+                | Command::BuiltinEffects {
+                    request: crate::audio_engine::builtin::Request::Snapshot
+                }
+        ) {
+            self.invalidate_auto_gain_with_reason(match cmd {
+                Command::Start { .. } | Command::Stop => {
+                    crate::audio_engine::history::Reason::StreamChanged
+                }
+                Command::SetInputGain { .. } | Command::SetInputChannels { .. } => {
+                    crate::audio_engine::history::Reason::InputChanged
+                }
+                _ => crate::audio_engine::history::Reason::ConditionsChanged,
+            });
+        }
+    }
+
     pub(super) fn request_output_gain(&mut self, value: f32) -> Result<()> {
         if !value.is_finite() || !(0.0..=2.0).contains(&value) {
             return Err(anyhow!("出力ゲインは0〜200%で指定してください"));

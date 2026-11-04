@@ -12,6 +12,9 @@ import { useTheme } from '../../../hooks/useTheme';
 
 interface PluginListProps {
     plugins: Plugin[];
+    rackKind?: 'voice' | 'broadcast';
+    structureDisabled?: boolean;
+    disabled?: boolean;
     audioReady?: boolean;
     onAddClick: () => void;
     onToggle: (id: string, enabled: boolean) => void;
@@ -28,7 +31,7 @@ interface PluginListProps {
     unrestored?: string[];
 }
 
-const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, onEdit, simpleMode, ...props }: {
+const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, onEdit, simpleMode, rackKind, structureDisabled, disabled, ...props }: {
     plugin: Plugin,
     onToggle: (id: string, enabled: boolean) => void,
     onMute: (id: string, muted: boolean) => void,
@@ -39,7 +42,7 @@ const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, 
     [key: string]: any
 }) => {
     const t = useMessages();
-    const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: plugin.id, attributes: { roleDescription: t('rack.reorder.sortable') } });
+    const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: plugin.id, disabled: disabled || structureDisabled, attributes: { roleDescription: t('rack.reorder.sortable') } });
 
     const style: React.CSSProperties = {
         transform: CSS.Transform.toString(transform),
@@ -62,6 +65,7 @@ const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, 
                     dragHandleAttributes={attributes}
                     dragHandleRef={setActivatorNodeRef}
                     simpleMode={simpleMode}
+                    rackKind={rackKind} structureDisabled={structureDisabled} disabled={disabled}
                 />
             </div>
             {/* Cable/Connector Visual between units - Only visible if not dragging */}
@@ -75,7 +79,7 @@ const SortablePluginCard = ({ plugin, onToggle, onMute, onGainChange, onRemove, 
 };
 
 export const PluginList: React.FC<PluginListProps> = ({
-    plugins,
+    plugins, rackKind = 'voice', structureDisabled = false, disabled = false,
     audioReady = false,
     onAddClick,
     onToggle,
@@ -115,7 +119,7 @@ export const PluginList: React.FC<PluginListProps> = ({
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
-        if (over && active.id !== over.id) {
+        if (!disabled && !structureDisabled && over && active.id !== over.id) {
             const oldIndex = plugins.findIndex((i) => i.id === active.id);
             const newIndex = plugins.findIndex((i) => i.id === over.id);
             if (oldIndex < 0 || newIndex < 0) return;
@@ -135,7 +139,7 @@ export const PluginList: React.FC<PluginListProps> = ({
             <div className="w-full space-y-4">
                 {/* Header / Rack Ears */}
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4 px-2">
-                    <h2 id="plugin-rack-heading" tabIndex={-1} className="text-sm font-bold text-muted-foreground">{t('rack.title')}</h2>
+                    <h2 id={rackKind === 'voice' ? "plugin-rack-heading" : "post-mix-rack-heading"} tabIndex={-1} className="text-sm font-bold text-muted-foreground">{t(rackKind === 'voice' ? 'rack.title' : 'postMix.current')}</h2>
                     <div className="flex items-center gap-2">
                         {/* View Mode Toggle */}
                         {plugins.length > 0 && (
@@ -149,9 +153,9 @@ export const PluginList: React.FC<PluginListProps> = ({
                                 ))}
                             </div>
                         )}
-                        <Button variant="outline" size="sm" onClick={onOpenPresets} className="h-7 text-xs gap-2">
+                        {rackKind === 'voice' && <Button variant="outline" size="sm" onClick={onOpenPresets} className="h-7 text-xs gap-2">
                             <MdFolderOpen className="w-3.5 h-3.5" />
-                            {t('rack.manageProfiles')}</Button>
+                            {t('rack.manageProfiles')}</Button>}
                         {headerAction}
                     </div>
                 </div>
@@ -184,14 +188,15 @@ export const PluginList: React.FC<PluginListProps> = ({
                                 onRemove={onRemove}
                                 onEdit={onEdit}
                                 simpleMode={simpleMode}
-                                {...(index === 0 ? { 'data-tutorial-id': 'first-plugin-card' } : {})}
+                                rackKind={rackKind} structureDisabled={structureDisabled} disabled={disabled}
+                                {...(rackKind === 'voice' && index === 0 ? { 'data-tutorial-id': 'first-plugin-card' } : {})}
                             />
                         ))}
                     </SortableContext>
                 </DndContext>
 
                 {/* Empty State or Add Button */}
-                {plugins.length === 0 ? (
+                {rackKind === 'broadcast' ? <Button variant="outline" disabled={disabled || structureDisabled} onClick={onAddClick} className="w-full">{t('rack.addEffects')}</Button> : plugins.length === 0 ? (
                     <PluginRackEmptyState
                         audioReady={audioReady}
                         onAddClick={onAddClick}

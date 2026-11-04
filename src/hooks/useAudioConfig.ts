@@ -33,7 +33,8 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         setAudioConfig(prev => ({
             ...prev,
             host,
-            input: input ?? prev.input,
+            input: config.inputSource?.kind === 'process_loopback' ? undefined : input ?? prev.input,
+            inputSource: 'inputSource' in config ? config.inputSource : prev.inputSource,
             output: output ?? prev.output,
             sampleRate: sampleRate ?? prev.sampleRate,
             bufferSize: bufferSize ?? prev.bufferSize,
@@ -45,7 +46,8 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
         // Save User Preference to localStorage immediately on manual update
         const newConfig = {
             host,
-            input: input ?? audioConfig.input,
+            input: config.inputSource?.kind === 'process_loopback' ? undefined : input ?? audioConfig.input,
+            inputSource: 'inputSource' in config ? config.inputSource : audioConfig.inputSource,
             output: output ?? audioConfig.output,
             sampleRate: sampleRate ?? audioConfig.sampleRate,
             bufferSize: bufferSize ?? audioConfig.bufferSize,
@@ -96,7 +98,7 @@ export const useAudioConfig = (onWizardRequired: () => void, onOpenSettings?: ()
                 if (!initializationPromise) {
                     initializationPromise = audioApi.frontendBootstrap({
                         config: config?.host ? { host: config.host, input: config.input, output: config.output,
-                            inputId: config.inputId, outputId: config.outputId,
+                            inputId: config.inputId, outputId: config.outputId, inputSource: config.inputSource,
                             sampleRate: config.sampleRate, bufferSize: config.bufferSize, inputChannels: config.inputChannels,
                             outputRouting: config.outputRouting } : null,
                         inputGain: Number(localStorage.getItem('vst_host_input_gain') ?? '100') / 100,

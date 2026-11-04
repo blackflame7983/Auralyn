@@ -23,6 +23,13 @@ export const useAppEvents = ({
     onLoadPreset
 }: UseAppEventsProps) => {
     const t = useMessages();
+    useEffect(() => {
+        const subscriptions = [
+            listen('mixing-source-failed', () => toast.warning(t('mixing.accompanimentFailed'))),
+            listen('mixing-output-failed', () => toast.warning(t('mixing.engineFailed'))),
+        ];
+        return () => { for (const subscription of subscriptions) void subscription.then(unlisten => unlisten()); };
+    }, [t]);
 
     // File Drop Listener (Tauri V2 API)
     useEffect(() => {

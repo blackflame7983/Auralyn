@@ -11,6 +11,7 @@ pub(crate) struct Conditions {
     pending: AtomicU64,
     running: AtomicBool,
     engine_epoch: AtomicU64,
+    interrupt: AtomicU64,
 }
 
 #[derive(Clone)]
@@ -31,6 +32,9 @@ pub(crate) struct ControlWitness {
     epoch: u64,
 }
 impl ControlWitness {
+    pub(crate) fn engine_epoch(&self) -> u64 {
+        self.epoch
+    }
     pub(crate) fn validate(&self) -> Result<(), String> {
         if self.conditions.pending.load(Ordering::SeqCst) != 0
             || self.conditions.revision.load(Ordering::SeqCst) != self.revision
@@ -42,7 +46,7 @@ impl ControlWitness {
     }
 }
 
-pub(super) struct Pending(Arc<Conditions>);
+pub(crate) struct Pending(Arc<Conditions>);
 impl Drop for Pending {
     fn drop(&mut self) {
         self.0.revision.fetch_add(1, Ordering::SeqCst);
@@ -51,6 +55,14 @@ impl Drop for Pending {
 }
 
 impl Conditions {
+    /// Hostのmutex待ちより先に停止・ミュートの意図を記録し、復帰側を中断する。
+    pub(crate) fn interrupt_restore(self: &Arc<Self>) -> Pending {
+        self.interrupt.fetch_add(1, Ordering::SeqCst);
+        self.begin()
+    }
+    pub(super) fn restore_interrupt(&self) -> u64 {
+        self.interrupt.load(Ordering::SeqCst)
+    }
     pub(crate) fn control_snapshot(self: &Arc<Self>) -> Result<ControlWitness, String> {
         let witness = ControlWitness {
             conditions: self.clone(),
@@ -106,6 +118,17 @@ impl Conditions {
         self.pending.fetch_sub(1, Ordering::SeqCst);
         current
     }
+    // オケだけの失敗は、停止済みの主入力を再開扱いにせず確認履歴だけ失効する。
+    pub(super) fn engine_changed(&self, epoch: u64) -> bool {
+        if self.engine_epoch.load(Ordering::SeqCst) != epoch || !self.running.load(Ordering::SeqCst)
+        {
+            return false;
+        }
+        self.pending.fetch_add(1, Ordering::SeqCst);
+        self.revision.fetch_add(2, Ordering::SeqCst);
+        self.pending.fetch_sub(1, Ordering::SeqCst);
+        self.engine_epoch.load(Ordering::SeqCst) == epoch && self.running.load(Ordering::SeqCst)
+    }
     pub(super) fn begin(self: &Arc<Self>) -> Pending {
         self.pending.fetch_add(1, Ordering::SeqCst);
         self.revision.fetch_add(1, Ordering::SeqCst);
@@ -158,6 +181,14 @@ impl Witness {
 }
 
 pub(super) fn command_changes(command: &Command) -> bool {
+    if matches!(
+        command,
+        Command::Mixing {
+            request: crate::audio_engine::mixing::Request::Snapshot
+        }
+    ) {
+        return false;
+    }
     use crate::audio_engine::auto_gain::Request;
     match command {
         Command::ConfigureLiveModes { .. } | Command::LiveMode { request: crate::audio_engine::live_modes::Request::Snapshot | crate::audio_engine::live_modes::Request::Arm { .. } | crate::audio_engine::live_modes::Request::Disarm { .. } | crate::audio_engine::live_modes::Request::Save { .. } } => false,
@@ -168,10 +199,14 @@ pub(super) fn command_changes(command: &Command) -> bool {
         | Command::BeginDeviceScan
         | Command::PollDeviceScan { .. }
         | Command::CancelDeviceScan { .. }
+        | Command::ProcessInputCapability
         | Command::GetRuntimeStats
         | Command::GetFrameTimingTrace { .. }
         | Command::GetPluginState { .. }
         | Command::CaptureBundleState
+        | Command::CaptureMixingBundleState
+        | Command::ProcessingState
+        | Command::PostMixStatus
         | Command::GetPluginRack
         | Command::SetLoudnessMeasurement { .. }
         | Command::SetChannelScan { .. }
@@ -183,6 +218,7 @@ pub(super) fn command_changes(command: &Command) -> bool {
         Command::NoiseMeasurement { request } => !matches!(request, crate::audio_engine::core::noise_learning::Request::Snapshot),
         Command::VoiceCheckPreview { request } => matches!(request.action, crate::audio_engine::voice_check::preview::Action::ApplyNoise { .. } | crate::audio_engine::voice_check::preview::Action::UndoNoise { .. } | crate::audio_engine::voice_check::preview::Action::RedoNoise { .. }),
         Command::LiveOutput { config } => config.is_some(),
+        Command::ModeMonitor { request } => matches!(request, crate::audio_engine::split_monitor::Request::Restore { .. }),
         Command::AutoGain { request } => matches!(
             request,
             Request::Initialize { .. } | Request::Apply { .. } | Request::Restore { .. } | Request::UndoHistory { .. } | Request::RedoHistory { .. }
@@ -193,7 +229,47 @@ pub(super) fn command_changes(command: &Command) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn accompaniment_change_invalidates_witness_without_reviving_or_stopping_primary() {
+        use super::*;
+        let conditions = Arc::new(Conditions::default());
+        let epoch = conditions.new_engine();
+        assert!(conditions.engine_event(epoch, true));
+        let previous = conditions.snapshot().unwrap();
+        assert!(conditions.engine_changed(epoch));
+        assert!(previous.validate().is_err());
+        assert!(conditions.snapshot().is_ok());
+        conditions.lifecycle(false);
+        assert!(!conditions.engine_changed(epoch));
+        assert!(!conditions.running.load(Ordering::SeqCst));
+        conditions.new_engine();
+        assert!(!conditions.engine_changed(epoch));
+    }
     use super::*;
+    #[test]
+    fn queued_stop_or_mute_blocks_fresh_witnesses_until_its_handler_finishes() {
+        let conditions = Arc::new(Conditions::default());
+        conditions.lifecycle(true);
+        let old = conditions.control_snapshot().unwrap();
+        let before = conditions.restore_interrupt();
+        let queued = conditions.interrupt_restore();
+        assert_ne!(before, conditions.restore_interrupt());
+        assert!(old.validate().is_err());
+        assert!(conditions.control_snapshot().is_err());
+        assert!(conditions.snapshot().is_err());
+        drop(queued);
+        assert!(conditions.control_snapshot().is_ok());
+        assert!(old.validate().is_err());
+    }
+    #[test]
+    fn monitor_snapshot_is_readonly_and_restore_invalidates_conditions() {
+        assert!(!command_changes(&Command::ModeMonitor {
+            request: crate::audio_engine::split_monitor::Request::Snapshot
+        }));
+        assert!(command_changes(&Command::ModeMonitor {
+            request: crate::audio_engine::split_monitor::Request::Restore { state: None }
+        }));
+    }
     #[test]
     fn nr_measurement_and_peak_reads_preserve_witness_but_explicit_adoption_invalidates_it() {
         use crate::audio_engine::core::noise_learning::Request as Noise;
@@ -328,6 +404,7 @@ mod tests {
             Command::SetInputGain { value: 1.0 },
             Command::SetGlobalMute { active: true },
             Command::Start {
+                input_source: None,
                 host: "ASIO".into(),
                 input: None,
                 output: None,

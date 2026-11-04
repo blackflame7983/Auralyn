@@ -96,6 +96,7 @@ pub struct QueueDiagnostics {
     epoch: String,
     input_rate: u32,
     output_rate: u32,
+    queue_rate: u32,
     input_channels: u16,
     output_channels: u16,
     queue_channels: u16,
@@ -117,6 +118,7 @@ impl QueueDiagnostics {
             epoch,
             input_rate,
             output_rate,
+            queue_rate: output_rate,
             input_channels,
             output_channels,
             queue_channels: output_channels,
@@ -144,6 +146,11 @@ impl QueueDiagnostics {
         );
         result.queue_channels = input_channels;
         result
+    }
+    /// SRCより前のPCMを溜める場合だけ、queueの長さを入力rateで換算する。
+    pub(crate) fn with_raw_input_clock(mut self) -> Self {
+        self.queue_rate = self.input_rate;
+        self
     }
 
     /// 1入力callback分をまとめて記録する。音声queueの受入判断には使わない。
@@ -249,7 +256,7 @@ impl QueueDiagnostics {
         let max_observed_slots = self.input.max_slots.load(Ordering::Relaxed);
         let max_observed_frames = max_observed_slots / ch;
         let audio_ms = |frames: u64| {
-            (self.output_rate > 0).then(|| frames as f64 * 1000.0 / f64::from(self.output_rate))
+            (self.queue_rate > 0).then(|| frames as f64 * 1000.0 / f64::from(self.queue_rate))
         };
         QueueSnapshot {
             recovery_discarded_frames: Some(self.output.recovery_discarded.load(Ordering::Relaxed)),
@@ -449,6 +456,22 @@ pub(crate) fn push_mapped_frames(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn adaptive_input_queue_uses_raw_rate_without_relabeling_the_output_clock() {
+        let raw = QueueDiagnostics::new_input_queue("raw".into(), 44100, 48000, 2, 2, 4096)
+            .with_raw_input_clock();
+        let status = raw.snapshot(QueueState::Running, Some(882), None);
+        assert_eq!(status.current_audio_ms, Some(10.0));
+        assert_eq!(status.input_rate_hz, 44100);
+        assert_eq!(status.output_rate_hz, 48000);
+        let legacy = QueueDiagnostics::new_input_queue("fixed".into(), 44100, 48000, 2, 2, 4096);
+        assert_eq!(
+            legacy
+                .snapshot(QueueState::Running, Some(882), None)
+                .current_audio_ms,
+            Some(9.1875)
+        );
+    }
     #[test]
     fn startup_shortages_are_included_in_totals_and_end_after_first_consumption() {
         use super::{QueueDiagnostics, QueueState};

@@ -30,7 +30,7 @@ it.each([88200, 192000])('代表値以外の%d Hzでも表示値と開始要求�
     expect(sampleRate).toHaveValue(String(rate));
     await waitFor(() => expect(screen.getByRole('button', { name: '保存して開始' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
-    await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', 'ASIO device', 'ASIO device', 512, rate, undefined, undefined, undefined, expect.objectContaining({ outputRouting: expect.any(Object) })));
+    await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', 'ASIO device', 'ASIO device', 512, rate, undefined, undefined, undefined, expect.objectContaining({ outputRouting: expect.any(Object) }), { source: { kind: "device", config: { purpose: "voice" } } }));
 });
 
 it('ASIO能力未取得でも960サンプルの表示値と開始要求値が一致する', async () => {
@@ -46,7 +46,7 @@ it('ASIO能力未取得でも960サンプルの表示値と開始要求値が一
     expect(screen.getByRole('option', { name: '960 サンプル' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: '保存して開始' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
-    await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', 'ASIO device', 'ASIO device', 960, 48000, undefined, undefined, undefined, expect.objectContaining({ outputRouting: expect.any(Object) })));
+    await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', 'ASIO device', 'ASIO device', 960, 48000, undefined, undefined, undefined, expect.objectContaining({ outputRouting: expect.any(Object) }), { source: { kind: "device", config: { purpose: "voice" } } }));
 });
 
 beforeEach(() => {

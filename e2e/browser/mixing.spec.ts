@@ -1,0 +1,108 @@
+import { test, expect } from './tauriFixture';
+import type { Page, Locator } from '@playwright/test';
+
+async function fixture(page: Page, configPresent = true, running = false) {
+    await page.addInitScript(({ configPresent, running }) => {
+        localStorage.setItem('vst_host_wizard_done', 'true'); localStorage.setItem('auralyn_vst_panel_open', 'false');
+        localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'Test microphone', inputId: 'mic', output: 'Test headphones', outputId: 'headphones', sampleRate: 48000, bufferSize: 512, inputChannels: [0, 1] }));
+        const internal = (window as any).__TAURI_INTERNALS__, original = internal.invoke;
+        const levels = { voice: { gain: 0, muted: false }, accompaniment: { gain: 1, muted: false }, monitorAccompaniment: true, offsetMs: 0 };
+        const config = { version: 1, source: { kind: 'device', config: { host: 'WASAPI', inputId: 'music', inputChannels: [0, 1] } }, levels };
+        const mix = { epoch: 'mix', revision: '1', config: configPresent ? config : null, savedConfig: configPresent ? config : null, error: null, running, accompaniment: null, voicePeak: [0, 0], accompanimentPeak: [0, 0], mixPeak: [1.2, 1], knownVoiceProcessingFrames: 480, pending: false, failed: false, primaryClock: { outputRateHz: 48000 } };
+        const post = { epoch: 'post', revision: '1', enabled: configPresent, running, savedPlugins: [], plugins: [{ id: 'post-1', path: 'fixture.vst3', name: 'Fixture EQ', enabled: true, muted: false, gain: 0 }, { id: 'post-2', path: 'comp.vst3', name: 'Fixture Comp', enabled: true, muted: false, gain: 1 }], restored: true, error: null as string | null, transportLatencyFrames: 2048, declaredPluginLatencyFrames: 0, attached: running, ready: running, failed: false, processedPackets: 42, sampleRate: 48000 };
+        (window as any).__mixRequests = []; (window as any).__postRequests = []; (window as any).__postCorrupt = false;
+        internal.invoke = async (command: string, args: any) => {
+            if (command === 'live_output') return { config: { deviceId: 'out', splitProcessing: true, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, sink: null, error: null };
+            if (command === 'mixing') { const r = args.request; (window as any).__mixRequests.push(r); if (r.action === 'levels' && (window as any).__mixFailLevels) throw new Error('stale revision'); if (r.action === 'levels') { config.levels = r.levels; mix.revision = String(Number(mix.revision) + 1); } return structuredClone(mix); }
+            if (command === 'post_mix') { const r = args.request; (window as any).__postRequests.push(r);
+                if (r.action === 'gain') { post.plugins[0].gain = r.value; post.revision = String(Number(post.revision) + 1); }
+                if (r.action === 'reorder') { post.plugins = r.ids.map((id: string) => post.plugins.find(p => p.id === id)!); post.revision = String(Number(post.revision) + 1); }
+                if (r.action === 'reset') { post.plugins = []; post.restored = false; post.enabled = false; post.revision = String(Number(post.revision) + 1); (window as any).__postCorrupt = false; }
+                post.error = (window as any).__postCorrupt ? 'corrupt saved state' : null; return structuredClone(post);
+            }
+            return original(command, args);
+        };
+    }, { configPresent, running });
+}
+async function settings(page: Page) { await page.getByRole('button', { name: '設定を開く', exact: true }).click(); return page.getByRole('dialog').first(); }
+async function keyboardOpen(page: Page, element: Locator) { await element.scrollIntoViewIfNeeded(); await element.focus(); await page.keyboard.press('Enter'); }
+async function noOverflow(dialog: Locator) { expect(await dialog.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1); }
+
+test('オケは1段で自動表示し、キーボードの音量調整を適用ボタンなしで送る', async ({ page }, info) => {
+    await page.setViewportSize({ width: 900, height: 600 }); await fixture(page); await page.goto('/'); const dialog = await settings(page);
+    const mixing = dialog.locator('#mixing-settings'); await keyboardOpen(page, mixing.locator('summary').first());
+    await expect(mixing.getByText('適用中の入力元:', { exact: false })).toBeVisible(); await expect(mixing.getByText('声の処理待ち: 10.0 ms', { exact: true })).toBeVisible();
+    const slider = mixing.getByRole('slider', { name: '声の音量' }); await slider.scrollIntoViewIfNeeded(); await slider.focus(); await page.keyboard.press('ArrowRight');
+    await expect(slider).toHaveAttribute('aria-valuetext', '1%');
+    await expect.poll(() => page.evaluate(() => (window as any).__mixRequests.some((r: any) => r.action === 'levels' && r.levels.voice.gain === 0.01 && r.expectedRevision === '1'))).toBe(true);
+    await noOverflow(dialog); await page.screenshot({ path: info.outputPath('mixing-keyboard.png') });
+});
+
+test('オケを開かず配信VSTを自動表示し、音量・エラー詳細・確認付き初期化にキーボードで到達する', async ({ page }, info) => {
+    await page.setViewportSize({ width: 900, height: 600 }); await fixture(page, false); await page.goto('/'); const dialog = await settings(page);
+    const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('ミックス後の配信 VST', { exact: true }) }).last();
+    await keyboardOpen(page, post.locator('summary').first());
+    await expect(dialog.locator('#mixing-settings')).not.toHaveAttribute('open', ''); await expect(post.getByText('転送の待ち時間: 42.7 ms')).toBeVisible();
+    await expect(post.getByRole('switch', { name: '配信 VST を有効にする' })).toBeDisabled();
+    await expect(post.getByRole('switch', { name: '配信 VST を有効にする' })).toHaveAccessibleDescription(/オケの入力元/);
+    const slider = post.getByRole('slider', { name: 'Fixture EQのゲイン' }); await slider.scrollIntoViewIfNeeded(); await slider.focus(); await page.keyboard.press('ArrowRight');
+    await expect.poll(() => page.evaluate(() => (window as any).__postRequests.some((r: any) => r.action === 'gain' && r.value === 0.01 && r.expectedRevision === '1'))).toBe(true);
+    await page.evaluate(() => { (window as any).__postCorrupt = true; });
+    await post.getByRole('button', { name: '最新の状態を読み直す' }).click();
+    const error = post.getByRole('alert'); await expect(error).toContainText('保存ファイルを読み取れません');
+    await keyboardOpen(page, error.locator('summary')); await expect(error.getByText('corrupt saved state', { exact: true })).toBeVisible();
+    const recovery = post.locator('details').filter({ has: page.locator('summary').getByText('保存設定を復旧する', { exact: true }) });
+    await keyboardOpen(page, recovery.locator('summary')); await page.keyboard.press('Tab');
+    const confirmation = recovery.getByRole('checkbox'); await expect(confirmation).toBeFocused(); await page.keyboard.press('Space'); await page.keyboard.press('Tab');
+    const reset = recovery.getByRole('button', { name: '保存状態を保管して無効にする' }); await expect(reset).toBeFocused(); await noOverflow(dialog);
+    await page.screenshot({ path: info.outputPath('post-mix-reset.png') }); await page.keyboard.press('Enter'); await expect(recovery.getByRole('status')).toBeVisible();
+    expect(await page.evaluate(() => (window as any).__postRequests.filter((r: any) => r.action === 'reset'))).toEqual([{ action: 'reset', expectedEpoch: 'post', expectedRevision: '2' }]);
+});
+
+for (const size of [{ width: 900, height: 600 }, { width: 1024, height: 768 }]) {
+    test(`英語・150%表示 ${size.width}x${size.height} で配信ミックスが収まる`, async ({ page }, info) => {
+        await page.setViewportSize(size); await fixture(page); await page.goto('/'); const dialog = await settings(page);
+        await dialog.getByRole('tab', { name: '外観', exact: true }).click(); await dialog.getByRole('combobox', { name: '表示言語' }).selectOption('en'); await dialog.getByRole('tab', { name: 'Audio', exact: true }).click();
+        await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
+        const mixing = dialog.locator('#mixing-settings'); await keyboardOpen(page, mixing.locator('summary').first());
+        const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('Post-mix broadcast VST', { exact: true }) }).last(); await keyboardOpen(page, post.locator('summary').first());
+        const slider = post.getByRole('slider', { name: 'Fixture EQ gain' }); await expect(slider).toBeVisible(); await slider.scrollIntoViewIfNeeded(); await noOverflow(dialog);
+        expect(await post.evaluate(el => Array.from(el.querySelectorAll('*')).filter(n => n.getClientRects().length && n.getBoundingClientRect().right > document.documentElement.clientWidth + 1).map(n => n.tagName))).toEqual([]);
+        expect(await mixing.innerText()).not.toMatch(/[ぁ-んァ-ヶ一-龠]/); expect(await post.innerText()).not.toMatch(/[ぁ-んァ-ヶ一-龠]/);
+        await page.screenshot({ path: info.outputPath('english-150.png') });
+    });
+}
+
+test('ホームで設定を開かずオケ音量とミュートを変更し、停止状態から設定へ移動する', async ({ page }, info) => {
+    await page.setViewportSize({ width: 1024, height: 768 }); await fixture(page); await page.goto('/');
+    const trigger = page.getByRole('button', { name: 'オケ音量とミュート' }); await trigger.click(); const popup = page.getByRole('dialog', { name: 'オケ音量とミュート' });
+    const slider = popup.getByRole('slider'); await slider.focus(); await page.keyboard.press('Home');
+    await expect.poll(() => page.evaluate(() => (window as any).__mixRequests.some((r: any) => r.action === 'levels' && r.levels.accompaniment.gain === 0))).toBe(true);
+    await popup.getByRole('button', { name: 'ミュート', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => (window as any).__mixRequests.some((r: any) => r.action === 'levels' && r.levels.accompaniment.muted))).toBe(true);
+    await page.keyboard.press('Escape'); await expect(trigger).toBeFocused(); await expect(page.getByRole('button', { name: /オケ停止.*配信 VST 停止/ })).toBeVisible();
+    await page.screenshot({ path: info.outputPath('home-mix.png') }); await page.getByRole('button', { name: /オケ停止.*配信 VST 停止/ }).click(); await expect(page.locator('#mixing-settings')).toHaveAttribute('open', '');
+    await expect(page.locator('#mixing-settings > summary')).toBeFocused();
+});
+
+test('共通のVSTカードでキーボードの並べ替えを配信ラックへ送る', async ({ page }) => {
+    await fixture(page, false); await page.goto('/'); const dialog = await settings(page);
+    const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('ミックス後の配信 VST', { exact: true }) }).last(); await keyboardOpen(page, post.locator('summary').first());
+    const handle = post.getByRole('button', { name: 'Fixture EQを並べ替え' }); await handle.scrollIntoViewIfNeeded(); await handle.focus(); await page.keyboard.press('Space');
+    await expect(handle).toHaveAttribute('aria-pressed', 'true');
+    const announcements = page.locator('[id^="DndLiveRegion"]'); await expect(announcements).toContainText('並べ替えを開始');
+    await page.keyboard.press('ArrowDown'); await expect(announcements).toContainText('2番目（全2件）へ移動');
+    await page.keyboard.press('Space'); await expect.poll(() => page.evaluate(() => (window as any).__postRequests.filter((r: any) => r.action === 'reorder').map((r: any) => r.ids))).toEqual([['post-2', 'post-1']]);
+});
+
+test('ミュート直後の音量操作をまとめて反映し、失敗した音量を成功表示しない', async ({ page }) => {
+    await fixture(page); await page.goto('/'); const trigger = page.getByRole('button', { name: 'オケ音量とミュート' }); await trigger.click();
+    const popup = page.getByRole('dialog', { name: 'オケ音量とミュート' });
+    await popup.getByRole('button', { name: 'ミュート', exact: true }).click(); await popup.getByRole('slider').focus(); await page.keyboard.press('Home');
+    await expect.poll(() => page.evaluate(() => (window as any).__mixRequests.filter((r: any) => r.action === 'levels').map((r: any) => r.levels.accompaniment))).toEqual([{ gain: 0, muted: true }]);
+    await page.evaluate(() => { (window as any).__mixFailLevels = true; }); await page.keyboard.press('End');
+    await expect(popup.getByRole('alert')).toContainText('音量・時間差の変更');
+    await expect(popup.getByRole('slider')).toHaveAttribute('aria-valuetext', '0%');
+    await expect.poll(() => page.evaluate(() => (window as any).__mixRequests.filter((r: any) => r.action === 'snapshot').length)).toBeGreaterThan(1);
+    await expect(popup.getByRole('slider')).toHaveAttribute('aria-valuetext', '0%'); await expect(popup.getByRole('alert')).toBeVisible();
+});

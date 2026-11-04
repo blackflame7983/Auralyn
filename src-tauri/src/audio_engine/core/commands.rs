@@ -7,6 +7,86 @@ impl Engine {
         cmd: Command,
         target: &winit::event_loop::EventLoopWindowTarget<T>,
     ) {
+        if !self.post_command_allowed(&cmd) {
+            self.send_error(
+                "ミックス後VSTのこの操作は、専用Engineを停止してから行ってください".into(),
+            );
+            return;
+        }
+        let latency_may_change = matches!(
+            &cmd,
+            Command::LoadPlugin { .. }
+                | Command::RestorePlugin { .. }
+                | Command::RestoreSessionPlugin { .. }
+                | Command::UnloadPlugin { .. }
+                | Command::ReorderPlugins { .. }
+                | Command::SetBypass { .. }
+                | Command::SetGlobalBypass { .. }
+                | Command::SetNoiseReduction { .. }
+                | Command::SetNoiseControlConfig { .. }
+        );
+        if let Err(error) = self.validate_input_start(&cmd) {
+            self.send_error(error.to_string());
+            return;
+        }
+        if let Err(error) = self.validate_mixing_start(&cmd) {
+            self.send_error(error.to_string());
+            return;
+        }
+        let music = self
+            .input_source
+            .as_ref()
+            .is_some_and(|s| s.source.purpose() == crate::input_source::Purpose::Music);
+        if music
+            && matches!(
+                &cmd,
+                Command::StartNoiseLearning { .. }
+                    | Command::StartVoiceCheckRecording { .. }
+                    | Command::PlayVoiceCheck { .. }
+                    | Command::NoiseMeasurement {
+                        request: noise_learning::Request::Start { .. }
+                    }
+                    | Command::AutoGain {
+                        request: auto_gain::Request::Begin { .. }
+                    }
+                    | Command::AutoGain {
+                        request: auto_gain::Request::Apply { .. }
+                    }
+                    | Command::SetChannelScan { active: true }
+            )
+        {
+            self.send_error(
+                "音楽の入力では声向けの測定を使用できません。入力の用途を確認してください".into(),
+            );
+            return;
+        }
+        if self
+            .input_source
+            .as_ref()
+            .is_some_and(|s| s.source != crate::input_source::Config::default())
+            && (matches!(&cmd, Command::ConfigureLiveModes { armed: true, .. })
+                || (matches!(&cmd, Command::CaptureBundleState)
+                    && self
+                        .input_source
+                        .as_ref()
+                        .is_some_and(|s| !s.source.supports_bundle_capture()))
+                || matches!(&cmd, Command::LiveMode { request } if !matches!(request,
+                    crate::audio_engine::live_modes::Request::Snapshot | crate::audio_engine::live_modes::Request::Disarm { .. })))
+        {
+            self.send_error("この入力は歌・雑談モードや配信状態の保存に未対応です。音声設定で入力を確認してください".into());
+            return;
+        }
+        if self
+            .input_source
+            .as_ref()
+            .is_some_and(|s| s.source != crate::input_source::Config::default())
+            && matches!(&cmd, Command::LiveOutput { config: Some(c) } if c.split_processing)
+        {
+            self.send_error(
+                "この入力は処理分離に未対応です。単一の処理経路を使ってください".into(),
+            );
+            return;
+        }
         // 拒否時に保存intent/条件revision/pending queueを部分更新しない。
         let nr_enable = match &cmd {
             Command::SetNoiseReduction { active, .. }
@@ -14,7 +94,7 @@ impl Engine {
             _ => None,
         };
         if let Some(active) = nr_enable {
-            if self.output_stream.is_some() {
+            if self.processing_running() && !music {
                 if let Err(error) =
                     dsp::NoiseGeometry::guard(self.current_sample_rate as u32, active)
                 {
@@ -156,48 +236,7 @@ impl Engine {
                 }
             }
         }
-        if !matches!(
-            &cmd,
-            Command::PeakProtection { config: None }
-                | Command::LiveOutput { config: None }
-                | Command::LiveMode { .. }
-                | Command::ModeSilence { .. }
-                | Command::ModeMonitor { .. }
-                | Command::ConfigureLiveModes { .. }
-                | Command::GetDevices
-                | Command::StartIdentityCapability
-                | Command::BeginDeviceScan
-                | Command::PollDeviceScan { .. }
-                | Command::CancelDeviceScan { .. }
-                | Command::GetRuntimeStats
-                | Command::NoiseMeasurement {
-                    request: noise_learning::Request::Snapshot
-                }
-                | Command::GetFrameTimingTrace { .. }
-                | Command::GetPluginState { .. }
-                | Command::CaptureBundleState
-                | Command::GetPluginRack
-                | Command::AutoGain { .. }
-                | Command::SetOutputGain { .. }
-                | Command::SetLoudnessMeasurement { .. }
-                | Command::SetChannelScan { .. }
-                | Command::StopVoiceCheckPlayback
-                | Command::StopVoiceCheckRecording
-                | Command::VoiceCheckPreview { .. }
-                | Command::BuiltinEffects {
-                    request: crate::audio_engine::builtin::Request::Snapshot
-                }
-        ) {
-            self.invalidate_auto_gain_with_reason(match &cmd {
-                Command::Start { .. } | Command::Stop => {
-                    crate::audio_engine::history::Reason::StreamChanged
-                }
-                Command::SetInputGain { .. } | Command::SetInputChannels { .. } => {
-                    crate::audio_engine::history::Reason::InputChanged
-                }
-                _ => crate::audio_engine::history::Reason::ConditionsChanged,
-            });
-        }
+        self.invalidate_auto_gain_for_command(&cmd);
         if self.peak_config.enabled
             && matches!(
                 &cmd,
@@ -210,6 +249,43 @@ impl Engine {
             return;
         }
         match cmd {
+            Command::PostMixStatus => {
+                let mapping = self.post_mapping.as_ref();
+                self.send_response(Response::PostMixStatus {
+                    attached: mapping.is_some(),
+                    ready: mapping.is_some_and(|m| m.ready()),
+                    failed: mapping.is_some_and(|m| m.failed()),
+                    sample_rate: mapping.map(|m| m.descriptor().sample_rate),
+                    transport_latency_frames:
+                        crate::audio_engine::post_mix::TRANSPORT_LATENCY_FRAMES,
+                    declared_plugin_latency_frames: mapping.and_then(|m| m.plugin_latency_frames()),
+                    processed_packets: mapping.map(|m| m.processed_packets()),
+                });
+            }
+            Command::ProcessingState => self.send_response(Response::ProcessingState {
+                present: self.processing_running(),
+                failed: self.stream_failed.load(Ordering::Acquire),
+            }),
+            Command::PostMixPrepare { sample_rate } => match self.prepare_post_mix(sample_rate) {
+                Ok(descriptor) => self.send_response(Response::PostMixDescriptor(descriptor)),
+                Err(error) => self.send_error(error.to_string()),
+            },
+            Command::PostMixClear => {
+                if self.processing_running() {
+                    self.send_error("停止してからミックス後VSTを解除してください".into());
+                } else {
+                    self.post_mapping = None;
+                    self.send_response(Response::Success);
+                }
+            }
+            Command::PostMixStart { descriptor } => match self.start_post_mix(descriptor) {
+                Ok(()) => self.send_response(Response::Success),
+                Err(error) => self.send_error(error.to_string()),
+            },
+            Command::Mixing { request } => match self.mixing_command(request) {
+                Ok(snapshot) => self.send_response(Response::Mixing(Box::new(snapshot))),
+                Err(error) => self.send_error(error),
+            },
             Command::ModeMonitor { request } => match self.mode_monitor_command(request) {
                 Ok(snapshot) => self.send_response(Response::ModeMonitor(Box::new(snapshot))),
                 Err(error) => self.send_error(error),
@@ -230,7 +306,7 @@ impl Engine {
                 match self.mode_silence.request(
                     request,
                     self.queue_attempt,
-                    self.output_stream.is_some(),
+                    self.processing_running(),
                     self.live_output_config.split_processing,
                     self.live_output.is_some(),
                     failed,
@@ -241,6 +317,9 @@ impl Engine {
             }
             Command::StartIdentityCapability => {
                 self.send_response(Response::StartIdentityCapability { version: 2 });
+            }
+            Command::ProcessInputCapability => {
+                self.send_response(Response::ProcessInputCapability { version: 1 });
             }
             Command::PeakProtection { config } => {
                 if let Some(config) = config {
@@ -266,7 +345,7 @@ impl Engine {
                 }
                 let mut status = self.peak_shared.status(
                     self.peak_config,
-                    self.output_stream.is_some(),
+                    self.processing_running(),
                     self.live_output_config.split_processing,
                 );
                 status.pending |=
@@ -283,8 +362,7 @@ impl Engine {
                         self.send_error("本番保護中は出力構成を変更できません".into());
                         return;
                     }
-                    if self.output_stream.is_some() && !config.same_route(&self.live_output_config)
-                    {
+                    if self.processing_running() && !config.same_route(&self.live_output_config) {
                         self.send_error("音声を停止してから出力構成を変更してください".into());
                         return;
                     }
@@ -298,7 +376,7 @@ impl Engine {
                     );
                     self.builtin.invalidate_history();
                     self.set_live_output_config(config);
-                    if self.output_stream.is_some() {
+                    if self.processing_running() {
                         if let Some(revision) = self
                             .frame_timing
                             .as_ref()
@@ -431,6 +509,7 @@ impl Engine {
                 }
             }
             Command::Start {
+                input_source,
                 host,
                 input,
                 output,
@@ -459,13 +538,17 @@ impl Engine {
                     rate: sample_rate,
                     buffer: buffer_size,
                 };
-                match self.start_audio_with_ids(
-                    Some(host),
-                    input,
-                    output,
-                    sample_rate,
-                    buffer_size,
-                    (input_id, output_id),
+                match self.start_audio_impl(
+                    AudioStartRequest {
+                        host_name: Some(host),
+                        input_name: input,
+                        output_name: output,
+                        sample_rate,
+                        buffer_size,
+                        device_ids: (input_id, output_id),
+                        input_source,
+                    },
+                    lifecycle::StartupPolicy::default(),
                 ) {
                     Ok(_) => {
                         bound.rate = Some(self.current_sample_rate as u32);
@@ -508,6 +591,7 @@ impl Engine {
                 self.send_response(Response::Success);
             }
             Command::LoadPlugin { path } => {
+                self.last_processing_preparation = "load_plugin";
                 // Delegated to PluginManager
                 let (sample_rate, capacity, channels) = self.processor_setup();
                 match self.plugin_manager.load_plugin(
@@ -515,7 +599,7 @@ impl Engine {
                     sample_rate,
                     capacity,
                     channels,
-                    self.output_stream.is_some(),
+                    self.processing_running(),
                 ) {
                     Ok((id, name, index, processor_opt)) => {
                         // If Audio Thread is active and manager returned a processor, push it
@@ -544,6 +628,7 @@ impl Engine {
 
                             self.queue_audio_msg(self.make_reorder_message());
                         }
+                        self.acknowledge_processing_preparation();
                         self.send_response(Response::PluginLoaded {
                             id,
                             name,
@@ -584,7 +669,7 @@ impl Engine {
                 }
                 self.editor_manager.close_editor(&id);
 
-                if self.output_stream.is_some() {
+                if self.processing_running() {
                     match self.plugin_manager.begin_unload(&id) {
                         Ok(index) => {
                             self.queue_audio_msg(AudioThreadMessage::RemoveProcessor { index });
@@ -708,7 +793,7 @@ impl Engine {
             }
             Command::CancelNoiseLearning => {
                 self.invalidate_noise_measurement("cancelled");
-                if self.output_stream.is_some() {
+                if self.processing_running() {
                     self.queue_audio_msg(AudioThreadMessage::CancelNoiseLearning);
                 } else {
                     self.noise_learning.cancel_capture();
@@ -763,7 +848,7 @@ impl Engine {
                 Err(error) => self.send_error(error),
             },
             Command::SetLoudnessMeasurement { id } => {
-                if self.output_stream.is_none() {
+                if !self.processing_running() {
                     self.send_response(Response::Error(
                         "音声を開始してから測定してください".into(),
                     ));
@@ -779,14 +864,14 @@ impl Engine {
             Command::SetInputChannels { left, right } => {
                 let Some([left, right]) = requested_channels(
                     self.current_host_is_asio,
-                    self.output_stream.is_some(),
+                    self.processing_running(),
                     [left, right],
                     self.current_input_channels,
                 ) else {
                     self.send_error("入力チャンネルが範囲外です".into());
                     return;
                 };
-                if self.output_stream.is_some()
+                if self.processing_running()
                     && self.validate_output_for_input([left, right]).is_err()
                 {
                     self.send_error("選択した入力に対応する出力がありません".into());
@@ -805,7 +890,7 @@ impl Engine {
                 self.send_response(Response::Success);
             }
             Command::StartVoiceCheckRecording { max_ms } => {
-                if self.output_stream.is_none() || self.stream_failed.load(Ordering::Acquire) {
+                if !self.processing_running() || self.stream_failed.load(Ordering::Acquire) {
                     self.send_response(Response::Error(
                         "音声エンジンが起動していません".to_string(),
                     ));
@@ -902,7 +987,7 @@ impl Engine {
                 self.send_response(Response::Success);
             }
             Command::StopVoiceCheckRecording => {
-                if self.output_stream.is_some() {
+                if self.processing_running() {
                     self.queue_audio_msg(AudioThreadMessage::StopVoiceCheckRecording);
                 }
                 self.send_response(Response::Success);
@@ -911,7 +996,7 @@ impl Engine {
                 source,
                 loop_playback,
             } => {
-                if self.output_stream.is_none() || self.stream_failed.load(Ordering::Acquire) {
+                if !self.processing_running() || self.stream_failed.load(Ordering::Acquire) {
                     self.send_error("音声エンジンを開始してから再生してください".into());
                     return;
                 }
@@ -926,7 +1011,7 @@ impl Engine {
                 self.send_response(Response::Success);
             }
             Command::StopVoiceCheckPlayback => {
-                if self.output_stream.is_some() {
+                if self.processing_running() {
                     self.queue_audio_msg(AudioThreadMessage::StopVoiceCheckPlayback);
                 }
                 self.send_response(Response::Success);
@@ -946,13 +1031,17 @@ impl Engine {
                 }
             }
             Command::GetRuntimeStats => {
+                if let Err(error) = self.sync_mixing_latency() {
+                    self.send_error(error.to_string());
+                    return;
+                }
                 let (active_plugin_count, pending_unload_count, burned_library_count) =
                     self.plugin_manager.runtime_stats();
                 let enabled_plugin_count =
                     self.plugin_manager.enabled_plugin_count(self.global_bypass);
                 let latency_report = self.plugin_manager.latency_report(self.global_bypass);
                 let total_plugin_latency_samples = latency_report.0;
-                let noise_reduction_latency_samples = if self.noise_reduction_enabled {
+                let noise_reduction_latency_samples = if self.noise_reduction_enabled && !music {
                     ((self.current_sample_rate / 100.0).round() as u32).max(1)
                 } else {
                     0
@@ -975,6 +1064,7 @@ impl Engine {
                     0.0
                 };
                 self.send_response(Response::RuntimeStats {
+                    process_input: self.process_shared.as_ref().map(|s| Box::new(s.snapshot())),
                     preparation: Some(Box::new(self.preparation_snapshot())),
                     active_plugin_count,
                     enabled_plugin_count,
@@ -1005,7 +1095,7 @@ impl Engine {
                     total_chain_latency_samples,
                     total_chain_latency_ms,
                     noise_reduction_enabled: self.noise_reduction_enabled,
-                    noise_reduction_active: self.noise_reduction_enabled,
+                    noise_reduction_active: !music && self.noise_reduction_enabled,
                     noise_reduction_mode: self.noise_control_mode.as_str().to_string(),
                     noise_learning_state: self.noise_learning.state_label().to_string(),
                     noise_learning_progress: self.noise_learning.progress(),
@@ -1025,10 +1115,12 @@ impl Engine {
                     built_in_reverb: self.builtin.config.reverb,
                 });
             }
-            Command::CaptureBundleState => match self.capture_bundle_state() {
-                Ok(snapshot) => self.send_response(Response::BundleState(Box::new(snapshot))),
-                Err(error) => self.send_error(error.to_string()),
-            },
+            Command::CaptureBundleState | Command::CaptureMixingBundleState => {
+                match self.capture_bundle_state() {
+                    Ok(snapshot) => self.send_response(Response::BundleState(Box::new(snapshot))),
+                    Err(error) => self.send_error(error.to_string()),
+                }
+            }
             Command::GetPluginRack => self.send_response(self.session_rack_snapshot()),
             Command::RestoreSessionPlugin { .. } => unreachable!("entryで既存復元へ変換済み"),
             Command::GetPluginState { id } => match self.plugin_manager.get(&id) {
@@ -1039,7 +1131,8 @@ impl Engine {
                 None => self.send_error("Plugin not found".to_string()),
             },
             Command::SetPluginState { id, state } => {
-                if self.output_stream.is_some() {
+                self.last_processing_preparation = "set_state";
+                if self.processing_running() {
                     self.send_error("音声を停止してからVST状態を適用してください".into());
                 } else {
                     match self.plugin_manager.get(&id) {
@@ -1056,7 +1149,7 @@ impl Engine {
                 duration_ms,
                 level_db,
             } => {
-                if self.output_stream.is_none() {
+                if !self.processing_running() {
                     self.send_error("オーディオエンジンが起動していません".to_string());
                     return;
                 }
@@ -1083,6 +1176,12 @@ impl Engine {
                     level_db: result.level_db,
                     unavailable: result.unavailable,
                 });
+            }
+        }
+        // 既知の処理待ちは、画面の統計pollに依存せず構成変更時にも更新する。
+        if latency_may_change && self.sync_mixing_latency().is_err() {
+            if let Some(shared) = &self.mixing_shared {
+                shared.failed.store(true, Ordering::Release);
             }
         }
     }

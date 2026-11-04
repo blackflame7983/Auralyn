@@ -1,7 +1,15 @@
 pub(crate) mod conditions;
 pub(crate) mod frontend_bootstrap;
+mod live_bundle;
 mod live_modes;
+pub(crate) mod mixing;
+mod mixing_bundle;
 mod mode_vst;
+mod output_bundle;
+pub(crate) mod post_mix;
+mod post_mix_start;
+mod process_bundle;
+pub(crate) mod process_inputs;
 mod replies;
 mod session_rack;
 use anyhow::{anyhow, Result};
@@ -92,6 +100,8 @@ pub struct AudioConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct ActiveAudioConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_source: Option<crate::input_source::Config>,
     pub host: String,
     pub input: Option<String>,
     pub output: Option<String>,
@@ -131,6 +141,7 @@ pub struct EngineTuningConfig {
 #[derive(Debug, Serialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct EngineRuntimeStats {
+    pub process_input: Option<Box<crate::audio_engine::process_capture::Snapshot>>,
     pub preparation: Option<Box<crate::ipc::PreparationSnapshot>>,
     pub active_plugin_count: u32,
     pub enabled_plugin_count: u32,
@@ -180,6 +191,11 @@ pub struct LoopbackProbeResult {
 }
 
 pub struct AudioHost {
+    post_mix: post_mix::State,
+    post_role: bool,
+    post_attached: bool,
+    bundle_mixing_override: bool,
+    bundle_prepared_voice: bool,
     conditions: Arc<conditions::Conditions>,
     last_config_path: PathBuf,
     maintenance: bool,
@@ -204,8 +220,14 @@ pub struct AudioHost {
     frontend_bootstrap: frontend_bootstrap::Startup,
     device_scan: Option<DeviceScanTicket>,
     active_config: Option<ActiveAudioConfig>,
+    process_inputs: process_inputs::Inputs,
+    mixing: mixing::State,
     is_global_muted: bool,
     engine_tuning: EngineTuningConfig,
+    bundle_output_override: Option<crate::audio_engine::live_output::Config>,
+    bundle_monitor_override: Option<Option<crate::audio_engine::split_monitor::State>>,
+    bundle_interrupt: Option<u64>,
+    output_gain_initialized: bool,
     #[cfg(windows)]
     engine_job: Option<win_job::Job>,
 }
@@ -269,14 +291,58 @@ impl AudioHost {
         self.is_global_muted
     }
     pub(crate) fn checked_snapshot_supported(&mut self) -> Result<()> {
+        self.output_snapshot_supported()?;
+        let config = self.live_output(None)?.config;
+        checked_snapshot_config_supported(self.live_modes.target.is_some(), Some(&config))
+    }
+    pub(crate) fn output_snapshot_supported(&mut self) -> Result<()> {
+        self.full_snapshot_supported()?;
+        anyhow::ensure!(
+            self.live_modes.target.is_none(),
+            "歌／雑談モードも保存することを選んでください"
+        );
+        let config = self.live_output(None)?.config;
+        if config.split_processing {
+            match self.execute_running_command(IpcCommand::ModeMonitor {
+                request: crate::audio_engine::split_monitor::Request::Snapshot,
+            })? {
+                IpcResponse::ModeMonitor(snapshot) => {
+                    crate::bundle::output_configuration::validate_custom_monitor(&config, &snapshot)
+                        .map_err(anyhow::Error::msg)?
+                }
+                _ => return Err(anyhow!("現在の自分用処理を確認できません")),
+            }
+        }
+        Ok(())
+    }
+    pub(crate) fn full_snapshot_supported(&mut self) -> Result<()> {
         self.preflight_live_changes()?;
-        let mode_selected = self.live_modes.target.is_some();
-        let config = if mode_selected {
-            None
+        anyhow::ensure!(
+            self.active_config
+                .as_ref()
+                .and_then(|c| c.input_source.as_ref())
+                .is_none_or(|s| *s == crate::input_source::Config::default()),
+            "この入力は確認済み保存・復帰に未対応です。VST単体の設定を保存してください"
+        );
+        Ok(())
+    }
+    pub(crate) fn preflight_runtime_checkpoint(&mut self) -> Result<()> {
+        self.check_can_interrupt()?;
+        anyhow::ensure!(
+            self.session_restore.is_none(),
+            "VSTの復元を完了してから退避してください"
+        );
+        if self.capture_bundle_process()?.is_some() {
+            self.process_snapshot_supported()?;
         } else {
-            Some(self.live_output(None)?.config)
-        };
-        checked_snapshot_config_supported(mode_selected, config.as_ref())
+            self.full_snapshot_supported()?;
+        }
+        let stats = self.get_engine_runtime_stats()?;
+        anyhow::ensure!(
+            stats.noise_learning_state != "capturing",
+            "周囲の音の測定を終了してから退避してください"
+        );
+        Ok(())
     }
     pub fn peak_protection(
         &mut self,
@@ -397,8 +463,19 @@ impl AudioHost {
             frontend_bootstrap: frontend_bootstrap::Startup::default(),
             device_scan: None,
             active_config: None,
+            process_inputs: Default::default(),
+            mixing: mixing::State::new(&config_dir),
+            post_mix: post_mix::State::new(&config_dir),
+            post_role: false,
+            post_attached: false,
+            bundle_mixing_override: false,
+            bundle_prepared_voice: false,
             is_global_muted: recovery_muted,
             engine_tuning: EngineTuningConfig::default(),
+            bundle_output_override: None,
+            bundle_monitor_override: None,
+            bundle_interrupt: None,
+            output_gain_initialized: false,
             #[cfg(windows)]
             engine_job: None,
         }
@@ -587,6 +664,9 @@ impl AudioHost {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             let mut command = Command::new(binary_path);
+            if self.post_role {
+                command.arg("--post-mix-worker");
+            }
             command
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
@@ -599,6 +679,9 @@ impl AudioHost {
         #[cfg(not(windows))]
         let mut child = {
             let mut command = Command::new(binary_path);
+            if self.post_role {
+                command.arg("--post-mix-worker");
+            }
             command
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
@@ -625,6 +708,7 @@ impl AudioHost {
 
         self.stdin = Some(stdin);
         self.child = Some(child);
+        self.output_gain_initialized = false;
         self.engine_generation = self.engine_generation.wrapping_add(1);
         self.device_scan = None;
 
@@ -660,6 +744,23 @@ impl AudioHost {
                                 }
                             }
                             OutputMessage::Event(evt) => match evt {
+                                EngineEvent::MixingSourceFailed
+                                | EngineEvent::MixingOutputFailed => {
+                                    if !conditions.engine_changed(condition_epoch) {
+                                        continue;
+                                    }
+                                    if let Some(handle) = emitter_clone.lock().unwrap().as_ref() {
+                                        let _ = handle.emit("audio-conditions-changed", ());
+                                        let _ = handle.emit(
+                                            if matches!(evt, EngineEvent::MixingSourceFailed) {
+                                                "mixing-source-failed"
+                                            } else {
+                                                "mixing-output-failed"
+                                            },
+                                            (),
+                                        );
+                                    }
+                                }
                                 EngineEvent::Log(s) => log::info!("[Engine] {}", s),
                                 EngineEvent::Error(s) => {
                                     if !conditions.engine_event(condition_epoch, false) {
@@ -1183,15 +1284,56 @@ impl AudioHost {
         output_id: Option<String>,
         channel_routing: Option<crate::ipc::ChannelRouting>,
     ) -> Result<AudioConfig> {
+        let source = self.resolve_input_source(None)?;
+        self.start_internal_with_source(
+            host_name,
+            input_name,
+            output_name,
+            buffer_size,
+            sample_rate,
+            initial_controls,
+            expected_generation,
+            input_id,
+            output_id,
+            channel_routing,
+            source,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start_internal_with_source(
+        &mut self,
+        host_name: Option<String>,
+        input_name: Option<String>,
+        output_name: Option<String>,
+        buffer_size: Option<u32>,
+        sample_rate: Option<u32>,
+        initial_controls: Option<crate::ipc::StartControls>,
+        expected_generation: Option<u64>,
+        input_id: Option<String>,
+        output_id: Option<String>,
+        channel_routing: Option<crate::ipc::ChannelRouting>,
+        input_source: Option<crate::input_source::Start>,
+    ) -> Result<AudioConfig> {
         self.guard_mode_vst()?;
+        self.validate_mixing_selection(input_source.as_ref())?;
         if let Some(controls) = initial_controls {
             controls.validate().map_err(|e| anyhow!(e))?;
         }
         let channel_routing =
             channel_routing.or_else(|| initial_controls.map(|controls| controls.routing()));
-        crate::desktop_integration::check_microphone_access(host_name.as_deref())
-            .map_err(|error| anyhow!(error))?;
+        let process = input_source
+            .as_ref()
+            .is_some_and(|s| matches!(s.source, crate::input_source::Config::ProcessLoopback(_)));
+        if !process {
+            crate::desktop_integration::check_microphone_access(host_name.as_deref())
+                .map_err(anyhow::Error::msg)?;
+        }
+        if let Some(source) = &input_source {
+            source.validate().map_err(anyhow::Error::msg)?;
+        }
         let cmd = IpcCommand::Start {
+            input_source: input_source.clone(),
             host: host_name.clone().unwrap_or("ASIO".to_string()),
             input: input_name.clone(),
             output: output_name.clone(),
@@ -1203,6 +1345,36 @@ impl AudioHost {
             channel_routing,
         };
 
+        if input_source
+            .as_ref()
+            .is_some_and(|s| s.source != crate::input_source::Config::default())
+        {
+            let path = self.last_config_path.with_file_name("live_output.json");
+            if path.exists() {
+                let config: crate::audio_engine::live_output::Config =
+                    serde_json::from_slice(&std::fs::read(path)?)?;
+                anyhow::ensure!(
+                    !config.split_processing,
+                    "この入力は処理分離に未対応です。音声設定で通常の処理経路を選んでください"
+                );
+            }
+        }
+        if (input_source
+            .as_ref()
+            .is_some_and(|s| s.source != crate::input_source::Config::default())
+            || self
+                .active_config
+                .as_ref()
+                .and_then(|c| c.input_source.as_ref())
+                .is_some_and(|s| *s != crate::input_source::Config::default()))
+            && self.reader_active.load(Ordering::Acquire)
+        {
+            let status = self.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
+            anyhow::ensure!(
+                !status.running,
+                "音声を停止してから入力元・用途を変更してください"
+            );
+        }
         log::info!("Sending Start Command: {:?}", cmd);
 
         if let Some(expected) = expected_generation {
@@ -1223,11 +1395,21 @@ impl AudioHost {
         let generation = self.engine_generation;
         self.sync_live_modes()?;
         self.guard_live_command(&cmd)?;
+        if input_source.is_some() {
+            crate::input_source::require_capability(|probe| self.execute_running_command(probe))?;
+        }
         require_identity_capability(&cmd, |probe| self.execute_running_command(probe))?;
         let live_path = self.last_config_path.with_file_name("live_output.json");
-        if live_path.exists() {
-            let config: crate::audio_engine::live_output::Config =
-                serde_json::from_slice(&std::fs::read(live_path)?)?;
+        let live_config = if let Some(config) = &self.bundle_output_override {
+            Some(config.clone())
+        } else if live_path.exists() {
+            Some(serde_json::from_slice::<
+                crate::audio_engine::live_output::Config,
+            >(&std::fs::read(live_path)?)?)
+        } else {
+            None
+        };
+        if let Some(config) = live_config {
             config.validate()?;
             match self.execute_running_command(IpcCommand::LiveOutput {
                 config: Some(config),
@@ -1237,13 +1419,34 @@ impl AudioHost {
                 _ => return Err(anyhow!("二系統出力の保存構成を反映できません")),
             }
         }
+        if let Some(state) = self.bundle_monitor_override.clone() {
+            match self.execute_running_command(IpcCommand::ModeMonitor {
+                request: crate::audio_engine::split_monitor::Request::Restore { state },
+            })? {
+                IpcResponse::ModeMonitor(snapshot) if !snapshot.failed && !snapshot.pending => {}
+                IpcResponse::Error(error) => return Err(anyhow!(error)),
+                _ => return Err(anyhow!("開始前に自分用処理を復帰できません")),
+            }
+        }
         let muted = self.is_global_muted;
+        self.prepare_mixing_start()?;
+        self.prepare_post_mix_start(sample_rate)?;
         validate_start_generation(generation, self.engine_generation)?;
         let response = if initial_controls.is_some() {
-            self.start_on_existing_generation(generation, cmd)?
+            self.start_on_existing_generation(generation, cmd)
         } else {
-            start_with_mute(muted, cmd, |command| self.execute_running_command(command))?
+            start_with_mute(muted, cmd, |command| self.execute_running_command(command))
         };
+        let response = match response {
+            Ok(response) => response,
+            Err(error) => {
+                self.cancel_prepared_post_start();
+                return Err(error);
+            }
+        };
+        if !matches!(response, IpcResponse::Started { .. }) {
+            self.cancel_prepared_post_start();
+        }
         validate_start_generation(generation, self.engine_generation)?;
         match response {
             IpcResponse::Started {
@@ -1255,7 +1458,15 @@ impl AudioHost {
             } => {
                 if channel_routing.is_some() && routing.is_none() {
                     let _ = self.execute_running_command(IpcCommand::Stop);
+                    self.cancel_prepared_post_start();
                     return Err(anyhow!("音声エンジンが接続設定の確認に対応していません"));
+                }
+                if process && actual_input_id.is_some() {
+                    let _ = self.execute_running_command(IpcCommand::Stop);
+                    self.cancel_prepared_post_start();
+                    return Err(anyhow!(
+                        "アプリ入力で開始したことを確認できません。音声エンジンを更新してください"
+                    ));
                 }
                 if input_id
                     .as_ref()
@@ -1266,12 +1477,14 @@ impl AudioHost {
                 {
                     // 旧Engine等がID照合を行わない場合は即時停止し、成功としない。
                     let _ = self.execute_running_command(IpcCommand::Stop);
+                    self.cancel_prepared_post_start();
                     return Err(anyhow!(
                         "開始した機器のIDを確認できません。機器を選び直してください"
                     ));
                 }
                 // Update active config
                 let config = ActiveAudioConfig {
+                    input_source: input_source.as_ref().map(|s| s.source.clone()),
                     host: host_name.clone().unwrap_or("ASIO".to_string()),
                     input: input_name,
                     output: output_name,
@@ -1288,8 +1501,10 @@ impl AudioHost {
                 }
 
                 self.active_config = Some(config);
+                self.remember_input_source(input_source);
                 if let Some(controls) = initial_controls {
                     self.is_global_muted = controls.muted;
+                    self.output_gain_initialized = true;
                 }
 
                 Ok(AudioConfig {
@@ -1328,6 +1543,12 @@ impl AudioHost {
     }
 
     pub fn stop(&mut self) -> Result<()> {
+        let result = self.stop_primary();
+        let post = self.post_mix.stop();
+        result.and(post)
+    }
+
+    fn stop_primary(&mut self) -> Result<()> {
         if self.mode_vst.blocked() {
             self.cancel_mode_vst("利用者が音声を停止しました");
             self.kill_engine();
@@ -1637,6 +1858,7 @@ impl AudioHost {
     pub fn set_output_gain(&mut self, value: f32) -> Result<()> {
         match self.execute_command(IpcCommand::SetOutputGain { value })? {
             IpcResponse::Success => {
+                self.output_gain_initialized = true;
                 // プリセットからの変更も、RT反映前に成功として保存させない。
                 for _ in 0..100 {
                     let state = self.auto_gain(crate::audio_engine::auto_gain::Request::Status)?;
@@ -1668,6 +1890,20 @@ impl AudioHost {
             &request,
             crate::audio_engine::auto_gain::Request::Initialize { .. }
         );
+        let explicit_gain_update = matches!(
+            &request,
+            crate::audio_engine::auto_gain::Request::Apply { .. }
+                | crate::audio_engine::auto_gain::Request::Restore { .. }
+                | crate::audio_engine::auto_gain::Request::UndoHistory { .. }
+                | crate::audio_engine::auto_gain::Request::RedoHistory { .. }
+        );
+        // Engine側も明示設定後のInitializeを無視する。Hostでも読取にし、
+        // 再起動通知に伴う遅い初期化で復帰・Undoのwitnessを自己失効させない。
+        let request = if initializing && self.output_gain_initialized {
+            crate::audio_engine::auto_gain::Request::Status
+        } else {
+            request
+        };
         if matches!(request, crate::audio_engine::auto_gain::Request::Cancel)
             && self.reap_confirmed_stopped_connection()?
         {
@@ -1711,8 +1947,14 @@ impl AudioHost {
         };
         match response {
             IpcResponse::AutoGain(state) => {
+                if explicit_gain_update {
+                    self.output_gain_initialized = true;
+                }
                 if initializing && !state.stream_failed {
                     self.frontend_bootstrap.output_gain = Some(state.gain);
+                    if state.running {
+                        self.output_gain_initialized = true;
+                    }
                 }
                 Ok(state)
             }
@@ -1746,7 +1988,12 @@ impl AudioHost {
 
     pub(crate) fn capture_bundle_state(&mut self) -> Result<crate::bundle::EngineCapture> {
         let generation = self.engine_generation;
-        let result = self.execute_running_command(IpcCommand::CaptureBundleState)?;
+        let command = if self.mixing.selected.is_some() {
+            IpcCommand::CaptureMixingBundleState
+        } else {
+            IpcCommand::CaptureBundleState
+        };
+        let result = self.execute_running_command(command)?;
         anyhow::ensure!(
             generation == self.engine_generation,
             "取得中に音声世代が変わりました"
@@ -1783,11 +2030,29 @@ impl AudioHost {
         input_id: Option<String>,
         output_id: Option<String>,
     ) -> Result<AudioConfig> {
+        anyhow::ensure!(
+            self.bundle_mixing_override || self.mixing.selected.is_none(),
+            "二入力の入出力を復帰する場合は、オケ・ミックス後VSTを含む全体保存を使ってください"
+        );
         intent.validate().map_err(|e| anyhow!(e))?;
         self.validate_bundle_connection()?;
         self.preflight_live_changes()?;
-        self.preserve_live_changes_for_restart();
-        self.kill_engine();
+        if self.bundle_mixing_override && self.bundle_prepared_voice {
+            anyhow::ensure!(
+                matches!(
+                    self.execute_running_command(IpcCommand::ProcessingState)?,
+                    IpcResponse::ProcessingState { present: false, .. }
+                ),
+                "準備済みの声ラックを保持したまま停止中から開始してください"
+            );
+        } else if self.bundle_mixing_override {
+            self.preserve_live_changes_for_restart();
+            // 全体復帰で明示選択した入力と、準備済みの別ラックを主Engine再起動に渡す。
+            self.kill_primary_engine();
+        } else {
+            self.preserve_live_changes_for_restart();
+            self.kill_engine();
+        }
         self.start_internal_guarded_with_ids(
             host,
             input,
@@ -1804,6 +2069,10 @@ impl AudioHost {
 
     fn validate_bundle_connection(&self) -> Result<()> {
         if let Some(expected) = self.bundle_change_generation {
+            anyhow::ensure!(
+                self.bundle_interrupt == Some(self.conditions.restore_interrupt()),
+                "停止・ミュート操作が優先されたため、配信状態の復帰を中断しました"
+            );
             validate_start_generation(expected, self.engine_generation)?;
             anyhow::ensure!(
                 self.reader_active.load(Ordering::Acquire),
@@ -1821,12 +2090,14 @@ impl AudioHost {
             return Err("配信状態の変更が重複しています".into());
         }
         self.bundle_change_generation = Some(self.engine_generation);
+        self.bundle_interrupt = Some(self.conditions.restore_interrupt());
         let result = self
             .validate_bundle_connection()
             .map_err(|e| e.to_string())
             .and_then(|()| operation(self));
         let intact = self.validate_bundle_connection().map_err(|e| e.to_string());
         self.bundle_change_generation = None;
+        self.bundle_interrupt = None;
         let value = result?;
         intact?;
         Ok(value)
@@ -2109,6 +2380,7 @@ impl AudioHost {
 
         match self.execute_running_command(IpcCommand::GetRuntimeStats)? {
             IpcResponse::RuntimeStats {
+                process_input,
                 preparation,
                 active_plugin_count,
                 enabled_plugin_count,
@@ -2146,6 +2418,7 @@ impl AudioHost {
                 built_in_singing,
                 built_in_reverb,
             } => Ok(EngineRuntimeStats {
+                process_input,
                 preparation,
                 active_plugin_count,
                 enabled_plugin_count,
@@ -2225,6 +2498,15 @@ impl AudioHost {
     }
 
     pub fn kill_engine(&mut self) {
+        self.bundle_prepared_voice = false;
+        self.post_mix.kill();
+        self.mixing.selected = None;
+        self.kill_primary_engine();
+    }
+
+    fn kill_primary_engine(&mut self) {
+        self.post_attached = false;
+        self.output_gain_initialized = false;
         if self.mode_vst.busy() {
             self.cancel_mode_vst("音声エンジンが終了したため手動復旧が必要です");
         }
@@ -2284,6 +2566,18 @@ impl AudioHost {
         match std::fs::read_to_string(path) {
             Ok(json) => {
                 match serde_json::from_str::<ActiveAudioConfig>(&json) {
+                    Ok(config)
+                        if config
+                            .input_source
+                            .as_ref()
+                            .is_some_and(|s| *s != crate::input_source::Config::default()) =>
+                    {
+                        self.frontend_bootstrap.automatic_attempted = true;
+                        self.frontend_bootstrap.warmup_error = Some(
+                            "保存した入力は自動開始しません。音声設定で入力を確認してください。"
+                                .into(),
+                        );
+                    }
                     Ok(config)
                         if !config.host.is_empty()
                             && config

@@ -1,7 +1,16 @@
 //! 配信状態のローカル保存。VST component stateは機密扱いし、export/logへ出さない。
 use crate::vst_host::presets::{Preset, PresetPlugin, ProfileSaveCategories};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+pub(crate) mod mixing_configuration;
+pub(crate) use mixing_configuration::MixingConfiguration;
+pub(crate) mod output_configuration;
+pub(crate) use output_configuration::OutputConfiguration;
+pub(crate) mod live_configuration;
+pub(crate) use live_configuration::LiveConfiguration;
+pub(crate) mod process_configuration;
+pub(crate) use process_configuration::ProcessConfiguration;
 
 const MAX_BUNDLE_BYTES: usize = 64 * 1024 * 1024;
 
@@ -33,6 +42,14 @@ pub struct EngineCapture {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BundleV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) mixing: Option<MixingConfiguration>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) process: Option<ProcessConfiguration>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) live: Option<LiveConfiguration>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) output: Option<OutputConfiguration>,
     /// 利用者による確認の履歴。現在の信号到達・復元後の合格を意味しない。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confirmation: Option<Confirmation>,
@@ -76,8 +93,66 @@ pub fn validate_name(name: &str) -> Result<(), String> {
 }
 pub fn validate(bundle: &BundleV1) -> Result<(), String> {
     validate_name(&bundle.name)?;
-    if bundle.schema_version != 1 || bundle.revision.is_empty() {
+    if !matches!(
+        (
+            bundle.schema_version,
+            bundle.output.is_some(),
+            bundle.live.is_some(),
+            bundle.process.is_some(),
+            bundle.mixing.is_some()
+        ),
+        (1, false, false, false, false)
+            | (2, true, false, false, false)
+            | (3, true, true, false, false)
+            | (4, false, false, true, false)
+            | (5, true, true, false, true)
+    ) || bundle.revision.is_empty()
+    {
         return Err("対応していない配信状態です".into());
+    }
+    if let Some(mixing) = &bundle.mixing {
+        mixing.validate()?;
+    }
+    if let Some(output) = &bundle.output {
+        output.validate()?;
+        let c = &bundle.categories;
+        if !(c.include_plugins
+            && c.include_audio_config
+            && c.include_noise_control
+            && c.include_builtin_fx)
+        {
+            return Err("分離出力の保存には全カテゴリが必要です".into());
+        }
+    }
+    if let Some(process) = &bundle.process {
+        process.validate()?;
+        let c = &bundle.categories;
+        let audio = bundle
+            .embedded_auralyn_preset
+            .audio_config
+            .as_ref()
+            .ok_or("入出力設定がありません")?;
+        if !(c.include_plugins
+            && c.include_audio_config
+            && c.include_noise_control
+            && c.include_builtin_fx)
+            || !audio.host.eq_ignore_ascii_case("wasapi")
+            || audio.input_device.is_some()
+            || audio.output_device.is_none()
+        {
+            return Err("プロセス入力の保存にはWASAPIの単独出力と全カテゴリが必要です".into());
+        }
+    }
+    if let Some(live) = &bundle.live {
+        live.validate(bundle.output.as_ref().ok_or("出力構成がありません")?)?;
+        if !bundle
+            .embedded_auralyn_preset
+            .builtin_fx
+            .as_ref()
+            .is_some_and(|actual| live.matches_builtin(actual))
+        {
+            return Err("選択中モードと配信用の内蔵設定が一致しません".into());
+        }
     }
     if bundle.embedded_auralyn_preset.plugins.len() > crate::audio_engine::plugins::MAX_PLUGINS {
         return Err("VST数の上限を超えています".into());
@@ -205,6 +280,17 @@ pub(crate) struct RecoveryReceipt {
     pub backup_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub devices: Option<RecoveryDevices>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<RuntimeOrigin>,
+}
+/// 退避元は来歴であり、新しいEngineへの適用権限ではない。state本体は含めない。
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RuntimeOrigin {
+    pub version: u8,
+    pub source_epoch: u64,
+    pub source_control_revision: String,
+    pub sha256: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -240,6 +326,22 @@ pub(crate) fn read_recovery(root: &Path) -> Result<Option<RecoveryReceipt>, Stri
     {
         return Err("配信状態の復旧機器IDが不正です".into());
     }
+    if let Some(origin) = &receipt.runtime {
+        if !matches!(origin.version, 1..=3)
+            || origin.source_epoch == 0
+            || origin.source_control_revision.is_empty()
+            || origin.source_control_revision.len() > 256
+            || !origin
+                .source_control_revision
+                .bytes()
+                .all(|c| c.is_ascii_digit() || c == b':')
+            || origin.sha256.len() != 64
+            || !origin.sha256.bytes().all(|c| c.is_ascii_hexdigit())
+            || (matches!(origin.version, 1 | 3) && receipt.devices.is_none())
+        {
+            return Err("未保存状態の退避情報に対応していません".into());
+        }
+    }
     Ok(Some(receipt))
 }
 pub(crate) fn reserve_recovery(
@@ -253,7 +355,11 @@ pub(crate) fn reserve_recovery(
         version: 1,
         backup_name: backup_name.to_owned(),
         devices,
+        runtime: None,
     };
+    reserve_receipt(root, &receipt)
+}
+fn reserve_receipt(root: &Path, receipt: &RecoveryReceipt) -> Result<(), String> {
     let bytes = serde_json::to_vec(&receipt).map_err(|e| e.to_string())?;
     use std::io::Write;
     let mut file = std::fs::OpenOptions::new()
@@ -264,6 +370,223 @@ pub(crate) fn reserve_recovery(
     file.write_all(&bytes)
         .and_then(|_| file.sync_all())
         .map_err(|e| e.to_string())
+}
+
+pub(crate) fn content_digest(bundle: &BundleV1) -> Result<String, String> {
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(bundle).map_err(|e| e.to_string())?)
+    ))
+}
+
+pub(crate) fn load_recovery_backup(
+    root: &Path,
+    receipt: &RecoveryReceipt,
+) -> Result<BundleV1, String> {
+    let original = load(&root.join("broadcast-bundle-backups"), &receipt.backup_name)?;
+    if let Some(origin) = &receipt.runtime {
+        validate_runtime_original(&original)?;
+        validate_runtime_scope(&original, receipt)?;
+        if content_digest(&original)? != origin.sha256 {
+            return Err("退避した未保存設定が変更されています。原本を確認してください".into());
+        }
+    }
+    Ok(original)
+}
+
+fn validate_runtime_original(original: &BundleV1) -> Result<(), String> {
+    validate(original)?;
+    let categories = &original.categories;
+    if !(categories.include_plugins
+        && categories.include_audio_config
+        && categories.include_noise_control
+        && categories.include_builtin_fx)
+        || !matches!(original.schema_version, 1 | 3 | 4 | 5)
+        || original.obs.is_some()
+        || original.confirmation.is_some()
+        || original
+            .embedded_auralyn_preset
+            .audio_config
+            .as_ref()
+            .is_none_or(|audio| {
+                (original.process.is_none()
+                    && audio
+                        .input_device
+                        .as_ref()
+                        .is_none_or(|name| name.is_empty()))
+                    || audio
+                        .output_device
+                        .as_ref()
+                        .is_none_or(|name| name.is_empty())
+            })
+    {
+        return Err("未保存設定の退避範囲に対応していません".into());
+    }
+    Ok(())
+}
+fn validate_runtime_scope(original: &BundleV1, receipt: &RecoveryReceipt) -> Result<(), String> {
+    let version = receipt
+        .runtime
+        .as_ref()
+        .ok_or("未保存状態の取得元がありません")?
+        .version;
+    let valid = match original.schema_version {
+        1 => version == 1 && receipt.devices.is_some(),
+        3 => {
+            version == 2 && original.output.as_ref().map(|o| &o.devices) == receipt.devices.as_ref()
+        }
+        4 => version == 2 && receipt.devices.is_none() && original.process.is_some(),
+        5 => {
+            version == 3 && original.output.as_ref().map(|o| &o.devices) == receipt.devices.as_ref()
+        }
+        _ => false,
+    };
+    if !valid {
+        return Err("退避原本と入力・出力の保存範囲が一致しません".into());
+    }
+    Ok(())
+}
+
+pub(crate) struct RuntimeReservation {
+    root: PathBuf,
+    file: std::fs::File,
+    receipt: RecoveryReceipt,
+}
+
+/// 高価なcomponent state取得前に未完了情報だけを確保する。失敗時も削除しない。
+pub(crate) fn reserve_runtime_intent(
+    root: &Path,
+    backup_name: &str,
+    devices: RecoveryDevices,
+    source_epoch: u64,
+) -> Result<RuntimeReservation, String> {
+    reserve_runtime_intent_inner(root, backup_name, Some(devices), source_epoch, 1)
+}
+pub(crate) fn reserve_mixing_runtime_intent(
+    root: &Path,
+    backup_name: &str,
+    devices: RecoveryDevices,
+    source_epoch: u64,
+) -> Result<RuntimeReservation, String> {
+    reserve_runtime_intent_inner(root, backup_name, Some(devices), source_epoch, 3)
+}
+pub(crate) fn reserve_process_runtime_intent(
+    root: &Path,
+    backup_name: &str,
+    source_epoch: u64,
+) -> Result<RuntimeReservation, String> {
+    reserve_runtime_intent_inner(root, backup_name, None, source_epoch, 2)
+}
+fn reserve_runtime_intent_inner(
+    root: &Path,
+    backup_name: &str,
+    devices: Option<RecoveryDevices>,
+    source_epoch: u64,
+    origin_version: u8,
+) -> Result<RuntimeReservation, String> {
+    validate_name(backup_name)?;
+    if devices
+        .as_ref()
+        .is_some_and(|d| d.input_id.is_empty() || d.output_id.is_empty())
+        || source_epoch == 0
+    {
+        return Err("未保存設定の取得元を確認できません".into());
+    }
+    std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
+    let receipt = RecoveryReceipt {
+        version: 1,
+        backup_name: backup_name.into(),
+        devices: devices.clone(),
+        runtime: Some(RuntimeOrigin {
+            version: origin_version,
+            source_epoch,
+            source_control_revision: "0".into(),
+            sha256: "0".repeat(64),
+        }),
+    };
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // 取得中に別操作から未完了情報を消したり置き換えたりできないよう保持する。
+        options.share_mode(0);
+    }
+    let mut file = options
+        .open(recovery_path(root))
+        .map_err(|_| "未解決の復旧原本があります。先に確認してください")?;
+    use std::io::Write;
+    file.write_all(&serde_json::to_vec(&receipt).map_err(|e| e.to_string())?)
+        .and_then(|()| file.sync_all())
+        .map_err(|e| e.to_string())?;
+    Ok(RuntimeReservation {
+        root: root.to_path_buf(),
+        file,
+        receipt,
+    })
+}
+
+pub(crate) fn finish_runtime_recovery(
+    root: &Path,
+    original: &BundleV1,
+    mut reservation: RuntimeReservation,
+    source_control_revision: String,
+) -> Result<(), String> {
+    if root != reservation.root
+        || original.name != reservation.receipt.backup_name
+        || source_control_revision.is_empty()
+        || source_control_revision.len() > 256
+        || !source_control_revision
+            .bytes()
+            .all(|c| c.is_ascii_digit() || c == b':')
+    {
+        return Err("未保存設定の取得元が変わりました。未完了情報を保持しています".into());
+    }
+    validate_runtime_original(original)?;
+    let origin = reservation
+        .receipt
+        .runtime
+        .as_mut()
+        .ok_or("退避情報がありません")?;
+    // schema 5 の退避は予約時から版3で固定し、旧 schema に昇格させない。
+    if origin.version == 3 && original.schema_version != 5 {
+        return Err("退避原本と保存範囲が一致しません".into());
+    }
+    origin.version = match original.schema_version {
+        1 => 1,
+        5 if origin.version == 3 => 3,
+        5 => return Err("ミックス原本の予約が一致しません".into()),
+        _ => 2,
+    };
+    validate_runtime_scope(original, &reservation.receipt)?;
+    let backup_root = root.join("broadcast-bundle-backups");
+    save_with_overwrite(&backup_root, original, false)?;
+    let expected = content_digest(original)?;
+    let stored = load(&backup_root, &original.name)?;
+    if content_digest(&stored)? != expected {
+        return Err("未保存設定の読み戻しを確認できません。音声は変更していません".into());
+    }
+    let origin = reservation
+        .receipt
+        .runtime
+        .as_mut()
+        .ok_or("退避情報がありません")?;
+    origin.sha256 = expected;
+    origin.source_control_revision = source_control_revision;
+    let bytes = serde_json::to_vec(&reservation.receipt).map_err(|e| e.to_string())?;
+    use std::io::{Seek, SeekFrom, Write};
+    // 公開前の破損や中断は読み取り不能として残す。原本自体は削除しない。
+    reservation
+        .file
+        .seek(SeekFrom::Start(0))
+        .and_then(|_| reservation.file.set_len(0))
+        .and_then(|()| reservation.file.write_all(&bytes))
+        .and_then(|()| reservation.file.sync_all())
+        .map_err(|e| e.to_string())?;
+    drop(reservation);
+    let receipt = read_recovery(root)?.ok_or("退避の完了情報を確認できません")?;
+    load_recovery_backup(root, &receipt)?;
+    Ok(())
 }
 pub(crate) fn resolve_recovery(root: &Path, expected: Option<&str>) -> Result<(), String> {
     let path = recovery_path(root);
@@ -366,6 +689,309 @@ pub fn list(root: &Path) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
     #[test]
+    fn output_bundle_roundtrips_and_never_accepts_mixed_or_incomplete_schemas() {
+        let mut value = runtime_sample();
+        assert!(validate(&value).is_ok());
+        value.output = Some(OutputConfiguration {
+            version: 1,
+            devices: RecoveryDevices {
+                input_id: "mic-id".into(),
+                output_id: "monitor-id".into(),
+            },
+            config: crate::audio_engine::live_output::Config {
+                device_id: Some("broadcast-id".into()),
+                monitor_trim: 0.0,
+                broadcast_trim: 0.4,
+                monitor_muted: true,
+                ..Default::default()
+            },
+        });
+        assert!(validate(&value).is_err()); // 旧schemaへ新しい値を混ぜない。
+        value.schema_version = 2;
+        validate(&value).unwrap();
+        let root = std::env::temp_dir().join(format!("auralyn-output-schema-{}", revision()));
+        save_with_overwrite(&root, &value, false).unwrap();
+        let stored = load(&root, &value.name).unwrap();
+        assert_eq!(stored.output, value.output);
+        let mut full = value.clone();
+        full.live = Some(LiveConfiguration {
+            version: 1,
+            definitions: Default::default(),
+            target: None,
+            monitor: None,
+            singing_plugins: None,
+            talk_plugins: None,
+        });
+        assert!(validate(&full).is_err());
+        full.schema_version = 3;
+        validate(&full).unwrap();
+        save_with_overwrite(&root, &full, true).unwrap();
+        assert_eq!(load(&root, &full.name).unwrap().live, full.live);
+        assert!(validate_runtime_original(&full).is_ok());
+        let mut invalid = value.clone();
+        invalid.output = None;
+        assert!(validate(&invalid).is_err());
+        invalid = value.clone();
+        invalid.output.as_mut().unwrap().version = 2;
+        assert!(validate(&invalid).is_err());
+        invalid = value.clone();
+        invalid.categories.include_builtin_fx = false;
+        invalid.embedded_auralyn_preset.builtin_fx = None;
+        assert!(validate(&invalid).is_err());
+        invalid = value.clone();
+        invalid.output.as_mut().unwrap().config.device_id = Some("monitor-id".into());
+        assert!(validate(&invalid).is_err());
+        assert!(validate_runtime_original(&value).is_err()); // schema 2だけではモードの全状態がない。
+        std::fs::remove_file(path(&root, &value.name).unwrap()).unwrap();
+        std::fs::remove_dir(root.join("broadcast-bundles")).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+    #[test]
+    fn process_bundle_roundtrip_requires_all_categories_and_never_mixes_device_or_mode_schema() {
+        let mut value = runtime_sample();
+        value.schema_version = 4;
+        value.process = Some(ProcessConfiguration {
+            version: 1,
+            source: crate::input_source::ProcessConfig {
+                app_key: "a".repeat(64),
+                app_name: "player.exe".into(),
+                raw_endpoint_id: "raw-id".into(),
+                purpose: crate::input_source::Purpose::Music,
+            },
+            output_id: "wasapi:monitor-id".into(),
+        });
+        let audio = value.embedded_auralyn_preset.audio_config.as_mut().unwrap();
+        audio.host = "Wasapi".into();
+        audio.input_device = None;
+        audio.output_device = Some("Monitor".into());
+        validate(&value).unwrap();
+        let root = std::env::temp_dir().join(format!("auralyn-process-schema-{}", revision()));
+        save(&root, &value).unwrap();
+        assert_eq!(load(&root, &value.name).unwrap().process, value.process);
+        assert!(validate_runtime_original(&value).is_ok());
+        let mut invalid = value.clone();
+        invalid.schema_version = 1;
+        assert!(validate(&invalid).is_err());
+        invalid = value.clone();
+        invalid.categories.include_plugins = false;
+        invalid.embedded_auralyn_preset.plugins.clear();
+        assert!(validate(&invalid).is_err());
+        invalid = value.clone();
+        invalid
+            .embedded_auralyn_preset
+            .audio_config
+            .as_mut()
+            .unwrap()
+            .input_device = Some("must-not-select-microphone".into());
+        assert!(validate(&invalid).is_err());
+        std::fs::remove_file(path(&root, &value.name).unwrap()).unwrap();
+        std::fs::remove_dir(root.join("broadcast-bundles")).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+    #[test]
+    fn runtime_capture_intent_survives_interruption_and_blocks_replacement() {
+        let root = std::env::temp_dir().join(format!("auralyn-runtime-intent-{}", revision()));
+        let reservation = reserve_runtime_intent(
+            &root,
+            "pending",
+            RecoveryDevices {
+                input_id: "input-id".into(),
+                output_id: "output-id".into(),
+            },
+            1,
+        )
+        .unwrap();
+        assert!(recovery_exists(&root).unwrap());
+        #[cfg(windows)]
+        assert!(read_recovery(&root).is_err()); // 取得中の削除・置換も共有モードで拒否する。
+        assert!(reserve_recovery(&root, "replacement", None).is_err());
+        drop(reservation); // component state取得中に終了しても、確認待ちの情報を残す。
+        let receipt = read_recovery(&root).unwrap().unwrap();
+        assert!(receipt.runtime.is_some());
+        assert!(load_recovery_backup(&root, &receipt).is_err());
+        let unchanged = std::fs::read(recovery_path(&root)).unwrap();
+        assert!(
+            reserve_runtime_intent(&root, "replacement", receipt.devices.clone().unwrap(), 2)
+                .is_err()
+        );
+        assert_eq!(std::fs::read(recovery_path(&root)).unwrap(), unchanged);
+        resolve_recovery(&root, Some("pending")).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn runtime_original_is_read_back_private_and_checked_before_recovery() {
+        let root = std::env::temp_dir().join(format!("auralyn-runtime-original-{}", revision()));
+        let mut original = runtime_sample();
+        let secret_state = "bG9jYWwtcHJpdmF0ZS1zdGF0ZQ==";
+        original.embedded_auralyn_preset.plugins.push(PresetPlugin {
+            path: "private-plugin.vst3".into(),
+            name: "private".into(),
+            vendor: String::new(),
+            version: String::new(),
+            enabled: true,
+            muted: false,
+            gain: 0.25,
+            state: Some(secret_state.into()),
+        });
+        let reservation = reserve_runtime_intent(
+            &root,
+            &original.name,
+            RecoveryDevices {
+                input_id: "input-id".into(),
+                output_id: "output-id".into(),
+            },
+            7,
+        )
+        .unwrap();
+        finish_runtime_recovery(&root, &original, reservation, "1:2:3:4".into()).unwrap();
+        let receipt = read_recovery(&root).unwrap().unwrap();
+        assert_eq!(receipt.runtime.as_ref().unwrap().source_epoch, 7);
+        let marker = std::fs::read_to_string(recovery_path(&root)).unwrap();
+        assert!(!marker.contains(secret_state) && !marker.contains("private-plugin"));
+        let restored = load_recovery_backup(&root, &receipt).unwrap();
+        assert_eq!(
+            restored.embedded_auralyn_preset,
+            original.embedded_auralyn_preset
+        );
+        let backup_root = root.join("broadcast-bundle-backups");
+        original.embedded_auralyn_preset.plugins[0].gain = 0.75; // 同じrevisionでも後編集を拒否する。
+        save(&backup_root, &original).unwrap();
+        assert!(load_recovery_backup(&root, &receipt).is_err());
+        assert_eq!(
+            std::fs::read_to_string(recovery_path(&root)).unwrap(),
+            marker
+        );
+        resolve_recovery(&root, Some(&original.name)).unwrap();
+        assert!(path(&backup_root, &original.name).unwrap().exists()); // 明示採用しても原本は削除しない。
+    }
+
+    #[test]
+    fn failed_runtime_save_keeps_intent_and_unknown_scope_is_not_accepted_as_legacy() {
+        let root = std::env::temp_dir().join(format!("auralyn-runtime-failed-{}", revision()));
+        let original = sample();
+        let reservation = reserve_runtime_intent(
+            &root,
+            "different-name",
+            RecoveryDevices {
+                input_id: "input-id".into(),
+                output_id: "output-id".into(),
+            },
+            1,
+        )
+        .unwrap();
+        assert!(finish_runtime_recovery(&root, &original, reservation, "1".into()).is_err());
+        let receipt = read_recovery(&root).unwrap().unwrap();
+        assert!(load_recovery_backup(&root, &receipt).is_err());
+        let mut unknown = serde_json::to_value(&receipt).unwrap();
+        unknown["runtime"]["version"] = serde_json::json!(4);
+        std::fs::write(recovery_path(&root), serde_json::to_vec(&unknown).unwrap()).unwrap();
+        assert!(read_recovery(&root).is_err());
+        assert!(reserve_recovery(&root, "replacement", None).is_err());
+        resolve_recovery(&root, None).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+    #[test]
+    fn extended_runtime_origin_binds_schema_and_device_scope_without_persisting_process_authority()
+    {
+        let mut original = runtime_sample();
+        original.schema_version = 3;
+        let devices = RecoveryDevices {
+            input_id: "input-id".into(),
+            output_id: "output-id".into(),
+        };
+        original.output = Some(OutputConfiguration {
+            version: 1,
+            devices: devices.clone(),
+            config: Default::default(),
+        });
+        original.live = Some(LiveConfiguration {
+            version: 1,
+            definitions: Default::default(),
+            target: None,
+            monitor: None,
+            singing_plugins: None,
+            talk_plugins: None,
+        });
+        let root = std::env::temp_dir().join(format!("auralyn-extended-runtime-{}", revision()));
+        let reservation = reserve_runtime_intent(&root, &original.name, devices, 9).unwrap();
+        finish_runtime_recovery(&root, &original, reservation, "1:2:3:4".into()).unwrap();
+        let receipt = read_recovery(&root).unwrap().unwrap();
+        assert_eq!(receipt.runtime.as_ref().unwrap().version, 2);
+        load_recovery_backup(&root, &receipt).unwrap();
+        let mut wrong = receipt.clone();
+        wrong.runtime.as_mut().unwrap().version = 1;
+        assert!(load_recovery_backup(&root, &wrong).is_err());
+        wrong = receipt.clone();
+        wrong.devices.as_mut().unwrap().input_id = "another-id".into();
+        assert!(load_recovery_backup(&root, &wrong).is_err());
+        resolve_recovery(&root, Some(&original.name)).unwrap();
+        let mut process = original.clone();
+        process.schema_version = 4;
+        process.output = None;
+        process.live = None;
+        process.process = Some(ProcessConfiguration {
+            version: 1,
+            source: crate::input_source::ProcessConfig {
+                app_key: "a".repeat(64),
+                app_name: "player.exe".into(),
+                raw_endpoint_id: "raw-id".into(),
+                purpose: crate::input_source::Purpose::Music,
+            },
+            output_id: "wasapi:monitor-id".into(),
+        });
+        process.name = "process-runtime".into();
+        let audio = process
+            .embedded_auralyn_preset
+            .audio_config
+            .as_mut()
+            .unwrap();
+        audio.host = "Wasapi".into();
+        audio.input_device = None;
+        audio.output_device = Some("Monitor".into());
+        let reservation = reserve_process_runtime_intent(&root, &process.name, 10).unwrap();
+        finish_runtime_recovery(&root, &process, reservation, "1:2:3:4".into()).unwrap();
+        let receipt = read_recovery(&root).unwrap().unwrap();
+        assert!(receipt.devices.is_none());
+        let stored = load_recovery_backup(&root, &receipt).unwrap();
+        assert_eq!(stored.process, process.process);
+        let marker = std::fs::read_to_string(recovery_path(&root)).unwrap();
+        assert!(!marker.contains("pid") && !marker.contains("player.exe"));
+        wrong = receipt.clone();
+        wrong.devices = original.output.as_ref().map(|o| o.devices.clone());
+        assert!(load_recovery_backup(&root, &wrong).is_err());
+        resolve_recovery(&root, Some(&process.name)).unwrap();
+        for item in [&original, &process] {
+            std::fs::remove_file(path(&root.join("broadcast-bundle-backups"), &item.name).unwrap())
+                .unwrap();
+        }
+        std::fs::remove_dir(root.join("broadcast-bundle-backups/broadcast-bundles")).unwrap();
+        std::fs::remove_dir(root.join("broadcast-bundle-backups")).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+    #[test]
+    fn runtime_write_failure_does_not_publish_a_readable_or_replacement_original() {
+        let root = std::env::temp_dir().join(format!("auralyn-runtime-io-fail-{}", revision()));
+        let original = runtime_sample();
+        let blocked = path(&root.join("broadcast-bundle-backups"), &original.name).unwrap();
+        std::fs::create_dir_all(&blocked).unwrap(); // 新規ファイルを確保できない実I/O失敗。
+        let reservation = reserve_runtime_intent(
+            &root,
+            &original.name,
+            RecoveryDevices {
+                input_id: "input-id".into(),
+                output_id: "output-id".into(),
+            },
+            1,
+        )
+        .unwrap();
+        assert!(finish_runtime_recovery(&root, &original, reservation, "1".into()).is_err());
+        let receipt = read_recovery(&root).unwrap().unwrap();
+        assert!(load_recovery_backup(&root, &receipt).is_err());
+        assert!(reserve_recovery(&root, "replacement", None).is_err());
+        assert!(blocked.is_dir());
+    }
+    #[test]
     fn unresolved_receipt_survives_reload_and_cannot_be_replaced_or_implicitly_removed() {
         let root = std::env::temp_dir().join(format!("auralyn-bundle-recovery-{}", revision()));
         reserve_recovery(
@@ -427,8 +1053,201 @@ mod tests {
         resolve_recovery(&root, Some("original")).unwrap();
         std::fs::remove_dir_all(root).unwrap();
     }
+    fn mixing_sample() -> BundleV1 {
+        use super::mixing_configuration::PostMixPreset;
+        use crate::audio_engine::mixing::{Config, Levels};
+        let mut original = runtime_sample();
+        original.schema_version = 5;
+        original.output = Some(OutputConfiguration {
+            version: 1,
+            devices: RecoveryDevices {
+                input_id: "input-id".into(),
+                output_id: "output-id".into(),
+            },
+            config: Default::default(),
+        });
+        original.live = Some(LiveConfiguration {
+            version: 1,
+            definitions: Default::default(),
+            target: None,
+            monitor: None,
+            singing_plugins: None,
+            talk_plugins: None,
+        });
+        original.mixing = Some(MixingConfiguration {
+            version: 1,
+            input: Some(Config {
+                version: 1,
+                source: serde_json::from_value(serde_json::json!({ "kind": "device", "config": { "host": "WASAPI", "inputId": "music-id", "inputChannels": [0, 1] } })).unwrap(),
+                levels: Levels::default(),
+            }),
+            post_mix: PostMixPreset {
+                schema_version: 1,
+                role: "post_mix".into(),
+                enabled: true,
+                plugins: vec![],
+            },
+        });
+        original
+    }
+    fn private_plugin(state: &str) -> PresetPlugin {
+        PresetPlugin {
+            path: "plugin.vst3".into(),
+            name: "test".into(),
+            vendor: String::new(),
+            version: String::new(),
+            enabled: true,
+            muted: false,
+            gain: 1.0,
+            state: Some(state.into()),
+        }
+    }
+    #[test]
+    fn mixing_schema_round_trip_and_strict_input() {
+        let original = mixing_sample();
+        assert!(validate(&original).is_ok());
+        let json = serde_json::to_value(&original).unwrap();
+        let restored: BundleV1 = serde_json::from_value(json.clone()).unwrap();
+        assert!(restored.mixing == original.mixing);
+        for schema in 1..=4 {
+            let mut old = original.clone();
+            old.schema_version = schema;
+            assert!(validate(&old).is_err());
+        }
+        let mut none = original.clone();
+        none.mixing.as_mut().unwrap().input = None;
+        assert!(validate(&none).is_err());
+        none.mixing.as_mut().unwrap().post_mix.enabled = false;
+        assert!(validate(&none).is_ok());
+        for field in ["pid", "target", "instanceId"] {
+            let mut forged = json.clone();
+            forged["mixing"]["input"][field] = serde_json::json!(123);
+            assert!(serde_json::from_value::<BundleV1>(forged).is_err());
+        }
+        let mut bad = original.clone();
+        bad.mixing.as_mut().unwrap().post_mix.role = "voice".into();
+        assert!(validate(&bad).is_err());
+        bad = original.clone();
+        bad.mixing
+            .as_mut()
+            .unwrap()
+            .post_mix
+            .plugins
+            .push(private_plugin("state"));
+        bad.mixing.as_mut().unwrap().post_mix.plugins[0].gain = 2.01;
+        assert!(validate(&bad).is_err());
+    }
+    #[test]
+    fn mixing_recovery_binds_version_devices_and_both_rack_states() {
+        let root = std::env::temp_dir().join(format!("auralyn-mix-recovery-{}", revision()));
+        let mut original = mixing_sample();
+        original
+            .embedded_auralyn_preset
+            .plugins
+            .push(private_plugin("voice-secret"));
+        original
+            .mixing
+            .as_mut()
+            .unwrap()
+            .post_mix
+            .plugins
+            .push(private_plugin("post-secret"));
+        let devices = original.output.as_ref().unwrap().devices.clone();
+        let reservation =
+            reserve_mixing_runtime_intent(&root, &original.name, devices, 11).unwrap();
+        finish_runtime_recovery(&root, &original, reservation, "1:2:3:4".into()).unwrap();
+        let receipt = read_recovery(&root).unwrap().unwrap();
+        assert_eq!(receipt.runtime.as_ref().unwrap().version, 3);
+        let marker = std::fs::read(recovery_path(&root)).unwrap();
+        assert!(!String::from_utf8_lossy(&marker).contains("secret"));
+        let backup_root = root.join("broadcast-bundle-backups");
+        let backup_path = path(&backup_root, &original.name).unwrap();
+        let backup = std::fs::read(&backup_path).unwrap();
+        assert!(load_recovery_backup(&root, &receipt).is_ok());
+        let mut wrong = receipt.clone();
+        wrong.runtime.as_mut().unwrap().version = 2;
+        assert!(load_recovery_backup(&root, &wrong).is_err());
+        wrong = receipt.clone();
+        wrong.devices.as_mut().unwrap().input_id = "wrong".into();
+        assert!(load_recovery_backup(&root, &wrong).is_err());
+        for post in [false, true] {
+            let mut altered = original.clone();
+            if post {
+                altered.mixing.as_mut().unwrap().post_mix.plugins[0].state = Some("changed".into());
+            } else {
+                altered.embedded_auralyn_preset.plugins[0].state = Some("changed".into());
+            }
+            save(&backup_root, &altered).unwrap();
+            assert!(load_recovery_backup(&root, &receipt).is_err());
+            std::fs::write(&backup_path, &backup).unwrap();
+        }
+        assert_eq!(std::fs::read(recovery_path(&root)).unwrap(), marker);
+        assert_eq!(std::fs::read(&backup_path).unwrap(), backup);
+        let mut wrong_schema = original.clone();
+        wrong_schema.schema_version = 2;
+        wrong_schema.live = None;
+        wrong_schema.mixing = None;
+        assert!(validate_runtime_original(&wrong_schema).is_err());
+    }
+    #[test]
+    fn mixing_recovery_rejects_wrong_reservation_without_replacing_original() {
+        let root = std::env::temp_dir().join(format!("auralyn-mix-reservation-{}", revision()));
+        let original = mixing_sample();
+        let devices = original.output.as_ref().unwrap().devices.clone();
+        let reservation = reserve_runtime_intent(&root, &original.name, devices, 11).unwrap();
+        assert!(finish_runtime_recovery(&root, &original, reservation, "1".into()).is_err());
+        let marker = std::fs::read(recovery_path(&root)).unwrap();
+        assert!(reserve_recovery(&root, "replacement", None).is_err());
+        assert_eq!(std::fs::read(recovery_path(&root)).unwrap(), marker);
+    }
+    fn runtime_sample() -> BundleV1 {
+        let mut value = sample();
+        value.categories = ProfileSaveCategories {
+            include_plugins: true,
+            include_audio_config: true,
+            include_noise_control: true,
+            include_builtin_fx: true,
+        };
+        value.level_intent = Some(LevelIntent {
+            input_gain: 0.0,
+            output_gain: 0.25,
+        });
+        value.embedded_auralyn_preset.audio_config =
+            Some(crate::vst_host::presets::ProfileAudioConfig {
+                host: "WASAPI".into(),
+                input_device: Some("Mic".into()),
+                output_device: Some("Phones".into()),
+                sample_rate: 48000,
+                buffer_size: 512,
+                input_channels: vec![0, 1],
+                output_routing: Default::default(),
+                input_gain_db: -120.0,
+                master_gain_db: -12.0412,
+            });
+        value.embedded_auralyn_preset.noise_control =
+            Some(crate::vst_host::presets::ProfileNoiseControl {
+                enabled: true,
+                mode: "low".into(),
+                strength: 0.8,
+                voice_guard: true,
+                learned_profile: None,
+            });
+        value.embedded_auralyn_preset.builtin_fx =
+            Some(crate::vst_host::presets::ProfileBuiltinFx {
+                preset: "broadcast".into(),
+                enabled: false,
+                amount: 0.7,
+                singing: None,
+                reverb: None,
+            });
+        value
+    }
     fn sample() -> BundleV1 {
         BundleV1 {
+            mixing: None,
+            process: None,
+            live: None,
+            output: None,
             schema_version: 1,
             revision: revision(),
             name: "歌配信".into(),

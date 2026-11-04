@@ -28,7 +28,7 @@ const markWizardDone = () => {
 };
 
 interface UIState {
-    settingsSection?: 'liveModes' | 'singing' | 'audioTuning';
+    settingsSection?: 'liveModes' | 'singing' | 'audioTuning' | 'mixing';
     settingsTab?: 'audio' | 'obs' | 'sound';
     settingsNeedsRetry?: boolean;
     isSettingsOpen: boolean;
@@ -61,17 +61,7 @@ interface UIState {
     setIsVoiceCheckOpen: (v: boolean) => void;
 }
 
-interface AudioConfig {
-    host: string;
-    input?: string;
-    output?: string;
-    inputId?: string;
-    outputId?: string;
-    sampleRate?: number;
-    bufferSize?: number;
-    inputChannels?: [number, number];
-    outputRouting?: import('@/lib/audioChannelRouting').OutputRouting;
-}
+type AudioConfig = import('@/lib/audioPreferences').AudioPreferences;
 
 interface PluginsApi {
     plugins: Plugin[];
@@ -316,9 +306,9 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onClose={() => ui.setIsRecoveryModalOpen(false)}
                         error={ui.crashError}
                         onKeepStopped={pluginsApi.keepSessionStopped}
-                        onWithoutPlugins={() => pluginsApi.resumeWithoutPlugins(() => audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000, audioConfig.inputId, audioConfig.outputId, undefined, channelRoutingFor(audioConfig)))}
+                        onWithoutPlugins={() => pluginsApi.resumeWithoutPlugins(() => audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000, audioConfig.inputId, audioConfig.outputId, undefined, channelRoutingFor(audioConfig), ...(audioConfig.inputSource ? [{ source: audioConfig.inputSource }] as const : [])))}
                         onRecover={async (_safeMode, excludePath) => {
-                            await pluginsApi.recoverSession(excludePath, () => audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000, audioConfig.inputId, audioConfig.outputId, undefined, channelRoutingFor(audioConfig)));
+                            await pluginsApi.recoverSession(excludePath, () => audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000, audioConfig.inputId, audioConfig.outputId, undefined, channelRoutingFor(audioConfig), ...(audioConfig.inputSource ? [{ source: audioConfig.inputSource }] as const : [])));
                         }}
                     />
                 </Suspense>

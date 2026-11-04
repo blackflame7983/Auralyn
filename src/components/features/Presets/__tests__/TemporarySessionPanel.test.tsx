@@ -12,10 +12,43 @@ it('再起動の明示確認が必要で、自動保存原本をUIで書き換�
     render(<TemporarySessionPanel />);
     const start = screen.getByRole('button', { name: message('ja', 'temporary.start'), hidden: true });
     expect(start).toBeDisabled();
-    fireEvent.click(screen.getByRole('checkbox', { hidden: true }));
+    fireEvent.click(screen.getByRole('checkbox', { name: message('ja', 'temporary.acknowledge'), hidden: true }));
     fireEvent.click(start); await act(async () => {});
     expect(invoke).toHaveBeenCalledWith('restart_temporary_session', { temporary: true });
     expect({ ...localStorage }).toEqual(original);
+});
+it('退避範囲を変更したら確認し直し、退避失敗を再起動成功にしない', async () => {
+    vi.mocked(invoke).mockResolvedValue({ temporary: false, reviewOnly: false, directory: null });
+    await initializeTemporarySession();
+    const original = { ...localStorage };
+    render(<TemporarySessionPanel />);
+    const start = screen.getByRole('button', { name: message('ja', 'temporary.start'), hidden: true });
+    const acknowledge = screen.getByRole('checkbox', { name: message('ja', 'temporary.acknowledge'), hidden: true });
+    fireEvent.click(acknowledge);
+    expect(start).toBeEnabled();
+    fireEvent.click(screen.getByRole('checkbox', { name: message('ja', 'temporary.preserveRuntime'), hidden: true }));
+    expect(start).toBeDisabled();
+    expect(acknowledge).not.toBeChecked();
+    expect(screen.getByText(message('ja', 'temporary.checkpointScope'))).toBeInTheDocument();
+    fireEvent.click(acknowledge);
+    vi.mocked(invoke).mockRejectedValueOnce('unsupported input');
+    fireEvent.click(start);
+    await act(async () => {});
+    expect(invoke).toHaveBeenCalledWith('restart_temporary_session', { temporary: true, preserveRuntime: true });
+    expect(screen.getByRole('alert')).toHaveTextContent(message('ja', 'temporary.failed'));
+    expect(screen.getByText(message('ja', 'temporary.errorOriginal', { detail: 'unsupported input' }))).toBeInTheDocument();
+    expect(start).toBeEnabled();
+    expect({ ...localStorage }).toEqual(original);
+});
+it('一時利用側から通常設定へ戻る操作で、退避元と誤認して上書きしない', async () => {
+    vi.mocked(invoke).mockResolvedValue({ temporary: true, reviewOnly: true, directory: 'scratch' });
+    await initializeTemporarySession();
+    render(<TemporarySessionPanel />);
+    expect(screen.queryByRole('checkbox', { name: message('ja', 'temporary.preserveRuntime'), hidden: true })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: message('ja', 'temporary.acknowledge'), hidden: true }));
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'temporary.finish'), hidden: true }));
+    await act(async () => {});
+    expect(invoke).toHaveBeenCalledWith('restart_temporary_session', { temporary: false });
 });
 it('通常設定へ戻った後も、明示開始の確認応答が成功するまで自動復旧を許可しない', async () => {
     vi.mocked(invoke).mockResolvedValueOnce({ temporary: false, reviewOnly: true, directory: null });

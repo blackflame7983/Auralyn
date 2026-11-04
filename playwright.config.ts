@@ -2,6 +2,8 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
     testDir: './e2e/browser',
+    // Playwrightが開始時に消す範囲を限定し、実Hostの証拠や試験用アプリを保護する。
+    outputDir: './test-results/browser-output',
     forbidOnly: true,
     workers: 1,
     retries: 0,

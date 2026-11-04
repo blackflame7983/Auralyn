@@ -2,6 +2,21 @@
 use crate::{audio, audio_engine, desktop_integration, routing_diag, vst_host};
 use tauri::{AppHandle, Manager, State};
 
+#[tauri::command]
+pub(crate) async fn post_mix(
+    state: State<'_, audio::AudioState>,
+    request: audio::post_mix::Request,
+) -> Result<audio::post_mix::Snapshot, String> {
+    let host = state.0.clone();
+    super::run_blocking(move || {
+        host.lock()
+            .map_err(|_| "配信VSTの設定を取得できません".to_owned())?
+            .post_mix(request)
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
 // 読み込みやスキャンを行わず、明確な不在だけを返す。
 fn missing_vst_path(path: &str) -> Result<bool, String> {
     let path = std::path::Path::new(path);
@@ -124,6 +139,22 @@ pub(crate) async fn live_output(
             .map_err(|_| "音声状態を取得できません")?
             .live_output(config)
             .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn mixing(
+    state: State<'_, audio::AudioState>,
+    request: audio::mixing::Request,
+) -> Result<audio::mixing::Snapshot, String> {
+    let state = state.0.clone();
+    super::run_blocking(move || {
+        state
+            .lock()
+            .map_err(|_| "音声状態を取得できません")?
+            .mixing(request)
+            .map_err(|error| error.to_string())
     })
     .await
 }
@@ -274,6 +305,8 @@ pub(crate) async fn get_engine_runtime_stats(
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AudioStartOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input_source: Option<crate::input_source::Request>,
     input: Option<String>,
     output: Option<String>,
     host: Option<String>,
@@ -303,6 +336,7 @@ impl<'de, R: tauri::Runtime> tauri::ipc::CommandArg<'de, R> for AudioStartOption
         command: tauri::ipc::CommandItem<'de, R>,
     ) -> Result<Self, tauri::ipc::InvokeError> {
         Ok(Self {
+            input_source: command_field(&command, "inputSource")?,
             input: command_field(&command, "input")?,
             output: command_field(&command, "output")?,
             host: command_field(&command, "host")?,
@@ -322,6 +356,7 @@ pub(crate) async fn start_audio(
     expected_state: Option<serde_json::Value>,
 ) -> Result<audio::AudioConfig, String> {
     let AudioStartOptions {
+        input_source,
         input,
         output,
         host,
@@ -344,8 +379,11 @@ pub(crate) async fn start_audio(
         if let Some(expected) = expected_state {
             validate_expected_start_state(&host_instance.get_state(), &expected)?;
         }
+        let input_source = host_instance
+            .resolve_input_source(input_source)
+            .map_err(|e| e.to_string())?;
         host_instance
-            .start_with_device_ids(
+            .start_with_input_source(
                 host,
                 input,
                 output,
@@ -354,6 +392,7 @@ pub(crate) async fn start_audio(
                 input_id,
                 output_id,
                 channel_routing,
+                input_source,
             )
             .map_err(|e| audio::localize_audio_error(e.to_string()))
     })
@@ -412,7 +451,11 @@ mod expected_start_tests {
 }
 
 #[tauri::command]
-pub(crate) async fn stop_audio(state: State<'_, audio::AudioState>) -> Result<(), String> {
+pub(crate) async fn stop_audio(
+    state: State<'_, audio::AudioState>,
+    conditions: State<'_, audio::conditions::ConditionState>,
+) -> Result<(), String> {
+    let _interrupt = conditions.0.interrupt_restore();
     let state = state.0.clone();
     super::run_blocking(move || {
         let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
@@ -536,6 +579,7 @@ pub(crate) async fn restart_audio_engine(
     options: AudioStartOptions,
 ) -> Result<audio::AudioConfig, String> {
     let AudioStartOptions {
+        input_source,
         input,
         output,
         host,
@@ -555,18 +599,26 @@ pub(crate) async fn restart_audio_engine(
             sample_rate
         );
         // 未許可・確認不能なら、既存の音声とサイドカー上のVSTを保持する。
-        desktop_integration::check_microphone_access(host.as_deref())
-            .map_err(audio::localize_audio_error)?;
+        if !input_source
+            .as_ref()
+            .is_some_and(|s| matches!(s.source, crate::input_source::Config::ProcessLoopback(_)))
+        {
+            desktop_integration::check_microphone_access(host.as_deref())
+                .map_err(audio::localize_audio_error)?;
+        }
         let mut audio_host = state.lock().map_err(|_| "Failed to lock audio state")?;
         audio_host
             .preflight_live_changes()
             .map_err(|error| error.to_string())?;
+        let input_source = audio_host
+            .resolve_input_source(input_source)
+            .map_err(|e| e.to_string())?;
         audio_host.preserve_live_changes_for_restart();
         audio_host.kill_engine();
         // Short delay to ensure process is dead? Usually synchronous kill is fine on Windows.
         // Re-start
         audio_host
-            .start_with_device_ids(
+            .start_with_input_source(
                 host,
                 input,
                 output,
@@ -575,6 +627,7 @@ pub(crate) async fn restart_audio_engine(
                 input_id,
                 output_id,
                 channel_routing,
+                input_source,
             )
             .map_err(|e| audio::localize_audio_error(e.to_string()))
     })
@@ -648,7 +701,11 @@ pub(crate) async fn set_plugin_state(
 }
 
 #[tauri::command]
-pub(crate) async fn toggle_global_mute(state: State<'_, audio::AudioState>) -> Result<(), String> {
+pub(crate) async fn toggle_global_mute(
+    state: State<'_, audio::AudioState>,
+    conditions: State<'_, audio::conditions::ConditionState>,
+) -> Result<(), String> {
+    let _interrupt = conditions.0.interrupt_restore();
     let state = state.0.clone();
     super::run_blocking(move || {
         let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
@@ -660,8 +717,10 @@ pub(crate) async fn toggle_global_mute(state: State<'_, audio::AudioState>) -> R
 #[tauri::command]
 pub(crate) async fn set_global_mute(
     state: State<'_, audio::AudioState>,
+    conditions: State<'_, audio::conditions::ConditionState>,
     active: bool,
 ) -> Result<(), String> {
+    let _interrupt = conditions.0.interrupt_restore();
     let state = state.0.clone();
     super::run_blocking(move || {
         let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
@@ -1092,4 +1151,19 @@ mod start_options_ipc_tests {
         }
         assert!(invoke(tauri::ipc::InvokeBody::Raw(vec![1, 2, 3])).is_err());
     }
+}
+
+#[tauri::command]
+pub(crate) async fn get_process_input_sources(
+    state: State<'_, audio::AudioState>,
+) -> Result<Vec<audio::process_inputs::Candidate>, String> {
+    let state = state.0.clone();
+    super::run_blocking(move || {
+        state
+            .lock()
+            .map_err(|_| "音声設定を取得できません".to_owned())?
+            .process_input_sources()
+            .map_err(|e| e.to_string())
+    })
+    .await
 }

@@ -39,11 +39,11 @@ function fixture(t) {
         };
         require('node:module').syncBuiltinESMExports();
     `);
-    const run = (target, fail = false) => {
+    const run = (target, fail = false, mixingUi = false) => {
         const env = { ...process.env, FIXTURE_CARGO_FAIL: fail ? '1' : '0' };
         delete env.CARGO_TARGET_DIR;
         if (target) env.CARGO_TARGET_DIR = target;
-        return spawnSync(process.execPath, ['--require', './runner.cjs', 'scripts/test-native-e2e.mjs'], {
+        return spawnSync(process.execPath, ['--require', './runner.cjs', 'scripts/test-native-e2e.mjs', ...(mixingUi ? ['--mixing-ui'] : [])], {
             cwd: root, env, encoding: 'utf8', windowsHide: true,
         });
     };
@@ -81,4 +81,14 @@ test('native E2Eはビルド失敗でPlaywrightを開始せず古いHostをコ�
     assert.equal(run(undefined, true).status, 101);
     assert.equal(calls().length, 1);
     assert.equal(fs.existsSync(path.join(calls()[0].root, 'bin')), false);
+});
+
+test('配信ミックスの明示native試験だけにzoom権限を付け、通常試験へ広げない', { skip: process.platform !== 'win32' }, t => {
+    const { run, calls } = fixture(t);
+    assert.equal(run(undefined, false, true).status, 0);
+    const [cargo, playwright] = calls();
+    assert.ok(cargo.config.app.security.capabilities[1].permissions.includes('core:webview:allow-set-webview-zoom'));
+    assert.ok(playwright.args.includes('e2e/native/mixing-ui.spec.ts'));
+    assert.equal(run().status, 0);
+    assert.equal(calls()[0].config.app.security.capabilities[1].permissions.includes('core:webview:allow-set-webview-zoom'), false);
 });

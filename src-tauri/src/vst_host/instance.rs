@@ -17,7 +17,7 @@ use libloading::{Library, Symbol};
 use state_stream::StateStream;
 use std::ffi::{c_char, c_void};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -1124,7 +1124,20 @@ unsafe extern "system" fn mock_perform_edit(_this: *mut c_void, _id: u32, _val: 
 unsafe extern "system" fn mock_end_edit(_this: *mut c_void, _id: u32) -> i32 {
     K_RESULT_OK
 }
-unsafe extern "system" fn mock_restart_component(_this: *mut c_void, _flags: i32) -> i32 {
+// 既存の共有handlerでも、遅延・入出力の変更要求を握りつぶさない。
+static PROCESSING_RESTART_REVISION: AtomicU64 = AtomicU64::new(0);
+static PROCESSING_RESTART_FLAGS: AtomicI32 = AtomicI32::new(0);
+pub(crate) fn processing_restart_flags() -> i32 {
+    PROCESSING_RESTART_FLAGS.load(Ordering::Acquire)
+}
+pub(crate) fn processing_restart_revision() -> u64 {
+    PROCESSING_RESTART_REVISION.load(Ordering::Acquire)
+}
+unsafe extern "system" fn mock_restart_component(_this: *mut c_void, flags: i32) -> i32 {
+    if flags & (1 | 2 | 8) != 0 {
+        PROCESSING_RESTART_FLAGS.store(flags, Ordering::Release);
+        PROCESSING_RESTART_REVISION.fetch_add(1, Ordering::AcqRel);
+    }
     K_RESULT_OK
 }
 unsafe extern "system" fn mock_set_dirty(_this: *mut c_void, _state: i32) -> i32 {

@@ -1,20 +1,23 @@
 //! 起動時の非RT準備とストリーム構築。資源の回収・再試行は lifecycle に従う。
+use super::input::{InputCallback, InputStream};
 use super::*;
 #[path = "startup_callbacks.rs"]
 mod callbacks;
+pub(super) use callbacks::PluginControls;
 use callbacks::*;
 
 struct ResolvedDevices {
-    input: cpal::Device,
+    input: Option<cpal::Device>,
     output: cpal::Device,
     is_asio: bool,
 }
 
-fn resolve_devices(
+fn resolve_source_devices(
     host_name_str: &str,
     input_name: Option<&str>,
     output_name: Option<&str>,
     device_ids: &(Option<String>, Option<String>),
+    process_input: bool,
 ) -> Result<ResolvedDevices> {
     let host_id_str = resolve_host_id(host_name_str)?;
     let host =
@@ -22,15 +25,19 @@ fn resolve_devices(
 
     // 1. Resolve Devices (Delegated to DeviceManager)
     validate_device_ids(device_ids)?;
-    let in_dev = if let Some(id) = &device_ids.0 {
-        DeviceManager::resolve_input_device_by_id(&host, id)
-            .ok_or_else(|| anyhow!("入力機器のIDを確認できません。機器を選び直してください"))?
-    } else if let Some(name) = input_name {
-        DeviceManager::resolve_input_device(&host, name)
-            .ok_or_else(|| anyhow!("Input device not found: {}", name))?
+    let in_dev = if process_input {
+        None
     } else {
-        host.default_input_device()
-            .ok_or_else(|| anyhow!("No default input device"))?
+        Some(if let Some(id) = &device_ids.0 {
+            DeviceManager::resolve_input_device_by_id(&host, id)
+                .ok_or_else(|| anyhow!("入力機器のIDを確認できません。機器を選び直してください"))?
+        } else if let Some(name) = input_name {
+            DeviceManager::resolve_input_device(&host, name)
+                .ok_or_else(|| anyhow!("Input device not found: {}", name))?
+        } else {
+            host.default_input_device()
+                .ok_or_else(|| anyhow!("No default input device"))?
+        })
     };
 
     let out_dev = if let Some(id) = &device_ids.1 {
@@ -44,13 +51,21 @@ fn resolve_devices(
             .ok_or_else(|| anyhow!("No default output device"))?
     };
     let is_asio = host_id_str == cpal::HostId::Asio;
-    let (in_dev, out_dev) =
-        DeviceManager::coordinated_pair(in_dev, out_dev, is_asio, |device: &cpal::Device| {
-            device.id().map_err(Into::into)
-        })?;
+    let (in_dev, out_dev) = if let Some(input) = in_dev {
+        let (input, output) =
+            DeviceManager::coordinated_pair(input, out_dev, is_asio, |device: &cpal::Device| {
+                device.id().map_err(Into::into)
+            })?;
+        (Some(input), output)
+    } else {
+        (None, out_dev)
+    };
     DeviceManager::verify_selected_ids(
         device_ids,
-        in_dev.id().ok().map(|id| id.to_string()),
+        in_dev
+            .as_ref()
+            .and_then(|d| d.id().ok())
+            .map(|id| id.to_string()),
         out_dev.id().ok().map(|id| id.to_string()),
     )?;
     Ok(ResolvedDevices {
@@ -85,7 +100,7 @@ impl Engine {
         host_name_str: &str,
         input_name: &Option<String>,
         output_name: &Option<String>,
-        in_dev: &cpal::Device,
+        in_dev: &Option<cpal::Device>,
         out_dev: &cpal::Device,
         in_capabilities: &capabilities::CapabilitySnapshot,
         out_capabilities: &capabilities::CapabilitySnapshot,
@@ -96,9 +111,12 @@ impl Engine {
 
         let in_buf_range = in_capabilities.buffer_range();
         let out_buf_range = out_capabilities.buffer_range();
-        let in_name = input_name
-            .clone()
-            .unwrap_or_else(|| in_dev.name().unwrap_or_default());
+        let in_name = input_name.clone().unwrap_or_else(|| {
+            in_dev
+                .as_ref()
+                .and_then(|d| d.name().ok())
+                .unwrap_or_else(|| "アプリ入力".into())
+        });
         let out_name = output_name
             .clone()
             .unwrap_or_else(|| out_dev.name().unwrap_or_default());
@@ -106,7 +124,10 @@ impl Engine {
         self.device_manager.set_active_input(DeviceInfo {
             name: in_name,
             host: host_name_str.to_string(),
-            id: in_dev.id().ok().map(|id| id.to_string()),
+            id: in_dev
+                .as_ref()
+                .and_then(|d| d.id().ok())
+                .map(|id| id.to_string()),
             is_input: true,
             buffer_size_range: in_buf_range,
             channels: in_stream_config.channels,
@@ -135,7 +156,7 @@ impl Engine {
     }
 
     // callbackへ移すプラグインの固定長状態は起動スレッド上で作る。
-    fn prepare_plugin_controls(&self) -> PluginControls {
+    pub(super) fn prepare_plugin_controls(&self) -> PluginControls {
         // Pre-compute RT state (no heap in callback)
         let mut rt_bypassed: [bool; MAX_PLUGINS] = [false; MAX_PLUGINS];
         for id in &self.plugin_manager.bypassed {
@@ -180,6 +201,7 @@ impl Engine {
     }
 
     // 機器の選択後、処理に使う構成と固定容量を確定する。
+    #[allow(clippy::too_many_arguments)]
     fn prepare_stream_geometry(
         &mut self,
         in_stream_config: &mut cpal::StreamConfig,
@@ -188,9 +210,13 @@ impl Engine {
         in_capabilities: &capabilities::CapabilitySnapshot,
         is_asio: bool,
         policy: lifecycle::StartupPolicy,
+        music_input: bool,
     ) -> Result<(bool, Option<u32>)> {
-        dsp::NoiseGeometry::guard(out_stream_config.sample_rate, self.noise_reduction_enabled)
-            .map_err(|e| anyhow!(e))?;
+        dsp::NoiseGeometry::guard(
+            out_stream_config.sample_rate,
+            self.noise_reduction_enabled && !music_input,
+        )
+        .map_err(|e| anyhow!(e))?;
         self.current_sample_rate = out_stream_config.sample_rate as f64;
         self.current_block_size = match out_stream_config.buffer_size {
             cpal::BufferSize::Fixed(s) => s as usize,
@@ -259,6 +285,7 @@ impl Engine {
         policy: lifecycle::StartupPolicy,
     ) -> Result<()> {
         let AudioStartRequest {
+            input_source,
             host_name,
             input_name,
             output_name,
@@ -266,6 +293,7 @@ impl Engine {
             buffer_size,
             device_ids,
         } = request;
+        self.last_processing_preparation = "start_audio";
         self.builtin
             .invalidate_history_with_reason(crate::audio_engine::history::Reason::StreamChanged);
         if self.output_stream.is_some() || self.input_stream.is_some() {
@@ -279,6 +307,18 @@ impl Engine {
             host_name, input_name, output_name, sample_rate, buffer_size
         )));
 
+        self.input_source = input_source.clone();
+        let process_spec = input_source.as_ref().and_then(|s| match &s.source {
+            crate::input_source::Config::ProcessLoopback(config) => s
+                .target
+                .as_ref()
+                .map(|target| (config.clone(), target.clone())),
+            _ => None,
+        });
+        let is_process = process_spec.is_some();
+        let music_input = input_source
+            .as_ref()
+            .is_some_and(|s| s.source.purpose() == crate::input_source::Purpose::Music);
         let host_name_str = host_name
             .as_deref()
             .ok_or_else(|| anyhow!("Host name not specified"))?;
@@ -287,14 +327,48 @@ impl Engine {
             input: in_dev,
             output: out_dev,
             is_asio,
-        } = resolve_devices(
+        } = resolve_source_devices(
             host_name_str,
             input_name.as_deref(),
             output_name.as_deref(),
             &device_ids,
+            is_process,
         )?;
-        self.noise_input_identity = in_dev.id().ok().map(|id| id.to_string());
+        let noise_identity = if let Some((config, _)) = &process_spec {
+            anyhow::ensure!(
+                out_dev.id()?.1 != config.raw_endpoint_id,
+                "原音用と本人用の出力先を分けてください"
+            );
+            Some(format!("process:{}", config.app_key))
+        } else {
+            in_dev
+                .as_ref()
+                .and_then(|d| d.id().ok())
+                .map(|id| id.to_string())
+        };
+        if let Some(mixing) = &self.mixing_start {
+            let input_id = in_dev
+                .as_ref()
+                .map(|input| input.id().map(|id| id.to_string()))
+                .transpose()?;
+            mixing
+                .config
+                .source
+                .validate_primary(input_id.as_deref(), &out_dev.id()?.1)
+                .map_err(anyhow::Error::msg)?;
+        }
+        // 同じASIO deviceを共有すると確認できた組だけ、従来の共通時計を使う。
+        let common_clock = is_asio
+            && in_dev.as_ref().is_some_and(|input| {
+                input
+                    .id()
+                    .ok()
+                    .zip(out_dev.id().ok())
+                    .is_some_and(|(input, output)| input == output)
+            });
+        let adaptive_primary = self.mixing_start.is_some() && !common_clock;
 
+        self.bind_noise_input(noise_identity);
         log::debug!(
             "[StartupPhase] phase=device_resolve us={}",
             resolving_started.elapsed().as_micros()
@@ -305,12 +379,27 @@ impl Engine {
                 || out_dev.supported_output_configs().map_err(Into::into),
             )
         })?;
-        let in_capabilities = capabilities::timed("capability_input", || {
+        let in_capabilities = if let Some(in_dev) = &in_dev {
+            capabilities::timed("capability_input", || {
+                capabilities::CapabilitySnapshot::capture(
+                    || in_dev.default_input_config().map_err(Into::into),
+                    || in_dev.supported_input_configs().map_err(Into::into),
+                )
+            })?
+        } else {
+            // プロセス取得は明示した48kHz stereo f32。通常入力機器の能力照会はしない。
             capabilities::CapabilitySnapshot::capture(
-                || in_dev.default_input_config().map_err(Into::into),
-                || in_dev.supported_input_configs().map_err(Into::into),
-            )
-        })?;
+                || {
+                    Ok(cpal::SupportedStreamConfig::new(
+                        2,
+                        48000,
+                        cpal::SupportedBufferSize::Unknown,
+                        cpal::SampleFormat::F32,
+                    ))
+                },
+                || Ok(Vec::<cpal::SupportedStreamConfigRange>::new().into_iter()),
+            )?
+        };
         let mut out_stream_config = out_capabilities.output_config(sample_rate, buffer_size);
         // まず既定入力を保持し、実際の出力rateとbufferが決まってから同率を検討する。
         let mut in_stream_config = in_capabilities.input_config(buffer_size);
@@ -331,6 +420,7 @@ impl Engine {
                         });
                         return self.start_audio_attempt(
                             AudioStartRequest {
+                                input_source: input_source.clone(),
                                 host_name,
                                 input_name,
                                 output_name,
@@ -346,6 +436,12 @@ impl Engine {
             }
         }
 
+        if is_process {
+            anyhow::ensure!(
+                !is_asio && out_stream_config.channels == 2,
+                "アプリ入力の出力はWASAPI stereoを選んでください"
+            );
+        }
         let input_format = if is_asio {
             in_capabilities.native_format()
         } else {
@@ -364,6 +460,7 @@ impl Engine {
             &in_capabilities,
             is_asio,
             policy,
+            music_input,
         )?;
 
         self.register_start_devices(
@@ -413,7 +510,19 @@ impl Engine {
         let (channel_prod, channel_cons) = channel_rb.split();
         self.channel_rx = Some(channel_cons);
 
-        let audio_rb_frames = (self.current_sample_rate as usize / 2).max(4096);
+        let audio_rb_frames = if is_process || adaptive_primary {
+            crate::audio_engine::process_capture::clock::queue_capacity(
+                if is_process {
+                    crate::audio_engine::process_capture::RATE
+                } else {
+                    in_stream_config.sample_rate
+                },
+                out_stream_config.sample_rate,
+                self.processing_block_capacity,
+            )?
+        } else {
+            (self.current_sample_rate as usize / 2).max(4096)
+        };
         let audio_rb = Arc::new(HeapRb::<f32>::new(
             audio_rb_frames * self.current_input_channels,
         ));
@@ -421,7 +530,7 @@ impl Engine {
             .queue_attempt
             .checked_add(1)
             .ok_or_else(|| anyhow!("queue観測世代の上限です"))?;
-        let queue_diagnostics = Arc::new(QueueDiagnostics::new_input_queue(
+        let queue_diagnostics = QueueDiagnostics::new_input_queue(
             format!(
                 "{}:queue:{}",
                 self.builtin.snapshot(false).epoch,
@@ -432,29 +541,36 @@ impl Engine {
             in_stream_config.channels,
             out_stream_config.channels,
             audio_rb.capacity().get(),
-        ));
+        );
+        let queue_diagnostics = Arc::new(if adaptive_primary {
+            queue_diagnostics.with_raw_input_clock()
+        } else {
+            queue_diagnostics
+        });
         self.queue_diagnostics = Some(queue_diagnostics.clone());
         self.queue_observer = Some(audio_rb.clone());
         self.queue_state = QueueState::Preparing;
         self.queue_slots_at_stop = None;
         // 同率の原点・recorder構築位置は従来どおり。異率は変換準備後に別modeで構築する。
-        let (mut input_timing, mut output_timing) =
-            if in_stream_config.sample_rate == out_stream_config.sample_rate {
-                let (timing, input, output) = crate::audio_engine::frame_timing::Observer::new(
-                    format!(
-                        "{}:queue:{}",
-                        self.builtin.snapshot(false).epoch,
-                        self.queue_attempt
-                    ),
-                    self.queue_attempt,
-                    true,
-                );
-                self.frame_timing = Some(timing);
-                (input, output)
-            } else {
-                self.frame_timing = None;
-                (None, None)
-            };
+        let (mut input_timing, mut output_timing) = if !is_process
+            && !adaptive_primary
+            && in_stream_config.sample_rate == out_stream_config.sample_rate
+        {
+            let (timing, input, output) = crate::audio_engine::frame_timing::Observer::new(
+                format!(
+                    "{}:queue:{}",
+                    self.builtin.snapshot(false).epoch,
+                    self.queue_attempt
+                ),
+                self.queue_attempt,
+                true,
+            );
+            self.frame_timing = Some(timing);
+            (input, output)
+        } else {
+            self.frame_timing = None;
+            (None, None)
+        };
         let output_queue_diagnostics = queue_diagnostics.clone();
         let input_queue_diagnostics = queue_diagnostics;
         let mut queue_recovery = crate::audio_engine::queue_recovery::Recovery::new(
@@ -507,8 +623,12 @@ impl Engine {
         );
         let (mut rt_global_mute, mut rt_input_gain, mut rt_output_gain) =
             self.initial_callback_levels();
-        let mut rt_global_bypass = self.global_bypass;
+        let mut rt_comparison = crate::audio_engine::comparison::Transition::new(
+            self.global_bypass,
+            self.current_sample_rate as u32,
+        );
         self.stream_failed.store(false, Ordering::Release);
+        self.processing_restart_revision = crate::vst_host::instance::processing_restart_revision();
         self.gain_main_device = out_dev.id().ok().map(|id| id.to_string());
         let (capture_tx, capture_rx) = auto_gain::capture_queue();
         self.gain_capture_rx = Some(capture_rx);
@@ -561,7 +681,6 @@ impl Engine {
         self.stats_max_jitter = stats_max_jitter.clone();
         self.stats_glitches = stats_glitches.clone();
 
-        let mut last_callback: Option<(Instant, usize)> = None;
         let callback_rate = self.current_sample_rate as u32;
         let callback_diagnostics = Arc::new(CallbackDiagnostics::default());
         self.callback_diagnostics = callback_diagnostics.clone();
@@ -608,7 +727,11 @@ impl Engine {
             channels
         };
 
-        let resampler = crate::audio_engine::resampling::prepare(in_rate, out_rate, channels)?;
+        let resampler = if is_process || adaptive_primary {
+            None
+        } else {
+            crate::audio_engine::resampling::prepare(in_rate, out_rate, channels)?
+        };
         let batch_timing = resampler.is_some();
         if let Some(resampler) = &resampler {
             let (timing, input, output) = crate::audio_engine::frame_timing::Observer::new_batch(
@@ -656,20 +779,32 @@ impl Engine {
         let mut monitor_renderer = None;
         let mut broadcast_queue = None;
         let mut worker_controls = None;
-        let mut broadcast_recovery_gains = None;
+        let mut broadcast_frames: Option<crate::audio_engine::split_monitor::BroadcastRx> = None;
+        let mut broadcast_mixer = None;
+        let mut broadcast_block = if self.live_output_config.split_processing {
+            vec![
+                crate::audio_engine::split_monitor::BroadcastFrame::default();
+                max_frames_per_callback
+            ]
+        } else {
+            Vec::new()
+        };
         let mut upstream_recovery = vec![1.0f32; max_frames_per_callback];
         if separated {
             anyhow::ensure!(channels_len == 2, "処理分離の出力構成を開始できません");
-            let queue = Arc::new(HeapRb::<f32>::new(
-                (self.current_sample_rate as usize / 5).max(2) * 2,
-            ));
+            let queue = Arc::new(
+                HeapRb::<crate::audio_engine::split_monitor::BroadcastFrame>::new(
+                    (self.current_sample_rate as usize / 5).max(2),
+                ),
+            );
             let (tx, rx) = queue.clone().split();
-            let original_consumer = std::mem::replace(&mut audio_cons, rx);
+            let unused = Arc::new(HeapRb::<f32>::new(2));
+            let original_consumer = std::mem::replace(&mut audio_cons, unused.split().1);
             let mode = self
                 .live_modes
                 .snapshot(self.builtin.snapshot(false).epoch, false)
                 .target;
-            let (controller, renderer, gains) =
+            let (controller, mut renderer) =
                 crate::audio_engine::split_monitor::Controller::prepare_with_input_channels(
                     original_consumer,
                     tx,
@@ -691,11 +826,69 @@ impl Engine {
                     self.restored_monitor.as_ref(),
                     channels,
                 )?;
+            if let Some(start) = self.mixing_start.clone() {
+                self.mixing_shared = Some(Arc::new(
+                    crate::audio_engine::mixing::controls::Shared::new_at(
+                        &start.config.levels,
+                        self.mixing_revision,
+                    ),
+                ));
+                self.sync_mixing_latency()?;
+                let shared = self
+                    .mixing_shared
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("ミックスの設定を取得できません"))?
+                    .clone();
+                shared
+                    .primary_input_rate
+                    .store(in_stream_config.sample_rate, Ordering::Relaxed);
+                shared
+                    .primary_output_rate
+                    .store(out_stream_config.sample_rate, Ordering::Relaxed);
+                shared
+                    .primary_adaptive
+                    .store(adaptive_primary, Ordering::Relaxed);
+                let (source, source_render) =
+                    crate::audio_engine::mixing::input::Controller::prepare(
+                        &start,
+                        out_stream_config.sample_rate,
+                        self.mode_silence.shared.clone(),
+                        max_frames_per_callback,
+                    )?;
+                let source_shared = source_render.shared.clone();
+                let monitor = crate::audio_engine::mixing::runtime::Monitor::new(
+                    source_render,
+                    shared.clone(),
+                    out_stream_config.sample_rate,
+                )?;
+                let clock = adaptive_primary
+                    .then(|| {
+                        crate::audio_engine::process_capture::clock::Renderer::with_rates_and_capacity(
+                            in_stream_config.sample_rate,
+                            out_stream_config.sample_rate,
+                            audio_rb_frames,
+                        )
+                    })
+                    .transpose()?;
+                renderer
+                    .get_mut()
+                    .configure_mixing(monitor, clock, shared.clone());
+                let (mixer, owner) =
+                    callback_owner(crate::audio_engine::mixing::runtime::Broadcast::new(
+                        out_stream_config.sample_rate,
+                        shared,
+                        source_shared.clone(),
+                    )?);
+                self.mixing_worker_owner = Some(owner);
+                self.mixing_source = Some(source);
+                self.mixing_input_shared = Some(source_shared);
+                broadcast_mixer = Some(mixer);
+            }
             if self.live_output.is_none() {
                 controller.shared.failed.store(true, Ordering::Release);
             }
             worker_controls = Some(controller.shared.clone());
-            broadcast_recovery_gains = Some(gains);
+            broadcast_frames = Some(rx);
             self.split_monitor = Some(controller);
             monitor_renderer = Some(renderer);
             broadcast_queue = Some(queue);
@@ -726,6 +919,27 @@ impl Engine {
         let output_stream_failed = worker_controls
             .as_ref()
             .map_or(output_stream_failed, |s| s.failed.clone());
+        let process_shared = is_process.then(|| {
+            Arc::new(crate::audio_engine::process_capture::Shared::new(
+                self.stream_failed.clone(),
+            ))
+        });
+        self.process_shared = process_shared.clone();
+        let mut process_renderer = if is_process {
+            let (callback, owner) = callback_owner(
+                crate::audio_engine::process_capture::clock::Renderer::with_rates_and_capacity(
+                    crate::audio_engine::process_capture::RATE,
+                    out_stream_config.sample_rate,
+                    audio_rb_frames,
+                )?,
+            );
+            self.process_renderer_owner = Some(owner);
+            Some(callback)
+        } else {
+            None
+        };
+        let process_output_shared = process_shared.clone();
+        let mut process_starved_at = None;
         let input_failed = self.stream_failed.clone();
         let input_process_failed = input_failed.clone();
         let input_resampling_failed = self.resampling_failed.clone();
@@ -737,16 +951,42 @@ impl Engine {
         let output_silence = self.mode_silence.shared.clone();
         let monitor_silence = self.mode_silence.shared.clone();
         let input_silence = self.mode_silence.shared.clone();
+        let mut post_epoch = 0u64;
+        let mut post_previous = None;
+        let post_mix_controls = self.mixing_shared.clone();
+        let mut post_renderer = if let Some(mapping) = &mut self.post_mapping {
+            anyhow::ensure!(
+                separated && self.mixing_start.is_some() && mapping.ready() && !mapping.failed(),
+                "ミックス後VSTの準備が整っていません"
+            );
+            anyhow::ensure!(
+                mapping.descriptor().sample_rate == out_stream_config.sample_rate,
+                "ミックス後VSTと本人用出力のrateが変わりました。停止して設定し直してください"
+            );
+            let (callback, owner) = callback_owner(
+                crate::audio_engine::post_mix::ClientRenderer::new(mapping.client()?),
+            );
+            self.post_renderer_owner = Some(owner);
+            Some(callback)
+        } else {
+            None
+        };
         let build_output = || {
             let output_build_started = Instant::now();
+            let mut output_cadence = OutputCadence::new(callback_rate);
             let mut process_output =
                 move |data: &mut [f32], info: Option<&cpal::OutputCallbackInfo>| {
                     if dsp_silence.drain_worker() {
-                        audio_cons.skip(
-                            audio_cons.occupied_len() / queue_input_channels * queue_input_channels,
-                        );
-                        if let Some(gains) = &mut broadcast_recovery_gains {
-                            gains.skip(gains.occupied_len());
+                        if let Some(mixer) = &mut broadcast_mixer {
+                            mixer.get_mut().reset();
+                        }
+                        if let Some(queue) = &mut broadcast_frames {
+                            queue.skip(queue.occupied_len());
+                        } else {
+                            audio_cons.skip(
+                                audio_cons.occupied_len() / queue_input_channels
+                                    * queue_input_channels,
+                            );
                         }
                         dsp_silence.worker_drained();
                         data.fill(0.0);
@@ -759,10 +999,13 @@ impl Engine {
                     if let Some(controls) = &worker_generation_controls {
                         let generation = controls.generation.load(Ordering::Acquire);
                         if generation != worker_generation {
-                            let skipped = audio_cons.skip(audio_cons.occupied_len() / 2 * 2) / 2;
-                            if let Some(gains) = &mut broadcast_recovery_gains {
-                                gains.skip(skipped);
+                            if let Some(mixer) = &mut broadcast_mixer {
+                                mixer.get_mut().reset();
                             }
+                            let skipped = broadcast_frames.as_mut().map_or_else(
+                                || audio_cons.skip(audio_cons.occupied_len() / 2 * 2) / 2,
+                                |queue| queue.skip(queue.occupied_len()),
+                            );
                             upstream_consumed = upstream_consumed.saturating_add(skipped as u64);
                             worker_generation = generation;
                             data.fill(0.0);
@@ -796,14 +1039,17 @@ impl Engine {
                         .as_ref()
                         .map(|c| c.measurement_ticket());
                     let upstream_first_frame = upstream_consumed;
-                    if let Some(gains) = &mut broadcast_recovery_gains {
-                        for gain in &mut upstream_recovery[..actual_frames] {
-                            let Some(value) = gains.try_pop() else {
+                    if let Some(queue) = &mut broadcast_frames {
+                        for (index, frame) in
+                            broadcast_block[..actual_frames].iter_mut().enumerate()
+                        {
+                            let Some(value) = queue.try_pop() else {
                                 output_stream_failed.store(true, Ordering::Release);
                                 data.fill(0.0);
                                 return;
                             };
-                            *gain = value;
+                            *frame = value;
+                            upstream_recovery[index] = value.recovery_gain;
                         }
                         upstream_consumed = upstream_consumed.saturating_add(actual_frames as u64);
                     }
@@ -830,19 +1076,6 @@ impl Engine {
                     flush_pending_retire(pending_retire, &mut retire_prod);
 
                     let now = Instant::now();
-                    if let Some((previous, previous_frames)) = last_callback {
-                        let (late, missed) = callback_lateness(
-                            now.duration_since(previous),
-                            previous_frames,
-                            callback_rate,
-                        );
-                        stats_max_jitter.fetch_max(late, Ordering::Relaxed);
-                        if missed {
-                            stats_glitches.fetch_add(1, Ordering::Relaxed);
-                        }
-                    }
-                    last_callback = Some((now, actual_frames));
-
                     if !mmcss_set_out.load(Ordering::Relaxed) {
                         // SAFETY: 現在のコールバックスレッドの疑似ハンドルと定義済み優先度を渡す。
                         unsafe {
@@ -885,7 +1118,7 @@ impl Engine {
                         rt_reverb,
                         live_shared: &live_shared,
                         rt_global_mute: &mut rt_global_mute,
-                        rt_global_bypass: &mut rt_global_bypass,
+                        rt_comparison: &mut rt_comparison,
                         rt_input_gain: &mut rt_input_gain,
                         rt_input_l: &mut rt_input_l,
                         rt_input_r: &mut rt_input_r,
@@ -928,7 +1161,7 @@ impl Engine {
                         audio_cons.occupied_len() / queue_input_channels,
                         frames,
                         output_queue_diagnostics.max_burst(),
-                        recovery_blocked || separated,
+                        recovery_blocked || separated || is_process,
                     );
                     if skip_frames > 0 {
                         if let Some(timing) = &output_timing {
@@ -952,7 +1185,46 @@ impl Engine {
                         );
                     }
                     let to_read = frames * queue_input_channels;
-                    let (consumed_frames, timing_read) = if let Some(timing) = &output_timing {
+                    let (consumed_frames, timing_read) = if broadcast_frames.is_some() {
+                        for (output, frame) in input_buf[..to_read]
+                            .as_chunks_mut::<2>()
+                            .0
+                            .iter_mut()
+                            .zip(&broadcast_block[..frames])
+                        {
+                            *output = frame.voice;
+                        }
+                        (frames, 0)
+                    } else if let Some(renderer) = &mut process_renderer {
+                        use crate::audio_engine::process_capture::clock::Interleaved;
+                        let renderer = renderer.get_mut();
+                        let before = renderer.rendered;
+                        renderer
+                            .render(&mut input_buf[..to_read], &mut Interleaved(&mut audio_cons));
+                        if renderer.failed {
+                            let shared = process_output_shared
+                                .as_ref()
+                                .expect("プロセス取得の共有状態");
+                            if !renderer.failed_underrun {
+                                shared.failed.store(true, Ordering::Release);
+                            } else {
+                                let began = process_starved_at.get_or_insert(shared.elapsed_ms());
+                                if shared.packet_age_ms() >= 30 {
+                                    let discarded = audio_cons.occupied_len() / 2;
+                                    audio_cons.skip(discarded * 2);
+                                    shared.paused(discarded);
+                                    renderer.wait_for_audio();
+                                    process_starved_at = None;
+                                } else if shared.elapsed_ms().saturating_sub(*began) >= 100 {
+                                    shared.failed.store(true, Ordering::Release);
+                                }
+                            }
+                        }
+                        if let Some(shared) = &process_output_shared {
+                            shared.rendered(renderer, audio_cons.occupied_len() / 2);
+                        }
+                        (renderer.rendered.saturating_sub(before) as usize, 0)
+                    } else if let Some(timing) = &output_timing {
                         queue_diagnostics::read_complete_frames_observed(
                             &mut audio_cons,
                             &mut input_buf[..to_read],
@@ -969,7 +1241,11 @@ impl Engine {
                             0,
                         )
                     };
-                    output_queue_diagnostics.record_output(frames, consumed_frames);
+                    // 分離時の主入力キューは本人用callbackだけが読む。
+                    // 配信workerまで加えると読出しと不足を二重計上してしまう。
+                    if !separated {
+                        output_queue_diagnostics.record_output(frames, consumed_frames);
+                    }
 
                     let ([in_max_l, in_max_r], record_block_start) = route_and_meter_input(
                         frames,
@@ -997,92 +1273,102 @@ impl Engine {
                         }
                     }
 
-                    if channels >= 2 {
-                        rt_noise_learning.analyze_block(
-                            &planar_buf_a[0][..frames],
-                            Some(&planar_buf_a[1][..frames]),
-                            frames,
-                        );
-                    } else if channels == 1 {
-                        rt_noise_learning.analyze_block(&planar_buf_a[0][..frames], None, frames);
-                    }
+                    if !music_input {
+                        if channels >= 2 {
+                            rt_noise_learning.analyze_block(
+                                &planar_buf_a[0][..frames],
+                                Some(&planar_buf_a[1][..frames]),
+                                frames,
+                            );
+                        } else if channels == 1 {
+                            rt_noise_learning.analyze_block(
+                                &planar_buf_a[0][..frames],
+                                None,
+                                frames,
+                            );
+                        }
 
-                    if let Some(control) = &mut rt_noise_control {
-                        let profile_available = rt_noise_learning
-                            .shared
-                            .profile_valid
-                            .load(Ordering::Acquire);
-                        control.begin_block(NoiseAnalysis {
-                            speech: rt_noise_learning
+                        if let Some(control) = &mut rt_noise_control {
+                            let profile_available = rt_noise_learning
                                 .shared
-                                .speech_detected
-                                .load(Ordering::Relaxed),
-                            profile_rms: profile_available.then(|| {
-                                rt_noise_learning
+                                .profile_valid
+                                .load(Ordering::Acquire);
+                            control.begin_block(NoiseAnalysis {
+                                speech: rt_noise_learning
                                     .shared
-                                    .accepted_rms_ppm
-                                    .load(Ordering::Relaxed) as f32
-                                    / 1_000_000.0
-                            }),
-                            learned_mix: rt_noise_learning.shared.applied_mix(),
-                            has_learned_mix: rt_noise_learning
-                                .shared
-                                .has_applied_mix
-                                .load(Ordering::Acquire),
-                        });
+                                    .speech_detected
+                                    .load(Ordering::Relaxed),
+                                profile_rms: profile_available.then(|| {
+                                    rt_noise_learning
+                                        .shared
+                                        .accepted_rms_ppm
+                                        .load(Ordering::Relaxed)
+                                        as f32
+                                        / 1_000_000.0
+                                }),
+                                learned_mix: rt_noise_learning.shared.applied_mix(),
+                                has_learned_mix: rt_noise_learning
+                                    .shared
+                                    .has_applied_mix
+                                    .load(Ordering::Acquire),
+                            });
+                            if channels >= 2 {
+                                let (left, right) = planar_buf_a.split_at_mut(1);
+                                for (left, right) in
+                                    left[0][..frames].iter_mut().zip(&mut right[0][..frames])
+                                {
+                                    let output = control.process_sample(*left, *right);
+                                    *left = output[0];
+                                    *right = output[1];
+                                }
+                            } else if channels == 1 {
+                                for sample in &mut planar_buf_a[0][..frames] {
+                                    *sample = control.process_sample(*sample, *sample)[0];
+                                }
+                            }
+                        }
+
                         if channels >= 2 {
                             let (left, right) = planar_buf_a.split_at_mut(1);
                             for (left, right) in
-                                left[0][..frames].iter_mut().zip(&mut right[0][..frames])
+                                left[0].iter_mut().zip(right[0].iter_mut()).take(frames)
                             {
-                                let output = control.process_sample(*left, *right);
+                                let output = rt_voice.process([*left, *right]);
                                 *left = output[0];
                                 *right = output[1];
                             }
-                        } else if channels == 1 {
-                            for sample in &mut planar_buf_a[0][..frames] {
-                                *sample = control.process_sample(*sample, *sample)[0];
+                        } else {
+                            for sample in planar_buf_a[0].iter_mut().take(frames) {
+                                *sample = rt_voice.process([*sample; 2])[0];
+                            }
+                        }
+                        if let Some((revision, builtin_revision)) = rt_voice.take_completed() {
+                            live_shared.completed.fetch_max(revision, Ordering::Release);
+                            builtin_applied.fetch_max(builtin_revision, Ordering::Release);
+                        }
+
+                        // 独立残響: voiceのactiveに依存させず、VSTへ渡す前に加算する。
+                        if rt_global_mute {
+                            rt_reverb.reset();
+                        } else if channels > 1 {
+                            let (left, remaining) = planar_buf_a.split_at_mut(1);
+                            for (left, right) in
+                                left[0].iter_mut().zip(remaining[0].iter_mut()).take(frames)
+                            {
+                                let result = rt_reverb.process([*left, *right], false);
+                                *left = result[0];
+                                *right = result[1];
+                            }
+                        } else {
+                            for sample in planar_buf_a[0].iter_mut().take(frames) {
+                                *sample = rt_reverb.process([*sample; 2], false)[0];
                             }
                         }
                     }
 
-                    if channels >= 2 {
-                        let (left, right) = planar_buf_a.split_at_mut(1);
-                        for (left, right) in
-                            left[0].iter_mut().zip(right[0].iter_mut()).take(frames)
-                        {
-                            let output = rt_voice.process([*left, *right]);
-                            *left = output[0];
-                            *right = output[1];
-                        }
-                    } else {
-                        for sample in planar_buf_a[0].iter_mut().take(frames) {
-                            *sample = rt_voice.process([*sample; 2])[0];
-                        }
-                    }
-                    if let Some((revision, builtin_revision)) = rt_voice.take_completed() {
-                        live_shared.completed.fetch_max(revision, Ordering::Release);
-                        builtin_applied.fetch_max(builtin_revision, Ordering::Release);
-                    }
-
-                    // 独立残響: voiceのactiveに依存させず、VSTへ渡す前に加算する。
-                    if rt_global_mute {
-                        rt_reverb.reset();
-                    } else if channels > 1 {
-                        let (left, remaining) = planar_buf_a.split_at_mut(1);
-                        for (left, right) in
-                            left[0].iter_mut().zip(remaining[0].iter_mut()).take(frames)
-                        {
-                            let result = rt_reverb.process([*left, *right], false);
-                            *left = result[0];
-                            *right = result[1];
-                        }
-                    } else {
-                        for sample in planar_buf_a[0].iter_mut().take(frames) {
-                            *sample = rt_reverb.process([*sample; 2], false)[0];
-                        }
-                    }
-
+                    rt_comparison
+                        .begin_block(frames, rt_active_count > 0 && plugin_controls.order_len > 0);
+                    let comparison_settled = rt_comparison.settled();
                     let current_source_is_a = plugin_controls.process(PluginBlock {
                         processors: rt_processors,
                         planar_buf_a: &mut planar_buf_a,
@@ -1090,15 +1376,16 @@ impl Engine {
                         channels,
                         frames,
                         active_count: rt_active_count,
-                        global_bypass: rt_global_bypass,
+                        global_bypass: rt_comparison.bypassed(),
                     });
 
                     // --- 3. Result Interleaving & Output Metering ---
                     let final_buf = if current_source_is_a {
-                        &planar_buf_a
+                        &mut planar_buf_a
                     } else {
-                        &planar_buf_b
+                        &mut planar_buf_b
                     };
+                    rt_comparison.apply(final_buf, channels, frames);
 
                     if rt_capture.is_active() {
                         let invalid = rt_global_mute
@@ -1144,8 +1431,37 @@ impl Engine {
                         // 加工前後の最終ブロックが揃ってから公開・完了通知する。
                         rt_voice_check.advance_recording(frames);
                     }
+                    if let Some(mixer) = &mut broadcast_mixer {
+                        mixer
+                            .get_mut()
+                            .process(final_buf, &broadcast_block[..frames]);
+                    }
+                    if let Some(renderer) = &mut post_renderer {
+                        let music_generation = post_mix_controls
+                            .as_ref()
+                            .and_then(|shared| shared.read())
+                            .map_or(0, |settings| settings.mute_generation);
+                        let current = (dsp_silence.ticket(), worker_generation, music_generation);
+                        if post_previous != Some(current) {
+                            post_epoch = post_epoch.wrapping_add(1);
+                            post_previous = Some(current);
+                        }
+                        let generation = post_epoch;
+                        if !renderer.get_mut().process(
+                            final_buf,
+                            frames,
+                            rt_global_mute,
+                            generation,
+                            rt_comparison.bypassed(),
+                        ) {
+                            output_stream_failed.store(true, Ordering::Release);
+                            data.fill(0.0);
+                            return;
+                        }
+                    }
 
-                    let cohort_normal_mic = !rt_global_mute
+                    let cohort_normal_mic = comparison_settled
+                        && !rt_global_mute
                         && !rt_test_tone.is_active()
                         && !rt_voice_check.is_playback_active();
                     if let Some(sender) = &mut live_sender {
@@ -1391,6 +1707,11 @@ impl Engine {
                             max_frames_per_callback,
                             self.stream_failed.clone(),
                             move |data: &mut [f32], info| {
+                                output_cadence.record(
+                                    data.len() / channels_len,
+                                    &stats_max_jitter,
+                                    &stats_glitches,
+                                );
                                 monitor
                                     .get_mut()
                                     .render_gated(data, Some(info), &monitor_silence);
@@ -1415,6 +1736,11 @@ impl Engine {
                     max_frames_per_callback,
                     self.stream_failed.clone(),
                     move |data: &mut [f32], info| {
+                        output_cadence.record(
+                            data.len() / channels_len,
+                            &stats_max_jitter,
+                            &stats_glitches,
+                        );
                         let ticket = output_silence.ticket();
                         process_output(data, Some(info));
                         output_silence.finish(
@@ -1448,8 +1774,23 @@ impl Engine {
         };
         let build_input = || {
             let input_build_started = Instant::now();
+            if let Some((config, target)) = process_spec {
+                let InputCallback { audio_prod, .. } = input_callback;
+                return crate::audio_engine::process_capture::Controller::prepare(
+                    config,
+                    target,
+                    audio_prod,
+                    process_shared.expect("プロセス取得の共有状態"),
+                )
+                .map(InputStream::Process)
+                .map_err(|e| cpal::BuildStreamError::BackendSpecific {
+                    err: cpal::BackendSpecificError {
+                        description: e.to_string(),
+                    },
+                });
+            }
             let input_result = native_stream::build_input(
-                &in_dev,
+                in_dev.as_ref().expect("機器入力の選択済みdevice"),
                 &in_stream_config,
                 input_format,
                 max_frames_per_callback,
@@ -1469,7 +1810,7 @@ impl Engine {
                 },
             );
             capabilities::report_phase("input_build", input_build_started);
-            input_result
+            input_result.map(InputStream::Device)
         };
 
         let order = lifecycle::BuildOrder::for_host(is_asio);
@@ -1503,6 +1844,7 @@ impl Engine {
                     });
                     return self.start_audio_attempt(
                         AudioStartRequest {
+                            input_source: input_source.clone(),
                             host_name: retry_host_out,
                             input_name: retry_input_out,
                             output_name: retry_output_out,
@@ -1538,6 +1880,7 @@ impl Engine {
                     });
                     return self.start_audio_attempt(
                         AudioStartRequest {
+                            input_source: input_source.clone(),
                             host_name: retry_host_in,
                             input_name: retry_input_in,
                             output_name: retry_output_in,
@@ -1560,6 +1903,7 @@ impl Engine {
                     });
                     return self.start_audio_attempt(
                         AudioStartRequest {
+                            input_source: input_source.clone(),
                             host_name: retry_host_in,
                             input_name: retry_input_in,
                             output_name: retry_output_in,
@@ -1573,17 +1917,23 @@ impl Engine {
                 return Err(anyhow!("Input Stream Build Failed: {}", detailed_msg));
             }
         };
-        // ASIO共有driverの順序は維持する。WASAPIは入力到着後に出力を開始する。
+        // オケを準備し、ASIO共有driverは出力→入力、WASAPIは入力到着→出力の順を保つ。
+        if let Some(source) = &self.mixing_source {
+            source.play()?;
+        }
         let streams = capabilities::timed("stream_play", || {
+            let play_output = |stream: &cpal::Stream| {
+                stream
+                    .play()
+                    .map_err(|e| anyhow!("Output Stream play() failed: {}", e))
+            };
+            let play_input = |stream: &InputStream| {
+                stream
+                    .play()
+                    .map_err(|e| anyhow!("Input Stream play() failed: {}", e))
+            };
             if is_asio {
-                let mut starting_output = true;
-                StreamPair::start(output_stream, input_stream, |stream: &cpal::Stream| {
-                    let direction = if starting_output { "Output" } else { "Input" };
-                    starting_output = false;
-                    stream
-                        .play()
-                        .map_err(|error| anyhow!("{} Stream play() failed: {}", direction, error))
-                })
+                StreamPair::start_with(output_stream, input_stream, play_output, play_input)
             } else {
                 let queue = self
                     .queue_observer
@@ -1594,21 +1944,15 @@ impl Engine {
                     .current_block_size
                     .saturating_mul(2)
                     .min(queue.capacity().get() / channels);
-                let mut starting_input = true;
-                StreamPair::start_input_first(
+                StreamPair::start_input_first_with(
                     output_stream,
                     input_stream,
-                    |stream: &cpal::Stream| {
-                        let direction = if starting_input { "Input" } else { "Output" };
-                        starting_input = false;
-                        stream.play().map_err(|error| {
-                            anyhow!("{} Stream play() failed: {}", direction, error)
-                        })
-                    },
+                    play_output,
+                    play_input,
                     || {
                         let frames = lifecycle::wait_for_input(
                             target,
-                            self.current_sample_rate as u32,
+                            in_stream_config.sample_rate,
                             || queue.occupied_len() / channels,
                             || self.stream_failed.load(Ordering::Acquire),
                         )?;

@@ -33,7 +33,7 @@ impl Engine {
             plugins,
             restore_eligible: self.session_rack_revision == 0,
             revision: self.session_rack_revision,
-            running: self.output_stream.is_some() && !self.stream_failed.load(Ordering::Acquire),
+            running: self.processing_running() && !self.stream_failed.load(Ordering::Acquire),
         }
     }
 }
