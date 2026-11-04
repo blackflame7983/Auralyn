@@ -42,12 +42,13 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
                 const saved = Boolean(value?.definitions[mode]);
                 const bound = value?.definitions.profiles?.[mode]?.name ?? '';
                 const selected = selection[mode] ?? bound;
-                return <section key={mode} aria-label={name(mode)} className="min-w-0 space-y-3 rounded-lg border border-border p-3">
-                    <div className="flex flex-wrap items-center gap-2"><Icon aria-hidden="true" className="h-5 w-5 text-primary" />
+                // 状態と保存内容を別の行にし、隣のカードと行高を共有する。名前や説明が折り返しても操作位置を揃える。
+                return <section key={mode} aria-label={name(mode)} className="grid min-w-0 row-span-5 grid-rows-subgrid gap-3 rounded-lg border border-border p-3">
+                    <div className="flex items-center gap-2"><Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-primary" />
                         <span className="text-ui-control font-semibold">{name(mode)}</span>
-                        <span className="inline-flex items-center gap-1 text-ui-support text-muted-foreground">{saved && <MdCheckCircle aria-hidden="true" className="h-4 w-4 text-success" />}{t(!value ? 'settings.LiveModeControls.216' : saved ? 'settings.LiveModeControls.232' : 'settings.LiveModeControls.233')}</span>
-                        {saved && <span className="text-ui-support text-muted-foreground">{t('settings.mode.savedSummary', { voice: value!.definitions[mode]!.active ? 'ON' : 'OFF', reverb: value!.definitions[mode]!.reverb?.enabled ? 'ON' : 'OFF' })}</span>}
                     </div>
+                    <p data-mode-registration-status className="flex items-center gap-1 text-ui-support text-muted-foreground">{saved && <MdCheckCircle aria-hidden="true" className="h-4 w-4 shrink-0 text-success" />}{t(!value ? 'settings.LiveModeControls.216' : saved ? 'settings.LiveModeControls.232' : 'settings.LiveModeControls.233')}</p>
+                    <p data-mode-saved-summary className="text-ui-support text-muted-foreground">{saved && t('settings.mode.savedSummary', { voice: value!.definitions[mode]!.active ? 'ON' : 'OFF', reverb: value!.definitions[mode]!.reverb?.enabled ? 'ON' : 'OFF' })}</p>
                     <div className="flex flex-wrap gap-2">
                     {onAdjust && <button type="button" onClick={() => onAdjust(mode)} aria-label={t('settings.mode.adjustNamed', { mode: name(mode) })}
                         className="rounded-md border border-border px-3 py-2 text-ui-control hover:bg-muted">{t('settings.mode.adjust')}</button>}

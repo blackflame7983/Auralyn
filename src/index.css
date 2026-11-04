@@ -348,6 +348,8 @@
   transform: translateY(calc(var(--aurora-energy, 0) * -4px)) scaleX(calc(1 + var(--aurora-energy, 0) * 0.08));
 }
 .live-strip { overflow: clip; }
+/* 未登録の設定入口だけを右端へ寄せる。登録後の切替・保護・メニューの並びは変えない。 */
+.live-strip .live-controls:has([data-mode-registered="false"]) { margin-inline-start: auto; }
 .live-strip[data-muted="true"] .live-aurora { opacity: 0.2; }
 .press-feedback {
   transition: background-color var(--motion-base) var(--ease-out), border-color var(--motion-base) var(--ease-out), color var(--motion-base) var(--ease-out), transform var(--motion-base) var(--ease-out);

@@ -96,7 +96,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
                 </button>
             </span>
             {/* 切替欄を余った数pxまで縮めず、必要な幅がなければ次の行へ送る。未登録の間は控えめな登録入口を置く。 */}
-            {liveControls && <div className="min-w-0 flex-[0_1_auto] empty:hidden">{liveControls}</div>}
+            {liveControls && <div className="live-controls min-w-0 flex-[0_1_auto] empty:hidden">{liveControls}</div>}
         </div>
     </section>;
 }

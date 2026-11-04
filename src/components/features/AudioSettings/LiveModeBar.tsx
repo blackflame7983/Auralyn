@@ -46,7 +46,7 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
         action();
     };
     return (
-        <section aria-label={t('liveBar.label')} className={cn('flex flex-wrap items-center gap-3', !embedded && 'mb-3 rounded-xl border border-border bg-card gaming:bg-card/70 px-3 py-2')}>
+        <section aria-label={t('liveBar.label')} data-mode-registered={registered} className={cn('flex flex-wrap items-center gap-3', !embedded && 'mb-3 rounded-xl border border-border bg-card gaming:bg-card/70 px-3 py-2')}>
             {registered && !safetyOnly && <SegmentedControl label={t('liveBar.mode')} value={selected}
                 onValueChange={mode => { if (mode !== 'custom') void model.select(mode); }}
                 options={[
