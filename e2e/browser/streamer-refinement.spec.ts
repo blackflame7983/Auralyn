@@ -143,12 +143,13 @@ test('モードの初回読込に失敗してもホームから再取得して�
     await page.goto('/');
     await expect(page.getByRole('alert')).toContainText('モードの状態を取得できません');
     await page.getByRole('button', { name: 'モードの状態を再取得', exact: true }).click();
-    await expect(page.getByRole('button', { name: '歌唱モード', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '歌', exact: true })).toBeVisible();
     await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
 test('登録したモードの違いが分かり、歌向けの調整へ直接移れる', async ({ page }) => {
     await page.goto('/');
+    await page.getByRole('button', { name: '歌・雑談の設定', exact: true }).click();
     await page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).click();
     // CIでは設定画面の遅延読込を待ってから、内容と移動を検証する。
     const settings = page.getByRole('dialog', { name: '設定', exact: true });
@@ -160,7 +161,7 @@ test('登録したモードの違いが分かり、歌向けの調整へ直接�
     await expect(page.locator('#singing-settings')).toHaveAttribute('open', '');
     await expect(page.locator('#singing-settings > summary')).toBeFocused();
     await page.getByRole('button', { name: 'モード登録へ戻る', exact: true }).click();
-    await expect(page.locator('#live-mode-settings > summary')).toBeFocused();
+    await expect(page.locator('#live-mode-settings > h3')).toBeFocused();
 });
 
 test('再評価用の正常ホームは警告状態と分け、縦長でも出力メーターを離さない', async ({ page }, testInfo) => {

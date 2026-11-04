@@ -22,6 +22,7 @@ interface Props {
     /** 畳んでいる間に状態の横へ出す機器名（入力 → 出力先）。 */
     devices?: ReactNode;
     onSetup?: () => void;
+    onExpandedChange?: (open: boolean) => void;
 }
 // 問題の種類を返す。正常時は null にして手順を畳み、毎日の起動で読ませない。
 // ミュート・音量ゼロは配信事故なので、直す入口（主ボタン）が見えるよう開く。
@@ -37,7 +38,7 @@ const availabilityTones: Record<Availability, StatusTone> = { ready: 'ok', unkno
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
-export function PreparationPanel({ homeActionInStrip = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices, onSetup }: Props) {
+export function PreparationPanel({ homeActionInStrip = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices, onSetup, onExpandedChange }: Props) {
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
@@ -71,6 +72,7 @@ export function PreparationPanel({ homeActionInStrip = false, destinationRequest
     useEffect(() => { if (problem) setUserOpen(old => old === false ? null : old); }, [problem]);
     // ミュートは本番帯の警告から直接直せる。毎回チェックリストを押し広げない。
     const open = userOpen ?? (problem !== null && observation.availability !== 'muted');
+    useEffect(() => { onExpandedChange?.(open); }, [open, onExpandedChange]);
     const usageRef = useRef<HTMLDivElement>(null);
     const focusedRequest = useRef(0);
     useEffect(() => { if (destinationRequest) setUserOpen(true); }, [destinationRequest]);

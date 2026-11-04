@@ -7,7 +7,7 @@ import { REVIEW_KEY } from './api/migration';
 import { startHomeAudio } from './lib/startHomeAudio';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useVstPanel } from './hooks/useVstPanel';
-import { MdClose, MdMusicNote } from 'react-icons/md';
+import { MdClose } from 'react-icons/md';
 import { useLiveModes } from './hooks/useLiveModes';
 import { LiveModeBar } from './components/features/AudioSettings/LiveModeBar';
 import { useEffect, useRef } from 'react';
@@ -167,7 +167,7 @@ function AppContent() {
         preparationBlocked={isModalOpen || isInitializing}
         currentInput={audioConfig.inputSource?.kind === 'process_loopback' ? audioConfig.inputSource.config.appName : audioConfig.input}
         currentOutput={audioConfig.output}
-        liveControls={displayPurpose === 'voice' && <div className="flex flex-wrap items-center gap-2"><LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} /><MixingLiveControl running={audioReady} blocked={isModalOpen || isInitializing} onSettings={ui.openMixingSettings} /><button type="button" onClick={ui.openMixingSettings} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"><MdMusicNote aria-hidden="true" className="h-4 w-4" />{t('home.singingSetup')}</button></div>}
+        liveControls={displayPurpose === 'voice' && <div className="flex flex-wrap items-center gap-2"><LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} onPrepareSinging={ui.openMixingSettings} /><MixingLiveControl running={audioReady} blocked={isModalOpen || isInitializing} onSettings={ui.openMixingSettings} /></div>}
         vstChain={<VstChainItems plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
         vstUnrestored={pluginsApi.sessionUnrestored}
         vstPanel={pluginRack}

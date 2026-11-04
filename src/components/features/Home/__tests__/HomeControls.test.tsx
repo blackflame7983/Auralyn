@@ -36,10 +36,10 @@ it.each(['normal', 'protected', 'recovery', 'snapshotError'] as const)('音楽�
     render(<MusicSafety />);
     await waitFor(() => expect(request).toHaveBeenCalledWith({ action: 'snapshot' }));
     await act(async () => {});
-    expect(screen.queryByRole('button', { name: '歌唱モード' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '雑談モード' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '歌' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '雑談' })).not.toBeInTheDocument();
     if (kind === 'normal') expect(screen.queryByRole('region')).not.toBeInTheDocument();
-    if (kind === 'protected') expect(screen.getByRole('button', { name: '本番保護' })).toHaveAttribute('aria-pressed', 'true');
+    if (kind === 'protected') expect(screen.getByRole('button', { name: '誤操作防止' })).toHaveAttribute('aria-pressed', 'true');
     if (kind === 'recovery') expect(screen.getByRole('button', { name: '以前の状態を復旧する' })).toBeInTheDocument();
     if (kind === 'snapshotError') expect(screen.getByRole('alert')).toBeVisible();
 });
@@ -116,11 +116,11 @@ it('登録済みならモード切替と本番保護をメインに出し、保�
     function Bar() { return <LiveModeBar model={useLiveModes()} />; }
     render(<Bar />);
     await screen.findByRole('region', { name: 'モード切替' });
-    expect(screen.getByRole('button', { name: '歌唱モード' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: '雑談モード' })).toBeDisabled();
-    const guard = screen.getByRole('button', { name: '本番保護' });
+    expect(screen.getByRole('button', { name: '歌' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '雑談' })).toBeDisabled();
+    const guard = screen.getByRole('button', { name: '誤操作防止' });
     expect(guard).toHaveAttribute('aria-pressed', 'false');
     await act(async () => fireEvent.click(guard));
     expect(protect).toHaveBeenCalledWith(true, 'host1');
-    await waitFor(() => expect(screen.getByRole('button', { name: '本番保護' })).toHaveAttribute('aria-pressed', 'true'));
+    await waitFor(() => expect(screen.getByRole('button', { name: '誤操作防止' })).toHaveAttribute('aria-pressed', 'true'));
 });

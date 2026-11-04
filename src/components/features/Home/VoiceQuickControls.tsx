@@ -4,9 +4,7 @@ import { useRef, useState } from 'react';
 import { refreshRuntimeStats, useRuntimeStats } from '@/hooks/useRuntimeStats';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
-import { cn } from '@/lib/utils';
-import { segmentButtonClass } from '@/components/ui/segment';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { audioApi, type BuiltInEffectsPreset, type NoiseControlMode } from '@/api/audio';
 import { builtinApi } from '@/api/builtinEffects';
 
@@ -69,8 +67,6 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
 }
 export type VoiceQuick = ReturnType<typeof useVoiceQuick>;
 
-const segment = segmentButtonClass;
-
 // 段の見出し行の右端に置くスイッチ。
 export function NoiseSwitch({ q }: { q: VoiceQuick }) {
     const t = useMessages();
@@ -85,14 +81,9 @@ export function NoiseQuick({ q }: { q: VoiceQuick }) {
     if (q.noiseMode === 'smart' || q.noiseMode === 'venue') {
         return <p className="text-xs text-muted-foreground">{t('home.noiseAdvancedMode', { mode: q.noiseMode === 'smart' ? t('master.nrLearn') : t('master.nrVenue') })}</p>;
     }
-    return <div role="group" aria-label={t('structure.noise.standard')} className="inline-flex gap-1.5">
-        {(['low', 'high'] as NoiseControlMode[]).map(mode => (
-            <button key={mode} type="button" disabled={q.disabled || !q.noiseOn} aria-pressed={q.noiseOn && q.noiseMode === mode}
-                onClick={() => void q.applyNoise({ mode })} className={segment(q.noiseOn && q.noiseMode === mode)}>
-                {mode === 'low' ? t('master.nrLow') : t('master.nrHigh')}
-            </button>
-        ))}
-    </div>;
+    return <SegmentedControl label={t('structure.noise.standard')}
+        options={(['low', 'high'] as NoiseControlMode[]).map(mode => ({ value: mode, label: mode === 'low' ? t('master.nrLow') : t('master.nrHigh'), disabled: q.disabled || !q.noiseOn }))}
+        value={q.noiseOn ? q.noiseMode : null} onValueChange={mode => void q.applyNoise({ mode })} />;
 }
 
 export function BuiltinSwitch({ q }: { q: VoiceQuick }) {
@@ -107,14 +98,10 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
         : value === 'warm' ? t('settings.AudioSettingsModal.099') : t('settings.AudioSettingsModal.100');
     // 5%刻みの操作に十分な長さを保ち、広い窓でもスライダーだけを伸ばし続けない。
     return <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2">
-        <TooltipProvider delayDuration={300}><div role="group" aria-label={t('home.chainPreset')} className="flex gap-1.5">
-            {quickPresets.map(value => (
-                <Tooltip key={value}><TooltipTrigger asChild><button type="button" disabled={q.disabled} aria-pressed={q.chainOn && q.preset === value}
-                    onClick={() => void q.applyChain({ preset: value })} className={cn(segment(q.chainOn && q.preset === value), 'flex-1 whitespace-nowrap')}>
-                    {presetLabel(value)}
-                </button></TooltipTrigger><TooltipContent className="max-w-64">{t(value === 'warm' ? 'home.preset.warmHint' : value === 'bright' ? 'home.preset.brightHint' : 'home.preset.broadcastHint')}</TooltipContent></Tooltip>
-            ))}
-        </div></TooltipProvider>
+        <SegmentedControl label={t('home.chainPreset')}
+            options={quickPresets.map(value => ({ value, label: presetLabel(value), disabled: q.disabled,
+                hint: t(value === 'warm' ? 'home.preset.warmHint' : value === 'bright' ? 'home.preset.brightHint' : 'home.preset.broadcastHint') }))}
+            value={q.chainOn ? q.preset : null} onValueChange={preset => void q.applyChain({ preset })} />
         <label className="flex min-w-[16rem] max-w-[22rem] flex-1 items-center gap-2 text-[13px]">
             <span className="contents text-muted-foreground">
                 <span className="whitespace-nowrap text-muted-foreground">{t('settings.AudioSettingsModal.103')}</span>

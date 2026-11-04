@@ -29,14 +29,16 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
         localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
     });
     await page.goto('/');
+    const actions = page.getByRole('button', { name: '歌・雑談の設定', exact: true });
     const register = page.getByRole('button', { name: 'モードを登録', exact: true });
-    await expect(register).toBeVisible();
+    await expect(actions).toBeVisible();
     await page.getByRole('button', { name: 'マイク音量 100%', exact: true }).hover();
     await expect(page.getByRole('tooltip')).toHaveText('マイク音量');
     await page.getByRole('button', { name: '音量チェックを開始', exact: true }).hover();
     await expect(page.getByRole('tooltip')).toContainText('出力音量を測る');
     await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).hover();
     await expect(page.getByRole('tooltip')).toContainText('出力レベルを大きく見る');
+    await actions.click();
     await register.click();
     const dialog = page.getByRole('dialog', { name: '設定', exact: true });
     await expect(dialog.getByRole('tab', { name: '音づくり', exact: true })).toHaveAttribute('data-state', 'active');
@@ -58,19 +60,21 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await page.keyboard.press('Escape');
     const live = page.getByRole('region', { name: '本番', exact: true });
     const modes = live.getByRole('group', { name: 'モード切替', exact: true });
-    await expect(modes.getByRole('button', { name: '歌唱モード', exact: true })).toBeEnabled();
-    await expect(modes.getByRole('button', { name: '雑談モード', exact: true })).toBeDisabled();
-    await expect(live.getByRole('button', { name: '歌・雑談の登録を編集', exact: true })).toBeFocused();
-    await live.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).click();
+    await expect(modes.getByRole('button', { name: '歌', exact: true })).toBeEnabled();
+    await expect(modes.getByRole('button', { name: '雑談', exact: true })).toBeDisabled();
+    await expect(actions).toBeFocused();
+    await actions.click();
+    await page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).click();
     await expect(saveTalk).toBeInViewport();
     await saveTalk.click();
     await expect(section.getByText('登録済み', { exact: true })).toHaveCount(2);
     await page.keyboard.press('Escape');
-    await expect(modes.getByRole('button', { name: '雑談モード', exact: true })).toBeEnabled();
+    await expect(modes.getByRole('button', { name: '雑談', exact: true })).toBeEnabled();
     await expect.poll(() => page.evaluate(() => (window as any).__e2eModeWrites.length)).toBe(2);
     await expect(register).toHaveCount(0);
-    await live.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).hover();
-    await expect(page.getByRole('tooltip')).toHaveText('歌・雑談の登録を編集');
+    await actions.click();
+    await expect(page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
 });
 
 test('設定の通常操作を先に置き、アイコンと必要時の説明で意味を確認できる', async ({ page }, testInfo) => {

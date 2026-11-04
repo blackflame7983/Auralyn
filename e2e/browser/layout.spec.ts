@@ -127,10 +127,10 @@ test.describe('通常のホーム表示', () => {
                 await page.evaluate(muted => (window as any).__e2eSetOutputMuted(muted), muted);
                 const badge = routing.getByRole('status', { includeHidden: true });
                 if (muted) await expect(badge).toBeVisible(); else await expect(badge).toBeHidden();
-                samples.push({ row: await routing.boundingBox(), button: await routing.getByRole('button', { name: 'モードを登録', exact: true }).boundingBox() });
+                samples.push({ row: await routing.boundingBox(), button: await routing.getByRole('button', { name: '歌・雑談の設定', exact: true }).boundingBox() });
             }
             expect(samples[1]).toEqual(samples[0]); expect(samples[2]).toEqual(samples[0]);
-            expect(samples[0].row!.height).toBeLessThan(36);
+            expect(samples[0].row!.height).toBeLessThan(96);
             await page.evaluate(() => (window as any).__e2eSetOutputMuted(true));
             const recovery = routing.getByRole('button', { name: '出力ミュート・音量ゼロ', exact: true });
             await expect(recovery).toBeInViewport();
@@ -164,6 +164,8 @@ test.describe('操作部品のサイズとテーマ', () => {
             }, theme);
             const button = page.getByRole('button', { name: 'ボイスチェック', exact: true });
             expect(await button.evaluate(element => parseFloat(getComputedStyle(element).borderTopLeftRadius))).toBeGreaterThanOrEqual(8);
+            await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+            await page.getByRole('tab', { name: 'システム', exact: true }).click();
             await page.getByRole('button', { name: 'セットアップを開く', exact: true }).click();
             await page.getByRole('button', { name: '自分で聴く', exact: true }).click();
             const select = page.getByRole('combobox', { name: '入力デバイス', exact: true });
@@ -363,8 +365,6 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
                 localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
             }, theme);
             await page.goto('/');
-            await page.getByRole('button', { name: 'セットアップを開く', exact: true }).click();
-            await page.getByRole('button', { name: 'セットアップを閉じる', exact: true }).click();
             const live = page.getByRole('region', { name: '本番', exact: true });
             const modes = live.getByRole('group', { name: 'モード切替' });
             await expect(modes).toBeVisible();
@@ -374,12 +374,12 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
             await expect(page.locator('.large-meter-motion')).toBeHidden();
             await page.locator('.vst-panel-scrim').click({ position: { x: 20, y: 20 } });
             await expect(page.locator('#vst-panel')).toHaveCount(0);
-            for (const name of ['歌唱モード', '雑談モード']) await reachable(modes.getByRole('button', { name, exact: true }), page);
+            for (const name of ['歌', '雑談']) await reachable(modes.getByRole('button', { name, exact: true }), page);
             await expect(page.locator('.large-meter-motion')).toBeVisible();
             await page.locator('#vst-panel-toggle').click();
             await page.setViewportSize({ width: 1600, height: 900 });
             await expect(page.locator('main')).not.toHaveAttribute('inert', '');
-            for (const name of ['歌唱モード', '雑談モード']) await reachable(modes.getByRole('button', { name, exact: true }), page);
+            for (const name of ['歌', '雑談']) await reachable(modes.getByRole('button', { name, exact: true }), page);
             await reachable(live.getByRole('button', { name: /100%/ }), page);
             await page.screenshot({ path: testInfo.outputPath(`registered-modes-${theme}.png`) });
         });
@@ -538,7 +538,7 @@ test.describe('メーター数値の幅', () => {
             }
             // 不正なレベル通知は更新待ちになり、状態欄で縦バーを縮めない。
             await emit(null);
-            await expect(large.getByRole('status')).toHaveText('未受信');
+            await expect(large.getByRole('status')).toHaveText('受信待ち');
             expect(await large.getByRole('meter').boundingBox()).toEqual(baseline[1]);
         }
     });

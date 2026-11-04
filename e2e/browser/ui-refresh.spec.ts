@@ -20,7 +20,7 @@ for (const theme of ['dark', 'light', 'gaming']) {
         expect((await prep.boundingBox())!.height).toBeLessThan(55);
         await expect(page.getByRole('radio')).toHaveCount(0);
         await expect(page.getByRole('button', { name: message('ja', 'header.setupOpen'), exact: true })).toHaveCount(0);
-        for (const key of ['header.emergency', 'settings.LiveModeControls.212', 'settings.LiveModeControls.213', 'home.singingSetup'] as const) {
+        for (const key of ['header.emergency', 'liveBar.singing', 'liveBar.talk', 'liveBar.actions'] as const) {
             await expect(page.getByRole('button', { name: message('ja', key), exact: true })).toBeInViewport();
         }
         await expect(page.getByRole('button', { name: message('ja', 'home.voiceCheck'), exact: true })).toBeInViewport();
@@ -30,7 +30,8 @@ for (const theme of ['dark', 'light', 'gaming']) {
         await prep.getByRole('button', { name: message('ja', 'prep.steps') }).click();
         await expect(prep.getByRole('region', { name: message('ja', 'flow.diagram') })).toContainText('CABLE Output');
         await expect(prep).toContainText(message('ja', 'flow.receiverUnknown'));
-        await page.getByRole('button', { name: message('ja', 'home.singingSetup') }).click();
+        await page.getByRole('button', { name: message('ja', 'liveBar.actions'), exact: true }).click();
+        await page.getByRole('button', { name: message('ja', 'home.singingSetup'), exact: true }).click();
         await expect(page.locator('#mixing-settings')).toHaveAttribute('open', '');
         await expect(page.locator('#mixing-settings > summary')).toBeFocused();
     });

@@ -145,14 +145,36 @@ it('プロファイルを選んで明示保存し、バックアップとVSTな�
     ]);
     function Panel() { return <LiveModeControls model={useLiveModes()} initiallyOpen />; }
     render(<Panel />);
-    const selector = await screen.findByRole('combobox', { name: /歌.*VST プロファイル/ });
+    fireEvent.click(screen.getAllByText('一緒に切り替える VST')[0]);
+    const selector = await screen.findByRole('combobox', { name: /歌.*一緒に切り替える VST/ });
     await screen.findAllByRole('option', { name: '歌用' });
     expect(screen.queryByRole('option', { name: 'backup' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'no-vst' })).not.toBeInTheDocument();
     fireEvent.change(selector, { target: { value: '歌用' } });
     expect(screen.getByText(/切替中は音が止まります/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /歌.*関連付けを保存/ }));
+    fireEvent.click(screen.getByRole('button', { name: /歌.*組み合わせを保存/ }));
     await waitFor(() => expect(liveModesApi.request).toHaveBeenCalledWith({ action: 'bind_profile', expectedVersion: '7', mode: 'singing', name: '歌用' }));
+});
+it('VST の選択は状態の再取得と保存失敗を経ても開いたまま維持する', async () => {
+    const config = { active: true, preset: 'broadcast' as const, amount: 0.7, singing: null, reverb: null };
+    vi.mocked(liveModesApi.request).mockImplementation(async request => {
+        if (request.action === 'bind_profile') throw new Error('binding failed');
+        return liveSnapshot({ definitions: { schemaVersion: 1, version: '7', singing: config, talk: null } });
+    });
+    vi.spyOn(presetApi, 'listProfiles').mockResolvedValue([{ name: '歌用', hasPlugins: true, isBackup: false, hasAudioConfig: false, hasNoiseControl: false, hasBuiltinFx: false }]);
+    function Panel() { return <LiveModeControls model={useLiveModes()} />; }
+    render(<Panel />);
+    const summary = screen.getAllByText('一緒に切り替える VST')[0];
+    fireEvent.click(summary);
+    const selector = await screen.findByRole('combobox', { name: /歌.*一緒に切り替える VST/ });
+    await screen.findAllByRole('option', { name: '歌用' });
+    fireEvent.change(selector, { target: { value: '歌用' } });
+    fireEvent.click(screen.getByText('モードの状態を再取得'));
+    await waitFor(() => expect(selector).toHaveValue('歌用'));
+    fireEvent.click(screen.getByRole('button', { name: /歌.*組み合わせを保存/ }));
+    await screen.findByRole('alert');
+    expect(summary.closest('details')).toHaveAttribute('open');
+    expect(selector).toHaveValue('歌用');
 });
 it('未登録でも復旧を表示し切替中は通常操作を拒否する', async () => {
     const transaction = { id: 'tx', phase: 'recovery_required', target: null, error: '確認', recoveryAvailable: true };
@@ -183,7 +205,7 @@ it('復旧済み失敗の後は操作を再試行できる', async () => {
     expect(liveModesApi.request).toHaveBeenCalledWith({ action: 'bind_profile', expectedVersion: '3', mode: 'singing', name: 'voice' });
     function Panel() { return <LiveModeBar model={useLiveModes()} />; }
     render(<Panel />);
-    expect(await screen.findByRole('button', { name: '歌唱モード' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: '歌' })).toBeEnabled();
 });
 it('手動復旧待ちでは通常操作を拒否し復旧だけを送る', async () => {
     vi.mocked(liveModesApi.request).mockResolvedValue(liveSnapshot({ transaction: { id: 'tx', phase: 'recovery_required', target: null, error: null, recoveryAvailable: true } }));
@@ -200,6 +222,7 @@ it('一覧取得失敗を表示し再取得できる', async () => {
     render(<Panel />);
     expect(await screen.findByText('プロファイル一覧を取得できませんでした。')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'プロファイル一覧を再取得' }));
+    screen.getAllByText('一緒に切り替える VST').forEach(summary => fireEvent.click(summary));
     expect(await screen.findAllByRole('option', { name: '歌用' })).toHaveLength(2);
     expect(screen.queryByText('プロファイル一覧を取得できませんでした。')).not.toBeInTheDocument();
 });

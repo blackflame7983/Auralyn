@@ -27,12 +27,13 @@ interface HomePanelsProps {
     /** 聴いて確認する入口。音楽鑑賞では聴き比べ、配信・通話では声の確認を開く。 */
     onListen: () => void;
     onSetup?: () => void;
+    onExpandedChange?: (open: boolean) => void;
 }
 
 // 準備の確認と経路の要約。声の調整と音の流れはチェーン列（SoundChain）に置く。
 // 入力メーターは本番帯（LiveStrip）に置き、ここでは重ねない。
 export function HomePanels({ homeActionInStrip, destinationRequest, model, audioReady, statusText, inputName, outputName,
-    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onListen, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onCheckOutput, onSetup }: HomePanelsProps) {
+    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onListen, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onCheckOutput, onSetup, onExpandedChange }: HomePanelsProps) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
@@ -45,7 +46,7 @@ export function HomePanels({ homeActionInStrip, destinationRequest, model, audio
     const broadcastId = model.observation.routing?.deviceId;
     const broadcastName = useOutputDeviceName(broadcastId);
     return <div className="mb-4 space-y-4">
-        <PreparationPanel homeActionInStrip={homeActionInStrip} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
+        <PreparationPanel homeActionInStrip={homeActionInStrip} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onExpandedChange={onExpandedChange} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
             onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText}
             devices={actualInput || actualOutput ? `${actualInput ? deviceDisplayName(actualInput) : t('master.unset')} → ${actualOutput ? deviceDisplayName(actualOutput) : t('master.unset')}` : undefined}
             signalSummary={<section aria-label={t('prep.signalPath')} className="space-y-2">

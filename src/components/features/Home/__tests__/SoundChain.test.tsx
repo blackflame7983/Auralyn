@@ -24,6 +24,17 @@ const stats = (): EngineRuntimeStats => ({ queueDiagnostics: { state: 'running',
         vst: [{ id: 'one', name: 'EQ', state: 'active', declaredSamples: 0 }],
     },
 } } as unknown as EngineRuntimeStats);
+
+it('一部のVST状態だけが不明でも声の操作を禁止と案内せず、設定へ進める', () => {
+    const current = stats(); current.latencyMetadata!.stageBreakdown!.vst[0].state = 'unavailable';
+    const p = props(); const settings = vi.fn();
+    render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} audioReady onOpenSoundSettings={settings} /></RuntimeStatsContext.Provider>);
+    expect(screen.getByText(message('ja', 'home.checkUnavailable'))).toBeVisible();
+    expect(screen.queryByText(message('ja', 'home.voiceUnavailable'))).not.toBeInTheDocument();
+    expect(screen.getByText('noise-switch')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'home.moreSound') }));
+    expect(settings).toHaveBeenCalledOnce();
+});
 const model = (): PreparationModel => ({ context: { ...context, usage: 'obs' }, observation: buildPreparationObservation(audioState, runtime(), liveStatus, context), records: {}, checking: false, confirming: false,
     confirm: vi.fn(), unconfirm: vi.fn(), refresh: vi.fn(), reset: vi.fn(), changeContext: vi.fn() });
 const props = () => ({ model: model(), audioReady: false, isEngineRunning: true, listenOpen: false, onListen: vi.fn(), onListenClose: vi.fn(),

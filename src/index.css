@@ -8,6 +8,13 @@
 @theme {
   /* フォントは同梱しない。Windows 11 の UI フォントを明示し、英数字と和文の見え方を揃える。 */
   --font-sans: "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Meiryo UI", system-ui, sans-serif;
+  /* ホームと設定で共通の、見出し・操作・補足の3段階。 */
+  --text-ui-heading: 1.25rem;
+  --text-ui-heading--line-height: 1.4;
+  --text-ui-control: 1rem;
+  --text-ui-control--line-height: 1.5;
+  --text-ui-support: 0.8125rem;
+  --text-ui-support--line-height: 1.5;
 
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
@@ -343,13 +350,18 @@
 .sound-chain button[aria-pressed], .live-mode-choice, #emergency-mute {
   transition: background-color var(--motion-base) var(--ease-out), border-color var(--motion-base) var(--ease-out), color var(--motion-base) var(--ease-out), transform var(--motion-base) var(--ease-out);
 }
-.sound-chain button[aria-pressed="true"], .live-mode-choice[aria-pressed="true"] { transform: translateY(-1px); }
-#emergency-mute[aria-pressed="true"] { transform: scale(1.025); }
+/* 選択の移動は共通セグメントの背景で伝え、文字自体は上下させない。 */
+#emergency-mute:active, button[aria-pressed]:active { transform: translateY(2px) scale(0.97); }
 @media (prefers-reduced-motion: reduce) {
   .live-aurora, .live-aurora[data-lit="true"] { transform: none; transition: none; }
   .live-aurora[data-lit="true"] { opacity: 0.65; }
   .sound-chain button[aria-pressed], .live-mode-choice, #emergency-mute { transform: none; transition: none; }
+  #emergency-mute:active, button[aria-pressed]:active { transform: none; transition: none; }
 }
+.settings-surface h3 { font-size: var(--text-ui-heading); line-height: 1.4; font-weight: 600; }
+.settings-surface h4 { font-size: var(--text-ui-control); line-height: 1.5; font-weight: 600; }
+.settings-surface button, .settings-surface select, .settings-surface label { font-size: var(--text-ui-control); }
+.settings-surface .text-xs { font-size: var(--text-ui-support); line-height: 1.5; }
 .gaming .live-aurora {
   display: none;
 }
@@ -435,21 +447,26 @@
 .gaming .sound-chain-row[data-on="true"]::before {
   box-shadow: 0 0 8px hsl(var(--primary) / 0.35);
 }
-/* 高さを活かして本番帯を広げる。小さな窓と、未設定のホームは従来の密度を保つ。 */
-@media (min-height: 900px) {
-  .home-content:has(.live-strip) {
+/* 正常時だけ空いた高さを本番帯へ配分する。手順を開いたときと小さい窓では操作を優先する。 */
+@media (min-height: 720px) and (min-width: 1000px) {
+  .home-content[data-roomy="true"] {
     min-height: 100%;
     display: flex;
     flex-direction: column;
   }
-  .home-content > * { flex-shrink: 0; }
-  .home-content > .live-strip {
+  .home-content[data-roomy="true"] > * { flex-shrink: 0; }
+  .home-content[data-roomy="true"] > .live-strip {
     display: flex;
     flex-direction: column;
     justify-content: center;
     gap: 1.5rem;
+    flex-grow: 1;
+    min-height: 240px;
   }
-  .live-strip .meter-visual { height: clamp(64px, calc(15vh - 70px), 140px) !important; }
+  .live-strip[data-roomy="true"] .live-meter-pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+  .live-strip[data-roomy="true"] .live-output-summary { display: flex; border-left: 0; padding-left: 0; }
+  .live-strip[data-roomy="true"] .meter-visual { height: clamp(64px, calc(15dvh - 40px), 140px) !important; }
+  .live-strip[data-roomy="true"] .live-meter-label { min-width: 4rem; }
 }
 .home-large-meter { display: none; }
 @media (min-height: 1100px) {

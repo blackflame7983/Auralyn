@@ -9,7 +9,7 @@ import { InfoPopover } from '@/components/ui/InfoPopover';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { TabsContent } from '@/components/ui/tabs';
-import { segmentButtonClass } from '@/components/ui/segment';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { NoiseMeasurementPanel } from './NoiseMeasurementPanel';
 import { PeakProtectionPanel } from './PeakProtectionPanel';
 import { SingingControls } from './SingingControls';
@@ -153,7 +153,7 @@ interface SoundSettingsProps {
 }
 export function SoundSettings({ model, engineStats, singingModel, liveModel, isBeginnerMode, settingsBody, soundStart, onClose, onOpenVoiceCheck, onPreviewSinging, onSaveSingingProfile, onOpenMixing }: SoundSettingsProps) {
   const t = useMessages();
-  const { noiseMode, setNoiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, preparingMode, setPreparingMode, singingOpen, setSingingOpen, peakOpen, setPeakOpen } = model;
+  const { noiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, preparingMode, setPreparingMode, singingOpen, setSingingOpen, peakOpen, setPeakOpen } = model;
   return (
           <TabsContent value="sound" className="space-y-4">
             <div className="flex items-center gap-1 text-xs text-muted-foreground"><InfoPopover label={t('settings.soundHelp')}>{t('settings.AudioSettingsModal.092')}</InfoPopover><span aria-hidden="true">{t('settings.soundHelpShort')}</span></div>
@@ -201,26 +201,12 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                   {!engineStats?.noiseReductionEnabled && <p className="text-xs text-muted-foreground">{t('settings.noiseOffHint')}</p>}
                   <div className="min-w-0 space-y-4">
                   <fieldset className="max-w-[22rem] space-y-2"><legend className="sr-only">{t('structure.noise.standard')}</legend>
-                    <div className="inline-flex gap-1.5">
-                      {([
-                        ['low', t('master.nrLow')],
-                        ['high', t('master.nrHigh')]
-                      ] as Array<[NoiseControlMode, string]>).map(([mode, label]) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        aria-pressed={noiseMode === mode}
-                        onClick={() => {
-                          setNoiseMode(mode);
-                          setNoiseMeasurementOpen(mode === 'smart' || mode === 'venue');
-                          applyNoiseControlConfig({ mode });
-                        }}
-                        className={segmentButtonClass(noiseMode === mode)}
-                      >
-                        {label}
-                      </button>
-                      ))}
-                    </div>
+                    <SegmentedControl label={t('structure.noise.standard')}
+                      options={([{ value: 'low', label: t('master.nrLow') }, { value: 'high', label: t('master.nrHigh') }] as Array<{ value: NoiseControlMode; label: string }>)}
+                      value={noiseMode} onValueChange={mode => {
+                        setNoiseMeasurementOpen(false);
+                        void applyNoiseControlConfig({ mode });
+                      }} />
                   </fieldset>
                   {(noiseMode === 'low' || noiseMode === 'high') && <p className="text-xs text-muted-foreground">{t(noiseMode === 'low' ? 'settings.AudioSettingsModal.117' : 'settings.AudioSettingsModal.118')}</p>}
                   <details open={noiseAdvancedOpen} onToggle={event => setNoiseAdvancedOpen(event.currentTarget.open)} className="border-t border-border pt-3">
@@ -240,7 +226,6 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                         type="button"
                         aria-pressed={noiseMode === mode}
                         onClick={() => {
-                          setNoiseMode(mode);
                           setNoiseMeasurementOpen(mode === 'smart' || mode === 'venue');
                           applyNoiseControlConfig({ mode });
                         }}
@@ -326,24 +311,12 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
 
                   {singingModel.snapshot && !singingModel.snapshot.config.active && <p className="text-xs text-muted-foreground">{t('settings.fxOffHint')}</p>}
                   <fieldset disabled={!singingModel.snapshot?.config.active || singingModel.busy} className="space-y-4 disabled:opacity-50">
-                  <div className="inline-flex max-w-full flex-wrap gap-1.5">
-                    {([
-                      ['broadcast', t('settings.AudioSettingsModal.098')],
-                      ['warm', t('settings.AudioSettingsModal.099')],
-                      ['bright', t('settings.AudioSettingsModal.100')],
-                    ] as Array<[BuiltInEffectsPreset, string]>).map(([preset, label]) => (
-                      <button
-                        key={preset}
-                        type="button" aria-pressed={(singingModel.snapshot?.config.preset ?? builtInEffectsPreset) === preset}
-                        disabled={!singingModel.snapshot || singingModel.busy}
-                        onClick={() => {
-                          applyBuiltInEffects({ active: true, preset });
-                        }}
-                        className={segmentButtonClass((singingModel.snapshot?.config.preset ?? builtInEffectsPreset) === preset)}
-                      >
-                        {label}</button>
-                    ))}
-                  </div>
+                  <SegmentedControl label={t('home.chainPreset')}
+                    options={([{ value: 'broadcast', label: t('settings.AudioSettingsModal.098') },
+                      { value: 'warm', label: t('settings.AudioSettingsModal.099') },
+                      { value: 'bright', label: t('settings.AudioSettingsModal.100') }] as Array<{ value: BuiltInEffectsPreset; label: string }>).map(option => ({ ...option, disabled: !singingModel.snapshot || singingModel.busy }))}
+                    value={singingModel.snapshot?.config.preset ?? builtInEffectsPreset}
+                    onValueChange={preset => void applyBuiltInEffects({ active: true, preset })} />
 
                   <div className="w-full max-w-[22rem] space-y-2">
                     {singingModel.snapshot?.config.preset === 'singing' && <p className="text-xs">{t('settings.AudioSettingsModal.102')}</p>}
@@ -387,7 +360,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
               <SingingControls showHeading={false} model={singingModel} onPreview={onPreviewSinging} onSaveProfile={onSaveSingingProfile} />
               {preparingMode === 'singing' && <button type="button" className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted" onClick={() => {
                 const target = settingsBody.current?.querySelector<HTMLElement>('#live-mode-settings');
-                if (target) { target.scrollIntoView?.({ block: 'start' }); target.focus({ preventScroll: true }); }
+                if (target) { target.scrollIntoView?.({ block: 'start' }); (target.querySelector<HTMLElement>('h3') ?? target).focus({ preventScroll: true }); }
               }}>{t('settings.mode.return')}</button>}
             </details>
             {/* 出力の安全装置は上級設定。数値の詳細を出さない間は閉じた欄に置く。 */}

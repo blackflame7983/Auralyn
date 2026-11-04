@@ -7,6 +7,7 @@ import { buttonVariants } from '@/components/ui/button';
 import { receiverDeviceNotice, deviceDisplayName } from '../../../lib/audioRouting';
 import { Modal } from '../../ui/modal';
 import { AudioFlow } from '../../ui/AudioFlow';
+import { InfoPopover } from '../../ui/InfoPopover';
 import React, { useEffect, useRef } from 'react';
 import { DiscordIcon } from '../../ui/DiscordIcon';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
@@ -420,6 +421,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 <legend className="mb-2 font-semibold">
                                     {t('wizard.display')}
                                 </legend>
+                                <InfoPopover label={t('wizard.display')}>{t('wizard.displayHint')}</InfoPopover>
                                 <label className="flex items-center justify-center gap-2">
                                     <input
                                         type="radio"
@@ -438,9 +440,6 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     />
                                     {t('wizard.advanced')}
                                 </label>
-                                <p className="text-xs text-muted-foreground">
-                                    {t('wizard.displayHint')}
-                                </p>
                             </fieldset>
                             {onOpenTroubleshoot && <button disabled={isBusy || isCheckingConnection} onClick={() => void performClose(onOpenTroubleshoot)} className="underline text-primary">{t('guide.wizard.openDiagnostics')}</button>}
 

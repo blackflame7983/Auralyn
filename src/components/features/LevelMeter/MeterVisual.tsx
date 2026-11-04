@@ -14,6 +14,11 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
     // 無音通知の後もバーはなめらかに減衰するが、その残値を極端なdBFS値として表示しない。
     const db = toDbfs(reading.state === 'silent' ? 0 : amplitude);
     const text = current ? `${Number.isFinite(db) ? db.toFixed(1) : '−∞'} dBFS` : t(meterStatusLabel(reading.state));
+    const statusText = t(meterStatusLabel(reading.state));
+    const accessibleText = `${reading.state === 'silent' ? `${statusText}: ${text}` : text}${reading.clipped ? ` — ${t('meter.clip')}` : ''}`;
+    const displayText = orientation === 'horizontal' && reading.state !== 'live'
+        ? t(reading.state === 'waiting' || reading.state === 'stale' ? 'meter.waitingShort' : meterStatusLabel(reading.state))
+        : current && numbers ? text : '';
     const bars = orientation === 'horizontal' ? [Math.max(...reading.levels)] : reading.levels;
     const peaks = orientation === 'horizontal' ? [Math.max(...reading.peak)] : reading.peak;
     // 大型の縦表示では値と解除ボタンを下に置き、狭いサイドバーでもバー幅を保つ。
@@ -41,7 +46,7 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
     return <div className={`flex min-w-0 items-center gap-1 ${stacked ? 'h-full min-h-0 flex-col' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`}>
         <div ref={scaleRef} role="meter" aria-label={label} aria-valuemin={-60} aria-valuemax={0}
             aria-valuenow={current ? Math.max(-60, Math.min(0, Number.isFinite(db) ? db : -60)) : undefined}
-            aria-valuetext={text} title={t(reading.state === 'waiting' || reading.state === 'stale' ? 'meter.waitingHelp' : meterStatusLabel(reading.state))}
+            aria-valuetext={accessibleText} title={reading.state === 'waiting' || reading.state === 'stale' ? `${accessibleText} — ${t('meter.waitingHelp')}` : accessibleText}
             className={`meter-visual flex min-w-0 gap-1 ${stacked ? 'min-h-0 flex-1' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`} style={{ height: stacked ? undefined : height }}>
             {bars.map((value, i) => {
                 const pct = current ? Math.min(100, Math.max(0, value * 100)) : 0;
@@ -60,8 +65,8 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
                     style={{ top: `clamp(0px, calc(${100 - Math.pow(10, mark / 20) * 100}% - 0.5rem), calc(100% - 1rem))` }}>{mark}</span>)}
             </div>}
         </div>
-        {/* 桁数・無音・更新待ちでバーの長さを変えないよう、値の欄は常に同じ幅と高さを確保する。 */}
-        {showValues && (numbers || orientation === 'horizontal') && <span title={text} className={`inline-block h-4 ${numbers ? 'w-[12ch] font-mono tabular-nums' : 'w-[5em]'} shrink-0 truncate text-right text-xs leading-4 text-muted-foreground`}>{orientation === 'horizontal' && reading.state !== 'live' ? t(meterStatusLabel(reading.state)) : current && numbers ? text : ''}</span>}
+        {/* 状態は省略せず折り返し、狭い横表示でもバーの幅を確保する。 */}
+        {showValues && (numbers || orientation === 'horizontal') && <span title={accessibleText} data-meter-status className={`min-w-0 max-w-[12ch] basis-[12ch] shrink break-words text-right text-xs leading-4 text-muted-foreground ${numbers ? 'font-mono tabular-nums' : ''}`}>{displayText}</span>}
         {scale && <span className="sr-only">0, −6, −12, −24, −48 dBFS</span>}
         {/* 警告の有無で横バーの幅・縦バーの高さを変えない。解除操作の場所も固定する。 */}
         <span className="inline-flex h-5 w-6 shrink-0 items-center justify-center">
