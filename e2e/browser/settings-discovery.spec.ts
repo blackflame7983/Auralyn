@@ -44,7 +44,7 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await expect(dialog.getByRole('tab', { name: '音づくり', exact: true })).toHaveAttribute('data-state', 'active');
     const section = dialog.locator('#live-mode-settings');
     await expect(section.getByRole('heading', { name: 'モード登録', exact: true })).toBeFocused();
-    const saveSinging = section.getByRole('button', { name: '適用済み設定を歌唱モードへ登録', exact: true });
+    const saveSinging = section.getByRole('button', { name: '適用済み設定を歌モードへ登録', exact: true });
     const saveTalk = section.getByRole('button', { name: '適用済み設定を雑談モードへ登録', exact: true });
     await expect(saveSinging).toBeInViewport();
     await expect(saveTalk).toBeInViewport();

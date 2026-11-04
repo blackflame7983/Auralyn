@@ -12,9 +12,9 @@ export function DisplayPurposeSelector() {
     const t = useMessages();
     const [purpose, setPurpose] = useDisplayPurpose();
     return <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-        <label className="flex items-center gap-3">{t('purpose.label')}
+        <label className="flex items-center gap-3 text-ui-control">{t('purpose.label')}
             <select value={purpose} onChange={event => setPurpose(event.target.value as DisplayPurpose)} aria-describedby="display-purpose-hint"
-                className="rounded border border-border bg-background px-2 py-1">
+                className="rounded border border-border bg-background px-2 py-1 text-ui-control">
                 <option value="voice">{t('purpose.voice')}</option><option value="music">{t('purpose.music')}</option>
             </select>
         </label>
@@ -30,7 +30,7 @@ export function NumericDetailsSwitch() {
     const [isBeginnerMode, setIsBeginnerMode] = useBeginnerMode();
     return <div className="mb-3 space-y-1 text-sm">
         <div className="flex items-center gap-3">
-            <Label htmlFor="numeric-details">{t('details.label')}</Label>
+            <Label className="text-ui-control" htmlFor="numeric-details">{t('details.label')}</Label>
             <Switch id="numeric-details" checked={!isBeginnerMode} onCheckedChange={checked => setIsBeginnerMode(!checked)} aria-describedby="numeric-details-hint" />
             <InfoPopover label={t('details.label')}>{t('details.hint')}</InfoPopover>
         </div>
@@ -44,7 +44,7 @@ export function AuroraDisplaySwitch() {
     const [shown, setShown] = useAuroraDisplay();
     return <div className="mb-3 space-y-1 text-sm">
         <div className="flex items-center gap-3">
-            <Label htmlFor="aurora-display">{t('aurora.label')}</Label>
+            <Label className="text-ui-control" htmlFor="aurora-display">{t('aurora.label')}</Label>
             <Switch id="aurora-display" checked={shown} onCheckedChange={setShown} aria-describedby="aurora-display-hint" />
             <InfoPopover label={t('aurora.label')}>{t('aurora.hint')}</InfoPopover>
         </div>

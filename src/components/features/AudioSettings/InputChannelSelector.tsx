@@ -98,9 +98,9 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
         const measured = monitorEnabled && monitorState === 'receiving' && right < measuredCount;
         const hasSignal = activeChannels.includes(left) || activeChannels.includes(right);
         pairs.push(
-            <label key={left} hidden={!showAllPairs && loopLimit > 8 && left >= 8 && !isSelected && !hasSignal && focusedPair !== left} className={`input-channel-pair flex items-center gap-2 p-2 rounded-md cursor-pointer border focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background ${isSelected
+            <label key={left} hidden={!showAllPairs && loopLimit > 8 && left >= 8 && !isSelected && !hasSignal && focusedPair !== left} className={`${`input-channel-pair flex items-center gap-2 p-2 rounded-md cursor-pointer border focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background ${isSelected
                 ? 'bg-selection/15 border-selection text-selection'
-                : 'bg-card border-border text-foreground hover:bg-muted dark:bg-muted/30 dark:border-transparent dark:text-muted-foreground dark:hover:bg-muted/50'}`}>
+                : 'bg-card border-border text-foreground hover:bg-muted dark:bg-muted/30 dark:border-transparent dark:text-muted-foreground dark:hover:bg-muted/50'}`} text-ui-control`}>
                 <input
                     type="radio"
                     name={groupId}
@@ -113,9 +113,9 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
                     aria-describedby={`${groupId}-signal-${left}`}
                     className="shrink-0 accent-primary"
                 />
-                <span className="flex-1 text-xs flex flex-col min-w-0">
+                <span className="flex-1 text-ui-support flex flex-col min-w-0">
                     <span className="font-mono">{t('settings.channel.input', { left: left + 1, right: right + 1 })}</span>
-                    <span id={`${groupId}-signal-${left}`} className={`text-xs mt-0.5 ${hasSignal ? 'text-success' : 'text-muted-foreground'}`}>
+                    <span id={`${groupId}-signal-${left}`} className={`text-ui-support mt-0.5 ${hasSignal ? 'text-success' : 'text-muted-foreground'}`}>
                         {!measured ? t('settings.InputChannelSelector.notMeasured') : hasSignal ? t('settings.InputChannelSelector.203') : t('settings.InputChannelSelector.204')}
                     </span>
                 </span>
@@ -126,11 +126,11 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
     return (
         <div className="space-y-3 p-4 bg-muted dark:bg-background/50 rounded-lg border border-border">
             <div className="flex items-center gap-1">
-            <h3 className="text-sm font-bold flex items-center gap-2 text-foreground">
+            <h3 className="flex items-center gap-2 text-foreground text-ui-heading font-semibold">
                 <MdGraphicEq className="text-primary" aria-hidden="true" />{t('settings.InputChannelSelector.205')}</h3>
                 {maxChannels !== 0 && <InfoPopover label={t('settings.inputPairHelp')}>{t('settings.InputChannelSelector.210')}</InfoPopover>}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-ui-support text-muted-foreground">
                 {maxChannels === 0 ? t('settings.InputChannelSelector.unverified')
                     : monitorState === 'error' ? t('settings.InputChannelSelector.206')
                     : !monitorEnabled ? t('settings.InputChannelSelector.differentDevice')
@@ -138,12 +138,12 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
                         : monitorState === 'waiting' ? t('settings.InputChannelSelector.208')
                             : t('settings.InputChannelSelector.209')}
             </p>
-            {monitorState === 'error' && <button type="button" className="rounded-md border border-border px-3 py-1.5 text-xs"
+            {monitorState === 'error' && <button type="button" className="rounded-md border border-border px-3 py-1.5 text-ui-support"
                 onClick={() => {
                     if (monitorEnabled) setRetryRevision(value => value + 1);
                     else void retryChannelScan().then(() => { if (mounted.current) setMonitorState('starting'); }).catch(() => {});
                 }}>{t('common.retry')}</button>}
-            {maxChannels !== 0 && <p id={`${groupId}-help`} className="text-xs text-muted-foreground leading-relaxed">
+            {maxChannels !== 0 && <p id={`${groupId}-help`} className="text-ui-support text-muted-foreground leading-relaxed">
                 {t('settings.inputPairHint')}</p>}
             {maxChannels !== 0 && <fieldset id={`${groupId}-pairs`} aria-describedby={`${groupId}-help`}>
                 <legend className="sr-only">{t('settings.InputChannelSelector.211')}</legend>
@@ -152,7 +152,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
                 </div>
             </fieldset>}
             {loopLimit > 8 && <button type="button" aria-expanded={showAllPairs} aria-controls={`${groupId}-pairs`}
-                onClick={() => setShowAllPairs(value => !value)} className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted">
+                onClick={() => setShowAllPairs(value => !value)} className="rounded-md border border-border px-3 py-1.5 hover:bg-muted text-ui-support">
                 {t(showAllPairs ? 'settings.inputPairsLess' : 'settings.inputPairsAll')}
             </button>}
         </div>

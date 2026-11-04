@@ -126,7 +126,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 onClick={handleToggleMute}
                                 aria-label={t('header.emergency')}
                                 aria-describedby={isGlobalMuted ? 'header-mute-state' : undefined}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border font-bold text-sm shadow-sm text-foreground ${isGlobalMuted
+                                className={`press-feedback flex items-center gap-2 px-3 py-1.5 rounded-full border font-bold text-sm shadow-sm text-foreground ${isGlobalMuted
                                     ? 'bg-destructive/10 border-destructive ring-2 ring-destructive/50'
                                     : 'bg-background hover:bg-destructive/10 border-destructive/30 hover:border-destructive hover:shadow-destructive/20'
                                     }`}

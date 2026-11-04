@@ -132,7 +132,7 @@ it.each([true, false])('音づくりの基本を先に置き、歌向けの欄�
     expect(noise).toHaveFocus();
     expect(screen.getByText('歌向けに整える').closest('details')).not.toHaveAttribute('open');
     expect(screen.getByRole('heading', { name: 'モード登録' })).toBeVisible();
-    expect(screen.getByRole('button', { name: '適用済み設定を歌唱モードへ登録' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '適用済み設定を歌モードへ登録' })).toBeVisible();
     expect(screen.queryByRole('combobox', { name: '表示言語' })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('tab', { name: '外観' }), { key: 'Enter' });
     expect(screen.getByRole('combobox', { name: '表示言語' })).toBeInTheDocument();

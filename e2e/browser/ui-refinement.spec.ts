@@ -14,6 +14,8 @@ async function prepare(page: Page, theme = 'dark', locale: 'ja' | 'en' = 'ja') {
         let mode: string | null = null, nextMode: string | null = null, pendingReads = 0, armed = false, muted = false, noiseMode = 'low', preset = 'broadcast';
         (window as any).__refineActions = []; (window as any).__refineUnknown = false;
         (window as any).__TAURI_INTERNALS__.invoke = async (command: string, args: any) => {
+            if (command === 'obs_setup_history') return [];
+            if (command === 'disconnect_obs') return;
             if (command === 'set_noise_control_config') { noiseMode = args.mode; (window as any).__refineActions.push(command); return; }
             if (command === 'set_built_in_effects') { preset = args.preset; (window as any).__refineActions.push(command); return; }
             if (command === 'toggle_global_mute') { muted = !muted; (window as any).__e2eSetOutputMuted(muted); (window as any).__e2eEmit('global-mute-changed', muted); return; }
@@ -59,6 +61,12 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
         expect(await page.locator('main').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
         if (size.width === 1280) {
             expect((await live.getByRole('meter').first().boundingBox())!.height).toBeGreaterThanOrEqual(64);
+            const bars = await live.getByRole('meter').evaluateAll(nodes => nodes.map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right }; }));
+            expect(bars).toHaveLength(2);
+            expect(Math.abs(bars[0].left - bars[1].left)).toBeLessThanOrEqual(1);
+            expect(Math.abs(bars[0].right - bars[1].right)).toBeLessThanOrEqual(1);
+            const distances = await live.locator('[data-meter-status]').evaluateAll(nodes => nodes.map(el => el.getBoundingClientRect().left - el.previousElementSibling!.getBoundingClientRect().right));
+            expect(distances.every(distance => distance >= 0 && distance <= 8)).toBe(true);
             const box = await live.boundingBox(); expect(box!.height).toBeGreaterThan(250);
             await expect(page.getByRole('region', { name: message('ja', 'prep.title'), exact: true })).toBeInViewport();
         }
@@ -97,6 +105,34 @@ for (const locale of ['ja', 'en'] as const) test(`900x600の150%で状態文字�
     await page.screenshot({ path: info.outputPath('zoom-mode-cards.png') });
 });
 
+for (const theme of ['light', 'dark', 'gaming']) test(`設定の階層と明示スタイルを150%で維持する ${theme}`, async ({ page }, info) => {
+    await page.setViewportSize({ width: 900, height: 600 }); await prepare(page, theme);
+    await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
+    const live = page.getByRole('region', { name: message('ja', 'live.strip'), exact: true });
+    const modes = live.getByRole('group', { name: message('ja', 'liveBar.mode') });
+    const custom = modes.locator('[aria-current=true]');
+    expect(await custom.evaluate(el => el.parentElement!.querySelector('[data-segment-indicator]')!.parentElement!.contains(el))).toBe(false);
+    await modes.getByRole('button', { name: '歌', exact: true }).click();
+    await expect(modes.getByRole('button', { name: '歌', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    const marker = modes.locator('[data-segment-indicator]');
+    // 拡大時の境界線は物理ピクセルに丸められるため、CSS上の厳密な3px比較はしない。
+    expect(await marker.evaluate(el => parseFloat(getComputedStyle(el).borderBottomWidth))).toBeGreaterThanOrEqual(2.5);
+    await page.getByRole('button', { name: '設定を開く', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '設定', exact: true });
+    const input = dialog.getByRole('group', { name: '入力元と用途', exact: true });
+    await expect(input).toBeVisible();
+    expect(await input.locator('legend').evaluate(el => getComputedStyle(el).fontSize)).toBe('20px');
+    expect(await input.getByRole('combobox', { name: '入力元', exact: true }).evaluate(el => getComputedStyle(el).fontSize)).toBe('16px');
+    await page.screenshot({ path: info.outputPath('audio-zoom.png') });
+    for (const tab of ['settings.sound', 'settings.obs', 'settings.shortcuts', 'settings.system', 'settings.appearance'] as const) {
+        await dialog.getByRole('tab', { name: message('ja', tab), exact: true }).click();
+        const headings = dialog.getByRole('tabpanel').getByRole('heading', { level: 3 });
+        expect(await headings.evaluateAll(nodes => nodes.filter(el => parseFloat(getComputedStyle(el).fontSize) < 20).map(el => ({ text: el.textContent, size: getComputedStyle(el).fontSize })))).toEqual([]);
+        expect(await dialog.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+        await page.screenshot({ path: info.outputPath(`${tab}-zoom.png`) });
+    }
+});
+
 test('選択背景が確定値へ移動し、ミュート押下と動きを減らす設定を守る', async ({ page }, info) => {
     await page.setViewportSize({ width: 1280, height: 800 }); await prepare(page);
     const noise = page.getByRole('group', { name: message('ja', 'structure.noise.standard') });
@@ -114,6 +150,10 @@ test('選択背景が確定値へ移動し、ミュート押下と動きを減�
     await modes.getByRole('button', { name: message('ja', 'liveBar.singing'), exact: true }).click();
     await expect(modes.getByRole('button', { name: message('ja', 'liveBar.singing'), exact: true })).toHaveAttribute('aria-pressed', 'true');
     expect(await modeMarker!.evaluate(el => el.isConnected)).toBe(true);
+    const protect = page.getByRole('button', { name: message('ja', 'liveBar.protect'), exact: true });
+    await protect.hover(); await page.mouse.down();
+    expect(await protect.evaluate(el => getComputedStyle(el).transform)).toBe('none');
+    await page.mouse.move(1, 1); await page.mouse.up();
     const mute = page.getByRole('button', { name: message('ja', 'header.emergency'), exact: true });
     await mute.hover(); await page.mouse.down();
     await expect.poll(() => mute.evaluate(el => getComputedStyle(el).transform)).not.toBe('none');

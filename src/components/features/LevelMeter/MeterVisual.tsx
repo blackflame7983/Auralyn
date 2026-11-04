@@ -66,7 +66,7 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
             </div>}
         </div>
         {/* 状態は省略せず折り返し、狭い横表示でもバーの幅を確保する。 */}
-        {showValues && (numbers || orientation === 'horizontal') && <span title={accessibleText} data-meter-status className={`min-w-0 max-w-[12ch] basis-[12ch] shrink break-words text-right text-xs leading-4 text-muted-foreground ${numbers ? 'font-mono tabular-nums' : ''}`}>{displayText}</span>}
+        {showValues && (numbers || orientation === 'horizontal') && <span title={accessibleText} data-meter-status className={`min-w-0 max-w-[12ch] basis-[12ch] shrink break-words text-xs leading-4 text-muted-foreground ${orientation === 'horizontal' ? 'text-left' : 'text-right'} ${numbers ? 'font-mono tabular-nums' : ''}`}>{displayText}</span>}
         {scale && <span className="sr-only">0, −6, −12, −24, −48 dBFS</span>}
         {/* 警告の有無で横バーの幅・縦バーの高さを変えない。解除操作の場所も固定する。 */}
         <span className="inline-flex h-5 w-6 shrink-0 items-center justify-center">

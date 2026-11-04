@@ -53,21 +53,22 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
             <p className="text-ui-support text-muted-foreground">{t('home.startSavedDevices')}</p>
             {meterAction}
         </div> : <div className="live-meter-pair">
-        <div className="live-input-summary flex min-w-0 flex-wrap items-center gap-3">
+        <div className="live-input-summary live-meter-row">
             <span className="live-meter-label flex items-center gap-1.5 text-ui-support text-muted-foreground"><Icon aria-hidden="true" className="h-5 w-5 shrink-0" />{t('live.meterInput')}</span>
             <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues numbers={!simple} />
-            {/* 無音は「声が来ていない」本番事故の手がかりなので、dBFS 値だけにせず言葉でも示す。 */}
-            {/* マイク音量と音量チェックはメーターに関わる操作なので、上部に単独で置かずメーターの横に置く。 */}
-            <InputGainControl disabled={controlsDisabled} />
-            {meterAction}
         </div>
         {/* 広い作業幅では入出力を隣接させる。同じ観測値を共有し、出力音量の操作はフッターへ集約する。 */}
-        <div className="live-output-summary min-w-0 items-center gap-3 border-l border-border pl-4">
+        <div className="live-output-summary live-meter-row">
             <TooltipProvider delayDuration={300}><Tooltip><TooltipTrigger asChild><button type="button" onClick={event => onAdjustOutput?.(event.currentTarget)} aria-label={t('master.outputGain')} aria-haspopup="dialog" aria-expanded={outputGainOpen}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-md p-1 text-ui-support text-muted-foreground hover:bg-muted hover:text-foreground">
+                className="live-meter-label inline-flex items-center gap-1.5 rounded-md py-1 text-ui-support text-muted-foreground hover:bg-muted hover:text-foreground">
                 <MdVolumeUp aria-hidden="true" className="h-5 w-5" />{t('live.meterOutput')}
             </button></TooltipTrigger><TooltipContent>{t('home.adjustOutput')}</TooltipContent></Tooltip></TooltipProvider>
             <MeterVisual reading={outputReading} label={t('meter.output')} orientation="horizontal" height={32} scale showValues numbers={!simple} />
+        </div>
+        {/* 操作は共通の列へ置き、入力・出力のバーが同じ幅になるようにする。 */}
+        <div className="live-meter-actions flex flex-wrap items-center justify-end gap-2">
+            <InputGainControl disabled={controlsDisabled} />
+            {meterAction}
         </div>
         </div>
         }

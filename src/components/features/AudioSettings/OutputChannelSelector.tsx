@@ -13,27 +13,27 @@ export function OutputChannelSelector({ value, maxChannels, disabled, onChange }
     // 能力が未取得でも保存済みの出力番号を画面から消さない。
     if (!pairs.some(pair => pair[0] === channels[0] && pair[1] === channels[1])) pairs.push([channels[0], channels[1]]);
     return <fieldset disabled={disabled} className="space-y-2 rounded-lg border border-border bg-muted/30 p-4">
-        <legend className="px-1 text-sm font-bold">{t('settings.routing.title')}</legend>
-        <label htmlFor={`${id}-mode`} className="block text-xs text-muted-foreground">{t('settings.routing.mode')}</label>
+        <legend className="px-1 text-ui-heading font-semibold">{t('settings.routing.title')}</legend>
+        <label htmlFor={`${id}-mode`} className="block text-muted-foreground text-ui-control">{t('settings.routing.mode')}</label>
         <select id={`${id}-mode`} value={value.mode} aria-describedby={`${id}-hint`}
             onChange={event => onChange(event.target.value === 'independent'
                 ? { mode: 'independent', channels: [0, maxChannels === 1 ? 0 : 1] } : { mode: event.target.value as 'insert' | 'legacy' })}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-ui-control">
             <option value="independent">{t('settings.routing.independent')}</option>
             <option value="insert">{t('settings.routing.insert')}</option>
             <option value="legacy">{t('settings.routing.legacy')}</option>
         </select>
-        <p id={`${id}-hint`} className="text-xs text-muted-foreground">{t(`settings.routing.${value.mode}Hint`)}</p>
+        <p id={`${id}-hint`} className="text-ui-support text-muted-foreground">{t(`settings.routing.${value.mode}Hint`)}</p>
         {value.mode === 'independent' && <>
-            <label htmlFor={`${id}-channels`} className="block text-xs text-muted-foreground">{t('settings.routing.channels')}</label>
+            <label htmlFor={`${id}-channels`} className="block text-muted-foreground text-ui-control">{t('settings.routing.channels')}</label>
             <select id={`${id}-channels`} value={channels.join(',')} disabled={maxChannels === 0}
                 onChange={event => onChange({ mode: 'independent', channels: event.target.value.split(',').map(Number) as [number, number] })}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-ui-control">
                 {pairs.map(pair => <option key={pair.join(',')} value={pair.join(',')}>
                     {t('settings.routing.pair', { left: pair[0] + 1, right: pair[1] + 1 })}
                 </option>)}
             </select>
         </>}
-        {maxChannels === 0 && <p className="text-xs text-muted-foreground">{t('settings.routing.unverified')}</p>}
+        {maxChannels === 0 && <p className="text-ui-support text-muted-foreground">{t('settings.routing.unverified')}</p>}
     </fieldset>;
 }

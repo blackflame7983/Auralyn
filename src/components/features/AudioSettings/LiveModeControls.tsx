@@ -19,6 +19,8 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
     useEffect(() => model.activate(), [model.activate]);
     const { snapshot: value, error } = model;
     const busy = model.busy || model.changesBlocked;
+    // 登録前の正常時には操作を重複させない。登録がなくても保護の解除と復旧中の状態は残す。
+    const showModeActions = Boolean(value && (value.definitions.singing || value.definitions.talk || value.armed || value.transaction));
     const save = async (mode: 'singing' | 'talk', disableReverb = false) => {
         setNextMode(null);
         setConfirmReverb(false);
@@ -54,8 +56,8 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
                     </div>
                     <details className="space-y-2">
                         <summary className="cursor-pointer text-ui-support">{t('liveTransaction.bindingDetails')}</summary>
-                        <div className="flex items-center gap-1"><label className="block text-ui-support" htmlFor={`profile-${mode}`}>{t('liveTransaction.profileLabel', { mode: name(mode) })}</label><InfoPopover label={t('liveTransaction.bindingDetails')}>{t('liveTransaction.bindingHelp')}</InfoPopover></div>
-                        <select id={`profile-${mode}`} disabled={busy || !saved || profileError} value={selected} onChange={event => setSelection(old => ({ ...old, [mode]: event.target.value }))} className="rounded-md border border-border bg-background px-2 py-1 text-sm">
+                        <div className="flex items-center gap-1"><label className="block text-ui-control" htmlFor={`profile-${mode}`}>{t('liveTransaction.profileLabel', { mode: name(mode) })}</label><InfoPopover label={t('liveTransaction.bindingDetails')}>{t('liveTransaction.bindingHelp')}</InfoPopover></div>
+                        <select id={`profile-${mode}`} disabled={busy || !saved || profileError} value={selected} onChange={event => setSelection(old => ({ ...old, [mode]: event.target.value }))} className="rounded-md border border-border bg-background px-2 py-1 text-ui-control">
                             <option value="">{t('liveTransaction.builtinOnly')}</option>
                             {bound && !profiles.some(profile => profile.name === bound) && <option value={bound}>{bound}</option>}
                             {profiles.map(profile => <option key={profile.name} value={profile.name}>{profile.name}</option>)}
@@ -77,19 +79,16 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
         </div>}
         {nextMode && onAdjust && <button type="button" onClick={() => { setNextMode(null); onAdjust(nextMode); }} className="rounded-md border border-border px-3 py-2 text-ui-support">{t('settings.mode.adjustOther', { mode: name(nextMode) })}</button>}
         {sameSettings && <p className="text-ui-support text-muted-foreground">{t('settings.mode.sameSettings')}</p>}
-        <p role="status">{!value ? t('settings.LiveModeControls.216') : value.phase === 'partial' ? t('liveOutput.partial') : value.phase === 'custom' ? t('settings.LiveModeControls.217')
+        <p role="status" className="text-ui-support">{!value ? t('settings.LiveModeControls.216') : value.phase === 'partial' ? t('liveOutput.partial') : value.phase === 'custom' ? t('settings.LiveModeControls.217')
             : !value.running || value.phase === 'stopped' ? t('settings.LiveModeControls.218', { arg0: name(value.target) })
             : value.phase === 'settled' ? t('settings.LiveModeControls.219', { arg0: name(value.target), arg1: name(value.applied) })
             : t('settings.LiveModeControls.220', { arg0: name(value.target), arg1: value.acceptedRevision === value.revision ? t('settings.LiveModeControls.221') : t('settings.LiveModeControls.222') })}</p>
         {value?.naturalTail && <p>{t('settings.LiveModeControls.223')}</p>}
-        <details className="space-y-3 rounded-lg bg-muted/20 p-3"><summary className="cursor-pointer text-ui-support font-medium">{t('settings.mode.advanced')}</summary>
-        <div className="flex flex-wrap gap-2">{(['singing', 'talk'] as const).map(mode => <button key={mode} type="button" disabled={busy || !value?.definitions[mode]} onClick={() => void model.select(mode)} className="rounded-md border px-3 py-2 disabled:opacity-50">{t('settings.mode.select', { mode: name(mode) })}</button>)}</div>
+        {showModeActions && <details className="space-y-3 rounded-lg bg-muted/20 p-3"><summary className="cursor-pointer text-ui-support font-medium">{t('settings.mode.advanced')}</summary>
+        <div className="flex flex-wrap gap-2">{(['singing', 'talk'] as const).map(mode => <button key={mode} type="button" disabled={busy || !value?.definitions[mode]} onClick={() => void model.select(mode)} className="rounded-md border px-3 py-2 text-ui-control disabled:opacity-50">{t('settings.mode.select', { mode: name(mode) })}</button>)}</div>
         {value && <p>{t('settings.LiveModeControls.225')}{value.armed ? t('settings.LiveModeControls.226') : t('settings.LiveModeControls.227')}{t('settings.LiveModeControls.228')}</p>}
-        <label className="flex items-center gap-2"><input type="checkbox" checked={value?.armed ?? false} disabled={busy || !value} onChange={event => void model.protect(event.target.checked)} />{t('settings.LiveModeControls.229')}</label>
-        </details>
-        <details><summary className="cursor-pointer text-ui-support text-muted-foreground">{t('settings.mode.troubleshoot')}</summary>
-            <button type="button" disabled={busy} onClick={() => void model.refresh()} className="mt-2 rounded border border-border px-3 py-1.5 text-ui-support">{t('settings.LiveModeControls.236')}</button>
-        </details>
+        <label className="flex items-center gap-2 text-ui-control"><input type="checkbox" checked={value?.armed ?? false} disabled={busy || !value} onChange={event => void model.protect(event.target.checked)} />{t('settings.LiveModeControls.229')}</label>
+        </details>}
         {(error || value?.error) && <div className="space-y-2"><p role="alert">{error || t('liveNotices.operationFailed')}</p>
             <button type="button" disabled={busy} onClick={() => void model.refresh()} className="rounded-md border border-border px-3 py-1.5 text-ui-support">{t('settings.LiveModeControls.236')}</button>
             {(model.errorDetail || value?.error) && <details><summary className="cursor-pointer text-ui-support">{t('settings.mode.errorDetails')}</summary><p className="mt-2 break-words text-ui-support text-muted-foreground">{model.errorDetail || value?.error}</p></details>}
@@ -99,7 +98,7 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
 export function LiveModeControls({ model, onAdjust }: { model: LiveModesModel; initiallyOpen?: boolean; onAdjust?: (mode: 'singing' | 'talk') => void }) {
     const t = useMessages();
     return <section id="live-mode-settings" tabIndex={-1} className="mb-3 rounded-xl border border-border">
-        <h3 tabIndex={-1} className="p-3 text-ui-heading">{t('settings.mode.registration')}</h3>
+        <h3 tabIndex={-1} className="p-3 text-ui-heading font-semibold">{t('settings.mode.registration')}</h3>
         <Content model={model} onAdjust={onAdjust} />
     </section>;
 }

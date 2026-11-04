@@ -43,6 +43,8 @@
   --color-brand: hsl(var(--brand));
   --color-brand-secondary: hsl(var(--brand-secondary));
   --color-selection: hsl(var(--selection));
+  /* セグメントだけはブランド色の下線で確定済みの選択を示す。 */
+  --color-segment-accent: hsl(var(--brand));
   --color-overlay: hsl(var(--overlay));
   --color-discord-text: hsl(var(--discord-text));
   --color-discord: hsl(var(--discord));
@@ -347,21 +349,16 @@
 }
 .live-strip { overflow: clip; }
 .live-strip[data-muted="true"] .live-aurora { opacity: 0.2; }
-.sound-chain button[aria-pressed], .live-mode-choice, #emergency-mute {
+.press-feedback {
   transition: background-color var(--motion-base) var(--ease-out), border-color var(--motion-base) var(--ease-out), color var(--motion-base) var(--ease-out), transform var(--motion-base) var(--ease-out);
 }
 /* 選択の移動は共通セグメントの背景で伝え、文字自体は上下させない。 */
-#emergency-mute:active, button[aria-pressed]:active { transform: translateY(2px) scale(0.97); }
+.press-feedback:active:not(:disabled) { transform: translateY(2px) scale(0.97); }
 @media (prefers-reduced-motion: reduce) {
   .live-aurora, .live-aurora[data-lit="true"] { transform: none; transition: none; }
   .live-aurora[data-lit="true"] { opacity: 0.65; }
-  .sound-chain button[aria-pressed], .live-mode-choice, #emergency-mute { transform: none; transition: none; }
-  #emergency-mute:active, button[aria-pressed]:active { transform: none; transition: none; }
+  .press-feedback, .press-feedback:active:not(:disabled) { transform: none; transition: none; }
 }
-.settings-surface h3 { font-size: var(--text-ui-heading); line-height: 1.4; font-weight: 600; }
-.settings-surface h4 { font-size: var(--text-ui-control); line-height: 1.5; font-weight: 600; }
-.settings-surface button, .settings-surface select, .settings-surface label { font-size: var(--text-ui-control); }
-.settings-surface .text-xs { font-size: var(--text-ui-support); line-height: 1.5; }
 .gaming .live-aurora {
   display: none;
 }
@@ -417,12 +414,15 @@
 .sound-chain, .live-strip { container-type: inline-size; }
 .input-channel-pair[hidden] { display: none; }
 .recovery-details[open] { flex-basis: 100%; }
+.live-meter-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1rem; }
+.live-meter-row { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); align-items: center; gap: 0.5rem; min-width: 0; }
 .live-output-summary { display: none; }
+.live-meter-actions { max-width: 11rem; }
 @container (min-width: 1080px) {
-  .live-meter-pair { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1rem; }
-  .live-output-summary { display: flex; }
+  .live-meter-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+  .live-output-summary { display: grid; }
   /* 大型メーターが見えている間は同じ出力レベルを本番帯に重ねて出さない。出力音量はフッターで操作できる。 */
-  .app-shell[data-large-meter]:not([data-meter-suspended]) .live-meter-pair { display: block; }
+  .app-shell[data-large-meter]:not([data-meter-suspended]) .live-meter-pair { grid-template-columns: minmax(0, 1fr) auto; }
   .app-shell[data-large-meter]:not([data-meter-suspended]) .live-output-summary { display: none; }
 }
 .sound-chain-row {
@@ -463,10 +463,10 @@
     flex-grow: 1;
     min-height: 240px;
   }
-  .live-strip[data-roomy="true"] .live-meter-pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
-  .live-strip[data-roomy="true"] .live-output-summary { display: flex; border-left: 0; padding-left: 0; }
+  .live-strip[data-roomy="true"] .live-meter-pair { grid-template-columns: minmax(0, 1fr) auto; gap: 1.5rem 1rem; }
+  .live-strip[data-roomy="true"] .live-output-summary { display: grid; grid-column: 1; }
+  .live-strip[data-roomy="true"] .live-meter-actions { grid-column: 2; grid-row: 1 / span 2; }
   .live-strip[data-roomy="true"] .meter-visual { height: clamp(64px, calc(15dvh - 40px), 140px) !important; }
-  .live-strip[data-roomy="true"] .live-meter-label { min-width: 4rem; }
 }
 .home-large-meter { display: none; }
 @media (min-height: 1100px) {

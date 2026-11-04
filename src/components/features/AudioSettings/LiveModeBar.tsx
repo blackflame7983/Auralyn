@@ -59,7 +59,7 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
                 {value.transaction.error && <p className="break-words text-ui-support">{value.transaction.error}</p>}
                 {value.transaction.recoveryAvailable && <button type="button" disabled={model.recoveryBusy || busy} onClick={() => void model.recover()} className="rounded-md border border-border px-3 py-1.5 text-ui-support">{t('liveTransaction.recover')}</button>}
             </div>}
-            {registered && !safetyOnly && <span role="status" title={t('settings.LiveModeControls.217')} className="text-ui-support text-muted-foreground">
+            {registered && !safetyOnly && (pending || value.phase === 'partial' || !value.running || value.phase === 'stopped') && <span role="status" className="text-ui-support text-muted-foreground">
                 {pending ? t('liveBar.switching', { mode: value.target ? name(value.target) : '' })
                     : value.phase === 'partial' ? t('liveOutput.partial')
                     : !value.running || value.phase === 'stopped' ? t('liveBar.stopped')

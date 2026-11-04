@@ -44,10 +44,10 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status }:
         onChange({ source: { kind: 'process_loopback', config: { appKey: app.appKey, appName: app.name,
             rawEndpointId: app.routes[0]?.id ?? '', purpose: value.source.config.purpose } }, candidateId: id });
     };
-    const field = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm';
+    const field = 'w-full rounded-md border border-input bg-background px-3 py-2 text-ui-control';
     return <fieldset disabled={disabled} className="space-y-3 rounded-xl border border-border p-3">
-        <legend className="px-1 text-sm font-medium">{t('processInput.title')}</legend>
-        <label className="block text-sm">{t('processInput.source')}
+        <legend className="px-1 text-ui-heading font-semibold">{t('processInput.title')}</legend>
+        <label className="block text-ui-control">{t('processInput.source')}
             <select className={field} value={process ? 'process' : 'device'} onChange={e => {
                 if (e.target.value === 'device') onChange({ source: { kind: 'device', config: { purpose: value.source.config.purpose } } });
                 else { onChange({ source: { kind: 'process_loopback', config: { appKey: '', appName: '', rawEndpointId: '', purpose: value.source.config.purpose } } }); void refresh(); }
@@ -58,17 +58,17 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status }:
         </label>
         {process && <>
             {status && <p role="status" className="text-sm">{t(status.failed ? 'processInput.failed' : status.waitingForAudio ? 'processInput.waiting' : 'processInput.capturing')}</p>}
-            <p className="text-xs text-muted-foreground">{t('processInput.routeHelp')}</p>
+            <p className="text-ui-support text-muted-foreground">{t('processInput.routeHelp')}</p>
             {isAsio && <p role="alert" className="text-sm text-destructive">{t('processInput.asio')}</p>}
-            <label className="block text-sm">{t('processInput.app')}
+            <label className="block text-ui-control">{t('processInput.app')}
                 <select className={field} value={selected?.id ?? ''} onChange={e => selectApp(e.target.value)}>
                     <option value="">{processConfig?.appName ? t('processInput.reselect', { name: processConfig.appName }) : t('processInput.choose')}</option>
                     {apps.map((app, i) => <option key={app.id} value={app.id}>{app.name}{apps.filter(a => a.name === app.name).length > 1 ? t('processInput.candidate', { number: i + 1 }) : ''}</option>)}
                 </select>
             </label>
-            <Button variant="outline" type="button" disabled={busy} onClick={() => void refresh()} className="rounded-md border border-input px-3 py-2 text-sm">{t(busy ? 'processInput.loading' : 'processInput.refresh')}</Button>
-            <p className="text-xs text-muted-foreground">{t('processInput.refreshHelp')}</p>
-            {selected && <label className="block text-sm">{t('processInput.raw')}
+            <Button variant="outline" type="button" disabled={busy} onClick={() => void refresh()} className="rounded-md border border-input px-3 py-2 text-ui-control">{t(busy ? 'processInput.loading' : 'processInput.refresh')}</Button>
+            <p className="text-ui-support text-muted-foreground">{t('processInput.refreshHelp')}</p>
+            {selected && <label className="block text-ui-control">{t('processInput.raw')}
                 <select className={field} value={processConfig?.rawEndpointId} onChange={e => {
                     if (value.source.kind === 'process_loopback') onChange({ ...value, source: { ...value.source, config: { ...value.source.config, rawEndpointId: e.target.value } } });
                 }}>
@@ -78,11 +78,11 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status }:
             </label>}
             <MixingError error={error ? { operation: 'processInput.refresh', raw: error } : null} />
         </>}
-        <details className="text-xs text-muted-foreground">
+        <details className="text-ui-support text-muted-foreground">
             <summary className="cursor-pointer">{t('processInput.cable')}</summary>
             <p className="mt-2">{t('processInput.cableHelp')}</p>
         </details>
-        <label className="block text-sm">{t('processInput.purpose')}
+        <label className="block text-ui-control">{t('processInput.purpose')}
             <select className={field} value={value.source.config.purpose} onChange={e => {
                 const purpose = e.target.value as 'voice' | 'music';
                 onChange({ ...value, source: value.source.kind === 'process_loopback'
@@ -93,6 +93,6 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status }:
                 <option value="music">{t('processInput.music')}</option>
             </select>
         </label>
-        {(process || value.source.config.purpose === 'music') && <p className="text-xs text-muted-foreground">{t('processInput.purposeHelp')}</p>}
+        {(process || value.source.config.purpose === 'music') && <p className="text-ui-support text-muted-foreground">{t('processInput.purposeHelp')}</p>}
     </fieldset>;
 }

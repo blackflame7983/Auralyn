@@ -1,4 +1,5 @@
 import { useRef, type ReactNode } from 'react';
+import { MdCheck } from 'react-icons/md';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
 
@@ -19,26 +20,34 @@ export interface SegmentedControlProps<T extends string> {
 }
 
 export function SegmentedControl<T extends string>({ label, options, value, onValueChange, className }: SegmentedControlProps<T>) {
-    const selected = options.findIndex(option => option.value === value);
+    const choices = options.filter(option => !option.readOnly);
+    const statuses = options.filter(option => option.readOnly);
+    const selected = choices.findIndex(option => option.value === value);
     // 反映待ちでは印を隠し、直前の位置だけ保持する。確定後も同じ要素を使って移動を補間する。
-    const lastPosition = useRef<number | null>(selected >= 0 ? selected : null);
+    const lastPosition = useRef(selected >= 0 ? selected : 0);
     if (selected >= 0) lastPosition.current = selected;
     return <TooltipProvider delayDuration={300}><div role="group" aria-label={label}
-        className={cn('relative inline-grid max-w-full rounded-md border border-input bg-background', className)}
-        style={{ gridTemplateColumns: `repeat(${options.length}, minmax(max-content, 1fr))` }}>
-        {lastPosition.current !== null && <span aria-hidden="true" data-segment-indicator
-            className="pointer-events-none absolute inset-y-0 left-0 rounded-md border border-selection bg-selection/15 transition-transform duration-(--motion-base) ease-in-out motion-reduce:transition-none"
-            style={{ width: `${100 / options.length}%`, transform: `translateX(${lastPosition.current * 100}%)`, opacity: selected >= 0 ? 1 : 0 }} />}
-        {options.map(option => {
+        className={cn('inline-flex max-w-full flex-wrap items-center gap-3', className)}>
+        <div className="relative inline-grid rounded-md border border-input bg-background"
+            style={{ gridTemplateColumns: `repeat(${choices.length}, minmax(max-content, 1fr))` }}>
+        <span aria-hidden="true" data-segment-indicator
+            className="pointer-events-none absolute inset-y-0 left-0 rounded-md border-b-[3px] border-segment-accent bg-segment-accent/10 transition-transform duration-(--motion-base) ease-in-out motion-reduce:transition-none"
+            style={{ width: `${100 / choices.length}%`, transform: `translateX(${lastPosition.current * 100}%)`, opacity: selected >= 0 ? 1 : 0 }} />
+        {choices.map(option => {
             const active = option.value === value;
             const style = cn('relative inline-flex items-center justify-center gap-1.5 min-w-16 whitespace-nowrap rounded-md px-2 py-2 text-ui-control font-semibold transition-colors',
-                active ? 'text-selection' : 'text-muted-foreground',
-                !option.readOnly && 'hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50');
-            const control = option.readOnly
-                ? <span className={style} aria-current={active ? 'true' : undefined} aria-description={typeof option.hint === 'string' ? option.hint : undefined}>{option.label}</span>
-                : <button type="button" className={style} disabled={option.disabled} aria-pressed={active} onClick={() => onValueChange(option.value)}>{option.label}</button>;
+                active ? 'text-foreground' : 'text-muted-foreground',
+                'hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50');
+            const control = <button type="button" className={style} disabled={option.disabled} aria-pressed={active} onClick={() => onValueChange(option.value)}>{option.label}</button>;
             return option.hint ? <Tooltip key={option.value}><TooltipTrigger asChild>{control}</TooltipTrigger><TooltipContent className="max-w-64">{option.hint}</TooltipContent></Tooltip>
                 : <span key={option.value} className="contents">{control}</span>;
-        })}
+        })}</div>
+        {/* 現在の音は切替操作の枠外に置く。非選択時も場所を保ち、確定後に操作欄が跳ねないようにする。 */}
+        {statuses.map(option => <span key={option.value} role="status" aria-current={option.value === value ? 'true' : undefined}
+            aria-hidden={option.value !== value} title={typeof option.hint === 'string' ? option.hint : undefined}
+            aria-description={typeof option.hint === 'string' ? option.hint : undefined}
+            className={cn('inline-flex items-center gap-1 text-ui-support text-muted-foreground', option.value !== value && 'invisible')}>
+            <MdCheck aria-hidden="true" className="h-4 w-4" />{option.label}
+        </span>)}
     </div></TooltipProvider>;
 }

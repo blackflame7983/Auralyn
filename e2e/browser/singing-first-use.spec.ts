@@ -33,7 +33,7 @@ test('初回は準備・試聴・適用を見せ、数値を開いた編集も�
     await page.goto('/');
     await page.getByRole('button', { name: '歌・雑談の設定', exact: true }).click();
     await page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).click();
-    await page.getByRole('button', { name: '歌唱モードの音を調整', exact: true }).click();
+    await page.getByRole('button', { name: '歌モードの音を調整', exact: true }).click();
     const section = page.locator('#singing-settings');
     const fine = section.locator('details').filter({ has: page.locator('summary', { hasText: '数値を細かく調整' }) });
     await expect(fine).not.toHaveAttribute('open');
@@ -70,7 +70,7 @@ test('反映エラーは次の操作を示し、技術詳細は必要時に開�
     await page.goto('/');
     await page.getByRole('button', { name: '歌・雑談の設定', exact: true }).click();
     await page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).click();
-    await page.getByRole('button', { name: '歌唱モードの音を調整', exact: true }).click();
+    await page.getByRole('button', { name: '歌モードの音を調整', exact: true }).click();
     const section = page.locator('#singing-settings');
     await expect(section.getByRole('alert')).toContainText('現在値を再取得');
     await expect(section.getByText('engine revision mismatch (raw)', { exact: true })).not.toBeVisible();
@@ -93,7 +93,7 @@ test('登録・歌向け欄・プロファイルで同じ保存先の比較を�
     await page.screenshot({ path: testInfo.outputPath('mode-save-comparison.png') });
     await page.keyboard.press('Escape');
     await expect(modeHelp).toBeFocused();
-    await page.getByRole('button', { name: '歌唱モードの音を調整', exact: true }).click();
+    await page.getByRole('button', { name: '歌モードの音を調整', exact: true }).click();
     const section = page.locator('#singing-settings');
     await section.getByText('再取得・下書きのリセット・保存', { exact: true }).click();
     await section.getByRole('button', { name: label, exact: true }).click();

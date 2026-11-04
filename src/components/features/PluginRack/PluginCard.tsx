@@ -106,7 +106,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                             <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-8 text-xs shrink-0 aria-pressed:bg-destructive/10 aria-pressed:text-destructive-text dark:aria-pressed:text-destructive-text aria-pressed:border-destructive/50"
+                                className="press-feedback h-8 text-xs shrink-0 aria-pressed:bg-destructive/10 aria-pressed:text-destructive-text dark:aria-pressed:text-destructive-text aria-pressed:border-destructive/50"
                                 aria-label={t('rack.card.muteAccessible', { arg0: plugin.name })}
                                 disabled={disabled}
                                 aria-pressed={plugin.muted}
@@ -231,7 +231,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                 <Button
                                     variant={plugin.muted ? "destructive" : "outline"}
                                     size="sm"
-                                    className={cn("h-8 shrink-0 text-xs", plugin.muted && "bg-destructive/10 text-destructive-text border-destructive/50 hover:bg-destructive/20 hover:text-destructive-text dark:hover:text-destructive-text ")}
+                                    className={cn("press-feedback h-8 shrink-0 text-xs", plugin.muted && "bg-destructive/10 text-destructive-text border-destructive/50 hover:bg-destructive/20 hover:text-destructive-text dark:hover:text-destructive-text ")}
                                     aria-label={t('rack.card.muteAccessible', { arg0: plugin.name })}
                                     disabled={disabled}
                                     aria-pressed={plugin.muted}

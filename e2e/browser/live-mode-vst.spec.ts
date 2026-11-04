@@ -51,12 +51,12 @@ test('登録したVST構成で切替を始め、進行中は二重操作を防�
     await page.getByRole('button', { name: '歌・雑談の設定', exact: true }).click();
     await page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).click();
     const modes = page.locator('#live-mode-settings');
-    await modes.getByRole('region', { name: '歌唱モード', exact: true }).locator('summary').click();
-    const select = modes.getByLabel('歌唱モードと一緒に切り替える VST', { exact: true });
+    await modes.getByRole('region', { name: '歌モード', exact: true }).locator('summary').click();
+    const select = modes.getByLabel('歌モードと一緒に切り替える VST', { exact: true });
     await expect(select.locator('option')).toHaveCount(3);
     await select.selectOption('歌用VST');
     await expect(modes).toContainText('切替中は音が止まります');
-    await modes.getByRole('button', { name: '歌唱モードの組み合わせを保存', exact: true }).click();
+    await modes.getByRole('button', { name: '歌モードの組み合わせを保存', exact: true }).click();
     await expect(modes).toContainText('保存済みの VST: 歌用VST');
     await page.keyboard.press('Escape');
     const singing = page.getByRole('button', { name: '歌', exact: true });
