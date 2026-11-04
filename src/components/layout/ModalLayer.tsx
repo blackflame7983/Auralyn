@@ -236,6 +236,7 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                 <Suspense fallback={null}>
                     <SetupWizardModal
                         isOpen={ui.isWizardOpen}
+                        onOpenVoiceCheck={() => { ui.setIsWizardOpen(false); ui.setIsVoiceCheckOpen(true); }}
                         onClose={() => {
                             ui.setIsWizardOpen(false);
                         }}

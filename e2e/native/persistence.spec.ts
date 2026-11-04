@@ -79,7 +79,7 @@ test('実UI→Tauri→保存→Host再起動で言語を復元し、実エンジ
         expect(size).not.toBeNull();
         expect(size!.width).toBeGreaterThanOrEqual(24);
         expect(size!.height).toBeGreaterThanOrEqual(24);
-        const tuning = page!.locator('details').filter({ has: page!.locator('summary').filter({ hasText: 'Dropouts and sample rate' }) });
+        const tuning = page!.locator('details').filter({ has: page!.locator('summary').filter({ hasText: 'Connection and dropout settings' }) });
         await expect(tuning).not.toHaveAttribute('open', '');
         await tuning.locator('summary').click();
         await expect(tuning).toHaveAttribute('open', '');

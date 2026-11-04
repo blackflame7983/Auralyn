@@ -1,5 +1,6 @@
 import { formatObsText, obsHistoryResults, originalObsText } from '@/lib/obsUiText';
 import { useMessages } from '@/i18n/LocaleProvider';
+import { InfoPopover } from '@/components/ui/InfoPopover';
 import { useEffect, useId, useRef, useState } from 'react';
 import { obsApi, type ObsSetupPlan, type ObsSetupHistory } from '@/api/obs';
 
@@ -77,8 +78,10 @@ export function ObsSafeSetup({
     const buttonClass = 'rounded border border-border px-3 py-2 hover:bg-muted disabled:opacity-50';
     return (
         <section aria-label={t('settings.ObsSafeSetup.335')} className="space-y-3 text-sm">
-            <p className="text-xs text-muted-foreground">
-                {t('settings.ObsSafeSetup.336')}</p>
+            <div className="flex items-center gap-1">
+                <p className="text-xs text-muted-foreground">{t('obsSetup.stopFirst')}</p>
+                <InfoPopover label={t('settings.ObsSafeSetup.335')}>{t('settings.ObsSafeSetup.336')}</InfoPopover>
+            </div>
             <div className="flex flex-wrap gap-2">
             <button
                 type="button"

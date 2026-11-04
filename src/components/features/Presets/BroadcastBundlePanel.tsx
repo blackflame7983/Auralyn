@@ -11,6 +11,7 @@ import { formatObsText } from '@/lib/obsUiText';
 import type { MessageKey } from '@/i18n/messages';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
+import { SaveScopeSummary } from './SaveScopeSummary';
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { bundleApi, BundleClientError, type BundleFilter, type BundleOperation, type BundleObsSelection, type BundlePreview, type BundleRecovery, type BundleResult } from '../../../api/bundles';
@@ -117,6 +118,7 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
     const updateObs = (source: string, change: Partial<BundleObsSelection>) => { invalidate(); setObs(items => items.map(item => item.source === source ? { ...item, ...change } : item)); };
     const existingName = names.find(item => item.toLowerCase() === name.trim().toLowerCase());
     return <section aria-label={t('presets.copy.121')} className="min-h-0 overflow-y-auto p-4 space-y-4 text-sm">
+        <SaveScopeSummary kind="session" />
         <p>{t('presets.copy.122')}</p>
         <p className="text-xs text-muted-foreground">{t('presets.copy.123')}</p>
         <fieldset disabled={busy} className="space-y-2 border border-border rounded-xl p-4"><legend>{t('presets.copy.124')}</legend>

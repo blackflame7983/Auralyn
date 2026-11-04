@@ -162,7 +162,7 @@ test.describe('操作部品のサイズとテーマ', () => {
                 document.documentElement.classList.toggle('dark', theme !== 'light');
                 document.documentElement.classList.toggle('gaming', theme === 'gaming');
             }, theme);
-            const button = page.getByRole('button', { name: '録音して比較', exact: true });
+            const button = page.getByRole('button', { name: 'ボイスチェック', exact: true });
             expect(await button.evaluate(element => parseFloat(getComputedStyle(element).borderTopLeftRadius))).toBeGreaterThanOrEqual(8);
             await page.getByRole('button', { name: 'セットアップを開く', exact: true }).click();
             await page.getByRole('button', { name: '自分で聴く', exact: true }).click();
@@ -187,10 +187,10 @@ test.describe('操作部品のサイズとテーマ', () => {
         // ウィザードの中断確認を含む状態を破棄して、ホームの操作幅だけを検査する。
         await page.goto('/');
         // 初期化中も背後にホームは存在するため、描画だけでなく実際に操作できるまで待つ。
-        await page.getByRole('button', { name: '録音して比較', exact: true }).click({ trial: true });
+        await page.getByRole('button', { name: 'ボイスチェック', exact: true }).click({ trial: true });
         for (const width of [960, 1024, 1440, 1920]) {
             await page.setViewportSize({ width, height: 768 });
-            const range = page.getByRole('slider', { name: '内蔵ボイスチェーンのエフェクト量', exact: true });
+            const range = page.getByRole('slider', { name: '声を整える加工の強さ', exact: true });
             const box = (await range.boundingBox())!;
             // 20段階の操作に6px以上/段を確保し、長大なバーにしない。
             expect(box.width).toBeGreaterThanOrEqual(120);

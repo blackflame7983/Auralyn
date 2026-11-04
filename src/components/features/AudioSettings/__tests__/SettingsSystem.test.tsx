@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-it.each(['音声処理の最適化', '診断情報', '設定の移行'])('StrictModeでも%sを開閉し、タブ移動後に開閉状態を保持する', async name => {
+it.each(['音声処理の設定', '診断情報', '設定の移行'])('StrictModeでも%sを開閉し、タブ移動後に開閉状態を保持する', async name => {
     render(<StrictMode><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} /></StrictMode>);
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム' }), { button: 0, ctrlKey: false });
     const details = screen.getByText(name).closest('details')!;
@@ -36,7 +36,7 @@ it.each(['ja', 'en'] as const)('システム操作の対象と確認を区別す
     const store = createLocaleStore(() => locale, () => true);
     render(<LocaleProvider store={store}><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} onOpenWizard={vi.fn()} /></LocaleProvider>);
     fireEvent.mouseDown(screen.getByRole('tab', { name: locale === 'ja' ? 'システム' : 'System' }), { button: 0, ctrlKey: false });
-    const blocklist = locale === 'ja' ? '除外リストをリセット' : 'Reset blocklist';
+    const blocklist = locale === 'ja' ? '読み込みを止めた VST をリセット' : 'Reset blocklist';
     const reset = locale === 'ja' ? 'すべて初期化' : 'Reset all';
     expect(screen.getByRole('heading', { name: locale === 'ja' ? 'セットアップ' : 'Setup' })).toBeVisible();
     expect(screen.getByText(locale === 'ja' ? 'マイクと出力先を選び直せます。' : 'Choose your microphone and output again.')).toBeVisible();
@@ -45,7 +45,7 @@ it.each(['ja', 'en'] as const)('システム操作の対象と確認を区別す
     expect(resetButton).toHaveClass('bg-destructive');
     fireEvent.click(screen.getByRole('button', { name: blocklist }));
     let dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('heading', { name: locale === 'ja' ? '除外リストをリセットしますか？' : 'Reset the blocklist?' })).toBeVisible();
+    expect(within(dialog).getByRole('heading', { name: locale === 'ja' ? '読み込みを止めた VST をリセットしますか？' : 'Reset the blocklist?' })).toBeVisible();
     fireEvent.click(within(dialog).getByRole('button', { name: locale === 'ja' ? 'キャンセル' : 'Cancel' }));
     fireEvent.click(resetButton);
     dialog = await screen.findByRole('dialog');
@@ -66,18 +66,18 @@ it('音づくりとシステムの詳細・未保存値をタブ移動と閉じ�
     fireEvent.click(screen.getByText('ノイズ低減の詳細'));
     await waitFor(() => expect(screen.getByText('ノイズ低減の詳細').closest('details')).toHaveAttribute('open'));
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム' }), { button: 0, ctrlKey: false });
-    const optimization = screen.getByText('音声処理の最適化').closest('details')!;
-    fireEvent.click(within(optimization).getByText('音声処理の最適化'));
+    const optimization = screen.getByText('音声処理の設定').closest('details')!;
+    fireEvent.click(within(optimization).getByText('音声処理の設定'));
     await waitFor(() => expect(optimization).toHaveAttribute('open'));
     const mask = screen.getByRole('textbox', { name: 'アフィニティマスク' });
     fireEvent.change(mask, { target: { value: '0x3' } });
     fireEvent.mouseDown(screen.getByRole('tab', { name: '音づくり' }), { button: 0, ctrlKey: false });
     expect(screen.getByText('ノイズ低減の詳細').closest('details')).toHaveAttribute('open');
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム' }), { button: 0, ctrlKey: false });
-    expect(screen.getByText('音声処理の最適化').closest('details')).toHaveAttribute('open');
+    expect(screen.getByText('音声処理の設定').closest('details')).toHaveAttribute('open');
     expect(screen.getByRole('textbox', { name: 'アフィニティマスク' })).toHaveValue('0x3');
     view.rerender(<AudioSettingsModal {...props} isOpen={false} />);
     view.rerender(<AudioSettingsModal {...props} isOpen />);
-    expect(screen.getByText('音声処理の最適化').closest('details')).toHaveAttribute('open');
+    expect(screen.getByText('音声処理の設定').closest('details')).toHaveAttribute('open');
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'アフィニティマスク' })).toHaveValue('0x3'));
 });

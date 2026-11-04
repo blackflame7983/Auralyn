@@ -41,8 +41,7 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     const dialog = page.getByRole('dialog', { name: '設定', exact: true });
     await expect(dialog.getByRole('tab', { name: '音づくり', exact: true })).toHaveAttribute('data-state', 'active');
     const section = dialog.locator('#live-mode-settings');
-    await expect(section).toHaveAttribute('open', '');
-    await expect(section.locator('summary').first()).toBeFocused();
+    await expect(section.getByRole('heading', { name: 'モード登録', exact: true })).toBeFocused();
     const saveSinging = section.getByRole('button', { name: '適用済み設定を歌唱モードへ登録', exact: true });
     const saveTalk = section.getByRole('button', { name: '適用済み設定を雑談モードへ登録', exact: true });
     await expect(saveSinging).toBeInViewport();
@@ -86,13 +85,16 @@ test('設定の通常操作を先に置き、アイコンと必要時の説明�
     }
     const driver = dialog.getByRole('combobox', { name: '接続方式', exact: true });
     const permissions = dialog.getByText('マイクのアクセス許可を確認する', { exact: true });
-    expect(await driver.evaluate((element) => Boolean(element.compareDocumentPosition(document.querySelector('[role=tabpanel] details:last-child')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+    const tuning = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
+    await expect(tuning).not.toHaveAttribute('open', '');
+    await tuning.locator('summary').click();
+    await driver.scrollIntoViewIfNeeded();
     await expect(driver).toBeInViewport();
     await expect(permissions).not.toBeInViewport();
     await dialog.getByRole('tab', { name: '音づくり', exact: true }).click();
-    await expect(dialog.getByRole('heading', { name: '内蔵ボイスチェーン', exact: true })).toBeInViewport();
-    await dialog.getByRole('button', { name: '内蔵ボイスチェーンの処理内容', exact: true }).click();
-    const help = page.getByRole('dialog', { name: '内蔵ボイスチェーンの処理内容', exact: true });
+    await expect(dialog.getByRole('heading', { name: '声を整える', exact: true })).toBeInViewport();
+    await dialog.getByRole('button', { name: '声を整える機能の処理内容', exact: true }).click();
+    const help = page.getByRole('dialog', { name: '声を整える機能の処理内容', exact: true });
     await expect(help).toContainText('低音の整理');
     await page.keyboard.press('Escape');
     await expect(dialog).toBeVisible();

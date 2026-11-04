@@ -19,7 +19,7 @@ test('未保存設定の退避範囲を確認し、開始失敗後も同じ画�
     await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
     const rack = page.getByRole('button', { name: 'VST を編集', exact: true });
     if (await rack.getAttribute('aria-expanded') !== 'true') await rack.click();
-    await page.getByRole('button', { name: 'プロファイル管理', exact: true }).click();
+    await page.getByRole('button', { name: '設定の保存・復帰', exact: true }).click();
     const panel = page.locator('details').filter({ has: page.locator('summary', { hasText: '共有PCで今回だけ使う' }) });
     await panel.locator('summary').click();
     const acknowledgement = panel.getByRole('checkbox', { name: '音声の停止と、保存対象・対象外を確認しました' });

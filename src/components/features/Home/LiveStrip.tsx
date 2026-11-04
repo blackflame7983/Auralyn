@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { MdArrowForward, MdMic, MdMusicNote, MdVolumeOff, MdVolumeUp } from 'react-icons/md';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useBeginnerMode } from '@/hooks/useBeginnerMode';
@@ -9,6 +9,7 @@ import type { MessageKey } from '@/i18n/messages';
 import type { PreparationUse } from '@/lib/preparation';
 import { useSharedMeter } from '../LevelMeter/MeterContext';
 import { MeterVisual } from '../LevelMeter/MeterVisual';
+import { toDbfs } from '@/hooks/useMeterLevels';
 import { InputGainControl } from './InputGainControl';
 import { deviceDisplayName } from '@/lib/audioRouting';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -41,9 +42,11 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
     const input = model.observation.config?.input ?? inputName;
     const output = model.observation.config?.output ?? outputName;
     const devices = t('live.devices', { input: input ? deviceDisplayName(input) : t('flow.unknown'), output: output ? deviceDisplayName(output) : t('flow.unknown') });
-    return <section aria-label={t('live.strip')} className="live-strip relative isolate mb-4 space-y-3 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-4 min-[1100px]:px-5">
-        {/* 音声処理中だけ静止した光として灯す飾り。状態の意味は持たせない（DESIGN.md 5.1）。 */}
-        {aurora && <div aria-hidden="true" className="live-aurora" data-lit={running} />}
+    // 既存の共有メーターだけを使い、5%刻みの強さをCSSでゆっくり補間する。追加のIPCやタイマーを作らない。
+    // 普通の話し声（−20 dBFS 前後）でも反応が見えるよう、−48〜−6 dBFS を 0〜1 に対応させる。
+    const energy = running && !muted && reading.state === 'live' ? Math.round(Math.min(1, Math.max(0, (toDbfs(Math.max(...reading.levels)) + 48) / 42)) * 20) / 20 : 0;
+    return <section aria-label={t('live.strip')} data-muted={muted} className="live-strip relative isolate mb-4 space-y-4 rounded-xl bg-card gaming:bg-card/70 px-5 py-5 min-[1100px]:px-6">
+        {aurora && <div aria-hidden="true" className="live-aurora" data-lit={running} style={{ '--aurora-energy': energy } as CSSProperties} />}
         {!running && onStartAudio ? <div className="flex flex-wrap items-center gap-3">
             <button type="button" onClick={onStartAudio} disabled={starting || controlsDisabled} className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{t(starting ? 'home.starting' : 'home.startAudio')}</button>
             <p className="text-xs text-muted-foreground">{t('home.startSavedDevices')}</p>
@@ -78,7 +81,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
                 <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="truncate font-semibold">{deviceDisplayName(input)}</span>
             </button>}
-            {running && !usage && onChooseDestination ? <button type="button" onClick={onChooseDestination} className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">{t('home.chooseDestination')}</button> : <p className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-sm">
+            {music ? <p className="flex min-w-0 items-center gap-1.5 text-sm"><MdArrowForward aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="truncate font-semibold">{output ? deviceDisplayName(output) : t('flow.unknown')}</span></p> : running && !usage && onChooseDestination ? <button type="button" onClick={onChooseDestination} className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">{t('home.chooseDestination')}</button> : <p className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-sm">
                 <MdArrowForward aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="text-muted-foreground">{t('live.destination')}</span>
                 <span className="truncate font-semibold" title={receiver || undefined}>{usage ? t(destinations[usage]) : t('live.noDestination')}{usage && usage !== 'listening' && receiver ? ` · ${receiver}` : ''}</span>

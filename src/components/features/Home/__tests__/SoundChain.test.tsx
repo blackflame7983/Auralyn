@@ -58,7 +58,7 @@ it.each(['ja', 'en'] as const)('声の処理を音の流れの順に行カード
     const chain = screen.getByRole('list', { name: message(locale, 'flow.title') });
     const rows = within(chain).getAllByRole('listitem');
     expect(rows).toHaveLength(3);
-    const labels = locale === 'ja' ? ['ノイズ低減', '内蔵ボイスチェーン', 'VST'] : ['Noise reduction', 'Built-in voice chain', 'VST'];
+    const labels = locale === 'ja' ? ['ノイズ低減', '声を整える', 'VST'] : ['Noise reduction', 'Shape voice', 'VST'];
     labels.forEach((label, i) => expect(rows[i]).toHaveTextContent(label));
     expect(rows[0]).toHaveTextContent(message(locale, 'flow.enabled'));
     expect(rows[0].querySelector('[data-tone]')).toHaveAttribute('data-tone', 'ok');
@@ -79,7 +79,7 @@ it('内蔵ボイスチェーンの意味を見出し横の情報ボタンから�
     expect(screen.queryByText(description)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'settings.builtinHelp') }));
     expect(screen.getByRole('dialog', { name: message('ja', 'settings.builtinHelp') })).toHaveTextContent(description);
-    expect(screen.getByRole('heading', { name: '内蔵ボイスチェーン' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '声を整える' })).toBeInTheDocument();
 });
 
 it('音声処理中は声の段にその場の操作を出し、設定状態の文字は重ねない', () => {
@@ -104,31 +104,25 @@ it('音楽鑑賞では声向けの操作を出さず、状態の表示にとど�
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
     expect(screen.getByRole('region', { name: '音を整える' })).toBeInTheDocument();
     expect(screen.queryByText('noise-quick')).not.toBeInTheDocument();
-    // 声向けの2段は状態だけの1段に縮め、設定状態は隠さない。
+    // 声向けの操作を並べず、有効な処理が残るときだけ注意と説明への入口を残す。
     const rows = within(screen.getByRole('list', { name: '音の流れ' })).getAllByRole('listitem');
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent('声向けの処理');
-    expect(rows[0]).toHaveTextContent('ノイズ低減');
-    expect(rows[0]).toHaveTextContent('設定 ON');
-    expect(rows[0]).toHaveTextContent('設定 一部ON');
-    expect(rows[0]).toHaveTextContent('内蔵ボイスチェーン');
-    // 一部 ON の内訳は title だけにせず、見える文で残す。
-    expect(within(rows[0]).getByText('声の処理: 設定 OFF ／ 残響: 設定 ON')).not.toHaveClass('sr-only');
-    expect([...rows[0].querySelectorAll('[data-tone]')].map(node => node.getAttribute('data-tone'))).toEqual(['ok', 'ok']);
+    expect(rows).toHaveLength(1);
+    expect(screen.getByText(message('ja', 'flow.voiceStillOn'))).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'chain.voiceTools') }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('声の処理: 設定 OFF ／ 残響: 設定 ON');
     for (const text of ['noise-switch', 'builtin-switch', 'builtin-quick']) expect(rows[0]).not.toHaveTextContent(text);
-    expect(rows[1]).toHaveTextContent('VST');
+    expect(rows[0]).toHaveTextContent('VST');
     expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
     // 声の処理の設定へは誘導せず、VST 構成で整えることを常に見える文で示す。
-    expect(screen.queryByRole('button', { name: '詳しく調整' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '詳しく調整' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'その他の操作' })).not.toBeInTheDocument();
-    expect(screen.getByText(message('ja', 'music.soundHint'))).toBeVisible();
 });
 
 it('現在の世代と不一致または停止時は処理の設定を OFF と推測しない', () => {
     const stale = stats(); stale.queueDiagnostics!.epoch = 'other';
     const view = render(<RuntimeStatsContext.Provider value={{ stats: stale, running: true }}><SoundChain {...props()} /></RuntimeStatsContext.Provider>);
     const rows = screen.getAllByRole('listitem');
-    expect(rows[0]).toHaveTextContent('未確認'); expect(rows[1]).toHaveTextContent('未確認'); expect(rows[2]).toHaveTextContent('未確認');
+    for (const row of rows) expect(row).toHaveTextContent(message('ja', 'flow.unknown'));
     // 未確認は注意色の点で示し、OFF の中立色と区別する。
     [0, 1, 2].forEach(i => expect(rows[i].querySelector('[data-tone]')).toHaveAttribute('data-tone', 'warn'));
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: stats(), running: false }}><SoundChain {...props()} /></RuntimeStatsContext.Provider>);
@@ -142,7 +136,7 @@ it('VST の行から右パネルの VST 構成を開き、見出しから聴き�
     expect(screen.queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'VST を編集' })); expect(p.onOpenVst).toHaveBeenCalledOnce();
     expect(screen.getAllByRole('listitem')[2]).toHaveTextContent('vst-items');
-    fireEvent.click(screen.getByRole('button', { name: '録音して比較' })); expect(p.onListen).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'ボイスチェック' })); expect(p.onListen).toHaveBeenCalledOnce();
     // 毎回は使わない OBS 連携と詳しい調整は、見出しに並べず「その他の操作」にまとめる。
     expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
     const more = screen.getByRole('button', { name: 'その他の操作' });
@@ -175,8 +169,10 @@ it('音楽鑑賞の声向けの段は英語でも見出しと状態を出す', (
     localStorage.setItem('auralyn_display_purpose', 'music');
     render(<LocaleProvider store={createLocaleStore(() => 'en', () => true)}><RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider></LocaleProvider>);
     const rows = within(screen.getByRole('list', { name: message('en', 'flow.title') })).getAllByRole('listitem');
-    expect(rows[0]).toHaveTextContent(message('en', 'chain.voiceTools'));
-    expect(rows[0]).toHaveTextContent(message('en', 'flow.partial'));
+    expect(rows).toHaveLength(1);
+    expect(screen.getByText(message('en', 'flow.voiceStillOn'))).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: message('en', 'chain.voiceTools') }));
+    expect(screen.getByRole('dialog')).toHaveTextContent(message('en', 'flow.builtinParts', { voice: message('en', 'flow.disabled'), reverb: message('en', 'flow.enabled') }));
 });
 
 it('保存済みのVSTを読み込めていない空の段は「未追加」と出さず、読み込めていない名前を示す', () => {

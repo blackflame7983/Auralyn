@@ -104,9 +104,9 @@ it('接続設定と即時反映の音づくりを分け、操作名を公開す�
     expect(screen.queryByRole('switch', { name: 'ノイズ低減' })).not.toBeInTheDocument();
     fireEvent.mouseDown(screen.getByRole('tab', { name: '音づくり' }), { button: 0, ctrlKey: false });
     expect(screen.getByRole('switch', { name: 'ノイズ低減' })).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: '内蔵ボイスチェーン' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: '声を整える' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '保存して開始' })).not.toBeInTheDocument();
-    expect(host.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(input.compareDocumentPosition(host) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
 });
 
@@ -139,7 +139,7 @@ it('処理設定の取得前は音づくりを変更しない', async () => {
         return null;
     });
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    expect(await screen.findByRole('switch', { name: '内蔵ボイスチェーン' })).toBeDisabled();
+    expect(await screen.findByRole('switch', { name: '声を整える' })).toBeDisabled();
     expect(screen.getByRole('switch', { name: 'ノイズ低減' })).toBeDisabled();
     expect(screen.getByText(/現在の設定を確認できるまで/)).toBeInTheDocument();
 });
@@ -199,10 +199,10 @@ it('学習の中止失敗を未処理のPromise拒否にせず、状態再取得
     await waitFor(() => expect(cancel).toBeEnabled());
     fireEvent.click(cancel);
     expect(await screen.findByText('測定状態を取得できません。再取得してください。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '状態を再取得' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '状態を更新' })).toBeEnabled();
 });
 
-it('不正な入力で学習が失敗したら、以前のプロファイルを今回の成功と表示しない', async () => {
+it('不正な入力で学習が失敗したら、以前の声・VST の保存を今回の成功と表示しない', async () => {
     vi.spyOn(noiseMeasurementApi, 'request').mockResolvedValue({ ...noiseMeasurementFixture('invalid', '2'), quality: ['nonFinite'], previousAvailable: true });
     vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue({
         noiseReductionEnabled: true, noiseLearningState: 'invalid', noiseProfileAvailable: true,

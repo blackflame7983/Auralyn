@@ -35,7 +35,7 @@ for (const theme of ['light', 'dark', 'gaming']) {
                     const p = (await panel.boundingBox())!, m = (await meter.boundingBox())!;
                     return m.x + m.width <= p.x + 1;
                 }).toBe(true);
-                const record = page.getByRole('button', { name: '録音して比較', exact: true });
+                const record = page.getByRole('button', { name: 'ボイスチェック', exact: true });
                 await expect(record).toBeInViewport();
                 if (height < 1100) expect((await record.boundingBox())!.x + (await record.boundingBox())!.width).toBeLessThan((await meter.boundingBox())!.x);
                 else {

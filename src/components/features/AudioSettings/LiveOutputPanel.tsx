@@ -6,9 +6,10 @@ import { audioApi } from '@/api/audio';
 import { liveOutputApi, type LiveOutputConfig, type LiveOutputStatus } from '@/api/liveOutput';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Button } from '@/components/ui/button';
+import { AudioFlow } from '@/components/ui/AudioFlow';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
-export function LiveOutputPanel({ outputs, onBusyChange, disabled = false, autoLoad = false }: { autoLoad?: boolean; disabled?: boolean; outputs: AudioDevice[]; onBusyChange?: (busy: boolean) => void }) {
+export function LiveOutputPanel({ outputs, inputName, monitorName, onBusyChange, disabled = false, autoLoad = false }: { autoLoad?: boolean; disabled?: boolean; outputs: AudioDevice[]; inputName?: string; monitorName?: string; onBusyChange?: (busy: boolean) => void }) {
     const t = useMessages();
     const sequence = useRef(0);
     const busyNow = useRef(false);
@@ -62,6 +63,11 @@ export function LiveOutputPanel({ outputs, onBusyChange, disabled = false, autoL
         <details className="text-xs"><summary>{t('liveOutput.limitsTitle')}</summary><p>{t('liveOutput.limits')}</p><p>{t('liveOutput.saveBoundary')}</p></details>
         <button disabled={busy || disabled} className="link-button" onClick={() => void request()}>{t('liveOutput.refresh')}</button>
         {draft && <div className="space-y-3">
+            {draft.deviceId && <AudioFlow label={t('flow.diagram')} unknownLabel={t('settings.selectDevice')} processingWarning={draft.deviceId === status?.config.deviceId && status.error && !status.sink?.failed ? t('prep.failed') : undefined}
+                input={{ label: t('processInput.source'), value: inputName }}
+                output={{ label: t('flow.monitorOutput'), value: monitorName }}
+                receiver={{ label: t('prep.receiver'), value: t('flow.receiverUnknown') }}
+                branches={[{ label: t('flow.broadcastOutput'), value: outputs.find(device => device.id === draft.deviceId)?.name ?? t('liveOutput.missing'), warning: draft.deviceId === status?.config.deviceId && status.sink?.failed ? t('flow.checkOutput') : undefined }]} /> }
             <label className="block text-sm">{t('liveOutput.device')}<select className="w-full p-2 bg-background border rounded" disabled={busy || disabled} value={draft.deviceId ?? ''} onChange={e => { const deviceId = e.target.value || null; setDraft({ ...draft, deviceId, splitProcessing: deviceId ? draft.splitProcessing : false }); setConfirmed(false); }}>
                 <option value="">{t('liveOutput.disabled')}</option>
                 {outputs.filter(d => d.host.toLowerCase().includes('wasapi') && d.id && d.channels === 2).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}

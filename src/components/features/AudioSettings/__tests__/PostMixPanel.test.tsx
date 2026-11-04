@@ -13,7 +13,7 @@ async function setup(value = snapshot(), mainRunning = false) {
     const request = vi.spyOn(postMixApi, 'request').mockResolvedValue(value);
     vi.spyOn(mixingApi, 'request').mockResolvedValue({ config: null } as any);
     render(<PostMixPanel mainRunning={mainRunning} />);
-    expect(request).not.toHaveBeenCalled(); fireEvent.click(screen.getByText('ミックス後の配信 VST'));
+    expect(request).not.toHaveBeenCalled(); fireEvent.click(screen.getByText('配信音を仕上げる VST'));
     await screen.findByText(/転送の待ち時間/); return request;
 }
 it('読込だけでは復元せず、一覧の明示取得と選択で追加する', async () => {

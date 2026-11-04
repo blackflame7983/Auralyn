@@ -135,6 +135,7 @@
   --motion-fast: 150ms;
   --motion-base: 200ms;
   --motion-panel: 240ms;
+  --motion-aurora: 800ms;
 }
 
 .dark {
@@ -316,7 +317,7 @@
 }
 
 /*
-  本番帯の奥のオーロラ（DESIGN.md 5.1、5.6）。音声処理中だけ静止した光として灯し、声や操作には連動させない。
+  本番帯の奥のオーロラ（DESIGN.md 5.1、5.6）。共有メーターの強さをゆっくり補間する装飾。
   ぼかしフィルターや合成を使わず、グラデーションの重ね合わせで描く。ゲーミングでは表示しない。
 */
 .live-aurora {
@@ -326,14 +327,28 @@
   border-radius: inherit;
   pointer-events: none;
   opacity: 0;
-  transition: opacity var(--motion-panel) var(--ease-out);
+  transition: opacity var(--motion-aurora) var(--ease-out), transform var(--motion-aurora) var(--ease-out);
+  transform-origin: bottom center;
   background:
     radial-gradient(60% 110% at 20% 120%, hsl(var(--aurora-green) / calc(0.30 * var(--aurora-strength))), transparent 70%),
     radial-gradient(55% 100% at 62% 125%, hsl(var(--aurora-teal) / calc(0.26 * var(--aurora-strength))), transparent 70%),
     radial-gradient(45% 55% at 42% -15%, hsl(var(--aurora-rose) / calc(0.12 * var(--aurora-strength))), transparent 70%);
 }
 .live-aurora[data-lit="true"] {
-  opacity: 1;
+  opacity: calc(0.5 + var(--aurora-energy, 0) * 0.5);
+  transform: translateY(calc(var(--aurora-energy, 0) * -4px)) scaleX(calc(1 + var(--aurora-energy, 0) * 0.08));
+}
+.live-strip { overflow: clip; }
+.live-strip[data-muted="true"] .live-aurora { opacity: 0.2; }
+.sound-chain button[aria-pressed], .live-mode-choice, #emergency-mute {
+  transition: background-color var(--motion-base) var(--ease-out), border-color var(--motion-base) var(--ease-out), color var(--motion-base) var(--ease-out), transform var(--motion-base) var(--ease-out);
+}
+.sound-chain button[aria-pressed="true"], .live-mode-choice[aria-pressed="true"] { transform: translateY(-1px); }
+#emergency-mute[aria-pressed="true"] { transform: scale(1.025); }
+@media (prefers-reduced-motion: reduce) {
+  .live-aurora, .live-aurora[data-lit="true"] { transform: none; transition: none; }
+  .live-aurora[data-lit="true"] { opacity: 0.65; }
+  .sound-chain button[aria-pressed], .live-mode-choice, #emergency-mute { transform: none; transition: none; }
 }
 .gaming .live-aurora {
   display: none;

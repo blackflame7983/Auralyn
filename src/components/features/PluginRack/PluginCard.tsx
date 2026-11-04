@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
+import { useBeginnerMode } from '@/hooks/useBeginnerMode';
 import { MdClose, MdDragIndicator } from 'react-icons/md';
 import { currentStageBreakdown, useRuntimeStats } from '@/components/layout/RuntimeStatsContext';
 import {
@@ -46,13 +47,14 @@ interface PluginCardProps {
 
 export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute, onGainChange, onRemove, onEdit, dragHandleListeners, dragHandleAttributes, dragHandleRef, simpleMode = false, rackKind = 'voice', structureDisabled = false, disabled = false }) => {
     const t = useMessages();
+    const [simple] = useBeginnerMode();
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const { stats, running } = useRuntimeStats();
     const stage = currentStageBreakdown(stats, running);
     const matched = stage?.vst.filter(v => v.id === plugin.id) ?? [];
     const declared = matched.length === 1 && matched[0].state !== 'unavailable' && Number.isInteger(matched[0].declaredSamples)
         && matched[0].declaredSamples! >= 0 && matched[0].declaredSamples! <= 4294967295 ? matched[0].declaredSamples : null;
-    const latency = rackKind === 'broadcast' ? '' : declared === null ? t('rack.latencyUnknown') : t('rack.latencyReported', { samples: declared });
+    const latency = simple || rackKind === 'broadcast' ? '' : declared === null ? t('rack.latencyUnknown') : t('rack.latencyReported', { samples: declared });
 
     // Calculate dB value for display
     const dbValue = plugin.gain === 0 ? '-inf' : (20 * Math.log10(plugin.gain)).toFixed(1);

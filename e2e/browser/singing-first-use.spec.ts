@@ -72,7 +72,7 @@ test('反映エラーは次の操作を示し、技術詳細は必要時に開�
     const section = page.locator('#singing-settings');
     await expect(section.getByRole('alert')).toContainText('現在値を再取得');
     await expect(section.getByText('engine revision mismatch (raw)', { exact: true })).not.toBeVisible();
-    await expect(section.getByRole('button', { name: '内蔵ボイスチェーンの現在値を再取得', exact: true })).toBeVisible();
+    await expect(section.getByRole('button', { name: '声を整える機能の現在値を再取得', exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('actionable-error.png') });
 });
 

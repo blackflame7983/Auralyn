@@ -21,6 +21,7 @@ export interface SetupWizardModalProps {
     onClose: () => void;
     onSkip?: () => void;
     onApplyConfig: (host: string, input: string, output: string, actualConfig: AudioConfig) => void | Promise<void>;
+    onOpenVoiceCheck?: () => void;
     onOpenSettings?: () => void;
     onOpenTroubleshoot?: () => void;
 }

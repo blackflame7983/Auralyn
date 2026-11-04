@@ -3,6 +3,10 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { PreparationPanel, availabilityLabels } from './PreparationPanel';
 import { deviceDisplayName } from '@/lib/audioRouting';
+import { AudioFlow } from '@/components/ui/AudioFlow';
+import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { confirmationState } from '@/lib/preparation';
+import { useOutputDeviceName } from '@/hooks/useOutputDeviceName';
 
 interface HomePanelsProps {
     homeActionInStrip?: boolean; destinationRequest?: number;
@@ -22,31 +26,38 @@ interface HomePanelsProps {
     onOpenSoundSettings?: () => void;
     /** 聴いて確認する入口。音楽鑑賞では聴き比べ、配信・通話では声の確認を開く。 */
     onListen: () => void;
+    onSetup?: () => void;
 }
 
 // 準備の確認と経路の要約。声の調整と音の流れはチェーン列（SoundChain）に置く。
 // 入力メーターは本番帯（LiveStrip）に置き、ここでは重ねない。
 export function HomePanels({ homeActionInStrip, destinationRequest, model, audioReady, statusText, inputName, outputName,
-    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onListen, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onCheckOutput }: HomePanelsProps) {
+    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onListen, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onCheckOutput, onSetup }: HomePanelsProps) {
     const t = useMessages();
+    const [purpose] = useDisplayPurpose();
+    const music = purpose === 'music';
     // 未設定は処理欄と主ボタンで示す。停止中のメーターや注記を重ねない。
     const configured = model.observation.availability !== 'unconfigured';
     // 準備の主ボタンが「マイクと出力先を設定する」の間は、同じ設定を開く入口を重ねない（DESIGN.md 2.2）。
     const configureIsPrimary = !['ready', 'unknown', 'pending'].includes(model.observation.availability);
     const actualInput = model.observation.config?.input ?? inputName;
     const actualOutput = model.observation.config?.output ?? outputName;
+    const broadcastId = model.observation.routing?.deviceId;
+    const broadcastName = useOutputDeviceName(broadcastId);
     return <div className="mb-4 space-y-4">
-        <PreparationPanel homeActionInStrip={homeActionInStrip} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
+        <PreparationPanel homeActionInStrip={homeActionInStrip} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
             onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText}
             devices={actualInput || actualOutput ? `${actualInput ? deviceDisplayName(actualInput) : t('master.unset')} → ${actualOutput ? deviceDisplayName(actualOutput) : t('master.unset')}` : undefined}
             signalSummary={<section aria-label={t('prep.signalPath')} className="space-y-2">
-            <dl className="grid gap-3 sm:grid-cols-3 text-sm">
-                <div className="min-w-0"><dt className="text-muted-foreground">{t('home.input')}</dt><dd className="truncate font-medium" title={actualInput ?? undefined}>{actualInput ? deviceDisplayName(actualInput) : t('master.unset')}</dd></div>
-                {!homeActionInStrip && <div className="min-w-0"><dt className="text-muted-foreground">{t('prep.processing')}</dt><dd role="status" className="font-medium">{statusText ?? t(availabilityLabels[model.observation.availability])}</dd></div>}
-                <div className="min-w-0"><dt className="text-muted-foreground">{t('home.output')}</dt><dd className="truncate font-medium" title={actualOutput ?? undefined}>{actualOutput ? deviceDisplayName(actualOutput) : t('master.unset')}</dd></div>
-            </dl>
-            {configured && !configureIsPrimary && <button type="button" onClick={onOpenSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('home.changeDevices')}</button>}
+            <AudioFlow label={t('flow.diagram')} unknownLabel={t('master.unset')} inputKind={music ? 'playback' : 'microphone'} processingWarning={model.observation.availability === 'failed' ? t('prep.failed') : undefined}
+                input={{ label: t(music ? 'music.source' : 'home.input'), value: actualInput ? deviceDisplayName(actualInput) : undefined, warning: !actualInput ? t('flow.checkInput') : undefined }}
+                output={{ label: t(broadcastId ? 'flow.monitorOutput' : 'home.output'), value: actualOutput ? deviceDisplayName(actualOutput) : undefined, warning: !actualOutput ? t('flow.checkOutput') : undefined }}
+                branches={broadcastId ? [{ label: t('flow.broadcastOutput'), value: broadcastName ?? t('flow.unknown') }] : undefined}
+                receiver={{ label: t(music && !broadcastId ? 'prep.localReceiver' : 'live.destination'), value: music ? broadcastId ? t('flow.receiverUnknown') : t('prep.local') : model.context.usage ? t(({ obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' } as const)[model.context.usage]) : undefined,
+                    warning: !music && model.context.usage !== 'listening' && confirmationState(model.records, 'receiver') !== 'confirmed' ? t('flow.receiverUnknown') : undefined }} />
+            {!homeActionInStrip && <p role="status" className="text-sm text-muted-foreground">{statusText ?? t(availabilityLabels[model.observation.availability])}</p>}
+            {(music || configured && !configureIsPrimary) && <button type="button" onClick={onOpenSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('home.changeDevices')}</button>}
         </section>} />
-        {model.observation.routing && (model.observation.routing.deviceId || model.observation.routing.splitProcessing) && !['unknown', 'stopped', 'unconfigured', 'failed', 'pending'].includes(model.observation.availability) && <RouteSummary routing={model.observation.routing} output={actualOutput} onSettings={onOpenSettings} />}
+        {model.observation.routing && (model.observation.routing.deviceId || model.observation.routing.splitProcessing) && !['unknown', 'stopped', 'unconfigured', 'failed', 'pending'].includes(model.observation.availability) && <RouteSummary routing={model.observation.routing} output={actualOutput} onSettings={onOpenSettings} resolvedName={broadcastName ?? null} />}
     </div>;
 }

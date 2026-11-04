@@ -1,3 +1,4 @@
+import { InfoPopover } from '@/components/ui/InfoPopover';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { preparationReach } from '@/lib/preparation';
 import { message, type MessageKey } from '@/i18n/messages';
@@ -333,7 +334,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                   </div>
 
                     {isObsConnected && <p className="text-xs text-muted-foreground">{t('settings.ObsConnectionSettings.287')}</p>}
-                    {!isObsConnected && <p className="text-xs text-muted-foreground">{t('obs.passwordScope')}</p>}
+                    {!isObsConnected && <InfoPopover label={t('settings.ObsConnectionSettings.284')}>{t('obs.passwordScope')}</InfoPopover>}
                   </div>
                 </details>
                 {!isObsConnected && (

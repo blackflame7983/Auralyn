@@ -40,7 +40,7 @@ test('オケは1段で自動表示し、キーボードの音量調整を適用�
 
 test('オケを開かず配信VSTを自動表示し、音量・エラー詳細・確認付き初期化にキーボードで到達する', async ({ page }, info) => {
     await page.setViewportSize({ width: 900, height: 600 }); await fixture(page, false); await page.goto('/'); const dialog = await settings(page);
-    const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('ミックス後の配信 VST', { exact: true }) }).last();
+    const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('配信音を仕上げる VST', { exact: true }) }).last();
     await keyboardOpen(page, post.locator('summary').first());
     await expect(dialog.locator('#mixing-settings')).not.toHaveAttribute('open', ''); await expect(post.getByText('転送の待ち時間: 42.7 ms')).toBeVisible();
     await expect(post.getByRole('switch', { name: '配信 VST を有効にする' })).toBeDisabled();
@@ -65,7 +65,7 @@ for (const size of [{ width: 900, height: 600 }, { width: 1024, height: 768 }]) 
         await dialog.getByRole('tab', { name: '外観', exact: true }).click(); await dialog.getByRole('combobox', { name: '表示言語' }).selectOption('en'); await dialog.getByRole('tab', { name: 'Audio', exact: true }).click();
         await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
         const mixing = dialog.locator('#mixing-settings'); await keyboardOpen(page, mixing.locator('summary').first());
-        const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('Post-mix broadcast VST', { exact: true }) }).last(); await keyboardOpen(page, post.locator('summary').first());
+        const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('Finish broadcast audio with VST', { exact: true }) }).last(); await keyboardOpen(page, post.locator('summary').first());
         const slider = post.getByRole('slider', { name: 'Fixture EQ gain' }); await expect(slider).toBeVisible(); await slider.scrollIntoViewIfNeeded(); await noOverflow(dialog);
         expect(await post.evaluate(el => Array.from(el.querySelectorAll('*')).filter(n => n.getClientRects().length && n.getBoundingClientRect().right > document.documentElement.clientWidth + 1).map(n => n.tagName))).toEqual([]);
         expect(await mixing.innerText()).not.toMatch(/[ぁ-んァ-ヶ一-龠]/); expect(await post.innerText()).not.toMatch(/[ぁ-んァ-ヶ一-龠]/);
@@ -87,7 +87,7 @@ test('ホームで設定を開かずオケ音量とミュートを変更し、�
 
 test('共通のVSTカードでキーボードの並べ替えを配信ラックへ送る', async ({ page }) => {
     await fixture(page, false); await page.goto('/'); const dialog = await settings(page);
-    const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('ミックス後の配信 VST', { exact: true }) }).last(); await keyboardOpen(page, post.locator('summary').first());
+    const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('配信音を仕上げる VST', { exact: true }) }).last(); await keyboardOpen(page, post.locator('summary').first());
     const handle = post.getByRole('button', { name: 'Fixture EQを並べ替え' }); await handle.scrollIntoViewIfNeeded(); await handle.focus(); await page.keyboard.press('Space');
     await expect(handle).toHaveAttribute('aria-pressed', 'true');
     const announcements = page.locator('[id^="DndLiveRegion"]'); await expect(announcements).toContainText('並べ替えを開始');

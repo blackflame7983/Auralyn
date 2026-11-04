@@ -317,7 +317,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {configured && soundChain}
                         <div className="min-w-0"><HomePanels
                             model={preparation}
-                            homeActionInStrip={canStart && !isEngineRunning || audioReady && !preparation.context.usage}
+                            homeActionInStrip={canStart && !isEngineRunning || purpose !== 'music' && audioReady && !preparation.context.usage}
                             destinationRequest={destinationRequest}
                             audioReady={audioReady}
                             statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
@@ -325,6 +325,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}
                             onCheckOutput={focusOutputControl}
                             onOpenSoundSettings={onOpenSoundSettings} onListen={openListen}
+                            onSetup={onOpenWizard}
                             onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot}
                         /></div>
                         <div className="min-w-0">

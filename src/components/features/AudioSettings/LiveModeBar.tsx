@@ -9,7 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 // 本番中に使う歌・雑談の切替と本番保護。未登録の間は登録欄への入口だけを出す。
 // 未登録の間は起動時・設定を閉じたとき・前面への復帰時に状態を読み、定期確認はしない。
 // embedded は本番帯の中に置くとき。枠と余白を本番帯に任せる。
-export function LiveModeBar({ model, refreshKey, embedded = false, onRegister }: { model: LiveModesModel; refreshKey?: unknown; embedded?: boolean; onRegister?: () => void }) {
+export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, safetyOnly = false }: { model: LiveModesModel; refreshKey?: unknown; embedded?: boolean; onRegister?: () => void; safetyOnly?: boolean }) {
     const t = useMessages();
     const { snapshot: value, busy, error, refresh, activate } = model;
     const registered = Boolean(value?.definitions.singing || value?.definitions.talk);
@@ -30,19 +30,20 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister }:
         <p role="alert" className="text-xs text-warning">{error}</p>
         <button type="button" disabled={busy} onClick={() => void refresh()} className="rounded-md border border-border px-3 py-1.5 text-xs">{t('settings.LiveModeControls.236')}</button>
     </section> : null;
-    if (!registered && !onRegister && !value.transaction) return null;
+    if (safetyOnly && !value.armed && !value.transaction && !error && !value.error) return null;
+    if (!registered && !onRegister && !value.transaction && !value.armed && !error && !value.error) return null;
 
     const name = (mode: 'singing' | 'talk') => mode === 'singing' ? t('settings.LiveModeControls.212') : t('settings.LiveModeControls.213');
     const applied = value.phase === 'settled' ? value.applied : null;
     const pending = value.phase === 'queued' || value.phase === 'transitioning';
     return (
         <section aria-label={t('liveBar.label')} className={cn('flex flex-wrap items-center gap-3', !embedded && 'mb-3 rounded-xl border border-border bg-card gaming:bg-card/70 px-3 py-2')}>
-            {registered && <span className="text-xs font-semibold text-muted-foreground">{t('liveBar.label')}</span>}
-            {registered && <div role="group" aria-label={t('liveBar.mode')} className="flex gap-1">
+            {registered && !safetyOnly && <span className="text-xs font-semibold text-muted-foreground">{t('liveBar.label')}</span>}
+            {registered && !safetyOnly && <div role="group" aria-label={t('liveBar.mode')} className="flex gap-1">
                 {(['singing', 'talk'] as const).map(mode => (
                     <button key={mode} type="button" disabled={busy || model.changesBlocked || !value.definitions[mode]} aria-pressed={applied === mode}
                         onClick={() => void model.select(mode)}
-                        className={cn('inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-sm font-bold transition-colors disabled:opacity-50',
+                        className={cn('live-mode-choice inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-bold transition-colors disabled:opacity-50',
                             applied === mode ? 'border-selection bg-selection/20 text-foreground ring-1 ring-selection/30' : 'border-input bg-background text-foreground hover:bg-muted')}>
                         {mode === 'singing' ? <MdMusicNote aria-hidden="true" className="h-4 w-4" /> : <MdMic aria-hidden="true" className="h-4 w-4" />}{name(mode)}
                     </button>
@@ -53,13 +54,13 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister }:
                 {value.transaction.error && <p className="break-words text-xs">{value.transaction.error}</p>}
                 {value.transaction.recoveryAvailable && <button type="button" disabled={model.recoveryBusy || busy} onClick={() => void model.recover()} className="rounded-md border border-border px-3 py-1.5 text-xs">{t('liveTransaction.recover')}</button>}
             </div>}
-            {registered && <span role="status" title={t('settings.LiveModeControls.217')} className="text-xs text-muted-foreground">
+            {registered && !safetyOnly && <span role="status" title={t('settings.LiveModeControls.217')} className="text-xs text-muted-foreground">
                 {pending ? t('liveBar.switching', { mode: value.target ? name(value.target) : '' })
                     : value.phase === 'partial' ? t('liveOutput.partial')
                     : !value.running || value.phase === 'stopped' ? t('liveBar.stopped')
                     : applied ? '' : t('liveBar.custom')}
             </span>}
-            {registered && <button type="button" disabled={busy || model.changesBlocked} aria-pressed={value.armed} aria-label={t('liveBar.protect')} aria-describedby={value.armed ? 'live-protect-state' : undefined} onClick={() => void model.protect(!value.armed)}
+            {(registered || value.armed) && (!safetyOnly || value.armed) && <button type="button" disabled={busy || model.changesBlocked} aria-pressed={value.armed} aria-label={t('liveBar.protect')} aria-describedby={value.armed ? 'live-protect-state' : undefined} onClick={() => void model.protect(!value.armed)}
                 title={t('liveBar.protectHint')}
                 className={cn('inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-50', !embedded && 'ml-auto',
                     value.armed ? 'border-brand bg-brand/15 text-brand' : 'border-border text-muted-foreground hover:text-foreground')}>

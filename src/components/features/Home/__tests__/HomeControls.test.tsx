@@ -28,6 +28,22 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
+it.each(['normal', 'protected', 'recovery', 'snapshotError'] as const)('音楽鑑賞の初期取得で安全状態を読み、必要な操作だけ残す (%s)', async kind => {
+    const snapshot = liveSnapshot({ armed: kind === 'protected', error: kind === 'snapshotError' ? 'fixture error' : null,
+        transaction: kind === 'recovery' ? { id: 'tx', phase: 'recovery_required', target: null, error: null, recoveryAvailable: true } : null });
+    const request = vi.spyOn(liveModesApi, 'request').mockResolvedValue(snapshot);
+    function MusicSafety() { const model = useLiveModes(); return <LiveModeBar model={model} safetyOnly />; }
+    render(<MusicSafety />);
+    await waitFor(() => expect(request).toHaveBeenCalledWith({ action: 'snapshot' }));
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: '歌唱モード' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '雑談モード' })).not.toBeInTheDocument();
+    if (kind === 'normal') expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    if (kind === 'protected') expect(screen.getByRole('button', { name: '本番保護' })).toHaveAttribute('aria-pressed', 'true');
+    if (kind === 'recovery') expect(screen.getByRole('button', { name: '以前の状態を復旧する' })).toBeInTheDocument();
+    if (kind === 'snapshotError') expect(screen.getByRole('alert')).toBeVisible();
+});
+
 it('ノイズ低減の強さは現在の抑制強度と声を守る設定を保ったまま切り替える', async () => {
     render(<VoiceQuickControls running />);
     const high = await screen.findByRole('button', { name: '強' });
@@ -56,7 +72,7 @@ it('内蔵ボイスチェーンのON/OFFは適用済みの歌向け設定と残�
     }));
     render(<VoiceQuickControls running />);
     expect(await screen.findByText(/歌向けの設定を使っています/)).toBeInTheDocument();
-    await act(async () => fireEvent.click(screen.getByRole('switch', { name: '内蔵ボイスチェーン' })));
+    await act(async () => fireEvent.click(screen.getByRole('switch', { name: '声を整える' })));
     expect(request).toHaveBeenCalledWith({ action: 'apply', epoch: 'e1', expectedRevision: '3', config: { ...singing, active: false } });
     expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
 });

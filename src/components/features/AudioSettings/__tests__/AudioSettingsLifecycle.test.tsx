@@ -68,7 +68,7 @@ it('配信状態から認証設定へ移り、接続を保持して戻るが、�
     });
     render(<AppModals />);
     fireEvent.click(screen.getByRole('button', { name: '配信状態の管理を開く' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'OBS込みプロファイル' }));
+    fireEvent.click(await screen.findByRole('button', { name: '今の設定を保存・復帰' }));
     fireEvent.click(screen.getByLabelText('OBSの既存項目も含める'));
     expect(invoke).not.toHaveBeenCalledWith('connect_obs', expect.anything());
     fireEvent.click(screen.getByRole('button', { name: 'OBS接続設定を開く' }));
@@ -77,7 +77,7 @@ it('配信状態から認証設定へ移り、接続を保持して戻るが、�
     fireEvent.click(connect);
     await waitFor(() => expect(connected).toBe(true));
     fireEvent.click(screen.getByRole('button', { name: '設定画面を閉じる' }));
-    expect(await screen.findByRole('button', { name: 'OBS込みプロファイル' })).toHaveAttribute('aria-pressed', 'true');
+    expect(await screen.findByRole('button', { name: '今の設定を保存・復帰' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByLabelText('OBSの既存項目も含める'));
     fireEvent.click(screen.getByRole('button', { name: 'OBSの対象を取得' }));
     await screen.findByLabelText('声');
@@ -298,7 +298,7 @@ it('歌向け下書きは設定→候補試聴→設定の往復で保持し、�
     fireEvent.click(screen.getByText('数値を細かく調整'));
     fireEvent.change(screen.getByRole('spinbutton', { name: '低音の整理（Hz）' }), { target: { value: '135' } });
     fireEvent.click(screen.getByRole('button', { name: '試しに聴く' }));
-    await screen.findByText('原音と内蔵ボイスチェーンの候補を比べる');
+    await screen.findByText('原音と声を整える機能の候補を比べる');
     expect(screen.getByText(/下書き：低音 135/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '音づくりの下書きへ戻る' }));
     expect(await screen.findByRole('spinbutton', { name: '低音の整理（Hz）' })).toHaveValue(135);

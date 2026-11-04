@@ -1,6 +1,7 @@
 import { ProcessInputPanel } from './ProcessInputPanel';
 import { deviceInput, readInputSource, type InputSourceRequest } from '@/lib/inputSource';
 import { InfoPopover } from '@/components/ui/InfoPopover';
+import { SaveScopeSummary } from '../Presets/SaveScopeSummary';
 import { SoundSettings, useSoundSettings } from './SoundSettings';
 import { SystemSettings, useSystemSettings } from './SystemSettings';
 import { LiveOutputPanel } from './LiveOutputPanel';
@@ -193,7 +194,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         const target = initialSection ? settingsBody.current?.querySelector<HTMLDetailsElement>(initialSection === 'mixing' ? '#mixing-settings' : initialSection === 'liveModes' ? '#live-mode-settings' : '#singing-settings') : soundStart.current;
         if (target instanceof HTMLDetailsElement) target.open = true;
         target?.scrollIntoView?.({ block: 'start' });
-        if (initialSection) target?.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
+        if (initialSection) (initialSection === 'liveModes' ? target?.querySelector<HTMLElement>('h3') : target?.querySelector<HTMLElement>('summary') ?? target)?.focus({ preventScroll: true });
       });
       return () => cancelAnimationFrame(frame);
     }
@@ -434,32 +435,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <div className="space-y-6">
 
 
-                {/* Host Selection */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-sm font-medium text-muted-foreground">{t('settings.AudioSettingsModal.032')}</label>
-                    <button
-                      onClick={() => fetchDevices(true)}
-                      className="link-button min-h-6 min-w-6 rounded-md border border-input px-2 py-1 text-xs text-primary hover:bg-muted flex items-center gap-1 transition-colors"
-                      title={t('settings.AudioSettingsModal.033')}
-                    >
-                      <MdRefresh className="w-3 h-3" />
-                      {t('settings.AudioSettingsModal.034')}</button>
-                  </div>
-                  <select
-                    aria-label={t('settings.AudioSettingsModal.035')}
-                    value={selectedHost}
-                    onChange={(e) => setSelectedHost(e.target.value)}
-                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select"
-                  >
-                    {!selectedHost && <option value="">{t('settings.AudioSettingsModal.036')}</option>}
-                    {availableHosts.map((host) => (
-                      <option key={host} value={host}>{host}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-muted-foreground">{t(isAsio ? 'settings.connection.asioHint' : 'settings.connection.wasapiHint')}</p>
-                </div>
-
                 <div id="primary-input-settings" tabIndex={-1}><ProcessInputPanel value={inputSource} onChange={next => {
                   if (processInput && next.source.kind === 'device') setNeedsDeviceChoice(true);
                   setInputSource(next);
@@ -525,13 +500,59 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </div>
                 )}
 
+              </div>
+            )}
+            <details id="live-output-settings" onToggle={e => { if (e.currentTarget.open) setLoadOutput(true); }} className="rounded-xl border border-border p-4 space-y-3">
+              <summary className="cursor-pointer font-semibold">{t('liveOutput.title')}</summary>
+              <LiveOutputPanel autoLoad={loadOutput} outputs={devices.outputs} inputName={inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : selectedInputDevice?.name} monitorName={selectedOutputDevice?.name} disabled={loading} onBusyChange={setLoading} />
+            </details>
+            <section aria-label={t('mixingHome.open')} className="space-y-3">
+              <h3 className="font-semibold">{t('mixingHome.open')}</h3>
+              <MixingPanel inputs={devices.inputs} primaryInputId={selectedInputDevice?.id} primaryIsVoiceDevice={inputSource.source.kind === 'device' && inputSource.source.config.purpose === 'voice'} disabled={loading} initiallyOpen={initialSection === 'mixing'} onNavigate={target => {
+                const el = settingsBody.current?.querySelector<HTMLElement>(target === 'output' ? '#live-output-settings' : '#primary-input-settings');
+                // 読み込み済みなら出力先の選択へ直接移し、未取得の場合だけ取得後のフォーカス移動を予約する。
+                const select = target === 'output' && !loading && loadOutput ? el?.querySelector<HTMLElement>('select') : null;
+                if (el instanceof HTMLDetailsElement) { el.open = true; outputFocusPending.current = !loadOutput || loading; setLoadOutput(true); }
+                el?.scrollIntoView({ block: 'start' }); (select ?? el?.querySelector<HTMLElement>('summary, select') ?? el)?.focus({ preventScroll: true });
+              }} />
+              <PostMixPanel mainRunning={engineStats?.latencyMetadata?.streamRunning === true} disabled={loading} />
+            </section>
+
+            {!loading && !error && <div className="space-y-6">
                 <details ref={tuningDetails} open={tuningOpen} onToggle={event => setTuningOpen(event.currentTarget.open)} className="rounded-xl border border-border p-3 space-y-3">
                   <summary className="cursor-pointer font-semibold text-sm">
                     {t('settings.audioTuning.title')}
-                    <span className="ml-2 text-xs font-normal text-muted-foreground">{t([128, 512, 1024].includes(selectedBufferSize)
+                    {/* 現在の接続方式を見出しに出し、ASIOを探す人にもWASAPIの人にも自分の設定だと分かるようにする。サンプル数は中の詳細に置く。 */}
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">{selectedHost} · {t([128, 512, 1024].includes(selectedBufferSize)
                       ? selectedBufferSize === 128 ? 'settings.AudioSettingsModal.048' : selectedBufferSize === 512 ? 'settings.AudioSettingsModal.051' : 'settings.AudioSettingsModal.054'
-                      : 'settings.bufferCustom', { size: selectedBufferSize })} · {selectedSampleRate / 1000} kHz</span>
+                      : 'settings.bufferCustomShort')} · {selectedSampleRate / 1000} kHz</span>
                   </summary>
+                {/* Host Selection */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-medium text-muted-foreground">{t('settings.AudioSettingsModal.032')}</label>
+                    <button
+                      onClick={() => fetchDevices(true)}
+                      className="link-button min-h-6 min-w-6 rounded-md border border-input px-2 py-1 text-xs text-primary hover:bg-muted flex items-center gap-1 transition-colors"
+                      title={t('settings.AudioSettingsModal.033')}
+                    >
+                      <MdRefresh className="w-3 h-3" />
+                      {t('settings.AudioSettingsModal.034')}</button>
+                  </div>
+                  <select
+                    aria-label={t('settings.AudioSettingsModal.035')}
+                    value={selectedHost}
+                    onChange={(e) => setSelectedHost(e.target.value)}
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select"
+                  >
+                    {!selectedHost && <option value="">{t('settings.AudioSettingsModal.036')}</option>}
+                    {availableHosts.map((host) => (
+                      <option key={host} value={host}>{host}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">{t(isAsio ? 'settings.connection.asioHint' : 'settings.connection.wasapiHint')}</p>
+                </div>
+
                 {/* 切替は対象の見出しと同じ行に置く。 */}
                 <div className="flex flex-wrap justify-between items-center gap-2">
                   <h3 className="text-sm font-medium">{t('settings.AudioSettingsModal.047')}</h3>
@@ -716,6 +737,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 </details>
                 {/* Preset Section */}
                 <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-3">
+                  <SaveScopeSummary kind="io" />
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-1"><label className="text-sm font-medium text-muted-foreground">{t('settings.AudioSettingsModal.086')}</label><InfoPopover label={t('info.preset')}>{t('settings.AudioSettingsModal.085')}</InfoPopover></span>
                     <div className="flex gap-2">
@@ -761,23 +783,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </div>
                 </div>
 
-              </div>
-            )}
-            <details id="live-output-settings" onToggle={e => { if (e.currentTarget.open) setLoadOutput(true); }} className="rounded-xl border border-border p-4 space-y-3">
-              <summary className="cursor-pointer font-semibold">{t('liveOutput.title')}</summary>
-              <LiveOutputPanel autoLoad={loadOutput} outputs={devices.outputs} disabled={loading} onBusyChange={setLoading} />
-            </details>
-            <section aria-label={t('mixingHome.open')} className="space-y-3">
-              <h3 className="font-semibold">{t('mixingHome.open')}</h3>
-              <MixingPanel inputs={devices.inputs} primaryInputId={selectedInputDevice?.id} primaryIsVoiceDevice={inputSource.source.kind === 'device' && inputSource.source.config.purpose === 'voice'} disabled={loading} initiallyOpen={initialSection === 'mixing'} onNavigate={target => {
-                const el = settingsBody.current?.querySelector<HTMLElement>(target === 'output' ? '#live-output-settings' : '#primary-input-settings');
-                // 読み込み済みなら出力先の選択へ直接移し、未取得の場合だけ取得後のフォーカス移動を予約する。
-                const select = target === 'output' && !loading && loadOutput ? el?.querySelector<HTMLElement>('select') : null;
-                if (el instanceof HTMLDetailsElement) { el.open = true; outputFocusPending.current = !loadOutput || loading; setLoadOutput(true); }
-                el?.scrollIntoView({ block: 'start' }); (select ?? el?.querySelector<HTMLElement>('summary, select') ?? el)?.focus({ preventScroll: true });
-              }} />
-              <PostMixPanel mainRunning={engineStats?.latencyMetadata?.streamRunning === true} disabled={loading} />
-            </section>
+              </div>}
             <details className="rounded-xl border border-border p-4 space-y-3">
               <summary className="cursor-pointer font-semibold">{t('structure.monitor')}</summary>
               <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await system.refreshEngineRuntimeStats(); }} />
@@ -787,7 +793,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
           <SoundSettings model={sound} engineStats={engineStats} singingModel={singingModel} liveModel={providedLive ?? localLive}
             isBeginnerMode={isBeginnerMode} settingsBody={settingsBody} soundStart={soundStart}
-            onClose={onClose} onOpenVoiceCheck={onOpenVoiceCheck} onPreviewSinging={onPreviewSinging} onSaveSingingProfile={onSaveSingingProfile} />
+            onClose={onClose} onOpenVoiceCheck={onOpenVoiceCheck} onPreviewSinging={onPreviewSinging} onSaveSingingProfile={onSaveSingingProfile} onOpenMixing={() => { setActiveTab('audio'); requestAnimationFrame(() => { const target = settingsBody.current?.querySelector<HTMLDetailsElement>('#mixing-settings'); if (target) { target.open = true; target.scrollIntoView?.({ block: 'start' }); target.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true }); } }); }} />
           <TabsContent value="obs" className="space-y-4">
             <ObsConnectionSettings
               showConfirm={showConfirm}

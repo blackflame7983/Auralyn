@@ -4,6 +4,7 @@ import { useAuroraDisplay } from '@/hooks/useAuroraDisplay';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { InfoPopover } from '@/components/ui/InfoPopover';
 
 // 毎日切り替えるものではないので、ホームの本文ではなく設定の「表示」に置く。
 // 表示だけを切り替え、音声設定・準備の送り先・送出には触れない。
@@ -17,7 +18,8 @@ export function DisplayPurposeSelector() {
                 <option value="voice">{t('purpose.voice')}</option><option value="music">{t('purpose.music')}</option>
             </select>
         </label>
-        <p id="display-purpose-hint" className="text-xs text-muted-foreground">{t('purpose.hint')}</p>
+        <span id="display-purpose-hint" className="sr-only">{t('purpose.hint')}</span>
+        <InfoPopover label={t('purpose.label')}>{t('purpose.hint')}</InfoPopover>
     </div>;
 }
 
@@ -30,8 +32,9 @@ export function NumericDetailsSwitch() {
         <div className="flex items-center gap-3">
             <Label htmlFor="numeric-details">{t('details.label')}</Label>
             <Switch id="numeric-details" checked={!isBeginnerMode} onCheckedChange={checked => setIsBeginnerMode(!checked)} aria-describedby="numeric-details-hint" />
+            <InfoPopover label={t('details.label')}>{t('details.hint')}</InfoPopover>
         </div>
-        <p id="numeric-details-hint" className="text-xs text-muted-foreground">{t('details.hint')}</p>
+        <span id="numeric-details-hint" className="sr-only">{t('details.hint')}</span>
     </div>;
 }
 
@@ -43,7 +46,8 @@ export function AuroraDisplaySwitch() {
         <div className="flex items-center gap-3">
             <Label htmlFor="aurora-display">{t('aurora.label')}</Label>
             <Switch id="aurora-display" checked={shown} onCheckedChange={setShown} aria-describedby="aurora-display-hint" />
+            <InfoPopover label={t('aurora.label')}>{t('aurora.hint')}</InfoPopover>
         </div>
-        <p id="aurora-display-hint" className="text-xs text-muted-foreground">{t('aurora.hint')}</p>
+        <span id="aurora-display-hint" className="sr-only">{t('aurora.hint')}</span>
     </div>;
 }

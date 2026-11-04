@@ -6,6 +6,7 @@ import { MeterVisual } from '../LevelMeter/MeterVisual';
 import { buttonVariants } from '@/components/ui/button';
 import { receiverDeviceNotice, deviceDisplayName } from '../../../lib/audioRouting';
 import { Modal } from '../../ui/modal';
+import { AudioFlow } from '../../ui/AudioFlow';
 import React, { useEffect, useRef } from 'react';
 import { DiscordIcon } from '../../ui/DiscordIcon';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
@@ -19,7 +20,7 @@ import { isVirtualOutput, type SetupWizardModalProps } from './wizardModel';
 
 export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const t = useMessages();
-    const { isOpen, onClose, onSkip, onOpenSettings, onOpenTroubleshoot } = props;
+    const { isOpen, onClose, onSkip, onOpenSettings, onOpenTroubleshoot, onOpenVoiceCheck } = props;
     const { audioStartError, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, savedGoal, availableInputs, availableOutputs,
@@ -364,14 +365,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                             {config.goal !== 'music' && /アクセス.*拒否|0x80070005|access.*denied/i.test(audioStartError) && <MicrophonePermissionGuide expanded />}
                             {config.goal === 'music' && audioStartError && <p role="alert" className="text-sm text-destructive-text">{t('wizard.musicFailure')}</p>}
-                            <div className="bg-muted/30 p-3 rounded-xl border border-border max-w-lg mx-auto space-y-3">
-                                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
-                                    <dt className="text-muted-foreground">{config.goal === 'music' ? t('wizard.input') : t('guide.wizard.inputSummary', { kind: config.goal === 'listening' ? t('guide.copy.223') : t('guide.copy.224') })}</dt>
-                                    <dd className="break-all">{config.input && deviceDisplayName(config.input.name)}</dd>
-                                    <dt className="text-muted-foreground">{t('guide.wizard.outputSummary', { kind: config.outputMode === 'broadcast' ? t('guide.copy.226') : config.outputMode === 'monitor' ? t('guide.copy.227') : t('guide.copy.228') })}</dt>
-                                    <dd className="break-all">{config.output && deviceDisplayName(config.output.name)}</dd>
-                                </dl>
-                            </div>
+                            <AudioFlow inputKind={config.goal === 'music' ? 'playback' : 'microphone'}
+                                processingWarning={audioStartError ? t('home.startFailed') : undefined}
+                                label={t('prep.signalPath')}
+                                unknownLabel={t('flow.unknown')}
+                                input={{ label: t('home.input'), value: config.input ? deviceDisplayName(config.input.name) : undefined }}
+                                output={{ label: t('home.output'), value: config.output ? deviceDisplayName(config.output.name) : undefined }}
+                                receiver={{ label: t('wizard.purpose'), value: t(config.goal === 'obs' ? 'wizard.obs' : config.goal === 'discord' ? 'wizard.chat' : config.goal === 'music' ? 'wizard.musicGoal' : config.goal === 'listening' ? 'wizard.music' : 'wizard.manual') }}
+                            />
 
                             {config.goal !== 'music' && <div className="flex flex-col items-center gap-3">
                                 {isTestingSound && (
@@ -465,9 +466,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                             {config.goal === 'music' ? t('wizard.musicComplete') : <>{t('guide.copy.237')}<strong className="text-foreground"> {t('guide.copy.238')}</strong>
                                             {t('guide.copy.239')}{t('wizard.diagnostics')}{t('guide.copy.240')}</>}</p>
                                     </div>
+                                    {config.goal !== 'music' && onOpenVoiceCheck && <button
+                                        type="button"
+                                        onClick={() => { onClose(); onOpenVoiceCheck(); }}
+                                        className={buttonVariants({ className: "gap-2" })}
+                                    ><MdHearing aria-hidden="true" />{t('home.voiceCheck')}</button>}
                                     <button
                                         onClick={onClose}
-                                        className={buttonVariants({ className: "gap-2" })}
+                                        className={buttonVariants({ variant: config.goal !== 'music' && onOpenVoiceCheck ? 'outline' : 'default', className: "gap-2" })}
                                     >
                                         {t('common.close')}
                                     </button>

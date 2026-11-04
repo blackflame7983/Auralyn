@@ -1,6 +1,6 @@
 import { MixingDiagnostics } from './MixingDiagnostics';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { MdExtension, MdRefresh, MdSettings } from 'react-icons/md';
+import { MdExtension, MdRefresh } from 'react-icons/md';
 import { audioApi, type EngineRuntimeStats, type EngineTuningConfig } from '../../../api/audio';
 import { autostartApi } from '../../../api/autostart';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -8,6 +8,7 @@ import { refreshRuntimeStatsChecked } from '@/hooks/useRuntimeStats';
 import { toast } from 'sonner';
 import { TabsContent } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
+import { InfoPopover } from '@/components/ui/InfoPopover';
 import { LatencyDetails } from '@/components/layout/LatencyDetails';
 import { MigrationPanel } from './MigrationPanel';
 import { UpdatePreferences } from './UpdatePreferences';
@@ -135,8 +136,8 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             {/* Startup Settings */}
             <section className="p-4 bg-muted/20 border border-border rounded-xl flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-foreground">{t('settings.AudioSettingsModal.142')}</h3>
-                <div className="text-xs text-muted-foreground mt-0.5">{autostartReason ? renderNotice(t, autostartReason) : t('settings.AudioSettingsModal.143')}</div>
+                <div className="flex items-center gap-1"><h3 className="text-sm font-bold text-foreground">{t('settings.AudioSettingsModal.142')}</h3><InfoPopover label={t('settings.AudioSettingsModal.142')}>{t('settings.AudioSettingsModal.143')}</InfoPopover></div>
+                <div className="text-xs text-muted-foreground mt-0.5">{autostartReason ? renderNotice(t, autostartReason) : t('settings.system.autostartAudio')}</div>
               </div>
               <div className="flex items-center">
                 <Switch
@@ -169,8 +170,8 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
 
             <UpdatePreferences />
             <section className="rounded-xl border border-border p-4 space-y-2">
-              <h3 className="font-semibold">{t('structure.restart')}</h3>
-              <p className="text-xs text-muted-foreground">{t('settings.system.restartDescription')}</p>
+              <div className="flex items-center gap-1"><h3 className="font-semibold">{t('structure.restart')}</h3><InfoPopover label={t('settings.system.restartHelp')}>{t('settings.system.restartDescription')}</InfoPopover></div>
+              <p className="text-xs text-muted-foreground">{t('settings.system.restartWarning')}</p>
                 <button
                   onClick={handleRestart}
                   disabled={loading || !canRestart}
@@ -185,9 +186,6 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
               <summary className="cursor-pointer"><h3 className="inline font-semibold">{t('structure.optimization')}</h3></summary>
             {/* Engine Tuning */}
             <div className="space-y-2">
-              <h4 className="text-sm font-bold text-foreground flex items-center gap-2 px-1">
-                <MdSettings className="w-4 h-4 text-primary" />
-                {t('settings.AudioSettingsModal.149')}</h4>
               <div className="p-4 bg-muted/20 border border-border rounded-xl space-y-4">
                 <div className="flex items-center justify-between">
                   <div>

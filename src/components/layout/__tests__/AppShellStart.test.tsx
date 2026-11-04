@@ -64,7 +64,7 @@ it('未設定時は状態帯・調整・準備を示し、音声を自動変更�
     // 未設定の間は本番帯を出さず、準備の主ボタンを先頭にする。
     expect(screen.queryByRole('region', { name: '本番' })).not.toBeInTheDocument();
     expect(screen.queryByText('quick')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '録音して比較' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'ボイスチェック' })).toBeDisabled();
     expect(sound).not.toHaveBeenCalled(); expect(voice).not.toHaveBeenCalled();
 });
 
@@ -223,7 +223,7 @@ it('入出力・声の調整・試聴を保持する', async () => {
     expect(meters[0].closest('section[aria-label="本番"]')).not.toBeNull();
     expect(screen.getByText('quick')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'マイクと出力先を設定する' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '録音して比較' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ボイスチェック' }));
     fireEvent.pointerDown(screen.getByRole('button', { name: 'その他の操作' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(await screen.findByRole('menuitem', { name: 'OBS連携' }));
     expect(voice).toHaveBeenCalledOnce(); expect(obs).toHaveBeenCalledOnce();

@@ -18,7 +18,6 @@ import { LiveModeControls } from './LiveModeControls';
 export function useSoundSettings(engineStats: EngineRuntimeStats | null, singingModel: SingingDraft, initialSection?: 'liveModes' | 'singing' | 'audioTuning') {
   const t = useMessages();
   const [preparingMode, setPreparingMode] = useState<'singing' | 'talk' | null>(initialSection === 'singing' ? 'singing' : null);
-  const [liveOpen, setLiveOpen] = useState(initialSection === 'liveModes');
   const [singingOpen, setSingingOpen] = useState(initialSection === 'singing');
   const [peakOpen, setPeakOpen] = useState(false);
   const [noiseMode, setNoiseMode] = useState<NoiseControlMode>('smart');
@@ -135,7 +134,7 @@ export function useSoundSettings(engineStats: EngineRuntimeStats | null, singing
     void applyBuiltInEffects({ amount: Number(value) });
   };
 
-  return { noiseMode, setNoiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, preparingMode, setPreparingMode, liveOpen, setLiveOpen, singingOpen, setSingingOpen, peakOpen, setPeakOpen };
+  return { noiseMode, setNoiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, preparingMode, setPreparingMode, singingOpen, setSingingOpen, peakOpen, setPeakOpen };
 }
 
 interface SoundSettingsProps {
@@ -150,13 +149,14 @@ interface SoundSettingsProps {
   onOpenVoiceCheck?: () => void;
   onPreviewSinging?: () => void;
   onSaveSingingProfile?: () => void;
+  onOpenMixing: () => void;
 }
-export function SoundSettings({ model, engineStats, singingModel, liveModel, isBeginnerMode, settingsBody, soundStart, onClose, onOpenVoiceCheck, onPreviewSinging, onSaveSingingProfile }: SoundSettingsProps) {
+export function SoundSettings({ model, engineStats, singingModel, liveModel, isBeginnerMode, settingsBody, soundStart, onClose, onOpenVoiceCheck, onPreviewSinging, onSaveSingingProfile, onOpenMixing }: SoundSettingsProps) {
   const t = useMessages();
-  const { noiseMode, setNoiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, preparingMode, setPreparingMode, liveOpen, setLiveOpen, singingOpen, setSingingOpen, peakOpen, setPeakOpen } = model;
+  const { noiseMode, setNoiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, preparingMode, setPreparingMode, singingOpen, setSingingOpen, peakOpen, setPeakOpen } = model;
   return (
-          <TabsContent value="sound" className="space-y-4" onToggle={event => { if ((event.target as HTMLElement).id === 'live-mode-settings') setLiveOpen((event.target as HTMLDetailsElement).open); }}>
-            <p className="text-sm text-muted-foreground">{t('settings.AudioSettingsModal.092')}</p>
+          <TabsContent value="sound" className="space-y-4">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground"><InfoPopover label={t('settings.soundHelp')}>{t('settings.AudioSettingsModal.092')}</InfoPopover><span aria-hidden="true">{t('settings.soundHelpShort')}</span></div>
             {!engineStats && <p role="status" className="text-sm text-muted-foreground">{t('settings.AudioSettingsModal.094')}</p>}
             <fieldset disabled={!engineStats || noiseActionBusy} className="min-w-0 space-y-4">
                 {/* Noise reduction */}
@@ -374,7 +374,8 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
 
             </fieldset>
             {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="h-10 px-4 rounded-md border border-input text-sm hover:bg-muted">{t('settings.AudioSettingsModal.093')}</button>}
-            <LiveModeControls model={liveModel} initiallyOpen={liveOpen} onAdjust={mode => {
+            <button type="button" onClick={onOpenMixing} className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted">{t('mixingHome.open')}</button>
+            <LiveModeControls model={liveModel} onAdjust={mode => {
               setPreparingMode(mode);
               const target = mode === 'singing' ? settingsBody.current?.querySelector<HTMLDetailsElement>('#singing-settings') : soundStart.current;
               if (target instanceof HTMLDetailsElement) target.open = true;
@@ -385,8 +386,8 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
               <summary className="cursor-pointer font-semibold">{t('structure.singing')}</summary>
               <SingingControls showHeading={false} model={singingModel} onPreview={onPreviewSinging} onSaveProfile={onSaveSingingProfile} />
               {preparingMode === 'singing' && <button type="button" className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted" onClick={() => {
-                const target = settingsBody.current?.querySelector<HTMLDetailsElement>('#live-mode-settings');
-                if (target) { target.open = true; target.scrollIntoView?.({ block: 'start' }); target.querySelector('summary')?.focus({ preventScroll: true }); }
+                const target = settingsBody.current?.querySelector<HTMLElement>('#live-mode-settings');
+                if (target) { target.scrollIntoView?.({ block: 'start' }); target.focus({ preventScroll: true }); }
               }}>{t('settings.mode.return')}</button>}
             </details>
             {/* 出力の安全装置は上級設定。数値の詳細を出さない間は閉じた欄に置く。 */}

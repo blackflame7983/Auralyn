@@ -73,7 +73,7 @@ it.each(['ASIO', 'Wasapi'])('別hostのプリセットで先頭以外の入出�
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const input = await screen.findByRole('combobox', { name: 'マイク入力' });
     await waitFor(() => expect(input).toHaveValue(`id:${previousHost}-1`));
-    fireEvent.change(screen.getByRole('combobox', { name: '入出力プリセット' }), { target: { value: 'target' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '入出力の保存' }), { target: { value: 'target' } });
     await waitFor(() => expect(input).toHaveValue(`id:${targetHost}-2`));
     fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
     await waitFor(() => expect(start).toHaveBeenCalledWith(targetHost, `${targetHost} device 2`, `${targetHost} device 2`, 512, 48000, `${targetHost}-2`, `${targetHost}-2`, undefined, expect.objectContaining({ outputRouting: expect.any(Object) }), { source: { kind: "device", config: { purpose: "voice" } } }));
@@ -88,7 +88,7 @@ it('稼働中の変更なし保存を抑止し、変更を戻すと再び抑止�
     expect(save).toHaveAccessibleDescription(/変更はありません.*音声が一瞬途切れます/);
     fireEvent.click(save);
     expect(start).not.toHaveBeenCalled();
-    const summary = screen.getByText('音の途切れ・周波数', { exact: false, selector: 'summary' });
+    const summary = screen.getByText('接続方式・音切れの設定', { exact: false, selector: 'summary' });
     fireEvent.click(summary);
     await waitFor(() => expect(summary.closest('details')).toHaveAttribute('open'));
     fireEvent.click(await screen.findByRole('button', { name: /途切れにくく.*音切れ対策/ }));
@@ -170,13 +170,13 @@ it.each(['numeric', 'glitch'] as const)('%sの条件では途切れ設定を開�
     if (reason === 'numeric') localStorage.setItem('vst_host_beginner_mode', 'false');
     else vi.spyOn(audioApi, 'getEngineRuntimeStats').mockResolvedValue({ glitchCount: 1 } as EngineRuntimeStats);
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    const summary = await screen.findByText('音の途切れ・周波数', { exact: false, selector: 'summary' });
+    const summary = await screen.findByText('接続方式・音切れの設定', { exact: false, selector: 'summary' });
     await waitFor(() => expect(summary.closest('details')).toHaveAttribute('open'));
 });
 
 it('通常は現在値付きで閉じ、再検出の操作領域を確保する', async () => {
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    const summary = await screen.findByText('音の途切れ・周波数', { exact: false, selector: 'summary' });
+    const summary = await screen.findByText('接続方式・音切れの設定', { exact: false, selector: 'summary' });
     expect(summary.closest('details')).not.toHaveAttribute('open');
     expect(summary).toHaveTextContent('標準 · 48 kHz');
     expect(screen.getByRole('button', { name: '再検出' })).toHaveClass('min-h-6');

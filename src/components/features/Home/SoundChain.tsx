@@ -55,7 +55,6 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         : setting(stage.vst.some(v => v.state === 'active'));
     const builtinDetails = stage ? t('flow.builtinParts', { voice: setting(stage.builtinVoiceEnabled), reverb: setting(stage.builtinReverbEnabled) }) : undefined;
     const partial = Boolean(stage && stage.builtinVoiceEnabled !== stage.builtinReverbEnabled);
-    const builtinStatus = partial ? t('flow.partial') : setting(stage?.builtinVoiceEnabled);
     // 状態は色の点と文言で示す。未確認は注意、OFF は中立で、問題とは区別する（DESIGN.md 5.1）。
     const tone = (value: boolean | undefined): StatusTone => value === undefined ? 'warn' : value ? 'ok' : 'off';
     const vstTone: StatusTone = vstStatus === t('flow.enabled') ? 'ok' : vstStatus === t('flow.disabled') || vstStatus === t('flow.noVst') ? 'off' : 'warn';
@@ -102,12 +101,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         {t(emptyVst ? 'chain.vstAdd' : 'chain.vstEditPanel')}<MdChevronRight aria-hidden="true" className="h-4 w-4" />
     </button>;
     const rows = [
-        // 音楽鑑賞では声向けの処理を操作しないので、2段を状態だけの1段に縮める。設定が残っていれば音楽にもかかるため、状態は隠さない。
-        ...(music ? [row({ key: 'voice', on: noiseOn || builtinOn, tag: builtinTag, builtin: true, name: t('chain.voiceTools'), body: <>
-            <StatusDot tone={tone(stage?.nr.enabled)} className="text-[13px]">{t('settings.AudioSettingsModal.105')} {setting(stage?.nr.enabled)}</StatusDot>
-            <StatusDot tone={builtinTone} className="text-[13px]">{t('settings.AudioSettingsModal.095')} {builtinStatus}</StatusDot>
-            {builtinBreakdown}
-        </> })] : [
+        // 表示用途を変えても音は変えない。音楽鑑賞の声向け処理は下の注意と情報ボタンから確認する。
+        ...(music ? [] : [
             row({ key: 'noise', id: 'home-noise', on: noiseOn, quiet: !noiseOn, tag: builtinTag, builtin: true, name: t('settings.AudioSettingsModal.105'), sub: t('chain.noiseSub'),
                 body: live && noiseOn ? <NoiseQuick q={q} /> : <StatusDot tone={live ? 'off' : tone(stage?.nr.enabled)} className="text-[13px] text-muted-foreground">{live ? t('flow.disabled') : setting(stage?.nr.enabled)}</StatusDot>,
                 action: live && <NoiseSwitch q={q} /> }),
@@ -127,10 +122,10 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                     : <span className="text-xs text-muted-foreground">{t('flow.noVst')}</span>, action: vstEdit })
             : row({ key: 'vst', on: vstOn, tag: 'VST', name: 'VST', sub: <StatusDot tone={vstTone}>{vstStatus}</StatusDot>, body: vst, action: vstEdit }),
     ];
-    return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="sound-chain mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 min-[1100px]:px-5">
+    return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="sound-chain mb-4 rounded-xl bg-card gaming:bg-card/70 px-5 py-4 min-[1100px]:px-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1">
-                <h2 className="text-sm font-bold">{t(music ? 'wizard.musicSound' : 'shell.sound')}</h2>
+                <h2 className="text-base font-bold">{t(music ? 'wizard.musicSound' : 'shell.sound')}</h2>
                 <InfoPopover label={t('flow.info')}>
                     <p>{t('flow.scope')}</p>
                     {stage && <p className="mt-2">{t(stats?.latencyMetadata?.processingContext === 'broadcastWorker' ? 'flow.broadcastPath' : 'flow.monitorPath')}</p>}
@@ -154,8 +149,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             </div>
         </div>
         {!audioReady ? <p className="text-xs text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
-            // 音楽鑑賞では声の段に操作を出さない理由を、常に見える形で示す。
-            : music ? <p className="text-xs text-muted-foreground">{t('music.soundHint')}</p>
+            : music ? (noiseOn || builtinOn) && <div className="flex items-center gap-1 text-sm text-warning"><span>{t('flow.voiceStillOn')}</span><InfoPopover label={t('chain.voiceTools')}><p>{builtinDetails}</p><p>{t('settings.AudioSettingsModal.105')}: {setting(stage?.nr.enabled)}</p><button type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="mt-2 underline underline-offset-4">{t('home.moreSound')}</button></InfoPopover></div>
             : !live && <p role="status" className="text-xs text-muted-foreground">{t('home.voiceUnavailable')}</p>}
         {/* 段の間は細い線でつなぎ、矢印やボックスの入れ子にしない。 */}
         <ol aria-label={t('flow.title')} className="mt-2 divide-y divide-border/60">

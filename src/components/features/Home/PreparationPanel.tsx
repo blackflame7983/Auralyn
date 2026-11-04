@@ -21,14 +21,15 @@ interface Props {
     statusText?: string;
     /** 畳んでいる間に状態の横へ出す機器名（入力 → 出力先）。 */
     devices?: ReactNode;
+    onSetup?: () => void;
 }
 // 問題の種類を返す。正常時は null にして手順を畳み、毎日の起動で読ませない。
 // ミュート・音量ゼロは配信事故なので、直す入口（主ボタン）が見えるよう開く。
 // 反映待ち（pending）は取り直しの途中なので undefined を返し、直前の判定を使い続ける。
-const attentionKey = (model: PreparationModel) => {
+const attentionKey = (model: PreparationModel, music: boolean) => {
     const { availability } = model.observation;
     if (availability === 'pending') return undefined;
-    if (!model.context.usage) return `purpose:${availability}`;
+    if (!music && !model.context.usage) return `purpose:${availability}`;
     return ['unconfigured', 'stopped', 'failed', 'unknown', 'muted'].includes(availability) ? availability : null;
 };
 export const availabilityLabels: Record<Availability, MessageKey> = { ready: 'prep.running', unknown: 'shell.unknown', unconfigured: 'shell.unconfigured', stopped: 'shell.stopped', failed: 'prep.failed', pending: 'prep.pending', muted: 'prep.muted' };
@@ -36,7 +37,7 @@ const availabilityTones: Record<Availability, StatusTone> = { ready: 'ok', unkno
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
-export function PreparationPanel({ homeActionInStrip = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices }: Props) {
+export function PreparationPanel({ homeActionInStrip = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices, onSetup }: Props) {
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
@@ -49,7 +50,7 @@ export function PreparationPanel({ homeActionInStrip = false, destinationRequest
     const toggleRef = useRef<HTMLButtonElement>(null);
     const stepsId = useId();
     const settledProblem = useRef<string | null>(null);
-    const latest = attentionKey(model);
+    const latest = attentionKey(model, music);
     if (latest !== undefined) settledProblem.current = latest;
     const problem = settledProblem.current;
     // userOpen は利用者の選択。null の間だけ問題の有無で自動に開閉する。
@@ -128,10 +129,12 @@ export function PreparationPanel({ homeActionInStrip = false, destinationRequest
                 </button>
             </div>
         </div>
-        {context.location === 'venue' && <p className="text-xs text-warning">{t('prep.venueWarning')}</p>}
-        {context.signal === 'mixed' && <p className="text-xs text-muted-foreground">{t('prep.mixedWarning')}</p>}
+        {open && !music && context.location === 'venue' && <p className="text-xs text-warning">{t('prep.venueWarning')}</p>}
+        {open && !music && context.signal === 'mixed' && <p className="text-xs text-muted-foreground">{t('prep.mixedWarning')}</p>}
         {open && <div id={stepsId} className="space-y-3" onFocusCapture={() => setUserOpen(old => old ?? true)}>
         {signalSummary}
+        {onSetup && !['ready', 'pending', 'muted'].includes(observation.availability) && <button type="button" onClick={onSetup} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('header.setupOpen')}</button>}
+        {music ? <button type="button" disabled={!audioReady} onClick={onListen} className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50">{t('wizard.musicListen')}</button> : <>
         <div className="space-y-1 text-sm"><p id={`${stepsId}-usage`}>{t('prep.usage')}</p>{usagePicker}</div>
         {next !== 'done' && next !== 'purpose' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
             className={cn("rounded-md px-3 py-2 text-sm font-semibold disabled:opacity-50", homeActionInStrip ? "border border-border hover:bg-muted" : "bg-primary text-primary-foreground")}>{t(homeActionInStrip && !audioReady ? 'home.changeDevices' : actionLabel)}</button>}
@@ -171,7 +174,7 @@ export function PreparationPanel({ homeActionInStrip = false, destinationRequest
                     return <li key={stage} className="py-3 space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <h3 className="text-sm font-semibold">{label}</h3>
-                            <span className="text-xs text-muted-foreground">{t(statusLabels[state])}</span>
+                            <span className="text-xs text-muted-foreground">{t(stage !== 'sound' && state !== 'stale' ? state === 'confirmed' ? 'prep.listenConfirmed' : 'prep.listenUnconfirmed' : statusLabels[state])}</span>
                         </div>
                         {state === 'confirmed' && <button type="button" onClick={() => model.unconfirm(stage)} aria-label={`${label}: ${t('prep.unconfirm')}`} className="text-xs underline underline-offset-4">{t('prep.unconfirm')}</button>}
                         {receipt && <p className="text-xs text-muted-foreground">{new Date(receipt.at).toLocaleString(locale === 'ja' ? 'ja-JP' : 'en-US')} · {receipt.target || t('prep.local')}</p>}
@@ -186,6 +189,7 @@ export function PreparationPanel({ homeActionInStrip = false, destinationRequest
             <p className="text-xs text-muted-foreground">{t('prep.externalScope')}</p>
             <button type="button" onClick={model.reset} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('prep.externalChanged')}</button>
         </details>
+        </>}
         </div>}
     </section>;
 }

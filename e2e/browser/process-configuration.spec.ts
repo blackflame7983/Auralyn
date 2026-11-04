@@ -23,8 +23,8 @@ for (const [matches, running] of [[true, true], [false, true], [true, false]]) t
     await page.goto('/');
     const rack = page.getByRole('button', { name: 'VST を編集', exact: true });
     if (await rack.getAttribute('aria-expanded') !== 'true') await rack.click();
-    await page.getByRole('button', { name: 'プロファイル管理', exact: true }).click();
-    await page.getByRole('button', { name: 'OBS込みプロファイル', exact: true }).click();
+    await page.getByRole('button', { name: '設定の保存・復帰', exact: true }).click();
+    await page.getByRole('button', { name: '今の設定を保存・復帰', exact: true }).click();
     await page.getByRole('radio', { name: /アプリ入力/ }).check();
     await expect(page.getByRole('radio', { name: /歌／雑談モードまで/ })).not.toBeChecked();
     await page.getByLabel('OBS込みプロファイル名', { exact: true }).fill('new-process');

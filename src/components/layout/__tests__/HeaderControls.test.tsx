@@ -26,11 +26,7 @@ it.each(['ja', 'en'] as const)('共通ヘッダーの入口とミュートの状
     expect(screen.queryByText(message(locale, 'device.engine'))).not.toBeInTheDocument();
     const muteButton = screen.getByRole('button', { name: message(locale, 'header.emergency') });
     expect(screen.queryByRole('button', { name: message(locale, 'header.compare') })).not.toBeInTheDocument();
-    const setup = screen.getByRole('button', { name: message(locale, 'header.setupOpen') });
-    expect(setup).toBeEnabled();
-    expect(setup).not.toHaveClass('bg-primary');
-    fireEvent.click(setup);
-    expect(props.onOpenWizard).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: message(locale, 'header.setupOpen') })).not.toBeInTheDocument();
     expect(muteButton).toHaveTextContent(message(locale, 'header.emergency'));
     expect(muteButton).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(muteButton);
@@ -42,13 +38,12 @@ it.each(['ja', 'en'] as const)('共通ヘッダーの入口とミュートの状
     expect(muteButton).toHaveAccessibleDescription(message(locale, 'header.muted'));
     fireEvent.click(screen.getByRole('button', { name: message(locale, 'header.audioSettingsOpen') }));
     expect(props.onOpenSettings).toHaveBeenCalledOnce();
-    // 詳細表示でも同じヘッダーの位置にセットアップを残す。
+    // 数値の詳細でもセットアップは設定と問題発生時の入口に置く。
     localStorage.setItem('vst_host_beginner_mode', 'false');
     act(() => window.dispatchEvent(new CustomEvent('vst_host_beginner_mode_changed', { detail: false })));
     view.rerender(<LocaleProvider store={store}><Header {...props} /></LocaleProvider>);
-    expect(screen.getByRole('button', { name: message(locale, 'header.setupOpen') })).toBe(setup);
-    fireEvent.click(setup);
-    expect(props.onOpenWizard).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: message(locale, 'header.setupOpen') })).not.toBeInTheDocument();
+    expect(props.onOpenWizard).not.toHaveBeenCalled();
 });
 
 it.each([

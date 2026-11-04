@@ -68,6 +68,22 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('セットアップの接続チェック', () => {
+    it('保存後にキーボードでボイスチェック（ボイスチェック）を開き、自動録音しない', async () => {
+        const onClose = vi.fn();
+        const onOpenVoiceCheck = vi.fn();
+        render(<SetupWizardModal isOpen onClose={onClose} onApplyConfig={vi.fn()} onOpenVoiceCheck={onOpenVoiceCheck} />);
+        await chooseObsRoute();
+        expect(screen.getByRole('region', { name: '入力・処理・出力' })).toHaveTextContent('USB マイク');
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('heading', { name: '音声設定を保存しました' });
+        const button = screen.getByRole('button', { name: /ボイスチェック/ });
+        button.focus();
+        expect(button).toHaveFocus();
+        fireEvent.click(button);
+        expect(onClose).toHaveBeenCalledOnce();
+        expect(onOpenVoiceCheck).toHaveBeenCalledOnce();
+        expect(invoke).not.toHaveBeenCalledWith('voice_check_preview', expect.anything());
+    });
     it('locale切替は選択中の実デバイスとdialogを保持し、音声操作・保存を行わない', async () => {
         const store = createLocaleStore(() => 'ja', () => true);
         inputs = [mic, device('Second microphone', true)];

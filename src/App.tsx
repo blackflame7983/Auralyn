@@ -7,7 +7,7 @@ import { REVIEW_KEY } from './api/migration';
 import { startHomeAudio } from './lib/startHomeAudio';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useVstPanel } from './hooks/useVstPanel';
-import { MdClose } from 'react-icons/md';
+import { MdClose, MdMusicNote } from 'react-icons/md';
 import { useLiveModes } from './hooks/useLiveModes';
 import { LiveModeBar } from './components/features/AudioSettings/LiveModeBar';
 import { useEffect, useRef } from 'react';
@@ -167,7 +167,7 @@ function AppContent() {
         preparationBlocked={isModalOpen || isInitializing}
         currentInput={audioConfig.inputSource?.kind === 'process_loopback' ? audioConfig.inputSource.config.appName : audioConfig.input}
         currentOutput={audioConfig.output}
-        liveControls={<div className="flex flex-wrap items-center gap-2">{displayPurpose === 'voice' && <LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} />}<MixingLiveControl running={audioReady} blocked={isModalOpen || isInitializing} onSettings={ui.openMixingSettings} /></div>}
+        liveControls={displayPurpose === 'voice' && <div className="flex flex-wrap items-center gap-2"><LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} /><MixingLiveControl running={audioReady} blocked={isModalOpen || isInitializing} onSettings={ui.openMixingSettings} /><button type="button" onClick={ui.openMixingSettings} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"><MdMusicNote aria-hidden="true" className="h-4 w-4" />{t('home.singingSetup')}</button></div>}
         vstChain={<VstChainItems plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
         vstUnrestored={pluginsApi.sessionUnrestored}
         vstPanel={pluginRack}
@@ -189,11 +189,8 @@ function AppContent() {
           />
         </>}
       >
-        {/* 配信・通話では歌・雑談の切替を本番帯に置く。音楽鑑賞では使う機会が少ないので畳んでおく。 */}
-        {displayPurpose === 'music' && <details open={liveModel.snapshot?.armed || Boolean(liveModel.error)}>
-          <summary className="cursor-pointer text-sm py-2">{t('purpose.liveDetails')}</summary>
-          <LiveModeBar model={liveModel} refreshKey={isModalOpen} />
-        </details>}
+        {/* 音楽鑑賞では日常の歌・雑談操作を出さず、保護や復旧が必要な場合だけ操作を残す。 */}
+        {displayPurpose === 'music' && <LiveModeBar model={liveModel} refreshKey={isModalOpen} safetyOnly />}
         {/* VST ラックは AppShell の右パネルに出す。 */}
         {audioReady && vstPanelOpen && !isModalOpen && (
           <>

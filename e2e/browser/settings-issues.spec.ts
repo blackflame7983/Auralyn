@@ -46,7 +46,7 @@ async function openSettings(page: Page) {
     await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '設定を開く', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '設定', exact: true });
-    await expect(dialog.getByRole('combobox', { name: '接続方式', exact: true })).toBeVisible();
+    await expect(dialog.getByRole('combobox', { name: '接続方式', exact: true, includeHidden: true })).toBeAttached();
     return dialog;
 }
 
@@ -55,7 +55,7 @@ test('稼働中は設定差分で再起動を有効化し、元に戻すと無�
     const save = dialog.getByRole('button', { name: '保存して再起動', exact: true });
     await expect(save).toBeDisabled();
     await expect(dialog.getByText('変更はありません')).toBeVisible();
-    const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '音の途切れ・周波数' }) }).first();
+    const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
     await expect(details).not.toHaveAttribute('open');
     await details.locator('summary').click();
     await expect(details.getByRole('heading', { name: '音の途切れにくさ' })).toBeVisible();
@@ -73,7 +73,7 @@ test('稼働中は設定差分で再起動を有効化し、元に戻すと無�
 test('保存済み256サンプルは数値選択として復元する', async ({ page }) => {
     await page.addInitScript(saved => localStorage.setItem('vst_host_audio_config', JSON.stringify({ ...saved, bufferSize: 256 })), config);
     const dialog = await openSettings(page);
-    const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '音の途切れ・周波数' }) }).first();
+    const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
     if (!await details.evaluate(node => (node as HTMLDetailsElement).open)) await details.locator('summary').click();
     await expect(details.getByRole('button', { name: '数値で指定', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(details.getByRole('combobox', { name: 'バッファサイズ' })).toHaveValue('256');
@@ -115,7 +115,7 @@ test('音切れ通知から調整欄へ移動し、変更なしでは再起動�
     await expect(page.getByRole('button', { name: '直近で音切れを検出' })).toBeVisible();
     await entry.click();
     const dialog = page.getByRole('dialog', { name: '設定', exact: true });
-    const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '音の途切れ・周波数' }) }).first();
+    const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
     await expect(details).toHaveAttribute('open');
     await expect(details.getByRole('button', { name: 'おまかせ', exact: true })).toBeFocused();
     await expect(dialog.getByRole('button', { name: '保存して再起動' })).toBeDisabled();

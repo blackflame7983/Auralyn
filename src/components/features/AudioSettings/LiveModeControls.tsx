@@ -94,12 +94,10 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
         </div>}
     </div>;
 }
-export function LiveModeControls({ model, initiallyOpen = false, onAdjust }: { model: LiveModesModel; initiallyOpen?: boolean; onAdjust?: (mode: 'singing' | 'talk') => void }) {
+export function LiveModeControls({ model, onAdjust }: { model: LiveModesModel; initiallyOpen?: boolean; onAdjust?: (mode: 'singing' | 'talk') => void }) {
     const t = useMessages();
-    const [open, setOpen] = useState(initiallyOpen);
-    useEffect(() => { if (initiallyOpen) setOpen(true); }, [initiallyOpen]);
-    return <details id="live-mode-settings" open={open} className="mb-3 rounded-xl border border-border" onToggle={event => setOpen(event.currentTarget.open)}>
-        <summary tabIndex={0} className="cursor-pointer p-3 font-semibold">{t('settings.mode.registration')}</summary>
-        {open && <Content model={model} onAdjust={onAdjust} />}
-    </details>;
+    return <section id="live-mode-settings" tabIndex={-1} className="mb-3 rounded-xl border border-border">
+        <h3 tabIndex={-1} className="p-3 font-semibold">{t('settings.mode.registration')}</h3>
+        <Content model={model} onAdjust={onAdjust} />
+    </section>;
 }

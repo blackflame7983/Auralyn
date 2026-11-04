@@ -123,7 +123,7 @@ it('正常時は手順と入出力の要約を畳んで状態の点と警告だ�
     expect(screen.queryByText('summary')).not.toBeInTheDocument();
     const badge = screen.getByText(message('ja', 'prep.running'));
     expect(badge.closest('[data-tone]')).toHaveAttribute('data-tone', 'ok');
-    expect(screen.getByText(message('ja', 'prep.venueWarning'))).toBeInTheDocument();
+    expect(screen.queryByText(message('ja', 'prep.venueWarning'))).not.toBeInTheDocument();
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     fireEvent.click(toggle);
