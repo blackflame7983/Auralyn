@@ -114,7 +114,8 @@ impl Engine {
             .ok_or_else(|| anyhow!("ミックス設定を取得できません"))?;
         let report = self.plugin_manager.latency_report(self.global_bypass);
         let known = report.1.and_then(|plugin| {
-            let nr = if self.noise_reduction_enabled && !self.global_bypass {
+            // VST比較中もノイズ低減は動き続けるため、その待ち時間は補正に残す。
+            let nr = if self.noise_reduction_enabled {
                 (self.current_sample_rate / 100.0).round() as u32
             } else {
                 0
@@ -217,6 +218,40 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn vst_comparison_preserves_noise_reduction_alignment() {
+        for rate in [44100, 48000, 96000] {
+            for nr_enabled in [false, true] {
+                let mut engine = Engine::new();
+                engine.current_sample_rate = f64::from(rate);
+                engine.noise_reduction_enabled = nr_enabled;
+                let levels = crate::audio_engine::mixing::Levels::default();
+                engine.mixing_shared = Some(Arc::new(Shared::new_at(&levels, 0)));
+                let expected = Some(if nr_enabled { rate / 100 } else { 0 });
+                // VSTなしでも、比較の往復で稼働中のNRの待ち時間を消してはいけない。
+                for bypass in [false, true, false] {
+                    engine.global_bypass = bypass;
+                    engine.sync_mixing_latency().unwrap();
+                    let snapshot = engine.mixing_snapshot();
+                    assert_eq!(
+                        snapshot.known_voice_processing_frames, expected,
+                        "rate={rate}, nr={nr_enabled}, vst_bypass={bypass}"
+                    );
+                    assert_eq!(
+                        engine
+                            .mixing_shared
+                            .as_ref()
+                            .unwrap()
+                            .read()
+                            .unwrap()
+                            .levels,
+                        levels
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn accompaniment_raw_endpoint_cannot_also_be_the_broadcast_sink() {
         let mut engine = Engine::new();
