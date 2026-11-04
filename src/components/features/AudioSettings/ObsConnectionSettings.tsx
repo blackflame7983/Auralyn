@@ -319,7 +319,10 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="font-medium text-muted-foreground text-ui-control">{t('settings.ObsConnectionSettings.284')}</label>
+                    <div className="flex items-center gap-1">
+                      <label className="font-medium text-muted-foreground text-ui-control">{t('settings.ObsConnectionSettings.284')}</label>
+                      {!isObsConnected && <InfoPopover label={t('settings.ObsConnectionSettings.284')}>{t('obs.passwordScope')}</InfoPopover>}
+                    </div>
                     <input
                       aria-label={t('settings.ObsConnectionSettings.285')}
                       disabled={loading || isObsConnected}
@@ -334,7 +337,6 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                   </div>
 
                     {isObsConnected && <p className="text-ui-support text-muted-foreground">{t('settings.ObsConnectionSettings.287')}</p>}
-                    {!isObsConnected && <InfoPopover label={t('settings.ObsConnectionSettings.284')}>{t('obs.passwordScope')}</InfoPopover>}
                   </div>
                 </details>
                 {!isObsConnected && (
