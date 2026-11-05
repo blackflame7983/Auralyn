@@ -36,4 +36,8 @@ export interface WizardConfig {
     input: AudioDevice | null;
     output: AudioDevice | null;
     outputMode: 'default' | 'monitor' | 'broadcast';
+    /** ASIO では入力と出力が同じ機器になるため、使うチャンネルの組を選ぶ（#291）。 */
+    asioChannels?: { input: [number, number]; output: [number, number] };
 }
+
+export const isAsioHost = (host: string) => host.toLowerCase() === 'asio';

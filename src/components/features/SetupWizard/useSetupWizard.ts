@@ -7,7 +7,7 @@ import { saveBeginnerMode } from '../../../hooks/useBeginnerMode';
 import { getVstPanelOpen, saveVstPanelOpen } from '../../../hooks/useVstPanel';
 import { toast } from 'sonner';
 import { listen } from '@tauri-apps/api/event';
-import { isVirtualOutput, verifiedDefaultOutput, recommendMicrophone, type WizardConfig, type WizardState, type UserGoal, type SetupWizardModalProps } from './wizardModel';
+import { isAsioHost, isVirtualOutput, verifiedDefaultOutput, recommendMicrophone, type WizardConfig, type WizardState, type UserGoal, type SetupWizardModalProps } from './wizardModel';
 import type { ChannelRouting } from '@/lib/audioChannelRouting';
 
 // ウィザードの選択・音声操作・開始前状態の復元を描画から分離する。
@@ -89,9 +89,13 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         output: null,
         outputMode: 'default'
     });
-    const initialRouting = (): ChannelRouting => ({
-        outputRouting: { mode: 'independent', channels: [0, config.output?.channels === 1 ? 0 : 1] },
-    });
+    const initialRouting = (): ChannelRouting => isAsioHost(config.host)
+        ? { inputChannels: config.asioChannels?.input ?? [0, 1], outputRouting: { mode: 'independent', channels: config.asioChannels?.output ?? [0, 1] } }
+        : { outputRouting: { mode: 'independent', channels: [0, config.output?.channels === 1 ? 0 : 1] } };
+    // 取得した機器は接続方式ごとに絞り込んで出す。切り替えのたびに取り直さない。
+    const allDevicesRef = useRef<{ inputs: AudioDevice[]; outputs: AudioDevice[] }>({ inputs: [], outputs: [] });
+    const hostRef = useRef(config.host); hostRef.current = config.host;
+    const [asioAvailable, setAsioAvailable] = useState(false);
 
     const [availableInputs, setAvailableInputs] = useState<AudioDevice[]>([]);
     const [availableOutputs, setAvailableOutputs] = useState<AudioDevice[]>([]);
@@ -174,14 +178,16 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         }
     }, [availableInputs, state, config.input, config.goal]);
 
-    const normalizeDevices = (devices: { inputs: AudioDevice[]; outputs: AudioDevice[] }) => {
-        // Filter WASAPI only (Case insensitive)
-        const inputs = devices.inputs.filter(d => d.host.toLowerCase() === 'wasapi');
-        const outputs = devices.outputs.filter(d => d.host.toLowerCase() === 'wasapi');
-
-        // このウィザードは WASAPI 用。別ホストのデバイスを誤って起動しない。
-
-        return { inputs, outputs };
+    // 選んだ接続方式の機器だけを出し、別ホストの機器を誤って起動しない。ASIO は入出力が同じ機器のものだけを候補にする。
+    const normalizeDevices = (devices: { inputs: AudioDevice[]; outputs: AudioDevice[] }, host: string) => {
+        const ofHost = (device: AudioDevice) => device.host.toLowerCase() === host.toLowerCase();
+        if (!isAsioHost(host)) return { inputs: devices.inputs.filter(ofHost), outputs: devices.outputs.filter(ofHost) };
+        const outputs = devices.outputs.filter(ofHost);
+        return { inputs: devices.inputs.filter(device => ofHost(device) && !!asioOutputFor(device, outputs)), outputs };
+    };
+    const asioOutputFor = (input: AudioDevice, outputs: AudioDevice[]) => {
+        const sameName = outputs.filter(device => device.name === input.name);
+        return sameName.find(device => !!input.id && device.id === input.id) ?? (sameName.length === 1 ? sameName[0] : null);
     };
 
     const loadDevices = async (forceRefresh: boolean = false) => {
@@ -190,16 +196,21 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         try {
             const devices = await audioApi.getDevices(forceRefresh);
             if (request !== devicesRequestRef.current) return null;
-            const { inputs, outputs } = normalizeDevices(devices);
+            allDevicesRef.current = devices;
+            setAsioAvailable(normalizeDevices(devices, 'ASIO').inputs.length > 0);
+            const { inputs, outputs } = normalizeDevices(devices, hostRef.current);
 
             setAvailableInputs(inputs);
             setAvailableOutputs(outputs);
-            setConfig(prev => ({
-                ...prev,
-                input: inputs.find(d => d.name === prev.input?.name) || null,
-                output: prev.outputMode === 'default' ? verifiedDefaultOutput(outputs)
-                    : outputs.find(d => d.name === prev.output?.name) || null,
-            }));
+            setConfig(prev => {
+                const input = inputs.find(d => d.name === prev.input?.name) || null;
+                return {
+                    ...prev, input,
+                    output: isAsioHost(prev.host) ? input && asioOutputFor(input, outputs)
+                        : prev.outputMode === 'default' ? verifiedDefaultOutput(outputs)
+                        : outputs.find(d => d.name === prev.output?.name) || null,
+                };
+            });
             return { inputs, outputs };
         } catch (e) {
             if (request !== devicesRequestRef.current) return null;
@@ -240,7 +251,22 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
 
     // --- Actions ---
 
+    /** 入力の手順で接続方式を切り替える。機器とチャンネルは選び直す（#291）。 */
+    const selectHost = (host: 'WASAPI' | 'ASIO') => {
+        if (hostRef.current === host) return;
+        hostRef.current = host;
+        const { inputs, outputs } = normalizeDevices(allDevicesRef.current, host);
+        setAvailableInputs(inputs);
+        setAvailableOutputs(outputs);
+        setConfig(prev => ({ ...prev, host, input: null, output: isAsioHost(host) ? null : verifiedDefaultOutput(outputs), outputMode: 'default', asioChannels: undefined }));
+    };
+    const selectAsioChannels = (side: 'input' | 'output', pair: [number, number]) => setConfig(prev => ({
+        ...prev, asioChannels: { input: prev.asioChannels?.input ?? [0, 1], output: prev.asioChannels?.output ?? [0, 1], [side]: pair },
+    }));
+
     const selectGoal = (goal: UserGoal) => {
+        // PCの再生音は WASAPI の仮想ケーブルから受けるため、ASIO を選んでいても WASAPI に戻す。
+        if (goal === 'music') selectHost('WASAPI');
         setConfig(prev => goal === 'music' && prev.goal !== 'music'
             ? { ...prev, goal, input: null, outputMode: 'default', output: verifiedDefaultOutput(availableOutputs) }
             : { ...prev, goal, input: prev.goal === 'music' && goal !== 'music' ? null : prev.input });
@@ -255,6 +281,13 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
             return;
         }
         setState('output_selection');
+        if (isAsioHost(config.host)) {
+            // ASIO は入力と同じ機器へ返す。送り先の種類は選ばせず、チャンネルだけを決める。
+            const input = config.input;
+            setConfig(prev => ({ ...prev, outputMode: 'default', output: asioOutputFor(input, availableOutputs),
+                asioChannels: prev.asioChannels ?? { input: [0, 1], output: [0, input.channels === 1 ? 0 : 1] } }));
+            return;
+        }
 
         // Smart Default for Output Mode based on Goal
         if (config.outputMode === 'default') { // Only set default if not already set (re-entry)
@@ -437,5 +470,5 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, savedGoal, availableInputs, availableOutputs,
         isLoadingDevices, isTestingSound, inputLevel, runningInput, loadDevices, handleRescanVirtualDevices,
-        selectGoal, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply };
+        asioAvailable, selectHost, selectAsioChannels, selectGoal, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply };
 }
