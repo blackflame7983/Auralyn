@@ -31,12 +31,14 @@ interface Props {
     onOpenVst?: (event: React.MouseEvent<HTMLButtonElement>) => void;
     /** 右パネルを開いているか。開閉ボタンの aria-expanded に使う。 */
     vstPanelOpen?: boolean;
+    /** 音声が未設定。段の名前だけを淡く出し、状態・操作・「読み取れません」を出さない（#297）。 */
+    unconfigured?: boolean;
 }
 
 // 音の流れと声の調整を1本のチェーンにまとめる。各段で状態を見て、その場で操作できる。
 // 設定状態と音の到達確認は異なる。値を取得できないときは OFF と推測しない。
 export function SoundChain({ model, audioReady, isEngineRunning, inputName, outputName, vst, listenOpen, onListen, onListenClose,
-    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, vstPanelOpen = false, vstUnrestored = [] }: Props) {
+    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, vstPanelOpen = false, vstUnrestored = [], unconfigured = false }: Props) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
@@ -68,6 +70,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         key: string; id?: string; on: boolean; tag: string; builtin?: boolean; name: string; sub?: ReactNode; title?: string;
         body?: ReactNode; action?: ReactNode; quiet?: boolean;
     }) => {
+        // 未設定では状態を推測で並べない。段の並びだけで、設定後に何ができるかを伝える。
+        if (unconfigured) { body = null; action = null; on = false; if (typeof sub !== 'string') sub = undefined; }
         const Icon = builtin ? key === 'noise' ? MdFilterAlt : MdGraphicEq : MdExtension;
         return <li key={key}>
             <div id={id} tabIndex={id ? -1 : undefined} data-on={on}
@@ -122,7 +126,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                     : <span className="text-ui-support text-muted-foreground">{t('flow.noVst')}</span>, action: vstEdit })
             : row({ key: 'vst', on: vstOn, tag: 'VST', name: 'VST', sub: <StatusDot tone={vstTone}>{vstStatus}</StatusDot>, body: vst, action: vstEdit }),
     ];
-    return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} className="sound-chain mb-4 rounded-xl bg-card gaming:bg-card/70 px-5 py-4 min-[1100px]:px-6">
+    return <section aria-label={t(music ? 'wizard.musicSound' : 'shell.sound')} inert={unconfigured} aria-disabled={unconfigured || undefined}
+        className={cn('sound-chain mb-4 rounded-xl bg-card gaming:bg-card/70 px-5 py-4 min-[1100px]:px-6', unconfigured && 'opacity-40')}>
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1">
                 <h2 className="text-ui-heading font-semibold">{t(music ? 'wizard.musicSound' : 'shell.sound')}</h2>
@@ -131,7 +136,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                     {stage && <p className="mt-2">{t(stats?.latencyMetadata?.processingContext === 'broadcastWorker' ? 'flow.broadcastPath' : 'flow.monitorPath')}</p>}
                 </InfoPopover>
             </div>
-            <div className="flex flex-wrap gap-2">
+            {!unconfigured && <div className="flex flex-wrap gap-2">
                 <button type="button" ref={listenButton} onClick={onListen} disabled={!audioReady} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-ui-control disabled:opacity-50"><MdHearing aria-hidden="true" />{t(music ? 'wizard.musicListen' : 'home.voiceCheck')}</button>
                 {/* OBS連携と詳しい調整は毎回は使わないので、見出しに並べず「その他」にまとめる。
                     「詳しく調整」は声の処理の設定を開く。音楽鑑賞では VST 構成で整えるので出さない。 */}
@@ -146,7 +151,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                         {onOpenSoundSettings && <DropdownMenuItem onSelect={onOpenSoundSettings} className="gap-2"><MdTune aria-hidden="true" className="h-4 w-4" />{t('home.moreSound')}</DropdownMenuItem>}
                     </DropdownMenuContent>
                 </DropdownMenu>}
-            </div>
+            </div>}
         </div>
         {!audioReady ? <p className="text-ui-support text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
             : music ? (noiseOn || builtinOn) && <div className="flex items-center gap-1 text-sm text-warning"><span>{t('flow.voiceStillOn')}</span><InfoPopover label={t('chain.voiceTools')}><p>{builtinDetails}</p><p>{t('settings.AudioSettingsModal.105')}: {setting(stage?.nr.enabled)}</p><button type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="mt-2 underline underline-offset-4">{t('home.moreSound')}</button></InfoPopover></div>

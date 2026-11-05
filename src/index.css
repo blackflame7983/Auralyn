@@ -365,6 +365,36 @@
   display: none;
 }
 
+/* 未設定のホームの音の流れ（DESIGN.md 5.7）。未決定は破線、次に決める所は主色の線と静かな波紋、決定済みは塗り。 */
+.unset-flow-list { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 0.5rem; }
+.unset-flow-node { position: relative; box-shadow: inset 0 0 0 1px hsl(var(--border)); transition: background-color var(--motion-base) var(--ease-out), box-shadow var(--motion-base) var(--ease-out); }
+.unset-flow-node:hover { background: hsl(var(--accent)); }
+.unset-flow-node[data-state="empty"] { box-shadow: none; outline: 1px dashed hsl(var(--border)); outline-offset: -1px; color: hsl(var(--muted-foreground)); }
+.unset-flow-node[data-state="next"] { box-shadow: inset 0 0 0 2px hsl(var(--primary)); background: hsl(var(--primary) / 0.06); }
+.unset-flow-node[data-state="next"]::after {
+  content: ""; position: absolute; inset: -4px; border-radius: 16px; border: 2px solid hsl(var(--primary) / 0.5);
+  animation: unset-flow-ripple 1.8s var(--ease-out) infinite; pointer-events: none;
+}
+@keyframes unset-flow-ripple { from { opacity: 0.9; transform: scale(0.98); } to { opacity: 0; transform: scale(1.06); } }
+.unset-flow-node[data-state="set"] { background: hsl(var(--muted)); box-shadow: none; }
+.unset-flow-icon { background: hsl(var(--muted)); transition: background-color var(--motion-base) var(--ease-out), color var(--motion-base) var(--ease-out); }
+.unset-flow-node[data-state="set"] .unset-flow-icon, .unset-flow-node[data-state="next"] .unset-flow-icon { background: hsl(var(--primary) / 0.16); color: hsl(var(--primary)); }
+.unset-flow-link { display: block; width: 1.75rem; height: 2px; border-radius: 2px; background: hsl(var(--border)); transition: background-color var(--motion-panel) var(--ease-out); }
+.unset-flow-link[data-lit="true"] { background: hsl(var(--primary) / 0.7); }
+.unset-flow-primary { transition: transform var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-out); }
+.unset-flow-primary:active { transform: scale(0.97); }
+.unset-flow-arrow { transition: transform var(--motion-base) var(--ease-out); }
+.unset-flow-primary:hover .unset-flow-arrow { transform: translateX(4px); }
+/* 作業幅が狭いときは2列2段にし、つなぎの線は省く（音の順は読み上げの並びで保つ）。 */
+@media (max-width: 760px) {
+  .unset-flow-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .unset-flow-link { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .unset-flow-node[data-state="next"]::after { animation: none; display: none; }
+  .unset-flow-primary:active, .unset-flow-primary:hover .unset-flow-arrow { transform: none; }
+}
+
 /* 拡大表示などで高さが足りない場合も、本文と操作を切らずにスクロールする。 */
 @media (max-height: 500px) {
   .profile-list-region {

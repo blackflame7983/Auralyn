@@ -8,6 +8,7 @@ import { HomePanels } from '../features/Home/HomePanels';
 import { LiveStrip } from '../features/Home/LiveStrip';
 import { InputGainDisabledContext } from '../features/Home/InputGainContext';
 import { SoundChain } from '../features/Home/SoundChain';
+import { UnsetFlow } from '../features/Home/UnsetFlow';
 import { usePreparation } from '@/hooks/usePreparation';
 import { useVstPanel } from '@/hooks/useVstPanel';
 import { usePanelMotion } from '@/hooks/usePanelMotion';
@@ -52,6 +53,8 @@ interface AppShellProps {
     currentOutput?: string;
     /** 本番帯に置く歌・雑談の切替。登録前は描画されない。 */
     liveControls?: ReactNode;
+    /** 未設定でも歌・雑談の欄を出すか。登録済み・誤操作防止中・処理中・失敗のときだけ true にする（#297）。 */
+    liveControlsWhileUnconfigured?: boolean;
     /** チェーン列の VST 段の中身。 */
     vstChain?: ReactNode;
     /** 保存済み構成から読み込めていないVSTの名前。 */
@@ -90,6 +93,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     currentInput,
     currentOutput,
     liveControls,
+    liveControlsWhileUnconfigured = false,
     vstChain,
     vstUnrestored,
     vstPanel
@@ -240,7 +244,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     useEffect(() => { if (panelOverlays || !configured) closeOutputGain(); }, [panelOverlays, configured, closeOutputGain]);
     const soundChain = <SoundChain model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} vstUnrestored={vstUnrestored} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
-        onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} />;
+        onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} unconfigured={!configured} />;
     const [isABBypassed, setIsABBypassed] = useState(false);
     const handleABToggle = useCallback(async () => {
         try {
@@ -305,7 +309,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
                             ? <LiveStrip roomy={roomyMeters} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
-                            : liveControls && <div className="mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden">{liveControls}</div>}
+                            : liveControlsWhileUnconfigured && liveControls && <div className="mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden">{liveControls}</div>}
                         {/* 音量チェックは開いたメーターの直下に出す。 */}
                         <div><LoudnessCheck
                             music={purpose === 'music'}
@@ -317,7 +321,10 @@ export const AppShell: React.FC<AppShellProps> = ({
                         /></div>
                         {/* チェーン列は本番帯の直下に置き、準備や経路の情報より下へ押し出さない。未設定の間だけ準備の後ろへ回す。 */}
                         {configured && soundChain}
-                        <div className="min-w-0"><HomePanels
+                        {/* 未設定の間は音の流れと次の1歩だけを出し、準備の確認・送り先の選択・状態の重複を並べない（#297）。 */}
+                        {!configured && <UnsetFlow usage={preparation.context.usage || null} music={purpose === 'music'} onSetup={onOpenWizard}
+                            input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput} />}
+                        {configured && <div className="min-w-0"><HomePanels
                             onExpandedChange={setPreparationExpanded}
                             model={preparation}
                             homeActionInStrip={canStart && !isEngineRunning || purpose !== 'music' && audioReady && !preparation.context.usage}
@@ -330,7 +337,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             onOpenSoundSettings={onOpenSoundSettings} onListen={openListen}
                             onSetup={onOpenWizard}
                             onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot}
-                        /></div>
+                        /></div>}
                         <div className="min-w-0">
                         <div id="home-rack">{children}</div>
                         </div>
@@ -354,7 +361,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                 {/* Master Section Footer */}
                 <footer ref={footerRef} className="bg-background border-t border-border px-4 z-50 footer-shadow shrink-0 transition-colors duration-300">
                     <div className="mx-auto max-w-[1180px] w-full flex items-center gap-3">
-                    <div className="flex shrink-0 items-center py-2">
+                    {/* 比べる音がない未設定の間は出さない。比較中のまま未設定になった場合は解除できるよう残す。 */}
+                    {(configured || isABBypassed) && <div className="flex shrink-0 items-center py-2">
                         {/* Effect Compare Button */}
                         <TooltipProvider>
                             <Tooltip>
@@ -384,8 +392,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
-                    </div>
-                    <div className="flex-1 min-w-0">
+                    </div>}
+                    {/* 比較ボタンを出さない間は、区切りの線だけが左端に残らないようにする。 */}
+                    <div className={cn('flex-1 min-w-0', !(configured || isABBypassed) && '[&>div]:border-l-transparent')}>
                         <MasterBar
                             outputGainAnchor={outputGainAnchor} onOutputGainClose={closeOutputGain}
                             onStatsChange={setRuntimeStats}
