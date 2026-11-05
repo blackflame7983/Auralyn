@@ -1,5 +1,8 @@
 import { test, expect } from './tauriFixture';
 
+// VST パネルは設定済みのホームにだけ出る。未設定のホームは音の流れと次の1歩だけにする（#297）。
+test.use({ liveHome: true });
+
 for (const [matches, running] of [[true, true], [false, true], [true, false]]) test(`プロセス入力の選択一致=${matches}・開始済み=${running}の差分を900×600で確認する`, async ({ page }, info) => {
     await page.setViewportSize({ width: 900, height: 600 });
     await page.addInitScript(({ matches, running }) => {

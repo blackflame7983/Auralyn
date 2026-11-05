@@ -829,6 +829,12 @@ describe('セットアップの見た目と動き（#294）', () => {
         fireEvent.click(within(screen.getByTestId('setup-actions')).getByRole('button', { name: '戻る' }));
         expect(within(rail).getByText('送り先').closest('li')).toHaveAttribute('aria-current', 'step');
         expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '-1');
+        // 同じ手順のまま再描画しても、動きの途中で向きを反転させない。
+        fireEvent.change(screen.getByRole('combobox', { name: '表示言語' }), { target: { value: 'en' } });
+        expect(await screen.findByText('Destination')).toBeInTheDocument();
+        expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '-1');
+        fireEvent.change(screen.getByRole('combobox', { name: 'Display language' }), { target: { value: 'ja' } });
+        expect(await screen.findByText('送り先')).toBeInTheDocument();
     });
 
     it('選んだカードは印を付けて示し、繰り返す点滅を使わない', async () => {

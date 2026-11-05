@@ -1,6 +1,11 @@
 import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './tauriFixture';
 
+// ホームの配置の補間（useLayoutMotion）が終わるまで待つ。繰り返し続く飾りの動きは待たない。
+const settleLayoutMotion = (page: import('@playwright/test').Page) => page.evaluate(() => Promise.all(document.getAnimations()
+    .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
+    .map(animation => animation.finished.catch(() => undefined))));
+
 test.describe('通常のホーム表示', () => {
     test.use({ liveHome: true, registeredModes: false });
     for (const source of ['本番帯', '大型メーター併用']) {
@@ -127,6 +132,8 @@ test.describe('通常のホーム表示', () => {
                 await page.evaluate(muted => (window as any).__e2eSetOutputMuted(muted), muted);
                 const badge = routing.getByRole('status', { includeHidden: true });
                 if (muted) await expect(badge).toBeVisible(); else await expect(badge).toBeHidden();
+                // 幅の変更で区画が滑って移る間（#298）は測らず、配置が落ち着いてから比べる。
+                await settleLayoutMotion(page);
                 samples.push({ row: await routing.boundingBox(), button: await routing.getByRole('button', { name: '歌・雑談の設定', exact: true }).boundingBox() });
             }
             expect(samples[1]).toEqual(samples[0]); expect(samples[2]).toEqual(samples[0]);
@@ -222,7 +229,9 @@ for (const theme of ['light', 'dark', 'gaming']) {
         const skip = page.getByRole('button', { name: 'セットアップをスキップ' });
         await reachable(skip, page);
         await skip.click();
-        const setup = page.getByRole('button', { name: 'マイクと出力先を設定する', exact: true });
+        // 未設定のホームは次の1歩を主ボタンにし、設定はヘッダーから開く（#297）。
+        await reachable(page.getByRole('button', { name: '送り先を決める', exact: true }), page);
+        const setup = page.getByRole('button', { name: '設定を開く', exact: true });
         await reachable(setup, page);
         await setup.click();
         await page.getByRole('tab', { name: '外観', exact: true }).click();
@@ -243,7 +252,7 @@ test('1024×768・200%ページ拡大: 設定をキーボードで操作し、�
     await page.addInitScript(() => localStorage.setItem('vst_host_wizard_done', 'true'));
     await page.goto('/');
     await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
-    const setup = page.getByRole('button', { name: 'マイクと出力先を設定する', exact: true });
+    const setup = page.getByRole('button', { name: '設定を開く', exact: true });
     await setup.click();
     const dialog = page.getByRole('dialog').last();
     const tab = dialog.getByRole('tab', { name: '外観', exact: true });
@@ -257,7 +266,7 @@ test('1024×768・200%ページ拡大: 設定をキーボードで操作し、�
     await page.keyboard.press('Tab');
     await page.keyboard.press('Escape');
     await expect(dialog).not.toBeVisible();
-    await expect(page.getByRole('button', { name: 'Set up microphone and output', exact: true })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Open Settings', exact: true })).toBeFocused();
 });
 
 // 重ね表示では背後を操作させず、ヘッダーとフッターの本番操作は使える。
@@ -387,6 +396,9 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
 });
 
 // 開閉を連続しても古い終了処理で閉じず、閉じ始めた内容には触れない。
+// 右パネルの入口（VST の編集）は設定済みのホームにだけ出る（#297）。
+test.describe('右パネルの出入り', () => {
+    test.use({ liveHome: true, registeredModes: false });
 for (const width of [960, 1280, 1600]) {
 test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 768 });
@@ -474,6 +486,7 @@ test('動きを減らす設定では右パネルを移動せず、キーボー�
     await page.keyboard.press('Enter');
     await expect(panel).toHaveCount(0);
     await expect(toggle).toBeFocused();
+});
 });
 
 test.describe('メーター数値の幅', () => {

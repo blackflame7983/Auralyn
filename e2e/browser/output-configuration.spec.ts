@@ -1,5 +1,8 @@
 import { test, expect } from './tauriFixture';
 
+// VST パネルは設定済みのホームにだけ出る。未設定のホームは音の流れと次の1歩だけにする（#297）。
+test.use({ liveHome: true });
+
 for (const liveModes of [false, true]) test(`分離出力と本番モード=${liveModes}を明示保存し、狭い画面で差分を確認する`, async ({ page }, info) => {
     await page.setViewportSize({ width: 900, height: 600 });
     await page.addInitScript(liveModes => {

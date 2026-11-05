@@ -327,6 +327,10 @@ it('本番帯を出さない未設定の間も、登録済み・誤操作防止�
 it('未設定で歌・雑談が未登録なら、登録の入口だけの欄を出さない（#297）', () => {
     render(<AppShell {...commonProps} currentHost="" isEngineRunning={false} liveControls={<button type="button">歌・雑談の設定</button>}><p>rack</p></AppShell>);
     expect(screen.queryByRole('button', { name: '歌・雑談の設定' })).not.toBeInTheDocument();
+    // 欄は隠すだけで置いておく。中の LiveModeBar が状態を読み、本番保護・復旧が必要になったら App が欄を出す。
+    const hidden = document.querySelector('[data-unconfigured-live]');
+    expect(hidden).toHaveAttribute('hidden');
+    expect(hidden).toHaveTextContent('歌・雑談の設定');
 });
 
 it('歌・雑談が未登録で何も描画しないときは、本番帯がない間も空の枠を出さない', () => {

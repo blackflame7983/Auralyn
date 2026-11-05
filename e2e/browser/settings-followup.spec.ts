@@ -143,6 +143,9 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
         const labels = ['prep.obs', 'prep.call', 'prep.local', 'prep.other'] as const;
         for (const label of labels) await expect(wizard.getByRole('button', { name: message(locale, label), exact: true })).toBeVisible();
+        // 送り先は OBS・通話・自分で聴く・その他の順に並べる（#304）。
+        const order = await wizard.locator('.setup-choice').evaluateAll(cards => cards.map(card => card.getAttribute('aria-label') ?? card.querySelector('.font-semibold, h3, strong')?.textContent ?? card.textContent));
+        expect(order.map(text => labels.findIndex(label => text?.startsWith(message(locale, label))))).toEqual([0, 1, 2, 3]);
         await page.screenshot({ path: info.outputPath('destinations.png'), animations: 'disabled' });
         await wizard.getByRole('button', { name: message(locale, 'prep.obs'), exact: true }).click();
         const next = wizard.getByRole('button', { name: message(locale, 'common.next'), exact: true });
@@ -156,8 +159,8 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await expect.poll(() => next.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(disabledColor);
         await wizard.getByRole('button', { name: message(locale, 'common.back'), exact: true }).click();
         await wizard.getByRole('button', { name: message(locale, 'wizard.skip'), exact: true }).click();
-        const choices = page.getByRole('radiogroup', { name: message(locale, 'prep.usage'), exact: true }).getByRole('radio');
-        await expect(choices).toHaveCount(4);
-        for (let i = 0; i < labels.length; i++) await expect(choices.nth(i)).toHaveAccessibleName(message(locale, labels[i]));
+        // 未設定のホームは送り先の選択を並べず、音の流れと次の1歩だけを出す（#297）。
+        await expect(page.getByRole('radiogroup', { name: message(locale, 'prep.usage'), exact: true })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: message(locale, 'unsetFlow.chooseDestination'), exact: true })).toBeVisible();
     });
 }

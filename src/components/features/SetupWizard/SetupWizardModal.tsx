@@ -34,9 +34,10 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const surfaceRef = useRef<HTMLDivElement>(null);
     // 手順レールと切替の向き（DESIGN.md 5.7）。設定中・完了は4手順を終えた位置に置く。
     const stepIndex = state === 'configuring' || state === 'complete' ? STEPS.length : Math.max(0, (STEPS as readonly WizardState[]).indexOf(state));
-    const previousIndex = useRef(stepIndex);
-    const direction = stepIndex >= previousIndex.current ? 1 : -1;
-    useEffect(() => { previousIndex.current = stepIndex; }, [stepIndex]);
+    // 入ってくる向きは手順が変わった時だけ決める。動きの途中の再描画（機器一覧の読込など）で向きを反転させない。
+    const step = useRef({ index: stepIndex, direction: 1 });
+    if (step.current.index !== stepIndex) step.current = { index: stepIndex, direction: stepIndex > step.current.index ? 1 : -1 };
+    const direction = step.current.direction;
     useEffect(() => {
         if (!isOpen || !bodyRef.current) return;
         bodyRef.current.scrollTop = 0;

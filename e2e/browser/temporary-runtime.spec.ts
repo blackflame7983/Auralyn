@@ -1,5 +1,8 @@
 import { test, expect } from './tauriFixture';
 
+// VST パネルは設定済みのホームにだけ出る。未設定のホームは音の流れと次の1歩だけにする（#297）。
+test.use({ liveHome: true });
+
 test('未保存設定の退避範囲を確認し、開始失敗後も同じ画面で設定を保持する', async ({ page }, info) => {
     await page.setViewportSize({ width: 900, height: 600 });
     await page.addInitScript(() => {
