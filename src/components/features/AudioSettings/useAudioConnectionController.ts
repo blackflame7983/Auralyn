@@ -25,6 +25,40 @@ export class ConnectionApplyError extends Error {
     }
 }
 
+/**
+ * 新しい接続で開始できなかったときに、直前に動いていた接続へ戻したかを持つ（#289）。
+ * restored: 戻せた / failed: 戻せなかった / none: 開始前は動いていなかった。
+ */
+export class ConnectionStartError extends Error {
+    /** 戻さなかったときは、従来どおり元の失敗をそのまま文字にして出す。 */
+    public readonly raw: string;
+    constructor(cause: unknown, public readonly rollback: 'restored' | 'failed' | 'none') {
+        super(cause instanceof Error ? cause.message : String(cause));
+        this.raw = String(cause);
+    }
+}
+
+// 開始前に音が出ていた接続を控える。止まっている・確かめられない場合は戻す対象にしない。
+async function runningConnection() {
+    try {
+        const state = await audioApi.getAudioState();
+        if (!state?.is_running || !state.config) return null;
+        const stream = await audioApi.getAudioStreamState();
+        return stream?.running && !stream.streamFailed ? state.config : null;
+    } catch { return null; }
+}
+
+// 再起動は旧エンジンを止めてから開始するため、失敗すると音が止まったままになる。直前の接続で開始し直す。
+// アプリ入力は候補を選び直さないと開始できないため、戻す対象にしない。
+async function restoreConnection(config: NonNullable<AudioStateInfo['config']>) {
+    if (config.input_source?.kind === 'process_loopback') return false;
+    try {
+        await audioApi.start(config.host, config.input ?? undefined, config.output ?? undefined, config.buffer_size ?? undefined,
+            config.sample_rate ?? undefined, config.input_id, config.output_id, undefined, config.routing);
+        return true;
+    } catch { return false; }
+}
+
 type Pending = { restart: boolean; requestedKey: string; actualKey: string; host: string; input?: AudioDevice; output: AudioDevice; result: AudioConfig; config: AudioPreferences; stage: 'save' };
 
 export function useAudioConnectionController(options: Options) {
@@ -129,7 +163,13 @@ export function useAudioConnectionController(options: Options) {
             const beforeStart = stoppedRevision.current;
             startedState.current = null;
             startVerification.current = null;
-            const result = await start(host, process ? undefined : input?.name, output.name, bufferSize, sampleRate, process ? undefined : input?.id, output.id, undefined, routing, ...(inputSource ? [inputSource] as const : []));
+            const previous = await runningConnection();
+            let result: AudioConfig;
+            try {
+                result = await start(host, process ? undefined : input?.name, output.name, bufferSize, sampleRate, process ? undefined : input?.id, output.id, undefined, routing, ...(inputSource ? [inputSource] as const : []));
+            } catch (error) {
+                throw new ConnectionStartError(error, previous ? await restoreConnection(previous) ? 'restored' : 'failed' : 'none');
+            }
             await startVerification.current;
             if (beforeStart !== stoppedRevision.current) throw new Error('Audio stopped during start');
             if (startedState.current && differentConnection(startedState.current, { host, input, output })) throw new Error('Audio connection changed during start');
