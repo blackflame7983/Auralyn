@@ -1,22 +1,23 @@
-// 案A「ステージ」：画面の主役を1つにする。ホームは本番帯を大きな舞台にし、セットアップは高さ固定のダイアログで横に進む。
+// 案A「ステージ」（unsetFlow で未設定時だけ案Bの流れにした採用案）：画面の主役を1つにする。ホームは本番帯を大きな舞台にし、セットアップは高さ固定のダイアログで横に進む。
 import type { CSSProperties } from 'react';
 import { MdArrowForward, MdCast, MdMic } from 'react-icons/md';
 import { ProtoHeader, ProtoMeter, ProtoSegment, ProtoStep, setupSteps, useFakeLevel, useSetupDemo } from './shared';
 import { MixPanel, SoundRows, useSoundDemo } from './HomeParts';
 import { SetupBody } from './SetupBodies';
+import { UnsetFlow } from './ProtoB';
 import type { ProtoScreenProps } from './types';
 import { useState } from 'react';
 
-export function ProtoA({ screen, setScreen }: ProtoScreenProps) {
+export function ProtoA({ screen, setScreen, unsetFlow = false }: ProtoScreenProps & { unsetFlow?: boolean }) {
     const sound = useSoundDemo();
     const ready = screen === 'ready';
     return <div className="flex h-full flex-col">
         <ProtoHeader status={ready ? '音声処理中' : '音声未設定'} tone={ready ? 'live' : 'neutral'} />
         <main className="flex-1 overflow-y-auto px-6 py-6">
             <div className="mx-auto max-w-[1180px] space-y-5">
-                {ready ? <ReadyStage /> : <UnsetStage onStart={() => setScreen('setup')} />}
+                {ready ? <ReadyStage /> : unsetFlow ? <UnsetFlow onStart={() => setScreen('setup')} /> : <UnsetStage onStart={() => setScreen('setup')} />}
                 <section className={`rounded-xl bg-card px-5 py-4 transition-opacity duration-(--motion-base) ${ready ? '' : 'opacity-40'}`} aria-disabled={!ready}>
-                    <div className="flex items-baseline gap-3"><h2 className="text-ui-heading font-semibold">音調整</h2>{!ready && <span className="text-ui-support text-muted-foreground">設定が済むと使えます</span>}</div>
+                    <div className="flex items-baseline gap-3"><h2 className="text-ui-heading font-semibold">音調整</h2>{!ready && !unsetFlow && <span className="text-ui-support text-muted-foreground">設定が済むと使えます</span>}</div>
                     <SoundRows sound={sound} disabled={!ready} />
                 </section>
                 {ready && <MixPanel sound={sound} />}
@@ -80,7 +81,7 @@ function SetupDialogA({ onClose, onDone }: { onClose: () => void; onDone: () => 
                 </div>
                 <footer className="flex items-center gap-3 border-t border-border px-8 py-4">
                     <button type="button" onClick={demo.stepIndex === 0 ? onClose : demo.back} className="rounded-lg px-4 py-2 text-ui-control text-muted-foreground hover:text-foreground">{demo.stepIndex === 0 ? 'あとで' : '戻る'}</button>
-                    {!demo.canNext && <span className="ml-auto text-ui-support text-muted-foreground">目的を選んでください</span>}
+                    {!demo.canNext && <span className="ml-auto text-ui-support text-muted-foreground">送り先を選んでください</span>}
                     <button type="button" disabled={!demo.canNext} onClick={last ? onDone : demo.next}
                         className={`proto-primary rounded-lg px-6 py-2.5 text-ui-control font-semibold ${demo.canNext ? 'ml-auto bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{last ? '使い始める' : '次へ'}</button>
                 </footer>

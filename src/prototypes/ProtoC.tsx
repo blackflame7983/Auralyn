@@ -79,7 +79,7 @@ function FullSetup({ onDone, onCancel }: { onDone: () => void; onCancel: () => v
             {demo.stepIndex > 0 && <button type="button" onClick={demo.back} className="inline-flex items-center gap-1 rounded-lg px-4 py-3 text-ui-control text-muted-foreground hover:text-foreground"><MdArrowBack aria-hidden="true" className="h-5 w-5" />戻る</button>}
             <button type="button" disabled={!demo.canNext} onClick={last ? onDone : demo.next}
                 className={`proto-primary ml-auto inline-flex min-w-[12rem] items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-ui-control font-semibold ${demo.canNext ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-                {demo.canNext ? last ? '使い始める' : '次へ' : '目的を選んでください'}{demo.canNext && <MdArrowForward aria-hidden="true" className="proto-primary-arrow h-5 w-5" />}
+                {demo.canNext ? last ? '使い始める' : '次へ' : '送り先を選んでください'}{demo.canNext && <MdArrowForward aria-hidden="true" className="proto-primary-arrow h-5 w-5" />}
             </button>
         </footer>
     </div>;

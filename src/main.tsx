@@ -23,11 +23,11 @@ function render(content: React.ReactNode, withTheme = true) {
   if (withTheme) initializeLocaleBridge();
   root.render(<React.StrictMode><LocaleProvider>{withTheme ? <ThemeProvider>{content}</ThemeProvider> : content}</LocaleProvider></React.StrictMode>);
 }
-// #301 の試作は開発時だけ ?proto=a|b|c で開く。本番ビルドでは import.meta.env.DEV が false になり、読み込まれない。
+// #301 の試作は開発時だけ ?proto=ab|a|b|c で開く。本番ビルドでは import.meta.env.DEV が false になり、読み込まれない。
 const prototypeRequested = import.meta.env.DEV && new URLSearchParams(location.search).has('proto');
 if (import.meta.env.DEV) {
   window.addEventListener('keydown', event => {
-    if (event.ctrlKey && event.shiftKey && event.code === 'KeyP') location.search = prototypeRequested ? '' : '?proto=a';
+    if (event.ctrlKey && event.shiftKey && event.code === 'KeyP') location.search = prototypeRequested ? '' : '?proto=ab';
   });
 }
 initializeAppVisibility();

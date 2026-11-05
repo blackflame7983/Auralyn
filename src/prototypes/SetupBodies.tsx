@@ -16,7 +16,7 @@ function Choice({ selected, onSelect, look, children, role = 'radio' }: { select
 export function GoalBody({ demo, look }: { demo: SetupDemo; look: Look }) {
     return <div className="space-y-4">
         <h2 className="text-2xl font-semibold tracking-tight">どこへ声を届けますか？</h2>
-        <div role="radiogroup" aria-label="目的" className="grid grid-cols-2 gap-3">
+        <div role="radiogroup" aria-label="送り先" className="grid grid-cols-2 gap-3">
             {goals.map(goal => <Choice key={goal.value} look={look} selected={demo.goal === goal.value} onSelect={() => demo.setGoal(goal.value)}>
                 <span className={`proto-choice-icon grid shrink-0 place-items-center rounded-xl ${look === 'tile' ? 'h-14 w-14' : 'h-11 w-11'}`}><goal.icon aria-hidden="true" className={look === 'tile' ? 'h-8 w-8' : 'h-6 w-6'} /></span>
                 <span className="min-w-0"><span className="block text-ui-control font-semibold">{goal.label}</span><span className="block text-ui-support text-muted-foreground">{goal.hint}</span></span>

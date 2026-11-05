@@ -1,19 +1,22 @@
-// #301 の試作を実アプリのウィンドウ内で見比べる画面。開発時に ?proto=a|b|c で開く（main.tsx）。
+// #301 の試作を実アプリのウィンドウ内で見比べる画面。開発時に ?proto=ab|a|b|c で開く（main.tsx）。
 // 音声エンジン・保存設定には触れない。表示はすべて仮のデータ。
 import { useEffect, useState } from 'react';
 import './proto.css';
 import { ProtoA } from './ProtoA';
 import { ProtoB } from './ProtoB';
 import { ProtoC } from './ProtoC';
-import type { ProtoScreen } from './types';
+import type { ProtoScreen, ProtoScreenProps } from './types';
 
-type Variant = 'a' | 'b' | 'c';
-const variants: { value: Variant; label: string }[] = [{ value: 'a', label: 'A ステージ' }, { value: 'b', label: 'B 音の流れ' }, { value: 'c', label: 'C タイル' }];
+// 採用案：A を基本にし、未設定のホームだけ B の流れにする（利用者の選択、2026-11-05）。
+function ProtoAB(props: ProtoScreenProps) { return <ProtoA {...props} unsetFlow />; }
+
+type Variant = 'ab' | 'a' | 'b' | 'c';
+const variants: { value: Variant; label: string }[] = [{ value: 'ab', label: 'A＋B 採用案' }, { value: 'a', label: 'A ステージ' }, { value: 'b', label: 'B 音の流れ' }, { value: 'c', label: 'C タイル' }];
 const screens: { value: ProtoScreen; label: string }[] = [{ value: 'unset', label: '未設定' }, { value: 'setup', label: 'セットアップ' }, { value: 'ready', label: '設定済み' }];
 
 function readParams(): { variant: Variant; screen: ProtoScreen; reduced: boolean } {
     const params = new URLSearchParams(location.search);
-    const variant = (['a', 'b', 'c'] as const).find(value => value === params.get('proto')) ?? 'a';
+    const variant = (['ab', 'a', 'b', 'c'] as const).find(value => value === params.get('proto')) ?? 'ab';
     const screen = (['unset', 'setup', 'ready'] as const).find(value => value === params.get('screen')) ?? 'unset';
     return { variant, screen, reduced: params.get('reduced') === '1' || matchMedia('(prefers-reduced-motion: reduce)').matches };
 }
@@ -29,7 +32,7 @@ export default function PrototypeLab() {
         if (reduced) params.set('reduced', '1');
         history.replaceState(null, '', `?${params.toString()}`);
     }, [variant, screen, reduced]);
-    const View = variant === 'a' ? ProtoA : variant === 'b' ? ProtoB : ProtoC;
+    const View = variant === 'ab' ? ProtoAB : variant === 'a' ? ProtoA : variant === 'b' ? ProtoB : ProtoC;
     return <div className="proto-root flex h-screen flex-col overflow-hidden bg-background text-foreground" data-proto-reduced={reduced || undefined}>
         {/* 案を切り替えたら状態を作り直し、前の案の開閉状態を持ち越さない。試作の切替バーの分だけ高さを空ける。 */}
         <div className="relative min-h-0 flex-1"><View key={variant} screen={screen} setScreen={setScreen} /></div>

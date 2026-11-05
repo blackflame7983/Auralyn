@@ -12,7 +12,7 @@ import type { ProtoScreenProps } from './types';
 type NodeState = 'empty' | 'next' | 'set';
 interface FlowNode { key: string; icon: IconType; label: string; value?: string; state: NodeState }
 
-function Flow({ nodes, flowing, onNode }: { nodes: FlowNode[]; flowing: boolean; onNode?: (key: string) => void }) {
+export function Flow({ nodes, flowing, onNode }: { nodes: FlowNode[]; flowing: boolean; onNode?: (key: string) => void }) {
     return <ol aria-label="音の流れ" className="grid grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] items-center gap-2">
         {nodes.map((node, index) => <li key={node.key} className="contents">
             <button type="button" onClick={() => onNode?.(node.key)} data-state={node.state} aria-current={node.state === 'next' ? 'step' : undefined}
@@ -26,7 +26,7 @@ function Flow({ nodes, flowing, onNode }: { nodes: FlowNode[]; flowing: boolean;
     </ol>;
 }
 
-function nodesFor(demo: SetupDemo | null, ready: boolean): FlowNode[] {
+export function nodesFor(demo: SetupDemo | null, ready: boolean): FlowNode[] {
     const goal = demo?.goal ? goals.find(item => item.value === demo.goal)?.label : ready ? 'OBSで配信' : undefined;
     const passed = (step: number) => ready || (demo ? demo.stepIndex > step : false);
     const next = (step: number) => !ready && (demo ? demo.stepIndex === step : step === 0);
@@ -46,13 +46,7 @@ export function ProtoB({ screen, setScreen }: ProtoScreenProps) {
         <ProtoHeader status={ready ? '音声処理中' : '音声未設定'} tone={ready ? 'live' : 'neutral'} />
         <main className="flex-1 overflow-y-auto px-6 py-6">
             <div className="mx-auto max-w-[1180px] space-y-5">
-                {screen === 'setup' ? <InlineSetup onDone={() => setScreen('ready')} onCancel={() => setScreen('unset')} /> : ready ? <ReadyFlow /> : <section className="space-y-4 rounded-2xl bg-card px-6 py-6">
-                    <Flow nodes={nodesFor(null, false)} flowing={false} onNode={() => setScreen('setup')} />
-                    <div className="flex items-center gap-4">
-                        <p className="text-ui-control text-muted-foreground">送り先から順に決めると、線に音が通ります。</p>
-                        <button type="button" onClick={() => setScreen('setup')} className="proto-primary ml-auto inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-ui-control font-semibold text-primary-foreground">送り先を決める<MdArrowForward aria-hidden="true" className="proto-primary-arrow h-5 w-5" /></button>
-                    </div>
-                </section>}
+                {screen === 'setup' ? <InlineSetup onDone={() => setScreen('ready')} onCancel={() => setScreen('unset')} /> : ready ? <ReadyFlow /> : <UnsetFlow onStart={() => setScreen('setup')} />}
                 {screen !== 'setup' && <>
                     <section className={`rounded-xl bg-card px-5 py-4 transition-opacity duration-(--motion-base) ${ready ? '' : 'opacity-40'}`} aria-disabled={!ready}>
                         <h2 className="text-ui-heading font-semibold">音調整</h2>
@@ -92,9 +86,20 @@ function InlineSetup({ onDone, onCancel }: { onDone: () => void; onCancel: () =>
         </div>
         <footer className="flex items-center gap-3">
             <button type="button" onClick={demo.stepIndex === 0 ? onCancel : demo.back} className="rounded-lg px-4 py-2 text-ui-control text-muted-foreground hover:text-foreground">{demo.stepIndex === 0 ? 'あとで' : '戻る'}</button>
-            <span className="ml-auto text-ui-support text-muted-foreground">{demo.canNext ? `${demo.stepIndex + 1} / ${setupSteps.length}` : '目的を選んでください'}</span>
+            <span className="ml-auto text-ui-support text-muted-foreground">{demo.canNext ? `${demo.stepIndex + 1} / ${setupSteps.length}` : '送り先を選んでください'}</span>
             <button type="button" disabled={!demo.canNext} onClick={last ? onDone : demo.next}
                 className={`proto-primary rounded-lg px-6 py-2.5 text-ui-control font-semibold ${demo.canNext ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{last ? '使い始める' : '次へ'}</button>
         </footer>
+    </section>;
+}
+
+/** 未設定のホーム。流れの空いた区間と、次の1歩の主ボタンだけを置く。案A＋Bでも使う。 */
+export function UnsetFlow({ onStart }: { onStart: () => void }) {
+    return <section className="space-y-4 rounded-2xl bg-card px-6 py-6">
+        <Flow nodes={nodesFor(null, false)} flowing={false} onNode={onStart} />
+        <div className="flex items-center gap-4">
+            <p className="text-ui-control text-muted-foreground">送り先から順に決めると、線に音が通ります。</p>
+            <button type="button" onClick={onStart} className="proto-primary ml-auto inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-ui-control font-semibold text-primary-foreground">送り先を決める<MdArrowForward aria-hidden="true" className="proto-primary-arrow h-5 w-5" /></button>
+        </div>
     </section>;
 }

@@ -91,7 +91,7 @@ export const MicIcon = MdMic;
 
 export type SetupStep = 'goal' | 'mic' | 'route' | 'done';
 export const setupSteps: { value: SetupStep; label: string }[] = [
-    { value: 'goal', label: '目的' }, { value: 'mic', label: 'マイク' }, { value: 'route', label: '送り方' }, { value: 'done', label: '確認' },
+    { value: 'goal', label: '送り先' }, { value: 'mic', label: 'マイク' }, { value: 'route', label: '送り方' }, { value: 'done', label: '確認' },
 ];
 
 /** セットアップの試作の状態。3案で同じ手順を使い、違いは見せ方だけにする。 */
