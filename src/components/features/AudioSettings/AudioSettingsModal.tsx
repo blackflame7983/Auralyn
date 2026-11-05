@@ -5,8 +5,8 @@ import { SaveScopeSummary } from '../Presets/SaveScopeSummary';
 import { SoundSettings, useSoundSettings } from './SoundSettings';
 import { SystemSettings, useSystemSettings } from './SystemSettings';
 import { LiveOutputPanel } from './LiveOutputPanel';
-import { MixingPanel } from './MixingPanel';
-import { PostMixPanel } from './PostMixPanel';
+import { Button } from '@/components/ui/button';
+import { openStreamMixPanel, saveStreamMixPanel, useStreamMixPanel } from '@/lib/streamMixPanel';
 import { MonitorTrial } from './MonitorTrial';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { LanguageSelector } from '@/i18n/LanguageSelector';
@@ -190,6 +190,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (isOpen && ![128, 512, 1024].includes(selectedBufferSize)) setIsAdvancedMode(true);
   }, [isOpen, selectedBufferSize]);
   const tuningDetails = useRef<HTMLDetailsElement>(null);
+  const streamMixShown = useStreamMixPanel();
   const [tuningOpen, setTuningOpen] = useState(initialSection === 'audioTuning' || !getBeginnerMode()
     || localStorage.getItem('vst_host_settings_advanced') === 'true');
 
@@ -229,9 +230,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const soundStart = useRef<HTMLHeadingElement>(null);
   useEffect(() => { settingsBody.current?.scrollTo?.({ top: 0 }); }, [activeTab]);
   useEffect(() => {
-    if (isOpen && (initialTab === 'sound' || initialSection === 'mixing')) {
+    if (isOpen && initialTab === 'sound') {
       const frame = requestAnimationFrame(() => {
-        const target = initialSection ? settingsBody.current?.querySelector<HTMLDetailsElement>(initialSection === 'mixing' ? '#mixing-settings' : initialSection === 'liveModes' ? '#live-mode-settings' : '#singing-settings') : soundStart.current;
+        const target = initialSection ? settingsBody.current?.querySelector<HTMLDetailsElement>(initialSection === 'liveModes' ? '#live-mode-settings' : '#singing-settings') : soundStart.current;
         if (target instanceof HTMLDetailsElement) target.open = true;
         target?.scrollIntoView?.({ block: 'start' });
         if (initialSection) (initialSection === 'liveModes' ? target?.querySelector<HTMLElement>('h3') : target?.querySelector<HTMLElement>('summary') ?? target)?.focus({ preventScroll: true });
@@ -549,16 +550,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               <summary className="cursor-pointer font-semibold">{t('liveOutput.title')}</summary>
               <LiveOutputPanel autoLoad={loadOutput} outputs={devices.outputs} inputName={inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : selectedInputDevice?.name} monitorName={selectedOutputDevice?.name} disabled={loading} onBusyChange={setLoading} />
             </details>
-            <section aria-label={t('mixingHome.open')} className="space-y-3">
-              <h3 className="text-ui-heading font-semibold">{t('mixingHome.open')}</h3>
-              <MixingPanel inputs={devices.inputs} primaryInputId={selectedInputDevice?.id} primaryIsVoiceDevice={inputSource.source.kind === 'device' && inputSource.source.config.purpose === 'voice'} disabled={loading} initiallyOpen={initialSection === 'mixing'} onNavigate={target => {
-                const el = settingsBody.current?.querySelector<HTMLElement>(target === 'output' ? '#live-output-settings' : '#primary-input-settings');
-                // 読み込み済みなら出力先の選択へ直接移し、未取得の場合だけ取得後のフォーカス移動を予約する。
-                const select = target === 'output' && !loading && loadOutput ? el?.querySelector<HTMLElement>('select') : null;
-                if (el instanceof HTMLDetailsElement) { el.open = true; outputFocusPending.current = !loadOutput || loading; setLoadOutput(true); }
-                el?.scrollIntoView({ block: 'start' }); (select ?? el?.querySelector<HTMLElement>('summary, select') ?? el)?.focus({ preventScroll: true });
-              }} />
-              <PostMixPanel mainRunning={engineStats?.latencyMetadata?.streamRunning === true} disabled={loading} />
+            {/* 配信中に触る配信ミックスはホームのパネルへ移し、ここは機器と接続だけにする（#299）。 */}
+            <section aria-labelledby="stream-mix-settings-heading" className="space-y-2 rounded-xl border border-border p-4">
+              <h3 id="stream-mix-settings-heading" className="text-ui-heading font-semibold">{t('streamMix.title')}</h3>
+              <p className="text-ui-support text-muted-foreground">{t('streamMix.settingsHint')}</p>
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-ui-control"><input type="checkbox" checked={streamMixShown} onChange={event => saveStreamMixPanel(event.target.checked)} />{t('streamMix.show')}</label>
+                <Button type="button" variant="outline" size="sm" onClick={() => { openStreamMixPanel(); onClose(); }}>{t('streamMix.openHome')}</Button>
+              </div>
             </section>
 
             {!loading && !error && <div className="space-y-6">

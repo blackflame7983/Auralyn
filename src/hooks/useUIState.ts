@@ -1,3 +1,4 @@
+import { openStreamMixPanel } from '@/lib/streamMixPanel';
 import { useState } from 'react';
 
 export const useUIState = () => {
@@ -23,7 +24,8 @@ export const useUIState = () => {
         setSettingsTab('audio');
         setSettingsOpen(true);
     };
-    const openMixingSettings = () => { setSettingsNeedsRetry(false); setSettingsSection('mixing'); setSettingsTab('audio'); setSettingsOpen(true); };
+    // 配信ミックスは設定ではなくホームのパネルで扱う（#299）。
+    const openMixingSettings = () => openStreamMixPanel();
     const openSoundSettings = (section?: 'liveModes' | 'singing') => {
         setSettingsNeedsRetry(false);
         // イベントハンドラーとして渡された場合も、選択イベントを移動先へ持ち込まない。

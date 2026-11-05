@@ -79,9 +79,10 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
         await expect(page.getByRole('radiogroup', { name: message('ja', 'prep.usage') })).toBeVisible();
         await live.getByRole('button', { name: message('ja', 'liveBar.actions'), exact: true }).click();
         await page.getByRole('button', { name: message('ja', 'home.singingSetup'), exact: true }).click();
-        await expect(page.locator('#mixing-settings > summary')).toBeFocused();
-        await page.keyboard.press('Escape');
-        await expect(live.getByRole('button', { name: message('ja', 'liveBar.actions'), exact: true })).toBeFocused();
+        // 歌配信の準備は設定ではなく、ホームの配信ミックスのパネルを開いて移る（#299）。
+        await expect(page.locator('#stream-mix-panel #mixing-settings > summary')).toBeFocused();
+        await expect(page.locator('#stream-mix-panel')).toBeInViewport();
+        await expect(page.getByRole('dialog')).toHaveCount(0);
     });
 }
 
