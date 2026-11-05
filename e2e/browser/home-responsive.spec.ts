@@ -9,11 +9,14 @@ for (const theme of ['light', 'dark', 'gaming']) {
             await page.addInitScript(theme => {
                 localStorage.setItem('vst_host_theme', theme);
                 localStorage.setItem('vst_host_wizard_done', 'true');
+                localStorage.setItem('vst_host_setup_goal', 'obs');
                 localStorage.setItem('auralyn_vst_panel_open', 'false');
                 localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
             }, theme);
             await page.goto('/');
+            await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
             const live = page.getByRole('region', { name: '本番', exact: true });
+            await expect(live).toHaveAttribute('data-roomy', 'true');
             const input = page.getByRole('meter', { name: 'マイクの入力レベル', exact: true });
             await expect(input).toBeVisible();
             await expect(page.locator('#home-builtin')).toHaveAttribute('data-on', 'true');
@@ -35,7 +38,7 @@ for (const theme of ['light', 'dark', 'gaming']) {
                     const p = (await panel.boundingBox())!, m = (await meter.boundingBox())!;
                     return m.x + m.width <= p.x + 1;
                 }).toBe(true);
-                const record = page.getByRole('button', { name: '録音して比較', exact: true });
+                const record = page.getByRole('button', { name: 'ボイスチェック', exact: true });
                 await expect(record).toBeInViewport();
                 if (height < 1100) expect((await record.boundingBox())!.x + (await record.boundingBox())!.width).toBeLessThan((await meter.boundingBox())!.x);
                 else {

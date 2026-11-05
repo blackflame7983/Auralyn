@@ -278,12 +278,27 @@ impl Engine {
         Ok((used_preferred_input, effective_fixed_block))
     }
 
-    #[allow(deprecated)]
     pub(super) fn start_audio_attempt(
+        &mut self,
+        mut request: AudioStartRequest,
+        mut policy: lifecycle::StartupPolicy,
+    ) -> Result<()> {
+        // callback準備を含む大きなフレームを再帰で重ねない。
+        // 再試行は一度戻ってローカル所有値を回収してから、既存policyの上限内で行う。
+        while let Some((next_request, next_policy)) = self.try_start_audio(request, policy)? {
+            request = next_request;
+            policy = next_policy;
+        }
+        Ok(())
+    }
+
+    #[allow(deprecated)]
+    #[inline(never)]
+    fn try_start_audio(
         &mut self,
         request: AudioStartRequest,
         policy: lifecycle::StartupPolicy,
-    ) -> Result<()> {
+    ) -> Result<Option<(AudioStartRequest, lifecycle::StartupPolicy)>> {
         let AudioStartRequest {
             input_source,
             host_name,
@@ -418,7 +433,7 @@ impl Engine {
                         lifecycle::release_devices_before_retry((in_dev, out_dev), || {
                             self.clear_audio_resources()
                         });
-                        return self.start_audio_attempt(
+                        return Ok(Some((
                             AudioStartRequest {
                                 input_source: input_source.clone(),
                                 host_name,
@@ -429,7 +444,7 @@ impl Engine {
                                 device_ids: device_ids.clone(),
                             },
                             next_policy,
-                        );
+                        )));
                     }
                     return Err(error);
                 }
@@ -1842,7 +1857,7 @@ impl Engine {
                     lifecycle::release_devices_before_retry((in_dev, out_dev), || {
                         self.clear_audio_resources()
                     });
-                    return self.start_audio_attempt(
+                    return Ok(Some((
                         AudioStartRequest {
                             input_source: input_source.clone(),
                             host_name: retry_host_out,
@@ -1853,7 +1868,7 @@ impl Engine {
                             device_ids: device_ids.clone(),
                         },
                         next_policy,
-                    );
+                    )));
                 }
                 return Err(anyhow!(
                     "Stream Build Failed (Fallback exhausted): {}",
@@ -1878,7 +1893,7 @@ impl Engine {
                     lifecycle::release_devices_before_retry((in_dev, out_dev), || {
                         self.clear_audio_resources()
                     });
-                    return self.start_audio_attempt(
+                    return Ok(Some((
                         AudioStartRequest {
                             input_source: input_source.clone(),
                             host_name: retry_host_in,
@@ -1889,7 +1904,7 @@ impl Engine {
                             device_ids: device_ids.clone(),
                         },
                         next_policy,
-                    );
+                    )));
                 }
                 // 既定入力も拒否された場合は、従来どおり出力の既定設定へ一度だけ戻す。
                 if let Some((next_policy, fallback_rate)) = policy
@@ -1901,7 +1916,7 @@ impl Engine {
                     lifecycle::release_devices_before_retry((in_dev, out_dev), || {
                         self.clear_audio_resources()
                     });
-                    return self.start_audio_attempt(
+                    return Ok(Some((
                         AudioStartRequest {
                             input_source: input_source.clone(),
                             host_name: retry_host_in,
@@ -1912,7 +1927,7 @@ impl Engine {
                             device_ids: device_ids.clone(),
                         },
                         next_policy,
-                    );
+                    )));
                 }
                 return Err(anyhow!("Input Stream Build Failed: {}", detailed_msg));
             }
@@ -1978,7 +1993,7 @@ impl Engine {
             buffer_size: self.current_block_size as u32,
         });
 
-        Ok(())
+        Ok(None)
     }
 }
 

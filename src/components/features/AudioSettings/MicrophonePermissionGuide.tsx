@@ -20,12 +20,12 @@ export function MicrophonePermissionGuide({ expanded = false }: { expanded?: boo
     };
 
     return (
-        <details open={expanded || undefined} className="text-xs rounded-lg border border-border p-3 space-y-2">
+        <details open={expanded || undefined} className="text-ui-support rounded-lg border border-border p-3 space-y-2">
             <summary className="cursor-pointer font-medium">{t('settings.MicrophonePermissionGuide.238')}</summary>
             <div className="space-y-2 pt-2 text-muted-foreground">
                 <p>{t('settings.MicrophonePermissionGuide.239')}</p>
                 <p>{t('settings.MicrophonePermissionGuide.240')}</p>
-                <button disabled={opening} onClick={() => void openSettings()} className="px-3 py-2 rounded-md border border-input text-foreground hover:bg-muted">
+                <button disabled={opening} onClick={() => void openSettings()} className="px-3 py-2 rounded-md border border-input text-foreground hover:bg-muted text-ui-control">
                     {t('settings.MicrophonePermissionGuide.241')}</button>
                 {error && <p role="alert">{t('settings.MicrophonePermissionGuide.242')}</p>}
                 <p>{t('settings.MicrophonePermissionGuide.243')}</p>

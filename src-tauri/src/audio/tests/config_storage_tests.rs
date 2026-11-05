@@ -991,3 +991,156 @@ fn saving_packaged_audio_config_does_not_read_or_overwrite_standalone() {
     assert!(root.is_absolute() && root.starts_with(std::env::temp_dir()));
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn rejected_generation_keeps_active_and_saved_audio_config_without_spawning() {
+    let root = std::env::temp_dir().join(format!(
+        "auralyn-audio-rejected-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let original = ActiveAudioConfig {
+        host: "ASIO".into(),
+        input: Some("saved input".into()),
+        ..Default::default()
+    };
+    let mut host = AudioHost::new(root.clone());
+    persist_audio_config(&host.last_config_path, &original).unwrap();
+    let before = std::fs::read(&host.last_config_path).unwrap();
+    host.active_config = Some(original.clone());
+    host.engine_generation = 7;
+    assert!(host
+        .start_internal_guarded(
+            Some("ASIO".into()),
+            Some("new input".into()),
+            None,
+            None,
+            None,
+            None,
+            Some(6),
+        )
+        .is_err());
+    assert!(host.child.is_none());
+    assert_eq!(std::fs::read(&host.last_config_path).unwrap(), before);
+    assert_eq!(
+        serde_json::to_value(host.active_config.as_ref().unwrap()).unwrap(),
+        serde_json::to_value(&original).unwrap()
+    );
+    let restarted = AudioHost::new(root.clone());
+    let restored: ActiveAudioConfig =
+        serde_json::from_slice(&std::fs::read(&restarted.last_config_path).unwrap()).unwrap();
+    assert_eq!(
+        serde_json::to_value(restored).unwrap(),
+        serde_json::to_value(original).unwrap()
+    );
+    assert!(root.is_absolute() && root.starts_with(std::env::temp_dir()));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn locked_audio_config_preserves_each_root_and_cleans_temp_then_retries() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let root = std::env::temp_dir().join(format!(
+        "auralyn-audio-locked-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let roots = [
+        root.join("standalone"),
+        root.join("package/LocalState/Auralyn"),
+    ];
+    let old = ActiveAudioConfig {
+        host: "ASIO".into(),
+        input: Some("old input".into()),
+        ..Default::default()
+    };
+    let updated = ActiveAudioConfig {
+        input: Some("new input".into()),
+        ..old.clone()
+    };
+    for dir in &roots {
+        persist_audio_config(&dir.join("last_audio_config.json"), &old).unwrap();
+    }
+    for (index, dir) in roots.iter().enumerate() {
+        let path = dir.join("last_audio_config.json");
+        let before = std::fs::read(&path).unwrap();
+        let other_path = roots[1 - index].join("last_audio_config.json");
+        let other_before = std::fs::read(&other_path).unwrap();
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
+        assert!(persist_audio_config(&path, &updated).is_err());
+        drop(lock);
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(std::fs::read(&other_path).unwrap(), other_before);
+        assert!(std::fs::read_dir(dir).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".auralyn-migration-")
+        }));
+        let restarted = AudioHost::new(dir.clone());
+        let restored: ActiveAudioConfig =
+            serde_json::from_slice(&std::fs::read(&restarted.last_config_path).unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_value(restored).unwrap(),
+            serde_json::to_value(&old).unwrap()
+        );
+        persist_audio_config(&path, &updated).unwrap();
+        let retried: ActiveAudioConfig =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_value(retried).unwrap(),
+            serde_json::to_value(&updated).unwrap()
+        );
+        assert_eq!(std::fs::read(&other_path).unwrap(), other_before);
+    }
+    assert!(root.is_absolute() && root.starts_with(std::env::temp_dir()));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn saved_audio_config_read_is_scoped_readonly_and_keeps_corrupt_files() {
+    let root = std::env::temp_dir().join(format!(
+        "auralyn-audio-read-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let standalone = AudioHost::new(root.join("standalone"));
+    let package = AudioHost::new(root.join("package/LocalState/Auralyn"));
+    let config = ActiveAudioConfig {
+        host: "WASAPI".into(),
+        ..Default::default()
+    };
+    persist_audio_config(&standalone.last_config_path, &config).unwrap();
+    assert!(package.read_saved_audio_config().unwrap().is_none());
+    let before = std::fs::read(&standalone.last_config_path).unwrap();
+    assert_eq!(
+        standalone.read_saved_audio_config().unwrap().unwrap().host,
+        "WASAPI"
+    );
+    assert_eq!(std::fs::read(&standalone.last_config_path).unwrap(), before);
+    assert!(standalone.child.is_none() && standalone.active_config.is_none());
+    std::fs::write(&standalone.last_config_path, b"{broken").unwrap();
+    assert!(standalone.read_saved_audio_config().is_err());
+    assert_eq!(
+        std::fs::read(&standalone.last_config_path).unwrap(),
+        b"{broken"
+    );
+    assert!(root.is_absolute() && root.starts_with(std::env::temp_dir()));
+    std::fs::remove_dir_all(root).unwrap();
+}

@@ -6,8 +6,10 @@ export function SavePurposeHelp() {
     const t = useMessages();
     return <InfoPopover label={t('saveHelp.title')}>
         <dl className="space-y-3">
+            <div><dt className="font-semibold">{t('settings.AudioSettingsModal.086')}</dt><dd className="mt-1">{t('save.ioScope')}</dd></div>
             <div><dt className="font-semibold">{t('saveHelp.modeTitle')}</dt><dd className="mt-1">{t('saveHelp.mode')}</dd><dd className="mt-1">{t('saveHelp.modeScope')}</dd></div>
             <div><dt className="font-semibold">{t('saveHelp.profileTitle')}</dt><dd className="mt-1">{t('saveHelp.profile')}</dd></div>
+            <div><dt className="font-semibold">{t('presets.copy.058')}</dt><dd className="mt-1">{t('save.sessionScope')}</dd></div>
         </dl>
         <p className="mt-3 border-t border-border pt-3">{t('saveHelp.appliedOnly')}</p>
     </InfoPopover>;

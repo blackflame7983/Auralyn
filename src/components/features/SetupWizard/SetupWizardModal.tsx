@@ -6,20 +6,25 @@ import { MeterVisual } from '../LevelMeter/MeterVisual';
 import { buttonVariants } from '@/components/ui/button';
 import { receiverDeviceNotice, deviceDisplayName } from '../../../lib/audioRouting';
 import { Modal } from '../../ui/modal';
+import { AudioFlow } from '../../ui/AudioFlow';
+import { InfoPopover } from '../../ui/InfoPopover';
 import React, { useEffect, useRef } from 'react';
-import { DiscordIcon } from '../../ui/DiscordIcon';
+import { MdCheck } from 'react-icons/md';
+import { destinationChoices } from '@/lib/destinationChoices';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
-import { MdCheckCircle, MdVolumeUp, MdSettings, MdCast, MdHeadphones, MdMusicNote, MdHearing, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
+import { MdCheckCircle, MdVolumeUp, MdCast, MdHearing, MdHeadphones, MdArrowForward, MdPlayArrow, MdStop, MdError, MdClose } from 'react-icons/md';
 import { invoke } from '@tauri-apps/api/core';
 import { ConnectionCheck } from './ConnectionCheck';
 import { MicrophonePermissionGuide } from '../AudioSettings/MicrophonePermissionGuide';
 
 import { useSetupWizard } from './useSetupWizard';
-import { isVirtualOutput, type SetupWizardModalProps } from './wizardModel';
+import { isVirtualOutput, type SetupWizardModalProps, type WizardState } from './wizardModel';
+
+const STEPS = ['usage_selection', 'input_selection', 'output_selection', 'confirmation'] as const satisfies readonly WizardState[];
 
 export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const t = useMessages();
-    const { isOpen, onClose, onSkip, onOpenSettings, onOpenTroubleshoot } = props;
+    const { isOpen, onClose, onSkip, onOpenSettings, onOpenTroubleshoot, onOpenVoiceCheck } = props;
     const { audioStartError, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, savedGoal, availableInputs, availableOutputs,
@@ -27,6 +32,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
         selectGoal, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply } = useSetupWizard(props);
     const bodyRef = useRef<HTMLDivElement>(null);
     const surfaceRef = useRef<HTMLDivElement>(null);
+    // 手順レールと切替の向き（DESIGN.md 5.7）。設定中・完了は4手順を終えた位置に置く。
+    const stepIndex = state === 'configuring' || state === 'complete' ? STEPS.length : Math.max(0, (STEPS as readonly WizardState[]).indexOf(state));
+    // 入ってくる向きは手順が変わった時だけ決める。動きの途中の再描画（機器一覧の読込など）で向きを反転させない。
+    const step = useRef({ index: stepIndex, direction: 1 });
+    if (step.current.index !== stepIndex) step.current = { index: stepIndex, direction: stepIndex > step.current.index ? 1 : -1 };
+    const direction = step.current.direction;
     useEffect(() => {
         if (!isOpen || !bodyRef.current) return;
         bodyRef.current.scrollTop = 0;
@@ -41,7 +52,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     return (
         <Modal title={t('wizard.title')} onClose={handleCloseRequest} dismissible={!isBusy && !isCheckingConnection}>
         <div className="modal-overlay-base">
-            <div ref={surfaceRef} className="modal-surface-base w-full max-w-3xl flex flex-col max-h-[90vh]">
+            {/* 手順で高さが変わって跳ねないよう、ダイアログの高さを固定し中身だけをスクロールする（#294）。 */}
+            <div ref={surfaceRef} className="setup-surface modal-surface-base w-full max-w-3xl flex flex-col max-h-full">
 
                 <div className="modal-header-base shrink-0 pr-16 py-3"><p className="font-bold">{t('wizard.title')}</p></div>
                 {/* Close Button */}
@@ -68,44 +80,37 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                     onCancel={() => setIsCloseConfirmOpen(false)}
                 />
 
-                {/* Header Steps */}
-                {state !== 'welcome' && state !== 'complete' && state !== 'configuring' && (
-                    <div aria-label={t('wizard.progress')} className="flex items-center justify-between gap-2 px-4 py-2 border-b border-border relative">
-                        {/* Progress Bar Background */}
-                        <div className="hidden" />
-
-                        {[
-                            { id: 'usage_selection', label: t('wizard.purpose') },
-                            { id: 'input_selection', label: t('wizard.input') },
-                            { id: 'output_selection', label: t('wizard.output') },
-                            { id: 'confirmation', label: t('wizard.check') }
-                        ].map((step, idx) => {
-                            const isCurrent = state === step.id;
-                            const isPast = ['usage_selection', 'input_selection', 'output_selection', 'confirmation'].indexOf(state) > idx;
-
-                            return (
-                                <div key={step.id} className="flex items-center gap-2">
-                                    <div aria-current={isCurrent ? 'step' : undefined} className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors
-                                        ${isCurrent ? 'border-primary bg-primary text-primary-foreground' :
-                                            isPast ? 'border-primary bg-primary/20 text-primary' :
-                                                'border-muted text-muted-foreground bg-card'}`}>
-                                        {isPast ? <MdCheckCircle /> : idx + 1}
-                                    </div>
-                                    <span className={`text-xs ${isCurrent ? 'font-bold text-foreground' : 'text-muted-foreground'}`}>{step.label}</span>
-                                </div>
-                            );
+                <div className="flex min-h-0 flex-1">
+                {/* 手順の名前はホームの音の流れと揃える（送り先・マイク・送り方・確認）。 */}
+                <nav aria-label={t('wizard.progress')} className="setup-rail shrink-0 border-r border-border bg-muted/30 px-3 py-5">
+                    <ol className="relative space-y-1" style={{ '--rail-index': Math.min(stepIndex, STEPS.length - 1) } as React.CSSProperties}>
+                        {stepIndex < STEPS.length && <span aria-hidden="true" className="setup-rail-thumb" />}
+                        {STEPS.map((step, idx) => {
+                            const isCurrent = state === step;
+                            const isPast = stepIndex > idx;
+                            const label = step === 'usage_selection' ? t('wizard.purpose') : step === 'input_selection' ? t(config.goal === 'music' ? 'unsetFlow.source' : 'wizard.input')
+                                : step === 'output_selection' ? t('wizard.output') : t('wizard.check');
+                            return <li key={step} aria-current={isCurrent ? 'step' : undefined}
+                                className={`relative flex h-11 items-center gap-3 rounded-lg px-3 text-ui-control transition-colors duration-(--motion-base) ${isCurrent ? 'font-semibold text-foreground' : isPast ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold transition-colors duration-(--motion-base) ${isCurrent || isPast ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                                    {isPast ? <MdCheck aria-hidden="true" className="h-4 w-4" /> : idx + 1}
+                                </span>
+                                <span className="truncate">{label}</span>
+                            </li>;
                         })}
-                    </div>
-                )}
-
-                <div ref={bodyRef} className="modal-body-base min-h-0 flex flex-col">
+                    </ol>
+                </nav>
+                <div className="flex min-w-0 flex-1 flex-col">
+                <div ref={bodyRef} className="modal-body-base min-h-0 flex flex-col overflow-x-hidden">
+                    {/* 手順が変わるたびに、進む向きから入れる。動きを減らす設定では不透明度だけにする。 */}
+                    <div key={state} className="setup-step flex flex-1 flex-col" data-dir={direction}>
                     {state === 'usage_selection' && <LanguageSelector />}
                     {initialStateError && <p role="alert" className="text-sm text-warning mb-4">{t('guide.copy.180')}</p>}
 
                     {/* --- STEP 2: USAGE SELECTION --- */}
                     {state === 'usage_selection' && (
                         <div className="space-y-3">
-                            <h2 className="text-xl font-bold text-foreground text-center">{t('wizard.chooseGoal')}</h2>
+                            <h2 className="setup-heading">{t('wizard.chooseGoal')}</h2>
                             <div className="space-y-2">
                                 <p className="text-muted-foreground text-sm leading-relaxed">
                                     {t('wizard.cableBefore')}<strong className="text-foreground">{t('wizard.cable')}</strong>{t('wizard.cableAfter')}
@@ -131,47 +136,15 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             </div>
 
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
-                                <SelectionCard compact
-                                    onClick={() => selectGoal('obs')}
-                                    icon={<MdCast className="w-5 h-5 text-primary" />}
-                                    title={t('wizard.obs')}
-                                    description={t('wizard.obsHint')}
-                                    active={(config.goal ?? savedGoal) === 'obs'}
-                                    color="blue"
-                                />
-                                <SelectionCard compact
-                                    onClick={() => selectGoal('discord')}
-                                    icon={<DiscordIcon className="w-5 h-5 text-primary" />}
-                                    title={t('wizard.chat')}
-                                    description={t('wizard.chatHint')}
-                                    active={(config.goal ?? savedGoal) === 'discord'}
-                                    color="indigo"
-                                />
-                                <SelectionCard compact
-                                    onClick={() => selectGoal('listening')}
-                                    icon={<MdHearing className="w-5 h-5 text-primary" />}
-                                    title={t('wizard.music')}
-                                    description={t('wizard.musicHint')}
-                                    active={(config.goal ?? savedGoal) === 'listening'}
-                                    color="pink"
-                                />
-                                <SelectionCard compact
-                                    onClick={() => selectGoal('music')}
-                                    icon={<MdMusicNote className="w-5 h-5 text-primary" />}
-                                    title={t('wizard.musicGoal')}
-                                    description={t('wizard.musicGoalHint')}
-                                    active={(config.goal ?? savedGoal) === 'music'}
-                                    color="pink"
-                                />
-                                <SelectionCard compact
-                                    onClick={() => selectGoal('other')}
-                                    icon={<MdSettings className="w-5 h-5 text-primary" />}
-                                    title={t('wizard.manual')}
-                                    description={t('guide.copy.181')}
-                                    active={(config.goal ?? savedGoal) === 'other'}
-                                    color="emerald"
-                                />
+                            <div className="grid grid-cols-2 gap-3">
+                                {destinationChoices.map(({ value, label, icon: Icon, hint }) => <SelectionCard compact
+                                    key={value}
+                                    onClick={() => selectGoal(value === 'listening' && (config.goal ?? savedGoal) === 'music' ? 'music' : value)}
+                                    icon={<Icon aria-hidden="true" className="w-6 h-6" />}
+                                    title={t(label)}
+                                    description={t(hint)}
+                                    active={(config.goal ?? savedGoal) === value || (value === 'listening' && (config.goal ?? savedGoal) === 'music')}
+                                />)}
                             </div>
                         </div>
                     )}
@@ -179,15 +152,22 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                     {/* --- STEP 3: INPUT SELECTION --- */}
                     {state === 'input_selection' && (
                         <div className="space-y-3">
-                            <div className="text-center space-y-2">
-                                <h2 className="text-xl font-bold text-foreground">
+                            <div className="space-y-2">
+                                <h2 className="setup-heading">
                                     {config.goal === 'music' ? t('wizard.musicInput') : config.goal === 'listening' ? t('guide.copy.182') : t('wizard.microphone')}
                                 </h2>
                                 {availableInputs.length === 0 && !isLoadingDevices && onOpenSettings && <button onClick={() => void performClose(onOpenSettings)} className="underline text-primary">{t('guide.copy.185')}</button>}
                             </div>
 
-                            <div className="max-w-md mx-auto space-y-4">
-                                {config.goal === 'music' ? <p className="text-sm text-muted-foreground">{t('wizard.musicRoute')}</p> : <MicrophonePermissionGuide expanded={/アクセス.*拒否|0x80070005|access.*denied/i.test(audioStartError)} />}
+                            <div className="max-w-md space-y-4">
+                                {(config.goal === 'listening' || config.goal === 'music') && <fieldset className="space-y-2">
+                                    <legend className="text-sm font-medium">{t('wizard.source')}</legend>
+                                    <div className="flex gap-4 text-sm">
+                                        <label className="flex items-center gap-2"><input type="radio" name="wizard-source" checked={config.goal === 'listening'} onChange={() => selectGoal('listening')} />{t('wizard.sourceMic')}</label>
+                                        <label className="flex items-center gap-2"><input type="radio" name="wizard-source" checked={config.goal === 'music'} onChange={() => selectGoal('music')} />{t('wizard.sourcePc')}</label>
+                                    </div>
+                                </fieldset>}
+                                {config.goal === 'music' && <p className="text-sm text-muted-foreground">{t('wizard.musicRoute')}</p>}
                                 {isLoadingDevices ? (
                                     <div className="py-8 text-center text-muted-foreground animate-pulse">{t('guide.copy.186')}</div>
                                 ) : (
@@ -212,6 +192,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                             </select>
                                         </div>
 
+                                        {config.goal !== 'music' && <MicrophonePermissionGuide expanded={/アクセス.*拒否|0x80070005|access.*denied/i.test(audioStartError)} />}
                                         {config.goal !== 'music' && config.input && (config.input.name === runningInput
                                             ? <div className="space-y-1">
                                                 <InputLevelBar label={t('wizard.level')} />
@@ -226,7 +207,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 )}
                             </div>
 
-                            <div className="text-center">
+                            <div>
                                 <button disabled={isLoadingDevices} onClick={() => void loadDevices(true)} className="px-4 py-2 rounded border border-border disabled:opacity-50">{t('guide.copy.193')}</button>
                             </div>
 
@@ -237,8 +218,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                     {/* --- STEP 4: OUTPUT SELECTION --- */}
                     {state === 'output_selection' && (
                         <div className="space-y-3">
-                            <div className="text-center space-y-2">
-                                <h2 className="text-xl font-bold text-foreground">{t('wizard.destination')}</h2>
+                            <div className="space-y-2">
+                                <h2 className="setup-heading">{t('wizard.destination')}</h2>
                                 <p className="text-sm text-muted-foreground">
                                     {config.goal === 'music' ? t('wizard.musicRoute') : config.goal === 'obs' ? t('guide.copy.194') : t('guide.copy.195')}
                                 </p>
@@ -246,11 +227,11 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 {availableOutputs.length === 0 && !isLoadingDevices && <p className="text-sm text-warning">{t('guide.copy.197')}</p>}
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-4xl mx-auto">
+                            <div className="grid grid-cols-3 gap-3">
                                 {/* Option 1: Default */}
                                 <SelectionCard
                                     onClick={() => selectOutputMode('default')}
-                                    icon={<MdVolumeUp className="w-8 h-8 text-primary" />}
+                                    icon={<MdVolumeUp aria-hidden="true" className="w-7 h-7" />}
                                     title={t('guide.copy.198')}
                                     description={t('guide.copy.199')}
                                     active={config.outputMode === 'default'}
@@ -260,7 +241,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 {/* Option 2: Headphones */}
                                 <SelectionCard
                                     onClick={() => selectOutputMode('monitor')}
-                                    icon={<MdHeadphones className="w-8 h-8 text-primary" />}
+                                    icon={<MdHeadphones aria-hidden="true" className="w-7 h-7" />}
                                     title={t('guide.copy.200')}
                                     description={t('guide.copy.201')}
                                     active={config.outputMode === 'monitor'}
@@ -270,14 +251,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 {/* Option 3: Broadcast */}
                                 {config.goal !== 'music' && <SelectionCard
                                     onClick={() => selectOutputMode('broadcast')}
-                                    icon={<MdCast className="w-8 h-8 text-primary" />}
+                                    icon={<MdCast aria-hidden="true" className="w-7 h-7" />}
                                     title={t('guide.copy.202')}
                                     description={t('guide.copy.203')}
                                     active={config.outputMode === 'broadcast'}
                                     color="purple"
                                 />}
                             </div>
-                            <div className="max-w-xl mx-auto space-y-2" aria-label={t('guide.copy.204')}>
+                            <div className="max-w-xl space-y-2" aria-label={t('guide.copy.204')}>
                                     {config.outputMode === 'default' && config.output && (
                                         <div className="mt-2 p-2 bg-background/50 rounded text-xs text-foreground">
                                             {config.output.name}
@@ -288,10 +269,10 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                             {t('guide.copy.205')}</p>
                                     )}
                                     {config.outputMode === 'monitor' && (<>
-                                        <label htmlFor="wizard-output-206" className="mt-2 block text-xs font-medium text-foreground">{t('guide.copy.206')}</label>
+                                        <label htmlFor="wizard-output-206" className="mt-2 block text-ui-support font-medium text-foreground">{t('guide.copy.206')}</label>
                                         <select
                                             id="wizard-output-206"
-                                            className="mt-2 w-full p-1 bg-background border border-border rounded text-xs"
+                                            className="mt-2 w-full rounded-lg border border-border bg-muted/50 p-3 text-ui-control focus:outline-none focus:ring-2 focus:ring-primary/50"
                                             value={config.output?.name || ''}
                                             onClick={(e) => e.stopPropagation()}
                                             onChange={(e) => {
@@ -307,10 +288,10 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     </>)}
                                     {config.outputMode === 'broadcast' && (
                                         <>
-                                            <label htmlFor="wizard-output-208" className="mt-2 block text-xs font-medium text-foreground">{t('guide.copy.208')}</label>
+                                            <label htmlFor="wizard-output-208" className="mt-2 block text-ui-support font-medium text-foreground">{t('guide.copy.208')}</label>
                                             <select
                                                 id="wizard-output-208"
-                                                className="mt-2 w-full p-1 bg-background border border-border rounded text-xs"
+                                                className="mt-2 w-full rounded-lg border border-border bg-muted/50 p-3 text-ui-control focus:outline-none focus:ring-2 focus:ring-primary/50"
                                                 value={config.output?.name || ''}
                                                 onClick={(e) => e.stopPropagation()}
                                                 onChange={(e) => {
@@ -347,7 +328,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             </div>
 
 
-                            <div className="text-center">
+                            <div>
                                 <button disabled={isLoadingDevices} onClick={() => void (config.outputMode === 'broadcast' ? handleRescanVirtualDevices() : loadDevices(true))} className="px-4 py-2 rounded border border-border disabled:opacity-50">{isLoadingDevices ? t('guide.copy.219') : t('guide.copy.220')}</button>
                             </div>
 
@@ -357,30 +338,30 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                     {/* --- STEP 5: CONFIRMATION & TEST --- */}
                     {state === 'confirmation' && (
                         <div className="space-y-3">
-                            <div className="text-center mb-3">
-                                <h2 className="text-xl font-bold text-foreground">{t('wizard.confirm')}</h2>
+                            <div className="mb-3">
+                                <h2 className="setup-heading">{t('wizard.confirm')}</h2>
                                 <p className="text-sm text-muted-foreground">{t(config.goal === 'music' ? 'wizard.musicConfirm' : 'guide.copy.221')}</p>
                             </div>
 
                             {config.goal !== 'music' && /アクセス.*拒否|0x80070005|access.*denied/i.test(audioStartError) && <MicrophonePermissionGuide expanded />}
                             {config.goal === 'music' && audioStartError && <p role="alert" className="text-sm text-destructive-text">{t('wizard.musicFailure')}</p>}
-                            <div className="bg-muted/30 p-3 rounded-xl border border-border max-w-lg mx-auto space-y-3">
-                                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
-                                    <dt className="text-muted-foreground">{config.goal === 'music' ? t('wizard.input') : t('guide.wizard.inputSummary', { kind: config.goal === 'listening' ? t('guide.copy.223') : t('guide.copy.224') })}</dt>
-                                    <dd className="break-all">{config.input && deviceDisplayName(config.input.name)}</dd>
-                                    <dt className="text-muted-foreground">{t('guide.wizard.outputSummary', { kind: config.outputMode === 'broadcast' ? t('guide.copy.226') : config.outputMode === 'monitor' ? t('guide.copy.227') : t('guide.copy.228') })}</dt>
-                                    <dd className="break-all">{config.output && deviceDisplayName(config.output.name)}</dd>
-                                </dl>
-                            </div>
+                            <AudioFlow inputKind={config.goal === 'music' ? 'playback' : 'microphone'}
+                                processingWarning={audioStartError ? t('home.startFailed') : undefined}
+                                label={t('prep.signalPath')}
+                                unknownLabel={t('flow.unknown')}
+                                input={{ label: t('home.input'), value: config.input ? deviceDisplayName(config.input.name) : undefined }}
+                                output={{ label: t('home.output'), value: config.output ? deviceDisplayName(config.output.name) : undefined }}
+                                receiver={{ label: t('wizard.purpose'), value: t(config.goal === 'obs' ? 'wizard.obs' : config.goal === 'discord' ? 'wizard.chat' : config.goal === 'music' ? 'prep.local' : config.goal === 'listening' ? 'prep.local' : 'wizard.manual') }}
+                            />
 
-                            {config.goal !== 'music' && <div className="flex flex-col items-center gap-3">
+                            {config.goal !== 'music' && <div className="flex flex-col items-start gap-3">
                                 {isTestingSound && (
                                     <div className="w-full max-w-xs">
                                         <InputLevelBar label={t('wizard.level')} />
                                     </div>
                                 )}
 
-                                <div className="flex justify-center gap-4">
+                                <div className="flex gap-4">
                                     {!isTestingSound ? (
                                         <button
                                             onClick={startSoundTest}
@@ -392,7 +373,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                         <button
                                             onClick={stopSoundTest}
                                             disabled={isBusy || isCheckingConnection}
-                                            className="px-6 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold rounded-lg transition-colors flex items-center gap-2 animate-pulse"
+                                            className="px-6 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold rounded-lg transition-colors flex items-center gap-2"
                                         >
                                             <MdStop /> {t('guide.copy.230')}</button>
                                     )}
@@ -400,7 +381,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             </div>}
 
                             {isTestingSound && (
-                                <p className="text-center text-xs text-muted-foreground animate-pulse">
+                                <p className="text-xs text-muted-foreground">
                                     {t('guide.copy.231')}{config.goal === 'listening' ? t('guide.copy.232') : t('guide.copy.233')}
                                 </p>
                             )}
@@ -416,10 +397,11 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 onBusyChange={setIsCheckingConnection}
                             />}
                             <fieldset className="space-y-2 text-sm">
-                                <legend className="mb-2 font-semibold">
+                                <legend className="mb-2 flex items-center gap-1 font-semibold">
                                     {t('wizard.display')}
+                                    <InfoPopover label={t('wizard.display')}>{t('wizard.displayHint')}</InfoPopover>
                                 </legend>
-                                <label className="flex items-center justify-center gap-2">
+                                <label className="flex items-center gap-2">
                                     <input
                                         type="radio"
                                         name="display-choice"
@@ -428,7 +410,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     />
                                     {t(config.goal === 'music' ? 'wizard.musicSimple' : 'wizard.simple')}
                                 </label>
-                                <label className="flex items-center justify-center gap-2">
+                                <label className="flex items-center gap-2">
                                     <input
                                         type="radio"
                                         name="display-choice"
@@ -437,9 +419,6 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     />
                                     {t('wizard.advanced')}
                                 </label>
-                                <p className="text-xs text-muted-foreground">
-                                    {t('wizard.displayHint')}
-                                </p>
                             </fieldset>
                             {onOpenTroubleshoot && <button disabled={isBusy || isCheckingConnection} onClick={() => void performClose(onOpenTroubleshoot)} className="underline text-primary">{t('guide.wizard.openDiagnostics')}</button>}
 
@@ -451,12 +430,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                         <div className="text-center space-y-8 my-auto">
                             {state === 'configuring' ? (
                                 <>
-                                    <div className="w-16 h-16 border-4 border-muted border-t-green-500 rounded-full animate-spin mx-auto" />
+                                    <div className="w-16 h-16 border-4 border-muted border-t-primary rounded-full animate-spin mx-auto motion-reduce:animate-none" />
                                     <h2 className="text-xl font-medium text-success">{t('wizard.applying')}</h2>
                                 </>
                             ) : (
                                 <>
-                                    <div className="w-20 h-20 bg-success/10 rounded-full flex items-center justify-center mx-auto ring-1 ring-success/50 shadow-[0_0_30px_hsl(var(--success)/0.2)]">
+                                    <div className="w-20 h-20 bg-success/10 rounded-full flex items-center justify-center mx-auto ring-1 ring-success/50">
                                         <MdCheckCircle className="w-10 h-10 text-success" />
                                     </div>
                                     <div className="space-y-2">
@@ -465,9 +444,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                             {config.goal === 'music' ? t('wizard.musicComplete') : <>{t('guide.copy.237')}<strong className="text-foreground"> {t('guide.copy.238')}</strong>
                                             {t('guide.copy.239')}{t('wizard.diagnostics')}{t('guide.copy.240')}</>}</p>
                                     </div>
+                                    {config.goal !== 'music' && onOpenVoiceCheck && <button
+                                        type="button"
+                                        onClick={() => { onClose(); onOpenVoiceCheck(); }}
+                                        className={buttonVariants({ className: "gap-2" })}
+                                    ><MdHearing aria-hidden="true" />{t('home.voiceCheck')}</button>}
                                     <button
                                         onClick={onClose}
-                                        className={buttonVariants({ className: "gap-2" })}
+                                        className={buttonVariants({ variant: config.goal !== 'music' && onOpenVoiceCheck ? 'outline' : 'default', className: "gap-2" })}
                                     >
                                         {t('common.close')}
                                     </button>
@@ -476,51 +460,56 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                         </div>
                     )}
 
+                    </div>
                 </div>
-                {state !== 'configuring' && state !== 'complete' && <div data-testid="setup-actions" className="modal-footer-base shrink-0 px-4 py-3">
+                {state !== 'configuring' && state !== 'complete' && <div data-testid="setup-actions" className="setup-actions modal-footer-base shrink-0 px-6 py-4">
                     {state === 'usage_selection' && (
                         <button type="button" disabled={isBusy} onClick={() => void performClose(() => (onSkip || onClose)())} className={buttonVariants({ variant: 'ghost' })}>{t('wizard.skip')}</button>
                     )}
                     {state === 'input_selection' && (<>
-                            <div className="flex justify-center gap-4">
-                                <button onClick={() => setState('usage_selection')} className="px-6 py-2 text-muted-foreground hover:text-foreground">{t('common.back')}</button>
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setState('usage_selection')} className="px-4 py-2 text-muted-foreground hover:text-foreground">{t('common.back')}</button>
+                                {(!config.input || isLoadingDevices) && <p id="wizard-input-reason" className="ml-auto text-ui-support text-muted-foreground">{t(isLoadingDevices ? 'wizard.loadingInputs' : config.goal === 'music' ? 'wizard.selectPcToContinue' : 'wizard.selectMicToContinue')}</p>}
                                 <button
                                     onClick={confirmInput}
                                     disabled={!config.input || isLoadingDevices}
-                                    className={buttonVariants({ className: "gap-2" })}
+                                    aria-describedby={!config.input || isLoadingDevices ? 'wizard-input-reason' : undefined}
+                                    className={buttonVariants({ className: `setup-primary gap-2 disabled:opacity-100 disabled:border disabled:border-border disabled:bg-muted disabled:text-muted-foreground ${config.input && !isLoadingDevices ? 'ml-auto' : ''}` })}
                                 >
-                                    {t('common.next')} <MdArrowForward />
+                                    {t('common.next')} <MdArrowForward className="setup-primary-arrow" />
                                 </button>
                             </div>
                     </>)}
                     {state === 'output_selection' && (<>
-                            <div className="flex justify-center gap-4">
-                                <button onClick={() => setState('input_selection')} className="px-6 py-2 text-muted-foreground hover:text-foreground">{t('common.back')}</button>
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setState('input_selection')} className="px-4 py-2 text-muted-foreground hover:text-foreground">{t('common.back')}</button>
                                 <button
                                     onClick={() => setState('confirmation')}
                                     disabled={!config.input || !config.output || isLoadingDevices}
-                                    className={buttonVariants({ className: "gap-2" })}
+                                    className={buttonVariants({ className: "setup-primary ml-auto gap-2 disabled:opacity-100 disabled:border disabled:border-border disabled:bg-muted disabled:text-muted-foreground" })}
                                 >
-                                    {t('common.next')} <MdArrowForward />
+                                    {t('common.next')} <MdArrowForward className="setup-primary-arrow" />
                                 </button>
                             </div>
                     </>)}
                     {state === 'confirmation' && (<>
-                            <p id="wizard-save-scope" className="mb-2 text-center text-xs text-muted-foreground">{config.goal === 'music' ? t('wizard.musicApply') : t('guide.copy.235')}</p>
-                            <div className="flex flex-wrap justify-center gap-3">
+                            <p id="wizard-save-scope" className="mb-2 text-right text-xs text-muted-foreground">{config.goal === 'music' ? t('wizard.musicApply') : t('guide.copy.235')}</p>
+                            <div className="flex flex-wrap items-center gap-3">
                                 <button disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('input_selection')} className="px-3 py-2 text-muted-foreground hover:text-foreground">{t('wizard.inputAgain')}</button>
                                 <button disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('output_selection')} className="px-3 py-2 text-muted-foreground hover:text-foreground">{t('wizard.outputAgain')}</button>
                                 <button
                                     aria-describedby="wizard-save-scope"
                                     onClick={finalApply}
                                     disabled={isBusy || isCheckingConnection || !initialStateReady}
-                                    className={buttonVariants({ className: "gap-2" })}
+                                    className={buttonVariants({ className: "setup-primary ml-auto gap-2" })}
                                 >
                                     <MdCheckCircle /> {t('wizard.saveStart')}
                                 </button>
                             </div>
                     </>)}
                 </div>}
+                </div>
+                </div>
             </div>
         </div>
         </Modal>
@@ -545,16 +534,13 @@ interface SelectionCardProps {
     title: string;
     description: string;
     active: boolean;
-    color: string;
+    color?: string;
     children?: React.ReactNode;
     compact?: boolean;
 }
 
 const SelectionCard: React.FC<SelectionCardProps> = ({ onClick, icon, title, description, active, children, compact = false }) => {
-    const activeClass = 'border-selection text-foreground';
-    const activeBg = 'bg-selection/10';
-    const activeRing = 'ring-1 ring-selection/50';
-
+    // 選択中は主色の内側線・淡い面・右上の印で示す（DESIGN.md 5.7）。線は inset の影で描き、レイアウトをずらさない。
     return (
         <div
             onClick={onClick}
@@ -562,6 +548,7 @@ const SelectionCard: React.FC<SelectionCardProps> = ({ onClick, icon, title, des
             tabIndex={0}
             aria-pressed={active}
             aria-label={title}
+            data-selected={active}
             onKeyDown={(e) => {
                 if (e.currentTarget !== e.target) return;
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -569,16 +556,16 @@ const SelectionCard: React.FC<SelectionCardProps> = ({ onClick, icon, title, des
                     onClick();
                 }
             }}
-            className={`cursor-pointer ${compact ? 'grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3' : 'flex flex-col items-center'} p-3 border rounded-md transition-colors group relative overflow-hidden
-                ${active ? `${activeClass} ${activeBg} ${activeRing}` : 'border-border hover:border-primary/50 hover:bg-primary/5'}`}
+            className={`setup-choice cursor-pointer ${compact ? 'grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 px-4 py-3.5' : 'flex flex-col items-center px-3 py-4'} group relative overflow-hidden`}
         >
-            <div className={compact ? "row-span-2" : "mb-2"}>
+            <div className={`setup-choice-icon grid shrink-0 place-items-center rounded-xl ${compact ? 'row-span-2 h-11 w-11' : 'mb-2 h-12 w-12'}`}>
                 {icon}
             </div>
-            <h3 className={`font-bold mb-1 ${compact ? 'text-sm' : ''} ${active ? '' : 'text-foreground'}`}>{title}</h3>
-            <p className={`text-xs text-muted-foreground ${compact ? 'text-left' : 'text-center'}`}>
+            <h3 className={`mb-0.5 text-ui-control font-semibold ${compact ? '' : 'text-center'}`}>{title}</h3>
+            <p className={`text-ui-support text-muted-foreground ${compact ? 'text-left' : 'text-center'}`}>
                 {description}
             </p>
+            <span aria-hidden="true" className="setup-choice-check absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground"><MdCheck className="h-3.5 w-3.5" /></span>
             {children && (
                 <div className="mt-2 w-full">
                     {children}

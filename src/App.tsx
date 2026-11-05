@@ -167,7 +167,8 @@ function AppContent() {
         preparationBlocked={isModalOpen || isInitializing}
         currentInput={audioConfig.inputSource?.kind === 'process_loopback' ? audioConfig.inputSource.config.appName : audioConfig.input}
         currentOutput={audioConfig.output}
-        liveControls={<div className="flex flex-wrap items-center gap-2">{displayPurpose === 'voice' && <LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} />}<MixingLiveControl running={audioReady} blocked={isModalOpen || isInitializing} onSettings={ui.openMixingSettings} /></div>}
+        liveControlsWhileUnconfigured={Boolean(liveModel.snapshot?.definitions.singing || liveModel.snapshot?.definitions.talk || liveModel.snapshot?.armed || liveModel.snapshot?.transaction || liveModel.snapshot?.error || liveModel.error)}
+        liveControls={displayPurpose === 'voice' && <div className="flex flex-wrap items-center gap-2"><LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} onPrepareSinging={ui.openMixingSettings} /><MixingLiveControl running={audioReady} blocked={isModalOpen || isInitializing} onSettings={ui.openMixingSettings} /></div>}
         vstChain={<VstChainItems plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
         vstUnrestored={pluginsApi.sessionUnrestored}
         vstPanel={pluginRack}
@@ -189,11 +190,8 @@ function AppContent() {
           />
         </>}
       >
-        {/* 配信・通話では歌・雑談の切替を本番帯に置く。音楽鑑賞では使う機会が少ないので畳んでおく。 */}
-        {displayPurpose === 'music' && <details open={liveModel.snapshot?.armed || Boolean(liveModel.error)}>
-          <summary className="cursor-pointer text-sm py-2">{t('purpose.liveDetails')}</summary>
-          <LiveModeBar model={liveModel} refreshKey={isModalOpen} />
-        </details>}
+        {/* 音楽鑑賞では日常の歌・雑談操作を出さず、保護や復旧が必要な場合だけ操作を残す。 */}
+        {displayPurpose === 'music' && <LiveModeBar model={liveModel} refreshKey={isModalOpen} safetyOnly />}
         {/* VST ラックは AppShell の右パネルに出す。 */}
         {audioReady && vstPanelOpen && !isModalOpen && (
           <>

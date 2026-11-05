@@ -9,8 +9,7 @@ import {
     MdHelpOutline,
     MdMicOff,
     MdFavorite,
-    MdSystemUpdateAlt,
-    MdCable
+    MdSystemUpdateAlt
 } from 'react-icons/md';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi, type EngineRuntimeStats } from '../../api/audio';
@@ -51,7 +50,6 @@ export const Header: React.FC<HeaderProps> = ({
     onOpenOBSGuide,
     onOpenDiscordGuide,
     onOpenTroubleshoot,
-    onOpenWizard,
     stats,
     currentHost,
     currentSampleRate,
@@ -128,7 +126,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 onClick={handleToggleMute}
                                 aria-label={t('header.emergency')}
                                 aria-describedby={isGlobalMuted ? 'header-mute-state' : undefined}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border font-bold text-sm shadow-sm text-foreground ${isGlobalMuted
+                                className={`press-feedback flex items-center gap-2 px-3 py-1.5 rounded-full border font-bold text-sm shadow-sm text-foreground ${isGlobalMuted
                                     ? 'bg-destructive/10 border-destructive ring-2 ring-destructive/50'
                                     : 'bg-background hover:bg-destructive/10 border-destructive/30 hover:border-destructive hover:shadow-destructive/20'
                                     }`}
@@ -144,25 +142,6 @@ export const Header: React.FC<HeaderProps> = ({
                             <p>{isGlobalMuted ? t('header.unmuteHint') : t('header.muteHint')}</p>
                         </TooltipContent>
                     </Tooltip>
-
-                    {/* セットアップは初回や機器を替えたときにだけ使うので、アイコンにして説明はツールチップに置く。 */}
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <button
-                                type="button"
-                                onClick={onOpenWizard}
-                                aria-label={t('header.setupOpen')}
-                                className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                            >
-                                <MdCable aria-hidden="true" className="w-5 h-5" />
-                            </button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            <p className="font-bold">{t('header.setup')}</p>
-                            <p>{t('header.setupHint')}</p>
-                        </TooltipContent>
-                    </Tooltip>
-
 
                     {/* 大型メーターは本番帯のメーター横へ移した。表示モード（かんたん／詳細）はなくし、VST 構成は右パネル、細かい数値は設定の外観で切り替える。 */}
 

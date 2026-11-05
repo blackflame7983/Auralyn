@@ -51,7 +51,7 @@ test('隔離した実Tauriでミックス設定と配信VSTをキーボード操
             await dialog.getByRole('combobox', { name: 'Display language' }).selectOption('ja');
         }
         await dialog.getByRole('tab', { name: 'オーディオ', exact: true }).click();
-        const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('ミックス後の配信 VST', { exact: true }) }).last();
+        const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('配信音を仕上げる VST', { exact: true }) }).last();
         await post.locator('summary').first().focus(); await page.keyboard.press('Enter');
         const add = post.getByRole('button', { name: 'VSTを追加' }); await expect(add).toBeEnabled({ timeout: 30_000 });
         for (let i = 0; i < 2; i++) {

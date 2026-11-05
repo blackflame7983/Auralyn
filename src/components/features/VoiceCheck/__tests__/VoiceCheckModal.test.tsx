@@ -243,11 +243,11 @@ it.each([false, true])('残響だけ=%sの候補も準備でき、比較範囲�
             sampleRate: 48000, sourceFrames: 48000, renderedFrames: reverbOnly ? 168000 : 48000, algorithmicLatencyFrames: 0, filterPhase: 'minimumPhase', samplePeak: 0.2, error: null } : null }));
     function CandidateModal() { return <VoiceCheckModal isOpen onClose={vi.fn()} singingModel={useSingingDraft()} />; }
     render(<CandidateModal />);
-    const prepare = await screen.findByRole('button', { name: 'この録音から内蔵ボイスチェーンの候補を作成' });
+    const prepare = await screen.findByRole('button', { name: 'この録音から声を整える機能の候補を作成' });
     await waitFor(() => expect(prepare).toBeEnabled());
     expect(screen.getByText(/ノイズ低減・既存VST・出力音量は含めません/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'A：原音（マイク音量後）' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'B：候補（内蔵ボイスチェーン・残響のみ）' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'B：候補（声を整える機能・残響のみ）' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '品質チェックを実行' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'WAVで保存' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeDisabled();

@@ -4,6 +4,7 @@ import { TemporarySessionPanel } from './TemporarySessionPanel';
 import { sessionMode } from '@/lib/temporarySession';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
+import { SaveScopeSummary } from './SaveScopeSummary';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Modal } from '../../ui/modal';
 import {
@@ -449,7 +450,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                         <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t('presets.copy.059')}</h3>
                         <SavePurposeHelp />
                     </div>
-                    <p className="text-sm text-muted-foreground">{t('presets.copy.060')}</p>
+                    <SaveScopeSummary kind="profile" />
                     <div role="group" aria-label={t('profilePurpose.title')} className="flex flex-wrap gap-2">
                         <button type="button" aria-pressed={!saveCategories.includeAudioConfig} className="border rounded p-2 text-sm aria-pressed:border-selection aria-pressed:bg-selection/15 aria-pressed:text-selection" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: false }))}>{t('profilePurpose.sound')}</button>
                         <button type="button" aria-pressed={saveCategories.includeAudioConfig} className="border rounded p-2 text-sm aria-pressed:border-selection aria-pressed:bg-selection/15 aria-pressed:text-selection" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: true }))}>{t('profilePurpose.equipment')}</button>

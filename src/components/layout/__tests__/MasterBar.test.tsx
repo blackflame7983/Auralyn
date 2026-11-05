@@ -204,7 +204,7 @@ describe('起動時の保存ゲイン復元', () => {
         details.focus();
         fireEvent.click(details);
         expect(screen.getByRole('dialog', { name: '音声処理の詳細' })).toBeInTheDocument();
-        expect(screen.getByText('Wasapi')).toBeInTheDocument();
+        expect(screen.getByText('WASAPI')).toBeInTheDocument();
         expect(screen.queryByText('48,000 Hz')).not.toBeInTheDocument();
         expect(screen.queryByText('推定 41.3ms')).not.toBeInTheDocument();
         fireEvent.keyDown(document.activeElement!, { key: 'Escape' });

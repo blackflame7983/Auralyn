@@ -102,7 +102,7 @@ it('送り先は条件パネルの外の1か所で、アイコン付きのボタ
     const group = screen.getByRole('radiogroup', { name: message('ja', 'prep.usage') });
     expect(group.closest('details')).toBeNull();
     expect(screen.getAllByRole('radiogroup', { name: message('ja', 'prep.usage') })).toHaveLength(1);
-    expect(within(group).getAllByRole('radio').map(radio => radio.getAttribute('value'))).toEqual(['obs', 'discord', 'other', 'listening']);
+    expect(within(group).getAllByRole('radio').map(radio => radio.getAttribute('value'))).toEqual(['obs', 'discord', 'listening', 'other']);
     expect(within(group).getAllByRole('radio').some(radio => (radio as HTMLInputElement).checked)).toBe(false);
     expect(view.container.querySelector('details')).not.toHaveAttribute('open');
     const call = within(group).getByRole('radio', { name: message('ja', 'prep.call') });
@@ -123,7 +123,7 @@ it('正常時は手順と入出力の要約を畳んで状態の点と警告だ�
     expect(screen.queryByText('summary')).not.toBeInTheDocument();
     const badge = screen.getByText(message('ja', 'prep.running'));
     expect(badge.closest('[data-tone]')).toHaveAttribute('data-tone', 'ok');
-    expect(screen.getByText(message('ja', 'prep.venueWarning'))).toBeInTheDocument();
+    expect(screen.queryByText(message('ja', 'prep.venueWarning'))).not.toBeInTheDocument();
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     fireEvent.click(toggle);

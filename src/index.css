@@ -8,6 +8,13 @@
 @theme {
   /* フォントは同梱しない。Windows 11 の UI フォントを明示し、英数字と和文の見え方を揃える。 */
   --font-sans: "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Meiryo UI", system-ui, sans-serif;
+  /* ホームと設定で共通の、見出し・操作・補足の3段階。 */
+  --text-ui-heading: 1.25rem;
+  --text-ui-heading--line-height: 1.4;
+  --text-ui-control: 1rem;
+  --text-ui-control--line-height: 1.5;
+  --text-ui-support: 0.8125rem;
+  --text-ui-support--line-height: 1.5;
 
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
@@ -36,6 +43,8 @@
   --color-brand: hsl(var(--brand));
   --color-brand-secondary: hsl(var(--brand-secondary));
   --color-selection: hsl(var(--selection));
+  /* セグメントだけはブランド色の下線で確定済みの選択を示す。 */
+  --color-segment-accent: hsl(var(--brand));
   --color-overlay: hsl(var(--overlay));
   --color-discord-text: hsl(var(--discord-text));
   --color-discord: hsl(var(--discord));
@@ -135,6 +144,7 @@
   --motion-fast: 150ms;
   --motion-base: 200ms;
   --motion-panel: 240ms;
+  --motion-aurora: 800ms;
 }
 
 .dark {
@@ -316,7 +326,7 @@
 }
 
 /*
-  本番帯の奥のオーロラ（DESIGN.md 5.1、5.6）。音声処理中だけ静止した光として灯し、声や操作には連動させない。
+  本番帯の奥のオーロラ（DESIGN.md 5.1、5.6）。共有メーターの強さをゆっくり補間する装飾。
   ぼかしフィルターや合成を使わず、グラデーションの重ね合わせで描く。ゲーミングでは表示しない。
 */
 .live-aurora {
@@ -326,17 +336,101 @@
   border-radius: inherit;
   pointer-events: none;
   opacity: 0;
-  transition: opacity var(--motion-panel) var(--ease-out);
+  transition: opacity var(--motion-aurora) var(--ease-out), transform var(--motion-aurora) var(--ease-out);
+  transform-origin: bottom center;
   background:
     radial-gradient(60% 110% at 20% 120%, hsl(var(--aurora-green) / calc(0.30 * var(--aurora-strength))), transparent 70%),
     radial-gradient(55% 100% at 62% 125%, hsl(var(--aurora-teal) / calc(0.26 * var(--aurora-strength))), transparent 70%),
     radial-gradient(45% 55% at 42% -15%, hsl(var(--aurora-rose) / calc(0.12 * var(--aurora-strength))), transparent 70%);
 }
 .live-aurora[data-lit="true"] {
-  opacity: 1;
+  opacity: calc(0.5 + var(--aurora-energy, 0) * 0.5);
+  transform: translateY(calc(var(--aurora-energy, 0) * -4px)) scaleX(calc(1 + var(--aurora-energy, 0) * 0.08));
+}
+.live-strip { overflow: clip; }
+/* 未登録の設定入口だけを右端へ寄せる。登録後の切替・保護・メニューの並びは変えない。 */
+.live-strip .live-controls:has([data-mode-registered="false"]) { margin-inline-start: auto; }
+.live-strip[data-muted="true"] .live-aurora { opacity: 0.2; }
+.press-feedback {
+  transition: background-color var(--motion-base) var(--ease-out), border-color var(--motion-base) var(--ease-out), color var(--motion-base) var(--ease-out), transform var(--motion-base) var(--ease-out);
+}
+/* 選択の移動は共通セグメントの背景で伝え、文字自体は上下させない。 */
+.press-feedback:active:not(:disabled) { transform: translateY(2px) scale(0.97); }
+@media (prefers-reduced-motion: reduce) {
+  .live-aurora, .live-aurora[data-lit="true"] { transform: none; transition: none; }
+  .live-aurora[data-lit="true"] { opacity: 0.65; }
+  .press-feedback, .press-feedback:active:not(:disabled) { transform: none; transition: none; }
 }
 .gaming .live-aurora {
   display: none;
+}
+
+/* セットアップ（DESIGN.md 5.7、#294）。高さを固定し、手順の印はレールの上を滑り、中身は進む向きから入る。 */
+.setup-surface { height: min(600px, calc(100dvh - 2rem)); }
+.setup-rail { width: 11.5rem; }
+.setup-rail-thumb {
+  position: absolute; left: 0; right: 0; top: 0; height: 2.75rem; border-radius: 0.5rem;
+  background: hsl(var(--accent)); box-shadow: inset 3px 0 0 hsl(var(--primary));
+  transform: translateY(calc(var(--rail-index) * 3rem));
+  transition: transform var(--motion-panel) var(--ease-in-out);
+}
+.setup-heading { font-size: 1.5rem; line-height: 1.35; font-weight: 600; letter-spacing: -0.01em; color: hsl(var(--foreground)); }
+@keyframes setup-step-in { from { opacity: 0; transform: translateX(var(--setup-from, 28px)); } }
+@keyframes setup-fade-in { from { opacity: 0; } }
+.setup-step { animation: setup-step-in 260ms var(--ease-out) both; }
+.setup-step[data-dir="-1"] { --setup-from: -28px; }
+.setup-choice {
+  border-radius: 0.75rem; background: hsl(var(--card)); box-shadow: inset 0 0 0 1px hsl(var(--border));
+  transition: box-shadow var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
+}
+.setup-choice:hover { background: hsl(var(--accent)); }
+.setup-choice:active { transform: scale(0.98); }
+.setup-choice:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.setup-choice[data-selected="true"] { box-shadow: inset 0 0 0 2px hsl(var(--primary)); background: hsl(var(--primary) / 0.08); }
+.setup-choice-icon { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out); }
+.setup-choice[data-selected="true"] .setup-choice-icon { background: hsl(var(--primary) / 0.16); color: hsl(var(--primary)); }
+.setup-choice-check { opacity: 0; transform: scale(0.6); transition: opacity var(--motion-fast) var(--ease-out), transform var(--motion-base) var(--ease-out); }
+.setup-choice[data-selected="true"] .setup-choice-check { opacity: 1; transform: none; }
+.setup-primary { transition: transform var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out); }
+.setup-primary:active:not(:disabled) { transform: scale(0.97); }
+.setup-primary-arrow { transition: transform var(--motion-base) var(--ease-out); }
+.setup-primary:hover:not(:disabled) .setup-primary-arrow { transform: translateX(4px); }
+@media (prefers-reduced-motion: reduce) {
+  .setup-step { animation-name: setup-fade-in; }
+  .setup-rail-thumb, .setup-choice-check { transition-property: opacity, background-color; }
+  .setup-choice:active, .setup-primary:active:not(:disabled), .setup-primary:hover:not(:disabled) .setup-primary-arrow { transform: none; }
+}
+/* 高さが足りない拡大表示では、レールを細くして中身の幅を残す。 */
+@media (max-height: 500px) { .setup-rail { width: 9rem; } }
+
+/* 未設定のホームの音の流れ（DESIGN.md 5.7）。未決定は破線、次に決める所は主色の線と静かな波紋、決定済みは塗り。 */
+.unset-flow-list { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 0.5rem; }
+.unset-flow-node { position: relative; box-shadow: inset 0 0 0 1px hsl(var(--border)); transition: background-color var(--motion-base) var(--ease-out), box-shadow var(--motion-base) var(--ease-out); }
+.unset-flow-node:hover { background: hsl(var(--accent)); }
+.unset-flow-node[data-state="empty"] { box-shadow: none; outline: 1px dashed hsl(var(--border)); outline-offset: -1px; color: hsl(var(--muted-foreground)); }
+.unset-flow-node[data-state="next"] { box-shadow: inset 0 0 0 2px hsl(var(--primary)); background: hsl(var(--primary) / 0.06); }
+.unset-flow-node[data-state="next"]::after {
+  content: ""; position: absolute; inset: -4px; border-radius: 16px; border: 2px solid hsl(var(--primary) / 0.5);
+  animation: unset-flow-ripple 1.8s var(--ease-out) infinite; pointer-events: none;
+}
+@keyframes unset-flow-ripple { from { opacity: 0.9; transform: scale(0.98); } to { opacity: 0; transform: scale(1.06); } }
+.unset-flow-node[data-state="set"] { background: hsl(var(--muted)); box-shadow: none; }
+.unset-flow-icon { background: hsl(var(--muted)); transition: background-color var(--motion-base) var(--ease-out), color var(--motion-base) var(--ease-out); }
+.unset-flow-node[data-state="set"] .unset-flow-icon, .unset-flow-node[data-state="next"] .unset-flow-icon { background: hsl(var(--primary) / 0.16); color: hsl(var(--primary)); }
+.unset-flow-link { display: block; width: 1.75rem; height: 2px; border-radius: 2px; background: hsl(var(--border)); transition: background-color var(--motion-panel) var(--ease-out); }
+.unset-flow-link[data-lit="true"] { background: hsl(var(--primary) / 0.7); }
+.unset-flow-primary { transition: transform var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-out); }
+.unset-flow-primary:active { transform: scale(0.97); }
+.unset-flow-arrow { transition: transform var(--motion-base) var(--ease-out); }
+.unset-flow-primary:hover .unset-flow-arrow { transform: translateX(4px); }
+/* 作業幅が狭いときは2列2段にし、つなぎの線は省く（音の順は読み上げの並びで保つ）。 */
+@media (max-width: 760px) {
+  .unset-flow-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .unset-flow-link { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .unset-flow-node[data-state="next"]::after { animation: none; display: none; }
+  .unset-flow-primary:active, .unset-flow-primary:hover .unset-flow-arrow { transform: none; }
 }
 
 /* 拡大表示などで高さが足りない場合も、本文と操作を切らずにスクロールする。 */
@@ -390,12 +484,15 @@
 .sound-chain, .live-strip { container-type: inline-size; }
 .input-channel-pair[hidden] { display: none; }
 .recovery-details[open] { flex-basis: 100%; }
+.live-meter-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1rem; }
+.live-meter-row { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); align-items: center; gap: 0.5rem; min-width: 0; }
 .live-output-summary { display: none; }
+.live-meter-actions { max-width: 11rem; }
 @container (min-width: 1080px) {
-  .live-meter-pair { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1rem; }
-  .live-output-summary { display: flex; }
+  .live-meter-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+  .live-output-summary { display: grid; }
   /* 大型メーターが見えている間は同じ出力レベルを本番帯に重ねて出さない。出力音量はフッターで操作できる。 */
-  .app-shell[data-large-meter]:not([data-meter-suspended]) .live-meter-pair { display: block; }
+  .app-shell[data-large-meter]:not([data-meter-suspended]) .live-meter-pair { grid-template-columns: minmax(0, 1fr) auto; }
   .app-shell[data-large-meter]:not([data-meter-suspended]) .live-output-summary { display: none; }
 }
 .sound-chain-row {
@@ -420,21 +517,26 @@
 .gaming .sound-chain-row[data-on="true"]::before {
   box-shadow: 0 0 8px hsl(var(--primary) / 0.35);
 }
-/* 高さを活かして本番帯を広げる。小さな窓と、未設定のホームは従来の密度を保つ。 */
-@media (min-height: 900px) {
-  .home-content:has(.live-strip) {
+/* 正常時だけ空いた高さを本番帯へ配分する。手順を開いたときと小さい窓では操作を優先する。 */
+@media (min-height: 720px) and (min-width: 1000px) {
+  .home-content[data-roomy="true"] {
     min-height: 100%;
     display: flex;
     flex-direction: column;
   }
-  .home-content > * { flex-shrink: 0; }
-  .home-content > .live-strip {
+  .home-content[data-roomy="true"] > * { flex-shrink: 0; }
+  .home-content[data-roomy="true"] > .live-strip {
     display: flex;
     flex-direction: column;
     justify-content: center;
     gap: 1.5rem;
+    flex-grow: 1;
+    min-height: 240px;
   }
-  .live-strip .meter-visual { height: clamp(64px, calc(15vh - 70px), 140px) !important; }
+  .live-strip[data-roomy="true"] .live-meter-pair { grid-template-columns: minmax(0, 1fr) auto; gap: 1.5rem 1rem; }
+  .live-strip[data-roomy="true"] .live-output-summary { display: grid; grid-column: 1; }
+  .live-strip[data-roomy="true"] .live-meter-actions { grid-column: 2; grid-row: 1 / span 2; }
+  .live-strip[data-roomy="true"] .meter-visual { height: clamp(64px, calc(15dvh - 40px), 140px) !important; }
 }
 .home-large-meter { display: none; }
 @media (min-height: 1100px) {

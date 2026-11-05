@@ -68,6 +68,46 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('セットアップの接続チェック', () => {
+    it('送り先は共通の順序で表示し、保存済み music は自分で聴くとして扱う', async () => {
+        localStorage.setItem('vst_host_setup_goal', 'music');
+        await openWizard();
+        const choices = ['OBSで配信', '通話（Discordなど）', '自分で聴く', 'その他のアプリ'].map(name => screen.getByRole('button', { name }));
+        expect(choices.slice(0, -1).every((node, index) => Boolean(node.compareDocumentPosition(choices[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+        expect(choices[2]).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(choices[2]);
+        expect(screen.getByRole('radio', { name: 'PCの音' })).toBeChecked();
+        expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
+        expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
+    });
+    it('入力がない場合は次へを無効にし、音の元に応じた理由を表示する', async () => {
+        inputs = [];
+        await openWizard();
+        fireEvent.click(screen.getByRole('button', { name: '自分で聴く' }));
+        await screen.findByText('マイクを選ぶと次へ進めます');
+        const next = screen.getByRole('button', { name: /次へ/ });
+        expect(next).toBeDisabled();
+        expect(next).toHaveAccessibleDescription('マイクを選ぶと次へ進めます');
+        fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
+        expect(next).toHaveAccessibleDescription('PCの音の入力を選ぶと次へ進めます');
+        expect(next).toHaveClass('disabled:bg-muted', 'disabled:text-muted-foreground');
+    });
+
+    it('保存後にキーボードでボイスチェック（ボイスチェック）を開き、自動録音しない', async () => {
+        const onClose = vi.fn();
+        const onOpenVoiceCheck = vi.fn();
+        render(<SetupWizardModal isOpen onClose={onClose} onApplyConfig={vi.fn()} onOpenVoiceCheck={onOpenVoiceCheck} />);
+        await chooseObsRoute();
+        expect(screen.getByRole('region', { name: '入力・処理・出力' })).toHaveTextContent('USB マイク');
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('heading', { name: '音声設定を保存しました' });
+        const button = screen.getByRole('button', { name: /ボイスチェック/ });
+        button.focus();
+        expect(button).toHaveFocus();
+        fireEvent.click(button);
+        expect(onClose).toHaveBeenCalledOnce();
+        expect(onOpenVoiceCheck).toHaveBeenCalledOnce();
+        expect(invoke).not.toHaveBeenCalledWith('voice_check_preview', expect.anything());
+    });
     it('locale切替は選択中の実デバイスとdialogを保持し、音声操作・保存を行わない', async () => {
         const store = createLocaleStore(() => 'ja', () => true);
         inputs = [mic, device('Second microphone', true)];
@@ -574,7 +614,8 @@ describe('PC audio purpose', () => {
     const fx = { active: true, preset: 'singing', amount: 0.7, singing: { lowCutHz: 80, dynamics: 0.4, brightnessDb: 2 }, reverb: { enabled: true, mix: 0.2, decaySeconds: 1, damping: 0.4 } };
     const snapshot = { epoch: 'epoch', revision: '1', appliedRevision: '1', config: fx, pending: false, undoToken: null, error: null };
     const chooseMusic = async () => {
-        fireEvent.click(await screen.findByRole('button', { name: /PCの音にエフェクト/ }));
+        fireEvent.click(await screen.findByRole('button', { name: '自分で聴く' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
         await screen.findByRole('combobox', { name: 'PCの音の入力を選択' });
     };
     const toConfirm = async () => {
@@ -770,5 +811,36 @@ describe('PC audio purpose', () => {
         await screen.findByRole('alert');
         expect(invoke).toHaveBeenCalledWith('builtin_effects', { request: { action: 'undo', epoch: 'epoch', expectedRevision: '2', undoToken: 'undo' } });
         expect(onApplyConfig).not.toHaveBeenCalled(); expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');
+    });
+});
+
+describe('セットアップの見た目と動き（#294）', () => {
+    it('手順レールはホームの流れと同じ名前で現在の手順を示し、進む・戻るの向きを中身へ渡す', async () => {
+        await openWizard();
+        const rail = screen.getByRole('navigation', { name: 'セットアップの進捗' });
+        expect([...rail.querySelectorAll('li')].map(item => item.textContent)).toEqual(['1送り先', '2マイク', '3送り方', '4確認']);
+        expect(within(rail).getByText('送り先').closest('li')).toHaveAttribute('aria-current', 'step');
+        // 高さは手順によらず固定し、中身だけをスクロールする。
+        expect(document.querySelector('.setup-surface')).not.toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        await screen.findByRole('combobox', { name: '入力デバイス' });
+        expect(within(rail).getByText('マイク').closest('li')).toHaveAttribute('aria-current', 'step');
+        expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '1');
+        fireEvent.click(within(screen.getByTestId('setup-actions')).getByRole('button', { name: '戻る' }));
+        expect(within(rail).getByText('送り先').closest('li')).toHaveAttribute('aria-current', 'step');
+        expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '-1');
+        // 同じ手順のまま再描画しても、動きの途中で向きを反転させない。
+        fireEvent.change(screen.getByRole('combobox', { name: '表示言語' }), { target: { value: 'en' } });
+        expect(await screen.findByText('Destination')).toBeInTheDocument();
+        expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '-1');
+        fireEvent.change(screen.getByRole('combobox', { name: 'Display language' }), { target: { value: 'ja' } });
+        expect(await screen.findByText('送り先')).toBeInTheDocument();
+    });
+
+    it('選んだカードは印を付けて示し、繰り返す点滅を使わない', async () => {
+        await openWizard();
+        const obs = screen.getByRole('button', { name: 'OBSで配信' });
+        expect(obs).toHaveAttribute('data-selected', String(obs.getAttribute('aria-pressed') === 'true'));
+        expect(document.querySelector('[role="dialog"] .animate-pulse')).toBeNull();
     });
 });

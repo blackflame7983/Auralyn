@@ -1,3 +1,4 @@
+import { displayAudioHost } from '@/lib/audioDevices';
 import { clientErrorNotice, type ClientErrorNotice } from '@/lib/clientError';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { renderNotice } from '@/components/features/AudioSettings/settingsNotice';
@@ -322,7 +323,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                             <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 text-sm">
                                 {[
                                     [t('master.status'), signalLabel],
-                                    [t('master.driver'), host || t('master.unset')],
+                                    [t('master.driver'), host ? displayAudioHost(host) : t('master.unset')],
                                     [t('master.rate'), isRunning && sampleRate ? `${sampleRate.toLocaleString()} Hz` : '—'],
                                     [t('master.buffer'), isRunning && bufferSize ? t('master.samples', {frames: bufferSize}) : '—'],
                                     [t('master.vstCount'), isRunning && stats ? t('master.counts', {enabled: stats.enabledPluginCount, total: stats.activePluginCount}) : '—'],

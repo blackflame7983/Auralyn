@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import path, { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -18,8 +18,9 @@ function runCommand(command, args, cwd) {
         const proc = spawn(command, args, {
             cwd,
             stdio: 'inherit',
-            shell: true
+            windowsHide: true
         });
+        proc.on('error', reject);
 
         proc.on('close', (code) => {
             if (code === 0) {
@@ -35,23 +36,32 @@ async function main() {
     console.log('🚧 Rebuilding Audio Engine & Plugin Scanner...');
 
     try {
-        // 1. Build Audio Engine
-        await runCommand('cargo', ['build', '--locked', '--bin', 'audio_engine'], SRC_TAURI);
-
-        // 2. Build Plugin Scanner
-        await runCommand('cargo', ['build', '--locked', '--bin', 'plugin_scanner'], SRC_TAURI);
+        // CARGO_TARGET_DIRやCargo設定を含め、実際の成果物の場所をCargoに確認する。
+        const metadata = spawnSync('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1'], {
+            cwd: SRC_TAURI, encoding: 'utf8', windowsHide: true
+        });
+        if (metadata.status !== 0) throw new Error('Cargoのビルド先を取得できませんでした');
+        const targetDirectory = JSON.parse(metadata.stdout).target_directory;
+        if (typeof targetDirectory !== 'string' || !path.isAbsolute(targetDirectory)) {
+            throw new Error('Cargoのビルド先が不正です');
+        }
+        await runCommand('cargo', ['build', '--locked', '--bin', 'audio_engine', '--bin', 'plugin_scanner'], SRC_TAURI);
 
         console.log('✅ Build successful. Updating sidecars...');
 
         // 3. Copy binaries (mimicking prepare-sidecar.js logic but for DEBUG build specifically)
         // We assume we want to update the dev environment, so we prefer debug builds here.
-        const debugDir = path.join(SRC_TAURI, 'target', 'debug');
+        const debugDir = path.join(targetDirectory, 'debug');
+        const binaries = ['audio_engine', 'plugin_scanner'];
+        // 両方の成果物を確認し、別のtargetに残る旧版を代用しない。
+        for (const bin of binaries) {
+            const source = path.join(debugDir, `${bin}.exe`);
+            if (!fs.existsSync(source)) throw new Error(`Binary not found at ${source}`);
+        }
 
         if (!fs.existsSync(BIN_DIR)) {
             fs.mkdirSync(BIN_DIR, { recursive: true });
         }
-
-        const binaries = ['audio_engine', 'plugin_scanner'];
 
         for (const bin of binaries) {
             const srcIdx = path.join(debugDir, `${bin}.exe`);

@@ -6,9 +6,10 @@ import { audioApi } from '@/api/audio';
 import { liveOutputApi, type LiveOutputConfig, type LiveOutputStatus } from '@/api/liveOutput';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Button } from '@/components/ui/button';
+import { AudioFlow } from '@/components/ui/AudioFlow';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
-export function LiveOutputPanel({ outputs, onBusyChange, disabled = false, autoLoad = false }: { autoLoad?: boolean; disabled?: boolean; outputs: AudioDevice[]; onBusyChange?: (busy: boolean) => void }) {
+export function LiveOutputPanel({ outputs, inputName, monitorName, onBusyChange, disabled = false, autoLoad = false }: { autoLoad?: boolean; disabled?: boolean; outputs: AudioDevice[]; inputName?: string; monitorName?: string; onBusyChange?: (busy: boolean) => void }) {
     const t = useMessages();
     const sequence = useRef(0);
     const busyNow = useRef(false);
@@ -57,34 +58,39 @@ export function LiveOutputPanel({ outputs, onBusyChange, disabled = false, autoL
         catch { if (ticket === sequence.current) { focusAfterSave.current = false; setError(true); } } finally { if (ticket === sequence.current) setBusy(false); }
     }
     return <section className="space-y-3 border border-border rounded p-3" aria-label={t('liveOutput.title')}>
-        <h3 className="font-semibold">{t('liveOutput.title')}</h3>
+        <h3 className="text-ui-heading font-semibold">{t('liveOutput.title')}</h3>
         <p className="text-sm">{t('liveOutput.scope')}</p>
-        <details className="text-xs"><summary>{t('liveOutput.limitsTitle')}</summary><p>{t('liveOutput.limits')}</p><p>{t('liveOutput.saveBoundary')}</p></details>
-        <button disabled={busy || disabled} className="link-button" onClick={() => void request()}>{t('liveOutput.refresh')}</button>
+        <details className="text-ui-support"><summary>{t('liveOutput.limitsTitle')}</summary><p>{t('liveOutput.limits')}</p><p>{t('liveOutput.saveBoundary')}</p></details>
+        <button disabled={busy || disabled} className="link-button text-ui-support" onClick={() => void request()}>{t('liveOutput.refresh')}</button>
         {draft && <div className="space-y-3">
-            <label className="block text-sm">{t('liveOutput.device')}<select className="w-full p-2 bg-background border rounded" disabled={busy || disabled} value={draft.deviceId ?? ''} onChange={e => { const deviceId = e.target.value || null; setDraft({ ...draft, deviceId, splitProcessing: deviceId ? draft.splitProcessing : false }); setConfirmed(false); }}>
+            {draft.deviceId && <AudioFlow label={t('flow.diagram')} unknownLabel={t('settings.selectDevice')} processingWarning={draft.deviceId === status?.config.deviceId && status.error && !status.sink?.failed ? t('prep.failed') : undefined}
+                input={{ label: t('processInput.source'), value: inputName }}
+                output={{ label: t('flow.monitorOutput'), value: monitorName }}
+                receiver={{ label: t('prep.receiver'), value: t('flow.receiverUnknown') }}
+                branches={[{ label: t('flow.broadcastOutput'), value: outputs.find(device => device.id === draft.deviceId)?.name ?? t('liveOutput.missing'), warning: draft.deviceId === status?.config.deviceId && status.sink?.failed ? t('flow.checkOutput') : undefined }]} /> }
+            <label className="block text-ui-control">{t('liveOutput.device')}<select className="w-full p-2 bg-background border rounded text-ui-control" disabled={busy || disabled} value={draft.deviceId ?? ''} onChange={e => { const deviceId = e.target.value || null; setDraft({ ...draft, deviceId, splitProcessing: deviceId ? draft.splitProcessing : false }); setConfirmed(false); }}>
                 <option value="">{t('liveOutput.disabled')}</option>
                 {outputs.filter(d => d.host.toLowerCase().includes('wasapi') && d.id && d.channels === 2).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 {draft.deviceId && !outputs.some(d => d.id === draft.deviceId) && <option value={draft.deviceId}>{t('liveOutput.missing')}</option>}
             </select></label>
-            <label className="flex gap-2 text-sm"><input disabled={busy || disabled || !draft.deviceId} type="checkbox" checked={!!draft.splitProcessing} onChange={e => { setDraft({ ...draft, splitProcessing: e.target.checked, monitorSinging: draft.monitorSinging ?? { active: true, preset: 'singing', amount: 0.35, singing: defaultSinging, reverb: { ...defaultReverb, enabled: true, mix: 0.05 } }, monitorTalk: draft.monitorTalk ?? { active: true, preset: 'singing', amount: 0.35, singing: defaultSinging, reverb: defaultReverb } }); setConfirmed(false); }} />{t('liveOutput.split')}</label>
+            <label className="flex gap-2 text-ui-control"><input disabled={busy || disabled || !draft.deviceId} type="checkbox" checked={!!draft.splitProcessing} onChange={e => { setDraft({ ...draft, splitProcessing: e.target.checked, monitorSinging: draft.monitorSinging ?? { active: true, preset: 'singing', amount: 0.35, singing: defaultSinging, reverb: { ...defaultReverb, enabled: true, mix: 0.05 } }, monitorTalk: draft.monitorTalk ?? { active: true, preset: 'singing', amount: 0.35, singing: defaultSinging, reverb: defaultReverb } }); setConfirmed(false); }} />{t('liveOutput.split')}</label>
             {draft.splitProcessing && <p className="text-sm">{t('liveOutput.splitScope')}</p>}
-            {draft.splitProcessing && (['monitorSinging', 'monitorTalk'] as const).map(role => <fieldset key={role} className="space-y-2"><legend>{t(`liveOutput.${role}`)}</legend>
-                <label className="block text-sm">{t('liveOutput.brightness')} ({draft[role]?.singing?.brightnessDb ?? 0} dB)<input className="block w-full" disabled={busy || disabled} type="range" min="-3" max="3" step="0.5" value={draft[role]?.singing?.brightnessDb ?? 0} onChange={e => { const config = draft[role]; if (config) { setDraft({ ...draft, [role]: { ...config, singing: { ...(config.singing ?? defaultSinging), brightnessDb: Number(e.target.value) } } }); setConfirmed(false); } }} /></label>
-                <label className="block text-sm">{t('liveOutput.dynamics')} ({Math.round((draft[role]?.singing?.dynamics ?? 0.35) * 100)}%)<input className="block w-full" disabled={busy || disabled} type="range" min="0" max="1" step="0.05" value={draft[role]?.singing?.dynamics ?? 0.35} onChange={e => { const config = draft[role]; if (config) { setDraft({ ...draft, [role]: { ...config, singing: { ...(config.singing ?? defaultSinging), dynamics: Number(e.target.value) } } }); setConfirmed(false); } }} /></label>
-                {role === 'monitorSinging' && <label className="block text-sm">{t('liveOutput.reverb')} ({Math.round((draft[role]?.reverb?.mix ?? 0) * 100)}%)<input className="block w-full" disabled={busy || disabled} type="range" min="0" max="0.2" step="0.01" value={draft[role]?.reverb?.mix ?? 0} onChange={e => { const config = draft[role]; if (config) { setDraft({ ...draft, [role]: { ...config, reverb: { ...(config.reverb ?? defaultReverb), enabled: Number(e.target.value) > 0, mix: Number(e.target.value) } } }); setConfirmed(false); } }} /></label>}
+            {draft.splitProcessing && (['monitorSinging', 'monitorTalk'] as const).map(role => <fieldset key={role} className="space-y-2"><legend className="text-ui-control font-semibold">{t(`liveOutput.${role}`)}</legend>
+                <label className="block text-ui-control">{t('liveOutput.brightness')} ({draft[role]?.singing?.brightnessDb ?? 0} dB)<input className="block w-full" disabled={busy || disabled} type="range" min="-3" max="3" step="0.5" value={draft[role]?.singing?.brightnessDb ?? 0} onChange={e => { const config = draft[role]; if (config) { setDraft({ ...draft, [role]: { ...config, singing: { ...(config.singing ?? defaultSinging), brightnessDb: Number(e.target.value) } } }); setConfirmed(false); } }} /></label>
+                <label className="block text-ui-control">{t('liveOutput.dynamics')} ({Math.round((draft[role]?.singing?.dynamics ?? 0.35) * 100)}%)<input className="block w-full" disabled={busy || disabled} type="range" min="0" max="1" step="0.05" value={draft[role]?.singing?.dynamics ?? 0.35} onChange={e => { const config = draft[role]; if (config) { setDraft({ ...draft, [role]: { ...config, singing: { ...(config.singing ?? defaultSinging), dynamics: Number(e.target.value) } } }); setConfirmed(false); } }} /></label>
+                {role === 'monitorSinging' && <label className="block text-ui-control">{t('liveOutput.reverb')} ({Math.round((draft[role]?.reverb?.mix ?? 0) * 100)}%)<input className="block w-full" disabled={busy || disabled} type="range" min="0" max="0.2" step="0.01" value={draft[role]?.reverb?.mix ?? 0} onChange={e => { const config = draft[role]; if (config) { setDraft({ ...draft, [role]: { ...config, reverb: { ...(config.reverb ?? defaultReverb), enabled: Number(e.target.value) > 0, mix: Number(e.target.value) } } }); setConfirmed(false); } }} /></label>}
             </fieldset>)}
-            {(['monitorTrim', 'broadcastTrim'] as const).map(key => <label className="block text-sm" key={key}>{t(`liveOutput.${key}`)} ({Math.round(draft[key] * 100)}%)<input className="block w-full" type="range" min="0" max="100" disabled={busy || disabled} value={draft[key] * 100} onChange={e => { setDraft({ ...draft, [key]: Number(e.target.value) / 100 }); setConfirmed(false); }} /></label>)}
-            <label className="flex gap-2 text-sm"><input disabled={busy || disabled} type="checkbox" checked={draft.monitorMuted} onChange={e => { setDraft({ ...draft, monitorMuted: e.target.checked }); setConfirmed(false); }} />{t('liveOutput.monitorMuted')}</label>
-            <p className="text-xs">{t('liveOutput.diff', { before: status?.config.deviceId ? t('liveOutput.enabled') : t('liveOutput.disabled'), after: draft.deviceId ? t('liveOutput.enabled') : t('liveOutput.disabled') })}</p>
-            <label className="flex gap-2 text-sm"><input disabled={busy || disabled} type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{t('liveOutput.confirm')}</label>
-            <button disabled={busy || disabled || !confirmed} className="border rounded p-2 disabled:opacity-50" onClick={() => void request(true)}>{t('liveOutput.save')}</button>{' '}
-            <button disabled={busy || disabled} className="link-button" onClick={() => { setDraft(status?.config ?? null); setConfirmed(false); }}>{t('monitorTrial.cancel')}</button>
+            {(['monitorTrim', 'broadcastTrim'] as const).map(key => <label className="block text-ui-control" key={key}>{t(`liveOutput.${key}`)} ({Math.round(draft[key] * 100)}%)<input className="block w-full" type="range" min="0" max="100" disabled={busy || disabled} value={draft[key] * 100} onChange={e => { setDraft({ ...draft, [key]: Number(e.target.value) / 100 }); setConfirmed(false); }} /></label>)}
+            <label className="flex gap-2 text-ui-control"><input disabled={busy || disabled} type="checkbox" checked={draft.monitorMuted} onChange={e => { setDraft({ ...draft, monitorMuted: e.target.checked }); setConfirmed(false); }} />{t('liveOutput.monitorMuted')}</label>
+            <p className="text-ui-support">{t('liveOutput.diff', { before: status?.config.deviceId ? t('liveOutput.enabled') : t('liveOutput.disabled'), after: draft.deviceId ? t('liveOutput.enabled') : t('liveOutput.disabled') })}</p>
+            <label className="flex gap-2 text-ui-control"><input disabled={busy || disabled} type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{t('liveOutput.confirm')}</label>
+            <button disabled={busy || disabled || !confirmed} className="border rounded p-2 disabled:opacity-50 text-ui-control" onClick={() => void request(true)}>{t('liveOutput.save')}</button>{' '}
+            <button disabled={busy || disabled} className="link-button text-ui-support" onClick={() => { setDraft(status?.config ?? null); setConfirmed(false); }}>{t('monitorTrial.cancel')}</button>
         </div>}
-        {previous && <button disabled={busy || disabled} className="link-button" onClick={() => { setDraft(previous); setConfirmed(false); }}>{t('liveOutput.undo')}</button>}
+        {previous && <button disabled={busy || disabled} className="link-button text-ui-support" onClick={() => { setDraft(previous); setConfirmed(false); }}>{t('liveOutput.undo')}</button>}
         <div className="space-y-2 border-t border-border pt-3">
             <p id="live-output-stop-warning" className="text-sm">{t('liveOutput.stopWarning')}</p>
-            <Button ref={stopButton} type="button" variant="outline" disabled={busy || disabled} aria-describedby="live-output-stop-warning" className="border-destructive bg-destructive/10 text-foreground hover:bg-destructive/20" onClick={() => setStopConfirmOpen(true)}>{t('liveOutput.stop')}</Button>
+            <Button ref={stopButton} type="button" variant="outline" disabled={busy || disabled} aria-describedby="live-output-stop-warning" className="border-destructive bg-destructive/10 text-foreground hover:bg-destructive/20 text-ui-control" onClick={() => setStopConfirmOpen(true)}>{t('liveOutput.stop')}</Button>
         </div>
         <ConfirmDialog
             isOpen={stopConfirmOpen}
@@ -106,8 +112,8 @@ export function LiveOutputPanel({ outputs, onBusyChange, disabled = false, autoL
             }}
         />
         {status && <p ref={savedStatus} tabIndex={-1} role="status" className="text-sm">{t(status.error || status.sink?.failed ? 'liveOutput.failed' : status.sink?.active ? 'liveOutput.active' : 'liveOutput.inactive')}</p>}
-        {status?.monitor && <p className="text-xs">{t('liveOutput.monitorCounts', { queued: status.monitor.broadcastQueueFrames, offered: status.monitor.offeredFrames, dropped: status.monitor.droppedFrames, accepted: status.monitor.acceptedRevision, completed: status.monitor.completedRevision })}</p>}
-        {status?.sink && <p className="text-xs">{t('liveOutput.counts', { queued: status.sink.queuedFrames, zero: status.sink.zeroFilledFrames, dropped: status.sink.droppedFrames, rate: status.sink.rateHz })}</p>}
+        {status?.monitor && <p className="text-ui-support">{t('liveOutput.monitorCounts', { queued: status.monitor.broadcastQueueFrames, offered: status.monitor.offeredFrames, dropped: status.monitor.droppedFrames, accepted: status.monitor.acceptedRevision, completed: status.monitor.completedRevision })}</p>}
+        {status?.sink && <p className="text-ui-support">{t('liveOutput.counts', { queued: status.sink.queuedFrames, zero: status.sink.zeroFilledFrames, dropped: status.sink.droppedFrames, rate: status.sink.rateHz })}</p>}
         {error && <p role="alert" className="text-destructive-text text-sm">{t('liveOutput.error')}</p>}
     </section>;
 }

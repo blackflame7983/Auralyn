@@ -1,3 +1,4 @@
+import { displayAudioHost } from '@/lib/audioDevices';
 import { NoiseComparisonPanel } from './NoiseComparisonPanel';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { SingingDraft } from '../../../hooks/useSingingDraft';
@@ -245,7 +246,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             {preview.metadata.changedDuringRecording && <p>{t('voice.copy.074')}</p>}
                             {preview.metadata.processedTap.startsWith('broadcast_') && <p>{t('liveOutput.recording')}</p>}
                             <p>{t('voice.copy.075')}</p>
-                            <p>{preview.metadata.host}・{preview.metadata.sampleRate} {t('voice.copy.076')}{preview.metadata.bufferSize}{t('voice.copy.077')}{preview.metadata.inputChannels.map(channel => channel + 1).join('/')}{t('voice.copy.078')}{preview.metadata.inputGain}</p>
+                            <p>{displayAudioHost(preview.metadata.host)}・{preview.metadata.sampleRate} {t('voice.copy.076')}{preview.metadata.bufferSize}{t('voice.copy.077')}{preview.metadata.inputChannels.map(channel => channel + 1).join('/')}{t('voice.copy.078')}{preview.metadata.inputGain}</p>
                             <p>{t('voice.copy.079')}{preview.metadata.noiseEnabled ? preview.metadata.noiseMode : 'OFF'}{t('voice.copy.080')}{preview.metadata.builtInEnabled ? preview.metadata.builtInPreset : 'OFF'}{t('voice.copy.081')}{preview.metadata.globalBypass ? 'ON' : 'OFF'}</p>
                             <p>{t('voice.copy.082')}{preview.metadata.reverb?.enabled ? t('voice.copy.083', { arg0: Math.round(preview.metadata.reverb.mix * 100), arg1: preview.metadata.reverb.decaySeconds }) : 'OFF'}</p>
                             <ul>{preview.metadata.plugins.map(plugin => <li key={plugin.id}>{plugin.name}：{plugin.enabled ? t('voice.copy.084') : t('voice.copy.085')}・{plugin.muted ? t('voice.copy.086') : t('voice.copy.087')}{t('voice.copy.088')}{plugin.gain}</li>)}</ul>

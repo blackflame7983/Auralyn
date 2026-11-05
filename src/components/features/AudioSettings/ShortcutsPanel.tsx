@@ -163,32 +163,32 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
         accept(`${modifier}+${event.code}`, action);
     };
     return <section className="space-y-3 rounded-xl border border-border p-4">
-        <h3 className="font-bold">{t('settings.ShortcutsPanel.378')}</h3>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <h3 className="text-ui-heading font-semibold">{t('settings.ShortcutsPanel.378')}</h3>
+        <div className="flex items-center gap-1 text-ui-support text-muted-foreground">
             <p>{t('shortcuts.streamDeckHint')}</p>
             <InfoPopover label={t('shortcuts.details')}><p>{t('settings.ShortcutsPanel.379')}</p><p className="mt-2">{t('settings.ShortcutsPanel.380')}</p></InfoPopover>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{(Object.entries(actions) as [Action, (typeof actions)[Action]][]).map(([action, labelKey]) => {
             const label = t(labelKey);
             const pair = split(values[action] ?? '');
-            return <fieldset key={action} className="min-w-0 space-y-1 text-xs" disabled={!ready || busy}>
-                <legend className="font-medium">{label}</legend>
+            return <fieldset key={action} className="min-w-0 space-y-1 text-ui-support" disabled={!ready || busy}>
+                <legend className="text-ui-control font-semibold">{label}</legend>
                 <button type="button" aria-label={t('shortcuts.captureNamed', { action: label })} aria-pressed={capturing === action} aria-busy={capturing === action && !armed}
                     onClick={() => { setMessage([]); capture(capturing === action ? null : action); }}
                     onKeyDown={event => handleCapture(event, action)} onBlur={() => { if (capturing === action) capture(null); }}
-                    className="rounded border border-border px-2 py-1.5 text-left aria-pressed:border-selection aria-pressed:bg-muted disabled:cursor-not-allowed disabled:opacity-50">
+                    className="rounded border border-border px-2 py-1.5 text-left aria-pressed:border-selection aria-pressed:bg-muted disabled:cursor-not-allowed disabled:opacity-50 text-ui-control">
                     {capturing === action ? t(armed ? 'shortcuts.captureWaiting' : 'shortcuts.capturePreparing') : formatShortcut(values[action] ?? '') || t('shortcuts.captureEmpty')}
                 </button>
                 {/* キー入力で登録できない場合の代替手段。既定では閉じて入力方式を1つに見せる。 */}
                 <details>
                 <summary className="cursor-pointer text-muted-foreground">{t('shortcuts.chooseFromList')}</summary>
                 <div className="mt-1 flex flex-wrap gap-1">
-                    <label>{t('settings.ShortcutsPanel.381')}<select aria-label={t('settings.ShortcutsPanel.382', { arg0: label })} value={pair.modifier} onChange={e => setValues(v => ({ ...v, [action]: `${e.target.value}+${pair.key}` }))} className="block rounded border border-input bg-background p-2">
+                    <label className="text-ui-control">{t('settings.ShortcutsPanel.381')}<select aria-label={t('settings.ShortcutsPanel.382', { arg0: label })} value={pair.modifier} onChange={e => setValues(v => ({ ...v, [action]: `${e.target.value}+${pair.key}` }))} className="block rounded border border-input bg-background p-2 text-ui-control">
                         <option value="">{t('settings.ShortcutsPanel.383')}</option>
                         {pair.modifier && !modifiers.includes(pair.modifier) && <option value={pair.modifier}>{pair.modifier}{t('settings.ShortcutsPanel.384')}</option>}
                         {modifiers.map(value => <option key={value} value={value}>{value.replace('Control', 'Ctrl').replace('Super', 'Windows')}</option>)}
                     </select></label>
-                    <label>{t('settings.ShortcutsPanel.385')}<select aria-label={t('settings.ShortcutsPanel.386', { arg0: label })} value={pair.key} onChange={e => setValues(v => ({ ...v, [action]: `${pair.modifier}+${e.target.value}` }))} className="block rounded border border-input bg-background p-2">
+                    <label className="text-ui-control">{t('settings.ShortcutsPanel.385')}<select aria-label={t('settings.ShortcutsPanel.386', { arg0: label })} value={pair.key} onChange={e => setValues(v => ({ ...v, [action]: `${pair.modifier}+${e.target.value}` }))} className="block rounded border border-input bg-background p-2 text-ui-control">
                         <option value="">{t('settings.ShortcutsPanel.387')}</option>
                         {pair.key && !keys.some(([value]) => value === pair.key) && <option value={pair.key}>{pair.key}{t('settings.ShortcutsPanel.388')}</option>}
                         {keys.map(([value, name]) => <option key={value} value={value}>{name}</option>)}
@@ -196,12 +196,12 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
                 </div>
                 </details>
                 {/* 未登録の項目には外す対象がないため出さず、同じボタンの羅列を避ける。 */}
-                {values[action] && <button type="button" aria-label={`${t('settings.ShortcutsPanel.389')}${label}`} className="rounded border border-border px-2 py-1 text-muted-foreground hover:text-destructive-text disabled:opacity-50" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('shortcuts.unbind')}</button>}
+                {values[action] && <button type="button" aria-label={`${t('settings.ShortcutsPanel.389')}${label}`} className="rounded border border-border px-2 py-1 text-muted-foreground hover:text-destructive-text disabled:opacity-50 text-ui-control" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('shortcuts.unbind')}</button>}
             </fieldset>;
         })}</div>
         <div className="sticky bottom-0 z-10 flex flex-wrap gap-2 border-t border-border bg-card py-2">
-            <button type="button" className="rounded border px-3 py-2 text-sm disabled:opacity-50" disabled={!ready || busy || (!dirty && !registrationFailed) || !!capturing} onClick={() => void save()}>{t('settings.ShortcutsPanel.390')}</button>
-            <button type="button" className="rounded border px-3 py-2 text-sm disabled:opacity-50" disabled={!ready || busy || !dirty || !!capturing} onClick={() => { setValues(saved); setMessage([notice('settings.ShortcutsPanel.391')]); }}>{t('settings.ShortcutsPanel.392')}</button>
+            <button type="button" className="rounded border px-3 py-2 disabled:opacity-50 text-ui-control" disabled={!ready || busy || (!dirty && !registrationFailed) || !!capturing} onClick={() => void save()}>{t('settings.ShortcutsPanel.390')}</button>
+            <button type="button" className="rounded border px-3 py-2 disabled:opacity-50 text-ui-control" disabled={!ready || busy || !dirty || !!capturing} onClick={() => { setValues(saved); setMessage([notice('settings.ShortcutsPanel.391')]); }}>{t('settings.ShortcutsPanel.392')}</button>
             {message.length > 0 && <p role="status" className="basis-full whitespace-pre-wrap break-words text-sm">{message.map(part => renderNotice(t, part)).join('\n')}</p>}
         </div>
     </section>;

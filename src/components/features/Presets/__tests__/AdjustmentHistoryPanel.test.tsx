@@ -25,7 +25,7 @@ it('状態更新は対象名ごと読み上げ、各操作の説明も同じ対�
     await act(async () => {});
     fireEvent.click(screen.getByRole('button', {name: '履歴の状態を確認'}));
     await waitFor(() => expect(screen.getAllByText('適用前へ戻せます')).toHaveLength(3));
-    for (const label of ['ノイズ低減の候補', '内蔵ボイスチェーン', '固定出力音量']) {
+    for (const label of ['ノイズ低減の候補', '声を整える機能', '固定出力音量']) {
         const row = screen.getByText(new RegExp(`^${label}:`)).closest('li')!;
         const status = within(row).getByRole('status');
         expect(status).toHaveTextContent(`${label}: 適用前へ戻せます`);
@@ -123,7 +123,7 @@ it('反映を確認したUndoの後だけRedoを有効にし、別変更通知�
     await act(async () => {});
     fireEvent.click(screen.getByRole('button', {name: '履歴の状態を確認'}));
     await waitFor(() => expect(screen.getAllByText('適用前へ戻せます')).toHaveLength(3));
-    const row = screen.getByText(/^内蔵ボイスチェーン:/).closest('li')!;
+    const row = screen.getByText(/^声を整える機能:/).closest('li')!;
     const undo = within(row).getByRole('button', {name: '適用前へ戻す'});
     undo.focus();
     fireEvent.click(undo);
@@ -138,6 +138,6 @@ it('本番保護中はトークンが残っていても操作可能と表示し�
     render(<AdjustmentHistoryPanel />);
     await act(async () => {});
     fireEvent.click(screen.getByRole('button', {name: '履歴の状態を確認'}));
-    await waitFor(() => expect(screen.getAllByText('本番保護中のため操作できません')).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByText('誤操作防止中のため操作できません')).toHaveLength(3));
     for (const button of screen.getAllByRole('button', {name: '適用前へ戻す'})) expect(button).toBeDisabled();
 });

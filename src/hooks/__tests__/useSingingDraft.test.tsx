@@ -186,7 +186,7 @@ it('running=trueでもstreamFailed=trueなら稼働中と表示せず、手動�
     render(<Controls />);
     await screen.findByText('設定を保持しています。次回の音声開始時に処理を準備します。');
     vi.mocked(audioApi.getAudioStreamState).mockResolvedValue({ running: true, streamFailed: false });
-    fireEvent.click(screen.getByRole('button', { name: '内蔵ボイスチェーンの現在値を再取得' }));
+    fireEvent.click(screen.getByRole('button', { name: '声を整える機能の現在値を再取得' }));
     await screen.findByText('稼働中の処理への反映を確認しました。');
 });
 it('停止前の遅い状態応答を無効化し、閉じた後の応答・通知・pollでIPCを続けない', async () => {

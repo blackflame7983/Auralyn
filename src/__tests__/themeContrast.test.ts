@@ -35,6 +35,10 @@ it('各テーマで状態文字は4.5:1、メーターの注意・危険域は3:
         for (const background of ['background', 'card']) {
             const panel = blend(color('selection'), color(background), 0.15);
             expect(contrast(color('selection'), panel), `${selector} selection/${background}`).toBeGreaterThanOrEqual(4.5);
+            // セグメントのブランド色下線は淡い面にも3:1、文字は4.5:1を保つ。
+            const segment = blend(color('brand'), color(background), 0.1);
+            expect(contrast(color('brand'), segment), `${selector} segment underline/${background}`).toBeGreaterThanOrEqual(3);
+            expect(contrast(color('foreground'), segment), `${selector} segment text/${background}`).toBeGreaterThanOrEqual(4.5);
         }
         // 削除・停止・テスト音停止などの危険操作の塗りボタン
         expect(contrast(color('destructive-foreground'), color('destructive')), `${selector} destructive button`).toBeGreaterThanOrEqual(4.5);

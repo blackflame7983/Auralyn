@@ -3,7 +3,7 @@ import { Slider } from '@/components/ui/slider';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
 
-export const mixingField = 'block w-full rounded-md border border-input bg-background px-3 py-2 text-sm';
+export const mixingField = 'block w-full rounded-md border border-input bg-background px-3 py-2 text-ui-control';
 export const mixingCard = 'min-w-0 space-y-3 rounded-xl border border-border bg-card p-4';
 export const framesToMs = (frames: number | null | undefined, rate: number | null | undefined) =>
     frames != null && rate && rate > 0 ? `${(frames * 1000 / rate).toFixed(1)} ms` : null;
@@ -93,7 +93,7 @@ export function GainControl({ label, value, disabled, onChange }: { label: strin
         <output className="w-12 text-right text-sm tabular-nums">{percent}</output></div>;
 }
 
-export function ScopeDisclosure({ summary, detail }: { summary: MessageKey; detail: MessageKey }) {
+export function ScopeDisclosure({ summary, detail, settings = false }: { summary: MessageKey; detail: MessageKey; settings?: boolean }) {
     const t = useMessages();
-    return <div className="space-y-1 text-xs text-muted-foreground"><p>{t(summary)}</p><details><summary className="cursor-pointer">{t('mixingUi.scope')}</summary><p className="mt-2">{t(detail)}</p></details></div>;
+    return <div className={`space-y-1 ${settings ? 'text-ui-support' : 'text-xs'} text-muted-foreground`}><p>{t(summary)}</p><details><summary className="cursor-pointer">{t('mixingUi.scope')}</summary><p className="mt-2">{t(detail)}</p></details></div>;
 }

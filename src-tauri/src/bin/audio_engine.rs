@@ -385,11 +385,15 @@ fn scan_devices() {
             }
             .to_string();
 
-            // Get Default Devices
-            #[allow(deprecated)]
-            let default_in_name = host.default_input_device().and_then(|d| d.name().ok());
-            #[allow(deprecated)]
-            let default_out_name = host.default_output_device().and_then(|d| d.name().ok());
+            // 同名の機器すべてを既定にしない。IDを取得できなければ既定は未確認とする。
+            let default_in_id = host
+                .default_input_device()
+                .and_then(|d| d.id().ok())
+                .map(|id| id.to_string());
+            let default_out_id = host
+                .default_output_device()
+                .and_then(|d| d.id().ok())
+                .map(|id| id.to_string());
 
             // Inputs
             if let Ok(inputs) = host.input_devices() {
@@ -406,8 +410,10 @@ fn scan_devices() {
                         };
                         let buf_range = get_buffer_range(&d, true);
                         let channels = get_max_channels(&d, true);
-                        let is_def = default_in_name.as_ref().map(|dn| dn == &n).unwrap_or(false);
                         let id = d.id().ok().map(|id| id.to_string());
+                        let is_def = default_in_id
+                            .as_ref()
+                            .is_some_and(|default| id.as_ref() == Some(default));
                         raw_items.push((n, rates, buf_range, channels, is_def, id));
                     }
                 }
@@ -465,11 +471,10 @@ fn scan_devices() {
                         };
                         let buf_range = get_buffer_range(&d, false);
                         let channels = get_max_channels(&d, false);
-                        let is_def = default_out_name
-                            .as_ref()
-                            .map(|dn| dn == &n)
-                            .unwrap_or(false);
                         let id = d.id().ok().map(|id| id.to_string());
+                        let is_def = default_out_id
+                            .as_ref()
+                            .is_some_and(|default| id.as_ref() == Some(default));
                         raw_items.push((n, rates, buf_range, channels, is_def, id));
                     }
                 }

@@ -1,5 +1,8 @@
 import { test, expect } from './tauriFixture';
 
+// VST パネルは設定済みのホームにだけ出る。未設定のホームは音の流れと次の1歩だけにする（#297）。
+test.use({ liveHome: true });
+
 for (const liveModes of [false, true]) test(`分離出力と本番モード=${liveModes}を明示保存し、狭い画面で差分を確認する`, async ({ page }, info) => {
     await page.setViewportSize({ width: 900, height: 600 });
     await page.addInitScript(liveModes => {
@@ -26,8 +29,8 @@ for (const liveModes of [false, true]) test(`分離出力と本番モード=${li
     await page.goto('/');
     const rack = page.getByRole('button', { name: 'VST を編集', exact: true });
     if (await rack.getAttribute('aria-expanded') !== 'true') await rack.click();
-    await page.getByRole('button', { name: 'プロファイル管理', exact: true }).click();
-    await page.getByRole('button', { name: 'OBS込みプロファイル', exact: true }).click();
+    await page.getByRole('button', { name: '設定の保存・復帰', exact: true }).click();
+    await page.getByRole('button', { name: '今の設定を保存・復帰', exact: true }).click();
     await page.getByRole('radio', { name: /分離出力まで/ }).check();
     if (liveModes) await page.getByRole('radio', { name: /歌／雑談モードまで/ }).check();
     await page.getByLabel('OBS込みプロファイル名', { exact: true }).fill('new-output');

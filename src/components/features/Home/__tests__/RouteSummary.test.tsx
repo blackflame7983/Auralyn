@@ -2,6 +2,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { audioApi } from '@/api/audio';
 import { RouteSummary } from '../RouteSummary';
+import { message } from '@/i18n/messages';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 it('分離出力は安定IDを露出せず、主経路と独立したWASAPIの一意な表示名を使う', async () => {
@@ -12,7 +13,7 @@ it('分離出力は安定IDを露出せず、主経路と独立したWASAPIの�
     expect(screen.getByText(/配信側: CABLE Input/)).toBeInTheDocument();
     expect(screen.queryByText(/cable-id/)).not.toBeInTheDocument();
     view.rerender(<RouteSummary {...props} routing={{...props.routing, deviceId: 'missing-guid'}} />);
-    expect(screen.getByText(/配信側: 未確認/)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`配信側: ${message('ja', 'flow.unknown')}`))).toBeInTheDocument();
     await act(async () => {});
     expect(screen.queryByText(/missing-guid/)).not.toBeInTheDocument();
 });

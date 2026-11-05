@@ -113,6 +113,7 @@ it.each(['ja', 'en'] as const)('歌向けON/OFFは全値を保持し、短いプ
     expect(screen.getAllByText(message(locale, 'settings.fxOffHint')).length).toBeGreaterThan(0);
     fireEvent.click(toggle);
     await waitFor(() => expect(legacy).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'settings.soundHelp') }));
     expect(screen.getByText(message(locale, 'settings.AudioSettingsModal.092'))).toBeVisible();
     for (const key of ['settings.AudioSettingsModal.099', 'settings.AudioSettingsModal.100'] as const) {
         expect(screen.getByRole('button', { name: message(locale, key) })).toBeEnabled();
@@ -126,11 +127,12 @@ it.each([true, false])('音づくりの基本を先に置き、歌向けの欄�
     localStorage.setItem('vst_host_beginner_mode', String(beginner));
     render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const noise = await screen.findByRole('heading', { name: 'ノイズ低減' });
-    const builtIn = screen.getByRole('heading', { name: '内蔵ボイスチェーン' });
+    const builtIn = screen.getByRole('heading', { name: '声を整える' });
     expect(noise.compareDocumentPosition(builtIn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(noise).toHaveFocus();
     expect(screen.getByText('歌向けに整える').closest('details')).not.toHaveAttribute('open');
-    expect(screen.getByText('モード登録').closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByRole('heading', { name: 'モード登録' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '適用済み設定を歌モードへ登録' })).toBeVisible();
     expect(screen.queryByRole('combobox', { name: '表示言語' })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('tab', { name: '外観' }), { key: 'Enter' });
     expect(screen.getByRole('combobox', { name: '表示言語' })).toBeInTheDocument();
@@ -138,7 +140,7 @@ it.each([true, false])('音づくりの基本を先に置き、歌向けの欄�
     expect(screen.getByRole('tab', { name: 'ホットキー' })).toBeInTheDocument();
 });
 
-it('プロファイル適用でモードが変わっても音づくりの表示を古い統計値へ戻さず、次の操作で新しい設定を送る', async () => {
+it('声・VST の保存適用でモードが変わっても音づくりの表示を古い統計値へ戻さず、次の操作で新しい設定を送る', async () => {
     vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({ noiseReductionEnabled: false, noiseReductionActive: false, noiseReductionMode: 'low', noiseControlStrength: 0.6, noiseVoiceGuard: false, builtInEffectsEnabled: true, builtInEffectsPreset: 'singing', builtInEffectsAmount: 0.6 } as EngineRuntimeStats);
     const setNoise = vi.spyOn(audioApi, 'setNoiseControlConfig').mockResolvedValue(undefined);
     render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);

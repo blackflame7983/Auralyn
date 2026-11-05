@@ -7,10 +7,13 @@ import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
 import { HomePanels } from '../features/Home/HomePanels';
 import { LiveStrip } from '../features/Home/LiveStrip';
 import { InputGainDisabledContext } from '../features/Home/InputGainContext';
+import { LiveControlsHiddenContext } from '../features/Home/LiveControlsContext';
 import { SoundChain } from '../features/Home/SoundChain';
+import { UnsetFlow } from '../features/Home/UnsetFlow';
 import { usePreparation } from '@/hooks/usePreparation';
 import { useVstPanel } from '@/hooks/useVstPanel';
 import { usePanelMotion } from '@/hooks/usePanelMotion';
+import { useLayoutMotion, useSettledReady } from '@/hooks/useLayoutMotion';
 import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Header } from './Header';
 import { audioApi } from '../../api/audio';
@@ -52,6 +55,8 @@ interface AppShellProps {
     currentOutput?: string;
     /** 本番帯に置く歌・雑談の切替。登録前は描画されない。 */
     liveControls?: ReactNode;
+    /** 未設定でも歌・雑談の欄を出すか。登録済み・誤操作防止中・処理中・失敗のときだけ true にする（#297）。 */
+    liveControlsWhileUnconfigured?: boolean;
     /** チェーン列の VST 段の中身。 */
     vstChain?: ReactNode;
     /** 保存済み構成から読み込めていないVSTの名前。 */
@@ -90,6 +95,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     currentInput,
     currentOutput,
     liveControls,
+    liveControlsWhileUnconfigured = false,
     vstChain,
     vstUnrestored,
     vstPanel
@@ -119,6 +125,9 @@ export const AppShell: React.FC<AppShellProps> = ({
     useEffect(() => { setRuntimeStats(null); }, [isEngineRunning]);
     const shellRef = useRef<HTMLDivElement>(null);
     const footerRef = useRef<HTMLElement>(null);
+    // 状態や幅で区画の高さ・並びが変わっても跳ねさせず、位置を補間する（#298）。
+    const homeContentRef = useRef<HTMLDivElement>(null);
+    useLayoutMotion(homeContentRef);
     // 折り返したフッターが大型メーターを覆わないよう、実高さを共有する。
     useLayoutEffect(() => {
         const shell = shellRef.current;
@@ -143,6 +152,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const startErrorDetail = startError === null ? null : renderClientError(t,
         startError instanceof HomeAudioStartError ? startError.cause : startError);
     const preparation = usePreparation({ blocked: preparationBlocked, running: audioReady });
+    const [preparationExpanded, setPreparationExpanded] = useState(false);
     const [loudnessEnabled, setLoudnessEnabled] = useState(false);
     const [measurement, setMeasurement] = useState({ active: false, busy: false, stopUnconfirmed: false });
     const [measurementRequest, setMeasurementRequest] = useState<{id: number; action: 'start' | 'stop'}>();
@@ -160,6 +170,9 @@ export const AppShell: React.FC<AppShellProps> = ({
         return () => media.removeEventListener('change', update);
     }, [isLargeMeterOpen]);
     const panelOverlays = Boolean(vstPanel) && vstPanelOpen && !panelBeside;
+    // 反映待ちの間は直前の判定を使い、メーターの配置を畳まない（#298）。
+    const settledReady = useSettledReady(preparation.observation.availability);
+    const roomyMeters = audioReady && settledReady && !preparationExpanded && !isLargeMeterOpen && !loudnessEnabled && !panelOverlays;
     const panelRef = useRef<HTMLElement>(null);
     const panelMotion = usePanelMotion(Boolean(vstPanel) && vstPanelOpen);
     useEffect(() => {
@@ -238,7 +251,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     useEffect(() => { if (panelOverlays || !configured) closeOutputGain(); }, [panelOverlays, configured, closeOutputGain]);
     const soundChain = <SoundChain model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} vstUnrestored={vstUnrestored} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
-        onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} />;
+        onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} unconfigured={!configured} />;
     const [isABBypassed, setIsABBypassed] = useState(false);
     const handleABToggle = useCallback(async () => {
         try {
@@ -296,14 +309,14 @@ export const AppShell: React.FC<AppShellProps> = ({
                     className="home-main min-w-0 flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent"
                 >
                     {/* 左右に分けると片側だけが詰まって見えるので、どの幅でも上から1列に並べ、広い画面では中央に寄せる。 */}
-                    <div className="home-content mx-auto max-w-[1180px]">
+                    <div ref={homeContentRef} className="home-content mx-auto max-w-[1180px]" data-roomy={roomyMeters}>
                         {notices}
                         {/* 音量チェックと大型メーターは本番帯のメーター横に置き、ホーム上部に常設の行を作らない。
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
-                            ? <LiveStrip onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
-                            : liveControls && <div className="mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden">{liveControls}</div>}
+                            ? <LiveStrip roomy={roomyMeters} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
+                            : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
                         {/* 音量チェックは開いたメーターの直下に出す。 */}
                         <div><LoudnessCheck
                             music={purpose === 'music'}
@@ -315,9 +328,13 @@ export const AppShell: React.FC<AppShellProps> = ({
                         /></div>
                         {/* チェーン列は本番帯の直下に置き、準備や経路の情報より下へ押し出さない。未設定の間だけ準備の後ろへ回す。 */}
                         {configured && soundChain}
-                        <div className="min-w-0"><HomePanels
+                        {/* 未設定の間は音の流れと次の1歩だけを出し、準備の確認・送り先の選択・状態の重複を並べない（#297）。 */}
+                        {!configured && <UnsetFlow usage={preparation.context.usage || null} music={purpose === 'music'} onSetup={onOpenWizard}
+                            input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput} />}
+                        {configured && <div className="min-w-0"><HomePanels
+                            onExpandedChange={setPreparationExpanded}
                             model={preparation}
-                            homeActionInStrip={canStart && !isEngineRunning || audioReady && !preparation.context.usage}
+                            homeActionInStrip={canStart && !isEngineRunning || purpose !== 'music' && audioReady && !preparation.context.usage}
                             destinationRequest={destinationRequest}
                             audioReady={audioReady}
                             statusText={audioReady ? undefined : engineProcessReady === null ? t('shell.unknown') : currentHost ? t('shell.stopped') : t('shell.unconfigured')}
@@ -325,8 +342,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                             onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings}
                             onCheckOutput={focusOutputControl}
                             onOpenSoundSettings={onOpenSoundSettings} onListen={openListen}
+                            onSetup={onOpenWizard}
                             onOpenOBSGuide={onOpenOBSGuide} onOpenDiscordGuide={onOpenDiscordGuide} onOpenTroubleshoot={onOpenTroubleshoot}
-                        /></div>
+                        /></div>}
                         <div className="min-w-0">
                         <div id="home-rack">{children}</div>
                         </div>
@@ -350,7 +368,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                 {/* Master Section Footer */}
                 <footer ref={footerRef} className="bg-background border-t border-border px-4 z-50 footer-shadow shrink-0 transition-colors duration-300">
                     <div className="mx-auto max-w-[1180px] w-full flex items-center gap-3">
-                    <div className="flex shrink-0 items-center py-2">
+                    {/* 比べる音がない未設定の間は出さない。比較中のまま未設定になった場合は解除できるよう残す。 */}
+                    {(configured || isABBypassed) && <div className="flex shrink-0 items-center py-2">
                         {/* Effect Compare Button */}
                         <TooltipProvider>
                             <Tooltip>
@@ -380,8 +399,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
-                    </div>
-                    <div className="flex-1 min-w-0">
+                    </div>}
+                    {/* 比較ボタンを出さない間は、区切りの線だけが左端に残らないようにする。 */}
+                    <div className={cn('flex-1 min-w-0', !(configured || isABBypassed) && '[&>div]:border-l-transparent')}>
                         <MasterBar
                             outputGainAnchor={outputGainAnchor} onOutputGainClose={closeOutputGain}
                             onStatsChange={setRuntimeStats}

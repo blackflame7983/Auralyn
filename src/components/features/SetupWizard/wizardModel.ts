@@ -1,4 +1,5 @@
 import type { AudioConfig, AudioDevice } from '../../../api/audio';
+import { isPlaybackInput } from '@/lib/audioDevices';
 
 export const isVirtualOutput = (device: AudioDevice) => /cable|voicemeeter/i.test(device.name);
 
@@ -10,7 +11,7 @@ export const verifiedDefaultOutput = (devices: AudioDevice[]): AudioDevice | nul
 
 /** 再生音の取り込みを除外し、マイクと分かる入力を優先する。 */
 export const recommendMicrophone = (inputs: AudioDevice[]): AudioDevice | null => {
-    const candidates = inputs.filter(d => !/cable|voicemeeter|stereo\s*mix|ステレオ\s*ミキサー|再生リダイレクト|loopback|ループバック|what\s*u\s*hear|wave\s*out/i.test(d.name));
+    const candidates = inputs.filter(d => !isPlaybackInput(d.name));
     const microphones = candidates.filter(d => /microphone|\bmic\b|マイク|headset|ヘッドセット/i.test(d.name));
     const choices = microphones.length ? microphones : candidates;
     return choices.length === 1 ? choices[0] : null;
@@ -21,6 +22,7 @@ export interface SetupWizardModalProps {
     onClose: () => void;
     onSkip?: () => void;
     onApplyConfig: (host: string, input: string, output: string, actualConfig: AudioConfig) => void | Promise<void>;
+    onOpenVoiceCheck?: () => void;
     onOpenSettings?: () => void;
     onOpenTroubleshoot?: () => void;
 }

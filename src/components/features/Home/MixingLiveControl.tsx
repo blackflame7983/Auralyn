@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { MdMusicNote } from 'react-icons/md';
 import { mixingApi, type MixSnapshot } from '@/api/mixing';
@@ -6,6 +6,7 @@ import { postMixApi, type PostMixSnapshot } from '@/api/postMix';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Button } from '@/components/ui/button';
 import { GainControl, MixingError, useQueuedChange } from '@/components/features/AudioSettings/mixingUi';
+import { LiveControlsHiddenContext } from './LiveControlsContext';
 
 export function MixingLiveControl({ running, blocked, onSettings }: { running: boolean; blocked: boolean; onSettings: () => void }) {
     const t = useMessages();
@@ -41,6 +42,9 @@ export function MixingLiveControl({ running, blocked, onSettings }: { running: b
     };
     const queue = useQueuedChange<{ gain: number; muted: boolean }>(send);
     useEffect(() => { queue.cancel(); pending.current = null; setDesired(null); if (blocked) setOpen(false); }, [blocked, running]);
+    // 欄ごと隠れたら、Portal の小窓も閉じる。基準のボタンが消えたまま操作できる小窓を残さない。
+    const hidden = useContext(LiveControlsHiddenContext);
+    useEffect(() => { if (hidden) setOpen(false); }, [hidden]);
     const change = (patch: Partial<{ gain: number; muted: boolean }>) => {
         const active = pending.current ?? witness.current?.config?.levels.accompaniment;
         if (!active) return;
@@ -55,7 +59,7 @@ export function MixingLiveControl({ running, blocked, onSettings }: { running: b
         {mix?.config && <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" disabled={blocked} aria-label={t('mixingHome.volume')} title={t('mixingHome.volume')} className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-1"><MdMusicNote aria-hidden="true" />{Math.round((desired?.gain ?? mix.config.levels.accompaniment.gain) * 100)}%</button></Popover.Trigger>
             <Popover.Portal><Popover.Content side="bottom" sideOffset={8} className="z-50 w-72 max-w-[90vw] space-y-3 rounded-xl border border-border bg-popover p-4 shadow-lg" aria-label={t('mixingHome.volume')}>
                 <GainControl label={t('mixingUi.accompanimentVolume')} value={desired?.gain ?? mix.config.levels.accompaniment.gain} disabled={blocked} onChange={value => change({ gain: value })} />
-                <Button variant="outline" aria-pressed={desired?.muted ?? mix.config.levels.accompaniment.muted} onClick={() => change({ muted: !(pending.current?.muted ?? witness.current?.config?.levels.accompaniment.muted) })}>{t('mixing.mute')}</Button>
+                <Button className="press-feedback" variant="outline" aria-pressed={desired?.muted ?? mix.config.levels.accompaniment.muted} onClick={() => change({ muted: !(pending.current?.muted ?? witness.current?.config?.levels.accompaniment.muted) })}>{t('mixing.mute')}</Button>
                 <MixingError draftRetained={false} error={error ? { operation: 'mixingUi.levels', raw: error } : null} />
             </Popover.Content></Popover.Portal></Popover.Root>}
         <span role={mixProblem ? 'alert' : 'status'}><button type="button" disabled={blocked} onClick={onSettings} className={mixProblem ? 'rounded-md px-2 py-1 text-destructive-text' : 'rounded-md px-2 py-1 text-muted-foreground hover:text-foreground'}>

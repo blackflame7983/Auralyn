@@ -252,6 +252,21 @@ pub(crate) async fn audio_frontend_bootstrap(
 }
 
 #[tauri::command]
+pub(crate) async fn get_saved_audio_config(
+    state: State<'_, audio::AudioState>,
+) -> Result<Option<audio::ActiveAudioConfig>, String> {
+    let state = state.0.clone();
+    super::run_blocking(move || {
+        state
+            .lock()
+            .map_err(|_| "音声設定を取得できません".to_owned())?
+            .read_saved_audio_config()
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
 pub(crate) async fn get_audio_state(
     state: State<'_, audio::AudioState>,
 ) -> Result<audio::AudioStateInfo, String> {

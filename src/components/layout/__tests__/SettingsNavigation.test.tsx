@@ -58,7 +58,7 @@ it('テンプレートの内蔵ボイスチェーンの入口は音づくりタ�
     fireEvent.click(screen.getByRole('button', { name: 'テンプレートを開く' }));
     // 初回の遅延importを待ち、画面内の操作は表示完了後に確認する。
     await screen.findByRole('dialog', { name: 'VST構成テンプレート' }, { timeout: 3000 });
-    fireEvent.click(screen.getByRole('button', { name: '外部VSTを使わず、内蔵ボイスチェーンを設定する' }));
+    fireEvent.click(screen.getByRole('button', { name: '外部VSTを使わず、声を整える機能を設定する' }));
     await screen.findByRole('heading', { name: '設定タブ: sound' });
     expect(screen.queryByRole('dialog', { name: 'VST構成テンプレート' })).not.toBeInTheDocument();
 });

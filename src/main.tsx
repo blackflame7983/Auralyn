@@ -23,5 +23,14 @@ function render(content: React.ReactNode, withTheme = true) {
   if (withTheme) initializeLocaleBridge();
   root.render(<React.StrictMode><LocaleProvider>{withTheme ? <ThemeProvider>{content}</ThemeProvider> : content}</LocaleProvider></React.StrictMode>);
 }
+// #301 の試作は開発時だけ ?proto=ab|a|b|c で開く。本番ビルドでは import.meta.env.DEV が false になり、読み込まれない。
+const prototypeRequested = import.meta.env.DEV && new URLSearchParams(location.search).has('proto');
+if (import.meta.env.DEV) {
+  window.addEventListener('keydown', event => {
+    if (event.ctrlKey && event.shiftKey && event.code === 'KeyP') location.search = prototypeRequested ? '' : '?proto=ab';
+  });
+}
 initializeAppVisibility();
-initializeTemporarySession().then(() => migrateObsCredentials()).then(() => bootstrapMigration()).then(() => render(<App />)).catch(error => render(<BootstrapFailure error={error} />, false));
+if (prototypeRequested) {
+  import('./prototypes/PrototypeLab').then(({ default: PrototypeLab }) => render(<PrototypeLab />));
+} else initializeTemporarySession().then(() => migrateObsCredentials()).then(() => bootstrapMigration()).then(() => render(<App />)).catch(error => render(<BootstrapFailure error={error} />, false));

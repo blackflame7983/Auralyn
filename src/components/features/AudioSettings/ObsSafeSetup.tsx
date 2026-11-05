@@ -1,5 +1,6 @@
 import { formatObsText, obsHistoryResults, originalObsText } from '@/lib/obsUiText';
 import { useMessages } from '@/i18n/LocaleProvider';
+import { InfoPopover } from '@/components/ui/InfoPopover';
 import { useEffect, useId, useRef, useState } from 'react';
 import { obsApi, type ObsSetupPlan, type ObsSetupHistory } from '@/api/obs';
 
@@ -77,23 +78,25 @@ export function ObsSafeSetup({
     const buttonClass = 'rounded border border-border px-3 py-2 hover:bg-muted disabled:opacity-50';
     return (
         <section aria-label={t('settings.ObsSafeSetup.335')} className="space-y-3 text-sm">
-            <p className="text-xs text-muted-foreground">
-                {t('settings.ObsSafeSetup.336')}</p>
+            <div className="flex items-center gap-1">
+                <p className="text-ui-support text-muted-foreground">{t('obsSetup.stopFirst')}</p>
+                <InfoPopover label={t('settings.ObsSafeSetup.335')}>{t('settings.ObsSafeSetup.336')}</InfoPopover>
+            </div>
             <div className="flex flex-wrap gap-2">
             <button
                 type="button"
-                className={buttonClass}
+                className={`${buttonClass} text-ui-control`}
                 disabled={busy || disabled}
                 aria-describedby={unavailableReason ? reasonId : undefined}
                 onClick={() => void preview()}
             >
                 {t('settings.ObsSafeSetup.337')}</button>
             {onOpenGuide && (
-                <button type="button" className={buttonClass} disabled={busy} aria-describedby={busy ? reasonId : undefined} onClick={onOpenGuide}>
+                <button type="button" className={`${buttonClass} text-ui-control`} disabled={busy} aria-describedby={busy ? reasonId : undefined} onClick={onOpenGuide}>
                     {t('settings.ObsSafeSetup.338')}</button>
             )}
             </div>
-            {unavailableReason && <p id={reasonId} className="text-xs text-muted-foreground" role="status">{unavailableReason}</p>}
+            {unavailableReason && <p id={reasonId} className="text-ui-support text-muted-foreground" role="status">{unavailableReason}</p>}
             {error && (
                 <p role="alert" className="text-warning break-words">
                     {originalObsText(t, error)} {t('settings.ObsSafeSetup.339')}</p>
@@ -111,7 +114,7 @@ export function ObsSafeSetup({
                                     <strong>
                                         {c.source}：{formatObsText(t, c.labelText, c.label)}
                                     </strong>
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-ui-support text-muted-foreground">
                                         {formatObsText(t, c.beforeText, c.beforeDisplay ?? c.before)} →{' '}
                                         {formatObsText(t, c.afterText, c.afterDisplay ?? c.after)}
                                     </p>
@@ -124,7 +127,7 @@ export function ObsSafeSetup({
                     {plan.supported && plan.changes.length > 0 && (
                         <button
                             type="button"
-                            className={buttonClass}
+                            className={`${buttonClass} text-ui-control`}
                             disabled={busy || disabled}
                             aria-describedby={unavailableReason ? reasonId : undefined}
                             onClick={() =>
@@ -140,7 +143,7 @@ export function ObsSafeSetup({
                     )}
                     <button
                         type="button"
-                        className={buttonClass}
+                        className={`${buttonClass} text-ui-control`}
                         disabled={busy} aria-describedby={busy ? reasonId : undefined}
                         onClick={() => setPlan(null)}
                     >
@@ -152,7 +155,7 @@ export function ObsSafeSetup({
                                 <button
                                     key={name}
                                     type="button"
-                                    className={`${buttonClass} block break-all`}
+                                    className={`${`${buttonClass} block break-all`} text-ui-control`}
                                     disabled={busy || disabled}
                                     aria-describedby={unavailableReason ? reasonId : undefined}
                                     onClick={() => void preview(name)}
@@ -165,11 +168,11 @@ export function ObsSafeSetup({
             )}
             <details ref={historyDetails} className="rounded border border-border p-3 space-y-3">
               <summary className="cursor-pointer font-medium">{t('structure.history')}</summary>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-ui-support text-muted-foreground">
                 {t('settings.ObsSafeSetup.346')}</p>
             <button
                 type="button"
-                className={buttonClass}
+                className={`${buttonClass} text-ui-control`}
                 disabled={busy} aria-describedby={busy ? reasonId : undefined}
                 onClick={() =>
                     void run(async () => {
@@ -186,16 +189,16 @@ export function ObsSafeSetup({
                             <p>
                                 {h.timing ? t('settings.ObsSafeSetup.349') : t('settings.ObsSafeSetup.350')} #{h.id} {h.connectionLabel}
                             </p>
-                            {h.timing && <p className="text-xs text-muted-foreground">{t('settings.obs.timing', { source: h.timing.source, before: h.timing.currentOffsetMs, after: h.timing.resultOffsetMs, delay: h.timing.additionalDelayMs, note: h.timing.measurement.referenceNote })}</p>}
+                            {h.timing && <p className="text-ui-support text-muted-foreground">{t('settings.obs.timing', { source: h.timing.source, before: h.timing.currentOffsetMs, after: h.timing.resultOffsetMs, delay: h.timing.additionalDelayMs, note: h.timing.measurement.referenceNote })}</p>}
                             {h.restorable === false && (
-                                <p id={`${reasonId}-${h.id}`} className="text-xs text-warning">
+                                <p id={`${reasonId}-${h.id}`} className="text-ui-support text-warning">
                                     {t('settings.ObsSafeSetup.355')}</p>
                             )}
                             <ul>
                                 {h.changes.map((c, i) => (
                                     <li key={i} className="break-words">
                                         {c.source}：{formatObsText(t, c.labelText, c.label)} — {obsHistoryResults(t, h)[i]}
-                                        <p className="text-xs text-muted-foreground">
+                                        <p className="text-ui-support text-muted-foreground">
                                             {formatObsText(t, c.beforeText, c.beforeDisplay ?? c.before)} →{' '}
                                             {formatObsText(t, c.afterText, c.afterDisplay ?? c.after)}
                                         </p>
@@ -204,7 +207,7 @@ export function ObsSafeSetup({
                             </ul>
                             <button
                                 type="button"
-                                className={buttonClass}
+                                className={`${buttonClass} text-ui-control`}
                                 disabled={busy || disabled || h.restorable === false}
                                 aria-describedby={[unavailableReason ? reasonId : null, h.restorable === false ? `${reasonId}-${h.id}` : null].filter(Boolean).join(' ') || undefined}
                                 onClick={() =>
@@ -223,7 +226,7 @@ export function ObsSafeSetup({
                                 {t('settings.obs.undo', { id: h.id })}</button>
                             <button
                                 disabled={busy} aria-describedby={busy ? reasonId : undefined}
-                                className={buttonClass}
+                                className={`${buttonClass} text-ui-control`}
                                 onClick={() => setForgetting(h.id)}
                             >
                                 {t('settings.obs.forget', { id: h.id })}</button>
@@ -233,7 +236,7 @@ export function ObsSafeSetup({
                                         {t('settings.ObsSafeSetup.360')}</p>
                                     <button
                                         disabled={busy} aria-describedby={busy ? reasonId : undefined}
-                                        className={buttonClass}
+                                        className={`${buttonClass} text-ui-control`}
                                         onClick={() =>
                                             void run(async () => {
                                                 await obsApi.forgetHistory(h.id);
@@ -247,7 +250,7 @@ export function ObsSafeSetup({
                                         {t('settings.ObsSafeSetup.361')}</button>
                                     <button
                                         disabled={busy} aria-describedby={busy ? reasonId : undefined}
-                                        className={buttonClass}
+                                        className={`${buttonClass} text-ui-control`}
                                         onClick={() => setForgetting(null)}
                                     >
                                         {t('settings.ObsSafeSetup.362')}</button>

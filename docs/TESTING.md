@@ -4,6 +4,34 @@
 
 類似アプリとの比較やリソース使用量を含む評価の軸は [EVALUATION_CRITERIA.md](EVALUATION_CRITERIA.md) に定める。
 
+## Tauri MCP による実アプリの確認
+
+通常の `npm run tauri dev` と配布設定は、意図的に `withGlobalTauri: false` とする。MCPによるWebView操作・撮影には、debugビルド限定のbridgeとグローバルAPIを有効にする上書きが必要である。[セキュリティ設定](SECURITY_RUNTIME.md)を参照し、通常設定やcapabilityを変更しない。既存アプリが動作中なら音声や保存状態への影響を確認してから扱う。
+
+リポジトリルートで、必要なsidecarを `npm run rebuild-engine` で準備した後、専用のターミナルで次を起動する。
+
+```powershell
+npm run tauri -- dev --config src-tauri/tauri.debug-global.conf.json
+```
+
+別のターミナルでCLIのセッションを開始し、状態の `connected: true` を確認する。開始コマンドの成功だけでは接続を意味しない。CLIには複数のbinがあるため、パッケージと実行binの両方を指定する。以下は確認済みのCLI版 `0.13.2` の例。
+
+```powershell
+npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp driver-session start --host 127.0.0.1 --port 9223
+npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp driver-session status --json
+```
+
+接続後、保存先と操作対象を確認して撮影・操作する。次の例はアプリの設定を開いた状態で、外観タブへ切り替える。複数アプリがある場合は起動したHostに対応するポートを特定し、各操作の `--app-identifier` に指定する。9223が使用中ならbridgeの実際のポートを確認して接続する。
+
+```powershell
+npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp webview-screenshot --file before.png
+npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp webview-interact --action click --selector '[role=tab][id$="-trigger-appearance"]'
+npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp webview-screenshot --file after.png
+npx -y -p @hypothesi/tauri-mcp-cli@0.13.2 tauri-mcp driver-session stop --app-identifier 9223
+```
+
+撮影は表示中の範囲をファイルに保存する。操作は音声開始や設定変更を含み得るため対象を確認する。MCPクライアントから使う場合のサーバー入口は `npm run mcp:tauri`。実アプリの画面確認は実音声・聴感の合格とは分けて記録する。
+
 NR・内蔵処理を変更するPRでは、[歌枠の回帰手順](SINGING_REGRESSION.md)の A-1・A-3・A-5 と二系統／処理分離を確認し、条件・結果・未実施を記録する。初回基準や実機・素材がない場合は未確認として残し、準備や自動試験の成功を歌枠の合格にしない。
 
 ホームの状態別主操作（#160〜#163）は `e2e/browser/home-actions.spec.ts` で確認する。960×640 の開始操作、機器IDの引継ぎ、開始失敗と開始後の設定失敗、設定からの復旧後の警告解除、送り先選択へのスクロール・キーボードフォーカス、3テーマのセグメント寸法と注意域メーターを扱う。本番保護中の経路維持と入力ペアの再適用禁止は `src/lib/__tests__/startHomeAudio.test.ts` で確認する。これらはIPCモック・ローカル試験であり、実機での開始・実音声の到達は別途確認する。

@@ -20,8 +20,16 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.mocked(listen).mockReset(); });
 it('無音通知後の減衰残値を極端なdBFS値として表示しない', () => {
     render(<MeterVisual label="出力" showValues reading={{ levels: [1e-300, 1e-300], peak: [.1, .1], clipped: false, state: 'silent', resetClip: () => {} }} />);
-    expect(screen.getByRole('meter', { name: '出力' })).toHaveAttribute('aria-valuetext', '−∞ dBFS');
+    expect(screen.getByRole('meter', { name: '出力' })).toHaveAttribute('aria-valuetext', '無音: −∞ dBFS');
     expect(screen.getByText('−∞ dBFS')).toBeInTheDocument();
+});
+it.each(['waiting', 'stale', 'silent', 'stopped'] as const)('横メーターの %s は状態文を省略せず、意味を読み上げられる', state => {
+    const { container } = render(<MeterVisual label="出力" orientation="horizontal" showValues numbers={false}
+        reading={{ levels: [0, 0], peak: [0, 0], clipped: false, state, resetClip: () => {} }} />);
+    const status = container.querySelector('[data-meter-status]')!;
+    expect(status).not.toHaveClass('truncate');
+    expect(status.textContent).toBeTruthy();
+    expect(screen.getByRole('meter')).toHaveAttribute('aria-valuetext', expect.stringContaining(state === 'waiting' || state === 'stale' ? 'レベル未受信' : state === 'silent' ? '無音' : '音声停止中'));
 });
 it('フッター用の小表示は数値とクリップがあっても固定のバー高さを保つ', () => {
     render(<MeterVisual label="出力" height={28} width={12} showValues reading={{ levels: [1, 1], peak: [1, 1], clipped: true, state: 'live', resetClip: () => {} }} />);
@@ -42,7 +50,7 @@ it('大メーターはtimeoutでもclipを保持し、手動で消せる', () =>
     emit('audio-level', { input: [0, 0], output: [1.2, 1.2] });
     act(() => vi.advanceTimersByTime(16)); expect(screen.getByText('クリップ')).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(1100));
-    expect(screen.getByRole('status')).toHaveTextContent('未受信'); expect(screen.getByText('クリップ')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('受信待ち'); expect(screen.getByText('クリップ')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /クリップ表示を消す/ }));
     expect(screen.queryByText('クリップ')).toBeNull();
     emit('audio-level', { input: [0, 0], output: [0, 0] });

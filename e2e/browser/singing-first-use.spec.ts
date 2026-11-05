@@ -31,8 +31,9 @@ test.beforeEach(async ({ page }) => {
 test('初回は準備・試聴・適用を見せ、数値を開いた編集も試聴の往復も配信へ適用しない', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
+    await page.getByRole('button', { name: '歌・雑談の設定', exact: true }).click();
     await page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).click();
-    await page.getByRole('button', { name: '歌唱モードの音を調整', exact: true }).click();
+    await page.getByRole('button', { name: '歌モードの音を調整', exact: true }).click();
     const section = page.locator('#singing-settings');
     const fine = section.locator('details').filter({ has: page.locator('summary', { hasText: '数値を細かく調整' }) });
     await expect(fine).not.toHaveAttribute('open');
@@ -67,18 +68,20 @@ test('反映エラーは次の操作を示し、技術詳細は必要時に開�
         };
     });
     await page.goto('/');
+    await page.getByRole('button', { name: '歌・雑談の設定', exact: true }).click();
     await page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).click();
-    await page.getByRole('button', { name: '歌唱モードの音を調整', exact: true }).click();
+    await page.getByRole('button', { name: '歌モードの音を調整', exact: true }).click();
     const section = page.locator('#singing-settings');
     await expect(section.getByRole('alert')).toContainText('現在値を再取得');
     await expect(section.getByText('engine revision mismatch (raw)', { exact: true })).not.toBeVisible();
-    await expect(section.getByRole('button', { name: '内蔵ボイスチェーンの現在値を再取得', exact: true })).toBeVisible();
+    await expect(section.getByRole('button', { name: '声を整える機能の現在値を再取得', exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('actionable-error.png') });
 });
 
 test('登録・歌向け欄・プロファイルで同じ保存先の比較を開け、説明の開閉では登録も保存もしない', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
+    await page.getByRole('button', { name: '歌・雑談の設定', exact: true }).click();
     await page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).click();
     const label = 'モード登録とプロファイル保存の違い';
     const modeHelp = page.locator('#live-mode-settings').getByRole('button', { name: label, exact: true });
@@ -90,7 +93,7 @@ test('登録・歌向け欄・プロファイルで同じ保存先の比較を�
     await page.screenshot({ path: testInfo.outputPath('mode-save-comparison.png') });
     await page.keyboard.press('Escape');
     await expect(modeHelp).toBeFocused();
-    await page.getByRole('button', { name: '歌唱モードの音を調整', exact: true }).click();
+    await page.getByRole('button', { name: '歌モードの音を調整', exact: true }).click();
     const section = page.locator('#singing-settings');
     await section.getByText('再取得・下書きのリセット・保存', { exact: true }).click();
     await section.getByRole('button', { name: label, exact: true }).click();
@@ -115,6 +118,7 @@ for (const locale of ['ja', 'en'] as const) test(`6つの数値の説明は値�
     await page.addInitScript(locale => localStorage.setItem('vst_host_locale', locale), locale);
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
+    await page.getByRole('button', { name: t('liveBar.actions'), exact: true }).click();
     await page.getByRole('button', { name: t('liveBar.editRegistration'), exact: true }).click();
     await page.getByRole('button', { name: message(locale, 'settings.mode.adjustNamed', { mode: t('settings.LiveModeControls.212') }), exact: true }).click();
     const section = page.locator('#singing-settings');

@@ -33,7 +33,7 @@ it('入力の目的と各行の操作対象を公開し、検索解除で一覧�
     open();
     const select = await screen.findByRole('button', { name: `${meta.name}を保存名に選ぶ` });
     select.focus(); fireEvent.click(select);
-    expect(screen.getByRole('textbox', { name: '保存するプロファイル名' })).toHaveValue(meta.name);
+    expect(screen.getByRole('textbox', { name: '保存する名前' })).toHaveValue(meta.name);
     for (const suffix of ['を適用', 'のVSTのみ読み込み', 'をエクスポート', 'を削除']) {
         expect(screen.getByRole('button', { name: `${meta.name}${suffix}` })).toBeVisible();
     }
@@ -63,7 +63,7 @@ it('locale切替で未保存名・カテゴリ・確認dialogを保持し同じ�
     const store = createLocaleStore(() => 'ja', () => true); const save = vi.fn(async () => false);
     render(<LocaleProvider store={store}><PresetManagerModal isOpen onClose={vi.fn()} onLoadPreset={vi.fn()} onSaveProfile={save} onApplyProfile={vi.fn()} onRestoreBackup={vi.fn()} /></LocaleProvider>);
     await screen.findByRole('button', { name: `${meta.name}を保存名に選ぶ` });
-    const name = screen.getByRole('textbox', { name: '保存するプロファイル名' });
+    const name = screen.getByRole('textbox', { name: '保存する名前' });
     fireEvent.change(name, { target: { value: meta.name } });
     const noise = screen.getByRole('checkbox', { name: 'ノイズ低減' });
     fireEvent.click(noise);

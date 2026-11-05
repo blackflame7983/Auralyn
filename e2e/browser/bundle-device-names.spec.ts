@@ -1,4 +1,7 @@
 import { test, expect } from './tauriFixture';
+
+// VST パネルは設定済みのホームにだけ出る。未設定のホームは音の流れと次の1歩だけにする（#297）。
+test.use({ liveHome: true });
 import { message } from '../../src/i18n/messages';
 
 for (const locale of ['ja', 'en'] as const) for (const missing of [false, true]) {

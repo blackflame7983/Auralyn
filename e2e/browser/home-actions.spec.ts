@@ -67,7 +67,7 @@ test.describe('設定済みの停止中', () => {
         await page.getByRole('button', { name: '音声を開始', exact: true }).click();
         const error = page.getByRole('alert').filter({ hasText: '音声を開始できませんでした' });
         await expect(error).toBeVisible();
-        await error.getByText('確認条件・履歴', { exact: true }).click();
+        await error.getByText('詳しい状態と履歴', { exact: true }).click();
         await expect(error).toContainText('機器が見つかりません');
         await expect(error).not.toContainText('Error: Error:');
         await page.screenshot({ path: info.outputPath('error-details.png') });
@@ -119,7 +119,7 @@ test.describe('設定済みの停止中', () => {
         await page.getByRole('button', { name: '音声を開始', exact: true }).click();
         const error = page.getByRole('alert').filter({ hasText: '音声を開始できませんでした' });
         await expect(error).toBeInViewport();
-        await error.getByText('確認条件・履歴', { exact: true }).click();
+        await error.getByText('詳しい状態と履歴', { exact: true }).click();
         await expect(error).toContainText('機器が見つかりません');
         await page.screenshot({ path: info.outputPath('start-failed.png') });
         await error.getByRole('button', { name: '入出力を変更', exact: true }).click();
