@@ -2,9 +2,13 @@ import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './tauriFixture';
 
 // ホームの配置の補間（useLayoutMotion）が終わるまで待つ。繰り返し続く飾りの動きは待たない。
-const settleLayoutMotion = (page: import('@playwright/test').Page) => page.evaluate(() => Promise.all(document.getAnimations()
-    .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
-    .map(animation => animation.finished.catch(() => undefined))));
+// 補間は次の描画の ResizeObserver 通知で始まるので、2フレーム待ってから集める。
+const settleLayoutMotion = (page: import('@playwright/test').Page) => page.evaluate(async () => {
+    for (let i = 0; i < 2; i++) await new Promise(resolve => requestAnimationFrame(resolve));
+    await Promise.all(document.getAnimations()
+        .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
+        .map(animation => animation.finished.catch(() => undefined)));
+});
 
 test.describe('通常のホーム表示', () => {
     test.use({ liveHome: true, registeredModes: false });

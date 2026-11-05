@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { MdMusicNote } from 'react-icons/md';
 import { mixingApi, type MixSnapshot } from '@/api/mixing';
@@ -6,6 +6,7 @@ import { postMixApi, type PostMixSnapshot } from '@/api/postMix';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Button } from '@/components/ui/button';
 import { GainControl, MixingError, useQueuedChange } from '@/components/features/AudioSettings/mixingUi';
+import { LiveControlsHiddenContext } from './LiveControlsContext';
 
 export function MixingLiveControl({ running, blocked, onSettings }: { running: boolean; blocked: boolean; onSettings: () => void }) {
     const t = useMessages();
@@ -41,6 +42,9 @@ export function MixingLiveControl({ running, blocked, onSettings }: { running: b
     };
     const queue = useQueuedChange<{ gain: number; muted: boolean }>(send);
     useEffect(() => { queue.cancel(); pending.current = null; setDesired(null); if (blocked) setOpen(false); }, [blocked, running]);
+    // 欄ごと隠れたら、Portal の小窓も閉じる。基準のボタンが消えたまま操作できる小窓を残さない。
+    const hidden = useContext(LiveControlsHiddenContext);
+    useEffect(() => { if (hidden) setOpen(false); }, [hidden]);
     const change = (patch: Partial<{ gain: number; muted: boolean }>) => {
         const active = pending.current ?? witness.current?.config?.levels.accompaniment;
         if (!active) return;

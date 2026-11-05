@@ -7,6 +7,7 @@ import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
 import { HomePanels } from '../features/Home/HomePanels';
 import { LiveStrip } from '../features/Home/LiveStrip';
 import { InputGainDisabledContext } from '../features/Home/InputGainContext';
+import { LiveControlsHiddenContext } from '../features/Home/LiveControlsContext';
 import { SoundChain } from '../features/Home/SoundChain';
 import { UnsetFlow } from '../features/Home/UnsetFlow';
 import { usePreparation } from '@/hooks/usePreparation';
@@ -315,7 +316,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
                             ? <LiveStrip roomy={roomyMeters} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
-                            : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden">{liveControls}</div>}
+                            : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
                         {/* 音量チェックは開いたメーターの直下に出す。 */}
                         <div><LoudnessCheck
                             music={purpose === 'music'}
