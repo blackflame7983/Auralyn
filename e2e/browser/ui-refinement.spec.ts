@@ -1,4 +1,5 @@
 import { test, expect } from './tauriFixture';
+import { settleLayoutMotion } from './layoutMotion';
 import { message } from '../../src/i18n/messages';
 import type { Page } from '@playwright/test';
 
@@ -60,6 +61,8 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
         await expect(live.getByRole('button', { name: message('ja', 'liveBar.editRegistration'), exact: true })).toHaveCount(0);
         expect(await page.locator('main').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
         if (size.width === 1280) {
+            // 配置が落ち着く前（区画が滑って移る途中）の位置で比べない。
+            await settleLayoutMotion(page);
             expect((await live.getByRole('meter').first().boundingBox())!.height).toBeGreaterThanOrEqual(64);
             const bars = await live.getByRole('meter').evaluateAll(nodes => nodes.map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right }; }));
             expect(bars).toHaveLength(2);

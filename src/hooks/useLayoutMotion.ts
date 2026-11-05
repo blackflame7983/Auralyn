@@ -37,7 +37,6 @@ export function useLayoutMotion(ref: RefObject<HTMLElement | null>, enabled = tr
         if (!enabled || !root || typeof ResizeObserver === 'undefined' || typeof root.animate !== 'function') return;
         const boxes = new WeakMap<HTMLElement, Box>();
         const moves = new WeakMap<HTMLElement, Animation>();
-        const reveals = new WeakMap<HTMLElement, Animation>();
         let tracked: HTMLElement[] = [];
         let trackedSet = new Set<HTMLElement>();
         let ready = false;
@@ -67,7 +66,7 @@ export function useLayoutMotion(ref: RefObject<HTMLElement | null>, enabled = tr
                 const previous = boxes.get(element);
                 boxes.set(element, box);
                 // 隠れていた要素や、動きを減らす設定では位置を記録するだけにする。
-                if (still) { moves.get(element)?.cancel(); reveals.get(element)?.cancel(); continue; }
+                if (still) { moves.get(element)?.cancel(); continue; }
                 if (!previous) {
                     // 入れ替わって現れた内容は、場所を動かさず不透明度だけで入れる。
                     if (ready && box.h > 0) element.animate([{ opacity: 0 }, { opacity: 1 }], { duration: fade, easing: easeOut });
@@ -83,14 +82,6 @@ export function useLayoutMotion(ref: RefObject<HTMLElement | null>, enabled = tr
                         { transform: `translate(${dx + shift.x}px, ${dy + shift.y}px)` },
                         { transform: 'translate(0px, 0px)' },
                     ], { duration: move, easing: easeMove, composite: 'add' }));
-                }
-                // 直下の区画が伸びたときは、増えた分を下から見せる。縮むときは後ろの区画の移動に任せる。
-                if (element.parentElement === root && box.h - previous.h >= 1) {
-                    reveals.get(element)?.cancel();
-                    reveals.set(element, element.animate([
-                        { clipPath: `inset(0 0 ${box.h - previous.h}px 0 round 0.75rem)` },
-                        { clipPath: 'inset(0 0 0 0 round 0.75rem)' },
-                    ], { duration: move, easing: easeMove }));
                 }
             }
             ready = true;

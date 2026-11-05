@@ -35,14 +35,15 @@ const el = (id: string) => document.getElementById(id)!;
 const calls = (id: string) => animate.mock.calls.filter((_, index) => animate.mock.contexts[index] === el(id)).map(call => (call as unknown[])[0]);
 
 describe('ホームの配置の補間（#298）', () => {
-    it('前の区画が伸びたら、後ろの区画を前回の位置から transform で戻し、伸びた区画は下から見せる', () => {
+    it('前の区画が伸びたら、後ろの区画を前回の位置から transform で戻し、伸びた区画は切り抜かない', () => {
         render(<Home />);
         el('strip').dataset.h = '160';
         el('chain').dataset.top = '160';
         el('row').dataset.top = '180';
         act(() => notify?.());
         expect(calls('chain')).toEqual([[{ transform: 'translate(0px, -60px)' }, { transform: 'translate(0px, 0px)' }]]);
-        expect(calls('strip')).toEqual([[{ clipPath: 'inset(0 0 60px 0 round 0.75rem)' }, { clipPath: 'inset(0 0 0 0 round 0.75rem)' }]]);
+        // 切り抜くと、開いたばかりのメニューなど伸びた部分が押せない時間ができる。
+        expect(calls('strip')).toEqual([]);
         // 区画の中の部品は区画からの位置で測るので、区画ごと動いただけなら二重に動かさない。
         expect(calls('row')).toEqual([]);
     });
