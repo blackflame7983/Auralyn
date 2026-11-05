@@ -103,7 +103,8 @@ test('緊急ミュートの通信失敗では外部アプリでのミュート�
     // cold loadのモジュール取得と、取得後のdialog表示を別々に確認する。
     // 事前読込みはせず、この操作が実際に設定画面の取得を始めることも検証する。
     const [settingsModule] = await Promise.all([
-        page.waitForResponse(response => new URL(response.url()).pathname === '/src/components/features/AudioSettings/AudioSettingsModal.tsx'),
+        // 開発サーバーは元のファイル、CI の本番ビルドは分割された部品を返す。
+        page.waitForResponse(response => /^\/(?:src\/components\/features\/AudioSettings\/AudioSettingsModal\.tsx|assets\/AudioSettingsModal-[\w-]+\.js)$/.test(new URL(response.url()).pathname)),
         failure.getByRole('button', { name: '設定を開く', exact: true }).click(),
     ]);
     expect(settingsModule.ok()).toBe(true);
