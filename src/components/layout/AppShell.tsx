@@ -12,6 +12,7 @@ import { UnsetFlow } from '../features/Home/UnsetFlow';
 import { usePreparation } from '@/hooks/usePreparation';
 import { useVstPanel } from '@/hooks/useVstPanel';
 import { usePanelMotion } from '@/hooks/usePanelMotion';
+import { useLayoutMotion, useSettledReady } from '@/hooks/useLayoutMotion';
 import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Header } from './Header';
 import { audioApi } from '../../api/audio';
@@ -123,6 +124,9 @@ export const AppShell: React.FC<AppShellProps> = ({
     useEffect(() => { setRuntimeStats(null); }, [isEngineRunning]);
     const shellRef = useRef<HTMLDivElement>(null);
     const footerRef = useRef<HTMLElement>(null);
+    // 状態や幅で区画の高さ・並びが変わっても跳ねさせず、位置を補間する（#298）。
+    const homeContentRef = useRef<HTMLDivElement>(null);
+    useLayoutMotion(homeContentRef);
     // 折り返したフッターが大型メーターを覆わないよう、実高さを共有する。
     useLayoutEffect(() => {
         const shell = shellRef.current;
@@ -165,7 +169,9 @@ export const AppShell: React.FC<AppShellProps> = ({
         return () => media.removeEventListener('change', update);
     }, [isLargeMeterOpen]);
     const panelOverlays = Boolean(vstPanel) && vstPanelOpen && !panelBeside;
-    const roomyMeters = audioReady && preparation.observation.availability === 'ready' && !preparationExpanded && !isLargeMeterOpen && !loudnessEnabled && !panelOverlays;
+    // 反映待ちの間は直前の判定を使い、メーターの配置を畳まない（#298）。
+    const settledReady = useSettledReady(preparation.observation.availability);
+    const roomyMeters = audioReady && settledReady && !preparationExpanded && !isLargeMeterOpen && !loudnessEnabled && !panelOverlays;
     const panelRef = useRef<HTMLElement>(null);
     const panelMotion = usePanelMotion(Boolean(vstPanel) && vstPanelOpen);
     useEffect(() => {
@@ -302,7 +308,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     className="home-main min-w-0 flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent"
                 >
                     {/* 左右に分けると片側だけが詰まって見えるので、どの幅でも上から1列に並べ、広い画面では中央に寄せる。 */}
-                    <div className="home-content mx-auto max-w-[1180px]" data-roomy={roomyMeters}>
+                    <div ref={homeContentRef} className="home-content mx-auto max-w-[1180px]" data-roomy={roomyMeters}>
                         {notices}
                         {/* 音量チェックと大型メーターは本番帯のメーター横に置き、ホーム上部に常設の行を作らない。
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。

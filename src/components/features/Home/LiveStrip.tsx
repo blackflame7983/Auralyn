@@ -48,17 +48,17 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
     const energy = running && !muted && reading.state === 'live' ? Math.round(Math.min(1, Math.max(0, (toDbfs(Math.max(...reading.levels)) + 48) / 42)) * 20) / 20 : 0;
     return <section aria-label={t('live.strip')} data-muted={muted} data-roomy={roomy} className="live-strip relative isolate mb-4 space-y-4 rounded-xl bg-card gaming:bg-card/70 px-5 py-5 min-[1100px]:px-6">
         {aurora && <div aria-hidden="true" className="live-aurora" data-lit={running} style={{ '--aurora-energy': energy } as CSSProperties} />}
-        {!running && onStartAudio ? <div className="flex flex-wrap items-center gap-3">
+        {!running && onStartAudio ? <div data-layout-motion className="flex flex-wrap items-center gap-3">
             <button type="button" onClick={onStartAudio} disabled={starting || controlsDisabled} className="rounded-md bg-primary px-4 py-2 text-ui-control font-semibold text-primary-foreground disabled:opacity-50">{t(starting ? 'home.starting' : 'home.startAudio')}</button>
             <p className="text-ui-support text-muted-foreground">{t('home.startSavedDevices')}</p>
             {meterAction}
-        </div> : <div className="live-meter-pair">
-        <div className="live-input-summary live-meter-row">
+        </div> : <div data-layout-motion className="live-meter-pair">
+        <div data-layout-motion className="live-input-summary live-meter-row">
             <span className="live-meter-label flex items-center gap-1.5 text-ui-support text-muted-foreground"><Icon aria-hidden="true" className="h-5 w-5 shrink-0" />{t('live.meterInput')}</span>
             <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues numbers={!simple} />
         </div>
         {/* 広い作業幅では入出力を隣接させる。同じ観測値を共有し、出力音量の操作はフッターへ集約する。 */}
-        <div className="live-output-summary live-meter-row">
+        <div data-layout-motion className="live-output-summary live-meter-row">
             <TooltipProvider delayDuration={300}><Tooltip><TooltipTrigger asChild><button type="button" onClick={event => onAdjustOutput?.(event.currentTarget)} aria-label={t('master.outputGain')} aria-haspopup="dialog" aria-expanded={outputGainOpen}
                 className="live-meter-label inline-flex items-center gap-1.5 rounded-md py-1 text-ui-support text-muted-foreground hover:bg-muted hover:text-foreground">
                 <MdVolumeUp aria-hidden="true" className="h-5 w-5" />{t('live.meterOutput')}
@@ -66,19 +66,19 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
             <MeterVisual reading={outputReading} label={t('meter.output')} orientation="horizontal" height={32} scale showValues numbers={!simple} />
         </div>
         {/* 操作は共通の列へ置き、入力・出力のバーが同じ幅になるようにする。 */}
-        <div className="live-meter-actions flex flex-wrap items-center justify-end gap-2">
+        <div data-layout-motion className="live-meter-actions flex flex-wrap items-center justify-end gap-2">
             <InputGainControl disabled={controlsDisabled} />
             {meterAction}
         </div>
         </div>
         }
-        {startError && <div role="alert" className="space-y-2 text-ui-control text-destructive-text">
+        {startError && <div role="alert" data-layout-motion className="space-y-2 text-ui-control text-destructive-text">
             <p>{t(startPartiallyApplied ? 'home.startIncomplete' : 'home.startFailed')}</p>
             <button type="button" onClick={onOpenStartErrorSettings ?? onOpenDevices} className="rounded-md border border-border px-3 py-1.5 text-foreground">{t('home.changeDevices')}</button>
             <details><summary className="cursor-pointer">{t('prep.details')}</summary><p className="break-words">{startError}</p></details>
         </div>}
-        <div data-live-routing className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            {input && onOpenDevices && <button type="button" onClick={onOpenDevices} aria-label={devices} title={devices}
+        <div data-live-routing data-layout-motion className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            {input && onOpenDevices && <button type="button" data-layout-motion onClick={onOpenDevices} aria-label={devices} title={devices}
                 className="flex min-w-0 max-w-[16rem] flex-[1_1_8rem] items-center gap-1.5 rounded-md text-ui-control hover:text-foreground">
                 <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="truncate font-semibold">{deviceDisplayName(input)}</span>
@@ -96,7 +96,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
                 </button>
             </span>
             {/* 切替欄を余った数pxまで縮めず、必要な幅がなければ次の行へ送る。未登録の間は控えめな登録入口を置く。 */}
-            {liveControls && <div className="live-controls min-w-0 flex-[0_1_auto] empty:hidden">{liveControls}</div>}
+            {liveControls && <div data-layout-motion className="live-controls min-w-0 flex-[0_1_auto] empty:hidden">{liveControls}</div>}
         </div>
     </section>;
 }
