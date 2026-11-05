@@ -1,0 +1,122 @@
+/* #301 の試作専用。値は index.css のトークン（色・時間・曲線）だけを使う。採用案を決めたら本体へ移し、このファイルは消す。 */
+
+/* メーター：計測値なので補間しない。正常域だけ緑→青緑の同系色を許す（DESIGN.md 5.1）。 */
+.proto-meter-fill { background: linear-gradient(90deg, hsl(var(--aurora-green)), hsl(var(--aurora-teal))); }
+
+/* セグメント：確定した選択の印だけを移す。 */
+.proto-segment-thumb {
+  position: absolute; top: 4px; bottom: 4px; left: 4px;
+  width: calc((100% - 8px) / var(--seg-count));
+  transform: translateX(calc(100% * var(--seg-index)));
+  border-radius: 6px;
+  background: hsl(var(--card));
+  box-shadow: inset 0 -3px 0 hsl(var(--brand));
+  transition: transform var(--motion-base) var(--ease-in-out);
+}
+
+.proto-switch-knob { transition: transform var(--motion-fast) var(--ease-out); }
+.proto-switch-knob[data-on="true"] { transform: translateX(20px); background: hsl(var(--primary-foreground)); }
+
+/* 開閉：行の高さを 0fr→1fr で動かし、下の要素を一度に跳ねさせない。 */
+.proto-collapse { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--motion-panel) var(--ease-drawer); }
+.proto-collapse[data-open="true"] { grid-template-rows: 1fr; }
+.proto-collapse > div { opacity: 0; transition: opacity var(--motion-base) var(--ease-out); }
+.proto-collapse[data-open="true"] > div { opacity: 1; }
+.proto-chevron { transition: transform var(--motion-base) var(--ease-out); }
+.proto-chevron[data-open="true"] { transform: rotate(180deg); }
+
+/* 手順の切替：進む向きから入る。戻るときは逆から。 */
+@keyframes proto-step-in { from { opacity: 0; transform: translate(var(--from-x, 0), var(--from-y, 0)); } }
+.proto-step { animation: proto-step-in 260ms var(--ease-out) both; }
+.proto-step[data-axis="x"][data-dir="1"] { --from-x: 28px; }
+.proto-step[data-axis="x"][data-dir="-1"] { --from-x: -28px; }
+.proto-step[data-axis="y"][data-dir="1"] { --from-y: 16px; }
+.proto-step[data-axis="y"][data-dir="-1"] { --from-y: -16px; }
+
+/* 選択カード：選択中はアクセント色の内側の線と淡い面、右上の印。線の太さを変えずレイアウトを保つ。 */
+.proto-choice {
+  border-radius: 12px; background: hsl(var(--card)); box-shadow: inset 0 0 0 1px hsl(var(--border));
+  transition: box-shadow var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
+}
+.proto-choice:hover { background: hsl(var(--accent)); }
+.proto-choice:active { transform: scale(0.98); }
+.proto-choice[data-selected="true"] { box-shadow: inset 0 0 0 2px hsl(var(--primary)); background: hsl(var(--primary) / 0.08); }
+.proto-choice-check { opacity: 0; transform: scale(0.6); transition: opacity var(--motion-fast) var(--ease-out), transform var(--motion-base) var(--ease-out); }
+.proto-choice[data-selected="true"] .proto-choice-check { opacity: 1; transform: none; }
+.proto-choice-icon { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out); }
+.proto-choice[data-selected="true"] .proto-choice-icon { background: hsl(var(--primary) / 0.16); color: hsl(var(--primary)); }
+.proto-choice-tile { min-height: 9rem; }
+
+@keyframes proto-rise { from { opacity: 0; transform: translateY(6px); } }
+.proto-done-node { animation: proto-rise 260ms var(--ease-out) both; }
+
+/* ダイアログ：暗幕は不透明度だけ、本体は 0.97→1。 */
+@keyframes proto-fade { from { opacity: 0; } }
+@keyframes proto-pop { from { opacity: 0; transform: scale(0.97); } }
+.proto-overlay { animation: proto-fade var(--motion-base) var(--ease-out) both; }
+.proto-dialog { animation: proto-pop var(--motion-base) var(--ease-out) both; }
+
+/* 案A の手順レール：現在の手順の印が縦に滑る（行 44px＋間隔 4px）。 */
+.proto-rail-thumb {
+  position: absolute; left: 0; right: 0; top: 0; height: 44px; border-radius: 8px;
+  background: hsl(var(--accent)); box-shadow: inset 3px 0 0 hsl(var(--primary));
+  transform: translateY(calc(var(--rail-index) * 48px));
+  transition: transform var(--motion-panel) var(--ease-in-out);
+}
+
+/* 主ボタン：押下で縮み、ホバーで矢印が進む。 */
+.proto-primary { transition: transform var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out); }
+.proto-primary:active:not(:disabled) { transform: scale(0.97); }
+.proto-primary-arrow { transition: transform var(--motion-base) var(--ease-out); }
+.proto-primary:hover .proto-primary-arrow, .proto-tile-cta:hover .proto-primary-arrow { transform: translateX(4px); }
+
+/* 未設定でも本番帯の奥に弱い光を残し、のっぺりさせない。動かさない。 */
+.live-aurora.proto-aurora-dawn { opacity: 0.35; transform: none; }
+
+/* 案B の流れ：未決定は破線、次に決める所は主色の線と静かな波紋、決定済みは塗り。 */
+.proto-flow-node { position: relative; box-shadow: inset 0 0 0 1px hsl(var(--border)); transition: background-color var(--motion-base) var(--ease-out), box-shadow var(--motion-base) var(--ease-out); }
+.proto-flow-node[data-state="empty"] { box-shadow: none; outline: 1px dashed hsl(var(--border)); outline-offset: -1px; color: hsl(var(--muted-foreground)); }
+.proto-flow-node[data-state="next"] { box-shadow: inset 0 0 0 2px hsl(var(--primary)); background: hsl(var(--primary) / 0.06); }
+.proto-flow-node[data-state="next"]::after {
+  content: ""; position: absolute; inset: -4px; border-radius: 16px; border: 2px solid hsl(var(--primary) / 0.5);
+  animation: proto-ripple 1.8s var(--ease-out) infinite; pointer-events: none;
+}
+@keyframes proto-ripple { from { opacity: 0.9; transform: scale(0.98); } to { opacity: 0; transform: scale(1.06); } }
+.proto-flow-node[data-state="set"] { background: hsl(var(--muted)); box-shadow: none; }
+.proto-flow-icon { background: hsl(var(--muted)); transition: background-color var(--motion-base) var(--ease-out), color var(--motion-base) var(--ease-out); }
+.proto-flow-node[data-state="set"] .proto-flow-icon, .proto-flow-node[data-state="next"] .proto-flow-icon { background: hsl(var(--primary) / 0.16); color: hsl(var(--primary)); }
+.proto-flow-link { position: relative; display: block; width: 28px; height: 2px; overflow: hidden; border-radius: 2px; background: hsl(var(--border)); transition: background-color var(--motion-panel) var(--ease-out); }
+.proto-flow-link[data-lit="true"] { background: hsl(var(--primary) / 0.7); }
+.proto-flow-link[data-lit="true"][data-flowing="true"]::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 12px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, hsl(var(--aurora-green)), transparent);
+  animation: proto-flow 1.4s linear infinite;
+}
+@keyframes proto-flow { from { transform: translateX(-12px); } to { transform: translateX(28px); } }
+
+.proto-progress-fill { transition: transform 300ms var(--ease-out); }
+
+/* 音調整：ON の行は左端の線。 */
+.proto-sound-row { transition: box-shadow var(--motion-fast) var(--ease-out); }
+.proto-sound-row[data-on="true"] { box-shadow: inset 2px 0 0 hsl(var(--primary)); }
+
+/* 案C のタイル。 */
+.proto-tile { border-radius: 16px; background: hsl(var(--card)); }
+.proto-tile-cta { transition: background-color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out); }
+.proto-tile-cta:hover { background: hsl(var(--accent)); }
+.proto-tile-cta:active { transform: scale(0.99); }
+.proto-tile-icon { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); transition: background-color var(--motion-base) var(--ease-out), color var(--motion-base) var(--ease-out); }
+.proto-feature-tile { box-shadow: inset 0 0 0 1px transparent; transition: box-shadow var(--motion-base) var(--ease-out); }
+.proto-feature-tile[data-on="true"] { box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.45); }
+.proto-feature-tile[data-on="true"] .proto-tile-icon { background: hsl(var(--primary) / 0.16); color: hsl(var(--primary)); }
+@keyframes proto-takeover { from { opacity: 0; transform: translateY(12px); } }
+.proto-fullsetup { animation: proto-takeover var(--motion-panel) var(--ease-out) both; }
+
+/* 動きを減らす：移動・拡大をやめ、不透明度と色だけ残す。繰り返す動きは止める。 */
+/* OS の「動きを減らす」は PrototypeLab が初期値として data-proto-reduced に写す。 */
+[data-proto-reduced] .proto-segment-thumb { transition-property: none; }
+[data-proto-reduced] .proto-step, [data-proto-reduced] .proto-done-node, [data-proto-reduced] .proto-dialog, [data-proto-reduced] .proto-fullsetup { animation-name: proto-fade; }
+[data-proto-reduced] .proto-flow-node::after, [data-proto-reduced] .proto-flow-link::after { animation: none; display: none; }
+[data-proto-reduced] .proto-choice:active, [data-proto-reduced] .proto-primary:active, [data-proto-reduced] .proto-tile-cta:active { transform: none; }
+[data-proto-reduced] .proto-primary-arrow, [data-proto-reduced] .proto-choice-check, [data-proto-reduced] .proto-rail-thumb, [data-proto-reduced] .proto-switch-knob { transition-property: opacity, background-color, color; }
+[data-proto-reduced] .proto-collapse { transition: none; }
