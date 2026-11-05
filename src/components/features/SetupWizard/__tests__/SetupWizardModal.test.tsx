@@ -813,3 +813,28 @@ describe('PC audio purpose', () => {
         expect(onApplyConfig).not.toHaveBeenCalled(); expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');
     });
 });
+
+describe('セットアップの見た目と動き（#294）', () => {
+    it('手順レールはホームの流れと同じ名前で現在の手順を示し、進む・戻るの向きを中身へ渡す', async () => {
+        await openWizard();
+        const rail = screen.getByRole('navigation', { name: 'セットアップの進捗' });
+        expect([...rail.querySelectorAll('li')].map(item => item.textContent)).toEqual(['1送り先', '2マイク', '3送り方', '4確認']);
+        expect(within(rail).getByText('送り先').closest('li')).toHaveAttribute('aria-current', 'step');
+        // 高さは手順によらず固定し、中身だけをスクロールする。
+        expect(document.querySelector('.setup-surface')).not.toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        await screen.findByRole('combobox', { name: '入力デバイス' });
+        expect(within(rail).getByText('マイク').closest('li')).toHaveAttribute('aria-current', 'step');
+        expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '1');
+        fireEvent.click(within(screen.getByTestId('setup-actions')).getByRole('button', { name: '戻る' }));
+        expect(within(rail).getByText('送り先').closest('li')).toHaveAttribute('aria-current', 'step');
+        expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '-1');
+    });
+
+    it('選んだカードは印を付けて示し、繰り返す点滅を使わない', async () => {
+        await openWizard();
+        const obs = screen.getByRole('button', { name: 'OBSで配信' });
+        expect(obs).toHaveAttribute('data-selected', String(obs.getAttribute('aria-pressed') === 'true'));
+        expect(document.querySelector('[role="dialog"] .animate-pulse')).toBeNull();
+    });
+});
