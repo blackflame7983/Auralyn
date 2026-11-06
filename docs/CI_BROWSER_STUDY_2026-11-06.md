@@ -85,7 +85,17 @@ WDIO serviceのHost起動・終了やTauri API操作の支援は、今後native�
 - 比較用TypeScript、Browser Mode 6件、実HostのCDP/WDIO: 成功。試作の保存先を証拠領域へ移した後も再確認した。
 - 比較用Cargo.lock: cargo-audit 0.22.2で683依存を監査し、脆弱性の指摘なし・警告6件、終了0。
 
-GitHub上の新しいjob構成、branch protectionでの必須判定、実runnerでの時間と長期的なflaky率は公開後の確認が必要。
+GitHub上の初回実行は[run 42187782581](https://github.com/blackflame7983/Auralyn/actions/runs/42187782581)。
+`checks` と別workflowのRustSec監査は成功したが、`browser` は184成功・3skip・1失敗（約300秒）となった。
+最終 `frontend` も `checks=success, browser=failure` を受けて失敗し、失敗証拠のartifact保存も確認できた。
+成功していない実行のため、この時間をCI短縮の合格結果とは扱わない。
+
+失敗は `settings-discovery.spec.ts` のマイク音量tooltip待ち。
+traceでは、初期化画面の背後にあるホームへhoverを始め、初期化画面に遮られて再試行する間にボタンの位置が変わっていた。
+テストに初期化完了と既存の `settleLayoutMotion` の待機を追加した。ツールチップとモード登録の検査は維持し、timeoutやretryは増やしていない。
+補助比較ではChromiumのCPUを8倍遅くし、修正前・修正後を各5回実行して全10件成功した。
+CIの失敗そのものは手元では再現していないため、待機の補正だけでCIの安定性を確定したとは扱わない。
+補正後のGitHub実行、branch protectionでの必須判定、成功時の実runner時間と長期的なflaky率は確認が必要。
 今回の試験は実機音声・聴感・OBS接続・長時間運転の受入を表さない。
 実WebView2は比較用Hostの表示と上記の操作だけを確認した。
 製品UIのコード・文言・メーターの値や寸法は変更していない。
