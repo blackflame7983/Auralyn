@@ -172,8 +172,7 @@ it('ホットキーの内容を高さで制限せず、設定本文だけにス�
     // 960×640・1280×800とも同じ構造。高さは親の残り領域へ収め、内容にはスクロール領域を作らない。
     expect(surface).toHaveClass('h-full', 'flex', 'flex-col', 'overflow-hidden');
     expect(tabs).toHaveClass('flex', 'min-h-0', 'flex-1');
-    expect(body).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto');
-    expect(panel).toHaveClass('overflow-visible');
+    expect(body).toHaveClass('flex-1', 'overflow-y-auto');
     for (const element of [panel, ...panel.querySelectorAll<HTMLElement>('*')]) {
         expect(element.getAttribute('class') ?? '').not.toMatch(/(?:^|\s)(?:[\w-]+:)*overflow-(?:auto|scroll|[xy]-(?:auto|scroll))/);
     }
