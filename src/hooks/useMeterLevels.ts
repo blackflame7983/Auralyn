@@ -1,6 +1,6 @@
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import type { MessageKey } from '@/i18n/messages';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { listen } from '@tauri-apps/api/event';
 
 export type Pair = [number, number];
@@ -89,5 +89,5 @@ export function useMeterLevels({ running, type = 'output', enabled = true }: { r
         addAppVisibilityListener(update);
         return () => { active = false; clearInterval(timer); removeAppVisibilityListener(update); subscriptions.forEach(p => { void p.then(unlisten => unlisten()).catch(() => {}); }); };
     }, [running, type, enabled, publish]);
-    return { ...(running ? reading : { ...empty('stopped', clipped.current), clipSecondsAgo: reading.clipSecondsAgo }), resetClip };
+    return useMemo(() => ({ ...(running ? reading : { ...empty('stopped', reading.clipped), clipSecondsAgo: reading.clipSecondsAgo }), resetClip }), [running, reading, resetClip]);
 }

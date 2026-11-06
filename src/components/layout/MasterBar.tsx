@@ -40,8 +40,6 @@ interface MasterBarProps {
 export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, outputGainAnchor, onOutputGainClose, onOpenAudioTuning }) => {
     const t = useMessages();
     const [simple] = useBeginnerMode();
-    const meter = useSharedMeter(isRunning, 'output');
-    const isClipping = meter.clipped;
     const detailsButtonRef = useRef<HTMLButtonElement>(null);
     const stats = useRuntimeStats();
     const [hasRecentGlitch, setHasRecentGlitch] = useState(false);
@@ -247,18 +245,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                     </div>}
                 </Popover.Content></Popover.Portal>
             </Popover.Root>
-            {/* Label */}
-            <div className="hidden sm:flex shrink-0 flex-col items-end justify-center min-w-[60px]">
-                <div className="flex items-center gap-2 text-muted-foreground font-bold font-mono tracking-widest text-xs">
-                    <MdGraphicEq className={cn("w-3 h-3", isClipping ? 'text-destructive-text animate-pulse' : 'text-success')} />
-                    {t('meter.output')}
-                </div>
-            </div>
-
-            {/* Meters */}
-            <div className="flex shrink-0 gap-1 h-8 items-end pb-1">
-                <MeterVisual reading={meter} label={t('meter.output')} width={12} height={28} showValues numbers={!simple} />
-            </div>
+            <MasterOutputMeter running={isRunning} numbers={!simple} />
 
             {/* Master Output Volume */}
             <div className="flex shrink-0 items-center gap-2 border-l border-border pl-3 ml-1">
@@ -343,3 +330,25 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
         </div>
     );
 };
+
+// クリップの印もメーターと同じ葉で描き、フッターの操作へ更新を伝えない。
+function MasterOutputMeter({ running, numbers }: { running: boolean; numbers: boolean }) {
+    const t = useMessages();
+    const meter = useSharedMeter(running, 'output');
+    const isClipping = meter.clipped;
+    return <>
+            {/* Label */}
+            <div className="hidden sm:flex shrink-0 flex-col items-end justify-center min-w-[60px]">
+                <div className="flex items-center gap-2 text-muted-foreground font-bold font-mono tracking-widest text-xs">
+                    <MdGraphicEq className={cn("w-3 h-3", isClipping ? 'text-destructive-text animate-pulse' : 'text-success')} />
+                    {t('meter.output')}
+                </div>
+            </div>
+
+            {/* Meters */}
+            <div className="flex shrink-0 gap-1 h-8 items-end pb-1">
+                <MeterVisual reading={meter} label={t('meter.output')} width={12} height={28} showValues numbers={numbers} />
+            </div>
+
+    </>;
+}
