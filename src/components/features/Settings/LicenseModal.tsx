@@ -187,7 +187,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                                         aria-label={t('licenses.search')}
                                         value={searchTerm}
                                         onChange={e => setSearchTerm(e.target.value)}
-                                        className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                        className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-hidden focus:ring-1 focus:ring-primary"
                                     />
                                 </div>
                                 <div className="flex-1 overflow-y-auto">

@@ -37,6 +37,7 @@ it('全種類のメニュー項目で、矢印キー移動に内側線の目印�
         const item = await screen.findByText(name);
         await waitFor(() => expect(item).toHaveFocus());
         expect(item).toHaveAttribute('data-highlighted');
+        expect(item).toHaveClass('focus:outline-hidden', 'forced-colors:focus:-outline-offset-2');
         expect(item).toHaveClass('data-[highlighted]:shadow-[inset_2px_0_0_hsl(var(--ring))]');
         if (previous) expect(previous).not.toHaveAttribute('data-highlighted');
         previous = item;
@@ -47,5 +48,6 @@ it('全種類のメニュー項目で、矢印キー移動に内側線の目印�
     const child = await screen.findByText('子項目');
     await waitFor(() => expect(child).toHaveFocus());
     expect(child).toHaveAttribute('data-highlighted');
+    expect(child).toHaveClass('focus:outline-hidden', 'forced-colors:focus:-outline-offset-2');
     expect(child).toHaveClass('data-[highlighted]:shadow-[inset_2px_0_0_hsl(var(--ring))]');
 });
