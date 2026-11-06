@@ -97,7 +97,7 @@ it('音声処理中は声の段にその場の操作を出し、設定状態の�
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
     const rows = screen.getAllByRole('listitem');
     expect(rows[0]).toHaveTextContent('noise-switch'); expect(rows[0]).toHaveTextContent('noise-quick');
-    expect(rows[0]).not.toHaveTextContent('設定 ON');
+    expect(within(rows[0]).queryByText(message('ja', 'flow.enabled'), { exact: true })).toBeNull();
     expect(rows[1]).toHaveTextContent('builtin-switch'); expect(rows[1]).toHaveTextContent('builtin-quick');
     expect(screen.queryByText(message('ja', 'home.soundAfterSetup'))).not.toBeInTheDocument();
 });
@@ -107,7 +107,7 @@ it('声の処理がOFFでも残響が有効なら、残響のみONと明示す�
     const builtin = screen.getAllByRole('listitem')[1];
     expect(builtin).toHaveTextContent('builtin-switch');
     expect(builtin).toHaveTextContent('残響のみ ON');
-    expect(screen.getByText('声の処理: OFF ／ 残響: 設定 ON')).toHaveClass('sr-only');
+    expect(screen.getByText('声の処理: OFF ／ 残響: ON')).toHaveClass('sr-only');
 });
 
 it('音楽鑑賞では声向けの操作を出さず、状態の表示にとどめる', () => {
@@ -120,7 +120,7 @@ it('音楽鑑賞では声向けの操作を出さず、状態の表示にとど�
     expect(rows).toHaveLength(1);
     expect(screen.getByText(message('ja', 'flow.voiceStillOn'))).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'chain.voiceTools') }));
-    expect(screen.getByRole('dialog')).toHaveTextContent('声の処理: OFF ／ 残響: 設定 ON');
+    expect(screen.getByRole('dialog')).toHaveTextContent('声の処理: OFF ／ 残響: ON');
     for (const text of ['noise-switch', 'builtin-switch', 'builtin-quick']) expect(rows[0]).not.toHaveTextContent(text);
     expect(rows[0]).toHaveTextContent('VST');
     expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
