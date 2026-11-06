@@ -8,7 +8,7 @@ import { receiverDeviceNotice, deviceDisplayName } from '../../../lib/audioRouti
 import { Modal } from '../../ui/modal';
 import { AudioFlow } from '../../ui/AudioFlow';
 import { InfoPopover } from '../../ui/InfoPopover';
-import React, { useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MdCheck } from 'react-icons/md';
 import { destinationChoices } from '@/lib/destinationChoices';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
@@ -26,8 +26,9 @@ const STEPS = ['usage_selection', 'input_selection', 'output_selection', 'confir
 export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const t = useMessages();
     const { locale } = useLocale();
-    const railRef = useRef<HTMLOListElement>(null);
-    const railThumbRef = useRef<HTMLSpanElement>(null);
+    // Modal は Portal の2回目の描画で中身を出すため、ref ではなく state で受け、レールが現れた時に測り直す。
+    const [rail, railRef] = useState<HTMLOListElement | null>(null);
+    const [railThumb, railThumbRef] = useState<HTMLSpanElement | null>(null);
     const { isOpen, onClose, onSkip, onOpenSettings, onOpenTroubleshoot, onOpenVoiceCheck } = props;
     const { audioStartError, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
@@ -40,8 +41,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const stepIndex = state === 'configuring' || state === 'complete' ? STEPS.length : Math.max(0, (STEPS as readonly WizardState[]).indexOf(state));
     // 折り返し・表示倍率・言語変更で行高が変わっても、印を実際の行に合わせる。
     useLayoutEffect(() => {
-        const rail = railRef.current;
-        const thumb = railThumbRef.current;
+        const thumb = railThumb;
         const current = rail?.children.item(stepIndex) as HTMLElement | null;
         if (!rail || !thumb || !current) return;
         const measure = () => {
@@ -54,7 +54,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
         observer.observe(rail);
         Array.from(rail.children).forEach(row => observer.observe(row));
         return () => observer.disconnect();
-    }, [isOpen, stepIndex, config.goal, locale]);
+    }, [rail, railThumb, stepIndex, config.goal, locale]);
     // 入ってくる向きは手順が変わった時だけ決める。動きの途中の再描画（機器一覧の読込など）で向きを反転させない。
     const step = useRef({ index: stepIndex, direction: 1 });
     if (step.current.index !== stepIndex) step.current = { index: stepIndex, direction: stepIndex > step.current.index ? 1 : -1 };

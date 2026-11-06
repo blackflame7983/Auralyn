@@ -855,6 +855,9 @@ describe('セットアップの見た目と動き（#294）', () => {
         height.mockImplementation(function (this: HTMLElement) { return this.tagName === 'LI' ? rowHeight : 0; });
         try {
             await openWizard();
+            // Portal の中身が後から現れても、手順を変える前の初回表示で印を測る。
+            const firstThumb = screen.getByRole('navigation', { name: 'セットアップの進捗' }).querySelector('.setup-rail-thumb');
+            expect(firstThumb).toHaveStyle({ transform: 'translateY(72px)', height: '64px' });
             fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
             const rail = screen.getByRole('navigation', { name: 'セットアップの進捗' });
             const rows = within(rail).getAllByRole('listitem');
