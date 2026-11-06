@@ -5,9 +5,11 @@ import { MixingError } from './mixingUi';
 import { audioApi } from '@/api/audio';
 import { type InputSourceRequest, type ProcessInputCandidate } from '@/lib/inputSource';
 
-export function ProcessInputPanel({ value, onChange, disabled, isAsio, status }: {
+export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, onChooseConnection }: {
     value: InputSourceRequest; onChange: (value: InputSourceRequest) => void; disabled: boolean; isAsio: boolean;
     status?: { failed: boolean; waitingForAudio: boolean };
+    /** ASIO で「アプリの音声」を選べない理由から、接続方式の設定へ移す（#290）。 */
+    onChooseConnection?: () => void;
 }) {
     const t = useMessages();
     const [apps, setApps] = useState<ProcessInputCandidate[]>([]);
@@ -48,7 +50,7 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status }:
     return <fieldset disabled={disabled} className="space-y-3 rounded-xl border border-border p-3">
         <legend className="px-1 text-ui-heading font-semibold">{t('processInput.title')}</legend>
         <label className="block text-ui-control">{t('processInput.source')}
-            <select className={field} value={process ? 'process' : 'device'} onChange={e => {
+            <select className={field} aria-describedby={isAsio && !process ? 'process-input-asio-reason' : undefined} value={process ? 'process' : 'device'} onChange={e => {
                 if (e.target.value === 'device') onChange({ source: { kind: 'device', config: { purpose: value.source.config.purpose } } });
                 else { onChange({ source: { kind: 'process_loopback', config: { appKey: '', appName: '', rawEndpointId: '', purpose: value.source.config.purpose } } }); void refresh(); }
             }}>
@@ -56,10 +58,18 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status }:
                 <option value="process" disabled={isAsio}>{t('processInput.process')}</option>
             </select>
         </label>
+        {/* 選べない項目だけを残すと、何を変えれば選べるか分からない。理由と解除の設定への入口を並べる（#290）。 */}
+        {isAsio && !process && <div className="flex flex-wrap items-center gap-2 text-ui-support text-muted-foreground">
+            <p id="process-input-asio-reason">{t('processInput.asioUnavailable')}</p>
+            {onChooseConnection && <Button variant="outline" size="sm" type="button" onClick={onChooseConnection}>{t('processInput.chooseConnection')}</Button>}
+        </div>}
         {process && <>
             {status && <p role="status" className="text-sm">{t(status.failed ? 'processInput.failed' : status.waitingForAudio ? 'processInput.waiting' : 'processInput.capturing')}</p>}
             <p className="text-ui-support text-muted-foreground">{t('processInput.routeHelp')}</p>
-            {isAsio && <p role="alert" className="text-sm text-destructive">{t('processInput.asio')}</p>}
+            {isAsio && <div className="flex flex-wrap items-center gap-2">
+                <p role="alert" className="text-sm text-destructive">{t('processInput.asio')}</p>
+                {onChooseConnection && <Button variant="outline" size="sm" type="button" onClick={onChooseConnection}>{t('processInput.chooseConnection')}</Button>}
+            </div>}
             <label className="block text-ui-control">{t('processInput.app')}
                 <select className={field} value={selected?.id ?? ''} onChange={e => selectApp(e.target.value)}>
                     <option value="">{processConfig?.appName ? t('processInput.reselect', { name: processConfig.appName }) : t('processInput.choose')}</option>

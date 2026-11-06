@@ -44,3 +44,15 @@ it('再生先が変わっても同じアプリと新しい用途を保持し、�
     fireEvent.change(screen.getByRole('combobox', { name: '原音の出力先' }), { target: { value: 'moved' } });
     expect(screen.getByTestId('source').textContent).toContain('"rawEndpointId":"moved"');
 });
+
+it('ASIO ではアプリの音声を選べない理由を入力元に結び付け、接続方式の設定へ移せる（#290）', () => {
+    const choose = vi.fn();
+    render(<ProcessInputPanel value={{ source: deviceInput() }} onChange={vi.fn()} disabled={false} isAsio onChooseConnection={choose} />);
+    expect(screen.getByRole('option', { name: 'アプリの音声（WASAPI）' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: '入力元' })).toHaveAccessibleDescription('接続方式が ASIO のため、アプリの音声は選べません。接続方式を WASAPI にすると選べます。');
+    fireEvent.click(screen.getByRole('button', { name: '接続方式を変える' }));
+    expect(choose).toHaveBeenCalledOnce();
+    cleanup();
+    render(<ProcessInputPanel value={{ source: deviceInput() }} onChange={vi.fn()} disabled={false} isAsio={false} onChooseConnection={choose} />);
+    expect(screen.queryByText(/ASIO のため/)).not.toBeInTheDocument();
+});

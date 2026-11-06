@@ -38,7 +38,7 @@ import { audioApi } from '@/api/audio';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { segmentButtonClass } from '@/components/ui/segment';
 import { audioDeviceKey, useAudioDeviceSelection } from './useAudioDeviceSelection';
-import { ConnectionApplyError, useAudioConnectionController } from './useAudioConnectionController';
+import { ConnectionApplyError, ConnectionStartError, useAudioConnectionController } from './useAudioConnectionController';
 import { formatSampleRate, sampleRateOptions } from './sampleRateOptions';
 import { useRuntimeStats } from '@/hooks/useRuntimeStats';
 
@@ -195,6 +195,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   // パネルはホームが歌・雑談の表示のときだけ出る。音楽鑑賞では押しても何も出ないため、理由を示して止める。
   const [displayPurpose] = useDisplayPurpose();
   const streamMixAvailable = displayPurpose === 'voice';
+  const hostSelect = useRef<HTMLSelectElement>(null);
+  // 「アプリの音声」を選べない理由から、畳まれた音質調整を開いて接続方式の選択へ移す（#290）。
+  const chooseConnection = () => {
+    setTuningOpen(true);
+    requestAnimationFrame(() => {
+      hostSelect.current?.scrollIntoView?.({ block: 'center' });
+      hostSelect.current?.focus({ preventScroll: true });
+    });
+  };
   const [tuningOpen, setTuningOpen] = useState(initialSection === 'audioTuning' || !getBeginnerMode()
     || localStorage.getItem('vst_host_settings_advanced') === 'true');
 
@@ -306,6 +315,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const selectedBufferMs = Number.isFinite(selectedBufferSize) && selectedBufferSize > 0 && Number.isFinite(selectedSampleRate) && selectedSampleRate > 0
     ? selectedBufferSize / selectedSampleRate * 1000 : null;
 
+  // 開始できなかった理由に、直前の接続へ戻したかと次にやることを添える（#289）。
+  const startFailureNotice = (err: unknown, fallback: 'settings.AudioSettingsModal.017' | 'settings.AudioSettingsModal.020') =>
+    err instanceof ConnectionApplyError ? notice(err.stage === 'channels' ? 'settings.connectionChannelsIncomplete' : 'settings.connectionSaveIncomplete', { arg0: err.message })
+      : err instanceof ConnectionStartError && err.rollback !== 'none' ? notice(err.rollback === 'restored' ? 'settings.startRolledBack' : err.rollback === 'kept' ? 'settings.startKept' : 'settings.startRollbackFailed', { arg0: err.message })
+      : notice(fallback, { arg0: err instanceof ConnectionStartError ? err.raw : String(err) });
+
   const handleSave = async () => {
     if (!canSaveConnection || isApplying) return;
     if (retryRestart.current) { await performRestart(); return; }
@@ -318,7 +333,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     } catch (err) {
       if (err instanceof ConnectionApplyError) setConnectionRetry(true);
       console.error('Failed to start audio:', err);
-      setError(err instanceof ConnectionApplyError ? notice(err.stage === 'channels' ? 'settings.connectionChannelsIncomplete' : 'settings.connectionSaveIncomplete', { arg0: err.message }) : notice('settings.AudioSettingsModal.017', { arg0: String(err) }));
+      setError(startFailureNotice(err, 'settings.AudioSettingsModal.017'));
     } finally {
       setLoading(false);
     }
@@ -345,7 +360,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       setConnectionRetry(true);
       setActiveTab('audio');
       console.error('Failed to restart engine:', err);
-      setError(err instanceof ConnectionApplyError ? notice(err.stage === 'channels' ? 'settings.connectionChannelsIncomplete' : 'settings.connectionSaveIncomplete', { arg0: err.message }) : notice('settings.AudioSettingsModal.020', { arg0: String(err) }));
+      // 再起動はプラグインを失うため、直前の接続へ戻せたときも通常の再起動と同じく復元する（#289）。
+      if (err instanceof ConnectionStartError && err.rollback === 'restored' && onEngineRestarted && !reviewRequired) {
+        try { await onEngineRestarted(); } catch (restoreError) { console.error('Failed to restore plugins after rollback:', restoreError); }
+      }
+      setError(startFailureNotice(err, 'settings.AudioSettingsModal.020'));
     } finally {
       setLoading(false);
     }
@@ -499,7 +518,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   editConnection('source');
                   if (processInput && next.source.kind === 'device') setNeedsDeviceChoice(true);
                   setInputSource(next);
-                }} disabled={isApplying} isAsio={isAsio} status={engineStats?.processInput} /></div>
+                }} disabled={isApplying} isAsio={isAsio} status={engineStats?.processInput} onChooseConnection={chooseConnection} /></div>
                 {/* Input Device */}
                 {!processInput && <div className="space-y-2">
                   <label className="font-medium text-muted-foreground text-ui-control">
@@ -603,6 +622,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       {t('settings.AudioSettingsModal.034')}</button>
                   </div>
                   <select
+                    ref={hostSelect}
                     aria-label={t('settings.AudioSettingsModal.035')}
                     value={selectedHost}
                     onChange={(e) => { editConnection('host'); setSelectedHost(e.target.value); }}

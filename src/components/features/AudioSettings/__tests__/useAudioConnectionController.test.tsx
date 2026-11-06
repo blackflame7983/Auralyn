@@ -2,7 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi, type AudioDevice } from '@/api/audio';
-import { ConnectionApplyError, useAudioConnectionController } from '../useAudioConnectionController';
+import { ConnectionApplyError, ConnectionStartError, useAudioConnectionController } from '../useAudioConnectionController';
 import { useAudioDeviceSelection } from '../useAudioDeviceSelection';
 import type { AudioConfig } from '@/api/audio';
 
@@ -219,4 +219,80 @@ it('停止通知後に遅れて稼働応答が届いても監視を再開しな�
     await act(async () => { finish({ running: true, streamFailed: false }); });
     expect(view.result.current.monitorInput).toBe(false);
     expect(audioApi.getAudioState).toHaveBeenCalledTimes(1);
+});
+
+// 新しい接続で開始できないとき、止まったままにせず直前の接続で開始し直す（#289）。
+const previousConfig = { host: 'WASAPI', input: 'mic', output: 'speaker', input_id: 'wasapi:mic', output_id: 'wasapi:speaker', sample_rate: 48000, buffer_size: 512,
+    routing: { inputChannels: [0, 1] as [number, number], outputRouting: { mode: 'independent' as const, channels: [0, 1] as [number, number] } } };
+// 再起動は旧エンジンを止めてから開始する。失敗した開始の後は、止まった状態を返す。
+const failAfterStopping = (fn: typeof audioApi.start, message: string, config: object = previousConfig) => {
+    let stopped = false;
+    vi.mocked(audioApi.getAudioState).mockImplementation(async () => stopped ? { is_running: false, config: null } : { is_running: true, config: config as never });
+    vi.mocked(fn).mockImplementationOnce(async () => { stopped = true; throw new Error(message); });
+};
+
+it.each([false, true])('開始に失敗したら直前に動いていた接続へ戻し、保存しない（再起動=%s）', async restart => {
+    failAfterStopping(restart ? audioApi.restart : audioApi.start, 'sample clock or rate cannot be determined');
+    const save = vi.fn();
+    const view = renderHook(() => useAudioConnectionController(options(save)));
+    let error: unknown;
+    await act(async () => { error = await view.result.current.apply(restart).catch(e => e); });
+    expect(error).toBeInstanceOf(ConnectionStartError);
+    expect((error as ConnectionStartError).rollback).toBe('restored');
+    expect((error as Error).message).toContain('sample clock');
+    expect(audioApi.start).toHaveBeenLastCalledWith('WASAPI', 'mic', 'speaker', 512, 48000, 'wasapi:mic', 'wasapi:speaker', undefined, previousConfig.routing);
+    expect(save).not.toHaveBeenCalled();
+});
+
+it('直前の接続にも戻せなければ、その結果を返す', async () => {
+    failAfterStopping(audioApi.restart, 'new failed');
+    vi.mocked(audioApi.start).mockRejectedValueOnce(new Error('previous failed'));
+    const view = renderHook(() => useAudioConnectionController(options(vi.fn())));
+    let error: unknown;
+    await act(async () => { error = await view.result.current.apply(true).catch(e => e); });
+    expect((error as ConnectionStartError).rollback).toBe('failed');
+});
+
+it('旧接続を止める前に失敗し、まだ動いていれば、開始し直さずそのまま残す', async () => {
+    vi.mocked(audioApi.getAudioState).mockResolvedValue({ is_running: true, config: previousConfig });
+    vi.mocked(audioApi.restart).mockRejectedValueOnce(new Error('microphone access denied'));
+    const view = renderHook(() => useAudioConnectionController(options(vi.fn())));
+    let error: unknown;
+    await act(async () => { error = await view.result.current.apply(true).catch(e => e); });
+    expect((error as ConnectionStartError).rollback).toBe('kept');
+    expect(audioApi.start).not.toHaveBeenCalled();
+});
+
+it('機器入力の用途も直前のまま戻す', async () => {
+    const source = { kind: 'device' as const, config: { purpose: 'music' as const } };
+    failAfterStopping(audioApi.restart, 'failed', { ...previousConfig, input_source: source });
+    const view = renderHook(() => useAudioConnectionController(options(vi.fn())));
+    let error: unknown;
+    await act(async () => { error = await view.result.current.apply(true).catch(e => e); });
+    expect((error as ConnectionStartError).rollback).toBe('restored');
+    expect(audioApi.start).toHaveBeenLastCalledWith('WASAPI', 'mic', 'speaker', 512, 48000, 'wasapi:mic', 'wasapi:speaker', undefined, previousConfig.routing, { source });
+});
+
+it.each([
+    ['止まっていた', { is_running: false, config: previousConfig }, { running: true, streamFailed: false }],
+    ['ストリームが失敗していた', { is_running: true, config: previousConfig }, { running: true, streamFailed: true }],
+])('開始前に音が%s場合は、戻す開始をしない', async (_label, state, stream) => {
+    vi.mocked(audioApi.getAudioState).mockResolvedValue(state);
+    vi.mocked(audioApi.getAudioStreamState).mockResolvedValue(stream);
+    vi.mocked(audioApi.start).mockRejectedValueOnce(new Error('failed'));
+    const view = renderHook(() => useAudioConnectionController(options(vi.fn())));
+    let error: unknown;
+    await act(async () => { error = await view.result.current.apply(false).catch(e => e); });
+    expect((error as ConnectionStartError).rollback).toBe('none');
+    expect(audioApi.start).toHaveBeenCalledOnce();
+});
+
+it('アプリ入力だった直前の接続は、候補を選び直せないため戻さない', async () => {
+    const source = { kind: 'process_loopback' as const, config: { appKey: 'a'.repeat(64), appName: 'player.exe', rawEndpointId: 'raw', purpose: 'music' as const } };
+    failAfterStopping(audioApi.restart, 'failed', { ...previousConfig, input: null, input_id: undefined, input_source: source });
+    const view = renderHook(() => useAudioConnectionController(options(vi.fn())));
+    let error: unknown;
+    await act(async () => { error = await view.result.current.apply(true).catch(e => e); });
+    expect((error as ConnectionStartError).rollback).toBe('failed');
+    expect(audioApi.start).not.toHaveBeenCalled();
 });

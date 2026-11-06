@@ -18,7 +18,8 @@ import { ConnectionCheck } from './ConnectionCheck';
 import { MicrophonePermissionGuide } from '../AudioSettings/MicrophonePermissionGuide';
 
 import { useSetupWizard } from './useSetupWizard';
-import { isVirtualOutput, type SetupWizardModalProps, type WizardState } from './wizardModel';
+import { asioChannelPairs, effectiveAsioChannels, isAsioHost, isVirtualOutput, type SetupWizardModalProps, type WizardState } from './wizardModel';
+
 
 const STEPS = ['usage_selection', 'input_selection', 'output_selection', 'confirmation'] as const satisfies readonly WizardState[];
 
@@ -29,7 +30,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, savedGoal, availableInputs, availableOutputs,
         isLoadingDevices, isTestingSound, runningInput, loadDevices, handleRescanVirtualDevices,
-        selectGoal, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply } = useSetupWizard(props);
+        asioAvailable, selectHost, selectAsioChannels, selectGoal, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply } = useSetupWizard(props);
     const bodyRef = useRef<HTMLDivElement>(null);
     const surfaceRef = useRef<HTMLDivElement>(null);
     // 手順レールと切替の向き（DESIGN.md 5.7）。設定中・完了は4手順を終えた位置に置く。
@@ -160,6 +161,16 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             </div>
 
                             <div className="max-w-md space-y-4">
+                                {/* ASIO 機器があるときだけ接続方式を選ばせる。PCの再生音は WASAPI の仮想ケーブルから受ける（#291）。 */}
+                                {/* ASIO を選んだ後に機器が見えなくなっても、WASAPI へ戻れるように残す。 */}
+                                {(asioAvailable || isAsioHost(config.host)) && config.goal !== 'music' && <fieldset className="space-y-2">
+                                    <legend className="text-sm font-medium">{t('wizard.host')}</legend>
+                                    <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                                        <label className="flex items-center gap-2"><input type="radio" name="wizard-host" checked={!isAsioHost(config.host)} onChange={() => selectHost('WASAPI')} />{t('wizard.hostWasapi')}</label>
+                                        <label className="flex items-center gap-2"><input type="radio" name="wizard-host" checked={isAsioHost(config.host)} onChange={() => selectHost('ASIO')} />{t('wizard.hostAsio')}</label>
+                                    </div>
+                                    {isAsioHost(config.host) && <p className="text-xs text-muted-foreground">{t('wizard.hostAsioHint')}</p>}
+                                </fieldset>}
                                 {(config.goal === 'listening' || config.goal === 'music') && <fieldset className="space-y-2">
                                     <legend className="text-sm font-medium">{t('wizard.source')}</legend>
                                     <div className="flex gap-4 text-sm">
@@ -182,7 +193,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                                 value={config.input?.name || ''}
                                                 onChange={(e) => {
                                                     const dev = availableInputs.find(d => d.name === e.target.value);
-                                                    setConfig(prev => ({ ...prev, input: dev || null }));
+                                                    // 機器を替えたら、前の機器で選んだチャンネルを持ち越さない。
+                                                    setConfig(prev => ({ ...prev, input: dev || null, asioChannels: dev?.name === prev.input?.name ? prev.asioChannels : undefined }));
                                                 }}
                                             >
                                                 <option value="">{t('guide.copy.190')}</option>
@@ -221,12 +233,29 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             <div className="space-y-2">
                                 <h2 className="setup-heading">{t('wizard.destination')}</h2>
                                 <p className="text-sm text-muted-foreground">
-                                    {config.goal === 'music' ? t('wizard.musicRoute') : config.goal === 'obs' ? t('guide.copy.194') : t('guide.copy.195')}
+                                    {isAsioHost(config.host) ? t('wizard.asioOutput', { name: config.output ? deviceDisplayName(config.output.name) : '' })
+                                        : config.goal === 'music' ? t('wizard.musicRoute') : config.goal === 'obs' ? t('guide.copy.194') : t('guide.copy.195')}
                                 </p>
                                 {!config.input && <p role="status" className="text-sm text-warning">{t('guide.copy.196')}</p>}
                                 {availableOutputs.length === 0 && !isLoadingDevices && <p className="text-sm text-warning">{t('guide.copy.197')}</p>}
                             </div>
 
+                            {/* ASIO は入力と同じ機器へ返すため、送り先の種類ではなく使うチャンネルを選ぶ（#291）。 */}
+                            {isAsioHost(config.host) && config.input && <div className="max-w-md space-y-3">
+                                {([['input', 'wizard.asioInputChannels', config.input.channels], ['output', 'wizard.asioOutputChannels', config.output?.channels ?? 0]] as const).map(([side, label, count]) => {
+                                    const value = effectiveAsioChannels(config)[side];
+                                    const pairs = asioChannelPairs(count);
+                                    return <label key={side} className="block space-y-1 text-sm font-medium text-foreground">{t(label)}
+                                        <select className="w-full rounded-lg border border-border bg-muted/50 p-3 text-ui-control font-normal focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                            value={value.join()} onChange={event => selectAsioChannels(side, event.target.value.split(',').map(Number) as [number, number])}>
+                                            {pairs.map(pair => <option key={pair.join()} value={pair.join()}>{t('wizard.channelPair', { left: pair[0] + 1, right: pair[1] + 1 })}</option>)}
+                                        </select>
+                                    </label>;
+                                })}
+                                {(config.goal === 'obs' || config.goal === 'discord') && <p className="text-xs text-muted-foreground">{t('wizard.asioReceiver')}</p>}
+                            </div>}
+
+                            {!isAsioHost(config.host) && <>
                             <div className="grid grid-cols-3 gap-3">
                                 {/* Option 1: Default */}
                                 <SelectionCard
@@ -331,6 +360,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             <div>
                                 <button disabled={isLoadingDevices} onClick={() => void (config.outputMode === 'broadcast' ? handleRescanVirtualDevices() : loadDevices(true))} className="px-4 py-2 rounded border border-border disabled:opacity-50">{isLoadingDevices ? t('guide.copy.219') : t('guide.copy.220')}</button>
                             </div>
+                            </>}
 
                         </div>
                     )}
