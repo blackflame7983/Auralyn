@@ -101,7 +101,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                         })}
                     </ol>
                 </nav>
-                <div className="flex min-w-0 flex-1 flex-col">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 <div ref={bodyRef} className="modal-body-base min-h-0 flex flex-col overflow-x-hidden">
                     {/* 手順が変わるたびに、進む向きから入れる。動きを減らす設定では不透明度だけにする。 */}
                     <div key={state} className="setup-step flex flex-1 flex-col" data-dir={direction}>
