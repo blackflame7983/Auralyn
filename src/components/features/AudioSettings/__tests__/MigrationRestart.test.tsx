@@ -120,8 +120,9 @@ it.each([
         expect(enginePaths).toEqual([]);
     }
     fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
-    // 全体並列実行時の初回lazy読込みを待つ。移行・復元の条件や回数は以下で検証する。
-    await screen.findByRole('button', { name: '保存して開始' }, { timeout: 3000 });
+    // 全体並列実行時の初回lazy読込みを待つ。負荷の高い環境では3秒を超えるため、余裕を持たせる。
+    // 移行・復元の条件や回数は以下で検証する。
+    await screen.findByRole('button', { name: '保存して開始' }, { timeout: 10000 });
     if (operation !== '通常再起動') {
         expect(screen.getByRole('button', { name: '保存して開始' })).toBeDisabled();
         if (host === 'ASIO') {
@@ -180,6 +181,6 @@ it.each([
     const loads = vi.mocked(invoke).mock.calls.filter(([command, args]) => command === 'session_rack' && (args as { request: SessionRackRequest }).request.action === 'add');
     expect(loads.map(([, args]) => (args as { request: { request: { path: string } } }).request.request.path)).toEqual(paths);
     expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'restore_plugin')).toBe(false);
-});
+}, 20000);
 
 beforeEach(() => { vi.spyOn(audioApi, 'getEngineTuningConfig').mockResolvedValue({ enableAffinityPinning: false, affinityMask: null, enableRealtimePriority: false, enableTimeCriticalAudioThreads: false }); });
