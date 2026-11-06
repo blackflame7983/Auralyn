@@ -54,11 +54,15 @@ WASAPIは入力を先に開始し、制御スレッドで要求バッファ2個�
 
 `.github/workflows/frontend-quality.yml` はPR、main更新、手動実行でWindows上のフロント品質を確認する。
 Node.js 24とlockfileを使い、全Vitest、TypeScript、Vite、配布スクリプト試験、配布方針チェック、ChromiumのIPCモック試験を実行する。
+単体・DOM・型・配布の `checks` と、本番ビルド・Chromium試験の `browser` を別runnerで並行実行する。
+最後の `frontend` は両jobの成功を要求し、失敗・取消・skipを成功扱いにしない。既存の必須チェック名は維持する。
+ブラウザ試験はCIでファイル単位の2並列とし、ファイル内の試験は直列を保つ。手元は既定1並列で、`--workers=2` を指定して同じ並列数を試せる。
+並列数・重複ケースの判断と代替ツールの試作は [2026-11-06の比較記録](CI_BROWSER_STUDY_2026-11-06.md) を参照する。
 ローカルでの対応コマンドは下表と `docs/BUILD_GUIDE.md` を参照する。
 失敗したブラウザの証拠は `ci-artifacts/browser` から7日間のartifactへ保存する。
 既存証拠を含む `test-results` の初期化を避け、公開・デバイス開始・通常設定の変更は行わない。
 
-このjobはRustビルド、実Tauri、ASIO/WASAPI、聴感、長時間運転の合格を表さない。
+これらのjobはRustビルド、実Tauri、ASIO/WASAPI、聴感、長時間運転の合格を表さない。
 workflowの追加とGitHub上での実行成功は別に記録する。branch protectionへの必須チェック登録はリポジトリ管理者が設定する。
 Actionsは公式リポジトリのcommitへ固定し、更新時は [checkout](https://github.com/actions/checkout)、[setup-node](https://github.com/actions/setup-node)、[upload-artifact](https://github.com/actions/upload-artifact) の対応runner・Node要件を確認する。
 
