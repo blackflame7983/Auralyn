@@ -207,14 +207,14 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                                 <div className="flex justify-between items-center">
                                                     <div className="font-bold text-lg flex items-center gap-2">
                                                         {slotText(selectedTemplate!, index, 'label')}
-                                                        {slot.required && <span className="text-xs bg-destructive/10 text-destructive-text px-1.5 py-0.5 rounded border border-destructive/20">{t('presets.copy.098')}</span>}
+                                                        {slot.required && <span className="text-xs bg-destructive/10 text-destructive-text px-1.5 py-0.5 rounded border border-destructive-text/20">{t('presets.copy.098')}</span>}
                                                     </div>
                                                     {/* Plugin Selector */}
                                                     <select
                                                         aria-label={t('presets.copy.099', { arg0: slotText(selectedTemplate!, index, 'label') })}
                                                         disabled={loading}
                                                         className={`bg-background border rounded px-3 py-1.5 text-sm outline-none focus:border-primary max-w-[300px] w-full
-                                                            ${!assigned && slot.required ? 'border-destructive' : 'border-input'}
+                                                            ${!assigned && slot.required ? 'border-destructive-text' : 'border-input'}
                                                         `}
                                                         value={assigned ? assigned.path : ""}
                                                         onChange={(e) => {

@@ -319,7 +319,7 @@ V-01の初回/再訪/環境変更後、OBS/OBS未起動の通話を分けて記�
 | 正常（`success`） | 音声処理中、接続済み |
 | 情報（`muted`） | 補足、ヒント |
 
-警告は `warning`、正常は `success`、案内は `info` を使います。エラーの本文はテーマごとの可読性を保つ `destructive-text`、危険操作の塗りは `destructive` を使います。メーターの注意域と危険域は文字色や塗りボタンから独立した `meter-warning`・`meter-danger` を使います。ブランドは `brand`・`brand-secondary`、波形の比較は `waveform-raw`・`waveform-processed` として状態色から用途を分けます。定義は `src/index.css` に集約します。
+警告は `warning`、正常は `success`、案内は `info` を使います。エラーの本文はテーマごとの可読性を保つ `destructive-text`、危険操作の塗りは `destructive` を使います。`destructive` は塗り専用とし、文字・枠・リングには使いません。危険操作の枠・リングは `destructive-text` を使い、緊急ミュートのように操作や状態の識別に必要な印は透過させず、隣接する面と3:1以上を保ちます。装飾だけの枠は透過を使えます。用途違反は `src/__tests__/themeContrast.test.ts` で検出します。メーターの注意域と危険域は文字色や塗りボタンから独立した `meter-warning`・`meter-danger` を使います。ブランドは `brand`・`brand-secondary`、波形の比較は `waveform-raw`・`waveform-processed` として状態色から用途を分けます。定義は `src/index.css` に集約します。
 
 - ブランドの基調色は [BRANDING.md](./BRANDING.md) の「静かな面、一か所の光」に従う。既定のダークテーマ「オーロラ（標準）」（内部 ID は `dark`）とライトは、背景・カード・枠線・文字を彩度の低い段階で作り、面に色相を持たせない。色はメーター、状態色、本番帯の奥のオーロラに集める。ゲーミングは黒に近い地にネオンのマゼンタを主色と選択色にして差し色を1色に絞り、オーロラと見てすぐ区別できるようにする（今回の改訂の対象外）。
 - オーロラとライトでは、役割ごとに次の色を使う。どれも状態色と混ぜない。

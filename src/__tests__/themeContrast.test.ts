@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { expect, it } from 'vitest';
 
 type RGB = [number, number, number];
@@ -42,7 +43,33 @@ it('各テーマで状態文字は4.5:1、メーターの注意・危険域は3:
         }
         // 削除・停止・テスト音停止などの危険操作の塗りボタン
         expect(contrast(color('destructive-foreground'), color('destructive')), `${selector} destructive button`).toBeGreaterThanOrEqual(4.5);
+        // 緊急ミュートの枠とリングは薄めず、通常・ホバー・ミュート中の両側の面から識別できる。
+        for (const background of ['background', 'card']) {
+            for (const alpha of [0, 0.1, 0.2, 0.3]) {
+                const panel = blend(color('destructive'), color(background), alpha);
+                expect(contrast(color('destructive-text'), panel), `${selector} danger outline/${background}/${alpha}`).toBeGreaterThanOrEqual(3);
+            }
+        }
     }
+});
+
+it('塗り用の destructive を文字・枠・リングに使わない', () => {
+    const violations: string[] = [];
+    const visit = (directory: string) => {
+        for (const entry of readdirSync(directory, { withFileTypes: true })) {
+            const path = join(directory, entry.name);
+            if (entry.isDirectory()) visit(path);
+            else if (/\.(tsx?|css)$/.test(entry.name)) {
+                readFileSync(path, 'utf8').split('\n').forEach((line, index) => {
+                    const classViolation = /(?<![\w-])(?:text|border|ring)-destructive(?![\w-])/.test(line);
+                    const cssViolation = /(?:^|[;{])\s*(?:color|border(?:-[\w-]+)?|outline(?:-[\w-]+)?|box-shadow)\s*:[^;{}]*var\(--destructive\)/.test(line);
+                    if (classViolation || cssViolation) violations.push(`${path}:${index + 1}`);
+                });
+            }
+        }
+    };
+    visit('src');
+    expect(violations).toEqual([]);
 });
 
 it('ライトとオーロラは面に色相を持たせず、色はメーター・状態色・オーロラに集める', () => {

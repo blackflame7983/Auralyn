@@ -299,7 +299,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                     <span
                         className={cn(
                             "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold",
-                            !isRunning || processReady !== true ? "text-muted-foreground border-border bg-muted" : broadcastFailed ? "text-destructive-text border-destructive/50 bg-destructive/10" : "text-success border-success/40 bg-success/10"
+                            !isRunning || processReady !== true ? "text-muted-foreground border-border bg-muted" : broadcastFailed ? "text-destructive-text border-destructive-text/50 bg-destructive/10" : "text-success border-success/40 bg-success/10"
                         )}
                     >
                         {signalLabel}

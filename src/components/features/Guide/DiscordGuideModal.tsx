@@ -157,7 +157,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                 </div>
 
                                 {useHardwareMixer ? (
-                                    <div className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg flex gap-4 text-left">
+                                    <div className="bg-destructive/10 border border-destructive-text/20 p-4 rounded-lg flex gap-4 text-left">
                                         <MdWarning className="w-8 h-8 text-destructive-text shrink-0" />
                                         <div className="space-y-1">
                                             <h4 className="font-bold text-destructive-text">{t('guide.copy.104')}</h4>
@@ -228,7 +228,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                 </div>
 
                                 <div className="grid gap-4 max-w-2xl mx-auto">
-                                    <div className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg flex items-start gap-4">
+                                    <div className="bg-destructive/10 border border-destructive-text/20 p-4 rounded-lg flex items-start gap-4">
                                         <MdWarning className="w-8 h-8 text-destructive-text shrink-0" />
                                         <div>
                                             <h4 className="font-bold text-destructive-text mb-1">{t('guide.copy.123')}</h4>

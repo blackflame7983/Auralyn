@@ -17,7 +17,7 @@ export const VERDICT_LABELS: Record<QualityVerdict, MessageKey> = {
 export const VERDICT_STYLES: Record<QualityVerdict, string> = {
     good: 'bg-success/20 text-success border-success/40',
     warn: 'bg-warning/20 text-warning border-warning/40',
-    bad: 'bg-destructive/20 text-destructive-text border-destructive/40',
+    bad: 'bg-destructive/20 text-destructive-text border-destructive-text/40',
 };
 export function formatAdvice(advice: QualityAdvice, t: ReturnType<typeof useMessages>): string {
     const p = advice.params;
@@ -49,7 +49,7 @@ export function adviceSettingsTarget(messageKey: string): 'audio' | 'sound' | 'a
 export function adviceSeverityClass(severity: string): string {
     switch (severity) {
         case 'bad':
-            return 'border-destructive/30 bg-destructive/10 text-destructive-text';
+            return 'border-destructive-text/30 bg-destructive/10 text-destructive-text';
         case 'warn':
             return 'border-warning/30 bg-warning/10 text-warning';
         default:
