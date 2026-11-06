@@ -6,19 +6,32 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { shortcutErrorNotices, type ShortcutError } from '@/lib/shortcutNotice';
 import { formatShortcut } from '@/lib/shortcutLabel';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 
 const actions = {
-    muteToggle: 'settings.ShortcutsPanel.363', muteOn: 'settings.ShortcutsPanel.364', muteOff: 'settings.ShortcutsPanel.365',
-    bypassToggle: 'settings.ShortcutsPanel.366', bypassOn: 'settings.ShortcutsPanel.367', bypassOff: 'settings.ShortcutsPanel.368',
-    gainUp: 'settings.ShortcutsPanel.369', gainDown: 'settings.ShortcutsPanel.370',
+    muteToggle: 'settings.ShortcutsPanel.363', bypassToggle: 'settings.ShortcutsPanel.366',
     singingOn: 'settings.ShortcutsPanel.371', talkOn: 'settings.ShortcutsPanel.372',
+    muteOn: 'settings.ShortcutsPanel.364', muteOff: 'settings.ShortcutsPanel.365',
+    bypassOn: 'settings.ShortcutsPanel.367', bypassOff: 'settings.ShortcutsPanel.368',
+    gainUp: 'settings.ShortcutsPanel.369', gainDown: 'settings.ShortcutsPanel.370',
     noiseToggle: 'settings.ShortcutsPanel.393',
 } as const;
 type Action = keyof typeof actions;
 type Values = Partial<Record<Action, string>>;
 interface Binding { action: Action; shortcut: string }
 interface Status { bindings: Binding[]; errors: ShortcutError[] }
+// 登録上限8件のうち、最初に使う4操作だけを候補にする。既存の保存形式と検証対象キーを使う。
+const recommended: Binding[] = [
+    { action: 'muteToggle', shortcut: 'Control+Alt+KeyM' },
+    { action: 'bypassToggle', shortcut: 'Control+Alt+KeyB' },
+    { action: 'singingOn', shortcut: 'Control+Alt+KeyS' },
+    { action: 'talkOn', shortcut: 'Control+Alt+KeyT' },
+];
+const actionGroups = [
+    { title: 'shortcuts.frequent', actions: recommended.map(binding => binding.action) },
+    { title: 'shortcuts.other', actions: (Object.keys(actions) as Action[]).filter(action => !recommended.some(binding => binding.action === action)) },
+] as const;
 const modifiers = ['Alt', 'Control', 'Shift', 'Control+Alt', 'Control+Shift', 'Alt+Shift', 'Control+Alt+Shift', 'Super', 'Super+Shift'];
 const keys = [
     ...Array.from({ length: 26 }, (_, i) => [`Key${String.fromCharCode(65 + i)}`, String.fromCharCode(65 + i)]),
@@ -45,6 +58,7 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
     const [registrationFailed, setRegistrationFailed] = useState(false);
     const [ready, setReady] = useState(false);
     const [busy, setBusy] = useState(false);
+    const [confirmRecommended, setConfirmRecommended] = useState(false);
     const [message, setMessage] = useState<SettingsNotice[]>([]);
     const [capturing, setCapturing] = useState<Action | null>(null);
     const [armed, setArmed] = useState(false);
@@ -109,6 +123,27 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
         const previous = saved[action]?.trim() ?? '';
         return (current ? normalized(current) : '') !== (previous ? normalized(previous) : '');
     });
+    const applyRecommended = () => {
+        const next = { ...values };
+        const result: SettingsNotice[] = [];
+        let added = 0;
+        for (const { action, shortcut } of recommended) {
+            const args = { action: notice(actions[action]), shortcut: formatShortcut(shortcut) };
+            if (next[action]?.trim()) {
+                result.push(notice('shortcuts.skippedAssigned', args));
+            } else if (Object.values(next).some(value => value && normalized(value.trim()) === normalized(shortcut))) {
+                result.push(notice('shortcuts.skippedConflict', args));
+            } else if (Object.values(next).filter(value => value?.trim()).length >= 8) {
+                result.push(notice('shortcuts.skippedLimit', args));
+            } else {
+                next[action] = shortcut;
+                added++;
+            }
+        }
+        setValues(next);
+        setMessage([notice('shortcuts.recommendedResult', { count: added }), ...result]);
+        setConfirmRecommended(false);
+    };
     const save = async () => {
         const bindings = (Object.entries(values) as [Action, string][]).filter(([, value]) => value.trim()).map(([action, shortcut]) => ({ action, shortcut: shortcut.trim() }));
         if (bindings.length > 8) { setMessage([notice('settings.ShortcutsPanel.374')]); return; }
@@ -168,8 +203,15 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
             <p>{t('shortcuts.streamDeckHint')}</p>
             <InfoPopover label={t('shortcuts.details')}><p>{t('settings.ShortcutsPanel.379')}</p><p className="mt-2">{t('settings.ShortcutsPanel.380')}</p></InfoPopover>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{(Object.entries(actions) as [Action, (typeof actions)[Action]][]).map(([action, labelKey]) => {
-            const label = t(labelKey);
+        <button type="button" className="rounded border border-border px-3 py-2 text-ui-control disabled:opacity-50"
+            disabled={!ready || busy || !!capturing} onClick={() => setConfirmRecommended(true)}>{t('shortcuts.applyRecommended')}</button>
+        <ConfirmDialog isOpen={confirmRecommended} title={t('shortcuts.confirmRecommended')}
+            description={t('shortcuts.recommendedDescription', { bindings: recommended.map(({ action, shortcut }) => `${t(actions[action])}: ${formatShortcut(shortcut)}`).join(' / ') })}
+            confirmLabel={t('shortcuts.fillRecommended')} onCancel={() => setConfirmRecommended(false)} onConfirm={applyRecommended} />
+        {actionGroups.map(group => <section key={group.title} className="space-y-2" aria-label={t(group.title)}>
+        <h4 className="text-ui-control font-semibold">{t(group.title)}</h4>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{group.actions.map(action => {
+            const label = t(actions[action]);
             const pair = split(values[action] ?? '');
             return <fieldset key={action} className="min-w-0 space-y-1 text-ui-support" disabled={!ready || busy}>
                 <legend className="text-ui-control font-semibold">{label}</legend>
@@ -199,6 +241,7 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
                 {values[action] && <button type="button" aria-label={`${t('settings.ShortcutsPanel.389')}${label}`} className="rounded border border-border px-2 py-1 text-muted-foreground hover:text-destructive-text disabled:opacity-50 text-ui-control" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('shortcuts.unbind')}</button>}
             </fieldset>;
         })}</div>
+        </section>)}
         <div className="sticky bottom-0 z-10 flex flex-wrap gap-2 border-t border-border bg-card py-2">
             <button type="button" className="rounded border px-3 py-2 disabled:opacity-50 text-ui-control" disabled={!ready || busy || (!dirty && !registrationFailed) || !!capturing} onClick={() => void save()}>{t('settings.ShortcutsPanel.390')}</button>
             <button type="button" className="rounded border px-3 py-2 disabled:opacity-50 text-ui-control" disabled={!ready || busy || !dirty || !!capturing} onClick={() => { setValues(saved); setMessage([notice('settings.ShortcutsPanel.391')]); }}>{t('settings.ShortcutsPanel.392')}</button>

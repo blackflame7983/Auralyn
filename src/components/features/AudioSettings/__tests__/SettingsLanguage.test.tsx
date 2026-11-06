@@ -158,3 +158,23 @@ it('外観タブで表示用途を切り替えられ、言語の下に置く', a
     const language = screen.getByRole('combobox', { name: /言語/ });
     expect(language.compareDocumentPosition(purpose) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
+
+
+it('ホットキーの内容を高さで制限せず、設定本文だけにスクロールを集約する', async () => {
+    render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'ホットキー' }), { key: 'Enter' });
+    const button = await screen.findByRole('button', { name: '推奨のキーをまとめて入力' });
+    await waitFor(() => expect(button).toBeEnabled());
+    const panel = screen.getByRole('tabpanel');
+    const body = panel.parentElement!;
+    const tabs = body.parentElement!;
+    const surface = tabs.parentElement!;
+    // 960×640・1280×800とも同じ構造。高さは親の残り領域へ収め、内容にはスクロール領域を作らない。
+    expect(surface).toHaveClass('h-full', 'flex', 'flex-col', 'overflow-hidden');
+    expect(tabs).toHaveClass('flex', 'min-h-0', 'flex-1');
+    expect(body).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto');
+    expect(panel).toHaveClass('overflow-visible');
+    for (const element of [panel, ...panel.querySelectorAll<HTMLElement>('*')]) {
+        expect(element.getAttribute('class') ?? '').not.toMatch(/(?:^|\s)(?:[\w-]+:)*overflow-(?:auto|scroll|[xy]-(?:auto|scroll))/);
+    }
+});

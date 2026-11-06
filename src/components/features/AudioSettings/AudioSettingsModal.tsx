@@ -492,7 +492,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <TabsTrigger className="justify-start gap-2 text-ui-control" value="shortcuts"><MdKeyboard aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.shortcuts')}</TabsTrigger>
             <TabsTrigger className="justify-start gap-2 text-ui-control" value="system"><MdTune aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.system')}</TabsTrigger>
           </TabsList>
-          <div ref={settingsBody} className="min-w-0 flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent">
+          {/* タブの中身は高さを制限せず、本文だけをスクロールさせる。 */}
+          <div ref={settingsBody} className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent">
           <TabsContent value="audio" className="space-y-4">
             {reviewRequired && <div className="rounded border border-input bg-muted p-3 text-sm space-y-2">
               <p>{t('settings.AudioSettingsModal.029')}</p>
@@ -946,7 +947,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
           </TabsContent>
 
-          <TabsContent value="shortcuts" className="space-y-4">
+          <TabsContent value="shortcuts" className="space-y-4 overflow-visible">
             <ShortcutsPanel onCaptureChange={setCapturingShortcut} />
           </TabsContent>
           <SystemSettings model={system} engineStats={engineStats} loading={loading} setLoading={setLoading} showConfirm={showConfirm}
