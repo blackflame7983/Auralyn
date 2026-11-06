@@ -14,7 +14,7 @@ export function DisplayPurposeSelector() {
     return <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
         <label className="flex items-center gap-3 text-ui-control">{t('purpose.label')}
             <select value={purpose} onChange={event => setPurpose(event.target.value as DisplayPurpose)} aria-describedby="display-purpose-hint"
-                className="rounded border border-border bg-background px-2 py-1 text-ui-control">
+                className="rounded border border-input bg-background px-2 py-1 text-ui-control">
                 <option value="voice">{t('purpose.voice')}</option><option value="music">{t('purpose.music')}</option>
             </select>
         </label>

@@ -183,7 +183,7 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                     <fieldset disabled={busy || disabled} className="flex flex-wrap gap-3">
                         <label className="text-sm">
                             {t('guide.copy.283')}<input
-                                className="block w-40 bg-background border border-border rounded p-2"
+                                className="block w-40 bg-background border border-input rounded p-2"
                                 value={host}
                                 onChange={(e) => {
                                     setHost(e.target.value);
@@ -195,7 +195,7 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                         </label>
                         <label className="text-sm">
                             {t('guide.copy.285')}<input
-                                className="block w-24 bg-background border border-border rounded p-2"
+                                className="block w-24 bg-background border border-input rounded p-2"
                                 inputMode="numeric"
                                 value={port}
                                 onChange={(e) => {
@@ -208,7 +208,7 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                         </label>
                         <label className="text-sm">
                             {t('guide.copy.287')}<input
-                                className="block w-48 bg-background border border-border rounded p-2"
+                                className="block w-48 bg-background border border-input rounded p-2"
                                 type="password"
                                 autoComplete="off"
                                 value={password}

@@ -189,7 +189,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                             </label>
                                             <select
                                                 aria-label={config.goal === 'music' ? t('wizard.musicInput') : t('guide.copy.189')}
-                                                className="w-full p-3 bg-muted/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                                className="w-full p-3 bg-muted/50 border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
                                                 value={config.input?.name || ''}
                                                 onChange={(e) => {
                                                     const dev = availableInputs.find(d => d.name === e.target.value);
@@ -246,7 +246,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     const value = effectiveAsioChannels(config)[side];
                                     const pairs = asioChannelPairs(count);
                                     return <label key={side} className="block space-y-1 text-sm font-medium text-foreground">{t(label)}
-                                        <select className="w-full rounded-lg border border-border bg-muted/50 p-3 text-ui-control font-normal focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                        <select className="w-full rounded-lg border border-input bg-muted/50 p-3 text-ui-control font-normal focus:outline-none focus:ring-2 focus:ring-primary/50"
                                             value={value.join()} onChange={event => selectAsioChannels(side, event.target.value.split(',').map(Number) as [number, number])}>
                                             {pairs.map(pair => <option key={pair.join()} value={pair.join()}>{t('wizard.channelPair', { left: pair[0] + 1, right: pair[1] + 1 })}</option>)}
                                         </select>
@@ -301,7 +301,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                         <label htmlFor="wizard-output-206" className="mt-2 block text-ui-support font-medium text-foreground">{t('guide.copy.206')}</label>
                                         <select
                                             id="wizard-output-206"
-                                            className="mt-2 w-full rounded-lg border border-border bg-muted/50 p-3 text-ui-control focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                            className="mt-2 w-full rounded-lg border border-input bg-muted/50 p-3 text-ui-control focus:outline-none focus:ring-2 focus:ring-primary/50"
                                             value={config.output?.name || ''}
                                             onClick={(e) => e.stopPropagation()}
                                             onChange={(e) => {
@@ -320,7 +320,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                             <label htmlFor="wizard-output-208" className="mt-2 block text-ui-support font-medium text-foreground">{t('guide.copy.208')}</label>
                                             <select
                                                 id="wizard-output-208"
-                                                className="mt-2 w-full rounded-lg border border-border bg-muted/50 p-3 text-ui-control focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                                className="mt-2 w-full rounded-lg border border-input bg-muted/50 p-3 text-ui-control focus:outline-none focus:ring-2 focus:ring-primary/50"
                                                 value={config.output?.name || ''}
                                                 onClick={(e) => e.stopPropagation()}
                                                 onChange={(e) => {

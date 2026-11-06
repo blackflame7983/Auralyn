@@ -58,7 +58,7 @@ function Content({ model, onAdjust }: { model: LiveModesModel; onAdjust?: (mode:
                     <details className="space-y-2">
                         <summary className="cursor-pointer text-ui-support">{t('liveTransaction.bindingDetails')}</summary>
                         <div className="flex items-center gap-1"><label className="block text-ui-control" htmlFor={`profile-${mode}`}>{t('liveTransaction.profileLabel', { mode: name(mode) })}</label><InfoPopover label={t('liveTransaction.bindingDetails')}>{t('liveTransaction.bindingHelp')}</InfoPopover></div>
-                        <select id={`profile-${mode}`} disabled={busy || !saved || profileError} value={selected} onChange={event => setSelection(old => ({ ...old, [mode]: event.target.value }))} className="rounded-md border border-border bg-background px-2 py-1 text-ui-control">
+                        <select id={`profile-${mode}`} disabled={busy || !saved || profileError} value={selected} onChange={event => setSelection(old => ({ ...old, [mode]: event.target.value }))} className="rounded-md border border-input bg-background px-2 py-1 text-ui-control">
                             <option value="">{t('liveTransaction.builtinOnly')}</option>
                             {bound && !profiles.some(profile => profile.name === bound) && <option value={bound}>{bound}</option>}
                             {profiles.map(profile => <option key={profile.name} value={profile.name}>{profile.name}</option>)}

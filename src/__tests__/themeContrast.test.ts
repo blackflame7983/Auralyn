@@ -13,7 +13,7 @@ const luminance = (rgb: RGB) => rgb.reduce((sum, n, i) => sum + [0.2126, 0.7152,
 const contrast = (a: RGB, b: RGB) => { const [low, high] = [luminance(a), luminance(b)].sort((x, y) => x - y); return (high + 0.05) / (low + 0.05); };
 const blend = (color: RGB, background: RGB, alpha: number) => color.map((n, i) => alpha * n + (1 - alpha) * background[i]) as RGB;
 
-it('各テーマで状態文字は4.5:1、メーターの注意・危険域は3:1以上を保つ', () => {
+it('各テーマで状態文字は4.5:1、入力枠とメーターの注意・危険域は3:1以上を保つ', () => {
     const css = readFileSync('src/index.css', 'utf8');
     const tokens: Record<string, string> = {};
     for (const selector of [':root', '.dark', '.gaming']) {
@@ -25,6 +25,10 @@ it('各テーマで状態文字は4.5:1、メーターの注意・危険域は3:
                 const panel = blend(color(token === 'destructive-text' ? 'destructive' : token), color(background), 0.2);
                 expect(contrast(color(token), panel), `${selector} ${token}/${background}`).toBeGreaterThanOrEqual(4.5);
             }
+        }
+        // 入力欄・選択欄の枠は、内外に隣接するカード面と背景面の両方で3:1以上を保つ。
+        for (const background of ['card', 'background']) {
+            expect(contrast(color('input'), color(background)), `${selector} input/${background}`).toBeGreaterThanOrEqual(3);
         }
         expect(contrast(color('meter-danger'), color('card')), selector).toBeGreaterThanOrEqual(3);
         // バーの実際の背景は muted。注意域を文字色と独立して識別できるようにする。

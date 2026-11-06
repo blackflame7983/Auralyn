@@ -56,7 +56,7 @@ export function SingingRouteGuide({ hardware, route: controlledRoute, onRouteCha
             {requiredChecks.map(key => <label key={key} className="flex gap-2 text-sm"><input type="checkbox" checked={!!checked[fingerprint + key]} onChange={event => setChecked(value => ({ ...value, [fingerprint + key]: event.target.checked }))} />{t(`singingRoute.check.${key}`)}</label>)}
         </fieldset>
         <label className="block text-sm">{t('singingRoute.symptom')}
-            <select className="block w-full bg-background border border-border rounded p-2" value={symptom} onChange={event => setSymptom(event.target.value)}>
+            <select className="block w-full bg-background border border-input rounded p-2" value={symptom} onChange={event => setSymptom(event.target.value)}>
                 {['none', 'silent', 'music', 'double', 'late', 'obs'].map(key => <option key={key} value={key}>{t(`singingRoute.symptom.${key}` as 'singingRoute.symptom.none')}</option>)}
             </select>
         </label>
