@@ -179,7 +179,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         if (!panelOverlays) return;
         const close = (event: KeyboardEvent) => {
             // 入れ子のメニューや設定画面の Escape は、その画面に任せる。
-            if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('[role="dialog"], [role="menu"]')) {
+            if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) {
                 event.preventDefault();
                 setVstPanelOpen(false);
             }
