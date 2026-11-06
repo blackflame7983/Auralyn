@@ -190,6 +190,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     if (isOpen && ![128, 512, 1024].includes(selectedBufferSize)) setIsAdvancedMode(true);
   }, [isOpen, selectedBufferSize]);
   const tuningDetails = useRef<HTMLDetailsElement>(null);
+  const hostSelect = useRef<HTMLSelectElement>(null);
+  // 「アプリの音声」を選べない理由から、畳まれた音質調整を開いて接続方式の選択へ移す（#290）。
+  const chooseConnection = () => {
+    setTuningOpen(true);
+    requestAnimationFrame(() => {
+      hostSelect.current?.scrollIntoView?.({ block: 'center' });
+      hostSelect.current?.focus({ preventScroll: true });
+    });
+  };
   const [tuningOpen, setTuningOpen] = useState(initialSection === 'audioTuning' || !getBeginnerMode()
     || localStorage.getItem('vst_host_settings_advanced') === 'true');
 
@@ -488,7 +497,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   editConnection('source');
                   if (processInput && next.source.kind === 'device') setNeedsDeviceChoice(true);
                   setInputSource(next);
-                }} disabled={isApplying} isAsio={isAsio} status={engineStats?.processInput} /></div>
+                }} disabled={isApplying} isAsio={isAsio} status={engineStats?.processInput} onChooseConnection={chooseConnection} /></div>
                 {/* Input Device */}
                 {!processInput && <div className="space-y-2">
                   <label className="font-medium text-muted-foreground text-ui-control">
@@ -593,6 +602,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       {t('settings.AudioSettingsModal.034')}</button>
                   </div>
                   <select
+                    ref={hostSelect}
                     aria-label={t('settings.AudioSettingsModal.035')}
                     value={selectedHost}
                     onChange={(e) => { editConnection('host'); setSelectedHost(e.target.value); }}
