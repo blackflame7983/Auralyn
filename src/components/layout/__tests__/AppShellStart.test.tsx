@@ -370,6 +370,11 @@ it('配信ミックスは表示を選んだとき本番帯の直後へ置き、�
     expect(mix.compareDocumentPosition(chain) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(strip).toHaveAttribute('data-roomy', 'false');
     expect(strip.closest('.home-content')).toHaveAttribute('data-roomy', 'false');
+    // 未設定に戻ったら、表示を選んでいても音の流れと次の1歩より上へ出さない（#297）。
+    view.rerender(<AppShell {...props} currentHost=""><p>rack</p></AppShell>);
+    expect(screen.queryByRole('region', { name: '配信ミックス' })).not.toBeInTheDocument();
+    view.rerender(<AppShell {...props}><p>rack</p></AppShell>);
+    expect(screen.getByRole('region', { name: '配信ミックス' })).toBeInTheDocument();
     // 音楽鑑賞では配信ミックスの保存値に関係なく、従来の配置・大型化条件へ戻る。
     act(() => saveDisplayPurpose('music'));
     view.rerender(<AppShell {...props} streamMixPanel={undefined}><p>rack</p></AppShell>);
