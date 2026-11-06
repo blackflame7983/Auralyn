@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  frontend:
+  checks:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -30,12 +30,27 @@ jobs:
         run: npm test -- --run --maxWorkers=4
       - name: TypeScript
         run: npx tsc --noEmit
-      - name: Frontend build
-        run: npx vite build
+      - name: Browser test TypeScript
+        run: npx tsc --noEmit -p tsconfig.e2e.json
       - name: Distribution script tests
         run: npm run test:release
       - name: Release policy
         run: npm run release:check
+
+  browser:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Frontend build
+        run: npx vite build
       - name: Install Chromium
         run: npx playwright install chromium
       - name: Browser tests (IPC mock)
@@ -48,3 +63,20 @@ jobs:
           path: ci-artifacts/browser
           if-no-files-found: ignore
           retention-days: 7
+
+  # 既存の必須チェック名を保ち、片方の失敗・取消・skipを成功扱いにしない。
+  frontend:
+    if: always()
+    needs: [checks, browser]
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require both quality jobs
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: |
+          if ($env:CHECKS_RESULT -ne 'success' -or $env:BROWSER_RESULT -ne 'success') {
+            Write-Error "Frontend quality did not pass: checks=$env:CHECKS_RESULT, browser=$env:BROWSER_RESULT"
+            exit 1
+          }

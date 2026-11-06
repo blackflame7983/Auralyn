@@ -1,7 +1,10 @@
 import { test, expect } from './tauriFixture';
 import { message } from '../../src/i18n/messages';
 
-for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark', 'gaming']) {
+for (const locale of ['ja', 'en'] as const) {
+    // 機器選択と設定復帰は両言語・代表テーマで検証する。
+    // 色・拡大時の配置は後段で3テーマとも確認する。
+    const theme = 'light';
     test(`既定機器と保存がない初回設定は選択を促す ${locale} ${theme}`, async ({ page }, info) => {
         await page.addInitScript(({ locale, theme }) => {
             localStorage.setItem('vst_host_locale', locale); localStorage.setItem('vst_host_theme', theme);
@@ -64,6 +67,9 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         expect(await page.evaluate(() => (window as any).__e2eStarts)).toEqual([]);
     });
 
+}
+
+for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark', 'gaming']) {
     test(`未設定の既定方式・変更予定・ASIO案内 ${locale} ${theme}`, async ({ page }, info) => {
         await page.setViewportSize({ width: 900, height: 600 });
         await page.addInitScript(({ locale, theme }) => {

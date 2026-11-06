@@ -5,7 +5,9 @@ export default defineConfig({
     // Playwrightが開始時に消す範囲を限定し、実Hostの証拠や試験用アプリを保護する。
     outputDir: './test-results/browser-output',
     forbidOnly: true,
-    workers: 1,
+    // page単位のIPC/Storageモックは独立している。CIはファイル単位で2並列にし、
+    // 各ファイル内の順序は維持する。CLIの--workers=1で直列の再現もできる。
+    workers: process.env.CI ? 2 : 1,
     retries: 0,
     // CI の実行環境は手元より遅い。失敗を再試行で隠さず、待つ上限だけを CI で延ばす。
     timeout: process.env.CI ? 60_000 : 30_000,

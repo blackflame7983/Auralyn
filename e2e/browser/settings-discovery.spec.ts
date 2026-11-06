@@ -1,4 +1,6 @@
 import { test, expect } from './tauriFixture';
+import { settleLayoutMotion } from './layoutMotion';
+import { message } from '../../src/i18n/messages';
 
 test.use({ liveHome: true, registeredModes: false });
 
@@ -32,6 +34,9 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     const actions = page.getByRole('button', { name: '歌・雑談の設定', exact: true });
     const register = page.getByRole('button', { name: 'モードを登録', exact: true });
     await expect(actions).toBeVisible();
+    // 背後のホームは初期化中も存在する。起動完了後の配置を待ってからhoverする。
+    await expect(page.getByText(message('ja', 'app.initializing'), { exact: true })).toHaveCount(0);
+    await settleLayoutMotion(page);
     await page.getByRole('button', { name: 'マイク音量 100%', exact: true }).hover();
     await expect(page.getByRole('tooltip')).toHaveText('マイク音量');
     await page.getByRole('button', { name: '音量チェックを開始', exact: true }).hover();
