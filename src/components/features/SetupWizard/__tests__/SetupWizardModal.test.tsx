@@ -133,13 +133,13 @@ describe('セットアップの接続チェック', () => {
         const store = createLocaleStore(() => 'ja', () => true);
         render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
         await chooseObsRoute();
-        await screen.findByText('送り先を選ぶと次へ進めます');
+        await screen.findByText('出力先を選ぶと次へ進めます');
         act(() => { store.setLocale(locale); });
         const actions = within(screen.getByTestId('setup-actions'));
         const next = actions.getByRole('button', { name: locale === 'ja' ? '次へ' : 'Next' });
         const reason = actions.getByRole('status');
         expect(reason).toBeVisible();
-        expect(next).toHaveAccessibleDescription(locale === 'ja' ? '送り先を選ぶと次へ進めます' : 'Select an output to continue');
+        expect(next).toHaveAccessibleDescription(locale === 'ja' ? '出力先を選ぶと次へ進めます' : 'Select an output device to continue');
         expect(next).toBeDisabled();
         expect(next).toHaveClass('disabled:opacity-50', 'disabled:bg-muted', 'disabled:text-muted-foreground');
         next.focus();
@@ -295,7 +295,7 @@ describe('セットアップの接続チェック', () => {
         const output = await screen.findByRole('combobox', { name: '仮想ケーブルの出力先' });
         expect(output).toHaveValue('');
         expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
-        expect(screen.getByRole('button', { name: /次へ/ })).toHaveAccessibleDescription('送り先を選ぶと次へ進めます');
+        expect(screen.getByRole('button', { name: /次へ/ })).toHaveAccessibleDescription('出力先を選ぶと次へ進めます');
         fireEvent.change(output, { target: { value: 'CABLE-A Input (VB-Audio)' } });
         expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled();
         expect(screen.getByRole('button', { name: /次へ/ })).not.toHaveAttribute('aria-describedby');
