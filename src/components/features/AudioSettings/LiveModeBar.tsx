@@ -65,8 +65,8 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
                     : !value.running || value.phase === 'stopped' ? t('liveBar.stopped')
                     : ''}
             </span>}
-            {(registered || value.armed) && (!safetyOnly || value.armed) && <button type="button" disabled={busy || model.changesBlocked} aria-pressed={value.armed} aria-label={t('liveBar.protect')} aria-describedby={value.armed ? 'live-protect-state' : undefined} onClick={() => void model.protect(!value.armed)}
-                title={t('liveBar.protectHint')}
+            {(registered || value.armed) && (!safetyOnly || value.armed) && <button type="button" disabled={busy || model.changesBlocked} aria-pressed={value.armed} aria-label={t('liveBar.protect')} aria-describedby="live-protect-state" onClick={() => void model.protect(!value.armed)}
+                title={t(value.armed ? 'liveBar.unlockHint' : 'liveBar.protectHint')}
                 className={cn('inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-ui-support font-medium transition-colors disabled:opacity-50', !embedded && 'ml-auto',
                     value.armed ? 'border-brand bg-brand/15 text-brand' : 'border-border text-muted-foreground hover:text-foreground')}>
                 <MdShield aria-hidden="true" className="h-4 w-4" />

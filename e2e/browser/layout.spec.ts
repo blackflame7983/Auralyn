@@ -195,7 +195,7 @@ test.describe('操作部品のサイズとテーマ', () => {
         await page.getByRole('button', { name: 'ボイスチェック', exact: true }).click({ trial: true });
         for (const width of [960, 1024, 1440, 1920]) {
             await page.setViewportSize({ width, height: 768 });
-            const range = page.getByRole('slider', { name: '声を整える加工の強さ', exact: true });
+            const range = page.getByRole('slider', { name: '声の整え具合', exact: true });
             const box = (await range.boundingBox())!;
             // 20段階の操作に6px以上/段を確保し、長大なバーにしない。
             expect(box.width).toBeGreaterThanOrEqual(120);

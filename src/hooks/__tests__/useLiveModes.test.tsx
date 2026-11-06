@@ -16,13 +16,13 @@ it('正常な未登録状態では補助操作を出さず、保護だけ残っ�
     function Panel() { model = useLiveModes(); return <LiveModeControls model={model} />; }
     render(<Panel />);
     await waitFor(() => expect(model.snapshot).not.toBeNull());
-    expect(screen.queryByText('切替・誤操作防止の操作')).not.toBeInTheDocument();
+    expect(screen.queryByText('切替・操作ロックの操作')).not.toBeInTheDocument();
     expect(screen.queryByText('状態が更新されないとき')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'モードの状態を再取得' })).not.toBeInTheDocument();
     vi.mocked(liveModesApi.request).mockResolvedValue(liveSnapshot({ armed: true }));
     await act(async () => { await model.refresh(); });
-    fireEvent.click(screen.getByText('切替・誤操作防止の操作'));
-    const protection = screen.getByRole('checkbox', { name: '誤操作防止を有効にする' });
+    fireEvent.click(screen.getByText('切替・操作ロックの操作'));
+    const protection = screen.getByRole('checkbox', { name: '操作をロック' });
     expect(protection).toBeChecked();
     fireEvent.click(protection);
     await waitFor(() => expect(liveModesApi.request).toHaveBeenCalledWith({ action: 'disarm', intent: expect.objectContaining({ expectedEpoch: 'host1' }) }));

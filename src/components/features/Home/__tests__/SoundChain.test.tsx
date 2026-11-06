@@ -107,7 +107,7 @@ it('声の処理がOFFでも残響が有効なら、残響のみONと明示す�
     const builtin = screen.getAllByRole('listitem')[1];
     expect(builtin).toHaveTextContent('builtin-switch');
     expect(builtin).toHaveTextContent('残響のみ ON');
-    expect(screen.getByText('声の処理: 設定 OFF ／ 残響: 設定 ON')).toHaveClass('sr-only');
+    expect(screen.getByText('声の処理: OFF ／ 残響: 設定 ON')).toHaveClass('sr-only');
 });
 
 it('音楽鑑賞では声向けの操作を出さず、状態の表示にとどめる', () => {
@@ -120,7 +120,7 @@ it('音楽鑑賞では声向けの操作を出さず、状態の表示にとど�
     expect(rows).toHaveLength(1);
     expect(screen.getByText(message('ja', 'flow.voiceStillOn'))).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'chain.voiceTools') }));
-    expect(screen.getByRole('dialog')).toHaveTextContent('声の処理: 設定 OFF ／ 残響: 設定 ON');
+    expect(screen.getByRole('dialog')).toHaveTextContent('声の処理: OFF ／ 残響: 設定 ON');
     for (const text of ['noise-switch', 'builtin-switch', 'builtin-quick']) expect(rows[0]).not.toHaveTextContent(text);
     expect(rows[0]).toHaveTextContent('VST');
     expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
@@ -137,7 +137,7 @@ it('現在の世代と不一致または停止時は処理の設定を OFF と�
     // 未確認は注意色の点で示し、OFF の中立色と区別する。
     [0, 1, 2].forEach(i => expect(rows[i].querySelector('[data-tone]')).toHaveAttribute('data-tone', 'warn'));
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: stats(), running: false }}><SoundChain {...props()} /></RuntimeStatsContext.Provider>);
-    expect(screen.queryByText('設定 OFF')).not.toBeInTheDocument();
+    expect(screen.queryByText('OFF')).not.toBeInTheDocument();
 });
 
 it('VST の行から右パネルの VST 構成を開き、見出しから聴き比べ、その他の操作から OBS 連携と詳しい調整へ進める', async () => {
