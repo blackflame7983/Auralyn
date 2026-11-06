@@ -20,6 +20,10 @@ it('各テーマで状態文字は4.5:1、メーターの注意・危険域は3:
         const block = css.slice(css.indexOf(`${selector} {`)).split('}')[0];
         for (const [, key, value] of block.matchAll(/--([\w-]+):\s*([\d.]+\s+[\d.]+%\s+[\d.]+%);/g)) tokens[key] = value;
         const color = (name: string) => rgb(tokens[name]);
+        // メニューの内側線は、周囲の面とフォーカス中の塗りの両方に3:1以上を保つ。
+        for (const background of ['popover', 'accent']) {
+            expect(contrast(color('ring'), color(background)), `${selector} menu focus/${background}`).toBeGreaterThanOrEqual(3);
+        }
         for (const background of ['background', 'card', 'muted']) {
             for (const token of ['warning', 'success', 'info', 'destructive-text']) {
                 const panel = blend(color(token === 'destructive-text' ? 'destructive' : token), color(background), 0.2);

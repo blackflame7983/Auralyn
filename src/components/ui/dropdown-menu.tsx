@@ -4,6 +4,9 @@ import { MdCheck, MdChevronRight, MdCircle } from "react-icons/md"
 
 import { cn } from "@/lib/utils"
 
+// Radix がフォーカス時に付ける属性で、入力方法を問わずレイアウトを動かさずに示す。
+const menuItemFocusClassName = "data-[highlighted]:shadow-[inset_2px_0_0_hsl(var(--ring))]"
+
 const DropdownMenu = DropdownMenuPrimitive.Root
 
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
@@ -26,6 +29,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
         ref={ref}
         className={cn(
             "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent",
+            menuItemFocusClassName,
             inset && "pl-8",
             className
         )}
@@ -82,6 +86,7 @@ const DropdownMenuItem = React.forwardRef<
         ref={ref}
         className={cn(
             "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+            menuItemFocusClassName,
             inset && "pl-8",
             className
         )}
@@ -98,6 +103,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
         ref={ref}
         className={cn(
             "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+            menuItemFocusClassName,
             className
         )}
         checked={checked}
@@ -122,6 +128,7 @@ const DropdownMenuRadioItem = React.forwardRef<
         ref={ref}
         className={cn(
             "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+            menuItemFocusClassName,
             className
         )}
         {...props}
