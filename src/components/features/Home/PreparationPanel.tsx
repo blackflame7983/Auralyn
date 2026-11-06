@@ -13,6 +13,7 @@ import { receiverDeviceNotice } from '@/lib/audioRouting';
 import { renderNotice } from '../AudioSettings/settingsNotice';
 
 interface Props {
+    stoppedInStrip?: boolean;
     homeActionInStrip?: boolean; destinationRequest?: number;
     onCheckOutput?: (anchor?: HTMLButtonElement) => void;
     model: PreparationModel; onSettings: () => void; onSound: () => void; onListen: () => void;
@@ -27,8 +28,9 @@ interface Props {
 // 問題の種類を返す。正常時は null にして手順を畳み、毎日の起動で読ませない。
 // ミュート・音量ゼロは配信事故なので、直す入口（主ボタン）が見えるよう開く。
 // 反映待ち（pending）は取り直しの途中なので undefined を返し、直前の判定を使い続ける。
-const attentionKey = (model: PreparationModel, music: boolean) => {
+const attentionKey = (model: PreparationModel, music: boolean, stoppedInStrip: boolean) => {
     const { availability } = model.observation;
+    if (availability === 'stopped' && stoppedInStrip) return null;
     if (availability === 'pending') return undefined;
     if (!music && !model.context.usage) return `purpose:${availability}`;
     return ['unconfigured', 'stopped', 'failed', 'unknown', 'muted'].includes(availability) ? availability : null;
@@ -38,7 +40,7 @@ const availabilityTones: Record<Availability, StatusTone> = { ready: 'ok', unkno
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
-export function PreparationPanel({ homeActionInStrip = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices, onSetup, onExpandedChange }: Props) {
+export function PreparationPanel({ stoppedInStrip = false, homeActionInStrip = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices, onSetup, onExpandedChange }: Props) {
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
@@ -51,7 +53,7 @@ export function PreparationPanel({ homeActionInStrip = false, destinationRequest
     const toggleRef = useRef<HTMLButtonElement>(null);
     const stepsId = useId();
     const settledProblem = useRef<string | null>(null);
-    const latest = attentionKey(model, music);
+    const latest = attentionKey(model, music, stoppedInStrip);
     if (latest !== undefined) settledProblem.current = latest;
     const problem = settledProblem.current;
     // userOpen は利用者の選択。null の間だけ問題の有無で自動に開閉する。

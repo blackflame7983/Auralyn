@@ -9,6 +9,7 @@ import { confirmationState } from '@/lib/preparation';
 import { useOutputDeviceName } from '@/hooks/useOutputDeviceName';
 
 interface HomePanelsProps {
+    stoppedInStrip?: boolean;
     homeActionInStrip?: boolean; destinationRequest?: number;
     onCheckOutput?: (anchor?: HTMLButtonElement) => void;
     /** 本番帯と共有する準備の状態。取得を二重にしないよう AppShell で1つだけ持つ。 */
@@ -32,7 +33,7 @@ interface HomePanelsProps {
 
 // 準備の確認と経路の要約。声の調整と音の流れはチェーン列（SoundChain）に置く。
 // 入力メーターは本番帯（LiveStrip）に置き、ここでは重ねない。
-export function HomePanels({ homeActionInStrip, destinationRequest, model, audioReady, statusText, inputName, outputName,
+export function HomePanels({ stoppedInStrip, homeActionInStrip, destinationRequest, model, audioReady, statusText, inputName, outputName,
     onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onListen, onOpenOBSGuide, onOpenDiscordGuide, onOpenTroubleshoot, onCheckOutput, onSetup, onExpandedChange }: HomePanelsProps) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
@@ -46,7 +47,7 @@ export function HomePanels({ homeActionInStrip, destinationRequest, model, audio
     const broadcastId = model.observation.routing?.deviceId;
     const broadcastName = useOutputDeviceName(broadcastId);
     return <div className="mb-4 space-y-4">
-        <PreparationPanel homeActionInStrip={homeActionInStrip} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onExpandedChange={onExpandedChange} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
+        <PreparationPanel stoppedInStrip={stoppedInStrip} homeActionInStrip={homeActionInStrip} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onExpandedChange={onExpandedChange} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
             onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText}
             devices={actualInput || actualOutput ? `${actualInput ? deviceDisplayName(actualInput) : t('master.unset')} → ${actualOutput ? deviceDisplayName(actualOutput) : t('master.unset')}` : undefined}
             signalSummary={<section aria-label={t('prep.signalPath')} className="space-y-2">
