@@ -5,6 +5,7 @@ import { LevelMeter } from '../LevelMeter';
 import { LargeLevelMeter } from '../LargeLevelMeter';
 import { MeterProvider } from '../MeterContext';
 import { MeterVisual } from '../MeterVisual';
+import type { MeterReading } from '@/hooks/useMeterLevels';
 
 const handlers = new Map<string, Set<(event: { payload: unknown }) => void>>();
 const emit = (name: string, payload?: unknown) => act(() => handlers.get(name)?.forEach(fn => fn({ payload })));
@@ -43,7 +44,7 @@ it('小メーターは入力を選び、停止後は旧値を表示しない', (
     expect(screen.getByLabelText('入力レベル: レベル表示中')).toBeInTheDocument();
     emit('audio-stopped');
     expect(screen.getByLabelText('入力レベル: 音声停止中')).toBeInTheDocument();
-    expect(screen.getByTitle('Left').firstElementChild).toHaveStyle({ height: '0%' });
+    expect(screen.getByTitle('Left').firstElementChild).toHaveStyle({ transform: 'scaleY(0)' });
 });
 it('大メーターはtimeoutでもclipを保持し、手動で消せる', () => {
     render(<LargeLevelMeter running onClose={() => {}} />);
@@ -93,4 +94,43 @@ it('共有クリップは10秒後に弱い色へ変わり、秒数と解除操�
     expect(buttons[1]).toHaveClass('text-muted-foreground');
     fireEvent.click(buttons[0]);
     expect(screen.queryAllByRole('button', { name: /クリップ表示を消す/ })).toHaveLength(0);
+});
+
+// 値だけを更新しても、寸法・位置のレイアウトプロパティは変えない。
+it.each(['horizontal', 'vertical'] as const)('%s のバーとピークを親寸法に対する transform だけで更新する', orientation => {
+    const reading: MeterReading = { levels: [0, 0], peak: [0, 0], clipped: false, state: 'live', resetClip: () => {} };
+    const { rerender } = render(<MeterVisual label="出力" orientation={orientation} height={28} width={12} scale reading={reading} />);
+    for (const [value, pct] of [[0, 0], [.5, 50], [1, 100], [-.5, 0], [1.5, 100]]) {
+        // ピークをバーと別の値にして、誤って同じ値を使う退行も検出する。
+        const peak = 1 - value;
+        const peakPct = Math.min(100, Math.max(0, peak * 100));
+        rerender(<MeterVisual label="出力" orientation={orientation} height={28} width={12} scale
+            reading={{ ...reading, levels: [value, value], peak: [peak, peak] }} />);
+        const meter = screen.getByRole('meter');
+        expect(meter).toHaveStyle({ height: '28px' });
+        for (const track of Array.from(meter.children) as HTMLElement[]) {
+            const bar = track.firstElementChild as HTMLElement;
+            const peakLayer = track.lastElementChild as HTMLElement;
+            expect(track).toHaveClass('relative', 'overflow-hidden', 'rounded');
+            if (orientation === 'vertical') expect(track).toHaveStyle({ width: '12px' });
+            expect(bar).toHaveClass('absolute', 'inset-0', orientation === 'horizontal' ? 'origin-left' : 'origin-bottom');
+            expect(bar.style.transform).toBe(`${orientation === 'horizontal' ? 'scaleX' : 'scaleY'}(${pct / 100})`);
+            expect(peakLayer).toHaveClass('absolute', 'inset-0');
+            expect(peakLayer.style.transform).toBe(orientation === 'horizontal' ? `translateX(${peakPct}%)` : `translateY(${-peakPct}%)`);
+            expect(peakLayer.firstElementChild).toHaveClass(orientation === 'horizontal' ? 'w-0.5' : 'h-0.5');
+            // 静的な目盛りの位置指定は除き、毎フレーム変わる2層を検査する。
+            for (const layer of [bar, peakLayer]) {
+                expect(Array.from(layer.style)).toEqual(['transform']);
+                expect(layer.className).not.toMatch(/transition|rounded/);
+            }
+        }
+        expect(meter).toHaveAttribute('aria-valuenow', String(value <= 0 ? -60 : Math.min(0, 20 * Math.log10(value))));
+    }
+});
+
+it.each(['waiting', 'stale', 'stopped'] as const)('%s では旧値のバーとピークを表示しない', state => {
+    const { container } = render(<MeterVisual label="出力" reading={{ levels: [.5, 1], peak: [.8, 1], clipped: false, state, resetClip: () => {} }} />);
+    expect(screen.getByTitle('Left').firstElementChild).toHaveStyle({ transform: 'scaleY(0)' });
+    expect(screen.getByTitle('Right').firstElementChild).toHaveStyle({ transform: 'scaleY(0)' });
+    expect(container.querySelector('[style*="translate"]')).toBeNull();
 });
