@@ -151,7 +151,7 @@ it('設定済み停止の開始は1つで、連打を防ぎ、失敗時は設定
     const settings = vi.fn();
     render(<AppShell {...commonProps} currentInput="Mic" currentOutput="Out" isEngineRunning={false} onStartAudio={start} onOpenSettings={settings}><p>rack</p></AppShell>);
     const button = screen.getByRole('button', { name: '音声を開始' });
-    expect(screen.getByRole('button', { name: '入出力を変更' })).not.toHaveClass('bg-primary');
+    expect(screen.getByRole('button', { name: '接続の詳細' })).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(button); fireEvent.click(button);
     expect(start).toHaveBeenCalledOnce();
     expect(button).toBeDisabled();

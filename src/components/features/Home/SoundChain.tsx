@@ -13,6 +13,7 @@ import { unrestoredNamesText } from '../Recovery/SessionRecoveryNotice';
 import { BuiltinQuick, BuiltinSwitch, NoiseQuick, NoiseSwitch, useVoiceQuick } from './VoiceQuickControls';
 
 interface Props {
+    stopped?: boolean;
     model: PreparationModel;
     audioReady: boolean;
     isEngineRunning: boolean;
@@ -38,7 +39,7 @@ interface Props {
 // 音の流れと声の調整を1本のチェーンにまとめる。各段で状態を見て、その場で操作できる。
 // 設定状態と音の到達確認は異なる。値を取得できないときは OFF と推測しない。
 export function SoundChain({ model, audioReady, isEngineRunning, inputName, outputName, vst, listenOpen, onListen, onListenClose,
-    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, vstPanelOpen = false, vstUnrestored = [], unconfigured = false }: Props) {
+    onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, stopped = false, vstPanelOpen = false, vstUnrestored = [], unconfigured = false }: Props) {
     const t = useMessages();
     const [purpose] = useDisplayPurpose();
     const music = purpose === 'music';
@@ -46,7 +47,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const { stats, running } = useRuntimeStats();
     const stage = currentStageBreakdown(stats, running);
     // 音楽鑑賞では声向けの処理を操作させず、VST 構成で音を整える。
-    const controls = audioReady && !music;
+    const controls = audioReady && !music && !stopped;
     const q = useVoiceQuick(isEngineRunning, controls);
     const live = controls && q.stats !== null;
     const setting = (value: boolean | undefined) => value === undefined ? t('flow.unknown') : value ? t('flow.enabled') : t('flow.disabled');
@@ -72,6 +73,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     }) => {
         // 未設定では状態を推測で並べない。段の並びだけで、設定後に何ができるかを伝える。
         if (unconfigured) { body = null; action = null; on = false; if (typeof sub !== 'string') sub = undefined; }
+        if (stopped) { on = false; body = key === 'vst' ? vst : null; if (typeof sub !== 'string') sub = undefined; }
         const Icon = builtin ? key === 'noise' ? MdFilterAlt : MdGraphicEq : MdExtension;
         return <li key={key}>
             <div id={id} tabIndex={id ? -1 : undefined} data-on={on}
@@ -153,7 +155,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 </DropdownMenu>}
             </div>}
         </div>
-        {!audioReady ? <p className="text-ui-support text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
+        {!audioReady && !stopped ? <p className="text-ui-support text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
             : music ? (noiseOn || builtinOn) && <div className="flex items-center gap-1 text-sm text-warning"><span>{t('flow.voiceStillOn')}</span><InfoPopover label={t('chain.voiceTools')}><p>{builtinDetails}</p><p>{t('settings.AudioSettingsModal.105')}: {setting(stage?.nr.enabled)}</p><button type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="mt-2 underline underline-offset-4">{t('home.moreSound')}</button></InfoPopover></div>
             : null}
         {/* 段の間は細い線でつなぎ、矢印やボックスの入れ子にしない。 */}

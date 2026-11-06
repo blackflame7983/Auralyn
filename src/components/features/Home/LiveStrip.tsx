@@ -18,8 +18,8 @@ const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', disc
 
 // 本番中に見る3つ（声のレベル、送り先、歌・雑談）だけを最上段に置く（DESIGN.md 1.3、2.5）。
 // 入力機器の名前は送り先の手前に1つだけ出し、押すと機器の設定を開く。確認の手順は準備状況に任せる。
-export function LiveStrip({ onStartAudio, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, meterAction, onOpenDevices, onOpenStartErrorSettings, onCheckOutput, onAdjustOutput, outputGainOpen = false, controlsDisabled = false, inputName, outputName, roomy = false }: {
-    onStartAudio?: () => void; starting?: boolean; startError?: string | null; startPartiallyApplied?: boolean; onChooseDestination?: () => void;
+export function LiveStrip({ onStartAudio, stopped = false, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, meterAction, onOpenDevices, onOpenStartErrorSettings, onCheckOutput, onAdjustOutput, outputGainOpen = false, controlsDisabled = false, inputName, outputName, roomy = false }: {
+    onStartAudio?: () => void; stopped?: boolean; starting?: boolean; startError?: string | null; startPartiallyApplied?: boolean; onChooseDestination?: () => void;
     model: PreparationModel; running: boolean; liveControls?: ReactNode; meterAction?: ReactNode; onOpenDevices?: () => void; onOpenStartErrorSettings?: () => void;
     onCheckOutput?: (anchor: HTMLButtonElement) => void;
     onAdjustOutput?: (anchor: HTMLButtonElement) => void;
@@ -49,6 +49,7 @@ export function LiveStrip({ onStartAudio, starting = false, startError, startPar
     return <section aria-label={t('live.strip')} data-muted={muted} data-roomy={roomy} className="live-strip relative isolate mb-4 space-y-4 rounded-xl bg-card gaming:bg-card/70 px-5 py-5 min-[1100px]:px-6">
         {aurora && <div aria-hidden="true" className="live-aurora" data-lit={running} style={{ '--aurora-energy': energy } as CSSProperties} />}
         {!running && onStartAudio ? <div data-layout-motion className="flex flex-wrap items-center gap-3">
+            {stopped && <span role="status" className="text-ui-support text-muted-foreground">{t('shell.stopped')}</span>}
             <button type="button" onClick={onStartAudio} disabled={starting || controlsDisabled} className="rounded-md bg-primary px-4 py-2 text-ui-control font-semibold text-primary-foreground disabled:opacity-50">{t(starting ? 'home.starting' : 'home.startAudio')}</button>
             <p className="text-ui-support text-muted-foreground">{t('home.startSavedDevices')}</p>
             {meterAction}

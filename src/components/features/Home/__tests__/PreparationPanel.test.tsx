@@ -32,6 +32,12 @@ const fixture = (): PreparationModel => ({ context: { ...context }, observation:
     confirm: vi.fn().mockResolvedValue(undefined), unconfirm: vi.fn(), refresh: vi.fn(), reset: vi.fn(), changeContext: vi.fn() });
 const callbacks = () => ({ onSettings: vi.fn(), onSound: vi.fn(), onListen: vi.fn(), onObs: vi.fn(), onCall: vi.fn(), onTroubleshoot: vi.fn(), audioReady: true });
 const expand = (locale: 'ja' | 'en' = 'ja') => fireEvent.click(screen.getByRole('button', { name: message(locale, 'prep.steps') }));
+it.each([false, true])('通常停止だけを本番帯へ集約し、状態不明の復旧手順は自動で開く（集約=%s）', stoppedInStrip => {
+    const model = fixture();
+    model.observation.availability = 'stopped';
+    render(<PreparationPanel model={model} {...callbacks()} audioReady={false} homeActionInStrip stoppedInStrip={stoppedInStrip} />);
+    expect(screen.getByRole('button', { name: message('ja', 'prep.steps') })).toHaveAttribute('aria-expanded', String(!stoppedInStrip));
+});
 const checked = (model: PreparationModel, stage: 'sound' | 'listen') => { model.records[stage] = { at: 1, target: 'Mic', key: model.observation.keys![stage], expired: false }; };
 
 it('本番帯からの送り先要求で、閉じた手順を開きラジオへフォーカスする', () => {

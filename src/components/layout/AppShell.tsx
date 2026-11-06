@@ -209,6 +209,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         panelWasOpen.current = vstPanelOpen;
     }, [vstPanelOpen]);
     // 未設定の間は本番帯を出さず、準備の主ボタンを先頭にする。
+    const quietStopped = canStart && !isEngineRunning && engineProcessReady === true;
     const configured = Boolean(currentHost) && preparation.observation.availability !== 'unconfigured';
     // 音楽鑑賞の聴き比べは、準備の手順とチェーン列のどちらからも開く。
     const [listenOpen, setListenOpen] = useState(false);
@@ -225,7 +226,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     </button></TooltipTrigger><TooltipContent><p>{t(meterSuspended ? 'home.meterSuspended' : 'home.largeMeterTool')}</p><p className="max-w-64 text-xs">{t('meter.arrivalUnverified')}</p></TooltipContent></Tooltip></TooltipProvider>;
     const meterSuspendedNotice = meterSuspended ? <span id="large-meter-suspended" role="status" className="mb-3 text-xs text-muted-foreground">{t('home.meterSuspended')}</span> : null;
     const loudnessAction = !loudnessEnabled && !measurement.active ? <span className="flex shrink-0 items-center gap-2">
-        <span id="loudness-toggle-description" className={!audioReady ? 'whitespace-nowrap text-xs text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
+        <span id="loudness-toggle-description" className={!audioReady && !quietStopped ? 'whitespace-nowrap text-xs text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
         <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><button type="button" aria-pressed={measurement.active} aria-describedby="loudness-toggle-description"
             onClick={() => { setLoudnessEnabled(true); setMeasurementRequest({ id: ++requestId.current, action: measurement.active ? 'stop' : 'start' }); }}
             disabled={measurement.busy || (!measurement.active && !audioReady)}
@@ -249,7 +250,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const closeOutputGain = useCallback(() => setOutputGainAnchor(null), []);
     const toggleOutputGain = useCallback((anchor: HTMLButtonElement) => setOutputGainAnchor(current => current === anchor ? null : anchor), []);
     useEffect(() => { if (panelOverlays || !configured) closeOutputGain(); }, [panelOverlays, configured, closeOutputGain]);
-    const soundChain = <SoundChain model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
+    const soundChain = <SoundChain stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} vstUnrestored={vstUnrestored} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
         onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} unconfigured={!configured} />;
     const [isABBypassed, setIsABBypassed] = useState(false);
@@ -301,6 +302,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     currentBufferSize={currentBufferSize}
                     isEngineRunning={isEngineRunning}
                     engineProcessReady={engineProcessReady}
+                    stoppedInStrip={quietStopped}
                 />
                 {/* 重ね表示は中央の作業領域だけを覆う。緊急ミュートと出力音量は操作できるままにする。 */}
                 <div className="workspace-body relative flex min-h-0 flex-1">
@@ -315,7 +317,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
-                            ? <LiveStrip roomy={roomyMeters} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
+                            ? <LiveStrip stopped={quietStopped} roomy={roomyMeters} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
                         {/* 音量チェックは開いたメーターの直下に出す。 */}
                         <div><LoudnessCheck
@@ -331,7 +333,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {/* 未設定の間は音の流れと次の1歩だけを出し、準備の確認・送り先の選択・状態の重複を並べない（#297）。 */}
                         {!configured && <UnsetFlow usage={preparation.context.usage || null} music={purpose === 'music'} onSetup={onOpenWizard}
                             input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput} />}
-                        {configured && <div className="min-w-0"><HomePanels
+                        {configured && <div className="min-w-0"><HomePanels stoppedInStrip={quietStopped}
                             onExpandedChange={setPreparationExpanded}
                             model={preparation}
                             homeActionInStrip={canStart && !isEngineRunning || purpose !== 'music' && audioReady && !preparation.context.usage}

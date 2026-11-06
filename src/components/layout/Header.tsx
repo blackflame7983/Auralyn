@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface HeaderProps {
+    stoppedInStrip?: boolean;
     onOpenSettings: () => void;
     onOpenOBSGuide: () => void;
     onOpenDiscordGuide: () => void;
@@ -51,6 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
     onOpenDiscordGuide,
     onOpenTroubleshoot,
     stats,
+    stoppedInStrip = false,
     currentHost,
     currentSampleRate,
     currentBufferSize,
@@ -106,7 +108,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </div>
 
                     {/* 音声状態は表示専用。設定は共通ボタンから開く。 */}
-                    {(!isEngineRunning || engineProcessReady === false || engineProcessReady === null) && <DeviceStatus
+                    {(!stoppedInStrip && (!isEngineRunning || engineProcessReady === false || engineProcessReady === null)) && <DeviceStatus
                         stats={stats}
                         host={currentHost}
                         sampleRate={currentSampleRate}
