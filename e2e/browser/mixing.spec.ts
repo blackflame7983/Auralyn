@@ -147,3 +147,43 @@ test('ホームの表示が音楽鑑賞向けなら、設定から配信ミッ�
     await expect(dialog.getByRole('checkbox', { name: 'ホームにパネルを出す' })).toBeDisabled();
     await expect(dialog.getByText('ホームの表示が「音楽鑑賞向け」のときは出ません。')).toBeVisible();
 });
+
+// DOM試験では判断できない高さ・フッターとの重なり・操作位置を実ブラウザで守る。
+test.describe('本番中の配信ミックスの配置', () => {
+    test.use({ liveHome: true, builtinEnabled: true });
+    for (const size of [{ width: 1280, height: 800 }, { width: 960, height: 640 }]) {
+        for (const theme of ['light', 'dark', 'gaming']) {
+            test(`配信ミックスの入口はスクロールせず届き、外枠を重ねない（#355 ${size.width} ${theme}）`, async ({ page }) => {
+                await page.setViewportSize(size);
+                await page.addInitScript(theme => localStorage.setItem('vst_host_theme', theme), theme);
+                await fixture(page, true, true);
+                await page.goto('/');
+                const panel = await streamMix(page);
+                const main = page.locator('main');
+                const bounds = await panel.evaluate(el => {
+                    const strip = document.querySelector('.live-strip')!;
+                    const chain = document.querySelector('.sound-chain')!;
+                    const footer = document.querySelector('footer')!.getBoundingClientRect();
+                    const box = el.getBoundingClientRect();
+                    return { top: box.top, bottom: box.bottom, stripBottom: strip.getBoundingClientRect().bottom,
+                        chainTop: chain.getBoundingClientRect().top, footerTop: footer.top,
+                        borders: ['borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'].map(key => getComputedStyle(el).getPropertyValue(key.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`))) };
+                });
+                expect(bounds.top).toBeGreaterThanOrEqual(bounds.stripBottom);
+                expect(bounds.bottom).toBeLessThanOrEqual(bounds.chainTop);
+                expect(bounds.bottom).toBeLessThanOrEqual(bounds.footerTop);
+                expect(bounds.borders).toEqual(['0px', '0px', '0px', '0px']);
+                await expect(page.locator('.live-strip')).toHaveAttribute('data-roomy', 'false');
+                for (const summary of await panel.locator(':scope > details > summary').all()) {
+                    await expect(summary).toBeInViewport({ ratio: 1 });
+                    expect(await summary.evaluate(el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })).toBe(true);
+                }
+                expect(await main.evaluate(el => el.scrollTop)).toBe(0);
+                // 本番帯の既存の近道でも音量操作を続けられる。
+                await page.getByRole('button', { name: 'オケ音量とミュート' }).click();
+                await expect(page.getByRole('dialog', { name: 'オケ音量とミュート' }).getByRole('slider')).toBeInViewport({ ratio: 1 });
+                expect(await main.evaluate(el => el.scrollTop)).toBe(0);
+            });
+        }
+    }
+});

@@ -1,3 +1,4 @@
+import { useStreamMixPanel } from '@/lib/streamMixPanel';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { HomeAudioStartError } from '@/lib/startHomeAudio';
 import { renderClientError } from '@/lib/clientError';
@@ -63,6 +64,8 @@ interface AppShellProps {
     vstUnrestored?: string[];
     /** 右パネルに出す VST ラック。 */
     vstPanel?: ReactNode;
+    /** 表示を選んだ配信ミックス。本番帯の直下へ置く。 */
+    streamMixPanel?: ReactNode;
 }
 
 import { MasterBar } from './MasterBar';
@@ -98,7 +101,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     liveControlsWhileUnconfigured = false,
     vstChain,
     vstUnrestored,
-    vstPanel
+    vstPanel,
+    streamMixPanel
 }) => {
     const t = useMessages();
     const [starting, setStarting] = useState(false);
@@ -120,6 +124,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     }, []);
     const canStart = Boolean(onStartAudio && currentHost && currentInput && currentOutput);
     const [purpose] = useDisplayPurpose();
+    const streamMixShown = useStreamMixPanel();
+    const hasStreamMix = purpose === 'voice' && streamMixShown && Boolean(streamMixPanel);
     useUsageWindow(purpose);
     const [runtimeStats, setRuntimeStats] = useState<EngineRuntimeStats | null>(null);
     useEffect(() => { setRuntimeStats(null); }, [isEngineRunning]);
@@ -172,7 +178,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const panelOverlays = Boolean(vstPanel) && vstPanelOpen && !panelBeside;
     // 反映待ちの間は直前の判定を使い、メーターの配置を畳まない（#298）。
     const settledReady = useSettledReady(preparation.observation.availability);
-    const roomyMeters = audioReady && settledReady && !preparationExpanded && !isLargeMeterOpen && !loudnessEnabled && !panelOverlays;
+    const roomyMeters = audioReady && settledReady && !preparationExpanded && !isLargeMeterOpen && !loudnessEnabled && !panelOverlays && !hasStreamMix;
     const panelRef = useRef<HTMLElement>(null);
     const panelMotion = usePanelMotion(Boolean(vstPanel) && vstPanelOpen);
     useEffect(() => {
@@ -319,7 +325,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {configured
                             ? <LiveStrip stopped={quietStopped} roomy={roomyMeters} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
-                        {/* 音量チェックは開いたメーターの直下に出す。 */}
+                        {/* 本番操作は音調整・診断より前へ置き、表示中はメーターの大型化より操作幅と高さを優先する。 */}
+                        {streamMixPanel}
+                        {/* 音量チェックは開いたメーターの近くに出す。 */}
                         <div><LoudnessCheck
                             music={purpose === 'music'}
                             enabled={loudnessEnabled}
@@ -328,7 +336,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             stateKnown={engineProcessReady !== null}
                             onVoiceCheck={onOpenVoiceCheck}
                         /></div>
-                        {/* チェーン列は本番帯の直下に置き、準備や経路の情報より下へ押し出さない。未設定の間だけ準備の後ろへ回す。 */}
+                        {/* チェーン列は本番操作の後、準備や経路の情報より前に置く。未設定の間だけ準備の後ろへ回す。 */}
                         {configured && soundChain}
                         {/* 未設定の間は音の流れと次の1歩だけを出し、準備の確認・送り先の選択・状態の重複を並べない（#297）。 */}
                         {!configured && <UnsetFlow usage={preparation.context.usage || null} music={purpose === 'music'} onSetup={onOpenWizard}

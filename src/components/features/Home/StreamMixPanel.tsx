@@ -49,7 +49,7 @@ export function StreamMixPanel({ running, primaryInputId, primaryIsVoiceDevice, 
     }, [openRequest, disabled]);
     if (!shown) return null;
     return <section ref={section} id="stream-mix-panel" tabIndex={-1} aria-labelledby="stream-mix-heading"
-        className="mt-4 scroll-mt-4 space-y-3 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3">
+        className="stream-mix-panel mb-4 scroll-mt-4 space-y-3 rounded-xl bg-card gaming:bg-card/70 px-5 py-4 min-[1100px]:px-6 [&>details]:rounded-none [&>details]:border-0 [&>details]:border-t [&>details]:border-border/60 [&>details]:bg-transparent [&>details]:px-0 [&>details]:py-3">
         <h2 id="stream-mix-heading" className="text-ui-heading font-semibold">{t('streamMix.title')}</h2>
         <MixingPanel inputs={inputs} primaryInputId={primaryInputId} primaryIsVoiceDevice={primaryIsVoiceDevice} disabled={disabled}
             initiallyOpen={openRequest > 0} onNavigate={onOpenDevices} />
