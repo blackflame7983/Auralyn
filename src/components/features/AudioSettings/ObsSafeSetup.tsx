@@ -1,4 +1,5 @@
-import { formatObsText, obsHistoryResults, originalObsText } from '@/lib/obsUiText';
+import { ErrorDetails } from '@/components/ui/ErrorDetails';
+import { formatObsText, obsHistoryResults, obsTextParts } from '@/lib/obsUiText';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -75,6 +76,7 @@ export function ObsSafeSetup({
             setPlan(null);
             setPlan(await obsApi.previewSetup(source));
         });
+    const planMessage = plan?.message ? obsTextParts(t, plan.messageText, plan.message) : null;
     const buttonClass = 'rounded border border-border px-3 py-2 hover:bg-muted disabled:opacity-50';
     return (
         <section aria-label={t('settings.ObsSafeSetup.335')} className="space-y-3 text-sm">
@@ -98,15 +100,20 @@ export function ObsSafeSetup({
             </div>
             {unavailableReason && <p id={reasonId} className="text-ui-support text-muted-foreground" role="status">{unavailableReason}</p>}
             {error && (
-                <p role="alert" className="text-warning break-words">
-                    {originalObsText(t, error)} {t('settings.ObsSafeSetup.339')}</p>
+                <div className="space-y-2">
+                    <p role="alert" className="text-warning">{t('obsSetup.operationFailed')} {t('obsSetup.errorNextStep', { history: t('structure.history'), refresh: t('settings.ObsSafeSetup.347') })}</p>
+                    <ErrorDetails detail={error} />
+                </div>
             )}
             {plan && (
                 <div
                     className="rounded border border-border p-3 space-y-3"
                     aria-label={t('settings.ObsSafeSetup.340')}
                 >
-                    {plan.message && <p>{formatObsText(t, plan.messageText, plan.message)}</p>}
+                    {planMessage && <div className="space-y-2">
+                        <p>{planMessage.summary ?? t('obsSetup.planUnavailable', { preview: t('settings.ObsSafeSetup.337') })}</p>
+                        {planMessage.detail && <ErrorDetails detail={planMessage.detail} />}
+                    </div>}
                     {plan.changes.length > 0 ? (
                         <ul className="space-y-2">
                             {plan.changes.map((c, i) => (

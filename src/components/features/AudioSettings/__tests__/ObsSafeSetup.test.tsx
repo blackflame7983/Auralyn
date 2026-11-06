@@ -77,7 +77,12 @@ describe('OBS の変更確認と復元', () => {
         });
         renderSetup();
         fireEvent.click(screen.getByRole('button', { name: '変更予定を確認する' }));
-        await screen.findByText(/手動の手順をご利用ください。/);
+        const raw = await screen.findByText(/手動の手順をご利用ください。/);
+        expect(raw.closest('details')).not.toHaveAttribute('open');
+        expect(raw).not.toBeVisible();
+        expect(screen.getByText(/変更予定を確認できません/)).toBeVisible();
+        fireEvent.click(raw.closest('details')!.querySelector('summary')!);
+        expect(raw).toBeVisible();
         expect(
             screen.queryByRole('button', { name: 'この変更を適用する' }),
         ).not.toBeInTheDocument();
@@ -226,4 +231,32 @@ it.each(['ja', 'en'] as const)('未接続の理由を表示し、確認と復元
     expect(preview).toHaveAccessibleDescription(reason);
     const undo = await screen.findByRole('button', { name: locale === 'ja' ? '変更 #7 を元に戻す' : /Undo change #7/ });
     expect(undo).toHaveAccessibleDescription(expect.stringContaining(reason));
+});
+
+it.each(['ja', 'en'] as const)('OBS の取得・操作エラーは要約と次の操作を本文に残し、原文は閉じた詳細に置く（%s）', async locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    const raw = 'Error: OBS request failed\n' + 'long-detail-'.repeat(30);
+    vi.mocked(obsApi.setupHistory).mockRejectedValueOnce(new Error(raw.slice(7)));
+    render(<LocaleProvider store={store}><ObsSafeSetup disabled={false} onBusyChange={() => {}} /></LocaleProvider>);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(locale === 'ja' ? 'OBS の設定操作または履歴の取得に失敗しました。' : 'Could not complete the OBS settings operation or retrieve history.');
+    expect(alert).toHaveTextContent(locale === 'ja' ? '履歴を再取得' : 'Refresh history');
+    expect(alert).not.toHaveTextContent(raw);
+    const pre = screen.getByText((_, node) => node?.tagName === 'PRE' && node.textContent === raw);
+    const details = pre.closest('details')!;
+    expect(details).not.toHaveAttribute('open');
+    expect(pre).not.toBeVisible();
+    const summary = details.querySelector('summary')!;
+    summary.focus();
+    expect(summary).toHaveFocus();
+    fireEvent.click(summary);
+    expect(pre).toBeVisible();
+    expect(pre).toHaveClass('font-mono', 'whitespace-pre-wrap', 'select-text');
+    fireEvent.click(summary);
+    expect(pre).not.toBeVisible();
+    vi.mocked(obsApi.previewSetup).mockRejectedValueOnce('preview failed');
+    fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? '変更予定を確認する' : 'Review proposed changes' }));
+    const operationRaw = await screen.findByText('preview failed');
+    expect(operationRaw.closest('details')).not.toHaveAttribute('open');
+    expect(operationRaw).not.toBeVisible();
 });

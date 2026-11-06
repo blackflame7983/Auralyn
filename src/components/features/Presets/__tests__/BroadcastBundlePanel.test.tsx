@@ -145,7 +145,8 @@ it('partial履歴は次applyを止め、競合Undoの拒否でも原本とUndo�
     await showPlan();
     expect(screen.getByRole('button', { name: 'この変更予定を適用する' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '直近のOBS込みプロファイル変更を元に戻す' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('後からVST状態が変わりました');
+    expect(await screen.findByRole('alert')).toHaveTextContent('処理の完了を確認できません');
+    expect(screen.getByText(/後からVST状態が変わりました/).closest('details')).not.toHaveAttribute('open');
     expect(screen.getByText(/一部未完了、原本保持/)).toBeVisible();
     expect(operation).toHaveBeenCalledExactlyOnceWith({ action: 'undo', id: 'p1' });
 });
@@ -158,7 +159,8 @@ it('既存ソースを明示選択して限定項目を保存し、capture失敗
     fireEvent.click(screen.getByRole('button', { name: 'OBSの対象を取得' }));
     fireEvent.click(await screen.findByLabelText('声'));
     fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('旧bundleを保持');
+    expect(await screen.findByRole('alert')).toHaveTextContent('処理の完了を確認できません');
+    expect(screen.getByText(/旧bundleを保持/).closest('details')).not.toHaveAttribute('open');
     expect(bundleApi.save).toHaveBeenCalledWith('新規', expect.any(Object), [{ source: '声', volume: true, muted: true, monitor: false, filters: [] }], false);
     expect(screen.queryByText('OBS込みプロファイルを保存しました。')).not.toBeInTheDocument();
 });
@@ -229,8 +231,16 @@ it('raw失敗に保存しましたが含まれてもalertのまま、明示成�
     fireEvent.click(screen.getByRole('button', { name: '現在のOBS込みプロファイルを保存' }));
     const alert = await screen.findByRole('alert');
     act(() => { store.setLocale('en'); });
-    expect(screen.getByRole('alert')).toBe(alert); expect(alert).toHaveTextContent('Original detail (untranslated)');
-    expect(alert).toHaveTextContent('保存しましたではない: unknown backend failure');
+    expect(screen.getByRole('alert')).toBe(alert);
+    expect(alert).toHaveTextContent('Refresh list / operation history');
+    expect(alert).not.toHaveTextContent('unknown backend failure');
+    const raw = screen.getByText('保存しましたではない: unknown backend failure');
+    const details = raw.closest('details')!;
+    expect(details).not.toHaveAttribute('open');
+    expect(raw).not.toBeVisible();
+    fireEvent.click(screen.getByText('Original detail (untranslated)'));
+    expect(raw).toBeVisible();
+    expect(alert).not.toHaveTextContent('保存しましたではない: unknown backend failure');
     fireEvent.click(screen.getByRole('button', { name: 'Save current profile with OBS' }));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
     expect(await screen.findByRole('status')).toHaveTextContent('Profile with OBS saved.');

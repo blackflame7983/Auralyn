@@ -1,3 +1,4 @@
+import { ErrorDetails } from '@/components/ui/ErrorDetails';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { audioApi, type PreparationSnapshot } from '@/api/audio';
 import { OutputConfigurationDiff } from './OutputConfigurationDiff';
@@ -199,6 +200,6 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
             {result.undoPending && <Button variant="outline" type="button" className="border rounded p-2" disabled={busy || !onOperation} onClick={() => void operate({ action: 'undo', id: result.id })}>{t('presets.copy.170')}</Button>}
             <p className="text-xs">{t('presets.copy.171')}</p></div>}
         {busy && <p role="status">{t('presets.copy.172')}</p>}
-        {message && <p role={message.kind === 'success' ? 'status' : 'alert'}>{renderNotice(t, message.notice)}{message.rawDetail && <span className="block break-words">{t('presets.rawDetail')}: {message.rawDetail}</span>}</p>}
+        {message && <div className="space-y-2"><p role={message.kind === 'success' ? 'status' : 'alert'}>{renderNotice(t, message.notice)}{message.rawDetail && <> {t('presets.errorNextStep', { action: t('presets.copy.147') })}</>}</p>{message.rawDetail && <ErrorDetails detail={message.rawDetail} />}</div>}
     </section>;
 }
