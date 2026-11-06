@@ -27,7 +27,8 @@ for (const liveModes of [false, true]) test(`分離出力と本番モード=${li
         };
     }, liveModes);
     await page.goto('/');
-    const rack = page.getByRole('button', { name: 'VST を編集', exact: true });
+    // VST の読み込みが済んで空と分かると「追加」に名前が変わるため、id で掴む。
+    const rack = page.locator('#vst-panel-toggle');
     if (await rack.getAttribute('aria-expanded') !== 'true') await rack.click();
     await page.getByRole('button', { name: '設定の保存・復帰', exact: true }).click();
     await page.getByRole('button', { name: '今の設定を保存・復帰', exact: true }).click();

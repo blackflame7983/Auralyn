@@ -526,10 +526,13 @@ test.describe('メーター数値の幅', () => {
                 const value = await input.getAttribute('aria-valuenow');
                 return value !== null && Number.isFinite(Number(value)) && Math.abs(Number(value) + 20) < 0.05;
             }).toBe(true);
+            // 状態の文言が変わるとホームの区画が位置を補間する（#298）。動きの途中ではなく、止まった位置で比べる。
+            await settleLayoutMotion(page);
             const baseline = await Promise.all([input, output.nth(0), output.nth(1)].map(locator => locator.boundingBox()));
             await emit(1.2);
             const resets = page.getByRole('button', { name: /クリップ表示を消す/ });
             await expect(resets).toHaveCount(3);
+            await settleLayoutMotion(page);
             for (const [i, locator] of [input, output.nth(0), output.nth(1)].entries()) {
                 const clipped = (await locator.boundingBox())!;
                 expect(clipped).toEqual(baseline[i]);
