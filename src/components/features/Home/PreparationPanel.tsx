@@ -150,17 +150,17 @@ export function PreparationPanel({ stoppedInStrip = false, homeActionInStrip = f
             <summary ref={summaryRef} className="cursor-pointer text-sm font-medium">{t('prep.details')}</summary>
             <div className="grid gap-3 sm:grid-cols-2">
                 <label className="text-sm">{t('prep.location')}
-                    <select value={context.location} onChange={e => model.changeContext({ location: e.target.value as 'home' | 'venue' })} className="mt-1 block w-full rounded border border-border bg-background p-2">
+                    <select value={context.location} onChange={e => model.changeContext({ location: e.target.value as 'home' | 'venue' })} className="mt-1 block w-full rounded border border-input bg-background p-2">
                         <option value="home">{t('prep.home')}</option><option value="venue">{t('prep.venue')}</option>
                     </select>
                 </label>
                 <label className="text-sm">{t(music ? 'wizard.musicSignal' : 'prep.signal')}
-                    <select value={context.signal} onChange={e => model.changeContext({ signal: e.target.value as typeof context.signal })} className="mt-1 block w-full rounded border border-border bg-background p-2">
+                    <select value={context.signal} onChange={e => model.changeContext({ signal: e.target.value as typeof context.signal })} className="mt-1 block w-full rounded border border-input bg-background p-2">
                         <option value="unknown">{t('prep.signalUnknown')}</option><option value="separate">{t('prep.separate')}</option><option value="mixed">{t('prep.mixed')}</option>
                     </select>
                 </label>
                 {context.usage && context.usage !== 'listening' && <label className="text-sm">{t(context.usage === 'obs' ? 'prep.obsTarget' : 'prep.target')}
-                    <input ref={targetRef} maxLength={200} value={context.receiver} onChange={e => model.changeContext({ receiver: e.target.value })} className="mt-1 block w-full rounded border border-border bg-background p-2" />
+                    <input ref={targetRef} maxLength={200} value={context.receiver} onChange={e => model.changeContext({ receiver: e.target.value })} className="mt-1 block w-full rounded border border-input bg-background p-2" />
                 </label>}
             </div>
             {context.usage && context.usage !== 'listening' && observation.config?.output && <p className="text-xs text-muted-foreground">{t('prep.receiverInput')}: {renderNotice(t, receiverDeviceNotice(observation.config.output))}</p>}

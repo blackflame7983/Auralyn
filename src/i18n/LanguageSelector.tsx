@@ -12,7 +12,7 @@ export function LanguageSelector() {
     useEffect(() => () => { latest.current += 1; }, []);
     return <div className="mb-3 space-y-1 text-sm" aria-busy={syncing}>
         <label className="flex items-center gap-3">{t('language.label')}
-            <select className="rounded border border-border bg-background px-2 py-1" value={locale} onChange={event => {
+            <select className="rounded border border-input bg-background px-2 py-1" value={locale} onChange={event => {
                 const next = event.target.value as Locale;
                 const current = ++latest.current;
                 const saved = setLocale(next);

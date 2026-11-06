@@ -126,9 +126,9 @@
   --waveform-raw: 158 80% 25%;
   --waveform-processed: 202 85% 30%;
 
-  /* 入力欄の境界が背景と3:1に近づくよう、枠線は濃いめにする。 */
+  /* 装飾枠は維持し、入力枠だけ card と3.52:1、background と3.29:1を確保する。 */
   --border: 220 9% 70%;
-  --input: 220 9% 70%;
+  --input: 220 9% 55%;
   --ring: 174 82% 24%;
 
   /* 本番帯の奥のオーロラ。実物に近い緑〜青緑と、上端の淡い赤紫。ライトは淡くする。 */
@@ -191,7 +191,8 @@
   --waveform-processed: 199 95% 74%;
 
   --border: 222 8% 21%;
-  --input: 222 8% 24%;
+  /* 入力枠は card と3.64:1、background と3.89:1。 */
+  --input: 222 8% 46%;
   --ring: 166 58% 56%;
 
   --aurora-green: 150 70% 48%;
@@ -236,7 +237,8 @@
 
   /* Stronger borders for "Mechanical/Cyber" feel */
   --border: 295 45% 24%;
-  --input: 295 45% 24%;
+  /* 入力枠はゲーミングの色相を保ち、card と3.87:1、background と3.97:1。 */
+  --input: 295 45% 48%;
 
   --ring: 300 100% 68%;
   /* Sharp Neon Ring */
@@ -252,6 +254,13 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+  }
+
+  /* 色指定のない入力枠も input に統一する。選択・範囲・ファイル等の入力は標準の描画を保つ。 */
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"], [type="color"]),
+  select,
+  textarea {
+    border-color: hsl(var(--input));
   }
 
   /* 展開したネイティブの候補にも、アプリの配色を渡す。 */
