@@ -1,3 +1,4 @@
+import { StreamMixPanel } from '@/components/features/Home/StreamMixPanel';
 import { MixingLiveControl } from '@/components/features/Home/MixingLiveControl';
 import { readPreparationContext } from '@/lib/preparation';
 import { useDisplayPurpose } from './hooks/useDisplayPurpose';
@@ -192,6 +193,8 @@ function AppContent() {
       >
         {/* 音楽鑑賞では日常の歌・雑談操作を出さず、保護や復旧が必要な場合だけ操作を残す。 */}
         {displayPurpose === 'music' && <LiveModeBar model={liveModel} refreshKey={isModalOpen} safetyOnly />}
+        {displayPurpose === 'voice' && <StreamMixPanel running={audioReady} primaryInputId={audioConfig.inputId} disabled={isModalOpen || isInitializing}
+          primaryIsVoiceDevice={audioConfig.inputSource?.kind !== 'process_loopback' && (audioConfig.inputSource?.config.purpose ?? 'voice') === 'voice'} onOpenDevices={ui.openDeviceSettings} />}
         {/* VST ラックは AppShell の右パネルに出す。 */}
         {audioReady && vstPanelOpen && !isModalOpen && (
           <>
