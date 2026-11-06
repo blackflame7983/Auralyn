@@ -18,7 +18,7 @@ test('セットアップで ASIO を選び、同じ機器のチャンネルで�
     const wizard = page.getByRole('dialog');
     await wizard.getByRole('button', { name: 'OBSで配信' }).click();
     await wizard.getByRole('radio', { name: 'ASIO（オーディオインターフェース）' }).check();
-    await expect(wizard.getByRole('combobox', { name: '入力デバイス' })).toHaveValue('Test ASIO');
+    await expect(wizard.getByRole('combobox', { name: '機器' })).toHaveValue('Test ASIO');
     await page.screenshot({ path: info.outputPath('setup-asio-input.png') });
     await wizard.getByRole('button', { name: /次へ/ }).click();
     await wizard.getByRole('combobox', { name: '入力チャンネル' }).selectOption('2,3');
