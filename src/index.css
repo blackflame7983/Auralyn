@@ -553,7 +553,7 @@
 /* 押下中も色で応答し、ミュートの適用や状態通知をアニメーション待ちにしない。 */
 #emergency-mute:active {
   background-color: hsl(var(--destructive) / 0.3);
-  border-color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive-text));
 }
 /* ウィンドウ幅ではなく、メーター等を除いた実際の作業幅で切り替える。 */
 @container (max-width: 760px) {

@@ -350,14 +350,14 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                   </button>
                 )}
               {obsConnectionHint && (
-                <div className="text-ui-support bg-destructive/10 border border-destructive/30 text-destructive-text rounded-md p-3 space-y-2">
+                <div className="text-ui-support bg-destructive/10 border border-destructive-text/30 text-destructive-text rounded-md p-3 space-y-2">
                   <p className="font-bold">{t('settings.ObsConnectionSettings.293')}</p>
                   <p>{renderNotice(t, obsConnectionHint)}</p>
                   <div className="flex flex-wrap gap-2 pt-1">
                     {onOpenOBSGuide && (
                       <button
                         onClick={onOpenOBSGuide}
-                        className="px-2.5 py-1 rounded border border-destructive/40 hover:bg-destructive/10 transition-colors text-ui-control"
+                        className="px-2.5 py-1 rounded border border-destructive-text/40 hover:bg-destructive/10 transition-colors text-ui-control"
                       >
                         {t('settings.ObsConnectionSettings.294')}</button>
                     )}

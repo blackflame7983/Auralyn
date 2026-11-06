@@ -67,7 +67,7 @@ export function ProcessInputPanel({ value, onChange, disabled, isAsio, status, o
             {status && <p role="status" className="text-sm">{t(status.failed ? 'processInput.failed' : status.waitingForAudio ? 'processInput.waiting' : 'processInput.capturing')}</p>}
             <p className="text-ui-support text-muted-foreground">{t('processInput.routeHelp')}</p>
             {isAsio && <div className="flex flex-wrap items-center gap-2">
-                <p role="alert" className="text-sm text-destructive">{t('processInput.asio')}</p>
+                <p role="alert" className="text-sm text-destructive-text">{t('processInput.asio')}</p>
                 {onChooseConnection && <Button variant="outline" size="sm" type="button" onClick={onChooseConnection}>{t('processInput.chooseConnection')}</Button>}
             </div>}
             <label className="block text-ui-control">{t('processInput.app')}

@@ -43,7 +43,7 @@ export function SessionRecoveryNotice({ status, protectedSession, reason, busy, 
             {missingRecovery && (missingRecovery.names.length ? <div className="space-y-2">
                 <p>{t('session.removeMissingImpact')}</p>
                 <ul className="list-disc pl-5">{missingRecovery.names.map((name, index) => <li key={index}>{name}</li>)}</ul>
-                <button type="button" disabled={busy} onClick={() => { setRecoveryError(false); void onSaveWithoutMissing().catch(() => setRecoveryError(true)); }} className="rounded-md border border-destructive bg-destructive text-destructive-foreground hover:bg-destructive/90 px-3 py-2 font-medium disabled:opacity-50">{t('session.confirmRemoveMissing')}</button>
+                <button type="button" disabled={busy} onClick={() => { setRecoveryError(false); void onSaveWithoutMissing().catch(() => setRecoveryError(true)); }} className="rounded-md border border-destructive-text bg-destructive text-destructive-foreground hover:bg-destructive/90 px-3 py-2 font-medium disabled:opacity-50">{t('session.confirmRemoveMissing')}</button>
             </div> : <p>{t('session.noMissing')}</p>)}
             {recoveryError && <p role="alert">{t('session.missingRecoveryFailed')}</p>}
         </div>}

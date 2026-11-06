@@ -127,8 +127,8 @@ export const Header: React.FC<HeaderProps> = ({
                                 aria-label={t('header.emergency')}
                                 aria-describedby={isGlobalMuted ? 'header-mute-state' : undefined}
                                 className={`press-feedback flex items-center gap-2 px-3 py-1.5 rounded-full border font-bold text-sm shadow-sm text-foreground ${isGlobalMuted
-                                    ? 'bg-destructive/10 border-destructive ring-2 ring-destructive/50'
-                                    : 'bg-background hover:bg-destructive/10 border-destructive/30 hover:border-destructive hover:shadow-destructive/20'
+                                    ? 'bg-destructive/10 border-destructive-text ring-2 ring-destructive-text'
+                                    : 'bg-background hover:bg-destructive/10 border-destructive-text hover:border-destructive-text'
                                     }`}
                             >
                                 <MdMicOff aria-hidden="true" className="w-5 h-5 shrink-0" />

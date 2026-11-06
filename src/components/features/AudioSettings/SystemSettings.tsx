@@ -175,7 +175,7 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                 <button
                   onClick={handleRestart}
                   disabled={loading || !canRestart}
-                  className="px-3 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive-text border border-input hover:border-destructive/30 rounded-md transition font-medium disabled:opacity-50 disabled:cursor-not-allowed text-ui-control"
+                  className="px-3 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive-text border border-input hover:border-destructive-text/30 rounded-md transition font-medium disabled:opacity-50 disabled:cursor-not-allowed text-ui-control"
                 >
                   {t('settings.AudioSettingsModal.196')}</button>
             </section>
@@ -361,7 +361,7 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                         },
                       });
                     }}
-                    className="px-3 py-1.5 text-destructive-text bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 rounded-md transition-colors whitespace-nowrap text-ui-support"
+                    className="px-3 py-1.5 text-destructive-text bg-destructive/10 hover:bg-destructive/20 border border-destructive-text/20 rounded-md transition-colors whitespace-nowrap text-ui-support"
                   >
                     {t('settings.AudioSettingsModal.187')}</button>
                 </div>

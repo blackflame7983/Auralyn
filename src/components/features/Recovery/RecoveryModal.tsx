@@ -50,7 +50,7 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
     return (
         <Modal title={t('recovery.title')} onClose={onClose} dismissible={false}>
         <div className="modal-overlay-base z-[9999] bg-overlay/80">
-            <div className="modal-surface-base w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto border-2 border-destructive/50 bg-background">
+            <div className="modal-surface-base w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto border-2 border-destructive-text/50 bg-background">
 
                 <div className="p-6 text-center space-y-4">
                     <div className="inline-flex justify-center items-center w-16 h-16 rounded-full bg-destructive/20 text-destructive-text mb-2">
@@ -64,7 +64,7 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
                     </p>
 
                     {pendingPlugin && (
-                        <div className="bg-destructive/10 p-3 rounded-lg text-sm text-left border border-destructive/20 mt-4">
+                        <div className="bg-destructive/10 p-3 rounded-lg text-sm text-left border border-destructive-text/20 mt-4">
                             <div className="font-bold text-destructive-text mb-1 flex items-center gap-2">
                                 <MdWarning /> {t('recovery.pending')}
                             </div>

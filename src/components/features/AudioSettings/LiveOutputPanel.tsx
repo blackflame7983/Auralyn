@@ -90,7 +90,7 @@ export function LiveOutputPanel({ outputs, inputName, monitorName, onBusyChange,
         {previous && <button disabled={busy || disabled} className="link-button text-ui-support" onClick={() => { setDraft(previous); setConfirmed(false); }}>{t('liveOutput.undo')}</button>}
         <div className="space-y-2 border-t border-border pt-3">
             <p id="live-output-stop-warning" className="text-sm">{t('liveOutput.stopWarning')}</p>
-            <Button ref={stopButton} type="button" variant="outline" disabled={busy || disabled} aria-describedby="live-output-stop-warning" className="border-destructive bg-destructive/10 text-foreground hover:bg-destructive/20 text-ui-control" onClick={() => setStopConfirmOpen(true)}>{t('liveOutput.stop')}</Button>
+            <Button ref={stopButton} type="button" variant="outline" disabled={busy || disabled} aria-describedby="live-output-stop-warning" className="border-destructive-text bg-destructive/10 text-foreground hover:bg-destructive/20 text-ui-control" onClick={() => setStopConfirmOpen(true)}>{t('liveOutput.stop')}</Button>
         </div>
         <ConfirmDialog
             isOpen={stopConfirmOpen}
