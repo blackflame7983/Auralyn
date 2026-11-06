@@ -173,6 +173,8 @@ it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態
     </LocaleProvider>);
     const compare = screen.getByRole('button', { name: message(locale, 'header.compare') });
     expect(compare.closest('footer')).not.toBeNull();
+    expect(compare).toHaveClass('text-ui-control', 'py-1');
+    expect(compare).not.toHaveClass('font-mono', 'text-xs');
     expect(compare).toHaveAttribute('aria-pressed', 'false');
     await act(async () => fireEvent.click(compare));
     expect(compare).not.toHaveClass('animate-pulse');
