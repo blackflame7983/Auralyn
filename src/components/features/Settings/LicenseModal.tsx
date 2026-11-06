@@ -247,7 +247,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                                     <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
                                         <MdDescription className="w-16 h-16 mb-4 opacity-20" />
                                         <p>{t('licenses.select')}</p>
-                                        <p className="text-sm mt-2 opacity-60">{t('licenses.selectHint')}</p>
+                                        <p className="text-sm mt-2">{t('licenses.selectHint')}</p>
                                     </div>
                                 )}
                             </div>

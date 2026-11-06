@@ -124,7 +124,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                             <button
                                                 type="button"
                                                 onClick={() => void performClose(onOpenTroubleshoot)}
-                                                className="underline underline-offset-2 text-primary hover:text-primary/80"
+                                                className="underline underline-offset-2 text-primary hover:text-foreground"
                                             >
                                                 {t('wizard.diagnostics')}
                                             </button>
@@ -347,7 +347,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                                             e.stopPropagation();
                                                             invoke('open_url', { url: 'https://vb-audio.com/Cable/' }).catch(() => window.open('https://vb-audio.com/Cable/', '_blank'));
                                                         }}
-                                                        className="text-xs underline text-primary hover:text-primary/80"
+                                                        className="text-xs underline text-primary hover:text-foreground"
                                                     >
                                                         {t('guide.copy.216')}</button>
                                                 </div>

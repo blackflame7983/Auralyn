@@ -330,7 +330,7 @@
 
   /* 文字だけの補助操作。未装飾の下線ボタンを使わず、操作だと分かる色と無効表示を揃える。 */
   .link-button {
-    @apply text-sm font-medium text-primary underline underline-offset-2 hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline;
+    @apply text-sm font-medium text-primary underline underline-offset-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline;
   }
 }
 

@@ -769,7 +769,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       </p>}
                       {!sampleRates.options.find(option => option.rate === selectedSampleRate)?.supported && <p className="text-ui-support text-warning">{t('settings.rateSelectedUnsupported')}</p>}
                       {!isAsio && (
-                        <div className="text-ui-support text-warning/90 flex items-start gap-1.5 bg-warning/10 p-1.5 rounded border border-warning/20 mt-2">
+                        <div className="text-ui-support text-warning flex items-start gap-1.5 bg-warning/10 p-1.5 rounded border border-warning/20 mt-2">
                           <MdWarning className="w-3 h-3 mt-0.5 shrink-0" />
                           <span>
                             {t('settings.AudioSettingsModal.070')}</span>
