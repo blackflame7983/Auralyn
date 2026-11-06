@@ -378,11 +378,10 @@
 /* 低い画面向けの共通モーダル設定でも、セットアップは本文だけをスクロールして操作欄を保つ。 */
 .setup-surface.modal-surface-base { height: min(600px, calc(100dvh - 2rem)); overflow-y: hidden; }
 .setup-surface .modal-body-base { flex: 1 1 0%; overflow-y: auto; }
-.setup-rail { width: 11.5rem; }
+.setup-rail { width: 200px; }
 .setup-rail-thumb {
-  position: absolute; left: 0; right: 0; top: 0; height: 2.75rem; border-radius: 0.5rem;
+  position: absolute; left: 0; right: 0; top: 0; border-radius: 0.5rem;
   background: hsl(var(--accent)); box-shadow: inset 3px 0 0 hsl(var(--primary));
-  transform: translateY(calc(var(--rail-index) * 3rem));
   transition: transform var(--motion-panel) var(--ease-in-out);
 }
 .setup-heading { font-size: 1.5rem; line-height: 1.35; font-weight: 600; letter-spacing: -0.01em; color: hsl(var(--foreground)); }

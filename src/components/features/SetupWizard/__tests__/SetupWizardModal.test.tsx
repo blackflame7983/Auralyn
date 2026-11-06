@@ -7,6 +7,7 @@ import { SetupWizardModal } from '../SetupWizardModal';
 import type { AudioDevice } from '../../../../api/audio';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
+import { message } from '@/i18n/messages';
 
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), success: vi.fn(), warning: vi.fn(), error: vi.fn() } }));
 
@@ -815,6 +816,67 @@ describe('PC audio purpose', () => {
 });
 
 describe('セットアップの見た目と動き（#294）', () => {
+    it.each(['ja', 'en'] as const)('済んだ手順だけに完了を添え、現在と未到達の手順を区別する（%s）', async locale => {
+        const store = createLocaleStore(() => 'ja', () => true);
+        render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
+        await screen.findByRole('button', { name: 'OBSで配信' });
+        await chooseObsRoute();
+        act(() => { store.setLocale(locale); });
+        const rail = screen.getByRole('navigation', { name: locale === 'ja' ? 'セットアップの進捗' : 'Setup progress' });
+        const rows = within(rail).getAllByRole('listitem');
+        const completed = locale === 'ja' ? '（完了）' : '(completed)';
+        rows.slice(0, 3).forEach(row => {
+            expect(within(row).getByText(completed)).toHaveClass('sr-only');
+            expect(row).not.toHaveAttribute('aria-current');
+        });
+        expect(rows[3]).toHaveAttribute('aria-current', 'step');
+        expect(within(rows[3]).queryByText(completed)).not.toBeInTheDocument();
+        fireEvent.click(within(screen.getByTestId('setup-actions')).getByRole('button', { name: message(locale, 'wizard.outputAgain') }));
+        await waitFor(() => expect(rows[2]).toHaveAttribute('aria-current', 'step'));
+        expect(within(rows[2]).queryByText(completed)).not.toBeInTheDocument();
+        expect(rows[3]).not.toHaveAttribute('aria-current');
+        expect(within(rows[3]).queryByText(completed)).not.toBeInTheDocument();
+    });
+
+    it('折り返しで前の行や現在行の高さが変わっても印の位置と高さを測り直し、監視を解除する', async () => {
+        let measure!: ResizeObserverCallback;
+        const observe = vi.fn();
+        const disconnect = vi.fn();
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(callback: ResizeObserverCallback) { measure = callback; }
+            observe = observe;
+            disconnect = disconnect;
+        });
+        const top = vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get');
+        const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get');
+        let rowTop = 72;
+        let rowHeight = 64;
+        top.mockImplementation(function (this: HTMLElement) { return this.tagName === 'LI' ? rowTop : 0; });
+        height.mockImplementation(function (this: HTMLElement) { return this.tagName === 'LI' ? rowHeight : 0; });
+        try {
+            await openWizard();
+            fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+            const rail = screen.getByRole('navigation', { name: 'セットアップの進捗' });
+            const rows = within(rail).getAllByRole('listitem');
+            const thumb = rail.querySelector('.setup-rail-thumb');
+            expect(thumb).toHaveStyle({ transform: 'translateY(72px)', height: '64px' });
+            rows.forEach(row => expect(observe).toHaveBeenCalledWith(row));
+            rows.forEach(row => {
+                expect(row).toHaveClass('min-h-11');
+                expect(row).not.toHaveClass('h-11');
+                expect(row.lastElementChild).toHaveClass('min-w-0', 'wrap-break-word');
+                expect(row.lastElementChild).not.toHaveClass('truncate');
+            });
+            rowTop = 100; rowHeight = 88;
+            act(() => measure([], {} as ResizeObserver));
+            expect(thumb).toHaveStyle({ transform: 'translateY(100px)', height: '88px' });
+            cleanup();
+            expect(disconnect).toHaveBeenCalled();
+        } finally {
+            top.mockRestore(); height.mockRestore(); vi.unstubAllGlobals();
+        }
+    });
+
     it('手順レールはホームの流れと同じ名前で現在の手順を示し、進む・戻るの向きを中身へ渡す', async () => {
         await openWizard();
         const rail = screen.getByRole('navigation', { name: 'セットアップの進捗' });

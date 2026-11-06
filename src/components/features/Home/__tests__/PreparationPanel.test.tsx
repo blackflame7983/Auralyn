@@ -239,3 +239,13 @@ it('畳んでいる間は状態を読み上げ対象にし、機器名と、ヘ�
     expect(screen.getByText(message('ja', 'shell.unknown')).closest('[role="status"]')).not.toBeNull();
     expect(screen.queryByText(message('ja', 'shell.stopped'))).not.toBeInTheDocument();
 });
+
+it.each(['ja', 'en'] as const)('音声チェックのh2は開閉してもホームのセクション見出しの大きさと太さを保つ（%s）', locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PreparationPanel model={fixture()} {...callbacks()} /></LocaleProvider>);
+    const heading = screen.getByRole('heading', { level: 2, name: message(locale, 'prep.title') });
+    expect(heading).toHaveClass('text-ui-heading', 'font-semibold');
+    expect(heading).not.toHaveClass('text-xs', 'text-sm', 'font-bold');
+    expand(locale);
+    expect(heading).toHaveClass('text-ui-heading', 'font-semibold');
+    expect(heading).not.toHaveClass('text-xs', 'text-sm', 'font-bold');
+});
