@@ -263,6 +263,12 @@
     border-color: hsl(var(--input));
   }
 
+  /* チェックボックス・ラジオ・範囲・進捗の標準描画も、テーマの主色で塗る（#346）。 */
+  input,
+  progress {
+    accent-color: hsl(var(--primary));
+  }
+
   /* 展開したネイティブの候補にも、アプリの配色を渡す。 */
   select {
     color: hsl(var(--foreground));

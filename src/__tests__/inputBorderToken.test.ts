@@ -34,3 +34,10 @@ it('入力欄・選択欄・テキスト欄に飾り枠の border-border を使�
     }
     expect(offenders).toEqual([]);
 });
+
+// チェックボックス・ラジオは標準描画のため、主色を accent-color で渡す（#346）。主色と背景の比は themeContrast で確かめる。
+it('チェックボックス・ラジオ・範囲・進捗を、base 層で主色の accent-color にする', () => {
+    const css = readFileSync('src/index.css', 'utf8');
+    const base = css.slice(css.indexOf('@layer base'));
+    expect(base).toMatch(/input,\s*progress\s*\{\s*accent-color:\s*hsl\(var\(--primary\)\);/);
+});
