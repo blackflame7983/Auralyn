@@ -333,7 +333,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {/* 未設定の間は音の流れと次の1歩だけを出し、準備の確認・送り先の選択・状態の重複を並べない（#297）。 */}
                         {!configured && <UnsetFlow usage={preparation.context.usage || null} music={purpose === 'music'} onSetup={onOpenWizard}
                             input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput} />}
-                        {configured && <div className="min-w-0"><HomePanels stoppedInStrip={quietStopped}
+                        {configured && <div className="min-w-0"><HomePanels diagnosticAttention={startError !== null || measurement.stopUnconfirmed} stoppedInStrip={quietStopped}
                             onExpandedChange={setPreparationExpanded}
                             model={preparation}
                             homeActionInStrip={canStart && !isEngineRunning || purpose !== 'music' && audioReady && !preparation.context.usage}

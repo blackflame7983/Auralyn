@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { TroubleshootModal } from '../../Troubleshoot/TroubleshootModal';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { PreparationPanel } from '../PreparationPanel';
@@ -8,7 +10,9 @@ import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 
-afterEach(cleanup);
+const inputMeter = vi.hoisted(() => ({ state: 'live' }));
+vi.mock('../../LevelMeter/MeterContext', () => ({ useSharedMeter: () => inputMeter }));
+afterEach(() => { cleanup(); inputMeter.state = 'live'; });
 it('定期確認では確認中文字を出さず、手動確認が長引いたときだけ表示する', async () => {
     vi.useFakeTimers();
     try {
@@ -238,4 +242,41 @@ it('畳んでいる間は状態を読み上げ対象にし、機器名と、ヘ�
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
     expect(screen.getByText(message('ja', 'shell.unknown')).closest('[role="status"]')).not.toBeNull();
     expect(screen.queryByText(message('ja', 'shell.stopped'))).not.toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('畳んだホームの入口から1回で接続診断を開く（%s）', async locale => {
+    const props = callbacks();
+    function Home() {
+        const [open, setOpen] = useState(false);
+        return <><PreparationPanel model={fixture()} {...props} onTroubleshoot={() => setOpen(true)} />
+            <TroubleshootModal isOpen={open} onClose={() => setOpen(false)} onOpenSettings={props.onSettings} onOpenOBSGuide={props.onObs} /></>;
+    }
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><Home /></LocaleProvider>);
+    expect(screen.getByRole('button', { name: message(locale, 'prep.steps') })).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'header.noSound') }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent(message(locale, 'guide.copy.404'));
+    expect(props.onSettings).not.toHaveBeenCalled();
+});
+
+it.each([
+    ['ready', 'live', false, false],
+    ['stopped', 'stopped', false, false],
+    ['unconfigured', 'stopped', false, false],
+    ['pending', 'waiting', false, false],
+    ['failed', 'live', false, true],
+    ['unknown', 'live', false, true],
+    ['muted', 'live', false, true],
+    ['ready', 'silent', false, true],
+    ['ready', 'stale', false, true],
+    ['ready', 'live', true, true],
+] as const)('状態に応じて入口だけを強調する（%s / %s / 明示異常=%s）', (availability, meter, diagnosticAttention, prominent) => {
+    const model = fixture(); model.observation.availability = availability;
+    inputMeter.state = meter;
+    const props = callbacks();
+    const running = !['stopped', 'unconfigured'].includes(availability);
+    render(<PreparationPanel model={model} {...props} audioReady={running} diagnosticAttention={diagnosticAttention} stoppedInStrip />);
+    const entry = screen.getByRole('button', { name: message('ja', 'header.noSound') });
+    expect(entry.classList.contains('border-warning')).toBe(prominent);
+    fireEvent.click(entry);
+    expect(props.onTroubleshoot).toHaveBeenCalledOnce();
 });
