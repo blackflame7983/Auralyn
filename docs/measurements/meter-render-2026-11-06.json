@@ -1,0 +1,303 @@
+{
+  "before": {
+    "dark": {
+      "theme": "dark",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0",
+      "results": [
+        {
+          "channel": "idle",
+          "renders": {
+            "MasterBar": 13,
+            "MeterVisual": 20,
+            "LiveStrip": 5,
+            "InputGainControl": 5
+          },
+          "ticks": 313,
+          "frames": 826,
+          "metrics": {
+            "LayoutDuration": 0,
+            "RecalcStyleDuration": 0,
+            "ScriptDuration": 0.027873,
+            "TaskDuration": 0.086402
+          }
+        },
+        {
+          "channel": "input",
+          "renders": {
+            "LiveStrip": 317,
+            "MeterVisual": 956,
+            "InputGainControl": 317,
+            "MasterBar": 327
+          },
+          "ticks": 313,
+          "frames": 826,
+          "metrics": {
+            "LayoutDuration": 0.021914,
+            "RecalcStyleDuration": 0.045371,
+            "ScriptDuration": 0.213469,
+            "TaskDuration": 0.48122
+          }
+        },
+        {
+          "channel": "output",
+          "renders": {
+            "LiveStrip": 318,
+            "MeterVisual": 957,
+            "InputGainControl": 318,
+            "MasterBar": 324
+          },
+          "ticks": 313,
+          "frames": 827,
+          "metrics": {
+            "LayoutDuration": 0.025258,
+            "RecalcStyleDuration": 0.027105999999999998,
+            "ScriptDuration": 0.170626,
+            "TaskDuration": 0.39746799999999993
+          }
+        }
+      ],
+      "meters": [
+        {
+          "name": "マイクの入力レベル",
+          "value": "-12.041199826559248",
+          "x": 154,
+          "y": 108.75,
+          "width": 279.0625,
+          "height": 32
+        },
+        {
+          "name": "出力",
+          "value": "-7.958800173440752",
+          "x": 638.6875,
+          "y": 108.75,
+          "width": 279.078125,
+          "height": 32
+        },
+        {
+          "name": "出力",
+          "value": "-7.958800173440752",
+          "x": 889,
+          "y": 728,
+          "width": 28,
+          "height": 28
+        }
+      ]
+    },
+    "light": {
+      "theme": "light",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0",
+      "results": [],
+      "meters": [
+        {
+          "name": "マイクの入力レベル",
+          "value": "-12.041199826559248",
+          "x": 154,
+          "y": 108.75,
+          "width": 279.0625,
+          "height": 32
+        },
+        {
+          "name": "出力",
+          "value": "-7.958800173440752",
+          "x": 638.6875,
+          "y": 108.75,
+          "width": 279.078125,
+          "height": 32
+        },
+        {
+          "name": "出力",
+          "value": "-7.958800173440752",
+          "x": 889,
+          "y": 728,
+          "width": 28,
+          "height": 28
+        }
+      ]
+    },
+    "gaming": {
+      "theme": "gaming",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0",
+      "results": [],
+      "meters": [
+        {
+          "name": "マイクの入力レベル",
+          "value": "-12.041199826559248",
+          "x": 154,
+          "y": 108.75,
+          "width": 279.0625,
+          "height": 32
+        },
+        {
+          "name": "出力",
+          "value": "-7.958800173440752",
+          "x": 638.6875,
+          "y": 108.75,
+          "width": 279.078125,
+          "height": 32
+        },
+        {
+          "name": "出力",
+          "value": "-7.958800173440752",
+          "x": 889,
+          "y": 728,
+          "width": 28,
+          "height": 28
+        }
+      ]
+    }
+  },
+  "after": {
+    "dark": {
+      "theme": "dark",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0",
+      "results": [
+        {
+          "channel": "idle",
+          "renders": {
+            "MasterBar": 13,
+            "LiveStrip": 5,
+            "InputGainControl": 5
+          },
+          "ticks": 313,
+          "frames": 827,
+          "metrics": {
+            "LayoutDuration": 0,
+            "RecalcStyleDuration": 0,
+            "ScriptDuration": 0.022196,
+            "TaskDuration": 0.065225
+          }
+        },
+        {
+          "channel": "input",
+          "renders": {
+            "MeterVisual": 314,
+            "MasterBar": 12,
+            "LiveStrip": 5,
+            "InputGainControl": 5
+          },
+          "ticks": 313,
+          "frames": 826,
+          "metrics": {
+            "LayoutDuration": 0.019404,
+            "RecalcStyleDuration": 0.040362,
+            "ScriptDuration": 0.067656,
+            "TaskDuration": 0.305726
+          }
+        },
+        {
+          "channel": "output",
+          "renders": {
+            "MeterVisual": 644,
+            "MasterBar": 13,
+            "LiveStrip": 8,
+            "InputGainControl": 8
+          },
+          "ticks": 313,
+          "frames": 827,
+          "metrics": {
+            "LayoutDuration": 0.023635,
+            "RecalcStyleDuration": 0.024577999999999996,
+            "ScriptDuration": 0.073672,
+            "TaskDuration": 0.283736
+          }
+        }
+      ],
+      "meters": [
+        {
+          "name": "マイクの入力レベル",
+          "value": "-12.041199826559248",
+          "x": 154,
+          "y": 108.75,
+          "width": 279.0625,
+          "height": 32
+        },
+        {
+          "name": "出力",
+          "value": "-7.958800173440752",
+          "x": 638.6875,
+          "y": 108.75,
+          "width": 279.078125,
+          "height": 32
+        },
+        {
+          "name": "出力",
+          "value": "-7.958800173440752",
+          "x": 889,
+          "y": 728,
+          "width": 28,
+          "height": 28
+        }
+      ]
+    },
+    "light": {
+      "theme": "light",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0",
+      "results": [],
+      "meters": [
+        {
+          "name": "マイクの入力レベル",
+          "value": "-12.041199826559248",
+          "x": 154,
+          "y": 108.75,
+          "width": 279.0625,
+          "height": 32
+        },
+        {
+          "name": "出力",
+          "value": "-7.958800173440752",
+          "x": 638.6875,
+          "y": 108.75,
+          "width": 279.078125,
+          "height": 32
+        },
+        {
+          "name": "出力",
+          "value": "-7.958800173440752",
+          "x": 889,
+          "y": 728,
+          "width": 28,
+          "height": 28
+        }
+      ]
+    },
+    "gaming": {
+      "theme": "gaming",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0",
+      "results": [],
+      "meters": [
+        {
+          "name": "マイクの入力レベル",
+          "value": "-12.041199826559248",
+          "x": 154,
+          "y": 108.75,
+          "width": 279.0625,
+          "height": 32
+        },
+        {
+          "name": "出力",
+          "value": "-7.958800173440752",
+          "x": 638.6875,
+          "y": 108.75,
+          "width": 279.078125,
+          "height": 32
+        },
+        {
+          "name": "出力",
+          "value": "-7.958800173440752",
+          "x": 889,
+          "y": 728,
+          "width": 28,
+          "height": 28
+        }
+      ]
+    }
+  },
+  "base": "a8acddbb418494acbe759788ff91fc87c64a0da8",
+  "afterSourceSha256": {
+    "src/hooks/useMeterLevels.ts": "739e334eb6a91c1d4a47fe0a19415b848415c2dd5450ab3cf6b5c35eed8eb9ca",
+    "src/components/features/LevelMeter/MeterContext.tsx": "88145bd7fb8bc6f5a4f0e3461d6c9d6b8ca9c4cacb246339ac9c4bcee7658f4b",
+    "src/components/features/LevelMeter/MeterVisual.tsx": "2a4894039261b8218d25adc0bf6893da46354eee4f2745829dc394ea9653553f",
+    "src/components/features/Home/LiveStrip.tsx": "dcec9f3c2258ff738636a20973f424765225b82c997d66dd160c9e613b54516b",
+    "src/components/layout/MasterBar.tsx": "7cccc6347bfa0def71decc060cea09c9867250e4faf291979f40b4d9be748ffb"
+  }
+}

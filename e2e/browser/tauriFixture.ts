@@ -1,15 +1,16 @@
 import { test as base, expect } from '@playwright/test';
 
 // この層だけがIPCをモックする。実接続試験はe2e/nativeに分離する。
-export const test = base.extend<{ transport: void; stoppedHome: boolean; liveHome: boolean; registeredModes: boolean; builtinEnabled: boolean }>({
+export const test = base.extend<{ transport: void; nativeMeterProfile: boolean; stoppedHome: boolean; liveHome: boolean; registeredModes: boolean; builtinEnabled: boolean }>({
+    nativeMeterProfile: [false, { option: true }],
     stoppedHome: [false, { option: true }],
     liveHome: [false, { option: true }],
     registeredModes: [true, { option: true }],
     builtinEnabled: [false, { option: true }],
-    transport: [async ({ page, liveHome, stoppedHome, registeredModes, builtinEnabled }, use) => {
+    transport: [async ({ page, liveHome, stoppedHome, registeredModes, builtinEnabled, nativeMeterProfile }, use) => {
         const errors: string[] = [];
         page.on('pageerror', error => errors.push(error.message));
-        await page.addInitScript(({ liveHome, stoppedHome, registeredModes, builtinEnabled }) => {
+        await page.addInitScript(({ liveHome, stoppedHome, registeredModes, builtinEnabled, nativeMeterProfile }) => {
             const callbacks = new Map<number, (payload: unknown) => void>();
             const listeners = new Map<number, { event: string; handler: number }>();
             let next = 1;
@@ -43,6 +44,10 @@ export const test = base.extend<{ transport: void; stoppedHome: boolean; liveHom
             } });
             Object.assign(window, { __e2eModeWrites: modeWrites });
             const invoke = async (command: string, args: Record<string, any> = {}) => {
+                // 計測Host自身の窓の観測・配置は実WebView2へ渡す。音声操作はモックのままにする。
+                if (nativeMeterProfile && ['outer_position', 'inner_size', 'outer_size', 'scale_factor', 'is_maximized', 'is_minimized', 'available_monitors', 'set_position', 'set_size', 'set_min_size', 'maximize', 'unmaximize'].some(name => command === `plugin:window|${name}`)) {
+                    return (window as any).__TAURI_INTERNALS__.invoke(command, args);
+                }
                 if (command === 'mixing' && args?.request?.action === 'snapshot') return { epoch: 'mix-empty', revision: '0', config: null, savedConfig: null, running: false, error: null, accompaniment: null, primaryClock: null, voicePeak: [0, 0], accompanimentPeak: [0, 0], mixPeak: [0, 0], knownVoiceProcessingFrames: null, pending: false, failed: false };
                 if (command === 'post_mix' && args?.request?.action === 'snapshot') return { epoch: 'post-empty', revision: '0', enabled: false, running: false, savedPlugins: [], plugins: [], restored: false, error: null, transportLatencyFrames: 0, declaredPluginLatencyFrames: null, attached: null, ready: null, failed: null, processedPackets: null, sampleRate: null };
                 if (liveHome && command === 'live_output') return { config: { deviceId: null, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, sink: null, error: null };
@@ -111,7 +116,11 @@ export const test = base.extend<{ transport: void; stoppedHome: boolean; liveHom
                     default: unexpected.push(command); throw new Error(`未定義のテストIPC: ${command}`);
                 }
             };
-            Object.assign(window, {
+            // WebView2のTauri内部APIは読み取り専用。計測ビルド専用のcoreラッパーへ渡す。
+            Object.assign(window, nativeMeterProfile ? { __meterProfileInternals: {
+                invoke, transformCallback: (callback: (payload: unknown) => void) => { const id = next++; callbacks.set(id, callback); return id; },
+                unregisterCallback: (id: number) => callbacks.delete(id),
+            } } : {
                 __TAURI_INTERNALS__: {
                     invoke,
                     metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main', windowLabel: 'main' } },
@@ -122,7 +131,7 @@ export const test = base.extend<{ transport: void; stoppedHome: boolean; liveHom
             });
             localStorage.setItem('vst_host_tutorial_completed', 'true');
             localStorage.setItem('vst_host_update_policy', JSON.stringify({ automatic: false, download: false }));
-        }, { liveHome, stoppedHome, registeredModes, builtinEnabled });
+        }, { liveHome, stoppedHome, registeredModes, builtinEnabled, nativeMeterProfile });
         await use();
         const unexpected = await page.evaluate(() => (window as any).__e2eUnexpected);
         expect(unexpected, '未定義IPCを成功した応答で隠さない').toEqual([]);

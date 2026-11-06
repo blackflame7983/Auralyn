@@ -1,9 +1,9 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { MdWarningAmber } from 'react-icons/md';
 import { CLIP_LEVEL, WARNING_LEVEL, meterStatusLabel, toDbfs, type MeterReading } from '@/hooks/useMeterLevels';
 
-export function MeterVisual({ reading, label, orientation = 'vertical', height = 32, width = 8, showValues = false, numbers = true, scale = false, stackValues = false }: {
+export const MeterVisual = memo(function MeterVisual({ reading, label, orientation = 'vertical', height = 32, width = 8, showValues = false, numbers = true, scale = false, stackValues = false }: {
     reading: MeterReading; label: string; orientation?: 'horizontal' | 'vertical'; height?: number | string; width?: number; showValues?: boolean;
     /** false では dBFS 値を出さず、無音・停止などの状態だけを言葉で示す（数値の詳細 OFF）。 */
     numbers?: boolean; scale?: boolean; stackValues?: boolean;
@@ -78,4 +78,4 @@ export function MeterVisual({ reading, label, orientation = 'vertical', height =
             </button>}
         </span>
     </div>;
-}
+});

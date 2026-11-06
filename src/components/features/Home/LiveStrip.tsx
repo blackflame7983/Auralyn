@@ -30,11 +30,8 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
     inputName?: string; outputName?: string;
 }) {
     const t = useMessages();
-    const reading = useSharedMeter(running, 'input');
-    const outputReading = useSharedMeter(running, 'output');
     const [purpose] = useDisplayPurpose();
     // dBFS 値は数値の詳細でだけ出す。無音・停止などは数値の詳細によらず言葉で示す。
-    const [simple] = useBeginnerMode();
     const [aurora] = useAuroraDisplay();
     const music = purpose === 'music';
     const { usage, receiver } = model.context;
@@ -43,11 +40,8 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
     const input = model.observation.config?.input ?? inputName;
     const output = model.observation.config?.output ?? outputName;
     const devices = t('live.devices', { input: input ? deviceDisplayName(input) : t('flow.unknown'), output: output ? deviceDisplayName(output) : t('flow.unknown') });
-    // 既存の共有メーターだけを使い、5%刻みの強さをCSSでゆっくり補間する。追加のIPCやタイマーを作らない。
-    // 普通の話し声（−20 dBFS 前後）でも反応が見えるよう、−48〜−6 dBFS を 0〜1 に対応させる。
-    const energy = running && !muted && reading.state === 'live' ? Math.round(Math.min(1, Math.max(0, (toDbfs(Math.max(...reading.levels)) + 48) / 42)) * 20) / 20 : 0;
     return <section aria-label={t('live.strip')} data-muted={muted} data-roomy={roomy} className="live-strip relative isolate mb-4 space-y-4 rounded-xl bg-card gaming:bg-card/70 px-5 py-5 min-[1100px]:px-6">
-        {aurora && <div aria-hidden="true" className="live-aurora" data-lit={running} style={{ '--aurora-energy': energy } as CSSProperties} />}
+        {aurora && <LiveAurora running={running} muted={muted} />}
         {!running && onStartAudio ? <div data-layout-motion className="flex flex-wrap items-center gap-3">
             {stopped && <span role="status" className="text-ui-support text-muted-foreground">{t('shell.stopped')}</span>}
             <button type="button" onClick={onStartAudio} disabled={starting || controlsDisabled} className="rounded-md bg-primary px-4 py-2 text-ui-control font-semibold text-primary-foreground disabled:opacity-50">{t(starting ? 'home.starting' : 'home.startAudio')}</button>
@@ -56,7 +50,7 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
         </div> : <div data-layout-motion className="live-meter-pair">
         <div data-layout-motion className="live-input-summary live-meter-row">
             <span className="live-meter-label flex items-center gap-1.5 text-ui-support text-muted-foreground"><Icon aria-hidden="true" className="h-5 w-5 shrink-0" />{t('live.meterInput')}</span>
-            <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues numbers={!simple} />
+            <LiveInputMeter running={running} music={music} />
         </div>
         {/* 広い作業幅では入出力を隣接させる。同じ観測値を共有し、出力音量の操作はフッターへ集約する。 */}
         <div data-layout-motion className="live-output-summary live-meter-row">
@@ -64,7 +58,7 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
                 className="live-meter-label inline-flex items-center gap-1.5 rounded-md py-1 text-ui-support text-muted-foreground hover:bg-muted hover:text-foreground">
                 <MdVolumeUp aria-hidden="true" className="h-5 w-5" />{t('live.meterOutput')}
             </button></TooltipTrigger><TooltipContent>{t('home.adjustOutput')}</TooltipContent></Tooltip></TooltipProvider>
-            <MeterVisual reading={outputReading} label={t('meter.output')} orientation="horizontal" height={32} scale showValues numbers={!simple} />
+            <LiveOutputMeter running={running} />
         </div>
         {/* 操作は共通の列へ置き、入力・出力のバーが同じ幅になるようにする。 */}
         <div data-layout-motion className="live-meter-actions flex flex-wrap items-center justify-end gap-2">
@@ -100,4 +94,25 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
             {liveControls && <div data-layout-motion className="live-controls min-w-0 flex-[0_1_auto] empty:hidden">{liveControls}</div>}
         </div>
     </section>;
+}
+
+// 高頻度の購読は値を描く葉へ置き、音量・モード・ツールチップを再描画しない。
+function LiveInputMeter({ running, music }: { running: boolean; music: boolean }) {
+    const t = useMessages();
+    const [simple] = useBeginnerMode();
+    const reading = useSharedMeter(running, 'input');
+    return <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={32} scale showValues numbers={!simple} />;
+}
+function LiveOutputMeter({ running }: { running: boolean }) {
+    const t = useMessages();
+    const [simple] = useBeginnerMode();
+    const reading = useSharedMeter(running, 'output');
+    return <MeterVisual reading={reading} label={t('meter.output')} orientation="horizontal" height={32} scale showValues numbers={!simple} />;
+}
+function LiveAurora({ running, muted }: { running: boolean; muted: boolean }) {
+    const reading = useSharedMeter(running, 'input');
+    // 既存の共有メーターだけを使い、5%刻みの強さをCSSでゆっくり補間する。追加のIPCやタイマーを作らない。
+    // 普通の話し声（−20 dBFS 前後）でも反応が見えるよう、−48〜−6 dBFS を 0〜1 に対応させる。
+    const energy = running && !muted && reading.state === 'live' ? Math.round(Math.min(1, Math.max(0, (toDbfs(Math.max(...reading.levels)) + 48) / 42)) * 20) / 20 : 0;
+    return <div aria-hidden="true" className="live-aurora" data-lit={running} style={{ '--aurora-energy': energy } as CSSProperties} />;
 }
