@@ -160,6 +160,8 @@ test.describe('本番中の配信ミックスの配置', () => {
                 await page.goto('/');
                 const panel = await streamMix(page);
                 const main = page.locator('main');
+                // 起動画面の退場と区画の位置の補間（transform）が終わってから測る。
+                await expect.poll(() => page.evaluate(() => document.getAnimations().filter(a => a.playState === 'running').length)).toBe(0);
                 const bounds = await panel.evaluate(el => {
                     const strip = document.querySelector('.live-strip')!;
                     const chain = document.querySelector('.sound-chain')!;
