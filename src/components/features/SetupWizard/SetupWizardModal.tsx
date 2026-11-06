@@ -237,7 +237,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     {isAsioHost(config.host) ? t('wizard.asioOutput', { name: config.output ? deviceDisplayName(config.output.name) : '' })
                                         : config.goal === 'music' ? t('wizard.musicRoute') : config.goal === 'obs' ? t('guide.copy.194') : t('guide.copy.195')}
                                 </p>
-                                {!config.input && <p role="status" className="text-sm text-warning">{t('guide.copy.196')}</p>}
+                                {!config.input && <p role="status" className="text-sm text-warning">{t(config.goal === 'music' ? 'wizard.pcInputMissing' : 'guide.copy.196')}</p>}
                                 {availableOutputs.length === 0 && !isLoadingDevices && <p className="text-sm text-warning">{t('guide.copy.197')}</p>}
                             </div>
 
