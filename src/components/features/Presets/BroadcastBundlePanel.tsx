@@ -1,3 +1,4 @@
+import { ObsText } from '@/components/ui/ObsText';
 import { ErrorDetails } from '@/components/ui/ErrorDetails';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { audioApi, type PreparationSnapshot } from '@/api/audio';
@@ -8,7 +9,6 @@ import { ScopeDisclosure } from '@/components/features/AudioSettings/mixingUi';
 import { Button } from '@/components/ui/button';
 import { ProcessConfigurationDiff } from './ProcessConfigurationDiff';
 import { type PreparationContext, readPreparationContext } from '@/lib/preparation';
-import { formatObsText } from '@/lib/obsUiText';
 import type { MessageKey } from '@/i18n/messages';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -181,25 +181,25 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
             })}>{t('bundle.recoveryAdopt')}</Button>
         </section>}
         {plan && <div className="border border-border rounded-xl p-4 space-y-2" aria-label={t('presets.copy.149')}>{plan.confirmation && <p className="text-xs">{t('recovery.historical', { time: new Date(plan.confirmation.checkedAtUnixMs).toLocaleString() })}</p>}<p>{planIsRecovery && recovery?.runtimeCheckpoint ? t('temporary.checkpointTitle') : plan.name}：{plan.categories.map(name => Object.prototype.hasOwnProperty.call(planCategoryKeys, name) ? t(planCategoryKeys[name]) : name).join('・')}{t('presets.copy.150')}</p><p className="text-xs">{t('presets.copy.151')}</p>
-            <table className="w-full text-xs text-left"><caption>{t('presets.copy.152')}</caption><thead><tr><th>{t('presets.copy.153')}</th><th>{t('presets.copy.154')}</th><th>{t('presets.copy.155')}</th><th>{t('presets.copy.156')}</th></tr></thead><tbody>{plan.auralyn.map((row,i) => <tr key={i}><th scope="row">{formatObsText(t, row.labelText, row.label)}</th><td className="break-all">{formatObsText(t, row.beforeText, row.before)}</td><td className="break-all">{formatObsText(t, row.afterText, row.after)}</td><td>{{same: t('presets.copy.157'), changed: t('presets.copy.158'), notSelected: t('presets.copy.159'), unknown: t('presets.copy.160')}[row.status]}</td></tr>)}</tbody></table>
+            <table className="w-full text-xs text-left"><caption>{t('presets.copy.152')}</caption><thead><tr><th>{t('presets.copy.153')}</th><th>{t('presets.copy.154')}</th><th>{t('presets.copy.155')}</th><th>{t('presets.copy.156')}</th></tr></thead><tbody>{plan.auralyn.map((row,i) => <tr key={i}><th scope="row"><ObsText text={row.labelText} legacy={row.label} /></th><td className="break-all"><ObsText text={row.beforeText} legacy={row.before} /></td><td className="break-all"><ObsText text={row.afterText} legacy={row.after} /></td><td>{{same: t('presets.copy.157'), changed: t('presets.copy.158'), notSelected: t('presets.copy.159'), unknown: t('presets.copy.160')}[row.status]}</td></tr>)}</tbody></table>
             {plan.mixing && <MixingConfigurationDiff mixing={plan.mixing} />}
                 {plan.output && <OutputConfigurationDiff output={plan.output} />}
             {plan.live && <LiveConfigurationDiff live={plan.live} />}
             {plan.process && <ProcessConfigurationDiff process={plan.process} running={plan.running} />}
 
-            {plan.obs.length > 0 && <ul>{plan.obs.map((c,i) => <li key={i}>{c.source}：{formatObsText(t, c.labelText, c.label)} {formatObsText(t, c.beforeText, c.beforeDisplay ?? c.before)} → {formatObsText(t, c.afterText, c.afterDisplay ?? c.after)}</li>)}</ul>}
+            {plan.obs.length > 0 && <ul>{plan.obs.map((c,i) => <li key={i}>{c.source}：<ObsText text={c.labelText} legacy={c.label} /> <ObsText text={c.beforeText} legacy={c.beforeDisplay ?? c.before} /> → <ObsText text={c.afterText} legacy={c.afterDisplay ?? c.after} /></li>)}</ul>}
             {planIsRecovery && <p>{t('bundle.recoveryApplyHint')}</p>}
             {plan.mixing && !plan.running && <p role="status">{t('bundle.mixing.startRequired')}</p>}
             <Button variant="outline" type="button" className="border rounded p-2" disabled={busy || !onOperation || !!plan.mixing?.missingDevices.length || !!plan.mixing?.missingPlugins.length || (!!plan.mixing && !plan.running) || (plan.process != null && (!plan.running || !plan.process.selectionMatches || !!plan.process.missingDevices.length || !!plan.process.missingPlugins.length)) || !!plan.output?.missingDevices?.length || !!plan.output?.missingPlugins?.length || !recoveryReady || (!planIsRecovery && (!!recovery || !!(result?.undoPending && !result.complete)))} onClick={() => void operate({ action: planIsRecovery ? 'recovery_apply' : 'apply', id: plan.id })}>{t(planIsRecovery ? 'bundle.recoveryApply' : 'presets.copy.161')}</Button></div>}
-        {result && <div className="border border-border rounded-xl p-4 space-y-2" aria-label={t('presets.copy.162')}><p>{formatObsText(t, result.auralynText, result.auralyn)}</p>{result.summary && <ul>
+        {result && <div className="border border-border rounded-xl p-4 space-y-2" aria-label={t('presets.copy.162')}><div><ObsText text={result.auralynText} legacy={result.auralyn} /></div>{result.summary && <ul>
             {result.summary.appliedCategories.map(category => <li key={category}>Auralyn {categoryName(category)}{t('presets.copy.163')}</li>)}
             {result.summary.skippedCategories.map(category => <li key={category}>Auralyn {categoryName(category)}{t('presets.copy.164')}</li>)}
             {result.summary.missingPlugins.map((plugin,i) => <li key={`vst-${i}`}>VST {plugin.name}{t('presets.copy.165')}</li>)}
             {result.summary.missingDevices.map((device,i) => <li key={`device-${i}`}>{t('presets.copy.166')}{device.name}{t('presets.copy.167')}</li>)}
-        </ul>}{result.obs.length > 0 && <ul>{result.obs.map((message,i) => <li key={i}>OBS {i + 1}：{formatObsText(t, result.obsTexts?.length === result.obs.length ? result.obsTexts[i] : null, message)}</li>)}</ul>}<p className="text-xs">{result.complete ? t('presets.copy.168') : t('presets.copy.169')}</p>
+        </ul>}{result.obs.length > 0 && <ul>{result.obs.map((message,i) => <li key={i}>OBS {i + 1}：<ObsText text={result.obsTexts?.length === result.obs.length ? result.obsTexts[i] : null} legacy={message} /></li>)}</ul>}<p className="text-xs">{result.complete ? t('presets.copy.168') : t('presets.copy.169')}</p>
             {result.undoPending && <Button variant="outline" type="button" className="border rounded p-2" disabled={busy || !onOperation} onClick={() => void operate({ action: 'undo', id: result.id })}>{t('presets.copy.170')}</Button>}
             <p className="text-xs">{t('presets.copy.171')}</p></div>}
         {busy && <p role="status">{t('presets.copy.172')}</p>}
-        {message && <div className="space-y-2"><p role={message.kind === 'success' ? 'status' : 'alert'}>{renderNotice(t, message.notice)}{message.rawDetail && <> {t('presets.errorNextStep', { action: t('presets.copy.147') })}</>}</p>{message.rawDetail && <ErrorDetails detail={message.rawDetail} />}</div>}
+        {message && <div className="space-y-2"><p role={message.kind === 'success' ? 'status' : 'alert'}>{renderNotice(t, message.notice)}{message.kind === 'error' && <> {t('presets.errorNextStep', { action: t('presets.copy.147') })}</>}</p>{message.rawDetail && <ErrorDetails detail={message.rawDetail} />}</div>}
     </section>;
 }

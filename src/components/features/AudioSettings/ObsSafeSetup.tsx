@@ -1,5 +1,6 @@
+import { ObsText } from '@/components/ui/ObsText';
 import { ErrorDetails } from '@/components/ui/ErrorDetails';
-import { formatObsText, obsHistoryResults, obsTextParts } from '@/lib/obsUiText';
+import { obsHistoryResultParts, obsTextParts } from '@/lib/obsUiText';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -25,7 +26,7 @@ export function ObsSafeSetup({
     const [busy, setBusy] = useState(false);
     const unavailableReason = busy ? t('settings.obs.operationBusy') : !connected ? t('settings.obs.connectionRequired') : disabled ? t('settings.obs.operationBusy') : null;
     const [forgetting, setForgetting] = useState<number | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<{ operation: 'history' | 'preview' | 'apply' | 'undo' | 'forget'; value: unknown } | null>(null);
     const inFlight = useRef(false);
     const historyRevision = useRef(0);
     const historyDetails = useRef<HTMLDetailsElement>(null);
@@ -46,7 +47,7 @@ export function ObsSafeSetup({
                 if (active && revision === historyRevision.current) setHistory(items);
             })
             .catch((e) => {
-                if (active && revision === historyRevision.current) setError(String(e));
+                if (active && revision === historyRevision.current) setError({ operation: 'history', value: e });
             });
         return () => {
             active = false;
@@ -56,7 +57,7 @@ export function ObsSafeSetup({
         onBusyChange(busy);
         return () => onBusyChange(false);
     }, [busy, onBusyChange]);
-    const run = async (action: () => Promise<void>, requiresConnection = true) => {
+    const run = async (operation: NonNullable<typeof error>['operation'], action: () => Promise<void>, requiresConnection = true) => {
         if (inFlight.current || (requiresConnection && disabled)) return;
         inFlight.current = true;
         historyRevision.current += 1;
@@ -65,18 +66,20 @@ export function ObsSafeSetup({
         try {
             await action();
         } catch (e) {
-            setError(String(e));
+            setError({ operation, value: e });
         } finally {
             inFlight.current = false;
             setBusy(false);
         }
     };
     const preview = (source?: string) =>
-        run(async () => {
+        run('preview', async () => {
             setPlan(null);
             setPlan(await obsApi.previewSetup(source));
         });
     const planMessage = plan?.message ? obsTextParts(t, plan.messageText, plan.message) : null;
+    const errorParts = error ? obsTextParts(t, error.value, error.value instanceof Error ? String(error.value) : error.value) : null;
+    const historyFull = error?.value === '変更履歴が20件あります。OBSで状態を確認し、不要な履歴を削除してください。';
     const buttonClass = 'rounded border border-border px-3 py-2 hover:bg-muted disabled:opacity-50';
     return (
         <section aria-label={t('settings.ObsSafeSetup.335')} className="space-y-3 text-sm">
@@ -101,8 +104,8 @@ export function ObsSafeSetup({
             {unavailableReason && <p id={reasonId} className="text-ui-support text-muted-foreground" role="status">{unavailableReason}</p>}
             {error && (
                 <div className="space-y-2">
-                    <p role="alert" className="text-warning">{t('obsSetup.operationFailed')} {t('obsSetup.errorNextStep', { history: t('structure.history'), refresh: t('settings.ObsSafeSetup.347') })}</p>
-                    <ErrorDetails detail={error} />
+                    <p role="alert" className="text-warning">{historyFull ? t('obsSetup.historyFull') : errorParts?.summary ?? t(`obsSetup.${error.operation}Failed`)} {!historyFull && !errorParts?.summary && t(error.operation === 'preview' ? 'obsSetup.previewNextStep' : error.operation === 'forget' ? 'obsSetup.forgetNextStep' : 'obsSetup.errorNextStep', { preview: t('settings.ObsSafeSetup.337'), history: t('structure.history'), refresh: t('settings.ObsSafeSetup.347') })}</p>
+                    {errorParts?.detail && <ErrorDetails detail={errorParts.detail} />}
                 </div>
             )}
             {plan && (
@@ -111,20 +114,20 @@ export function ObsSafeSetup({
                     aria-label={t('settings.ObsSafeSetup.340')}
                 >
                     {planMessage && <div className="space-y-2">
-                        <p>{planMessage.summary ?? t('obsSetup.planUnavailable', { preview: t('settings.ObsSafeSetup.337') })}</p>
+                        <p>{planMessage.summary ?? (plan.changes.length > 0 ? t('obsSetup.planMessageUnavailable') : t('obsSetup.planUnavailable', { preview: t('settings.ObsSafeSetup.337') }))}</p>
                         {planMessage.detail && <ErrorDetails detail={planMessage.detail} />}
                     </div>}
                     {plan.changes.length > 0 ? (
                         <ul className="space-y-2">
                             {plan.changes.map((c, i) => (
                                 <li key={i} className="break-words">
-                                    <strong>
-                                        {c.source}：{formatObsText(t, c.labelText, c.label)}
-                                    </strong>
-                                    <p className="text-ui-support text-muted-foreground">
-                                        {formatObsText(t, c.beforeText, c.beforeDisplay ?? c.before)} →{' '}
-                                        {formatObsText(t, c.afterText, c.afterDisplay ?? c.after)}
-                                    </p>
+                                    <div className="font-bold">
+                                        {c.source}：<ObsText text={c.labelText} legacy={c.label} />
+                                    </div>
+                                    <div className="text-ui-support text-muted-foreground">
+                                        <ObsText text={c.beforeText} legacy={c.beforeDisplay ?? c.before} /> →{' '}
+                                        <ObsText text={c.afterText} legacy={c.afterDisplay ?? c.after} />
+                                    </div>
                                 </li>
                             ))}
                         </ul>
@@ -138,7 +141,7 @@ export function ObsSafeSetup({
                             disabled={busy || disabled}
                             aria-describedby={unavailableReason ? reasonId : undefined}
                             onClick={() =>
-                                void run(async () => {
+                                void run('apply', async () => {
                                     const result = await obsApi.applySetup(plan.id);
                                     setHistory((items) => [...items, result]);
                                     setPlan(null);
@@ -182,7 +185,7 @@ export function ObsSafeSetup({
                 className={`${buttonClass} text-ui-control`}
                 disabled={busy} aria-describedby={busy ? reasonId : undefined}
                 onClick={() =>
-                    void run(async () => {
+                    void run('history', async () => {
                         setHistory(await obsApi.setupHistory());
                         setPlan(null);
                     }, false)
@@ -204,11 +207,11 @@ export function ObsSafeSetup({
                             <ul>
                                 {h.changes.map((c, i) => (
                                     <li key={i} className="break-words">
-                                        {c.source}：{formatObsText(t, c.labelText, c.label)} — {obsHistoryResults(t, h)[i]}
-                                        <p className="text-ui-support text-muted-foreground">
-                                            {formatObsText(t, c.beforeText, c.beforeDisplay ?? c.before)} →{' '}
-                                            {formatObsText(t, c.afterText, c.afterDisplay ?? c.after)}
-                                        </p>
+                                        {c.source}：<ObsText text={c.labelText} legacy={c.label} /> — <ObsText parts={obsHistoryResultParts(t, h)[i]} />
+                                        <div className="text-ui-support text-muted-foreground">
+                                            <ObsText text={c.beforeText} legacy={c.beforeDisplay ?? c.before} /> →{' '}
+                                            <ObsText text={c.afterText} legacy={c.afterDisplay ?? c.after} />
+                                        </div>
                                     </li>
                                 ))}
                             </ul>
@@ -218,7 +221,7 @@ export function ObsSafeSetup({
                                 disabled={busy || disabled || h.restorable === false}
                                 aria-describedby={[unavailableReason ? reasonId : null, h.restorable === false ? `${reasonId}-${h.id}` : null].filter(Boolean).join(' ') || undefined}
                                 onClick={() =>
-                                    void run(async () => {
+                                    void run('undo', async () => {
                                         setPlan(null);
                                         const result = await obsApi.restoreSetup(h.id);
                                         setHistory((items) =>
@@ -245,7 +248,7 @@ export function ObsSafeSetup({
                                         disabled={busy} aria-describedby={busy ? reasonId : undefined}
                                         className={`${buttonClass} text-ui-control`}
                                         onClick={() =>
-                                            void run(async () => {
+                                            void run('forget', async () => {
                                                 await obsApi.forgetHistory(h.id);
                                                 setHistory((items) =>
                                                     items.filter((item) => item.id !== h.id),

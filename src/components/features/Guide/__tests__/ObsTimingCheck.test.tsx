@@ -235,3 +235,27 @@ it.each([undefined, null, [], [{outcome: 'future', text: {code: 'obs.result.appl
     expect(await screen.findByRole('button', {name: '再録画を確認して採用 #8'})).toBeDisabled();
     expect(obsApi.applySetup).not.toHaveBeenCalled();
 });
+
+
+it('対象・変更予定・履歴の原文は閉じた詳細に置く', async () => {
+    vi.mocked(obsApi.timingTargets).mockResolvedValueOnce({ ...targets, message: 'Error: target raw' });
+    vi.mocked(obsApi.previewTiming).mockResolvedValueOnce({ ...plan, message: 'Error: plan raw', messageText: { code: 'obs.plan.unsupported', args: {}, fallbackJa: 'Error: plan raw' } });
+    vi.mocked(obsApi.setupHistory).mockResolvedValueOnce([history(['Error: history raw'])]);
+    render(<ObsTimingCheck />);
+    measure();
+    await selectTarget();
+    await preview();
+    for (const raw of ['Error: target raw', 'Error: plan raw']) {
+        const pre = await screen.findByText(raw);
+        expect(pre).not.toBeVisible();
+        expect(pre.closest('details')).not.toHaveAttribute('open');
+        fireEvent.click(pre.closest('details')!.querySelector('summary')!);
+        expect(pre).toBeVisible();
+        expect(pre.textContent).toBe(raw);
+    }
+    fireEvent.click(screen.getByRole('button', { name: '同期の履歴を再取得' }));
+    const historyRaw = await screen.findByText('Error: history raw');
+    expect(historyRaw).not.toBeVisible();
+    fireEvent.click(historyRaw.closest('details')!.querySelector('summary')!);
+    expect(historyRaw).toBeVisible();
+});

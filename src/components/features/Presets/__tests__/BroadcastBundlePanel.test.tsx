@@ -112,7 +112,9 @@ it('開くだけではOBS取得・保存・適用せず、差分と明示適用�
     expect(bundleApi.save).not.toHaveBeenCalled();
     expect(operation).not.toHaveBeenCalled();
     await showPlan();
-    expect(screen.getByLabelText('OBS込みプロファイルの変更予定')).toHaveTextContent('声：原文の詳細（未翻訳）：ミュート 原文の詳細（未翻訳）：OFF → 原文の詳細（未翻訳）：ON');
+    expect(screen.getByText('ミュート')).not.toBeVisible();
+    expect(screen.getByText('OFF')).not.toBeVisible();
+    expect(screen.getByText('ON')).not.toBeVisible();
     expect(screen.getByRole('table')).toHaveTextContent(/ASIO.*WASAPI.*変更/);
     expect(screen.getByRole('table')).toHaveTextContent(/未確認.*変更しません.*選択外/);
     fireEvent.click(screen.getByRole('button', { name: 'この変更予定を適用する' }));
@@ -147,7 +149,7 @@ it('partial履歴は次applyを止め、競合Undoの拒否でも原本とUndo�
     fireEvent.click(screen.getByRole('button', { name: '直近のOBS込みプロファイル変更を元に戻す' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('処理の完了を確認できません');
     expect(screen.getByText(/後からVST状態が変わりました/).closest('details')).not.toHaveAttribute('open');
-    expect(screen.getByText(/一部未完了、原本保持/)).toBeVisible();
+    expect(screen.getByText(/一部未完了、原本保持/)).not.toBeVisible();
     expect(operation).toHaveBeenCalledExactlyOnceWith({ action: 'undo', id: 'p1' });
 });
 it('既存ソースを明示選択して限定項目を保存し、capture失敗を成功にしない', async () => {
@@ -376,4 +378,29 @@ it('停止中のミックス適用は開始とミュートを案内して禁止�
     expect(await screen.findByRole('button', { name: message('ja', 'presets.copy.161') })).toBeDisabled();
     expect(screen.getByText(message('ja', 'bundle.mixing.startRequired'))).toBeInTheDocument();
     expect(operation).not.toHaveBeenCalled();
+});
+
+
+it.each(['bundle.apply.partialUnknown', 'bundle.undo.incomplete'])('%s の結果は要約と項目ごとの原文詳細を分ける', async code => {
+    const typed = (fallbackJa: string) => ({ code, args: {}, fallbackJa });
+    vi.mocked(bundleApi.history).mockResolvedValueOnce({ ...result, complete: false, auralynText: typed('Error: Auralyn raw'), obs: ['Error: OBS raw'], obsTexts: [typed('Error: OBS raw')] });
+    render(<BroadcastBundlePanel />);
+    for (const raw of ['Error: Auralyn raw', 'Error: OBS raw']) {
+        const pre = await screen.findByText(raw);
+        expect(pre).not.toBeVisible();
+        expect(pre.closest('details')).not.toHaveAttribute('open');
+        fireEvent.click(pre.closest('details')!.querySelector('summary')!);
+        expect(pre).toBeVisible();
+        expect(pre.textContent).toBe(raw);
+    }
+});
+
+it('非文字列の不明なエラーにも次の操作を出す', async () => {
+    vi.mocked(bundleApi.preview).mockRejectedValueOnce({ opaque: true });
+    render(<BroadcastBundlePanel />);
+    await screen.findByRole('option', { name: '歌枠' });
+    fireEvent.change(screen.getByLabelText('保存済みOBS込みプロファイル'), { target: { value: '歌枠' } });
+    fireEvent.click(screen.getByRole('button', { name: '変更予定を確認' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('「一覧・操作履歴を再取得」で状態を確認してください。');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('[object Object]');
 });

@@ -430,9 +430,11 @@ const detailCodes = new Set([
 ]);
 
 // 原文は既存の人向け文字列・scalarだけ。settingsやopaque stateのobjectを展開しない。
+function rawObsText(t: Translator, value: unknown): string {
+    return typeof value === 'string' ? value : typeof value === 'number' && Number.isFinite(value) ? numeric(value) : typeof value === 'boolean' ? t(value ? 'obsTyped.on' : 'obsTyped.off') : t('obsTyped.unavailable');
+}
 export function originalObsText(t: Translator, value: unknown): string {
-    const text = typeof value === 'string' ? value : typeof value === 'number' && Number.isFinite(value) ? numeric(value) : typeof value === 'boolean' ? t(value ? 'obsTyped.on' : 'obsTyped.off') : t('obsTyped.unavailable');
-    return t('obsTyped.original', { value: text });
+    return t('obsTyped.original', { value: rawObsText(t, value) });
 }
 function valid(value: unknown, rule: Rule) {
     return Array.isArray(rule) ? typeof value === 'string' && rule.includes(value) : rule === 'number' ? typeof value === 'number' && Number.isFinite(value) : typeof value === rule;
@@ -440,7 +442,7 @@ function valid(value: unknown, rule: Rule) {
 // UIでは翻訳済みの要約と原文を分け、閉じた詳細へ原文を渡せるようにする。
 export function obsTextParts(t: Translator, text: unknown, legacy?: unknown): { summary: string | null; detail?: string } {
     const fallback = record(text) && typeof text.fallbackJa === 'string' ? text.fallbackJa : legacy;
-    if (!record(text) || typeof text.code !== 'string' || !own(specifications, text.code) || !record(text.args) || typeof text.fallbackJa !== 'string') return { summary: null, detail: originalObsText(t, fallback) };
+    if (!record(text) || typeof text.code !== 'string' || !own(specifications, text.code) || !record(text.args) || typeof text.fallbackJa !== 'string') return { summary: null, detail: rawObsText(t, fallback) };
     const spec = specifications[text.code as keyof typeof specifications];
     const rules: Record<string, Rule> = { ...spec.args };
     const args = text.args;
@@ -448,7 +450,7 @@ export function obsTextParts(t: Translator, text: unknown, legacy?: unknown): { 
         if (args.hasSinging === true) Object.assign(rules, { lowCutHz: 'number', dynamics: 'number', brightnessDb: 'number' });
         if (args.hasReverb === true) Object.assign(rules, { reverbEnabled: 'boolean', mix: 'number', decaySeconds: 'number', damping: 'number' });
     }
-    if (Object.keys(args).length !== Object.keys(rules).length || Object.entries(rules).some(([key, rule]) => !own(args, key) || !valid(args[key], rule))) return { summary: null, detail: originalObsText(t, fallback) };
+    if (Object.keys(args).length !== Object.keys(rules).length || Object.entries(rules).some(([key, rule]) => !own(args, key) || !valid(args[key], rule))) return { summary: null, detail: rawObsText(t, fallback) };
     const display: Record<string, string | number> = {};
     for (const [key, value] of Object.entries(args) as [string, Scalar][]) display[key] = typeof value === 'boolean' ? t(value ? 'obsTyped.on' : 'obsTyped.off') : typeof value === 'number' ? numeric(value) : value;
     if (text.code === 'obs.value.monitor') display.mode = t(({ OBS_MONITORING_TYPE_NONE: 'obsTyped.monitor.none', OBS_MONITORING_TYPE_MONITOR_ONLY: 'obsTyped.monitor.only', OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT: 'obsTyped.monitor.output' } as const)[args.mode as 'OBS_MONITORING_TYPE_NONE']);
@@ -460,11 +462,18 @@ export function obsTextParts(t: Translator, text: unknown, legacy?: unknown): { 
     }
     const rendered = t(spec.key, display);
     // 既知codeの要約とは別に、個別の失敗理由は推測翻訳せず原文として残す。
-    return { summary: rendered, ...(detailCodes.has(text.code) ? { detail: originalObsText(t, fallback) } : {}) };
+    return { summary: rendered, ...(detailCodes.has(text.code) ? { detail: rawObsText(t, fallback) } : {}) };
 }
 export function formatObsText(t: Translator, text: unknown, legacy?: unknown): string {
     const { summary, detail } = obsTextParts(t, text, legacy);
-    return summary ? summary + (detail ? ' — ' + detail : '') : detail ?? '';
+    return summary ? summary + (detail ? ' — ' + originalObsText(t, detail) : '') : originalObsText(t, detail);
+}
+export function obsHistoryResultParts(t: Translator, history: ObsSetupHistory) {
+    const entries = history.resultEntries;
+    return history.results.map((legacy, index) => {
+        const entry = Array.isArray(entries) && entries.length === history.results.length ? entries[index] : null;
+        return obsTextParts(t, entry && outcomes.includes(entry.outcome) ? entry.text : null, legacy);
+    });
 }
 export function obsHistoryResults(t: Translator, history: ObsSetupHistory): string[] {
     const entries = history.resultEntries;
