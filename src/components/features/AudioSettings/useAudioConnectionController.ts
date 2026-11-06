@@ -27,12 +27,13 @@ export class ConnectionApplyError extends Error {
 
 /**
  * 新しい接続で開始できなかったときに、直前に動いていた接続へ戻したかを持つ（#289）。
- * restored: 戻せた / failed: 戻せなかった / none: 開始前は動いていなかった。
+ * restored: 戻せた / failed: 戻せなかった / none: 開始前は動いていなかった /
+ * kept: 旧接続を止める前に失敗し、直前の接続のまま動いている。
  */
 export class ConnectionStartError extends Error {
     /** 戻さなかったときは、従来どおり元の失敗をそのまま文字にして出す。 */
     public readonly raw: string;
-    constructor(cause: unknown, public readonly rollback: 'restored' | 'failed' | 'none') {
+    constructor(cause: unknown, public readonly rollback: 'restored' | 'failed' | 'none' | 'kept') {
         super(cause instanceof Error ? cause.message : String(cause));
         this.raw = String(cause);
     }
@@ -54,7 +55,9 @@ async function restoreConnection(config: NonNullable<AudioStateInfo['config']>) 
     if (config.input_source?.kind === 'process_loopback') return false;
     try {
         await audioApi.start(config.host, config.input ?? undefined, config.output ?? undefined, config.buffer_size ?? undefined,
-            config.sample_rate ?? undefined, config.input_id, config.output_id, undefined, config.routing);
+            config.sample_rate ?? undefined, config.input_id, config.output_id, undefined, config.routing,
+            // 機器入力の用途（歌声・音楽）も直前のまま戻す。省くとバックエンドが既定の歌声として扱う。
+            ...(config.input_source?.kind === 'device' ? [{ source: config.input_source }] as const : []));
         return true;
     } catch { return false; }
 }
@@ -168,7 +171,10 @@ export function useAudioConnectionController(options: Options) {
             try {
                 result = await start(host, process ? undefined : input?.name, output.name, bufferSize, sampleRate, process ? undefined : input?.id, output.id, undefined, routing, ...(inputSource ? [inputSource] as const : []));
             } catch (error) {
-                throw new ConnectionStartError(error, previous ? await restoreConnection(previous) ? 'restored' : 'failed' : 'none');
+                // 許可や事前確認の失敗は旧エンジンを止める前に起きる。まだ動いていれば、開始し直さずそのまま残す。
+                throw new ConnectionStartError(error, !previous ? 'none'
+                    : await runningConnection() ? 'kept'
+                    : await restoreConnection(previous) ? 'restored' : 'failed');
             }
             await startVerification.current;
             if (beforeStart !== stoppedRevision.current) throw new Error('Audio stopped during start');

@@ -288,7 +288,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   // 開始できなかった理由に、直前の接続へ戻したかと次にやることを添える（#289）。
   const startFailureNotice = (err: unknown, fallback: 'settings.AudioSettingsModal.017' | 'settings.AudioSettingsModal.020') =>
     err instanceof ConnectionApplyError ? notice(err.stage === 'channels' ? 'settings.connectionChannelsIncomplete' : 'settings.connectionSaveIncomplete', { arg0: err.message })
-      : err instanceof ConnectionStartError && err.rollback !== 'none' ? notice(err.rollback === 'restored' ? 'settings.startRolledBack' : 'settings.startRollbackFailed', { arg0: err.message })
+      : err instanceof ConnectionStartError && err.rollback !== 'none' ? notice(err.rollback === 'restored' ? 'settings.startRolledBack' : err.rollback === 'kept' ? 'settings.startKept' : 'settings.startRollbackFailed', { arg0: err.message })
       : notice(fallback, { arg0: err instanceof ConnectionStartError ? err.raw : String(err) });
 
   const handleSave = async () => {

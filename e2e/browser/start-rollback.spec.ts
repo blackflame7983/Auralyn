@@ -12,18 +12,22 @@ test('開始に失敗した接続から直前の接続へ戻し、理由と対�
         const original = (window as any).__TAURI_INTERNALS__.invoke;
         const calls: any[] = [];
         (window as any).__e2eRollbackStarts = calls;
+        // 本物の再起動と同じく、開始に失敗した後は止まった状態を返す。
+        let stopped = false;
         (window as any).__TAURI_INTERNALS__.invoke = async (command: string, args: any) => {
             if (command === 'set_channel_scan') return;
             if (command === 'get_audio_devices') {
                 const device = { host: 'ASIO', name: 'Test ASIO', id: 'asio:test', channels: 8, index: 0, is_default: false };
                 return { inputs: [{ ...device, is_input: true }], outputs: [{ ...device, is_input: false }] };
             }
-            if (command === 'get_audio_state') return { is_running: true, config: {
+            if (command === 'get_audio_state') return stopped ? { is_running: false, config: null } : { is_running: true, config: {
                 host: 'ASIO', input: 'Test ASIO', output: 'Test ASIO', input_id: 'asio:test', output_id: 'asio:test', sample_rate: 48000, buffer_size: 512,
                 routing: { inputChannels: [0, 1], outputRouting: { mode: 'legacy' } } } };
             if (command === 'start_audio' || command === 'restart_audio_engine') {
                 calls.push({ command, args });
+                stopped = true;
                 if (args.channelRouting?.inputChannels?.[0] === 2) throw new Error('sample clock or rate cannot be determined');
+                stopped = false;
                 const result = await original('start_audio', args);
                 return { ...result, channels: 8, routing: args.channelRouting };
             }
