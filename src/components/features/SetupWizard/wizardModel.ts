@@ -41,3 +41,17 @@ export interface WizardConfig {
 }
 
 export const isAsioHost = (host: string) => host.toLowerCase() === 'asio';
+
+type Pair = [number, number];
+/** ASIO 機器のチャンネルを2つずつの組で出す。端数の最後の1本は、同じチャンネルの組（モノラル）にする（#291）。 */
+export const asioChannelPairs = (count: number): Pair[] => count <= 0 ? [[0, 1]]
+    : Array.from({ length: Math.ceil(count / 2) }, (_, index): Pair => [index * 2, Math.min(index * 2 + 1, count - 1)]);
+/** 選んだ組が今の機器に無ければ、最初の組を使う。機器を替えた・チャンネルが減った場合に範囲外で開始しない。 */
+const fitPair = (pair: Pair | undefined, count: number): Pair => {
+    const pairs = asioChannelPairs(count);
+    return pairs.find(candidate => !!pair && candidate[0] === pair[0] && candidate[1] === pair[1]) ?? pairs[0];
+};
+export const effectiveAsioChannels = (config: Pick<WizardConfig, 'asioChannels' | 'input' | 'output'>) => ({
+    input: fitPair(config.asioChannels?.input, config.input?.channels ?? 0),
+    output: fitPair(config.asioChannels?.output, config.output?.channels ?? 0),
+});

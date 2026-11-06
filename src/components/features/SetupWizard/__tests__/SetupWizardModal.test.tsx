@@ -892,4 +892,42 @@ describe('セットアップでの ASIO（#291）', () => {
         await waitFor(() => expect(screen.getByRole('combobox', { name: '入力デバイス' })).toHaveValue(mic.name));
         expect(within(screen.getByRole('combobox', { name: '入力デバイス' })).queryByRole('option', { name: 'Test ASIO' })).not.toBeInTheDocument();
     });
+
+    it('機器を替えたら前の機器のチャンネルを持ち越さず、1ch の機器ではそのチャンネルだけで開始する', async () => {
+        const mono = (isInput: boolean): AudioDevice => ({ ...asio(isInput), name: 'Mono ASIO', id: 'asio:mono', channels: 1 });
+        inputs = [mic, asio(true), mono(true)];
+        outputs = [cable, asio(false), mono(false)];
+        await openWizard();
+        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        fireEvent.click(await screen.findByRole('radio', { name: 'ASIO（オーディオインターフェース）' }));
+        const input = screen.getByRole('combobox', { name: '入力デバイス' });
+        fireEvent.change(input, { target: { value: 'Test ASIO' } });
+        fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
+        fireEvent.change(await screen.findByRole('combobox', { name: '入力チャンネル' }), { target: { value: '6,7' } });
+        fireEvent.click(within(screen.getByTestId('setup-actions')).getByRole('button', { name: '戻る' }));
+        fireEvent.change(await screen.findByRole('combobox', { name: '入力デバイス' }), { target: { value: 'Mono ASIO' } });
+        fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
+        const channels = await screen.findByRole('combobox', { name: '入力チャンネル' });
+        expect(channels).toHaveValue('0,0');
+        expect(within(channels).getAllByRole('option')).toHaveLength(1);
+        expect(screen.getByRole('combobox', { name: '出力チャンネル' })).toHaveValue('0,0');
+        fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
+        fireEvent.click(await screen.findByRole('button', { name: 'マイクの音を流して確認' }));
+        await screen.findByRole('button', { name: 'マイクの確認を停止' });
+        expect(invoke).toHaveBeenCalledWith('start_audio', expect.objectContaining({ input: 'Mono ASIO',
+            channelRouting: { inputChannels: [0, 0], outputRouting: { mode: 'independent', channels: [0, 0] } } }));
+    });
+
+    it('ASIO を選んだ後に機器が見えなくなっても、WASAPI へ戻せる', async () => {
+        inputs = [mic, asio(true)];
+        outputs = [cable, asio(false)];
+        await openWizard();
+        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        fireEvent.click(await screen.findByRole('radio', { name: 'ASIO（オーディオインターフェース）' }));
+        inputs = [mic];
+        outputs = [cable];
+        fireEvent.click(screen.getByRole('button', { name: '入力デバイスを再検出' }));
+        fireEvent.click(await screen.findByRole('radio', { name: 'WASAPI（標準）' }));
+        await waitFor(() => expect(screen.getByRole('combobox', { name: '入力デバイス' })).toHaveValue(mic.name));
+    });
 });
