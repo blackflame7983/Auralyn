@@ -9,6 +9,7 @@ import { context, audioState, runtime, liveStatus } from '@/__tests__/fixtures/p
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
+import { saveDisplayPurpose } from '@/hooks/useDisplayPurpose';
 
 const inputMeter = vi.hoisted(() => ({ state: 'live' }));
 vi.mock('../../LevelMeter/MeterContext', () => ({ useSharedMeter: () => inputMeter }));
@@ -264,10 +265,9 @@ it.each([
     ['unconfigured', 'stopped', false, false],
     ['pending', 'waiting', false, false],
     ['failed', 'live', false, true],
-    ['unknown', 'live', false, true],
-    ['muted', 'live', false, true],
-    ['ready', 'silent', false, true],
-    ['ready', 'stale', false, true],
+    // 起動・読込・窓の復帰で一時的に出る unknown と、利用者が意図したミュートでは強調しない。
+    ['unknown', 'live', false, false],
+    ['muted', 'live', false, false],
     ['ready', 'live', true, true],
 ] as const)('状態に応じて入口だけを強調する（%s / %s / 明示異常=%s）', (availability, meter, diagnosticAttention, prominent) => {
     const model = fixture(); model.observation.availability = availability;
@@ -279,4 +279,29 @@ it.each([
     expect(entry.classList.contains('border-warning')).toBe(prominent);
     fireEvent.click(entry);
     expect(props.onTroubleshoot).toHaveBeenCalledOnce();
+});
+
+it.each([
+    ['voice', 'silent', true],
+    ['voice', 'stale', true],
+    // 音楽鑑賞では、曲を止めている間の無音は正常。
+    ['music', 'silent', false],
+    ['music', 'stale', true],
+] as const)('入力の無音・更新停止は5秒続いたときだけ強調する（%s / %s）', (purpose, meter, prominent) => {
+    vi.useFakeTimers();
+    try {
+        saveDisplayPurpose(purpose);
+        const model = fixture(); model.observation.availability = 'ready';
+        inputMeter.state = meter;
+        render(<PreparationPanel model={model} {...callbacks()} audioReady stoppedInStrip />);
+        const entry = screen.getByRole('button', { name: message('ja', 'header.noSound') });
+        expect(entry).not.toHaveClass('border-warning');
+        act(() => { vi.advanceTimersByTime(4900); });
+        expect(entry).not.toHaveClass('border-warning');
+        act(() => { vi.advanceTimersByTime(200); });
+        expect(entry.classList.contains('border-warning')).toBe(prominent);
+    } finally {
+        saveDisplayPurpose('voice');
+        vi.useRealTimers();
+    }
 });
