@@ -4,7 +4,7 @@ import { useState } from 'react';
 export const useUIState = () => {
     const [isSettingsOpen, setSettingsOpen] = useState(false);
     const [settingsTab, setSettingsTab] = useState<'audio' | 'obs' | 'sound'>('audio');
-    const [settingsSection, setSettingsSection] = useState<'liveModes' | 'singing' | 'audioTuning' | 'mixing'>();
+    const [settingsSection, setSettingsSection] = useState<'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput'>();
     const [settingsNeedsRetry, setSettingsNeedsRetry] = useState(false);
     const setIsSettingsOpen = (open: boolean) => {
         setSettingsNeedsRetry(false);
@@ -26,6 +26,13 @@ export const useUIState = () => {
     };
     // 配信ミックスは設定ではなくホームのパネルで扱う（#299）。
     const openMixingSettings = () => openStreamMixPanel();
+    // 配信ミックスのパネルから、出力先・入力元の区画を開いて案内する。
+    const openDeviceSettings = (target: 'output' | 'input') => {
+        setSettingsNeedsRetry(false);
+        setSettingsSection(target === 'output' ? 'liveOutput' : 'primaryInput');
+        setSettingsTab('audio');
+        setSettingsOpen(true);
+    };
     const openSoundSettings = (section?: 'liveModes' | 'singing') => {
         setSettingsNeedsRetry(false);
         // イベントハンドラーとして渡された場合も、選択イベントを移動先へ持ち込まない。
@@ -69,6 +76,7 @@ export const useUIState = () => {
         openObsSettings,
         openAudioTuning,
         openMixingSettings,
+        openDeviceSettings,
         openSoundSettings,
         isBrowserOpen,
         setIsBrowserOpen,

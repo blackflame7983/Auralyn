@@ -9,7 +9,7 @@ import { STREAM_MIX_OPEN, takeStreamMixOpenRequest, useStreamMixPanel } from '@/
 export function StreamMixPanel({ running, primaryInputId, primaryIsVoiceDevice, disabled, onOpenDevices }: {
     running: boolean; primaryInputId?: string; primaryIsVoiceDevice: boolean; disabled: boolean;
     /** 入力元・出力先の選び直しは、機器と接続の設定で行う。 */
-    onOpenDevices: () => void;
+    onOpenDevices: (target: 'output' | 'input') => void;
 }) {
     const t = useMessages();
     const shown = useStreamMixPanel();
@@ -19,25 +19,34 @@ export function StreamMixPanel({ running, primaryInputId, primaryIsVoiceDevice, 
     useEffect(() => {
         if (!shown) return;
         let active = true;
+        // 設定で機器を選び直した後も新しい一覧を出すため、設定などを閉じたときにも取り直す。
+        if (disabled) return;
         audioApi.getDevices(false).then(devices => { if (active) setInputs(devices.inputs); }).catch(() => {});
         return () => { active = false; };
-    }, [shown]);
+    }, [shown, disabled]);
     useEffect(() => {
         const request = () => { if (takeStreamMixOpenRequest()) setOpenRequest(value => value + 1); };
         request();
         window.addEventListener(STREAM_MIX_OPEN, request);
         return () => window.removeEventListener(STREAM_MIX_OPEN, request);
     }, [shown]);
+    // 設定などのダイアログが開いている間は待つ。ダイアログは閉じた後のタイマーで元の場所へフォーカスを戻すため、
+    // 描画後にもう一度タイマーを挟み、その戻しの後でパネルへ移る。
+    const handledRequest = useRef(0);
     useEffect(() => {
-        if (!openRequest) return;
+        if (!openRequest || disabled || handledRequest.current === openRequest) return;
+        let timer = 0;
         const frame = requestAnimationFrame(() => {
-            const mixing = section.current?.querySelector<HTMLDetailsElement>('#mixing-settings');
-            if (mixing) mixing.open = true;
-            section.current?.scrollIntoView?.({ block: 'start' });
-            (mixing?.querySelector<HTMLElement>('summary') ?? section.current)?.focus({ preventScroll: true });
+            timer = window.setTimeout(() => {
+                handledRequest.current = openRequest;
+                const mixing = section.current?.querySelector<HTMLDetailsElement>('#mixing-settings');
+                if (mixing) mixing.open = true;
+                section.current?.scrollIntoView?.({ block: 'start' });
+                (mixing?.querySelector<HTMLElement>('summary') ?? section.current)?.focus({ preventScroll: true });
+            });
         });
-        return () => cancelAnimationFrame(frame);
-    }, [openRequest]);
+        return () => { cancelAnimationFrame(frame); window.clearTimeout(timer); };
+    }, [openRequest, disabled]);
     if (!shown) return null;
     return <section ref={section} id="stream-mix-panel" tabIndex={-1} aria-labelledby="stream-mix-heading"
         className="mt-4 scroll-mt-4 space-y-3 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3">

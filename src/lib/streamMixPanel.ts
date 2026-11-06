@@ -28,15 +28,17 @@ export function useStreamMixPanel() {
     return useSyncExternalStore(subscribe, snapshot, () => false);
 }
 
-let openPending = false;
+// 描画待ちの開く要求。パネルが描画されないまま残り、後で不意に移動しないよう期限を付ける。
+const OPEN_REQUEST_MS = 3000;
+let openPending = 0;
 /** パネルを出して開く。まだ描画されていなければ、描画後に開く。 */
 export function openStreamMixPanel() {
-    openPending = true;
+    openPending = Date.now();
     saveStreamMixPanel(true);
     window.dispatchEvent(new Event(STREAM_MIX_OPEN));
 }
 export function takeStreamMixOpenRequest() {
-    const pending = openPending;
-    openPending = false;
+    const pending = openPending > 0 && Date.now() - openPending < OPEN_REQUEST_MS;
+    openPending = 0;
     return pending;
 }

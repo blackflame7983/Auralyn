@@ -14,7 +14,7 @@ async function fixture(page: Page, configPresent = true, running = false, panelS
         const post = { epoch: 'post', revision: '1', enabled: configPresent, running, savedPlugins: [], plugins: [{ id: 'post-1', path: 'fixture.vst3', name: 'Fixture EQ', enabled: true, muted: false, gain: 0 }, { id: 'post-2', path: 'comp.vst3', name: 'Fixture Comp', enabled: true, muted: false, gain: 1 }], restored: true, error: null as string | null, transportLatencyFrames: 2048, declaredPluginLatencyFrames: 0, attached: running, ready: running, failed: false, processedPackets: 42, sampleRate: 48000 };
         (window as any).__mixRequests = []; (window as any).__postRequests = []; (window as any).__postCorrupt = false;
         internal.invoke = async (command: string, args: any) => {
-            if (command === 'live_output') return { config: { deviceId: 'out', splitProcessing: true, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, sink: null, error: null };
+            if (command === 'live_output') return { config: { deviceId: (window as any).__liveOutputMissing ? null : 'out', splitProcessing: true, monitorTrim: 1, broadcastTrim: 1, monitorMuted: false }, sink: null, error: null };
             if (command === 'mixing') { const r = args.request; (window as any).__mixRequests.push(r); if (r.action === 'levels' && (window as any).__mixFailLevels) throw new Error('stale revision'); if (r.action === 'levels') { config.levels = r.levels; mix.revision = String(Number(mix.revision) + 1); } return structuredClone(mix); }
             if (command === 'post_mix') { const r = args.request; (window as any).__postRequests.push(r);
                 if (r.action === 'gain') { post.plugins[0].gain = r.value; post.revision = String(Number(post.revision) + 1); }
@@ -121,4 +121,29 @@ test('配信ミックスのパネルは既定で出さず、ホームの状態�
     const show = dialog.getByRole('checkbox', { name: 'ホームにパネルを出す' }); await expect(show).toBeChecked(); await show.uncheck();
     await page.keyboard.press('Escape'); await expect(page.locator('#stream-mix-panel')).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem('auralyn_stream_mix_panel'))).toBe('hidden');
+});
+
+test('配信ミックスのパネルから出力先の区画へ移り、音づくりタブからパネルへ戻れる（#299）', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.addInitScript(() => { (window as any).__liveOutputMissing = true; });
+    await fixture(page); await page.goto('/');
+    const panel = await streamMix(page);
+    await panel.locator('#mixing-settings > summary').click();
+    await panel.getByRole('button', { name: '配信用の分離出力を設定' }).click();
+    const dialog = page.getByRole('dialog', { name: '設定', exact: true });
+    await expect(dialog.locator('#live-output-settings')).toHaveAttribute('open', '');
+    await expect(dialog.locator('#live-output-settings select').first()).toBeFocused();
+    await dialog.getByRole('tab', { name: '音づくり' }).click();
+    await dialog.getByRole('button', { name: '配信ミックスの設定' }).click();
+    await expect(page.getByRole('dialog', { name: '設定', exact: true })).toHaveCount(0);
+    await expect(page.locator('#stream-mix-panel #mixing-settings > summary')).toBeFocused();
+});
+
+test('ホームの表示が音楽鑑賞向けなら、設定から配信ミックスを開く操作を止めて理由を示す（#299）', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('auralyn_display_purpose', 'music'));
+    await fixture(page, true, false, false); await page.goto('/');
+    const dialog = await settings(page);
+    await expect(dialog.getByRole('button', { name: 'ホームで開く' })).toBeDisabled();
+    await expect(dialog.getByRole('checkbox', { name: 'ホームにパネルを出す' })).toBeDisabled();
+    await expect(dialog.getByText('ホームの表示が「音楽鑑賞向け」のときは出ません。')).toBeVisible();
 });
