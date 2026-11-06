@@ -6,7 +6,7 @@ import { ConfirmDialog, useConfirmDialog } from '../confirm-dialog';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 function Example({ locked = false }: { locked?: boolean }) {
     const [open, setOpen] = useState(false);
@@ -18,7 +18,7 @@ function Example({ locked = false }: { locked?: boolean }) {
             <div>
                 <button onClick={() => setConfirm(true)}>削除</button>
                 <button onClick={() => setOpen(false)}>閉じる</button>
-                <ConfirmDialog isOpen={confirm} title="削除の確認" onCancel={() => setConfirm(false)} onConfirm={vi.fn()} />
+                <ConfirmDialog isOpen={confirm} title="削除の確認" variant="destructive" onCancel={() => setConfirm(false)} onConfirm={vi.fn()} />
             </div>
         </Modal>}
     </>;
@@ -50,10 +50,17 @@ it('入れ子の確認はキャンセルへ初期フォーカスし、Escapeは�
     const remove = screen.getByRole('button', { name: '削除' });
     remove.focus();
     fireEvent.click(remove);
+    expect(screen.getByRole('alertdialog', { name: '削除の確認' })).toBeInTheDocument();
     const cancel = screen.getByRole('button', { name: 'キャンセル' });
+    const confirm = screen.getByRole('button', { name: '確認' });
     await waitFor(() => expect(cancel).toHaveFocus());
+    confirm.focus();
+    fireEvent.keyDown(confirm, { key: 'Tab' });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(cancel, { key: 'Tab', shiftKey: true });
+    expect(confirm).toHaveFocus();
     fireEvent.keyDown(cancel, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '削除の確認' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('alertdialog', { name: '削除の確認' })).not.toBeInTheDocument());
     expect(screen.getByRole('dialog', { name: '設定' })).toBeInTheDocument();
     await waitFor(() => expect(remove).toHaveFocus());
 });
@@ -106,18 +113,18 @@ it.each(['confirm', 'cancel', 'escape'])('確認Promiseはlocale変更で再作�
     }
     render(<LocaleProvider store={store}><ConfirmExample /></LocaleProvider>);
     fireEvent.click(screen.getByRole('button', {name:'Open'}));
-    const dialog = screen.getByRole('dialog', {name:'User title'});
+    const dialog = screen.getByRole('alertdialog', {name:'User title'});
     const cancel = screen.getByRole('button', {name:'キャンセル'});
     await waitFor(() => expect(cancel).toHaveFocus());
     act(() => {store.setLocale('en');});
-    expect(screen.getByRole('dialog', {name:'User title'})).toBe(dialog);
+    expect(screen.getByRole('alertdialog', {name:'User title'})).toBe(dialog);
     expect(screen.getByRole('button', {name:'Cancel'})).toBe(cancel);
     expect(cancel).toHaveFocus();
     expect(resolved).not.toHaveBeenCalled();
     if(action === 'escape') fireEvent.keyDown(cancel, {key:'Escape'});
     else fireEvent.click(screen.getByRole('button', {name:action === 'confirm' ? 'Confirm' : 'Cancel'}));
     await waitFor(() => expect(resolved).toHaveBeenCalledExactlyOnceWith(action === 'confirm'));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
 });
 
 it('明示labelをlocaleで置き換えず、非表示から表示へ切り替えてもhook順序を保つ', () => {
@@ -133,4 +140,52 @@ it('明示labelをlocaleで置き換えず、非表示から表示へ切り替�
     fireEvent.click(screen.getByRole('button', {name:'KEEP'}));
     expect(confirmed).toHaveBeenCalledTimes(1);
     expect(canceled).not.toHaveBeenCalled();
+});
+
+it.each(['default', 'destructive'] as const)('確認のrole・題名1つ・説明文の関連付けを公開する (%s)', variant => {
+    const title = '変更を確定しますか？';
+    const description = '現在の設定が置き換わります。';
+    const view = render(<ConfirmDialog isOpen title={title} description={description} variant={variant}
+        onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    const dialog = screen.getByRole('alertdialog', { name: title });
+    expect(dialog).toHaveAccessibleName(title);
+    expect(dialog).toHaveAccessibleDescription(description);
+    expect(screen.getAllByText(title)).toHaveLength(1);
+    const heading = screen.getByRole('heading', { name: title, level: 3 });
+    expect(dialog).toHaveAttribute('aria-labelledby', heading.id);
+    expect(dialog).toHaveAttribute('aria-describedby', screen.getByText(description).id);
+    view.rerender(<ConfirmDialog isOpen title={title} variant={variant} onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(dialog).not.toHaveAttribute('aria-describedby');
+    expect(dialog).toHaveAccessibleDescription('');
+});
+
+it.each([true, false])('Modalは説明文があるときだけ関連付け、警告を出さない: 説明あり=%s', described => {
+    const warn = vi.spyOn(console, 'warn');
+    const error = vi.spyOn(console, 'error');
+    render(<Modal title="設定" descriptionId={described ? 'settings-description' : undefined} onClose={vi.fn()}>
+        <div>{described && <p id="settings-description">接続先を選びます。</p>}<button>閉じる</button></div>
+    </Modal>);
+    const dialog = screen.getByRole('dialog', { name: '設定' });
+    expect(dialog).toHaveAccessibleDescription(described ? '接続先を選びます。' : '');
+    if (!described) expect(dialog).not.toHaveAttribute('aria-describedby');
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+});
+
+it('確認の外側を押しても閉じず、明示キャンセル後は入口にフォーカスを戻す', async () => {
+    function Example() {
+        const [open, setOpen] = useState(false);
+        return <><button onClick={() => setOpen(true)}>削除の入口</button>
+            <ConfirmDialog isOpen={open} title="削除の確認" variant="destructive"
+                onConfirm={vi.fn()} onCancel={() => setOpen(false)} /></>;
+    }
+    render(<Example />);
+    const trigger = screen.getByRole('button', { name: '削除の入口' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'キャンセル' })).toHaveFocus());
+    fireEvent.pointerDown(document.body);
+    expect(screen.getByRole('alertdialog', { name: '削除の確認' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    await waitFor(() => expect(trigger).toHaveFocus());
 });

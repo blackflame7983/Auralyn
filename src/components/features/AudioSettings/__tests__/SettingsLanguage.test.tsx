@@ -132,10 +132,10 @@ it('危険設定の確認dialogもkeyから再翻訳し、確認前に設定を�
     render(<LocaleProvider store={store}><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);
     fireEvent.keyDown(await screen.findByRole('tab', { name: 'システム' }), { key: 'Enter' });
     fireEvent.click(screen.getByRole('switch', { name: 'リアルタイム優先度' }));
-    const dialog = screen.getByRole('dialog', { name: 'リアルタイム優先度を有効化しますか？' });
+    const dialog = screen.getByRole('alertdialog', { name: 'リアルタイム優先度を有効化しますか？' });
     const calls = vi.mocked(invoke).mock.calls.length;
     act(() => { store.setLocale('en'); });
-    expect(screen.getByRole('dialog', { name: 'Enable Realtime priority?' })).toBe(dialog);
+    expect(screen.getByRole('alertdialog', { name: 'Enable Realtime priority?' })).toBe(dialog);
     expect(screen.getByText('Incorrect settings may make mouse and keyboard input sluggish.')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
     expect(invoke).toHaveBeenCalledTimes(calls);

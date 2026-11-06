@@ -507,7 +507,7 @@ describe('初回選択と表示設定', () => {
         const { onClose } = await quickStart();
         fireEvent.click(screen.getByRole('radio', { name: '配信をはじめたい' }));
         fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
-        fireEvent.click(within(screen.getByRole('dialog', { name: 'セットアップを中断しますか？' })).getByRole('button', { name: '中断する' }));
+        fireEvent.click(within(screen.getByRole('alertdialog', { name: 'セットアップを中断しますか？' })).getByRole('button', { name: '中断する' }));
         await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
     });
@@ -519,7 +519,7 @@ describe('初回選択と表示設定', () => {
             const { onClose } = await openWizard();
             fireEvent.click(screen.getByRole('button', { name: '通話（Discordなど）' }));
             fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
-            fireEvent.click(within(screen.getByRole('dialog', { name: 'セットアップを中断しますか？' })).getByRole('button', { name: '中断する' }));
+            fireEvent.click(within(screen.getByRole('alertdialog', { name: 'セットアップを中断しますか？' })).getByRole('button', { name: '中断する' }));
             await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
             expect(localStorage.getItem('vst_host_setup_goal')).toBe('listening');
             expect(notified).not.toHaveBeenCalled();

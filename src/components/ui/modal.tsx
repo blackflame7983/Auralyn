@@ -8,12 +8,16 @@ let closingFocusChain: readonly HTMLElement[] = [];
 function captureFocusChain(): readonly HTMLElement[] {
     const active = document.activeElement;
     if (!(active instanceof HTMLElement) || active === document.body) return closingFocusChain;
-    const dialog = active.closest('[role="dialog"]');
+    const dialog = active.closest('[role="dialog"], [role="alertdialog"]');
     return [active, ...(dialog ? focusChains.get(dialog) ?? [] : [])];
 }
 
 interface ModalProps {
     title: string;
+    // 本文内の Dialog.Title を使う場合は、非表示の題名を追加しない。
+    titleInContent?: boolean;
+    descriptionId?: string;
+    role?: 'dialog' | 'alertdialog';
     onClose: () => void;
     children: ReactElement<{ children?: ReactNode }>;
     dismissible?: boolean;
@@ -23,7 +27,7 @@ interface ModalProps {
 
 // 既存の見た目を保ち、入れ子の確認画面も含めてフォーカスと背景操作を管理する。
 // 各画面は開いている間だけマウントする。
-export function Modal({ title, onClose, children, dismissible = true, initialFocusRef, onEscapeKeyDown }: ModalProps) {
+export function Modal({ title, titleInContent = false, descriptionId, role = 'dialog', onClose, children, dismissible = true, initialFocusRef, onEscapeKeyDown }: ModalProps) {
     const returnFocus = useRef(captureFocusChain());
     const contentRef = useCallback((element: HTMLDivElement | null) => {
         if (element) focusChains.set(element, returnFocus.current);
@@ -38,7 +42,8 @@ export function Modal({ title, onClose, children, dismissible = true, initialFoc
                     asChild
                     className="app-dialog text-foreground"
                     aria-modal="true"
-                    aria-describedby={undefined}
+                    role={role}
+                    aria-describedby={descriptionId}
                     onPointerDownOutside={event => event.preventDefault()}
                     onEscapeKeyDown={event => { onEscapeKeyDown?.(event); if (!dismissible) event.preventDefault(); }}
                     onOpenAutoFocus={event => {
@@ -50,7 +55,7 @@ export function Modal({ title, onClose, children, dismissible = true, initialFoc
                     }}
                     onCloseAutoFocus={event => {
                         event.preventDefault();
-                        const activeDialog = Array.from(document.querySelectorAll('[role="dialog"][data-state="open"]')).pop();
+                        const activeDialog = Array.from(document.querySelectorAll('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]')).pop();
                         const target = returnFocus.current.find(element => element.isConnected
                             && !element.matches(':disabled')
                             && (!activeDialog || activeDialog.contains(element)));
@@ -59,7 +64,7 @@ export function Modal({ title, onClose, children, dismissible = true, initialFoc
                     }}
                 >
                     {cloneElement(children, {}, <>
-                        <Dialog.Title asChild><span className="sr-only">{title}</span></Dialog.Title>
+                        {!titleInContent && <Dialog.Title asChild><span className="sr-only">{title}</span></Dialog.Title>}
                         {children.props.children}
                     </>)}
                 </Dialog.Content>
