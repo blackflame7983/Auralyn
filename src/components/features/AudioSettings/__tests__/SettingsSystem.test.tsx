@@ -44,11 +44,11 @@ it.each(['ja', 'en'] as const)('システム操作の対象と確認を区別す
     const resetButton = screen.getByRole('button', { name: reset });
     expect(resetButton).toHaveClass('bg-destructive');
     fireEvent.click(screen.getByRole('button', { name: blocklist }));
-    let dialog = await screen.findByRole('dialog');
+    let dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByRole('heading', { name: locale === 'ja' ? '読み込みを止めた VST をリセットしますか？' : 'Reset the blocklist?' })).toBeVisible();
     fireEvent.click(within(dialog).getByRole('button', { name: locale === 'ja' ? 'キャンセル' : 'Cancel' }));
     fireEvent.click(resetButton);
-    dialog = await screen.findByRole('dialog');
+    dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByRole('heading', { name: locale === 'ja' ? 'すべての設定を初期化しますか？' : 'Reset all settings?' })).toBeVisible();
     expect(vi.mocked(invoke).mock.calls.some(([command]) => command === 'clear_plugin_blacklist' || command === 'stop_audio')).toBe(false);
 });

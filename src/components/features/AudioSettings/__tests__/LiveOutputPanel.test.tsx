@@ -85,10 +85,10 @@ it.each(['ja', 'en'] as const)('停止の条件を示し、キャンセルでは
     expect(stop).toHaveAccessibleDescription(message(locale, 'liveOutput.stopWarning'));
     fireEvent.click(stop);
     expect(audioApi.stop).not.toHaveBeenCalled();
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: message(locale, 'commonDialog.cancel') }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: message(locale, 'commonDialog.cancel') }));
     expect(audioApi.stop).not.toHaveBeenCalled();
     fireEvent.click(stop);
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: message(locale, 'liveOutput.stop') }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: message(locale, 'liveOutput.stop') }));
     expect(audioApi.stop).toHaveBeenCalledOnce();
     expect(stop).toBeDisabled();
     fireEvent.click(stop);
@@ -104,7 +104,7 @@ it('停止に失敗しても再試行でき、停止済みと表示しない', a
     render(<ParentLinkedPanel />);
     const stop = screen.getByRole('button', { name: '両経路の音声を停止' });
     fireEvent.click(stop);
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '両経路の音声を停止' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '両経路の音声を停止' }));
     await screen.findByRole('alert');
     await waitFor(() => expect(stop).toBeEnabled());
     expect(stop).toHaveFocus();
@@ -117,7 +117,7 @@ it('親の無効状態が停止完了後も続く間はフォーカス復帰を�
     const view = render(<ParentLinkedPanel />);
     const stop = screen.getByRole('button', { name: '両経路の音声を停止' });
     fireEvent.click(stop);
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '両経路の音声を停止' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '両経路の音声を停止' }));
     view.rerender(<ParentLinkedPanel holdDisabled />);
     await act(async () => finish());
     expect(stop).toBeDisabled();

@@ -57,9 +57,9 @@ it('削除確認中のlocale変更は同じdialogと実名を保持し、明示�
         plugin={{ id: 'actual-1', name: '実名OTT', path: 'ott', vendor: '', version: '', enabled: true, hasEditor: false, muted: true, gain: 1 }}
         onToggle={vi.fn()} onMute={vi.fn()} onGainChange={vi.fn()} onRemove={remove} onEdit={vi.fn()} /></LocaleProvider>);
     fireEvent.click(screen.getByRole('button', { name: '実名OTTを削除' }));
-    const dialog = screen.getByRole('dialog');
+    const dialog = screen.getByRole('alertdialog');
     act(() => { store.setLocale('en'); });
-    expect(screen.getByRole('dialog')).toBe(dialog);
+    expect(screen.getByRole('alertdialog')).toBe(dialog);
     expect(screen.getByRole('heading', { name: 'Remove 実名OTT' })).toBeInTheDocument();
     expect(remove).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));

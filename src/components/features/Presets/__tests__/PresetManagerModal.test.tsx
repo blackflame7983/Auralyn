@@ -68,10 +68,10 @@ it('locale切替で未保存名・カテゴリ・確認dialogを保持し同じ�
     const noise = screen.getByRole('checkbox', { name: 'ノイズ低減' });
     fireEvent.click(noise);
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    const confirm = screen.getByRole('dialog', { name: `プロファイル「${meta.name}」を上書きしますか？` });
+    const confirm = screen.getByRole('alertdialog', { name: `プロファイル「${meta.name}」を上書きしますか？` });
     const calls = vi.mocked(invoke).mock.calls.length;
     act(() => { store.setLocale('en'); });
-    expect(screen.getByRole('dialog', { name: `Overwrite profile “${meta.name}”?` })).toBe(confirm);
+    expect(screen.getByRole('alertdialog', { name: `Overwrite profile “${meta.name}”?` })).toBe(confirm);
     expect(name).toHaveValue(meta.name); expect(noise).not.toBeChecked();
     // The confirmation dialog intentionally hides the underlying form from accessibility queries.
     expect(document.getElementById(noise.id)).toBe(noise);

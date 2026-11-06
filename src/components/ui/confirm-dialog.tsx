@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useId } from 'react';
 import { cn } from '@/lib/utils';
 import { Modal } from './modal';
+import * as Dialog from '@radix-ui/react-dialog';
 import { MdWarning } from 'react-icons/md';
 import { useMessages } from '@/i18n/LocaleProvider';
 
@@ -26,10 +27,12 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     onCancel,
 }) => {
     const t = useMessages();
+    const descriptionId = useId();
     if (!isOpen) return null;
 
     return (
-        <Modal title={title} onClose={onCancel}>
+        <Modal title={title} titleInContent role="alertdialog"
+            descriptionId={description ? descriptionId : undefined} onClose={onCancel}>
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/60 backdrop-blur-sm">
             <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl space-y-4">
                 <div className="flex items-start gap-4">
@@ -40,9 +43,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                         <MdWarning className="w-5 h-5" />
                     </div>
                     <div className="space-y-1.5">
-                        <h3 className="font-bold text-foreground text-lg leading-tight">{title}</h3>
+                        <Dialog.Title asChild>
+                            <h3 className="font-bold text-foreground text-lg leading-tight">{title}</h3>
+                        </Dialog.Title>
                         {description && (
-                            <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
+                            <p id={descriptionId} className="text-sm text-muted-foreground leading-relaxed">{description}</p>
                         )}
                     </div>
                 </div>
