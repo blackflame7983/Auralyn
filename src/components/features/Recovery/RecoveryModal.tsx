@@ -68,7 +68,7 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
                             <div className="font-bold text-destructive-text mb-1 flex items-center gap-2">
                                 <MdWarning /> {t('recovery.pending')}
                             </div>
-                            <div className="font-mono text-xs break-all opacity-80">{pendingPlugin}</div>
+                            <div className="font-mono text-xs break-all text-muted-foreground">{pendingPlugin}</div>
                         </div>
                     )}
 

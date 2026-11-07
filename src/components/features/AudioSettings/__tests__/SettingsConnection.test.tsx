@@ -27,7 +27,7 @@ afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.mock
 it('空の現在設定では自動選択を変更予定にせず、初回に開始する機器を示す', async () => {
     localStorage.removeItem('vst_host_audio_config');
     render(<AudioSettingsModal isOpen currentConfig={{ host: '' }} onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク入力' })).toHaveValue('Mic'));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic'));
     expect(screen.queryByText(/^変更予定：/)).not.toBeInTheDocument();
     expect(screen.getByText('初回設定：WASAPI・Mic → Headphonesで開始します')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '保存して開始' })).toBeEnabled();
@@ -39,7 +39,7 @@ it.each([null, 'unreadable'])('保存が%sなら復帰ボタンと説明を表�
     if (saved === null) read.mockResolvedValue(null); else read.mockRejectedValue(new Error('unreadable'));
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     await waitFor(() => expect(read).toHaveBeenCalled());
-    await screen.findByRole('combobox', { name: 'マイク入力' });
+    await screen.findByRole('combobox', { name: 'マイク' });
     expect(screen.queryByRole('button', { name: '保存済みの音声設定を読み込む' })).not.toBeInTheDocument();
     expect(screen.queryByText('画面の設定が空でも、このアプリに残る音声設定を読み込めます。読み込みだけでは音声を開始しません。')).not.toBeInTheDocument();
 });
@@ -69,7 +69,7 @@ it('開始失敗では保存した選択を保持し、設定を開き直して�
     const before = localStorage.getItem('vst_host_audio_config');
     const changed = vi.fn();
     const view = render(<AudioSettingsModal isOpen currentConfig={config} onClose={vi.fn()} onConfigChange={changed} />);
-    const input = await screen.findByRole('combobox', { name: 'マイク入力' });
+    const input = await screen.findByRole('combobox', { name: 'マイク' });
     await waitFor(() => expect(input).toHaveValue('Mic'));
     fireEvent.change(input, { target: { value: 'Failed microphone' } });
     fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
@@ -78,7 +78,7 @@ it('開始失敗では保存した選択を保持し、設定を開き直して�
     expect(localStorage.getItem('vst_host_audio_config')).toBe(before);
     view.unmount();
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={changed} />);
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク入力' })).toHaveValue('Mic'));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic'));
 });
 
 it.each(['channels', 'save'] as const)('システム再起動の%s失敗から接続画面で再試行してVST復元まで完了する', async stage => {
@@ -128,7 +128,7 @@ it.each(['ASIO', 'Wasapi'])('別hostのプリセットで先頭以外の入出�
     });
     const start = vi.spyOn(audioApi, 'start').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    const input = await screen.findByRole('combobox', { name: 'マイク入力' });
+    const input = await screen.findByRole('combobox', { name: 'マイク' });
     await waitFor(() => expect(input).toHaveValue(`id:${previousHost}-1`));
     fireEvent.change(screen.getByRole('combobox', { name: '入出力の保存' }), { target: { value: 'target' } });
     await waitFor(() => expect(input).toHaveValue(`id:${targetHost}-2`));
@@ -140,7 +140,7 @@ it('稼働中の変更なし保存を抑止し、変更を戻すと再び抑止�
     const start = vi.spyOn(audioApi, 'start');
     render(<AudioSettingsModal isOpen isAudioRunning currentConfig={config} onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const save = await screen.findByRole('button', { name: '保存して再起動' });
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク入力' })).toHaveValue('Mic'));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic'));
     expect(save).toBeDisabled();
     expect(save).toHaveAccessibleDescription(/変更はありません.*音声が一瞬途切れます/);
     fireEvent.click(save);
@@ -182,7 +182,7 @@ it.each([false, true])('入力ペアの下書きだけでは保存せず、明�
             }} />;
     }
     render(<Parent />);
-    const input = await screen.findByRole('combobox', { name: 'マイク入力' });
+    const input = await screen.findByRole('combobox', { name: 'マイク' });
     await waitFor(() => expect(input).toHaveValue('Device A'));
     const save = screen.getByRole('button', { name: '保存して再起動' });
     expect(save).toBeDisabled();

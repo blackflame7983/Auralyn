@@ -333,7 +333,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {/* 未設定の間は音の流れと次の1歩だけを出し、準備の確認・送り先の選択・状態の重複を並べない（#297）。 */}
                         {!configured && <UnsetFlow usage={preparation.context.usage || null} music={purpose === 'music'} onSetup={onOpenWizard}
                             input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput} />}
-                        {configured && <div className="min-w-0"><HomePanels stoppedInStrip={quietStopped}
+                        {configured && <div className="min-w-0"><HomePanels diagnosticAttention={startError !== null || measurement.stopUnconfirmed} stoppedInStrip={quietStopped}
                             onExpandedChange={setPreparationExpanded}
                             model={preparation}
                             homeActionInStrip={canStart && !isEngineRunning || purpose !== 'music' && audioReady && !preparation.context.usage}
@@ -383,7 +383,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                         aria-pressed={isABBypassed}
                                         aria-describedby={isABBypassed ? 'footer-compare-state' : undefined}
                                         className={cn(
-                                            "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold font-mono whitespace-nowrap shrink-0",
+                                            "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-ui-control font-semibold whitespace-nowrap shrink-0",
                                             isABBypassed
                                                 ? "bg-warning/10 text-warning border-warning/50 ring-1 ring-warning/30"
                                                 : "bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground"
@@ -392,7 +392,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                         <MdCompareArrows aria-hidden="true" className="w-4 h-4" />
                                         <span className="flex flex-col items-start">
                                             <span>{t('header.compare')}</span>
-                                            {isABBypassed && <span id="footer-compare-state" className="text-xs font-medium">{t('header.vstOff')}</span>}
+                                            {isABBypassed && <span id="footer-compare-state" className="text-ui-support font-medium">{t('header.vstOff')}</span>}
                                         </span>
                                     </button>
                                 </TooltipTrigger>

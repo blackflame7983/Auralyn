@@ -8,7 +8,7 @@ import { receiverDeviceNotice, deviceDisplayName } from '../../../lib/audioRouti
 import { Modal } from '../../ui/modal';
 import { AudioFlow } from '../../ui/AudioFlow';
 import { InfoPopover } from '../../ui/InfoPopover';
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { MdCheck } from 'react-icons/md';
 import { destinationChoices } from '@/lib/destinationChoices';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
@@ -29,12 +29,23 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     // Modal は Portal の2回目の描画で中身を出すため、ref ではなく state で受け、レールが現れた時に測り直す。
     const [rail, railRef] = useState<HTMLOListElement | null>(null);
     const [railThumb, railThumbRef] = useState<HTMLSpanElement | null>(null);
+    const inputDeviceId = useId();
     const { isOpen, onClose, onSkip, onOpenSettings, onOpenTroubleshoot, onOpenVoiceCheck } = props;
     const { audioStartError, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
         performClose, state, setState, config, setConfig, savedGoal, availableInputs, availableOutputs,
         isLoadingDevices, isTestingSound, runningInput, loadDevices, handleRescanVirtualDevices,
         asioAvailable, selectHost, selectAsioChannels, selectGoal, confirmInput, selectOutputMode, startSoundTest, stopSoundTest, reselectDevices, finalApply } = useSetupWizard(props);
+    const nextReasonId = useId();
+    // 複数の条件が重なるときは、読込完了→入力→出力の順に案内する。
+    const nextReason = state === 'input_selection'
+        ? isLoadingDevices ? t('wizard.loadingInputs')
+            : !config.input ? t(config.goal === 'music' ? 'wizard.selectPcToContinue' : 'wizard.selectMicToContinue') : null
+        : state === 'output_selection'
+            ? isLoadingDevices ? t('wizard.loadingOutputs')
+                : !config.input ? t(config.goal === 'music' ? 'wizard.returnToPcInput' : 'wizard.returnToMic')
+                    : !config.output ? t('wizard.selectOutputToContinue') : null
+            : null;
     const bodyRef = useRef<HTMLDivElement>(null);
     const surfaceRef = useRef<HTMLDivElement>(null);
     // 手順レールと切替の向き（DESIGN.md 5.7）。設定中・完了は4手順を終えた位置に置く。
@@ -146,7 +157,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                             <button
                                                 type="button"
                                                 onClick={() => void performClose(onOpenTroubleshoot)}
-                                                className="underline underline-offset-2 text-primary hover:text-primary/80"
+                                                className="underline underline-offset-2 text-primary hover:text-foreground"
                                             >
                                                 {t('wizard.diagnostics')}
                                             </button>
@@ -206,11 +217,11 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 ) : (
                                     <>
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium text-foreground">
-                                                {config.goal === 'music' ? t('wizard.musicInput') : config.goal === 'listening' ? t('guide.copy.187') : t('guide.copy.188')}
+                                            <label htmlFor={inputDeviceId} className="text-sm font-medium text-foreground">
+                                                {t('guide.copy.188')}
                                             </label>
                                             <select
-                                                aria-label={config.goal === 'music' ? t('wizard.musicInput') : t('guide.copy.189')}
+                                                id={inputDeviceId}
                                                 className="w-full p-3 bg-muted/50 border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
                                                 value={config.input?.name || ''}
                                                 onChange={(e) => {
@@ -258,7 +269,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     {isAsioHost(config.host) ? t('wizard.asioOutput', { name: config.output ? deviceDisplayName(config.output.name) : '' })
                                         : config.goal === 'music' ? t('wizard.musicRoute') : config.goal === 'obs' ? t('guide.copy.194') : t('guide.copy.195')}
                                 </p>
-                                {!config.input && <p role="status" className="text-sm text-warning">{t('guide.copy.196')}</p>}
+                                {!config.input && <p role="status" className="text-sm text-warning">{t(config.goal === 'music' ? 'wizard.pcInputMissing' : 'guide.copy.196')}</p>}
                                 {availableOutputs.length === 0 && !isLoadingDevices && <p className="text-sm text-warning">{t('guide.copy.197')}</p>}
                             </div>
 
@@ -369,7 +380,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                                             e.stopPropagation();
                                                             invoke('open_url', { url: 'https://vb-audio.com/Cable/' }).catch(() => window.open('https://vb-audio.com/Cable/', '_blank'));
                                                         }}
-                                                        className="text-xs underline text-primary hover:text-primary/80"
+                                                        className="text-xs underline text-primary hover:text-foreground"
                                                     >
                                                         {t('guide.copy.216')}</button>
                                                 </div>
@@ -518,32 +529,21 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                     {state === 'usage_selection' && (
                         <button type="button" disabled={isBusy} onClick={() => void performClose(() => (onSkip || onClose)())} className={buttonVariants({ variant: 'ghost' })}>{t('wizard.skip')}</button>
                     )}
-                    {state === 'input_selection' && (<>
-                            <div className="flex items-center gap-3">
-                                <button onClick={() => setState('usage_selection')} className="px-4 py-2 text-muted-foreground hover:text-foreground">{t('common.back')}</button>
-                                {(!config.input || isLoadingDevices) && <p id="wizard-input-reason" className="ml-auto text-ui-support text-muted-foreground">{t(isLoadingDevices ? 'wizard.loadingInputs' : config.goal === 'music' ? 'wizard.selectPcToContinue' : 'wizard.selectMicToContinue')}</p>}
-                                <button
-                                    onClick={confirmInput}
-                                    disabled={!config.input || isLoadingDevices}
-                                    aria-describedby={!config.input || isLoadingDevices ? 'wizard-input-reason' : undefined}
-                                    className={buttonVariants({ className: `setup-primary gap-2 disabled:opacity-100 disabled:border disabled:border-border disabled:bg-muted disabled:text-muted-foreground ${config.input && !isLoadingDevices ? 'ml-auto' : ''}` })}
-                                >
-                                    {t('common.next')} <MdArrowForward className="setup-primary-arrow" />
-                                </button>
-                            </div>
-                    </>)}
-                    {state === 'output_selection' && (<>
-                            <div className="flex items-center gap-3">
-                                <button onClick={() => setState('input_selection')} className="px-4 py-2 text-muted-foreground hover:text-foreground">{t('common.back')}</button>
-                                <button
-                                    onClick={() => setState('confirmation')}
-                                    disabled={!config.input || !config.output || isLoadingDevices}
-                                    className={buttonVariants({ className: "setup-primary ml-auto gap-2 disabled:opacity-100 disabled:border disabled:border-border disabled:bg-muted disabled:text-muted-foreground" })}
-                                >
-                                    {t('common.next')} <MdArrowForward className="setup-primary-arrow" />
-                                </button>
-                            </div>
-                    </>)}
+                    {(state === 'input_selection' || state === 'output_selection') && (
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
+                            <button onClick={() => setState(state === 'input_selection' ? 'usage_selection' : 'input_selection')} className="whitespace-nowrap px-4 py-2 text-muted-foreground hover:text-foreground">{t('common.back')}</button>
+                            {/* 空でも領域を保ち、読み込みや選択による理由の変化を読み上げる。 */}
+                            <p id={nextReasonId} role="status" aria-atomic="true" className="min-w-0 whitespace-normal wrap-anywhere text-ui-support text-muted-foreground">{nextReason}</p>
+                            <button
+                                onClick={() => { if (state === 'input_selection') confirmInput(); else setState('confirmation'); }}
+                                disabled={nextReason !== null}
+                                aria-describedby={nextReason !== null ? nextReasonId : undefined}
+                                className={buttonVariants({ className: "setup-primary gap-2 disabled:border disabled:border-border disabled:bg-muted disabled:text-muted-foreground" })}
+                            >
+                                {t('common.next')} <MdArrowForward aria-hidden="true" className="setup-primary-arrow" />
+                            </button>
+                        </div>
+                    )}
                     {state === 'confirmation' && (<>
                             <p id="wizard-save-scope" className="mb-2 text-right text-xs text-muted-foreground">{config.goal === 'music' ? t('wizard.musicApply') : t('guide.copy.235')}</p>
                             <div className="flex flex-wrap items-center gap-3">

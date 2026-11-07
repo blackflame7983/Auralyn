@@ -138,6 +138,6 @@ it('本番保護中はトークンが残っていても操作可能と表示し�
     render(<AdjustmentHistoryPanel />);
     await act(async () => {});
     fireEvent.click(screen.getByRole('button', {name: '履歴の状態を確認'}));
-    await waitFor(() => expect(screen.getAllByText('誤操作防止中のため操作できません')).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByText('操作ロック中のため操作できません')).toHaveLength(3));
     for (const button of screen.getAllByRole('button', {name: '適用前へ戻す'})) expect(button).toBeDisabled();
 });
