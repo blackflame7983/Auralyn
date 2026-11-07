@@ -55,7 +55,7 @@ test('隔離した実Tauriでミックス設定と配信VSTをキーボード操
         await dialog.getByRole('button', { name: 'ホームで開く', exact: true }).click();
         await expect(dialog).toHaveCount(0);
         const panel = page.locator('#stream-mix-panel'); await expect(panel).toBeVisible({ timeout: 30_000 });
-        const post = panel.locator('details').filter({ has: page.locator('summary').getByText('配信音を仕上げる VST', { exact: true }) }).last();
+        const post = panel.locator('details').filter({ has: page.locator('summary').getByText('配信音を仕上げるVST', { exact: true }) }).last();
         await post.locator('summary').first().focus(); await page.keyboard.press('Enter');
         const add = post.getByRole('button', { name: 'VSTを追加' }); await expect(add).toBeEnabled({ timeout: 30_000 });
         for (let i = 0; i < 2; i++) {
@@ -80,7 +80,7 @@ test('隔離した実Tauriでミックス設定と配信VSTをキーボード操
         await writeFile(info.outputPath('post-ja-aria.txt'), await post.ariaSnapshot());
         const recovery = post.locator('details').filter({ has: page.locator('summary').getByText('保存設定を復旧する', { exact: true }) });
         await recovery.locator('summary').focus(); await page.keyboard.press('Enter');
-        await recovery.getByRole('checkbox', { name: '保存状態を保管して配信 VST を無効にします。' }).focus(); await page.keyboard.press('Space');
+        await recovery.getByRole('checkbox', { name: '保存状態を保管して配信VSTを無効にします。' }).focus(); await page.keyboard.press('Space');
         await recovery.getByRole('button', { name: '保存状態を保管して無効にする' }).focus(); await page.keyboard.press('Enter');
         await expect(recovery.getByRole('status')).toContainText('保存状態の記録を残し');
         await writeFile(info.outputPath('post-reset-aria.txt'), await recovery.ariaSnapshot());
