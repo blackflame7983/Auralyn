@@ -1,6 +1,9 @@
+import { Button } from '@/components/ui/button';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { APP_INFO } from '../../../constants/appInfo';
 import { MixingDiagnostics } from './MixingDiagnostics';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { MdExtension, MdRefresh } from 'react-icons/md';
+import { MdExtension, MdRefresh, MdFavorite, MdLanguage } from 'react-icons/md';
 import { audioApi, type EngineRuntimeStats, type EngineTuningConfig } from '../../../api/audio';
 import { autostartApi } from '../../../api/autostart';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -120,9 +123,9 @@ export function useSystemSettings({ isOpen, currentSampleRate, currentBufferSize
 interface SystemSettingsProps {
   model: ReturnType<typeof useSystemSettings>; engineStats: EngineRuntimeStats | null;
   loading: boolean; setLoading: Dispatch<SetStateAction<boolean>>; showConfirm: (options: ConfirmOptions) => void;
-  onClose: () => void; onOpenWizard?: () => void; handleRestart: () => void; canRestart: boolean; knownStopped: boolean;
+  onOpenLicense?: () => void; onClose: () => void; onOpenWizard?: () => void; handleRestart: () => void; canRestart: boolean; knownStopped: boolean;
 }
-export function SystemSettings({ model, engineStats, loading, setLoading, showConfirm, onClose, onOpenWizard, handleRestart, canRestart, knownStopped }: SystemSettingsProps) {
+export function SystemSettings({ model, engineStats, loading, setLoading, showConfirm, onClose, onOpenWizard, onOpenLicense, handleRestart, canRestart, knownStopped }: SystemSettingsProps) {
   const t = useMessages();
   const { autostartEnabled, setAutostartEnabled, autostartCanChange, setAutostartCanChange, autostartReason, setAutostartReason, engineTuningConfig, setEngineTuningConfig, systemSaving, statsLoading, refreshEngineRuntimeStats, saveEngineTuningConfig, handleDangerousToggle, openSections, setOpenSections } = model;
   return (
@@ -172,12 +175,12 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             <section className="rounded-xl border border-border p-4 space-y-2">
               <div className="flex items-center gap-1"><h3 className="text-ui-heading font-semibold">{t('structure.restart')}</h3><InfoPopover label={t('settings.system.restartHelp')}>{t('settings.system.restartDescription')}</InfoPopover></div>
               <p className="text-ui-support text-muted-foreground">{t('settings.system.restartWarning')}</p>
-                <button
+                <Button variant="outline"
                   onClick={handleRestart}
                   disabled={loading || !canRestart}
-                  className="px-3 py-2 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive-text border border-input hover:border-destructive-text/30 rounded-md transition font-medium disabled:opacity-50 disabled:cursor-not-allowed text-ui-control"
+                  className="text-ui-control"
                 >
-                  {t('settings.AudioSettingsModal.196')}</button>
+                  {t('settings.AudioSettingsModal.196')}</Button>
             </section>
             <details open={openSections.optimization} onToggle={event => {
               const open = event.currentTarget.open;
@@ -421,6 +424,27 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                 </div>
               </div>
             </section>
+            {/* アプリ情報 */}
+            <div className="p-6 bg-muted/20 border border-border rounded-xl flex flex-col items-center justify-center space-y-3">
+              <img src="/auralyn_icon.png" alt="Auralyn Icon" className="w-16 h-16 rounded-full shadow-sm object-contain" />
+              <div className="text-center">
+                <h3 className="text-foreground text-ui-heading font-semibold">{APP_INFO.NAME}</h3>
+                <p className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.138')}{APP_INFO.VERSION}</p>
+              </div>
+
+              <div className="flex gap-4 pt-2">
+                <button onClick={() => openUrl('https://www.kuro7983.com/apps/auralyn')} className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 text-ui-support">
+                  <MdLanguage className="w-3.5 h-3.5" />
+                  {t('settings.AudioSettingsModal.139')}</button>
+                {onOpenLicense && (
+                  <button onClick={onOpenLicense} className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 text-ui-support">
+                    {t('settings.AudioSettingsModal.140')}</button>
+                )}
+                <button onClick={() => openUrl('https://ofuse.me/o?uid=149216')} className="text-muted-foreground hover:text-brand-secondary transition-colors flex items-center gap-1 text-ui-support">
+                  <MdFavorite className="w-3 h-3" />
+                  {t('settings.AudioSettingsModal.141')}</button>
+              </div>
+            </div>
           </TabsContent>
   );
 }

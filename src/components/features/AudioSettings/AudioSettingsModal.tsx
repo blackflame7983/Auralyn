@@ -17,9 +17,8 @@ import { useLiveModes, type LiveModesModel } from '@/hooks/useLiveModes';
 import { Modal } from '../../ui/modal';
 import { MicrophonePermissionGuide } from './MicrophonePermissionGuide';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { MdClose, MdSettings, MdRefresh, MdWarning, MdLightbulb, MdSave, MdDelete, MdPalette, MdFavorite, MdLanguage, MdMic, MdGraphicEq, MdCast, MdKeyboard, MdTune } from 'react-icons/md';
+import { MdClose, MdSettings, MdRefresh, MdWarning, MdLightbulb, MdSave, MdDelete, MdPalette, MdMic, MdGraphicEq, MdCast, MdKeyboard, MdTune } from 'react-icons/md';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -29,7 +28,6 @@ import { InputChannelSelector } from './InputChannelSelector';
 import { OutputChannelSelector } from './OutputChannelSelector';
 import { readOutputRouting } from '@/lib/audioChannelRouting';
 import { ObsConnectionSettings } from './ObsConnectionSettings';
-import { APP_INFO } from '../../../constants/appInfo';
 import { ShortcutsPanel } from './ShortcutsPanel';
 import { AuroraDisplaySwitch, DisplayPurposeSelector, NumericDetailsSwitch } from './DisplayPurposeSelector';
 import { REVIEW_KEY } from '@/api/migration';
@@ -893,7 +891,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <div className="space-y-4">
               <div>
                 <h3 className="mb-3 flex items-center gap-2 text-foreground text-ui-heading font-semibold">
-                  <MdPalette className="w-4 h-4 text-primary" /> {t('settings.AudioSettingsModal.130')}</h3>
+                  {t('settings.AudioSettingsModal.130')}</h3>
                 <RadioGroup value={theme} onValueChange={(v) => setTheme(v as any)} className="grid auto-rows-fr gap-3">
                   <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('light')}>
                     <RadioGroupItem value="light" id="theme-light" />
@@ -920,28 +918,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
 
             </div>
-            {/* App Info Card */}
-            {/* App Info Card */}
-            <div className="p-6 bg-muted/20 border border-border rounded-xl flex flex-col items-center justify-center space-y-3">
-              <img src="/auralyn_icon.png" alt="Auralyn Icon" className="w-16 h-16 rounded-full shadow-sm object-contain" />
-              <div className="text-center">
-                <h3 className="text-foreground text-ui-heading font-semibold">{APP_INFO.NAME}</h3>
-                <p className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.138')}{APP_INFO.VERSION}</p>
-              </div>
 
-              <div className="flex gap-4 pt-2">
-                <button onClick={() => openUrl('https://www.kuro7983.com/apps/auralyn')} className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 text-ui-support">
-                  <MdLanguage className="w-3.5 h-3.5" />
-                  {t('settings.AudioSettingsModal.139')}</button>
-                {onOpenLicense && (
-                  <button onClick={onOpenLicense} className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 text-ui-support">
-                    {t('settings.AudioSettingsModal.140')}</button>
-                )}
-                <button onClick={() => openUrl('https://ofuse.me/o?uid=149216')} className="text-muted-foreground hover:text-brand-secondary transition-colors flex items-center gap-1 text-ui-support">
-                  <MdFavorite className="w-3 h-3" />
-                  {t('settings.AudioSettingsModal.141')}</button>
-              </div>
-            </div>
 
 
           </TabsContent>
@@ -950,7 +927,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <ShortcutsPanel onCaptureChange={setCapturingShortcut} />
           </TabsContent>
           <SystemSettings model={system} engineStats={engineStats} loading={loading} setLoading={setLoading} showConfirm={showConfirm}
-            onClose={onClose} onOpenWizard={onOpenWizard} handleRestart={handleRestart}
+            onClose={onClose} onOpenWizard={onOpenWizard} onOpenLicense={onOpenLicense} handleRestart={handleRestart}
             canRestart={inputReady && !!selectedOutputDevice && (!reviewRequired || migrationConfirmed)} knownStopped={connection.knownStopped} />
           </div>
         </Tabs>
@@ -963,11 +940,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 : changedFields.length ? t('settings.connection.changes', { fields: changedFields.join('、') }) : t('settings.connection.unchanged')}</p>
               {streamRunning && <p id="settings-save-restart">{t('settings.saveRestartHint')}</p>}
             </div>
-            <button onClick={handleSave} disabled={loading || !inputReady || !selectedOutputDevice || !canSaveConnection || (reviewRequired && !migrationConfirmed)}
+            <Button onClick={handleSave} disabled={loading || !inputReady || !selectedOutputDevice || !canSaveConnection || (reviewRequired && !migrationConfirmed)}
               aria-describedby={`settings-connection-changes${streamRunning ? ' settings-save-restart' : ''}`}
-              className="rounded-md bg-primary px-5 py-2 font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 text-ui-control">
+              className="px-5 font-bold text-ui-control">
               {t(streamRunning ? 'settings.saveRestart' : 'settings.AudioSettingsModal.197')}
-            </button>
+            </Button>
           </div>
         )}
       </div>

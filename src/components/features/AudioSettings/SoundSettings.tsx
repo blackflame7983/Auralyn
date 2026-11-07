@@ -346,8 +346,10 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                 </div>
 
             </fieldset>
-            {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="h-10 px-4 rounded-md border border-input hover:bg-muted text-ui-control">{t('settings.AudioSettingsModal.093')}</button>}
-            <button type="button" onClick={onOpenMixing} className="rounded-md border border-border px-3 py-2 hover:bg-muted text-ui-control">{t('mixingHome.open')}</button>
+            <div className="flex flex-wrap gap-3">
+              {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="h-10 px-4 rounded-md border border-input hover:bg-muted text-ui-control">{t('settings.AudioSettingsModal.093')}</button>}
+              <button type="button" onClick={onOpenMixing} className="rounded-md border border-border px-3 py-2 hover:bg-muted text-ui-control">{t('mixingHome.open')}</button>
+            </div>
             <LiveModeControls model={liveModel} onAdjust={mode => {
               setPreparingMode(mode);
               const target = mode === 'singing' ? settingsBody.current?.querySelector<HTMLDetailsElement>('#singing-settings') : soundStart.current;
