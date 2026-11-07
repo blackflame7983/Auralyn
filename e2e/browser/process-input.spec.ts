@@ -52,7 +52,7 @@ for (const size of [{ width: 900, height: 600 }, { width: 640, height: 600 }]) {
         await dialog.getByRole('combobox', { name: '入力元', exact: true }).selectOption('device');
         await expect(dialog.getByRole('option', { name: 'Test microphone', exact: true })).toHaveCount(1);
         await expect(dialog.getByRole('button', { name: /保存して(開始|再起動)/ })).toBeDisabled();
-        await dialog.getByRole('combobox', { name: 'マイク入力', exact: true }).selectOption('id:mic');
+        await dialog.getByRole('combobox', { name: 'マイク', exact: true }).selectOption('id:mic');
         await expect(dialog.getByRole('combobox', { name: '入力の用途' })).toHaveValue('music');
         await expect(dialog.getByRole('button', { name: /保存して(開始|再起動)/ })).toBeEnabled();
     });

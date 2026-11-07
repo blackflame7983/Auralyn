@@ -332,7 +332,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                                                     <button
                                                         type="button"
                                                         onClick={openSettings}
-                                                        className="mt-2 text-xs font-semibold underline underline-offset-2 hover:opacity-80"
+                                                        className="mt-2 text-xs font-semibold underline underline-offset-2 hover:text-foreground"
                                                     >
                                                         {target === 'sound' ? t('voice.copy.102') : target === 'audioTuning' ? t('settings.audioTuning.open') : t('voice.copy.103')}
                                                     </button>

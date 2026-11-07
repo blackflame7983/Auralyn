@@ -174,6 +174,8 @@ it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態
     </LocaleProvider>);
     const compare = screen.getByRole('button', { name: message(locale, 'header.compare') });
     expect(compare.closest('footer')).not.toBeNull();
+    expect(compare).toHaveClass('text-ui-control', 'py-1');
+    expect(compare).not.toHaveClass('font-mono', 'text-xs');
     expect(compare).toHaveAttribute('aria-pressed', 'false');
     await act(async () => fireEvent.click(compare));
     expect(compare).not.toHaveClass('animate-pulse');
@@ -380,4 +382,20 @@ it('配信ミックスは表示を選んだとき本番帯の直後へ置き、�
     view.rerender(<AppShell {...props} streamMixPanel={undefined}><p>rack</p></AppShell>);
     expect(screen.queryByRole('region', { name: '配信ミックス' })).not.toBeInTheDocument();
     act(() => { saveStreamMixPanel(false); saveDisplayPurpose('voice'); });
+});
+it('音量チェックの停止未確認でもホームの診断へ直接進める', () => {
+    const diagnose = vi.fn();
+    render(<AppShell onOpenOBSSettings={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
+        onOpenTroubleshoot={diagnose} onOpenVoiceCheck={vi.fn()} onOpenWizard={vi.fn()}
+        onToggleLargeMeter={vi.fn()} isLargeMeterOpen={false} currentHost="WASAPI" currentInput="Mic" currentOutput="Speakers" engineProcessReady isEngineRunning={false}>
+        <p>rack</p>
+    </AppShell>);
+    const entry = screen.getByRole('button', { name: message('ja', 'header.noSound') });
+    expect(entry).not.toHaveClass('border-warning');
+    act(() => measurementProps.current.onStateChange({ active: false, busy: false, stopUnconfirmed: true }));
+    expect(entry).toHaveClass('border-warning');
+    fireEvent.click(entry);
+    expect(diagnose).toHaveBeenCalledOnce();
+    act(() => measurementProps.current.onStateChange({ active: false, busy: false, stopUnconfirmed: false }));
+    expect(entry).not.toHaveClass('border-warning');
 });
