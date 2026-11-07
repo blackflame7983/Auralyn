@@ -1,3 +1,4 @@
+import { message } from '../../src/i18n/messages';
 import { test, expect } from './tauriFixture';
 
 // セットアップだけで ASIO 機器を選び、音の確認まで終えられる（#291）。
@@ -31,3 +32,34 @@ test('セットアップで ASIO を選び、同じ機器のチャンネルで�
     expect(starts.at(-1)).toMatchObject({ host: 'ASIO', input: 'Test ASIO', output: 'Test ASIO',
         channelRouting: { inputChannels: [2, 3], outputRouting: { mode: 'independent', channels: [4, 5] } } });
 });
+
+for (const locale of ['ja', 'en'] as const) {
+    test(`ASIOの入出力の注意が機器直下で読める ${locale} 900×600 150%`, async ({ page }, info) => {
+        await page.setViewportSize({ width: 900, height: 600 });
+        await page.addInitScript(locale => {
+            localStorage.setItem('vst_host_locale', locale);
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'Test ASIO', output: 'Test ASIO', sampleRate: 48000, bufferSize: 512 }));
+            const original = (window as any).__TAURI_INTERNALS__.invoke;
+            (window as any).__TAURI_INTERNALS__.invoke = async (command: string, args: unknown) => {
+                if (command === 'get_audio_devices') {
+                    const device = { host: 'ASIO', name: 'Test ASIO', channels: 8, index: 0, is_default: true };
+                    return { inputs: [{ ...device, is_input: true }], outputs: [{ ...device, is_input: false }] };
+                }
+                return original(command, args);
+            };
+        }, locale);
+        await page.goto('/');
+        await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
+        await page.getByRole('button', { name: message(locale, 'header.audioSettingsOpen'), exact: true }).click();
+        const dialog = page.getByRole('dialog');
+        const device = dialog.getByRole('combobox', { name: message(locale, 'guide.copy.188'), exact: true });
+        const note = dialog.getByText(message(locale, 'settings.AudioSettingsModal.044'), { exact: true });
+        await note.scrollIntoViewIfNeeded();
+        await expect(note).toBeInViewport({ ratio: 1 });
+        expect(await note.evaluate(el => el.scrollWidth <= el.clientWidth && getComputedStyle(el).textOverflow !== 'ellipsis')).toBe(true);
+        expect(await note.evaluate(el => el.previousElementSibling?.tagName)).toBe('SELECT');
+        expect((await note.boundingBox())!.y).toBeGreaterThanOrEqual((await device.boundingBox())!.y + (await device.boundingBox())!.height);
+        await page.screenshot({ path: info.outputPath('asio-note-150.png') });
+    });
+}

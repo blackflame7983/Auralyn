@@ -293,7 +293,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                 )}
                 {/* 入力欄は接続中も残し、接続先の確認だけできるよう折りたたむ。 */}
                 <details ref={connectionDetails} open className="space-y-3">
-                  <summary onClick={() => { connectionDetailsTouched.current = true; }} className="cursor-pointer text-sm font-medium">{t('obs.section.connect')}{isObsConnected && <span role="status"> — {t('settings.obs.connectedTarget', { host: obsHost, port: obsPort })} · {t('settings.ObsConnectionSettings.291')}</span>}</summary>
+                  <summary onClick={() => { connectionDetailsTouched.current = true; }} className="cursor-pointer text-ui-heading font-semibold">{t('obs.section.connect')}{isObsConnected && <span role="status"> — {t('settings.obs.connectedTarget', { host: obsHost, port: obsPort })} · {t('settings.ObsConnectionSettings.291')}</span>}</summary>
                   <div className="space-y-4 pt-2">
                   <div className="space-y-2">
                     <label className="font-medium text-muted-foreground text-ui-control">{t('settings.ObsConnectionSettings.280')}</label>
@@ -459,7 +459,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                 />
               </section>
               <details className="rounded border border-border p-3 space-y-3">
-                <summary className="cursor-pointer font-semibold">{t('structure.sceneRouting')}</summary>
+                <summary className="cursor-pointer text-ui-heading font-semibold">{t('structure.sceneRouting')}</summary>
                 <ObsModeRoutingSettings />
               </details>
             </div>

@@ -1,10 +1,13 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { AudioSettingsModal } from '../AudioSettingsModal';
 import { audioApi, type EngineRuntimeStats } from '@/api/audio';
 import { useState } from 'react';
 import type { AudioPreferences } from '@/lib/audioPreferences';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
+import { message } from '@/i18n/messages';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
 const config = { host: 'Wasapi', input: 'Mic', output: 'Headphones', sampleRate: 48000, bufferSize: 512 };
@@ -23,6 +26,24 @@ beforeEach(() => {
     });
 });
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.mocked(invoke).mockReset(); });
+
+it.each(['ja', 'en'] as const)('開始失敗後に状態不明でも失敗理由と再開始しなかった案内を表示する (%s)', async locale => {
+    vi.spyOn(audioApi, 'getAudioState').mockResolvedValue({ is_running: true, config: null });
+    const start = vi.spyOn(audioApi, 'start').mockRejectedValue(new Error('Device start rejected'));
+    const changed = vi.fn();
+    const close = vi.fn();
+    const before = localStorage.getItem('vst_host_audio_config');
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <AudioSettingsModal isOpen currentConfig={config} onClose={close} onConfigChange={changed} />
+    </LocaleProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: message(locale, 'settings.AudioSettingsModal.197') }));
+    expect(await screen.findByText(message(locale, 'settings.AudioSettingsModal.017', { arg0: 'Error: Device start rejected' }))).toBeVisible();
+    expect(screen.getByText(message(locale, 'settings.startUnknown'))).toBeVisible();
+    expect(start).toHaveBeenCalledOnce();
+    expect(changed).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    expect(localStorage.getItem('vst_host_audio_config')).toBe(before);
+});
 
 it('空の現在設定では自動選択を変更予定にせず、初回に開始する機器を示す', async () => {
     localStorage.removeItem('vst_host_audio_config');
@@ -256,4 +277,75 @@ it('音楽の入力欄は見える名前と読み上げ名をPCの音にそろ�
     render(<AudioSettingsModal isOpen currentConfig={config} onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const input = await screen.findByRole('combobox', { name: 'PCの音' });
     expect(screen.getByText('PCの音', { selector: 'label' })).toHaveAttribute('for', input.id);
+});
+
+
+it.each([['Asio', 'saved-id', undefined], ['ASIO', undefined, 'listed-id']] as const)('保存済み%s・ID差でも復帰した入力と出力ペアを保つ', async (host, savedId, listedId) => {
+    localStorage.clear();
+    const item = { name: 'Interface', id: listedId, host: 'ASIO', channels: 8, index: 0, is_default: true };
+    vi.spyOn(audioApi, 'getDevices').mockResolvedValue({ inputs: [{ ...item, is_input: true }], outputs: [{ ...item, is_input: false }] });
+    vi.spyOn(audioApi, 'getSavedAudioConfig').mockResolvedValue({ host, input: item.name, input_id: savedId, output: item.name, output_id: savedId,
+        sample_rate: 48000, buffer_size: 512, routing: { inputChannels: [4, 5], outputRouting: { mode: 'independent', channels: [6, 7] } } });
+    const start = vi.spyOn(audioApi, 'start').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 8 });
+    function Parent() {
+        const [current, setCurrent] = useState<AudioPreferences>({ host: '' });
+        return <AudioSettingsModal isOpen currentConfig={current} onClose={vi.fn()} onConfigChange={next => {
+            localStorage.setItem('vst_host_audio_config', JSON.stringify(next)); setCurrent(previous => ({ ...previous, ...next }));
+        }} />;
+    }
+    render(<Parent />);
+    fireEvent.click(await screen.findByRole('button', { name: '保存済みの音声設定を読み込む' }));
+    await screen.findByText('保存済みの音声設定を読み込みました。内容を確認してから開始してください。');
+    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', item.name, item.name, 512, 48000, listedId, listedId, undefined,
+        { inputChannels: [4, 5], outputRouting: { mode: 'independent', channels: [6, 7] } }, expect.anything()));
+});
+
+it('再起動なしの開始失敗で旧接続へ戻してもVST復元を重ねない', async () => {
+    let stopped = false;
+    vi.spyOn(audioApi, 'getAudioState').mockImplementation(async () => ({ is_running: !stopped, config: stopped ? null : { host: 'Wasapi', input: 'Mic', output: 'Headphones', sample_rate: 48000, buffer_size: 512 } }));
+    vi.spyOn(audioApi, 'getAudioStreamState').mockResolvedValue({ running: true, streamFailed: false });
+    const start = vi.spyOn(audioApi, 'start').mockImplementationOnce(async () => { stopped = true; throw new Error('new failed'); })
+        .mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
+    const restored = vi.fn();
+    render(<AudioSettingsModal isOpen isAudioRunning={false} currentConfig={config} onClose={vi.fn()} onConfigChange={vi.fn()} onEngineRestarted={restored} />);
+    fireEvent.click(await screen.findByRole('button', { name: '保存して開始' }));
+    await screen.findByText(/new failed/);
+    expect(start).toHaveBeenCalledTimes(2);
+    expect(restored).not.toHaveBeenCalled();
+});
+
+it('入力元の入口は機器一覧の読み込み後に入力選択へフォーカスする', async () => {
+    render(<AudioSettingsModal isOpen initialSection="primaryInput" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    await screen.findByRole('combobox', { name: 'マイク' });
+    await waitFor(() => expect(screen.getByRole('combobox', { name: '入力元' })).toHaveFocus());
+});
+
+it('音楽鑑賞では音づくりの配信ミックス入口も理由付きで無効にする', async () => {
+    localStorage.setItem('vst_host_setup_goal', 'music');
+    render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const button = await screen.findByRole('button', { name: '配信ミックスの設定' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(/.+/);
+});
+
+it('入力元への移動は設定のエラー表示が終わるまで待機する', async () => {
+    vi.spyOn(audioApi, 'getDevices').mockRejectedValueOnce(new Error('enumeration failed'));
+    const view = render(<AudioSettingsModal isOpen initialSection="primaryInput" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const retry = await screen.findByRole('button', { name: '設定に戻って再試行' });
+    expect(document.getElementById('primary-input-settings')).toBeNull();
+    retry.focus();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 40)); });
+    expect(retry).toHaveFocus();
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByRole('combobox', { name: '入力元' })).toHaveFocus());
+    view.unmount();
+});
+
+it('接続の折りたたみ見出しも通常セクションと同じトークンを使う', async () => {
+    render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    await screen.findByRole('combobox', { name: 'マイク' });
+    const summary = screen.getByText('接続方式・音切れの設定', { exact: false, selector: 'summary' });
+    expect(summary).toHaveClass('text-ui-heading', 'font-semibold');
+    expect(summary).not.toHaveClass('text-sm');
 });

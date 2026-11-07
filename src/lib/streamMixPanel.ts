@@ -38,7 +38,7 @@ export function openStreamMixPanel() {
     window.dispatchEvent(new Event(STREAM_MIX_OPEN));
 }
 export function takeStreamMixOpenRequest() {
-    const pending = openPending > 0 && Date.now() - openPending < OPEN_REQUEST_MS;
+    const pending = openPending > 0 && Date.now() - openPending < OPEN_REQUEST_MS ? openPending : 0;
     openPending = 0;
     return pending;
 }

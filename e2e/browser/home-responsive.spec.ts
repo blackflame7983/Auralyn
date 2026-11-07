@@ -127,6 +127,15 @@ for (const locale of ['ja', 'en']) {
             const live = page.locator('.live-strip');
             await expect(live).toHaveAttribute('data-roomy', 'true');
             await settleLayoutMotion(page);
+            const devices = live.locator('.live-device');
+            await devices.evaluateAll(nodes => nodes.forEach(node => { node.textContent = 'Voicemeeter Insert Virtual ASIO (Virtual Audio Interface)'; }));
+            await settleLayoutMotion(page);
+            await expect(devices).toHaveCount(2);
+            for (const device of await devices.all()) {
+                await expect(device).toBeInViewport({ ratio: 1 });
+                expect(await device.evaluate(el => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight && getComputedStyle(el).textOverflow !== 'ellipsis')).toBe(true);
+            }
+
             await expect(live.getByRole('heading', { name: locale === 'ja' ? 'いまの調整' : 'Custom sound' })).toBeVisible();
             expect(await page.locator('main').evaluate(e => ({ width: e.scrollWidth <= e.clientWidth, height: e.scrollHeight <= e.clientHeight }))).toEqual({ width: true, height: true });
             const tools = page.locator('.sound-tool-list > li > div > button');

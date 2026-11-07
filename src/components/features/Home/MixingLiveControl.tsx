@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { GainControl, MixingError, useQueuedChange } from '@/components/features/AudioSettings/mixingUi';
 import { LiveControlsHiddenContext } from './LiveControlsContext';
 
-export function MixingLiveControl({ running, blocked, onSettings }: { running: boolean; blocked: boolean; onSettings: () => void }) {
+export function MixingLiveControl({ running, blocked, onSettings, errorsOnly = false }: { running: boolean; blocked: boolean; onSettings: () => void; errorsOnly?: boolean }) {
     const t = useMessages();
     const [mix, setMix] = useState<MixSnapshot | null>(null), [post, setPost] = useState<PostMixSnapshot | null>(null);
     const [desired, setDesired] = useState<{ gain: number; muted: boolean } | null>(null), [open, setOpen] = useState(false);
@@ -51,9 +51,13 @@ export function MixingLiveControl({ running, blocked, onSettings }: { running: b
         if (!busy.current) sequence.current++;
         const value = { ...active, ...patch }; pending.current = value; setDesired(value); setCommandError(null); queue.enqueue(value);
     };
+    const problem = !!error || !!mix?.failed || !!mix?.accompaniment?.failed || !!post?.failed;
+    if (errorsOnly) return problem ? <div role="alert" className="text-ui-support text-destructive-text">{t('mixingHome.failure')}</div> : null;
     if (!mix?.config && !mix?.savedConfig && !post?.enabled && !post?.savedPlugins.length && !post?.plugins.length) return null;
-    const mixProblem = !!error || !!mix?.failed || !!mix?.accompaniment?.failed;
-    const mixState = error ? 'mixingHome.unknown' : mixProblem || !running || !mix?.config ? 'mixingHome.stopped' : mix.accompaniment?.waitingForAudio ? 'mixing.waiting' : 'mixingHome.active';
+    // 音楽鑑賞の失敗通知（errorsOnly）は両方の失敗を見るが、ここでのオケの状態はオケ自体の失敗だけで決める。
+    const accompanimentFailed = !!mix?.failed || !!mix?.accompaniment?.failed;
+    const mixProblem = !!error || accompanimentFailed;
+    const mixState = error ? 'mixingHome.unknown' : accompanimentFailed || !running || !mix?.config ? 'mixingHome.stopped' : mix.accompaniment?.waitingForAudio ? 'mixing.waiting' : 'mixingHome.active';
     const postState = !running || !post?.enabled || post.failed || post.ready !== true || post.attached !== true ? 'mixingHome.postStopped' : 'mixingHome.postActive';
     return <div className="flex flex-wrap items-center gap-2 text-xs" aria-label={t('mixingHome.open')}>
         {mix?.config && <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" disabled={blocked} aria-label={t('mixingHome.volume')} title={t('mixingHome.volume')} className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-1"><MdMusicNote aria-hidden="true" />{Math.round((desired?.gain ?? mix.config.levels.accompaniment.gain) * 100)}%</button></Popover.Trigger>

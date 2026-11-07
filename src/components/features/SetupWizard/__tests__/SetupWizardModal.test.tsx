@@ -1,5 +1,6 @@
+import { useSetupWizard } from '../useSetupWizard';
 import { chooseObsRoute } from './wizardActions';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, renderHook, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -1111,4 +1112,32 @@ it.each(['obs', 'listening', 'music'] as const)('マイクとPCの音の選択�
     expect(screen.getByRole('heading', { name: goal === 'music' ? 'Choose PC audio' : 'Choose a microphone' })).toBeVisible();
     expect(select).toHaveFocus();
     expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
+});
+
+
+it('ASIOからPCの音へ切り替えるとWASAPIの既定出力を選ぶ', async () => {
+    const asio = { ...device('ASIO interface'), host: 'ASIO', id: 'asio' };
+    const speaker = { ...device('Windows speaker'), id: 'speaker' };
+    inputs = [mic, { ...asio, is_input: true }]; outputs = [asio, speaker];
+    const view = renderHook(() => useSetupWizard({ isOpen: true, onClose: vi.fn(), onApplyConfig: vi.fn() }));
+    await waitFor(() => expect(view.result.current.asioAvailable).toBe(true));
+    act(() => view.result.current.selectGoal('obs'));
+    act(() => view.result.current.selectHost('ASIO'));
+    expect(view.result.current.config.host).toBe('ASIO');
+    act(() => view.result.current.selectGoal('music'));
+    expect(view.result.current.config.host).toBe('WASAPI');
+    expect(view.result.current.config.output?.id).toBe('speaker');
+});
+
+it('PCの音の出力先は2択を2列で並べる', async () => {
+    inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
+    await openWizard();
+    fireEvent.click(screen.getByRole('button', { name: '自分で聴く' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
+    const next = screen.getByRole('button', { name: /次へ/ });
+    await waitFor(() => expect(next).toBeEnabled());
+    fireEvent.click(next);
+    const option = screen.getByRole('button', { name: message('ja', 'guide.copy.198') });
+    expect(option.parentElement).toHaveClass('grid-cols-2');
+    expect(option.parentElement?.querySelectorAll('[role=button]')).toHaveLength(2);
 });

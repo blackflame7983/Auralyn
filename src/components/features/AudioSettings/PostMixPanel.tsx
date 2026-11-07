@@ -50,7 +50,7 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
     const gainDifferences = snapshot?.plugins.filter(p => gains[p.id] !== undefined && gains[p.id] !== p.gain).map(p => [p.id, gains[p.id]] as const) ?? [];
     const enableReason = !(hasMixing ?? mixConfigured) ? 'mixingUi.postNeedsMix' : !snapshot?.restored ? 'postMix.restoreNeeded' : isMainRunning ? 'postMix.stop' : stale ? 'postMix.stale' : null;
     return <details ref={panel} className={mixingCard} onToggle={e => setOpen(e.currentTarget.open)}>
-        <summary className="cursor-pointer font-semibold">{t('postMix.title')}</summary>
+        <summary className="cursor-pointer text-ui-heading font-semibold">{t('postMix.title')}</summary>
         <ScopeDisclosure settings summary="mixingUi.postScope" detail="postMix.scope" />
         <Button className="text-ui-control" variant="outline" size="sm" disabled={disabled || busy} onClick={() => void resource.run('mixingUi.read')}>{t('postMix.load')}</Button>
         {snapshot && <div className="space-y-3 text-sm">

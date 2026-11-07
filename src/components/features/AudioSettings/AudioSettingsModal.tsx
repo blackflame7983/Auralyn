@@ -2,6 +2,7 @@ import { ProcessInputPanel } from './ProcessInputPanel';
 import { deviceInput, readInputSource, type InputSourceRequest } from '@/lib/inputSource';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { SaveScopeSummary } from '../Presets/SaveScopeSummary';
+import { connectionDeviceKey, resolveAudioDevice } from '@/lib/audioDevices';
 import { SoundSettings, useSoundSettings } from './SoundSettings';
 import { SystemSettings, useSystemSettings } from './SystemSettings';
 import { LiveOutputPanel } from './LiveOutputPanel';
@@ -103,6 +104,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     catch { return []; }
   }, []);
   const [error, setError] = useState<SettingsNotice | null>(null);
+  const [startStateUnknown, setStartStateUnknown] = useState(false);
+  useEffect(() => { if (!isOpen || !error) setStartStateUnknown(false); }, [isOpen, error]);
   const {
     devices, selectedHost, setSelectedHost, selectedInput, setSelectedInput, selectedInputKey, setSelectedInputKey, selectedInputDevice,
     selectedOutput, setSelectedOutput, selectedOutputKey, setSelectedOutputKey, selectedOutputDevice: selectedOutputFromSelection, selectedBufferSize, setSelectedBufferSize,
@@ -173,9 +176,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       await onConfigChange(restored);
       setInputSource({ source }); setNeedsDeviceChoice(false);
       setSelectedSampleRate(restored.sampleRate!); setSelectedBufferSize(restored.bufferSize!);
-      connection.setRoutingForDevice(`${saved.host}\u0000${saved.input_id ?? saved.input ?? ''}`, {
+      const listed = await fetchDevices(false);
+      const restoredInput = listed && resolveAudioDevice(listed.inputs, saved.host, saved.input, saved.input_id);
+      if (restoredInput) connection.setRoutingForDevice(connectionDeviceKey(saved.host, restoredInput), {
         inputChannels: restored.inputChannels, outputRouting: restored.outputRouting! });
-      await fetchDevices(false);
       setEditedFields(new Set());
       setRestoreNotice(t('settings.connection.restored'));
     } catch { setRestoreNotice(t('settings.connection.restoreFailed')); }
@@ -316,10 +320,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     ? selectedBufferSize / selectedSampleRate * 1000 : null;
 
   // 開始できなかった理由に、直前の接続へ戻したかと次にやることを添える（#289）。
-  const startFailureNotice = (err: unknown, fallback: 'settings.AudioSettingsModal.017' | 'settings.AudioSettingsModal.020') =>
-    err instanceof ConnectionApplyError ? notice(err.stage === 'channels' ? 'settings.connectionChannelsIncomplete' : 'settings.connectionSaveIncomplete', { arg0: err.message })
-      : err instanceof ConnectionStartError && err.rollback !== 'none' ? notice(err.rollback === 'restored' ? 'settings.startRolledBack' : err.rollback === 'kept' ? 'settings.startKept' : 'settings.startRollbackFailed', { arg0: err.message })
-      : notice(fallback, { arg0: err instanceof ConnectionStartError ? err.raw : String(err) });
+  const showStartFailure = (err: unknown, fallback: 'settings.AudioSettingsModal.017' | 'settings.AudioSettingsModal.020') => {
+    // 状態不明でも開始自体の失敗理由を残し、再開始しなかったことは別の段落で伝える。
+    setStartStateUnknown(err instanceof ConnectionStartError && err.rollback === 'unknown');
+    setError(err instanceof ConnectionApplyError ? notice(err.stage === 'channels' ? 'settings.connectionChannelsIncomplete' : 'settings.connectionSaveIncomplete', { arg0: err.message })
+      : err instanceof ConnectionStartError && err.rollback !== 'none' && err.rollback !== 'unknown' ? notice(err.rollback === 'restored' ? 'settings.startRolledBack' : err.rollback === 'kept' ? 'settings.startKept' : 'settings.startRollbackFailed', { arg0: err.message })
+      : notice(fallback, { arg0: err instanceof ConnectionStartError ? err.raw : String(err) }));
+  };
 
   const handleSave = async () => {
     if (!canSaveConnection || isApplying) return;
@@ -333,7 +340,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     } catch (err) {
       if (err instanceof ConnectionApplyError) setConnectionRetry(true);
       console.error('Failed to start audio:', err);
-      setError(startFailureNotice(err, 'settings.AudioSettingsModal.017'));
+      showStartFailure(err, 'settings.AudioSettingsModal.017');
     } finally {
       setLoading(false);
     }
@@ -364,7 +371,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       if (err instanceof ConnectionStartError && err.rollback === 'restored' && onEngineRestarted && !reviewRequired) {
         try { await onEngineRestarted(); } catch (restoreError) { console.error('Failed to restore plugins after rollback:', restoreError); }
       }
-      setError(startFailureNotice(err, 'settings.AudioSettingsModal.020'));
+      showStartFailure(err, 'settings.AudioSettingsModal.020');
     } finally {
       setLoading(false);
     }
@@ -437,7 +444,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         && (p.inputId ? device.id === p.inputId : device.name === p.input));
       if (matches.length === 1) {
         const device = matches[0];
-        connection.setRoutingForDevice(`${device.host}\u0000${device.id ?? device.name}`, {
+        connection.setRoutingForDevice(connectionDeviceKey(device.host, device), {
           inputChannels: p.inputChannels,
           outputRouting: readOutputRouting(p.outputRouting) ?? { mode: 'legacy' },
         });
@@ -508,7 +515,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
             ) : error ? (
               <div className="space-y-4">
-                <div className="text-foreground text-sm text-center py-4 bg-destructive/10 rounded-lg">{renderNotice(t, error)}</div>
+                <div role="alert" className="space-y-2 text-foreground text-sm text-center py-4 bg-destructive/10 rounded-lg">
+                  <p>{renderNotice(t, error)}</p>
+                  {startStateUnknown && <p>{t('settings.startUnknown')}</p>}
+                </div>
                 <button onClick={() => setError(null)} className="w-full py-2 bg-primary text-primary-foreground rounded-md text-ui-control">{t('settings.AudioSettingsModal.031')}</button>
                 <button onClick={onClose} className="w-full py-2 bg-muted text-foreground rounded-md border border-input text-ui-control">{t('common.close')}</button>
               </div>
@@ -586,7 +596,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
             )}
             <details id="live-output-settings" onToggle={e => { if (e.currentTarget.open) setLoadOutput(true); }} className="rounded-xl border border-border p-4 space-y-3">
-              <summary className="cursor-pointer font-semibold">{t('liveOutput.title')}</summary>
+              <summary className="cursor-pointer text-ui-heading font-semibold">{t('liveOutput.title')}</summary>
               <LiveOutputPanel autoLoad={loadOutput} outputs={devices.outputs} inputName={inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : selectedInputDevice?.name} monitorName={selectedOutputDevice?.name} disabled={loading} onBusyChange={setLoading} />
             </details>
             {/* 配信中に触る配信ミックスはホームのパネルへ移し、ここは機器と接続だけにする（#299）。 */}
@@ -602,7 +612,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
             {!loading && !error && <div className="space-y-6">
                 <details ref={tuningDetails} open={tuningOpen} onToggle={event => setTuningOpen(event.currentTarget.open)} className="rounded-xl border border-border p-3 space-y-3">
-                  <summary className="cursor-pointer font-semibold text-sm">
+                  <summary className="cursor-pointer text-ui-heading font-semibold">
                     {t('settings.audioTuning.title')}
                     {/* 現在の接続方式を見出しに出し、ASIOを探す人にもWASAPIの人にも自分の設定だと分かるようにする。サンプル数は中の詳細に置く。 */}
                     <span className="ml-2 text-ui-support font-normal text-muted-foreground">{displayAudioHost(selectedHost)} · {t([128, 512, 1024].includes(selectedBufferSize)
@@ -792,7 +802,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {/* Tips Section (Only in Advanced Mode) */}
                 {isAdvancedMode && (
                   <details className="text-ui-support text-muted-foreground bg-muted/50 rounded border border-border mt-2">
-                    <summary className="p-2 cursor-pointer hover:bg-muted/80 transition-colors font-medium flex items-center gap-2">
+                    <summary className="p-2 cursor-pointer hover:bg-muted/80 transition-colors text-ui-control font-semibold flex items-center gap-2">
                       <MdLightbulb className="w-4 h-4 text-primary" />
                       {t('settings.AudioSettingsModal.073')}</summary>
                     <div className="p-3 pt-0 space-y-2 border-t border-border/50">
@@ -868,14 +878,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
               </div>}
             <details className="rounded-xl border border-border p-4 space-y-3">
-              <summary className="cursor-pointer font-semibold">{t('structure.monitor')}</summary>
+              <summary className="cursor-pointer text-ui-heading font-semibold">{t('structure.monitor')}</summary>
               <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await system.refreshEngineRuntimeStats(); }} />
             </details>
           </TabsContent>
 
           <SoundSettings model={sound} engineStats={engineStats} singingModel={singingModel} liveModel={providedLive ?? localLive}
             isBeginnerMode={isBeginnerMode} settingsBody={settingsBody} soundStart={soundStart}
-            onClose={onClose} onOpenVoiceCheck={onOpenVoiceCheck} onPreviewSinging={onPreviewSinging} onSaveSingingProfile={onSaveSingingProfile} onOpenMixing={() => { openStreamMixPanel(); onClose(); }} />
+            onClose={onClose} onOpenVoiceCheck={onOpenVoiceCheck} onPreviewSinging={onPreviewSinging} onSaveSingingProfile={onSaveSingingProfile} streamMixAvailable={streamMixAvailable} onOpenMixing={() => { if (streamMixAvailable) { openStreamMixPanel(); onClose(); } }} />
           <TabsContent value="obs" className="space-y-4">
             <ObsConnectionSettings
               showConfirm={showConfirm}
