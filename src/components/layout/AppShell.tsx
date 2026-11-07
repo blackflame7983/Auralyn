@@ -234,7 +234,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const largeMeterButton = <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><button type="button" id="large-meter-toggle" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
         aria-label={largeMeterLabel} aria-describedby={meterSuspended ? 'large-meter-suspended' : undefined}
         className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-md border p-1.5 text-ui-support', isLargeMeterOpen ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border hover:bg-muted')}>
-        <span className="relative"><LevelMeterIcon className="h-[18px] w-[18px]" />{meterSuspended && <span aria-hidden="true" className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-warning" />}</span><span>{t('home.largeMeterLabel')}</span>
+        <span className="relative"><LevelMeterIcon className="h-[18px] w-[18px]" />{meterSuspended && <span aria-hidden="true" className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-warning" />}</span><span className="live-action-label">{t('home.largeMeterLabel')}</span>
     </button></TooltipTrigger><TooltipContent><p>{t(meterSuspended ? 'home.meterSuspended' : 'home.largeMeterTool')}</p><p className="max-w-64 text-xs">{t('meter.arrivalUnverified')}</p></TooltipContent></Tooltip></TooltipProvider>;
     const meterSuspendedNotice = meterSuspended ? <span id="large-meter-suspended" role="status" className="mb-3 text-xs text-muted-foreground">{t('home.meterSuspended')}</span> : null;
     const loudnessAction = !loudnessEnabled && !measurement.active ? <span className="flex shrink-0 items-center gap-2">
@@ -244,7 +244,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             disabled={measurement.busy || (!measurement.active && !audioReady)}
             aria-label={loudnessLabel}
             className="inline-flex items-center gap-1.5 rounded-md border border-border p-1.5 text-ui-support hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent">
-            <AudioCheckIcon className="h-[18px] w-[18px]" /><span>{t('shell.loudness')}</span>
+            <AudioCheckIcon className="h-[18px] w-[18px]" /><span className="live-action-label">{t('shell.loudness')}</span>
         </button></TooltipTrigger><TooltipContent><p>{t('home.loudnessTool')}</p><p className="max-w-64 text-xs">{t('loudness.scope')}</p></TooltipContent></Tooltip></TooltipProvider>
     </span> : null;
     const focusOutputControl = (anchor?: HTMLButtonElement) => {

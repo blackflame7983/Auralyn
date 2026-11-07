@@ -5,6 +5,9 @@ import { AudioSettingsModal } from '../AudioSettingsModal';
 import { audioApi, type EngineRuntimeStats } from '@/api/audio';
 import { useState } from 'react';
 import type { AudioPreferences } from '@/lib/audioPreferences';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
+import { message } from '@/i18n/messages';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
 const config = { host: 'Wasapi', input: 'Mic', output: 'Headphones', sampleRate: 48000, bufferSize: 512 };
@@ -23,6 +26,24 @@ beforeEach(() => {
     });
 });
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.mocked(invoke).mockReset(); });
+
+it.each(['ja', 'en'] as const)('開始失敗後に状態不明でも失敗理由と再開始しなかった案内を表示する (%s)', async locale => {
+    vi.spyOn(audioApi, 'getAudioState').mockResolvedValue({ is_running: true, config: null });
+    const start = vi.spyOn(audioApi, 'start').mockRejectedValue(new Error('Device start rejected'));
+    const changed = vi.fn();
+    const close = vi.fn();
+    const before = localStorage.getItem('vst_host_audio_config');
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <AudioSettingsModal isOpen currentConfig={config} onClose={close} onConfigChange={changed} />
+    </LocaleProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: message(locale, 'settings.AudioSettingsModal.197') }));
+    expect(await screen.findByText(message(locale, 'settings.AudioSettingsModal.017', { arg0: 'Error: Device start rejected' }))).toBeVisible();
+    expect(screen.getByText(message(locale, 'settings.startUnknown'))).toBeVisible();
+    expect(start).toHaveBeenCalledOnce();
+    expect(changed).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    expect(localStorage.getItem('vst_host_audio_config')).toBe(before);
+});
 
 it('空の現在設定では自動選択を変更予定にせず、初回に開始する機器を示す', async () => {
     localStorage.removeItem('vst_host_audio_config');

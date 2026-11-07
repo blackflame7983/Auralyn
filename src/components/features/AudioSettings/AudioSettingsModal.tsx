@@ -104,6 +104,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     catch { return []; }
   }, []);
   const [error, setError] = useState<SettingsNotice | null>(null);
+  const [startStateUnknown, setStartStateUnknown] = useState(false);
+  useEffect(() => { if (!isOpen || !error) setStartStateUnknown(false); }, [isOpen, error]);
   const {
     devices, selectedHost, setSelectedHost, selectedInput, setSelectedInput, selectedInputKey, setSelectedInputKey, selectedInputDevice,
     selectedOutput, setSelectedOutput, selectedOutputKey, setSelectedOutputKey, selectedOutputDevice: selectedOutputFromSelection, selectedBufferSize, setSelectedBufferSize,
@@ -318,10 +320,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     ? selectedBufferSize / selectedSampleRate * 1000 : null;
 
   // 開始できなかった理由に、直前の接続へ戻したかと次にやることを添える（#289）。
-  const startFailureNotice = (err: unknown, fallback: 'settings.AudioSettingsModal.017' | 'settings.AudioSettingsModal.020') =>
-    err instanceof ConnectionApplyError ? notice(err.stage === 'channels' ? 'settings.connectionChannelsIncomplete' : 'settings.connectionSaveIncomplete', { arg0: err.message })
-      : err instanceof ConnectionStartError && err.rollback !== 'none' ? notice(err.rollback === 'restored' ? 'settings.startRolledBack' : err.rollback === 'kept' ? 'settings.startKept' : err.rollback === 'unknown' ? 'settings.startUnknown' : 'settings.startRollbackFailed', { arg0: err.message })
-      : notice(fallback, { arg0: err instanceof ConnectionStartError ? err.raw : String(err) });
+  const showStartFailure = (err: unknown, fallback: 'settings.AudioSettingsModal.017' | 'settings.AudioSettingsModal.020') => {
+    // 状態不明でも開始自体の失敗理由を残し、再開始しなかったことは別の段落で伝える。
+    setStartStateUnknown(err instanceof ConnectionStartError && err.rollback === 'unknown');
+    setError(err instanceof ConnectionApplyError ? notice(err.stage === 'channels' ? 'settings.connectionChannelsIncomplete' : 'settings.connectionSaveIncomplete', { arg0: err.message })
+      : err instanceof ConnectionStartError && err.rollback !== 'none' && err.rollback !== 'unknown' ? notice(err.rollback === 'restored' ? 'settings.startRolledBack' : err.rollback === 'kept' ? 'settings.startKept' : 'settings.startRollbackFailed', { arg0: err.message })
+      : notice(fallback, { arg0: err instanceof ConnectionStartError ? err.raw : String(err) }));
+  };
 
   const handleSave = async () => {
     if (!canSaveConnection || isApplying) return;
@@ -335,7 +340,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     } catch (err) {
       if (err instanceof ConnectionApplyError) setConnectionRetry(true);
       console.error('Failed to start audio:', err);
-      setError(startFailureNotice(err, 'settings.AudioSettingsModal.017'));
+      showStartFailure(err, 'settings.AudioSettingsModal.017');
     } finally {
       setLoading(false);
     }
@@ -366,7 +371,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       if (err instanceof ConnectionStartError && err.rollback === 'restored' && onEngineRestarted && !reviewRequired) {
         try { await onEngineRestarted(); } catch (restoreError) { console.error('Failed to restore plugins after rollback:', restoreError); }
       }
-      setError(startFailureNotice(err, 'settings.AudioSettingsModal.020'));
+      showStartFailure(err, 'settings.AudioSettingsModal.020');
     } finally {
       setLoading(false);
     }
@@ -510,7 +515,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
             ) : error ? (
               <div className="space-y-4">
-                <div className="text-foreground text-sm text-center py-4 bg-destructive/10 rounded-lg">{renderNotice(t, error)}</div>
+                <div role="alert" className="space-y-2 text-foreground text-sm text-center py-4 bg-destructive/10 rounded-lg">
+                  <p>{renderNotice(t, error)}</p>
+                  {startStateUnknown && <p>{t('settings.startUnknown')}</p>}
+                </div>
                 <button onClick={() => setError(null)} className="w-full py-2 bg-primary text-primary-foreground rounded-md text-ui-control">{t('settings.AudioSettingsModal.031')}</button>
                 <button onClick={onClose} className="w-full py-2 bg-muted text-foreground rounded-md border border-input text-ui-control">{t('common.close')}</button>
               </div>

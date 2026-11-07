@@ -176,7 +176,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             </div>
 
 
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-2 gap-3 p-1">
                                 {destinationChoices.map(({ value, label, icon: Icon, hint }) => <SelectionCard compact
                                     key={value}
                                     onClick={() => selectGoal(value === 'listening' && (config.goal ?? savedGoal) === 'music' ? 'music' : value)}
