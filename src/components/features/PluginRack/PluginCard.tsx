@@ -71,7 +71,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                     "group relative w-full transition duration-(--motion-base) select-none overflow-hidden",
                     plugin.enabled
                         ? "bg-card shadow-sm border-border"
-                        : "bg-muted/50 opacity-90 border-transparent shadow-none"
+                        : "bg-muted/50 border-transparent shadow-none"
                 )}>
                     {/* Left Status Bar / Drag Handle */}
                     <button type="button" ref={dragHandleRef}
@@ -188,7 +188,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                 "group relative w-full transition duration-(--motion-base) select-none overflow-hidden",
                 plugin.enabled
                     ? "bg-card shadow-sm border-border"
-                    : "bg-muted/50 opacity-90 border-transparent shadow-none"
+                    : "bg-muted/50 border-transparent shadow-none"
             )}>
                 {/* Left Status Bar / Drag Handle */}
                 <button type="button" ref={dragHandleRef}

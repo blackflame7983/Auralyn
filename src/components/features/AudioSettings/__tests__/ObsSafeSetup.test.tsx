@@ -77,7 +77,12 @@ describe('OBS の変更確認と復元', () => {
         });
         renderSetup();
         fireEvent.click(screen.getByRole('button', { name: '変更予定を確認する' }));
-        await screen.findByText(/手動の手順をご利用ください。/);
+        const raw = await screen.findByText(/手動の手順をご利用ください。/);
+        expect(raw.closest('details')).not.toHaveAttribute('open');
+        expect(raw).not.toBeVisible();
+        expect(screen.getByText(/変更予定を確認できません/)).toBeVisible();
+        fireEvent.click(raw.closest('details')!.querySelector('summary')!);
+        expect(raw).toBeVisible();
         expect(
             screen.queryByRole('button', { name: 'この変更を適用する' }),
         ).not.toBeInTheDocument();
@@ -105,7 +110,7 @@ describe('OBS の変更確認と復元', () => {
         expect(historySummary.closest('details')).not.toHaveAttribute('open');
         fireEvent.click(screen.getByRole('button', { name: '変更予定を確認する' }));
         fireEvent.click(await screen.findByRole('button', { name: 'この変更を適用する' }));
-        expect(await screen.findByText(/失敗（適用状態を要確認）/)).toBeVisible();
+        expect(await screen.findByText(/失敗（適用状態を要確認）/)).not.toBeVisible();
         expect(historySummary.closest('details')).toHaveAttribute('open');
         expect(historySummary).toHaveFocus();
         fireEvent.click(screen.getByRole('button', { name: '変更 #7 を元に戻す' }));
@@ -210,7 +215,13 @@ it('typedの全outcomeは結果を表示するだけで復元を実行しない'
     expect(await screen.findByText(/Already at the original value/)).toBeVisible();
     for(const text of ['Not run','Applied','Restored']) expect(screen.getByText(text, {exact:false})).toBeVisible();
     expect(screen.getByText(/The write result is unknown/)).toBeVisible();
-    expect(screen.getByText(/Restore failed/)).toHaveTextContent('Original detail (untranslated): 個別の原文');
+    for (const raw of screen.getAllByText('個別の原文')) {
+        expect(raw.closest('details')).not.toHaveAttribute('open');
+        expect(raw).not.toBeVisible();
+        fireEvent.click(raw.closest('details')!.querySelector('summary')!);
+        expect(raw).toBeVisible();
+        expect(raw.textContent).toBe('個別の原文');
+    }
     expect(obsApi.restoreSetup).not.toHaveBeenCalled();
     expect(obsApi.applySetup).not.toHaveBeenCalled();
 });
@@ -226,4 +237,100 @@ it.each(['ja', 'en'] as const)('未接続の理由を表示し、確認と復元
     expect(preview).toHaveAccessibleDescription(reason);
     const undo = await screen.findByRole('button', { name: locale === 'ja' ? '変更 #7 を元に戻す' : /Undo change #7/ });
     expect(undo).toHaveAccessibleDescription(expect.stringContaining(reason));
+});
+
+it.each(['ja', 'en'] as const)('OBS の取得・操作エラーは要約と次の操作を本文に残し、原文は閉じた詳細に置く（%s）', async locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    const raw = 'Error: OBS request failed\n' + 'long-detail-'.repeat(30);
+    vi.mocked(obsApi.setupHistory).mockRejectedValueOnce(new Error(raw.slice(7)));
+    render(<LocaleProvider store={store}><ObsSafeSetup disabled={false} onBusyChange={() => {}} /></LocaleProvider>);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(locale === 'ja' ? '変更履歴を取得できませんでした。' : 'Could not retrieve the change history.');
+    expect(alert).toHaveTextContent(locale === 'ja' ? '履歴を再取得' : 'Refresh history');
+    expect(alert).not.toHaveTextContent(raw);
+    const pre = screen.getByText((_, node) => node?.tagName === 'PRE' && node.textContent === raw);
+    const details = pre.closest('details')!;
+    expect(details).not.toHaveAttribute('open');
+    expect(pre).not.toBeVisible();
+    const summary = details.querySelector('summary')!;
+    summary.focus();
+    expect(summary).toHaveFocus();
+    fireEvent.click(summary);
+    expect(pre).toBeVisible();
+    expect(pre).toHaveClass('font-mono', 'whitespace-pre-wrap', 'select-text');
+    fireEvent.click(summary);
+    expect(pre).not.toBeVisible();
+    vi.mocked(obsApi.previewSetup).mockRejectedValueOnce('preview failed');
+    fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? '変更予定を確認する' : 'Review proposed changes' }));
+    const operationRaw = await screen.findByText('preview failed');
+    expect(operationRaw.closest('details')).not.toHaveAttribute('open');
+    expect(operationRaw).not.toBeVisible();
+});
+
+
+it.each(['history', 'preview', 'apply', 'undo', 'forget'] as const)('失敗した操作 %s に合う要約と次の操作を表示する', async operation => {
+    const raw = `Error: ${operation} transport failed`;
+    vi.mocked(obsApi.setupHistory).mockResolvedValue([history]);
+    renderSetup();
+    await screen.findByRole('button', { name: '変更 #7 を元に戻す' });
+    fireEvent.click(screen.getByText('過去の変更履歴'));
+    if (operation === 'history') {
+        vi.mocked(obsApi.setupHistory).mockRejectedValueOnce(raw);
+        fireEvent.click(screen.getByRole('button', { name: '履歴を再取得' }));
+    } else if (operation === 'preview') {
+        vi.mocked(obsApi.previewSetup).mockRejectedValueOnce(raw);
+        fireEvent.click(screen.getByRole('button', { name: '変更予定を確認する' }));
+    } else if (operation === 'apply') {
+        vi.mocked(obsApi.applySetup).mockRejectedValueOnce(raw);
+        fireEvent.click(screen.getByRole('button', { name: '変更予定を確認する' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'この変更を適用する' }));
+    } else if (operation === 'undo') {
+        vi.mocked(obsApi.restoreSetup).mockRejectedValueOnce(raw);
+        fireEvent.click(screen.getByRole('button', { name: '変更 #7 を元に戻す' }));
+    } else {
+        vi.mocked(obsApi.forgetHistory).mockRejectedValueOnce(raw);
+        fireEvent.click(screen.getByRole('button', { name: '変更 #7 の履歴を削除' }));
+        fireEvent.click(screen.getByRole('button', { name: '確認して履歴を削除' }));
+    }
+    const alert = await screen.findByRole('alert');
+    const summaries = { history: '変更履歴を取得できませんでした。', preview: '変更予定を確認できませんでした。', apply: '変更の適用を確認できませんでした。', undo: '変更の取り消しを確認できませんでした。', forget: '履歴を削除できませんでした。' };
+    expect(alert).toHaveTextContent(summaries[operation]);
+    expect(alert).toHaveTextContent(operation === 'preview' ? 'OBS の接続を確認し、「変更予定を確認する」で再試行' : '履歴を再取得');
+    expect(alert).not.toHaveTextContent(raw);
+    expect(screen.getByText(raw)).not.toBeVisible();
+});
+
+it('履歴上限の既知の対処を本文に表示する', async () => {
+    vi.mocked(obsApi.previewSetup).mockRejectedValueOnce('変更履歴が20件あります。OBSで状態を確認し、不要な履歴を削除してください。');
+    renderSetup();
+    fireEvent.click(screen.getByRole('button', { name: '変更予定を確認する' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('不要な履歴を削除してください');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('接続を確認');
+});
+
+it('既知の型付き対処を本文に出し、変更一覧がある未知の補足は確認失敗と呼ばない', async () => {
+    vi.mocked(obsApi.previewSetup).mockRejectedValueOnce({ code: 'obs.plan.unsupported', args: {}, fallbackJa: 'Error: original reason' });
+    renderSetup();
+    fireEvent.click(screen.getByRole('button', { name: '変更予定を確認する' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('現在の条件では変更を提案できません');
+    expect(screen.getByText('Error: original reason')).not.toBeVisible();
+    vi.mocked(obsApi.previewSetup).mockResolvedValueOnce({ ...plan, message: 'Error: unknown plan message' });
+    fireEvent.click(screen.getByRole('button', { name: '変更予定を確認する' }));
+    await screen.findByRole('button', { name: 'この変更を適用する' });
+    expect(screen.getByText(/適用前に下の変更一覧を確認/)).toBeVisible();
+    expect(screen.queryByText(/変更予定を確認できません/)).not.toBeInTheDocument();
+    expect(screen.getByText('Error: unknown plan message')).not.toBeVisible();
+});
+
+it.each(['obs.result.applyInterrupted', 'obs.result.applyWriteUnknown', 'obs.result.restoreWriteFailed'])('履歴の %s 原文は項目ごとの閉じた詳細でだけ読める', async code => {
+    const raw = 'Error: failure detail\n' + 'x'.repeat(200);
+    vi.mocked(obsApi.setupHistory).mockResolvedValue([{ ...history, resultEntries: [{ outcome: 'applyUnknown', text: { code, args: {}, fallbackJa: raw } }] }]);
+    renderSetup();
+    fireEvent.click(screen.getByText('過去の変更履歴'));
+    const pre = await screen.findByText((_, node) => node?.tagName === 'PRE' && node.textContent === raw);
+    expect(pre).not.toBeVisible();
+    expect(pre.closest('details')).not.toHaveAttribute('open');
+    fireEvent.click(pre.closest('details')!.querySelector('summary')!);
+    expect(pre).toBeVisible();
+    expect(pre.textContent).toBe(raw);
 });

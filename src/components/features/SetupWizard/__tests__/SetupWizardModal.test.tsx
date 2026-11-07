@@ -92,6 +92,74 @@ describe('セットアップの接続チェック', () => {
         expect(next).toHaveClass('disabled:bg-muted', 'disabled:text-muted-foreground');
     });
 
+    it.each(['ja', 'en'] as const)('入力の読込中は未選択より先に理由を伝え、完了すると解除する（%s）', async locale => {
+        const store = createLocaleStore(() => 'ja', () => true);
+        const base = vi.mocked(invoke).getMockImplementation()!;
+        let resolveDevices!: (value: { inputs: AudioDevice[]; outputs: AudioDevice[] }) => void;
+        vi.mocked(invoke).mockImplementation((command, args, options) => command === 'get_audio_devices'
+            ? new Promise(resolve => { resolveDevices = resolve; }) : base(command, args, options));
+        render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
+        fireEvent.click(await screen.findByRole('button', { name: 'OBSで配信' }));
+        act(() => { store.setLocale(locale); });
+        const next = within(screen.getByTestId('setup-actions')).getByRole('button', { name: locale === 'ja' ? '次へ' : 'Next' });
+        expect(next).toBeDisabled();
+        expect(next).toHaveAccessibleDescription(locale === 'ja' ? '入力を読み込んでいます' : 'Loading inputs');
+        expect(next).toHaveClass('disabled:opacity-50', 'disabled:bg-muted', 'disabled:text-muted-foreground');
+        expect(next).not.toHaveClass('disabled:opacity-100');
+        fireEvent.click(next);
+        expect(screen.getByRole('heading', { name: locale === 'ja' ? 'マイクを選んでください' : 'Choose a microphone' })).toBeInTheDocument();
+        await act(async () => { resolveDevices({ inputs: [mic], outputs }); });
+        await waitFor(() => expect(next).toBeEnabled());
+        expect(next).not.toHaveAttribute('aria-describedby');
+        expect(within(screen.getByTestId('setup-actions')).getByRole('status')).toBeEmptyDOMElement();
+    });
+
+    it.each(['ja', 'en'] as const)('入力未選択の理由を音の元に合わせて切り替える（%s）', async locale => {
+        inputs = [];
+        const store = createLocaleStore(() => 'ja', () => true);
+        render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
+        fireEvent.click(await screen.findByRole('button', { name: '自分で聴く' }));
+        await screen.findByText('マイクを選ぶと次へ進めます');
+        act(() => { store.setLocale(locale); });
+        const next = within(screen.getByTestId('setup-actions')).getByRole('button', { name: locale === 'ja' ? '次へ' : 'Next' });
+        expect(next).toHaveAccessibleDescription(locale === 'ja' ? 'マイクを選ぶと次へ進めます' : 'Select a microphone to continue');
+        fireEvent.click(screen.getByRole('radio', { name: locale === 'ja' ? 'PCの音' : 'PC audio' }));
+        expect(next).toHaveAccessibleDescription(locale === 'ja' ? 'PCの音の入力を選ぶと次へ進めます' : 'Select the PC audio input to continue');
+        expect(next).toBeDisabled();
+    });
+
+    it.each(['ja', 'en'] as const)('出力未選択から再検出・入力消失まで、優先する理由を1つだけ伝える（%s）', async locale => {
+        outputs = [];
+        const store = createLocaleStore(() => 'ja', () => true);
+        render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
+        await chooseObsRoute();
+        await screen.findByText('出力先を選ぶと次へ進めます');
+        act(() => { store.setLocale(locale); });
+        const actions = within(screen.getByTestId('setup-actions'));
+        const next = actions.getByRole('button', { name: locale === 'ja' ? '次へ' : 'Next' });
+        const reason = actions.getByRole('status');
+        expect(reason).toBeVisible();
+        expect(next).toHaveAccessibleDescription(locale === 'ja' ? '出力先を選ぶと次へ進めます' : 'Select an output device to continue');
+        expect(next).toBeDisabled();
+        expect(next).toHaveClass('disabled:opacity-50', 'disabled:bg-muted', 'disabled:text-muted-foreground');
+        next.focus();
+        expect(next).not.toHaveFocus();
+        fireEvent.click(next);
+        expect(screen.queryByRole('button', { name: '設定を保存して開始' })).not.toBeInTheDocument();
+        const base = vi.mocked(invoke).getMockImplementation()!;
+        let resolveDevices!: (value: { inputs: AudioDevice[]; outputs: AudioDevice[] }) => void;
+        vi.mocked(invoke).mockImplementation((command, args, options) => command === 'get_audio_devices'
+            ? new Promise(resolve => { resolveDevices = resolve; }) : base(command, args, options));
+        fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? '再検出' : 'Refresh devices' }));
+        expect(next).toHaveAccessibleDescription(locale === 'ja' ? '機器を読み込んでいます' : 'Loading devices');
+        await act(async () => { resolveDevices({ inputs: [], outputs: [] }); });
+        expect(next).toHaveAccessibleDescription(locale === 'ja' ? '戻ってマイクを選ぶと進めます' : 'Go back and select a microphone to continue');
+        expect(actions.getByRole('status')).toBe(reason);
+        expect(reason).toHaveAttribute('aria-atomic', 'true');
+        expect(reason).not.toHaveTextContent(locale === 'ja' ? '送り先を選ぶ' : 'Select an output');
+        expect(next).toBeDisabled();
+    });
+
     it('保存後にキーボードでボイスチェック（ボイスチェック）を開き、自動録音しない', async () => {
         const onClose = vi.fn();
         const onOpenVoiceCheck = vi.fn();
@@ -115,7 +183,7 @@ describe('セットアップの接続チェック', () => {
         render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={onClose} onApplyConfig={onApplyConfig} /></LocaleProvider>);
         await screen.findByRole('button', { name: 'OBSで配信' });
         fireEvent.click(screen.getByRole('button', {name: 'OBSで配信'}));
-        const input = screen.getByRole('combobox', {name: '入力デバイス'});
+        const input = screen.getByRole('combobox', {name: '機器'});
         fireEvent.change(input, {target: {value: 'Second microphone'}});
         const dialog = screen.getByRole('dialog');
         const before = vi.mocked(invoke).mock.calls.filter(([command]) => ['start_audio','stop_audio','voice_check_preview','save_preset'].includes(String(command))).length;
@@ -227,7 +295,10 @@ describe('セットアップの接続チェック', () => {
         const output = await screen.findByRole('combobox', { name: '仮想ケーブルの出力先' });
         expect(output).toHaveValue('');
         expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
+        expect(screen.getByRole('button', { name: /次へ/ })).toHaveAccessibleDescription('出力先を選ぶと次へ進めます');
         fireEvent.change(output, { target: { value: 'CABLE-A Input (VB-Audio)' } });
+        expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled();
+        expect(screen.getByRole('button', { name: /次へ/ })).not.toHaveAttribute('aria-describedby');
         expect(screen.getByText(/受け側では CABLE-A Output/)).toBeInTheDocument();
         fireEvent.click(within(screen.getByTestId('setup-actions')).getByRole('button', { name: /次へ/ }));
         expect(within(screen.getByTestId('setup-actions')).getByRole('button', { name: '設定を保存して開始' })).toBeInTheDocument();
@@ -248,9 +319,9 @@ describe('セットアップの接続チェック', () => {
         await openWizard();
         await chooseObsRoute();
         await screen.findByRole('heading', { name: 'マイクを選んでください' });
-        expect(screen.getByRole('combobox', { name: '入力デバイス' })).toHaveValue('');
+        expect(screen.getByRole('combobox', { name: '機器' })).toHaveValue('');
         expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
-        fireEvent.change(screen.getByRole('combobox', { name: '入力デバイス' }), { target: { value: 'Loopback' } });
+        fireEvent.change(screen.getByRole('combobox', { name: '機器' }), { target: { value: 'Loopback' } });
         expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled();
     });
 
@@ -259,7 +330,7 @@ describe('セットアップの接続チェック', () => {
         await openWizard();
         await screen.findByRole('button', { name: 'OBSで配信' });
         fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
-        const select = screen.getByRole('combobox', { name: '入力デバイス' });
+        const select = screen.getByRole('combobox', { name: '機器' });
         expect(select).toHaveValue('');
         expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
         fireEvent.change(select, { target: { value: mic.name } });
@@ -446,14 +517,14 @@ describe('セットアップの接続チェック', () => {
     it('入力の再検出で消えたデバイスを保持せず、接続し直せる', async () => {
         await quickStart();
         fireEvent.click(screen.getByRole('button', { name: '入力を選び直す' }));
-        await screen.findByRole('combobox', { name: '入力デバイス' });
+        await screen.findByRole('combobox', { name: '機器' });
         inputs = [];
-        fireEvent.click(screen.getByRole('button', { name: '入力デバイスを再検出' }));
-        await screen.findByText('入力デバイスが見つかりませんでした。');
+        fireEvent.click(screen.getByRole('button', { name: '機器を再検出' }));
+        await screen.findByText('機器が見つかりませんでした。');
         expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
         inputs = [device('別のマイク', true)];
-        fireEvent.click(screen.getByRole('button', { name: '入力デバイスを再検出' }));
-        await waitFor(() => expect(screen.getByRole('combobox', { name: '入力デバイス' })).toHaveValue('別のマイク'));
+        fireEvent.click(screen.getByRole('button', { name: '機器を再検出' }));
+        await waitFor(() => expect(screen.getByRole('combobox', { name: '機器' })).toHaveValue('別のマイク'));
         expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled();
     });
 
@@ -542,7 +613,7 @@ describe('初回選択と表示設定', () => {
         });
         await openWizard();
         fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
-        await waitFor(() => expect(screen.getByRole('combobox', { name: '入力デバイス' })).toHaveValue('Second microphone'));
+        await waitFor(() => expect(screen.getByRole('combobox', { name: '機器' })).toHaveValue('Second microphone'));
         expect(screen.queryByText('デバイスを選択してください。')).toBeNull();
     });
     it('保存完了時に選んだ目的を用途として保存する', async () => {
@@ -599,7 +670,7 @@ describe('入力ステップのレベル表示', () => {
         inputs = [mic, device('Second microphone', true)];
         await openWizard();
         fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
-        const input = screen.getByRole('combobox', { name: '入力デバイス' });
+        const input = screen.getByRole('combobox', { name: '機器' });
         fireEvent.change(input, { target: { value: 'USB マイク' } });
         expect(await screen.findByRole('meter', { name: 'マイクの入力レベル' })).toBeInTheDocument();
         fireEvent.change(input, { target: { value: 'Second microphone' } });
@@ -616,7 +687,7 @@ describe('PC audio purpose', () => {
     const chooseMusic = async () => {
         fireEvent.click(await screen.findByRole('button', { name: '自分で聴く' }));
         fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
-        await screen.findByRole('combobox', { name: 'PCの音の入力を選択' });
+        await screen.findByRole('combobox', { name: '機器' });
     };
     const toConfirm = async () => {
         await chooseMusic();
@@ -625,11 +696,35 @@ describe('PC audio purpose', () => {
         fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
         await screen.findByRole('heading', { name: '設定と接続の確認' });
     };
+    it.each(['ja', 'en'] as const)('出力手順でPCの入力が失われたら戻って選び直す理由を伝える（%s）', async locale => {
+        inputs = [device('CABLE Output', true)];
+        outputs = [device('Headphones')];
+        const store = createLocaleStore(() => 'ja', () => true);
+        render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
+        await chooseMusic();
+        await waitFor(() => expect(screen.getByRole('button', { name: '次へ' })).toBeEnabled());
+        fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+        inputs = []; outputs = [];
+        fireEvent.click(screen.getByRole('button', { name: '再検出' }));
+        await screen.findByText('戻ってPCの音の入力を選ぶと進めます');
+        act(() => { store.setLocale(locale); });
+        const actions = within(screen.getByTestId('setup-actions'));
+        const next = actions.getByRole('button', { name: locale === 'ja' ? '次へ' : 'Next' });
+        expect(next).toBeDisabled();
+        expect(next).toHaveAccessibleDescription(locale === 'ja' ? '戻ってPCの音の入力を選ぶと進めます' : 'Go back and select the PC audio input to continue');
+        const back = actions.getByRole('button', { name: locale === 'ja' ? '戻る' : 'Back' });
+        back.focus();
+        expect(back).toHaveFocus();
+        fireEvent.click(back);
+        expect(actions.getByRole('status')).toHaveTextContent(locale === 'ja' ? 'PCの音の入力を選ぶと次へ進めます' : 'Select the PC audio input to continue');
+        expect(screen.getByRole('heading')).toHaveFocus();
+    });
+
     it('選択だけでは既存目的や音設定を変えず、複数ケーブルは選択を待つ', async () => {
         inputs = [mic, device('CABLE Output A', true), device('CABLE Output B', true)];
         localStorage.setItem('vst_host_setup_goal', 'obs');
         await openWizard(); await chooseMusic();
-        expect(screen.getByRole('combobox', { name: 'PCの音の入力を選択' })).toHaveValue('');
+        expect(screen.getByRole('combobox', { name: '機器' })).toHaveValue('');
         expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
         expect(localStorage.getItem('vst_host_setup_goal')).toBe('obs');
         expect(invoke).not.toHaveBeenCalledWith('set_noise_control_config', expect.anything());
@@ -818,12 +913,12 @@ describe('セットアップの見た目と動き（#294）', () => {
     it('手順レールはホームの流れと同じ名前で現在の手順を示し、進む・戻るの向きを中身へ渡す', async () => {
         await openWizard();
         const rail = screen.getByRole('navigation', { name: 'セットアップの進捗' });
-        expect([...rail.querySelectorAll('li')].map(item => item.textContent)).toEqual(['1送り先', '2マイク', '3送り方', '4確認']);
+        expect([...rail.querySelectorAll('li')].map(item => item.textContent)).toEqual(['1送り先', '2マイク', '3出力先', '4確認']);
         expect(within(rail).getByText('送り先').closest('li')).toHaveAttribute('aria-current', 'step');
         // 高さは手順によらず固定し、中身だけをスクロールする。
         expect(document.querySelector('.setup-surface')).not.toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
-        await screen.findByRole('combobox', { name: '入力デバイス' });
+        await screen.findByRole('combobox', { name: '機器' });
         expect(within(rail).getByText('マイク').closest('li')).toHaveAttribute('aria-current', 'step');
         expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '1');
         fireEvent.click(within(screen.getByTestId('setup-actions')).getByRole('button', { name: '戻る' }));
@@ -851,7 +946,7 @@ describe('セットアップでの ASIO（#291）', () => {
     it('ASIO 機器がなければ接続方式を出さず、WASAPI の流れを変えない', async () => {
         await openWizard();
         fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
-        await screen.findByRole('combobox', { name: '入力デバイス' });
+        await screen.findByRole('combobox', { name: '機器' });
         expect(screen.queryByRole('radio', { name: 'ASIO（オーディオインターフェース）' })).not.toBeInTheDocument();
     });
 
@@ -861,7 +956,7 @@ describe('セットアップでの ASIO（#291）', () => {
         const { onApplyConfig } = await openWizard();
         fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
         fireEvent.click(await screen.findByRole('radio', { name: 'ASIO（オーディオインターフェース）' }));
-        const input = screen.getByRole('combobox', { name: '入力デバイス' });
+        const input = screen.getByRole('combobox', { name: '機器' });
         expect(within(input).queryByRole('option', { name: mic.name })).not.toBeInTheDocument();
         await waitFor(() => expect(input).toHaveValue('Test ASIO'));
         fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
@@ -887,10 +982,10 @@ describe('セットアップでの ASIO（#291）', () => {
         await openWizard();
         fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
         fireEvent.click(await screen.findByRole('radio', { name: 'ASIO（オーディオインターフェース）' }));
-        await waitFor(() => expect(screen.getByRole('combobox', { name: '入力デバイス' })).toHaveValue('Test ASIO'));
+        await waitFor(() => expect(screen.getByRole('combobox', { name: '機器' })).toHaveValue('Test ASIO'));
         fireEvent.click(screen.getByRole('radio', { name: 'WASAPI（標準）' }));
-        await waitFor(() => expect(screen.getByRole('combobox', { name: '入力デバイス' })).toHaveValue(mic.name));
-        expect(within(screen.getByRole('combobox', { name: '入力デバイス' })).queryByRole('option', { name: 'Test ASIO' })).not.toBeInTheDocument();
+        await waitFor(() => expect(screen.getByRole('combobox', { name: '機器' })).toHaveValue(mic.name));
+        expect(within(screen.getByRole('combobox', { name: '機器' })).queryByRole('option', { name: 'Test ASIO' })).not.toBeInTheDocument();
     });
 
     it('機器を替えたら前の機器のチャンネルを持ち越さず、1ch の機器ではそのチャンネルだけで開始する', async () => {
@@ -900,12 +995,12 @@ describe('セットアップでの ASIO（#291）', () => {
         await openWizard();
         fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
         fireEvent.click(await screen.findByRole('radio', { name: 'ASIO（オーディオインターフェース）' }));
-        const input = screen.getByRole('combobox', { name: '入力デバイス' });
+        const input = screen.getByRole('combobox', { name: '機器' });
         fireEvent.change(input, { target: { value: 'Test ASIO' } });
         fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
         fireEvent.change(await screen.findByRole('combobox', { name: '入力チャンネル' }), { target: { value: '6,7' } });
         fireEvent.click(within(screen.getByTestId('setup-actions')).getByRole('button', { name: '戻る' }));
-        fireEvent.change(await screen.findByRole('combobox', { name: '入力デバイス' }), { target: { value: 'Mono ASIO' } });
+        fireEvent.change(await screen.findByRole('combobox', { name: '機器' }), { target: { value: 'Mono ASIO' } });
         fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
         const channels = await screen.findByRole('combobox', { name: '入力チャンネル' });
         expect(channels).toHaveValue('0,0');
@@ -926,8 +1021,28 @@ describe('セットアップでの ASIO（#291）', () => {
         fireEvent.click(await screen.findByRole('radio', { name: 'ASIO（オーディオインターフェース）' }));
         inputs = [mic];
         outputs = [cable];
-        fireEvent.click(screen.getByRole('button', { name: '入力デバイスを再検出' }));
+        fireEvent.click(screen.getByRole('button', { name: '機器を再検出' }));
         fireEvent.click(await screen.findByRole('radio', { name: 'WASAPI（標準）' }));
-        await waitFor(() => expect(screen.getByRole('combobox', { name: '入力デバイス' })).toHaveValue(mic.name));
+        await waitFor(() => expect(screen.getByRole('combobox', { name: '機器' })).toHaveValue(mic.name));
     });
+});
+
+
+it.each(['obs', 'listening', 'music'] as const)('マイクとPCの音の選択欄は日英で見えるラベルから読み上げ名を得る（%s）', async goal => {
+    const store = createLocaleStore(() => 'ja', () => true);
+    render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: goal === 'obs' ? 'OBSで配信' : '自分で聴く' }));
+    if (goal === 'music') fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
+    const select = await screen.findByRole('combobox', { name: '機器' });
+    expect(screen.getByLabelText('機器', { exact: true })).toBe(select);
+    expect(select).not.toHaveAttribute('aria-label');
+    expect(screen.getByText('機器', { selector: 'label' })).toHaveAttribute('for', select.id);
+    expect(screen.getByRole('heading', { name: goal === 'music' ? 'PCの音を選んでください' : 'マイクを選んでください' })).toBeVisible();
+    select.focus();
+    act(() => { store.setLocale('en'); });
+    expect(screen.getByRole('combobox', { name: 'Device' })).toBe(select);
+    expect(screen.getByLabelText('Device', { exact: true })).toBe(select);
+    expect(screen.getByRole('heading', { name: goal === 'music' ? 'Choose PC audio' : 'Choose a microphone' })).toBeVisible();
+    expect(select).toHaveFocus();
+    expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
 });

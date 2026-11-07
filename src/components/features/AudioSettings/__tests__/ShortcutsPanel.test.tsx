@@ -20,7 +20,7 @@ function open(fail = false, bindings = initial) {
 }
 it('キー入力で既存形式を作り、重複と OS 予約を検出し保存しない', async () => {
     open();
-    const input = screen.getByRole('button', { name: 'ミュートONのキーを入力' });
+    const input = screen.getByRole('button', { name: '緊急ミュート（オン）のキーを入力' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.click(input);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('begin_shortcut_capture'));
@@ -38,7 +38,7 @@ it('キー入力で既存形式を作り、重複と OS 予約を検出し保存
 });
 it('未対応キーと Escape は登録せず、取り消して既存の値を保持する', async () => {
     open();
-    const input = screen.getByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.click(input); await waitFor(() => expect(invoke).toHaveBeenCalledWith('begin_shortcut_capture')); fireEvent.keyDown(input, { key: 'a', code: 'KeyA' });
     expect(screen.getByRole('status')).toHaveTextContent('対応していません');
@@ -49,7 +49,7 @@ it('未対応キーと Escape は登録せず、取り消して既存の値を�
 it('保存済みの修飾キー順が異なっても同じ組合せを重複として検出する', async () => {
     vi.mocked(invoke).mockImplementation(async command => command === 'get_shortcuts' ? { bindings: [{ action: 'muteToggle', shortcut: 'Alt+Control+KeyM' }], errors: [] } : '1');
     render(<ShortcutsPanel />);
-    const input = screen.getByRole('button', { name: 'ミュートONのキーを入力' });
+    const input = screen.getByRole('button', { name: '緊急ミュート（オン）のキーを入力' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.click(input); await waitFor(() => expect(invoke).toHaveBeenCalledWith('begin_shortcut_capture')); fireEvent.keyDown(input, { key: 'm', code: 'KeyM', ctrlKey: true, altKey: true });
     expect(screen.getByRole('status')).toHaveTextContent('別の操作に登録');
@@ -57,7 +57,7 @@ it('保存済みの修飾キー順が異なっても同じ組合せを重複と�
 });
 it('内部コードを入力せず選択して保存し、解除と未保存の取り消しができる', async () => {
     open();
-    const key = await screen.findByLabelText('ミュートを切り替えるの通常キー');
+    const key = await screen.findByLabelText('緊急ミュート（切替）の通常キー');
     await waitFor(() => expect(key).toBeEnabled());
     expect(key).toHaveValue('KeyM');
     fireEvent.change(key, { target: { value: 'KeyN' } });
@@ -67,13 +67,13 @@ it('内部コードを入力せず選択して保存し、解除と未保存の�
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
     await screen.findByText('キー設定を保存しました。');
     expect(invoke).toHaveBeenCalledWith('save_shortcuts', { bindings: [{ action: 'muteToggle', shortcut: 'Alt+KeyN' }] });
-    fireEvent.click(screen.getByRole('button', { name: '登録を解除：ミュートを切り替える' }));
+    fireEvent.click(screen.getByRole('button', { name: '登録を解除：緊急ミュート（切替）' }));
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
     await waitFor(() => expect(invoke).toHaveBeenLastCalledWith('save_shortcuts', { bindings: [] }));
 });
 it('保存失敗後も既存登録へ取り消せ、未完の組合せは送らない', async () => {
     open(true);
-    const key = screen.getByLabelText('ミュートを切り替えるの通常キー');
+    const key = screen.getByLabelText('緊急ミュート（切替）の通常キー');
     await waitFor(() => expect(key).toBeEnabled());
     fireEvent.change(key, { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
@@ -132,12 +132,12 @@ it('起動時の登録エラーは言語切替で再取得せず翻訳し、OS�
     ] });
     render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
     await screen.findByText(/Alt \+ Mを登録できませんでした/);
-    fireEvent.change(screen.getByLabelText('ミュートを切り替えるの通常キー'), { target: { value: 'KeyN' } });
+    fireEvent.change(screen.getByLabelText('緊急ミュート（切替）の通常キー'), { target: { value: 'KeyN' } });
     act(() => { store.setLocale('en'); });
     expect(screen.getByRole('status')).toHaveTextContent('Could not register Alt + M.');
     expect(screen.getByRole('status')).toHaveTextContent('Could not unregister a previous shortcut.');
     expect(screen.getByRole('status')).toHaveTextContent('Original detail (untranslated): OS 1409: 予約済み');
-    expect(screen.getByLabelText('Toggle mute regular key')).toHaveValue('KeyN');
+    expect(screen.getByLabelText('Emergency mute (toggle) regular key')).toHaveValue('KeyN');
     expect(invoke).toHaveBeenCalledExactlyOnceWith('get_shortcuts');
 });
 
@@ -154,7 +154,7 @@ it.each([
         throw error;
     });
     render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
-    const key = screen.getByLabelText('Toggle mute regular key');
+    const key = screen.getByLabelText('Emergency mute (toggle) regular key');
     await waitFor(() => expect(key).toBeEnabled());
     fireEvent.change(key, { target: { value: 'KeyN' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save key settings' }));
@@ -173,7 +173,7 @@ it('保存待機中の言語切替でも要求を増やさず、成功後の解�
         : new Promise(resolve => { finish = resolve; }));
     render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
     const save = screen.getByRole('button', { name: 'キー設定を保存' });
-    const key = screen.getByLabelText('ミュートを切り替えるの通常キー');
+    const key = screen.getByLabelText('緊急ミュート（切替）の通常キー');
     await waitFor(() => expect(key).toBeEnabled());
     fireEvent.change(key, { target: { value: 'KeyN' } });
     fireEvent.click(save);
@@ -181,7 +181,7 @@ it('保存待機中の言語切替でも要求を増やさず、成功後の解�
     await act(async () => finish({ bindings: [{ action: 'muteToggle', shortcut: 'Alt+KeyP' }], errors: [{ code: 'unregisterFailed', detail: 'OS 1419' }] }));
     expect(screen.getByRole('status')).toHaveTextContent('Could not unregister a previous shortcut.');
     expect(screen.getByRole('status')).toHaveTextContent('Original detail (untranslated): OS 1419');
-    expect(screen.getByLabelText('Toggle mute regular key')).toHaveValue('KeyP');
+    expect(screen.getByLabelText('Emergency mute (toggle) regular key')).toHaveValue('KeyP');
     expect(screen.getByRole('button', { name: 'Save key settings' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Discard changes' })).toBeDisabled();
     expect(invoke).toHaveBeenCalledTimes(2);
@@ -191,7 +191,7 @@ it('登録済みキーのイベントは一致するトークンだけを入力�
     let receive!: (event: { payload: { token: string; shortcut: string } }) => void;
     vi.mocked(listen).mockImplementationOnce(async (_name, callback) => { receive = callback as typeof receive; return () => {}; });
     open();
-    const input = screen.getByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.click(input);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('begin_shortcut_capture'));
@@ -208,7 +208,7 @@ it('開始応答待ちの入力は無視し、解除後の遅い応答も解放�
         if (command === 'begin_shortcut_capture') return new Promise(resolve => { finish = resolve; });
     });
     render(<ShortcutsPanel />);
-    const input = screen.getByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.click(input);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('begin_shortcut_capture'));
@@ -226,16 +226,16 @@ it('開始失敗時は選択式を維持して案内する', async () => {
         if (command === 'begin_shortcut_capture') throw new Error('unavailable');
     });
     render(<ShortcutsPanel />);
-    const input = screen.getByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.click(input);
     expect(await screen.findByRole('status')).toHaveTextContent('キー入力を開始できませんでした');
-    expect(screen.getByLabelText('ミュートを切り替えるの通常キー')).toHaveValue('KeyM');
+    expect(screen.getByLabelText('緊急ミュート（切替）の通常キー')).toHaveValue('KeyM');
 });
 
 it('30秒経過と unmount は入力を終了してネイティブセッションを解放する', async () => {
     open();
-    const input = screen.getByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     await waitFor(() => expect(input).toBeEnabled());
     vi.useFakeTimers();
     try {
@@ -252,8 +252,8 @@ it('30秒経過と unmount は入力を終了してネイティブセッショ�
 });
 
 it.each([
-    ['ja', 'ミュートを切り替えるのキーを入力', 'キー入力を準備しています。まだキーを押さないでください。', '組み合わせを押してください'],
-    ['en', 'Enter keys for Toggle mute', 'Preparing key input. Please do not press a key yet.', 'Press a combination'],
+    ['ja', '緊急ミュート（切替）のキーを入力', 'キー入力を準備しています。まだキーを押さないでください。', '組み合わせを押してください'],
+    ['en', 'Enter keys for Emergency mute (toggle)', 'Preparing key input. Please do not press a key yet.', 'Press a combination'],
 ])('%s では開始応答後に入力待ちへ切り替える', async (locale, label, preparing, waiting) => {
     let finish!: (token: string) => void;
     vi.mocked(invoke).mockImplementation(async command => {
@@ -282,17 +282,17 @@ it.each([null, '', 'invalid', '18446744073709551616'])('不正な開始応答 %j
         if (command === 'begin_shortcut_capture') return response;
     });
     render(<ShortcutsPanel />);
-    const input = screen.getByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.click(input);
     expect(await screen.findByRole('status')).toHaveTextContent('キー入力を開始できませんでした');
     expect(input).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByLabelText('ミュートを切り替えるの通常キー')).toHaveValue('KeyM');
+    expect(screen.getByLabelText('緊急ミュート（切替）の通常キー')).toHaveValue('KeyM');
 });
 
 it('ウィンドウが非アクティブになると入力を終了しセッションを解放する', async () => {
     open();
-    const input = screen.getByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.click(input);
     await waitFor(() => expect(input).toHaveAttribute('aria-busy', 'false'));
@@ -312,8 +312,8 @@ it.each([
         if (command === 'begin_shortcut_capture') return '1';
     });
     render(<ShortcutsPanel />);
-    const other = screen.getByRole('button', { name: 'ミュートONのキーを入力' });
-    const own = screen.getByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    const other = screen.getByRole('button', { name: '緊急ミュート（オン）のキーを入力' });
+    const own = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     await waitFor(() => expect(other).toBeEnabled());
     fireEvent.click(other);
     await waitFor(() => expect(other).toHaveAttribute('aria-busy', 'false'));
@@ -332,14 +332,14 @@ it.each([
 
 it('未設定と編集状態を示し、入力待ち中は保存できず取り消しで元に戻る', async () => {
     open();
-    const input = screen.getByRole('button', { name: 'ミュートONのキーを入力' });
+    const input = screen.getByRole('button', { name: '緊急ミュート（オン）のキーを入力' });
     const save = screen.getByRole('button', { name: 'キー設定を保存' });
     const discard = screen.getByRole('button', { name: '変更を取り消す' });
     await waitFor(() => expect(input).toBeEnabled());
     expect(input).toHaveTextContent('未設定');
     expect(save).toBeDisabled();
     expect(discard).toBeDisabled();
-    const key = screen.getByLabelText('ミュートを切り替えるの通常キー');
+    const key = screen.getByLabelText('緊急ミュート（切替）の通常キー');
     fireEvent.change(key, { target: { value: 'KeyN' } });
     expect(save).toBeEnabled();
     fireEvent.click(input);
@@ -359,7 +359,7 @@ it('同じ組合せの別表記は変更とみなさない', async () => {
         if (command === 'begin_shortcut_capture') return '1';
     });
     render(<ShortcutsPanel />);
-    const input = screen.getByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.click(input);
     await waitFor(() => expect(input).toHaveAttribute('aria-busy', 'false'));
@@ -384,13 +384,13 @@ it.each(['ja', 'en'] as const)('起動時の登録失敗は変更なしでも再
     const discard = screen.getByRole('button', { name: locale === 'ja' ? '変更を取り消す' : 'Discard changes' });
     await waitFor(() => expect(save).toBeEnabled());
     expect(discard).toBeDisabled();
-    const input = screen.getByRole('button', { name: locale === 'ja' ? 'ミュートを切り替えるのキーを入力' : 'Enter keys for Toggle mute' });
+    const input = screen.getByRole('button', { name: locale === 'ja' ? '緊急ミュート（切替）のキーを入力' : 'Enter keys for Emergency mute (toggle)' });
     fireEvent.click(input);
     await waitFor(() => expect(input).toHaveAttribute('aria-busy', 'false'));
     expect(save).toBeDisabled();
     fireEvent.keyDown(input, { key: 'Escape', code: 'Escape' });
     expect(save).toBeEnabled();
-    const key = screen.getByLabelText(locale === 'ja' ? 'ミュートを切り替えるの通常キー' : 'Toggle mute regular key');
+    const key = screen.getByLabelText(locale === 'ja' ? '緊急ミュート（切替）の通常キー' : 'Emergency mute (toggle) regular key');
     fireEvent.change(key, { target: { value: 'KeyN' } });
     fireEvent.click(discard);
     expect(key).toHaveValue('KeyM');
@@ -416,7 +416,7 @@ it('英語でも未設定を示し、代替の一覧選択にキーボードで�
     const store = createLocaleStore(() => 'en', () => true);
     vi.mocked(invoke).mockResolvedValue({ bindings: initial, errors: [] });
     render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
-    const input = screen.getByRole('button', { name: 'Enter keys for Mute ON' });
+    const input = screen.getByRole('button', { name: 'Enter keys for Emergency mute (on)' });
     await waitFor(() => expect(input).toBeEnabled());
     expect(input).toHaveTextContent('Not set');
     const summary = screen.getAllByText('Choose from a list')[1];
@@ -442,8 +442,8 @@ it('よく使う4操作を先頭に並べ、残りの操作も維持する', asy
     open(false, []);
     await waitFor(() => expect(screen.getByRole('button', { name: '推奨のキーをまとめて入力' })).toBeEnabled());
     expect(screen.getAllByRole('group').filter(group => group.tagName === 'FIELDSET').map(group => group.querySelector('legend')?.textContent)).toEqual([
-        'ミュートを切り替える', 'VST 比較を切り替える', '歌モード', '雑談モード',
-        'ミュートON', 'ミュートOFF', 'VST 比較ON', 'VST 比較OFF',
+        '緊急ミュート（切替）', 'VST を外して比較（切替）', '歌モード', '雑談モード',
+        '緊急ミュート（オン）', '緊急ミュート（解除）', 'VST を外して比較（開始）', 'VST を外して比較（終了）',
         '出力音量を1%上げる', '出力音量を1%下げる', 'ノイズ低減を切り替える',
     ]);
 });
@@ -470,16 +470,16 @@ it('空なら推奨4件を入力して既存形式で保存できる', async () 
 });
 it('未保存の割り当てと別表記の重複キーを保護して、飛ばした理由を示す', async () => {
     open(false, [{ action: 'noiseToggle', shortcut: 'Alt+Ctrl+KeyB' }]);
-    const input = screen.getByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     await waitFor(() => expect(input).toBeEnabled());
-    fireEvent.change(screen.getByLabelText('ミュートを切り替えるの修飾キー'), { target: { value: 'Alt' } });
-    fireEvent.change(screen.getByLabelText('ミュートを切り替えるの通常キー'), { target: { value: 'KeyZ' } });
+    fireEvent.change(screen.getByLabelText('緊急ミュート（切替）の修飾キー'), { target: { value: 'Alt' } });
+    fireEvent.change(screen.getByLabelText('緊急ミュート（切替）の通常キー'), { target: { value: 'KeyZ' } });
     await fillRecommended();
     expect(input).toHaveTextContent('Alt + Z');
     expect(screen.getByRole('status')).toHaveTextContent('2件入力しました');
     expect(screen.getByRole('status')).toHaveTextContent('割り当て済みのため変更しませんでした');
     expect(screen.getByRole('status')).toHaveTextContent('Ctrl + Alt + B が別の操作');
-    expect(screen.getByRole('button', { name: 'VST 比較を切り替えるのキーを入力' })).toHaveTextContent('未設定');
+    expect(screen.getByRole('button', { name: 'VST を外して比較（切替）のキーを入力' })).toHaveTextContent('未設定');
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
     await screen.findByText('キー設定を保存しました。');
     expect(invoke).toHaveBeenCalledWith('save_shortcuts', { bindings: [
@@ -504,7 +504,7 @@ it('一括入力も取り消せて、キー入力待ち中は一括操作でき�
     open(false, []);
     await fillRecommended();
     fireEvent.click(screen.getByRole('button', { name: '変更を取り消す' }));
-    const input = screen.getByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     expect(input).toHaveTextContent('未設定');
     expect(screen.getByRole('button', { name: 'キー設定を保存' })).toBeDisabled();
     fireEvent.click(input);
@@ -518,8 +518,8 @@ it('一括入力のOS競合は既存の保存失敗表示を使い、保存済�
     expect(await screen.findByRole('status')).toHaveTextContent('OS 1409');
     await waitFor(() => expect(screen.getByRole('button', { name: '変更を取り消す' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '変更を取り消す' }));
-    expect(screen.getByRole('button', { name: 'ミュートを切り替えるのキーを入力' })).toHaveTextContent('Alt + M');
-    expect(screen.getByRole('button', { name: 'VST 比較を切り替えるのキーを入力' })).toHaveTextContent('未設定');
+    expect(screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' })).toHaveTextContent('Alt + M');
+    expect(screen.getByRole('button', { name: 'VST を外して比較（切替）のキーを入力' })).toHaveTextContent('未設定');
 });
 it('英語でも推奨入力の確認と結果を表示する', async () => {
     vi.mocked(invoke).mockResolvedValue({ bindings: [], errors: [] });
@@ -528,7 +528,24 @@ it('英語でも推奨入力の確認と結果を表示する', async () => {
     const button = screen.getByRole('button', { name: 'Fill recommended keys' });
     await waitFor(() => expect(button).toBeEnabled());
     fireEvent.click(button);
-    expect(screen.getByRole('alertdialog')).toHaveTextContent('Toggle mute: Ctrl + Alt + M');
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Emergency mute (toggle): Ctrl + Alt + M');
     fireEvent.click(screen.getByRole('button', { name: 'Fill keys' }));
     expect(screen.getByRole('status')).toHaveTextContent('Filled 4 recommended keys');
+});
+it.each(['ja', 'en'] as const)('ホットキーは常設操作の正規名で表示し、操作IDを維持する（%s）', async locale => {
+    vi.mocked(invoke).mockResolvedValue({ bindings: initial, errors: [] });
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
+    const names = locale === 'ja'
+        ? ['緊急ミュート（切替）', '緊急ミュート（オン）', '緊急ミュート（解除）', 'VST を外して比較（切替）', 'VST を外して比較（開始）', 'VST を外して比較（終了）', '出力音量を1%上げる', '出力音量を1%下げる', '歌モード', '雑談モード', 'ノイズ低減を切り替える']
+        : ['Emergency mute (toggle)', 'Emergency mute (on)', 'Emergency mute (off)', 'Compare without VST (toggle)', 'Compare without VST (start)', 'Compare without VST (end)', 'Increase output volume by 1%', 'Decrease output volume by 1%', 'Switch to Sing mode', 'Switch to Talk mode', 'Toggle noise reduction'];
+    for (const name of names) {
+        expect(screen.getByText(name, { exact: true })).toBeVisible();
+        expect(screen.getByRole('button', { name: locale === 'ja' ? `${name}のキーを入力` : `Enter keys for ${name}` })).toBeInTheDocument();
+    }
+    const firstKey = screen.getByLabelText(locale === 'ja' ? `${names[0]}の通常キー` : `${names[0]} regular key`);
+    await waitFor(() => expect(firstKey).toHaveValue('KeyM'));
+    fireEvent.change(firstKey, { target: { value: 'KeyP' } });
+    fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? 'キー設定を保存' : 'Save key settings' }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('save_shortcuts', { bindings: [{ action: 'muteToggle', shortcut: 'Alt+KeyP' }] }));
 });

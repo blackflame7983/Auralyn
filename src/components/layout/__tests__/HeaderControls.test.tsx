@@ -73,3 +73,16 @@ it.each(['ja', 'en'] as const)('表示モードの切替・大型メーター・
         expect(screen.queryByRole('button', { name: message(locale, id) })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /テーマ|theme/i })).not.toBeInTheDocument();
 });
+
+it.each(['ja', 'en'] as const)('ヘルプからホームと同じ名前・行き先の診断を開く（%s）', async locale => {
+    const onOpenTroubleshoot = vi.fn();
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><Header
+        onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
+        onOpenTroubleshoot={onOpenTroubleshoot} onOpenWizard={vi.fn()}
+        currentHost="WASAPI" isEngineRunning engineProcessReady /></LocaleProvider>);
+    const help = screen.getByRole('button', { name: message(locale, 'header.helpOpen') });
+    fireEvent.keyDown(help, { key: 'Enter' });
+    const entry = await screen.findByRole('menuitem', { name: new RegExp(message(locale, 'header.noSound')) });
+    fireEvent.click(entry);
+    expect(onOpenTroubleshoot).toHaveBeenCalledOnce();
+});

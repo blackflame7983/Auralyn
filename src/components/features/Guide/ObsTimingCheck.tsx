@@ -1,6 +1,8 @@
+import { ErrorDetails } from '@/components/ui/ErrorDetails';
+import { ObsText } from '@/components/ui/ObsText';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
-import { canAdoptObsHistory, formatObsText, obsHistoryResults, originalObsText } from '@/lib/obsUiText';
+import { canAdoptObsHistory, obsHistoryResultParts, obsTextParts } from '@/lib/obsUiText';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useObsUsage } from '@/hooks/useObsUsage';
 import { readObsEndpoint } from '@/lib/obsConnectionPreferences';
@@ -166,14 +168,14 @@ export function ObsTimingCheck({ mixed = false, contextKey = '', onOpenObsSettin
                 : comparison === 'audioVideo' && direction === 'late' ? <p>{t('obsTiming.copy.35')}</p> : null}
         {eligible && <p>{t('obsTiming.targetRole', { role: targetRole })}</p>}
         <button type="button" disabled={!!busy || !valid || connection !== 'connected' || !obsInUse} onClick={refresh} className="rounded border px-3 py-2 disabled:opacity-50">{t('obsTiming.copy.36')}</button>
-        {targets && <p role="status">{originalObsText(t, targets.message)}{targets.supported && !targets.targets.length ? t('obsTiming.copy.37') : ''}</p>}
+        {targets && <div><p role="status">{t(targets.supported ? 'obsTiming.targetsReady' : 'obsTiming.targetsUnavailable')}{targets.supported && !targets.targets.length ? t('obsTiming.copy.37') : ''}</p><ErrorDetails detail={obsTextParts(t, null, targets.message).detail!} /></div>}
         {targets?.supported && <label className="block">{t('obsTiming.copy.38')}<select aria-label={t('obsTiming.copy.38')} disabled={!!busy} value={targetToken} onChange={event => { invalidate(); setTargetToken(event.target.value); }} className="block w-full rounded border bg-background p-2">
             <option value="">{t('obsTiming.copy.39')}</option>{targets.targets.map(target => <option key={target.targetToken} value={target.targetToken}>{t('obsTiming.sourceOption', { source: target.source, value: target.currentOffsetMs })}</option>)}
         </select></label>}
         {selected && valid && <p>{t('obsTiming.offset', { source: selected.source, before: selected.currentOffsetMs, delay, after: resultOffset })}{resultOffset > 20000 || resultOffset < -950 ? t('obsTiming.copy.40') : ''}</p>}
         <button type="button" disabled={!!busy || connection !== 'connected' || !obsInUse || !valid || !selected || !targets?.supported || resultOffset > 20000 || resultOffset < -950} onClick={preview} className="rounded border px-3 py-2 disabled:opacity-50">{t('obsTiming.copy.41')}</button>
         {plan && <div aria-label={t('obsTiming.copy.42')} className="rounded border p-3 space-y-2">
-            <p>{formatObsText(t, plan.messageText, plan.message)}</p>
+            <div><ObsText text={plan.messageText} legacy={plan.message} /></div>
             {plan.timing && <p>{t('obsTiming.offset', { source: plan.timing.source, before: plan.timing.currentOffsetMs, delay: plan.timing.additionalDelayMs, after: plan.timing.resultOffsetMs })}</p>}
             <button type="button" disabled={!!busy || connection !== 'connected' || !obsInUse || !plan.supported || !plan.timing || !plan.changes.length} onClick={() => void run('apply', async version => {
                 const applyingId = plan.id;
@@ -192,7 +194,7 @@ export function ObsTimingCheck({ mixed = false, contextKey = '', onOpenObsSettin
         {history.map(item => <div key={item.id} aria-label={t('obsTiming.historyAria', { id: item.id })} className="rounded border p-3 space-y-2">
             <p>{t('obsTiming.historyTitle', { id: item.id, source: item.timing?.source ?? '—', before: item.timing?.currentOffsetMs ?? '—', after: item.timing?.resultOffsetMs ?? '—' })}</p>
             <p>{t('obsTiming.reference', { note: item.timing?.measurement.referenceNote ?? '—' })}</p>
-            <p>{obsHistoryResults(t, item).join(' ／ ')}</p>
+            <ul>{obsHistoryResultParts(t, item).map((parts, i) => <li key={i}><ObsText parts={parts} /></li>)}</ul>
             {item.restorable === false && <p>{t('obsTiming.copy.50')}</p>}
             <p>{t('obsTiming.copy.51')}</p>
             <button type="button" disabled={!!busy || !canAdoptObsHistory(item)} onClick={() => setAdopted(item.id)} className="rounded border px-3 py-2 disabled:opacity-50">{t('obsTiming.adopt', { id: item.id })}</button>

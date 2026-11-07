@@ -191,3 +191,25 @@ it('診断から用途を切り替えると、保存後に準備欄へ共用の�
         window.removeEventListener('preparation-purpose-changed', onPurpose);
     }
 });
+
+it('接続チェックの原文は詳細へ置き、手動確認の案内を残す', async () => {
+    vi.useFakeTimers();
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'get_audio_state') return { is_running: true, config: { ...config, output: 'CABLE Input' } };
+        if (command === 'auto_gain') return { running: true, streamFailed: false };
+        if (command === 'get_audio_devices') return { inputs: [{ name: 'CABLE Output', host: 'Wasapi' }], outputs: [] };
+        if (command === 'probe_loopback') return { unavailable: 'Error: probe unavailable' };
+    });
+    openDiagnosis();
+    await act(async () => { await vi.advanceTimersByTimeAsync(6100); });
+    fireEvent.click(screen.getByRole('button', { name: 'スキップ' }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: '続行' }));
+    await act(async () => {});
+    const raw = screen.getByText('Error: probe unavailable');
+    expect(raw.closest('details')).not.toHaveAttribute('open');
+    expect(raw).not.toBeVisible();
+    expect(screen.getByText(/^直し方: 手動確認/)).toBeVisible();
+    fireEvent.click(raw.closest('details')!.querySelector('summary')!);
+    expect(raw).toBeVisible();
+});
