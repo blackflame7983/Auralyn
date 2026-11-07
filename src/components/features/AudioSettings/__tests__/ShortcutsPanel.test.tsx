@@ -549,3 +549,12 @@ it.each(['ja', 'en'] as const)('ホットキーは常設操作の正規名で表
     fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? 'キー設定を保存' : 'Save key settings' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('save_shortcuts', { bindings: [{ action: 'muteToggle', shortcut: 'Alt+KeyP' }] }));
 });
+
+
+it('保存欄の下にパネルの余白を残さず、不透明な面で項目を覆う', async () => {
+    open();
+    const save = await screen.findByRole('button', { name: 'キー設定を保存' });
+    const footer = save.parentElement!;
+    expect(footer).toHaveClass('sticky', 'bottom-0', 'bg-card');
+    expect(footer.parentElement).toHaveClass('pb-0');
+});

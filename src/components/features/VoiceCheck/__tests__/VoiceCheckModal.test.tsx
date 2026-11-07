@@ -166,12 +166,12 @@ it('録音開始失敗を画面内に残し、再試行の方法を示す', asyn
 it('声単体の録音地点をOBS最終ミックスと到達確認から区別する', async () => {
     open();
     expect(screen.getByText(/出力音量・全体ミュート適用前/)).toHaveTextContent('最終ミックスはOBSで録画して確認');
-    const scope = screen.getByText('録音範囲と接続診断について').closest('details');
+    const scope = screen.getByText('録音範囲と「音のトラブルを診断」について').closest('details');
     expect(scope).not.toHaveAttribute('open');
-    fireEvent.click(screen.getByText('録音範囲と接続診断について'));
+    fireEvent.click(screen.getByText('録音範囲と「音のトラブルを診断」について'));
     expect(scope).toHaveAttribute('open');
     expect(scope).toHaveTextContent('伴奏やOBS側の音量・フィルター・録音トラックを含む最終ミックスは、この録音の対象外');
-    expect(scope).toHaveTextContent('接続診断は音の到達確認');
+    expect(scope).toHaveTextContent('「音のトラブルを診断」は音の到達確認');
     await waitFor(() => expect(record()).toBeEnabled());
     expect(audioApi.startVoiceCheck).not.toHaveBeenCalled();
 });

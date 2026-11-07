@@ -151,7 +151,7 @@ describe('セットアップの接続チェック', () => {
         let resolveDevices!: (value: { inputs: AudioDevice[]; outputs: AudioDevice[] }) => void;
         vi.mocked(invoke).mockImplementation((command, args, options) => command === 'get_audio_devices'
             ? new Promise(resolve => { resolveDevices = resolve; }) : base(command, args, options));
-        fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? '再検出' : 'Refresh devices' }));
+        fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? '機器を再検出' : 'Detect devices again' }));
         expect(next).toHaveAccessibleDescription(locale === 'ja' ? '機器を読み込んでいます' : 'Loading devices');
         await act(async () => { resolveDevices({ inputs: [], outputs: [] }); });
         expect(next).toHaveAccessibleDescription(locale === 'ja' ? '戻ってマイクを選ぶと進めます' : 'Go back and select a microphone to continue');
@@ -280,10 +280,10 @@ describe('セットアップの接続チェック', () => {
         expect(screen.getByText('ヘッドホン')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled();
         outputs = outputs.map(d => ({ ...d, is_default: false }));
-        fireEvent.click(screen.getByRole('button', { name: '再検出' }));
+        fireEvent.click(screen.getByRole('button', { name: '機器を再検出' }));
         await waitFor(() => expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled());
         outputs = outputs.map(d => ({ ...d, is_default: d.name === 'スピーカー USB' }));
-        fireEvent.click(screen.getByRole('button', { name: '再検出' }));
+        fireEvent.click(screen.getByRole('button', { name: '機器を再検出' }));
         await waitFor(() => expect(screen.getByText('スピーカー USB')).toBeInTheDocument());
         expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled();
     });
@@ -374,7 +374,7 @@ describe('セットアップの接続チェック', () => {
         expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
         expect(screen.queryByRole('heading', { name: '設定と接続の確認' })).not.toBeInTheDocument();
         outputs = [cable];
-        fireEvent.click(screen.getByRole('button', { name: '再検出' }));
+        fireEvent.click(screen.getByRole('button', { name: '機器を再検出' }));
         await waitFor(() => expect(screen.getByRole('button', { name: /次へ/ })).toBeEnabled());
         expect(invoke).toHaveBeenCalledWith('get_audio_devices', { forceRefresh: true });
         expect(screen.getByRole('combobox', { name: '仮想ケーブルの出力先' })).toHaveValue(cable.name);
@@ -706,7 +706,7 @@ describe('PC audio purpose', () => {
         await waitFor(() => expect(screen.getByRole('button', { name: '次へ' })).toBeEnabled());
         fireEvent.click(screen.getByRole('button', { name: '次へ' }));
         inputs = []; outputs = [];
-        fireEvent.click(screen.getByRole('button', { name: '再検出' }));
+        fireEvent.click(screen.getByRole('button', { name: '機器を再検出' }));
         await screen.findByText('戻ってPCの音の入力を選ぶと進めます');
         act(() => { store.setLocale(locale); });
         const actions = within(screen.getByTestId('setup-actions'));

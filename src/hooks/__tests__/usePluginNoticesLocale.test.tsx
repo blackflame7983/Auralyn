@@ -44,23 +44,23 @@ it.each(['retained', 'partial'])('%sのnoticeはlocaleだけで再表示し、62
     }
     const {store, wrapper} = language(); const {result} = renderHook(() => usePlugins(), {wrapper}); await act(async () => {});
     expect(result.current.sessionRestoreStatus).toBe(kind);
-    expect(result.current.error?.match(/保護中/g)).toHaveLength(1);
+    expect(result.current.error?.match(/今のVSTの変更は自動保存しません/g)).toHaveLength(1);
     const snapshot = {raw: localStorage.getItem(KEY), backup: localStorage.getItem(BACKUP), ids: result.current.plugins.map(p => p.id), requests: vi.mocked(audioApi.sessionRack).mock.calls.length, restores: vi.mocked(audioApi.restorePlugin).mock.calls.length, input: vi.mocked(audioApi.setInputGain).mock.calls.length, output: vi.mocked(audioApi.setOutputGain).mock.calls.length};
     const functions = [result.current.restoreSession, result.current.retrySessionRestore, result.current.scanPlugins, result.current.savePreset];
     act(() => {store.setLocale('en');});
     expect(result.current.error).toContain(kind === 'retained' ? 'Showing the VST rack retained' : '1 VSTs could not be restored');
-    expect(result.current.error?.match(/saved configuration is protected/g)).toHaveLength(1);
-    expect(result.current.sessionProtectionReason).toContain('protected');
+    expect(result.current.error?.match(/current VST changes are not saved automatically/g)).toHaveLength(1);
+    expect(result.current.sessionProtectionReason).toContain('current VST changes are not saved automatically');
     expect([result.current.restoreSession, result.current.retrySessionRestore, result.current.scanPlugins, result.current.savePreset]).toEqual(functions);
     await act(() => vi.advanceTimersByTimeAsync(62_000)); const save = strictSave(); await act(async () => {});
     expect(save.resolve).not.toHaveBeenCalled(); const error = save.reject.mock.calls[0][0];
-    expect(error).toBeInstanceOf(PluginClientError); expect(error.code).toBe('saveProtected'); expect(error.message).toContain('保護中');
+    expect(error).toBeInstanceOf(PluginClientError); expect(error.code).toBe('saveProtected'); expect(error.message).toContain('今のVSTの変更は自動保存しません');
     expect(localStorage.getItem(KEY)).toBe(snapshot.raw); expect(localStorage.getItem(BACKUP)).toBe(snapshot.backup); expect(localStorage.getItem(PROTECTED)).toBe('true');
     expect(result.current.plugins.map(p => p.id)).toEqual(snapshot.ids);
     expect(audioApi.sessionRack).toHaveBeenCalledTimes(snapshot.requests); expect(audioApi.restorePlugin).toHaveBeenCalledTimes(snapshot.restores);
     expect(audioApi.setInputGain).toHaveBeenCalledTimes(snapshot.input); expect(audioApi.setOutputGain).toHaveBeenCalledTimes(snapshot.output);
     expect(audioApi.scanPlugins).not.toHaveBeenCalled(); expect(audioApi.getPluginState).not.toHaveBeenCalled(); expect(audioApi.start).not.toHaveBeenCalled(); expect(audioApi.stop).not.toHaveBeenCalled();
-    act(() => {store.setLocale('ja');}); expect(result.current.error?.match(/保護中/g)).toHaveLength(1);
+    act(() => {store.setLocale('ja');}); expect(result.current.error?.match(/今のVSTの変更は自動保存しません/g)).toHaveLength(1);
 });
 it('profile保存の遅い失敗もkeyで保持し、locale変更で保存要求やstate採取を再実行しない', async () => {
     localStorage.setItem(KEY, '[]'); let fail!: (error: unknown) => void;

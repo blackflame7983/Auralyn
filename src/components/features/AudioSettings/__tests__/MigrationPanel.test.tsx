@@ -55,6 +55,6 @@ it('保存保護の既存reasonを翻訳し、localeだけで確認/summary/適�
     await screen.findByText(error.message);const calls=vi.mocked(invoke).mock.calls.length;
     act(()=>{store.setLocale('en');});
     expect(screen.getByRole('checkbox')).toBe(checkbox);expect(checkbox).toBeChecked();
-    expect(screen.getByRole('status')).toHaveTextContent('The saved VST configuration is protected.');
+    expect(screen.getByRole('status')).toHaveTextContent('To keep your previous VST chain, current VST changes are not saved automatically.');
     expect(screen.getByText('exact-file.json')).toBeVisible();expect(invoke).toHaveBeenCalledTimes(calls);expect(relaunch).not.toHaveBeenCalled();
 });
