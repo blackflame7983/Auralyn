@@ -125,20 +125,20 @@ test('音切れ通知から調整欄へ移動し、変更なしでは再起動�
 test('ホットキーは未設定を示し、一覧から変更・取消・保存できる', async ({ page }) => {
     const dialog = await openSettings(page);
     await dialog.getByRole('tab', { name: 'ホットキー', exact: true }).click();
-    const field = dialog.locator('fieldset').filter({ has: page.locator('legend', { hasText: 'ミュートON' }) });
-    await expect(field.getByRole('button', { name: 'ミュートONのキーを入力' })).toHaveText('未設定');
+    const field = dialog.locator('fieldset').filter({ has: page.locator('legend', { hasText: '緊急ミュート（オン）' }) });
+    await expect(field.getByRole('button', { name: '緊急ミュート（オン）のキーを入力' })).toHaveText('未設定');
     const save = dialog.getByRole('button', { name: 'キー設定を保存' });
     const discard = dialog.getByRole('button', { name: '変更を取り消す' });
     await expect(save).toBeDisabled();
     await field.locator('summary').focus();
     await page.keyboard.press('Enter');
-    await field.getByRole('combobox', { name: 'ミュートONの修飾キー' }).selectOption('Alt');
-    await field.getByRole('combobox', { name: 'ミュートONの通常キー' }).selectOption('KeyM');
+    await field.getByRole('combobox', { name: '緊急ミュート（オン）の修飾キー' }).selectOption('Alt');
+    await field.getByRole('combobox', { name: '緊急ミュート（オン）の通常キー' }).selectOption('KeyM');
     await expect(save).toBeEnabled();
     await discard.click();
     await expect(save).toBeDisabled();
-    await field.getByRole('combobox', { name: 'ミュートONの修飾キー' }).selectOption('Alt');
-    await field.getByRole('combobox', { name: 'ミュートONの通常キー' }).selectOption('KeyM');
+    await field.getByRole('combobox', { name: '緊急ミュート（オン）の修飾キー' }).selectOption('Alt');
+    await field.getByRole('combobox', { name: '緊急ミュート（オン）の通常キー' }).selectOption('KeyM');
     await save.click();
     await expect(dialog.getByRole('status')).toContainText('キー設定を保存しました');
     await expect(save).toBeDisabled();

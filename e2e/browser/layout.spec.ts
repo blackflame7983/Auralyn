@@ -171,7 +171,7 @@ test.describe('操作部品のサイズとテーマ', () => {
             await page.getByRole('tab', { name: 'システム', exact: true }).click();
             await page.getByRole('button', { name: 'セットアップを開く', exact: true }).click();
             await page.getByRole('button', { name: '自分で聴く', exact: true }).click();
-            const select = page.getByRole('combobox', { name: '入力デバイス', exact: true });
+            const select = page.getByRole('combobox', { name: '機器', exact: true });
             await expect(select).toBeVisible();
             const styles = await select.evaluate(element => {
                 const option = element.querySelector('option')!;

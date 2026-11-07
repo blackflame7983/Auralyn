@@ -60,7 +60,7 @@ it('ホットキーの入力中に Escape すると入力だけを取り消し�
     const onClose = vi.fn();
     render(<AudioSettingsModal isOpen onClose={onClose} onConfigChange={vi.fn()} />);
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'ホットキー' }), { button: 0, ctrlKey: false });
-    const button = await screen.findByRole('button', { name: 'ミュートを切り替えるのキーを入力' });
+    const button = await screen.findByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     await waitFor(() => expect(button).toBeEnabled());
     fireEvent.click(button);
     expect(button).toHaveAttribute('aria-pressed', 'true');

@@ -8,7 +8,7 @@ import { receiverDeviceNotice, deviceDisplayName } from '../../../lib/audioRouti
 import { Modal } from '../../ui/modal';
 import { AudioFlow } from '../../ui/AudioFlow';
 import { InfoPopover } from '../../ui/InfoPopover';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { MdCheck } from 'react-icons/md';
 import { destinationChoices } from '@/lib/destinationChoices';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
@@ -25,6 +25,7 @@ const STEPS = ['usage_selection', 'input_selection', 'output_selection', 'confir
 
 export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const t = useMessages();
+    const inputDeviceId = useId();
     const { isOpen, onClose, onSkip, onOpenSettings, onOpenTroubleshoot, onOpenVoiceCheck } = props;
     const { audioStartError, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
         initialStateReady, initialStateError, isCloseConfirmOpen, setIsCloseConfirmOpen, handleCloseRequest,
@@ -184,11 +185,11 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 ) : (
                                     <>
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium text-foreground">
-                                                {config.goal === 'music' ? t('wizard.musicInput') : config.goal === 'listening' ? t('guide.copy.187') : t('guide.copy.188')}
+                                            <label htmlFor={inputDeviceId} className="text-sm font-medium text-foreground">
+                                                {t('guide.copy.188')}
                                             </label>
                                             <select
-                                                aria-label={config.goal === 'music' ? t('wizard.musicInput') : t('guide.copy.189')}
+                                                id={inputDeviceId}
                                                 className="w-full p-3 bg-muted/50 border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
                                                 value={config.input?.name || ''}
                                                 onChange={(e) => {
@@ -236,7 +237,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     {isAsioHost(config.host) ? t('wizard.asioOutput', { name: config.output ? deviceDisplayName(config.output.name) : '' })
                                         : config.goal === 'music' ? t('wizard.musicRoute') : config.goal === 'obs' ? t('guide.copy.194') : t('guide.copy.195')}
                                 </p>
-                                {!config.input && <p role="status" className="text-sm text-warning">{t('guide.copy.196')}</p>}
+                                {!config.input && <p role="status" className="text-sm text-warning">{t(config.goal === 'music' ? 'wizard.pcInputMissing' : 'guide.copy.196')}</p>}
                                 {availableOutputs.length === 0 && !isLoadingDevices && <p className="text-sm text-warning">{t('guide.copy.197')}</p>}
                             </div>
 
