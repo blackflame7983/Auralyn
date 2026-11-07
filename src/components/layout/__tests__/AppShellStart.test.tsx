@@ -359,3 +359,20 @@ it('ホーム上部に表示モードの切替を常設しない', () => {
     expect(screen.queryByRole('button', { name: '詳細' })).not.toBeInTheDocument();
     expect(screen.queryByRole('group', { name: '用途に合わせた表示' })).not.toBeInTheDocument();
 });
+
+it('音量チェックの停止未確認でもホームの診断へ直接進める', () => {
+    const diagnose = vi.fn();
+    render(<AppShell onOpenOBSSettings={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
+        onOpenTroubleshoot={diagnose} onOpenVoiceCheck={vi.fn()} onOpenWizard={vi.fn()}
+        onToggleLargeMeter={vi.fn()} isLargeMeterOpen={false} currentHost="WASAPI" currentInput="Mic" currentOutput="Speakers" engineProcessReady isEngineRunning={false}>
+        <p>rack</p>
+    </AppShell>);
+    const entry = screen.getByRole('button', { name: message('ja', 'header.noSound') });
+    expect(entry).not.toHaveClass('border-warning');
+    act(() => measurementProps.current.onStateChange({ active: false, busy: false, stopUnconfirmed: true }));
+    expect(entry).toHaveClass('border-warning');
+    fireEvent.click(entry);
+    expect(diagnose).toHaveBeenCalledOnce();
+    act(() => measurementProps.current.onStateChange({ active: false, busy: false, stopUnconfirmed: false }));
+    expect(entry).not.toHaveClass('border-warning');
+});

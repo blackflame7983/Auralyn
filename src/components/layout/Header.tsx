@@ -194,7 +194,7 @@ export const Header: React.FC<HeaderProps> = ({
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={onOpenTroubleshoot} className="gap-3 cursor-pointer p-3">
-                                <span className="w-6 h-6 flex items-center justify-center bg-muted text-foreground rounded-full shadow-sm text-xs font-bold">?</span>
+                                <MdHelpOutline aria-hidden="true" className="h-4 w-4 shrink-0" />
                                 <div className="flex flex-col">
                                     <span className="font-bold text-sm">{t('header.noSound')}</span>
                                     <span className="text-xs text-muted-foreground">{t('header.diagnostics')}</span>

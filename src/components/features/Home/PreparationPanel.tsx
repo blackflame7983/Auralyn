@@ -1,6 +1,7 @@
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
-import { MdExpandMore } from 'react-icons/md';
+import { useSharedMeter } from '../LevelMeter/MeterContext';
+import { MdExpandMore, MdHelpOutline } from 'react-icons/md';
 import { destinationChoices } from '@/lib/destinationChoices';
 import { cn } from '@/lib/utils';
 import { InfoPopover } from '@/components/ui/InfoPopover';
@@ -13,6 +14,7 @@ import { receiverDeviceNotice } from '@/lib/audioRouting';
 import { renderNotice } from '../AudioSettings/settingsNotice';
 
 interface Props {
+    diagnosticAttention?: boolean;
     stoppedInStrip?: boolean;
     homeActionInStrip?: boolean; destinationRequest?: number;
     onCheckOutput?: (anchor?: HTMLButtonElement) => void;
@@ -40,7 +42,7 @@ const availabilityTones: Record<Availability, StatusTone> = { ready: 'ok', unkno
 const stageLabels: Record<PreparationStage, MessageKey> = { sound: 'shell.sound', listen: 'shell.listen', receiver: 'prep.receiver' };
 const statusLabels = { unconfirmed: 'prep.unconfirmed', confirmed: 'prep.userConfirmed', stale: 'prep.stale' } as const;
 
-export function PreparationPanel({ stoppedInStrip = false, homeActionInStrip = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices, onSetup, onExpandedChange }: Props) {
+export function PreparationPanel({ diagnosticAttention = false, stoppedInStrip = false, homeActionInStrip = false, destinationRequest = 0, model, onSettings, onSound, onListen, onObs, onCall, onTroubleshoot, onCheckOutput, audioReady, signalSummary, statusText, devices, onSetup, onExpandedChange }: Props) {
     const t = useMessages();
     const { locale } = useLocale();
     const { context, observation, records, checking, confirming } = model;
@@ -119,7 +121,9 @@ export function PreparationPanel({ stoppedInStrip = false, homeActionInStrip = f
                     {devices && <span className="min-w-0 truncate text-muted-foreground">{devices}</span>}
                 </span>}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+                {/* unknown は起動・読込・窓の復帰で一時的に出るため、muted は利用者の意図した状態のため強調しない。 */}
+                <TroubleshootEntry running={audioReady} music={purpose === 'music'} attention={diagnosticAttention || observation.availability === 'failed'} onOpen={onTroubleshoot} />
                 <span role="status" className="text-sm text-muted-foreground">{showChecking ? t('prep.checking') : next === 'done' ? t('prep.sessionChecked') : ''}</span>
                 <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={stepsId} onClick={() => setUserOpen(!open)}
                     className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted">
@@ -190,4 +194,26 @@ export function PreparationPanel({ stoppedInStrip = false, homeActionInStrip = f
         </>}
         </div>}
     </section>;
+}
+
+// メーターの高頻度更新は入口だけで購読し、確認手順を再描画しない。
+// 無音は故障と断定せず、診断への近道だけを強調する。話の間や曲の一時停止で点滅しないよう、続いたときだけにする。
+// 音楽鑑賞では再生していない間の無音が正常なので、無音では強調しない。
+const SILENCE_ATTENTION_MS = 5000;
+function TroubleshootEntry({ running, music, attention, onOpen }: { running: boolean; music: boolean; attention: boolean; onOpen: () => void }) {
+    const t = useMessages();
+    const input = useSharedMeter(running, 'input');
+    const quiet = running && (input.state === 'stale' || !music && input.state === 'silent');
+    const [quietLong, setQuietLong] = useState(false);
+    useEffect(() => {
+        if (!quiet) { setQuietLong(false); return; }
+        const timer = window.setTimeout(() => setQuietLong(true), SILENCE_ATTENTION_MS);
+        return () => window.clearTimeout(timer);
+    }, [quiet]);
+    const prominent = attention || quietLong;
+    return <button type="button" onClick={onOpen} aria-haspopup="dialog"
+        className={cn('inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring',
+            prominent ? 'border border-warning bg-warning/10 font-semibold' : 'underline underline-offset-4')}>
+        <MdHelpOutline aria-hidden="true" className="h-4 w-4 shrink-0" />{t('header.noSound')}
+    </button>;
 }
