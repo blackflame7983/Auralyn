@@ -63,7 +63,10 @@ test.describe('未登録の本番帯', () => {
             const [rowBox, controlsBox, chooseBox] = await Promise.all([routing.boundingBox(), controls.boundingBox(), choose.boundingBox()]);
             const stageBox = (await live.locator('.live-stage').boundingBox())!;
             expect(Math.abs(controlsBox!.x + controlsBox!.width / 2 - stageBox.x - stageBox.width / 2)).toBeLessThanOrEqual(1);
-            expect(chooseBox!.y).toBeGreaterThanOrEqual(controlsBox!.y + controlsBox!.height);
+            // 「送り先を選ぶ」は舞台の中央（状態の1行とモード名の近く）に置き、モード操作より先に目に入る（DESIGN.md 56 行）。
+            expect(chooseBox!.y).toBeGreaterThanOrEqual(stageBox.y);
+            expect(chooseBox!.y + chooseBox!.height).toBeLessThanOrEqual(controlsBox!.y + 1);
+            expect(Math.abs(chooseBox!.x + chooseBox!.width / 2 - stageBox.x - stageBox.width / 2)).toBeLessThanOrEqual(1);
             expect(chooseBox!.x + chooseBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width);
             expect(await choose.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(await actions.evaluate(el => getComputedStyle(el).backgroundColor));
             await page.screenshot({ path: info.outputPath('unregistered.png'), animations: 'disabled' });
