@@ -36,8 +36,10 @@ export function ProtoMeter({ level, height = 10, label }: { level: number; heigh
 export function ProtoSegment<T extends string>({ options, value, onChange, label, size = 'md' }: {
     options: { value: T; label: string }[]; value: T; onChange: (value: T) => void; label: string; size?: 'md' | 'lg';
 }) {
-    const index = Math.max(0, options.findIndex(option => option.value === value));
-    return <div role="radiogroup" aria-label={label}
+    const found = options.findIndex(option => option.value === value);
+    const index = Math.max(0, found);
+    // 選択肢にない値（一覧からだけ選べる項目など）のときは、印を出さない。
+    return <div role="radiogroup" aria-label={label} data-empty={found < 0 || undefined}
         className={`proto-segment relative grid rounded-lg bg-muted p-1 ${size === 'lg' ? 'text-ui-control' : 'text-ui-support'}`}
         style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))`, '--seg-count': options.length, '--seg-index': index } as CSSProperties}>
         <span aria-hidden="true" className="proto-segment-thumb" />
