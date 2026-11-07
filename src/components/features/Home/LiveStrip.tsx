@@ -52,8 +52,9 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
             <p className="text-ui-support text-muted-foreground">{t('home.startSavedDevices')}</p>
         </>}
         </div>
-        {!music && running && !usage && onChooseDestination && <button type="button" onClick={onChooseDestination} className="rounded-md bg-primary px-3 py-2 text-ui-control font-semibold text-primary-foreground">{t('home.chooseDestination')}</button>}
         <h2 className="live-stage-mode font-semibold">{music ? t('purpose.music') : liveModeName ?? t('liveBar.custom')}</h2>
+        {/* 状態 → いまのモード名 → 次の1歩 → モード操作の順に読めるよう、主操作は見出しの直後に置く。 */}
+        {!music && running && !usage && onChooseDestination && <button type="button" onClick={onChooseDestination} className="rounded-md bg-primary px-3 py-2 text-ui-control font-semibold text-primary-foreground">{t('home.chooseDestination')}</button>}
         {!music && liveControls && <div data-layout-motion className="live-controls min-w-0 max-w-full">{liveControls}</div>}
         </div>
         </div>

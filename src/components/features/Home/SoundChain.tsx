@@ -96,7 +96,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                     <span className="min-w-0 break-words">
                         <span className="sr-only">{tag}</span>
                         <span className="block text-ui-control font-semibold">{name}</span>
-                        {!unconfigured && <StatusDot tone={stopped ? 'off' : key === 'noise' ? tone(live ? noiseOn : stage?.nr.enabled) : key === 'builtin' ? builtinTone : vstTone} className="text-ui-support text-muted-foreground">{summary}</StatusDot>}
+                        {/* 点の色は、隣の文字と同じ情報源から決める。本番の値が分かっているときは観測の未確認で注意色にしない。 */}
+                        {!unconfigured && <StatusDot tone={stopped ? 'off' : key === 'noise' ? tone(live ? noiseOn : stage?.nr.enabled) : key === 'builtin' ? (live && !(stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled) ? tone(builtinOn) : builtinTone) : vstTone} className="text-ui-support text-muted-foreground">{summary}</StatusDot>}
                     </span>
                 </button>
             </div>
