@@ -432,11 +432,20 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
         const reserved = document.querySelector('.vst-panel-space')!;
         const samples = [{ time: 0, width: main.getBoundingClientRect().width, reserved: reserved.getBoundingClientRect().width }];
         const start = performance.now();
+        // Reactのclick更新は同じタスク内では未反映。閉状態のcommitを待ってから
+        // styleを確定し、予約領域のCSS width遷移を描画前に取得する。
+        const closingTransitions = new Promise<{ frames: string[]; duration: number }[]>(resolve => {
+            const observer = new MutationObserver(() => {
+                if (reserved.getAttribute('data-state') !== 'closed') return;
+                observer.disconnect();
+                reserved.getBoundingClientRect();
+                resolve(reserved.getAnimations().filter(a => a instanceof CSSTransition && a.transitionProperty === 'width')
+                    .map(a => ({ frames: (a.effect as KeyframeEffect).getKeyframes().map(frame => String(frame.width)), duration: Number(a.effect!.getTiming().duration) })));
+            });
+            observer.observe(reserved, { attributes: true, attributeFilter: ['data-state'] });
+        });
         (e.querySelector('button[aria-label="VST構成を閉じる"]') as HTMLButtonElement).click();
-        // 同じタスク内で遷移を記録する。後続フレームが遅れても途中幅の補間定義を検証できる。
-        reserved.getBoundingClientRect();
-        const transitions = reserved.getAnimations().filter(a => a instanceof CSSTransition && a.transitionProperty === 'width')
-            .map(a => ({ frames: (a.effect as KeyframeEffect).getKeyframes().map(frame => String(frame.width)), duration: Number(a.effect!.getTiming().duration) }));
+        const transitions = await closingTransitions;
         await new Promise<void>(resolve => {
             const frame = () => {
                 samples.push({ time: performance.now() - start, width: main.getBoundingClientRect().width, reserved: reserved.getBoundingClientRect().width });
@@ -457,7 +466,7 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
     }
     // 幅を0へ補間する定義と、終了時の予約領域の解放を確認する。
     if (width > 1020) {
-        // main幅は最大幅で頭打ちになるため、予約領域自体が途中の幅を経て閉じることも追う。
+        // main幅は最大幅で頭打ちになるため、予約領域自体の補間定義も確認する。
         const reservedStart = widths[0].reserved;
         expect(reservedStart).toBeGreaterThan(200);
         expect(closing.transitions).toHaveLength(1);

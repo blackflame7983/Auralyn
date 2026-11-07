@@ -120,7 +120,10 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await page.getByRole('button', { name: message(locale, 'header.audioSettingsOpen'), exact: true }).click();
         const restore = dialog.getByRole('button', { name: message(locale, 'settings.connection.restoreSaved'), exact: true });
         await expect(restore).toBeVisible();
-        expect(await input.evaluate((el, label) => !!(el.compareDocumentPosition([...document.querySelectorAll('button')].find(button => button.textContent === label)!) & Node.DOCUMENT_POSITION_FOLLOWING), message(locale, 'settings.connection.restoreSaved'))).toBe(true);
+        // 未保存のASIO選択は再表示で既定のWASAPIへ戻り、入力名も「マイク」へ戻る。
+        const reopenedInput = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.038'), exact: true });
+        await expect(reopenedInput).toHaveValue('id:mic');
+        expect(await reopenedInput.evaluate((el, label) => !!(el.compareDocumentPosition([...document.querySelectorAll('button')].find(button => button.textContent === label)!) & Node.DOCUMENT_POSITION_FOLLOWING), message(locale, 'settings.connection.restoreSaved'))).toBe(true);
         await restore.click();
         await expect(dialog.getByText(message(locale, 'settings.connection.restored'), { exact: true })).toBeVisible();
         const tuning = dialog.locator('summary').filter({ hasText: message(locale, 'settings.audioTuning.title') });
