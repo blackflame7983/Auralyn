@@ -90,7 +90,7 @@ it.each([
     { label: '停止中', audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: false, engineProcessReady: true },
     { label: '稼働未確認', audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: true, engineProcessReady: null },
     { label: '開始失敗', audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: false, engineProcessReady: false },
-])('$labelでも右パネルの VST 準備を残し、チュートリアルは稼働確認後まで表示しない', state => {
+])('$labelでも右パネルのVST準備を残し、チュートリアルは稼働確認後まで表示しない', state => {
     Object.assign(audioState, state);
     localStorage.setItem('auralyn_vst_panel_open', 'true');
     render(<App />);

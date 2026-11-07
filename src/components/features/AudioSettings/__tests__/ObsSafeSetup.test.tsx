@@ -37,7 +37,7 @@ describe('OBS の変更確認と復元', () => {
         vi.mocked(obsApi.applySetup).mockResolvedValue({
             ...history,
             restorable: false,
-            results: ['競合: 適用を中断しました'],
+            results: ['競合：適用を中断しました'],
         });
         renderSetup();
         fireEvent.click(screen.getByRole('button', { name: '変更予定を確認する' }));
@@ -103,7 +103,7 @@ describe('OBS の変更確認と復元', () => {
         });
         vi.mocked(obsApi.restoreSetup).mockResolvedValue({
             ...history,
-            results: ['競合: 後から変更されたため復元しません'],
+            results: ['競合：後から変更されたため復元しません'],
         });
         renderSetup();
         const historySummary = screen.getByText('過去の変更履歴');
@@ -114,7 +114,7 @@ describe('OBS の変更確認と復元', () => {
         expect(historySummary.closest('details')).toHaveAttribute('open');
         expect(historySummary).toHaveFocus();
         fireEvent.click(screen.getByRole('button', { name: '変更 #7 を元に戻す' }));
-        await screen.findByText(/競合: 後から変更されたため復元しません/);
+        await screen.findByText(/競合：後から変更されたため復元しません/);
     });
     it('適用中の二重送信を防ぐ', async () => {
         let finish!: (value: ObsSetupHistory) => void;

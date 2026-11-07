@@ -15,7 +15,7 @@ export const MeterVisual = memo(function MeterVisual({ reading, label, orientati
     const db = toDbfs(reading.state === 'silent' ? 0 : amplitude);
     const text = current ? `${Number.isFinite(db) ? db.toFixed(1) : '−∞'} dBFS` : t(meterStatusLabel(reading.state));
     const statusText = t(meterStatusLabel(reading.state));
-    const accessibleText = `${reading.state === 'silent' ? `${statusText}: ${text}` : text}${reading.clipped ? ` — ${t('meter.clip')}` : ''}`;
+    const accessibleText = `${reading.state === 'silent' ? t('meter.silentLevel', { state: statusText, level: text }) : text}${reading.clipped ? ` — ${t('meter.clip')}` : ''}`;
     const displayText = orientation === 'horizontal' && reading.state !== 'live'
         ? t(reading.state === 'waiting' || reading.state === 'stale' ? 'meter.waitingShort' : meterStatusLabel(reading.state))
         : current && numbers ? text : '';

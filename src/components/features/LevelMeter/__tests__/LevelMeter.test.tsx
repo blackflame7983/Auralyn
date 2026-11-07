@@ -21,7 +21,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.mocked(listen).mockReset(); });
 it('無音通知後の減衰残値を極端なdBFS値として表示しない', () => {
     render(<MeterVisual label="出力" showValues reading={{ levels: [1e-300, 1e-300], peak: [.1, .1], clipped: false, state: 'silent', resetClip: () => {} }} />);
-    expect(screen.getByRole('meter', { name: '出力' })).toHaveAttribute('aria-valuetext', '無音: −∞ dBFS');
+    expect(screen.getByRole('meter', { name: '出力' })).toHaveAttribute('aria-valuetext', '無音：−∞ dBFS');
     expect(screen.getByText('−∞ dBFS')).toBeInTheDocument();
 });
 it.each(['waiting', 'stale', 'silent', 'stopped'] as const)('横メーターの %s は状態文を省略せず、意味を読み上げられる', state => {
@@ -41,9 +41,9 @@ it('小メーターは入力を選び、停止後は旧値を表示しない', (
     render(<LevelMeter running type="input" />);
     emit('audio-level', { input: [1.2, 1.2], output: [0, 0] });
     act(() => vi.advanceTimersByTime(16));
-    expect(screen.getByLabelText('入力レベル: レベル表示中')).toBeInTheDocument();
+    expect(screen.getByLabelText('入力レベル：レベル表示中')).toBeInTheDocument();
     emit('audio-stopped');
-    expect(screen.getByLabelText('入力レベル: 音声停止中')).toBeInTheDocument();
+    expect(screen.getByLabelText('入力レベル：音声停止中')).toBeInTheDocument();
     expect(screen.getByTitle('Left').firstElementChild).toHaveStyle({ transform: 'scaleY(0)' });
 });
 it('大メーターはtimeoutでもclipを保持し、手動で消せる', () => {

@@ -8,7 +8,7 @@ import { useUIState } from '@/hooks/useUIState';
 
 // 遷移先の設定操作は実行せず、実際の画面とUI状態を経由したタブ選択を確認する。
 vi.mock('@/components/features/AudioSettings/AudioSettingsModal', () => ({
-    AudioSettingsModal: ({ initialTab, initialSection, isAudioRunning, currentConfig, allowConnectionRetry }: { initialTab: string; initialSection?: string; isAudioRunning?: boolean; currentConfig: { host: string }; allowConnectionRetry?: boolean }) => <><h2>設定タブ: {initialTab}</h2><p>設定欄: {initialSection ?? 'none'} / {isAudioRunning ? 'running' : 'stopped'} / {currentConfig.host}</p><p>再試行: {String(allowConnectionRetry)}</p></>,
+    AudioSettingsModal: ({ initialTab, initialSection, isAudioRunning, currentConfig, allowConnectionRetry }: { initialTab: string; initialSection?: string; isAudioRunning?: boolean; currentConfig: { host: string }; allowConnectionRetry?: boolean }) => <><h2>設定タブ：{initialTab}</h2><p>設定欄：{initialSection ?? 'none'} / {isAudioRunning ? 'running' : 'stopped'} / {currentConfig.host}</p><p>再試行：{String(allowConnectionRetry)}</p></>,
 }));
 let streamRunning: boolean;
 let adviceKey: string;
@@ -27,8 +27,8 @@ function AppModals() {
 it('再試行入口の状態を設定モーダルに渡す', async () => {
     render(<AppModals />);
     fireEvent.click(screen.getByRole('button', { name: '設定反映を再試行' }));
-    expect(await screen.findByText('再試行: true')).toBeVisible();
-    expect(screen.getByRole('heading', { name: '設定タブ: audio' })).toBeVisible();
+    expect(await screen.findByText('再試行：true')).toBeVisible();
+    expect(screen.getByRole('heading', { name: '設定タブ：audio' })).toBeVisible();
 });
 
 beforeEach(() => {
@@ -59,7 +59,7 @@ it('テンプレートの内蔵ボイスチェーンの入口は音づくりタ�
     // 初回の遅延importを待ち、画面内の操作は表示完了後に確認する。
     await screen.findByRole('dialog', { name: 'VST構成テンプレート' }, { timeout: 3000 });
     fireEvent.click(screen.getByRole('button', { name: '外部VSTを使わず、声を整える機能を設定する' }));
-    await screen.findByRole('heading', { name: '設定タブ: sound' });
+    await screen.findByRole('heading', { name: '設定タブ：sound' });
     expect(screen.queryByRole('dialog', { name: 'VST構成テンプレート' })).not.toBeInTheDocument();
 });
 
@@ -77,8 +77,8 @@ it.each(['high_freq_attenuation', 'noise_floor_high', 'noise_suppression_weak', 
         fireEvent.click(screen.getByRole('button', { name: '品質チェックを実行' }));
         const target = key === 'dropout_detected' ? 'audio' : 'sound';
         fireEvent.click(await screen.findByRole('button', { name: target === 'sound' ? '音づくりを開く' : '途切れにくくする' }));
-        await screen.findByRole('heading', { name: `設定タブ: ${target}` });
-        if (key === 'dropout_detected') expect(screen.getByText('設定欄: audioTuning / running / WASAPI')).toBeInTheDocument();
+        await screen.findByRole('heading', { name: `設定タブ：${target}` });
+        if (key === 'dropout_detected') expect(screen.getByText('設定欄：audioTuning / running / WASAPI')).toBeInTheDocument();
         expect(screen.queryByRole('dialog', { name: 'ボイスチェック' })).not.toBeInTheDocument();
     },
 );
@@ -89,5 +89,5 @@ it('録音準備からは接続用のオーディオタブを開く', async () =
     fireEvent.click(screen.getByRole('button', { name: '試聴を開く' }));
     await screen.findByText(/音声が停止しています/);
     fireEvent.click(screen.getByRole('button', { name: 'マイクと出力先を設定する' }));
-    await screen.findByRole('heading', { name: '設定タブ: audio' });
+    await screen.findByRole('heading', { name: '設定タブ：audio' });
 });

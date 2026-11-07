@@ -5,7 +5,7 @@ import { openStreamMixPanel, saveStreamMixPanel, takeStreamMixOpenRequest } from
 import { StreamMixPanel } from '../StreamMixPanel';
 
 vi.mock('../../AudioSettings/MixingPanel', () => ({ MixingPanel: () => <details id="mixing-settings"><summary tabIndex={0}>オケ</summary></details> }));
-vi.mock('../../AudioSettings/PostMixPanel', () => ({ PostMixPanel: () => <details><summary>配信 VST</summary></details> }));
+vi.mock('../../AudioSettings/PostMixPanel', () => ({ PostMixPanel: () => <details><summary>配信VST</summary></details> }));
 const props = { running: true, primaryIsVoiceDevice: true, disabled: false, onOpenDevices: vi.fn() };
 
 beforeEach(() => {

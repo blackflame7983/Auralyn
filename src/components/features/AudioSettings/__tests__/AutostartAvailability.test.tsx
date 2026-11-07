@@ -28,7 +28,7 @@ function open(status: unknown) {
 it.each([
     'MSIX版の自動起動は準備中です。通常版の登録は変更しません。',
     '別のAuralynの自動起動登録があります。登録した版で解除してください。',
-])('変更不可の理由を示し、Runキーの変更を送信しない: %s', async reason => {
+])('変更不可の理由を示し、Runキーの変更を送信しない：%s', async reason => {
     open({ enabled: false, canChange: false, reason, method: 'unavailable' });
     expect(await screen.findByText(reason)).toBeVisible();
     const control = screen.getByRole('switch', { name: 'Windows起動時に自動起動' });

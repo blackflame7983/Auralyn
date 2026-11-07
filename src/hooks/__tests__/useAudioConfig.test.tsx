@@ -42,7 +42,7 @@ it.each([
     [config, { running: false, streamFailed: false }, false],
     [config, { running: true, streamFailed: true }, false],
     [config, { running: true, streamFailed: false }, true],
-] as const)('常駐プロセスと実音声の稼働を区別する: %j %j', async (audioConfig, stream, running) => {
+] as const)('常駐プロセスと実音声の稼働を区別する：%j %j', async (audioConfig, stream, running) => {
     vi.mocked(invoke).mockImplementation(async command => command === 'get_audio_state'
         ? { is_running: true, config: audioConfig } : stream);
     const { result } = renderHook(() => useAudioConfig(vi.fn()));

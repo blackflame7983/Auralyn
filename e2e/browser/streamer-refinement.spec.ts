@@ -18,8 +18,8 @@ test('通常の声ON・残響OFFは一部ONと表示せず、設定の内訳は�
     await expect(row).toHaveAttribute('data-on', 'true');
     await expect(row).not.toContainText('一部ON');
     await row.getByRole('button', { name: '声を整える機能の処理内容', exact: true }).click();
-    await expect(page.getByRole('dialog')).toContainText('声の処理: ON');
-    await expect(page.getByRole('dialog')).toContainText('残響: OFF');
+    await expect(page.getByRole('dialog')).toContainText('声の処理：ON');
+    await expect(page.getByRole('dialog')).toContainText('残響：OFF');
 });
 
 test('マウスで開き直したパネルは見出し枠を出さず、キーボードでは枠を保つ', async ({ page }) => {

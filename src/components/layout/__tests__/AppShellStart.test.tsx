@@ -231,7 +231,7 @@ it('入出力・声の調整・試聴を保持する', async () => {
     render(<AppShell {...commonProps} onOpenSoundSettings={sound} onOpenVoiceCheck={voice} onOpenOBSSettings={obs}
         currentInput="USB マイク" currentOutput="CABLE Input (VB-Audio Virtual Cable)"><p>rack</p></AppShell>);
     // 入力機器の名前は本番帯に1つだけ出し、押すと機器の設定を開く。声の処理には入力・出力の段を置かない。
-    fireEvent.click(within(screen.getByRole('region', { name: '本番' })).getByRole('button', { name: /^入力: USB マイク/ }));
+    fireEvent.click(within(screen.getByRole('region', { name: '本番' })).getByRole('button', { name: /^入力：USB マイク/ }));
     expect(commonProps.onOpenSettings).toHaveBeenCalled();
     expect(within(screen.getByRole('region', { name: '音調整' })).queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
     // 入力メーターは本番帯の1か所だけにし、音声チェックとは重ねない。
@@ -252,7 +252,7 @@ it('VST 構成は右パネルで開閉し、大型メーターは本番帯のメ
     const view = render(<AppShell {...commonProps} onToggleLargeMeter={toggleMeter} vstPanel={<h2 id="plugin-rack-heading" tabIndex={-1}>rack-panel</h2>}><p>rack</p></AppShell>);
     expect(screen.queryByText('rack-panel')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^VST / }));
-    fireEvent.click(screen.getByRole('button', { name: 'VST を編集' }));
+    fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' }));
     // 開いたら見出しへ移り、キーボードでもそのまま続けられる。
     expect(screen.getByRole('complementary')).toHaveTextContent('rack-panel');
     expect(screen.getByText('rack-panel')).toHaveFocus();
@@ -267,7 +267,7 @@ it('VST 構成は右パネルで開閉し、大型メーターは本番帯のメ
 it('狭い幅では右パネルを重ねて背景の誤操作を防ぎ、閉じたら入口へ戻す', () => {
     const { container } = render(<AppShell {...commonProps} vstPanel={<button type="button" onClick={() => saveVstPanelOpen(false)}>close-panel</button>}><p>rack</p></AppShell>);
     fireEvent.click(screen.getByRole('button', { name: /^VST / }));
-    const toggle = screen.getByRole('button', { name: 'VST を編集' });
+    const toggle = screen.getByRole('button', { name: 'VSTを編集' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
@@ -409,7 +409,7 @@ it('広い窓で別の音調整を開いてからVSTパネルを閉じても、�
         const { container } = render(<AppShell {...commonProps} vstPanel={<button type="button" onClick={() => saveVstPanelOpen(false)}>close-panel</button>}><p>rack</p></AppShell>);
         const tool = screen.getByRole('button', { name: /^VST / });
         fireEvent.click(tool);
-        const edit = screen.getByRole('button', { name: 'VST を編集' });
+        const edit = screen.getByRole('button', { name: 'VSTを編集' });
         fireEvent.click(edit);
         expect(container.querySelector('main')).not.toHaveAttribute('inert');
         fireEvent.click(screen.getByRole('button', { name: /^ノイズ低減 / }));

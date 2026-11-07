@@ -304,7 +304,7 @@ test('最小〜最大: VST は作業幅を保って重なり、広い窓では�
         await reachable(page.getByRole('slider', { name: '出力音量', exact: true }), page);
         if (width === 960 || width === 1536) await page.screenshot({ path: testInfo.outputPath(`vst-responsive-${width}.png`) });
         if (overlays) await page.keyboard.press('Escape');
-        else await page.getByRole('button', { name: 'VST 構成を閉じる', exact: true }).click();
+        else await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
         await expect(page.locator('#vst-panel')).toHaveCount(0);
         await expect(main).not.toHaveAttribute('inert', '');
         await expect(page.locator('#vst-panel-toggle')).toBeFocused();
@@ -415,7 +415,7 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
     const panel = page.locator('#vst-panel');
     await expect(panel).toHaveAttribute('data-state', 'open');
     expect(await panel.evaluate(e => e.getAnimations().some(a => a.playState === 'running'))).toBe(true);
-    await page.getByRole('button', { name: 'VST 構成を閉じる', exact: true }).click();
+    await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
     await expect(panel).toHaveAttribute('inert', '');
     await expect(panel).toHaveAttribute('aria-hidden', 'true');
     await expect(toggle).toBeFocused();
@@ -430,7 +430,7 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
         const reserved = document.querySelector('.vst-panel-space')!;
         const samples = [{ time: 0, width: main.getBoundingClientRect().width, reserved: reserved.getBoundingClientRect().width }];
         const start = performance.now();
-        (e.querySelector('button[aria-label="VST 構成を閉じる"]') as HTMLButtonElement).click();
+        (e.querySelector('button[aria-label="VST構成を閉じる"]') as HTMLButtonElement).click();
         await new Promise<void>(resolve => {
             const frame = () => {
                 samples.push({ time: performance.now() - start, width: main.getBoundingClientRect().width, reserved: reserved.getBoundingClientRect().width });
@@ -476,14 +476,14 @@ test('動きを減らす設定では右パネルを移動せず、キーボー�
     const panel = page.locator('#vst-panel');
     expect(await panel.evaluate(e => getComputedStyle(e).transform)).toBe('none');
     expect(await panel.evaluate(e => e.getAnimations().every(a => !(a instanceof CSSTransition) || a.transitionProperty === 'opacity'))).toBe(true);
-    await page.getByRole('button', { name: 'VST 構成を閉じる', exact: true }).click();
+    await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
     await expect(panel).toHaveCount(0);
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await toggle.focus();
     await page.keyboard.press('Enter');
     await expect(panel).toHaveAttribute('data-state', 'open');
     expect(await panel.evaluate(e => e.getAnimations().length)).toBe(0);
-    const close = page.getByRole('button', { name: 'VST 構成を閉じる', exact: true });
+    const close = page.getByRole('button', { name: 'VST構成を閉じる', exact: true });
     await close.focus();
     await page.keyboard.press('Enter');
     await expect(panel).toHaveCount(0);

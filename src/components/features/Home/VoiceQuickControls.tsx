@@ -82,8 +82,8 @@ export function NoiseQuick({ q }: { q: VoiceQuick }) {
         return <p className="text-xs text-muted-foreground">{t('home.noiseAdvancedMode', { mode: q.noiseMode === 'smart' ? t('master.nrLearn') : t('master.nrVenue') })}</p>;
     }
     return <SegmentedControl label={t('structure.noise.standard')}
-        options={(['low', 'high'] as NoiseControlMode[]).map(mode => ({ value: mode, label: mode === 'low' ? t('master.nrLow') : t('master.nrHigh'), disabled: q.disabled || !q.noiseOn }))}
-        value={q.noiseOn ? q.noiseMode : null} onValueChange={mode => void q.applyNoise({ mode })} />;
+        options={(['low', 'high'] as NoiseControlMode[]).map(mode => ({ value: mode, label: mode === 'low' ? t('master.nrLow') : t('master.nrHigh'), disabled: q.disabled }))}
+        value={q.noiseMode} onValueChange={mode => void q.applyNoise({ mode })} />;
 }
 
 export function BuiltinSwitch({ q }: { q: VoiceQuick }) {

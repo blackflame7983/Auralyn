@@ -141,3 +141,14 @@ it.each([
     expect(guard).toHaveAccessibleDescription(labels.unlocked);
     expect(guard).toHaveFocus();
 });
+
+it('ノイズ低減OFFでも現在の強さを示し、OFFを保ったまま編集できる', async () => {
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue(stats({ noiseReductionEnabled: false, noiseReductionMode: 'low' }));
+    render(<VoiceQuickControls running />);
+    const low = await screen.findByRole('button', { name: '弱' });
+    await waitFor(() => expect(low).toHaveAttribute('aria-pressed', 'true'));
+    const high = screen.getByRole('button', { name: '強' });
+    expect(high).toHaveAttribute('aria-pressed', 'false');
+    await act(async () => fireEvent.click(high));
+    expect(audioApi.setNoiseControlConfig).toHaveBeenCalledWith(expect.objectContaining({ active: false, mode: 'high' }));
+});

@@ -326,3 +326,12 @@ it.each(['ready', 'pending', 'muted', 'failed'] as const)('開いた音声チェ
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'header.setupOpen') }));
     expect(onSetup).toHaveBeenCalledOnce();
 });
+
+it('本番帯にミュート警告がある間は音声チェックの状態を重ねず、確認操作を残す', () => {
+    const model = fixture(); model.observation.availability = 'muted';
+    const props = callbacks();
+    render(<PreparationPanel model={model} {...props} mutedInStrip onCheckOutput={vi.fn()} />);
+    expect(screen.queryByText(message('ja', 'prep.muted'))).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.steps') }));
+    expect(screen.getByRole('button', { name: message('ja', 'prep.checkOutput') })).toBeVisible();
+});

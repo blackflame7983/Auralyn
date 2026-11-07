@@ -39,7 +39,7 @@ test('開始に失敗した接続から直前の接続へ戻し、理由と対�
     const dialog = page.getByRole('dialog', { name: '設定', exact: true });
     await dialog.getByRole('radio', { name: '入力チャンネル 3/4' }).check();
     await dialog.getByRole('button', { name: /保存して(開始|再起動)/ }).click();
-    await expect(dialog.getByText(/直前の接続に戻しました。理由: .*sample clock/)).toBeVisible();
+    await expect(dialog.getByText(/直前の接続に戻しました。理由：.*sample clock/)).toBeVisible();
     await page.screenshot({ path: info.outputPath('start-rollback.png') });
     const calls = await page.evaluate(() => (window as any).__e2eRollbackStarts);
     expect(calls.at(-1).args).toMatchObject({ host: 'ASIO', input: 'Test ASIO', channelRouting: { inputChannels: [0, 1] } });

@@ -226,7 +226,7 @@ it('localeだけで未保存名・カテゴリ・選択を保持し、一覧/OBS
 });
 it('raw失敗に保存しましたが含まれてもalertのまま、明示成功だけstatusになる', async () => {
     const store = createLocaleStore(() => 'ja', () => true);
-    vi.mocked(bundleApi.save).mockRejectedValueOnce('保存しましたではない: unknown backend failure');
+    vi.mocked(bundleApi.save).mockRejectedValueOnce('保存しましたではない：unknown backend failure');
     render(<LocaleProvider store={store}><BroadcastBundlePanel /></LocaleProvider>);
     await screen.findByRole('option', { name: '歌枠' });
     fireEvent.change(screen.getByLabelText('OBS込みプロファイル名'), { target: { value: 'New' } });
@@ -236,13 +236,13 @@ it('raw失敗に保存しましたが含まれてもalertのまま、明示成�
     expect(screen.getByRole('alert')).toBe(alert);
     expect(alert).toHaveTextContent('Refresh list / operation history');
     expect(alert).not.toHaveTextContent('unknown backend failure');
-    const raw = screen.getByText('保存しましたではない: unknown backend failure');
+    const raw = screen.getByText('保存しましたではない：unknown backend failure');
     const details = raw.closest('details')!;
     expect(details).not.toHaveAttribute('open');
     expect(raw).not.toBeVisible();
     fireEvent.click(screen.getByText('Original detail (untranslated)'));
     expect(raw).toBeVisible();
-    expect(alert).not.toHaveTextContent('保存しましたではない: unknown backend failure');
+    expect(alert).not.toHaveTextContent('保存しましたではない：unknown backend failure');
     fireEvent.click(screen.getByRole('button', { name: 'Save current profile with OBS' }));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
     expect(await screen.findByRole('status')).toHaveTextContent('Profile with OBS saved.');
