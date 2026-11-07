@@ -1,3 +1,5 @@
+import { destinationChoices } from '@/lib/destinationChoices';
+import { message } from '@/i18n/messages';
 import { getVersion } from '@tauri-apps/api/app';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
@@ -159,7 +161,7 @@ it('遅い診断中のlocale切替は再測定せず、結果とコピーはク�
     act(() => { store.setLocale('ja'); });
     await act(async () => { finishVersion(); });
     expect(write).toHaveBeenCalledTimes(1);
-    expect(write.mock.calls[0][0]).toContain('Auralyn connection diagnostics report');
+    expect(write.mock.calls[0][0]).toContain('Auralyn: Diagnose audio problems — report');
     expect(write.mock.calls[0][0]).toContain('Audio processing is stopped');
     expect(write.mock.calls[0][0]).not.toContain('音声処理が停止中');
     expect(screen.getByText('音声処理が停止中です')).toBeInTheDocument();
@@ -212,4 +214,18 @@ it('接続チェックの原文は詳細へ置き、手動確認の案内を残�
     expect(screen.getByText(/^直し方: 手動確認/)).toBeVisible();
     fireEvent.click(raw.closest('details')!.querySelector('summary')!);
     expect(raw).toBeVisible();
+});
+
+
+it.each(['ja', 'en'] as const)('診断は入口と同じ題名で、セットアップ共通の用途と説明を順に表示する（%s）', locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />
+    </LocaleProvider>);
+    expect(screen.getByRole('dialog', { name: message(locale, 'header.noSound') })).toBeInTheDocument();
+    const choices = destinationChoices.map(({ label, hint }) => {
+        const button = screen.getByText(message(locale, label), { exact: true }).closest('button')!;
+        expect(button).toHaveTextContent(message(locale, hint));
+        return button;
+    });
+    expect(choices.slice(0, -1).every((node, index) => Boolean(node.compareDocumentPosition(choices[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
 });

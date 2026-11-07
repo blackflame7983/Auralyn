@@ -317,3 +317,12 @@ it.each([
         vi.useRealTimers();
     }
 });
+
+it.each(['ready', 'pending', 'muted', 'failed'] as const)('開いた音声チェックには、状態に関係なくセットアップの再開入口がある（%s、#420）', availability => {
+    const model = fixture(); model.observation.availability = availability;
+    const onSetup = vi.fn();
+    render(<PreparationPanel model={model} {...callbacks()} onSetup={onSetup} />);
+    if (screen.getByRole('button', { name: message('ja', 'prep.steps') }).getAttribute('aria-expanded') !== 'true') expand();
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'header.setupOpen') }));
+    expect(onSetup).toHaveBeenCalledOnce();
+});

@@ -8,18 +8,18 @@ it.each(['partial', 'failed', 'cancelled', 'retained'] as const)('保護中の%s
     render(<SessionRecoveryNotice {...props} status={status} />);
     expect(screen.getByRole('region', { name: 'VST保存済み構成の保護' })).toBeVisible();
     expect(screen.getByText(/保存済み構成を保護中/)).toBeVisible();
-    fireEvent.click(screen.getByText('保存済み構成から読み直す'));
+    fireEvent.click(screen.getByText('保存済みの並びを読み直す', { selector: 'summary' }));
     expect(screen.getByText(/再試行すると/)).toBeVisible();
     expect(screen.getByText(/再試行すると/)).toHaveTextContent('現在のラックのVSTを外して');
     expect(screen.getByText(/再試行すると/)).toHaveTextContent('未保存の調整は引き継ぎません');
-    expect(screen.getByRole('button', { name: '保存済み構成から復元を再試行' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '保存済みの並びを読み直す' })).toBeEnabled();
     if (status === 'partial') expect(screen.getByRole('heading')).toHaveTextContent('一部');
     if (status === 'failed') expect(screen.getByRole('heading')).toHaveTextContent('失敗');
 });
 it('処理中は再試行を無効にし、処理を呼び出さない', () => {
     const retry = vi.fn();
     render(<SessionRecoveryNotice {...props} busy onRetry={retry} />);
-    fireEvent.click(screen.getByRole('button', { name: '保存済み構成から復元を再試行' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存済みの並びを読み直す' }));
     expect(screen.getByRole('button')).toBeDisabled();
     expect(screen.getByRole('status')).toHaveTextContent('処理中');
     expect(retry).not.toHaveBeenCalled();
@@ -28,8 +28,8 @@ it('明示的な再試行操作だけをcallbackへ委譲する', () => {
     const retry = vi.fn();
     render(<SessionRecoveryNotice {...props} onRetry={retry} />);
     expect(retry).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('保存済み構成から読み直す'));
-    fireEvent.click(screen.getByRole('button', { name: '保存済み構成から復元を再試行' }));
+    fireEvent.click(screen.getByText('保存済みの並びを読み直す', { selector: 'summary' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存済みの並びを読み直す' }));
     expect(retry).toHaveBeenCalledOnce();
 });
 it('復元待機中や保護解除後には警告を残さない', () => {
@@ -41,7 +41,7 @@ it('復元待機中や保護解除後には警告を残さない', () => {
 it('読み込めていないVSTの名前を先に示し、4件目以降は件数にまとめ、再試行で直らない場合を説明する', () => {
     render(<SessionRecoveryNotice {...props} status="failed" unrestored={['Ozone 12 Equalizer', 'B', 'C', 'D', 'E']} />);
     expect(screen.getByRole('region', { name: 'VST保存済み構成の保護' })).toHaveTextContent('読み込めていないVST：Ozone 12 Equalizer、B、C ほか2件');
-    fireEvent.click(screen.getByText('保存済み構成から読み直す'));
+    fireEvent.click(screen.getByText('保存済みの並びを読み直す', { selector: 'summary' }));
     expect(screen.getByText(/アンインストール・移動したVST/)).toBeVisible();
 });
 it('読み込めていないVSTがなければ名前と補足を出さない', () => {
@@ -54,7 +54,7 @@ it('不在確認後に名前とバックアップの影響を示し、別の明�
     const check = vi.fn().mockResolvedValue(undefined);
     const save = vi.fn().mockResolvedValue(undefined);
     const view = render(<SessionRecoveryNotice {...props} onCheckMissing={check} onSaveWithoutMissing={save} />);
-    fireEvent.click(screen.getByText('保存済み構成から読み直す'));
+    fireEvent.click(screen.getByText('保存済みの並びを読み直す', { selector: 'summary' }));
     fireEvent.click(screen.getByRole('button', { name: '見つからないVSTを確認' }));
     expect(check).toHaveBeenCalledOnce();
     expect(save).not.toHaveBeenCalled();

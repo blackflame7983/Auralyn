@@ -53,7 +53,7 @@ it.each([OBSGuideModal, DiscordGuideModal])('ガイド読了を到達成功と�
     expect(screen.getByRole('status')).toHaveTextContent('受け側への音声到達は未確認');
     expect(screen.queryByText('セットアップ完了！')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '案内を閉じる' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '接続診断を開く' }));
+    fireEvent.click(screen.getByRole('button', { name: '音のトラブルを診断' }));
     expect(onOpenTroubleshoot).toHaveBeenCalledOnce();
 });
 

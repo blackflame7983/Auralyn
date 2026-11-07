@@ -1,6 +1,7 @@
+import { destinationChoices } from '@/lib/destinationChoices';
 import { ErrorDetails } from '@/components/ui/ErrorDetails';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
-import { message as formatMessage, type MessageKey } from '@/i18n/messages';
+import { message as formatMessage } from '@/i18n/messages';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
@@ -42,12 +43,10 @@ interface DiagnosticItem {
     action?: { label: SettingsNotice; onClick: () => void };
 }
 
-const PURPOSE_OPTIONS: { id: Purpose; label: MessageKey; hint: MessageKey }[] = [
-    { id: 'discord', label: 'guide.copy.301', hint: 'guide.copy.302' },
-    { id: 'obs', label: 'guide.copy.303', hint: 'guide.copy.304' },
-    { id: 'other', label: 'guide.copy.305', hint: 'guide.copy.306' },
-    { id: 'listen', label: 'guide.copy.307', hint: 'guide.copy.308' },
-];
+// 用途の表示はセットアップと共有し、診断内部の listen だけ変換する。
+const PURPOSE_OPTIONS = destinationChoices.map(({ value, label, hint }) => ({
+    id: (value === 'listening' ? 'listen' : value) as Purpose, label, hint,
+}));
 
 // セットアップや前回の診断で選んだ用途。同じ質問を繰り返さず、初期値にする。
 const savedPurpose = (): Purpose | null => {
