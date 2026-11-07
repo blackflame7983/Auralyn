@@ -26,7 +26,9 @@ for (const locale of ['ja', 'en'] as const) for (const missing of [false, true])
                 }
             };
         }, { locale, missing });
-        await page.goto('/'); const rack = page.locator('#vst-panel-toggle');
+        await page.goto('/');
+        if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
+        const rack = page.locator('#vst-panel-toggle');
         if (await rack.getAttribute('aria-expanded') !== 'true') await rack.click();
         await page.getByRole('button', { name: message(locale, 'rack.manageProfiles'), exact: true }).click();
         await page.getByRole('button', { name: message(locale, 'presets.copy.058'), exact: true }).click();

@@ -201,10 +201,16 @@ test.describe('ホームと設定の共通操作', () => {
             ...names.slice(2).map(name => page.locator('#home-builtin').getByRole('button', { name, exact: true }))];
         const dimensions = async (button: typeof home[number]) => button.evaluate(node => {
             const style = getComputedStyle(node);
-            return { height: node.getBoundingClientRect().height, padding: style.padding, minWidth: style.minWidth };
+            // 位置によって 0.00003px のような画素未満の誤差が出るため、高さは 0.1px 単位で比べる。
+            return { height: Math.round(node.getBoundingClientRect().height * 10) / 10, padding: style.padding, minWidth: style.minWidth };
         });
-        for (const button of home) await expect(button).toBeVisible();
-        const sizes = await Promise.all(home.map(dimensions));
+        const sizes = [];
+        for (let i = 0; i < home.length; i++) {
+            const trigger = page.locator('.sound-tool-list > li > div > button').nth(i < 2 ? 0 : 1);
+            if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click();
+            await expect(home[i]).toBeVisible();
+            sizes.push(await dimensions(home[i]));
+        }
         await page.getByRole('button', { name: '設定を開く', exact: true }).click();
         const dialog = page.getByRole('dialog', { name: '設定', exact: true });
         await dialog.getByRole('tab', { name: '音づくり', exact: true }).click();

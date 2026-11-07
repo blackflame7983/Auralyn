@@ -14,6 +14,7 @@ for (const width of [1200, 1600, 1920, 2560]) {
     test(`ホームとVSTを隣接させ開閉後も主要操作を保つ ${width}`, async ({ page }, testInfo) => {
         await page.setViewportSize({ width, height: 768 });
         await page.goto('/');
+        if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
         const toggle = page.locator('#vst-panel-toggle');
         const panel = page.locator('#vst-panel');
         await toggle.click();
@@ -55,6 +56,7 @@ test('最小画面の目盛りは重ならず、一時非表示の理由を伝�
     const marks = await meter.locator('.leading-4').evaluateAll(nodes => nodes.filter(node => node.parentElement?.classList.contains('font-mono')).map(node => ({ top: node.getBoundingClientRect().top, bottom: node.getBoundingClientRect().bottom })));
     expect(marks.length).toBeGreaterThanOrEqual(3);
     for (let i = 1; i < marks.length; i++) expect(marks[i].top - marks[i - 1].bottom).toBeGreaterThanOrEqual(3);
+    if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
     await page.locator('#vst-panel-toggle').click();
     await expect(meter).toBeHidden();
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
@@ -72,6 +74,7 @@ test('動きを減らす設定でも広い画面のホームとパネルが隣�
     await page.setViewportSize({ width: 2560, height: 1369 });
     await page.goto('/');
     await page.locator('#large-meter-toggle').click();
+    if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
     await page.locator('#vst-panel-toggle').click();
     await expect(page.locator('.large-meter-motion')).toHaveAttribute('data-horizontal', 'true');
     const home = (await page.locator('.home-content').boundingBox())!, panel = (await page.locator('#vst-panel').boundingBox())!;

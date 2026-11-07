@@ -38,8 +38,8 @@ it.each(['ja', 'en'] as const)('本番帯に入力メーター・送り先・歌
     expect(strip).toHaveTextContent(message(locale, 'live.destination'));
     expect(strip).toHaveTextContent(`${message(locale, 'prep.call')} · CABLE Output`);
     expect(within(strip).getByRole('button', { name: 'mode' })).toBeInTheDocument();
-    // 入力機器名は音声チェックの「入力」に任せる。
-    expect(within(strip).queryByText('Mic')).toBeNull();
+    // 各列に機器名を出し、同じ名前を繰り返さない。
+    expect(within(strip).getAllByText('Mic')).toHaveLength(1);
     // マイク音量はメーター横から合わせる。
     expect(within(strip).getByRole('button', { name: new RegExp(`^${message(locale, 'header.inputGain')} \\d+%$`) })).toBeInTheDocument();
 });
@@ -74,6 +74,7 @@ it('音楽鑑賞では音楽向けのメーター名にする', () => {
     localStorage.setItem('auralyn_display_purpose', 'music');
     render(<LiveStrip model={fixture()} running />);
     expect(screen.getByRole('meter', { name: message('ja', 'wizard.musicLevel') })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: message('ja', 'purpose.music') })).toBeVisible();
 });
 
 it('入力が無音のときは dBFS 値だけにせず「無音」と言葉で示す', () => {
@@ -129,4 +130,35 @@ it('他の窓で変えた値は保存先から読み直す', () => {
     localStorage.setItem('vst_host_aurora_display', 'true');
     act(() => { window.dispatchEvent(new StorageEvent('storage', { key: 'vst_host_aurora_display' })); });
     expect(container.querySelector('.live-aurora')).toHaveAttribute('data-lit', 'true');
+});
+
+it.each(['ja', 'en'] as const)('舞台は状態・現在のモード・既存操作の順で、停止時の開始条件も保つ (%s)', locale => {
+    const start = vi.fn();
+    const view = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running={false} onStartAudio={start} liveModeName={message(locale, 'liveBar.singing')} liveControls={<button>mode</button>} /></LocaleProvider>);
+    const heading = screen.getByRole('heading', { name: message(locale, 'liveBar.singing') });
+    expect(heading.parentElement).toHaveTextContent(message(locale, 'shell.stopped'));
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'home.startAudio') }));
+    expect(start).toHaveBeenCalledOnce();
+    view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running onStartAudio={start} liveControls={<button>mode</button>} /></LocaleProvider>);
+    expect(screen.getByRole('heading', { name: message(locale, 'liveBar.custom') })).toBeVisible();
+    expect(screen.queryByRole('button', { name: message(locale, 'home.startAudio') })).toBeNull();
+});
+
+
+it.each(['ja', 'en'] as const)('次の1歩の主操作は舞台の中央に置き、条件と操作を保つ (%s)', locale => {
+    const model = fixture(); model.context.usage = '';
+    const choose = vi.fn(); const start = vi.fn();
+    const content = (running: boolean) => <LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <LiveStrip model={model} running={running} onChooseDestination={choose} onStartAudio={start} />
+    </LocaleProvider>;
+    const view = render(content(true));
+    const button = screen.getByRole('button', { name: message(locale, 'home.chooseDestination') });
+    expect(button.closest('.live-stage-copy')).not.toBeNull();
+    expect(view.container.querySelector('[data-live-routing] button:not([tabindex="-1"])')).toBeNull();
+    fireEvent.click(button); expect(choose).toHaveBeenCalledOnce();
+    view.rerender(content(false));
+    expect(screen.queryByRole('button', { name: message(locale, 'home.chooseDestination') })).not.toBeInTheDocument();
+    const startButton = screen.getByRole('button', { name: message(locale, 'home.startAudio') });
+    expect(startButton.closest('.live-stage-copy')).not.toBeNull();
+    fireEvent.click(startButton); expect(start).toHaveBeenCalledOnce();
 });

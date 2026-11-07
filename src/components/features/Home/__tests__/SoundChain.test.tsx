@@ -25,14 +25,20 @@ const stats = (): EngineRuntimeStats => ({ queueDiagnostics: { state: 'running',
     },
 } } as unknown as EngineRuntimeStats);
 
-it('一部のVST状態だけが不明でも声の操作を禁止と案内せず、設定へ進める', () => {
+it('一部のVST状態だけが不明でも声の操作を禁止と案内せず、設定へ進める', async () => {
     const current = stats(); current.latencyMetadata!.stageBreakdown!.vst[0].state = 'unavailable';
     const p = props(); const settings = vi.fn();
     render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} audioReady onOpenSoundSettings={settings} /></RuntimeStatsContext.Provider>);
-    expect(screen.getByText(message('ja', 'home.checkUnavailable'))).toBeVisible();
+    const hint = screen.getByText(message('ja', 'home.checkUnavailable'));
+    expect(hint.closest('.sound-tool-panel')).toHaveAttribute('aria-hidden', 'true');
+    fireEvent.click(screen.getByRole('button', { name: /^VST / }));
+    expect(hint.closest('.sound-tool-panel')).toHaveAttribute('aria-hidden', 'false');
+    expect(screen.getAllByText(message('ja', 'home.checkUnavailable'))).toHaveLength(1);
     expect(screen.queryByText(message('ja', 'home.voiceUnavailable'))).not.toBeInTheDocument();
     expect(screen.getByText('noise-switch')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: message('ja', 'home.moreSound') }));
+    const more = screen.getByRole('button', { name: 'その他の操作' });
+    fireEvent.pointerDown(more, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: message('ja', 'home.moreSound') }));
     expect(settings).toHaveBeenCalledOnce();
 });
 const model = (): PreparationModel => ({ context: { ...context, usage: 'obs' }, observation: buildPreparationObservation(audioState, runtime(), liveStatus, context), records: {}, checking: false, confirming: false,
@@ -52,6 +58,7 @@ it('外部 VST を使っていないと確認できたら薄い1行と追加の�
     expect(screen.queryByRole('button', { name: 'VST を編集' })).not.toBeInTheDocument();
     const hint = message('ja', 'chain.vstEmptyHint');
     expect(screen.queryByText(hint)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^外部 VST / }));
     fireEvent.click(screen.getByRole('button', { name: '外部 VST' }));
     expect(screen.getByRole('dialog', { name: '外部 VST' })).toHaveTextContent(hint);
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
@@ -86,6 +93,7 @@ it.each(['ja', 'en'] as const)('声の処理を音の流れの順に行カード
 
 it('内蔵ボイスチェーンの意味を見出し横の情報ボタンから確認できる', () => {
     render(<SoundChain {...props()} />);
+    fireEvent.click(screen.getByRole('button', { name: /声を整える.*状態/ }));
     const description = message('ja', 'settings.AudioSettingsModal.096');
     expect(screen.queryByText(description)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'settings.builtinHelp') }));
@@ -145,6 +153,7 @@ it('VST の行から右パネルの VST 構成を開き、見出しから聴き�
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...p} audioReady vst={<span>vst-items</span>} /></RuntimeStatsContext.Provider>);
     // 機器名は本番帯に出すので、声の処理には入力・出力の段を置かない。
     expect(screen.queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^VST / }));
     fireEvent.click(screen.getByRole('button', { name: 'VST を編集' })); expect(p.onOpenVst).toHaveBeenCalledOnce();
     expect(screen.getAllByRole('listitem')[2]).toHaveTextContent('vst-items');
     fireEvent.click(screen.getByRole('button', { name: 'ボイスチェック' })); expect(p.onListen).toHaveBeenCalledOnce();
@@ -194,4 +203,38 @@ it('保存済みのVSTを読み込めていない空の段は「未追加」と�
     const row = screen.getAllByRole('listitem')[2];
     expect(row).toHaveTextContent('読み込めていないVST：Ozone 12 Equalizer');
     expect(row).not.toHaveTextContent(message('ja', 'flow.noVst'));
+});
+
+it('項目は1つだけ開き、Escapeで閉じて項目にフォーカスを戻す', () => {
+    const expanded = vi.fn();
+    render(<SoundChain {...props()} audioReady onExpandedChange={expanded} />);
+    const triggers = screen.getAllByRole('button', { expanded: false }).filter(button => button.hasAttribute('aria-controls') && button.closest('ol'));
+    expect(triggers).toHaveLength(3);
+    fireEvent.click(triggers[0]);
+    expect(triggers[0]).toHaveAttribute('aria-expanded', 'true');
+    expect(expanded).toHaveBeenLastCalledWith(true);
+    fireEvent.click(triggers[1]);
+    expect(triggers[0]).toHaveAttribute('aria-expanded', 'false');
+    const panel = document.getElementById(triggers[1].getAttribute('aria-controls')!)!;
+    fireEvent.keyDown(panel, { key: 'Escape' });
+    expect(triggers[1]).toHaveFocus();
+    expect(triggers[1]).toHaveAttribute('aria-expanded', 'false');
+    expect(expanded).toHaveBeenLastCalledWith(false);
+});
+
+
+it.each(['ja', 'en'] as const)('停止中は3項目を中立の停止表示にし、取得警告を出さない (%s)', locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><RuntimeStatsContext.Provider value={{ stats: null, running: false }}>
+        <SoundChain {...props()} stopped audioReady isEngineRunning={false} />
+    </RuntimeStatsContext.Provider></LocaleProvider>);
+    const chain = screen.getByRole('list');
+    const buttons = within(chain).getAllByRole('button');
+    expect(buttons).toHaveLength(3);
+    for (const button of buttons) {
+        expect(button).toHaveTextContent(message(locale, 'shell.stopped'));
+        expect(button.querySelector('[data-tone]')).toHaveAttribute('data-tone', 'off');
+    }
+    expect(screen.queryByText(message(locale, 'flow.unknown'))).not.toBeInTheDocument();
+    expect(screen.queryByText(message(locale, 'home.checkUnavailable'))).not.toBeInTheDocument();
+    expect(chain.querySelector('[data-tone="warn"]')).toBeNull();
 });

@@ -1,4 +1,4 @@
-import { RouteSummary } from './RouteSummary';
+import { RouteSummary, RouteLine } from './RouteSummary';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { PreparationPanel, availabilityLabels } from './PreparationPanel';
@@ -50,17 +50,18 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
     return <div className="mb-4 space-y-4">
         <PreparationPanel diagnosticAttention={diagnosticAttention} stoppedInStrip={stoppedInStrip} homeActionInStrip={homeActionInStrip} destinationRequest={destinationRequest} model={model} audioReady={audioReady} onSettings={onOpenSettings} onSetup={onSetup} onExpandedChange={onExpandedChange} onCheckOutput={onCheckOutput} onSound={onOpenSoundSettings ?? onOpenSettings}
             onListen={onListen} onObs={onOpenOBSGuide ?? onOpenOBSSettings} onCall={onOpenDiscordGuide ?? onOpenSettings} onTroubleshoot={onOpenTroubleshoot ?? onOpenSettings} statusText={statusText}
-            devices={actualInput || actualOutput ? `${actualInput ? deviceDisplayName(actualInput) : t('master.unset')} → ${actualOutput ? deviceDisplayName(actualOutput) : t('master.unset')}` : undefined}
-            signalSummary={<section aria-label={t('prep.signalPath')} className="space-y-2">
-            <AudioFlow label={t('flow.diagram')} unknownLabel={t('master.unset')} inputKind={music ? 'playback' : 'microphone'} processingWarning={model.observation.availability === 'failed' ? t('prep.failed') : undefined}
+            devices={<RouteLine output={actualOutput} broadcastName={broadcastName} split={Boolean(broadcastId || model.observation.routing?.splitProcessing)} local={music || model.context.usage === 'listening'} receiver={model.context.usage ? t(({ obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' } as const)[model.context.usage]) : t('flow.receiverUnknown')} />}
+            signalSummary={<section aria-label={t('prep.signalPath')} className="contents">
+            <div className="basis-full"><AudioFlow label={t('flow.diagram')} unknownLabel={t('master.unset')} inputKind={music ? 'playback' : 'microphone'} processingWarning={model.observation.availability === 'failed' ? t('prep.failed') : undefined}
                 input={{ label: t(music ? 'music.source' : 'home.input'), value: actualInput ? deviceDisplayName(actualInput) : undefined, warning: !actualInput ? t('flow.checkInput') : undefined }}
                 output={{ label: t(broadcastId ? 'flow.monitorOutput' : 'home.output'), value: actualOutput ? deviceDisplayName(actualOutput) : undefined, warning: !actualOutput ? t('flow.checkOutput') : undefined }}
                 branches={broadcastId ? [{ label: t('flow.broadcastOutput'), value: broadcastName ?? t('flow.unknown') }] : undefined}
                 receiver={{ label: t(music && !broadcastId ? 'prep.localReceiver' : 'live.destination'), value: music ? broadcastId ? t('flow.receiverUnknown') : t('prep.local') : model.context.usage ? t(({ obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' } as const)[model.context.usage]) : undefined,
-                    warning: !music && model.context.usage !== 'listening' && confirmationState(model.records, 'receiver') !== 'confirmed' ? t('flow.receiverUnknown') : undefined }} />
+                    warning: !music && model.context.usage !== 'listening' && confirmationState(model.records, 'receiver') !== 'confirmed' ? t('flow.receiverUnknown') : undefined }} /></div>
             {!homeActionInStrip && <p role="status" className="text-sm text-muted-foreground">{statusText ?? t(availabilityLabels[model.observation.availability])}</p>}
             {(music || configured && !configureIsPrimary) && <button type="button" onClick={onOpenSettings} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('home.changeDevices')}</button>}
+            {model.observation.routing && (model.observation.routing.deviceId || model.observation.routing.splitProcessing) && !['unknown', 'stopped', 'unconfigured', 'failed', 'pending'].includes(model.observation.availability) && <div className="basis-full"><RouteSummary routing={model.observation.routing} output={actualOutput} onSettings={onOpenSettings} resolvedName={broadcastName ?? null} /></div>}
         </section>} />
-        {model.observation.routing && (model.observation.routing.deviceId || model.observation.routing.splitProcessing) && !['unknown', 'stopped', 'unconfigured', 'failed', 'pending'].includes(model.observation.availability) && <RouteSummary routing={model.observation.routing} output={actualOutput} onSettings={onOpenSettings} resolvedName={broadcastName ?? null} />}
+
     </div>;
 }

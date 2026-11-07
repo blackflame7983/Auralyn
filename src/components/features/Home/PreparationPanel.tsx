@@ -92,6 +92,7 @@ export function PreparationPanel({ diagnosticAttention = false, stoppedInStrip =
     const next = nextPreparationStage(observation, records, context);
     const receiver = () => context.usage === 'obs' ? onObs() : context.usage === 'discord' ? onCall() : context.usage === 'listening' ? onListen() : onTroubleshoot();
     const needsTarget = next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim();
+    const routeNeedsTarget = !context.usage || context.usage !== 'listening' && !context.receiver.trim();
     const mutedOutput = observation.availability === 'muted' && Boolean(onCheckOutput);
     const action = mutedOutput ? (event: MouseEvent<HTMLButtonElement>) => onCheckOutput!(event.currentTarget) :needsTarget ? () => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); } : next === 'connect' ? observation.availability === 'unknown' || observation.availability === 'pending' ? () => { void refreshManually(); } : onSettings
         : next === 'sound' ? onSound : next === 'listen' ? onListen : receiver;
@@ -112,17 +113,24 @@ export function PreparationPanel({ diagnosticAttention = false, stoppedInStrip =
     return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'rounded-xl border border-border bg-card gaming:bg-card/70 p-4' : 'px-1 py-0.5')}>
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-1">
-                <h2 className="shrink-0 text-ui-heading font-semibold">{t('prep.title')}</h2>
-                <InfoPopover label={t('prep.scopeInfo')}>{t('prep.localOnly')}</InfoPopover>
+                <h2 className={cn("shrink-0 text-ui-heading font-semibold", !open && "sr-only")}>{t('prep.title')}</h2>
+                {open && <InfoPopover label={t('prep.scopeInfo')}>{t('prep.localOnly')}</InfoPopover>}
                 {/* 畳んでいる間は、入力・処理・出力の要約の代わりに状態の点1つと機器名で示す。 */}
                 {/* 開いているときは要約の「音声処理」が状態を読み上げるので、role="status" はどちらか一方だけにする。 */}
-                {!open && <span role="status" className="ml-2 flex min-w-0 items-center gap-2 text-xs">
+                {!open && <span role="status" className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
                     {!homeActionInStrip && <StatusDot tone={availabilityTones[observation.availability]} className="shrink-0 font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>}
-                    {devices && <span className="min-w-0 truncate text-muted-foreground">{devices}</span>}
+                    {devices && <span className="min-w-0 text-muted-foreground">{devices}</span>}
                 </span>}
             </div>
             <div className="flex flex-wrap items-center gap-2">
                 {/* unknown は起動・読込・窓の復帰で一時的に出るため、muted は利用者の意図した状態のため強調しない。 */}
+                {/* 送り先が未選択のときは本番帯の「送り先を選ぶ」が同じ入口なので、ここには出さない（DESIGN.md 2.2）。 */}
+                {!open && !music && context.usage && confirmationState(records, 'receiver') !== 'confirmed' && <button type="button" disabled={!audioReady} onClick={() => {
+                    if (routeNeedsTarget) {
+                        setUserOpen(true);
+                        requestAnimationFrame(() => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); });
+                    } else receiver();
+                }} className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-50">{t(routeNeedsTarget ? 'prep.targetAction' : 'prep.checkReceiver')}</button>}
                 <TroubleshootEntry running={audioReady} music={purpose === 'music'} attention={diagnosticAttention || observation.availability === 'failed'} onOpen={onTroubleshoot} />
                 <span role="status" className="text-sm text-muted-foreground">{showChecking ? t('prep.checking') : next === 'done' ? t('prep.sessionChecked') : ''}</span>
                 <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={stepsId} onClick={() => setUserOpen(!open)}
@@ -134,13 +142,16 @@ export function PreparationPanel({ diagnosticAttention = false, stoppedInStrip =
         {open && !music && context.location === 'venue' && <p className="text-xs text-warning">{t('prep.venueWarning')}</p>}
         {open && !music && context.signal === 'mixed' && <p className="text-xs text-muted-foreground">{t('prep.mixedWarning')}</p>}
         {open && <div id={stepsId} className="space-y-3" onFocusCapture={() => setUserOpen(old => old ?? true)}>
+        <div className="flex flex-wrap items-center gap-2">
         {signalSummary}
         {/* 中断したセットアップの再開先として案内しているので（wizard.interruptHint、#420）、開いた音声チェックには状態に関係なく置く。 */}
         {onSetup && <button type="button" onClick={onSetup} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('header.setupOpen')}</button>}
+        {!music && next !== 'done' && next !== 'purpose' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
+            className={cn("rounded-md px-3 py-2 text-sm font-semibold disabled:opacity-50", homeActionInStrip ? "border border-border hover:bg-muted" : "bg-primary text-primary-foreground")}>{t(homeActionInStrip && !audioReady ? 'home.changeDevices' : actionLabel)}</button>}
+        </div>
         {music ? <button type="button" disabled={!audioReady} onClick={onListen} className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50">{t('wizard.musicListen')}</button> : <>
         <div className="space-y-1 text-sm"><p id={`${stepsId}-usage`}>{t('prep.usage')}</p>{usagePicker}</div>
-        {next !== 'done' && next !== 'purpose' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
-            className={cn("rounded-md px-3 py-2 text-sm font-semibold disabled:opacity-50", homeActionInStrip ? "border border-border hover:bg-muted" : "bg-primary text-primary-foreground")}>{t(homeActionInStrip && !audioReady ? 'home.changeDevices' : actionLabel)}</button>}
+
         {(next === 'sound' || next === 'listen' || next === 'receiver') && <label key={next} className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={false} disabled={pending || observation.availability !== 'ready' || (next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim())}
                 onChange={e => {

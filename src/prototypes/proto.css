@@ -14,6 +14,7 @@
   transition: transform var(--motion-base) var(--ease-in-out);
 }
 
+.proto-segment[data-empty] .proto-segment-thumb { opacity: 0; }
 .proto-switch-knob { transition: transform var(--motion-fast) var(--ease-out); }
 .proto-switch-knob[data-on="true"] { transform: translateX(20px); background: hsl(var(--primary-foreground)); }
 
@@ -112,6 +113,39 @@
 @keyframes proto-takeover { from { opacity: 0; transform: translateY(12px); } }
 .proto-fullsetup { animation: proto-takeover var(--motion-panel) var(--ease-out) both; }
 
+/* 案D の本番帯：高さは窓の高さに合わせ、960×640 では操作を押し出さない。光は奥にだけ置き、文字の下は暗く保つ。 */
+/* 余った高さを本番帯へ配分する（DESIGN.md の「余った高さを本番帯へ」に合わせる）。460px はヘッダー・声とオケ・音調整・フッター・試作バーの合計。 */
+.proto-d-stage { height: clamp(10rem, calc(100vh - 460px), 20rem); transition: height var(--motion-panel) var(--ease-drawer); }
+/* 状態・プリセット名・調整中・切替の4行が収まる高さ（10.5rem）。 */
+.proto-d-stage[data-compact="true"] { height: 10.5rem; }
+.proto-d-mode { font-size: clamp(2rem, 6vh, 3.25rem); transition: font-size var(--motion-panel) var(--ease-drawer); }
+.proto-d-stage[data-compact="true"] .proto-d-mode { font-size: 1.75rem; }
+.proto-d-aurora {
+  /* 線の下に、本体の本番帯と同じ組み合わせの淡い光を敷く（ぼかしフィルターは使わない）。 */
+  background:
+    radial-gradient(55% 90% at 30% 85%, hsl(var(--aurora-green) / calc(0.42 * var(--aurora-strength))), transparent 70%),
+    radial-gradient(50% 80% at 72% 75%, hsl(var(--aurora-teal) / calc(0.38 * var(--aurora-strength))), transparent 70%),
+    radial-gradient(40% 45% at 55% 0%, hsl(var(--aurora-rose) / calc(0.2 * var(--aurora-strength))), transparent 70%);
+  opacity: calc(0.8 + var(--aurora-energy, 0) * 0.2);
+  transition: opacity var(--motion-aurora) var(--ease-out);
+  /* 文字の帯（上から 20〜55%）だけを少し抑え、光は上端と下半分に出す。 */
+  -webkit-mask-image: linear-gradient(180deg, rgb(0 0 0 / 0.9) 0%, rgb(0 0 0 / 0.5) 38%, rgb(0 0 0 / 1) 70%);
+  mask-image: linear-gradient(180deg, rgb(0 0 0 / 0.9) 0%, rgb(0 0 0 / 0.5) 38%, rgb(0 0 0 / 1) 70%);
+}
+.proto-d-stage[data-running="false"] .proto-d-aurora { opacity: 0.2; }
+@keyframes proto-d-drift { from { transform: translateX(-2.5%); } to { transform: translateX(2.5%); } }
+.proto-d-ribbon { animation: proto-d-drift 18s var(--ease-in-out) infinite alternate; transform-box: view-box; }
+.proto-d-stage[data-running="false"] .proto-d-ribbon { animation-play-state: paused; }
+/* ライトでは光を控えめにし、ゲーミングでは本体と同じく出さない。 */
+:root:not(.dark) .proto-d-aurora { opacity: calc(0.35 + var(--aurora-energy, 0) * 0.25); }
+.gaming .proto-d-aurora { display: none; }
+@keyframes proto-d-menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+.proto-d-menu { animation: proto-d-menu-in var(--motion-fast) var(--ease-out) both; transform-origin: top center; }
+[data-proto-reduced] .proto-d-menu { animation-name: proto-fade; }
+.proto-d-tool { transition: background-color var(--motion-fast) var(--ease-out); }
+.proto-d-tool:hover, .proto-d-tool[data-open="true"] { background: hsl(var(--accent)); }
+.proto-d-tool[data-open="true"] { box-shadow: inset 0 -2px 0 hsl(var(--primary)); }
+
 /* 動きを減らす：移動・拡大をやめ、不透明度と色だけ残す。繰り返す動きは止める。 */
 /* OS の「動きを減らす」は PrototypeLab が初期値として data-proto-reduced に写す。 */
 [data-proto-reduced] .proto-segment-thumb { transition-property: none; }
@@ -120,3 +154,5 @@
 [data-proto-reduced] .proto-choice:active, [data-proto-reduced] .proto-primary:active, [data-proto-reduced] .proto-tile-cta:active { transform: none; }
 [data-proto-reduced] .proto-primary-arrow, [data-proto-reduced] .proto-choice-check, [data-proto-reduced] .proto-rail-thumb, [data-proto-reduced] .proto-switch-knob { transition-property: opacity, background-color, color; }
 [data-proto-reduced] .proto-collapse { transition: none; }
+[data-proto-reduced] .proto-d-ribbon { animation: none; }
+[data-proto-reduced] .proto-d-stage, [data-proto-reduced] .proto-d-mode { transition: none; }

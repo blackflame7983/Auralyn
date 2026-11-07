@@ -63,11 +63,12 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
         if (size.width === 1280) {
             // 配置が落ち着く前（区画が滑って移る途中）の位置で比べない。
             await settleLayoutMotion(page);
-            expect((await live.getByRole('meter').first().boundingBox())!.height).toBeGreaterThanOrEqual(64);
-            const bars = await live.getByRole('meter').evaluateAll(nodes => nodes.map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right }; }));
+            expect((await live.getByRole('meter').first().boundingBox())!.height).toBe(18);
+            expect((await live.locator('.live-stage').boundingBox())!.height).toBeGreaterThanOrEqual(160);
+            const bars = await live.getByRole('meter').evaluateAll(nodes => nodes.map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top }; }));
             expect(bars).toHaveLength(2);
-            expect(Math.abs(bars[0].left - bars[1].left)).toBeLessThanOrEqual(1);
-            expect(Math.abs(bars[0].right - bars[1].right)).toBeLessThanOrEqual(1);
+            expect(Math.abs(bars[0].top - bars[1].top)).toBeLessThanOrEqual(1);
+            expect(bars[0].right).toBeLessThan(bars[1].left);
             const distances = await live.locator('[data-meter-status]').evaluateAll(nodes => nodes.map(el => el.getBoundingClientRect().left - el.previousElementSibling!.getBoundingClientRect().right));
             expect(distances.every(distance => distance >= 0 && distance <= 8)).toBe(true);
             const box = await live.boundingBox(); expect(box!.height).toBeGreaterThan(250);
@@ -139,6 +140,7 @@ for (const theme of ['light', 'dark', 'gaming']) test(`設定の階層と明示�
 
 test('選択背景が確定値へ移動し、ミュート押下と動きを減らす設定を守る', async ({ page }, info) => {
     await page.setViewportSize({ width: 1280, height: 800 }); await prepare(page);
+    await page.locator('.sound-tool-list > li > div > button').first().click();
     const noise = page.getByRole('group', { name: message('ja', 'structure.noise.standard') });
     const indicator = noise.locator('[data-segment-indicator]');
     await expect(noise.getByRole('button', { name: message('ja', 'master.nrLow'), exact: true })).toHaveAttribute('aria-pressed', 'true');

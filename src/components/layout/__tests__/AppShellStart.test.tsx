@@ -172,26 +172,26 @@ it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
         <AppShell {...commonProps}><p>rack</p></AppShell>
     </LocaleProvider>);
-    const compare = screen.getByRole('button', { name: message(locale, 'header.compare') });
+    const compare = screen.getByRole('switch', { name: message(locale, 'header.compare') });
     expect(compare.closest('footer')).not.toBeNull();
     expect(compare).toHaveClass('text-ui-control', 'py-1');
     expect(compare).not.toHaveClass('font-mono', 'text-xs');
-    expect(compare).toHaveAttribute('aria-pressed', 'false');
+    expect(compare).toHaveAttribute('aria-checked', 'false');
     await act(async () => fireEvent.click(compare));
     expect(compare).not.toHaveClass('animate-pulse');
     expect(bypass).toHaveBeenCalledWith(true);
-    expect(compare).toHaveAttribute('aria-pressed', 'true');
+    expect(compare).toHaveAttribute('aria-checked', 'true');
     expect(compare).toHaveAccessibleDescription(message(locale, 'header.vstOff'));
     await act(async () => fireEvent.click(compare));
     expect(bypass).toHaveBeenLastCalledWith(false);
-    expect(compare).toHaveAttribute('aria-pressed', 'false');
+    expect(compare).toHaveAttribute('aria-checked', 'false');
     const callbacks = vi.mocked(listen).mock.calls.filter(([event]) => event === 'global-bypass-changed').map(([, cb]) => cb);
     act(() => callbacks.forEach(cb => cb({ event: 'global-bypass-changed', id: 1, payload: true })));
-    expect(compare).toHaveAttribute('aria-pressed', 'true');
+    expect(compare).toHaveAttribute('aria-checked', 'true');
     bypass.mockRejectedValueOnce(new Error('test failure'));
     await act(async () => fireEvent.click(compare));
-    expect(compare).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getAllByRole('button', { name: message(locale, 'header.compare') })).toHaveLength(1);
+    expect(compare).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getAllByRole('switch', { name: message(locale, 'header.compare') })).toHaveLength(1);
 });
 
 it('音量チェックは本番帯のメーター横に置き、明示要求だけを送り、再描画で再要求しない', () => {
@@ -251,6 +251,7 @@ it('VST 構成は右パネルで開閉し、大型メーターは本番帯のメ
     const toggleMeter = vi.fn();
     const view = render(<AppShell {...commonProps} onToggleLargeMeter={toggleMeter} vstPanel={<h2 id="plugin-rack-heading" tabIndex={-1}>rack-panel</h2>}><p>rack</p></AppShell>);
     expect(screen.queryByText('rack-panel')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^VST / }));
     fireEvent.click(screen.getByRole('button', { name: 'VST を編集' }));
     // 開いたら見出しへ移り、キーボードでもそのまま続けられる。
     expect(screen.getByRole('complementary')).toHaveTextContent('rack-panel');
@@ -265,6 +266,7 @@ it('VST 構成は右パネルで開閉し、大型メーターは本番帯のメ
 
 it('狭い幅では右パネルを重ねて背景の誤操作を防ぎ、閉じたら入口へ戻す', () => {
     const { container } = render(<AppShell {...commonProps} vstPanel={<button type="button" onClick={() => saveVstPanelOpen(false)}>close-panel</button>}><p>rack</p></AppShell>);
+    fireEvent.click(screen.getByRole('button', { name: /^VST / }));
     const toggle = screen.getByRole('button', { name: 'VST を編集' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(toggle);
@@ -398,4 +400,27 @@ it('音量チェックの停止未確認でもホームの診断へ直接進め�
     expect(diagnose).toHaveBeenCalledOnce();
     act(() => measurementProps.current.onStateChange({ active: false, busy: false, stopUnconfirmed: false }));
     expect(entry).not.toHaveClass('border-warning');
+});
+
+
+it('広い窓で別の音調整を開いてからVSTパネルを閉じても、操作可能なVST項目へ戻す', () => {
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: query === '(min-width: 1200px)', addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    try {
+        const { container } = render(<AppShell {...commonProps} vstPanel={<button type="button" onClick={() => saveVstPanelOpen(false)}>close-panel</button>}><p>rack</p></AppShell>);
+        const tool = screen.getByRole('button', { name: /^VST / });
+        fireEvent.click(tool);
+        const edit = screen.getByRole('button', { name: 'VST を編集' });
+        fireEvent.click(edit);
+        expect(container.querySelector('main')).not.toHaveAttribute('inert');
+        fireEvent.click(screen.getByRole('button', { name: /^ノイズ低減 / }));
+        expect(edit.closest('[inert]')).not.toBeNull();
+        const close = screen.getByRole('button', { name: 'close-panel' });
+        close.focus();
+        fireEvent.click(close);
+        expect(tool).toHaveFocus();
+        expect(tool.closest('[inert], [aria-hidden="true"]')).toBeNull();
+        // 復帰先から項目を開き、編集を再開できる。
+        fireEvent.click(tool);
+        expect(edit.closest('[inert]')).toBeNull();
+    } finally { vi.unstubAllGlobals(); }
 });
