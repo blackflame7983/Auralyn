@@ -56,6 +56,7 @@ interface AppShellProps {
     currentOutput?: string;
     /** 本番帯に置く歌・雑談の切替。登録前は描画されない。 */
     liveControls?: ReactNode;
+    liveModeName?: string;
     /** 未設定でも歌・雑談の欄を出すか。登録済み・誤操作防止中・処理中・失敗のときだけ true にする（#297）。 */
     liveControlsWhileUnconfigured?: boolean;
     /** チェーン列の VST 段の中身。 */
@@ -98,6 +99,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     currentInput,
     currentOutput,
     liveControls,
+    liveModeName,
     liveControlsWhileUnconfigured = false,
     vstChain,
     vstUnrestored,
@@ -323,7 +325,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
-                            ? <LiveStrip stopped={quietStopped} roomy={roomyMeters} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
+                            ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} roomy={roomyMeters} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
                         {/* 本番操作は音調整・診断より前へ置き、表示中はメーターの大型化より操作幅と高さを優先する。 */}
                         {/* 未設定の間は音の流れと次の1歩だけを出す（#297）ため、配信ミックスは置かない。 */}

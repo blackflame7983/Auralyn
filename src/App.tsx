@@ -168,6 +168,7 @@ function AppContent() {
         preparationBlocked={isModalOpen || isInitializing}
         currentInput={audioConfig.inputSource?.kind === 'process_loopback' ? audioConfig.inputSource.config.appName : audioConfig.input}
         currentOutput={audioConfig.output}
+        liveModeName={t(liveModel.snapshot?.phase === 'settled' && liveModel.snapshot.applied ? liveModel.snapshot.applied === 'singing' ? 'liveBar.singing' : 'liveBar.talk' : 'liveBar.custom')}
         liveControlsWhileUnconfigured={Boolean(liveModel.snapshot?.definitions.singing || liveModel.snapshot?.definitions.talk || liveModel.snapshot?.armed || liveModel.snapshot?.transaction || liveModel.snapshot?.error || liveModel.error)}
         liveControls={displayPurpose === 'voice' && <div className="flex flex-wrap items-center gap-2"><LiveModeBar model={liveModel} refreshKey={isModalOpen} embedded onRegister={ui.openLiveModeSettings} onPrepareSinging={ui.openMixingSettings} /><MixingLiveControl running={audioReady} blocked={isModalOpen || isInitializing} onSettings={ui.openMixingSettings} /></div>}
         streamMixPanel={displayPurpose === 'voice' && <StreamMixPanel running={audioReady} primaryInputId={audioConfig.inputId} disabled={isModalOpen || isInitializing}
