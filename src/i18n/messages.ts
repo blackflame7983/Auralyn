@@ -235,6 +235,8 @@ const ja = {
     "mixing.stopped": "入力元の変更は音声停止中に行ってください。",
     "mixing.changed": "適用中の設定は保存内容と異なります。",
 
+    "chain.vstCount": "{count}件",
+    "flow.routeLine": "配信用 {device} → {receiver}",
     "chain.vstOff": "オフ",
     "clientErrors.homeProtectedConfigUnverified": "操作ロック中の機器設定を確認できません。設定を確認してください。",
     "home.startAudio": "音声を開始",
@@ -3405,6 +3407,8 @@ const en: Record<MessageKey, string> = {
     "mixing.stopped": "Stop audio before changing the input.",
     "mixing.changed": "Saved and current settings differ. Select a saved application again.",
 
+    "chain.vstCount": "{count} plugins",
+    "flow.routeLine": "Broadcast {device} → {receiver}",
     "chain.vstOff": "Off",
     "clientErrors.homeProtectedConfigUnverified": "Could not verify the device settings while controls are locked. Check your settings.",
     "home.startAudio": "Start audio",

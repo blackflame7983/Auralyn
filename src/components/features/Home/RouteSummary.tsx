@@ -15,3 +15,13 @@ export function RouteSummary({ routing, output, onSettings, resolvedName }: { ro
         <button type="button" onClick={onSettings} className="underline underline-offset-2">{t('flow.routeDetails')}</button>
     </div>;
 }
+
+// 畳んだホームでは、配信用の出力と受け側、自分用の分岐を同じ行で示す。
+export function RouteLine({ output, broadcastName, split, receiver, local = false }: { output?: string; broadcastName?: string | null; split: boolean; receiver: string; local?: boolean }) {
+    const t = useMessages();
+    const monitor = output ? deviceDisplayName(output) : t('master.unset');
+    return <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 break-words text-ui-support">
+        <span>{local && !split ? t('flow.monitorDestination', { device: monitor }) : t('flow.routeLine', { device: split ? broadcastName ?? t('flow.unknown') : monitor, receiver })}</span>
+        {split && <span>{t('flow.monitorDestination', { device: monitor })}</span>}
+    </span>;
+}

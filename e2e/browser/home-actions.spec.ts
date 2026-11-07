@@ -49,8 +49,11 @@ for (const theme of ['light', 'dark', 'gaming']) {
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
         const low = page.locator('#home-noise').getByRole('button', { name: '弱', exact: true });
         const broadcast = page.locator('#home-builtin').getByRole('button', { name: '配信', exact: true });
+        await page.locator('.sound-tool-list > li > div > button').nth(0).click();
         await expect(low).toBeVisible();
-        const a = (await low.boundingBox())!, b = (await broadcast.boundingBox())!;
+        const a = (await low.boundingBox())!;
+        await page.locator('.sound-tool-list > li > div > button').nth(1).click();
+        const b = (await broadcast.boundingBox())!;
         expect(a.width).toBe(b.width); expect(a.height).toBe(b.height);
         await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.71, 0.7], output: [0.71, 0.7] }));
         await expect(page.locator('.live-strip .bg-meter-warning').first()).toBeVisible();

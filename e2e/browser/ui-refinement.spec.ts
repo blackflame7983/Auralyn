@@ -139,6 +139,7 @@ for (const theme of ['light', 'dark', 'gaming']) test(`設定の階層と明示�
 
 test('選択背景が確定値へ移動し、ミュート押下と動きを減らす設定を守る', async ({ page }, info) => {
     await page.setViewportSize({ width: 1280, height: 800 }); await prepare(page);
+    await page.locator('.sound-tool-list > li > div > button').first().click();
     const noise = page.getByRole('group', { name: message('ja', 'structure.noise.standard') });
     const indicator = noise.locator('[data-segment-indicator]');
     await expect(noise.getByRole('button', { name: message('ja', 'master.nrLow'), exact: true })).toHaveAttribute('aria-pressed', 'true');

@@ -792,3 +792,9 @@ html[data-app-hidden="true"] *::after {
   .sound-chain { padding-block: 0.5rem; margin-bottom: 0.5rem; }
   .sound-chain-row { padding-block: 0.5rem; }
 }
+
+/* 操作欄はDOMを保って高さを補間し、閉じている間は操作対象から外す。 */
+.sound-tool-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--motion-panel) var(--ease-out); }
+.sound-tool-panel[data-open="true"] { grid-template-rows: 1fr; }
+@container (max-width: 540px) { .sound-tool-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (prefers-reduced-motion: reduce) { .sound-tool-panel { transition: none; } }

@@ -18,7 +18,6 @@ import { useLayoutMotion, useSettledReady } from '@/hooks/useLayoutMotion';
 import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Header } from './Header';
 import { audioApi } from '../../api/audio';
-import { MdCompareArrows } from 'react-icons/md';
 import { AudioCheckIcon, LevelMeterIcon } from '@/components/ui/AudioControlIcons';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -160,6 +159,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const startErrorDetail = startError === null ? null : renderClientError(t,
         startError instanceof HomeAudioStartError ? startError.cause : startError);
     const preparation = usePreparation({ blocked: preparationBlocked, running: audioReady });
+    const [soundExpanded, setSoundExpanded] = useState(false);
     const [preparationExpanded, setPreparationExpanded] = useState(false);
     const [loudnessEnabled, setLoudnessEnabled] = useState(false);
     const [measurement, setMeasurement] = useState({ active: false, busy: false, stopUnconfirmed: false });
@@ -180,7 +180,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const panelOverlays = Boolean(vstPanel) && vstPanelOpen && !panelBeside;
     // 反映待ちの間は直前の判定を使い、メーターの配置を畳まない（#298）。
     const settledReady = useSettledReady(preparation.observation.availability);
-    const roomyMeters = audioReady && settledReady && !preparationExpanded && !isLargeMeterOpen && !loudnessEnabled && !panelOverlays && !hasStreamMix;
+    const roomyMeters = audioReady && settledReady && !preparationExpanded && !soundExpanded && !isLargeMeterOpen && !loudnessEnabled && !panelOverlays && !hasStreamMix;
     const panelRef = useRef<HTMLElement>(null);
     const panelMotion = usePanelMotion(Boolean(vstPanel) && vstPanelOpen);
     useEffect(() => {
@@ -258,7 +258,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const closeOutputGain = useCallback(() => setOutputGainAnchor(null), []);
     const toggleOutputGain = useCallback((anchor: HTMLButtonElement) => setOutputGainAnchor(current => current === anchor ? null : anchor), []);
     useEffect(() => { if (panelOverlays || !configured) closeOutputGain(); }, [panelOverlays, configured, closeOutputGain]);
-    const soundChain = <SoundChain stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
+    const soundChain = <SoundChain onExpandedChange={setSoundExpanded} stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} vstUnrestored={vstUnrestored} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
         onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} unconfigured={!configured} />;
     const [isABBypassed, setIsABBypassed] = useState(false);
@@ -391,7 +391,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                                         id="ab-compare-btn"
                                         onClick={handleABToggle}
                                         aria-label={t('header.compare')}
-                                        aria-pressed={isABBypassed}
+                                        role="switch"
+                                        aria-checked={isABBypassed}
                                         aria-describedby={isABBypassed ? 'footer-compare-state' : undefined}
                                         className={cn(
                                             "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-ui-control font-semibold whitespace-nowrap shrink-0",
@@ -400,7 +401,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                                                 : "bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground"
                                         )}
                                     >
-                                        <MdCompareArrows aria-hidden="true" className="w-4 h-4" />
+                                        <span aria-hidden="true" className={cn('inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5', isABBypassed ? 'bg-warning' : 'bg-muted-foreground/40')}>
+                                            <span className={cn('h-4 w-4 rounded-full bg-background', isABBypassed && 'translate-x-4')} />
+                                        </span>
                                         <span className="flex flex-col items-start">
                                             <span>{t('header.compare')}</span>
                                             {isABBypassed && <span id="footer-compare-state" className="text-ui-support font-medium">{t('header.vstOff')}</span>}

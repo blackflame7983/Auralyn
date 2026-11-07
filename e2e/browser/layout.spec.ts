@@ -102,6 +102,7 @@ test.describe('通常のホーム表示', () => {
         await page.setViewportSize({ width: 1536, height: 768 });
         await trigger.click();
         await expect(popup).toBeVisible();
+        if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
         await page.locator('#vst-panel-toggle').click();
         await expect(popup).not.toBeVisible();
         await expect(page.locator('#plugin-rack-heading')).toBeFocused();
@@ -281,6 +282,7 @@ test('最小〜最大: VST は作業幅を保って重なり、広い窓では�
     for (const width of [900, 960, 1024, 1280, 1440, 1536, 1920]) {
         await page.setViewportSize({ width, height: 768 });
         const main = page.locator('main');
+        if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
         await page.locator('#vst-panel-toggle').click();
         await expect(page.locator('#vst-panel')).toHaveAttribute('data-state', 'open');
         const overlays = width < 1200;
@@ -374,6 +376,7 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
             const modes = live.getByRole('group', { name: 'モード切替' });
             await expect(modes).toBeVisible();
             await live.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
+            if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
             await page.locator('#vst-panel-toggle').click();
             await expect(page.locator('main')).toHaveAttribute('inert', '');
             await expect(page.locator('.large-meter-motion')).toBeHidden();
@@ -381,6 +384,7 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
             await expect(page.locator('#vst-panel')).toHaveCount(0);
             for (const name of ['歌', '雑談']) await reachable(modes.getByRole('button', { name, exact: true }), page);
             await expect(page.locator('.large-meter-motion')).toBeVisible();
+            if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
             await page.locator('#vst-panel-toggle').click();
             await page.setViewportSize({ width: 1600, height: 900 });
             await expect(page.locator('main')).not.toHaveAttribute('inert', '');
@@ -403,6 +407,7 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
         localStorage.setItem('auralyn_vst_panel_open', 'false');
     });
     await page.goto('/');
+    if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
     const toggle = page.locator('#vst-panel-toggle');
     await expect(toggle).toBeVisible();
     const closedMainWidth = (await page.locator('main').boundingBox())!.width;
@@ -465,6 +470,7 @@ test('動きを減らす設定では右パネルを移動せず、キーボー�
         localStorage.setItem('auralyn_vst_panel_open', 'false');
     });
     await page.goto('/');
+    if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
     const toggle = page.locator('#vst-panel-toggle');
     await toggle.click();
     const panel = page.locator('#vst-panel');

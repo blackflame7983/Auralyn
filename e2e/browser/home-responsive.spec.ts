@@ -29,6 +29,7 @@ for (const theme of ['light', 'dark', 'gaming']) {
             // 合成通知で静止画にもレベルを残す。実音声やドライバーの試験ではない。
             await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.35, 0.3], output: [0.3, 0.25] }));
             await page.screenshot({ path: testInfo.outputPath('home.png') });
+            if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
             await page.locator('#vst-panel-toggle').click();
             const panel = page.locator('#vst-panel');
             await expect(panel).toHaveAttribute('data-state', 'open');
@@ -47,6 +48,7 @@ for (const theme of ['light', 'dark', 'gaming']) {
                     await expect(meter).toHaveAttribute('data-horizontal', 'true');
                     expect((await meter.boundingBox())!.y).toBeGreaterThan((await record.boundingBox())!.y);
                 }
+                await page.locator('.sound-tool-list > li > div > button').nth(1).click();
                 await expect(page.locator('#home-builtin').getByRole('switch')).toBeInViewport();
             } else {
                 await expect(page.locator('main')).toHaveAttribute('inert', '');
@@ -127,6 +129,16 @@ for (const locale of ['ja', 'en']) {
             await settleLayoutMotion(page);
             await expect(live.getByRole('heading', { name: locale === 'ja' ? 'いまの調整' : 'Custom sound' })).toBeVisible();
             expect(await page.locator('main').evaluate(e => ({ width: e.scrollWidth <= e.clientWidth, height: e.scrollHeight <= e.clientHeight }))).toEqual({ width: true, height: true });
+            const tools = page.locator('.sound-tool-list > li > div > button');
+            await expect(tools).toHaveCount(3);
+            for (const tool of await tools.all()) await expect(tool).toHaveAttribute('aria-expanded', 'false');
+            const tops = await tools.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top));
+            expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
+            await tools.first().click();
+            await expect(live).toHaveAttribute('data-roomy', 'false');
+            await tools.first().press('Escape');
+            await expect(tools.first()).toBeFocused();
+            await expect(live).toHaveAttribute('data-roomy', 'true');
             expect(await live.locator('.meter-visual').first().evaluate(e => e.getBoundingClientRect().height)).toBe(18);
             const aurora = live.locator('.live-aurora');
             if (theme === 'gaming') await expect(aurora).toBeHidden();
