@@ -43,6 +43,8 @@ it('音声停止中の音量チェックは本番帯で無効表示にし、押�
         <p>rack</p>
     </AppShell>);
     const button = screen.getByRole('button', { name: '音量チェックを開始' });
+    expect(button).toHaveTextContent('音量チェック');
+    expect(screen.getByRole('button', { name: '大型レベルメーターを開く' })).toHaveTextContent('大型レベルメーター');
     expect(button).toBeDisabled();
     expect(button.className).toContain('disabled:opacity-50');
     expect(button).toHaveAccessibleDescription('音声処理中に使えます');

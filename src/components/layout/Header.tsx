@@ -101,8 +101,8 @@ export const Header: React.FC<HeaderProps> = ({
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                     {/* Logo Section */}
                     <div className="flex items-center gap-2 select-none shrink-0">
-                        <img src="/auralyn_icon.png?v=17" alt="Auralyn Logo" className="w-7 h-7 object-contain gaming:drop-shadow-[0_0_8px_hsl(var(--brand)/0.5)]" />
-                        <h1 aria-label="Auralyn" className="hidden lg:block text-lg font-bold tracking-tight text-foreground">
+                        <img src="/auralyn_icon.png?v=17" alt="" className="w-7 h-7 object-contain gaming:drop-shadow-[0_0_8px_hsl(var(--brand)/0.5)]" />
+                        <h1 aria-label="Auralyn" className="sr-only lg:not-sr-only text-lg font-bold tracking-tight text-foreground">
                             Aura<span className="text-brand">lyn</span>
                         </h1>
                     </div>

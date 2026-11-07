@@ -10,7 +10,7 @@ export function MusicListeningCheck({ running, input, output, onSettings, onClos
     const outputLevel = useSharedMeter(running, 'output');
     useEffect(() => { heading.current?.scrollIntoView?.({block: 'start'}); heading.current?.focus({preventScroll: true}); }, []);
     return <section aria-label={t('music.listenTitle')} className="rounded-xl border border-border bg-card p-4 space-y-3">
-        <h2 tabIndex={-1} ref={heading} className="text-sm font-bold">{t('music.listenTitle')}</h2>
+        <h2 tabIndex={-1} ref={heading} className="text-ui-heading font-semibold">{t('music.listenTitle')}</h2>
         <p className="text-sm">{t('music.listenSteps')}</p>
         <dl className="text-sm break-words"><dt>{t('home.input')}</dt><dd>{input ?? t('master.unset')}</dd><dt>{t('home.output')}</dt><dd>{output ?? t('master.unset')}</dd></dl>
         <MeterVisual reading={inputLevel} label={t('wizard.musicLevel')} orientation="horizontal" height={12} />

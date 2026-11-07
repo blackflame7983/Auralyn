@@ -179,7 +179,25 @@ export function WaveformCanvas({
         // 表示中のテーマ変更も、Canvasを描き直して配色へ反映する。
         const observer = new MutationObserver(draw);
         observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-        return () => observer.disconnect();
+        // 音声データの更新がなくてもサイズを反映し、DOM試験の未対応環境も許容する。
+        const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(draw);
+        resizeObserver?.observe(canvas);
+        window.addEventListener('resize', draw);
+        // ディスプレイ間の移動後は、新しいDPRを次の監視基準にする。
+        let resolution: MediaQueryList | undefined;
+        const watchResolution = () => {
+            resolution?.removeEventListener('change', onResolutionChange);
+            resolution = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+            resolution?.addEventListener('change', onResolutionChange);
+        };
+        const onResolutionChange = () => { draw(); watchResolution(); };
+        watchResolution();
+        return () => {
+            observer.disconnect();
+            resizeObserver?.disconnect();
+            window.removeEventListener('resize', draw);
+            resolution?.removeEventListener('change', onResolutionChange);
+        };
     }, [rawPeaks, processedPeaks, positionMs, durationMs, activeSource, markersMs]);
     return (
         <canvas

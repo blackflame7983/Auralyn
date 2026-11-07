@@ -183,6 +183,9 @@ test('再評価用の正常ホームは警告状態と分け、縦長でも出�
     await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
     if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
     await page.locator('#vst-panel-toggle').click();
+    await expect(page.locator('#vst-panel')).toHaveAttribute('data-state', 'open');
+    await expect(page.locator('#vst-panel-toggle')).toHaveCount(0);
+    await expect(page.locator('#vst-panel').getByRole('button', { name: 'VSTを追加', exact: true })).toHaveCount(1);
     const meter = page.locator('.large-meter-motion');
     await expect(meter).toHaveAttribute('data-horizontal', 'true');
     await page.locator('.app-shell').evaluate(async element => {
