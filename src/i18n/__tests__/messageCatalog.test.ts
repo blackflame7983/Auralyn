@@ -31,9 +31,13 @@ it.each(['ja', 'en'] as const)('診断の呼び方・機器の再検出・VST復
         expect(message(locale, key)).toBe(message(locale, 'guide.copy.193'));
     }
     const explanation = message(locale, 'pluginNotices.protected');
-    for (const key of ['history.pluginProtected', 'pluginNotices.saveProtected', 'session.defaultReason'] as const) {
+    for (const key of ['history.pluginProtected', 'session.defaultReason'] as const) {
         expect(message(locale, key)).toBe(explanation);
     }
+    // 明示的な保存（移行など）が止まったときは、止まったことと次の手順を示し、操作の名前は実在するボタンにそろえる。
+    expect(message(locale, 'pluginNotices.saveProtected')).toContain(message(locale, 'session.retryDetails'));
+    expect(message(locale, 'pluginNotices.saveProtected')).toContain(locale === 'ja' ? '今は保存できません' : 'cannot be saved yet');
+    expect(message(locale, 'pluginNotices.retrySaved')).toBe(message(locale, 'session.retry'));
     expect(explanation).toContain(message(locale, 'session.retryDetails'));
     expect(explanation).toContain(locale === 'ja' ? '自動保存しません' : 'not saved automatically');
     expect(explanation).not.toMatch(/構成|保護中/);

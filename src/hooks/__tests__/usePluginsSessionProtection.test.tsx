@@ -96,7 +96,7 @@ it('部分復元・手動編集・debounce・定期・明示保存の全経路�
     const save = strictSave();
     await flush();
     expect(save.resolve).not.toHaveBeenCalled();
-    expect(save.reject).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('今のVSTの変更は自動保存しません') }));
+    expect(save.reject).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('今は保存できません') }));
     expect(audioApi.getPluginState).not.toHaveBeenCalled();
     expect(localStorage.getItem(PLUGIN_SESSION_KEY)).toBe(original);
 });

@@ -54,7 +54,7 @@ it.each(['retained', 'partial'])('%sのnoticeはlocaleだけで再表示し、62
     expect([result.current.restoreSession, result.current.retrySessionRestore, result.current.scanPlugins, result.current.savePreset]).toEqual(functions);
     await act(() => vi.advanceTimersByTimeAsync(62_000)); const save = strictSave(); await act(async () => {});
     expect(save.resolve).not.toHaveBeenCalled(); const error = save.reject.mock.calls[0][0];
-    expect(error).toBeInstanceOf(PluginClientError); expect(error.code).toBe('saveProtected'); expect(error.message).toContain('今のVSTの変更は自動保存しません');
+    expect(error).toBeInstanceOf(PluginClientError); expect(error.code).toBe('saveProtected'); expect(error.message).toContain('今は保存できません');
     expect(localStorage.getItem(KEY)).toBe(snapshot.raw); expect(localStorage.getItem(BACKUP)).toBe(snapshot.backup); expect(localStorage.getItem(PROTECTED)).toBe('true');
     expect(result.current.plugins.map(p => p.id)).toEqual(snapshot.ids);
     expect(audioApi.sessionRack).toHaveBeenCalledTimes(snapshot.requests); expect(audioApi.restorePlugin).toHaveBeenCalledTimes(snapshot.restores);
