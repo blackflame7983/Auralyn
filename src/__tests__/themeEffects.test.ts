@@ -44,7 +44,7 @@ function violations(source: string, css: boolean): string[] {
 function sourceFiles(directory: string): string[] {
     return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
         const path = join(directory, entry.name);
-        return entry.isDirectory() ? sourceFiles(path) : /\.(tsx|css)$/.test(path) ? [path] : [];
+        return entry.isDirectory() ? (['__tests__', 'prototypes'].includes(entry.name) ? [] : sourceFiles(path)) : /\.(tsx?|css)$/.test(path) ? [path] : [];
     });
 }
 

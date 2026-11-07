@@ -89,7 +89,7 @@ describe('セットアップの接続チェック', () => {
         expect(next).toBeDisabled();
         expect(next).toHaveAccessibleDescription('マイクを選ぶと次へ進めます');
         fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
-        expect(next).toHaveAccessibleDescription('PCの音の入力を選ぶと次へ進めます');
+        expect(next).toHaveAccessibleDescription('PCの音を選ぶと次へ進めます');
         expect(next).toHaveClass('disabled:bg-muted', 'disabled:text-muted-foreground');
     });
 
@@ -104,9 +104,9 @@ describe('セットアップの接続チェック', () => {
         act(() => { store.setLocale(locale); });
         const next = within(screen.getByTestId('setup-actions')).getByRole('button', { name: locale === 'ja' ? '次へ' : 'Next' });
         expect(next).toBeDisabled();
-        expect(next).toHaveAccessibleDescription(locale === 'ja' ? '入力を読み込んでいます' : 'Loading inputs');
-        expect(next).toHaveClass('disabled:opacity-50', 'disabled:bg-muted', 'disabled:text-muted-foreground');
-        expect(next).not.toHaveClass('disabled:opacity-100');
+        expect(next).toHaveAccessibleDescription(locale === 'ja' ? '機器を読み込んでいます' : 'Loading devices');
+        expect(next).toHaveClass('disabled:opacity-100', 'disabled:bg-muted', 'disabled:text-muted-foreground');
+        expect(next).not.toHaveClass('disabled:opacity-50');
         fireEvent.click(next);
         expect(screen.getByRole('heading', { name: locale === 'ja' ? 'マイクを選んでください' : 'Choose a microphone' })).toBeInTheDocument();
         await act(async () => { resolveDevices({ inputs: [mic], outputs }); });
@@ -125,7 +125,7 @@ describe('セットアップの接続チェック', () => {
         const next = within(screen.getByTestId('setup-actions')).getByRole('button', { name: locale === 'ja' ? '次へ' : 'Next' });
         expect(next).toHaveAccessibleDescription(locale === 'ja' ? 'マイクを選ぶと次へ進めます' : 'Select a microphone to continue');
         fireEvent.click(screen.getByRole('radio', { name: locale === 'ja' ? 'PCの音' : 'PC audio' }));
-        expect(next).toHaveAccessibleDescription(locale === 'ja' ? 'PCの音の入力を選ぶと次へ進めます' : 'Select the PC audio input to continue');
+        expect(next).toHaveAccessibleDescription(locale === 'ja' ? 'PCの音を選ぶと次へ進めます' : 'Select the PC audio input to continue');
         expect(next).toBeDisabled();
     });
 
@@ -142,7 +142,7 @@ describe('セットアップの接続チェック', () => {
         expect(reason).toBeVisible();
         expect(next).toHaveAccessibleDescription(locale === 'ja' ? '出力先を選ぶと次へ進めます' : 'Select an output device to continue');
         expect(next).toBeDisabled();
-        expect(next).toHaveClass('disabled:opacity-50', 'disabled:bg-muted', 'disabled:text-muted-foreground');
+        expect(next).toHaveClass('disabled:opacity-100', 'disabled:bg-muted', 'disabled:text-muted-foreground');
         next.focus();
         expect(next).not.toHaveFocus();
         fireEvent.click(next);
@@ -707,17 +707,17 @@ describe('PC audio purpose', () => {
         fireEvent.click(screen.getByRole('button', { name: '次へ' }));
         inputs = []; outputs = [];
         fireEvent.click(screen.getByRole('button', { name: '機器を再検出' }));
-        await screen.findByText('戻ってPCの音の入力を選ぶと進めます');
+        await screen.findByText('戻ってPCの音を選ぶと進めます');
         act(() => { store.setLocale(locale); });
         const actions = within(screen.getByTestId('setup-actions'));
         const next = actions.getByRole('button', { name: locale === 'ja' ? '次へ' : 'Next' });
         expect(next).toBeDisabled();
-        expect(next).toHaveAccessibleDescription(locale === 'ja' ? '戻ってPCの音の入力を選ぶと進めます' : 'Go back and select the PC audio input to continue');
+        expect(next).toHaveAccessibleDescription(locale === 'ja' ? '戻ってPCの音を選ぶと進めます' : 'Go back and select the PC audio input to continue');
         const back = actions.getByRole('button', { name: locale === 'ja' ? '戻る' : 'Back' });
         back.focus();
         expect(back).toHaveFocus();
         fireEvent.click(back);
-        expect(actions.getByRole('status')).toHaveTextContent(locale === 'ja' ? 'PCの音の入力を選ぶと次へ進めます' : 'Select the PC audio input to continue');
+        expect(actions.getByRole('status')).toHaveTextContent(locale === 'ja' ? 'PCの音を選ぶと次へ進めます' : 'Select the PC audio input to continue');
         expect(screen.getByRole('heading')).toHaveFocus();
     });
 

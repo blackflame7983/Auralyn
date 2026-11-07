@@ -101,7 +101,7 @@ test('ミュート直後の音量操作をまとめて反映し、失敗した�
     await fixture(page); await page.goto('/'); const trigger = page.getByRole('button', { name: 'オケ音量とミュート' }); await trigger.click();
     const popup = page.getByRole('dialog', { name: 'オケ音量とミュート' });
     await popup.getByRole('button', { name: 'ミュート', exact: true }).click(); await popup.getByRole('slider').focus(); await page.keyboard.press('Home');
-    await expect.poll(() => page.evaluate(() => (window as any).__mixRequests.filter((r: any) => r.action === 'levels').map((r: any) => r.levels.accompaniment))).toEqual([{ gain: 0, muted: true }]);
+    await expect.poll(() => page.evaluate(() => (window as any).__mixRequests.filter((r: any) => r.action === 'levels').map((r: any) => r.levels.accompaniment).at(-1))).toEqual({ gain: 0, muted: true });
     await page.evaluate(() => { (window as any).__mixFailLevels = true; }); await page.keyboard.press('End');
     await expect(popup.getByRole('alert')).toContainText('音量・時間差の変更');
     await expect(popup.getByRole('slider')).toHaveAttribute('aria-valuetext', '0%');

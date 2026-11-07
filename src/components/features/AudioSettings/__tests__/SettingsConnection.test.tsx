@@ -128,7 +128,7 @@ it.each(['ASIO', 'Wasapi'])('別hostのプリセットで先頭以外の入出�
     });
     const start = vi.spyOn(audioApi, 'start').mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    const input = await screen.findByRole('combobox', { name: 'マイク' });
+    const input = await screen.findByRole('combobox', { name: previousHost === 'ASIO' ? '機器' : 'マイク' });
     await waitFor(() => expect(input).toHaveValue(`id:${previousHost}-1`));
     fireEvent.change(screen.getByRole('combobox', { name: '入出力の保存' }), { target: { value: 'target' } });
     await waitFor(() => expect(input).toHaveValue(`id:${targetHost}-2`));
@@ -182,7 +182,7 @@ it.each([false, true])('入力ペアの下書きだけでは保存せず、明�
             }} />;
     }
     render(<Parent />);
-    const input = await screen.findByRole('combobox', { name: 'マイク' });
+    const input = await screen.findByRole('combobox', { name: '機器' });
     await waitFor(() => expect(input).toHaveValue('Device A'));
     const save = screen.getByRole('button', { name: '保存して再起動' });
     expect(save).toBeDisabled();
@@ -249,4 +249,11 @@ it('入力元・マイク・出力先は同じカードと見出しの階層で�
         expect(group).toHaveClass('rounded-xl', 'border', 'border-border', 'p-3');
         expect(group.querySelector('legend')).toHaveClass('text-ui-heading', 'font-semibold');
     }
+});
+
+it('音楽の入力欄は見える名前と読み上げ名をPCの音にそろえる', async () => {
+    localStorage.setItem('vst_host_setup_goal', 'music');
+    render(<AudioSettingsModal isOpen currentConfig={config} onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const input = await screen.findByRole('combobox', { name: 'PCの音' });
+    expect(screen.getByText('PCの音', { selector: 'label' })).toHaveAttribute('for', input.id);
 });

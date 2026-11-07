@@ -12,7 +12,7 @@ import { message } from '@/i18n/messages';
 import { saveDisplayPurpose } from '@/hooks/useDisplayPurpose';
 
 const inputMeter = vi.hoisted(() => ({ state: 'live' }));
-vi.mock('../../LevelMeter/MeterContext', () => ({ useSharedMeter: () => inputMeter }));
+vi.mock('../../LevelMeter/MeterContext', () => ({ useInputMeterState: () => inputMeter.state }));
 afterEach(() => { cleanup(); inputMeter.state = 'live'; });
 it('定期確認では確認中文字を出さず、手動確認が長引いたときだけ表示する', async () => {
     vi.useFakeTimers();
@@ -294,6 +294,8 @@ it.each([
 });
 
 it.each([
+    ['voice', 'waiting', true],
+    ['music', 'waiting', true],
     ['voice', 'silent', true],
     ['voice', 'stale', true],
     // 音楽鑑賞では、曲を止めている間の無音は正常。
@@ -312,6 +314,7 @@ it.each([
         expect(entry).not.toHaveClass('border-warning');
         act(() => { vi.advanceTimersByTime(200); });
         expect(entry.classList.contains('border-warning')).toBe(prominent);
+        if (prominent) expect(entry).toHaveAccessibleDescription(message('ja', 'prep.diagnosticAttention'));
     } finally {
         saveDisplayPurpose('voice');
         vi.useRealTimers();

@@ -56,7 +56,7 @@ interface AppShellProps {
     /** 本番帯に置く歌・雑談の切替。登録前は描画されない。 */
     liveControls?: ReactNode;
     liveModeName?: string;
-    /** 未設定でも歌・雑談の欄を出すか。登録済み・誤操作防止中・処理中・失敗のときだけ true にする（#297）。 */
+    /** 未設定でも歌・雑談の欄を出すか。登録済み・操作ロック中・処理中・失敗のときだけ true にする（#297）。 */
     liveControlsWhileUnconfigured?: boolean;
     /** チェーン列の VST 段の中身。 */
     vstChain?: ReactNode;

@@ -1,7 +1,7 @@
 import { audioApi } from '@/api/audio';
 import { openSystemTab } from './settingsActions';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { ModalLayer } from '@/components/layout/ModalLayer';
 import { useUIState } from '@/hooks/useUIState';
@@ -12,6 +12,8 @@ import type { SessionRackRequest } from '@/api/audio';
 
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme: vi.fn() }) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+
+beforeAll(async () => { await import('../AudioSettingsModal'); });
 
 function Harness() {
     const ui = useUIState();
@@ -120,9 +122,7 @@ it.each([
         expect(enginePaths).toEqual([]);
     }
     fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
-    // 全体並列実行時の初回lazy読込みを待つ。負荷の高い環境では3秒を超えるため、余裕を持たせる。
-    // 移行・復元の条件や回数は以下で検証する。
-    await screen.findByRole('button', { name: '保存して開始' }, { timeout: 10000 });
+    await screen.findByRole('button', { name: '保存して開始' });
     if (operation !== '通常再起動') {
         expect(screen.getByRole('button', { name: '保存して開始' })).toBeDisabled();
         if (host === 'ASIO') {

@@ -128,6 +128,24 @@ describe('幅変更と区画補間の競合防止（#345）', () => {
         expect(reads.mock.calls.filter(([id]) => id === 'chain')).toHaveLength(1);
     });
 
+    it('次のrunが古いcancelより先に届いても、実際の幅遷移が終わるまで計測しない', () => {
+        render(<Home />);
+        let running = true;
+        Object.defineProperty(el('space'), 'getAnimations', { configurable: true, value: () => running ? [{ transitionProperty: 'width', playState: 'running' }] : [] });
+        reads.mockClear();
+        transition('space', 'transitionrun');
+        transition('space', 'transitionrun');
+        transition('space', 'transitioncancel');
+        frame();
+        act(() => notify?.());
+        expect(reads).not.toHaveBeenCalled();
+        frame();
+        expect(reads).not.toHaveBeenCalled();
+        running = false;
+        frame();
+        expect(reads.mock.calls.filter(([id]) => id === 'chain')).toHaveLength(1);
+    });
+
     it('子要素の色・transform や無関係な幅の遷移は計測を止めない', () => {
         render(<Home />);
         transition('space', 'transitionrun', 'transform');

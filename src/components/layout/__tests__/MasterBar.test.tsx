@@ -388,7 +388,9 @@ it.each(['ja', 'en'] as const)('フッターの出力ラベルは操作用の文
     const { container } = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><MasterBar /></LocaleProvider>);
     const label = screen.getAllByText(message(locale, 'meter.output')).find(node => node.classList.contains('text-ui-control') || node.parentElement?.classList.contains('text-ui-control'))!;
     expect(label).toHaveClass('text-ui-control');
-    expect(label).not.toHaveClass('font-mono', 'tracking-widest', 'text-xs');
+    expect(label).not.toHaveClass('font-mono');
+    expect(label).not.toHaveClass('tracking-widest');
+    expect(label).not.toHaveClass('text-xs');
     expect(container.querySelector('#master-output-gain')).toHaveClass('w-32', 'shrink-0');
     expect(screen.getByText('50%')).toHaveClass('font-mono');
 });
@@ -396,39 +398,36 @@ it.each(['ja', 'en'] as const)('フッターの出力ラベルは操作用の文
 it.each([false, true])('出力音量はマウスで100%にでき、キーの刻みと30msの送信待ちを保つ（小窓=%s）', async popover => {
     // JSDOMにないポインター座標・captureだけを補い、実際のRadix Sliderを操作する。
     vi.stubGlobal('PointerEvent', MouseEvent);
-    vi.stubGlobal('window', window);
-    const originalPointerEvent = window.PointerEvent;
-    window.PointerEvent = MouseEvent as typeof PointerEvent;
     const anchor = document.createElement('button');
     document.body.append(anchor);
-    const view = render(<MasterBar outputGainAnchor={popover ? anchor : undefined} />);
-    const sliders = screen.getAllByRole('slider', { name: '出力音量' });
-    const slider = sliders.find(node => popover ? !node.closest('#master-output-gain') : node.closest('#master-output-gain'))!;
-    const root = slider.closest('[data-orientation="horizontal"].touch-none')!;
-    vi.spyOn(root, 'getBoundingClientRect').mockReturnValue({ left: 0, width: popover ? 224 : 128 } as DOMRect);
-    Object.assign(root, { setPointerCapture: vi.fn(), hasPointerCapture: () => true, releasePointerCapture: vi.fn() });
-    fireEvent.pointerDown(root, { clientX: popover ? 112 : 64, button: 0, pointerType: 'mouse' });
-    fireEvent.pointerUp(root);
-    expect(slider).toHaveAttribute('aria-valuenow', '100');
-    expect(slider).toHaveFocus();
-    const writes = () => vi.mocked(invoke).mock.calls.filter(([command]) => command === 'set_output_gain');
-    expect(writes()).toHaveLength(0);
-    await act(async () => { await vi.advanceTimersByTimeAsync(29); });
-    expect(writes()).toHaveLength(0);
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-    expect(writes()).toEqual([['set_output_gain', { value: 1 }]]);
-    for (const [key, expected] of [['ArrowRight', 101], ['ArrowLeft', 100], ['ArrowUp', 101], ['ArrowDown', 100], ['PageUp', 110], ['PageDown', 100], ['Home', 0], ['End', 200]] as const) {
-        fireEvent.keyDown(slider, { key });
-        expect(slider).toHaveAttribute('aria-valuenow', String(expected));
-    }
-    // 連続キー操作も従来どおり最後の値だけを送信する。
-    await act(async () => { await vi.advanceTimersByTimeAsync(30); });
-    expect(writes()).toEqual([['set_output_gain', { value: 1 }], ['set_output_gain', { value: 2 }]]);
-    fireEvent.doubleClick(root);
-    expect(slider).toHaveAttribute('aria-valuenow', '100');
-    view.unmount();
-    anchor.remove();
-    window.PointerEvent = originalPointerEvent;
+    try {
+        const view = render(<MasterBar outputGainAnchor={popover ? anchor : undefined} />);
+        const sliders = screen.getAllByRole('slider', { name: '出力音量' });
+        const slider = sliders.find(node => popover ? !node.closest('#master-output-gain') : node.closest('#master-output-gain'))!;
+        const root = slider.closest('[data-orientation="horizontal"].touch-none')!;
+        vi.spyOn(root, 'getBoundingClientRect').mockReturnValue({ left: 0, width: popover ? 224 : 128 } as DOMRect);
+        Object.assign(root, { setPointerCapture: vi.fn(), hasPointerCapture: () => true, releasePointerCapture: vi.fn() });
+        fireEvent.pointerDown(root, { clientX: popover ? 112 : 64, button: 0, pointerType: 'mouse' });
+        fireEvent.pointerUp(root);
+        expect(slider).toHaveAttribute('aria-valuenow', '100');
+        expect(slider).toHaveFocus();
+        const writes = () => vi.mocked(invoke).mock.calls.filter(([command]) => command === 'set_output_gain');
+        expect(writes()).toHaveLength(0);
+        await act(async () => { await vi.advanceTimersByTimeAsync(29); });
+        expect(writes()).toHaveLength(0);
+        await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+        expect(writes()).toEqual([['set_output_gain', { value: 1 }]]);
+        for (const [key, expected] of [['ArrowRight', 101], ['ArrowLeft', 100], ['ArrowUp', 101], ['ArrowDown', 100], ['PageUp', 110], ['PageDown', 100], ['Home', 0], ['End', 200]] as const) {
+            fireEvent.keyDown(slider, { key });
+            expect(slider).toHaveAttribute('aria-valuenow', String(expected));
+        }
+        // 連続キー操作も従来どおり最後の値だけを送信する。
+        await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+        expect(writes()).toEqual([['set_output_gain', { value: 1 }], ['set_output_gain', { value: 2 }]]);
+        fireEvent.doubleClick(root);
+        expect(slider).toHaveAttribute('aria-valuenow', '100');
+        view.unmount();
+    } finally { anchor.remove(); vi.unstubAllGlobals(); }
 });
 
 it.each([true, false])('本番帯に出力表示があればフッターに重ねず、なければ残す（稼働=%s）', isRunning => {

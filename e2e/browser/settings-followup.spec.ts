@@ -22,7 +22,7 @@ for (const locale of ['ja', 'en'] as const) {
         await expect(page.getByText(message(locale, 'app.initializing'), { exact: true })).toHaveCount(0);
         await page.getByRole('button', { name: message(locale, 'header.audioSettingsOpen'), exact: true }).click();
         const dialog = page.getByRole('dialog', { name: message(locale, 'common.settings'), exact: true });
-        const input = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.039'), exact: true });
+        const input = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.038'), exact: true });
         const output = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.042'), exact: true });
         await expect(input).toHaveValue(''); await expect(output).toHaveValue('');
         await expect(dialog.getByText(message(locale, 'settings.connection.firstStartHint'), { exact: true })).toBeVisible();
@@ -54,7 +54,7 @@ for (const locale of ['ja', 'en'] as const) {
         const dialog = page.getByRole('dialog', { name: message(locale, 'common.settings'), exact: true });
         await expect(dialog).toBeVisible();
         await expect(page.getByRole('dialog', { name: message(locale, 'wizard.title'), exact: true })).toHaveCount(0);
-        const input = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.039'), exact: true });
+        const input = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.037'), exact: true });
         await expect(input).toHaveValue('id:asio:saved');
         await expect(dialog.getByText(message(locale, 'settings.AudioSettingsModal.044'), { exact: true })).toBeVisible();
         const save = dialog.getByRole('button', { name: message(locale, 'settings.AudioSettingsModal.197'), exact: true });
@@ -104,12 +104,12 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await expect(source.locator('option[value=process]')).toBeEnabled();
         await dialog.locator('summary').filter({ hasText: message(locale, 'settings.audioTuning.title') }).click();
         await expect(dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.035'), exact: true })).toHaveValue('Wasapi');
-        await expect(dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.039'), exact: true })).toHaveValue('id:mic');
+        await expect(dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.038'), exact: true })).toHaveValue('id:mic');
         await expect(dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.042'), exact: true })).toHaveValue('id:headphones');
         await expect(dialog.getByRole('button', { name: message(locale, 'settings.connection.restoreSaved'), exact: true })).toHaveCount(0);
         await expect(dialog.getByText(message(locale, 'settings.connection.restoreHint'), { exact: true })).toHaveCount(0);
         await dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.035'), exact: true }).selectOption('ASIO');
-        const input = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.039'), exact: true });
+        const input = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.037'), exact: true });
         await expect(input.locator('..').getByText(message(locale, 'settings.AudioSettingsModal.044'), { exact: true })).toBeVisible();
         await expect(input.locator('..').getByText(message(locale, 'settings.MicrophonePermissionGuide.238'), { exact: true })).toBeVisible();
         await input.evaluate(el => el.scrollIntoView({ block: 'start' }));
@@ -120,7 +120,10 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await page.getByRole('button', { name: message(locale, 'header.audioSettingsOpen'), exact: true }).click();
         const restore = dialog.getByRole('button', { name: message(locale, 'settings.connection.restoreSaved'), exact: true });
         await expect(restore).toBeVisible();
-        expect(await input.evaluate((el, label) => !!(el.compareDocumentPosition([...document.querySelectorAll('button')].find(button => button.textContent === label)!) & Node.DOCUMENT_POSITION_FOLLOWING), message(locale, 'settings.connection.restoreSaved'))).toBe(true);
+        // 未保存のASIO選択は再表示で既定のWASAPIへ戻り、入力名も「マイク」へ戻る。
+        const reopenedInput = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.038'), exact: true });
+        await expect(reopenedInput).toHaveValue('id:mic');
+        expect(await reopenedInput.evaluate((el, label) => !!(el.compareDocumentPosition([...document.querySelectorAll('button')].find(button => button.textContent === label)!) & Node.DOCUMENT_POSITION_FOLLOWING), message(locale, 'settings.connection.restoreSaved'))).toBe(true);
         await restore.click();
         await expect(dialog.getByText(message(locale, 'settings.connection.restored'), { exact: true })).toBeVisible();
         const tuning = dialog.locator('summary').filter({ hasText: message(locale, 'settings.audioTuning.title') });
@@ -159,7 +162,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await expect(wizard.getByText(message(locale, 'wizard.selectMicToContinue'), { exact: true })).toBeVisible();
         const disabledColor = await next.evaluate(el => getComputedStyle(el).backgroundColor);
         await page.screenshot({ path: info.outputPath('next-disabled.png'), animations: 'disabled' });
-        const input = wizard.getByRole('combobox', { name: message(locale, 'guide.copy.189'), exact: true });
+        const input = wizard.getByRole('combobox', { name: message(locale, 'guide.copy.188'), exact: true });
         await expect(input.locator('..').locator('..').getByText(message(locale, 'settings.MicrophonePermissionGuide.238'), { exact: true })).toBeVisible();
         await input.selectOption('Input one'); await expect(next).toBeEnabled();
         await expect.poll(() => next.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(disabledColor);

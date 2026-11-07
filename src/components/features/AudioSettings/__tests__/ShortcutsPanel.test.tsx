@@ -441,6 +441,10 @@ async function fillRecommended() {
 it('よく使う4操作を先頭に並べ、残りの操作も維持する', async () => {
     open(false, []);
     await waitFor(() => expect(screen.getByRole('button', { name: '推奨のキーをまとめて入力' })).toBeEnabled());
+    for (const heading of screen.getAllByRole('heading', { level: 4 })) {
+        expect(heading.closest('section')).toHaveAttribute('aria-labelledby', heading.id);
+        expect(heading.closest('section')).not.toHaveAttribute('aria-label');
+    }
     expect(screen.getAllByRole('group').filter(group => group.tagName === 'FIELDSET').map(group => group.querySelector('legend')?.textContent)).toEqual([
         '緊急ミュート（切替）', 'VSTを外して比較（切替）', '歌モード', '雑談モード',
         '緊急ミュート（オン）', '緊急ミュート（解除）', 'VSTを外して比較（開始）', 'VSTを外して比較（終了）',
@@ -453,6 +457,7 @@ it('推奨入力の確認を取り消すと変更せず入口へフォーカス�
     await waitFor(() => expect(button).toBeEnabled());
     button.focus();
     fireEvent.click(button);
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('AltGr');
     expect(screen.getByRole('alertdialog')).toHaveTextContent('Ctrl + Alt + M');
     expect(screen.getByRole('alertdialog')).toHaveTextContent('保存');
     fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));

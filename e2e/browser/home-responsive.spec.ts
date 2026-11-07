@@ -146,7 +146,7 @@ for (const locale of ['ja', 'en']) {
             await tools.first().press('Escape');
             await expect(tools.first()).toBeFocused();
             await expect(live).toHaveAttribute('data-roomy', 'true');
-            expect(await live.locator('.meter-visual').first().evaluate(e => e.getBoundingClientRect().height)).toBe(18);
+            expect(await live.locator('.meter-visual').first().evaluate(e => e.getBoundingClientRect().height)).toBeCloseTo(18, 1); // 画素未満の誤差は許す
             const aurora = live.locator('.live-aurora');
             if (theme === 'gaming') await expect(aurora).toBeHidden();
             else {

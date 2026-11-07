@@ -3,6 +3,7 @@ import { LanguageSelector } from '@/i18n/LanguageSelector';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import { useSharedMeter } from '../LevelMeter/MeterContext';
 import { MeterVisual } from '../LevelMeter/MeterVisual';
+import { cn } from '@/lib/utils';
 import { buttonVariants } from '@/components/ui/button';
 import { receiverDeviceNotice, deviceDisplayName } from '../../../lib/audioRouting';
 import { Modal } from '../../ui/modal';
@@ -44,8 +45,13 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
         : state === 'output_selection'
             ? isLoadingDevices ? t('wizard.loadingOutputs')
                 : !config.input ? t(config.goal === 'music' ? 'wizard.returnToPcInput' : 'wizard.returnToMic')
-                    : !config.output ? t('wizard.selectOutputToContinue') : null
+                    : !config.output ? t(isAsioHost(config.host) ? 'wizard.asioOutputMissing' : 'wizard.selectOutputToContinue') : null
             : null;
+    const finalReason = isBusy || isCheckingConnection ? t('wizard.checking')
+        : !initialStateReady ? t('wizard.loading')
+        : !config.input ? t(config.goal === 'music' ? 'wizard.returnToPcInput' : 'wizard.returnToMic')
+        : !config.output ? t(isAsioHost(config.host) ? 'wizard.asioOutputMissing' : 'wizard.selectOutputToContinue')
+        : config.goal === 'music' && isVirtualOutput(config.output) ? t('wizard.chooseHeadphones') : null;
     const bodyRef = useRef<HTMLDivElement>(null);
     const surfaceRef = useRef<HTMLDivElement>(null);
     // 手順レールと切替の向き（DESIGN.md 5.7）。設定中・完了は4手順を終えた位置に置く。
@@ -269,7 +275,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     {isAsioHost(config.host) ? t('wizard.asioOutput', { name: config.output ? deviceDisplayName(config.output.name) : '' })
                                         : config.goal === 'music' ? t('wizard.musicRoute') : config.goal === 'obs' ? t('guide.copy.194') : t('guide.copy.195')}
                                 </p>
-                                {!config.input && <p role="status" className="text-sm text-warning">{t(config.goal === 'music' ? 'wizard.pcInputMissing' : 'guide.copy.196')}</p>}
+                                {!config.input && <p className="text-sm text-warning">{t(config.goal === 'music' ? 'wizard.pcInputMissing' : 'guide.copy.196')}</p>}
                                 {availableOutputs.length === 0 && !isLoadingDevices && <p className="text-sm text-warning">{t('guide.copy.197')}</p>}
                             </div>
 
@@ -538,7 +544,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 onClick={() => { if (state === 'input_selection') confirmInput(); else setState('confirmation'); }}
                                 disabled={nextReason !== null}
                                 aria-describedby={nextReason !== null ? nextReasonId : undefined}
-                                className={buttonVariants({ className: "setup-primary gap-2 disabled:border disabled:border-border disabled:bg-muted disabled:text-muted-foreground" })}
+                                className={cn(buttonVariants(), "setup-primary gap-2 disabled:border disabled:border-border disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100")}
                             >
                                 {t('common.next')} <MdArrowForward aria-hidden="true" className="setup-primary-arrow" />
                             </button>
@@ -549,10 +555,11 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             <div className="flex flex-wrap items-center gap-3">
                                 <button disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('input_selection')} className="px-3 py-2 text-muted-foreground hover:text-foreground">{t('wizard.inputAgain')}</button>
                                 <button disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('output_selection')} className="px-3 py-2 text-muted-foreground hover:text-foreground">{t('wizard.outputAgain')}</button>
+                                <p id={nextReasonId} className="text-ui-support text-muted-foreground">{finalReason}</p>
                                 <button
-                                    aria-describedby="wizard-save-scope"
                                     onClick={finalApply}
-                                    disabled={isBusy || isCheckingConnection || !initialStateReady}
+                                    aria-describedby={finalReason ? `wizard-save-scope ${nextReasonId}` : "wizard-save-scope"}
+                                    disabled={finalReason !== null}
                                     className={buttonVariants({ className: "setup-primary ml-auto gap-2" })}
                                 >
                                     <MdCheckCircle /> {t('wizard.saveStart')}

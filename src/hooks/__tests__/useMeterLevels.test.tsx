@@ -149,3 +149,15 @@ it('非表示中の停止と再開も復帰時に反映する', () => {
     expect(result.current).toMatchObject({ state: 'waiting', clipped: false });
     hidden.mockRestore();
 });
+
+it('状態だけの購読ではレベル値とピークの更新だけで再描画しない', () => {
+    let renders = 0;
+    const { result } = renderHook(() => { renders++; return useMeterLevels({ running: true, stateOnly: true }); });
+    level(.2); tick(16);
+    expect(result.current.state).toBe('live');
+    const before = renders;
+    for (const value of [.3, .4, .5]) { level(value); tick(32); }
+    expect(renders).toBe(before);
+    level(0); tick(16);
+    expect(result.current.state).toBe('silent');
+});

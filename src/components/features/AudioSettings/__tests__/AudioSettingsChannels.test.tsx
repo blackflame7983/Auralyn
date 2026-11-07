@@ -53,7 +53,7 @@ it('初回の空configは独立出力1/2で始まり、入力3/4を選んでも�
     await screen.findByRole('option', { name: 'Cable input' });
     fireEvent.click(screen.getByText('接続方式・音切れの設定', { exact: false, selector: 'summary' }));
     fireEvent.change(screen.getByRole('combobox', { name: '接続方式' }), { target: { value: 'ASIO' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'マイク' }), { target: { value: 'ASIO device' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '機器' }), { target: { value: 'ASIO device' } });
     await screen.findByRole('radio', { name: '入力チャンネル 3/4' });
     expect(screen.getByRole('combobox', { name: '音声の返却方法' })).toHaveValue('independent');
     fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 3/4' }));
