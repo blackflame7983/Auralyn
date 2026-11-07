@@ -210,7 +210,7 @@ export const PluginList: React.FC<PluginListProps> = ({
                         onClick={onAddClick}
                         className={`w-full h-10 flex items-center justify-center gap-2 transition-colors font-medium
                     ${theme === 'gaming'
-                                ? 'border-2 border-primary/40 bg-primary/5 hover:bg-primary/10 hover:border-primary hover:shadow-[0_0_20px_hsl(var(--brand)/0.2)] text-primary'
+                                ? 'border-2 border-primary/40 bg-primary/5 hover:bg-primary/10 hover:border-primary gaming:hover:shadow-[0_0_20px_hsl(var(--brand)/0.2)] text-primary'
                                 : theme === 'light'
                                     ? 'border-2 border-border shadow-sm hover:shadow-md hover:border-primary hover:bg-primary/5 hover:text-primary text-muted-foreground active:scale-[0.99] active:shadow-inner'
                                     : 'border-dashed border-2 border-muted-foreground/30 hover:border-foreground/50 hover:bg-muted/50 text-muted-foreground hover:text-foreground'

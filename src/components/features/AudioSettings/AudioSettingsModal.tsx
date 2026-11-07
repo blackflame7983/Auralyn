@@ -466,7 +466,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
   return (
     <Modal title={t('common.settings')} onClose={onClose} dismissible={!isApplying} onEscapeKeyDown={event => { if (capturingShortcut) event.preventDefault(); }} initialFocusRef={initialTab === 'sound' ? soundStart : undefined}>
-        <div className="fixed inset-0 z-[100] flex justify-end bg-background/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex justify-end bg-background/90 gaming:bg-background/80 gaming:backdrop-blur-sm">
       <div className="settings-surface h-full w-full max-w-5xl flex flex-col overflow-hidden border-l border-border bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3 shrink-0">
           <h2 className="text-xl font-bold text-foreground flex items-center gap-2">

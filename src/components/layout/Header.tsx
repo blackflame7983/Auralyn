@@ -93,15 +93,15 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     return (
-        <header className={`h-16 shrink-0 overflow-x-auto flex items-center justify-between px-4 xl:px-6 border-b sticky top-0 z-50 transition-colors duration-300 backdrop-blur-md ${theme === 'light'
-            ? 'bg-card/95 border-border/20 shadow-sm'
-            : 'bg-background/80 border-border/40'
+        <header className={`h-16 shrink-0 overflow-x-auto flex items-center justify-between px-4 xl:px-6 border-b sticky top-0 z-50 transition-colors duration-300 gaming:backdrop-blur-md ${theme === 'light'
+            ? 'bg-card border-border/20 shadow-sm'
+            : 'bg-background gaming:bg-background/80 border-border/40'
             }`}>
             <TooltipProvider>
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                     {/* Logo Section */}
                     <div className="flex items-center gap-2 select-none shrink-0">
-                        <img src="/auralyn_icon.png?v=17" alt="Auralyn Logo" className="w-7 h-7 object-contain drop-shadow-[0_0_8px_hsl(var(--brand)/0.5)]" />
+                        <img src="/auralyn_icon.png?v=17" alt="Auralyn Logo" className="w-7 h-7 object-contain gaming:drop-shadow-[0_0_8px_hsl(var(--brand)/0.5)]" />
                         <h1 aria-label="Auralyn" className="hidden lg:block text-lg font-bold tracking-tight text-foreground">
                             Aura<span className="text-brand">lyn</span>
                         </h1>
