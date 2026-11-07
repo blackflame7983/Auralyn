@@ -1,4 +1,3 @@
-import { InfoPopover } from '@/components/ui/InfoPopover';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useRef, useState } from 'react';
 import { refreshRuntimeStats, useRuntimeStats } from '@/hooks/useRuntimeStats';
@@ -71,7 +70,6 @@ export type VoiceQuick = ReturnType<typeof useVoiceQuick>;
 export function NoiseSwitch({ q }: { q: VoiceQuick }) {
     const t = useMessages();
     return <span className="flex items-center gap-1">
-        <InfoPopover label={t('info.noise')}>{t('home.noiseScope')}</InfoPopover>
         <Switch checked={q.noiseOn} disabled={q.disabled} onCheckedChange={active => void q.applyNoise({ active })} aria-label={t('settings.AudioSettingsModal.107')} />
     </span>;
 }

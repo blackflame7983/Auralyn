@@ -111,9 +111,12 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 }}>
                 <div className="min-h-0 overflow-hidden">
                     <div id={id} tabIndex={id ? -1 : undefined} data-on={on} className="flex flex-wrap items-center gap-3 border-t border-border py-3" title={title}>
-                        <h3 className="text-ui-control font-semibold">{name}</h3>
-                        {key === 'builtin' && <InfoPopover label={t('settings.builtinHelp')}><p>{t('settings.AudioSettingsModal.096')}</p>{builtinDetails && <p>{builtinDetails}</p>}</InfoPopover>}
-                        {key === 'vst' && quiet && <InfoPopover label={t('chain.vstEmptyName')}>{t('chain.vstEmptyHint')}</InfoPopover>}
+                        <div className="inline-flex items-center gap-1">
+                            <h3 className="text-ui-control font-semibold">{name}</h3>
+                            {key === 'noise' && <InfoPopover label={t('info.noise')}>{t('home.noiseScope')}</InfoPopover>}
+                            {key === 'builtin' && <InfoPopover label={t('settings.builtinHelp')}><p>{t('settings.AudioSettingsModal.096')}</p>{builtinDetails && <p>{builtinDetails}</p>}</InfoPopover>}
+                            {key === 'vst' && quiet && <InfoPopover label={t('chain.vstEmptyName')}>{t('chain.vstEmptyHint')}</InfoPopover>}
+                        </div>
                         {sub && <div className="sr-only">{sub}</div>}
                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">{body}</div>
                         {action}
@@ -133,8 +136,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     // 声の処理と残響は別の設定。声ON・残響OFFを異常に見せず、逆の場合だけ「残響のみ」を伝える。
     const builtinBreakdown = builtinDetails && <span className={music && partial ? 'text-ui-support text-muted-foreground' : 'sr-only'}>{builtinDetails}</span>;
     // パネルを閉じたときはこのボタンへフォーカスを戻す（AppShell）。
-    const vstEdit = onOpenVst && <button type="button" id="vst-panel-toggle" onClick={onOpenVst} aria-expanded={vstPanelOpen} aria-controls="vst-panel"
-        className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-primary/60 px-3 py-1.5 text-ui-control font-semibold text-primary hover:bg-primary/10">
+    const vstEdit = onOpenVst && !(emptyVst && vstPanelOpen) && <button type="button" id="vst-panel-toggle" onClick={onOpenVst} aria-expanded={vstPanelOpen} aria-controls="vst-panel"
+        className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-border px-3 py-1.5 text-ui-control hover:bg-muted">
         {t(emptyVst ? 'chain.vstAdd' : 'chain.vstEditPanel')}<MdChevronRight aria-hidden="true" className="h-4 w-4" />
     </button>;
     const rows = [

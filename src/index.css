@@ -396,7 +396,7 @@
   /* 高さと位置は実際の行に合わせて JS で上書きする。測る前も1行分の印を出す。 */
   position: absolute; left: 0; right: 0; top: 0; height: 2.75rem; border-radius: 0.5rem;
   background: hsl(var(--accent)); box-shadow: inset 3px 0 0 hsl(var(--primary));
-  transition: transform var(--motion-panel) var(--ease-in-out);
+  transition: transform var(--motion-panel) var(--ease-in-out), height var(--motion-panel) var(--ease-in-out);
 }
 .setup-heading { font-size: 1.5rem; line-height: 1.35; font-weight: 600; letter-spacing: -0.01em; color: hsl(var(--foreground)); }
 @keyframes setup-step-in { from { opacity: 0; transform: translateX(var(--setup-from, 28px)); } }
@@ -774,3 +774,9 @@ html[data-app-hidden="true"] *::after {
 /* 音調整を開いた間は最小窓でも舞台を縮め、開いた操作の場所を確保する。 */
 .live-strip[data-compact="true"] .live-stage { min-height: 0; }
 .live-strip[data-compact="true"] .live-stage-mode { font-size: var(--text-ui-heading); }
+
+/* 共通部品のない入力も含め、強制色では輪郭を内側に収める。
+   focus:outline-hidden のユーティリティより優先し、スクロール領域での欠けを防ぐ。 */
+@media (forced-colors: active) {
+  input:focus, select:focus, textarea:focus { outline-offset: -2px; }
+}

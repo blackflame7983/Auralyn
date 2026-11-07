@@ -75,7 +75,7 @@ export const MeterVisual = memo(function MeterVisual({ reading, label, orientati
         <span className="inline-flex h-5 w-6 shrink-0 items-center justify-center">
             {reading.clipped && <button type="button" onClick={reading.resetClip}
                 title={`${t('meter.clipAge', { seconds: reading.clipSecondsAgo ?? 0 })} — ${t('meter.clearClipNamed', { name: label })}`}
-                className={`rounded border p-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${reading.clipSecondsAgo != null && reading.clipSecondsAgo >= 10 ? 'border-border text-muted-foreground hover:bg-muted' : 'border-meter-danger/50 text-meter-danger hover:bg-destructive/10'}`}
+                className={`relative before:absolute before:left-1/2 before:top-1/2 before:size-6 before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] rounded border p-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${reading.clipSecondsAgo != null && reading.clipSecondsAgo >= 10 ? 'border-border text-muted-foreground hover:bg-muted' : 'border-meter-danger/50 text-meter-danger hover:bg-destructive/10'}`}
                 aria-label={t('meter.clearClipNamed', { name: label })}>
                 <MdWarningAmber aria-hidden="true" className="h-4 w-4" /><span className="sr-only">{t('meter.clip')}</span>
             </button>}

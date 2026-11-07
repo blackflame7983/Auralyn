@@ -241,3 +241,23 @@ it.each(['ja', 'en'] as const)('停止中は3項目を中立の停止表示に�
     expect(screen.queryByText(message(locale, 'home.checkUnavailable'))).not.toBeInTheDocument();
     expect(chain.querySelector('[data-tone="warn"]')).toBeNull();
 });
+
+
+it('空のVSTの追加は右パネルを開いている間は重ねない', () => {
+    const current = stats(); current.latencyMetadata!.stageBreakdown!.vst = [];
+    const p = props();
+    const view = render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vstPanelOpen /></RuntimeStatsContext.Provider>);
+    expect(screen.queryByRole('button', { name: '追加' })).not.toBeInTheDocument();
+    view.rerender(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vstPanelOpen={false} /></RuntimeStatsContext.Provider>);
+    expect(screen.getByRole('button', { name: '追加' })).toBeInTheDocument();
+});
+
+
+it('ノイズ低減と声を整えるの情報ボタンはパネルの名前の右に置く', () => {
+    render(<SoundChain {...props()} />);
+    for (const [name, info] of [['ノイズ低減', 'info.noise'], ['声を整える', 'settings.builtinHelp']] as const) {
+        fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${name} `) }));
+        const heading = screen.getByRole('heading', { name, level: 3 });
+        expect(within(heading.parentElement!).getByRole('button', { name: message('ja', info) })).toBeInTheDocument();
+    }
+});

@@ -68,9 +68,9 @@ export function InputGainControl({ disabled = false }: { disabled?: boolean }) {
 
     return <Popover.Root open={open} onOpenChange={setOpen}>
         <TooltipProvider delayDuration={300}><Tooltip><TooltipTrigger asChild><Popover.Trigger asChild>
-            {/* 本番帯を詰めないよう、アイコンと値だけを出す。名前は読み上げとツールチップで伝える。 */}
+            {/* 短い名前と値で、ツールチップを開かずに操作を見分けられるようにする。 */}
             <button type="button" disabled={unavailable} aria-label={`${label} ${inputGain}%`} className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[13px] hover:bg-muted">
-                <Icon aria-hidden="true" className="h-4 w-4" /><span className="font-mono">{inputGain}%</span>
+                <Icon aria-hidden="true" className="h-4 w-4" /><span>{label}</span><span className="font-mono">{inputGain}%</span>
             </button>
         </Popover.Trigger></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip></TooltipProvider>
         {failed && !open && <p role="alert" className="text-xs text-warning">{t('home.inputGainReopen')}</p>}

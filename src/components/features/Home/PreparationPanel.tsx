@@ -188,7 +188,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
                     const label = t(stage === 'receiver' && context.usage === 'listening' ? 'prep.localReceiver' : music && stage === 'sound' ? 'wizard.musicSound' : music && stage === 'listen' ? 'wizard.musicListen' : stageLabels[stage]);
                     return <li key={stage} className="py-3 space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                            <h3 className="text-sm font-semibold">{label}</h3>
+                            <h3 className="text-ui-control font-semibold">{label}</h3>
                             <span className="text-xs text-muted-foreground">{t(stage !== 'sound' && state !== 'stale' ? state === 'confirmed' ? 'prep.listenConfirmed' : 'prep.listenUnconfirmed' : statusLabels[state])}</span>
                         </div>
                         {state === 'confirmed' && <button type="button" onClick={() => model.unconfirm(stage)} aria-label={`${label}: ${t('prep.unconfirm')}`} className="text-xs underline underline-offset-4">{t('prep.unconfirm')}</button>}

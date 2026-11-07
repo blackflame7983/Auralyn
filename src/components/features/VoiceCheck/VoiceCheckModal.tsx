@@ -63,7 +63,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
             <div className="w-full max-w-2xl max-h-[90vh] rounded-xl border border-border bg-card shadow-2xl overflow-hidden flex flex-col">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card/80 shrink-0">
                     <div>
-                        <h2 className="text-lg font-bold text-foreground">{t('voice.copy.001')}</h2>
+                        <h2 className="text-ui-heading font-semibold text-foreground">{t('voice.copy.001')}</h2>
                         <details className="text-xs text-muted-foreground mt-1">
                             <summary className="cursor-pointer">{t('voice.recordingScopeDetails')}</summary>
                             <p className="mt-1">{t('voice.copy.003')}</p>
@@ -170,7 +170,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     <summary className="cursor-pointer text-sm font-semibold">{t('voice.playbackSection')}</summary>
                     {/* 録音 → 波形 → 聴き比べの順に置き、試聴先は再生操作の直前で選ぶ。 */}
                     <section aria-label={t('voice.copy.036')} className="rounded-lg border border-border p-3 space-y-3">
-                        <h3 className="text-sm font-bold">{t('voice.copy.037')}</h3>
+                        <h3 className="text-ui-control font-semibold">{t('voice.copy.037')}</h3>
                         <div className="flex flex-wrap items-end gap-2">
                             <label className="min-w-0 flex-1 text-sm">{t('voice.copy.041')}<select value={previewDeviceId} disabled={previewBusy || isPlaying || preview?.state === 'stopping'} onChange={event => setPreviewDeviceId(event.target.value)} className="mt-1 block w-full rounded border border-input bg-background p-2">
                                     <option value="">{t('voice.copy.042')}</option>
@@ -255,7 +255,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     </details>
                     {!comparingCandidate && <div className="border-t border-border pt-5 space-y-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                            <h3 className="text-sm font-bold text-foreground">{t('voice.copy.090')}</h3>
+                            <h3 className="text-ui-control font-semibold text-foreground">{t('voice.copy.090')}</h3>
                             {qualityReport && (
                                 <span
                                     className={cn(
@@ -352,7 +352,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                         <summary className="cursor-pointer font-semibold">{t('structure.voiceCandidates')}</summary>
                     {singingModel && <VoiceProposalPanel running={streamStatus === 'ready' ? true : streamStatus === 'stopped' ? false : undefined} model={singingModel} candidate={candidateMode === 'proposal' ? candidate : null} currentRecordingId={preview?.state === 'closed' ? null : preview?.recordingId ?? null} disabled={isRecording || busy || previewBusy || stopUnconfirmed || preview?.state === 'closed' || Boolean(preview?.conflict) || preview?.owner === 'auto_gain'} previewActive={isPlaying || previewBusy || preview?.state === 'stopping'} prepare={prepareProposal} invalidatePreferences={invalidateProposalPreferences} onSave={onSaveSingingProfile} />}
                     {manualCandidate && singingModel && <section aria-label={t('voice.copy.014')} className="rounded-lg border border-border p-3 space-y-3 text-sm">
-                        <h3 className="font-bold">{t('voice.copy.015')}</h3>
+                        <h3 className="text-ui-control font-semibold">{t('voice.copy.015')}</h3>
                         <p>{t('voice.copy.016')}</p>
                         <p>{t('voice.copy.017')}</p>
                         <button type="button" disabled={isRecording || busy || previewBusy || !preview?.recordingId || preview.state === 'closed' || singingModel.busy || singingModel.conflict || !singingModel.draft} onClick={() => void prepareCandidate()} className="rounded border px-3 py-2 disabled:opacity-50">{t('voice.copy.018')}</button>
