@@ -90,6 +90,10 @@ export function useLayoutMotion(ref: RefObject<HTMLElement | null>, enabled = tr
         // 幅の遷移は親と兄弟で起きるため、同じ作業領域で両方の終了を待つ。
         const workspace = root.closest('.workspace-body') ?? root;
         const transitions = new Map<EventTarget, Set<string>>();
+        const widthAnimating = () => [workspace, ...workspace.querySelectorAll(':scope > .vst-panel-space')].some(element =>
+            element.getAnimations?.().some(animation =>
+                'transitionProperty' in animation && ['width', 'max-width'].includes(String(animation.transitionProperty)) &&
+                (animation.playState === 'running' || animation.pending)));
         let frame: number | null = null;
         let resizeTimer: ReturnType<typeof setTimeout> | null = null;
         const cancelMoves = () => { for (const element of tracked) moves.get(element)?.cancel(); };
@@ -98,6 +102,7 @@ export function useLayoutMotion(ref: RefObject<HTMLElement | null>, enabled = tr
             cancelFrame();
             frame = requestAnimationFrame(() => {
                 frame = null;
+                if (widthAnimating()) { settle(); return; }
                 if (transitions.size === 0 && resizeTimer === null) measure(true);
             });
         };
@@ -150,7 +155,7 @@ export function useLayoutMotion(ref: RefObject<HTMLElement | null>, enabled = tr
 
         // 通常の内容変更だけを補間する。連続する幅変更中は位置を読み直さない。
         const resize = new ResizeObserver(() => {
-            if (transitions.size === 0 && resizeTimer === null && frame === null) measure();
+            if (!widthAnimating() && transitions.size === 0 && resizeTimer === null && frame === null) measure();
         });
         const observe = () => {
             const before = trackedSet;

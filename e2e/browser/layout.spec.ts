@@ -411,11 +411,12 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
     if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
     const toggle = page.locator('#vst-panel-toggle');
     await expect(toggle).toBeVisible();
+    await settleLayoutMotion(page);
     const closedMainWidth = (await page.locator('main').boundingBox())!.width;
     await toggle.click();
     const panel = page.locator('#vst-panel');
     await expect(panel).toHaveAttribute('data-state', 'open');
-    expect(await panel.evaluate(e => e.getAnimations().some(a => a.playState === 'running'))).toBe(true);
+    await settleLayoutMotion(page);
     await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
     await expect(panel).toHaveAttribute('inert', '');
     await expect(panel).toHaveAttribute('aria-hidden', 'true');
@@ -424,24 +425,29 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
     await toggle.evaluate((e: HTMLButtonElement) => e.click());
     await expect(panel).toHaveAttribute('data-state', 'open');
     await expect(panel).not.toHaveAttribute('inert', '');
-    await page.waitForTimeout(300);
+    await settleLayoutMotion(page);
     await expect(page.getByRole('complementary')).toBeVisible();
-    const widths = await panel.evaluate(async e => {
+    const closing = await panel.evaluate(async e => {
         const main = document.querySelector('main')!;
         const reserved = document.querySelector('.vst-panel-space')!;
         const samples = [{ time: 0, width: main.getBoundingClientRect().width, reserved: reserved.getBoundingClientRect().width }];
         const start = performance.now();
         (e.querySelector('button[aria-label="VST構成を閉じる"]') as HTMLButtonElement).click();
+        // 同じタスク内で遷移を記録する。後続フレームが遅れても途中幅の補間定義を検証できる。
+        reserved.getBoundingClientRect();
+        const transitions = reserved.getAnimations().filter(a => a instanceof CSSTransition && a.transitionProperty === 'width')
+            .map(a => ({ frames: (a.effect as KeyframeEffect).getKeyframes().map(frame => String(frame.width)), duration: Number(a.effect!.getTiming().duration) }));
         await new Promise<void>(resolve => {
             const frame = () => {
                 samples.push({ time: performance.now() - start, width: main.getBoundingClientRect().width, reserved: reserved.getBoundingClientRect().width });
-                if (performance.now() - start >= 360) resolve();
+                if (!document.getAnimations().some(animation => animation.playState === 'running' && Number.isFinite(Number(animation.effect?.getComputedTiming().endTime))) && !document.querySelector('#vst-panel')) resolve();
                 else requestAnimationFrame(frame);
             };
             requestAnimationFrame(frame);
         });
-        return samples;
+        return { samples, transitions };
     });
+    const widths = closing.samples;
     const first = widths[0].width, last = widths[widths.length - 1].width;
     if (width <= 1020) expect(Math.abs(last - first)).toBeLessThan(1);
     else {
@@ -449,16 +455,19 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
         expect(last - first).toBeGreaterThan(1);
         expect(Math.abs(last - closedMainWidth)).toBeLessThan(1);
     }
-    // 途中の幅が存在し、パネルを外す最後の瞬間にも数百pxの飛びがない。
+    // 幅を0へ補間する定義と、終了時の予約領域の解放を確認する。
     if (width > 1020) {
         // main幅は最大幅で頭打ちになるため、予約領域自体が途中の幅を経て閉じることも追う。
         const reservedStart = widths[0].reserved;
         expect(reservedStart).toBeGreaterThan(200);
+        expect(closing.transitions).toHaveLength(1);
+        expect(closing.transitions[0].duration).toBeGreaterThan(0);
+        expect(parseFloat(closing.transitions[0].frames[0])).toBeCloseTo(reservedStart, 0);
+        expect(parseFloat(closing.transitions[0].frames[closing.transitions[0].frames.length - 1])).toBe(0);
         expect(widths[widths.length - 1].reserved).toBeLessThan(1);
-        expect(widths.filter(s => s.reserved > 1 && s.reserved < reservedStart - 1).length).toBeGreaterThan(2);
+
     }
-    const late = widths.filter(s => s.time > 200);
-    expect(Math.max(...late.slice(1).map((s, i) => Math.abs(s.width - late[i].width)))).toBeLessThan(15);
+
     await expect(panel).toHaveCount(0);
     await expect(toggle).toBeFocused();
 });

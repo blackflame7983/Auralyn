@@ -1,7 +1,7 @@
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { shortcutErrorNotices, type ShortcutError } from '@/lib/shortcutNotice';
@@ -52,6 +52,7 @@ function normalized(value: string) {
 }
 export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturing: boolean) => void } = {}) {
     const t = useMessages();
+    const headingId = useId();
     const [values, setValues] = useState<Values>({});
     const [saved, setSaved] = useState<Values>({});
     // 起動時の登録失敗は値の変更と別に保持し、競合解消後の再登録を可能にする。
@@ -208,8 +209,8 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
         <ConfirmDialog isOpen={confirmRecommended} title={t('shortcuts.confirmRecommended')}
             description={t('shortcuts.recommendedDescription', { bindings: recommended.map(({ action, shortcut }) => `${t(actions[action])}: ${formatShortcut(shortcut)}`).join(' / ') })}
             confirmLabel={t('shortcuts.fillRecommended')} onCancel={() => setConfirmRecommended(false)} onConfirm={applyRecommended} />
-        {actionGroups.map(group => <section key={group.title} className="space-y-2" aria-label={t(group.title)}>
-        <h4 className="text-ui-control font-semibold">{t(group.title)}</h4>
+        {actionGroups.map(group => <section key={group.title} className="space-y-2" aria-labelledby={`${headingId}-${group.title}`}>
+        <h4 id={`${headingId}-${group.title}`} className="text-ui-control font-semibold">{t(group.title)}</h4>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{group.actions.map(action => {
             const label = t(actions[action]);
             const pair = split(values[action] ?? '');

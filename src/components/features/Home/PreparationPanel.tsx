@@ -1,6 +1,6 @@
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
-import { useSharedMeter } from '../LevelMeter/MeterContext';
+import { useInputMeterState } from '../LevelMeter/MeterContext';
 import { MdExpandMore, MdHelpOutline } from 'react-icons/md';
 import { destinationChoices } from '@/lib/destinationChoices';
 import { cn } from '@/lib/utils';
@@ -215,8 +215,8 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
 const SILENCE_ATTENTION_MS = 5000;
 function TroubleshootEntry({ running, music, attention, onOpen }: { running: boolean; music: boolean; attention: boolean; onOpen: () => void }) {
     const t = useMessages();
-    const input = useSharedMeter(running, 'input');
-    const quiet = running && (input.state === 'stale' || !music && input.state === 'silent');
+    const state = useInputMeterState(running);
+    const quiet = running && (state === 'waiting' || state === 'stale' || !music && state === 'silent');
     const [quietLong, setQuietLong] = useState(false);
     useEffect(() => {
         if (!quiet) { setQuietLong(false); return; }
@@ -224,7 +224,7 @@ function TroubleshootEntry({ running, music, attention, onOpen }: { running: boo
         return () => window.clearTimeout(timer);
     }, [quiet]);
     const prominent = attention || quietLong;
-    return <button type="button" onClick={onOpen} aria-haspopup="dialog"
+    return <button type="button" onClick={onOpen} aria-haspopup="dialog" aria-description={prominent ? t('prep.diagnosticAttention') : undefined}
         className={cn('inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring',
             prominent ? 'border border-warning bg-warning/10 font-semibold' : 'underline underline-offset-4')}>
         <MdHelpOutline aria-hidden="true" className="h-4 w-4 shrink-0" />{t('header.noSound')}

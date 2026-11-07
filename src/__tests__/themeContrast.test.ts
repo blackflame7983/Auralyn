@@ -100,6 +100,37 @@ it('ライトとオーロラは面に色相を持たせず、色はメーター�
 });
 
 
+function opacityCounts(source: string) {
+    const file = ts.createSourceFile("fixture.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const counts: Record<string, number> = {};
+    const inspect = (node: ts.Node) => {
+        // アイコン自体の濃淡は文字のコントラストとは別に扱う。
+        if (ts.isJsxAttribute(node) && node.name.getText(file) === 'className') {
+            const tag = (node.parent.parent as ts.JsxOpeningElement).tagName.getText(file);
+            if (/^(Md[A-Z]|svg$)/.test(tag)) return;
+        }
+        if (ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
+            for (const token of node.text.split(/\s+/)) {
+                const match = token.match(/^(.*:)?(opacity-(?:\d+|\[[^\]]+\]))$/);
+                if (!match || ['opacity-0', 'opacity-100'].includes(match[2])) continue;
+                // 無効状態のスタイルは補足文字の濃淡とは別に扱う。
+                if (match[1]?.split(':').some(prefix => ['disabled', 'peer-disabled', 'aria-disabled', 'data-[disabled]'].includes(prefix))) continue;
+                counts[token] = (counts[token] ?? 0) + 1;
+            }
+        }
+        ts.forEachChild(node, inspect);
+    };
+    inspect(file);
+    return counts;
+}
+
+it('接頭辞・属性外の文字列を走査し、同じ例外トークンの追加も数える', () => {
+    const counts = opacityCounts(`const tone = 'group-hover:opacity-50 focus:opacity-60 data-[state=open]:opacity-70';
+        const variants = cva('opacity-50'); const styles = { note: 'opacity-50' };
+        const view = <p className="opacity-50" />;`);
+    expect(counts).toEqual({ 'group-hover:opacity-50': 1, 'focus:opacity-60': 1, 'data-[state=open]:opacity-70': 1, 'opacity-50': 3 });
+});
+
 it('読ませる文字の色・要素に不透明度を追加しない', () => {
     const violations: string[] = [];
     // 既存の無効状態と装飾だけを例外にする。読ませる補足を追加する場所には使わない。
@@ -116,32 +147,17 @@ it('読ませる文字の色・要素に不透明度を追加しない', () => {
         for (const entry of readdirSync(directory, { withFileTypes: true })) {
             const path = join(directory, entry.name);
             if (entry.isDirectory()) { if (!['__tests__', 'prototypes'].includes(entry.name)) visit(path); continue; }
-            if (!/\.(tsx|css)$/.test(entry.name)) continue;
+            if (!/\.(tsx?|css)$/.test(entry.name)) continue;
             const source = readFileSync(path, 'utf8');
             // 文字サイズの text-[...] ではなく、色トークンの /NN・/[...] を検出する。
             if (/\btext-[\w-]+\/(?:\d+|\[)/.test(source)) violations.push(`${path}: text color alpha`);
-            if (!entry.name.endsWith('.tsx')) continue;
-            const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-            const inspect = (node: ts.Node) => {
-                if (ts.isJsxAttribute(node) && node.name.getText(file) === 'className') {
-                    const tag = (node.parent.parent as ts.JsxOpeningElement | ts.JsxSelfClosingElement).tagName.getText(file);
-                    // アイコン自体の濃淡は文字のコントラストとは別に扱う。
-                    if (/^(Md[A-Z]|svg$)/.test(tag)) return;
-                    const strings = (child: ts.Node) => {
-                        if (ts.isStringLiteralLike(child) || ts.isTemplateHead(child) || ts.isTemplateMiddle(child) || ts.isTemplateTail(child)) {
-                            for (const token of child.text.split(/\s+/)) {
-                                if (!/^(?:hover:)?opacity-/.test(token) || ['opacity-0', 'opacity-100'].includes(token)) continue;
-                                const relative = path.replace(/\\/g, '/').replace(/^src\/components\//, '');
-                                if (!exceptions[relative]?.[token]) violations.push(`${path}:${file.getLineAndCharacterOfPosition(child.pos).line + 1}: ${token}`);
-                            }
-                        }
-                        ts.forEachChild(child, strings);
-                    };
-                    ts.forEachChild(node, strings);
-                }
-                ts.forEachChild(node, inspect);
-            };
-            inspect(file);
+            if (!/\.tsx?$/.test(entry.name)) continue;
+            const counts = opacityCounts(source);
+            const relative = path.replace(/\\/g, '/').replace(/^src\/components\//, '');
+            for (const [token, count] of Object.entries(counts)) {
+                const allowed = exceptions[relative]?.[token] ? 1 : 0;
+                if (count > allowed) violations.push(`${path}: ${token} (${count}, allowed ${allowed})`);
+            }
         }
     };
     visit('src');

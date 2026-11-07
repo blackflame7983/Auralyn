@@ -157,6 +157,13 @@ test('選択背景が確定値へ移動し、ミュート押下と動きを減�
     await expect(modes.getByRole('button', { name: message('ja', 'liveBar.singing'), exact: true })).toHaveAttribute('aria-pressed', 'true');
     expect(await modeMarker!.evaluate(el => el.isConnected)).toBe(true);
     const protect = page.getByRole('button', { name: message('ja', 'liveBar.protect'), exact: true });
+    await protect.focus();
+    await page.keyboard.press('Enter');
+    await expect(protect).toHaveAttribute('aria-pressed', 'true');
+    await expect(protect).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(protect).toHaveAttribute('aria-pressed', 'false');
+    await expect(protect).toBeFocused();
     await protect.hover(); await page.mouse.down();
     expect(await protect.evaluate(el => getComputedStyle(el).transform)).toBe('none');
     await page.mouse.move(1, 1); await page.mouse.up();

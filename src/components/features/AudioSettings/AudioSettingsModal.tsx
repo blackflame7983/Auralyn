@@ -16,7 +16,7 @@ import { useSingingDraft, type SingingDraft } from '../../../hooks/useSingingDra
 import { useLiveModes, type LiveModesModel } from '@/hooks/useLiveModes';
 import { Modal } from '../../ui/modal';
 import { MicrophonePermissionGuide } from './MicrophonePermissionGuide';
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useId, useState, useMemo, useRef } from 'react';
 import { MdClose, MdSettings, MdRefresh, MdWarning, MdLightbulb, MdSave, MdDelete, MdPalette, MdMic, MdGraphicEq, MdCast, MdKeyboard, MdTune } from 'react-icons/md';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { toast } from 'sonner';
@@ -85,6 +85,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   allowConnectionRetry = false,
 }) => {
     const t = useMessages();
+  const inputId = useId();
+  const pcInput = localStorage.getItem('vst_host_setup_goal') === 'music';
   const localSinging = useSingingDraft();
   const localLive = useLiveModes();
   const singingModel = providedSinging ?? localSinging;
@@ -520,10 +522,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {/* Input Device */}
                 {!processInput && <fieldset className="space-y-3 rounded-xl border border-border p-3">
                   <legend className="px-1 text-ui-heading font-semibold">
-                    {isAsio ? t('settings.AudioSettingsModal.037') : t('settings.AudioSettingsModal.038')}
+                    <label htmlFor={inputId}>{t(isAsio ? 'settings.AudioSettingsModal.037' : pcInput ? 'wizard.pcAudio' : 'settings.AudioSettingsModal.038')}</label>
                   </legend>
                   <select
-                    aria-label={t('settings.AudioSettingsModal.039')}
+                    id={inputId}
                     value={needsDeviceChoice ? '' : selectedInputKey}
                     onChange={(e) => { editConnection('input'); setSelectedInputKey(e.target.value); setNeedsDeviceChoice(!e.target.value); }}
                     disabled={filteredInputs.length === 0}

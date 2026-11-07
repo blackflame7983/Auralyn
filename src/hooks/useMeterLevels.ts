@@ -14,19 +14,20 @@ export const meterStatusLabel = (state: MeterState): MessageKey => state === 'st
 const empty = (state: MeterState, clipped = false) => ({ levels: [0, 0] as Pair, peak: [0, 0] as Pair, clipped, state });
 
 // レベル通知は到達確認ではない。連続するゼロ通知はエンジン側で省略される。
-export function useMeterLevels({ running, type = 'output', enabled = true }: { running: boolean; type?: 'input' | 'output'; large?: boolean; enabled?: boolean }): MeterReading {
+export function useMeterLevels({ running, type = 'output', enabled = true, stateOnly = false }: { stateOnly?: boolean; running: boolean; type?: 'input' | 'output'; large?: boolean; enabled?: boolean }): MeterReading {
     const [reading, setReading] = useState<Omit<MeterReading, 'resetClip'>>(() => empty(running ? 'waiting' : 'stopped'));
     const published = useRef(reading);
     const publish = useCallback((next: Omit<MeterReading, 'resetClip'>) => {
         if (isAppHidden()) return;
         const previous = published.current;
+        if (stateOnly && previous.state === next.state) return;
         if (previous.state === next.state && previous.clipped === next.clipped &&
             (previous.clipSecondsAgo ?? null) === (next.clipSecondsAgo ?? null) &&
             previous.levels.every((value, i) => value === next.levels[i]) &&
             previous.peak.every((value, i) => value === next.peak[i])) return;
         published.current = next;
         setReading(next);
-    }, []);
+    }, [stateOnly]);
     const clipped = useRef(false);
     const lastClipAt = useRef<number | null>(null);
     const resetClip = useCallback(() => { clipped.current = false; lastClipAt.current = null; publish({ ...published.current, clipped: false, clipSecondsAgo: null }); }, [publish]);

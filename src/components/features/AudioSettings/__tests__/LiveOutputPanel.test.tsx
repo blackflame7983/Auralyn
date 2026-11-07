@@ -100,15 +100,22 @@ it.each(['ja', 'en'] as const)('停止の条件を示し、キャンセルでは
 });
 
 it('停止に失敗しても再試行でき、停止済みと表示しない', async () => {
-    vi.mocked(audioApi.stop).mockRejectedValue(new Error('stop failed'));
+    let rejectStop!: (reason: Error) => void;
+    vi.mocked(audioApi.stop).mockImplementation(() => new Promise<void>((_, reject) => { rejectStop = reject; }));
     render(<ParentLinkedPanel />);
     const stop = screen.getByRole('button', { name: '両経路の音声を停止' });
     fireEvent.click(stop);
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '両経路の音声を停止' }));
-    await screen.findByRole('alert');
-    await waitFor(() => expect(stop).toBeEnabled());
+    await act(async () => rejectStop(new Error('stop failed')));
+    expect(screen.getByRole('alert')).toBeVisible();
+    expect(stop).toBeEnabled();
     expect(stop).toHaveFocus();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    fireEvent.click(stop);
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '両経路の音声を停止' }));
+    expect(audioApi.stop).toHaveBeenCalledTimes(2);
+    await act(async () => rejectStop(new Error('stop failed again')));
+    expect(stop).toBeEnabled();
 });
 
 it('親の無効状態が停止完了後も続く間はフォーカス復帰を保留し、解除後に戻す', async () => {
