@@ -9,6 +9,7 @@ import { AppShell } from '../AppShell';
 import { HomeAudioStartError } from '@/lib/startHomeAudio';
 import { FixedClientError } from '@/lib/clientError';
 import { saveDisplayPurpose } from '@/hooks/useDisplayPurpose';
+import { saveStreamMixPanel } from '@/lib/streamMixPanel';
 import { saveVstPanelOpen } from '@/hooks/useVstPanel';
 
 vi.mock('../Header', () => ({ Header: () => null }));
@@ -16,7 +17,7 @@ vi.mock('../MasterBar', () => ({ MasterBar: () => null }));
 const measurementProps = vi.hoisted(() => ({current: null as any}));
 vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: (props: unknown) => { measurementProps.current = props; return null; } }));
 vi.mock('../../features/Home/VoiceQuickControls', () => ({ useVoiceQuick: () => ({ stats: {}, noiseOn: true, chainOn: true }), NoiseSwitch: () => null, NoiseQuick: () => <p>quick</p>, BuiltinSwitch: () => null, BuiltinQuick: () => null }));
-beforeEach(() => { vi.mocked(listen).mockClear(); localStorage.clear(); });
+beforeEach(() => { vi.mocked(listen).mockClear(); localStorage.clear(); saveStreamMixPanel(false); });
 afterEach(async () => { await act(async () => {}); cleanup(); vi.restoreAllMocks(); });
 
 it.each([false, true])('音声停止中の入口は設定を開き、稼働中には表示しない（稼働=%s）', running => {
@@ -341,7 +342,7 @@ it('歌・雑談が未登録で何も描画しないときは、本番帯がな�
     expect(document.querySelector('.empty\\:hidden')).toBeEmptyDOMElement();
 });
 
-it('チェーン列は本番帯の直下で音声チェックより前に置き、未設定の間だけ音の流れの後ろへ回す', () => {
+it('チェーン列は本番操作の後で音声チェックより前に置き、未設定の間だけ音の流れの後ろへ回す', () => {
     const follows = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     const view = render(<AppShell {...commonProps} vstChain={<span>vst-items</span>}><p>rack</p></AppShell>);
     const chain = screen.getByRole('region', { name: '音調整' });
@@ -360,6 +361,28 @@ it('ホーム上部に表示モードの切替を常設しない', () => {
     expect(screen.queryByRole('group', { name: '用途に合わせた表示' })).not.toBeInTheDocument();
 });
 
+it('配信ミックスは表示を選んだとき本番帯の直後へ置き、大型メーターより操作領域を優先する（#355）', () => {
+    const props = { ...commonProps, streamMixPanel: <section aria-label="配信ミックス">mix</section> };
+    const view = render(<AppShell {...props}><p>rack</p></AppShell>);
+    act(() => saveStreamMixPanel(true));
+    const strip = screen.getByRole('region', { name: '本番' });
+    const mix = screen.getByRole('region', { name: '配信ミックス' });
+    const chain = screen.getByRole('region', { name: '音調整' });
+    expect(strip.nextElementSibling).toBe(mix);
+    expect(mix.compareDocumentPosition(chain) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(strip).toHaveAttribute('data-roomy', 'false');
+    expect(strip.closest('.home-content')).toHaveAttribute('data-roomy', 'false');
+    // 未設定に戻ったら、表示を選んでいても音の流れと次の1歩より上へ出さない（#297）。
+    view.rerender(<AppShell {...props} currentHost=""><p>rack</p></AppShell>);
+    expect(screen.queryByRole('region', { name: '配信ミックス' })).not.toBeInTheDocument();
+    view.rerender(<AppShell {...props}><p>rack</p></AppShell>);
+    expect(screen.getByRole('region', { name: '配信ミックス' })).toBeInTheDocument();
+    // 音楽鑑賞では配信ミックスの保存値に関係なく、従来の配置・大型化条件へ戻る。
+    act(() => saveDisplayPurpose('music'));
+    view.rerender(<AppShell {...props} streamMixPanel={undefined}><p>rack</p></AppShell>);
+    expect(screen.queryByRole('region', { name: '配信ミックス' })).not.toBeInTheDocument();
+    act(() => { saveStreamMixPanel(false); saveDisplayPurpose('voice'); });
+});
 it('音量チェックの停止未確認でもホームの診断へ直接進める', () => {
     const diagnose = vi.fn();
     render(<AppShell onOpenOBSSettings={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} onOpenDiscordGuide={vi.fn()}
