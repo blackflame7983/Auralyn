@@ -5,7 +5,8 @@ import { MdCheck, MdChevronRight, MdCircle } from "react-icons/md"
 import { cn } from "@/lib/utils"
 
 // Radix がフォーカス時に付ける属性で、入力方法を問わずレイアウトを動かさずに示す。
-const menuItemFocusClassName = "data-[highlighted]:shadow-[inset_2px_0_0_hsl(var(--ring))]"
+// forced-colors では影が消えるため、DOMフォーカスに実線を残す。切り抜かれないよう内側に描く。
+const menuItemFocusClassName = "data-[highlighted]:shadow-[inset_2px_0_0_hsl(var(--ring))] forced-colors:focus:-outline-offset-2"
 
 const DropdownMenu = DropdownMenuPrimitive.Root
 
@@ -28,7 +29,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
     <DropdownMenuPrimitive.SubTrigger
         ref={ref}
         className={cn(
-            "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent",
+            "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm focus:outline-hidden focus:bg-accent data-[state=open]:bg-accent",
             menuItemFocusClassName,
             inset && "pl-8",
             className
@@ -85,7 +86,7 @@ const DropdownMenuItem = React.forwardRef<
     <DropdownMenuPrimitive.Item
         ref={ref}
         className={cn(
-            "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+            "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm focus:outline-hidden transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
             menuItemFocusClassName,
             inset && "pl-8",
             className
@@ -102,7 +103,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
     <DropdownMenuPrimitive.CheckboxItem
         ref={ref}
         className={cn(
-            "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+            "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm focus:outline-hidden transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
             menuItemFocusClassName,
             className
         )}
@@ -127,7 +128,7 @@ const DropdownMenuRadioItem = React.forwardRef<
     <DropdownMenuPrimitive.RadioItem
         ref={ref}
         className={cn(
-            "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+            "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm focus:outline-hidden transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
             menuItemFocusClassName,
             className
         )}

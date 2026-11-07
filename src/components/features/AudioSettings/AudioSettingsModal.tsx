@@ -529,7 +529,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     value={needsDeviceChoice ? '' : selectedInputKey}
                     onChange={(e) => { editConnection('input'); setSelectedInputKey(e.target.value); setNeedsDeviceChoice(!e.target.value); }}
                     disabled={filteredInputs.length === 0}
-                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select disabled:opacity-50 text-ui-control"
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary transition custom-select disabled:opacity-50 text-ui-control"
                   >
                     {(needsDeviceChoice || !selectedInputKey) && <option value="">{t(filteredInputs.length ? 'settings.selectDevice' : 'settings.AudioSettingsModal.040')}</option>}
                     {filteredInputs.map((device, i) => (
@@ -565,7 +565,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       value={selectedOutputKey}
                       onChange={(e) => { editConnection('output'); setSelectedOutputKey(e.target.value); }}
                       disabled={filteredOutputs.length === 0}
-                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select disabled:opacity-50 text-ui-control"
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary transition custom-select disabled:opacity-50 text-ui-control"
                     >
                       {!selectedOutputKey && <option value="">{t(filteredOutputs.length ? 'settings.selectDevice' : 'settings.AudioSettingsModal.043')}</option>}
                       {filteredOutputs.map((device, i) => (
@@ -626,7 +626,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     aria-label={t('settings.AudioSettingsModal.035')}
                     value={selectedHost}
                     onChange={(e) => { editConnection('host'); setSelectedHost(e.target.value); }}
-                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select text-ui-control"
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary transition custom-select text-ui-control"
                   >
                     {!selectedHost && <option value="">{t('settings.AudioSettingsModal.036')}</option>}
                     {availableHosts.map((host) => (
@@ -736,7 +736,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     aria-label={t('settings.AudioSettingsModal.066')}
                           value={selectedBufferSize}
                           onChange={(e) => { editConnection('buffer'); setSelectedBufferSize(Number(e.target.value)); }}
-                          className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select text-ui-control"
+                          className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary transition custom-select text-ui-control"
                         >
                           {supportedBufferSizes.map(size => (
                             <option key={size} value={size}>{size} {t('settings.AudioSettingsModal.067')}</option>
@@ -758,7 +758,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     aria-label={t('master.rate')}
                         value={selectedSampleRate}
                         onChange={(e) => { editConnection('rate'); setSelectedSampleRate(Number(e.target.value)); }}
-                        className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition custom-select text-ui-control"
+                        className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary transition custom-select text-ui-control"
                       >
                         {sampleRates.options.map(({ rate, supported }) => (
                           <option key={rate} value={rate} disabled={!supported}>{formatSampleRate(rate)} kHz{!supported ? ` ${t('settings.rateUnsupported')}` : ''}</option>
@@ -826,7 +826,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <div className="flex gap-2">
                       <select
                   aria-label={t('settings.AudioSettingsModal.087')}
-                        className="bg-background border border-input rounded px-2 py-1 text-foreground outline-none focus:border-primary text-ui-control"
+                        className="bg-background border border-input rounded px-2 py-1 text-foreground focus:outline-hidden focus:border-primary text-ui-control"
                         value={presets[presetName] ? presetName : ''}
                         onChange={(e) => handleLoadPreset(e.target.value)}
                       >
@@ -842,7 +842,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       {t('settings.AudioSettingsModal.089')}
                       <input
                         type="text"
-                        className="bg-background border border-input rounded px-3 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+                        className="bg-background border border-input rounded px-3 py-1.5 text-sm text-foreground focus:outline-hidden focus:border-primary"
                         value={presetName}
                         onChange={(e) => setPresetName(e.target.value)}
                       />

@@ -303,7 +303,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                       type="text"
                       value={obsHost}
                       onChange={(e) => setObsHost(e.target.value)}
-                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary"
                       placeholder="localhost"
                     />
                   </div>
@@ -315,7 +315,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                       type="number"
                       value={obsPort}
                       onChange={(e) => setObsPort(Number(e.target.value))}
-                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary"
                       placeholder="4455"
                     />
                   </div>
@@ -330,7 +330,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                       type="password"
                       value={obsPassword}
                       onChange={(e) => { setObsPassword(e.target.value); setUseSavedPassword(false); }}
-                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary"
                       placeholder={t('settings.ObsConnectionSettings.286')}
                     />
                     {savedPasswordAvailable && <label className="flex items-center gap-2 text-muted-foreground text-ui-control"><input type="checkbox" disabled={loading || isObsConnected} checked={useSavedPassword} onChange={event => setUseSavedPassword(event.target.checked)} />{t('obs.useSavedPassword')}</label>}

@@ -213,7 +213,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                                     <select
                                                         aria-label={t('presets.copy.099', { arg0: slotText(selectedTemplate!, index, 'label') })}
                                                         disabled={loading}
-                                                        className={`bg-background border rounded px-3 py-1.5 text-sm outline-none focus:border-primary max-w-[300px] w-full
+                                                        className={`bg-background border rounded px-3 py-1.5 text-sm focus:outline-hidden focus:border-primary max-w-[300px] w-full
                                                             ${!assigned && slot.required ? 'border-destructive-text' : 'border-input'}
                                                         `}
                                                         value={assigned ? assigned.path : ""}
