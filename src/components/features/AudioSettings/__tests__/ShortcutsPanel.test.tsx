@@ -426,6 +426,112 @@ it('英語でも未設定を示し、代替の一覧選択にキーボードで�
 });
 
 
+const recommendations = [
+    { action: 'muteToggle', shortcut: 'Control+Alt+KeyM' },
+    { action: 'bypassToggle', shortcut: 'Control+Alt+KeyB' },
+    { action: 'singingOn', shortcut: 'Control+Alt+KeyS' },
+    { action: 'talkOn', shortcut: 'Control+Alt+KeyT' },
+];
+async function fillRecommended() {
+    const button = screen.getByRole('button', { name: '推奨のキーをまとめて入力' });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    fireEvent.click(screen.getByRole('button', { name: '入力する' }));
+}
+it('よく使う4操作を先頭に並べ、残りの操作も維持する', async () => {
+    open(false, []);
+    await waitFor(() => expect(screen.getByRole('button', { name: '推奨のキーをまとめて入力' })).toBeEnabled());
+    expect(screen.getAllByRole('group').filter(group => group.tagName === 'FIELDSET').map(group => group.querySelector('legend')?.textContent)).toEqual([
+        '緊急ミュート（切替）', 'VST を外して比較（切替）', '歌モード', '雑談モード',
+        '緊急ミュート（オン）', '緊急ミュート（解除）', 'VST を外して比較（開始）', 'VST を外して比較（終了）',
+        '出力音量を1%上げる', '出力音量を1%下げる', 'ノイズ低減を切り替える',
+    ]);
+});
+it('推奨入力の確認を取り消すと変更せず入口へフォーカスを戻す', async () => {
+    open(false, []);
+    const button = screen.getByRole('button', { name: '推奨のキーをまとめて入力' });
+    await waitFor(() => expect(button).toBeEnabled());
+    button.focus();
+    fireEvent.click(button);
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Ctrl + Alt + M');
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('保存');
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    await waitFor(() => expect(button).toHaveFocus());
+    expect(screen.getByRole('button', { name: 'キー設定を保存' })).toBeDisabled();
+});
+it('空なら推奨4件を入力して既存形式で保存できる', async () => {
+    open(false, []);
+    await fillRecommended();
+    expect(screen.getByRole('status')).toHaveTextContent('4件入力しました');
+    expect(invoke).not.toHaveBeenCalledWith('save_shortcuts', expect.anything());
+    fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
+    await screen.findByText('キー設定を保存しました。');
+    expect(invoke).toHaveBeenCalledWith('save_shortcuts', { bindings: recommendations });
+});
+it('未保存の割り当てと別表記の重複キーを保護して、飛ばした理由を示す', async () => {
+    open(false, [{ action: 'noiseToggle', shortcut: 'Alt+Ctrl+KeyB' }]);
+    const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('緊急ミュート（切替）の修飾キー'), { target: { value: 'Alt' } });
+    fireEvent.change(screen.getByLabelText('緊急ミュート（切替）の通常キー'), { target: { value: 'KeyZ' } });
+    await fillRecommended();
+    expect(input).toHaveTextContent('Alt + Z');
+    expect(screen.getByRole('status')).toHaveTextContent('2件入力しました');
+    expect(screen.getByRole('status')).toHaveTextContent('割り当て済みのため変更しませんでした');
+    expect(screen.getByRole('status')).toHaveTextContent('Ctrl + Alt + B が別の操作');
+    expect(screen.getByRole('button', { name: 'VST を外して比較（切替）のキーを入力' })).toHaveTextContent('未設定');
+    fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
+    await screen.findByText('キー設定を保存しました。');
+    expect(invoke).toHaveBeenCalledWith('save_shortcuts', { bindings: [
+        { action: 'noiseToggle', shortcut: 'Alt+Ctrl+KeyB' },
+        { action: 'muteToggle', shortcut: 'Alt+KeyZ' }, ...recommendations.slice(2),
+    ] });
+});
+it('上限8件を越えず、再実行しても既存の入力を変更しない', async () => {
+    const existing = ['muteOn', 'muteOff', 'bypassOn', 'bypassOff', 'gainUp', 'gainDown', 'noiseToggle']
+        .map((action, i) => ({ action, shortcut: `Control+Digit${i}` }));
+    open(false, existing);
+    await fillRecommended();
+    expect(screen.getByRole('status')).toHaveTextContent('1件入力しました');
+    expect(screen.getByRole('status')).toHaveTextContent('登録上限8件');
+    await fillRecommended();
+    expect(screen.getByRole('status')).toHaveTextContent('0件入力しました');
+    fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
+    await screen.findByText('キー設定を保存しました。');
+    expect(invoke).toHaveBeenCalledWith('save_shortcuts', { bindings: [...existing, recommendations[0]] });
+});
+it('一括入力も取り消せて、キー入力待ち中は一括操作できない', async () => {
+    open(false, []);
+    await fillRecommended();
+    fireEvent.click(screen.getByRole('button', { name: '変更を取り消す' }));
+    const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
+    expect(input).toHaveTextContent('未設定');
+    expect(screen.getByRole('button', { name: 'キー設定を保存' })).toBeDisabled();
+    fireEvent.click(input);
+    expect(screen.getByRole('button', { name: '推奨のキーをまとめて入力' })).toBeDisabled();
+});
+it('一括入力のOS競合は既存の保存失敗表示を使い、保存済み設定へ戻せる', async () => {
+    open(false, initial);
+    await fillRecommended();
+    vi.mocked(invoke).mockRejectedValueOnce({ code: 'registrationConflict', detail: 'OS 1409' });
+    fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('OS 1409');
+    await waitFor(() => expect(screen.getByRole('button', { name: '変更を取り消す' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '変更を取り消す' }));
+    expect(screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' })).toHaveTextContent('Alt + M');
+    expect(screen.getByRole('button', { name: 'VST を外して比較（切替）のキーを入力' })).toHaveTextContent('未設定');
+});
+it('英語でも推奨入力の確認と結果を表示する', async () => {
+    vi.mocked(invoke).mockResolvedValue({ bindings: [], errors: [] });
+    const store = createLocaleStore(() => 'en', () => true);
+    render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
+    const button = screen.getByRole('button', { name: 'Fill recommended keys' });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Emergency mute (toggle): Ctrl + Alt + M');
+    fireEvent.click(screen.getByRole('button', { name: 'Fill keys' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Filled 4 recommended keys');
+});
 it.each(['ja', 'en'] as const)('ホットキーは常設操作の正規名で表示し、操作IDを維持する（%s）', async locale => {
     vi.mocked(invoke).mockResolvedValue({ bindings: initial, errors: [] });
     const store = createLocaleStore(() => locale, () => true);
