@@ -522,8 +522,9 @@ test.describe('メーター数値の幅', () => {
             await expect(large).toBeVisible();
             await expect(large.getByRole('button', { name: detailed ? 'ミニモード' : '詳細表示', exact: true })).toBeVisible();
             await large.evaluate(async element => { await Promise.all(element.getAnimations().map(animation => animation.finished.catch(() => {}))); });
-            await expect(output).toHaveCount(2);
-            for (const locator of [input, output.nth(0), output.nth(1)]) {
+            // 本番帯に出力バーがある間はフッターの出力メーターを出さない（#340）ので、出力は大型メーターの1本だけ。
+            await expect(output).toHaveCount(1);
+            for (const locator of [input, output]) {
                 await expect(locator).toBeVisible();
                 await (await locator.elementHandle())!.waitForElementState('stable');
             }
@@ -534,24 +535,24 @@ test.describe('メーター数値の幅', () => {
             }).toBe(true);
             // 状態の文言が変わるとホームの区画が位置を補間する（#298）。動きの途中ではなく、止まった位置で比べる。
             await settleLayoutMotion(page);
-            const baseline = await Promise.all([input, output.nth(0), output.nth(1)].map(locator => locator.boundingBox()));
+            const baseline = await Promise.all([input, output].map(locator => locator.boundingBox()));
             await emit(1.2);
             const resets = page.getByRole('button', { name: /クリップ表示を消す/ });
-            await expect(resets).toHaveCount(3);
+            await expect(resets).toHaveCount(2);
             await settleLayoutMotion(page);
-            for (const [i, locator] of [input, output.nth(0), output.nth(1)].entries()) {
+            for (const [i, locator] of [input, output].entries()) {
                 const clipped = (await locator.boundingBox())!;
                 expect(clipped).toEqual(baseline[i]);
             }
             await page.screenshot({ path: testInfo.outputPath(`clip-${detailed ? 'detail' : 'slim'}.png`) });
-            // 出力は2か所で共有し、入力の履歴とは独立して解除する。
+            // 出力のクリップは、入力の履歴とは独立して解除する。
             await emit(0.1);
             await large.getByRole('button', { name: /クリップ表示を消す/ }).click();
             await expect(resets).toHaveCount(1);
             await resets.click();
             await emit(0);
             await expect(large.getByRole('status')).toHaveText('無音');
-            for (const [i, locator] of [input, output.nth(0), output.nth(1)].entries()) {
+            for (const [i, locator] of [input, output].entries()) {
                 expect(await locator.boundingBox()).toEqual(baseline[i]);
             }
             // 不正なレベル通知は更新待ちになり、状態欄で縦バーを縮めない。

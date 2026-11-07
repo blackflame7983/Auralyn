@@ -59,7 +59,7 @@ for (const locale of ['ja', 'en'] as const) {
         await expect(dialog.getByText(message(locale, 'settings.AudioSettingsModal.044'), { exact: true })).toBeVisible();
         const save = dialog.getByRole('button', { name: message(locale, 'settings.AudioSettingsModal.197'), exact: true });
         await expect(save).toBeEnabled(); await save.click();
-        await expect(dialog.getByText(message(locale, 'settings.AudioSettingsModal.017', { arg0: 'Error: テスト用：機器が見つかりません' }), { exact: true })).toBeVisible();
+        await expect(dialog.getByText(message(locale, 'settings.AudioSettingsModal.017', { arg0: 'Error: テスト用: 機器が見つかりません' }), { exact: true })).toBeVisible();
         expect(await page.evaluate(() => (window as any).__e2eStarts)).toHaveLength(1);
         expect(await page.evaluate(() => localStorage.getItem('vst_host_audio_config'))).toBeNull();
         await page.reload(); await expect(dialog).toBeVisible(); await expect(input).toHaveValue('id:asio:saved');
