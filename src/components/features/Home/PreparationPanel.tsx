@@ -112,7 +112,7 @@ export function PreparationPanel({ diagnosticAttention = false, stoppedInStrip =
     return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'rounded-xl border border-border bg-card gaming:bg-card/70 p-4' : 'px-1 py-0.5')}>
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-1">
-                <h2 className={cn('shrink-0 font-bold', open ? 'text-sm' : 'text-xs text-muted-foreground')}>{t('prep.title')}</h2>
+                <h2 className="shrink-0 text-ui-heading font-semibold">{t('prep.title')}</h2>
                 <InfoPopover label={t('prep.scopeInfo')}>{t('prep.localOnly')}</InfoPopover>
                 {/* 畳んでいる間は、入力・処理・出力の要約の代わりに状態の点1つと機器名で示す。 */}
                 {/* 開いているときは要約の「音声処理」が状態を読み上げるので、role="status" はどちらか一方だけにする。 */}

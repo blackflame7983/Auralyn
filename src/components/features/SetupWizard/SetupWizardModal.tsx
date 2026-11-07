@@ -1,6 +1,6 @@
 import { renderNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { LanguageSelector } from '@/i18n/LanguageSelector';
-import { useMessages } from '@/i18n/LocaleProvider';
+import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import { useSharedMeter } from '../LevelMeter/MeterContext';
 import { MeterVisual } from '../LevelMeter/MeterVisual';
 import { buttonVariants } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { receiverDeviceNotice, deviceDisplayName } from '../../../lib/audioRouti
 import { Modal } from '../../ui/modal';
 import { AudioFlow } from '../../ui/AudioFlow';
 import { InfoPopover } from '../../ui/InfoPopover';
-import React, { useEffect, useId, useRef } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { MdCheck } from 'react-icons/md';
 import { destinationChoices } from '@/lib/destinationChoices';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
@@ -25,6 +25,10 @@ const STEPS = ['usage_selection', 'input_selection', 'output_selection', 'confir
 
 export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const t = useMessages();
+    const { locale } = useLocale();
+    // Modal は Portal の2回目の描画で中身を出すため、ref ではなく state で受け、レールが現れた時に測り直す。
+    const [rail, railRef] = useState<HTMLOListElement | null>(null);
+    const [railThumb, railThumbRef] = useState<HTMLSpanElement | null>(null);
     const inputDeviceId = useId();
     const { isOpen, onClose, onSkip, onOpenSettings, onOpenTroubleshoot, onOpenVoiceCheck } = props;
     const { audioStartError, panelChoice, setPanelChoice, isBusy, isCheckingConnection, setIsCheckingConnection,
@@ -46,6 +50,22 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
     const surfaceRef = useRef<HTMLDivElement>(null);
     // 手順レールと切替の向き（DESIGN.md 5.7）。設定中・完了は4手順を終えた位置に置く。
     const stepIndex = state === 'configuring' || state === 'complete' ? STEPS.length : Math.max(0, (STEPS as readonly WizardState[]).indexOf(state));
+    // 折り返し・表示倍率・言語変更で行高が変わっても、印を実際の行に合わせる。
+    useLayoutEffect(() => {
+        const thumb = railThumb;
+        const current = rail?.children.item(stepIndex) as HTMLElement | null;
+        if (!rail || !thumb || !current) return;
+        const measure = () => {
+            thumb.style.height = `${current.offsetHeight}px`;
+            thumb.style.transform = `translateY(${current.offsetTop}px)`;
+        };
+        measure();
+        if (typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(measure);
+        observer.observe(rail);
+        Array.from(rail.children).forEach(row => observer.observe(row));
+        return () => observer.disconnect();
+    }, [rail, railThumb, stepIndex, config.goal, locale]);
     // 入ってくる向きは手順が変わった時だけ決める。動きの途中の再描画（機器一覧の読込など）で向きを反転させない。
     const step = useRef({ index: stepIndex, direction: 1 });
     if (step.current.index !== stepIndex) step.current = { index: stepIndex, direction: stepIndex > step.current.index ? 1 : -1 };
@@ -94,23 +114,25 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                 <div className="flex min-h-0 flex-1">
                 {/* 手順の名前はホームの音の流れと揃える（送り先・マイク・送り方・確認）。 */}
-                <nav aria-label={t('wizard.progress')} className="setup-rail shrink-0 border-r border-border bg-muted/30 px-3 py-5">
-                    <ol className="relative space-y-1" style={{ '--rail-index': Math.min(stepIndex, STEPS.length - 1) } as React.CSSProperties}>
-                        {stepIndex < STEPS.length && <span aria-hidden="true" className="setup-rail-thumb" />}
+                <nav aria-label={t('wizard.progress')} className="setup-rail shrink-0 overflow-y-auto border-r border-border bg-muted/30 px-3 py-5">
+                    <div className="relative">
+                    {stepIndex < STEPS.length && <span ref={railThumbRef} aria-hidden="true" className="setup-rail-thumb" />}
+                    <ol ref={railRef} className="relative flex flex-col gap-1">
                         {STEPS.map((step, idx) => {
                             const isCurrent = state === step;
                             const isPast = stepIndex > idx;
                             const label = step === 'usage_selection' ? t('wizard.purpose') : step === 'input_selection' ? t(config.goal === 'music' ? 'unsetFlow.source' : 'wizard.input')
                                 : step === 'output_selection' ? t('wizard.output') : t('wizard.check');
                             return <li key={step} aria-current={isCurrent ? 'step' : undefined}
-                                className={`relative flex h-11 items-center gap-3 rounded-lg px-3 text-ui-control transition-colors duration-(--motion-base) ${isCurrent ? 'font-semibold text-foreground' : isPast ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                className={`relative flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-ui-control transition-colors duration-(--motion-base) ${isCurrent ? 'font-semibold text-foreground' : isPast ? 'text-foreground' : 'text-muted-foreground'}`}>
                                 <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold transition-colors duration-(--motion-base) ${isCurrent || isPast ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
                                     {isPast ? <MdCheck aria-hidden="true" className="h-4 w-4" /> : idx + 1}
                                 </span>
-                                <span className="truncate">{label}</span>
+                                <span className="min-w-0 wrap-break-word">{label}{isPast && <span className="sr-only">{t('wizard.stepCompleted')}</span>}</span>
                             </li>;
                         })}
                     </ol>
+                    </div>
                 </nav>
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 <div ref={bodyRef} className="modal-body-base min-h-0 flex flex-col overflow-x-hidden">
