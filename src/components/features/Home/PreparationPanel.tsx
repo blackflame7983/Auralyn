@@ -124,13 +124,11 @@ export function PreparationPanel({ diagnosticAttention = false, stoppedInStrip =
             </div>
             <div className="flex flex-wrap items-center gap-2">
                 {/* unknown は起動・読込・窓の復帰で一時的に出るため、muted は利用者の意図した状態のため強調しない。 */}
-                {!open && !music && confirmationState(records, 'receiver') !== 'confirmed' && <button type="button" disabled={!audioReady} onClick={() => {
+                {/* 送り先が未選択のときは本番帯の「送り先を選ぶ」が同じ入口なので、ここには出さない（DESIGN.md 2.2）。 */}
+                {!open && !music && context.usage && confirmationState(records, 'receiver') !== 'confirmed' && <button type="button" disabled={!audioReady} onClick={() => {
                     if (routeNeedsTarget) {
                         setUserOpen(true);
-                        requestAnimationFrame(() => {
-                            if (!context.usage) usageRef.current?.querySelector<HTMLInputElement>('input:checked, input')?.focus();
-                            else { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); }
-                        });
+                        requestAnimationFrame(() => { if (detailsRef.current) detailsRef.current.open = true; targetRef.current?.focus(); });
                     } else receiver();
                 }} className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-50">{t(routeNeedsTarget ? 'prep.targetAction' : 'prep.checkReceiver')}</button>}
                 <TroubleshootEntry running={audioReady} music={purpose === 'music'} attention={diagnosticAttention || observation.availability === 'failed'} onOpen={onTroubleshoot} />

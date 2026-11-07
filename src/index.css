@@ -519,28 +519,6 @@
   .live-meter-pair { grid-template-columns: minmax(0, 1fr); }
   .live-channel { grid-row: auto / span 2; }
 }
-.sound-chain-row {
-  grid-template-columns: minmax(10rem, 12rem) minmax(0, 1fr) auto;
-  position: relative;
-}
-/* ON の設定を細い線で静的に示す。音声の有無や処理成功とは区別し、点滅・発光・面の塗りを付けない（DESIGN.md 5.1）。 */
-.sound-chain-row[data-on="true"]::before {
-  content: '';
-  position: absolute;
-  left: -10px;
-  top: 16px;
-  bottom: 16px;
-  width: 2px;
-  border-radius: 2px;
-  background: hsl(var(--primary));
-}
-/* ゲーミングは今回の配色改訂の対象外なので、ON 行の淡い塗りと線の発光を従来どおり残す。 */
-.gaming .sound-chain-row[data-on="true"] {
-  background: linear-gradient(90deg, hsl(var(--primary) / 0.09), transparent 65%);
-}
-.gaming .sound-chain-row[data-on="true"]::before {
-  box-shadow: 0 0 8px hsl(var(--primary) / 0.35);
-}
 /* 正常時だけ空いた高さを本番帯へ配分する。手順を開いたときと小さい窓では操作を優先する。 */
 @media (min-height: 720px) and (min-width: 1000px) {
   .home-content[data-roomy="true"] {
@@ -569,12 +547,6 @@
 #emergency-mute:active {
   background-color: hsl(var(--destructive) / 0.3);
   border-color: hsl(var(--destructive-text));
-}
-/* ウィンドウ幅ではなく、メーター等を除いた実際の作業幅で切り替える。 */
-@container (max-width: 760px) {
-  .sound-chain-row { grid-template-columns: minmax(0, 1fr) auto; }
-  .sound-chain-controls { grid-column: 1 / -1; grid-row: 2; }
-  .sound-chain-action { grid-column: 2; grid-row: 1; }
 }
 @media (min-width: 1024px) {
   .home-main { padding-right: calc(1.5rem + var(--visible-meter-width)); }
@@ -791,7 +763,6 @@ html[data-app-hidden="true"] *::after {
   .live-stage-copy { padding-block: 0.25rem; gap: 0.25rem; }
   .live-stage-mode { line-height: 1.1; }
   .sound-chain { padding-block: 0.5rem; margin-bottom: 0.5rem; }
-  .sound-chain-row { padding-block: 0.5rem; }
 }
 
 /* 操作欄はDOMを保って高さを補間し、閉じている間は操作対象から外す。 */

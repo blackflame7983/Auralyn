@@ -71,6 +71,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     const actualOutput = model.observation.config?.output ?? outputName;
 
     const checkUnavailable = audioReady && !stopped && (!stage || !validVst || stage.vst.some(item => item.state === 'unavailable') || !music && !live);
+    // 声の処理（ノイズ低減・声を整える）の値が取れないときは、その項目を開いたときにも理由を示す。
+    const voiceUnavailable = audioReady && !stopped && !music && !live;
     const emptyVst = !music && Boolean(stage && validVst && stage.vst.length === 0);
     // 項目列の下に既存操作を1つだけ開く。閉じた操作は高さの補間中もフォーカスさせない。
     const row = ({ key, id, on, tag, builtin, name, sub, title, body, action, quiet }: {
@@ -85,7 +87,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         const summary = stopped ? t('shell.stopped') : key === 'noise'
             ? live ? noiseOn ? t(q.noiseMode === 'high' ? 'master.nrHigh' : q.noiseMode === 'smart' ? 'master.nrLearn' : q.noiseMode === 'venue' ? 'master.nrVenue' : 'master.nrLow') : t('flow.disabled') : setting(stage?.nr.enabled)
             : key === 'builtin' ? stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled ? t('flow.reverbOnly')
-                : live ? builtinOn ? t(q.preset === 'singing' ? 'home.chainSinging' : q.preset === 'warm' ? 'settings.AudioSettingsModal.099' : q.preset === 'bright' ? 'settings.AudioSettingsModal.100' : 'settings.AudioSettingsModal.098') : t('flow.disabled') : setting(stage?.builtinVoiceEnabled)
+                : live ? builtinOn ? t(q.preset === 'singing' ? 'chain.singingShort' : q.preset === 'warm' ? 'settings.AudioSettingsModal.099' : q.preset === 'bright' ? 'settings.AudioSettingsModal.100' : 'settings.AudioSettingsModal.098') : t('flow.disabled') : setting(stage?.builtinVoiceEnabled)
             : vstUnrestored.length ? unrestoredNamesText(t, vstUnrestored) : vstStatus === t('flow.enabled') ? t('chain.vstCount', { count: stage?.vst.length ?? 0 }) : vstStatus;
         return <li key={key} className="contents">
             <div data-on={on} className="min-w-0">
@@ -115,7 +117,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                         {sub && <div className="sr-only">{sub}</div>}
                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">{body}</div>
                         {action}
-                        {key === 'vst' && checkUnavailable && <div className="basis-full text-ui-support text-muted-foreground" role="status">
+                        {(key === 'vst' ? checkUnavailable : voiceUnavailable && !unconfigured) && <div className="basis-full text-ui-support text-muted-foreground" role="status">
                             <span>{t('home.checkUnavailable')}</span>
                             {music && <button type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="ml-2 rounded-md border border-border px-3 py-1.5 text-ui-control hover:bg-muted">{t('home.moreSound')}</button>}
                         </div>}

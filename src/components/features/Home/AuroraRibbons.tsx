@@ -1,6 +1,8 @@
-import { useId, type CSSProperties } from 'react';
+import { memo, useId, type CSSProperties } from 'react';
 
-export function AuroraRibbons({ running, style }: { running: boolean; style: CSSProperties }) {
+// メーターの更新ごとに親が再描画されても、5%刻みのエネルギーが変わったときだけ描き直す。
+export const AuroraRibbons = memo(function AuroraRibbons({ running, energy }: { running: boolean; energy: number }) {
+    const style = { '--aurora-energy': energy } as CSSProperties;
     const id = useId().replace(/:/g, '');
     const ribbons = [
         { d: 'M-80 150 C 140 60, 300 210, 520 120 S 860 40, 1080 130 S 1320 200, 1480 90', strands: 9, spread: 5 },
@@ -37,5 +39,4 @@ export function AuroraRibbons({ running, style }: { running: boolean; style: CSS
             </g>
         </svg>
     </div>;
-}
-
+});

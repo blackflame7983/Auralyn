@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { MdArrowForward, MdMic, MdMusicNote, MdVolumeOff, MdVolumeUp } from 'react-icons/md';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useBeginnerMode } from '@/hooks/useBeginnerMode';
@@ -116,5 +116,5 @@ function LiveAurora({ running, muted }: { running: boolean; muted: boolean }) {
     // 既存の共有メーターだけを使い、5%刻みの強さをCSSでゆっくり補間する。追加のIPCやタイマーを作らない。
     // 普通の話し声（−20 dBFS 前後）でも反応が見えるよう、−48〜−6 dBFS を 0〜1 に対応させる。
     const energy = running && !muted && reading.state === 'live' ? Math.round(Math.min(1, Math.max(0, (toDbfs(Math.max(...reading.levels)) + 48) / 42)) * 20) / 20 : 0;
-    return <AuroraRibbons running={running} style={{ '--aurora-energy': energy } as CSSProperties} />;
+    return <AuroraRibbons running={running} energy={energy} />;
 }
