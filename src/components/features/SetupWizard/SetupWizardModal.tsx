@@ -121,7 +121,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                         {STEPS.map((step, idx) => {
                             const isCurrent = state === step;
                             const isPast = stepIndex > idx;
-                            const label = step === 'usage_selection' ? t('wizard.purpose') : step === 'input_selection' ? t(config.goal === 'music' ? 'unsetFlow.source' : 'wizard.input')
+                            const label = step === 'usage_selection' ? t('wizard.purpose') : step === 'input_selection' ? t(config.goal === 'music' ? 'wizard.sourcePc' : 'wizard.input')
                                 : step === 'output_selection' ? t('wizard.output') : t('wizard.check');
                             return <li key={step} aria-current={isCurrent ? 'step' : undefined}
                                 className={`relative flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-ui-control transition-colors duration-(--motion-base) ${isCurrent ? 'font-semibold text-foreground' : isPast ? 'text-foreground' : 'text-muted-foreground'}`}>

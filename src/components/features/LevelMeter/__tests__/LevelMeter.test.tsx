@@ -1,3 +1,5 @@
+import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { createLocaleStore } from '@/i18n/locale';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { listen } from '@tauri-apps/api/event';
@@ -44,7 +46,7 @@ it('小メーターは入力を選び、停止後は旧値を表示しない', (
     expect(screen.getByLabelText('入力レベル：レベル表示中')).toBeInTheDocument();
     emit('audio-stopped');
     expect(screen.getByLabelText('入力レベル：音声停止中')).toBeInTheDocument();
-    expect(screen.getByTitle('Left').firstElementChild).toHaveStyle({ transform: 'scaleY(0)' });
+    expect(screen.getByTitle('左').firstElementChild).toHaveStyle({ transform: 'scaleY(0)' });
 });
 it('大メーターはtimeoutでもclipを保持し、手動で消せる', () => {
     render(<LargeLevelMeter running onClose={() => {}} />);
@@ -74,11 +76,11 @@ it('−3 dBFS は注意色、0 dBFS 到達は危険色とクリップ表示に�
     render(<LevelMeter running type="output" />);
     emit('audio-level', { input: [0, 0], output: [Math.pow(10, -3 / 20), 0] });
     act(() => vi.advanceTimersByTime(16));
-    expect(screen.getByTitle('Left').firstElementChild).toHaveClass('bg-meter-warning');
+    expect(screen.getByTitle('左').firstElementChild).toHaveClass('bg-meter-warning');
     expect(screen.queryByRole('button', { name: /クリップ表示を消す/ })).toBeNull();
     emit('audio-level', { input: [0, 0], output: [1, 0] });
     act(() => vi.advanceTimersByTime(16));
-    expect(screen.getByTitle('Left').firstElementChild).toHaveClass('bg-meter-danger');
+    expect(screen.getByTitle('左').firstElementChild).toHaveClass('bg-meter-danger');
     expect(screen.getByRole('button', { name: /クリップ表示を消す/ })).toBeInTheDocument();
 });
 
@@ -130,7 +132,14 @@ it.each(['horizontal', 'vertical'] as const)('%s のバーとピークを親寸�
 
 it.each(['waiting', 'stale', 'stopped'] as const)('%s では旧値のバーとピークを表示しない', state => {
     const { container } = render(<MeterVisual label="出力" reading={{ levels: [.5, 1], peak: [.8, 1], clipped: false, state, resetClip: () => {} }} />);
-    expect(screen.getByTitle('Left').firstElementChild).toHaveStyle({ transform: 'scaleY(0)' });
-    expect(screen.getByTitle('Right').firstElementChild).toHaveStyle({ transform: 'scaleY(0)' });
+    expect(screen.getByTitle('左').firstElementChild).toHaveStyle({ transform: 'scaleY(0)' });
+    expect(screen.getByTitle('右').firstElementChild).toHaveStyle({ transform: 'scaleY(0)' });
     expect(container.querySelector('[style*="translate"]')).toBeNull();
+});
+
+it.each(['ja', 'en'] as const)('左右のメーターの説明を表示言語に合わせる（%s）', locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><MeterVisual label="Output" reading={{ levels: [0, 0], peak: [0, 0], clipped: false, state: 'silent', resetClip: () => {} }} /></LocaleProvider>);
+    expect(screen.getByTitle(locale === 'ja' ? '左' : 'Left')).toBeInTheDocument();
+    expect(screen.getByTitle(locale === 'ja' ? '右' : 'Right')).toBeInTheDocument();
 });

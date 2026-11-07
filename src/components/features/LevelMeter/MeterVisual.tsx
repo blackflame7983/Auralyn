@@ -52,7 +52,7 @@ export const MeterVisual = memo(function MeterVisual({ reading, label, orientati
                 const pct = current ? Math.min(100, Math.max(0, value * 100)) : 0;
                 const peak = current ? Math.min(100, Math.max(0, peaks[i] * 100)) : 0;
                 const color = peaks[i] >= CLIP_LEVEL ? 'bg-meter-danger' : peaks[i] >= WARNING_LEVEL ? 'bg-meter-warning' : 'bg-success';
-                return <div key={i} title={orientation === 'vertical' ? (i === 0 ? 'Left' : 'Right') : undefined}
+                return <div key={i} title={orientation === 'vertical' ? t(i === 0 ? 'meter.left' : 'meter.right') : undefined}
                     className={`relative overflow-hidden rounded bg-muted ring-1 ring-border ${orientation === 'horizontal' ? 'h-full flex-1' : 'h-full'}`} style={orientation === 'vertical' ? { width } : undefined}>
                     <div className={`absolute inset-0 ${orientation === 'horizontal' ? 'origin-left' : 'origin-bottom'} ${color}`} style={{ transform: orientation === 'horizontal' ? `scaleX(${pct / 100})` : `scaleY(${pct / 100})` }} />
                     {scale && [0, -6, -12, -24, -48].map(mark => <span key={mark} aria-hidden="true" className={`absolute bg-foreground/30 ${orientation === 'horizontal' ? 'top-0 bottom-0 w-px' : 'left-0 right-0 h-px'}`} style={orientation === 'horizontal' ? { left: `${Math.pow(10, mark / 20) * 100}%` } : { bottom: `${Math.pow(10, mark / 20) * 100}%` }} />)}

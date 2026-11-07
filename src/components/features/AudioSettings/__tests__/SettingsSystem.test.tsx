@@ -81,3 +81,16 @@ it('音づくりとシステムの詳細・未保存値をタブ移動と閉じ�
     expect(screen.getByText('音声処理の設定').closest('details')).toHaveAttribute('open');
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'アフィニティマスク' })).toHaveValue('0x3'));
 });
+
+it.each(['ja', 'en'] as const)('アプリ情報はシステムに置き、外観の説明はアクセシビリティと区別する（%s）', locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    const onOpenLicense = vi.fn();
+    render(<LocaleProvider store={store}><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} onOpenLicense={onOpenLicense} /></LocaleProvider>);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: locale === 'ja' ? '外観' : 'Appearance' }), { button: 0, ctrlKey: false });
+    expect(screen.queryByRole('heading', { name: 'Auralyn' })).not.toBeInTheDocument();
+    expect(screen.getByText(locale === 'ja' ? '鮮やかな配色と発光' : 'Vivid colors and glow effects')).toBeVisible();
+    fireEvent.mouseDown(screen.getByRole('tab', { name: locale === 'ja' ? 'システム' : 'System' }), { button: 0, ctrlKey: false });
+    expect(screen.getByRole('heading', { name: 'Auralyn' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: locale === 'ja' ? 'アプリ情報 / ライセンス' : 'About / licenses' }));
+    expect(onOpenLicense).toHaveBeenCalledOnce();
+});

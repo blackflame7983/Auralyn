@@ -55,6 +55,8 @@ it.each([
 ])('音声状態を一度だけ表示し、停止・未確認では稼働中としない（$label）', props => {
     render(<DeviceStatus {...props} />);
     expect(screen.getByRole('status')).toHaveTextContent(props.label);
+    const dot = screen.getByRole('status').previousElementSibling;
+    expect(dot).toHaveClass(props.label === '音声未設定' ? 'bg-muted-foreground' : props.label === '音声停止中' ? 'bg-meter-danger' : props.label === '音声処理中' ? 'bg-success' : 'bg-warning');
     expect(screen.getAllByText(props.label)).toHaveLength(1);
     expect(screen.queryByText(/エンジン|通過時間/)).not.toBeInTheDocument();
     if (props.label !== '音声処理中') expect(screen.queryByText('WASAPI')).not.toBeInTheDocument();

@@ -344,7 +344,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                   <button
                     onClick={handleConnectObs}
                     disabled={loading || obsStatusLoading || credentialStatusLoading}
-                    className="w-full py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-bold text-ui-control"
+                    className="w-fit px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-bold text-ui-control"
                   >
                     {obsStatusLoading ? t('settings.ObsConnectionSettings.288') : loading ? t('settings.ObsConnectionSettings.289') : t('settings.ObsConnectionSettings.290')}
                   </button>

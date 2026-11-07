@@ -233,6 +233,7 @@ for (const theme of ['light', 'dark', 'gaming']) {
         await setup.click();
         await page.getByRole('tab', { name: '外観', exact: true }).click();
         await reachable(page.getByRole('combobox', { name: '表示言語' }), page);
+        await page.getByRole('tab', { name: 'システム', exact: true }).click();
         const license = page.getByRole('button', { name: /ライセンス/ });
         await reachable(license, page);
         await license.click();

@@ -979,6 +979,7 @@ describe('セットアップの見た目と動き（#294）', () => {
         await openWizard();
         const rail = screen.getByRole('navigation', { name: 'セットアップの進捗' });
         expect([...rail.querySelectorAll('li')].map(item => item.textContent)).toEqual(['1送り先', '2マイク', '3出力先', '4確認']);
+        expect(screen.getByRole('heading', { name: '送り先を選んでください' })).toBeVisible();
         expect(within(rail).getByText('送り先').closest('li')).toHaveAttribute('aria-current', 'step');
         // 高さは手順によらず固定し、中身だけをスクロールする。
         expect(document.querySelector('.setup-surface')).not.toBeNull();
