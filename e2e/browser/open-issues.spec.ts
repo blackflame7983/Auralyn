@@ -37,7 +37,7 @@ for (const width of [1200, 1600, 1920, 2560]) {
         if (width === 2560) await page.screenshot({ path: testInfo.outputPath('adjacent-home-vst.png') });
         await page.locator('#plugin-rack-heading').press('Escape');
         // 横並びではEscapeを閉じる操作に割り当てないため、専用の閉じる操作を使う。
-        if (await panel.count()) await panel.getByRole('button', { name: 'VST 構成を閉じる', exact: true }).click();
+        if (await panel.count()) await panel.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
         await expect(panel).toHaveCount(0);
         await expect(toggle).toBeFocused();
         await toggle.press('Enter');
@@ -62,7 +62,7 @@ test('最小画面の目盛りは重ならず、一時非表示の理由を伝�
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
     await expect(toggle).toHaveAttribute('aria-describedby', 'large-meter-suspended');
     await expect(page.locator('#large-meter-suspended')).toBeVisible();
-    await expect(page.locator('#large-meter-suspended')).toHaveText('VST 構成を閉じると大型メーターが戻ります');
+    await expect(page.locator('#large-meter-suspended')).toHaveText('VST構成を閉じると大型メーターが戻ります');
     await page.screenshot({ path: testInfo.outputPath('suspended-meter.png') });
     await page.keyboard.press('Escape');
     await expect(meter).toBeVisible();

@@ -31,7 +31,7 @@ for (const theme of ['dark', 'light', 'gaming']) {
             localStorage.setItem('vst_host_wizard_done', 'true');
             const original = (window as any).__TAURI_INTERNALS__.invoke;
             (window as any).__TAURI_INTERNALS__.invoke = async (command: string, args: any) => {
-                if (command === 'get_process_input_sources') throw new Error('テスト用: アプリを取得できません');
+                if (command === 'get_process_input_sources') throw new Error('テスト用：アプリを取得できません');
                 return original(command, args);
             };
         }, theme);

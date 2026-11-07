@@ -20,7 +20,7 @@ function openBrowser() {
 }
 
 it('保護と操作の通知があっても一覧を表示し、実際の取得失敗と区別する', () => {
-    const props = { isOpen: true, onClose: vi.fn(), plugins, isLoading: false, onScan: vi.fn(), onPluginSelect: vi.fn(), protectionNotice: '保護中: 追加分は自動保存されません', notice: '復元を再試行してください' };
+    const props = { isOpen: true, onClose: vi.fn(), plugins, isLoading: false, onScan: vi.fn(), onPluginSelect: vi.fn(), protectionNotice: '保護中：追加分は自動保存されません', notice: '復元を再試行してください' };
     const view = render(<PluginBrowserModal {...props} />);
     expect(screen.getByText(props.protectionNotice)).toBeInTheDocument();
     expect(screen.getByText(props.notice)).toBeInTheDocument();

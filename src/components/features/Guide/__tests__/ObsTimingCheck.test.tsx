@@ -120,12 +120,12 @@ it('構成無効化通知と取り込み方の変更で対象・予定・安全�
 });
 
 it('readback未確認は採用できず、競合付き戻すの結果を成功へ置き換えない', async () => {
-    vi.mocked(obsApi.applySetup).mockResolvedValue(history(['適用状態を要確認: OBSの変更後の値を確認できません']));
-    vi.mocked(obsApi.restoreSetup).mockResolvedValue(history(['競合: 後から変更された可能性があるため復元しません']));
+    vi.mocked(obsApi.applySetup).mockResolvedValue(history(['適用状態を要確認：OBSの変更後の値を確認できません']));
+    vi.mocked(obsApi.restoreSetup).mockResolvedValue(history(['競合：後から変更された可能性があるため復元しません']));
     render(<ObsTimingCheck />); measure(); await selectTarget(); await preview(); await apply();
     expect(screen.getByRole('button', { name: '再録画を確認して採用 #8' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '同期変更 #8 を戻す' }));
-    await screen.findByText(/競合: 後から変更された/);
+    await screen.findByText(/競合：後から変更された/);
     expect(obsApi.restoreSetup).toHaveBeenCalledWith(8);
     expect(screen.queryByText(/今回の録画を基に採用/)).not.toBeInTheDocument();
 });

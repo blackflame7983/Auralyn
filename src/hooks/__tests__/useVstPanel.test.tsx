@@ -8,7 +8,7 @@ afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); saveVstPanelOpen(f
 it.each([
     { label: '未設定', storage: {}, open: false },
     { label: '以前のかんたん表示', storage: { vst_host_beginner_mode: 'true' }, open: false },
-    { label: '以前の VST・詳細', storage: { vst_host_beginner_mode: 'false' }, open: true },
+    { label: '以前のVST・詳細', storage: { vst_host_beginner_mode: 'false' }, open: true },
     { label: '音楽鑑賞', storage: { auralyn_display_purpose: 'music' }, open: true },
     { label: '音楽鑑賞のセットアップ', storage: { vst_host_setup_goal: 'music' }, open: true },
     { label: '保存値が優先', storage: { vst_host_beginner_mode: 'false', auralyn_vst_panel_open: 'false' }, open: false },

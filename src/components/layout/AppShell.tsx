@@ -423,6 +423,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     {/* 比較ボタンを出さない間は、区切りの線だけが左端に残らないようにする。 */}
                     <div className={cn('flex-1 min-w-0', !(configured || isABBypassed) && '[&>div]:border-l-transparent')}>
                         <MasterBar
+                            outputMeterInHome={configured}
                             outputGainAnchor={outputGainAnchor} onOutputGainClose={closeOutputGain}
                             onStatsChange={setRuntimeStats}
                             isRunning={isEngineRunning}

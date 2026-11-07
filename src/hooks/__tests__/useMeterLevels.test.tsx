@@ -78,7 +78,7 @@ it('実メーターのlocale切替で購読・timeout・無音状態を作り直
     render(<LocaleProvider store={store}><LevelMeter running type="input" /></LocaleProvider>);
     await act(async () => {});
     level(.5); tick(16);
-    const meter = screen.getByLabelText('入力レベル: レベル表示中');
+    const meter = screen.getByLabelText('入力レベル：レベル表示中');
     const subscriptions = vi.mocked(listen).mock.calls.length;
     act(() => { store.setLocale('en'); });
     expect(screen.getByLabelText('Input level: Displaying levels')).toBe(meter);
@@ -88,7 +88,7 @@ it('実メーターのlocale切替で購読・timeout・無音状態を作り直
     level(0); tick(16);
     expect(screen.getByLabelText('Input level: Silent')).toBe(meter);
     act(() => { store.setLocale('ja'); });
-    expect(screen.getByLabelText('入力レベル: 無音')).toBe(meter);
+    expect(screen.getByLabelText('入力レベル：無音')).toBe(meter);
     expect(vi.mocked(listen).mock.calls).toHaveLength(subscriptions);
 });
 

@@ -53,19 +53,19 @@ it('外部 VST を使っていないと確認できたら薄い1行と追加の�
     const vst = <VstChainItems plugins={[]} onToggle={vi.fn()} onEdit={vi.fn()} />;
     const view = render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vst={vst} /></RuntimeStatsContext.Provider>);
     const row = screen.getAllByRole('listitem')[2];
-    expect(row).toHaveTextContent('外部 VST'); expect(row).toHaveTextContent('使っていません');
+    expect(row).toHaveTextContent('外部VST'); expect(row).toHaveTextContent('使っていません');
     expect(row.querySelector('[data-on]')).toHaveAttribute('data-on', 'false');
-    expect(screen.queryByRole('button', { name: 'VST を編集' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'VSTを編集' })).not.toBeInTheDocument();
     const hint = message('ja', 'chain.vstEmptyHint');
     expect(screen.queryByText(hint)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^外部 VST / }));
-    fireEvent.click(screen.getByRole('button', { name: '外部 VST' }));
-    expect(screen.getByRole('dialog', { name: '外部 VST' })).toHaveTextContent(hint);
+    fireEvent.click(screen.getByRole('button', { name: /^外部VST / }));
+    fireEvent.click(screen.getByRole('button', { name: '外部VST' }));
+    expect(screen.getByRole('dialog', { name: '外部VST' })).toHaveTextContent(hint);
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: '追加' }));
     expect(p.onOpenVst).toHaveBeenCalledOnce();
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: null, running: true }}><SoundChain {...p} vst={vst} /></RuntimeStatsContext.Provider>);
-    expect(screen.getByRole('button', { name: 'VST を編集' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'VSTを編集' })).toBeInTheDocument();
     expect(screen.queryByText('使っていません')).not.toBeInTheDocument();
 });
 
@@ -115,12 +115,15 @@ it('声の処理がOFFでも残響が有効なら、残響のみONと明示す�
     const builtin = screen.getAllByRole('listitem')[1];
     expect(builtin).toHaveTextContent('builtin-switch');
     expect(builtin).toHaveTextContent('残響のみ ON');
-    expect(screen.getByText('声の処理: OFF ／ 残響: ON')).toHaveClass('sr-only');
+    expect(screen.getByText('声の処理：OFF ／ 残響：ON')).toHaveClass('sr-only');
 });
 
-it('音楽鑑賞では声向けの操作を出さず、状態の表示にとどめる', () => {
+it('音楽鑑賞では有効な声向け処理の横から設定へ直接進める', () => {
     localStorage.setItem('auralyn_display_purpose', 'music');
-    render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
+    const p = props();
+    render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...p} audioReady /></RuntimeStatsContext.Provider>);
+    fireEvent.click(screen.getByRole('button', { name: message('ja', 'home.moreSound') }));
+    expect(p.onOpenSoundSettings).toHaveBeenCalledOnce();
     expect(screen.getByRole('region', { name: '音を整える' })).toBeInTheDocument();
     expect(screen.queryByText('noise-quick')).not.toBeInTheDocument();
     // 声向けの操作を並べず、有効な処理が残るときだけ注意と説明への入口を残す。
@@ -128,7 +131,7 @@ it('音楽鑑賞では声向けの操作を出さず、状態の表示にとど�
     expect(rows).toHaveLength(1);
     expect(screen.getByText(message('ja', 'flow.voiceStillOn'))).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'chain.voiceTools') }));
-    expect(screen.getByRole('dialog')).toHaveTextContent('声の処理: OFF ／ 残響: ON');
+    expect(screen.getByRole('dialog')).toHaveTextContent('声の処理：OFF ／ 残響：ON');
     for (const text of ['noise-switch', 'builtin-switch', 'builtin-quick']) expect(rows[0]).not.toHaveTextContent(text);
     expect(rows[0]).toHaveTextContent('VST');
     expect(screen.queryByRole('button', { name: 'OBS連携' })).not.toBeInTheDocument();
@@ -154,7 +157,7 @@ it('VST の行から右パネルの VST 構成を開き、見出しから聴き�
     // 機器名は本番帯に出すので、声の処理には入力・出力の段を置かない。
     expect(screen.queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^VST / }));
-    fireEvent.click(screen.getByRole('button', { name: 'VST を編集' })); expect(p.onOpenVst).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' })); expect(p.onOpenVst).toHaveBeenCalledOnce();
     expect(screen.getAllByRole('listitem')[2]).toHaveTextContent('vst-items');
     fireEvent.click(screen.getByRole('button', { name: 'ボイスチェック' })); expect(p.onListen).toHaveBeenCalledOnce();
     // 毎回は使わない OBS 連携と詳しい調整は、見出しに並べず「その他の操作」にまとめる。

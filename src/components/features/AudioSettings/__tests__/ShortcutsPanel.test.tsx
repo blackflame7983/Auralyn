@@ -442,8 +442,8 @@ it('よく使う4操作を先頭に並べ、残りの操作も維持する', asy
     open(false, []);
     await waitFor(() => expect(screen.getByRole('button', { name: '推奨のキーをまとめて入力' })).toBeEnabled());
     expect(screen.getAllByRole('group').filter(group => group.tagName === 'FIELDSET').map(group => group.querySelector('legend')?.textContent)).toEqual([
-        '緊急ミュート（切替）', 'VST を外して比較（切替）', '歌モード', '雑談モード',
-        '緊急ミュート（オン）', '緊急ミュート（解除）', 'VST を外して比較（開始）', 'VST を外して比較（終了）',
+        '緊急ミュート（切替）', 'VSTを外して比較（切替）', '歌モード', '雑談モード',
+        '緊急ミュート（オン）', '緊急ミュート（解除）', 'VSTを外して比較（開始）', 'VSTを外して比較（終了）',
         '出力音量を1%上げる', '出力音量を1%下げる', 'ノイズ低減を切り替える',
     ]);
 });
@@ -479,7 +479,7 @@ it('未保存の割り当てと別表記の重複キーを保護して、飛ば�
     expect(screen.getByRole('status')).toHaveTextContent('2件入力しました');
     expect(screen.getByRole('status')).toHaveTextContent('割り当て済みのため変更しませんでした');
     expect(screen.getByRole('status')).toHaveTextContent('Ctrl + Alt + B が別の操作');
-    expect(screen.getByRole('button', { name: 'VST を外して比較（切替）のキーを入力' })).toHaveTextContent('未設定');
+    expect(screen.getByRole('button', { name: 'VSTを外して比較（切替）のキーを入力' })).toHaveTextContent('未設定');
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
     await screen.findByText('キー設定を保存しました。');
     expect(invoke).toHaveBeenCalledWith('save_shortcuts', { bindings: [
@@ -519,7 +519,7 @@ it('一括入力のOS競合は既存の保存失敗表示を使い、保存済�
     await waitFor(() => expect(screen.getByRole('button', { name: '変更を取り消す' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '変更を取り消す' }));
     expect(screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' })).toHaveTextContent('Alt + M');
-    expect(screen.getByRole('button', { name: 'VST を外して比較（切替）のキーを入力' })).toHaveTextContent('未設定');
+    expect(screen.getByRole('button', { name: 'VSTを外して比較（切替）のキーを入力' })).toHaveTextContent('未設定');
 });
 it('英語でも推奨入力の確認と結果を表示する', async () => {
     vi.mocked(invoke).mockResolvedValue({ bindings: [], errors: [] });
@@ -537,7 +537,7 @@ it.each(['ja', 'en'] as const)('ホットキーは常設操作の正規名で表
     const store = createLocaleStore(() => locale, () => true);
     render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
     const names = locale === 'ja'
-        ? ['緊急ミュート（切替）', '緊急ミュート（オン）', '緊急ミュート（解除）', 'VST を外して比較（切替）', 'VST を外して比較（開始）', 'VST を外して比較（終了）', '出力音量を1%上げる', '出力音量を1%下げる', '歌モード', '雑談モード', 'ノイズ低減を切り替える']
+        ? ['緊急ミュート（切替）', '緊急ミュート（オン）', '緊急ミュート（解除）', 'VSTを外して比較（切替）', 'VSTを外して比較（開始）', 'VSTを外して比較（終了）', '出力音量を1%上げる', '出力音量を1%下げる', '歌モード', '雑談モード', 'ノイズ低減を切り替える']
         : ['Emergency mute (toggle)', 'Emergency mute (on)', 'Emergency mute (off)', 'Compare without VST (toggle)', 'Compare without VST (start)', 'Compare without VST (end)', 'Increase output volume by 1%', 'Decrease output volume by 1%', 'Switch to Sing mode', 'Switch to Talk mode', 'Toggle noise reduction'];
     for (const name of names) {
         expect(screen.getByText(name, { exact: true })).toBeVisible();

@@ -17,7 +17,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.mocked(invoke).mockReset(); });
 
-it.each(['ライセンス', '声・VST の保存', 'ボイスチェック'])('%sを親画面のクリップ・重なり順から切り離す', name => {
+it.each(['ライセンス', '声・VSTの保存', 'ボイスチェック'])('%sを親画面のクリップ・重なり順から切り離す', name => {
     const component = (isOpen: boolean) => {
         if (name === 'ライセンス') return <LicenseModal isOpen={isOpen} onClose={vi.fn()} />;
         if (name === 'ボイスチェック') return <VoiceCheckModal isOpen={isOpen} onClose={vi.fn()} />;
@@ -26,7 +26,7 @@ it.each(['ライセンス', '声・VST の保存', 'ボイスチェック'])('%s
             onApplyProfile={async () => null} onRestoreBackup={async () => null} />;
     };
     const view = render(<main style={{ isolation: 'isolate', overflow: 'hidden' }}>{component(true)}</main>);
-    const title = name === 'ライセンス' ? /ライセンス情報/ : name === '声・VST の保存' ? '設定の保存・復帰' : name;
+    const title = name === 'ライセンス' ? /ライセンス情報/ : name === '声・VSTの保存' ? '設定の保存・復帰' : name;
     const heading = screen.getByRole('heading', { name: title });
     expect(document.body).toContainElement(heading);
     expect(view.container).not.toContainElement(heading);

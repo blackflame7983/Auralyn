@@ -31,7 +31,7 @@ it.each(['ja', 'en'] as const)('空状態の説明は音づくりへの経路だ
     render(<LocaleProvider store={store}><PluginRackEmptyState onAddClick={vi.fn()} onOpenTemplates={vi.fn()} /></LocaleProvider>);
     expect(screen.getByRole('heading', { name: message(locale, 'rack.empty.title') })).toBeVisible();
     expect(screen.getByRole('button', { name: message(locale, 'rack.empty.addVst') })).toBeEnabled();
-    expect(screen.getByText(locale === 'ja' ? 'ノイズ低減と声を整える機能は「設定 → 音づくり」で調整します。' : 'Adjust noise reduction and the built-in voice chain in Settings → Sound.')).toBeVisible();
+    expect(screen.getByText(locale === 'ja' ? 'ノイズ低減と声を整える機能は、ホームの音調整で調整できます。' : 'Adjust noise reduction and the built-in voice chain in Sound controls on Home.')).toBeVisible();
 });
 
 

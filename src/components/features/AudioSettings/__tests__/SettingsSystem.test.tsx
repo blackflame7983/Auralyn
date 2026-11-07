@@ -36,7 +36,7 @@ it.each(['ja', 'en'] as const)('システム操作の対象と確認を区別す
     const store = createLocaleStore(() => locale, () => true);
     render(<LocaleProvider store={store}><AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} onOpenWizard={vi.fn()} /></LocaleProvider>);
     fireEvent.mouseDown(screen.getByRole('tab', { name: locale === 'ja' ? 'システム' : 'System' }), { button: 0, ctrlKey: false });
-    const blocklist = locale === 'ja' ? '読み込みを止めた VST をリセット' : 'Reset blocklist';
+    const blocklist = locale === 'ja' ? '読み込みを止めたVSTをリセット' : 'Reset blocklist';
     const reset = locale === 'ja' ? 'すべて初期化' : 'Reset all';
     expect(screen.getByRole('heading', { name: locale === 'ja' ? 'セットアップ' : 'Setup' })).toBeVisible();
     expect(screen.getByText(locale === 'ja' ? 'マイクと出力先を選び直せます。' : 'Choose your microphone and output again.')).toBeVisible();
@@ -45,7 +45,7 @@ it.each(['ja', 'en'] as const)('システム操作の対象と確認を区別す
     expect(resetButton).toHaveClass('bg-destructive');
     fireEvent.click(screen.getByRole('button', { name: blocklist }));
     let dialog = await screen.findByRole('alertdialog');
-    expect(within(dialog).getByRole('heading', { name: locale === 'ja' ? '読み込みを止めた VST をリセットしますか？' : 'Reset the blocklist?' })).toBeVisible();
+    expect(within(dialog).getByRole('heading', { name: locale === 'ja' ? '読み込みを止めたVSTをリセットしますか？' : 'Reset the blocklist?' })).toBeVisible();
     fireEvent.click(within(dialog).getByRole('button', { name: locale === 'ja' ? 'キャンセル' : 'Cancel' }));
     fireEvent.click(resetButton);
     dialog = await screen.findByRole('alertdialog');

@@ -50,7 +50,7 @@ it.each([
     { output: 'CABLE Input', inputs: [{ name: 'CABLE Output', host: 'Wasapi' }, { name: 'CABLE Output (VB-Audio)', host: 'Wasapi' }] },
     { output: 'Voicemeeter Input', inputs: [{ name: 'CABLE Output', host: 'Wasapi' }] },
     { output: 'Custom Virtual Output', inputs: [{ name: 'CABLE Output', host: 'Wasapi' }] },
-])('対になる入力を一意に特定できなければ、別ケーブルで検査せず手動確認を案内する: %j', async ({ output, inputs }) => {
+])('対になる入力を一意に特定できなければ、別ケーブルで検査せず手動確認を案内する：%j', async ({ output, inputs }) => {
     vi.useFakeTimers();
     vi.mocked(invoke).mockImplementation(async command => {
         if (command === 'get_audio_state') return { is_running: true, config: { ...config, output } };
@@ -63,7 +63,7 @@ it.each([
     await act(async () => {});
     expect(invoke).not.toHaveBeenCalledWith('probe_loopback', expect.anything());
     expect(screen.getByText(/対になる入力を一意に特定できませんでした/)).toBeInTheDocument();
-    expect(screen.getByText(/^直し方: 手動確認/)).toBeInTheDocument();
+    expect(screen.getByText(/^直し方：手動確認/)).toBeInTheDocument();
     if (output === 'Voicemeeter Input') {
         expect(screen.getByText(/OBS のソースに/)).toHaveTextContent('Voicemeeter のバス設定に対応する録音デバイス');
         expect(screen.getByText(/OBS のソースに/)).not.toHaveTextContent('CABLE Output');
@@ -73,7 +73,7 @@ it.each([
 it.each([
     { is_running: true, config: null },
     { is_running: false, config },
-])('未設定・停止中はマイク権限や音到達の診断へ進まない: %j', async state => {
+])('未設定・停止中はマイク権限や音到達の診断へ進まない：%j', async state => {
     vi.mocked(invoke).mockResolvedValue(state);
     openDiagnosis();
     await screen.findByRole('button', { name: '設定を開く' });
@@ -85,7 +85,7 @@ it.each([
 });
 
 it.each([{ running: false, streamFailed: false }, { running: true, streamFailed: true }, null])(
-    '設定やプロセスがあってもストリームを確認できなければ測定しない: %j', async stream => {
+    '設定やプロセスがあってもストリームを確認できなければ測定しない：%j', async stream => {
         vi.mocked(invoke).mockImplementation(async command => {
             if (command === 'get_audio_state') return { is_running: true, config };
             if (command === 'auto_gain') return stream;
@@ -211,7 +211,7 @@ it('接続チェックの原文は詳細へ置き、手動確認の案内を残�
     const raw = screen.getByText('Error: probe unavailable');
     expect(raw.closest('details')).not.toHaveAttribute('open');
     expect(raw).not.toBeVisible();
-    expect(screen.getByText(/^直し方: 手動確認/)).toBeVisible();
+    expect(screen.getByText(/^直し方：手動確認/)).toBeVisible();
     fireEvent.click(raw.closest('details')!.querySelector('summary')!);
     expect(raw).toBeVisible();
 });

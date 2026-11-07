@@ -34,7 +34,7 @@ async function noOverflow(dialog: Locator) { expect(await dialog.evaluate(el => 
 test('オケは1段で自動表示し、キーボードの音量調整を適用ボタンなしで送る', async ({ page }, info) => {
     await page.setViewportSize({ width: 900, height: 600 }); await fixture(page); await page.goto('/'); const dialog = await streamMix(page);
     const mixing = dialog.locator('#mixing-settings'); await keyboardOpen(page, mixing.locator('summary').first());
-    await expect(mixing.getByText('適用中の入力元:', { exact: false })).toBeVisible(); await expect(mixing.getByText('声の処理待ち: 10.0 ms', { exact: true })).toBeVisible();
+    await expect(mixing.getByText('適用中の入力元:', { exact: false })).toBeVisible(); await expect(mixing.getByText('声の処理待ち：10.0 ms', { exact: true })).toBeVisible();
     const slider = mixing.getByRole('slider', { name: '声の音量' }); await slider.scrollIntoViewIfNeeded(); await slider.focus(); await page.keyboard.press('ArrowRight');
     await expect(slider).toHaveAttribute('aria-valuetext', '1%');
     await expect.poll(() => page.evaluate(() => (window as any).__mixRequests.some((r: any) => r.action === 'levels' && r.levels.voice.gain === 0.01 && r.expectedRevision === '1'))).toBe(true);
@@ -43,11 +43,11 @@ test('オケは1段で自動表示し、キーボードの音量調整を適用�
 
 test('オケを開かず配信VSTを自動表示し、音量・エラー詳細・確認付き初期化にキーボードで到達する', async ({ page }, info) => {
     await page.setViewportSize({ width: 900, height: 600 }); await fixture(page, false); await page.goto('/'); const dialog = await streamMix(page);
-    const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('配信音を仕上げる VST', { exact: true }) }).last();
+    const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('配信音を仕上げるVST', { exact: true }) }).last();
     await keyboardOpen(page, post.locator('summary').first());
-    await expect(dialog.locator('#mixing-settings')).not.toHaveAttribute('open', ''); await expect(post.getByText('転送の待ち時間: 42.7 ms')).toBeVisible();
-    await expect(post.getByRole('switch', { name: '配信 VST を有効にする' })).toBeDisabled();
-    await expect(post.getByRole('switch', { name: '配信 VST を有効にする' })).toHaveAccessibleDescription(/オケの入力元/);
+    await expect(dialog.locator('#mixing-settings')).not.toHaveAttribute('open', ''); await expect(post.getByText('転送の待ち時間：42.7 ms')).toBeVisible();
+    await expect(post.getByRole('switch', { name: '配信VSTを有効にする' })).toBeDisabled();
+    await expect(post.getByRole('switch', { name: '配信VSTを有効にする' })).toHaveAccessibleDescription(/オケの入力元/);
     const slider = post.getByRole('slider', { name: 'Fixture EQのゲイン' }); await slider.scrollIntoViewIfNeeded(); await slider.focus(); await page.keyboard.press('ArrowRight');
     await expect.poll(() => page.evaluate(() => (window as any).__postRequests.some((r: any) => r.action === 'gain' && r.value === 0.01 && r.expectedRevision === '1'))).toBe(true);
     await page.evaluate(() => { (window as any).__postCorrupt = true; });
@@ -82,14 +82,14 @@ test('ホームで設定を開かずオケ音量とミュートを変更し、�
     await expect.poll(() => page.evaluate(() => (window as any).__mixRequests.some((r: any) => r.action === 'levels' && r.levels.accompaniment.gain === 0))).toBe(true);
     await popup.getByRole('button', { name: 'ミュート', exact: true }).click();
     await expect.poll(() => page.evaluate(() => (window as any).__mixRequests.some((r: any) => r.action === 'levels' && r.levels.accompaniment.muted))).toBe(true);
-    await page.keyboard.press('Escape'); await expect(trigger).toBeFocused(); await expect(page.getByRole('button', { name: /オケ停止.*配信 VST 停止/ })).toBeVisible();
-    await page.screenshot({ path: info.outputPath('home-mix.png') }); await page.getByRole('button', { name: /オケ停止.*配信 VST 停止/ }).click(); await expect(page.locator('#mixing-settings')).toHaveAttribute('open', '');
+    await page.keyboard.press('Escape'); await expect(trigger).toBeFocused(); await expect(page.getByRole('button', { name: /オケ停止.*配信VST停止/ })).toBeVisible();
+    await page.screenshot({ path: info.outputPath('home-mix.png') }); await page.getByRole('button', { name: /オケ停止.*配信VST停止/ }).click(); await expect(page.locator('#mixing-settings')).toHaveAttribute('open', '');
     await expect(page.locator('#mixing-settings > summary')).toBeFocused();
 });
 
 test('共通のVSTカードでキーボードの並べ替えを配信ラックへ送る', async ({ page }) => {
     await fixture(page, false); await page.goto('/'); const dialog = await streamMix(page);
-    const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('配信音を仕上げる VST', { exact: true }) }).last(); await keyboardOpen(page, post.locator('summary').first());
+    const post = dialog.locator('details').filter({ has: page.locator('summary').getByText('配信音を仕上げるVST', { exact: true }) }).last(); await keyboardOpen(page, post.locator('summary').first());
     const handle = post.getByRole('button', { name: 'Fixture EQを並べ替え' }); await handle.scrollIntoViewIfNeeded(); await handle.focus(); await page.keyboard.press('Space');
     await expect(handle).toHaveAttribute('aria-pressed', 'true');
     const announcements = page.locator('[id^="DndLiveRegion"]'); await expect(announcements).toContainText('並べ替えを開始');
@@ -112,7 +112,7 @@ test('ミュート直後の音量操作をまとめて反映し、失敗した�
 test('配信ミックスのパネルは既定で出さず、ホームの状態から出して開き、設定で隠せる（#299）', async ({ page }, info) => {
     await page.setViewportSize({ width: 1024, height: 768 }); await fixture(page, true, false, false); await page.goto('/');
     await expect(page.locator('#stream-mix-panel')).toHaveCount(0);
-    await page.getByRole('button', { name: /オケ停止.*配信 VST 停止/ }).click();
+    await page.getByRole('button', { name: /オケ停止.*配信VST停止/ }).click();
     await expect(page.locator('#stream-mix-panel #mixing-settings')).toHaveAttribute('open', '');
     await expect(page.locator('#mixing-settings > summary')).toBeFocused(); await page.screenshot({ path: info.outputPath('stream-mix-panel.png') });
     const dialog = await settings(page);

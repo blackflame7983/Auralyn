@@ -175,8 +175,8 @@ it('プロファイルを選んで明示保存し、バックアップとVSTな�
     ]);
     function Panel() { return <LiveModeControls model={useLiveModes()} initiallyOpen />; }
     render(<Panel />);
-    fireEvent.click(screen.getAllByText('一緒に切り替える VST')[0]);
-    const selector = await screen.findByRole('combobox', { name: /歌.*一緒に切り替える VST/ });
+    fireEvent.click(screen.getAllByText('一緒に切り替えるVST')[0]);
+    const selector = await screen.findByRole('combobox', { name: /歌.*一緒に切り替えるVST/ });
     await screen.findAllByRole('option', { name: '歌用' });
     expect(screen.queryByRole('option', { name: 'backup' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'no-vst' })).not.toBeInTheDocument();
@@ -194,9 +194,9 @@ it('VST の選択は状態の再取得と保存失敗を経ても開いたまま
     vi.spyOn(presetApi, 'listProfiles').mockResolvedValue([{ name: '歌用', hasPlugins: true, isBackup: false, hasAudioConfig: false, hasNoiseControl: false, hasBuiltinFx: false }]);
     function Panel() { return <LiveModeControls model={useLiveModes()} />; }
     render(<Panel />);
-    const summary = screen.getAllByText('一緒に切り替える VST')[0];
+    const summary = screen.getAllByText('一緒に切り替えるVST')[0];
     fireEvent.click(summary);
-    const selector = await screen.findByRole('combobox', { name: /歌.*一緒に切り替える VST/ });
+    const selector = await screen.findByRole('combobox', { name: /歌.*一緒に切り替えるVST/ });
     await screen.findAllByRole('option', { name: '歌用' });
     fireEvent.change(selector, { target: { value: '歌用' } });
     await waitFor(() => expect(vi.mocked(liveModesApi.request).mock.calls.filter(([request]) => request.action === 'snapshot').length).toBeGreaterThan(1));
@@ -252,7 +252,7 @@ it('一覧取得失敗を表示し再取得できる', async () => {
     render(<Panel />);
     expect(await screen.findByText('プロファイル一覧を取得できませんでした。')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'プロファイル一覧を再取得' }));
-    screen.getAllByText('一緒に切り替える VST').forEach(summary => fireEvent.click(summary));
+    screen.getAllByText('一緒に切り替えるVST').forEach(summary => fireEvent.click(summary));
     expect(await screen.findAllByRole('option', { name: '歌用' })).toHaveLength(2);
     expect(screen.queryByText('プロファイル一覧を取得できませんでした。')).not.toBeInTheDocument();
 });

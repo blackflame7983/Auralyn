@@ -430,3 +430,10 @@ it.each([false, true])('出力音量はマウスで100%にでき、キーの刻�
     anchor.remove();
     window.PointerEvent = originalPointerEvent;
 });
+
+it.each([true, false])('本番帯に出力表示があればフッターに重ねず、なければ残す（稼働=%s）', isRunning => {
+    const view = render(<MasterBar isRunning={isRunning} outputMeterInHome />);
+    expect(screen.queryByRole('meter', { name: message('ja', 'meter.output') })).toBeNull();
+    view.rerender(<MasterBar isRunning={isRunning} />);
+    expect(screen.getByRole('meter', { name: message('ja', 'meter.output') })).toBeInTheDocument();
+});

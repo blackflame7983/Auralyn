@@ -24,6 +24,7 @@ import {
 } from '@/api/outputGain';
 
 interface MasterBarProps {
+    outputMeterInHome?: boolean;
     outputGainAnchor?: HTMLButtonElement | null;
     onOutputGainClose?: () => void;
     isRunning?: boolean;
@@ -37,7 +38,7 @@ interface MasterBarProps {
     onOpenAudioTuning?: () => void;
 }
 
-export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, outputGainAnchor, onOutputGainClose, onOpenAudioTuning }) => {
+export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false, host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, outputGainAnchor, onOutputGainClose, onOpenAudioTuning }) => {
     const t = useMessages();
     const [simple] = useBeginnerMode();
     const detailsButtonRef = useRef<HTMLButtonElement>(null);
@@ -245,7 +246,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                     </div>}
                 </Popover.Content></Popover.Portal>
             </Popover.Root>
-            <MasterOutputMeter running={isRunning} numbers={!simple} />
+            {!outputMeterInHome && <MasterOutputMeter running={isRunning} numbers={!simple} />}
 
             {/* Master Output Volume */}
             <div className="flex shrink-0 items-center gap-2 border-l border-border pl-3 ml-1">

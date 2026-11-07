@@ -304,7 +304,7 @@ test('最小〜最大: VST は作業幅を保って重なり、広い窓では�
         await reachable(page.getByRole('slider', { name: '出力音量', exact: true }), page);
         if (width === 960 || width === 1536) await page.screenshot({ path: testInfo.outputPath(`vst-responsive-${width}.png`) });
         if (overlays) await page.keyboard.press('Escape');
-        else await page.getByRole('button', { name: 'VST 構成を閉じる', exact: true }).click();
+        else await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
         await expect(page.locator('#vst-panel')).toHaveCount(0);
         await expect(main).not.toHaveAttribute('inert', '');
         await expect(page.locator('#vst-panel-toggle')).toBeFocused();
@@ -415,7 +415,7 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
     const panel = page.locator('#vst-panel');
     await expect(panel).toHaveAttribute('data-state', 'open');
     expect(await panel.evaluate(e => e.getAnimations().some(a => a.playState === 'running'))).toBe(true);
-    await page.getByRole('button', { name: 'VST 構成を閉じる', exact: true }).click();
+    await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
     await expect(panel).toHaveAttribute('inert', '');
     await expect(panel).toHaveAttribute('aria-hidden', 'true');
     await expect(toggle).toBeFocused();
@@ -430,7 +430,7 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
         const reserved = document.querySelector('.vst-panel-space')!;
         const samples = [{ time: 0, width: main.getBoundingClientRect().width, reserved: reserved.getBoundingClientRect().width }];
         const start = performance.now();
-        (e.querySelector('button[aria-label="VST 構成を閉じる"]') as HTMLButtonElement).click();
+        (e.querySelector('button[aria-label="VST構成を閉じる"]') as HTMLButtonElement).click();
         await new Promise<void>(resolve => {
             const frame = () => {
                 samples.push({ time: performance.now() - start, width: main.getBoundingClientRect().width, reserved: reserved.getBoundingClientRect().width });
@@ -476,14 +476,14 @@ test('動きを減らす設定では右パネルを移動せず、キーボー�
     const panel = page.locator('#vst-panel');
     expect(await panel.evaluate(e => getComputedStyle(e).transform)).toBe('none');
     expect(await panel.evaluate(e => e.getAnimations().every(a => !(a instanceof CSSTransition) || a.transitionProperty === 'opacity'))).toBe(true);
-    await page.getByRole('button', { name: 'VST 構成を閉じる', exact: true }).click();
+    await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
     await expect(panel).toHaveCount(0);
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await toggle.focus();
     await page.keyboard.press('Enter');
     await expect(panel).toHaveAttribute('data-state', 'open');
     expect(await panel.evaluate(e => e.getAnimations().length)).toBe(0);
-    const close = page.getByRole('button', { name: 'VST 構成を閉じる', exact: true });
+    const close = page.getByRole('button', { name: 'VST構成を閉じる', exact: true });
     await close.focus();
     await page.keyboard.press('Enter');
     await expect(panel).toHaveCount(0);
@@ -522,8 +522,9 @@ test.describe('メーター数値の幅', () => {
             await expect(large).toBeVisible();
             await expect(large.getByRole('button', { name: detailed ? 'ミニモード' : '詳細表示', exact: true })).toBeVisible();
             await large.evaluate(async element => { await Promise.all(element.getAnimations().map(animation => animation.finished.catch(() => {}))); });
-            await expect(output).toHaveCount(2);
-            for (const locator of [input, output.nth(0), output.nth(1)]) {
+            // 本番帯に出力バーがある間はフッターの出力メーターを出さない（#340）ので、出力は大型メーターの1本だけ。
+            await expect(output).toHaveCount(1);
+            for (const locator of [input, output]) {
                 await expect(locator).toBeVisible();
                 await (await locator.elementHandle())!.waitForElementState('stable');
             }
@@ -534,24 +535,24 @@ test.describe('メーター数値の幅', () => {
             }).toBe(true);
             // 状態の文言が変わるとホームの区画が位置を補間する（#298）。動きの途中ではなく、止まった位置で比べる。
             await settleLayoutMotion(page);
-            const baseline = await Promise.all([input, output.nth(0), output.nth(1)].map(locator => locator.boundingBox()));
+            const baseline = await Promise.all([input, output].map(locator => locator.boundingBox()));
             await emit(1.2);
             const resets = page.getByRole('button', { name: /クリップ表示を消す/ });
-            await expect(resets).toHaveCount(3);
+            await expect(resets).toHaveCount(2);
             await settleLayoutMotion(page);
-            for (const [i, locator] of [input, output.nth(0), output.nth(1)].entries()) {
+            for (const [i, locator] of [input, output].entries()) {
                 const clipped = (await locator.boundingBox())!;
                 expect(clipped).toEqual(baseline[i]);
             }
             await page.screenshot({ path: testInfo.outputPath(`clip-${detailed ? 'detail' : 'slim'}.png`) });
-            // 出力は2か所で共有し、入力の履歴とは独立して解除する。
+            // 出力のクリップは、入力の履歴とは独立して解除する。
             await emit(0.1);
             await large.getByRole('button', { name: /クリップ表示を消す/ }).click();
             await expect(resets).toHaveCount(1);
             await resets.click();
             await emit(0);
             await expect(large.getByRole('status')).toHaveText('無音');
-            for (const [i, locator] of [input, output.nth(0), output.nth(1)].entries()) {
+            for (const [i, locator] of [input, output].entries()) {
                 expect(await locator.boundingBox()).toEqual(baseline[i]);
             }
             // 不正なレベル通知は更新待ちになり、状態欄で縦バーを縮めない。

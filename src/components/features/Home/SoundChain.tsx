@@ -141,7 +141,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         // 表示用途を変えても音は変えない。音楽鑑賞の声向け処理は下の注意と情報ボタンから確認する。
         ...(music ? [] : [
             row({ key: 'noise', id: 'home-noise', on: noiseOn, quiet: !noiseOn, tag: builtinTag, builtin: true, name: t('settings.AudioSettingsModal.105'), sub: t('chain.noiseSub'),
-                body: live && noiseOn ? <NoiseQuick q={q} /> : <StatusDot tone={live ? 'off' : tone(stage?.nr.enabled)} className="text-[13px] text-muted-foreground">{live ? t('flow.disabled') : setting(stage?.nr.enabled)}</StatusDot>,
+                body: live ? <NoiseQuick q={q} /> : <StatusDot tone={live ? 'off' : tone(stage?.nr.enabled)} className="text-[13px] text-muted-foreground">{live ? t('flow.disabled') : setting(stage?.nr.enabled)}</StatusDot>,
                 action: live && <NoiseSwitch q={q} /> }),
             row({ key: 'builtin', id: 'home-builtin', on: builtinOn, quiet: !builtinOn, tag: builtinTag, builtin: true, name: t('settings.AudioSettingsModal.095'), sub: t('chain.builtinSub'), title: builtinDetails,
                 body: <>
@@ -187,7 +187,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
             </div>}
         </div>
         {!audioReady && !stopped ? <p className="text-ui-support text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
-            : music ? (noiseOn || builtinOn) && <div className="flex items-center gap-1 text-sm text-warning"><span>{t('flow.voiceStillOn')}</span><InfoPopover label={t('chain.voiceTools')}><p>{builtinDetails}</p><p>{t('settings.AudioSettingsModal.105')}: {setting(stage?.nr.enabled)}</p><button type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="mt-2 underline underline-offset-4">{t('home.moreSound')}</button></InfoPopover></div>
+            : music ? (noiseOn || builtinOn) && <div className="flex flex-wrap items-center gap-2 text-sm text-warning"><span>{t('flow.voiceStillOn')}</span><button type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="rounded-md border border-border px-3 py-1.5 text-ui-control text-foreground hover:bg-muted">{t('home.moreSound')}</button><InfoPopover label={t('chain.voiceTools')}><p>{builtinDetails}</p><p>{t('settings.AudioSettingsModal.105')}: {setting(stage?.nr.enabled)}</p></InfoPopover></div>
             : null}
         {/* 狭い作業幅では項目を折り返し、文字は省略しない。 */}
         <ol aria-label={t('flow.title')} className="sound-tool-list mt-2 grid grid-cols-3">
