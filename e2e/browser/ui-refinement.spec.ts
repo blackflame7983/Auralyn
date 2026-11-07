@@ -57,7 +57,7 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
         const modes = live.getByRole('group', { name: message('ja', 'liveBar.mode') });
         for (const key of ['liveBar.singing', 'liveBar.talk'] as const) await expect(modes.getByRole('button', { name: message('ja', key), exact: true })).toBeInViewport();
         await expect(modes.locator('[aria-current=true]')).toHaveText(message('ja', 'liveBar.custom'));
-        await expect(live.getByRole('button', { name: message('ja', 'liveBar.protect'), exact: true })).toContainText('OFF');
+        await expect(live.getByRole('button', { name: message('ja', 'liveBar.protect'), exact: true })).toContainText(message('ja', 'liveBar.protectOff'));
         await expect(live.getByRole('button', { name: message('ja', 'liveBar.editRegistration'), exact: true })).toHaveCount(0);
         expect(await page.locator('main').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
         if (size.width === 1280) {
