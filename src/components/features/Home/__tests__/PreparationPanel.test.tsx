@@ -235,6 +235,8 @@ it('畳んでいる間は状態を読み上げ対象にし、機器名と、ヘ�
     const status = screen.getByText(message('ja', 'prep.running')).closest('[role="status"]')!;
     expect(status).toHaveTextContent(message('ja', 'prep.running'));
     expect(status).toHaveTextContent('USB マイク → CABLE Input');
+    // 機器名が長くても、短い状態の文言は縮めて折らず、機器名の側を先に詰める。
+    expect(screen.getByText(message('ja', 'prep.running')).closest('[data-tone]')).toHaveClass('shrink-0');
     // 畳んでいる間は枠を付けず、状態の1行だけにする。
     expect(screen.getByRole('region', { name: message('ja', 'prep.title') })).not.toHaveClass('rounded-xl');
     // 停止中に手で畳んでも、AppShell の状態文（ヘッダーと同じ文言）を使う。

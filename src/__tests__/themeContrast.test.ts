@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
+import ts from 'typescript';
 
 type RGB = [number, number, number];
 const rgb = (hsl: string): RGB => {
@@ -30,6 +31,12 @@ it('各テーマで状態文字は4.5:1、入力枠とメーターの注意・�
                 expect(contrast(color(token), panel), `${selector} ${token}/${background}`).toBeGreaterThanOrEqual(4.5);
             }
         }
+        // 補足文字は薄めず、実際に使う面の上で通常文字の基準を満たす。
+        for (const background of ['background', 'card', 'muted', 'popover', 'accent', 'secondary']) {
+            expect(contrast(color('muted-foreground'), color(background)), `${selector} muted-foreground/${background}`).toBeGreaterThanOrEqual(4.5);
+        }
+        const recoveryPanel = blend(color('destructive'), color('background'), 0.1);
+        expect(contrast(color('muted-foreground'), recoveryPanel), `${selector} recovery detail`).toBeGreaterThanOrEqual(4.5);
         // 入力欄・選択欄の枠は、内外に隣接するカード面と背景面の両方で3:1以上を保つ。
         for (const background of ['card', 'background']) {
             expect(contrast(color('input'), color(background)), `${selector} input/${background}`).toBeGreaterThanOrEqual(3);
@@ -90,4 +97,53 @@ it('ライトとオーロラは面に色相を持たせず、色はメーター�
             expect(Number(value![2]), `${selector} ${token} saturation`).toBeLessThanOrEqual(15);
         }
     }
+});
+
+
+it('読ませる文字の色・要素に不透明度を追加しない', () => {
+    const violations: string[] = [];
+    // 既存の無効状態と装飾だけを例外にする。読ませる補足を追加する場所には使わない。
+    const exceptions: Record<string, Record<string, string>> = {
+        'features/Home/SoundChain.tsx': { 'opacity-40': '未設定で操作できない音調整' },
+        'features/AudioSettings/AudioSettingsModal.tsx': { 'opacity-30': '無効な機器選択', 'opacity-50': '変更不可のバッファ欄' },
+        'features/Guide/DiscordGuideModal.tsx': { 'opacity-50': '変更不可の機器欄の見本' },
+        'features/VoiceCheck/VoiceCheckModal.tsx': { 'opacity-50': '録音前の無効な再生操作' },
+        'layout/AppShell.tsx': { 'opacity-[0.02]': '背景グリッド' },
+        'features/PluginRack/PluginList.tsx': { 'opacity-20': 'ラック間の装飾矢印' },
+        'features/PluginBrowser/PluginBrowserModal.tsx': { 'opacity-30': '文字ではない区切り線' },
+    };
+    const visit = (directory: string) => {
+        for (const entry of readdirSync(directory, { withFileTypes: true })) {
+            const path = join(directory, entry.name);
+            if (entry.isDirectory()) { if (!['__tests__', 'prototypes'].includes(entry.name)) visit(path); continue; }
+            if (!/\.(tsx|css)$/.test(entry.name)) continue;
+            const source = readFileSync(path, 'utf8');
+            // 文字サイズの text-[...] ではなく、色トークンの /NN・/[...] を検出する。
+            if (/\btext-[\w-]+\/(?:\d+|\[)/.test(source)) violations.push(`${path}: text color alpha`);
+            if (!entry.name.endsWith('.tsx')) continue;
+            const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+            const inspect = (node: ts.Node) => {
+                if (ts.isJsxAttribute(node) && node.name.getText(file) === 'className') {
+                    const tag = (node.parent.parent as ts.JsxOpeningElement | ts.JsxSelfClosingElement).tagName.getText(file);
+                    // アイコン自体の濃淡は文字のコントラストとは別に扱う。
+                    if (/^(Md[A-Z]|svg$)/.test(tag)) return;
+                    const strings = (child: ts.Node) => {
+                        if (ts.isStringLiteralLike(child) || ts.isTemplateHead(child) || ts.isTemplateMiddle(child) || ts.isTemplateTail(child)) {
+                            for (const token of child.text.split(/\s+/)) {
+                                if (!/^(?:hover:)?opacity-/.test(token) || ['opacity-0', 'opacity-100'].includes(token)) continue;
+                                const relative = path.replace(/\\/g, '/').replace(/^src\/components\//, '');
+                                if (!exceptions[relative]?.[token]) violations.push(`${path}:${file.getLineAndCharacterOfPosition(child.pos).line + 1}: ${token}`);
+                            }
+                        }
+                        ts.forEachChild(child, strings);
+                    };
+                    ts.forEachChild(node, strings);
+                }
+                ts.forEachChild(node, inspect);
+            };
+            inspect(file);
+        }
+    };
+    visit('src');
+    expect(violations).toEqual([]);
 });

@@ -260,10 +260,10 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               {tab.icon}
               {tab.label}
               {tab.id === 'favorites' && favorites.length > 0 && (
-                <span className="text-xs opacity-70">({favorites.length})</span>
+                <span className="text-xs">({favorites.length})</span>
               )}
               {tab.id === 'recent' && recentPaths.length > 0 && (
-                <span className="text-xs opacity-70">({recentPaths.length})</span>
+                <span className="text-xs">({recentPaths.length})</span>
               )}
             </button>
           ))}
@@ -334,7 +334,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
             <div className="flex flex-col items-center justify-center h-40 text-muted-foreground gap-3">
               <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               <p className="text-sm font-bold">{t('pluginBrowser.scanning')}</p>
-              <p className="text-xs opacity-70 text-center max-w-[80%] animate-pulse">
+              <p className="text-xs text-center max-w-[80%]">
                 {t('pluginBrowser.firstScan')}<br />
                 {t('pluginBrowser.scanWait')}</p>
             </div>
@@ -392,7 +392,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                         <p className="text-xs text-muted-foreground">
                           {plugin.vendor || t('pluginBrowser.unknownVendor')}
                           <span className="opacity-30 mx-1">|</span>
-                          <span className="text-primary/70">{getCategoryLabel(plugin.category, t)}</span>
+                          <span className="text-primary">{getCategoryLabel(plugin.category, t)}</span>
                         </p>
                       </div>
                     </div>

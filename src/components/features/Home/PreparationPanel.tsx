@@ -117,7 +117,7 @@ export function PreparationPanel({ diagnosticAttention = false, stoppedInStrip =
                 {/* 畳んでいる間は、入力・処理・出力の要約の代わりに状態の点1つと機器名で示す。 */}
                 {/* 開いているときは要約の「音声処理」が状態を読み上げるので、role="status" はどちらか一方だけにする。 */}
                 {!open && <span role="status" className="ml-2 flex min-w-0 items-center gap-2 text-xs">
-                    {!homeActionInStrip && <StatusDot tone={availabilityTones[observation.availability]} className="font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>}
+                    {!homeActionInStrip && <StatusDot tone={availabilityTones[observation.availability]} className="shrink-0 font-medium">{statusText ?? t(availabilityLabels[observation.availability])}</StatusDot>}
                     {devices && <span className="min-w-0 truncate text-muted-foreground">{devices}</span>}
                 </span>}
             </div>

@@ -535,7 +535,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                             <div className="font-bold text-sm text-foreground">{t('troubleshoot.runFor', { purpose: t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.label) })}</div>
                             <div className="text-xs text-muted-foreground mt-1">{t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.hint)}</div>
                         </button>
-                        <button type="button" onClick={() => setChoosePurpose(true)} className="text-xs font-semibold text-primary underline underline-offset-2 hover:opacity-80">{t('troubleshoot.changePurpose')}</button>
+                        <button type="button" onClick={() => setChoosePurpose(true)} className="text-xs font-semibold text-primary underline underline-offset-2 hover:text-foreground">{t('troubleshoot.changePurpose')}</button>
                     </div>
                 )}
                 {phase === 'purpose' && (!rememberedPurpose || choosePurpose) && (
