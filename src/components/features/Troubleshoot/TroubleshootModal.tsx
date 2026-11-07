@@ -1,3 +1,4 @@
+import { ErrorDetails } from '@/components/ui/ErrorDetails';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { message as formatMessage, type MessageKey } from '@/i18n/messages';
 import { useLocale } from '@/i18n/LocaleProvider';
@@ -534,7 +535,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                             <div className="font-bold text-sm text-foreground">{t('troubleshoot.runFor', { purpose: t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.label) })}</div>
                             <div className="text-xs text-muted-foreground mt-1">{t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.hint)}</div>
                         </button>
-                        <button type="button" onClick={() => setChoosePurpose(true)} className="text-xs font-semibold text-primary underline underline-offset-2 hover:opacity-80">{t('troubleshoot.changePurpose')}</button>
+                        <button type="button" onClick={() => setChoosePurpose(true)} className="text-xs font-semibold text-primary underline underline-offset-2 hover:text-foreground">{t('troubleshoot.changePurpose')}</button>
                     </div>
                 )}
                 {phase === 'purpose' && (!rememberedPurpose || choosePurpose) && (
@@ -580,7 +581,9 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                     <p className="text-xs text-muted-foreground">{renderNotice(t, check.description)}</p>
                                     {check.lines && <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{check.lines.map((line, i) => `${i + 1}. ${renderNotice(t, line)}`).join('\n')}</p>}
                                     {check.detail && (
-                                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{typeof check.detail === 'string' ? <>{t('guide.rawDetail')}: {check.detail}</> : renderNotice(t, check.detail)}</p>
+                                        typeof check.detail === 'string'
+                                            ? <ErrorDetails detail={check.detail} />
+                                            : <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{renderNotice(t, check.detail)}</p>
                                     )}
                                     {check.fixHint && (
                                         <p className="text-xs text-warning mt-1 leading-relaxed">

@@ -25,7 +25,8 @@ const Slider = React.forwardRef<
                 props.orientation === "vertical" ? "w-full bottom-0" : "h-full left-0"
             )} />
         </SliderPrimitive.Track>
-        <SliderPrimitive.Thumb aria-label={label} aria-labelledby={labelledBy} aria-describedby={describedBy} aria-valuetext={valueText} className="block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50" />
+        {/* 20pxの外観と行の高さを保ち、透明な疑似要素で24pxの操作領域を確保する。 */}
+        <SliderPrimitive.Thumb aria-label={label} aria-labelledby={labelledBy} aria-describedby={describedBy} aria-valuetext={valueText} className="relative block h-5 w-5 before:absolute before:left-1/2 before:top-1/2 before:size-6 before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50" />
     </SliderPrimitive.Root>
 ))
 Slider.displayName = SliderPrimitive.Root.displayName

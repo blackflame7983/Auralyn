@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { message } from '@/i18n/messages';
 import type { ObsSetupHistory, ObsUiText } from '@/api/obs';
-import { OBS_UI_CODES, canAdoptObsHistory, formatObsText, obsHistoryResults } from '../obsUiText';
+import { OBS_UI_CODES, canAdoptObsHistory, formatObsText, obsHistoryResults, obsTextParts, obsHistoryResultParts } from '../obsUiText';
 const fixtures: ObsUiText[] = [
   {
     "code": "obs.field.inputDevice",
@@ -525,4 +525,14 @@ it('採用は表示文言でなくrestorable/非空/全件outcomeと件数を照
     expect(canAdoptObsHistory({...history,resultEntries:[{outcome:'applied',text:{code:'future',args:{},fallbackJa:'未知表示'}}]})).toBe(true);
     for(const bad of [{restorable:undefined},{restorable:false},{restorable:null},{changes:[]},{results:[]},{resultEntries:undefined},{resultEntries:null},{resultEntries:[]},{resultEntries:[null]},{resultEntries:[{outcome:'future'}]},...['notRun','conflict','applyUnknown','restoreDeferred','restoreUnknown','restored','alreadyOriginal','restoreFailed'].map(outcome=>({resultEntries:[{outcome,text:history.resultEntries![0].text}]}))]) expect(canAdoptObsHistory({...history,...bad} as ObsSetupHistory)).toBe(false);
     expect(obsHistoryResults(t('en'),{...history,results:['適用済み'],resultEntries:null})).toEqual(['Original detail (untranslated): 適用済み']);
+});
+
+
+it.each(['ja', 'en'] as const)('詳細には見出しを付けず、原文の改行を保つ (%s)', locale => {
+    const raw = 'Error: failed\nraw detail';
+    expect(obsTextParts(t(locale), { code: 'obs.result.applyWriteUnknown', args: {}, fallbackJa: raw }).detail).toBe(raw);
+    expect(obsTextParts(t(locale), { code: 'future.code', args: {}, fallbackJa: raw })).toEqual({ summary: null, detail: raw });
+    expect(obsTextParts(t(locale), null, { opaque: 'private' }).detail).not.toContain('private');
+    const history: ObsSetupHistory = { id: 1, changes: [], results: [raw, 'legacy'], resultEntries: [{ outcome: 'applied', text: { code: 'obs.result.applied', args: {}, fallbackJa: '' } }] };
+    expect(obsHistoryResultParts(t(locale), history)).toEqual([{ summary: null, detail: raw }, { summary: null, detail: 'legacy' }]);
 });

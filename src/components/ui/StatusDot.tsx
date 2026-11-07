@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 export type StatusTone = 'ok' | 'warn' | 'error' | 'off';
 
 const tones: Record<StatusTone, string> = {
-    ok: 'bg-success shadow-[0_0_6px_hsl(var(--success)/0.5)]',
+    ok: 'bg-success gaming:shadow-[0_0_6px_hsl(var(--success)/0.5)]',
     warn: 'bg-warning',
     error: 'bg-meter-danger',
     off: 'bg-muted-foreground/50',
@@ -15,6 +15,6 @@ const tones: Record<StatusTone, string> = {
 export function StatusDot({ tone, children, className }: { tone: StatusTone; children: ReactNode; className?: string }) {
     return <span data-tone={tone} className={cn('inline-flex min-w-0 items-center gap-1.5', className)}>
         <span aria-hidden="true" className={cn('h-2 w-2 shrink-0 rounded-full', tones[tone])} />
-        <span className="truncate">{children}</span>
+        <span className="min-w-0 whitespace-normal [overflow-wrap:anywhere]">{children}</span>
     </span>;
 }

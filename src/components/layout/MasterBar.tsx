@@ -217,7 +217,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
     const signalLabel = processReady === null ? t('master.unverified') : !isRunning ? (host ? t('shell.stopped') : t('shell.unconfigured')) : processReady === false ? t('prep.failed') : broadcastFailed ? t('liveOutput.shortFailed') : stats?.latencyMetadata?.processingContext === 'broadcastWorker' ? t('liveOutput.branchLabel') : isFxActive ? t('master.vst') : (isCleanActive ? t('master.nr') : t('master.raw'));
 
     return (
-        <div className="relative flex flex-wrap items-center justify-end gap-x-3 gap-y-2 px-3 py-2 border-l border-border bg-card/30 backdrop-blur-sm transition-colors duration-300 min-w-0">
+        <div className="relative flex flex-wrap items-center justify-end gap-x-3 gap-y-2 px-3 py-2 border-l border-border bg-card gaming:bg-card/30 gaming:backdrop-blur-sm transition-colors duration-300 min-w-0">
             <Popover.Root open={Boolean(outputGainAnchor)} onOpenChange={open => { if (!open) onOutputGainClose?.(); }}>
                 {outputGainAnchor && <Popover.Anchor virtualRef={{ current: outputGainAnchor }} />}
                 <Popover.Portal><Popover.Content aria-label={t('master.outputGain')} side="bottom" align="end" sideOffset={8} collisionPadding={12}
@@ -250,7 +250,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
             {/* Master Output Volume */}
             <div className="flex shrink-0 items-center gap-2 border-l border-border pl-3 ml-1">
                 {outputGain === 0 ? <MdVolumeOff aria-hidden="true" className="w-4 h-4 text-warning flex-shrink-0" /> : <MdVolumeUp aria-hidden="true" className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
-                <span aria-hidden="true" className="hidden lg:inline text-xs font-bold text-muted-foreground">{t('master.outputGain')}</span>
+                <span aria-hidden="true" className="hidden lg:inline text-ui-control font-medium text-muted-foreground">{t('master.outputGain')}</span>
                 <Slider
                     id="master-output-gain"
                     aria-label={t('master.outputGain')}
@@ -260,7 +260,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ host, sampleRate, bufferSi
                     min={0}
                     max={200}
                     step={1}
-                    className="w-16 md:w-20"
+                    className="w-32 shrink-0"
                     onDoubleClick={() => handleOutputGainChange([100])}
                 />
                 <span className="hidden md:inline text-xs font-mono tabular-nums text-muted-foreground min-w-[32px] text-right">
@@ -339,7 +339,7 @@ function MasterOutputMeter({ running, numbers }: { running: boolean; numbers: bo
     return <>
             {/* Label */}
             <div className="hidden sm:flex shrink-0 flex-col items-end justify-center min-w-[60px]">
-                <div className="flex items-center gap-2 text-muted-foreground font-bold font-mono tracking-widest text-xs">
+                <div className="flex items-center gap-2 text-muted-foreground text-ui-control font-medium">
                     <MdGraphicEq className={cn("w-3 h-3", isClipping ? 'text-destructive-text animate-pulse' : 'text-success')} />
                     {t('meter.output')}
                 </div>

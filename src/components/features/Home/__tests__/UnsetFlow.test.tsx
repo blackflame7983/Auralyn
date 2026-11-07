@@ -12,7 +12,7 @@ it('送り先が未決定なら送り先だけを次に決める所にし、ほ�
     render(<UnsetFlow onSetup={onSetup} />);
     expect(node(/^送り先/)).toHaveAttribute('data-state', 'next');
     expect(node(/^マイク/)).toHaveAttribute('data-state', 'empty');
-    expect(node(/^送り方/)).toHaveAttribute('data-state', 'empty');
+    expect(node(/^出力先/)).toHaveAttribute('data-state', 'empty');
     expect(document.querySelectorAll('[aria-current="step"]')).toHaveLength(1);
     expect(screen.getByText('送り先から順に決めると、線に音が通ります。')).toBeInTheDocument();
     fireEvent.click(node(/^マイク/));
@@ -20,12 +20,12 @@ it('送り先が未決定なら送り先だけを次に決める所にし、ほ�
     expect(onSetup).toHaveBeenCalledTimes(2);
 });
 
-it('送り先と入力が決まっていれば、次は送り方にし、決まった区間の間の線を灯す', () => {
+it('送り先と入力が決まっていれば、次は出力先にし、決まった区間の間の線を灯す', () => {
     render(<UnsetFlow usage="obs" input="マイク (2)" onSetup={vi.fn()} />);
     expect(node(/^送り先OBSで配信/)).toHaveAttribute('data-state', 'set');
     expect(node(/^マイクマイク \(2\)/)).toHaveAttribute('data-state', 'set');
-    expect(node(/^送り方/)).toHaveAttribute('data-state', 'next');
-    expect(screen.getByRole('button', { name: '送り方を決める' })).toBeInTheDocument();
+    expect(node(/^出力先/)).toHaveAttribute('data-state', 'next');
+    expect(screen.getByRole('button', { name: '出力先を決める' })).toBeInTheDocument();
     expect(screen.queryByText('送り先から順に決めると、線に音が通ります。')).not.toBeInTheDocument();
     const links = [...document.querySelectorAll('.unset-flow-link')].map(link => link.getAttribute('data-lit'));
     expect(links).toEqual(['true', 'false', 'false']);

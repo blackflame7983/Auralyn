@@ -33,7 +33,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     return (
         <Modal title={title} titleInContent role="alertdialog"
             descriptionId={description ? descriptionId : undefined} onClose={onCancel}>
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/90 gaming:bg-background/60 gaming:backdrop-blur-sm">
             <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl space-y-4">
                 <div className="flex items-start gap-4">
                     <div className={cn(

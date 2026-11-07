@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { audioApi, type EngineRuntimeStats } from '@/api/audio';
 import { builtinApi, type BuiltinConfig } from '@/api/builtinEffects';
 import { liveModesApi } from '@/api/liveModes';
+import { LocaleContext } from '@/i18n/LocaleProvider';
 import { useLiveModes } from '@/hooks/useLiveModes';
 import { liveSnapshot } from '@/hooks/__tests__/liveModesFixture';
 import { LiveModeBar } from '../../AudioSettings/LiveModeBar';
@@ -39,7 +40,7 @@ it.each(['normal', 'protected', 'recovery', 'snapshotError'] as const)('音楽�
     expect(screen.queryByRole('button', { name: '歌' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '雑談' })).not.toBeInTheDocument();
     if (kind === 'normal') expect(screen.queryByRole('region')).not.toBeInTheDocument();
-    if (kind === 'protected') expect(screen.getByRole('button', { name: '誤操作防止' })).toHaveAttribute('aria-pressed', 'true');
+    if (kind === 'protected') expect(screen.getByRole('button', { name: '操作をロック' })).toHaveAttribute('aria-pressed', 'true');
     if (kind === 'recovery') expect(screen.getByRole('button', { name: '以前の状態を復旧する' })).toBeInTheDocument();
     if (kind === 'snapshotError') expect(screen.getByRole('alert')).toBeVisible();
 });
@@ -109,18 +110,34 @@ it('本番モードは未登録ならメインに出さず、定期確認もし�
     vi.useRealTimers();
 });
 
-it('登録済みならモード切替と本番保護をメインに出し、保護の名前は固定する', async () => {
+it.each([
+    { locale: 'ja' as const, region: 'モード切替', sing: '歌', talk: '雑談', lock: '操作をロック', unlockHint: 'もう一度押すと操作ロックを解除します。', locked: 'ロック中', unlocked: '解除中' },
+    { locale: 'en' as const, region: 'Live mode', sing: 'Sing', talk: 'Talk', lock: 'Lock controls', unlockHint: 'Press again to unlock controls.', locked: 'Locked', unlocked: 'Unlocked' },
+])('本番帯の操作名と状態がロック・解除の結果に追従し、フォーカスを保つ ($locale)', async labels => {
     const config: BuiltinConfig = { ...singing, active: true };
-    vi.spyOn(liveModesApi, 'request').mockResolvedValue(liveSnapshot({ running: true, definitions: { schemaVersion: 1, version: '1', singing: config, talk: null } }));
-    const protect = vi.spyOn(liveModesApi, 'protect').mockResolvedValue(liveSnapshot({ running: true, armed: true, definitions: { schemaVersion: 1, version: '1', singing: config, talk: null } }));
+    const snapshot = liveSnapshot({ running: true, definitions: { schemaVersion: 1, version: '1', singing: config, talk: null } });
+    vi.spyOn(liveModesApi, 'request').mockResolvedValue(snapshot);
+    const protect = vi.spyOn(liveModesApi, 'protect').mockImplementation(async armed => ({ ...snapshot, armed }));
     function Bar() { return <LiveModeBar model={useLiveModes()} />; }
-    render(<Bar />);
-    await screen.findByRole('region', { name: 'モード切替' });
-    expect(screen.getByRole('button', { name: '歌' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: '雑談' })).toBeDisabled();
-    const guard = screen.getByRole('button', { name: '誤操作防止' });
+    render(<LocaleContext.Provider value={{ locale: labels.locale, setLocale: vi.fn() }}><Bar /></LocaleContext.Provider>);
+    await screen.findByRole('region', { name: labels.region });
+    expect(screen.getByRole('button', { name: labels.sing })).toBeEnabled();
+    expect(screen.getByRole('button', { name: labels.talk })).toBeDisabled();
+    const guard = screen.getByRole('button', { name: labels.lock });
     expect(guard).toHaveAttribute('aria-pressed', 'false');
+    expect(guard).toHaveAccessibleDescription(labels.unlocked);
+    expect(guard).toHaveTextContent(labels.unlocked);
+    guard.focus();
     await act(async () => fireEvent.click(guard));
     expect(protect).toHaveBeenCalledWith(true, 'host1');
-    await waitFor(() => expect(screen.getByRole('button', { name: '誤操作防止' })).toHaveAttribute('aria-pressed', 'true'));
+    await waitFor(() => expect(screen.getByRole('button', { name: labels.lock })).toHaveAttribute('aria-pressed', 'true'));
+    expect(guard).toHaveAccessibleDescription(labels.locked);
+    expect(guard.getAttribute('title')).toContain(labels.unlockHint);
+    expect(guard).toHaveTextContent(labels.locked);
+    expect(guard).toHaveFocus();
+    await act(async () => fireEvent.click(guard));
+    expect(protect).toHaveBeenLastCalledWith(false, 'host1');
+    await waitFor(() => expect(screen.getByRole('button', { name: labels.lock })).toHaveAttribute('aria-pressed', 'false'));
+    expect(guard).toHaveAccessibleDescription(labels.unlocked);
+    expect(guard).toHaveFocus();
 });

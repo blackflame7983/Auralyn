@@ -27,7 +27,7 @@ export const DeviceStatus: React.FC<DeviceStatusProps> = ({ host, sampleRate, is
     return (
         <div className="flex flex-col items-start px-3 py-1 rounded-md bg-muted border border-border text-left">
             <div className="flex items-center gap-2 min-w-0">
-                <div aria-hidden="true" className={`w-2 h-2 shrink-0 rounded-full ${running ? 'bg-success shadow-[0_0_8px_hsl(var(--success)/0.5)]' : processReady === null ? 'bg-warning' : !host ? 'bg-muted-foreground' : 'bg-meter-danger'}`} />
+                <div aria-hidden="true" className={`w-2 h-2 shrink-0 rounded-full ${running ? 'bg-success gaming:shadow-[0_0_8px_hsl(var(--success)/0.5)]' : processReady === null ? 'bg-warning' : !host ? 'bg-muted-foreground' : 'bg-meter-danger'}`} />
                 <span role="status" className="text-xs text-foreground font-medium whitespace-nowrap">
                     {state}
                 </span>
