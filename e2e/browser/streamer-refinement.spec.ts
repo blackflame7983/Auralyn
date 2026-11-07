@@ -25,7 +25,7 @@ test('通常の声ON・残響OFFは一部ONと表示せず、設定の内訳は�
 test('マウスで開き直したパネルは見出し枠を出さず、キーボードでは枠を保つ', async ({ page }) => {
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
-    if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
+    if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
     const toggle = page.locator('#vst-panel-toggle');
     await toggle.click();
     await page.keyboard.press('Escape');
@@ -181,7 +181,7 @@ test('再評価用の正常ホームは警告状態と分け、縦長でも出�
         await page.screenshot({ path: testInfo.outputPath(`healthy-${width}x${height}.png`) });
     }
     await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
-    if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
+    if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
     await page.locator('#vst-panel-toggle').click();
     const meter = page.locator('.large-meter-motion');
     await expect(meter).toHaveAttribute('data-horizontal', 'true');

@@ -25,7 +25,7 @@ for (const [matches, running] of [[true, true], [false, true], [true, false]]) t
     }, { matches, running });
     await page.goto('/');
     // VST の読み込みが済んで空と分かると「追加」に名前が変わるため、id で掴む。
-    if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
+    if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
     const rack = page.locator('#vst-panel-toggle');
     if (await rack.getAttribute('aria-expanded') !== 'true') await rack.click();
     await page.getByRole('button', { name: '設定の保存・復帰', exact: true }).click();

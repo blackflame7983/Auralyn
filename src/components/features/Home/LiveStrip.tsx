@@ -18,7 +18,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' };
 
 // 舞台に状態とモード、下段に声と出力をまとめる。操作条件と共有メーターは従来どおり。
-export function LiveStrip({ onStartAudio, stopped = false, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, liveModeName, meterAction, onOpenDevices, onOpenStartErrorSettings, onCheckOutput, onAdjustOutput, outputGainOpen = false, controlsDisabled = false, inputName, outputName, roomy = false }: {
+export function LiveStrip({ onStartAudio, stopped = false, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, liveModeName, meterAction, onOpenDevices, onOpenStartErrorSettings, onCheckOutput, onAdjustOutput, outputGainOpen = false, controlsDisabled = false, inputName, outputName, roomy = false, compact = false }: {
     onStartAudio?: () => void; stopped?: boolean; starting?: boolean; startError?: string | null; startPartiallyApplied?: boolean; onChooseDestination?: () => void;
     model: PreparationModel; running: boolean; liveControls?: ReactNode; liveModeName?: string; meterAction?: ReactNode; onOpenDevices?: () => void; onOpenStartErrorSettings?: () => void;
     onCheckOutput?: (anchor: HTMLButtonElement) => void;
@@ -26,6 +26,7 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
     outputGainOpen?: boolean;
     controlsDisabled?: boolean;
     roomy?: boolean;
+    compact?: boolean;
     /** 準備の観測で機器を取れない間に使う、AppShell が持つ機器名。 */
     inputName?: string; outputName?: string;
 }) {
@@ -40,7 +41,7 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
     const input = model.observation.config?.input ?? inputName;
     const output = model.observation.config?.output ?? outputName;
     const devices = t('live.devices', { input: input ? deviceDisplayName(input) : t('flow.unknown'), output: output ? deviceDisplayName(output) : t('flow.unknown') });
-    return <section aria-label={t('live.strip')} data-muted={muted} data-roomy={roomy} className="live-strip relative isolate mb-4 rounded-xl bg-card gaming:bg-card/70 px-5 py-5 min-[1100px]:px-6">
+    return <section aria-label={t('live.strip')} data-muted={muted} data-roomy={roomy} data-compact={compact} className="live-strip relative isolate mb-4 rounded-xl bg-card gaming:bg-card/70 px-5 py-5 min-[1100px]:px-6">
         <div data-layout-motion className="live-stage relative isolate">
         {aurora && <LiveAurora running={running} muted={muted} />}
         <div className="live-stage-copy flex max-w-full flex-col items-center gap-2 text-center">
@@ -51,6 +52,7 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
             <p className="text-ui-support text-muted-foreground">{t('home.startSavedDevices')}</p>
         </>}
         </div>
+        {!music && running && !usage && onChooseDestination && <button type="button" onClick={onChooseDestination} className="rounded-md bg-primary px-3 py-2 text-ui-control font-semibold text-primary-foreground">{t('home.chooseDestination')}</button>}
         <h2 className="live-stage-mode font-semibold">{music ? t('purpose.music') : liveModeName ?? t('liveBar.custom')}</h2>
         {!music && liveControls && <div data-layout-motion className="live-controls min-w-0 max-w-full">{liveControls}</div>}
         </div>
@@ -79,7 +81,7 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
             <details><summary className="cursor-pointer">{t('prep.details')}</summary><p className="break-words">{startError}</p></details>
         </div>}
         <div data-live-routing data-layout-motion className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            {music ? null : running && !usage && onChooseDestination ? <button type="button" onClick={onChooseDestination} className="rounded-md bg-primary px-3 py-2 text-ui-control font-semibold text-primary-foreground">{t('home.chooseDestination')}</button> : <p className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-ui-control">
+            {music ? null : <p className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-ui-control">
                 <MdArrowForward aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="text-muted-foreground">{t('live.destination')}</span>
                 <span className="truncate font-semibold" title={receiver || undefined}>{usage ? t(destinations[usage]) : t('live.noDestination')}{usage && usage !== 'listening' && receiver ? ` · ${receiver}` : ''}</span>

@@ -509,7 +509,7 @@
 .input-channel-pair[hidden] { display: none; }
 .recovery-details[open] { flex-basis: 100%; }
 .live-meter-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
-.live-channel { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; min-width: 0; }
+.live-channel { grid-row: 1 / span 2; grid-template-rows: subgrid; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; min-width: 0; }
 .live-device { min-width: 0; }
 .live-channel-meter { grid-column: 1 / -1; grid-row: 2; min-width: 0; }
 .live-channel-actions { grid-column: 3; grid-row: 1; }
@@ -517,6 +517,7 @@
 .app-shell[data-large-meter]:not([data-meter-suspended]) .live-output-meter { display: none; }
 @container (max-width: 600px) {
   .live-meter-pair { grid-template-columns: minmax(0, 1fr); }
+  .live-channel { grid-row: auto / span 2; }
 }
 .sound-chain-row {
   grid-template-columns: minmax(10rem, 12rem) minmax(0, 1fr) auto;
@@ -798,3 +799,7 @@ html[data-app-hidden="true"] *::after {
 .sound-tool-panel[data-open="true"] { grid-template-rows: 1fr; }
 @container (max-width: 540px) { .sound-tool-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { .sound-tool-panel { transition: none; } }
+
+/* 音調整を開いた間は最小窓でも舞台を縮め、開いた操作の場所を確保する。 */
+.live-strip[data-compact="true"] .live-stage { min-height: 0; }
+.live-strip[data-compact="true"] .live-stage-mode { font-size: var(--text-ui-heading); }

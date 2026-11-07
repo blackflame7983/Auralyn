@@ -53,7 +53,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
 test.describe('未登録の本番帯', () => {
     test.use({ registeredModes: false });
     for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark', 'gaming']) {
-        test(`送り先を優先し、右端の入口から登録して同じメニューへ戻る ${locale} ${theme}`, async ({ page }, info) => {
+        test(`送り先を優先し、舞台の入口から登録して同じメニューへ戻る ${locale} ${theme}`, async ({ page }, info) => {
             await page.setViewportSize({ width: 1280, height: 800 }); await prepare(page, locale, theme, false);
             const live = page.getByRole('region', { name: message(locale, 'live.strip'), exact: true });
             const choose = live.getByRole('button', { name: message(locale, 'home.chooseDestination'), exact: true });
@@ -61,8 +61,10 @@ test.describe('未登録の本番帯', () => {
             await expect(choose).toBeInViewport(); await expect(actions).toBeInViewport();
             const routing = live.locator('[data-live-routing]'), controls = live.locator('.live-controls');
             const [rowBox, controlsBox, chooseBox] = await Promise.all([routing.boundingBox(), controls.boundingBox(), choose.boundingBox()]);
-            expect(Math.abs(rowBox!.x + rowBox!.width - controlsBox!.x - controlsBox!.width)).toBeLessThanOrEqual(1);
-            expect(controlsBox!.x - chooseBox!.x - chooseBox!.width).toBeGreaterThan(40);
+            const stageBox = (await live.locator('.live-stage').boundingBox())!;
+            expect(Math.abs(controlsBox!.x + controlsBox!.width / 2 - stageBox.x - stageBox.width / 2)).toBeLessThanOrEqual(1);
+            expect(chooseBox!.y).toBeGreaterThanOrEqual(controlsBox!.y + controlsBox!.height);
+            expect(chooseBox!.x + chooseBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width);
             expect(await choose.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(await actions.evaluate(el => getComputedStyle(el).backgroundColor));
             await page.screenshot({ path: info.outputPath('unregistered.png'), animations: 'disabled' });
             await actions.click();

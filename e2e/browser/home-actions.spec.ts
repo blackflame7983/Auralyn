@@ -16,6 +16,7 @@ test('未選択の主操作から送り先へキーボードで移動し、選�
     await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
     const choose = page.getByRole('button', { name: '送り先を選ぶ', exact: true });
     await expect(choose).toBeInViewport();
+    await expect(page.locator('.live-stage-copy').getByRole('button', { name: '送り先を選ぶ', exact: true })).toHaveCount(1);
     await choose.focus();
     await page.keyboard.press('Enter');
     const radio = page.getByRole('radio', { name: 'OBSで配信', exact: true });
@@ -106,7 +107,7 @@ test.describe('設定済みの停止中', () => {
         await expect(start).toHaveCount(1);
         await expect(start).toBeInViewport();
         await expect(page.getByRole('region', { name: '音声チェック', exact: true }).getByRole('button', { name: '接続の詳細', expanded: false })).toBeVisible();
-        await expect(page.getByText('音声停止中', { exact: true })).toHaveCount(1);
+        await expect(page.locator('.live-stage').getByText('音声停止中', { exact: true })).toHaveCount(1);
         await page.screenshot({ path: info.outputPath('stopped.png') });
         await start.click();
         await expect(start).toHaveCount(0);

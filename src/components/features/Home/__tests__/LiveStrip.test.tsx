@@ -143,3 +143,22 @@ it.each(['ja', 'en'] as const)('舞台は状態・現在のモード・既存操
     expect(screen.getByRole('heading', { name: message(locale, 'liveBar.custom') })).toBeVisible();
     expect(screen.queryByRole('button', { name: message(locale, 'home.startAudio') })).toBeNull();
 });
+
+
+it.each(['ja', 'en'] as const)('次の1歩の主操作は舞台の中央に置き、条件と操作を保つ (%s)', locale => {
+    const model = fixture(); model.context.usage = '';
+    const choose = vi.fn(); const start = vi.fn();
+    const content = (running: boolean) => <LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <LiveStrip model={model} running={running} onChooseDestination={choose} onStartAudio={start} />
+    </LocaleProvider>;
+    const view = render(content(true));
+    const button = screen.getByRole('button', { name: message(locale, 'home.chooseDestination') });
+    expect(button.closest('.live-stage-copy')).not.toBeNull();
+    expect(view.container.querySelector('[data-live-routing] button:not([tabindex="-1"])')).toBeNull();
+    fireEvent.click(button); expect(choose).toHaveBeenCalledOnce();
+    view.rerender(content(false));
+    expect(screen.queryByRole('button', { name: message(locale, 'home.chooseDestination') })).not.toBeInTheDocument();
+    const startButton = screen.getByRole('button', { name: message(locale, 'home.startAudio') });
+    expect(startButton.closest('.live-stage-copy')).not.toBeNull();
+    fireEvent.click(startButton); expect(start).toHaveBeenCalledOnce();
+});

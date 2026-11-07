@@ -29,7 +29,7 @@ for (const theme of ['light', 'dark', 'gaming']) {
             // 合成通知で静止画にもレベルを残す。実音声やドライバーの試験ではない。
             await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.35, 0.3], output: [0.3, 0.25] }));
             await page.screenshot({ path: testInfo.outputPath('home.png') });
-            if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
+            if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
             await page.locator('#vst-panel-toggle').click();
             const panel = page.locator('#vst-panel');
             await expect(panel).toHaveAttribute('data-state', 'open');
@@ -134,8 +134,15 @@ for (const locale of ['ja', 'en']) {
             for (const tool of await tools.all()) await expect(tool).toHaveAttribute('aria-expanded', 'false');
             const tops = await tools.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top));
             expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
+            const closedStageHeight = (await live.locator('.live-stage').boundingBox())!.height;
             await tools.first().click();
             await expect(live).toHaveAttribute('data-roomy', 'false');
+            await expect(live).toHaveAttribute('data-compact', 'true');
+            await settleLayoutMotion(page);
+            expect((await live.locator('.live-stage').boundingBox())!.height).toBeLessThan(closedStageHeight);
+            const panel = page.locator('#home-noise');
+            await expect(panel).toBeInViewport({ ratio: 1 });
+            expect((await panel.boundingBox())!.y + (await panel.boundingBox())!.height).toBeLessThanOrEqual(640);
             await tools.first().press('Escape');
             await expect(tools.first()).toBeFocused();
             await expect(live).toHaveAttribute('data-roomy', 'true');

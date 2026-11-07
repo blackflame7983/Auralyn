@@ -32,7 +32,7 @@ test.describe('通常のホーム表示', () => {
         expect(await page.evaluate(() => (window as any).__e2eOutputGainWrites)).toEqual([]);
     });
     }
-    test('広い画面は入出力を並べ、狭い画面は出力の操作をフッターに保つ', async ({ page }, testInfo) => {
+    test('狭い画面でも入出力と出力音量を保つ', async ({ page }, testInfo) => {
         await page.addInitScript(() => {
             localStorage.setItem('vst_host_wizard_done', 'true');
             localStorage.setItem('auralyn_vst_panel_open', 'false');
@@ -42,27 +42,24 @@ test.describe('通常のホーム表示', () => {
         for (const width of [960, 1280, 1920, 2560]) {
             await page.setViewportSize({ width, height: 768 });
             const summary = page.locator('.live-output-summary');
-            if (width === 960) await expect(summary).toBeHidden();
-            else {
-                await expect(summary).toBeVisible();
-                const input = (await page.getByRole('meter', { name: 'マイクの入力レベル', exact: true }).boundingBox())!;
-                const output = (await summary.getByRole('meter').boundingBox())!;
-                expect(output.y).toBe(input.y);
-                expect(input.width).toBeGreaterThan(120);
-                expect(output.width).toBeGreaterThan(120);
-                const trigger = summary.getByRole('button', { name: '出力音量', exact: true });
-                await trigger.click();
-                const popover = page.getByRole('dialog', { name: '出力音量', exact: true });
-                await expect(popover).toBeVisible();
-                await expect(popover.getByRole('slider')).toBeFocused();
-                if (width === 1280) await page.screenshot({ path: testInfo.outputPath('inline-output-volume.png') });
-                await page.keyboard.press('Escape');
-                await expect(popover).not.toBeVisible();
-                await expect(trigger).toBeFocused();
-            }
+            await expect(summary).toBeVisible();
+            const input = (await page.getByRole('meter', { name: 'マイクの入力レベル', exact: true }).boundingBox())!;
+            const output = (await summary.getByRole('meter').boundingBox())!;
+            expect(output.y).toBe(input.y);
+            expect(input.width).toBeGreaterThan(120);
+            expect(output.width).toBeGreaterThan(120);
+            const trigger = summary.getByRole('button', { name: '出力音量', exact: true });
+            await trigger.click();
+            const popover = page.getByRole('dialog', { name: '出力音量', exact: true });
+            await expect(popover).toBeVisible();
+            await expect(popover.getByRole('slider')).toBeFocused();
+            if (width === 1280) await page.screenshot({ path: testInfo.outputPath('inline-output-volume.png') });
+            await page.keyboard.press('Escape');
+            await expect(popover).not.toBeVisible();
+            await expect(trigger).toBeFocused();
         }
     });
-    test('出力の小窓とフッターは同じ音量を使い、縮小すると閉じて操作を戻す', async ({ page }) => {
+    test('出力の小窓とフッターは同じ音量を使い、縮小後も操作を保つ', async ({ page }) => {
         await page.setViewportSize({ width: 1280, height: 768 });
         await page.addInitScript(() => {
             localStorage.setItem('vst_host_wizard_done', 'true');
@@ -95,14 +92,16 @@ test.describe('通常のホーム表示', () => {
         await expect(slider).toHaveAttribute('aria-valuenow', '50');
         await expect(footerSlider).toHaveAttribute('aria-valuenow', '50');
         await page.setViewportSize({ width: 960, height: 640 });
-        await expect(popup).not.toBeVisible();
-        await expect(footerSlider).toBeFocused();
+        await expect(popup).toBeVisible();
+        await expect(slider).toBeFocused();
+        await page.keyboard.press('Escape');
+        await expect(trigger).toBeFocused();
         expect(await page.evaluate(() => (window as any).__e2eOutputGainWrites)).toEqual([0]);
-        // 境界幅でVSTを横に開き、入口が隠れてもパネルへ移ったフォーカスを奪わない。
+        // VSTを横に開いたら小窓を閉じ、パネルへ移ったフォーカスを奪わない。
         await page.setViewportSize({ width: 1536, height: 768 });
         await trigger.click();
         await expect(popup).toBeVisible();
-        if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
+        if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
         await page.locator('#vst-panel-toggle').click();
         await expect(popup).not.toBeVisible();
         await expect(page.locator('#plugin-rack-heading')).toBeFocused();
@@ -121,7 +120,7 @@ test.describe('通常のホーム表示', () => {
         await expect(page.locator('header').getByText('音声処理中', { exact: true })).toHaveCount(0);
         const routing = page.locator('[data-live-routing]');
         // 長い機器名は実寸で検査し、IPC側の保存値や音声処理には触れない。
-        await routing.locator('button').first().locator('span').evaluate(element => { element.textContent = 'Voicemeeter Insert Virtual ASIO'; });
+        await page.locator('.live-input-summary .live-device').evaluate(element => { element.textContent = 'Voicemeeter Insert Virtual ASIO'; });
         for (const width of [960, 1024]) {
             await page.setViewportSize({ width, height: 640 });
             const samples = [];
@@ -131,7 +130,7 @@ test.describe('通常のホーム表示', () => {
                 if (muted) await expect(badge).toBeVisible(); else await expect(badge).toBeHidden();
                 // 幅の変更で区画が滑って移る間（#298）は測らず、配置が落ち着いてから比べる。
                 await settleLayoutMotion(page);
-                samples.push({ row: await routing.boundingBox(), button: await routing.getByRole('button', { name: '歌・雑談の設定', exact: true }).boundingBox() });
+                samples.push({ row: await routing.boundingBox(), button: await page.getByRole('button', { name: '歌・雑談の設定', exact: true }).boundingBox() });
             }
             expect(samples[1]).toEqual(samples[0]); expect(samples[2]).toEqual(samples[0]);
             expect(samples[0].row!.height).toBeLessThan(96);
@@ -194,6 +193,7 @@ test.describe('操作部品のサイズとテーマ', () => {
         await page.goto('/');
         // 初期化中も背後にホームは存在するため、描画だけでなく実際に操作できるまで待つ。
         await page.getByRole('button', { name: 'ボイスチェック', exact: true }).click({ trial: true });
+        await page.locator('.sound-tool-list > li > div > button').nth(1).click();
         for (const width of [960, 1024, 1440, 1920]) {
             await page.setViewportSize({ width, height: 768 });
             const range = page.getByRole('slider', { name: '声の整え具合', exact: true });
@@ -282,7 +282,7 @@ test('最小〜最大: VST は作業幅を保って重なり、広い窓では�
     for (const width of [900, 960, 1024, 1280, 1440, 1536, 1920]) {
         await page.setViewportSize({ width, height: 768 });
         const main = page.locator('main');
-        if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
+        if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
         await page.locator('#vst-panel-toggle').click();
         await expect(page.locator('#vst-panel')).toHaveAttribute('data-state', 'open');
         const overlays = width < 1200;
@@ -376,7 +376,7 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
             const modes = live.getByRole('group', { name: 'モード切替' });
             await expect(modes).toBeVisible();
             await live.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
-            if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
+            if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
             await page.locator('#vst-panel-toggle').click();
             await expect(page.locator('main')).toHaveAttribute('inert', '');
             await expect(page.locator('.large-meter-motion')).toBeHidden();
@@ -384,7 +384,7 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
             await expect(page.locator('#vst-panel')).toHaveCount(0);
             for (const name of ['歌', '雑談']) await reachable(modes.getByRole('button', { name, exact: true }), page);
             await expect(page.locator('.large-meter-motion')).toBeVisible();
-            if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
+            if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
             await page.locator('#vst-panel-toggle').click();
             await page.setViewportSize({ width: 1600, height: 900 });
             await expect(page.locator('main')).not.toHaveAttribute('inert', '');
@@ -407,7 +407,7 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
         localStorage.setItem('auralyn_vst_panel_open', 'false');
     });
     await page.goto('/');
-    if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
+    if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
     const toggle = page.locator('#vst-panel-toggle');
     await expect(toggle).toBeVisible();
     const closedMainWidth = (await page.locator('main').boundingBox())!.width;
@@ -470,7 +470,7 @@ test('動きを減らす設定では右パネルを移動せず、キーボー�
         localStorage.setItem('auralyn_vst_panel_open', 'false');
     });
     await page.goto('/');
-    if (!await page.locator('#vst-panel-toggle').isVisible()) await page.locator('.sound-tool-list > li > div > button').last().click();
+    if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
     const toggle = page.locator('#vst-panel-toggle');
     await toggle.click();
     const panel = page.locator('#vst-panel');

@@ -212,8 +212,12 @@ export const AppShell: React.FC<AppShellProps> = ({
     // パネルを閉じてフォーカスの行き場がなくなったら、開いたボタンへ戻してキーボード操作を続けられるようにする。
     const panelWasOpen = useRef(vstPanelOpen);
     useEffect(() => {
-        if (panelWasOpen.current && !vstPanelOpen && (document.activeElement === document.body || !document.activeElement || panelRef.current?.contains(document.activeElement)))
-            document.getElementById('vst-panel-toggle')?.focus({ preventScroll: true });
+        if (panelWasOpen.current && !vstPanelOpen && (document.activeElement === document.body || !document.activeElement || panelRef.current?.contains(document.activeElement))) {
+            const edit = document.getElementById('vst-panel-toggle');
+            // 別の音調整を開いている間も、表示中のVST項目から操作を続けられる。
+            const target = edit && !edit.closest('[inert], [aria-hidden="true"]') ? edit : document.getElementById('vst-tool-toggle');
+            target?.focus({ preventScroll: true });
+        }
         panelWasOpen.current = vstPanelOpen;
     }, [vstPanelOpen]);
     // 未設定の間は本番帯を出さず、準備の主ボタンを先頭にする。
@@ -325,7 +329,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
-                            ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} roomy={roomyMeters} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
+                            ? <LiveStrip compact={soundExpanded} liveModeName={liveModeName} stopped={quietStopped} roomy={roomyMeters} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
                         {/* 本番操作は音調整・診断より前へ置き、表示中はメーターの大型化より操作幅と高さを優先する。 */}
                         {/* 未設定の間は音の流れと次の1歩だけを出す（#297）ため、配信ミックスは置かない。 */}
