@@ -296,3 +296,17 @@ it('アプリ入力だった直前の接続は、候補を選び直せないた�
     expect((error as ConnectionStartError).rollback).toBe('failed');
     expect(audioApi.start).not.toHaveBeenCalled();
 });
+
+
+it.each(['getAudioState', 'getAudioStreamState'] as const)('開始失敗後の%s失敗では旧接続を再開始しない', async method => {
+    vi.mocked(audioApi.getAudioState).mockResolvedValue({ is_running: true, config: previousConfig });
+    vi.mocked(audioApi.restart).mockImplementationOnce(async () => {
+        vi.mocked(audioApi[method]).mockRejectedValue(new Error('state unavailable'));
+        throw new Error('preflight failed');
+    });
+    const view = renderHook(() => useAudioConnectionController(options(vi.fn())));
+    await act(async () => {
+        await expect(view.result.current.apply(true)).rejects.toMatchObject({ rollback: 'unknown' });
+    });
+    expect(audioApi.start).not.toHaveBeenCalled();
+});

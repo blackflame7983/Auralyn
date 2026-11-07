@@ -139,7 +139,7 @@ it('古い再検出の応答で、新しいデバイス一覧とキャッシュ�
     vi.spyOn(audioApi, 'getDevices').mockImplementation(() => new Promise(resolve => pending.push(resolve)));
     const onError = vi.fn();
     const { result } = renderHook(() => useAudioDeviceSelection({ isOpen: true, onError }));
-    let refresh!: Promise<void>;
+    let refresh!: Promise<unknown>;
     act(() => { refresh = result.current.fetchDevices(true); });
     await act(async () => { pending[1](devices('new')); await refresh; });
     await act(async () => pending[0](devices('old')));

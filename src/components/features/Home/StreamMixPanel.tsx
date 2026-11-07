@@ -25,7 +25,7 @@ export function StreamMixPanel({ running, primaryInputId, primaryIsVoiceDevice, 
         return () => { active = false; };
     }, [shown, disabled]);
     useEffect(() => {
-        const request = () => { if (takeStreamMixOpenRequest()) setOpenRequest(value => value + 1); };
+        const request = () => { const requestedAt = takeStreamMixOpenRequest(); if (requestedAt) setOpenRequest(requestedAt); };
         request();
         window.addEventListener(STREAM_MIX_OPEN, request);
         return () => window.removeEventListener(STREAM_MIX_OPEN, request);
@@ -35,10 +35,12 @@ export function StreamMixPanel({ running, primaryInputId, primaryIsVoiceDevice, 
     const handledRequest = useRef(0);
     useEffect(() => {
         if (!openRequest || disabled || handledRequest.current === openRequest) return;
+        if (Date.now() - openRequest >= 3000) { handledRequest.current = openRequest; return; }
         let timer = 0;
         const frame = requestAnimationFrame(() => {
             timer = window.setTimeout(() => {
                 handledRequest.current = openRequest;
+                if (Date.now() - openRequest >= 3000) return;
                 const mixing = section.current?.querySelector<HTMLDetailsElement>('#mixing-settings');
                 if (mixing) mixing.open = true;
                 section.current?.scrollIntoView?.({ block: 'start' });
@@ -52,7 +54,7 @@ export function StreamMixPanel({ running, primaryInputId, primaryIsVoiceDevice, 
         className="stream-mix-panel mb-4 scroll-mt-4 space-y-3 rounded-xl bg-card gaming:bg-card/70 px-5 py-4 min-[1100px]:px-6 [&>details]:rounded-none [&>details]:border-0 [&>details]:border-t [&>details]:border-border/60 [&>details]:bg-transparent [&>details]:px-0 [&>details]:py-3">
         <h2 id="stream-mix-heading" className="text-ui-heading font-semibold">{t('streamMix.title')}</h2>
         <MixingPanel inputs={inputs} primaryInputId={primaryInputId} primaryIsVoiceDevice={primaryIsVoiceDevice} disabled={disabled}
-            initiallyOpen={openRequest > 0} onNavigate={onOpenDevices} />
+            initiallyOpen={false} onNavigate={onOpenDevices} />
         <PostMixPanel mainRunning={running} disabled={disabled} />
     </section>;
 }

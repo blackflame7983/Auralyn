@@ -13,3 +13,14 @@ export function defaultAudioDevice(devices: AudioDevice[], input: boolean): Audi
     const device = defaults.length === 1 ? defaults[0] : undefined;
     return device && (device.id || devices.filter(other => other.name === device.name).length === 1) ? device : undefined;
 }
+
+// IDが双方にある場合はIDで照合し、片側にない場合だけ一意な名前へ戻す。
+export function resolveAudioDevice(devices: AudioDevice[], host: string, name?: string | null, id?: string | null) {
+    const candidates = devices.filter(device => device.host.toLowerCase() === host.toLowerCase());
+    const exact = id ? candidates.find(device => device.id === id) : undefined;
+    if (exact) return exact;
+    const matches = candidates.filter(device => device.name === name);
+    return matches.length === 1 && (!id || !matches[0].id) ? matches[0] : undefined;
+}
+export const connectionDeviceKey = (host: string, device?: Pick<AudioDevice, 'id' | 'name'>) =>
+    host && device ? `${host.toLowerCase()}\u0000${device.id ?? device.name}` : '';

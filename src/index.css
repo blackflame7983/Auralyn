@@ -510,14 +510,21 @@
 .recovery-details[open] { flex-basis: 100%; }
 .live-meter-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
 .live-channel { grid-row: 1 / span 2; grid-template-rows: subgrid; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; min-width: 0; }
-.live-device { min-width: 0; }
+.live-device { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+
 .live-channel-meter { grid-column: 1 / -1; grid-row: 2; min-width: 0; }
 .live-channel-actions { grid-column: 3; grid-row: 1; }
+/* 狭い本番帯では操作を独立した行へ送り、機器名の幅を確保する。 */
+@container (max-width: 900px) {
+  .live-channel { grid-row: 1 / span 3; grid-template-columns: auto minmax(0, 1fr); }
+  .live-channel-actions { grid-column: 1 / -1; grid-row: 2; }
+  .live-channel-meter { grid-row: 3; }
+}
 /* 大型表示中も音量操作の位置は保ち、重複する出力レベルだけを隠す。 */
 .app-shell[data-large-meter]:not([data-meter-suspended]) .live-output-meter { display: none; }
 @container (max-width: 600px) {
   .live-meter-pair { grid-template-columns: minmax(0, 1fr); }
-  .live-channel { grid-row: auto / span 2; }
+  .live-channel { grid-row: auto / span 3; }
 }
 /* 正常時だけ空いた高さを本番帯へ配分する。手順を開いたときと小さい窓では操作を優先する。 */
 @media (min-height: 720px) and (min-width: 1000px) {

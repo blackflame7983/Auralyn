@@ -1,3 +1,4 @@
+import { connectionDeviceKey } from '@/lib/audioDevices';
 import type { InputSourceRequest } from '@/lib/inputSource';
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
@@ -28,12 +29,12 @@ export class ConnectionApplyError extends Error {
 /**
  * 新しい接続で開始できなかったときに、直前に動いていた接続へ戻したかを持つ（#289）。
  * restored: 戻せた / failed: 戻せなかった / none: 開始前は動いていなかった /
- * kept: 旧接続を止める前に失敗し、直前の接続のまま動いている。
+ * kept: 旧接続のまま動いている / unknown: 状態を確かめられず再開始していない。
  */
 export class ConnectionStartError extends Error {
     /** 戻さなかったときは、従来どおり元の失敗をそのまま文字にして出す。 */
     public readonly raw: string;
-    constructor(cause: unknown, public readonly rollback: 'restored' | 'failed' | 'none' | 'kept') {
+    constructor(cause: unknown, public readonly rollback: 'restored' | 'failed' | 'none' | 'kept' | 'unknown') {
         super(cause instanceof Error ? cause.message : String(cause));
         this.raw = String(cause);
     }
@@ -43,10 +44,13 @@ export class ConnectionStartError extends Error {
 async function runningConnection() {
     try {
         const state = await audioApi.getAudioState();
-        if (!state?.is_running || !state.config) return null;
+        if (!state) return undefined;
+        if (!state.is_running) return null;
+        if (!state.config) return undefined;
         const stream = await audioApi.getAudioStreamState();
-        return stream?.running && !stream.streamFailed ? state.config : null;
-    } catch { return null; }
+        if (!stream) return undefined;
+        return stream.running && !stream.streamFailed ? state.config : null;
+    } catch { return undefined; }
 }
 
 // 再起動は旧エンジンを止めてから開始するため、失敗すると音が止まったままになる。直前の接続で開始し直す。
@@ -67,7 +71,7 @@ type Pending = { restart: boolean; requestedKey: string; actualKey: string; host
 export function useAudioConnectionController(options: Options) {
     const { isOpen, host, input, inputSource, output, sampleRate, bufferSize, isAsio, currentChannels, currentOutputRouting, onConfigChange } = options;
     const process = inputSource?.source.kind === 'process_loopback';
-    const deviceKey = host && input ? `${host}\u0000${input.id ?? input.name}` : '';
+    const deviceKey = connectionDeviceKey(host, input);
     const firstPair: [number, number] = [0, input?.channels === 1 ? 0 : 1];
     const firstOutputPair: [number, number] = [0, output?.channels === 1 ? 0 : 1];
     const initialOutput: OutputRouting = currentOutputRouting ?? (currentChannels ? { mode: 'legacy' } : { mode: 'independent', channels: firstOutputPair });
@@ -172,8 +176,9 @@ export function useAudioConnectionController(options: Options) {
                 result = await start(host, process ? undefined : input?.name, output.name, bufferSize, sampleRate, process ? undefined : input?.id, output.id, undefined, routing, ...(inputSource ? [inputSource] as const : []));
             } catch (error) {
                 // 許可や事前確認の失敗は旧エンジンを止める前に起きる。まだ動いていれば、開始し直さずそのまま残す。
-                throw new ConnectionStartError(error, !previous ? 'none'
-                    : await runningConnection() ? 'kept'
+                const after = await runningConnection();
+                throw new ConnectionStartError(error, after === undefined ? 'unknown' : !previous ? 'none'
+                    : after ? 'kept'
                     : await restoreConnection(previous) ? 'restored' : 'failed');
             }
             await startVerification.current;

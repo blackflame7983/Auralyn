@@ -22,8 +22,8 @@ it('表示の切替を保存し、開いている画面へすぐ反映する', (
 it('開く依頼はパネルを出し、描画後に一度だけ受け取れる', () => {
     act(() => openStreamMixPanel());
     expect(readStreamMixPanel()).toBe(true);
-    expect(takeStreamMixOpenRequest()).toBe(true);
-    expect(takeStreamMixOpenRequest()).toBe(false);
+    expect(takeStreamMixOpenRequest()).toBeGreaterThan(0);
+    expect(takeStreamMixOpenRequest()).toBe(0);
 });
 
 afterEach(() => { vi.useRealTimers(); });
@@ -31,5 +31,5 @@ it('描画されないまま時間が経った開く依頼は、後で受け取�
     vi.useFakeTimers();
     act(() => openStreamMixPanel());
     vi.advanceTimersByTime(5000);
-    expect(takeStreamMixOpenRequest()).toBe(false);
+    expect(takeStreamMixOpenRequest()).toBe(0);
 });

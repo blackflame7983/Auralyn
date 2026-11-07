@@ -45,3 +45,28 @@ it('描画前の開く要求も失わず、再度の要求で閉じたオケを�
     await waitFor(() => expect(screen.getByText('オケ').closest('details')).toHaveAttribute('open'));
     expect(screen.getByText('オケ')).toHaveFocus();
 });
+
+
+it('描画済みでも期限切れの依頼はダイアログ終了後に展開・フォーカスしない', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(10000);
+    saveStreamMixPanel(true);
+    const view = render(<StreamMixPanel {...props} disabled />);
+    act(() => openStreamMixPanel());
+    now.mockReturnValue(14000);
+    view.rerender(<StreamMixPanel {...props} />);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)); });
+    expect(screen.getByText('オケ').closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByText('オケ')).not.toHaveFocus();
+});
+
+it('描画待ちの間に過ぎた時間も期限へ含める', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(10000);
+    act(() => openStreamMixPanel());
+    now.mockReturnValue(12500);
+    const view = render(<StreamMixPanel {...props} disabled />);
+    now.mockReturnValue(13500);
+    view.rerender(<StreamMixPanel {...props} />);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)); });
+    expect(screen.getByText('オケ').closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByText('オケ')).not.toHaveFocus();
+});

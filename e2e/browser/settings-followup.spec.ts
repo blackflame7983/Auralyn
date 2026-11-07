@@ -155,6 +155,25 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         // 送り先は OBS・通話・自分で聴く・その他の順に並べる（#304）。
         const order = await wizard.locator('.setup-choice').evaluateAll(cards => cards.map(card => card.getAttribute('aria-label') ?? card.querySelector('.font-semibold, h3, strong')?.textContent ?? card.textContent));
         expect(order.map(text => labels.findIndex(label => text?.startsWith(message(locale, label))))).toEqual([0, 1, 2, 3]);
+        const cards = wizard.locator('.setup-choice');
+        const rects = await cards.evaluateAll(nodes => nodes.map(node => {
+            const rect = node.getBoundingClientRect();
+            return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, fits: node.scrollWidth <= node.clientWidth && node.scrollHeight <= node.clientHeight };
+        }));
+        expect(rects).toHaveLength(4);
+        expect(rects[0].y).toBeCloseTo(rects[1].y, 0);
+        expect(rects[2].y).toBeCloseTo(rects[3].y, 0);
+        expect(rects[0].right).toBeLessThanOrEqual(rects[1].x);
+        expect(rects[0].bottom).toBeLessThanOrEqual(rects[2].y);
+        expect(rects.every(rect => rect.fits)).toBe(true);
+        for (const card of await cards.all()) {
+            await card.scrollIntoViewIfNeeded();
+            await expect(card).toBeInViewport({ ratio: 1 });
+            await card.focus();
+            await expect(card).toBeFocused();
+        }
+        await page.screenshot({ path: info.outputPath('purpose-cards-150.png') });
+
         await page.screenshot({ path: info.outputPath('destinations.png'), animations: 'disabled' });
         await wizard.getByRole('button', { name: message(locale, 'prep.obs'), exact: true }).click();
         const next = wizard.getByRole('button', { name: message(locale, 'common.next'), exact: true });

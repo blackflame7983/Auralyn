@@ -61,7 +61,7 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
         <div data-layout-motion className="live-meter-pair">
         <div data-layout-motion className="live-input-summary live-channel">
             <span className="live-meter-label flex items-center gap-1.5 text-ui-support text-muted-foreground"><Icon aria-hidden="true" className="h-5 w-5 shrink-0" />{t(music ? 'live.meterInput' : 'live.voice')}</span>
-            {input && (onOpenDevices ? <button type="button" onClick={onOpenDevices} aria-label={devices} title={devices} className="live-device truncate text-left text-ui-support text-muted-foreground hover:text-foreground">{deviceDisplayName(input)}</button> : <span className="live-device truncate text-ui-support text-muted-foreground">{deviceDisplayName(input)}</span>)}
+            {input && (onOpenDevices ? <button type="button" onClick={onOpenDevices} aria-label={devices} title={devices} className="live-device text-left text-ui-support text-muted-foreground hover:text-foreground">{deviceDisplayName(input)}</button> : <span className="live-device text-ui-support text-muted-foreground">{deviceDisplayName(input)}</span>)}
             <div className="live-channel-meter"><LiveInputMeter running={running} music={music} /></div>
             <div className="live-channel-actions"><InputGainControl disabled={controlsDisabled} /></div>
         </div>
@@ -71,7 +71,7 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
                 className="live-meter-label inline-flex items-center gap-1.5 rounded-md py-1 text-ui-support text-muted-foreground hover:bg-muted hover:text-foreground">
                 <MdVolumeUp aria-hidden="true" className="h-5 w-5" />{t('live.meterOutput')}
             </button></TooltipTrigger><TooltipContent>{t('home.adjustOutput')}</TooltipContent></Tooltip></TooltipProvider>
-            <span className="live-device truncate text-ui-support text-muted-foreground" title={output ? deviceDisplayName(output) : undefined}>{output ? deviceDisplayName(output) : t('flow.unknown')}</span>
+            <span className="live-device text-ui-support text-muted-foreground" title={output ? deviceDisplayName(output) : undefined}>{output ? deviceDisplayName(output) : t('flow.unknown')}</span>
             <div className="live-channel-meter live-output-meter"><LiveOutputMeter running={running} /></div>
             <div className="live-channel-actions flex flex-wrap items-center gap-2">{meterAction}</div>
         </div>

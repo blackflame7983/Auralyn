@@ -92,7 +92,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     const reason: MessageKey | null = busy ? 'mixingUi.busy' : disabled ? 'mixingUi.busy' : !snapshot ? 'mixingUi.needsRead' : stale ? 'mixing.stale' : snapshot.running ? 'mixing.stopped' : !ready ? 'mixing.notReady' : !primaryIsVoiceDevice ? 'mixing.primary' : !validLevels ? 'mixingUi.invalidLevels' : kind === 'device' && !validDevice ? 'mixingUi.invalidDevice' : kind === 'process' && !selected ? 'mixingUi.chooseApp' : kind === 'process' && !validProcess ? 'mixingUi.routeMuted' : !confirmed ? 'mixingUi.confirmRoute' : null;
     const disableReason = busy || disabled ? 'mixingUi.busy' : stale ? 'mixing.stale' : snapshot?.running ? 'mixing.stopped' : null;
     return <details id="mixing-settings" ref={panel} open={open} className={mixingCard} onToggle={e => setOpen(e.currentTarget.open)}>
-        <summary tabIndex={0} className="cursor-pointer font-semibold">{t('mixing.title')}</summary>
+        <summary tabIndex={0} className="cursor-pointer text-ui-heading font-semibold">{t('mixing.title')}</summary>
         <Button className="text-ui-control" variant="outline" size="sm" disabled={!editable} onClick={() => void read()}>{t('mixing.load')}</Button>
         {snapshot && <div className="space-y-4 text-sm">
             {stale && <p role="alert">{t('mixing.stale')}</p>}

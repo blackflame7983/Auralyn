@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { audioApi, type AudioDevice, type AudioDeviceList } from '../../../api/audio';
 import { readAudioPreferences, readCachedAudioDevices, type AudioPreferences } from '../../../lib/audioPreferences';
-import { defaultAudioDevice } from '@/lib/audioDevices';
+import { defaultAudioDevice, resolveAudioDevice } from '@/lib/audioDevices';
 
 interface SelectionOptions {
   isOpen: boolean;
@@ -47,7 +47,7 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
     if (saved?.host.toLowerCase() === targetHost.toLowerCase()) {
       const id = input ? saved.inputId : saved.outputId;
       const name = input ? saved.input : saved.output;
-      const device = id ? candidates.find(item => item.id === id) : name ? uniqueByName(candidates, name) : undefined;
+      const device = resolveAudioDevice(candidates, targetHost, name, id);
       return device ? audioDeviceKey(device) : '';
     }
     const device = defaultAudioDevice(candidates, input);
@@ -98,6 +98,7 @@ export function useAudioDeviceSelection({ isOpen, currentSampleRate, currentBuff
       setDevices(result);
       localStorage.setItem('vst_host_cached_devices', JSON.stringify(result));
       if (restoreSelection) restoreDeviceSelection(result);
+      return result;
     } catch (err) {
       if (!active.current || request !== requestRevision.current) return;
       console.error('Failed to get devices:', err);

@@ -295,7 +295,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             </div>}
 
                             {!isAsioHost(config.host) && <>
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className={`grid ${config.goal === 'music' ? 'grid-cols-2' : 'grid-cols-3'} gap-3`}>
                                 {/* Option 1: Default */}
                                 <SelectionCard
                                     onClick={() => selectOutputMode('default')}

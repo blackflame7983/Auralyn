@@ -39,3 +39,16 @@ it('未設定のホームで欄が隠れたら、開いていた音量の小窓�
     view.rerender(<LiveControlsHiddenContext.Provider value><MixingLiveControl running={false} blocked={false} onSettings={vi.fn()} /></LiveControlsHiddenContext.Provider>);
     expect(screen.queryByRole('slider')).not.toBeInTheDocument();
 });
+
+
+it.each(['mix', 'accompaniment', 'post', 'read', 'healthy'])('音楽鑑賞は%sの失敗だけを通知し、通常操作を増やさない', async kind => {
+    const mix = { ...snapshot(), failed: kind === 'mix', accompaniment: { failed: kind === 'accompaniment' } } as MixSnapshot;
+    const request = vi.spyOn(mixingApi, 'request');
+    if (kind === 'read') request.mockRejectedValue(new Error('read failed')); else request.mockResolvedValue(mix);
+    vi.mocked(postMixApi.request).mockResolvedValue({ enabled: true, failed: kind === 'post', savedPlugins: [], plugins: [] } as any);
+    render(<MixingLiveControl running blocked={false} onSettings={vi.fn()} errorsOnly />);
+    await act(async () => {});
+    if (kind === 'healthy') expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    else expect(screen.getByRole('alert')).toHaveTextContent('オケ・配信VST');
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+});

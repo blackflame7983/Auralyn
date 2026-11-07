@@ -57,3 +57,14 @@ it('設定反映の再試行は音声タブに限定し、ほかの入口と終�
         expect(result.current.settingsNeedsRetry).toBe(false);
     }
 });
+
+
+it.each([['input', 'primaryInput'], ['output', 'liveOutput']] as const)('機器の%s入口は音声タブの%sを指定し、再試行状態を解除する', (target, section) => {
+    const { result } = renderHook(() => useUIState());
+    act(() => result.current.openAudioSettingsRetry());
+    act(() => result.current.openDeviceSettings(target));
+    expect(result.current.isSettingsOpen).toBe(true);
+    expect(result.current.settingsTab).toBe('audio');
+    expect(result.current.settingsSection).toBe(section);
+    expect(result.current.settingsNeedsRetry).toBe(false);
+});
