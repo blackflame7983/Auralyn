@@ -13,15 +13,18 @@ for (const locale of ['ja', 'en'] as const) {
             localStorage.setItem('vst_host_tutorial_completed', 'true');
         }, locale);
         await page.goto('/');
-        const prep = page.getByRole('region', { name: t('prep.title'), exact: true });
-        const setup = prep.getByRole('button', { name: t('header.setupOpen'), exact: true });
+        // 未設定のホーム: 案内の「送り先を決める」から開き、中断して、同じ入口から再開できる。
+        const setup = page.getByRole('button', { name: t('unsetFlow.chooseDestination'), exact: true });
         await setup.click();
+        // 中断の確認は、最初の手順より先へ進んだときだけ出る。送り先を1つ選んで次の手順へ進める。
+        await page.getByRole('dialog').getByText(t('prep.obs'), { exact: true }).click();
         await page.getByRole('button', { name: t('wizard.close'), exact: true }).click();
         await expect(page.getByText(t('wizard.interruptHint'), { exact: true })).toBeVisible();
         await page.getByRole('button', { name: t('wizard.leave'), exact: true }).click();
         await setup.click();
         await expect(page.getByRole('button', { name: t('wizard.close'), exact: true })).toBeVisible();
     });
+
 
     test(`ホットキー保存欄の下端がスクロール領域と一致する（${locale}）`, async ({ page }) => {
         await page.setViewportSize({ width: 960, height: 640 });

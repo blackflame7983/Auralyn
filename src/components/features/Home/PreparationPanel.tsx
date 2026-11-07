@@ -135,7 +135,8 @@ export function PreparationPanel({ diagnosticAttention = false, stoppedInStrip =
         {open && !music && context.signal === 'mixed' && <p className="text-xs text-muted-foreground">{t('prep.mixedWarning')}</p>}
         {open && <div id={stepsId} className="space-y-3" onFocusCapture={() => setUserOpen(old => old ?? true)}>
         {signalSummary}
-        {onSetup && !['ready', 'pending', 'muted'].includes(observation.availability) && <button type="button" onClick={onSetup} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('header.setupOpen')}</button>}
+        {/* 中断したセットアップの再開先として案内しているので（wizard.interruptHint、#420）、開いた音声チェックには状態に関係なく置く。 */}
+        {onSetup && <button type="button" onClick={onSetup} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('header.setupOpen')}</button>}
         {music ? <button type="button" disabled={!audioReady} onClick={onListen} className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50">{t('wizard.musicListen')}</button> : <>
         <div className="space-y-1 text-sm"><p id={`${stepsId}-usage`}>{t('prep.usage')}</p>{usagePicker}</div>
         {next !== 'done' && next !== 'purpose' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
