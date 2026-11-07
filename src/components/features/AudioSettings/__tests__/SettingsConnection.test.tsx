@@ -236,5 +236,17 @@ it('通常は現在値付きで閉じ、再検出の操作領域を確保する'
     const summary = await screen.findByText('接続方式・音切れの設定', { exact: false, selector: 'summary' });
     expect(summary.closest('details')).not.toHaveAttribute('open');
     expect(summary).toHaveTextContent('標準 · 48 kHz');
-    expect(screen.getByRole('button', { name: '再検出' })).toHaveClass('min-h-6');
+    expect(screen.getByRole('button', { name: '機器を再検出' })).toHaveClass('min-h-6');
+});
+
+
+it('入力元・マイク・出力先は同じカードと見出しの階層で区切る', async () => {
+    render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    await screen.findByRole('combobox', { name: 'マイク' });
+    for (const name of ['入力元と用途', 'マイク', '出力先']) {
+        const group = screen.getByRole('group', { name });
+        expect(group.tagName).toBe('FIELDSET');
+        expect(group).toHaveClass('rounded-xl', 'border', 'border-border', 'p-3');
+        expect(group.querySelector('legend')).toHaveClass('text-ui-heading', 'font-semibold');
+    }
 });

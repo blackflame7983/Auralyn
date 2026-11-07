@@ -197,7 +197,7 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
         const modifier = [event.metaKey ? 'Super' : '', event.ctrlKey ? 'Control' : '', event.altKey ? 'Alt' : '', event.shiftKey ? 'Shift' : ''].filter(Boolean).join('+');
         accept(`${modifier}+${event.code}`, action);
     };
-    return <section className="space-y-3 rounded-xl border border-border p-4">
+    return <section className="space-y-3 rounded-xl border border-border p-4 pb-0">
         <h3 className="text-ui-heading font-semibold">{t('settings.ShortcutsPanel.378')}</h3>
         <div className="flex items-center gap-1 text-ui-support text-muted-foreground">
             <p>{t('shortcuts.streamDeckHint')}</p>
@@ -242,7 +242,7 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
             </fieldset>;
         })}</div>
         </section>)}
-        <div className="sticky bottom-0 z-10 flex flex-wrap gap-2 border-t border-border bg-card py-2">
+        <div className="sticky bottom-0 -mx-4 px-4 z-10 flex flex-wrap gap-2 border-t border-border bg-card py-2">
             <button type="button" className="rounded border px-3 py-2 disabled:opacity-50 text-ui-control" disabled={!ready || busy || (!dirty && !registrationFailed) || !!capturing} onClick={() => void save()}>{t('settings.ShortcutsPanel.390')}</button>
             <button type="button" className="rounded border px-3 py-2 disabled:opacity-50 text-ui-control" disabled={!ready || busy || !dirty || !!capturing} onClick={() => { setValues(saved); setMessage([notice('settings.ShortcutsPanel.391')]); }}>{t('settings.ShortcutsPanel.392')}</button>
             {message.length > 0 && <p role="status" className="basis-full whitespace-pre-wrap break-words text-sm">{message.map(part => renderNotice(t, part)).join('\n')}</p>}

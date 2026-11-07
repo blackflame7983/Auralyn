@@ -201,7 +201,8 @@ test.describe('ホームと設定の共通操作', () => {
             ...names.slice(2).map(name => page.locator('#home-builtin').getByRole('button', { name, exact: true }))];
         const dimensions = async (button: typeof home[number]) => button.evaluate(node => {
             const style = getComputedStyle(node);
-            return { height: node.getBoundingClientRect().height, padding: style.padding, minWidth: style.minWidth };
+            // 位置によって 0.00003px のような画素未満の誤差が出るため、高さは 0.1px 単位で比べる。
+            return { height: Math.round(node.getBoundingClientRect().height * 10) / 10, padding: style.padding, minWidth: style.minWidth };
         });
         const sizes = [];
         for (let i = 0; i < home.length; i++) {

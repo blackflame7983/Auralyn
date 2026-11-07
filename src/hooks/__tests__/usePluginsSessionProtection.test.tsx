@@ -89,14 +89,14 @@ it('部分復元・手動編集・debounce・定期・明示保存の全経路�
     expect(result.current.sessionRestoreStatus).toBe('partial');
     expect(result.current.sessionPersistenceProtected).toBe(true);
     expect(result.current.plugins.map(plugin => plugin.path)).toEqual(['insight']);
-    expect(result.current.error).toContain('保護中');
+    expect(result.current.error).toContain('今のVSTの変更は自動保存しません');
     expect(localStorage.getItem(PLUGIN_SESSION_BACKUP_KEY)).toBe(original);
     await act(async () => { await result.current.addPlugin({ id: 'new', path: 'new', name: 'new', vendor: '', version: '', category: 'Fx' }); });
     await act(() => vi.advanceTimersByTimeAsync(62_000));
     const save = strictSave();
     await flush();
     expect(save.resolve).not.toHaveBeenCalled();
-    expect(save.reject).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('保護中') }));
+    expect(save.reject).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('今は保存できません') }));
     expect(audioApi.getPluginState).not.toHaveBeenCalled();
     expect(localStorage.getItem(PLUGIN_SESSION_KEY)).toBe(original);
 });

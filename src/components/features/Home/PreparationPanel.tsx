@@ -144,7 +144,8 @@ export function PreparationPanel({ diagnosticAttention = false, stoppedInStrip =
         {open && <div id={stepsId} className="space-y-3" onFocusCapture={() => setUserOpen(old => old ?? true)}>
         <div className="flex flex-wrap items-center gap-2">
         {signalSummary}
-        {onSetup && !['ready', 'pending', 'muted'].includes(observation.availability) && <button type="button" onClick={onSetup} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('header.setupOpen')}</button>}
+        {/* 中断したセットアップの再開先として案内しているので（wizard.interruptHint、#420）、開いた音声チェックには状態に関係なく置く。 */}
+        {onSetup && <button type="button" onClick={onSetup} className="rounded-md border border-border px-3 py-1.5 text-sm">{t('header.setupOpen')}</button>}
         {!music && next !== 'done' && next !== 'purpose' && <button ref={actionRef} type="button" disabled={confirming || (next !== 'connect' && !audioReady)} onClick={action}
             className={cn("rounded-md px-3 py-2 text-sm font-semibold disabled:opacity-50", homeActionInStrip ? "border border-border hover:bg-muted" : "bg-primary text-primary-foreground")}>{t(homeActionInStrip && !audioReady ? 'home.changeDevices' : actionLabel)}</button>}
         </div>
