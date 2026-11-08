@@ -579,7 +579,7 @@ UI・文言を変更する PR では、次を確認します。
 | 操作ボタン | Button | primary=`default`、secondary=`outline`、quiet=`ghost`、danger=`destructive`。既存variantは互換用に残す | 本番中の状態付き操作は下記 |
 | 値を1つ選ぶ | SegmentedControl | radiogroup/radio、aria-checked。矢印・Home/Endで移動と選択、端は循環。無効は飛ばす。Tabは選択中の1つ（未選択・無効なら最初の有効な値）。選択表示は確定値に従う | readOnlyの現在値は操作外のstatusとして示す |
 | ページを切り替える | Tabs（Radix） | ページ移動に限定し、値の選択と区別する | なし |
-| カードで選ぶ | ChoiceCard | PreparationPanel方式の標準radioとlabel。グループには同じnameと見出しを付ける。矢印操作はブラウザ標準 | 再押下で解除するフィルターはradioではない |
+| カードで選ぶ | ChoiceCard | PreparationPanel方式の標準radioとlabel。グループには同じnameと見出しを付ける。矢印操作はブラウザ標準。値の選択はonChange、手順を進める決定はonActivate（クリック・Space・Enter、選択済みの再押下も対象）に分ける | 再押下で解除するフィルターはradioではない |
 | 量を変える | SliderField / Slider（Radix） | SliderFieldがラベル、値、formatValueによる単位のaria-valuetext、離したとき・キーを離したときの確定を持つ。フォーカスを失うと未確定値だけ確定する | 計測値・再生進捗は下記 |
 | 入力の関連付け | Field | label・説明・エラーをInput/Select/Checkboxへ自動関連付け。外部aria-describedbyを保持し、エラー時aria-invalid | 同じFieldには操作を1つ置く |
 | 入力・選択・チェック | Input / Select / Checkbox | 標準input/select/checkbox。入力・選択は最小40px高、操作文字16px、10px角丸、共通枠・2pxフォーカスリング。チェックは20pxのOS標準描画 | checkboxの形はOS標準描画に従う |

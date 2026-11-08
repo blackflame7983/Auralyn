@@ -62,11 +62,6 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
         if (step > 0) setStep(step - 1);
     };
 
-    const handleDeviceSelection = (isHardware: boolean) => {
-        setUseHardwareMixer(isHardware);
-        nextStep();
-    };
-
     return (
         <Modal title={t('guide.copy.000')} onClose={onClose}>
         <div className="modal-overlay-base">
@@ -111,7 +106,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                 {t('guide.copy.004')}</p>
 
                             <div className="grid md:grid-cols-2 gap-4 mt-4">
-                                <ChoiceCard name="obs-device" value="true" onChange={() => handleDeviceSelection(true)} aria-label={t('guide.copy.005')} checked={useHardwareMixer === true}
+                                <ChoiceCard name="obs-device" value="true" onChange={() => setUseHardwareMixer(true)} onActivate={nextStep} aria-label={t('guide.copy.005')} checked={useHardwareMixer === true}
                                 >
                                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                         <MdMic className="w-6 h-6 text-primary" />
@@ -123,7 +118,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                         {t('guide.copy.009')}</span>
                                 </ChoiceCard>
 
-                                <ChoiceCard name="obs-device" value="false" onChange={() => handleDeviceSelection(false)} aria-label={t('guide.copy.010')} checked={useHardwareMixer === false}
+                                <ChoiceCard name="obs-device" value="false" onChange={() => setUseHardwareMixer(false)} onActivate={nextStep} aria-label={t('guide.copy.010')} checked={useHardwareMixer === false}
                                 >
                                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                         <MdHeadphones className="w-6 h-6 text-primary" />

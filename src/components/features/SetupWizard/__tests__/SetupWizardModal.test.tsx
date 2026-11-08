@@ -1143,3 +1143,19 @@ it('PCの音の出力先は2択を2列で並べる', async () => {
     expect(option.closest('[role=radiogroup]')).toHaveClass('grid-cols-2');
     expect(within(option.closest('[role=radiogroup]') as HTMLElement).getAllByRole('radio')).toHaveLength(2);
 });
+
+it('戻って同じ送り先を決定でき、矢印選択では最初の手順を保つ', async () => {
+    await openWizard();
+    fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
+    expect(screen.queryByRole('radio', { name: 'OBSで配信' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    const from = screen.getByRole('radio', { name: 'OBSで配信' });
+    const to = screen.getByRole('radio', { name: '通話（Discordなど）' });
+    // JSDOMでブラウザ標準の矢印選択を再現する。
+    from.focus(); fireEvent.keyDown(from, { key: 'ArrowRight' });
+    to.focus(); fireEvent.click(to); fireEvent.keyUp(to, { key: 'ArrowRight' });
+    expect(to).toBeChecked(); expect(from).toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
+});

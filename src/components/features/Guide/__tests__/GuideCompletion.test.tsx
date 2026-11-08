@@ -91,3 +91,19 @@ it.each([
     expect(screen.queryByText(/で Auralyn の出力をミュートできます/)).not.toBeInTheDocument();
     vi.mocked(invoke).mockReset();
 });
+
+it.each([OBSGuideModal, DiscordGuideModal])('戻って同じ機器を決定でき、矢印選択だけでは次へ進まない', Guide => {
+    render(<Guide isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} />);
+    const name = 'USBマイク・PC直結のマイクの手順を選ぶ';
+    fireEvent.click(screen.getByRole('radio', { name }));
+    fireEvent.click(screen.getByRole('button', { name: '前の手順へ戻る' }));
+    fireEvent.click(screen.getByRole('radio', { name }));
+    expect(screen.queryByRole('radio', { name })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '前の手順へ戻る' }));
+    const from = screen.getByRole('radio', { name });
+    const to = screen.getByRole('radio', { name: 'ループバック対応のミキサーの手順を選ぶ' });
+    // JSDOMでブラウザ標準の矢印選択を再現する。
+    from.focus(); fireEvent.keyDown(from, { key: 'ArrowLeft' });
+    to.focus(); fireEvent.click(to); fireEvent.keyUp(to, { key: 'ArrowLeft' });
+    expect(to).toBeChecked(); expect(from).toBeInTheDocument();
+});

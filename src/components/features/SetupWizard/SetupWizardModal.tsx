@@ -183,7 +183,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             <div role="radiogroup" aria-label={t('wizard.chooseGoal')} className="grid grid-cols-2 gap-3 p-1">
                                 {destinationChoices.map(({ value, label, icon: Icon, hint }) => <SelectionCard name="wizard-goal" compact
                                     key={value}
-                                    onClick={() => selectGoal(value === 'listening' && (config.goal ?? savedGoal) === 'music' ? 'music' : value)}
+                                    onChange={() => selectGoal(value === 'listening' && (config.goal ?? savedGoal) === 'music' ? 'music' : value, false)}
+                                    onActivate={() => selectGoal(value === 'listening' && (config.goal ?? savedGoal) === 'music' ? 'music' : value)}
                                     icon={<Icon aria-hidden="true" className="w-6 h-6" />}
                                     title={t(label)}
                                     description={t(hint)}
@@ -302,7 +303,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             <div role="radiogroup" aria-label={t('wizard.output')} className={`grid ${config.goal === 'music' ? 'grid-cols-2' : 'grid-cols-3'} gap-3`}>
                                 {/* Option 1: Default */}
                                 <SelectionCard name="wizard-output"
-                                    onClick={() => selectOutputMode('default')}
+                                    onChange={() => selectOutputMode('default')}
                                     icon={<MdVolumeUp aria-hidden="true" className="w-7 h-7" />}
                                     title={t('guide.copy.198')}
                                     description={t('guide.copy.199')}
@@ -312,7 +313,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                                 {/* Option 2: Headphones */}
                                 <SelectionCard name="wizard-output"
-                                    onClick={() => selectOutputMode('monitor')}
+                                    onChange={() => selectOutputMode('monitor')}
                                     icon={<MdHeadphones aria-hidden="true" className="w-7 h-7" />}
                                     title={t('guide.copy.200')}
                                     description={t('guide.copy.201')}
@@ -322,7 +323,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                                 {/* Option 3: Broadcast */}
                                 {config.goal !== 'music' && <SelectionCard name="wizard-output"
-                                    onClick={() => selectOutputMode('broadcast')}
+                                    onChange={() => selectOutputMode('broadcast')}
                                     icon={<MdCast aria-hidden="true" className="w-7 h-7" />}
                                     title={t('guide.copy.202')}
                                     description={t('guide.copy.203')}
@@ -589,7 +590,8 @@ function InputLevelBar({ label }: { label: string }) {
 // セットアップ固有のアイコンと配置も共通カードの標準radioで選択する。
 interface SelectionCardProps {
     name: string;
-    onClick: () => void;
+    onChange: () => void;
+    onActivate?: () => void;
     icon: React.ReactNode;
     title: string;
     description: string;
@@ -597,6 +599,6 @@ interface SelectionCardProps {
     color?: string;
     compact?: boolean;
 }
-const SelectionCard = ({ name, onClick, icon, title, description, active, compact }: SelectionCardProps) => (
-    <ChoiceCard name={name} value={title} aria-label={title} checked={active} onChange={onClick} onClick={() => { if (active) onClick(); }} presentation="setup" compact={compact} icon={icon} description={description}>{title}</ChoiceCard>
+const SelectionCard = ({ name, onChange, onActivate, icon, title, description, active, compact }: SelectionCardProps) => (
+    <ChoiceCard name={name} value={title} aria-label={title} checked={active} onChange={onChange} onActivate={onActivate} presentation="setup" compact={compact} icon={icon} description={description}>{title}</ChoiceCard>
 );

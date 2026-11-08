@@ -35,11 +35,6 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
         if (step > 0) setStep(step - 1);
     };
 
-    const handleDeviceSelection = (isHardware: boolean) => {
-        setUseHardwareMixer(isHardware);
-        nextStep();
-    };
-
     return (
         <Modal title={t('guide.copy.081')} onClose={onClose}>
         <div className="modal-overlay-base">
@@ -92,7 +87,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                 </div>
 
                                 <div className="grid md:grid-cols-2 gap-6 mt-8">
-                                    <ChoiceCard name="discord-device" value="true" onChange={() => handleDeviceSelection(true)} aria-label={t('guide.copy.086')} checked={useHardwareMixer === true}
+                                    <ChoiceCard name="discord-device" value="true" onChange={() => setUseHardwareMixer(true)} onActivate={nextStep} aria-label={t('guide.copy.086')} checked={useHardwareMixer === true}
                                     >
                                         <div className="w-16 h-16 rounded-full bg-discord/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                             <MdMic className="w-8 h-8 text-discord-text" />
@@ -104,7 +99,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                                             <MdWarning /> {t('guide.copy.090')}</div>
                                     </ChoiceCard>
 
-                                    <ChoiceCard name="discord-device" value="false" onChange={() => handleDeviceSelection(false)} aria-label={t('guide.copy.091')} checked={useHardwareMixer === false}
+                                    <ChoiceCard name="discord-device" value="false" onChange={() => setUseHardwareMixer(false)} onActivate={nextStep} aria-label={t('guide.copy.091')} checked={useHardwareMixer === false}
                                     >
                                         <div className="w-16 h-16 rounded-full bg-discord/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                             <MdHeadphones className="w-8 h-8 text-discord-text" />

@@ -110,3 +110,29 @@ it('Fieldは外部のラベルを重複させず説明とエラーを関連付�
     expect(select).toHaveAccessibleDescription('選択の説明 選択してください');
     expect(select).toHaveAttribute('aria-invalid', 'true');
 });
+
+// JSDOMにはradioの矢印操作の既定動作がないため、移動先への標準clickも送る。
+it.each(['default', 'setup'] as const)('ChoiceCardの選択と決定を分離する（%s）', presentation => {
+    const activate = vi.fn(); const change = vi.fn();
+    render(<><ChoiceCard name="activate" presentation={presentation} defaultChecked onActivate={activate} onChange={change}>A</ChoiceCard><ChoiceCard name="activate" presentation={presentation} onActivate={activate} onChange={change}>B</ChoiceCard></>);
+    const a = screen.getByRole('radio', { name: 'A' });
+    const b = screen.getByRole('radio', { name: 'B' });
+    fireEvent.click(a, { detail: 1 });
+    expect(activate).toHaveBeenCalledTimes(1); expect(change).not.toHaveBeenCalled();
+    activate.mockClear();
+    a.focus(); fireEvent.keyDown(a, { key: 'ArrowRight' });
+    b.focus(); fireEvent.click(b); fireEvent.keyUp(b, { key: 'ArrowRight' });
+    expect(b).toBeChecked(); expect(change).toHaveBeenCalledTimes(1); expect(activate).not.toHaveBeenCalled();
+    for (const key of [' ', 'Enter']) {
+        fireEvent.keyDown(b, { key }); fireEvent.keyUp(b, { key });
+    }
+    expect(activate).toHaveBeenCalledTimes(2);
+});
+it('無効なChoiceCardは決定しない', () => {
+    const activate = vi.fn();
+    render(<ChoiceCard disabled onActivate={activate}>無効</ChoiceCard>);
+    const card = screen.getByRole('radio');
+    fireEvent.click(card, { detail: 1 });
+    fireEvent.keyDown(card, { key: 'Enter' }); fireEvent.keyDown(card, { key: ' ' });
+    expect(activate).not.toHaveBeenCalled();
+});

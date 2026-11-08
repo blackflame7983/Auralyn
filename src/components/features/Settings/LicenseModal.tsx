@@ -156,7 +156,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                             {t('licenses.cargo')}
                         </TabsTrigger>
                     </TabsList>
-                    <Button variant="ghost" size="icon" aria-label={t('licenses.close')} onClick={onClose} className="col-start-2 row-start-1 self-start">
+                    <Button variant="ghost" size="icon" aria-label={t('licenses.close')} onClick={onClose} className="col-start-2 row-start-1 self-start md:col-start-3">
                         <MdClose className="w-5 h-5" />
                     </Button>
                 </div>
