@@ -416,6 +416,67 @@ mod tests {
     }
 
     #[test]
+    fn dsp464_rebuilt_watch_uses_elapsed_time_across_rates_and_block_sizes() {
+        for rate in [48_000, 96_000, 44_100] {
+            for frames in [64, 256, 4096, 8192] {
+                let start = Instant::now();
+                let mut watch = ProcessingWatch::new();
+                let mut sample = running(1);
+                sample.block_period = Duration::from_secs_f64(frames as f64 / f64::from(rate));
+                let threshold = (sample.block_period * 8).max(Duration::from_millis(500));
+                assert_eq!(stall_after(sample.block_period), threshold);
+                watch.observe_at(start, sample);
+                progress(&mut sample, 1);
+                let last_progress = start + Duration::from_secs(1);
+                assert_eq!(
+                    watch.observe_at(last_progress, sample).snapshot.state,
+                    HealthState::Normal
+                );
+                let before =
+                    watch.observe_at(last_progress + threshold - Duration::from_nanos(1), sample);
+                assert_eq!(before.snapshot.state, HealthState::Normal);
+                assert_eq!(
+                    watch
+                        .observe_at(last_progress + threshold, sample)
+                        .snapshot
+                        .state,
+                    HealthState::Stalled
+                );
+                // 60秒窓はframe数にもcallback回数にも依存しない。sleepせず境界を渡す。
+                progress(&mut sample, 1);
+                sample.underflow_callbacks += 3;
+                let anomaly_at = start + Duration::from_secs(5);
+                assert_eq!(
+                    watch
+                        .observe_at(anomaly_at, sample)
+                        .snapshot
+                        .recent_underflow,
+                    3
+                );
+                progress(&mut sample, 1);
+                assert_eq!(
+                    watch
+                        .observe_at(anomaly_at + Duration::from_secs(60), sample)
+                        .snapshot
+                        .recent_underflow,
+                    3
+                );
+                progress(&mut sample, 1);
+                assert_eq!(
+                    watch
+                        .observe_at(
+                            anomaly_at + Duration::from_secs(60) + Duration::from_nanos(1),
+                            sample
+                        )
+                        .snapshot
+                        .recent_underflow,
+                    0
+                );
+            }
+        }
+    }
+
+    #[test]
     fn callback_note_does_not_allocate() {
         let counter = AtomicU64::new(0);
         let counts = crate::dsp_verification_allocator::allocation_counts(|| {

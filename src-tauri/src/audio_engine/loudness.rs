@@ -237,6 +237,59 @@ impl LoudnessMeter {
 mod tests {
     use super::*;
     #[test]
+    fn dsp464_rebuilt_loudness_windows_follow_48k_96k_44k1() {
+        for rate in [48_000, 96_000, 44_100] {
+            let mut meter = LoudnessMeter::new(rate);
+            meter.reset(Some(u64::from(rate)));
+            let block = rate as usize / 10;
+            let mut updates = 0;
+            let mut first_energy = 0.0;
+            for n in 0..31 * block {
+                // 最初の100msだけ大きくする。末尾128frameを空けてFIRの尾を閉じ込める。
+                let amplitude = if n < block - 128 {
+                    0.5
+                } else if n < block {
+                    0.0
+                } else {
+                    0.005
+                };
+                let x = (amplitude
+                    * (std::f64::consts::TAU * 1000.0 * n as f64 / f64::from(rate)).sin())
+                    as f32;
+                let reading = meter.sample([x; 2]);
+                assert_eq!(
+                    reading.is_some(),
+                    (n + 1).is_multiple_of(block),
+                    "rate={rate}, frame={}",
+                    n + 1
+                );
+                if n + 1 == 30 * block - 1 {
+                    assert!(!meter.reading().ready, "rate={rate}, early frame={}", n + 1);
+                }
+                if let Some(reading) = reading {
+                    updates += 1;
+                    assert_eq!(reading.id, u64::from(rate));
+                    assert_eq!(reading.ready, updates >= 30);
+                    assert_eq!(reading.short_term_lufs.is_some(), updates >= 30);
+                    if updates == 1 {
+                        first_energy = meter.energies[0];
+                    }
+                    if updates <= 30 {
+                        assert_eq!(meter.energies[0], first_energy);
+                        assert!(reading.true_peak_dbtp.unwrap() > -7.0);
+                    } else {
+                        // 最初のblockが閉じてから正確に3秒後に、そのenergyとpeakが消える。
+                        assert!(meter.energies[0] < first_energy / 1000.0);
+                        assert!(reading.true_peak_dbtp.unwrap() < -35.0);
+                    }
+                }
+            }
+            assert_eq!(updates, 31);
+            eprintln!("#464 loudness {rate}Hz: update={block} frames, warmup={} frames, history lifetime={} frames", block * 30, block * 30);
+        }
+    }
+
+    #[test]
     fn short_overload_has_peak_before_loudness_is_ready() {
         let mut m = LoudnessMeter::new(48000);
         m.reset(Some(9));

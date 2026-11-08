@@ -279,6 +279,40 @@ mod tests {
     }
 
     #[test]
+    fn dsp464_rebuilt_plugin_health_closes_time_windows_at_current_rate() {
+        for rate in [48_000, 96_000, 44_100] {
+            let limits = HealthLimits::new(rate);
+            let mut health = SlotHealth::default();
+            let continuous = rate as usize / 10;
+            assert_eq!(
+                health.observe(true, continuous - 1, &limits),
+                Verdict::Silenced
+            );
+            assert_eq!(health.observe(true, 1, &limits), Verdict::Isolated);
+            let mut health = SlotHealth::default();
+            assert_eq!(health.observe(true, 1, &limits), Verdict::Silenced);
+            assert_eq!(
+                health.observe(false, rate as usize - 2, &limits),
+                Verdict::Pass
+            );
+            assert_eq!(health.window_invalid_frames, 1);
+            assert_eq!(health.window_elapsed_frames, u64::from(rate) - 1);
+            assert_eq!(health.observe(false, 1, &limits), Verdict::Pass);
+            assert_eq!(health.window_invalid_frames, 0);
+            assert_eq!(health.window_elapsed_frames, 0);
+            // 50msごとの交互区間なら連続100msには届かず、無効時間250msで停止する。
+            let step = rate as usize / 20;
+            let mut health = SlotHealth::default();
+            for _ in 0..4 {
+                assert_eq!(health.observe(true, step, &limits), Verdict::Silenced);
+                assert_eq!(health.observe(false, step, &limits), Verdict::Pass);
+            }
+            assert_eq!(health.observe(true, step - 1, &limits), Verdict::Silenced);
+            assert_eq!(health.observe(true, 1, &limits), Verdict::Isolated);
+        }
+    }
+
+    #[test]
     fn finite_audio_including_large_values_is_valid() {
         let outputs = vec![
             channel(&[0.0, 1.0, -1.0, 1.0e20, f32::MAX]),
