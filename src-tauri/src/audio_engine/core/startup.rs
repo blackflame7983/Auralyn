@@ -3,6 +3,7 @@ use super::input::{InputCallback, InputStream};
 use super::*;
 #[path = "startup_callbacks.rs"]
 mod callbacks;
+pub(in crate::audio_engine::core) use callbacks::PluginBlock;
 pub(super) use callbacks::PluginControls;
 use callbacks::*;
 
@@ -206,17 +207,22 @@ impl Engine {
             // プラグインのない起動前の構築だけがレート未確定。実行中は確定済みレートで作る。
             48_000
         };
-        PluginControls {
-            bypassed: rt_bypassed,
-            muted: rt_muted,
-            gains: rt_gains,
-            order: rt_order,
-            order_len: rt_order_len,
-            health: [crate::audio_engine::plugin_health::SlotHealth::default(); MAX_PLUGINS],
-            health_tokens,
-            limits: crate::audio_engine::plugin_health::HealthLimits::new(sample_rate),
-            health_shared,
+        let mut controls = PluginControls::new(sample_rate, health_shared);
+        controls.bypassed = rt_bypassed;
+        controls.muted = rt_muted;
+        controls.gains = rt_gains;
+        controls.order = rt_order;
+        controls.order_len = rt_order_len;
+        controls.health_tokens = health_tokens;
+        for slot in 0..MAX_PLUGINS {
+            controls.transitions[slot] = super::slot_transition::SlotTransition::at_rest(
+                sample_rate,
+                self.plugin_manager.latency_samples_at(slot as u8),
+                controls.bypassed[slot],
+                controls.muted[slot],
+            );
         }
+        controls
     }
 
     // 機器の選択後、処理に使う構成と固定容量を確定する。
@@ -632,6 +638,7 @@ impl Engine {
             input: mut input_buf,
             planar_a: mut planar_buf_a,
             planar_b: mut planar_buf_b,
+            planar_dry: mut planar_buf_dry,
         } = CallbackBuffers::new(
             self.current_input_channels,
             channels_len,
@@ -1057,7 +1064,7 @@ impl Engine {
                         || output_resampling_failed.load(Ordering::Acquire)
                         || output_stream_failed.load(Ordering::Acquire)
                     {
-                        data.fill(0.0);
+                        write_device_silence(data);
                         return;
                     }
                     let Some(actual_frames) = lifecycle::output_block_frames(
@@ -1079,7 +1086,7 @@ impl Engine {
                         {
                             let Some(value) = queue.try_pop() else {
                                 output_stream_failed.store(true, Ordering::Release);
-                                data.fill(0.0);
+                                write_device_silence(data);
                                 return;
                             };
                             *frame = value;
@@ -1138,14 +1145,7 @@ impl Engine {
                         pending_retire,
                         rt_processors,
                         rt_active_count: &mut rt_active_count,
-                        rt_gains: &mut plugin_controls.gains,
-                        rt_bypassed: &mut plugin_controls.bypassed,
-                        rt_muted: &mut plugin_controls.muted,
-                        rt_order: &mut plugin_controls.order,
-                        rt_order_len: &mut plugin_controls.order_len,
-                        rt_health: &mut plugin_controls.health,
-                        rt_health_tokens: &mut plugin_controls.health_tokens,
-                        health_shared: &plugin_controls.health_shared,
+                        controls: &mut plugin_controls,
                         rt_cohort_change_applied: &mut rt_cohort_change_applied,
                         output_timing: &mut output_timing,
                         worker_generation_controls: worker_generation_controls.as_deref(),
@@ -1175,7 +1175,7 @@ impl Engine {
                         rt_voice_check: &mut rt_voice_check,
                         rt_test_tone: &mut rt_test_tone,
                     }) {
-                        data.fill(0.0);
+                        write_device_silence(data);
                         return;
                     }
 
@@ -1419,10 +1419,13 @@ impl Engine {
                         processors: rt_processors,
                         planar_buf_a: &mut planar_buf_a,
                         planar_buf_b: &mut planar_buf_b,
+                        dry: &mut planar_buf_dry,
                         channels,
                         frames,
-                        active_count: rt_active_count,
+                        active_count: &mut rt_active_count,
                         global_bypass: rt_comparison.bypassed(),
+                        retire_prod: Some(&mut retire_prod),
+                        pending_retire: Some(pending_retire),
                     });
 
                     // --- 3. Result Interleaving & Output Metering ---
@@ -1501,7 +1504,7 @@ impl Engine {
                             rt_comparison.bypassed(),
                         ) {
                             output_stream_failed.store(true, Ordering::Release);
-                            data.fill(0.0);
+                            write_device_silence(data);
                             return;
                         }
                     }
@@ -1527,7 +1530,7 @@ impl Engine {
                             rt_output_gain.next();
                             rt_peak.process([0.0; 2]);
                         }
-                        data.fill(0.0);
+                        write_device_silence(data);
                         // Zero metering too implies output is silence
                         let _ = level_prod.try_push(MeterLevels {
                             input: [in_max_l, in_max_r],
@@ -2050,7 +2053,7 @@ mod tests {
         for (input, output, frames) in [(8, 2, 512), (2, 8, 1024), (1, 1, 64), (3, 2, 256)] {
             let buffers = CallbackBuffers::new(input, output, frames);
             assert_eq!(buffers.input.len(), frames * input.max(2));
-            for planar in [&buffers.planar_a, &buffers.planar_b] {
+            for planar in [&buffers.planar_a, &buffers.planar_b, &buffers.planar_dry] {
                 assert_eq!(planar.len(), output.max(2));
                 assert!(planar
                     .iter()
