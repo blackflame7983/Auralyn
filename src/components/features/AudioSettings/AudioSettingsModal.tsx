@@ -213,8 +213,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'audio' | 'sound' | 'obs' | 'appearance' | 'system' | 'shortcuts'>(initialTab);
-  // F1の使い方から、開いている設定のホットキーにも移動できる。
-  useEffect(() => { if (isOpen) setActiveTab(initialTab); }, [isOpen, initialTab]);
+  // 移動先の指定が変わったときだけ切り替え、閉じて再表示した場合は選択中のタブを保つ。
+  useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
   const [capturingShortcut, setCapturingShortcut] = useState(false);
   const [isBeginnerMode, setIsBeginnerMode] = useState(getBeginnerMode);
   // Persist Advanced Mode selection

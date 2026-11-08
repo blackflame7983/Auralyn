@@ -97,3 +97,13 @@ it('修飾キー付きF1と処理済みのキーを奪わない', () => {
     window.dispatchEvent(event);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
+
+it('知らない操作の割り当てが混ざっても、分かる操作の割り当ては表示する', async () => {
+    vi.mocked(invoke).mockResolvedValue({ bindings: [{ action: 'toggle_mute', shortcut: 'Alt+KeyM' }, { action: 'gainUp', shortcut: 'Alt+KeyG' }], errors: [] });
+    open();
+    fireEvent.keyDown(window, { key: 'F1' });
+    const dialog = await screen.findByRole('dialog', { name: message('ja', 'help.title') });
+    fireEvent.click(within(dialog).getByRole('button', { name: message('ja', 'help.section.keys') }));
+    expect(await within(dialog).findByText(message('ja', shortcutActions.gainUp))).toBeInTheDocument();
+    expect(within(dialog).queryByText(message('ja', 'help.keys.fallback'))).not.toBeInTheDocument();
+});

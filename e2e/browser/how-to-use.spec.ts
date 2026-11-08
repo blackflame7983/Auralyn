@@ -16,9 +16,14 @@ for (const locale of ['ja', 'en'] as const) for (const size of [{ width: 960, he
         await expect(page.getByText(t('app.initializing'), { exact: true })).toHaveCount(0);
         // 既存の拡大表示試験と同じCSS zoomで表示の収まりを確認する。
         await page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
-        const trigger = page.getByRole('button', { name: t('header.helpOpen'), exact: true });
-        await trigger.click();
-        await page.getByRole('menuitem', { name: new RegExp(t('help.title')) }).click();
+        if (zoom === 1) {
+            const trigger = page.getByRole('button', { name: t('header.helpOpen'), exact: true });
+            await trigger.click();
+            await page.getByRole('menuitem', { name: new RegExp(t('help.title')) }).click();
+        } else {
+            // CSS zoomではポータルのメニュー位置が安定しないため、F1から開く。メニュー入口は等倍で確認する。
+            await page.keyboard.press('F1');
+        }
         const dialog = page.getByRole('dialog', { name: t('help.title'), exact: true });
         for (const section of ['home', 'setup', 'trouble', 'terms', 'keys'] as const) {
             await dialog.getByRole('button', { name: t(`help.section.${section}`), exact: true }).click();
@@ -29,7 +34,13 @@ for (const locale of ['ja', 'en'] as const) for (const size of [{ width: 960, he
             expect(rect.y).toBeGreaterThanOrEqual(0);
             expect(rect.x + rect.width).toBeLessThanOrEqual(size.width + 1);
             expect(rect.y + rect.height).toBeLessThanOrEqual(size.height + 1);
-            expect(await dialog.evaluate(root => [root, ...root.querySelectorAll('*')].every(element => element.scrollWidth <= element.clientWidth + 1))).toBe(true);
+            const overflowing = await dialog.evaluate(root => [root, ...root.querySelectorAll('*')]
+                // 共通Modalの読み上げ用タイトルは1pxに切り抜く仕様。表示本文の横はみ出しとは区別する。
+                // スクロール本文は除外せず、横スクロールが必要になっていないことも検査する。
+                .filter(element => !element.closest('.sr-only'))
+                .filter(element => element.scrollWidth > element.clientWidth + 1)
+                .map(element => ({ tag: element.tagName, className: element.getAttribute('class'), text: element.textContent?.slice(0, 100), scrollWidth: element.scrollWidth, clientWidth: element.clientWidth })));
+            expect(overflowing).toEqual([]);
         }
         await dialog.getByRole('button', { name: t('help.section.setup'), exact: true }).click();
         await dialog.getByRole('button', { name: t('header.setupOpen'), exact: true }).click();

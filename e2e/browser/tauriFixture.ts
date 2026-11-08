@@ -96,6 +96,8 @@ export const test = base.extend<{ transport: void; nativeMeterProfile: boolean; 
                     case 'get_autostart_status': return { enabled: false, canChange: false, reason: null };
                     case 'get_engine_tuning_config': return { enableAffinityPinning: false, affinityMask: null, enableRealtimePriority: false, enableTimeCriticalAudioThreads: false };
                     case 'get_shortcuts': return { bindings: [], errors: [] };
+                    // 音のトラブル診断を閉じるときの後始末。鳴らしていない試験音の停止は何もしない。
+                    case 'stop_test_tone': return;
                     case 'obs_connection_status': return false;
                     case 'get_obs_credentials': return null;
                     case 'get_window_activity': return true;

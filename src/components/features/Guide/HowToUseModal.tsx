@@ -39,8 +39,9 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
         if (section !== 'keys' || read.current) return;
         read.current = true;
         void invoke<{ bindings: Binding[] }>('get_shortcuts').then(status => {
-            if (!Array.isArray(status.bindings) || status.bindings.some(binding => !binding || !Object.prototype.hasOwnProperty.call(shortcutActions, binding.action) || typeof binding.shortcut !== 'string')) return;
-            setBindings(status.bindings);
+            if (!Array.isArray(status.bindings)) return;
+            // 知らない操作の割り当てが1つ混ざっても、分かる操作の割り当ては表示する。
+            setBindings(status.bindings.filter(binding => binding && Object.prototype.hasOwnProperty.call(shortcutActions, binding.action) && typeof binding.shortcut === 'string'));
         }).catch(() => {});
     }, [section]);
     const select = (next: Section) => {
@@ -58,38 +59,39 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
     };
     return <Modal title={t('help.title')} onClose={onClose}>
         <div className="modal-overlay-base">
-            <div className="modal-surface-base flex max-h-full w-full max-w-4xl min-w-0 flex-col">
+            {/* 節を切り替えてもダイアログが上下に跳ばないよう、高さを固定して本文だけをスクロールさせる。 */}
+            <div className="modal-surface-base flex h-[min(40rem,100%)] max-h-full w-full max-w-4xl min-w-0 flex-col">
                 <div className="modal-header-base modal-header-muted shrink-0 gap-3">
-                    <h2 className="text-xl font-bold">{t('help.title')}</h2>
-                    <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('common.close')}><MdClose aria-hidden="true" /></Button>
+                    <h2 className="min-w-0 text-xl font-bold [overflow-wrap:anywhere]">{t('help.title')}</h2>
+                    <Button variant="ghost" size="icon" className="shrink-0" onClick={onClose} aria-label={t('common.close')}><MdClose aria-hidden="true" /></Button>
                 </div>
                 <div ref={body} className="modal-body-base min-h-0 min-w-0">
                     <div className="grid min-w-0 gap-6 md:grid-cols-[11rem_minmax(0,1fr)]">
-                        <nav aria-label={t('help.title')} className="flex min-w-0 flex-wrap content-start gap-1 md:flex-col">
+                        <nav aria-label={t('help.title')} className="flex min-w-0 flex-wrap content-start gap-1 [overflow-wrap:anywhere] md:flex-col">
                             {sections.map(value => <Button key={value} variant={section === value ? 'secondary' : 'ghost'}
-                                className="h-auto justify-start whitespace-normal text-left" aria-current={section === value ? 'page' : undefined}
+                                className="h-auto min-w-0 max-w-full justify-start whitespace-normal text-left" aria-current={section === value ? 'page' : undefined}
                                 onClick={() => select(value)}>{t(`help.section.${value}`)}</Button>)}
                         </nav>
-                        <section aria-labelledby={heading} className="min-w-0 space-y-4 break-words text-sm leading-relaxed">
+                        <section aria-labelledby={heading} className="min-w-0 space-y-4 text-sm leading-relaxed [overflow-wrap:anywhere]">
                             <h2 id={heading} className="text-lg font-semibold">{t(`help.section.${section}`)}</h2>
                             {section === 'home' && (['stage', 'meters', 'sound', 'check', 'footer'] as const).map(item => <div key={item}>
                                 <h3 className="font-semibold">{t(`help.home.${item}.title`)}</h3>
                                 <p className="mt-1 text-muted-foreground">{t(`help.home.${item}.body`, labels)}</p>
                             </div>)}
-                            {section === 'setup' && <><p>{t('help.setup.body', labels)}</p><Button variant="outline" className="h-auto whitespace-normal" onClick={() => go(onSetup)}>{t('header.setupOpen')}</Button></>}
+                            {section === 'setup' && <><p>{t('help.setup.body', labels)}</p><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onSetup)}>{t('header.setupOpen')}</Button></>}
                             {section === 'trouble' && <>
                                 <h3 className="font-semibold">{t('help.trouble.silent')}</h3><p>{t('help.trouble.silentBody', labels)}</p>
-                                <Button variant="outline" className="h-auto whitespace-normal" onClick={() => go(onTroubleshoot)}>{t('header.noSound')}</Button>
+                                <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onTroubleshoot)}>{t('header.noSound')}</Button>
                                 <h3 className="font-semibold">{t('help.trouble.receiver')}</h3><p>{t('help.trouble.receiverBody')}</p>
-                                <div className="flex flex-wrap gap-2"><Button variant="outline" className="h-auto whitespace-normal" onClick={() => go(onOBS)}>{t('header.obs')}</Button><Button variant="outline" className="h-auto whitespace-normal" onClick={() => go(onDiscord)}>{t('header.discord')}</Button></div>
+                                <div className="flex flex-wrap gap-2"><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onOBS)}>{t('header.obs')}</Button><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onDiscord)}>{t('header.discord')}</Button></div>
                                 <h3 className="font-semibold">{t('help.trouble.dropouts')}</h3><p>{t('help.trouble.dropoutsBody')}</p>
-                                <Button variant="outline" className="h-auto whitespace-normal" onClick={() => go(onTroubleshoot)}>{t('header.noSound')}</Button>
+                                <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onTroubleshoot)}>{t('header.noSound')}</Button>
                             </>}
                             {section === 'terms' && terms.map(term => <div key={term}><h3 className="font-semibold">{t(`help.term.${term}.title`)}</h3><p className="mt-1 text-muted-foreground">{t(`help.term.${term}.body`)}</p></div>)}
                             {section === 'keys' && <>
                                 <p>{t('help.keys.f1')}</p>
-                                {bindings === null ? <p role="status">{t('help.keys.fallback')}</p> : <dl className="space-y-3">{Object.entries(shortcutActions).map(([action, label]) => <div key={action} className="flex flex-wrap justify-between gap-2"><dt>{t(label)}</dt><dd className="font-mono">{formatShortcut(bindings.find(binding => binding.action === action)?.shortcut ?? '') || t('help.keys.unassigned')}</dd></div>)}</dl>}
-                                <Button variant="outline" className="h-auto whitespace-normal" onClick={() => go(onShortcuts)}>{t('help.keys.settings')}</Button>
+                                {bindings === null ? <p role="status">{t('help.keys.fallback')}</p> : <dl className="space-y-3">{Object.entries(shortcutActions).map(([action, label]) => <div key={action} className="flex flex-wrap justify-between gap-2"><dt className="min-w-0 max-w-full">{t(label)}</dt><dd className="min-w-0 max-w-full font-mono">{formatShortcut(bindings.find(binding => binding.action === action)?.shortcut ?? '') || t('help.keys.unassigned')}</dd></div>)}</dl>}
+                                <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onShortcuts)}>{t('help.keys.settings')}</Button>
                             </>}
                         </section>
                     </div>
