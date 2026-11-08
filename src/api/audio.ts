@@ -287,6 +287,15 @@ export const audioApi = {
     ): Promise<LoopbackProbeResult> => {
         return await invoke("probe_loopback", { inputDevice, durationMs, freqHz });
     },
+    measureRoundTrip: async (levelDb?: number | null): Promise<RoundTripSnapshot> => {
+        return await invoke("measure_round_trip", { levelDb: levelDb ?? null });
+    },
+    cancelRoundTripMeasurement: async (): Promise<RoundTripSnapshot> => {
+        return await invoke("cancel_round_trip_measurement");
+    },
+    getRoundTripMeasurement: async (): Promise<RoundTripSnapshot> => {
+        return await invoke("get_round_trip_measurement");
+    },
     getRoutingDiagnostics: async (): Promise<RoutingDiagnosticsReport> => {
         return await invoke("get_routing_diagnostics");
     },
@@ -395,6 +404,36 @@ export interface LoopbackProbeResult {
     detected: boolean;
     levelDb: number;
     unavailable: string | null;
+}
+
+export interface RoundTripConditions {
+    outputDeviceId: string;
+    inputDeviceId: string;
+    inputChannel: number;
+    inputChannelRight: number;
+    inputMixed: boolean;
+    sampleRate: number;
+    bufferSize: number;
+    engineEpoch: string;
+}
+
+export interface RoundTripMeasurement {
+    kind: 'success' | 'uncertain' | 'failure';
+    reason: string | null;
+    delayFrames: number | null;
+    delayMs: number | null;
+    resolutionMs: number | null;
+    inverted: boolean;
+    confidence: number | null;
+    conditions: RoundTripConditions;
+    measuredAtMs: number;
+    levelDb: number;
+}
+
+export interface RoundTripSnapshot {
+    phase: 'idle' | 'running' | 'done';
+    progress: number;
+    result: RoundTripMeasurement | null;
 }
 
 export interface RoutingDeviceInfo {

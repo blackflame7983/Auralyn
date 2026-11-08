@@ -765,6 +765,9 @@ impl Engine {
                 self.send_response(Response::Success);
             }
             Command::SetGlobalMute { active } => {
+                if active {
+                    self.round_trip.preempt("muted");
+                }
                 self.set_global_mute_intent(active);
                 self.send_response(Response::Success);
             }
@@ -880,6 +883,10 @@ impl Engine {
                         "音声を開始してから測定してください".into(),
                     ));
                 } else {
+                    self.round_trip.set_loudness(id.is_some());
+                    if id.is_some() {
+                        self.round_trip.preempt("stopped");
+                    }
                     self.queue_audio_msg(AudioThreadMessage::SetLoudnessMeasurement(id));
                     self.send_response(Response::Success);
                 }
@@ -907,6 +914,7 @@ impl Engine {
                 self.builtin.invalidate_history_with_reason(
                     crate::audio_engine::history::Reason::InputChanged,
                 );
+                self.round_trip.preempt("input_changed");
                 self.input_channel_l = left;
                 self.input_channel_r = right;
                 self.queue_audio_msg(AudioThreadMessage::SetInputChannels(left, right));
@@ -1007,6 +1015,7 @@ impl Engine {
                 self.voice_check
                     .state
                     .store(VC_STATE_RECORDING, Ordering::Relaxed);
+                self.round_trip.preempt("stopped");
                 self.queue_audio_msg(AudioThreadMessage::StartVoiceCheckRecording {
                     buffers,
                     max_frames,
@@ -1031,6 +1040,7 @@ impl Engine {
                 self.voice_check
                     .loop_playback
                     .store(loop_playback, Ordering::Relaxed);
+                self.round_trip.preempt("stopped");
                 self.queue_audio_msg(AudioThreadMessage::PlayVoiceCheck {
                     source: parsed,
                     loop_playback,
@@ -1182,6 +1192,11 @@ impl Engine {
                     self.send_error("オーディオエンジンが起動していません".to_string());
                     return;
                 }
+                if self.round_trip.is_active() {
+                    self.send_error("往復遅延の測定中はテスト音を再生できません".into());
+                    return;
+                }
+                self.round_trip.note_test_tone(duration_ms);
                 self.queue_audio_msg(AudioThreadMessage::StopVoiceCheckPlayback);
                 self.queue_audio_msg(AudioThreadMessage::PlayTestTone {
                     freq_hz,
@@ -1191,8 +1206,33 @@ impl Engine {
                 self.send_response(Response::Success);
             }
             Command::StopTestTone => {
+                self.round_trip.clear_test_tone();
                 self.queue_audio_msg(AudioThreadMessage::StopTestTone);
                 self.send_response(Response::Success);
+            }
+            Command::MeasureRoundTrip { level_db } => {
+                match self
+                    .round_trip
+                    .start(self.round_trip_context(level_db.unwrap_or(0.0)))
+                {
+                    Ok(()) => {
+                        self.round_trip
+                            .poll(self.stream_failed.load(Ordering::Acquire));
+                        self.send_response(Response::RoundTrip(self.round_trip.snapshot()));
+                    }
+                    Err(reason) => self.send_error(reason.into()),
+                }
+            }
+            Command::CancelMeasurement => {
+                self.round_trip.cancel();
+                self.round_trip
+                    .poll(self.stream_failed.load(Ordering::Acquire));
+                self.send_response(Response::RoundTrip(self.round_trip.snapshot()));
+            }
+            Command::GetRoundTripMeasurement => {
+                self.round_trip
+                    .poll(self.stream_failed.load(Ordering::Acquire));
+                self.send_response(Response::RoundTrip(self.round_trip.snapshot()));
             }
             Command::ProbeLoopback {
                 input_device,
@@ -1212,6 +1252,52 @@ impl Engine {
             if let Some(shared) = &self.mixing_shared {
                 shared.failed.store(true, Ordering::Release);
             }
+        }
+    }
+
+    fn round_trip_context(
+        &self,
+        level_db: f32,
+    ) -> crate::audio_engine::latency_measure::StartContext {
+        let output = self.device_manager.active_output.as_ref();
+        let input = self.device_manager.active_input.as_ref();
+        let voice = self.voice_check.state.load(Ordering::Acquire);
+        let sample_rate = self.current_sample_rate.round() as u32;
+        let device = |info: Option<&crate::ipc::DeviceInfo>| {
+            crate::audio_engine::latency_measure::device_identity(
+                info.and_then(|item| item.id.as_deref()),
+                info.map(|item| item.name.as_str()),
+            )
+        };
+        crate::audio_engine::latency_measure::StartContext {
+            running: self.processing_running()
+                && self.output_stream.is_some()
+                && matches!(self.input_stream, Some(input::InputStream::Device(_))),
+            muted: self.global_mute,
+            stream_failed: self.stream_failed.load(Ordering::Acquire),
+            split: self.post_role
+                || self.live_output_config.split_processing
+                || self.split_monitor.is_some(),
+            process_input: self.process_shared.is_some()
+                || matches!(self.input_stream, Some(input::InputStream::Process(_))),
+            rates_match: self.current_input_rate != 0 && self.current_input_rate == sample_rate,
+            test_tone: self.round_trip.test_tone_active(),
+            voice_playback: voice == crate::audio_engine::voice_check::VC_STATE_PLAYING,
+            recording: voice == VC_STATE_RECORDING,
+            loudness: self.round_trip.loudness_active(),
+            auto_gain: self.gain_shared.requested.load(Ordering::Acquire) != 0
+                || self.gain_shared.active.load(Ordering::Acquire) != 0,
+            sample_rate,
+            buffer_size: self.fixed_buffer_request_frames.unwrap_or(0),
+            input_channels: self.current_input_channels,
+            selected: [self.input_channel_l, self.input_channel_r],
+            output_device_id: device(output),
+            input_device_id: device(input),
+            engine_epoch: self
+                .queue_snapshot()
+                .map(|snapshot| snapshot.epoch)
+                .unwrap_or_else(|| "none".to_string()),
+            level_db,
         }
     }
 }

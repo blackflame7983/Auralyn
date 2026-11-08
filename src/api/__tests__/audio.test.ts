@@ -194,6 +194,14 @@ describe('audioApi', () => {
             await audioApi.stopTestTone();
             expect(mockedInvoke).toHaveBeenCalledWith('stop_test_tone');
 
+            mockedInvoke.mockResolvedValue({ phase: 'idle', progress: 0, result: null });
+            await audioApi.measureRoundTrip();
+            expect(mockedInvoke).toHaveBeenCalledWith('measure_round_trip', { levelDb: null });
+            await audioApi.cancelRoundTripMeasurement();
+            expect(mockedInvoke).toHaveBeenCalledWith('cancel_round_trip_measurement');
+            await audioApi.getRoundTripMeasurement();
+            expect(mockedInvoke).toHaveBeenCalledWith('get_round_trip_measurement');
+
             const probeResult = { detected: true, levelDb: -30, unavailable: null };
             mockedInvoke.mockResolvedValue(probeResult);
             const probe = await audioApi.probeLoopback('CABLE Output', 1500, 1000);

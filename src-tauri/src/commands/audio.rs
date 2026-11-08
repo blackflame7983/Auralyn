@@ -1022,6 +1022,44 @@ pub(crate) async fn stop_test_tone(state: State<'_, audio::AudioState>) -> Resul
 }
 
 #[tauri::command]
+pub(crate) async fn measure_round_trip(
+    state: State<'_, audio::AudioState>,
+    level_db: Option<f32>,
+) -> Result<crate::audio_engine::latency_measure::Snapshot, String> {
+    let state = state.0.clone();
+    super::run_blocking(move || {
+        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        host.measure_round_trip(level_db).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn cancel_round_trip_measurement(
+    state: State<'_, audio::AudioState>,
+) -> Result<crate::audio_engine::latency_measure::Snapshot, String> {
+    let state = state.0.clone();
+    super::run_blocking(move || {
+        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        host.cancel_round_trip_measurement()
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn get_round_trip_measurement(
+    state: State<'_, audio::AudioState>,
+) -> Result<crate::audio_engine::latency_measure::Snapshot, String> {
+    let state = state.0.clone();
+    super::run_blocking(move || {
+        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        host.get_round_trip_measurement().map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
 pub(crate) async fn probe_loopback(
     state: State<'_, audio::AudioState>,
     input_device: String,

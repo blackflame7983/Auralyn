@@ -4,6 +4,7 @@ import { LatencyStageDetails } from './LatencyStageDetails';
 import { FrameTimingDetails } from './FrameTimingDetails';
 import { ResamplerCohortTimingDetails } from './ResamplerCohortTimingDetails';
 import { ResamplerBatchTimingDetails } from './ResamplerBatchTimingDetails';
+import { RoundTripMeasure, roundTripDeclaredMs } from './RoundTripMeasure';
 
 const positive = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0;
 const nonnegative = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0;
@@ -36,6 +37,7 @@ export function LatencyDetails({ stats, isRunning = true }: { stats?: EngineRunt
         <p role="status" className="text-sm">{!isRunning || (known && !m.streamRunning) ? t('latency.stopped') : !known ? t('latency.metadataMissing') : t('latency.unmeasured')}</p>
         {rows.length > 0 && <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">{rows.map(([label, value]) => <div key={label} className="contents"><dt className="text-muted-foreground">{label}</dt><dd className="break-words text-right">{value}</dd></div>)}</dl>}
         <p className="text-xs text-muted-foreground">{t('latency.limitations')}</p>
+        <RoundTripMeasure stats={stats} isRunning={isRunning} declaredMs={roundTripDeclaredMs(stats, !!current)} />
         <LatencyStageDetails stats={stats} current={!!current} />
         <FrameTimingDetails snapshot={stats?.frameTiming} current={monitorCurrent} />
         <ResamplerBatchTimingDetails snapshot={stats?.resamplerBatchTiming} current={monitorCurrent} />

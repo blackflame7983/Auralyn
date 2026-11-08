@@ -37,6 +37,7 @@ pub(super) struct InputCallback {
     pub(super) audio_prod: <Arc<HeapRb<f32>> as Split>::Prod,
     pub(super) batch_timing: bool,
     pub(super) input_callbacks: Arc<AtomicU64>,
+    pub(super) measure: Arc<crate::audio_engine::latency_measure::Bridge>,
 }
 
 impl InputCallback {
@@ -57,8 +58,11 @@ impl InputCallback {
             audio_prod,
             batch_timing,
             input_callbacks,
+            measure,
         } = self;
         crate::audio_engine::processing_watch::note_callback(input_callbacks);
+        // 測定中だけバッファへ書く。停止中は atomic の phase を見てすぐ戻る。
+        measure.capture_input(data, *channels);
         let scan_gain = scan_control.sync(&mut *rt_channel_scan);
         if rt_channel_scan.enabled() {
             for frame in data.chunks_exact(*channels) {

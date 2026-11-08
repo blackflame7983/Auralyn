@@ -2368,6 +2368,36 @@ impl AudioHost {
         }
     }
 
+    pub fn measure_round_trip(
+        &mut self,
+        level_db: Option<f32>,
+    ) -> Result<crate::audio_engine::latency_measure::Snapshot> {
+        self.round_trip_command(IpcCommand::MeasureRoundTrip { level_db })
+    }
+
+    pub fn cancel_round_trip_measurement(
+        &mut self,
+    ) -> Result<crate::audio_engine::latency_measure::Snapshot> {
+        self.round_trip_command(IpcCommand::CancelMeasurement)
+    }
+
+    pub fn get_round_trip_measurement(
+        &mut self,
+    ) -> Result<crate::audio_engine::latency_measure::Snapshot> {
+        self.round_trip_command(IpcCommand::GetRoundTripMeasurement)
+    }
+
+    fn round_trip_command(
+        &mut self,
+        command: IpcCommand,
+    ) -> Result<crate::audio_engine::latency_measure::Snapshot> {
+        match self.execute_command(command)? {
+            IpcResponse::RoundTrip(snapshot) => Ok(snapshot),
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
     pub fn probe_loopback(
         &mut self,
         input_device: String,
