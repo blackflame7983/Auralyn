@@ -294,8 +294,8 @@ impl EditorManager {
         }
     }
 
-    // Explicit close (e.g. unload plugin)
-    pub fn close_editor(&mut self, plugin_id: &str) {
+    // 実際に閉じたエディターだけを、呼び出し元から通知する。
+    pub fn close_editor(&mut self, plugin_id: &str) -> bool {
         if let Some(child) = self.editor_children.remove(plugin_id) {
             // SAFETY: 管理表から取り出した子 HWND を、親を破棄する前に一度だけ破棄する。
             unsafe {
@@ -305,8 +305,9 @@ impl EditorManager {
         if let Some(win) = self.editor_windows.remove(plugin_id) {
             let win_id = win.id();
             self.window_id_to_plugin.remove(&win_id);
-            // Window dropped here
+            return true;
         }
+        false
     }
 
     pub fn get_plugin_id(&self, window_id: WindowId) -> Option<String> {

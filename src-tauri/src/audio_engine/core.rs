@@ -941,7 +941,9 @@ impl Engine {
                         if let Some(instance) = self.plugin_manager.get_mut(&plugin_id) {
                             instance.close_editor();
                         }
-                        self.editor_manager.handle_close_requested(window_id);
+                        if let Some(id) = self.editor_manager.handle_close_requested(window_id) {
+                            self.send_event(EngineEvent::EditorClosed { id });
+                        }
                     }
                 }
                 _ => {}

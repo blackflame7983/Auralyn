@@ -712,7 +712,9 @@ impl Engine {
                 if let Some(instance) = self.plugin_manager.get_mut(&id) {
                     instance.close_editor();
                 }
-                self.editor_manager.close_editor(&id);
+                if self.editor_manager.close_editor(&id) {
+                    self.send_event(EngineEvent::EditorClosed { id: id.clone() });
+                }
 
                 if self.processing_running() {
                     match self.plugin_manager.begin_unload(&id) {
@@ -741,7 +743,10 @@ impl Engine {
                 // Delegated to EditorManager, but needs Instance from PluginManager
                 match self.plugin_manager.get_mut(&id) {
                     Some(instance) => match self.editor_manager.open_editor(instance, target) {
-                        Ok(_) => self.send_response(Response::Success),
+                        Ok(_) => {
+                            self.send_event(EngineEvent::EditorOpened { id: id.clone() });
+                            self.send_response(Response::Success);
+                        }
                         Err(e) => self.send_error(format!("Failed to open editor: {}", e)),
                     },
                     None => self.send_error("Plugin not found".to_string()),
