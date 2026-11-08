@@ -13,6 +13,56 @@ struct ResolvedDevices {
     is_asio: bool,
 }
 
+struct StartAttemptLog {
+    started: Instant,
+    host: Option<String>,
+    input: Option<String>,
+    output: Option<String>,
+    requested_rate: Option<u32>,
+    requested_buffer: Option<u32>,
+    attempted_input: Option<cpal::StreamConfig>,
+    attempted_output: Option<cpal::StreamConfig>,
+    retry_reason: Option<String>,
+}
+
+impl StartAttemptLog {
+    fn new(request: &AudioStartRequest) -> Self {
+        Self {
+            started: Instant::now(),
+            host: request.host_name.clone(),
+            input: request.input_name.clone(),
+            output: request.output_name.clone(),
+            requested_rate: request.sample_rate,
+            requested_buffer: request.buffer_size,
+            attempted_input: None,
+            attempted_output: None,
+            retry_reason: None,
+        }
+    }
+
+    fn record_configs(&mut self, input: &cpal::StreamConfig, output: &cpal::StreamConfig) {
+        self.attempted_input = Some(input.clone());
+        self.attempted_output = Some(output.clone());
+    }
+
+    fn validate_configs(
+        &self,
+        input: &cpal::StreamConfig,
+        output: &cpal::StreamConfig,
+    ) -> Result<()> {
+        capabilities::validate_stream_config(self.output.as_deref().unwrap_or("出力機器"), output)?;
+        capabilities::validate_stream_config(self.input.as_deref().unwrap_or("アプリ入力"), input)
+    }
+
+    fn warn(&self, reason: &str) {
+        log::warn!(
+            "[StartupFailure] host={:?} input={:?} output={:?} requested_rate={:?} requested_buffer={:?} attempted_input={:?} attempted_output={:?} reason={} elapsed_ms={}",
+            self.host, self.input, self.output, self.requested_rate, self.requested_buffer,
+            self.attempted_input, self.attempted_output, reason, self.started.elapsed().as_millis()
+        );
+    }
+}
+
 fn resolve_source_devices(
     host_name_str: &str,
     input_name: Option<&str>,
@@ -236,6 +286,7 @@ impl Engine {
         is_asio: bool,
         policy: lifecycle::StartupPolicy,
         music_input: bool,
+        attempt: &mut StartAttemptLog,
     ) -> Result<(bool, Option<u32>)> {
         dsp::NoiseGeometry::guard(
             out_stream_config.sample_rate,
@@ -280,6 +331,9 @@ impl Engine {
         if let Some(config) = preferred_input {
             *in_stream_config = config;
         }
+        // locked補正や同率入力の採用後も、固定容量の確保より先に検査する。
+        attempt.record_configs(in_stream_config, out_stream_config);
+        attempt.validate_configs(in_stream_config, out_stream_config)?;
         // 起動試行の選択結果だけを非RTで記録する。実機の同率受理はbuild/play成功と照合する。
         log::debug!(
             "[Config] Selected rates: input={} output={} input_channels={} preferred_input={}",
@@ -325,6 +379,29 @@ impl Engine {
         request: AudioStartRequest,
         policy: lifecycle::StartupPolicy,
     ) -> Result<Option<(AudioStartRequest, lifecycle::StartupPolicy)>> {
+        let mut attempt = StartAttemptLog::new(&request);
+        let result = self.try_start_audio_inner(request, policy, &mut attempt);
+        // 早期失敗と再試行の理由も、この非RT境界で一度だけ記録する。
+        match &result {
+            Err(error) => attempt.warn(&error.to_string()),
+            Ok(Some(_)) => {
+                if let Some(reason) = &attempt.retry_reason {
+                    attempt.warn(reason);
+                }
+            }
+            Ok(None) => {}
+        }
+        result
+    }
+
+    #[allow(deprecated)]
+    #[inline(never)]
+    fn try_start_audio_inner(
+        &mut self,
+        request: AudioStartRequest,
+        policy: lifecycle::StartupPolicy,
+        attempt: &mut StartAttemptLog,
+    ) -> Result<Option<(AudioStartRequest, lifecycle::StartupPolicy)>> {
         let AudioStartRequest {
             input_source,
             host_name,
@@ -364,6 +441,7 @@ impl Engine {
             .as_deref()
             .ok_or_else(|| anyhow!("Host name not specified"))?;
         let resolving_started = Instant::now();
+        attempt.started = resolving_started;
         let ResolvedDevices {
             input: in_dev,
             output: out_dev,
@@ -375,6 +453,16 @@ impl Engine {
             &device_ids,
             is_process,
         )?;
+        attempt.input = in_dev.as_ref().map(|device| {
+            device
+                .name()
+                .unwrap_or_else(|_| input_name.clone().unwrap_or_default())
+        });
+        attempt.output = Some(
+            out_dev
+                .name()
+                .unwrap_or_else(|_| output_name.clone().unwrap_or_default()),
+        );
         let noise_identity = if let Some((config, _)) = &process_spec {
             anyhow::ensure!(
                 out_dev.id()?.1 != config.raw_endpoint_id,
@@ -444,6 +532,17 @@ impl Engine {
         let mut out_stream_config = out_capabilities.output_config(sample_rate, buffer_size);
         // まず既定入力を保持し、実際の出力rateとbufferが決まってから同率を検討する。
         let mut in_stream_config = in_capabilities.input_config(buffer_size);
+        attempt.record_configs(&in_stream_config, &out_stream_config);
+        // ASIOの能力照合でも0 Hzを拒否するため、その前に具体的な理由を確保する。
+        if let Err(error) = capabilities::validate_stream_config(
+            attempt.output.as_deref().unwrap_or("出力機器"),
+            &out_stream_config,
+        ) {
+            lifecycle::release_devices_before_retry((in_dev, out_dev), || {
+                self.clear_audio_resources()
+            });
+            return Err(error);
+        }
         if is_asio {
             match in_capabilities.asio_input_config(
                 &out_capabilities,
@@ -452,10 +551,13 @@ impl Engine {
             ) {
                 Ok(config) => in_stream_config = config,
                 Err(error) => {
+                    attempt.validate_configs(&in_stream_config, &out_stream_config)?;
                     if let Some((next_policy, fallback_rate)) = policy
                         .retry_default_output()
                         .zip(out_capabilities.default_retry_rate())
+                        .filter(|_| lifecycle::allows_start_retry(attempt.started.elapsed()))
                     {
+                        attempt.retry_reason = Some(error.to_string());
                         lifecycle::release_devices_before_retry((in_dev, out_dev), || {
                             self.clear_audio_resources()
                         });
@@ -475,6 +577,13 @@ impl Engine {
                     return Err(error);
                 }
             }
+        }
+        attempt.record_configs(&in_stream_config, &out_stream_config);
+        if let Err(error) = attempt.validate_configs(&in_stream_config, &out_stream_config) {
+            lifecycle::release_devices_before_retry((in_dev, out_dev), || {
+                self.clear_audio_resources()
+            });
+            return Err(error);
         }
 
         if is_process {
@@ -502,6 +611,7 @@ impl Engine {
             is_asio,
             policy,
             music_input,
+            attempt,
         )?;
 
         self.register_start_devices(
@@ -1282,10 +1392,9 @@ impl Engine {
                                 shared.failed.store(true, Ordering::Release);
                             } else {
                                 let began = process_starved_at.get_or_insert(shared.elapsed_ms());
-                                match underrun_action(
-                                    shared.packet_age_ms(),
-                                    || shared.elapsed_ms().saturating_sub(*began),
-                                ) {
+                                match underrun_action(shared.packet_age_ms(), || {
+                                    shared.elapsed_ms().saturating_sub(*began)
+                                }) {
                                     UnderrunAction::DiscardAndReprime => {
                                         let discarded = audio_cons.occupied_len() / 2;
                                         audio_cons.skip(discarded * 2);
@@ -1961,16 +2070,13 @@ impl Engine {
                     cpal::BuildStreamError::BackendSpecific { .. } => "バックエンドエラー",
                 };
                 let detailed_msg = format!("{} (Original: {})", error_jp, e);
-                log::error!("Failed to build output stream: {}", detailed_msg);
 
                 if let Some((next_policy, fallback_rate)) = policy
                     .retry_default_output()
                     .zip(out_capabilities.default_retry_rate())
+                    .filter(|_| lifecycle::allows_start_retry(attempt.started.elapsed()))
                 {
-                    log::warn!(
-                        "[Config] Fallback! Retrying with Default: {} Hz",
-                        out_capabilities.default_rate()
-                    );
+                    attempt.retry_reason = Some(detailed_msg);
                     lifecycle::release_devices_before_retry((in_dev, out_dev), || {
                         self.clear_audio_resources()
                     });
@@ -2001,12 +2107,14 @@ impl Engine {
                     cpal::BuildStreamError::BackendSpecific { .. } => "バックエンドエラー",
                 };
                 let detailed_msg = format!("{} (Original: {})", error_jp, e);
-                log::error!("[Engine] Failed to build input stream: {}", detailed_msg);
 
                 // 優先入力だけの拒否では、出力rateと有効bufferを変えず既定入力へ戻す。
                 // build_pairがローカルstreamと未実行closureを回収した後だけ再準備する。
-                if let Some(next_policy) = policy.retry_default_input(used_preferred_input) {
-                    log::warn!("[Config] Input rate fallback: retaining output rate and buffer");
+                if let Some(next_policy) = policy
+                    .retry_default_input(used_preferred_input)
+                    .filter(|_| lifecycle::allows_start_retry(attempt.started.elapsed()))
+                {
+                    attempt.retry_reason = Some(detailed_msg);
                     lifecycle::release_devices_before_retry((in_dev, out_dev), || {
                         self.clear_audio_resources()
                     });
@@ -2027,8 +2135,9 @@ impl Engine {
                 if let Some((next_policy, fallback_rate)) = policy
                     .retry_default_output()
                     .zip(out_capabilities.default_retry_rate())
+                    .filter(|_| lifecycle::allows_start_retry(attempt.started.elapsed()))
                 {
-                    log::warn!("[Config] Input fallback: retrying after output cleanup");
+                    attempt.retry_reason = Some(detailed_msg);
                     // 再試行より前にローカル出力とcallback所有値を回収する。
                     lifecycle::release_devices_before_retry((in_dev, out_dev), || {
                         self.clear_audio_resources()
@@ -2117,6 +2226,82 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn attempt_log() -> StartAttemptLog {
+        StartAttemptLog::new(&AudioStartRequest {
+            input_source: None,
+            host_name: Some("ASIO".into()),
+            input_name: Some("Input ASIO".into()),
+            output_name: Some("Output ASIO".into()),
+            sample_rate: Some(48_000),
+            buffer_size: Some(512),
+            device_ids: (None, None),
+        })
+    }
+
+    #[test]
+    fn invalid_input_config_keeps_device_and_bad_value_in_the_error() {
+        let valid = cpal::StreamConfig {
+            channels: 2,
+            sample_rate: 48_000,
+            buffer_size: cpal::BufferSize::Fixed(512),
+        };
+        let mut invalid = valid.clone();
+        invalid.sample_rate = 0;
+        let error = attempt_log()
+            .validate_configs(&invalid, &valid)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("Input ASIO"));
+        assert!(error.contains("0 Hz"));
+    }
+
+    #[test]
+    fn locked_buffer_is_validated_before_processing_capacity_or_streams() {
+        for locked in [0, 16_385] {
+            let snapshot = capabilities::CapabilitySnapshot::capture(
+                || {
+                    Ok(cpal::SupportedStreamConfig::new(
+                        2,
+                        48_000,
+                        cpal::SupportedBufferSize::Range {
+                            min: locked,
+                            max: locked,
+                        },
+                        cpal::SampleFormat::F32,
+                    ))
+                },
+                || Ok(Vec::<cpal::SupportedStreamConfigRange>::new().into_iter()),
+            )
+            .unwrap();
+            let mut output = snapshot.output_config(Some(48_000), Some(512));
+            let mut input = snapshot.input_config(Some(512));
+            let mut engine = Engine::new();
+            let capacity_before = engine.processing_block_capacity;
+            let mut attempt = attempt_log();
+            let error = engine
+                .prepare_stream_geometry(
+                    &mut input,
+                    &mut output,
+                    &snapshot,
+                    &snapshot,
+                    true,
+                    lifecycle::StartupPolicy::default(),
+                    true,
+                    &mut attempt,
+                )
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("Output ASIO"));
+            assert!(error.contains(&format!("{locked} サンプル")));
+            assert_eq!(engine.processing_block_capacity, capacity_before);
+            assert!(engine.input_stream.is_none() && engine.output_stream.is_none());
+            assert_eq!(
+                attempt.attempted_output.unwrap().buffer_size,
+                cpal::BufferSize::Fixed(locked)
+            );
+        }
+    }
 
     #[test]
     fn device_resolution_rejects_invalid_host_and_ids_without_opening_devices() {

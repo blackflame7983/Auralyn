@@ -13,6 +13,13 @@ mod asio_build_lifecycle;
 type ReturnProducer<T> = <HeapRb<T> as Split>::Prod;
 type ReturnConsumer<T> = <HeapRb<T> as Split>::Cons;
 
+pub(super) const SLOW_START_FAILURE: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// 遅いdriverを同じ開始要求で開き直して、制御スレッドを二度待たせない。
+pub(super) fn allows_start_retry(elapsed: std::time::Duration) -> bool {
+    elapsed < SLOW_START_FAILURE
+}
+
 /// 出力の既定設定への再試行と、優先した入力rateから戻す再試行を各1回に制限する。
 /// ASIOは共有driverのrateを使うため、独立した入力rateの優先・再試行を追加しない。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -408,6 +415,44 @@ pub(super) fn output_block_frames(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn slow_failures_disable_both_fallbacks_at_one_second() {
+        use super::*;
+        use std::time::Duration;
+        for (elapsed, expected) in [
+            (Duration::ZERO, true),
+            (Duration::from_nanos(999_999_999), true),
+            (SLOW_START_FAILURE, false),
+            (Duration::from_secs(3), false),
+        ] {
+            assert_eq!(allows_start_retry(elapsed), expected);
+            let policy = StartupPolicy::default();
+            assert_eq!(
+                policy
+                    .retry_default_output()
+                    .filter(|_| allows_start_retry(elapsed))
+                    .is_some(),
+                expected
+            );
+            assert_eq!(
+                policy
+                    .retry_default_input(true)
+                    .filter(|_| allows_start_retry(elapsed))
+                    .is_some(),
+                expected
+            );
+            assert!(policy
+                .retry_default_input(false)
+                .filter(|_| allows_start_retry(elapsed))
+                .is_none());
+            assert!(policy
+                .retry_default_output()
+                .unwrap()
+                .retry_default_output()
+                .is_none());
+        }
+    }
+
     #[test]
     fn queue_cleanup_releases_observer_and_retains_only_stopped_attempt_counters() {
         use super::super::Engine;
