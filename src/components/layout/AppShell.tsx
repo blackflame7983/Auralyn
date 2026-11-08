@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { useStreamMixPanel } from '@/lib/streamMixPanel';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { HomeAudioStartError } from '@/lib/startHomeAudio';
@@ -233,21 +234,21 @@ export const AppShell: React.FC<AppShellProps> = ({
     // 大型メーターは声のレベルを大きく見るためのものなので、ヘッダーではなく本番帯のメーター横から開く。
     const largeMeterLabel = t(isLargeMeterOpen ? 'header.meterClose' : 'header.meterOpen');
     const meterSuspended = isLargeMeterOpen && panelMotion.present && !panelBeside;
-    const largeMeterButton = <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><button type="button" id="large-meter-toggle" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
+    const largeMeterButton = <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" type="button" id="large-meter-toggle" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
         aria-label={largeMeterLabel} aria-describedby={meterSuspended ? 'large-meter-suspended' : undefined}
-        className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-md border p-1.5 text-ui-support', isLargeMeterOpen ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border hover:bg-muted')}>
+        className={cn('shrink-0 gap-1.5', isLargeMeterOpen ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border hover:bg-muted')}>
         <span className="relative"><LevelMeterIcon className="h-[18px] w-[18px]" />{meterSuspended && <span aria-hidden="true" className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-warning" />}</span><span className="live-action-label">{t('home.largeMeterLabel')}</span>
-    </button></TooltipTrigger><TooltipContent><p>{t(meterSuspended ? 'home.meterSuspended' : 'home.largeMeterTool')}</p><p className="max-w-64 text-xs">{t('meter.arrivalUnverified')}</p></TooltipContent></Tooltip></TooltipProvider>;
-    const meterSuspendedNotice = meterSuspended ? <span id="large-meter-suspended" role="status" className="mb-3 text-xs text-muted-foreground">{t('home.meterSuspended')}</span> : null;
+    </Button></TooltipTrigger><TooltipContent><p>{t(meterSuspended ? 'home.meterSuspended' : 'home.largeMeterTool')}</p><p className="max-w-64 text-ui-support">{t('meter.arrivalUnverified')}</p></TooltipContent></Tooltip></TooltipProvider>;
+    const meterSuspendedNotice = meterSuspended ? <span id="large-meter-suspended" role="status" className="mb-3 text-ui-support text-muted-foreground">{t('home.meterSuspended')}</span> : null;
     const loudnessAction = !loudnessEnabled && !measurement.active ? <span className="flex shrink-0 items-center gap-2">
-        <span id="loudness-toggle-description" className={!audioReady && !quietStopped ? 'whitespace-nowrap text-xs text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
-        <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><button type="button" aria-pressed={measurement.active} aria-describedby="loudness-toggle-description"
+        <span id="loudness-toggle-description" className={!audioReady && !quietStopped ? 'whitespace-nowrap text-ui-support text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
+        <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" type="button" aria-pressed={measurement.active} aria-describedby="loudness-toggle-description"
             onClick={() => { setLoudnessEnabled(true); setMeasurementRequest({ id: ++requestId.current, action: measurement.active ? 'stop' : 'start' }); }}
             disabled={measurement.busy || (!measurement.active && !audioReady)}
             aria-label={loudnessLabel}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border p-1.5 text-ui-support hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent">
+            className="gap-1.5">
             <AudioCheckIcon className="h-[18px] w-[18px]" /><span className="live-action-label">{t('shell.loudness')}</span>
-        </button></TooltipTrigger><TooltipContent><p>{t('home.loudnessTool')}</p><p className="max-w-64 text-xs">{t('loudness.scope')}</p></TooltipContent></Tooltip></TooltipProvider>
+        </Button></TooltipTrigger><TooltipContent><p>{t('home.loudnessTool')}</p><p className="max-w-64 text-ui-support">{t('loudness.scope')}</p></TooltipContent></Tooltip></TooltipProvider>
     </span> : null;
     const focusOutputControl = (anchor?: HTMLButtonElement) => {
         const zeroGain = runtimeStats?.preparation?.muted === false && runtimeStats.preparation.outputGain === 0;
@@ -332,7 +333,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
                             ? <LiveStrip compact={soundExpanded} liveModeName={liveModeName} stopped={quietStopped} roomy={roomyMeters} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
-                            : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-xl border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
+                            : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-card border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
                         {/* 本番操作は音調整・診断より前へ置き、表示中はメーターの大型化より操作幅と高さを優先する。 */}
                         {/* 未設定の間は音の流れと次の1歩だけを出す（#297）ため、配信ミックスは置かない。 */}
                         {configured && streamMixPanel}
@@ -401,7 +402,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                         aria-checked={isABBypassed}
                                         aria-describedby={isABBypassed ? 'footer-compare-state' : undefined}
                                         className={cn(
-                                            "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-ui-control font-semibold whitespace-nowrap shrink-0",
+                                            "flex items-center gap-1.5 px-2.5 py-1 rounded-card border text-ui-control font-semibold whitespace-nowrap shrink-0",
                                             isABBypassed
                                                 ? "bg-warning/10 text-warning border-warning/50 ring-1 ring-warning/30"
                                                 : "bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground"

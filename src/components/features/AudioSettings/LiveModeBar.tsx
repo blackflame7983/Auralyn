@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useRef } from 'react';
@@ -30,7 +31,7 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
     useEffect(() => (registered || value?.transaction ? activate() : undefined), [registered, Boolean(value?.transaction), activate]);
     if (!value) return error ? <section aria-label={t('liveBar.label')} className="flex flex-wrap items-center gap-2">
         <p role="alert" className="text-ui-support text-warning">{error}</p>
-        <button type="button" disabled={busy} onClick={() => void refresh()} className="rounded-md border border-border px-3 py-1.5 text-ui-support">{t('settings.LiveModeControls.236')}</button>
+        <Button variant="outline" size="sm" type="button" disabled={busy} onClick={() => void refresh()} >{t('settings.LiveModeControls.236')}</Button>
     </section> : null;
     if (safetyOnly && !value.armed && !value.transaction && !error && !value.error) return null;
     if (!registered && !onRegister && !value.transaction && !value.armed && !error && !value.error) return null;
@@ -46,7 +47,7 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
         action();
     };
     return (
-        <section aria-label={t('liveBar.label')} data-mode-registered={registered} className={cn('flex flex-wrap items-center gap-3', !embedded && 'mb-3 rounded-xl border border-border bg-card gaming:bg-card/70 px-3 py-2')}>
+        <section aria-label={t('liveBar.label')} data-mode-registered={registered} className={cn('flex flex-wrap items-center gap-3', !embedded && 'mb-3 rounded-card border border-border bg-card gaming:bg-card/70 px-3 py-2')}>
             {registered && !safetyOnly && <SegmentedControl label={t('liveBar.mode')} value={selected}
                 onValueChange={mode => { if (mode !== 'custom') void model.select(mode); }}
                 options={[
@@ -57,7 +58,7 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
             {value.transaction && <div className="basis-full space-y-2" role="status">
                 <p>{t(value.transaction.phase === 'recovery_required' || value.transaction.phase === 'failed' ? 'liveTransaction.failed' : value.transaction.phase === 'restoring' ? 'liveTransaction.recovering' : 'liveTransaction.switching')}</p>
                 {value.transaction.error && <p className="break-words text-ui-support">{value.transaction.error}</p>}
-                {value.transaction.recoveryAvailable && <button type="button" disabled={model.recoveryBusy || busy} onClick={() => void model.recover()} className="rounded-md border border-border px-3 py-1.5 text-ui-support">{t('liveTransaction.recover')}</button>}
+                {value.transaction.recoveryAvailable && <button type="button" disabled={model.recoveryBusy || busy} onClick={() => void model.recover()} className="rounded-control border border-border px-3 py-1.5 text-ui-support">{t('liveTransaction.recover')}</button>}
             </div>}
             {registered && !safetyOnly && (pending || value.phase === 'partial' || !embedded && (!value.running || value.phase === 'stopped')) && <span role="status" className="text-ui-support text-muted-foreground">
                 {pending ? t('liveBar.switching', { mode: value.target ? name(value.target) : '' })
@@ -67,7 +68,7 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
             </span>}
             {(registered || value.armed) && (!safetyOnly || value.armed) && <button type="button" aria-disabled={busy || model.changesBlocked} aria-pressed={value.armed} aria-label={t('liveBar.protect')} aria-describedby="live-protect-state" onClick={() => { if (!busy && !model.changesBlocked) void model.protect(!value.armed); }}
                 title={t(value.armed ? 'liveBar.unlockHint' : 'liveBar.protect')}
-                className={cn('inline-flex min-h-6 min-w-6 items-center justify-center gap-1.5 rounded-md border px-2 py-1 text-ui-support font-medium transition-colors aria-disabled:opacity-50', !embedded && 'ml-auto',
+                className={cn('inline-flex min-h-6 min-w-6 items-center justify-center gap-1.5 rounded-control border px-2 py-1 text-ui-support font-medium transition-colors aria-disabled:opacity-50', !embedded && 'ml-auto',
                     value.armed ? 'border-brand bg-brand/15 text-brand' : 'border-border text-muted-foreground hover:text-foreground')}>
                 <MdLock aria-hidden="true" className="h-4 w-4" />
                 <span id="live-protect-state" className={value.armed ? "font-semibold" : "sr-only"}>{t(value.armed ? 'liveBar.protectOn' : 'liveBar.protectOff')}</span>
@@ -79,14 +80,14 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
                     actionsDetails.current.open = false; actionsRef.current?.focus({ preventScroll: true });
                 }
             }}>
-                <summary ref={actionsRef} role="button" className="inline-flex cursor-pointer list-none items-center gap-1 rounded-md px-2 py-2 text-ui-support text-muted-foreground hover:bg-muted hover:text-foreground">{t('liveBar.actions')}<MdExpandMore aria-hidden="true" className="h-4 w-4 group-open:rotate-180" /></summary>
-                <div role="group" aria-label={t('liveBar.actions')} className="mt-1 flex max-w-full flex-wrap gap-2 rounded-md bg-background p-2">
-                    {onRegister && <button type="button" onClick={() => openFromMenu(onRegister)} className="rounded-md px-3 py-2 text-ui-control hover:bg-muted">{t(registered ? 'liveBar.editRegistration' : 'liveBar.register')}</button>}
-                    {onPrepareSinging && <button type="button" onClick={() => openFromMenu(onPrepareSinging)} className="rounded-md px-3 py-2 text-ui-control hover:bg-muted">{t('home.singingSetup')}</button>}
+                <summary ref={actionsRef} role="button" className="inline-flex cursor-pointer list-none items-center gap-1 rounded-control px-2 py-2 text-ui-support text-muted-foreground hover:bg-muted hover:text-foreground">{t('liveBar.actions')}<MdExpandMore aria-hidden="true" className="h-4 w-4 group-open:rotate-180" /></summary>
+                <div role="group" aria-label={t('liveBar.actions')} className="mt-1 flex max-w-full flex-wrap gap-2 rounded-control bg-background p-2">
+                    {onRegister && <Button variant="ghost" size="sm" type="button" onClick={() => openFromMenu(onRegister)} >{t(registered ? 'liveBar.editRegistration' : 'liveBar.register')}</Button>}
+                    {onPrepareSinging && <Button variant="ghost" size="sm" type="button" onClick={() => openFromMenu(onPrepareSinging)} >{t('home.singingSetup')}</Button>}
                 </div>
             </details>}
             {(error || value.error) && <div className="basis-full space-y-2"><p role="alert" className="text-ui-support text-destructive-text">{error || t('liveNotices.operationFailed')}</p>
-                <button type="button" disabled={busy} onClick={() => void refresh()} className="rounded-md border border-border px-3 py-1.5 text-ui-support">{t('settings.LiveModeControls.236')}</button>
+                <Button variant="outline" size="sm" type="button" disabled={busy} onClick={() => void refresh()} >{t('settings.LiveModeControls.236')}</Button>
             </div>}
         </section>
     );

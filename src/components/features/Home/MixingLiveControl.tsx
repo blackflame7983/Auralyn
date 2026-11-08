@@ -4,6 +4,7 @@ import { MdMusicNote } from 'react-icons/md';
 import { mixingApi, type MixSnapshot } from '@/api/mixing';
 import { postMixApi, type PostMixSnapshot } from '@/api/postMix';
 import { useMessages } from '@/i18n/LocaleProvider';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { GainControl, MixingError, useQueuedChange } from '@/components/features/AudioSettings/mixingUi';
 import { LiveControlsHiddenContext } from './LiveControlsContext';
@@ -59,15 +60,15 @@ export function MixingLiveControl({ running, blocked, onSettings, errorsOnly = f
     const mixProblem = !!error || accompanimentFailed;
     const mixState = error ? 'mixingHome.unknown' : accompanimentFailed || !running || !mix?.config ? 'mixingHome.stopped' : mix.accompaniment?.waitingForAudio ? 'mixing.waiting' : 'mixingHome.active';
     const postState = !running || !post?.enabled || post.failed || post.ready !== true || post.attached !== true ? 'mixingHome.postStopped' : 'mixingHome.postActive';
-    return <div className="flex flex-wrap items-center gap-2 text-xs" aria-label={t('mixingHome.open')}>
-        {mix?.config && <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" disabled={blocked} aria-label={t('mixingHome.volume')} title={t('mixingHome.volume')} className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-1"><MdMusicNote aria-hidden="true" />{Math.round((desired?.gain ?? mix.config.levels.accompaniment.gain) * 100)}%</button></Popover.Trigger>
-            <Popover.Portal><Popover.Content side="bottom" sideOffset={8} className="z-50 w-72 max-w-[90vw] space-y-3 rounded-xl border border-border bg-popover p-4 shadow-lg" aria-label={t('mixingHome.volume')}>
+    return <div className="flex flex-wrap items-center gap-2 text-ui-support" aria-label={t('mixingHome.open')}>
+        {mix?.config && <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" disabled={blocked} aria-label={t('mixingHome.volume')} title={t('mixingHome.volume')} className="inline-flex items-center gap-1 rounded-control border border-input px-2 py-1"><MdMusicNote aria-hidden="true" />{Math.round((desired?.gain ?? mix.config.levels.accompaniment.gain) * 100)}%</button></Popover.Trigger>
+            <Popover.Portal><Popover.Content side="bottom" sideOffset={8} className="z-50 w-72 max-w-[90vw] space-y-3 rounded-card border border-border bg-popover p-4 shadow-lg" aria-label={t('mixingHome.volume')}>
                 <GainControl label={t('mixingUi.accompanimentVolume')} value={desired?.gain ?? mix.config.levels.accompaniment.gain} disabled={blocked} onChange={value => change({ gain: value })} />
                 <Button className="press-feedback" variant="outline" aria-pressed={desired?.muted ?? mix.config.levels.accompaniment.muted} onClick={() => change({ muted: !(pending.current?.muted ?? witness.current?.config?.levels.accompaniment.muted) })}>{t('mixing.mute')}</Button>
                 <MixingError draftRetained={false} error={error ? { operation: 'mixingUi.levels', raw: error } : null} />
             </Popover.Content></Popover.Portal></Popover.Root>}
-        <span role={mixProblem ? 'alert' : 'status'}><button type="button" disabled={blocked} onClick={onSettings} className={mixProblem ? 'rounded-md px-2 py-1 text-destructive-text' : 'rounded-md px-2 py-1 text-muted-foreground hover:text-foreground'}>
+        <span role={mixProblem ? 'alert' : 'status'}><Button variant="ghost" size="sm" type="button" disabled={blocked} onClick={onSettings} className={cn('h-auto whitespace-normal text-left', mixProblem ? 'text-destructive-text' : 'text-muted-foreground hover:text-foreground')}>
             {(mix?.config || mix?.savedConfig) && t(mixState)}{(mix?.config || mix?.savedConfig) && (post?.enabled || !!post?.savedPlugins.length || !!post?.plugins.length) && ' · '}{(post?.enabled || !!post?.savedPlugins.length || !!post?.plugins.length) && t(postState)}
-        </button></span>
+        </Button></span>
     </div>;
 }

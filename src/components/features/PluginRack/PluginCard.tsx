@@ -98,15 +98,15 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                 onCheckedChange={(checked) => onToggle(plugin.id, checked)}
                                 className="shrink-0"
                             />
-                            <h3 className={cn("min-w-0 flex-1 font-bold text-sm truncate transition-colors", plugin.enabled ? "text-foreground" : "text-muted-foreground")}>
+                            <h3 className={cn("min-w-0 flex-1 font-bold text-ui-support truncate transition-colors", plugin.enabled ? "text-foreground" : "text-muted-foreground")}>
                                 {plugin.name}
-                                {plugin.muted && <span className="ml-2 text-xs text-muted-foreground">{t('rack.card.simpleMuted')}</span>}
+                                {plugin.muted && <span className="ml-2 text-ui-support text-muted-foreground">{t('rack.card.simpleMuted')}</span>}
                             </h3>
                             {/* 省スペース表示でも復旧に必要なミュート操作を残す。 */}
                             <Button
                                 variant="outline"
                                 size="sm"
-                                className="press-feedback h-8 text-xs shrink-0 aria-pressed:bg-destructive/10 aria-pressed:text-destructive-text dark:aria-pressed:text-destructive-text aria-pressed:border-destructive-text/50"
+                                className="press-feedback h-8 text-ui-support shrink-0 aria-pressed:bg-destructive/10 aria-pressed:text-destructive-text dark:aria-pressed:text-destructive-text aria-pressed:border-destructive-text/50"
                                 aria-label={t('rack.card.muteAccessible', { arg0: plugin.name })}
                                 disabled={disabled}
                                 aria-pressed={plugin.muted}
@@ -121,7 +121,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                 disabled={disabled || !plugin.hasEditor || !plugin.enabled}
                                 onClick={() => onEdit(plugin.id)}
                                 aria-label={t('rack.card.editAccessible', { arg0: plugin.name })}
-                                className="h-8 shrink-0 text-xs"
+                                className="h-8 shrink-0 text-ui-support"
                             >
                                 {t('rack.card.edit')}</Button>
                             <Tooltip>
@@ -145,7 +145,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
 
                         {/* Gain Slider */}
                         <div className="flex items-center gap-3">
-                            <span className="max-w-[40%] shrink-0 truncate text-xs text-muted-foreground" title={latency}>{latency}</span>
+                            <span className="max-w-[40%] shrink-0 truncate text-ui-support text-muted-foreground" title={latency}>{latency}</span>
                             <div className="relative h-4 flex-1 flex items-center" onPointerDown={(e) => e.stopPropagation()}>
                                 <Slider
                                     aria-label={t('rack.card.gainAccessible', { arg0: plugin.name })}
@@ -160,7 +160,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                     className="cursor-pointer"
                                 />
                             </div>
-                            <span className="text-xs font-mono text-muted-foreground w-12 text-right">{Math.round(plugin.gain * 100)}%</span>
+                            <span className="text-ui-support font-mono text-muted-foreground w-12 text-right">{Math.round(plugin.gain * 100)}%</span>
                         </div>
                     </div>
                 </Card>
@@ -217,12 +217,12 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                             className="shrink-0"
                         />
                         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                            {plugin.muted && <span className="text-xs text-destructive-text font-semibold">{t('rack.card.muted')}</span>}
-                            <h3 className={cn("font-bold tracking-tight text-sm truncate transition-colors", plugin.enabled ? "text-foreground" : "text-muted-foreground")}>
+                            {plugin.muted && <span className="text-ui-support text-destructive-text font-semibold">{t('rack.card.muted')}</span>}
+                            <h3 className={cn("font-bold tracking-tight text-ui-support truncate transition-colors", plugin.enabled ? "text-foreground" : "text-muted-foreground")}>
                                 {plugin.name}
                             </h3>
-                            {plugin.vendor && <div className="text-xs text-muted-foreground truncate">{plugin.vendor}</div>}
-                            <div className="text-xs text-muted-foreground truncate" title={latency}>{latency}</div>
+                            {plugin.vendor && <div className="text-ui-support text-muted-foreground truncate">{plugin.vendor}</div>}
+                            <div className="text-ui-support text-muted-foreground truncate" title={latency}>{latency}</div>
                         </div>
 
                         {/* Mute Button */}
@@ -231,7 +231,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                 <Button
                                     variant={plugin.muted ? "destructive" : "outline"}
                                     size="sm"
-                                    className={cn("press-feedback h-8 shrink-0 text-xs", plugin.muted && "bg-destructive/10 text-destructive-text border-destructive-text/50 hover:bg-destructive/20 hover:text-destructive-text dark:hover:text-destructive-text ")}
+                                    className={cn("press-feedback h-8 shrink-0 text-ui-support", plugin.muted && "bg-destructive/10 text-destructive-text border-destructive-text/50 hover:bg-destructive/20 hover:text-destructive-text dark:hover:text-destructive-text ")}
                                     aria-label={t('rack.card.muteAccessible', { arg0: plugin.name })}
                                     disabled={disabled}
                                     aria-pressed={plugin.muted}
@@ -251,7 +251,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                             size="sm"
                             disabled={disabled || !plugin.hasEditor || !plugin.enabled}
                             onClick={() => onEdit(plugin.id)}
-                            className="h-8 shrink-0 text-xs font-medium"
+                            className="h-8 shrink-0 text-ui-support font-medium"
                         >
                             {t('rack.card.edit')}</Button>
 
@@ -276,7 +276,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                     </div>
 
                     {/* Gain Fader */}
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-3 text-ui-support text-muted-foreground">
                         <span className="tracking-wider">{t('rack.card.gain')}</span>
                         <Tooltip>
                             <TooltipTrigger asChild>

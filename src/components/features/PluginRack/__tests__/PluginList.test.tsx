@@ -40,3 +40,19 @@ it('キー並べ替え中の言語切替はdragを再開始・確定せず、次
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Cancelled reordering EQ'));
     expect(reorder).not.toHaveBeenCalled();
 });
+
+
+it('表示形式を矢印で選び、行の操作と音声設定を変更しない', () => {
+    localStorage.setItem('vst_host_simple_mode', 'true');
+    const toggle = vi.fn(); const gain = vi.fn(); const reorder = vi.fn();
+    render(<PluginList plugins={[{ id: 'first', name: 'EQ', path: 'eq', vendor: '', version: '', enabled: true, hasEditor: false, muted: false, gain: 1 }]}
+        onAddClick={vi.fn()} onToggle={toggle} onMute={vi.fn()} onGainChange={gain} onRemove={vi.fn()} onEdit={vi.fn()} onReorder={reorder} onOpenPresets={vi.fn()} onOpenTemplates={vi.fn()} />);
+    const radios = screen.getAllByRole('radio');
+    expect(radios).toHaveLength(2);
+    expect(radios[0]).toHaveAttribute('aria-checked', 'true');
+    radios[0].focus(); fireEvent.keyDown(radios[0], { key: 'ArrowRight' });
+    expect(radios[1]).toHaveFocus();
+    expect(radios[1]).toHaveAttribute('aria-checked', 'true');
+    expect(localStorage.getItem('vst_host_simple_mode')).toBe('false');
+    expect(toggle).not.toHaveBeenCalled(); expect(gain).not.toHaveBeenCalled(); expect(reorder).not.toHaveBeenCalled();
+});

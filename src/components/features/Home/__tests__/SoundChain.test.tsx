@@ -29,10 +29,10 @@ it('一部のVST状態だけが不明でも声の操作を禁止と案内せず�
     const current = stats(); current.latencyMetadata!.stageBreakdown!.vst[0].state = 'unavailable';
     const p = props(); const settings = vi.fn();
     render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} audioReady onOpenSoundSettings={settings} /></RuntimeStatsContext.Provider>);
-    const hint = screen.getByText(message('ja', 'home.checkUnavailable'));
-    expect(hint.closest('.sound-tool-panel')).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByText(message('ja', 'home.checkUnavailable'))).toBeInTheDocument();
+    expect(document.getElementById(screen.getByRole('button', { name: /^VST / }).getAttribute('aria-controls')!)).toHaveAttribute('aria-hidden', 'true');
     fireEvent.click(screen.getByRole('button', { name: /^VST / }));
-    expect(hint.closest('.sound-tool-panel')).toHaveAttribute('aria-hidden', 'false');
+    expect(document.getElementById(screen.getByRole('button', { name: /^VST / }).getAttribute('aria-controls')!)).toHaveAttribute('aria-hidden', 'false');
     expect(screen.getAllByText(message('ja', 'home.checkUnavailable'))).toHaveLength(1);
     expect(screen.queryByText(message('ja', 'home.voiceUnavailable'))).not.toBeInTheDocument();
     expect(screen.getByText('noise-switch')).toBeInTheDocument();
@@ -218,6 +218,10 @@ it('項目は1つだけ開き、Escapeで閉じて項目にフォーカスを戻
     expect(expanded).toHaveBeenLastCalledWith(true);
     fireEvent.click(triggers[1]);
     expect(triggers[0]).toHaveAttribute('aria-expanded', 'false');
+    const closed = document.getElementById(triggers[0].getAttribute('aria-controls')!)!;
+    expect(closed).toHaveAttribute('inert');
+    expect(closed).toHaveClass('disclosure-panel');
+    expect(closed.querySelector('.disclosure-content')).not.toBeNull();
     const panel = document.getElementById(triggers[1].getAttribute('aria-controls')!)!;
     fireEvent.keyDown(panel, { key: 'Escape' });
     expect(triggers[1]).toHaveFocus();

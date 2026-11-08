@@ -1,3 +1,4 @@
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useState, type ReactNode } from 'react';
 import { Plugin, PluginCard } from './PluginCard';
@@ -139,21 +140,18 @@ export const PluginList: React.FC<PluginListProps> = ({
             <div className="w-full space-y-4">
                 {/* Header / Rack Ears */}
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4 px-2">
-                    <h2 id={rackKind === 'voice' ? "plugin-rack-heading" : "post-mix-rack-heading"} tabIndex={-1} className="text-sm font-bold text-muted-foreground">{t(rackKind === 'voice' ? 'rack.title' : 'postMix.current')}</h2>
+                    <h2 id={rackKind === 'voice' ? "plugin-rack-heading" : "post-mix-rack-heading"} tabIndex={-1} className="text-ui-heading font-bold text-muted-foreground">{t(rackKind === 'voice' ? 'rack.title' : 'postMix.current')}</h2>
                     <div className="flex items-center gap-2">
                         {/* View Mode Toggle */}
                         {plugins.length > 0 && (
-                            // 現在の表示形式をaria-pressedで示す。
-                            <div role="group" aria-label={t('rack.viewFormat')} className="flex rounded-md border border-border p-0.5">
-                                {([[true, t('rack.simple'), MdViewCompact], [false, t('rack.detailed'), MdViewAgenda]] as const).map(([compact, label, Icon]) => (
-                                    <button key={label} type="button" aria-pressed={simpleMode === compact} onClick={() => setViewFormat(compact)}
-                                        className="inline-flex h-6 items-center gap-1 rounded px-2 text-xs text-muted-foreground hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground">
-                                        <Icon aria-hidden="true" className="w-3.5 h-3.5" />{label}
-                                    </button>
-                                ))}
-                            </div>
+                            <SegmentedControl label={t('rack.viewFormat')} value={simpleMode ? 'simple' : 'detailed'}
+                                onValueChange={value => setViewFormat(value === 'simple')}
+                                options={[
+                                    { value: 'simple', label: <><MdViewCompact aria-hidden="true" className="h-4 w-4" />{t('rack.simple')}</> },
+                                    { value: 'detailed', label: <><MdViewAgenda aria-hidden="true" className="h-4 w-4" />{t('rack.detailed')}</> },
+                                ]} />
                         )}
-                        {rackKind === 'voice' && <Button variant="outline" size="sm" onClick={onOpenPresets} className="h-7 text-xs gap-2">
+                        {rackKind === 'voice' && <Button variant="outline" size="sm" onClick={onOpenPresets} className="gap-2">
                             <MdFolderOpen className="w-3.5 h-3.5" />
                             {t('rack.manageProfiles')}</Button>}
                         {headerAction}
@@ -217,7 +215,7 @@ export const PluginList: React.FC<PluginListProps> = ({
                             }`}
                     >
                         <MdAdd className={`w-5 h-5 ${theme === 'gaming' ? 'animate-pulse' : ''}`} />
-                        <span className="text-sm">{t('rack.addEffects')}</span>
+                        <span>{t('rack.addEffects')}</span>
                     </Button>
                 )}
                 {/* Footer Spacer for AppShell Footer */}
