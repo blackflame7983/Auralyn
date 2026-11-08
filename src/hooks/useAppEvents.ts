@@ -13,7 +13,7 @@ import { confirmShortcutOutputGain, type ShortcutGainIntent } from '../api/outpu
 interface UseAppEventsProps {
     onAddPlugin: (plugin: VstPlugin) => Promise<boolean>;
     onResetPlugins: () => void;
-    onCrash: (error: string) => void;
+    onCrash: (error: string, exit?: AudioEngineExit) => void;
     onLoadPreset: (name: string) => Promise<boolean>;
 }
 
@@ -94,7 +94,7 @@ export const useAppEvents = ({
         });
         const exited = listen<AudioEngineExit>('audio-engine-exited', event => {
             onResetPlugins();
-            onCrash(renderAudioEngineExit(t, event.payload));
+            onCrash(renderAudioEngineExit(t, event.payload), event.payload);
         });
         return () => {
             unlisten.then(f => f());

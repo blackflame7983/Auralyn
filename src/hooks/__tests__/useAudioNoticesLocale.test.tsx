@@ -91,7 +91,7 @@ it.each(['legacy-first', 'detail-first'])('エンジン終了通知は%sでも�
     const detail = () => notify('audio-engine-exited', {cause: 'vst_operation', op: 'set_state', name: 'Echo'});
     if (order === 'legacy-first') { legacy(); detail(); } else { detail(); legacy(); }
     expect(props.onResetPlugins).toHaveBeenCalledOnce();
-    expect(props.onCrash).toHaveBeenCalledExactlyOnceWith('The audio engine stopped during state application for Echo.');
+    expect(props.onCrash).toHaveBeenCalledExactlyOnceWith('The audio engine stopped during state application for Echo.', {cause: 'vst_operation', op: 'set_state', name: 'Echo'});
 });
 
 it('原因不明の終了も既存の復旧画面へ伝える', async () => {
@@ -99,5 +99,5 @@ it('原因不明の終了も既存の復旧画面へ伝える', async () => {
     const props = {onAddPlugin: vi.fn(async () => true), onResetPlugins: vi.fn(), onCrash: vi.fn(), onLoadPreset: vi.fn(async () => true)};
     renderHook(() => useAppEvents(props), {wrapper}); await act(async () => {});
     notify('audio-engine-exited', {cause: 'unknown'});
-    expect(props.onCrash).toHaveBeenCalledExactlyOnceWith('音声エンジンが停止しました。原因のVSTは特定できません。');
+    expect(props.onCrash).toHaveBeenCalledExactlyOnceWith('音声エンジンが停止しました。原因のVSTは特定できません。', {cause: 'unknown'});
 });

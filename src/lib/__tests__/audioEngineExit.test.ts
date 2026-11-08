@@ -1,6 +1,7 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { message } from '../../i18n/messages';
-import { renderAudioEngineExit, type AudioEngineExit } from '../audioEngineExit';
+import { crashedPluginMarker, renderAudioEngineExit, type AudioEngineExit } from '../audioEngineExit';
+import { readPending } from '../pluginIdentity';
 
 it.each(['ja', 'en'] as const)('%sでVST名と操作を表示する', locale => {
     const rendered = renderAudioEngineExit((key, args) => message(locale, key, args), { cause: 'vst_operation', op: 'load', name: 'Echo', path: 'C:/VST/Other.vst3' });
@@ -29,4 +30,21 @@ it.each(['load', 'restore', 'set_state', 'get_state', 'open_editor', 'remove', '
 it('個別名や未知の操作がなくても安全な文言を返す', () => {
     expect(renderAudioEngineExit((key, args) => message('ja', key, args), { cause: 'vst_operation', op: 'future' } as unknown as AudioEngineExit))
         .toBe('VSTの操作の途中で音声エンジンが停止しました。');
+});
+
+describe('crashedPluginMarker', () => {
+    it('Hostが特定したVSTを、読み込み以外の操作でも除外候補にする', () => {
+        const marker = crashedPluginMarker({ cause: 'vst_operation', op: 'open_editor', path: 'C:/VST/Echo.vst3', classId: 'abc' }, null);
+        expect(readPending(marker)).toEqual({ path: 'C:/VST/Echo.vst3', classId: 'abc' });
+    });
+
+    it('Hostの特定を、読み込み中の印より優先する', () => {
+        expect(crashedPluginMarker({ cause: 'vst_operation', op: 'get_state', path: 'B.vst3' }, 'A.vst3')).toBe('B.vst3');
+    });
+
+    it('特定できないときは、読み込み中の印に戻す', () => {
+        expect(crashedPluginMarker({ cause: 'unknown' }, 'A.vst3')).toBe('A.vst3');
+        expect(crashedPluginMarker({ cause: 'vst_operation', op: 'processing_setup' }, null)).toBeNull();
+        expect(crashedPluginMarker(undefined, null)).toBeNull();
+    });
 });
