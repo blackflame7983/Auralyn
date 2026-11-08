@@ -376,7 +376,9 @@ pub struct Engine {
 
     // Active Audio Config
     current_sample_rate: f64,
+    current_input_rate: u32,
     current_block_size: usize,
+    round_trip: super::latency_measure::Controller,
     fixed_buffer_request_frames: Option<u32>,
     // bundle保存用の最後に成功した要求。None=未取得、Some(None)=Default。
     bundle_last_fixed_buffer_request: Option<Option<u32>>,
@@ -513,7 +515,9 @@ impl Engine {
             pending_audio_msgs: Vec::new(),
             frames_processed: Arc::new(AtomicU64::new(0)),
             current_sample_rate: 0.0,
+            current_input_rate: 0,
             current_block_size: 0,
+            round_trip: super::latency_measure::Controller::new(),
             fixed_buffer_request_frames: None,
             bundle_last_fixed_buffer_request: None,
             session_rack_revision: 0,
@@ -650,6 +654,7 @@ impl Engine {
                 Event::AboutToWait => {
                     if let Some(timing) = &mut self.frame_timing { timing.drain(); }
                     self.voice_preview.poll(self.processing_running() && !self.stream_failed.load(Ordering::Acquire));
+                    self.round_trip.poll(self.stream_failed.load(Ordering::Acquire));
                     if self.processing_running() && !self.stream_failed.load(Ordering::Acquire) {
                         if !self.mixing_source_failure_reported && self.mixing_input_shared.as_ref().is_some_and(|source| source.failed.load(Ordering::Acquire)) {
                             self.mixing_source_failure_reported = true;
@@ -1929,9 +1934,13 @@ impl Engine {
         if let Some(sink) = &self.live_output {
             sink.deactivate();
         }
+        self.round_trip.preempt("stopped");
         self.input_stream = None;
         self.mixing_source = None;
         self.output_stream = None;
+        // ストリーム破棄がコールバックの復帰を待ったあとで、測定バッファを制御側へ戻す。
+        self.round_trip.on_streams_dropped();
+        self.current_input_rate = 0;
         self.post_worker = None;
         if let Some(mut owner) = self.process_renderer_owner.take() {
             drop(owner.take());

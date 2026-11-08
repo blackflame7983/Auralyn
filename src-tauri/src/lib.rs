@@ -521,6 +521,9 @@ pub fn run() {
             commands::voice_check::analyze_voice_check,
             commands::audio::play_test_tone,
             commands::audio::stop_test_tone,
+            commands::audio::measure_round_trip,
+            commands::audio::cancel_round_trip_measurement,
+            commands::audio::get_round_trip_measurement,
             commands::audio::probe_loopback,
             commands::audio::get_routing_diagnostics,
         ])

@@ -213,7 +213,8 @@ pub(super) fn command_changes(command: &Command) -> bool {
         // 録音tapの停止は通常送出の処理・経路を変えない。画面の後始末で
         // 同期witnessや新しい独立試聴を自己失効させない。
         | Command::StopVoiceCheckRecording
-        | Command::ExportVoiceCheck { .. } => false,
+        | Command::ExportVoiceCheck { .. }
+        | Command::GetRoundTripMeasurement => false,
         Command::PeakProtection { config } => config.is_some(),
         Command::BroadcastTruePeak { config } => config.is_some(),
         Command::NoiseMeasurement { request } => !matches!(request, crate::audio_engine::core::noise_learning::Request::Snapshot),
@@ -392,6 +393,7 @@ mod tests {
     fn only_audio_mutations_notify_and_read_commands_preserve_witness() {
         for command in [
             Command::GetRuntimeStats,
+            Command::GetRoundTripMeasurement,
             Command::GetFrameTimingTrace {
                 expected_epoch: "epoch".into(),
             },

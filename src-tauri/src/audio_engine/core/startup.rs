@@ -290,6 +290,7 @@ impl Engine {
         );
 
         self.current_input_channels = in_stream_config.channels as usize;
+        self.current_input_rate = in_stream_config.sample_rate;
         self.resolve_start_channels()?;
 
         // 今回の要求・固定サイズ検出後に全処理段の上限を揃える。
@@ -1023,12 +1024,18 @@ impl Engine {
         } else {
             None
         };
+        let measure_output = self.round_trip.bridge();
+        let measure_input = self.round_trip.bridge();
         let build_output = || {
             let output_build_started = Instant::now();
             let mut output_cadence = OutputCadence::new(callback_rate);
+            // スイープ用の領域はストリーム構築時に確保し、コールバックでは再利用する。
+            let measure_bridge = measure_output;
+            let mut measure_dry = vec![0.0f32; max_frames_per_callback.max(1)];
             let mut process_output =
                 move |data: &mut [f32], info: Option<&cpal::OutputCallbackInfo>| {
                     if dsp_silence.drain_worker() {
+                        measure_bridge.abandon_stopped();
                         if let Some(mixer) = &mut broadcast_mixer {
                             mixer.get_mut().reset();
                         }
@@ -1060,6 +1067,7 @@ impl Engine {
                             );
                             upstream_consumed = upstream_consumed.saturating_add(skipped as u64);
                             worker_generation = generation;
+                            measure_bridge.abandon_stopped();
                             data.fill(0.0);
                             return;
                         }
@@ -1075,6 +1083,7 @@ impl Engine {
                         || output_resampling_failed.load(Ordering::Acquire)
                         || output_stream_failed.load(Ordering::Acquire)
                     {
+                        measure_bridge.abandon_stopped();
                         write_device_silence(data);
                         return;
                     }
@@ -1085,6 +1094,7 @@ impl Engine {
                         &output_stream_failed,
                         &output_capacity_failed,
                     ) else {
+                        measure_bridge.abandon_stopped();
                         return;
                     };
                     let measurement_ticket = worker_generation_controls
@@ -1097,6 +1107,7 @@ impl Engine {
                         {
                             let Some(value) = queue.try_pop() else {
                                 output_stream_failed.store(true, Ordering::Release);
+                                measure_bridge.abandon_stopped();
                                 write_device_silence(data);
                                 return;
                             };
@@ -1186,12 +1197,21 @@ impl Engine {
                         rt_voice_check: &mut rt_voice_check,
                         rt_test_tone: &mut rt_test_tone,
                     }) {
+                        measure_bridge.abandon_stopped();
                         write_device_silence(data);
                         return;
                     }
 
                     let channels = channels_len;
                     let frames = actual_frames;
+                    // 先頭サンプルを出すブロックの開始側で、入力が書き終えたフレーム数を一度読む。
+                    let measure_hold = measure_bridge.blocks_downstream();
+                    let measure_action = if frames <= measure_dry.len() {
+                        measure_bridge.render(frames, rt_global_mute, &mut measure_dry)
+                    } else {
+                        measure_bridge.abandon_stopped();
+                        super::super::latency_measure::OutputAction::Passthrough
+                    };
 
                     // --- 1. Efficient Input Data Fetch & De-interleaving ---
                     // 測定・別再生中は通常マイクの回復を開始しない。
@@ -1199,6 +1219,7 @@ impl Engine {
                         rt_loudness.reset(Some(id));
                     }
                     let recovery_blocked = rt_global_mute
+                        || measure_hold
                         || rt_test_tone.is_active()
                         || rt_voice_check.is_playback_active()
                         || rt_voice_check.is_recording_active()
@@ -1331,8 +1352,8 @@ impl Engine {
                         }
                     }
 
-                    if rt_test_tone.is_active() {
-                        // テストトーン中はマイク入力をミュート
+                    if rt_test_tone.is_active() || measure_hold {
+                        // テスト音と往復測定のあいだは、マイクを配信と本人用の後段へ流さない。
                         for channel in &mut planar_buf_a[..channels.min(2)] {
                             channel[..frames].fill(0.0);
                         }
@@ -1523,6 +1544,7 @@ impl Engine {
                             rt_comparison.bypassed(),
                         ) {
                             output_stream_failed.store(true, Ordering::Release);
+                            measure_bridge.abandon_stopped();
                             write_device_silence(data);
                             return;
                         }
@@ -1530,12 +1552,14 @@ impl Engine {
 
                     let cohort_normal_mic = comparison_settled
                         && !rt_global_mute
+                        && !measure_hold
                         && !rt_test_tone.is_active()
                         && !rt_voice_check.is_playback_active();
                     if let Some(sender) = &mut live_sender {
                         sender.get_mut().normal(cohort_normal_mic);
                     }
                     if rt_global_mute
+                        || measure_hold
                         || rt_test_tone.is_active()
                         || rt_voice_check.is_playback_active()
                     {
@@ -1554,6 +1578,38 @@ impl Engine {
                         let _ = level_prod.try_push(MeterLevels {
                             input: [in_max_l, in_max_r],
                             output: [0.0, 0.0],
+                        });
+                    } else if measure_action == super::super::latency_measure::OutputAction::Replace
+                    {
+                        // テスト音と同じく gain とピーク保護だけを通し、配信へは送らない。
+                        data.fill(0.0);
+                        let output_pair = if separated {
+                            [0, 1]
+                        } else {
+                            super::super::queue_diagnostics::routed_output_pair(
+                                rt_output_routing,
+                                is_asio,
+                                rt_physical_input,
+                                channels,
+                            )
+                        };
+                        let mut out_max_l = 0.0f32;
+                        let mut out_max_r = 0.0f32;
+                        for i in 0..frames {
+                            let gain = rt_output_gain.next();
+                            let sample = measure_dry.get(i).copied().unwrap_or(0.0) * gain;
+                            let [main_l, main_r] = rt_peak.process([sample, sample]);
+                            let sent = super::super::queue_diagnostics::write_output_frame(
+                                &mut data[i * channels..(i + 1) * channels],
+                                output_pair,
+                                [main_l, main_r],
+                            );
+                            out_max_l = out_max_l.max(sent[0]);
+                            out_max_r = out_max_r.max(sent[1]);
+                        }
+                        let _ = level_prod.try_push(MeterLevels {
+                            input: [0.0, 0.0],
+                            output: [out_max_l, out_max_r],
                         });
                     } else if rt_test_tone.is_active() {
                         data.fill(0.0);
@@ -1846,6 +1902,7 @@ impl Engine {
             audio_prod,
             batch_timing,
             input_callbacks,
+            measure: measure_input,
         };
         let build_input = || {
             let input_build_started = Instant::now();

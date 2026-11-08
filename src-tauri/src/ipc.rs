@@ -676,6 +676,12 @@ pub enum Command {
         duration_ms: u32,
         freq_hz: f32,
     },
+    /// 出力機器から入力機器へ戻る往復を測る。`level_db` なしはテスト音と同じ既定。
+    MeasureRoundTrip {
+        level_db: Option<f32>,
+    },
+    CancelMeasurement,
+    GetRoundTripMeasurement,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -844,6 +850,7 @@ pub enum Response {
         level_db: f32,
         unavailable: Option<String>,
     },
+    RoundTrip(crate::audio_engine::latency_measure::Snapshot),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

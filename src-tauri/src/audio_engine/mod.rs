@@ -6,6 +6,7 @@ mod deferred_drop;
 pub mod devices;
 pub mod editors;
 pub mod frame_timing;
+pub mod latency_measure;
 pub mod loopback_probe;
 pub mod plugins;
 pub(crate) mod process_capture;

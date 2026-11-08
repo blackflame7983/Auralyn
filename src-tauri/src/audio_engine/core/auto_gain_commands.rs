@@ -354,6 +354,7 @@ impl Engine {
                     error: None,
                     started: Instant::now(),
                 });
+                self.round_trip.preempt("stopped");
                 self.gain_shared.failed.store(false, Ordering::Release);
                 self.gain_shared.done.store(0, Ordering::Release);
                 self.gain_shared
