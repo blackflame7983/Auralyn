@@ -204,11 +204,7 @@ test.describe('操作部品のサイズとテーマ', () => {
             // 20段階の操作に6px以上/段を確保し、長大なバーにしない。
             expect(box.width).toBeGreaterThanOrEqual(120);
             expect(box.width).toBeLessThanOrEqual(240);
-            const before = Number(await range.getAttribute('aria-valuenow'));
-            await range.focus();
-            await page.keyboard.down(before >= 100 ? 'ArrowLeft' : 'ArrowRight');
-            await expect(range).toHaveAttribute('aria-valuenow', String(before + (before >= 100 ? -5 : 5)));
-            await page.keyboard.up(before >= 100 ? 'ArrowLeft' : 'ArrowRight');
+            // 幅だけを確かめる。値を動かすと確定して音声処理へ送るため、この画面試験では操作しない（刻みは単体試験で確かめる）。
             await page.screenshot({ path: testInfo.outputPath(`controls-${width}.png`) });
         }
     });

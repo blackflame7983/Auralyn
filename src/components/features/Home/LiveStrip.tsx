@@ -62,7 +62,7 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
         <div data-layout-motion className="live-meter-pair">
         <div data-layout-motion className="live-input-summary live-channel">
             <span className="live-meter-label flex items-center gap-1.5 text-ui-support text-muted-foreground"><Icon aria-hidden="true" className="h-5 w-5 shrink-0" />{t(music ? 'live.meterInput' : 'live.voice')}</span>
-            {input && (onOpenDevices ? <Button variant="ghost" size="default" type="button" onClick={onOpenDevices} aria-label={devices} title={devices} className="live-device text-left">{deviceDisplayName(input)}</Button> : <span className="live-device text-ui-support text-muted-foreground">{deviceDisplayName(input)}</span>)}
+            {input && (onOpenDevices ? <button type="button" onClick={onOpenDevices} aria-label={devices} title={devices} className="live-device text-left text-ui-support text-muted-foreground hover:text-foreground">{deviceDisplayName(input)}</button> : <span className="live-device text-ui-support text-muted-foreground">{deviceDisplayName(input)}</span>)}
             <div className="live-channel-meter"><LiveInputMeter running={running} music={music} /></div>
             <div className="live-channel-actions"><InputGainControl disabled={controlsDisabled} /></div>
         </div>
