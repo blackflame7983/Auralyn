@@ -313,7 +313,7 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                 </tr>
                 <tr className="border-b border-border">
                 <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.175')}</th>
-                <td className="py-2 text-right tabular-nums">{engineStats ? `${(engineStats.maxJitterUs / 1000).toFixed(2)}ms` : '-'}</td>
+                <td className="py-2 text-right tabular-nums">{engineStats ? `${(engineStats.maxJitterUs / 1000).toFixed(2)} ms` : '-'}</td>
                 </tr>
                 <tr className="border-b border-border">
                 <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.176')}</th>

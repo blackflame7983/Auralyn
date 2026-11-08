@@ -129,7 +129,7 @@ it('通常VoiceCheckで提案を作りlocaleを替えても候補・device・安
     await act(async () => {});
     fireEvent.change(screen.getByLabelText('manual draft'), { target: { value: '140' } });
     fireEvent.click(create);
-    await screen.findByText(/低音整理80Hz/);
+    await screen.findByText(/低音整理80 Hz/);
     fireEvent.click(screen.getByRole('button', { name: '試聴先を取得・更新' }));
     await screen.findByRole('option', { name: '実名ヘッドホン' });
     fireEvent.change(screen.getByRole('combobox', { name: 'ボイスチェックの試聴先' }), { target: { value: 'hp' } });
@@ -220,7 +220,7 @@ it('手動Aと録音提案Bを混同せず、手動再準備後のA/BにはAのc
     await waitFor(() => expect(manual).toBeEnabled());
     fireEvent.change(screen.getByLabelText('manual'), { target: { value: '140' } });
     fireEvent.click(screen.getByRole('button', { name: '録音から比較候補を作る' }));
-    await screen.findByText(/低音整理80Hz/);
+    await screen.findByText(/低音整理80 Hz/);
     expect(screen.queryByText('候補の準備ができました。試聴先を確認して再生してください。')).not.toBeInTheDocument();
     expect(screen.getByText('A/B対象：原音と録音由来の提案（声を整える機能のみ）')).toBeVisible();
     expect(screen.getByRole('button', { name: 'この音をマイクへ適用' })).toBeDisabled();

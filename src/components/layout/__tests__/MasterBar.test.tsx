@@ -206,7 +206,7 @@ describe('起動時の保存ゲイン復元', () => {
         expect(screen.getByRole('dialog', { name: '音声処理の詳細' })).toBeInTheDocument();
         expect(screen.getByText('WASAPI')).toBeInTheDocument();
         expect(screen.queryByText('48,000 Hz')).not.toBeInTheDocument();
-        expect(screen.queryByText('推定 41.3ms')).not.toBeInTheDocument();
+        expect(screen.queryByText('推定 41.3 ms')).not.toBeInTheDocument();
         fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
         await act(async () => { await vi.advanceTimersByTimeAsync(10); });
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -214,9 +214,9 @@ describe('起動時の保存ゲイン復元', () => {
         view.rerender(<MasterBar host="Wasapi" sampleRate={48000} bufferSize={512} isRunning />);
         await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
         expect(screen.getByText('VST有効')).toBeInTheDocument();
-        expect(screen.queryByText('推定 41.3ms')).not.toBeInTheDocument();
+        expect(screen.queryByText('推定 41.3 ms')).not.toBeInTheDocument();
         fireEvent.click(details);
-        expect(screen.queryByText('推定 41.3ms')).not.toBeInTheDocument();
+        expect(screen.queryByText('推定 41.3 ms')).not.toBeInTheDocument();
         expect(screen.getByText(/根拠情報を未取得です/)).toBeInTheDocument();
         expect(screen.getByText('48,000 Hz')).toBeInTheDocument();
     });
