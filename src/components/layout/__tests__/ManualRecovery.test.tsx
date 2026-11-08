@@ -25,3 +25,21 @@ it('Start失敗はclose・保存に進まず、同じ画面で再試行できる
     expect(start).toHaveBeenCalledTimes(2); expect(recover).toHaveBeenCalledTimes(2);
     expect(save).not.toHaveBeenCalled();
 });
+
+it('機器開始時の終了情報を復旧画面へ渡し、停止後に機器を選べる音声設定を開く', async () => {
+    const start = vi.spyOn(audioApi, 'start');
+    const stop = vi.fn(async () => {}); const settings = vi.fn(); const close = vi.fn();
+    const props = {
+        ui: {
+            isRecoveryModalOpen: true, setIsRecoveryModalOpen: close, crashError: '機器の開始時に停止',
+            crashExit: { cause: 'device_open', host: 'ASIO', phase: 'opening' }, setIsSettingsOpen: settings,
+        },
+        audioConfig: { host: 'ASIO' }, pluginsApi: { keepSessionStopped: stop },
+        handleConfigUpdate: vi.fn(), onPluginAdded: vi.fn(),
+    } as unknown as ComponentProps<typeof ModalLayer>;
+    render(<ModalLayer {...props} />);
+    fireEvent.click(await screen.findByRole('button', { name: '別の機器を選ぶ' }));
+    await waitFor(() => expect(settings).toHaveBeenCalledWith(true));
+    expect(stop).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledWith(false);
+    expect(start).not.toHaveBeenCalled();
+});

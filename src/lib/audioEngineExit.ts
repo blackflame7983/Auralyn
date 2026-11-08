@@ -14,18 +14,27 @@ const operationKeys = {
 } as const satisfies Record<string, MessageKey>;
 
 export interface AudioEngineExit {
-    cause: 'vst_operation' | 'unknown';
+    cause: 'vst_operation' | 'device_open' | 'unknown';
     op?: keyof typeof operationKeys;
     pluginId?: string;
     path?: string;
     classId?: string;
     name?: string;
     elapsedMs?: number;
+    host?: string;
+    input?: string;
+    output?: string;
+    phase?: 'opening' | 'settling';
 }
 
 export const legacyEngineExit = 'Audio Engine Process Exited (Crash?)';
 
 export function renderAudioEngineExit(t: ReturnType<typeof useMessages>, exit: AudioEngineExit): string {
+    if (exit.cause === 'device_open') {
+        const devices = [...new Set([exit.input?.trim(), exit.output?.trim()].filter(Boolean))];
+        const name = devices.join(' / ') || exit.host?.trim() || t('audioNotices.deviceFallback');
+        return t(exit.phase === 'settling' ? 'audioNotices.engineExitedDeviceSettling' : 'audioNotices.engineExitedDeviceOpening', { name });
+    }
     if (exit.cause !== 'vst_operation') return t('audioNotices.engineExitedUnknown');
     const name = exit.name?.trim() || exit.path?.split(/[\\/]/).filter(Boolean).pop() || t('audioNotices.vstFallback');
     const key = exit.op && Object.prototype.hasOwnProperty.call(operationKeys, exit.op) ? operationKeys[exit.op] : 'audioNotices.vstOp.other';
@@ -38,6 +47,7 @@ export function renderAudioEngineExit(t: ReturnType<typeof useMessages>, exit: A
  * 特定できないときは、従来どおり読み込み中の印を使う。
  */
 export function crashedPluginMarker(exit: AudioEngineExit | undefined, pending: string | null): string | null {
+    if (exit?.cause === 'device_open') return null;
     if (exit?.cause === 'vst_operation' && exit.path) return pendingStorageValue({ path: exit.path, classId: exit.classId });
     return pending;
 }

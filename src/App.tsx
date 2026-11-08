@@ -67,6 +67,7 @@ function AppContent() {
         localStorage.setItem('vst_host_detected_crash_plugin', crashed);
       }
       ui.setCrashError(err);
+      ui.setCrashExit(exit);
       ui.setIsRecoveryModalOpen(true);
     },
     onLoadPreset: pluginsApi.loadPreset,

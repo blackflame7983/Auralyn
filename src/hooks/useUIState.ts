@@ -1,5 +1,6 @@
 import { openStreamMixPanel } from '@/lib/streamMixPanel';
 import { useState } from 'react';
+import type { AudioEngineExit } from '@/lib/audioEngineExit';
 
 export const useUIState = () => {
     const [isSettingsOpen, setSettingsOpen] = useState(false);
@@ -69,6 +70,7 @@ export const useUIState = () => {
     const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false);
     const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
     const [crashError, setCrashError] = useState<string | null>(null);
+    const [crashExit, setCrashExit] = useState<AudioEngineExit>();
     const [isPresetManagerOpen, setIsPresetManagerOpen] = useState(false);
     const [isLargeMeterOpen, setIsLargeMeterOpen] = useState(false);
     const [isTroubleshootOpen, setIsTroubleshootOpen] = useState(false);
@@ -103,6 +105,8 @@ export const useUIState = () => {
         setIsRecoveryModalOpen,
         crashError,
         setCrashError,
+        crashExit,
+        setCrashExit,
         isPresetManagerOpen,
         setIsPresetManagerOpen,
         isLargeMeterOpen,
