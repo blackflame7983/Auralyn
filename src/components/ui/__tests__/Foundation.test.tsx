@@ -54,6 +54,14 @@ it('SliderField の無効状態ではキー操作を反映しない', () => {
     render(<SliderField disabled label="強さ" value={30} formatValue={n => `${n}%`} onValueChange={change} />);
     fireEvent.keyDown(screen.getByRole('slider'), { key: 'End' }); expect(change).not.toHaveBeenCalled();
 });
+it('SliderField は外側の fieldset の無効を引き継ぎ、無効が解けたら操作できる', () => {
+    const change = vi.fn();
+    function Example({ off }: { off: boolean }) { return <fieldset disabled={off}><SliderField label="量" value={30} formatValue={n => `${n}%`} onValueChange={change} /></fieldset>; }
+    const { rerender } = render(<Example off />);
+    fireEvent.keyDown(screen.getByRole('slider'), { key: 'End' }); expect(change).not.toHaveBeenCalled();
+    rerender(<Example off={false} />);
+    fireEvent.keyDown(screen.getByRole('slider'), { key: 'End' }); expect(change).toHaveBeenCalled();
+});
 it('Disclosure は開閉の補間を指定し、閉じた内容を操作・読み上げから外す', async () => {
     const { container } = render(<Disclosure label="詳細"><Input aria-label="中身" /></Disclosure>);
     const trigger = screen.getByRole('button', { name: '詳細' });
