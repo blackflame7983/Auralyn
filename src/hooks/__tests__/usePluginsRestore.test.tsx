@@ -67,6 +67,54 @@ it('単体editor fallbackは内部stateなしを明示した一括設定で再�
     expect(result.current.plugins[0].id).toBe('restored-id');
     expect(audioApi.loadPlugin).toHaveBeenCalledTimes(1);
 });
+it('エンジン再起動後の再読込は同じファイルの別クラスを取り違えない', async () => {
+    let loadedCount = 0;
+    vi.mocked(audioApi.loadPlugin).mockImplementation(async () => `loaded-${++loadedCount}`);
+    const { result } = renderHook(() => usePlugins());
+    await act(async () => {});
+    const shared = { path: 'same.vst3', vendor: 'Studio', version: '1', category: 'Fx' };
+    await act(async () => {
+        await result.current.addPlugin({ ...plugin, ...shared, name: 'Delay', classId: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' });
+        await result.current.addPlugin({ ...plugin, ...shared, name: 'Comp', classId: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB' });
+    });
+    const secondId = result.current.plugins[1].id;
+    let restoredCount = 0;
+    vi.mocked(audioApi.restorePlugin).mockImplementation(async request => {
+        restoredCount += 1;
+        return { id: `restored-${restoredCount}`, name: request.classId?.startsWith('B') ? 'Comp' : 'Delay', prepared: false, classId: request.classId };
+    });
+    vi.mocked(audioApi.openEditor).mockRejectedValueOnce(new Error('loaded_count=0'));
+    await act(async () => { await result.current.openEditor(secondId); });
+    expect(audioApi.openEditor).toHaveBeenLastCalledWith('restored-2');
+    expect(result.current.plugins.map(item => [item.id, item.classId])).toEqual([
+        ['restored-1', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'],
+        ['restored-2', 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB'],
+    ]);
+});
+
+it('同じクラスの複数インスタンスも再読込後の並びで対応づける', async () => {
+    let loadedCount = 0;
+    vi.mocked(audioApi.loadPlugin).mockImplementation(async () => `loaded-${++loadedCount}`);
+    const { result } = renderHook(() => usePlugins());
+    await act(async () => {});
+    const twin = { ...plugin, path: 'same.vst3', name: 'Delay', classId: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' };
+    await act(async () => {
+        await result.current.addPlugin(twin);
+        await result.current.addPlugin(twin);
+    });
+    let restoredCount = 0;
+    vi.mocked(audioApi.restorePlugin).mockImplementation(async request => {
+        restoredCount += 1;
+        return { id: `restored-${restoredCount}`, name: 'Delay', prepared: false, classId: request.classId };
+    });
+    vi.mocked(audioApi.openEditor).mockRejectedValueOnce(new Error('loaded_count=0'));
+    await act(async () => { await result.current.openEditor(result.current.plugins[1].id); });
+    expect(audioApi.restorePlugin).toHaveBeenNthCalledWith(1, expect.objectContaining({ path: 'same.vst3', classId: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }));
+    expect(audioApi.restorePlugin).toHaveBeenNthCalledWith(2, expect.objectContaining({ path: 'same.vst3', classId: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }));
+    expect(audioApi.openEditor).toHaveBeenLastCalledWith('restored-2');
+    expect(result.current.plugins.map(item => item.id)).toEqual(['restored-1', 'restored-2']);
+});
+
 it('全体editor fallbackの一括復元失敗では旧分割APIへ戻さない', async () => {
     const { result } = await loaded();
     vi.mocked(audioApi.openEditor).mockRejectedValueOnce(new Error('loaded_count=0'));

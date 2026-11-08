@@ -27,6 +27,7 @@ impl Engine {
                 enabled: !self.plugin_manager.bypassed.contains(id),
                 muted: self.plugin_manager.muted.contains(id),
                 gain: *self.plugin_manager.gains.get(id).unwrap_or(&1.0),
+                class_id: Some(instance.class_id.clone()).filter(|id| !id.is_empty()),
             });
         }
         Response::PluginRack {
@@ -53,6 +54,7 @@ mod tests {
             bypassed: true,
             muted: true,
             gain: 0.4,
+            class_id: None,
         }
     }
     #[test]
@@ -75,7 +77,8 @@ mod tests {
             assert!(!plugins[0].enabled && plugins[0].muted);
             assert_eq!(plugins[0].gain, 0.4);
             let value = serde_json::to_value(&plugins[0]).unwrap();
-            assert_eq!(value.as_object().unwrap().len(), 6);
+            assert_eq!(value.as_object().unwrap().len(), 7);
+            assert!(value.get("classId").is_some());
             assert!(value.get("state").is_none() && value.get("controller").is_none());
             assert!(engine.session_rack_matches(std::slice::from_ref(&id), 0));
             assert!(!engine.session_rack_matches(&[], 0));

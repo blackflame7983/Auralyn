@@ -29,6 +29,7 @@ export interface Plugin {
     hasEditor: boolean;
     muted: boolean;
     gain: number;
+    classId?: string;
 }
 
 interface PluginCardProps {

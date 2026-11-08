@@ -14,6 +14,9 @@ pub struct PresetPlugin {
     pub muted: bool,
     pub gain: f32,
     pub state: Option<String>, // Base64
+    /// 無い旧プリセットはパスだけを使い、開いた後の CID を次回から保存する。
+    #[serde(default, rename = "classId", skip_serializing_if = "Option::is_none")]
+    pub class_id: Option<String>,
 }
 
 /// v2 拡張: オーディオデバイス設定
@@ -146,6 +149,9 @@ pub struct LoadedPluginInstance {
     pub enabled: bool,
     pub muted: bool,
     pub gain: f32,
+    /// 実際に開いたクラス。無い旧結果は省略のまま読む。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class_id: Option<String>,
 }
 
 /// プロファイル適用結果サマリ
@@ -416,6 +422,7 @@ mod tests {
             muted: false,
             gain: 1.0,
             state: None,
+            class_id: None,
         });
         assert!(legacy_nonempty.includes_plugin_category());
     }

@@ -1754,6 +1754,9 @@ impl Engine {
         let muted = staged.request.muted;
         let phase = Instant::now();
         let (id, name, index) = self.plugin_manager.commit_restored(staged, index);
+        let opened = self.plugin_manager.plugins.get(&id);
+        let class_id = opened.map(|instance| instance.class_id.clone());
+        let legacy_class_ambiguous = opened.is_some_and(|instance| instance.legacy_class_ambiguous);
         let prepared = processor.is_some();
         if let Some(processor) = processor {
             self.queue_add_processor(index, processor, gain, bypassed, muted);
@@ -1766,7 +1769,13 @@ impl Engine {
         self.acknowledge_processing_preparation();
         self.send_response(Response::PluginRestored {
             operation_id,
-            plugin: crate::ipc::RestoredPlugin { id, name, prepared },
+            plugin: crate::ipc::RestoredPlugin {
+                id,
+                name,
+                prepared,
+                class_id,
+                legacy_class_ambiguous,
+            },
         });
     }
 

@@ -3,9 +3,10 @@ import { createLocaleStore } from '@/i18n/locale';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { VstPlugin } from '@/api/audio';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { PluginBrowserModal } from '../PluginBrowserModal';
 
-afterEach(() => { cleanup(); localStorage.clear(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 const plugins = [
     { name: 'Legacy EQ', path: 'eq.vst3', vendor: null, category: undefined },
@@ -97,6 +98,113 @@ it('localeだけでカテゴリ表示を更新しID・検索・実名・favorite
     expect(JSON.stringify(plugins)).toBe(original);
     expect(scan).not.toHaveBeenCalled();
 });
+it('同じファイルの複数クラスを別項目にし、選択時の classId を渡す', () => {
+    const select = vi.fn();
+    const classes = [
+        { name: 'Delay', path: 'multi.vst3', vendor: '', version: '', classId: 'AA', id: '1', category: 'Fx' },
+        { name: 'Comp', path: 'multi.vst3', vendor: 'Studio', version: '', classId: 'BB', id: '2', category: 'Fx' },
+    ] as VstPlugin[];
+    render(<PluginBrowserModal isOpen onClose={() => {}} plugins={classes} isLoading={false} onScan={vi.fn()} onPluginSelect={select} />);
+    expect(screen.getByRole('button', { name: 'Delay を追加' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Comp を追加' })).toBeInTheDocument();
+    expect(screen.getAllByText('multi.vst3')).toHaveLength(2);
+    expect(screen.getAllByText('不明').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Comp を追加' }));
+    expect(select).toHaveBeenCalledWith(expect.objectContaining({ path: 'multi.vst3', classId: 'BB' }));
+});
+
+it('表示が同じ複数クラスは CID の先頭8桁を見える文字と読み上げ名に出す', () => {
+    const shared = { name: 'Delay', path: 'multi.vst3', vendor: 'Studio', version: '1.0', category: 'Fx' };
+    const classes = [
+        { ...shared, classId: 'AABBCCDD11223344556677889900AABB', id: '1' },
+        { ...shared, classId: '11223344AABBCCDDEEFF001122334455', id: '2' },
+        { ...shared, name: 'Comp', path: 'comp.vst3', classId: 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF', id: '3' },
+    ] as VstPlugin[];
+    render(<PluginBrowserModal isOpen onClose={() => {}} plugins={classes} isLoading={false} onScan={vi.fn()} onPluginSelect={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Delay AABBCCDD を追加' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delay 11223344 を追加' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Comp を追加' })).toBeInTheDocument();
+    expect(screen.getByText('AABBCCDD')).toBeInTheDocument();
+    expect(screen.getByText('11223344')).toBeInTheDocument();
+    expect(screen.queryByText('FFFFFFFF')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delay AABBCCDD をお気に入りに追加' })).toBeInTheDocument();
+});
+
+it('先頭8桁が同じCIDは、重複グループ内で一意になる長さまで見える文字と読み上げ名を伸ばす', () => {
+    const shared = { name: 'Delay', path: 'multi.vst3', vendor: 'Studio', version: '1.0', category: 'Fx' };
+    const classes = [
+        { ...shared, classId: 'AABBCCDD11223344556677889900AAAA', id: '1' },
+        { ...shared, classId: 'AABBCCDD99AABBCCDDEEFF0011223344', id: '2' },
+    ] as VstPlugin[];
+    render(<PluginBrowserModal isOpen onClose={() => {}} plugins={classes} isLoading={false} onScan={vi.fn()} onPluginSelect={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Delay AABBCCDD1 を追加' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delay AABBCCDD9 を追加' })).toBeInTheDocument();
+    expect(screen.getByText('AABBCCDD1')).toBeInTheDocument();
+    expect(screen.getByText('AABBCCDD9')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delay AABBCCDD1 をお気に入りに追加' })).toBeInTheDocument();
+});
+
+it('履歴の移行保存が失敗しても画面を維持し、お気に入りだけ移行済みにしない', () => {
+    const single = 'SINGLECID0123456789ABCDEF01234567';
+    localStorage.setItem('vst_host_plugin_favorites', JSON.stringify(['only.vst3']));
+    localStorage.setItem('vst_host_plugin_recent', JSON.stringify(['only.vst3']));
+    const prior = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+        if (key === 'vst_host_plugin_recent') {
+            const error = new Error('quota');
+            error.name = 'QuotaExceededError';
+            throw error;
+        }
+        return prior.call(this, key, value);
+    });
+    const classes = [
+        { name: 'Only', path: 'only.vst3', vendor: 'Studio', version: '1', category: 'Fx', classId: single, id: '1' },
+    ] as VstPlugin[];
+    render(<ErrorBoundary><PluginBrowserModal isOpen onClose={() => {}} plugins={classes} isLoading={false} onScan={vi.fn()} onPluginSelect={vi.fn()} /></ErrorBoundary>);
+    expect(screen.getByRole('heading', { name: 'VSTを追加' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '画面の表示中にエラーが発生しました' })).not.toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('vst_host_plugin_favorites') ?? '[]')).toEqual(['only.vst3']);
+    expect(JSON.parse(localStorage.getItem('vst_host_plugin_recent') ?? '[]')).toEqual(['only.vst3']);
+    expect(screen.getByRole('button', { name: 'Only を追加' })).toBeInTheDocument();
+});
+
+it('お気に入りと履歴の path だけの旧キーは候補が1つなら移し、複数なら割り当てない', () => {
+    const single = 'SINGLECID0123456789ABCDEF01234567';
+    const delay = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    const comp = 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+    localStorage.setItem('vst_host_plugin_favorites', JSON.stringify(['only.vst3', 'multi.vst3']));
+    localStorage.setItem('vst_host_plugin_recent', JSON.stringify(['only.vst3', 'multi.vst3']));
+    const classes = [
+        { name: 'Only', path: 'only.vst3', vendor: 'Studio', version: '1', category: 'Fx', classId: single, id: '1' },
+        { name: 'Delay', path: 'multi.vst3', vendor: 'Studio', version: '1', category: 'Fx', classId: delay, id: '2' },
+        { name: 'Comp', path: 'multi.vst3', vendor: 'Other', version: '2', category: 'Fx', classId: comp, id: '3' },
+    ] as VstPlugin[];
+    const select = vi.fn();
+    render(<PluginBrowserModal isOpen onClose={() => {}} plugins={classes} isLoading={false} onScan={vi.fn()} onPluginSelect={select} />);
+    expect(JSON.parse(localStorage.getItem('vst_host_plugin_favorites') ?? '[]')).toEqual([`only.vst3::${single}`, 'multi.vst3']);
+    expect(JSON.parse(localStorage.getItem('vst_host_plugin_recent') ?? '[]')).toEqual([`only.vst3::${single}`, 'multi.vst3']);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /^お気に入り/ }), { button: 0, ctrlKey: false });
+    expect(screen.getByRole('button', { name: 'Only を追加' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delay を追加' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Comp を追加' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delay をお気に入りに追加' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Comp をお気に入りに追加' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('button', { name: 'Delay を追加' }));
+    expect(select).toHaveBeenCalledWith(expect.objectContaining({ classId: delay }));
+    expect(JSON.parse(localStorage.getItem('vst_host_plugin_recent') ?? '[]')).toEqual([
+        `multi.vst3::${delay}`,
+        `only.vst3::${single}`,
+    ]);
+    expect(JSON.parse(localStorage.getItem('vst_host_plugin_favorites') ?? '[]')).toEqual([`only.vst3::${single}`, 'multi.vst3']);
+    fireEvent.click(screen.getByRole('button', { name: 'Comp をお気に入りに追加' }));
+    expect(JSON.parse(localStorage.getItem('vst_host_plugin_favorites') ?? '[]')).toEqual([
+        `only.vst3::${single}`,
+        `multi.vst3::${comp}`,
+    ]);
+    expect(screen.queryByRole('button', { name: 'Delay を追加' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Comp をお気に入りから削除' })).toHaveAttribute('aria-pressed', 'true');
+});
+
 it('名前不明の代替は描画時だけ翻訳し、選択したpluginへ注入しない', () => {
     const store = createLocaleStore(() => 'ja', () => true); const select = vi.fn();
     const unnamed = { name: '', path: 'unknown.vst3', vendor: '', category: '' } as VstPlugin;

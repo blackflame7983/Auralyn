@@ -897,7 +897,10 @@ mod tests {
         assert!(guard(true, Some(&bound), &routed).is_err());
         for command in [
             Command::BeginDeviceScan,
-            Command::LoadPlugin { path: "x".into() },
+            Command::LoadPlugin {
+                path: "x".into(),
+                class_id: None,
+            },
             Command::UnloadPlugin { id: "x".into() },
             Command::ReorderPlugins { order: vec![] },
             Command::Start {

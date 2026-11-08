@@ -3,7 +3,8 @@ import { explicitSessionStartRequired } from '@/lib/temporarySession';
 import { useMessages } from '../i18n/LocaleProvider';
 import { pluginNotice, renderPluginNotice, defaultPluginMessages, type PluginNotice } from '../lib/pluginNotice';
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { audioApi, VstPlugin, type RackPlugin } from '../api/audio';
+import { audioApi, VstPlugin, type LoadedPlugin, type RackPlugin } from '../api/audio';
+import { claimLegacyClassWarning, pendingStorageValue, samePlugin } from '../lib/pluginIdentity';
 import { Plugin } from '../components/features/PluginRack/PluginCard';
 import { usePluginProfiles } from './usePluginProfiles';
 import { restorePluginSession, parsePluginSession, unrestoredPluginNames, SessionRackConflict, type PluginSessionRestoreResult } from '../lib/restorePluginSession';
@@ -13,6 +14,25 @@ import { usePluginSessionPersistence, protectPluginSession, PLUGIN_SESSION_KEY, 
 import { liveModesApi } from '../api/liveModes';
 import { beginRackRestore, rackRestoreBusy } from '../lib/liveRouting';
 import { listen } from '@tauri-apps/api/event';
+
+function classField(classId?: string): { classId: string } | Record<string, never> {
+    return classId ? { classId } : {};
+}
+
+function loadedPlugin(result: string | LoadedPlugin, plugin: VstPlugin): { id: string; name: string; classId?: string; legacyClassAmbiguous?: boolean } {
+    if (typeof result === 'string') return { id: result, name: plugin.name, classId: plugin.classId };
+    return {
+        id: result.id,
+        name: result.name || plugin.name,
+        classId: result.classId ?? plugin.classId,
+        legacyClassAmbiguous: result.legacyClassAmbiguous,
+    };
+}
+
+function noteLegacyClass(path: string, ambiguous: boolean | undefined, notify: () => void) {
+    if (!ambiguous || !claimLegacyClassWarning(path)) return;
+    notify();
+}
 
 async function restoreSavedGains(check: () => void) {
     const input = Number(localStorage.getItem('vst_host_input_gain') ?? '100') / 100;
@@ -260,8 +280,17 @@ export const usePlugins = () => {
             if (missing.length !== items.length || missing.some((value, index) => value !== missingRecovery.missing[index])) throw new Error('changed');
             const remaining = items.filter((_, index) => !missing[index]);
             const rack = await audioApi.sessionRack({ action: 'snapshot' }); check();
-            if (rack.status !== 'snapshot' || rack.plugins.length !== remaining.length || rack.plugins.some((plugin, index) => plugin.path !== remaining[index].path)) throw new Error('rack mismatch');
-            const session = await Promise.all(rack.plugins.map(async (plugin, index) => ({ ...remaining[index], enabled: plugin.enabled, muted: plugin.muted, gain: plugin.gain, state: await audioApi.getPluginState(plugin.id) })));
+            // 保存側に CID があるときは path だけでは足りない。違うクラスの state をその CID へ結び付けない。
+            if (rack.status !== 'snapshot' || rack.plugins.length !== remaining.length || rack.plugins.some((plugin, index) => !samePlugin(remaining[index], plugin))) throw new Error('rack mismatch');
+            const session = await Promise.all(rack.plugins.map(async (plugin, index) => ({
+                ...remaining[index],
+                enabled: plugin.enabled,
+                muted: plugin.muted,
+                gain: plugin.gain,
+                // 旧データに CID が無いときだけ、実際に開いているクラスを保存結果へ残す。
+                ...classField(remaining[index].classId || plugin.classId),
+                state: await audioApi.getPluginState(plugin.id),
+            })));
             check();
             // 毎回固有名で原本を退避し、既存の自動バックアップは上書きしない。
             protectPluginSession(missingRecovery.saved);
@@ -561,18 +590,22 @@ export const usePlugins = () => {
         setIsLoading(true);
         try {
             // Track pending plugin for crash recovery
-            localStorage.setItem('vst_host_pending_plugin', vstPlugin.path); // Track pending
+            localStorage.setItem('vst_host_pending_plugin', pendingStorageValue(vstPlugin));
 
-            const instanceId = await audioApi.loadPlugin(vstPlugin.path);
+            const loaded = loadedPlugin(await audioApi.loadPlugin(vstPlugin.path, vstPlugin.classId), vstPlugin);
+            noteLegacyClass(vstPlugin.path, loaded.legacyClassAmbiguous, () => {
+                toast.info(t('pluginNotices.legacyClassAmbiguous'));
+            });
 
             localStorage.removeItem('vst_host_pending_plugin'); // Cleared on success
 
             const newPlugin: Plugin = {
-                id: instanceId,
-                name: vstPlugin.name,
+                id: loaded.id,
+                name: loaded.name,
                 path: vstPlugin.path,
                 vendor: vstPlugin.vendor,
-                version: vstPlugin.version,
+                version: vstPlugin.version ?? '',
+                ...classField(loaded.classId),
                 enabled: true,
                 hasEditor: true,
                 muted: false,
@@ -589,7 +622,7 @@ export const usePlugins = () => {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [t]);
 
     const removePlugin = useCallback(async (id: string) => {
         if (rejectDuringRestore()) return;
@@ -623,7 +656,7 @@ export const usePlugins = () => {
                         const toastId = toast.loading(renderPluginNotice(t, pluginNotice('pluginNotices.restoringPlugin', { name: pluginToRemove.name }, false)));
                         try {
                             const restored = await audioApi.restorePlugin({ path: pluginToRemove.path, state: savedState ?? null,
-                                bypassed: !pluginToRemove.enabled, muted: pluginToRemove.muted, gain: pluginToRemove.gain });
+                                bypassed: !pluginToRemove.enabled, muted: pluginToRemove.muted, gain: pluginToRemove.gain, ...classField(pluginToRemove.classId) });
                             const newId = restored.id;
                             if (generation !== restoreGeneration.current) {
                                 await audioApi.removePlugin(newId);
@@ -683,17 +716,25 @@ export const usePlugins = () => {
         if (rejectDuringRestore()) return;
         const generation = restoreGeneration.current;
         const isCurrent = () => generation === restoreGeneration.current;
-        const target = plugins.find(p => p.id === id);
+        const rack = plugins;
+        const targetIndex = rack.findIndex(p => p.id === id);
+        const target = targetIndex >= 0 ? rack[targetIndex] : undefined;
 
         const reloadAllFromUi = async () => {
             const reloaded: Plugin[] = [];
-            for (const p of plugins) {
+            for (const p of rack) {
                 if (!isCurrent()) throw new Error('復元を中断しました');
                 const restored = await audioApi.restorePlugin({ path: p.path, state: null,
-                    bypassed: !p.enabled, muted: p.muted, gain: p.gain });
+                    bypassed: !p.enabled, muted: p.muted, gain: p.gain, ...classField(p.classId) });
                 const newId = restored.id;
                 if (!isCurrent()) { await audioApi.removePlugin(newId); throw new Error('復元を中断しました'); }
-                reloaded.push({ ...p, id: newId });
+                // 再読込は元の並びのまま新しい id に付け替える。path だけで探すと同じファイルの別クラスを開く。
+                reloaded.push({
+                    ...p,
+                    id: newId,
+                    ...(restored.classId ? { classId: restored.classId } : {}),
+                    ...(restored.name ? { name: restored.name } : {}),
+                });
                 setPlugins([...reloaded]);
             }
             setPlugins(reloaded);
@@ -718,7 +759,7 @@ export const usePlugins = () => {
                 try {
                     setPlugins([]);
                     const reloaded = await reloadAllFromUi();
-                    const reopened = reloaded.find(p => p.path === target.path);
+                    const reopened = reloaded[targetIndex];
                     if (!reopened) {
                         throw new Error("復元後に対象プラグインが見つかりませんでした");
                     }
@@ -736,11 +777,16 @@ export const usePlugins = () => {
                 const toastId = toast.loading(renderPluginNotice(t, pluginNotice('pluginNotices.reloading')));
                 try {
                     const restored = await audioApi.restorePlugin({ path: target.path, state: null,
-                        bypassed: !target.enabled, muted: target.muted, gain: target.gain });
+                        bypassed: !target.enabled, muted: target.muted, gain: target.gain, ...classField(target.classId) });
                     const newId = restored.id;
                     if (!isCurrent()) { await audioApi.removePlugin(newId); return; }
 
-                    setPlugins(prev => prev.map(p => p.id === id ? { ...p, id: newId } : p));
+                    setPlugins(prev => prev.map(p => p.id === id ? {
+                        ...p,
+                        id: newId,
+                        ...(restored.classId ? { classId: restored.classId } : {}),
+                        ...(restored.name ? { name: restored.name } : {}),
+                    } : p));
                     await audioApi.openEditor(newId);
                     toast.success(renderPluginNotice(t, pluginNotice('pluginNotices.editorOpened')), { id: toastId });
                     return;
@@ -868,14 +914,18 @@ export const usePlugins = () => {
 
                 try {
                     // Load plugin for slot
-                    const instanceId = await audioApi.loadPlugin(vst.path);
+                    const loaded = loadedPlugin(await audioApi.loadPlugin(vst.path, vst.classId), vst);
+                    noteLegacyClass(vst.path, loaded.legacyClassAmbiguous, () => {
+                        toast.info(t('pluginNotices.legacyClassAmbiguous'));
+                    });
 
                     loadedPlugins.push({
-                        id: instanceId,
-                        name: vst.name,
+                        id: loaded.id,
+                        name: loaded.name,
                         path: vst.path,
                         vendor: vst.vendor,
-                        version: vst.version,
+                        version: vst.version ?? '',
+                        ...classField(loaded.classId),
                         enabled: true,
                         hasEditor: true,
                         muted: false,
@@ -901,7 +951,7 @@ export const usePlugins = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [plugins]);
+    }, [plugins, t]);
 
     const sessionProtectionReason = sessionPersistenceProtected && sessionRestoreStatus !== 'pending'
         ? t('pluginNotices.protected')

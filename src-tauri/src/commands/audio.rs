@@ -17,7 +17,7 @@ pub(crate) async fn post_mix(
     .await
 }
 
-// 読み込みやスキャンを行わず、明確な不在だけを返す。
+// 読み込みやスキャンを行わず、明確な不在だけを返す。クラスIDの有無は実ロード時に判明する。
 fn missing_vst_path(path: &str) -> Result<bool, String> {
     let path = std::path::Path::new(path);
     if !path.is_absolute()
@@ -507,15 +507,19 @@ pub(crate) async fn restore_plugin(
     .await
 }
 
+/// ブラウザや IPC からの通常追加。エンジンはカタログ対象の CID だけを開く。
+/// 保存データの復元は `restore_plugin` が旧ロード規則を使う。
 #[tauri::command]
 pub(crate) async fn load_plugin(
     state: State<'_, audio::AudioState>,
     path: String,
-) -> Result<String, String> {
+    class_id: Option<String>,
+) -> Result<crate::ipc::LoadedPlugin, String> {
     let state = state.0.clone();
     super::run_blocking(move || {
         let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
-        host.load_plugin(&path).map_err(|e| e.to_string())
+        host.load_plugin(&path, class_id.as_deref())
+            .map_err(|e| e.to_string())
     })
     .await
 }

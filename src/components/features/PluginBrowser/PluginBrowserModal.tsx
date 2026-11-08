@@ -7,6 +7,7 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { VstPlugin } from '../../../api/audio';
+import { fileLabel, pluginKey } from '@/lib/pluginIdentity';
 import { Panel } from '../../ui/Panel/Panel';
 import { MdStar, MdStarBorder, MdHistory, MdGridView, MdClose, MdSearch, MdRefresh, MdWarning } from 'react-icons/md';
 
@@ -49,6 +50,85 @@ function readStoredPaths(key: string): string[] {
   } catch {
     return [];
   }
+}
+
+function visibleIdentity(plugin: VstPlugin): string {
+  return [plugin.name, fileLabel(plugin.path), plugin.vendor, plugin.version ?? ''].join('\0');
+}
+
+const MIN_CLASS_PREFIX = 8;
+const MAX_CLASS_PREFIX = 32;
+
+function classHex(classId: string | undefined): string | null {
+  if (!classId) return null;
+  const hex = classId.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+  return hex ? hex.slice(0, MAX_CLASS_PREFIX) : null;
+}
+
+/** 重複グループの中で、先頭から一意になる最短の桁。8桁より短くせず、32桁で打ち切る。 */
+function uniqueClassPrefixes(hexes: Array<string | null>): Array<string | null> {
+  return hexes.map((hex, index) => {
+    if (!hex) return null;
+    let length = Math.min(MIN_CLASS_PREFIX, hex.length);
+    while (length < hex.length) {
+      const prefix = hex.slice(0, length);
+      const collided = hexes.some((other, otherIndex) =>
+        otherIndex !== index && !!other && other.slice(0, length) === prefix);
+      if (!collided) break;
+      length += 1;
+    }
+    return hex.slice(0, length);
+  });
+}
+
+function classPrefixByPlugin(plugins: VstPlugin[]): Map<VstPlugin, string> {
+  const groups = new Map<string, number[]>();
+  plugins.forEach((plugin, index) => {
+    const identity = visibleIdentity(plugin);
+    const bucket = groups.get(identity);
+    if (bucket) bucket.push(index);
+    else groups.set(identity, [index]);
+  });
+  const labels = new Map<VstPlugin, string>();
+  for (const indexes of groups.values()) {
+    if (indexes.length < 2) continue;
+    const prefixes = uniqueClassPrefixes(indexes.map(index => classHex(plugins[index].classId)));
+    indexes.forEach((index, offset) => {
+      const prefix = prefixes[offset];
+      if (prefix) labels.set(plugins[index], prefix);
+    });
+  }
+  return labels;
+}
+
+/** path だけの旧キーは、そのパスの候補が1つなら新しいキーへ移す。複数や未スキャンは path のまま残す。 */
+function migrateStoredKeys(stored: string[], plugins: VstPlugin[]): { keys: string[]; changed: boolean } {
+  if (plugins.length === 0) return { keys: stored, changed: false };
+  const keys: string[] = [];
+  let changed = false;
+  for (const key of stored) {
+    if (key.includes('::')) {
+      if (!keys.includes(key)) keys.push(key);
+      continue;
+    }
+    const matches = plugins.filter(plugin => plugin.path === key);
+    if (matches.length === 1) {
+      const migrated = pluginKey(matches[0]);
+      if (migrated !== key) changed = true;
+      if (!keys.includes(migrated)) keys.push(migrated);
+    } else if (!keys.includes(key)) {
+      keys.push(key);
+    }
+  }
+  if (keys.length !== stored.length) changed = true;
+  return { keys, changed };
+}
+
+/** 新しいキーは完全一致。path だけの旧キーは、候補が複数のときだけそのパスのクラスをすべて出す。 */
+function storedKeyMatches(plugin: VstPlugin, stored: string, plugins: VstPlugin[]): boolean {
+  if (stored === pluginKey(plugin)) return true;
+  if (stored.includes('::') || plugin.path !== stored) return false;
+  return plugins.filter(candidate => candidate.path === plugin.path).length !== 1;
 }
 
 // Map VST3 category strings to user-friendly Japanese labels
@@ -132,11 +212,41 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recentPaths, setRecentPaths] = useState<string[]>([]);
 
-  // Load from localStorage
+  // 候補が見えた時点で、path だけの旧キーを1件なら新しいキーへ移す。
+  // お気に入りと履歴の両方が書けたときだけ移行完了にする。片方だけ残さない。
   useEffect(() => {
-    setFavorites(readStoredPaths(STORAGE_KEYS.favorites));
-    setRecentPaths(readStoredPaths(STORAGE_KEYS.recent));
-  }, []);
+    const favoriteStored = readStoredPaths(STORAGE_KEYS.favorites);
+    const recentStored = readStoredPaths(STORAGE_KEYS.recent);
+    const nextFavorites = migrateStoredKeys(favoriteStored, plugins);
+    const nextRecent = migrateStoredKeys(recentStored, plugins);
+    if (!nextFavorites.changed && !nextRecent.changed) {
+      setFavorites(nextFavorites.keys);
+      setRecentPaths(nextRecent.keys);
+      return;
+    }
+    const previousFavorites = localStorage.getItem(STORAGE_KEYS.favorites);
+    const previousRecent = localStorage.getItem(STORAGE_KEYS.recent);
+    const restoreStored = (key: string, previous: string | null) => {
+      try {
+        if (previous === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, previous);
+      } catch {
+        // 戻し書きも失敗したときは旧キーを残し、次の表示で再試行する。
+      }
+    };
+    try {
+      if (nextFavorites.changed) localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(nextFavorites.keys));
+      if (nextRecent.changed) localStorage.setItem(STORAGE_KEYS.recent, JSON.stringify(nextRecent.keys));
+    } catch {
+      restoreStored(STORAGE_KEYS.favorites, previousFavorites);
+      restoreStored(STORAGE_KEYS.recent, previousRecent);
+      setFavorites(favoriteStored);
+      setRecentPaths(recentStored);
+      return;
+    }
+    setFavorites(nextFavorites.keys);
+    setRecentPaths(nextRecent.keys);
+  }, [plugins]);
 
   // Build category list from plugins
   const categories = useMemo(() => {
@@ -162,18 +272,17 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
     localStorage.setItem(STORAGE_KEYS.recent, JSON.stringify(newRecent));
   };
 
-  const toggleFavorite = (path: string, e: React.MouseEvent) => {
+  const toggleFavorite = (plugin: VstPlugin, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (favorites.includes(path)) {
-      saveFavorites(favorites.filter(f => f !== path));
-    } else {
-      saveFavorites([...favorites, path]);
-    }
+    const key = pluginKey(plugin);
+    // 複数候補の path キーは、星を押したクラスへだけ付け替える。
+    const withoutThis = favorites.filter(stored => stored !== plugin.path && stored !== key);
+    saveFavorites(favorites.includes(key) ? withoutThis : [...withoutThis, key]);
   };
 
   const handlePluginSelect = (plugin: VstPlugin) => {
-    // Add to recent
-    const newRecent = [plugin.path, ...recentPaths.filter(p => p !== plugin.path)].slice(0, MAX_RECENT);
+    const key = pluginKey(plugin);
+    const newRecent = [key, ...recentPaths.filter(stored => stored !== key && stored !== plugin.path)].slice(0, MAX_RECENT);
     saveRecent(newRecent);
     onPluginSelect(plugin);
   };
@@ -211,11 +320,19 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
     }
 
     if (activeTab === 'favorites') {
-      filtered = filtered.filter(p => favorites.includes(p.path));
+      filtered = filtered.filter(plugin => favorites.some(stored => storedKeyMatches(plugin, stored, plugins)));
     } else if (activeTab === 'recent') {
-      const recentPlugins = recentPaths
-        .map(path => plugins.find(p => p.path === path))
-        .filter((p): p is VstPlugin => p !== undefined);
+      const seen = new Set<string>();
+      const recentPlugins: VstPlugin[] = [];
+      for (const stored of recentPaths) {
+        for (const plugin of plugins) {
+          if (!storedKeyMatches(plugin, stored, plugins)) continue;
+          const key = pluginKey(plugin);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          recentPlugins.push(plugin);
+        }
+      }
       filtered = recentPlugins.filter(matchesSearch);
     }
 
@@ -223,6 +340,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   };
 
   const filteredPlugins = getFilteredPlugins();
+  const classPrefixes = useMemo(() => classPrefixByPlugin(plugins), [plugins]);
 
   if (!isOpen) return null;
 
@@ -356,22 +474,25 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
           ) : (
             <div className="grid grid-cols-1 gap-1">
               {filteredPlugins.map((plugin, idx) => {
-                const isFavorite = favorites.includes(plugin.path);
+                const key = pluginKey(plugin);
+                const isFavorite = favorites.includes(key);
+                const shortId = classPrefixes.get(plugin) ?? null;
+                const accessibleName = shortId ? `${displayPluginName(plugin)} ${shortId}` : displayPluginName(plugin);
                 return (
                   <div
-                    key={`${plugin.id}-${idx}`}
+                    key={`${key}-${idx}`}
                     onClick={() => handlePluginSelect(plugin)}
                     onKeyDown={(e) => handlePluginKeyDown(e, plugin)}
                     className="group flex items-center justify-between p-3 rounded-card border border-transparent hover:bg-muted/50 hover:border-primary/30 transition-colors text-left cursor-pointer"
                     role="button"
                     tabIndex={0}
-                    aria-label={t('pluginBrowser.addNamed', { arg0: displayPluginName(plugin) })}
+                    aria-label={t('pluginBrowser.addNamed', { arg0: accessibleName })}
                   >
                     <div className="flex items-center gap-3">
                       {/* Favorite Star */}
                       <button
-                        onClick={(e) => toggleFavorite(plugin.path, e)}
-                        aria-label={isFavorite ? t('pluginBrowser.removeFavoriteNamed', { arg0: displayPluginName(plugin) }) : t('pluginBrowser.addFavoriteNamed', { arg0: displayPluginName(plugin) })}
+                        onClick={(e) => toggleFavorite(plugin, e)}
+                        aria-label={isFavorite ? t('pluginBrowser.removeFavoriteNamed', { arg0: accessibleName }) : t('pluginBrowser.addFavoriteNamed', { arg0: accessibleName })}
                         aria-pressed={isFavorite}
                         className={`p-1 rounded-control transition-colors ${isFavorite
                           ? 'text-warning'
@@ -384,16 +505,23 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                       <div>
                         <h3 className="font-bold text-foreground group-hover:text-primary transition-colors">
                           {displayPluginName(plugin)}
+                          {shortId && <span className="ml-2 font-mono text-ui-support text-muted-foreground">{shortId}</span>}
+                          <span className="ml-2 font-normal text-ui-support text-muted-foreground">{fileLabel(plugin.path)}</span>
                         </h3>
+                        {plugin.nameSource === 'file' && (
+                          <p className="text-ui-support text-muted-foreground">{t('pluginBrowser.nameUnavailable')}</p>
+                        )}
                         <p className="text-ui-support text-muted-foreground">
-                          {plugin.vendor || t('pluginBrowser.unknownVendor')}
+                          <span>{plugin.vendor || t('pluginBrowser.unknownMeta')}</span>
                           <span className="opacity-30 mx-1">|</span>
+                          <span>{plugin.version || t('pluginBrowser.unknownMeta')}</span>
+                          <span className="mx-1">|</span>
                           <span className="text-primary">{getCategoryLabel(plugin.category, t)}</span>
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {addedPaths.includes(plugin.path) && <span className="px-2 py-1 text-ui-support text-muted-foreground rounded-control border border-border">{t('pluginBrowser.added')}</span>}
+                      {addedPaths.includes(key) && <span className="px-2 py-1 text-ui-support text-muted-foreground rounded-control border border-border">{t('pluginBrowser.added')}</span>}
                       <span className="opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 text-ui-support bg-primary/10 text-primary rounded-control border border-primary/20">
                         {t('pluginBrowser.add')}</span>
                     </div>

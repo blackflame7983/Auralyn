@@ -310,6 +310,9 @@ pub struct RestorePluginRequest {
     pub bypassed: bool,
     pub muted: bool,
     pub gain: f32,
+    /// 無い旧データはパスだけを使い、最初に生成できたクラスを開く。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class_id: Option<String>,
 }
 
 impl RestorePluginRequest {
@@ -323,11 +326,25 @@ impl RestorePluginRequest {
                 .state
                 .as_ref()
                 .is_some_and(|state| state.len() > 64 * 1024 * 1024)
+            || self.class_id.as_ref().is_some_and(|class_id| {
+                crate::vst_host::class_listing::normalize_class_id(class_id).is_none()
+            })
         {
-            return Err("VST復元のパス・状態・ゲインが不正です".into());
+            return Err("VST復元のパス・状態・ゲイン・クラスIDが不正です".into());
         }
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadedPlugin {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class_id: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub legacy_class_ambiguous: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -337,6 +354,11 @@ pub struct RestoredPlugin {
     pub name: String,
     /// falseは停止中のstate復元成功。音声開始時のprepare成功を保証しない。
     pub prepared: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class_id: Option<String>,
+    /// クラス未指定で、エフェクト候補が2つ以上あった。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub legacy_class_ambiguous: bool,
 }
 
 /// 保存stateやview生成を含まない、稼働中ラックへの再接続用情報。
@@ -349,6 +371,8 @@ pub struct RackPlugin {
     pub enabled: bool,
     pub muted: bool,
     pub gain: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -483,6 +507,8 @@ pub enum Command {
     Stop,
     LoadPlugin {
         path: String,
+        #[serde(default, rename = "classId", skip_serializing_if = "Option::is_none")]
+        class_id: Option<String>,
     },
     RestorePlugin {
         request: RestorePluginRequest,
@@ -698,6 +724,14 @@ pub enum Response {
         id: String,
         name: String,
         vendor: String,
+        #[serde(default, rename = "classId", skip_serializing_if = "Option::is_none")]
+        class_id: Option<String>,
+        #[serde(
+            default,
+            rename = "legacyClassAmbiguous",
+            skip_serializing_if = "std::ops::Not::not"
+        )]
+        legacy_class_ambiguous: bool,
     },
     RuntimeStats {
         #[serde(default, skip_serializing_if = "Option::is_none")]

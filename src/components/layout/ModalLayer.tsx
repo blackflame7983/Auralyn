@@ -171,7 +171,7 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onClose={() => ui.setIsBrowserOpen(false)}
                         onPluginSelect={handlePluginSelect}
                         plugins={pluginsApi.availablePlugins}
-                        addedPaths={pluginsApi.plugins.map(plugin => plugin.path)}
+                        addedPaths={pluginsApi.plugins.map(plugin => plugin.classId ? `${plugin.path}::${plugin.classId.toUpperCase()}` : plugin.path)}
                         isLoading={pluginsApi.isScanning}
                         error={pluginsApi.scanError}
                         notice={pluginsApi.error}

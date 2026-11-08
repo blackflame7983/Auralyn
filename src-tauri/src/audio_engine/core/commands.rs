@@ -591,7 +591,7 @@ impl Engine {
                 self.stop_audio();
                 self.send_response(Response::Success);
             }
-            Command::LoadPlugin { path } => {
+            Command::LoadPlugin { path, class_id } => {
                 self.last_processing_preparation = "load_plugin";
                 // Delegated to PluginManager
                 let (sample_rate, capacity, channels) = self.processor_setup();
@@ -601,6 +601,7 @@ impl Engine {
                     capacity,
                     channels,
                     self.processing_running(),
+                    class_id.as_deref(),
                 ) {
                     Ok((id, name, index, processor_opt)) => {
                         // If Audio Thread is active and manager returned a processor, push it
@@ -630,10 +631,14 @@ impl Engine {
                             self.queue_audio_msg(self.make_reorder_message());
                         }
                         self.acknowledge_processing_preparation();
+                        let opened = self.plugin_manager.plugins.get(&id);
                         self.send_response(Response::PluginLoaded {
                             id,
                             name,
                             vendor: "".to_string(),
+                            class_id: opened.map(|instance| instance.class_id.clone()),
+                            legacy_class_ambiguous: opened
+                                .is_some_and(|instance| instance.legacy_class_ambiguous),
                         });
                     }
                     Err(e) => self.send_error(e.to_string()),

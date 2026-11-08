@@ -10,6 +10,7 @@ export interface PresetPlugin {
     muted: boolean;
     gain: number;
     state?: string;
+    classId?: string;
 }
 
 export interface ProfileAudioConfig {
@@ -92,6 +93,8 @@ export interface LoadedPluginInstance {
     enabled: boolean;
     muted: boolean;
     gain: number;
+    /** 適用で実際に開いたクラス。無い旧応答はそのまま読む。 */
+    classId?: string;
 }
 
 export interface ApplyProfileSummary {

@@ -21,7 +21,8 @@ export function installSessionRackFixture() {
             const plugin = await audioApi.restorePlugin(request.request);
             const removalIndex = vi.isMockFunction(audioApi.removePlugin) ? vi.mocked(audioApi.removePlugin).mock.calls.length : 0;
             plugins.push({ id: plugin.id, name: plugin.name, path: request.request.path,
-                enabled: !request.request.bypassed, muted: request.request.muted, gain: request.request.gain, removalIndex });
+                enabled: !request.request.bypassed, muted: request.request.muted, gain: request.request.gain, removalIndex,
+                ...(plugin.classId ? { classId: plugin.classId } : {}) });
             return { status: 'restored', plugin };
         } catch (error) { return { status: 'failed', message: String(error) }; }
     });

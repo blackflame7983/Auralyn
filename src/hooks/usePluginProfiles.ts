@@ -1,5 +1,6 @@
 import { useMessages } from '../i18n/LocaleProvider';
 import { pluginNotice, renderPluginNotice, defaultPluginMessages, type PluginNoticeSink, type PluginNoticeFormatter } from '../lib/pluginNotice';
+import { claimLegacyClassWarning } from '../lib/pluginIdentity';
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { audioApi } from '../api/audio';
 import type { Plugin } from '../components/features/PluginRack/PluginCard';
@@ -37,6 +38,8 @@ export function usePluginProfiles(
                 muted: p.muted,
                 gain: p.gain,
                 state,
+                // プリセット・プロファイル・切替前バックアップは、開いているクラスを path だけに落とさない。
+                ...(p.classId ? { classId: p.classId } : {}),
             });
         }
         return presetPlugins;
@@ -96,6 +99,8 @@ export function usePluginProfiles(
             enabled: inst.enabled,
             muted: inst.muted,
             gain: inst.gain,
+            // 適用結果に載った、実際に開いたクラス。無い旧応答は path のままにする。
+            ...(inst.classId ? { classId: inst.classId } : {}),
             hasEditor: true,
         }));
         setPlugins(loaded);
@@ -211,8 +216,18 @@ export function usePluginProfiles(
                 let instance: Plugin | null = null;
                 try {
                     const restored = await audioApi.restorePlugin({ path: p.path, state: p.state ?? null,
-                        bypassed: !p.enabled, muted: p.muted, gain: p.gain });
-                    instance = { ...p, id: restored.id, hasEditor: true };
+                        bypassed: !p.enabled, muted: p.muted, gain: p.gain, ...(p.classId ? { classId: p.classId } : {}) });
+                    // 応答のクラスと名前を画面に使い、保存名と開いた実体がずれて残らないようにする。
+                    instance = {
+                        ...p,
+                        id: restored.id,
+                        name: restored.name || p.name,
+                        hasEditor: true,
+                        ...(restored.classId ? { classId: restored.classId } : {}),
+                    };
+                    if (restored.legacyClassAmbiguous && claimLegacyClassWarning(p.path)) {
+                        toast.info(t('pluginNotices.legacyClassAmbiguous'));
+                    }
                     if (!isCurrent()) { await audioApi.removePlugin(restored.id); return false; }
                     loadedPlugins.push(instance);
                 } catch (err) {

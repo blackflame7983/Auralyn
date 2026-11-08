@@ -2,6 +2,7 @@
 
 pub mod blacklist;
 pub mod c_api;
+pub mod class_listing;
 pub mod instance;
 pub mod presets;
 pub mod scanner;

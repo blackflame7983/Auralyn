@@ -130,6 +130,7 @@ fn restore_request(plugin: &PresetPlugin) -> crate::ipc::RestorePluginRequest {
         bypassed: !plugin.enabled,
         muted: plugin.muted,
         gain: plugin.gain,
+        class_id: plugin.class_id.clone(),
     }
 }
 pub(super) fn load_binding(
@@ -1035,6 +1036,7 @@ impl AudioHost {
                     muted: plugin.muted,
                     gain: plugin.gain,
                     state: Some(state),
+                    class_id: plugin.class_id.clone(),
                 });
                 validate_plugins(&tx.source.plugins, true)?;
                 tx.step = if index + 1 == tx.source_rack.len() {
@@ -1285,12 +1287,25 @@ fn racks_equal(a: &[crate::ipc::RackPlugin], b: &[crate::ipc::RackPlugin]) -> bo
                 && a.enabled == b.enabled
                 && a.muted == b.muted
                 && a.gain == b.gain
+                && a.class_id == b.class_id
         })
+}
+fn class_ids_match(saved: &Option<String>, opened: &Option<String>) -> bool {
+    match saved {
+        None => true,
+        Some(saved) => opened
+            .as_ref()
+            .is_some_and(|opened| opened.eq_ignore_ascii_case(saved)),
+    }
 }
 fn rack_matches(rack: &[crate::ipc::RackPlugin], plugins: &[PresetPlugin]) -> bool {
     rack.len() == plugins.len()
         && rack.iter().zip(plugins).all(|(a, b)| {
-            a.path == b.path && a.enabled == b.enabled && a.muted == b.muted && a.gain == b.gain
+            a.path == b.path
+                && class_ids_match(&b.class_id, &a.class_id)
+                && a.enabled == b.enabled
+                && a.muted == b.muted
+                && a.gain == b.gain
         })
 }
 
@@ -1317,7 +1332,36 @@ mod tests {
             muted: false,
             gain: 1.0,
             state: Some("state".into()),
+            class_id: None,
         }
+    }
+    #[test]
+    fn journal_optional_class_id_roundtrips_and_legacy_plugins_still_validate() {
+        let mut current = journal();
+        let mut named = plugin();
+        named.class_id = Some("0123456789ABCDEF0123456789ABCDEF".into());
+        current.plugins = vec![named];
+        let json = serde_json::to_value(&current).unwrap();
+        assert_eq!(json["schemaVersion"], 1);
+        assert_eq!(
+            json["plugins"][0]["classId"],
+            "0123456789ABCDEF0123456789ABCDEF"
+        );
+        let back: Journal = serde_json::from_value(json).unwrap();
+        assert!(back.validate().is_ok());
+        assert_eq!(
+            back.plugins[0].class_id.as_deref(),
+            Some("0123456789ABCDEF0123456789ABCDEF")
+        );
+        let mut legacy = journal();
+        legacy.plugins = vec![plugin()];
+        let mut json = serde_json::to_value(&legacy).unwrap();
+        assert!(json["plugins"][0].get("classId").is_none());
+        let back: Journal = serde_json::from_value(json.clone()).unwrap();
+        assert!(back.plugins[0].class_id.is_none() && back.validate().is_ok());
+        json["plugins"][0]["classId"] = serde_json::json!("zz");
+        let invalid: Journal = serde_json::from_value(json).unwrap();
+        assert!(invalid.validate().is_err());
     }
     fn journal() -> Journal {
         Journal {
@@ -1737,6 +1781,7 @@ mod tests {
                 enabled: source_plugin.enabled,
                 muted: source_plugin.muted,
                 gain: source_plugin.gain,
+                class_id: None,
             };
             let original = builtin::Config {
                 active: true,
@@ -1896,6 +1941,7 @@ mod tests {
                                 enabled: !request.bypassed,
                                 muted: request.muted,
                                 gain: request.gain,
+                                class_id: request.class_id.clone(),
                             });
                             revision += 1;
                             IpcResponse::PluginRestored {
@@ -1904,6 +1950,8 @@ mod tests {
                                     id,
                                     name: "restored".into(),
                                     prepared: scenario != "recovery",
+                                    class_id: None,
+                                    legacy_class_ambiguous: false,
                                 },
                             }
                         }
@@ -2112,6 +2160,7 @@ mod tests {
                         bypassed: true,
                         muted: true,
                         gain: 1.0,
+                        class_id: None,
                     },
                     operation_id: 1,
                     expires_at_ms: u64::MAX,

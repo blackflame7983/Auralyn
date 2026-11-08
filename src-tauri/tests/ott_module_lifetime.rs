@@ -21,15 +21,15 @@ fn ott_processors_survive_other_instance_retirement_and_module_pinning() {
 
     let mut manager = PluginManager::new();
     // ロード後の処理準備で失敗しても、未登録のInstanceとRT番号を残さない。
-    assert!(manager.load_plugin(&path, 0.0, 256, 2, true).is_err());
+    assert!(manager.load_plugin(&path, 0.0, 256, 2, true, None).is_err());
     assert!(manager.order.is_empty());
     assert!(manager.plugins.is_empty());
     assert_eq!(manager.runtime_stats(), (0, 0, 0));
     let (first, _, first_index, first_processor) = manager
-        .load_plugin(&path, 48_000.0, 256, 2, true)
+        .load_plugin(&path, 48_000.0, 256, 2, true, None)
         .expect("OTT追加1");
     let (second, _, second_index, second_processor) = manager
-        .load_plugin(&path, 48_000.0, 256, 2, true)
+        .load_plugin(&path, 48_000.0, 256, 2, true, None)
         .expect("OTT追加2");
     let first_processor = first_processor.expect("Processor1");
     assert_eq!(first_index, 0);
@@ -88,7 +88,7 @@ fn ott_processors_survive_other_instance_retirement_and_module_pinning() {
 
     // 保持済みDLLがある状態で再ロードし、InitDll/ExitDllの対が崩れないことを確認。
     let (third, _, third_index, third_processor) = manager
-        .load_plugin(&path, 48_000.0, 256, 2, true)
+        .load_plugin(&path, 48_000.0, 256, 2, true, None)
         .expect("OTT再追加");
     manager.begin_unload(&third).unwrap();
     drop(third_processor);

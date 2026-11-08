@@ -5,7 +5,7 @@ use anyhow::{anyhow, Result};
 use log;
 
 use crate::audio_engine::plugin_health::PluginHealthShared;
-use crate::vst_host::instance::{PluginLibrary, VstInstance, VstProcessor};
+use crate::vst_host::instance::{ClassLoadPolicy, PluginLibrary, VstInstance, VstProcessor};
 
 pub const MAX_PLUGINS: usize = 32;
 
@@ -234,8 +234,10 @@ impl PluginManager {
         block_size: usize,
         channels: usize,
         engine_running: bool, // If true, we try to prepare processing immediately
+        class_id: Option<&str>,
     ) -> Result<(String, String, u8, Option<VstProcessor>)> {
-        let mut instance = VstInstance::load(path)?;
+        // 通常追加はカタログの対象クラスだけを開く。復元は restoration が Legacy を使う。
+        let mut instance = VstInstance::load_with_class(path, class_id, ClassLoadPolicy::Catalog)?;
         let id = instance.id.clone();
         let name = instance.name.clone();
         let rt_index = self.alloc_rt_index(&id)?;

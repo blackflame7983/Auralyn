@@ -416,7 +416,10 @@ mod tests {
                 initial_controls: None,
                 channel_routing: None,
             },
-            Command::LoadPlugin { path: "vst".into() },
+            Command::LoadPlugin {
+                path: "vst".into(),
+                class_id: None,
+            },
             Command::PlayVoiceCheck {
                 source: "raw".into(),
                 loop_playback: false,
