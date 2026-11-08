@@ -28,6 +28,8 @@ mod bundle_capture;
 mod capabilities;
 #[path = "core/commands.rs"]
 mod commands;
+#[path = "core/control_stall.rs"]
+mod control_stall;
 #[path = "core/input.rs"]
 mod input;
 #[path = "core/lifecycle.rs"]
@@ -578,6 +580,7 @@ impl Engine {
     }
 
     pub fn run_loop(mut self) {
+        let control_watch = control_stall::Watchdog::start();
         // Create Event Loop
         let event_loop = EventLoopBuilder::<UserEvent>::with_user_event()
             .build()
@@ -647,6 +650,7 @@ impl Engine {
 
             match event {
                 Event::UserEvent(UserEvent::Command(cmd)) => {
+                    let _progress = control_watch.begin(&cmd);
                     self.handle_command(cmd, target);
                 }
                 Event::UserEvent(UserEvent::Shutdown) => {
@@ -714,11 +718,19 @@ impl Engine {
                     }
 
                     if let Some(staged) = self.pending_restore.take() {
+                        // 次turnのSTA接続・状態適用中も、復元元の操作を記録する。
+                        let kind = if staged.expected_ids.is_some() {
+                            control_stall::Kind::RestoreSessionPlugin
+                        } else {
+                            control_stall::Kind::RestorePlugin
+                        };
+                        let _progress = control_watch.begin_operation(kind, &staged.instance.id);
                         self.finish_plugin_restore(staged);
                     }
                     // 旧LoadPluginも同じSTAの次turnで接続するが、失敗したprocessorは公開しない。
                     let pending_ids = std::mem::take(&mut self.plugin_manager.pending_init);
                     for id in pending_ids {
+                        let _progress = control_watch.begin_operation(control_stall::Kind::LoadPlugin, &id);
                         let (sr, bs, ch) = self.processor_setup();
                         let running = self.processing_running();
                         let result = (|| -> Result<Option<VstProcessor>> {
@@ -963,6 +975,10 @@ impl Engine {
     }
 
     fn send_event(&self, evt: EngineEvent) {
+        Self::emit_event(evt);
+    }
+
+    fn emit_event(evt: EngineEvent) {
         let msg = OutputMessage::Event(evt);
         match serde_json::to_string(&msg) {
             Ok(json) => {

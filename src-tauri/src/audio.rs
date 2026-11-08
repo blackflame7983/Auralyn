@@ -767,6 +767,27 @@ impl AudioHost {
                                 }
                             }
                             OutputMessage::Event(evt) => match evt {
+                                EngineEvent::ControlStall {
+                                    command,
+                                    plugin_id,
+                                    module,
+                                    elapsed_ms,
+                                } => {
+                                    log::error!(
+                                        "[Engine] Control stall: command={command} plugin_id={plugin_id:?} module={module:?} elapsed_ms={elapsed_ms}"
+                                    );
+                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                        let _ = h.emit(
+                                            "audio-control-stall",
+                                            serde_json::json!({
+                                                "command": command,
+                                                "pluginId": plugin_id,
+                                                "module": module,
+                                                "elapsedMs": elapsed_ms,
+                                            }),
+                                        );
+                                    }
+                                }
                                 EngineEvent::MixingSourceFailed
                                 | EngineEvent::MixingOutputFailed => {
                                     if !conditions.engine_changed(condition_epoch) {
