@@ -391,3 +391,126 @@ fn native_window_resize_rejects_frame_overflow_and_preserves_normal_client_size(
         );
     }
 }
+
+/// テストが指定した値を出す合成 processor。mock はヒープ上に残り、processor より後で破棄する。
+#[repr(C)]
+struct ScriptMock {
+    vtbl: *const IAudioProcessorVtbl,
+    calls: u32,
+    saw_non_finite: bool,
+    scale: f32,
+    replace: bool,
+    replace_value: f32,
+    /// 255 は全チャンネル。それ以外は対象チャンネルだけを置き換える。
+    replace_channel: u8,
+}
+
+unsafe extern "system" fn script_process(this: *mut c_void, data: *mut c_void) -> i32 {
+    let mock = &mut *(this as *mut ScriptMock);
+    mock.calls = mock.calls.saturating_add(1);
+    let data = &*(data as *const ProcessData);
+    if data.inputs.is_null() || data.outputs.is_null() {
+        return K_RESULT_FALSE;
+    }
+    let input = &*data.inputs;
+    let output = &*data.outputs;
+    let channels = output.num_channels.max(0) as usize;
+    let frames = data.num_samples.max(0) as usize;
+    for channel in 0..channels {
+        let in_ptr = *input.channel_buffers32.add(channel);
+        let out_ptr = *output.channel_buffers32.add(channel);
+        if in_ptr.is_null() || out_ptr.is_null() {
+            return K_RESULT_FALSE;
+        }
+        for frame in 0..frames {
+            let sample = *in_ptr.add(frame);
+            if !sample.is_finite() {
+                mock.saw_non_finite = true;
+            }
+            let mut written = sample * mock.scale;
+            if mock.replace
+                && (mock.replace_channel == 255 || mock.replace_channel == channel as u8)
+            {
+                written = mock.replace_value;
+            }
+            *out_ptr.add(frame) = written;
+        }
+    }
+    K_RESULT_OK
+}
+
+static SCRIPT_VTABLE: IAudioProcessorVtbl = IAudioProcessorVtbl {
+    base: FUnknownVtbl {
+        query_interface: query,
+        add_ref: ref_count,
+        release: ref_count,
+    },
+    set_bus_arrangements: arrangements,
+    get_bus_arrangement: arrangement,
+    can_process_sample_size: sample_size,
+    get_latency_samples: samples,
+    setup_processing: setup,
+    set_processing: sample_size,
+    process: script_process,
+    get_tail_samples: samples,
+};
+
+pub(crate) struct ScriptedVst {
+    mock: Box<UnsafeCell<ScriptMock>>,
+    processor: Option<VstProcessor>,
+}
+
+impl ScriptedVst {
+    pub(crate) fn scale(scale: f32) -> Self {
+        Self::create(scale, false, 0.0, 255)
+    }
+
+    pub(crate) fn non_finite(value: f32, channel: Option<usize>) -> Self {
+        Self::create(1.0, true, value, channel.map(|ch| ch as u8).unwrap_or(255))
+    }
+
+    fn create(scale: f32, replace: bool, replace_value: f32, replace_channel: u8) -> Self {
+        let mock = Box::new(UnsafeCell::new(ScriptMock {
+            vtbl: &SCRIPT_VTABLE,
+            calls: 0,
+            saw_non_finite: false,
+            scale,
+            replace,
+            replace_value,
+            replace_channel,
+        }));
+        let max_block = 4_096;
+        let processor = VstProcessor {
+            ptr: mock.get().cast(),
+            // SAFETY: kernel32 を DLL 保持の試験用にロードし、VST の初期化関数は呼ばない。
+            _library: Arc::new(unsafe { PluginLibrary::load("kernel32.dll", false) }.unwrap()),
+            scratch_inputs: vec![vec![0.0; max_block]; 2],
+            scratch_outputs: vec![vec![0.0; max_block]; 2],
+            input_ptrs: Vec::with_capacity(4),
+            output_ptrs: Vec::with_capacity(4),
+            bus_inputs: Vec::with_capacity(4),
+            bus_outputs: Vec::with_capacity(4),
+            active_flag: Arc::new(AtomicBool::new(true)),
+            max_block_size: max_block,
+            _num_channels: 2,
+        };
+        Self {
+            mock,
+            processor: Some(processor),
+        }
+    }
+
+    pub(crate) fn take(&mut self) -> VstProcessor {
+        self.processor.take().expect("synthetic processor")
+    }
+
+    pub(crate) fn calls(&self) -> u32 {
+        // SAFETY: mock は ScriptedVst が所有し、process が戻ったあと同じテストスレッドから読む。
+        unsafe { (*self.mock.get()).calls }
+    }
+
+    pub(crate) fn saw_non_finite(&self) -> bool {
+        // SAFETY: mock は ScriptedVst が所有し、process が戻ったあと同じテストスレッドから読む。
+        unsafe { (*self.mock.get()).saw_non_finite }
+    }
+}

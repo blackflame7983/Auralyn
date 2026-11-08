@@ -132,6 +132,7 @@ pub enum AudioThreadMessage {
         initial_gain: f32,
         initial_bypassed: bool,
         initial_muted: bool,
+        health_token: u64,
     },
     RemoveProcessor {
         index: u8,
@@ -151,6 +152,10 @@ pub enum AudioThreadMessage {
     SetGain {
         index: u8,
         value: f32,
+    },
+    /// 停止した slot の判定だけを戻す。VST の内部状態はリセットしない。
+    ResumePlugin {
+        index: u8,
     },
     SetGlobalMute(bool),
     LiveMode {
@@ -222,6 +227,7 @@ impl AudioThreadMessage {
                 | Self::SetBypass { .. }
                 | Self::SetMute { .. }
                 | Self::SetGain { .. }
+                | Self::ResumePlugin { .. }
                 | Self::LiveMode { .. }
                 | Self::SetGlobalBypass(_)
                 | Self::SetInputGain(_)
@@ -698,12 +704,13 @@ impl Engine {
                         match result {
                             Ok(Some(processor)) => {
                                 if let Some(index) = self.plugin_manager.rt_index_of(&id) {
-                                    self.queue_audio_msg(AudioThreadMessage::AddProcessor {
-                                        index, processor,
-                                        initial_gain: *self.plugin_manager.gains.get(&id).unwrap_or(&1.0),
-                                        initial_bypassed: self.plugin_manager.bypassed.contains(&id),
-                                        initial_muted: self.plugin_manager.muted.contains(&id),
-                                    });
+                                    self.queue_add_processor(
+                                        index,
+                                        processor,
+                                        *self.plugin_manager.gains.get(&id).unwrap_or(&1.0),
+                                        self.plugin_manager.bypassed.contains(&id),
+                                        self.plugin_manager.muted.contains(&id),
+                                    );
                                     self.queue_audio_msg(self.make_reorder_message());
                                 }
                                 self.acknowledge_processing_preparation();
@@ -1136,6 +1143,25 @@ impl Engine {
         }
 
         AudioThreadMessage::ReorderProcessors { order, len }
+    }
+
+    fn queue_add_processor(
+        &mut self,
+        index: u8,
+        processor: VstProcessor,
+        initial_gain: f32,
+        initial_bypassed: bool,
+        initial_muted: bool,
+    ) {
+        let health_token = self.plugin_manager.mint_health_token(index);
+        self.queue_audio_msg(AudioThreadMessage::AddProcessor {
+            index,
+            processor,
+            initial_gain,
+            initial_bypassed,
+            initial_muted,
+            health_token,
+        });
     }
 
     fn set_channel_scan(&mut self, active: bool) {
@@ -1730,13 +1756,7 @@ impl Engine {
         let (id, name, index) = self.plugin_manager.commit_restored(staged, index);
         let prepared = processor.is_some();
         if let Some(processor) = processor {
-            self.queue_audio_msg(AudioThreadMessage::AddProcessor {
-                index,
-                processor,
-                initial_gain: gain,
-                initial_bypassed: bypassed,
-                initial_muted: muted,
-            });
+            self.queue_add_processor(index, processor, gain, bypassed, muted);
             self.queue_audio_msg(self.make_reorder_message());
         }
         log::debug!(

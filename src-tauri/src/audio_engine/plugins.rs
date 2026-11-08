@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use log;
 
+use crate::audio_engine::plugin_health::PluginHealthShared;
 use crate::vst_host::instance::{PluginLibrary, VstInstance, VstProcessor};
 
 pub const MAX_PLUGINS: usize = 32;
@@ -34,6 +36,10 @@ pub struct PluginManager {
     pub muted: HashSet<String>,
     pub bypassed: HashSet<String>,
     pub gains: HashMap<String, f32>,
+    /// 今その slot に載っている instance の token。0 は未割当。
+    health_tokens: [u64; MAX_PLUGINS],
+    next_health_token: u64,
+    health_shared: Arc<PluginHealthShared>,
 
     // Safely burnt libraries to prevent unload crashes
     pub burned_libraries: Vec<std::sync::Arc<PluginLibrary>>,
@@ -91,9 +97,79 @@ impl PluginManager {
             muted: HashSet::new(),
             bypassed: HashSet::new(),
             gains: HashMap::new(),
+            health_tokens: [0; MAX_PLUGINS],
+            next_health_token: 0,
+            health_shared: Arc::new(PluginHealthShared::new()),
             burned_libraries: Vec::new(),
             burned_library_keys: HashSet::new(),
         }
+    }
+
+    pub(crate) fn health_shared(&self) -> Arc<PluginHealthShared> {
+        self.health_shared.clone()
+    }
+
+    /// AddProcessor を送るたびに slot の token を単調に進める。0 は未割当のまま残す。
+    pub(crate) fn mint_health_token(&mut self, index: u8) -> u64 {
+        self.next_health_token = self.next_health_token.wrapping_add(1);
+        if self.next_health_token == 0 {
+            self.next_health_token = 1;
+        }
+        let token = self.next_health_token;
+        if let Some(slot) = self.health_tokens.get_mut(index as usize) {
+            *slot = token;
+        }
+        token
+    }
+
+    pub(crate) fn clear_health_token(&mut self, index: u8) {
+        if let Some(slot) = self.health_tokens.get_mut(index as usize) {
+            *slot = 0;
+        }
+    }
+
+    /// 起動時に載せる各 slot へ新しい token を付ける。前回の停止状態とは一致しない。
+    pub(crate) fn assign_processing_tokens(&mut self) -> [u64; MAX_PLUGINS] {
+        let mut indexes = [None; MAX_PLUGINS];
+        let mut count = 0usize;
+        for id in &self.order {
+            if count >= MAX_PLUGINS {
+                break;
+            }
+            if let Some(index) = self.rt_index_of(id) {
+                indexes[count] = Some(index);
+                count += 1;
+            }
+        }
+        let mut tokens = [0; MAX_PLUGINS];
+        for index in indexes.into_iter().flatten() {
+            tokens[index as usize] = self.mint_health_token(index);
+        }
+        tokens
+    }
+
+    pub(crate) fn plugin_health_entries(&self) -> Vec<crate::ipc::PluginHealthEntry> {
+        let mut entries = Vec::new();
+        for id in &self.order {
+            let Some(index) = self.rt_index_of(id) else {
+                continue;
+            };
+            let expected = self.health_tokens.get(index as usize).copied().unwrap_or(0);
+            let Some(publication) = self
+                .health_shared
+                .isolated_publication(index as usize, expected)
+            else {
+                continue;
+            };
+            entries.push(crate::ipc::PluginHealthEntry {
+                id: id.clone(),
+                state: "isolated".to_string(),
+                invalid_blocks: publication.invalid_blocks,
+                isolation_seq: publication.isolation_seq,
+                token: expected,
+            });
+        }
+        entries
     }
 
     fn alloc_rt_index(&mut self, id: &str) -> Result<u8> {
@@ -148,6 +224,7 @@ impl PluginManager {
         if idx_usize < self.id_by_rt_index.len() {
             self.id_by_rt_index[idx_usize] = None;
         }
+        self.clear_health_token(idx);
     }
 
     pub fn load_plugin(
@@ -225,6 +302,7 @@ impl PluginManager {
         self.gains.remove(id);
 
         self.pending_drop_by_index.insert(idx, instance);
+        self.clear_health_token(idx);
         Ok(idx)
     }
 
@@ -248,6 +326,7 @@ impl PluginManager {
 
         let idx_usize = index as usize;
         if idx_usize < self.id_by_rt_index.len() {
+            self.clear_health_token(index);
             if let Some(id) = self.id_by_rt_index[idx_usize].take() {
                 self.rt_index_by_id.remove(&id);
             }

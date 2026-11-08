@@ -116,6 +116,9 @@ export const audioApi = {
     setGain: async (id: string, value: number) => {
         return await invoke("set_gain", { id, value });
     },
+    resumePlugin: async (id: string) => {
+        return await invoke("resume_plugin", { id });
+    },
     restart: async (host?: string, input?: string, output?: string, bufferSize?: number, sampleRate?: number, inputId?: string, outputId?: string, expectedState?: AudioStateInfo, channelRouting?: ChannelRouting, inputSource?: InputSourceRequest): Promise<AudioConfig> => {
         return await invoke("restart_audio_engine", {
             host,
@@ -456,6 +459,16 @@ export interface PreparationSnapshot {
     nrBackend: string; nrModel: string;
     outputRouting?: OutputRouting;
 }
+export interface PluginHealthEntry {
+    id: string;
+    state: 'isolated';
+    invalidBlocks: number;
+    /** この token で停止へ遷移した回数。古い統計では欠ける。 */
+    isolationSeq?: number;
+    /** 起動ごとに振り直す世代。古い統計では欠ける。 */
+    token?: number;
+}
+
 export interface EngineRuntimeStats {
     processInput?: { capturedFrames: number; nonzeroFrames: number; failed: boolean; waitingForAudio: boolean; inputRateHz: number; correctionLimitPpm: number };
     preparation?: PreparationSnapshot | null;
@@ -468,6 +481,7 @@ export interface EngineRuntimeStats {
     pendingUnloadCount: number;
     burnedLibraryCount: number;
     globalBypass: boolean;
+    pluginHealth?: PluginHealthEntry[];
     queueDiagnostics?: QueueDiagnosticsSnapshot | null;
     callbackDiagnostics?: {
         count: number;

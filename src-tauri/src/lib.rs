@@ -451,6 +451,7 @@ pub fn run() {
             commands::audio::set_bypass,
             commands::audio::set_mute,
             commands::audio::set_gain,
+            commands::audio::resume_plugin,
             commands::audio::open_editor,
             commands::audio::restart_audio_engine,
             commands::profiles::list_presets,

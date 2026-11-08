@@ -156,7 +156,7 @@ impl Engine {
     }
 
     // callbackへ移すプラグインの固定長状態は起動スレッド上で作る。
-    pub(super) fn prepare_plugin_controls(&self) -> PluginControls {
+    pub(super) fn prepare_plugin_controls(&mut self) -> PluginControls {
         // Pre-compute RT state (no heap in callback)
         let mut rt_bypassed: [bool; MAX_PLUGINS] = [false; MAX_PLUGINS];
         for id in &self.plugin_manager.bypassed {
@@ -191,12 +191,31 @@ impl Engine {
             }
         }
 
+        // 再起動では PluginControls を作り直す。token も振り直して、停止前の異常を採用しない。
+        let health_tokens = self.plugin_manager.assign_processing_tokens();
+        let health_shared = self.plugin_manager.health_shared();
+        for (slot, token) in health_tokens.iter().copied().enumerate() {
+            if token != 0 {
+                health_shared.publish(slot, false, 0, token);
+            }
+        }
+        let sample_rate = if self.current_sample_rate.is_finite() && self.current_sample_rate >= 1.0
+        {
+            self.current_sample_rate.round().min(u32::MAX as f64) as u32
+        } else {
+            // プラグインのない起動前の構築だけがレート未確定。実行中は確定済みレートで作る。
+            48_000
+        };
         PluginControls {
             bypassed: rt_bypassed,
             muted: rt_muted,
             gains: rt_gains,
             order: rt_order,
             order_len: rt_order_len,
+            health: [crate::audio_engine::plugin_health::SlotHealth::default(); MAX_PLUGINS],
+            health_tokens,
+            limits: crate::audio_engine::plugin_health::HealthLimits::new(sample_rate),
+            health_shared,
         }
     }
 
@@ -1124,6 +1143,9 @@ impl Engine {
                         rt_muted: &mut plugin_controls.muted,
                         rt_order: &mut plugin_controls.order,
                         rt_order_len: &mut plugin_controls.order_len,
+                        rt_health: &mut plugin_controls.health,
+                        rt_health_tokens: &mut plugin_controls.health_tokens,
+                        health_shared: &plugin_controls.health_shared,
                         rt_cohort_change_applied: &mut rt_cohort_change_applied,
                         output_timing: &mut output_timing,
                         worker_generation_controls: worker_generation_controls.as_deref(),
@@ -2035,5 +2057,61 @@ mod tests {
                     .all(|channel| channel.len() == frames && channel.iter().all(|v| *v == 0.0)));
             }
         }
+    }
+
+    #[test]
+    fn preparing_controls_again_drops_the_previous_isolation() {
+        use crate::audio_engine::restoration::{unix_ms, StagedRestore};
+        use crate::ipc::RestorePluginRequest;
+        use crate::vst_host::instance::with_mock_vst;
+        with_mock_vst(false, |instance| {
+            let mut engine = Engine::new();
+            engine.current_sample_rate = 48_000.0;
+            let staged = StagedRestore::load_with(
+                RestorePluginRequest {
+                    path: "mock.vst3".into(),
+                    state: Some(String::new()),
+                    bypassed: false,
+                    muted: false,
+                    gain: 1.0,
+                },
+                1,
+                unix_ms() + 8_000,
+                |_| Ok(instance),
+            )
+            .unwrap();
+            let index = engine
+                .plugin_manager
+                .reserve_restored_index(&staged)
+                .unwrap();
+            engine.plugin_manager.commit_restored(staged, index);
+            let old = engine.plugin_manager.mint_health_token(index);
+            engine
+                .plugin_manager
+                .health_shared()
+                .publish(index as usize, true, 4, old);
+            assert_eq!(
+                engine.plugin_manager.plugin_health_entries(),
+                vec![crate::ipc::PluginHealthEntry {
+                    id: engine.plugin_manager.order[0].clone(),
+                    state: "isolated".into(),
+                    invalid_blocks: 4,
+                    isolation_seq: 1,
+                    token: old,
+                }]
+            );
+            let controls = engine.prepare_plugin_controls();
+            assert!(engine.plugin_manager.plugin_health_entries().is_empty());
+            assert!(!controls.health[index as usize].isolated);
+            assert_ne!(controls.health_tokens[index as usize], 0);
+            assert_ne!(controls.health_tokens[index as usize], old);
+            assert_eq!(
+                engine
+                    .plugin_manager
+                    .health_shared()
+                    .isolated_blocks(index as usize, old),
+                None
+            );
+        });
     }
 }

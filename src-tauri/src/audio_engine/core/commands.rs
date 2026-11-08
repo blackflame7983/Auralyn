@@ -218,6 +218,7 @@ impl Engine {
                 | Command::SetBypass { .. }
                 | Command::SetMute { .. }
                 | Command::SetGain { .. }
+                | Command::ResumePlugin { .. }
                 | Command::SetPluginState { .. }
                 | Command::SetGlobalBypass { .. }
                 | Command::SetInputGain { .. }
@@ -605,13 +606,13 @@ impl Engine {
                         // If Audio Thread is active and manager returned a processor, push it
                         if let Some(proc) = processor_opt {
                             let initial_gain = *self.plugin_manager.gains.get(&id).unwrap_or(&1.0);
-                            self.queue_audio_msg(AudioThreadMessage::AddProcessor {
+                            self.queue_add_processor(
                                 index,
-                                processor: proc,
+                                proc,
                                 initial_gain,
-                                initial_bypassed: self.plugin_manager.bypassed.contains(&id),
-                                initial_muted: self.plugin_manager.muted.contains(&id),
-                            });
+                                self.plugin_manager.bypassed.contains(&id),
+                                self.plugin_manager.muted.contains(&id),
+                            );
 
                             if self.plugin_manager.bypassed.contains(&id) {
                                 self.queue_audio_msg(AudioThreadMessage::SetBypass {
@@ -735,6 +736,22 @@ impl Engine {
                 };
                 self.plugin_manager.gains.insert(id.clone(), value);
                 self.queue_audio_msg(AudioThreadMessage::SetGain { index, value });
+                self.send_response(Response::Success);
+            }
+            Command::ResumePlugin { id } => {
+                let Some(index) = self.plugin_manager.rt_index_of(&id) else {
+                    self.send_error("Plugin not found".into());
+                    return;
+                };
+                if self.processing_running() {
+                    self.queue_audio_msg(AudioThreadMessage::ResumePlugin { index });
+                } else {
+                    // 停止中は RT の判定が無い。公開済みの値も token 0 にして採用しない。
+                    self.plugin_manager
+                        .health_shared()
+                        .publish(index as usize, false, 0, 0);
+                    self.plugin_manager.clear_health_token(index);
+                }
                 self.send_response(Response::Success);
             }
             Command::SetGlobalMute { active } => {
@@ -1071,6 +1088,7 @@ impl Engine {
                     pending_unload_count,
                     burned_library_count,
                     global_bypass: self.global_bypass,
+                    plugin_health: self.plugin_manager.plugin_health_entries(),
                     callback_diagnostics: Box::new(self.callback_diagnostics.snapshot()),
                     queue_diagnostics: self.queue_snapshot().map(Box::new),
                     latency_metadata: Some(Box::new(self.latency_metadata(latency_report))),

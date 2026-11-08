@@ -402,6 +402,7 @@ mod tests {
             // 開始は旧通常再生を終了し、マイク送出へ切り替えることがある。
             Command::StartVoiceCheckRecording { max_ms: 1_000 },
             Command::SetInputGain { value: 1.0 },
+            Command::ResumePlugin { id: "vst".into() },
             Command::SetGlobalMute { active: true },
             Command::Start {
                 input_source: None,

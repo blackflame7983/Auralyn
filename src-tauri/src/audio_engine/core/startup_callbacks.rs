@@ -1,5 +1,8 @@
 //! 起動時に確保した状態で動作する入力callbackと出力処理段。
 use super::super::*;
+use crate::audio_engine::plugin_health::{
+    self, block_is_invalid, silence_used, HealthLimits, PluginHealthShared, SlotHealth, Verdict,
+};
 
 pub(super) struct CallbackBuffers {
     pub(super) input: Vec<f32>,
@@ -24,6 +27,10 @@ pub(in crate::audio_engine::core) struct PluginControls {
     pub(in crate::audio_engine::core) gains: [Smoother; MAX_PLUGINS],
     pub(in crate::audio_engine::core) order: [u8; MAX_PLUGINS],
     pub(in crate::audio_engine::core) order_len: usize,
+    pub(in crate::audio_engine::core) health: [SlotHealth; MAX_PLUGINS],
+    pub(in crate::audio_engine::core) health_tokens: [u64; MAX_PLUGINS],
+    pub(in crate::audio_engine::core) limits: HealthLimits,
+    pub(in crate::audio_engine::core) health_shared: Arc<PluginHealthShared>,
 }
 
 impl PluginControls {
@@ -47,7 +54,8 @@ impl PluginControls {
         // Global Bypass: Skip all plugin processing (A/B comparison mode)
         // Input remains in planar_buf_a, so current_source_is_a stays true.
         if !global_bypass && active_count > 0 && self.order_len > 0 {
-            for &index in &self.order[..self.order_len] {
+            for position in 0..self.order_len {
+                let index = self.order[position];
                 let idx = index as usize;
                 if idx >= MAX_PLUGINS {
                     continue;
@@ -95,6 +103,17 @@ impl PluginControls {
                     continue;
                 }
 
+                // 停止中の slot は VST を呼ばない。未加工音へは戻さず、ミュートと同じく無音のまま後段へ渡す。
+                if self.health[idx].isolated {
+                    let current = if current_source_is_a {
+                        &mut *planar_buf_a
+                    } else {
+                        &mut *planar_buf_b
+                    };
+                    silence_used(current, channels, frames);
+                    continue;
+                }
+
                 // Process
                 if let Some(proc) = processors[idx].as_mut() {
                     let (in_bufs, out_bufs) = if current_source_is_a {
@@ -105,6 +124,7 @@ impl PluginControls {
 
                     // Call new process_planar
                     proc.process_planar(in_bufs, out_bufs, frames);
+                    self.note_processed(idx, out_bufs, channels, frames);
 
                     // Toggle
                     current_source_is_a = !current_source_is_a;
@@ -135,6 +155,66 @@ impl PluginControls {
         }
 
         current_source_is_a
+    }
+
+    // ゲインの前に非有限値を消し、停止へ進んだときだけ共有状態へ書く。
+    pub(in crate::audio_engine::core) fn note_processed(
+        &mut self,
+        slot: usize,
+        outputs: &mut [Vec<f32>],
+        channels: usize,
+        frames: usize,
+    ) {
+        if slot >= MAX_PLUGINS {
+            return;
+        }
+        let invalid = block_is_invalid(outputs, channels, frames);
+        if invalid {
+            silence_used(outputs, channels, frames);
+        }
+        let verdict = self.health[slot].observe(invalid, frames, &self.limits);
+        if verdict == Verdict::Isolated {
+            self.publish_slot(slot);
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::audio_engine::core) fn install_slot(&mut self, index: u8, token: u64) {
+        plugin_health::install_slot(
+            &mut self.health,
+            &mut self.health_tokens,
+            &self.health_shared,
+            index,
+            token,
+        );
+    }
+
+    #[cfg(test)]
+    pub(in crate::audio_engine::core) fn clear_slot(&mut self, index: u8) {
+        plugin_health::clear_slot(
+            &mut self.health,
+            &mut self.health_tokens,
+            &self.health_shared,
+            index,
+        );
+    }
+
+    pub(in crate::audio_engine::core) fn resume_slot(&mut self, index: u8) {
+        plugin_health::resume_slot(
+            &mut self.health,
+            &self.health_tokens,
+            &self.health_shared,
+            index,
+        );
+    }
+
+    fn publish_slot(&self, slot: usize) {
+        let Some(health) = self.health.get(slot) else {
+            return;
+        };
+        let token = self.health_tokens.get(slot).copied().unwrap_or(0);
+        self.health_shared
+            .publish(slot, health.isolated, health.total_invalid_blocks, token);
     }
 }
 
@@ -271,6 +351,9 @@ pub(super) struct CommandContext<'a> {
     pub(super) rt_muted: &'a mut [bool; MAX_PLUGINS],
     pub(super) rt_order: &'a mut [u8; MAX_PLUGINS],
     pub(super) rt_order_len: &'a mut usize,
+    pub(super) rt_health: &'a mut [SlotHealth; MAX_PLUGINS],
+    pub(super) rt_health_tokens: &'a mut [u64; MAX_PLUGINS],
+    pub(super) health_shared: &'a PluginHealthShared,
     pub(super) rt_cohort_change_applied: &'a mut bool,
     pub(super) output_timing: &'a mut Option<crate::audio_engine::frame_timing::OutputRecorder>,
     pub(super) worker_generation_controls: Option<&'a crate::audio_engine::split_monitor::Controls>,
@@ -314,6 +397,9 @@ pub(super) fn apply_commands(context: CommandContext<'_>) -> bool {
         rt_muted,
         rt_order,
         rt_order_len,
+        rt_health,
+        rt_health_tokens,
+        health_shared,
         rt_cohort_change_applied,
         output_timing,
         worker_generation_controls,
@@ -376,7 +462,8 @@ pub(super) fn apply_commands(context: CommandContext<'_>) -> bool {
                 }
                 AudioThreadMessage::SetBypass { index, .. }
                 | AudioThreadMessage::SetMute { index, .. }
-                | AudioThreadMessage::SetGain { index, .. } => (*index as usize) < MAX_PLUGINS,
+                | AudioThreadMessage::SetGain { index, .. }
+                | AudioThreadMessage::ResumePlugin { index } => (*index as usize) < MAX_PLUGINS,
                 _ => true,
             };
         }
@@ -392,6 +479,7 @@ pub(super) fn apply_commands(context: CommandContext<'_>) -> bool {
                 initial_gain,
                 initial_bypassed,
                 initial_muted,
+                health_token,
             } => {
                 let slot = index as usize;
                 if slot < MAX_PLUGINS && rt_processors[slot].is_none() {
@@ -400,6 +488,13 @@ pub(super) fn apply_commands(context: CommandContext<'_>) -> bool {
                     rt_gains[slot] = Smoother::new_ramp(0.0, initial_gain);
                     rt_bypassed[slot] = initial_bypassed;
                     rt_muted[slot] = initial_muted;
+                    plugin_health::install_slot(
+                        rt_health,
+                        rt_health_tokens,
+                        health_shared,
+                        index,
+                        health_token,
+                    );
                 } else {
                     pending_rejected.defer(DisposedProcessor::Rejected(processor), retire_prod);
                 }
@@ -423,6 +518,7 @@ pub(super) fn apply_commands(context: CommandContext<'_>) -> bool {
                     rt_bypassed[slot] = false;
                     rt_gains[slot] = Smoother::new(1.0);
                     remove_from_order(rt_order, rt_order_len, index);
+                    plugin_health::clear_slot(rt_health, rt_health_tokens, health_shared, index);
                 }
             }
             AudioThreadMessage::ReorderProcessors { order, len } => {
@@ -446,6 +542,9 @@ pub(super) fn apply_commands(context: CommandContext<'_>) -> bool {
                 if slot < MAX_PLUGINS {
                     rt_gains[slot].set_target(value);
                 }
+            }
+            AudioThreadMessage::ResumePlugin { index } => {
+                plugin_health::resume_slot(rt_health, rt_health_tokens, health_shared, index);
             }
             AudioThreadMessage::LiveMode {
                 voice,
@@ -588,4 +687,244 @@ pub(super) fn apply_commands(context: CommandContext<'_>) -> bool {
     }
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vst_host::instance::{allocation_counts, ScriptedVst};
+
+    fn controls(rate: u32) -> (PluginControls, Arc<PluginHealthShared>) {
+        let shared = Arc::new(PluginHealthShared::new());
+        (
+            PluginControls {
+                bypassed: [false; MAX_PLUGINS],
+                muted: [false; MAX_PLUGINS],
+                gains: std::array::from_fn(|_| Smoother::new(1.0)),
+                order: [u8::MAX; MAX_PLUGINS],
+                order_len: 0,
+                health: [SlotHealth::default(); MAX_PLUGINS],
+                health_tokens: [0; MAX_PLUGINS],
+                limits: HealthLimits::new(rate),
+                health_shared: shared.clone(),
+            },
+            shared,
+        )
+    }
+
+    fn buffers(frames: usize, value: f32) -> (Vec<Vec<f32>>, Vec<Vec<f32>>) {
+        (vec![vec![value; frames]; 2], vec![vec![0.0; frames]; 2])
+    }
+
+    fn run(
+        controls: &mut PluginControls,
+        processors: &mut [Option<VstProcessor>; MAX_PLUGINS],
+        planar_a: &mut [Vec<f32>],
+        planar_b: &mut [Vec<f32>],
+        frames: usize,
+    ) -> bool {
+        controls.process(PluginBlock {
+            processors,
+            planar_buf_a: planar_a,
+            planar_buf_b: planar_b,
+            channels: 2,
+            frames,
+            active_count: 2,
+            global_bypass: false,
+        })
+    }
+
+    fn output<'a>(
+        source_a: bool,
+        planar_a: &'a [Vec<f32>],
+        planar_b: &'a [Vec<f32>],
+    ) -> &'a [Vec<f32>] {
+        if source_a {
+            planar_a
+        } else {
+            planar_b
+        }
+    }
+
+    #[test]
+    fn invalid_output_never_reaches_the_next_plugin_and_isolation_stays_allocation_free() {
+        let mut bad = ScriptedVst::non_finite(f32::NAN, None);
+        let mut next = ScriptedVst::scale(0.5);
+        let (mut controls, shared) = controls(48_000);
+        controls.order[0] = 0;
+        controls.order[1] = 1;
+        controls.order_len = 2;
+        controls.install_slot(0, 11);
+        controls.install_slot(1, 12);
+        let mut processors: [Option<VstProcessor>; MAX_PLUGINS] = std::array::from_fn(|_| None);
+        processors[0] = Some(bad.take());
+        processors[1] = Some(next.take());
+        let frames = 256;
+        let (mut planar_a, mut planar_b) = buffers(frames, 0.25);
+        let mut finite = true;
+        let mut silent = true;
+        let counts = allocation_counts(|| {
+            let source_a = run(
+                &mut controls,
+                &mut processors,
+                &mut planar_a,
+                &mut planar_b,
+                frames,
+            );
+            let produced = output(source_a, &planar_a, &planar_b);
+            finite = produced
+                .iter()
+                .all(|channel| channel.iter().all(|sample| sample.is_finite()));
+            silent = produced
+                .iter()
+                .all(|channel| channel.iter().all(|sample| *sample == 0.0));
+            for _ in 0..18 {
+                let _ = run(
+                    &mut controls,
+                    &mut processors,
+                    &mut planar_a,
+                    &mut planar_b,
+                    frames,
+                );
+            }
+        });
+        assert_eq!(counts, (0, 0));
+        assert!(finite && silent);
+        assert!(!next.saw_non_finite());
+        assert!(controls.health[0].isolated);
+        assert_eq!((bad.calls(), next.calls()), (19, 19));
+        assert_eq!(shared.isolated_blocks(0, 11), Some(19));
+        assert_eq!(shared.isolated_blocks(0, 12), None);
+        assert_eq!(
+            shared
+                .isolated_publication(0, 11)
+                .map(|state| state.isolation_seq),
+            Some(1)
+        );
+
+        let counts = allocation_counts(|| {
+            let source_a = run(
+                &mut controls,
+                &mut processors,
+                &mut planar_a,
+                &mut planar_b,
+                frames,
+            );
+            silent = output(source_a, &planar_a, &planar_b)
+                .iter()
+                .all(|channel| channel.iter().all(|sample| *sample == 0.0));
+        });
+        assert_eq!(counts, (0, 0));
+        assert!(silent);
+        assert_eq!((bad.calls(), next.calls()), (19, 20));
+        assert_eq!(
+            shared
+                .isolated_publication(0, 11)
+                .map(|state| state.isolation_seq),
+            Some(1)
+        );
+
+        controls.resume_slot(0);
+        assert!(!controls.health[0].isolated);
+        assert_eq!(shared.isolated_blocks(0, 11), None);
+        let _ = run(
+            &mut controls,
+            &mut processors,
+            &mut planar_a,
+            &mut planar_b,
+            frames,
+        );
+        assert_eq!(bad.calls(), 20);
+        assert!(!controls.health[0].isolated);
+
+        controls.clear_slot(0);
+        controls.install_slot(0, 99);
+        let counts = allocation_counts(|| {
+            let _ = run(
+                &mut controls,
+                &mut processors,
+                &mut planar_a,
+                &mut planar_b,
+                frames,
+            );
+        });
+        assert_eq!(counts, (0, 0));
+        assert_eq!(bad.calls(), 21);
+        assert!(!controls.health[0].isolated);
+        assert_eq!(shared.isolated_blocks(0, 11), None);
+        assert_eq!(shared.isolated_blocks(0, 99), None);
+        drop(processors);
+    }
+
+    #[test]
+    fn bypass_and_mute_do_not_judge_or_call_the_plugin() {
+        let mut bad = ScriptedVst::non_finite(f32::INFINITY, Some(0));
+        let mut next = ScriptedVst::scale(1.0);
+        let (mut controls, _) = controls(48_000);
+        controls.order[0] = 0;
+        controls.order[1] = 1;
+        controls.order_len = 2;
+        controls.install_slot(0, 1);
+        controls.bypassed[0] = true;
+        let mut processors: [Option<VstProcessor>; MAX_PLUGINS] = std::array::from_fn(|_| None);
+        processors[0] = Some(bad.take());
+        processors[1] = Some(next.take());
+        let frames = 64;
+        let (mut planar_a, mut planar_b) = buffers(frames, 0.4);
+        let source_a = run(
+            &mut controls,
+            &mut processors,
+            &mut planar_a,
+            &mut planar_b,
+            frames,
+        );
+        assert_eq!(bad.calls(), 0);
+        assert_eq!(next.calls(), 1);
+        assert!(!controls.health[0].isolated);
+        assert!(output(source_a, &planar_a, &planar_b)
+            .iter()
+            .all(|channel| channel.iter().all(|sample| *sample == 0.4)));
+        controls.bypassed[0] = false;
+        controls.muted[0] = true;
+        let _ = run(
+            &mut controls,
+            &mut processors,
+            &mut planar_a,
+            &mut planar_b,
+            frames,
+        );
+        assert_eq!(bad.calls(), 0);
+        assert!(!controls.health[0].isolated);
+        drop(processors);
+    }
+
+    #[test]
+    fn one_sided_infinity_is_silenced_before_the_next_plugin() {
+        let mut bad = ScriptedVst::non_finite(f32::NEG_INFINITY, Some(1));
+        let mut next = ScriptedVst::scale(1.0);
+        let (mut controls, _) = controls(44_100);
+        controls.order[0] = 0;
+        controls.order[1] = 1;
+        controls.order_len = 2;
+        controls.install_slot(0, 3);
+        let mut processors: [Option<VstProcessor>; MAX_PLUGINS] = std::array::from_fn(|_| None);
+        processors[0] = Some(bad.take());
+        processors[1] = Some(next.take());
+        let frames = 128;
+        let (mut planar_a, mut planar_b) = buffers(frames, 0.2);
+        let counts = allocation_counts(|| {
+            let _ = run(
+                &mut controls,
+                &mut processors,
+                &mut planar_a,
+                &mut planar_b,
+                frames,
+            );
+        });
+        assert_eq!(counts, (0, 0));
+        assert!(!next.saw_non_finite());
+        assert_eq!(bad.calls(), 1);
+        assert!(!controls.health[0].isolated);
+        drop(processors);
+    }
 }

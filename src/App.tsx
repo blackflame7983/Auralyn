@@ -21,6 +21,7 @@ import { SessionRecoveryNotice } from './components/features/Recovery/SessionRec
 import { Toaster } from 'sonner';
 
 import { usePlugins } from './hooks/usePlugins';
+import { usePluginHealthNotices } from './hooks/usePluginHealthNotices';
 import { useTheme } from './hooks/useTheme';
 import { useAudioConfig } from './hooks/useAudioConfig';
 import { useAppEvents } from './hooks/useAppEvents';
@@ -52,6 +53,8 @@ function AppContent() {
   tutorialEligible.current = audioReady && vstPanelOpen;
 
   const pluginsApi = usePlugins();
+  // 右パネルを閉じても、停止の toast はここから出す。カードは表示と再開だけ。
+  usePluginHealthNotices(pluginsApi.plugins);
   const liveModel = useLiveModes(pluginsApi.isLoading);
 
   useAppEvents({

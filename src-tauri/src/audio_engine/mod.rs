@@ -41,3 +41,4 @@ pub(crate) mod split_monitor;
 pub mod noise_candidate;
 
 pub mod peak_protection;
+pub(crate) mod plugin_health;
