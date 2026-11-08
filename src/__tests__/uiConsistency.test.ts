@@ -7,8 +7,8 @@ import { expect, it } from 'vitest';
 const displayExceptions: Record<string, string[]> = {
     'components/features/LevelMeter/LoudnessCheck.tsx': ['text-lg'],
 };
-// button は、本番帯の入力の機器名（設定を開くリンク風の文字ボタン。DESIGN.md の例外）を素の button に戻したぶん 1 つ多い。
-const baseline = { typography: 438, radius: 261, button: 190, select: 19, checkbox: 22, range: 0, motion: 1 };
+// 段階4終了時の実数。残る一覧行・リンク風操作・共通部品内部と対象外画面はDESIGN.md 5.8に記載。
+const baseline = { typography: 90, radius: 36, button: 56, select: 3, checkbox: 1, range: 0, motion: 1 };
 type Counts = typeof baseline;
 function count(source: string, file: string): Counts {
     const result: Counts = { typography: 0, radius: 0, button: 0, select: 0, checkbox: 0, range: 0, motion: 0 };

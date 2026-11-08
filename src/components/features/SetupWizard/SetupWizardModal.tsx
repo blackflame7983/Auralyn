@@ -1,10 +1,14 @@
+import { ChoiceCard } from '@/components/ui/ChoiceCard';
+import { Field } from '@/components/ui/Field';
+import { Select } from '@/components/ui/Select';
+import { Button } from '@/components/ui/button';
 import { renderNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { LanguageSelector } from '@/i18n/LanguageSelector';
 import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import { useSharedMeter } from '../LevelMeter/MeterContext';
 import { MeterVisual } from '../LevelMeter/MeterVisual';
-import { cn } from '@/lib/utils';
-import { buttonVariants } from '@/components/ui/button';
+
+
 import { receiverDeviceNotice, deviceDisplayName } from '../../../lib/audioRouting';
 import { Modal } from '../../ui/modal';
 import { AudioFlow } from '../../ui/AudioFlow';
@@ -95,14 +99,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                 <div className="modal-header-base shrink-0 pr-16 py-3"><p className="font-bold">{t('wizard.title')}</p></div>
                 {/* Close Button */}
-                <button
+                <Button variant="ghost" size="icon"
                     onClick={handleCloseRequest}
                     disabled={isBusy || isCheckingConnection}
                     aria-label={t('wizard.close')}
-                    className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors z-10"
+                    className="absolute top-4 right-4 z-10"
                 >
                     <MdClose className="w-6 h-6" />
-                </button>
+                </Button>
 
                 <ConfirmDialog
                     isOpen={isCloseConfirmOpen}
@@ -130,8 +134,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             const label = step === 'usage_selection' ? t('wizard.purpose') : step === 'input_selection' ? t(config.goal === 'music' ? 'wizard.sourcePc' : 'wizard.input')
                                 : step === 'output_selection' ? t('wizard.output') : t('wizard.check');
                             return <li key={step} aria-current={isCurrent ? 'step' : undefined}
-                                className={`relative flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-ui-control transition-colors duration-(--motion-base) ${isCurrent ? 'font-semibold text-foreground' : isPast ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold transition-colors duration-(--motion-base) ${isCurrent || isPast ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                                className={`relative flex min-h-11 items-center gap-3 rounded-card px-3 py-2 text-ui-control transition-colors duration-(--motion-base) ${isCurrent ? 'font-semibold text-foreground' : isPast ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-ui-support font-bold transition-colors duration-(--motion-base) ${isCurrent || isPast ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
                                     {isPast ? <MdCheck aria-hidden="true" className="h-4 w-4" /> : idx + 1}
                                 </span>
                                 <span className="min-w-0 wrap-break-word">{label}{isPast && <span className="sr-only">{t('wizard.stepCompleted')}</span>}</span>
@@ -145,17 +149,17 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                     {/* 手順が変わるたびに、進む向きから入れる。動きを減らす設定では不透明度だけにする。 */}
                     <div key={state} className="setup-step flex flex-1 flex-col" data-dir={direction}>
                     {state === 'usage_selection' && <LanguageSelector />}
-                    {initialStateError && <p role="alert" className="text-sm text-warning mb-4">{t('guide.copy.180')}</p>}
+                    {initialStateError && <p role="alert" className="text-ui-support text-warning mb-4">{t('guide.copy.180')}</p>}
 
                     {/* --- STEP 2: USAGE SELECTION --- */}
                     {state === 'usage_selection' && (
                         <div className="space-y-3">
                             <h2 className="setup-heading">{t('wizard.chooseGoal')}</h2>
                             <div className="space-y-2">
-                                <p className="text-muted-foreground text-sm leading-relaxed">
+                                <p className="text-muted-foreground text-ui-support leading-relaxed">
                                     {t('wizard.cableBefore')}<strong className="text-foreground">{t('wizard.cable')}</strong>{t('wizard.cableAfter')}
                                 </p>
-                                <p className="text-muted-foreground text-xs">
+                                <p className="text-muted-foreground text-ui-support">
                                     {t('wizard.troubleBefore')}
                                     {onOpenTroubleshoot ? (
                                         <>
@@ -176,8 +180,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             </div>
 
 
-                            <div className="grid grid-cols-2 gap-3 p-1">
-                                {destinationChoices.map(({ value, label, icon: Icon, hint }) => <SelectionCard compact
+                            <div role="radiogroup" aria-label={t('wizard.chooseGoal')} className="grid grid-cols-2 gap-3 p-1">
+                                {destinationChoices.map(({ value, label, icon: Icon, hint }) => <SelectionCard name="wizard-goal" compact
                                     key={value}
                                     onClick={() => selectGoal(value === 'listening' && (config.goal ?? savedGoal) === 'music' ? 'music' : value)}
                                     icon={<Icon aria-hidden="true" className="w-6 h-6" />}
@@ -203,32 +207,32 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 {/* ASIO 機器があるときだけ接続方式を選ばせる。PCの再生音は WASAPI の仮想ケーブルから受ける（#291）。 */}
                                 {/* ASIO を選んだ後に機器が見えなくなっても、WASAPI へ戻れるように残す。 */}
                                 {(asioAvailable || isAsioHost(config.host)) && config.goal !== 'music' && <fieldset className="space-y-2">
-                                    <legend className="text-sm font-medium">{t('wizard.host')}</legend>
-                                    <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-                                        <label className="flex items-center gap-2"><input type="radio" name="wizard-host" checked={!isAsioHost(config.host)} onChange={() => selectHost('WASAPI')} />{t('wizard.hostWasapi')}</label>
-                                        <label className="flex items-center gap-2"><input type="radio" name="wizard-host" checked={isAsioHost(config.host)} onChange={() => selectHost('ASIO')} />{t('wizard.hostAsio')}</label>
+                                    <legend className="text-ui-support font-medium">{t('wizard.host')}</legend>
+                                    <div className="flex flex-wrap gap-x-4 gap-y-2 text-ui-support">
+                                        <ChoiceCard    name="wizard-host" checked={!isAsioHost(config.host)} onChange={() => selectHost('WASAPI')} >{t('wizard.hostWasapi')}</ChoiceCard>
+                                        <ChoiceCard    name="wizard-host" checked={isAsioHost(config.host)} onChange={() => selectHost('ASIO')} >{t('wizard.hostAsio')}</ChoiceCard>
                                     </div>
-                                    {isAsioHost(config.host) && <p className="text-xs text-muted-foreground">{t('wizard.hostAsioHint')}</p>}
+                                    {isAsioHost(config.host) && <p className="text-ui-support text-muted-foreground">{t('wizard.hostAsioHint')}</p>}
                                 </fieldset>}
                                 {(config.goal === 'listening' || config.goal === 'music') && <fieldset className="space-y-2">
-                                    <legend className="text-sm font-medium">{t('wizard.source')}</legend>
-                                    <div className="flex gap-4 text-sm">
-                                        <label className="flex items-center gap-2"><input type="radio" name="wizard-source" checked={config.goal === 'listening'} onChange={() => selectGoal('listening')} />{t('wizard.sourceMic')}</label>
-                                        <label className="flex items-center gap-2"><input type="radio" name="wizard-source" checked={config.goal === 'music'} onChange={() => selectGoal('music')} />{t('wizard.sourcePc')}</label>
+                                    <legend className="text-ui-support font-medium">{t('wizard.source')}</legend>
+                                    <div className="flex gap-4 text-ui-support">
+                                        <ChoiceCard    name="wizard-source" checked={config.goal === 'listening'} onChange={() => selectGoal('listening')} >{t('wizard.sourceMic')}</ChoiceCard>
+                                        <ChoiceCard    name="wizard-source" checked={config.goal === 'music'} onChange={() => selectGoal('music')} >{t('wizard.sourcePc')}</ChoiceCard>
                                     </div>
                                 </fieldset>}
-                                {config.goal === 'music' && <p className="text-sm text-muted-foreground">{t('wizard.musicRoute')}</p>}
+                                {config.goal === 'music' && <p className="text-ui-support text-muted-foreground">{t('wizard.musicRoute')}</p>}
                                 {isLoadingDevices ? (
                                     <div className="py-8 text-center text-muted-foreground animate-pulse">{t('guide.copy.186')}</div>
                                 ) : (
                                     <>
                                         <div className="space-y-2">
-                                            <label htmlFor={inputDeviceId} className="text-sm font-medium text-foreground">
+                                            <label htmlFor={inputDeviceId} className="text-ui-support font-medium text-foreground">
                                                 {t('guide.copy.188')}
                                             </label>
-                                            <select
+                                            <Field label={null} id={inputDeviceId}><Select
                                                 id={inputDeviceId}
-                                                className="w-full p-3 bg-muted/50 border border-input rounded-lg focus:outline-hidden focus:ring-2 focus:ring-primary/50"
+                                                className="w-full"
                                                 value={config.input?.name || ''}
                                                 onChange={(e) => {
                                                     const dev = availableInputs.find(d => d.name === e.target.value);
@@ -240,18 +244,18 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                                 {availableInputs.map((d, i) => (
                                                     <option key={`${d.name}-${i}`} value={d.name} title={d.name}>{deviceDisplayName(d.name)}</option>
                                                 ))}
-                                            </select>
+                                            </Select></Field>
                                         </div>
 
                                         {config.goal !== 'music' && <MicrophonePermissionGuide expanded={/アクセス.*拒否|0x80070005|access.*denied/i.test(audioStartError)} />}
                                         {config.goal !== 'music' && config.input && (config.input.name === runningInput
                                             ? <div className="space-y-1">
                                                 <InputLevelBar label={t('wizard.level')} />
-                                                <p className="text-xs text-muted-foreground">{t('wizard.levelHint')}</p>
+                                                <p className="text-ui-support text-muted-foreground">{t('wizard.levelHint')}</p>
                                             </div>
-                                            : <p className="text-xs text-muted-foreground">{t('wizard.levelLater')}</p>)}
+                                            : <p className="text-ui-support text-muted-foreground">{t('wizard.levelLater')}</p>)}
                                         {availableInputs.length === 0 && (
-                                            <div className="flex items-center gap-2 text-destructive-text text-sm bg-destructive/10 p-3 rounded-lg">
+                                            <div className="flex items-center gap-2 text-destructive-text text-ui-support bg-destructive/10 p-3 rounded-card">
                                                 <MdError /> {t('guide.copy.192')}</div>
                                         )}
                                     </>
@@ -259,7 +263,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             </div>
 
                             <div>
-                                <button disabled={isLoadingDevices} onClick={() => void loadDevices(true)} className="px-4 py-2 rounded border border-border disabled:opacity-50">{t('guide.copy.193')}</button>
+                                <Button variant="outline" disabled={isLoadingDevices} onClick={() => void loadDevices(true)} >{t('guide.copy.193')}</Button>
                             </div>
 
 
@@ -271,12 +275,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                         <div className="space-y-3">
                             <div className="space-y-2">
                                 <h2 className="setup-heading">{t('wizard.destination')}</h2>
-                                <p className="text-sm text-muted-foreground">
+                                <p className="text-ui-support text-muted-foreground">
                                     {isAsioHost(config.host) ? t('wizard.asioOutput', { name: config.output ? deviceDisplayName(config.output.name) : '' })
                                         : config.goal === 'music' ? t('wizard.musicRoute') : config.goal === 'obs' ? t('guide.copy.194') : t('guide.copy.195')}
                                 </p>
-                                {!config.input && <p className="text-sm text-warning">{t(config.goal === 'music' ? 'wizard.pcInputMissing' : 'guide.copy.196')}</p>}
-                                {availableOutputs.length === 0 && !isLoadingDevices && <p className="text-sm text-warning">{t('guide.copy.197')}</p>}
+                                {!config.input && <p className="text-ui-support text-warning">{t(config.goal === 'music' ? 'wizard.pcInputMissing' : 'guide.copy.196')}</p>}
+                                {availableOutputs.length === 0 && !isLoadingDevices && <p className="text-ui-support text-warning">{t('guide.copy.197')}</p>}
                             </div>
 
                             {/* ASIO は入力と同じ機器へ返すため、送り先の種類ではなく使うチャンネルを選ぶ（#291）。 */}
@@ -284,20 +288,20 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 {([['input', 'wizard.asioInputChannels', config.input.channels], ['output', 'wizard.asioOutputChannels', config.output?.channels ?? 0]] as const).map(([side, label, count]) => {
                                     const value = effectiveAsioChannels(config)[side];
                                     const pairs = asioChannelPairs(count);
-                                    return <label key={side} className="block space-y-1 text-sm font-medium text-foreground">{t(label)}
-                                        <select className="w-full rounded-lg border border-input bg-muted/50 p-3 text-ui-control font-normal focus:outline-hidden focus:ring-2 focus:ring-primary/50"
+                                    return <label key={side} className="block space-y-1 text-ui-support font-medium text-foreground">{t(label)}
+                                        <Field label={null}><Select className="w-full"
                                             value={value.join()} onChange={event => selectAsioChannels(side, event.target.value.split(',').map(Number) as [number, number])}>
                                             {pairs.map(pair => <option key={pair.join()} value={pair.join()}>{t('wizard.channelPair', { left: pair[0] + 1, right: pair[1] + 1 })}</option>)}
-                                        </select>
+                                        </Select></Field>
                                     </label>;
                                 })}
-                                {(config.goal === 'obs' || config.goal === 'discord') && <p className="text-xs text-muted-foreground">{t('wizard.asioReceiver')}</p>}
+                                {(config.goal === 'obs' || config.goal === 'discord') && <p className="text-ui-support text-muted-foreground">{t('wizard.asioReceiver')}</p>}
                             </div>}
 
                             {!isAsioHost(config.host) && <>
-                            <div className={`grid ${config.goal === 'music' ? 'grid-cols-2' : 'grid-cols-3'} gap-3`}>
+                            <div role="radiogroup" aria-label={t('wizard.output')} className={`grid ${config.goal === 'music' ? 'grid-cols-2' : 'grid-cols-3'} gap-3`}>
                                 {/* Option 1: Default */}
-                                <SelectionCard
+                                <SelectionCard name="wizard-output"
                                     onClick={() => selectOutputMode('default')}
                                     icon={<MdVolumeUp aria-hidden="true" className="w-7 h-7" />}
                                     title={t('guide.copy.198')}
@@ -307,7 +311,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 />
 
                                 {/* Option 2: Headphones */}
-                                <SelectionCard
+                                <SelectionCard name="wizard-output"
                                     onClick={() => selectOutputMode('monitor')}
                                     icon={<MdHeadphones aria-hidden="true" className="w-7 h-7" />}
                                     title={t('guide.copy.200')}
@@ -317,7 +321,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 />
 
                                 {/* Option 3: Broadcast */}
-                                {config.goal !== 'music' && <SelectionCard
+                                {config.goal !== 'music' && <SelectionCard name="wizard-output"
                                     onClick={() => selectOutputMode('broadcast')}
                                     icon={<MdCast aria-hidden="true" className="w-7 h-7" />}
                                     title={t('guide.copy.202')}
@@ -328,19 +332,19 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             </div>
                             <div className="max-w-xl space-y-2" aria-label={t('guide.copy.204')}>
                                     {config.outputMode === 'default' && config.output && (
-                                        <div className="mt-2 p-2 bg-background/50 rounded text-xs text-foreground">
+                                        <div className="mt-2 p-2 bg-background/50 rounded-control text-ui-support text-foreground">
                                             {config.output.name}
                                         </div>
                                     )}
                                     {config.outputMode === 'default' && !config.output && (
-                                        <p role="status" className="mt-2 text-sm text-muted-foreground">
+                                        <p role="status" className="mt-2 text-ui-support text-muted-foreground">
                                             {t('guide.copy.205')}</p>
                                     )}
                                     {config.outputMode === 'monitor' && (<>
                                         <label htmlFor="wizard-output-206" className="mt-2 block text-ui-support font-medium text-foreground">{t('guide.copy.206')}</label>
-                                        <select
+                                        <Field label={null} id="wizard-output-206"><Select
                                             id="wizard-output-206"
-                                            className="mt-2 w-full rounded-lg border border-input bg-muted/50 p-3 text-ui-control focus:outline-hidden focus:ring-2 focus:ring-primary/50"
+                                            className="mt-2 w-full"
                                             value={config.output?.name || ''}
                                             onClick={(e) => e.stopPropagation()}
                                             onChange={(e) => {
@@ -352,14 +356,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                             {availableOutputs.filter(d => !isVirtualOutput(d)).map((d, i) => (
                                                 <option key={i} value={d.name} title={d.name}>{deviceDisplayName(d.name)}</option>
                                             ))}
-                                        </select>
+                                        </Select></Field>
                                     </>)}
                                     {config.outputMode === 'broadcast' && (
                                         <>
                                             <label htmlFor="wizard-output-208" className="mt-2 block text-ui-support font-medium text-foreground">{t('guide.copy.208')}</label>
-                                            <select
+                                            <Field label={null} id="wizard-output-208"><Select
                                                 id="wizard-output-208"
-                                                className="mt-2 w-full rounded-lg border border-input bg-muted/50 p-3 text-ui-control focus:outline-hidden focus:ring-2 focus:ring-primary/50"
+                                                className="mt-2 w-full"
                                                 value={config.output?.name || ''}
                                                 onClick={(e) => e.stopPropagation()}
                                                 onChange={(e) => {
@@ -375,18 +379,18 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                                 {!availableOutputs.some(isVirtualOutput) && (
                                                     <option value="">{t('guide.copy.210')}</option>
                                                 )}
-                                            </select>
-                                            <p className="mt-2 text-xs text-muted-foreground">{t('guide.wizard.receiver', { receiver: config.output ? renderNotice(t, receiverDeviceNotice(config.output.name)) : t('guide.copy.212') })}</p>
-                                            {availableOutputs.filter(isVirtualOutput).length > 1 && !config.output && <p role="status" className="text-sm text-warning">{t('guide.copy.214')}</p>}
+                                            </Select></Field>
+                                            <p className="mt-2 text-ui-support text-muted-foreground">{t('guide.wizard.receiver', { receiver: config.output ? renderNotice(t, receiverDeviceNotice(config.output.name)) : t('guide.copy.212') })}</p>
+                                            {availableOutputs.filter(isVirtualOutput).length > 1 && !config.output && <p role="status" className="text-ui-support text-warning">{t('guide.copy.214')}</p>}
                                             {!availableOutputs.some(isVirtualOutput) && (
                                                 <div className="mt-2 flex flex-col items-center gap-1.5">
-                                                    <p className="text-xs text-center text-warning">{t('guide.copy.215')}</p>
+                                                    <p className="text-ui-support text-center text-warning">{t('guide.copy.215')}</p>
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             invoke('open_url', { url: 'https://vb-audio.com/Cable/' }).catch(() => window.open('https://vb-audio.com/Cable/', '_blank'));
                                                         }}
-                                                        className="text-xs underline text-primary hover:text-foreground"
+                                                        className="text-ui-support underline text-primary hover:text-foreground"
                                                     >
                                                         {t('guide.copy.216')}</button>
                                                 </div>
@@ -397,7 +401,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
 
                             <div>
-                                <button disabled={isLoadingDevices} onClick={() => void (config.outputMode === 'broadcast' ? handleRescanVirtualDevices() : loadDevices(true))} className="px-4 py-2 rounded border border-border disabled:opacity-50">{isLoadingDevices ? t('guide.copy.219') : t('guide.copy.220')}</button>
+                                <Button variant="outline" disabled={isLoadingDevices} onClick={() => void (config.outputMode === 'broadcast' ? handleRescanVirtualDevices() : loadDevices(true))} >{isLoadingDevices ? t('guide.copy.219') : t('guide.copy.220')}</Button>
                             </div>
                             </>}
 
@@ -409,11 +413,11 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                         <div className="space-y-3">
                             <div className="mb-3">
                                 <h2 className="setup-heading">{t('wizard.confirm')}</h2>
-                                <p className="text-sm text-muted-foreground">{t(config.goal === 'music' ? 'wizard.musicConfirm' : 'guide.copy.221')}</p>
+                                <p className="text-ui-support text-muted-foreground">{t(config.goal === 'music' ? 'wizard.musicConfirm' : 'guide.copy.221')}</p>
                             </div>
 
                             {config.goal !== 'music' && /アクセス.*拒否|0x80070005|access.*denied/i.test(audioStartError) && <MicrophonePermissionGuide expanded />}
-                            {config.goal === 'music' && audioStartError && <p role="alert" className="text-sm text-destructive-text">{t('wizard.musicFailure')}</p>}
+                            {config.goal === 'music' && audioStartError && <p role="alert" className="text-ui-support text-destructive-text">{t('wizard.musicFailure')}</p>}
                             <AudioFlow inputKind={config.goal === 'music' ? 'playback' : 'microphone'}
                                 processingWarning={audioStartError ? t('home.startFailed') : undefined}
                                 label={t('prep.signalPath')}
@@ -432,25 +436,25 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
 
                                 <div className="flex gap-4">
                                     {!isTestingSound ? (
-                                        <button
+                                        <Button variant="secondary"
                                             onClick={startSoundTest}
                                             disabled={isBusy || isCheckingConnection || !initialStateReady}
-                                            className="px-6 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground font-bold rounded-lg transition-colors flex items-center gap-2"
+                                            className="flex items-center gap-2"
                                         >
-                                            <MdPlayArrow /> {t('guide.copy.229')}</button>
+                                            <MdPlayArrow /> {t('guide.copy.229')}</Button>
                                     ) : (
-                                        <button
+                                        <Button variant="destructive"
                                             onClick={stopSoundTest}
                                             disabled={isBusy || isCheckingConnection}
-                                            className="px-6 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold rounded-lg transition-colors flex items-center gap-2"
+                                            className="flex items-center gap-2"
                                         >
-                                            <MdStop /> {t('guide.copy.230')}</button>
+                                            <MdStop /> {t('guide.copy.230')}</Button>
                                     )}
                                 </div>
                             </div>}
 
                             {isTestingSound && (
-                                <p className="text-xs text-muted-foreground">
+                                <p className="text-ui-support text-muted-foreground">
                                     {t('guide.copy.231')}{config.goal === 'listening' ? t('guide.copy.232') : t('guide.copy.233')}
                                 </p>
                             )}
@@ -465,29 +469,25 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                 onStartAudio={startSoundTest}
                                 onBusyChange={setIsCheckingConnection}
                             />}
-                            <fieldset className="space-y-2 text-sm">
+                            <fieldset className="space-y-2 text-ui-support">
                                 <legend className="mb-2 flex items-center gap-1 font-semibold">
                                     {t('wizard.display')}
                                     <InfoPopover label={t('wizard.display')}>{t('wizard.displayHint')}</InfoPopover>
                                 </legend>
-                                <label className="flex items-center gap-2">
-                                    <input
-                                        type="radio"
+                                <ChoiceCard
+
                                         name="display-choice"
                                         checked={!panelChoice}
                                         onChange={() => setPanelChoice(false)}
-                                    />
-                                    {t(config.goal === 'music' ? 'wizard.musicSimple' : 'wizard.simple')}
-                                </label>
-                                <label className="flex items-center gap-2">
-                                    <input
-                                        type="radio"
+                                    >{t(config.goal === 'music' ? 'wizard.musicSimple' : 'wizard.simple')}
+                                </ChoiceCard>
+                                <ChoiceCard
+
                                         name="display-choice"
                                         checked={panelChoice}
                                         onChange={() => setPanelChoice(true)}
-                                    />
-                                    {t('wizard.advanced')}
-                                </label>
+                                    >{t('wizard.advanced')}
+                                </ChoiceCard>
                             </fieldset>
                             {onOpenTroubleshoot && <button disabled={isBusy || isCheckingConnection} onClick={() => void performClose(onOpenTroubleshoot)} className="underline text-primary">{t('guide.wizard.openDiagnostics')}</button>}
 
@@ -500,7 +500,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                             {state === 'configuring' ? (
                                 <>
                                     <div className="w-16 h-16 border-4 border-muted border-t-primary rounded-full animate-spin mx-auto motion-reduce:animate-none" />
-                                    <h2 className="text-xl font-medium text-success">{t('wizard.applying')}</h2>
+                                    <h2 className="text-ui-heading font-medium text-success">{t('wizard.applying')}</h2>
                                 </>
                             ) : (
                                 <>
@@ -508,22 +508,22 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                         <MdCheckCircle className="w-10 h-10 text-success" />
                                     </div>
                                     <div className="space-y-2">
-                                        <h2 className="text-2xl font-bold text-foreground">{t('wizard.saved')}</h2>
-                                        <p className="text-muted-foreground text-sm leading-relaxed">
+                                        <h2 className="text-ui-heading font-bold text-foreground">{t('wizard.saved')}</h2>
+                                        <p className="text-muted-foreground text-ui-support leading-relaxed">
                                             {config.goal === 'music' ? t('wizard.musicComplete') : <>{t('guide.copy.237')}<strong className="text-foreground"> {t('guide.copy.238')}</strong>
                                             {t('guide.copy.239')}{t('wizard.diagnostics')}{t('guide.copy.240')}</>}</p>
                                     </div>
-                                    {config.goal !== 'music' && onOpenVoiceCheck && <button
+                                    {config.goal !== 'music' && onOpenVoiceCheck && <Button variant="default"
                                         type="button"
                                         onClick={() => { onClose(); onOpenVoiceCheck(); }}
-                                        className={buttonVariants({ className: "gap-2" })}
-                                    ><MdHearing aria-hidden="true" />{t('home.voiceCheck')}</button>}
-                                    <button
+                                        className="gap-2"
+                                    ><MdHearing aria-hidden="true" />{t('home.voiceCheck')}</Button>}
+                                    <Button variant={config.goal !== 'music' && onOpenVoiceCheck ? 'outline' : 'default'}
                                         onClick={onClose}
-                                        className={buttonVariants({ variant: config.goal !== 'music' && onOpenVoiceCheck ? 'outline' : 'default', className: "gap-2" })}
+                                        className="gap-2"
                                     >
                                         {t('common.close')}
-                                    </button>
+                                    </Button>
                                 </>
                             )}
                         </div>
@@ -533,37 +533,37 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                 </div>
                 {state !== 'configuring' && state !== 'complete' && <div data-testid="setup-actions" className="setup-actions modal-footer-base shrink-0 px-6 py-4">
                     {state === 'usage_selection' && (
-                        <button type="button" disabled={isBusy} onClick={() => void performClose(() => (onSkip || onClose)())} className={buttonVariants({ variant: 'ghost' })}>{t('wizard.skip')}</button>
+                        <Button variant="default" type="button" disabled={isBusy} onClick={() => void performClose(() => (onSkip || onClose)())} >{t('wizard.skip')}</Button>
                     )}
                     {(state === 'input_selection' || state === 'output_selection') && (
                         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
-                            <button onClick={() => setState(state === 'input_selection' ? 'usage_selection' : 'input_selection')} className="whitespace-nowrap px-4 py-2 text-muted-foreground hover:text-foreground">{t('common.back')}</button>
+                            <Button variant="ghost" onClick={() => setState(state === 'input_selection' ? 'usage_selection' : 'input_selection')} className="whitespace-nowrap">{t('common.back')}</Button>
                             {/* 空でも領域を保ち、読み込みや選択による理由の変化を読み上げる。 */}
                             <p id={nextReasonId} role="status" aria-atomic="true" className="min-w-0 whitespace-normal wrap-anywhere text-ui-support text-muted-foreground">{nextReason}</p>
-                            <button
+                            <Button variant="default"
                                 onClick={() => { if (state === 'input_selection') confirmInput(); else setState('confirmation'); }}
                                 disabled={nextReason !== null}
                                 aria-describedby={nextReason !== null ? nextReasonId : undefined}
-                                className={cn(buttonVariants(), "setup-primary gap-2 disabled:border disabled:border-border disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100")}
+                                className="setup-primary gap-2 disabled:border disabled:border-border disabled:opacity-100"
                             >
                                 {t('common.next')} <MdArrowForward aria-hidden="true" className="setup-primary-arrow" />
-                            </button>
+                            </Button>
                         </div>
                     )}
                     {state === 'confirmation' && (<>
-                            <p id="wizard-save-scope" className="mb-2 text-right text-xs text-muted-foreground">{config.goal === 'music' ? t('wizard.musicApply') : t('guide.copy.235')}</p>
+                            <p id="wizard-save-scope" className="mb-2 text-right text-ui-support text-muted-foreground">{config.goal === 'music' ? t('wizard.musicApply') : t('guide.copy.235')}</p>
                             <div className="flex flex-wrap items-center gap-3">
-                                <button disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('input_selection')} className="px-3 py-2 text-muted-foreground hover:text-foreground">{t('wizard.inputAgain')}</button>
-                                <button disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('output_selection')} className="px-3 py-2 text-muted-foreground hover:text-foreground">{t('wizard.outputAgain')}</button>
+                                <Button variant="ghost" disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('input_selection')} >{t('wizard.inputAgain')}</Button>
+                                <Button variant="ghost" disabled={isBusy || isCheckingConnection} onClick={() => void reselectDevices('output_selection')} >{t('wizard.outputAgain')}</Button>
                                 <p id={nextReasonId} className="text-ui-support text-muted-foreground">{finalReason}</p>
-                                <button
+                                <Button variant="default"
                                     onClick={finalApply}
                                     aria-describedby={finalReason ? `wizard-save-scope ${nextReasonId}` : "wizard-save-scope"}
                                     disabled={finalReason !== null}
-                                    className={buttonVariants({ className: "setup-primary ml-auto gap-2" })}
+                                    className="setup-primary ml-auto gap-2"
                                 >
                                     <MdCheckCircle /> {t('wizard.saveStart')}
-                                </button>
+                                </Button>
                             </div>
                     </>)}
                 </div>}
@@ -580,56 +580,23 @@ function InputLevelBar({ label }: { label: string }) {
     const reading = useSharedMeter(true, 'input');
     return (
         <div className="flex items-center gap-3">
-            <span className="shrink-0 text-xs font-bold text-muted-foreground">{label}</span>
+            <span className="shrink-0 text-ui-support font-bold text-muted-foreground">{label}</span>
             <MeterVisual reading={reading} label={label} orientation="horizontal" height={12} scale />
         </div>
     );
 }
 
-// --- Helper Component ---
+// セットアップ固有のアイコンと配置も共通カードの標準radioで選択する。
 interface SelectionCardProps {
+    name: string;
     onClick: () => void;
     icon: React.ReactNode;
     title: string;
     description: string;
     active: boolean;
     color?: string;
-    children?: React.ReactNode;
     compact?: boolean;
 }
-
-const SelectionCard: React.FC<SelectionCardProps> = ({ onClick, icon, title, description, active, children, compact = false }) => {
-    // 選択中は主色の内側線・淡い面・右上の印で示す（DESIGN.md 5.7）。線は inset の影で描き、レイアウトをずらさない。
-    return (
-        <div
-            onClick={onClick}
-            role="button"
-            tabIndex={0}
-            aria-pressed={active}
-            aria-label={title}
-            data-selected={active}
-            onKeyDown={(e) => {
-                if (e.currentTarget !== e.target) return;
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onClick();
-                }
-            }}
-            className={`setup-choice cursor-pointer ${compact ? 'grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 px-4 py-3.5' : 'flex flex-col items-center px-3 py-4'} group relative overflow-hidden`}
-        >
-            <div className={`setup-choice-icon grid shrink-0 place-items-center rounded-xl ${compact ? 'row-span-2 h-11 w-11' : 'mb-2 h-12 w-12'}`}>
-                {icon}
-            </div>
-            <h3 className={`mb-0.5 text-ui-control font-semibold ${compact ? '' : 'text-center'}`}>{title}</h3>
-            <p className={`text-ui-support text-muted-foreground ${compact ? 'text-left' : 'text-center'}`}>
-                {description}
-            </p>
-            <span aria-hidden="true" className="setup-choice-check absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground"><MdCheck className="h-3.5 w-3.5" /></span>
-            {children && (
-                <div className="mt-2 w-full">
-                    {children}
-                </div>
-            )}
-        </div>
-    );
-};
+const SelectionCard = ({ name, onClick, icon, title, description, active, compact }: SelectionCardProps) => (
+    <ChoiceCard name={name} value={title} aria-label={title} checked={active} onChange={onClick} onClick={() => { if (active) onClick(); }} presentation="setup" compact={compact} icon={icon} description={description}>{title}</ChoiceCard>
+);

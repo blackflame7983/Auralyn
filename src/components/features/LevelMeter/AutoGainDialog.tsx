@@ -1,3 +1,8 @@
+import { Modal } from '@/components/ui/modal';
+import { Checkbox } from '@/components/ui/Checkbox';
+import { Field } from '@/components/ui/Field';
+import { Select } from '@/components/ui/Select';
+import { Button } from '@/components/ui/button';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { clientErrorNotice } from '@/lib/clientError';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
@@ -12,7 +17,6 @@ import {
 } from '@/api/outputGain';
 import { toast } from 'sonner';
 
-const button = 'rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50';
 const pct = (gain: number) => `${(gain * 100).toFixed(1)}%`;
 
 export function AutoGainDialog({ onClose }: { onClose: () => void }) {
@@ -131,42 +135,36 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
     const translatedDetail = errorDetail && typeof errorDetail === 'object' && errorDetail.key !== 'clientErrors.rawDetail' ? renderNotice(t, errorDetail) : null;
 
     return (
-        <Dialog.Root
-            open
-            onOpenChange={(open) => {
-                if (!open) void close();
-            }}
-        >
-            <Dialog.Portal>
-                <Dialog.Overlay className="fixed inset-0 z-[150] bg-overlay/70" />
-                <Dialog.Content className="fixed left-1/2 top-1/2 z-[151] flex max-h-[90vh] w-[min(38rem,95vw)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-background text-foreground shadow-xl">
+        <Modal title={t('autoGain.title')} titleInContent onClose={() => void close()} descriptionId="auto-gain-description">
+            <div className="modal-overlay-base z-[150]" onClick={event => { if (event.target === event.currentTarget) void close(); }}>
+                <div className="modal-surface-base flex max-h-[90vh] w-[min(38rem,95vw)] flex-col">
                     <div className="flex items-center justify-between gap-3 border-b border-border p-4">
                         <Dialog.Title className="font-semibold">
                             {t('autoGain.title')}</Dialog.Title>
-                        <button className={button} onClick={() => void close()}>
-                            {t('common.close')}</button>
+                        <Button variant="outline"  onClick={() => void close()}>
+                            {t('common.close')}</Button>
                     </div>
                     <div className="space-y-4 overflow-y-auto p-4">
-                        <Dialog.Description className="text-sm text-muted-foreground">
+                        <Dialog.Description id="auto-gain-description" className="text-ui-support text-muted-foreground">
                             {t('autoGain.purpose')}</Dialog.Description>
-                        <label className="flex flex-wrap items-center gap-2 text-sm">
-                            {t('autoGain.targetLabel')}<select
+                        <label className="flex flex-wrap items-center gap-2 text-ui-support">
+                            {t('autoGain.targetLabel')}<Field label={null}><Select
                                 aria-label={t('autoGain.targetLabel')}
                                 value={target}
                                 disabled={busy || recording || pending || !!proposal}
                                 onChange={(e) => setTarget(Number(e.target.value))}
-                                className="rounded border border-input bg-background p-2"
+
                             >
                                 {[-26, -23, -20, -17, -14].map((v) => (
                                     <option key={v} value={v}>
                                         {v} LUFS
                                     </option>
                                 ))}
-                            </select>
+                            </Select></Field>
                         </label>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-ui-support text-muted-foreground">
                             {t('autoGain.limitations')}</p>
-                        <p role="status" className="text-sm text-warning">
+                        <p role="status" className="text-ui-support text-warning">
                             {recording
                                 ? t('autoGain.recordingProgress', { arg0: Math.round((state?.progress ?? 0) * 10) })
                                 : pending
@@ -186,8 +184,8 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                           : t('autoGain.recordHint')}
                         </p>
                         <div className="flex flex-wrap gap-2">
-                            <button
-                                className={button}
+                            <Button variant="outline"
+
                                 disabled={
                                     busy ||
                                     pending ||
@@ -200,42 +198,42 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                 }
                             >
                                 {proposal ? t('autoGain.recordAgain') : t('autoGain.record')}
-                            </button>
-                            <button
-                                className={button}
+                            </Button>
+                            <Button variant="outline"
+
                                 disabled={busy || (!recording && !state?.playing)}
                                 onClick={() => void run({ action: 'cancel' })}
                             >
-                                {t('autoGain.cancelRecording')}</button>
-                            <button
-                                className={button}
+                                {t('autoGain.cancelRecording')}</Button>
+                            <Button variant="outline"
+
                                 disabled={busy}
                                 onClick={() => void run({ action: 'status' })}
                             >
-                                {t('autoGain.refreshState')}</button>
+                                {t('autoGain.refreshState')}</Button>
                         </div>
                         {(error || state?.error) && (
-                            <div role="alert" className="text-sm text-warning">
+                            <div role="alert" className="text-ui-support text-warning">
                                 <p>{error && typeof error !== 'string' && error.key !== 'clientErrors.rawDetail' ? renderNotice(t, error) : t('autoGain.stateFailed')}</p>
                                 {translatedDetail && <p>{translatedDetail}</p>}
                                 {rawError && <details><summary>{t('common.rawDetail')}</summary><p className="break-words">{rawError}</p></details>}
                             </div>
                         )}
                         {proposal && (
-                            <div className="space-y-3 rounded border border-border p-3">
+                            <div className="space-y-3 rounded-control border border-border p-3">
                                 <p className="font-semibold">
                                     {t('autoGain.change', { before: pct(proposal.before), after: pct(proposal.after) })}
                                 </p>
-                                <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">{t('structure.measurements')}</summary><p className="text-xs text-muted-foreground">
+                                <details className="text-ui-support text-muted-foreground"><summary className="cursor-pointer">{t('structure.measurements')}</summary><p className="text-ui-support text-muted-foreground">
                                     {t('autoGain.estimate', { measured: proposal.measured.toFixed(1), predicted: proposal.predicted.toFixed(1), peak: proposal.peak.toFixed(1) })}
                                 </p></details>
                                 {proposal.limited && (
-                                    <p className="text-sm text-warning">
+                                    <p className="text-ui-support text-warning">
                                         {t('autoGain.limitedGain')}</p>
                                 )}
                                 <div className="flex flex-wrap gap-2">
-                                    <button
-                                        className={button}
+                                    <Button variant="outline"
+
                                         disabled={
                                             busy ||
                                             pending ||
@@ -250,9 +248,9 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                             })
                                         }
                                     >
-                                        {t('autoGain.apply')}</button>
-                                    {state?.historyId == null && <button
-                                        className={button}
+                                        {t('autoGain.apply')}</Button>
+                                    {state?.historyId == null && <Button variant="outline"
+
                                         disabled={
                                             busy ||
                                             pending ||
@@ -267,26 +265,26 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                             })
                                         }
                                     >
-                                        {t('autoGain.undo')}</button>}
+                                        {t('autoGain.undo')}</Button>}
                                 </div>
                             </div>
                         )}
                         {state?.historyId != null && <div className="flex flex-wrap gap-2">
-                            <button type="button" className={button} disabled={busy || !state.undoAvailable || !state.historyEpoch} onClick={() => void run({action: 'undo_history', id: state.historyId!, revision: state.revision, epoch: state.historyEpoch!})}>{t('history.undo')}</button>
-                            <button type="button" className={button} disabled={busy || !state.redoAvailable || !state.historyEpoch} onClick={() => void run({action: 'redo_history', id: state.historyId!, revision: state.revision, epoch: state.historyEpoch!})}>{t('history.redo')}</button>
+                            <Button variant="outline" type="button"  disabled={busy || !state.undoAvailable || !state.historyEpoch} onClick={() => void run({action: 'undo_history', id: state.historyId!, revision: state.revision, epoch: state.historyEpoch!})}>{t('history.undo')}</Button>
+                            <Button variant="outline" type="button"  disabled={busy || !state.redoAvailable || !state.historyEpoch} onClick={() => void run({action: 'redo_history', id: state.historyId!, revision: state.revision, epoch: state.historyEpoch!})}>{t('history.redo')}</Button>
                         </div>}
                         {canPreview && (
-                            <div className="space-y-3 rounded border border-border p-3">
-                                <p className="text-sm font-semibold">{t('autoGain.compareTitle')}</p>
-                                <p className="text-xs text-muted-foreground">
+                            <div className="space-y-3 rounded-control border border-border p-3">
+                                <p className="text-ui-support font-semibold">{t('autoGain.compareTitle')}</p>
+                                <p className="text-ui-support text-muted-foreground">
                                     {t('autoGain.previewSafety')}</p>
-                                <button
-                                    className={button}
+                                <Button variant="outline"
+
                                     disabled={busy}
                                     onClick={() => void run({ action: 'devices' })}
                                 >
-                                    {t('autoGain.refreshOutputs')}</button>
-                                <select
+                                    {t('autoGain.refreshOutputs')}</Button>
+                                <Field label={null}><Select
                                     aria-label={t('autoGain.previewOutput')}
                                     value={device}
                                     disabled={busy || state?.playing}
@@ -294,7 +292,7 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                         setDevice(e.target.value);
                                         setSafeOutput(false);
                                     }}
-                                    className="w-full rounded border border-input bg-background p-2 text-sm"
+                                    className="w-full"
                                 >
                                     <option value="">{t('autoGain.chooseOutput')}</option>
                                     {devices.map((d) => (
@@ -302,19 +300,19 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                             {d.name}
                                         </option>
                                     ))}
-                                </select>
-                                <label className="flex gap-2 text-xs">
-                                    <input
+                                </Select></Field>
+                                <label className="flex gap-2 text-ui-support">
+                                    <Field label={null}><Checkbox
                                         type="checkbox"
                                         checked={safeOutput}
                                         onChange={(e) => setSafeOutput(e.target.checked)}
-                                    />
+                                    /></Field>
                                     {t('autoGain.previewConfirmed')}</label>
                                 <div className="flex flex-wrap gap-2">
                                     {[false, true].map((after) => (
-                                        <button
+                                        <Button variant="outline"
                                             key={String(after)}
-                                            className={button}
+
                                             disabled={busy || pending || !device || !safeOutput}
                                             onClick={() =>
                                                 void run({
@@ -326,20 +324,20 @@ export function AutoGainDialog({ onClose }: { onClose: () => void }) {
                                             }
                                         >
                                             {after ? t('autoGain.listenAdjusted') : t('autoGain.listenOriginal')}
-                                        </button>
+                                        </Button>
                                     ))}
-                                    <button
-                                        className={button}
+                                    <Button variant="outline"
+
                                         disabled={busy || !state?.playing}
                                         onClick={() => void run({ action: 'stop_preview' })}
                                     >
-                                        {t('autoGain.stopPreview')}</button>
+                                        {t('autoGain.stopPreview')}</Button>
                                 </div>
                             </div>
                         )}
                     </div>
-                </Dialog.Content>
-            </Dialog.Portal>
-        </Dialog.Root>
+                </div>
+            </div>
+        </Modal>
     );
 }

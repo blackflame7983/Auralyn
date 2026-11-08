@@ -152,7 +152,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await expect(wizard).toBeVisible();
         await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
         const labels = ['prep.obs', 'prep.call', 'prep.local', 'prep.other'] as const;
-        for (const label of labels) await expect(wizard.getByRole('button', { name: message(locale, label), exact: true })).toBeVisible();
+        for (const label of labels) await expect(wizard.getByRole('radio', { name: message(locale, label), exact: true })).toBeVisible();
         // 送り先は OBS・通話・自分で聴く・その他の順に並べる（#304）。
         const order = await wizard.locator('.setup-choice').evaluateAll(cards => cards.map(card => card.getAttribute('aria-label') ?? card.querySelector('.font-semibold, h3, strong')?.textContent ?? card.textContent));
         expect(order.map(text => labels.findIndex(label => text?.startsWith(message(locale, label))))).toEqual([0, 1, 2, 3]);
@@ -170,20 +170,21 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         for (const card of await cards.all()) {
             await card.scrollIntoViewIfNeeded();
             await expect(card).toBeInViewport({ ratio: 1 });
-            await card.focus();
-            await expect(card).toBeFocused();
+            await card.getByRole('radio').focus();
+            await expect(card.getByRole('radio')).toBeFocused();
         }
         await page.screenshot({ path: info.outputPath('purpose-cards-150.png') });
 
         await page.screenshot({ path: info.outputPath('destinations.png'), animations: 'disabled' });
-        await wizard.getByRole('button', { name: message(locale, 'prep.obs'), exact: true }).click();
+        await wizard.getByRole('radio', { name: message(locale, 'prep.obs'), exact: true }).click();
         const next = wizard.getByRole('button', { name: message(locale, 'common.next'), exact: true });
         await expect(next).toBeDisabled();
         await expect(wizard.getByText(message(locale, 'wizard.selectMicToContinue'), { exact: true })).toBeVisible();
         const disabledColor = await next.evaluate(el => getComputedStyle(el).backgroundColor);
         await page.screenshot({ path: info.outputPath('next-disabled.png'), animations: 'disabled' });
         const input = wizard.getByRole('combobox', { name: message(locale, 'guide.copy.188'), exact: true });
-        await expect(input.locator('..').locator('..').getByText(message(locale, 'settings.MicrophonePermissionGuide.238'), { exact: true })).toBeVisible();
+        await expect(input).toHaveAccessibleName(message(locale, 'guide.copy.188'));
+        await expect(wizard.getByText(message(locale, 'settings.MicrophonePermissionGuide.238'), { exact: true })).toBeVisible();
         await input.selectOption('Input one'); await expect(next).toBeEnabled();
         await expect.poll(() => next.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(disabledColor);
         await wizard.getByRole('button', { name: message(locale, 'common.back'), exact: true }).click();

@@ -1,3 +1,6 @@
+import { Field } from '@/components/ui/Field';
+import { Select } from '@/components/ui/Select';
+import { Button } from '@/components/ui/button';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
@@ -297,11 +300,11 @@ export function LoudnessCheck({
     return (
         <section
             aria-label={t('loudness.title')}
-            className="mb-4 rounded-xl border border-border bg-card p-4 space-y-2"
+            className="mb-4 rounded-card border border-border bg-card p-4 space-y-2"
         >
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <div className="flex items-center gap-1"><h2 ref={heading} tabIndex={-1} className="text-sm font-semibold">{t('loudness.title')}</h2><InfoPopover label={t('info.loudness')}>{t('loudness.scope')}</InfoPopover></div>
+                    <div className="flex items-center gap-1"><h2 ref={heading} tabIndex={-1} className="text-ui-support font-semibold">{t('loudness.title')}</h2><InfoPopover label={t('info.loudness')}>{t('loudness.scope')}</InfoPopover></div>
                     <p
                         role="status"
                         className={`text-lg font-bold ${good ? 'text-success' : active ? 'text-warning' : 'text-muted-foreground'}`}
@@ -310,10 +313,10 @@ export function LoudnessCheck({
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                <button
+                <Button variant="outline" size="sm"
                     onClick={() => void toggle()}
                     disabled={busy || (!active && (!running || !available || !stateKnown))}
-                    className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
+
                 >
                     {busy
                         ? t('loudness.switching')
@@ -322,43 +325,43 @@ export function LoudnessCheck({
                           : active
                             ? t('loudness.stop')
                             : t('loudness.measure')}
-                </button>
-                <button hidden={music} className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
-                    disabled={!running || !available || busy || music} onClick={() => setAutoGainOpen(true)}>{t('loudness.openAutoGain')}</button>
-                {onClose && <button type="button" onClick={onClose} disabled={busy} className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground disabled:opacity-50">{t('loudness.hide')}</button>}
+                </Button>
+                <Button variant="outline" size="sm" hidden={music}
+                    disabled={!running || !available || busy || music} onClick={() => setAutoGainOpen(true)}>{t('loudness.openAutoGain')}</Button>
+                {onClose && <Button variant="outline" size="sm" type="button" onClick={onClose} disabled={busy} >{t('loudness.hide')}</Button>}
                 </div>
             </div>
             {autoGainOpen && available && running && <AutoGainDialog onClose={() => setAutoGainOpen(false)} />}
             {active && reading && (
-                <details open={music} className="text-xs text-muted-foreground"><summary className="cursor-pointer">{t('structure.measurements')}</summary><p className="text-xs text-muted-foreground font-mono">
+                <details open={music} className="text-ui-support text-muted-foreground"><summary className="cursor-pointer">{t('structure.measurements')}</summary><p className="text-ui-support text-muted-foreground font-mono">
                     {t('loudness.reading', { lufs: reading.short_term_lufs?.toFixed(1) ?? '—', peak: reading.true_peak_dbtp?.toFixed(1) ?? '—' })}
                 </p></details>
             )}
             {error && (
-                <p role="alert" className="text-sm text-warning">
+                <p role="alert" className="text-ui-support text-warning">
                     {renderNotice(t, error)}
                 </p>
             )}
-            <details className="text-xs text-muted-foreground">
+            <details className="text-ui-support text-muted-foreground">
                 <summary className="cursor-pointer">{t('loudness.measurementDetails')}</summary>
                 <div className="mt-2 space-y-2">
                     <p>{t('loudness.includesPreview')}</p>
                     {!music && <label className="flex flex-wrap items-center gap-2">
-                        {t('loudness.targetLabel')}<select
+                        {t('loudness.targetLabel')}<Field label={null}><Select
                             aria-label={t('loudness.targetLabel')}
                             value={target}
                             onChange={(e) => {
                                 setTarget(Number(e.target.value));
                                 clear();
                             }}
-                            className="rounded border border-input bg-background p-1"
+
                         >
                             {[-26, -23, -20, -17, -14].map((v) => (
                                 <option key={v} value={v}>
                                     {v} LUFS
                                 </option>
                             ))}
-                        </select>
+                        </Select></Field>
                     </label>}
                     {!music && <p>{t('loudness.targetReference')}</p>}
                     {music && <p>{t('music.measurementScope')}</p>}

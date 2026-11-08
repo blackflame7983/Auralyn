@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { MdWarningAmber } from 'react-icons/md';
@@ -33,23 +34,23 @@ export function SessionRecoveryNotice({ status, protectedSession, reason, busy, 
     // 引継ぎは正常な動作のことが多い。枠を付けない控えめな文にし、保護中であることは常に見せ、再試行の説明は折りたたむ。
     const retained = status === 'retained';
     const retry = <>
-        <p className="text-xs text-muted-foreground">{t('session.explain')}</p>
-        {names && <p className="text-xs text-muted-foreground">{t('session.missingHint')}</p>}
-        <button type="button" disabled={busy} onClick={() => void onRetry()} className="rounded-md border border-border bg-background px-3 py-2 font-medium disabled:opacity-50">
+        <p className="text-ui-support text-muted-foreground">{t('session.explain')}</p>
+        {names && <p className="text-ui-support text-muted-foreground">{t('session.missingHint')}</p>}
+        <Button variant="outline" type="button" disabled={busy} onClick={() => void onRetry()} >
             {t('session.retry')}
-        </button>
+        </Button>
         {onCheckMissing && onSaveWithoutMissing && <div className="space-y-2">
-            <button type="button" disabled={busy} onClick={() => { setRecoveryError(false); void onCheckMissing().catch(() => setRecoveryError(true)); }} className="rounded-md border border-border bg-background px-3 py-2 font-medium disabled:opacity-50">{t('session.checkMissing')}</button>
+            <Button variant="outline" type="button" disabled={busy} onClick={() => { setRecoveryError(false); void onCheckMissing().catch(() => setRecoveryError(true)); }} >{t('session.checkMissing')}</Button>
             {missingRecovery && (missingRecovery.names.length ? <div className="space-y-2">
                 <p>{t('session.removeMissingImpact')}</p>
                 <ul className="list-disc pl-5">{missingRecovery.names.map((name, index) => <li key={index}>{name}</li>)}</ul>
-                <button type="button" disabled={busy} onClick={() => { setRecoveryError(false); void onSaveWithoutMissing().catch(() => setRecoveryError(true)); }} className="rounded-md border border-destructive-text bg-destructive text-destructive-foreground hover:bg-destructive/90 px-3 py-2 font-medium disabled:opacity-50">{t('session.confirmRemoveMissing')}</button>
+                <Button variant="destructive" type="button" disabled={busy} onClick={() => { setRecoveryError(false); void onSaveWithoutMissing().catch(() => setRecoveryError(true)); }} >{t('session.confirmRemoveMissing')}</Button>
             </div> : <p>{t('session.noMissing')}</p>)}
             {recoveryError && <p role="alert">{t('session.missingRecoveryFailed')}</p>}
         </div>}
-        {busy && <p role="status" className="text-xs">{t('session.busy')}</p>}
+        {busy && <p role="status" className="text-ui-support">{t('session.busy')}</p>}
     </>;
-    if (retained) return <section aria-label={t('session.label')} className="mb-4 space-y-1 px-1 text-xs text-muted-foreground">
+    if (retained) return <section aria-label={t('session.label')} className="mb-4 space-y-1 px-1 text-ui-support text-muted-foreground">
         <h2 className="font-semibold">{t(labels[status])}</h2>
         <p>{reason ?? t('session.defaultReason')}</p>
         <details>
@@ -57,11 +58,11 @@ export function SessionRecoveryNotice({ status, protectedSession, reason, busy, 
             <div className="mt-2 space-y-2">{retry}</div>
         </details>
     </section>;
-    return <section aria-label={t('session.label')} className="mb-4 flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-lg border border-warning/40 bg-warning/10 px-4 py-2 text-sm text-foreground">
+    return <section aria-label={t('session.label')} className="mb-4 flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-card border border-warning/40 bg-warning/10 px-4 py-2 text-ui-support text-foreground">
         <h2 className="flex items-center gap-2 font-semibold"><MdWarningAmber aria-hidden="true" className="h-5 w-5 shrink-0 text-warning" />{t(labels[status])}</h2>
-        <p className="min-w-0 flex-1 basis-48 text-xs">{names ? <><span className="font-semibold">{names}</span><br /></> : null}{reason ?? t('session.defaultReason')}</p>
+        <p className="min-w-0 flex-1 basis-48 text-ui-support">{names ? <><span className="font-semibold">{names}</span><br /></> : null}{reason ?? t('session.defaultReason')}</p>
         <details open={busy || undefined} className="recovery-details min-w-0">
-            <summary className="cursor-pointer text-xs font-medium">{t('session.retryDetails')}</summary>
+            <summary className="cursor-pointer text-ui-support font-medium">{t('session.retryDetails')}</summary>
             <div className="mt-2 space-y-2">{retry}</div>
         </details>
     </section>;

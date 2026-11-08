@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { obsApi } from '@/api/obs';
 import type { MessageKey } from '@/i18n/messages';
@@ -68,26 +69,26 @@ export function RecoveryActionsPanel({ onOperation, onVoiceCheck, onSettings }: 
         } catch { if (current()) setStream('unknown'); }
         finally { pending.current = false; if (alive.current) setBusy(false); }
     };
-    return <section className="min-h-0 overflow-y-auto p-4 space-y-4 text-sm" aria-label={t('recoveryHub.title')}>
-        <details className="border rounded p-3"><summary className="cursor-pointer font-medium">{t('recovery.undoTitle')}</summary>
-            <p className="my-2 text-xs">{t('recovery.undoScope')}</p>
+    return <section className="min-h-0 overflow-y-auto p-4 space-y-4 text-ui-support" aria-label={t('recoveryHub.title')}>
+        <details className="border rounded-control p-3"><summary className="cursor-pointer font-medium">{t('recovery.undoTitle')}</summary>
+            <p className="my-2 text-ui-support">{t('recovery.undoScope')}</p>
             <AdjustmentHistoryPanel onVoiceCheck={onVoiceCheck} />
-            <ul className="my-3 list-disc space-y-2 pl-5 text-xs">
+            <ul className="my-3 list-disc space-y-2 pl-5 text-ui-support">
                 {(['nr', 'builtin', 'gain', 'profile', 'bundle', 'monitor'] as const).map(item => <li key={item}>{t(`recovery.undo.${item}`)}</li>)}
             </ul>
-            {onVoiceCheck && <button type="button" className="border rounded p-2" onClick={onVoiceCheck}>{t('recovery.openVoice')}</button>}
+            {onVoiceCheck && <Button variant="outline" type="button"  onClick={onVoiceCheck}>{t('recovery.openVoice')}</Button>}
         </details>
-        <details className="border rounded p-3"><summary className="cursor-pointer font-medium">{t('recovery.checkedTitle')}</summary>
-            <p className="my-2 text-xs">{t('recovery.checkedInstructions')}</p>
+        <details className="border rounded-control p-3"><summary className="cursor-pointer font-medium">{t('recovery.checkedTitle')}</summary>
+            <p className="my-2 text-ui-support">{t('recovery.checkedInstructions')}</p>
             <BroadcastBundlePanel checkedOnly onOperation={onOperation} />
         </details>
-        <details className="border rounded p-3"><summary className="cursor-pointer font-medium">{t('recovery.failureTitle')}</summary>
-            <p className="my-2 text-xs">{t('recovery.failureScope')}</p>
-            <button type="button" className="border rounded p-2" disabled={busy || !eventsReady} onClick={() => void inspect()}>{t('recovery.inspect')}</button>
+        <details className="border rounded-control p-3"><summary className="cursor-pointer font-medium">{t('recovery.failureTitle')}</summary>
+            <p className="my-2 text-ui-support">{t('recovery.failureScope')}</p>
+            <Button variant="outline" type="button"  disabled={busy || !eventsReady} onClick={() => void inspect()}>{t('recovery.inspect')}</Button>
             <p role="status" className="my-2">{t(`recovery.state.${stream}`)}</p>
-            {diagnostics.map((key, index) => <p key={index} className="text-xs text-warning">{t(key)}</p>)}
-            <p className="text-xs">{t('recovery.receiverUnknown')}</p>
-            {onSettings && <button type="button" className="border rounded p-2 mt-2" onClick={onSettings}>{t('recovery.openSettings')}</button>}
+            {diagnostics.map((key, index) => <p key={index} className="text-ui-support text-warning">{t(key)}</p>)}
+            <p className="text-ui-support">{t('recovery.receiverUnknown')}</p>
+            {onSettings && <Button variant="outline" type="button" className="mt-2" onClick={onSettings}>{t('recovery.openSettings')}</Button>}
         </details>
     </section>;
 }

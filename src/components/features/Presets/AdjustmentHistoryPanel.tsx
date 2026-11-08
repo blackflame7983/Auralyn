@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useEffect, useId, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
@@ -85,15 +86,15 @@ export function AdjustmentHistoryPanel({ onVoiceCheck }: { onVoiceCheck?: () => 
         { key: 'gain' as const, undo: !!snapshot?.gain.undoAvailable && !!snapshot?.gain.historyEpoch, redo: !!snapshot?.gain.redoAvailable && !!snapshot?.gain.historyEpoch, pending: !snapshot?.gain.settled, reason: snapshot?.gain.historyReason },
     ];
     return <section ref={sectionRef} tabIndex={-1} aria-label={t('history.current')} className="space-y-2 my-3">
-        <h3 className="font-semibold">{t('history.current')}</h3><p className="text-xs">{t('history.scope')}</p>
+        <h3 className="font-semibold">{t('history.current')}</h3><p className="text-ui-support">{t('history.scope')}</p>
         {stream && stream !== 'running' && <p role="status">{t(stream === 'failed' ? 'history.streamFailed' : 'history.stopped')}</p>}
-        <button type="button" disabled={busy || !eventsReady} className="rounded border p-2" onClick={() => void run()}>{t('history.inspect')}</button>
-        <ul className="space-y-3">{rows.map(row => <li key={row.key} className="rounded border p-2 space-y-2">
+        <Button variant="outline" type="button" disabled={busy || !eventsReady}  onClick={() => void run()}>{t('history.inspect')}</Button>
+        <ul className="space-y-3">{rows.map(row => <li key={row.key} className="rounded-control border p-2 space-y-2">
             <p id={`${statusId}-${row.key}`} role="status" aria-atomic="true">{t(`history.${row.key}`)}: <span>{t(!known ? failed ? 'history.fetchFailed' : 'history.unverified' : snapshot?.protected ? 'history.protected' : row.reason != null ? reasonKey(row.reason) : row.pending ? 'history.pending' : row.undo && stream === 'running' ? 'history.undoReady' : row.redo && stream === 'running' ? 'history.redoReady' : 'history.reason.unknown')}</span></p>
-            {known && snapshot?.protected && row.reason != null && <p className="text-xs">{t(reasonKey(row.reason))}</p>}
-            {row.key === 'nr' ? row.open && <button type="button" aria-describedby={`${statusId}-${row.key}`} className="rounded border p-2" onClick={row.open}>{t('history.openNR')}</button> : <div className="flex flex-wrap gap-2">
-                <button type="button" aria-describedby={`${statusId}-${row.key}`} disabled={busy || !known || stream !== 'running' || snapshot?.protected || row.reason != null || row.pending || !row.undo} className="rounded border p-2 disabled:opacity-50" onClick={() => void (row.key === 'builtin' ? builtinChange(false) : gainChange(false))}>{t('history.undo')}</button>
-                <button type="button" aria-describedby={`${statusId}-${row.key}`} disabled={busy || !known || stream !== 'running' || snapshot?.protected || row.reason != null || row.pending || !row.redo} className="rounded border p-2 disabled:opacity-50" onClick={() => void (row.key === 'builtin' ? builtinChange(true) : gainChange(true))}>{t('history.redo')}</button>
+            {known && snapshot?.protected && row.reason != null && <p className="text-ui-support">{t(reasonKey(row.reason))}</p>}
+            {row.key === 'nr' ? row.open && <Button variant="outline" type="button" aria-describedby={`${statusId}-${row.key}`}  onClick={row.open}>{t('history.openNR')}</Button> : <div className="flex flex-wrap gap-2">
+                <Button variant="outline" type="button" aria-describedby={`${statusId}-${row.key}`} disabled={busy || !known || stream !== 'running' || snapshot?.protected || row.reason != null || row.pending || !row.undo}  onClick={() => void (row.key === 'builtin' ? builtinChange(false) : gainChange(false))}>{t('history.undo')}</Button>
+                <Button variant="outline" type="button" aria-describedby={`${statusId}-${row.key}`} disabled={busy || !known || stream !== 'running' || snapshot?.protected || row.reason != null || row.pending || !row.redo}  onClick={() => void (row.key === 'builtin' ? builtinChange(true) : gainChange(true))}>{t('history.redo')}</Button>
             </div>}
         </li>)}</ul>
     </section>;

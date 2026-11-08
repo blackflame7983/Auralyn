@@ -1,3 +1,8 @@
+import { Checkbox } from '@/components/ui/Checkbox';
+import { Input } from '@/components/ui/Input';
+import { Field } from '@/components/ui/Field';
+import { Select } from '@/components/ui/Select';
+import { Button } from '@/components/ui/button';
 import { ErrorDetails } from '@/components/ui/ErrorDetails';
 import { ObsText } from '@/components/ui/ObsText';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -135,49 +140,49 @@ export function ObsTimingCheck({ mixed = false, contextKey = '', onOpenObsSettin
             if (current(version)) setPlan(result);
         });
     };
-    return <details open className="rounded-lg border border-border p-3 space-y-3 text-sm">
+    return <details open className="rounded-card border border-border p-3 space-y-3 text-ui-support">
         <summary className="cursor-pointer font-bold">{t('obsTiming.copy.06')}</summary>
         <p>{t('obsTiming.copy.07')}</p>
-        <p className="text-xs text-muted-foreground">{t('obsTiming.copy.08')}</p>
-        <div className="rounded border p-3 space-y-2" aria-label={t('obsTiming.copy.09')}>
+        <p className="text-ui-support text-muted-foreground">{t('obsTiming.copy.08')}</p>
+        <div className="rounded-control border p-3 space-y-2" aria-label={t('obsTiming.copy.09')}>
             <p>{connection === 'connected' ? t('obsTiming.copy.10') : connection === 'checking' ? t('obsTiming.copy.11') : t('obsTiming.disconnected', { host: endpoint.host, port: endpoint.port })}</p>
-            {connection === 'disconnected' && <button type="button" disabled={!!busy || !obsInUse} onClick={() => void connect()} className="rounded border px-3 py-2 disabled:opacity-50">{t('obsTiming.copy.12')}</button>}
+            {connection === 'disconnected' && <Button variant="outline" type="button" disabled={!!busy || !obsInUse} onClick={() => void connect()} >{t('obsTiming.copy.12')}</Button>}
             <button type="button" disabled={!!busy || !obsInUse} onClick={() => void refreshConnection()} className="ml-2 underline">{t('obsTiming.copy.13')}</button>
             {onOpenObsSettings && <button type="button" disabled={!!busy} onClick={onOpenObsSettings} className="ml-2 underline">{t('obsTiming.copy.14')}</button>}
-            <p className="text-xs text-muted-foreground">{t('obsTiming.copy.15')}</p>
+            <p className="text-ui-support text-muted-foreground">{t('obsTiming.copy.15')}</p>
         </div>
         <fieldset disabled={writePending} className="space-y-3">
             <legend className="font-bold">{t('obsTiming.copy.16')}</legend>
-            <label className="block">{t('obsTiming.copy.17')}<select aria-label={t('obsTiming.copy.17')} value={comparison} onChange={event => { invalidate(); setComparison(event.target.value as typeof comparison); setDirection(''); setTargetToken(''); }} className="block w-full rounded border bg-background p-2">
+            <label className="block">{t('obsTiming.copy.17')}<Field label={null}><Select aria-label={t('obsTiming.copy.17')} value={comparison} onChange={event => { invalidate(); setComparison(event.target.value as typeof comparison); setDirection(''); setTargetToken(''); }} className="w-full">
                 <option value="voiceAccompaniment">{t('obsTiming.copy.18')}</option><option value="audioVideo">{t('obsTiming.copy.19')}</option>
-            </select></label>
-            <label className="block">{t('obsTiming.copy.20')}<select aria-label={t('obsTiming.copy.20')} value={direction} onChange={event => { invalidate(); setDirection(event.target.value); setTargetToken(''); }} className="block w-full rounded border bg-background p-2">
+            </Select></Field></label>
+            <label className="block">{t('obsTiming.copy.20')}<Field label={null}><Select aria-label={t('obsTiming.copy.20')} value={direction} onChange={event => { invalidate(); setDirection(event.target.value); setTargetToken(''); }} className="w-full">
                 <option value="">{t('obsTiming.copy.21')}</option><option value="early">{comparison === 'audioVideo' ? t('obsTiming.copy.22') : t('obsTiming.copy.23')}</option><option value="late">{comparison === 'audioVideo' ? t('obsTiming.copy.24') : t('obsTiming.copy.25')}</option><option value="unknown">{t('obsTiming.copy.26')}</option>
-            </select></label>
-            <label className="block">{t('obsTiming.copy.27')}<input aria-label={t('obsTiming.copy.27')} type="number" min="1" max="20950" step="1" value={difference} onChange={event => { invalidate(); setDifference(event.target.value); }} className="block w-full rounded border bg-background p-2" /></label>
-            <label className="block">{t('obsTiming.copy.28')}<textarea aria-label={t('obsTiming.copy.28')} maxLength={500} value={reference} onChange={event => { invalidate(); setReference(event.target.value); }} className="block w-full rounded border bg-background p-2" /></label>
-            <p className="text-xs text-muted-foreground">{t('obsTiming.copy.29')}</p>
+            </Select></Field></label>
+            <label className="block">{t('obsTiming.copy.27')}<Field label={null}><Input aria-label={t('obsTiming.copy.27')} type="number" min="1" max="20950" step="1" value={difference} onChange={event => { invalidate(); setDifference(event.target.value); }} className="w-full" /></Field></label>
+            <label className="block">{t('obsTiming.copy.28')}<textarea aria-label={t('obsTiming.copy.28')} maxLength={500} value={reference} onChange={event => { invalidate(); setReference(event.target.value); }} className="block w-full rounded-control border bg-background p-2" /></label>
+            <p className="text-ui-support text-muted-foreground">{t('obsTiming.copy.29')}</p>
             <div className="flex flex-wrap gap-3">
-                <label>{t('obsTiming.copy.30')}<input aria-label={t('obsTiming.copy.30')} type="number" min="1" max="240" value={fps} onChange={event => { invalidate(); setFps(event.target.value); }} className="block w-28 rounded border bg-background p-2" /></label>
-                <label>{t('obsTiming.copy.31')}<input aria-label={t('obsTiming.copy.31')} type="number" min="1" max="6" step="1" value={track} onChange={event => { invalidate(); setTrack(event.target.value); }} className="block w-28 rounded border bg-background p-2" /></label>
+                <label>{t('obsTiming.copy.30')}<Field label={null}><Input aria-label={t('obsTiming.copy.30')} type="number" min="1" max="240" value={fps} onChange={event => { invalidate(); setFps(event.target.value); }} className="w-28" /></Field></label>
+                <label>{t('obsTiming.copy.31')}<Field label={null}><Input aria-label={t('obsTiming.copy.31')} type="number" min="1" max="6" step="1" value={track} onChange={event => { invalidate(); setTrack(event.target.value); }} className="w-28" /></Field></label>
             </div>
-            <label className="flex items-start gap-2"><input type="checkbox" checked={checked} onChange={event => { invalidate(); setChecked(event.target.checked); }} /><span>{t('obsTiming.copy.32')}</span></label>
+            <label className="flex items-start gap-2"><Field label={null}><Checkbox type="checkbox" checked={checked} onChange={event => { invalidate(); setChecked(event.target.checked); }} /></Field><span>{t('obsTiming.copy.32')}</span></label>
         </fieldset>
         {mixed && comparison === 'voiceAccompaniment' ? <p>{t('obsTiming.copy.33')}</p>
             : direction === 'unknown' ? <p>{t('obsTiming.copy.34')}</p>
                 : comparison === 'audioVideo' && direction === 'late' ? <p>{t('obsTiming.copy.35')}</p> : null}
         {eligible && <p>{t('obsTiming.targetRole', { role: targetRole })}</p>}
-        <button type="button" disabled={!!busy || !valid || connection !== 'connected' || !obsInUse} onClick={refresh} className="rounded border px-3 py-2 disabled:opacity-50">{t('obsTiming.copy.36')}</button>
+        <Button variant="outline" type="button" disabled={!!busy || !valid || connection !== 'connected' || !obsInUse} onClick={refresh} >{t('obsTiming.copy.36')}</Button>
         {targets && <div><p role="status">{t(targets.supported ? 'obsTiming.targetsReady' : 'obsTiming.targetsUnavailable')}{targets.supported && !targets.targets.length ? t('obsTiming.copy.37') : ''}</p><ErrorDetails detail={obsTextParts(t, null, targets.message).detail!} /></div>}
-        {targets?.supported && <label className="block">{t('obsTiming.copy.38')}<select aria-label={t('obsTiming.copy.38')} disabled={!!busy} value={targetToken} onChange={event => { invalidate(); setTargetToken(event.target.value); }} className="block w-full rounded border bg-background p-2">
+        {targets?.supported && <label className="block">{t('obsTiming.copy.38')}<Field label={null}><Select aria-label={t('obsTiming.copy.38')} disabled={!!busy} value={targetToken} onChange={event => { invalidate(); setTargetToken(event.target.value); }} className="w-full">
             <option value="">{t('obsTiming.copy.39')}</option>{targets.targets.map(target => <option key={target.targetToken} value={target.targetToken}>{t('obsTiming.sourceOption', { source: target.source, value: target.currentOffsetMs })}</option>)}
-        </select></label>}
+        </Select></Field></label>}
         {selected && valid && <p>{t('obsTiming.offset', { source: selected.source, before: selected.currentOffsetMs, delay, after: resultOffset })}{resultOffset > 20000 || resultOffset < -950 ? t('obsTiming.copy.40') : ''}</p>}
-        <button type="button" disabled={!!busy || connection !== 'connected' || !obsInUse || !valid || !selected || !targets?.supported || resultOffset > 20000 || resultOffset < -950} onClick={preview} className="rounded border px-3 py-2 disabled:opacity-50">{t('obsTiming.copy.41')}</button>
-        {plan && <div aria-label={t('obsTiming.copy.42')} className="rounded border p-3 space-y-2">
+        <Button variant="outline" type="button" disabled={!!busy || connection !== 'connected' || !obsInUse || !valid || !selected || !targets?.supported || resultOffset > 20000 || resultOffset < -950} onClick={preview} >{t('obsTiming.copy.41')}</Button>
+        {plan && <div aria-label={t('obsTiming.copy.42')} className="rounded-control border p-3 space-y-2">
             <div><ObsText text={plan.messageText} legacy={plan.message} /></div>
             {plan.timing && <p>{t('obsTiming.offset', { source: plan.timing.source, before: plan.timing.currentOffsetMs, delay: plan.timing.additionalDelayMs, after: plan.timing.resultOffsetMs })}</p>}
-            <button type="button" disabled={!!busy || connection !== 'connected' || !obsInUse || !plan.supported || !plan.timing || !plan.changes.length} onClick={() => void run('apply', async version => {
+            <Button variant="outline" type="button" disabled={!!busy || connection !== 'connected' || !obsInUse || !plan.supported || !plan.timing || !plan.changes.length} onClick={() => void run('apply', async version => {
                 const applyingId = plan.id;
                 setPlan(null);
                 const result = await obsApi.applySetup(applyingId);
@@ -185,26 +190,26 @@ export function ObsTimingCheck({ mixed = false, contextKey = '', onOpenObsSettin
                 setHistory(items => [...items, current(version) ? result : { ...result, restorable: false }]); setPlan(null); setAdopted(null);
                 setTargets(null); setTargetToken(''); setChecked(false);
                 setMessage(current(version) ? notice('obsTiming.copy.43') : notice('obsTiming.copy.44'));
-            })} className="rounded border px-3 py-2 disabled:opacity-50">{t('obsTiming.copy.45')}</button>
+            })} >{t('obsTiming.copy.45')}</Button>
             <button type="button" disabled={!!busy} onClick={invalidate} className="ml-2 underline">{t('obsTiming.copy.46')}</button>
         </div>}
         {busy && <p role="status">{writePending ? t('obsTiming.copy.47') : t('obsTiming.copy.48')}</p>}
         {message && <p role="alert" className="break-words">{renderNotice(t, message)}</p>}
         <button type="button" disabled={!!busy} className="link-button" onClick={() => { invalidate(); void run('history', async version => { const items = await obsApi.setupHistory(); if (current(version)) setHistory(items.filter(item => item.timing)); }); }}>{t('obsTiming.copy.49')}</button>
-        {history.map(item => <div key={item.id} aria-label={t('obsTiming.historyAria', { id: item.id })} className="rounded border p-3 space-y-2">
+        {history.map(item => <div key={item.id} aria-label={t('obsTiming.historyAria', { id: item.id })} className="rounded-control border p-3 space-y-2">
             <p>{t('obsTiming.historyTitle', { id: item.id, source: item.timing?.source ?? '—', before: item.timing?.currentOffsetMs ?? '—', after: item.timing?.resultOffsetMs ?? '—' })}</p>
             <p>{t('obsTiming.reference', { note: item.timing?.measurement.referenceNote ?? '—' })}</p>
             <ul>{obsHistoryResultParts(t, item).map((parts, i) => <li key={i}><ObsText parts={parts} /></li>)}</ul>
             {item.restorable === false && <p>{t('obsTiming.copy.50')}</p>}
             <p>{t('obsTiming.copy.51')}</p>
-            <button type="button" disabled={!!busy || !canAdoptObsHistory(item)} onClick={() => setAdopted(item.id)} className="rounded border px-3 py-2 disabled:opacity-50">{t('obsTiming.adopt', { id: item.id })}</button>
-            <button type="button" disabled={!!busy || connection !== 'connected' || !obsInUse || item.restorable === false} onClick={() => { invalidate(); void run('restore', async version => {
+            <Button variant="outline" type="button" disabled={!!busy || !canAdoptObsHistory(item)} onClick={() => setAdopted(item.id)} >{t('obsTiming.adopt', { id: item.id })}</Button>
+            <Button variant="outline" type="button" disabled={!!busy || connection !== 'connected' || !obsInUse || item.restorable === false} onClick={() => { invalidate(); void run('restore', async version => {
                 const restored = await obsApi.restoreSetup(item.id);
                 if (alive.current) { setTargets(null); setTargetToken(''); setChecked(false); }
                 if (alive.current) setHistory(items => items.map(old => old.id === item.id ? (current(version) ? restored : { ...restored, restorable: false }) : old));
-            }); }} className="ml-2 rounded border px-3 py-2 disabled:opacity-50">{t('obsTiming.undo', { id: item.id })}</button>
+            }); }} className="ml-2">{t('obsTiming.undo', { id: item.id })}</Button>
             {adopted === item.id && <p role="status">{t('obsTiming.copy.52')}</p>}
         </div>)}
-        <p className="text-xs text-muted-foreground">{t('obsTiming.copy.53')}</p>
+        <p className="text-ui-support text-muted-foreground">{t('obsTiming.copy.53')}</p>
     </details>;
 }

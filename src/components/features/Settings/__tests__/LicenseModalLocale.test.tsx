@@ -24,7 +24,7 @@ it('法的原文を保ち、同じdialog/検索/タブ/選択をlocale変更で�
     render(<LocaleProvider store={store}><LicenseModal isOpen onClose={vi.fn()}/></LocaleProvider>);
     const dialog=screen.getByRole('dialog', {name:'ライセンス情報 / OSS Attribution'});
     expect(screen.getByText((_, element) => element?.children.length === 0 && element.textContent === `${notice}\n\n${license}`)).toBeVisible();
-    fireEvent.click(screen.getByRole('button', {name:'NPM (Frontend)'}));
+    fireEvent.mouseDown(screen.getByRole('tab', {name:'NPM (Frontend)'}), { button: 0, ctrlKey: false });
     const search=screen.getByRole('textbox', {name:'ライブラリを検索'});
     fireEvent.change(search,{target:{value:'Alpha'}});
     fireEvent.click(screen.getByRole('button', {name:/@real\/Alpha/}));
@@ -34,7 +34,7 @@ it('法的原文を保ち、同じdialog/検索/タブ/選択をlocale変更で�
     expect(screen.getByRole('dialog',{name:'License information / OSS Attribution'})).toBe(dialog);
     expect(screen.getByRole('textbox',{name:'Search libraries'})).toBe(search);
     expect(search).toHaveValue('Alpha');
-    expect(screen.getByRole('button',{name:'NPM (Frontend)'})).toHaveAttribute('aria-pressed','true');
+    expect(screen.getByRole('tab',{name:'NPM (Frontend)'})).toHaveAttribute('aria-selected', 'true');
     expect(legal).toBeVisible();
     expect(legal.textContent).toBe('LEGAL\r\n exact © NPM body\n');
     expect(screen.getByRole('link',{name:'Repository'})).toHaveAttribute('href','https://example.test/source');
@@ -47,7 +47,7 @@ it('法的原文を保ち、同じdialog/検索/タブ/選択をlocale変更で�
 it('欠落metadataだけを翻訳し、同じ文の実license本文/SPDXは原文のまま表示する', async () => {
     const store=createLocaleStore(()=> 'ja',()=>true);
     render(<LocaleProvider store={store}><LicenseModal isOpen onClose={vi.fn()}/></LocaleProvider>);
-    fireEvent.click(screen.getByRole('button',{name:'NPM (Frontend)'}));
+    fireEvent.mouseDown(screen.getByRole('tab',{name:'NPM (Frontend)'}), { button: 0, ctrlKey: false });
     fireEvent.click(screen.getByRole('button',{name:/Missing text/}));
     expect(screen.getByText('ライセンス本文が見つかりません。')).toBeVisible();
     expect(screen.getAllByText('不明')).toHaveLength(2);
@@ -63,14 +63,14 @@ it('欠落metadataだけを翻訳し、同じ文の実license本文/SPDXは原�
     const first=data.libraries.find(item=>item.name !== 'vst-host-dummy-end' && !!data.licenses[item.license])!;
     // 全同梱libraryのARIA計算を繰り返さず、既存の検索で対象を絞ってから読む。
     fireEvent.change(screen.getByRole('textbox',{name:'ライブラリを検索'}),{target:{value:first.name}});
-    fireEvent.click(screen.getByRole('button',{name:'Cargo (Backend)'}));
+    fireEvent.mouseDown(screen.getByRole('tab',{name:'Cargo (Backend)'}), { button: 0, ctrlKey: false });
     const button=await screen.findByRole('button',{name:name=>name.startsWith(first.name+' ') && name.includes(first.version)});
     fireEvent.click(button);
     const legal=screen.getByText((_,element)=>element?.children.length===0 && element.textContent===data.licenses[first.license]);
     expect(legal).toBeVisible();
     expect(screen.queryByText('vst-host-dummy-end')).not.toBeInTheDocument();
     act(()=>{store.setLocale('en');});
-    expect(screen.getByRole('button',{name:'Cargo (Backend)'})).toHaveAttribute('aria-pressed','true');
+    expect(screen.getByRole('tab',{name:'Cargo (Backend)'})).toHaveAttribute('aria-selected', 'true');
     expect(legal.textContent).toBe(data.licenses[first.license]);
     expect(screen.getByRole('heading',{name:`${first.name}v${first.version}`})).toBeVisible();
 });

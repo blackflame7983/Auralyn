@@ -11,11 +11,11 @@ export function ProcessConfigurationDiff({ process, running }: { process: NonNul
         ['bundle.process.output', value => value.outputId],
     ];
     return <section aria-label={t('bundle.process.diff')} className="space-y-2">
-        <p className="text-xs">{t('bundle.process.restoreHint')}</p>
+        <p className="text-ui-support">{t('bundle.process.restoreHint')}</p>
         {(!process.selectionMatches || !running) && <p role="alert">{t('bundle.process.reselect')}</p>}
         {!!process.missingDevices.length && <p role="alert">{t('bundle.output.missingDevices', { names: process.missingDevices.join(' / ') })}</p>}
         {!!process.missingPlugins.length && <p role="alert">{t('bundle.output.missingPlugins', { names: process.missingPlugins.join(' / ') })}</p>}
-        <table className="w-full table-fixed text-xs text-left"><caption>{t('bundle.process.diff')}</caption>
+        <table className="w-full table-fixed text-ui-support text-left"><caption>{t('bundle.process.diff')}</caption>
             <colgroup><col className="w-1/4" /><col className="w-[37.5%]" /><col className="w-[37.5%]" /></colgroup>
             <thead><tr><th className="p-2">{t('presets.copy.153')}</th><th className="p-2">{t('presets.copy.154')}</th><th className="p-2">{t('presets.copy.155')}</th></tr></thead>
             <tbody>{rows.map(([label, value]) => <tr key={label}>

@@ -39,7 +39,7 @@ test('ハイコントラストでセットアップのselectの輪郭が四辺�
     await page.addInitScript(() => { localStorage.setItem('vst_host_locale', 'ja'); });
     await page.goto('/');
     const wizard = page.getByRole('dialog');
-    await wizard.getByRole('button', { name: message('ja', 'wizard.obs'), exact: true }).click();
+    await wizard.getByRole('radio', { name: message('ja', 'wizard.obs'), exact: true }).click();
     const select = wizard.getByRole('combobox', { name: '機器', exact: true });
     await select.focus();
     await expect(select).toBeFocused();

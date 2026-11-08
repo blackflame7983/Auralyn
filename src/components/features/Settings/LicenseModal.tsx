@@ -1,3 +1,7 @@
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Field } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/button';
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../../ui/modal';
 import { MdClose, MdDescription, MdCode } from 'react-icons/md';
@@ -60,7 +64,7 @@ const formatNpmData = (data: typeof npmLicensesRaw) => {
     return libraries.map((lib: any) => {
         return {
             id: lib.id,
-            name: lib.name || lib.id, // NPM libs might encode name in ID, but our generator separates them now slightly differently? 
+            name: lib.name || lib.id, // NPM libs might encode name in ID, but our generator separates them now slightly differently?
             // Actually our generator pushes: { id: pkgName, ...pkg, license: key }
             // pkgName in npm is name@version mostly? No, license-checker returns "name@version" as key.
             // So lib.id is "name@version".
@@ -127,52 +131,40 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
 
     return (
         <Modal title={t('licenses.title')} onClose={onClose}>
-        <div className="modal-overlay-base bg-overlay/50" onClick={onClose}>
+        <div className="modal-overlay-base bg-overlay/50" onClick={onClose}><Tabs value={activeTab} onValueChange={value => setActiveTab(value as 'product' | 'npm' | 'cargo')} className="contents">
             {/* Modal Content - stop propagation to prevent closing when clicking inside */}
             <div
-                className="modal-surface-base max-w-4xl w-full h-[80vh] flex flex-col text-foreground bg-background"
+                className="modal-surface-base max-w-4xl w-full h-[80vh] flex flex-col text-foreground"
                 onClick={e => e.stopPropagation()}
             >
 
                 {/* Header */}
                 <div className="modal-header-base modal-header-muted grid grid-cols-[minmax(0,1fr)_auto] gap-3 p-4 md:grid-cols-[minmax(0,1fr)_auto_auto]">
-                    <h2 className="min-w-0 text-xl font-bold flex items-center gap-2">
+                    <h2 className="min-w-0 text-ui-heading font-bold flex items-center gap-2">
                         <MdDescription className="w-6 h-6 shrink-0 text-primary" />
                         {t('licenses.heading')}
                     </h2>
                     {/* Tabs */}
-                    <div role="group" aria-label={t('licenses.types')} className="col-span-2 row-start-2 flex flex-wrap gap-1 bg-muted rounded-lg p-1 md:col-span-1 md:col-start-2 md:row-start-1">
-                        <button
-                            onClick={() => setActiveTab('product')}
-                            aria-pressed={activeTab === 'product'}
-                            className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeTab === 'product' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                        >
+                    <TabsList aria-label={t('licenses.types')} className="col-span-2 row-start-2 flex flex-wrap gap-1 bg-muted rounded-card p-1 md:col-span-1 md:col-start-2 md:row-start-1">
+                        <TabsTrigger value="product">
                             Auralyn
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('npm')}
-                            aria-pressed={activeTab === 'npm'}
-                            className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeTab === 'npm' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                        >
+                        </TabsTrigger>
+                        <TabsTrigger value="npm">
                             {t('licenses.npm')}
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('cargo')}
-                            aria-pressed={activeTab === 'cargo'}
-                            className={`px-4 py-1.5 rounded-md text-sm font-bold transition ${activeTab === 'cargo' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                        >
+                        </TabsTrigger>
+                        <TabsTrigger value="cargo">
                             {t('licenses.cargo')}
-                        </button>
-                    </div>
-                    <button aria-label={t('licenses.close')} onClick={onClose} className="col-start-2 row-start-1 self-start p-2 hover:bg-muted rounded-full transition-colors md:col-start-3">
+                        </TabsTrigger>
+                    </TabsList>
+                    <Button variant="ghost" size="icon" aria-label={t('licenses.close')} onClick={onClose} className="col-start-2 row-start-1 self-start">
                         <MdClose className="w-5 h-5" />
-                    </button>
+                    </Button>
                 </div>
 
-                <div className="modal-body-base p-0 overflow-hidden flex">
+                <TabsContent value={activeTab} className="modal-body-base m-0 p-0 overflow-hidden flex">
                     {activeTab === 'product' ? (
                         <div className="flex-1 overflow-y-auto p-6 bg-muted/5">
-                            <div className="max-w-3xl mx-auto whitespace-pre-wrap text-sm leading-relaxed select-text">
+                            <div className="max-w-3xl mx-auto whitespace-pre-wrap text-ui-support leading-relaxed select-text">
                                 {`${productNotice}\n\n${productLicense}`}
                             </div>
                         </div>
@@ -181,14 +173,14 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                             {/* Left: List */}
                             <div className="w-1/3 border-r border-border flex flex-col bg-muted/10">
                                 <div className="p-3 border-b border-border">
-                                    <input
+                                    <Field label={null}><Input
                                         type="text"
                                         placeholder={t('licenses.searchPlaceholder')}
                                         aria-label={t('licenses.search')}
                                         value={searchTerm}
                                         onChange={e => setSearchTerm(e.target.value)}
-                                        className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-hidden focus:ring-1 focus:ring-primary"
-                                    />
+                                        className="w-full"
+                                    /></Field>
                                 </div>
                                 <div className="flex-1 overflow-y-auto">
                                     {filteredList.map(item => (
@@ -197,14 +189,14 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                                             onClick={() => setSelectedLib(item)}
                                             className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-muted/50 transition-colors ${selectedLib?.id === item.id ? 'bg-primary/10 border-l-4 border-l-primary' : 'border-l-4 border-l-transparent'}`}
                                         >
-                                            <div className="font-bold truncate text-sm">{item.name}</div>
+                                            <div className="font-bold truncate text-ui-support">{item.name}</div>
                                             <div className="flex justify-between items-center mt-1">
-                                                <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{item.version}</span>
-                                                <span className="text-xs text-muted-foreground truncate max-w-[50%]">{item.licenseMissing ? t('licenses.unknown') : item.license}</span>
+                                                <span className="text-ui-support text-muted-foreground bg-muted px-1.5 py-0.5 rounded-control">{item.version}</span>
+                                                <span className="text-ui-support text-muted-foreground truncate max-w-[50%]">{item.licenseMissing ? t('licenses.unknown') : item.license}</span>
                                             </div>
                                         </button>
                                     ))}
-                                    {filteredList.length === 0 && <p className="p-4 text-sm text-muted-foreground">{t('licenses.empty')}</p>}
+                                    {filteredList.length === 0 && <p className="p-4 text-ui-support text-muted-foreground">{t('licenses.empty')}</p>}
                                 </div>
                             </div>
 
@@ -214,9 +206,9 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                                     <div className="flex flex-col h-full">
                                         <div className="p-6 border-b border-border">
                                             <div className="flex justify-between items-start mb-2">
-                                                <h3 className="text-2xl font-bold flex items-center gap-2">
+                                                <h3 className="text-ui-heading font-bold flex items-center gap-2">
                                                     {selectedLib.name}
-                                                    <span className="text-sm font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">v{selectedLib.version}</span>
+                                                    <span className="text-ui-support font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">v{selectedLib.version}</span>
                                                 </h3>
                                                 <div className="flex gap-2">
                                                     {selectedLib.repository && (
@@ -233,13 +225,13 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                                                     )}
                                                 </div>
                                             </div>
-                                            <div className="flex gap-4 text-sm text-muted-foreground">
+                                            <div className="flex gap-4 text-ui-support text-muted-foreground">
                                                 <div className="flex items-center gap-1">
                                                     <span className="font-bold text-foreground">{t('licenses.license')}</span> {selectedLib.licenseMissing ? t('licenses.unknown') : selectedLib.license}
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="flex-1 overflow-y-auto p-6 bg-muted/5 font-mono text-xs whitespace-pre-wrap leading-relaxed select-text">
+                                        <div className="flex-1 overflow-y-auto p-6 bg-muted/5 font-mono text-ui-support whitespace-pre-wrap leading-relaxed select-text">
                                             {selectedLib.textFallback === 'notIncluded' ? t('licenses.notIncluded') : selectedLib.textFallback === 'notFound' ? t('licenses.notFound') : selectedLib.text}
                                         </div>
                                     </div>
@@ -247,15 +239,15 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({ isOpen, onClose }) =
                                     <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
                                         <MdDescription className="w-16 h-16 mb-4 opacity-20" />
                                         <p>{t('licenses.select')}</p>
-                                        <p className="text-sm mt-2">{t('licenses.selectHint')}</p>
+                                        <p className="text-ui-support mt-2">{t('licenses.selectHint')}</p>
                                     </div>
                                 )}
                             </div>
                         </>
                     )}
-                </div>
+                </TabsContent>
             </div>
-        </div>
+        </Tabs></div>
         </Modal>
     );
 };

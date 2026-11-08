@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -52,20 +53,20 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
         if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) focusedAction.current = null;
     }} data-detailed={detailed || undefined} data-horizontal={horizontal || undefined} className={cn(
         'large-meter-motion bg-background/95 border-border flex flex-col gap-2',
-        horizontal ? 'w-full rounded-xl border p-5' : 'fixed top-16 bottom-[calc(var(--app-footer-height,4rem)+1rem)] right-0 z-40 border-l px-1 py-2',
+        horizontal ? 'w-full rounded-card border p-5' : 'fixed top-16 bottom-[calc(var(--app-footer-height,4rem)+1rem)] right-0 z-40 border-l px-1 py-2',
         !horizontal && (detailed ? 'w-24' : 'w-16')
     )}>
         <div className={horizontal ? 'flex flex-row-reverse items-center justify-between gap-3' : 'contents'}>
         <div className="flex items-center justify-center">
-            <button type="button" data-meter-action="details" onClick={() => setDetailed(!detailed)} aria-pressed={detailed}
+            <Button variant="ghost" size="icon" type="button" data-meter-action="details" onClick={() => setDetailed(!detailed)} aria-pressed={detailed}
                 aria-label={t(detailed ? 'meter.miniView' : 'meter.detailedView')} title={t(detailed ? 'meter.miniView' : 'meter.detailedView')}
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-primary">
+                >
                 {detailed ? <MdCloseFullscreen aria-hidden="true" className="h-4 w-4" /> : <MdOpenInFull aria-hidden="true" className="h-4 w-4" />}
-            </button>
-            <button type="button" data-meter-action="close" onClick={onClose} aria-label={t('header.meterClose')} title={t('common.close')}
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive-text"><MdClose aria-hidden="true" className="h-4 w-4" /></button>
+            </Button>
+            <Button variant="ghost" size="icon" type="button" data-meter-action="close" onClick={onClose} aria-label={t('header.meterClose')} title={t('common.close')}
+                ><MdClose aria-hidden="true" className="h-4 w-4" /></Button>
         </div>
-        <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground" title={t(meterStatusLabel(reading.state))}>
+        <div className="flex items-center justify-center gap-1 text-ui-support text-muted-foreground" title={t(meterStatusLabel(reading.state))}>
             <span>{t('meter.output')}</span>
             {detailed && <InfoPopover label={t('meter.scaleDetails')}>
                 <p>{t('meter.arrivalUnverified')}</p>
@@ -75,7 +76,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
             </InfoPopover>}
         </div>
         </div>
-        <span role="status" title={t(meterStatusLabel(reading.state))} className="h-4 shrink-0 text-center text-xs leading-4 text-muted-foreground">
+        <span role="status" title={t(meterStatusLabel(reading.state))} className="h-4 shrink-0 text-center text-ui-support leading-4 text-muted-foreground">
             {reading.state === 'live' ? '' : t(reading.state === 'stopped' ? 'meter.stoppedShort' : reading.state === 'silent' ? 'meter.state.silent' : 'meter.waitingShort')}
         </span>
         <div className="flex-1 min-h-0 flex justify-center items-stretch">
