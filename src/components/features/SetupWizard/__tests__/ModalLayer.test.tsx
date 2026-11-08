@@ -64,8 +64,8 @@ describe('セットアップと親画面の連携', () => {
     it('入力未検出時はウィザードを閉じてオーディオ設定だけを開く', async () => {
         hasInput = false;
         render(<AppModals />);
-        await screen.findByRole('button', { name: 'OBSで配信' }, { timeout: 3000 });
-        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        await screen.findByRole('radio', { name: 'OBSで配信' }, { timeout: 3000 });
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
         fireEvent.click(await screen.findByRole('button', { name: 'WASAPI の入力が見つからない場合は設定を開く' }));
         await screen.findByRole('heading', { name: 'オーディオ設定' });
         expect(screen.queryByRole('heading', { name: 'マイクを選んでください' })).not.toBeInTheDocument();
@@ -94,7 +94,7 @@ describe('セットアップと親画面の連携', () => {
 
 it('スキップでも既存の完了フラグを保存し、同じウィンドウの開始条件を更新する', async () => {
     render(<AppModals />);
-    await screen.findByRole('button', { name: 'OBSで配信' }, { timeout: 3000 });
+    await screen.findByRole('radio', { name: 'OBSで配信' }, { timeout: 3000 });
     expect(screen.getByTestId('tutorial-step')).toHaveTextContent('none');
     fireEvent.click(screen.getByRole('button', { name: 'セットアップをスキップ' }));
     await waitFor(() => expect(localStorage.getItem('vst_host_wizard_done')).toBe('true'));
@@ -103,12 +103,12 @@ it('スキップでも既存の完了フラグを保存し、同じウィンド�
 
 it('単に閉じた場合は完了フラグを保存せず、開始通知を送らない', async () => {
     render(<AppModals />);
-    await screen.findByRole('button', { name: 'OBSで配信' }, { timeout: 3000 });
+    await screen.findByRole('radio', { name: 'OBSで配信' }, { timeout: 3000 });
     const notify = vi.fn();
     window.addEventListener('vst_host_tutorial_start', notify);
     try {
         fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
-        await waitFor(() => expect(screen.queryByRole('button', { name: 'OBSで配信' })).not.toBeInTheDocument());
+        await waitFor(() => expect(screen.queryByRole('radio', { name: 'OBSで配信' })).not.toBeInTheDocument());
         expect(localStorage.getItem('vst_host_wizard_done')).toBeNull();
         expect(screen.getByTestId('tutorial-step')).toHaveTextContent('none');
         expect(notify).not.toHaveBeenCalled();

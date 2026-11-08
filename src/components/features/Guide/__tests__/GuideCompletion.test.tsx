@@ -15,7 +15,7 @@ it('直接モニターは機材分岐を選ばず進み、同期画面を開い�
     const settings = vi.fn();
     render(<OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={settings} />);
     fireEvent.click(screen.getByRole('radio', { name: /機器の直接モニターで聴く/ }));
-    expect(screen.queryByRole('button', { name: 'ループバック対応のミキサーの手順を選ぶ' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'ループバック対応のミキサーの手順を選ぶ' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
     expect(screen.getByText(/機器に直接モニター機能があるか/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
@@ -30,24 +30,24 @@ it('直接モニターは機材分岐を選ばず進み、同期画面を開い�
     fireEvent.click(screen.getByRole('button', { name: '前の手順へ戻る' }));
     fireEvent.click(screen.getByRole('radio', { name: '加工した声を Auralyn から聴く' }));
     expect(screen.getByRole('button', { name: '次の手順へ進む' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'ループバック対応のミキサーの手順を選ぶ' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'ループバック対応のミキサーの手順を選ぶ' })).toBeInTheDocument();
     connect.mockRestore(); apply.mockRestore(); status.mockRestore();
 });
 it.each([OBSGuideModal, DiscordGuideModal])('機器を選ぶまで分岐を進めず、戻って選び直せる', Guide => {
     render(<Guide isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} />);
     expect(screen.getByRole('button', { name: '次の手順へ進む' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' }));
     expect(screen.getByRole('button', { name: '次の手順へ進む' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: '前の手順へ戻る' }));
-    expect(screen.getByRole('button', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('radio', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' })).toBeChecked();
     expect(screen.getByText('USBマイク・PC直結のマイク')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'ループバック対応のミキサーの手順を選ぶ' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'ループバック対応のミキサーの手順を選ぶ' }));
     expect(screen.getByRole('button', { name: '次の手順へ進む' })).toBeEnabled();
 });
 it.each([OBSGuideModal, DiscordGuideModal])('ガイド読了を到達成功とせず、診断へ進める', Guide => {
     const onOpenTroubleshoot = vi.fn();
     render(<Guide isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} onOpenTroubleshoot={onOpenTroubleshoot} />);
-    fireEvent.click(screen.getByRole('button', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'USBマイク・PC直結のマイクの手順を選ぶ' }));
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
     fireEvent.click(screen.getByRole('button', { name: '次の手順へ進む' }));
     expect(screen.getByRole('status')).toHaveTextContent('受け側への音声到達は未確認');
@@ -60,13 +60,13 @@ it.each([OBSGuideModal, DiscordGuideModal])('ガイド読了を到達成功と�
 it.each([OBSGuideModal, DiscordGuideModal])('localeだけでガイドの機材選択・step・dialogを作り直さない', Guide => {
     const store = createLocaleStore(() => 'ja', () => true); const close = vi.fn(); const settings = vi.fn();
     render(<LocaleProvider store={store}><Guide isOpen onClose={close} onOpenAudioSettings={settings} /></LocaleProvider>);
-    fireEvent.click(screen.getByRole('button', { name: 'ループバック対応のミキサーの手順を選ぶ' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'ループバック対応のミキサーの手順を選ぶ' }));
     const dialog = screen.getByRole('dialog');
     act(() => { store.setLocale('en'); });
     expect(screen.getByRole('dialog')).toBe(dialog);
     expect(screen.getByRole('button', { name: 'Go to the next step' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Go back one step' }));
-    expect(screen.getByRole('button', { name: 'Choose the steps for a loopback-capable mixer' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('radio', { name: 'Choose the steps for a loopback-capable mixer' })).toBeChecked();
     expect(screen.getByText('Loopback-capable mixer or interface')).toBeInTheDocument();
     expect(close).not.toHaveBeenCalled(); expect(settings).not.toHaveBeenCalled();
 });
@@ -90,4 +90,20 @@ it.each([
     await act(async () => {});
     expect(screen.queryByText(/で Auralyn の出力をミュートできます/)).not.toBeInTheDocument();
     vi.mocked(invoke).mockReset();
+});
+
+it.each([OBSGuideModal, DiscordGuideModal])('戻って同じ機器を決定でき、矢印選択だけでは次へ進まない', Guide => {
+    render(<Guide isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} />);
+    const name = 'USBマイク・PC直結のマイクの手順を選ぶ';
+    fireEvent.click(screen.getByRole('radio', { name }));
+    fireEvent.click(screen.getByRole('button', { name: '前の手順へ戻る' }));
+    fireEvent.click(screen.getByRole('radio', { name }));
+    expect(screen.queryByRole('radio', { name })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '前の手順へ戻る' }));
+    const from = screen.getByRole('radio', { name });
+    const to = screen.getByRole('radio', { name: 'ループバック対応のミキサーの手順を選ぶ' });
+    // JSDOMでブラウザ標準の矢印選択を再現する。
+    from.focus(); fireEvent.keyDown(from, { key: 'ArrowLeft' });
+    to.focus(); fireEvent.click(to); fireEvent.keyUp(to, { key: 'ArrowLeft' });
+    expect(to).toBeChecked(); expect(from).toBeInTheDocument();
 });

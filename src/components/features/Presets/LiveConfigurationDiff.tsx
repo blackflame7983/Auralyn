@@ -20,8 +20,8 @@ export function LiveConfigurationDiff({ live }: { live: NonNullable<BundlePrevie
         ['bundle.live.monitor', value => value.monitor ? `${mode(value.monitor.mode)} / ${describeBuiltin(t, value.monitor.config)}` : t('bundle.output.none')],
     ];
     return <section aria-label={t('bundle.live.diff')} className="space-y-2">
-        <p className="text-xs">{t('bundle.live.restoreHint')}</p>
-        <table className="w-full table-fixed text-xs text-left"><caption>{t('bundle.live.diff')}</caption>
+        <p className="text-ui-support">{t('bundle.live.restoreHint')}</p>
+        <table className="w-full table-fixed text-ui-support text-left"><caption>{t('bundle.live.diff')}</caption>
             <colgroup><col className="w-1/4" /><col className="w-[37.5%]" /><col className="w-[37.5%]" /></colgroup>
             <thead><tr><th className="p-2">{t('presets.copy.153')}</th><th className="p-2">{t('presets.copy.154')}</th><th className="p-2">{t('presets.copy.155')}</th></tr></thead>
             <tbody>{rows.map(([label, value]) => <tr key={label}>

@@ -1,3 +1,6 @@
+import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/Field';
+import { Select } from '@/components/ui/Select';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useEffect, useRef, useState } from 'react';
 import type { SingingDraft } from '@/hooks/useSingingDraft';
@@ -90,14 +93,14 @@ export function VoiceProposalPanel({ model, candidate, disabled, previewActive, 
         {key:'room',label:'proposal.wish.room',options:[['unknown','proposal.wish.unknown'],['reflective','proposal.wish.reflective'],['dry','proposal.wish.dry']]},
         {key:'reverb',label:'proposal.wish.reverb',options:[['keep','proposal.wish.keepReverb'],['none','proposal.wish.none'],['short','proposal.wish.short'],['wide','proposal.wish.wide']]},
     ];
-    return <section aria-label={t('proposal.title')} className="rounded-lg border border-border p-3 space-y-3 text-sm">
+    return <section aria-label={t('proposal.title')} className="rounded-card border border-border p-3 space-y-3 text-ui-support">
         <h3 className="font-bold">{t('proposal.title')}</h3>
         <p>{t('proposal.intro')}</p>
         <p>{t('proposal.wish.scope')}</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{wishes.map(w=><label key={w.key} className="flex flex-col gap-1">{t(w.label)}<select value={preferences[w.key]} disabled={previewActive || model.busy || disabled} onChange={e=>changePreference(w.key,e.target.value)} className="rounded border p-2 bg-background">{w.options.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}</select></label>)}</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{wishes.map(w=><label key={w.key} className="flex flex-col gap-1">{t(w.label)}<Field label={null}><Select value={preferences[w.key]} disabled={previewActive || model.busy || disabled} onChange={e=>changePreference(w.key,e.target.value)} >{w.options.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}</Select></Field></label>)}</div>
         {previewActive && <p>{t('proposal.wish.stopToEdit')}</p>}
 
-        <button type="button" disabled={disabled || preparing || model.busy || !currentRecordingId || model.snapshot?.pending} onClick={() => void create()} className="rounded border px-3 py-2 disabled:opacity-50">{t('proposal.prepare')}</button>
+        <Button variant="outline" type="button" disabled={disabled || preparing || model.busy || !currentRecordingId || model.snapshot?.pending} onClick={() => void create()} >{t('proposal.prepare')}</Button>
         {(preparing || candidate?.state === 'preparing') && <p role="status">{t('proposal.preparing')}</p>}
         {candidate?.proposalError && <div role="alert"><ProposalMessageView value={candidate.proposalError} /></div>}
         {proposal && <>
@@ -118,17 +121,17 @@ export function VoiceProposalPanel({ model, candidate, disabled, previewActive, 
             </details>
             {!valid && <p role="status">{t('proposal.stale')}</p>}
             <p>{t('proposal.compare')}</p>
-            <button type="button" disabled={!valid || disabled || previewActive || model.busy || model.snapshot?.pending} onClick={() => void model.applyProposal(proposal as VoiceProposal)} className="rounded border px-3 py-2 disabled:opacity-50">{t('proposal.apply')}</button>
+            <Button variant="outline" type="button" disabled={!valid || disabled || previewActive || model.busy || model.snapshot?.pending} onClick={() => void model.applyProposal(proposal as VoiceProposal)} >{t('proposal.apply')}</Button>
         </>}
         {model.snapshot && <p role="status">{running === false ? t('proposal.retained') : model.snapshot.pending ? t('proposal.pending') : running === true && model.snapshot.appliedRevision === model.snapshot.revision ? t('proposal.rtConfirmed') : t('proposal.ack')}</p>}
         {model.error && <p role="alert">{model.error}</p>}
         {pollExpired && <p role="status">{t('proposal.pollExpired')}</p>}
         <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={model.busy} onClick={() => void model.refresh()} className="rounded border px-3 py-2 disabled:opacity-50">{t('proposal.refresh')}</button>
-            <button type="button" disabled={previewActive || model.busy || !model.snapshot?.undoToken || model.snapshot.pending} onClick={() => void model.undo()} className="rounded border px-3 py-2 disabled:opacity-50">{t('proposal.undo')}</button>
-            <button type="button" disabled={previewActive || model.busy || !model.snapshot?.redoToken || model.snapshot.pending} onClick={() => void model.redo()} className="rounded border px-3 py-2 disabled:opacity-50">{t('history.redo')}</button>
-            {onSave && <button type="button" disabled={previewActive || model.busy || !model.snapshot || model.snapshot.pending} onClick={onSave} className="rounded border px-3 py-2 disabled:opacity-50">{t('proposal.save')}</button>}
+            <Button variant="outline" type="button" disabled={model.busy} onClick={() => void model.refresh()} >{t('proposal.refresh')}</Button>
+            <Button variant="outline" type="button" disabled={previewActive || model.busy || !model.snapshot?.undoToken || model.snapshot.pending} onClick={() => void model.undo()} >{t('proposal.undo')}</Button>
+            <Button variant="outline" type="button" disabled={previewActive || model.busy || !model.snapshot?.redoToken || model.snapshot.pending} onClick={() => void model.redo()} >{t('history.redo')}</Button>
+            {onSave && <Button variant="outline" type="button" disabled={previewActive || model.busy || !model.snapshot || model.snapshot.pending} onClick={onSave} >{t('proposal.save')}</Button>}
         </div>
-        <p className="text-xs text-muted-foreground">{t('proposal.manualDraft')}</p>
+        <p className="text-ui-support text-muted-foreground">{t('proposal.manualDraft')}</p>
     </section>;
 }

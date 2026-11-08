@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { LocaleContext } from '@/i18n/LocaleProvider';
 import { message, type MessageKey } from '@/i18n/messages';
 import type { ContextType } from 'react';
@@ -53,7 +54,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
                         {/* Message */}
                         <div className="space-y-2">
-                            <h1 className="text-2xl font-bold text-foreground">
+                            <h1 className="text-ui-heading font-bold text-foreground">
                                 {t('boundary.title')}
                             </h1>
                             <p className="text-muted-foreground leading-relaxed">
@@ -64,29 +65,29 @@ export class ErrorBoundary extends Component<Props, State> {
 
                         {/* Actions */}
                         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                            <button
+                            <Button variant="default"
                                 onClick={this.handleRecover}
-                                className="flex items-center justify-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-lg"
+                                className="flex items-center justify-center gap-2"
                             >
                                 <MdRefresh className="w-5 h-5" />
                                 {t('boundary.recover')}
-                            </button>
-                            <button
+                            </Button>
+                            <Button variant="secondary"
                                 onClick={this.handleReload}
-                                className="flex items-center justify-center gap-2 px-6 py-3 bg-muted text-foreground font-bold rounded-xl hover:bg-muted/80 transition-colors border border-border"
+                                className="flex items-center justify-center gap-2"
                             >
                                 <MdRefresh className="w-5 h-5" />
                                 {t('boundary.reload')}
-                            </button>
+                            </Button>
                         </div>
 
                         {/* Error Details (collapsible) */}
-                        <details className="text-left bg-muted/50 rounded-lg border border-border p-4 text-xs">
+                        <details className="text-left bg-muted/50 rounded-card border border-border p-4 text-ui-support">
                             <summary className="cursor-pointer text-muted-foreground font-bold flex items-center gap-2">
                                 <MdBugReport className="w-4 h-4" />
                                 {t('boundary.details')}
                             </summary>
-                            <pre className="mt-3 p-3 bg-background rounded-md overflow-auto max-h-40 text-destructive-text font-mono whitespace-pre-wrap break-words">
+                            <pre className="mt-3 p-3 bg-background rounded-control overflow-auto max-h-40 text-destructive-text font-mono whitespace-pre-wrap break-words">
                                 {this.state.error?.toString()}
                                 {'\n\n'}
                                 {this.state.errorInfo?.componentStack}
@@ -94,7 +95,7 @@ export class ErrorBoundary extends Component<Props, State> {
                         </details>
 
                         {/* Reassurance */}
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-ui-support text-muted-foreground">
                             {t('boundary.receiver')}
                         </p>
                     </div>

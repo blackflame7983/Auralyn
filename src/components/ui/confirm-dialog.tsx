@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import React, { useState, useCallback, useId } from 'react';
 import { cn } from '@/lib/utils';
 import { Modal } from './modal';
@@ -34,7 +35,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <Modal title={title} titleInContent role="alertdialog"
             descriptionId={description ? descriptionId : undefined} onClose={onCancel}>
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/90 gaming:bg-background/60 gaming:backdrop-blur-sm">
-            <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div className="modal-surface-base p-6 w-full max-w-md space-y-4">
                 <div className="flex items-start gap-4">
                     <div className={cn(
                         "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
@@ -44,31 +45,26 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                     </div>
                     <div className="space-y-1.5">
                         <Dialog.Title asChild>
-                            <h3 className="font-bold text-foreground text-lg leading-tight">{title}</h3>
+                            <h3 className="font-bold text-foreground text-ui-heading leading-tight">{title}</h3>
                         </Dialog.Title>
                         {description && (
-                            <p id={descriptionId} className="text-sm text-muted-foreground leading-relaxed">{description}</p>
+                            <p id={descriptionId} className="text-ui-support text-muted-foreground leading-relaxed">{description}</p>
                         )}
                     </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
-                    <button
+                    <Button variant="ghost" size="sm"
                         onClick={onCancel}
-                        className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+
                     >
                         {cancelLabel ?? t('commonDialog.cancel')}
-                    </button>
-                    <button
+                    </Button>
+                    <Button variant={variant === 'destructive' ? 'destructive' : 'default'} size="sm"
                         onClick={onConfirm}
-                        className={cn(
-                            "px-4 py-2 text-sm font-bold rounded-lg transition-colors",
-                            variant === 'destructive'
-                                ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
-                                : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                        )}
+
                     >
                         {confirmLabel ?? t('commonDialog.confirm')}
-                    </button>
+                    </Button>
                 </div>
             </div>
         </div>

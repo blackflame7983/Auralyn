@@ -1,3 +1,8 @@
+import { ChoiceCard } from '@/components/ui/ChoiceCard';
+import { Select } from '@/components/ui/Select';
+import { Checkbox } from '@/components/ui/Checkbox';
+import { Field } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
 import { ObsText } from '@/components/ui/ObsText';
 import { ErrorDetails } from '@/components/ui/ErrorDetails';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
@@ -118,70 +123,70 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
     });
     const updateObs = (source: string, change: Partial<BundleObsSelection>) => { invalidate(); setObs(items => items.map(item => item.source === source ? { ...item, ...change } : item)); };
     const existingName = names.find(item => item.toLowerCase() === name.trim().toLowerCase());
-    return <section aria-label={t('presets.copy.121')} className="min-h-0 overflow-y-auto p-4 space-y-4 text-sm">
+    return <section aria-label={t('presets.copy.121')} className="min-h-0 overflow-y-auto p-4 space-y-4 text-ui-support">
         <SaveScopeSummary kind="session" />
         <p>{t('presets.copy.122')}</p>
-        <p className="text-xs text-muted-foreground">{t('presets.copy.123')}</p>
-        <fieldset disabled={busy} className="space-y-2 border border-border rounded-xl p-4"><legend>{t('presets.copy.124')}</legend>
-            <label className="block">{t('presets.copy.125')}<input className="block w-full border border-input rounded-md bg-background px-3 py-2" value={name} onChange={e => { invalidate(); setName(e.target.value); }} maxLength={120} /></label>
+        <p className="text-ui-support text-muted-foreground">{t('presets.copy.123')}</p>
+        <fieldset disabled={busy} className="space-y-2 border border-border rounded-card p-4"><legend>{t('presets.copy.124')}</legend>
+            <label className="block">{t('presets.copy.125')}<Field label={null}><Input className="w-full" value={name} onChange={e => { invalidate(); setName(e.target.value); }} maxLength={120} /></Field></label>
             <fieldset className="space-y-2"><legend className="font-medium">{t('bundle.scope.title')}</legend>
-                {(['voice', 'output', 'live', 'mixing', 'process'] as const).map(value => <label key={value} className="flex items-start gap-2 rounded-md border border-border p-3">
-                    <input type="radio" name={checkedOnly ? 'checked-bundle-scope' : 'bundle-scope'} value={value} checked={scope === value} onChange={() => { invalidate(); setScope(value); }} />
-                    <span><span className="block font-medium">{t(`bundle.scope.${value}`)}</span><span className="text-xs text-muted-foreground">{t(value === 'voice' ? 'bundle.scope.voiceHelp' : `bundle.${value}.summary`)}</span></span>
-                </label>)}
+                {(['voice', 'output', 'live', 'mixing', 'process'] as const).map(value => <ChoiceCard key={value} name={checkedOnly ? 'checked-bundle-scope' : 'bundle-scope'} value={value} checked={scope === value} onChange={() => { invalidate(); setScope(value); }}>
+
+                    <span><span className="block font-medium">{t(`bundle.scope.${value}`)}</span><span className="text-ui-support text-muted-foreground">{t(value === 'voice' ? 'bundle.scope.voiceHelp' : `bundle.${value}.summary`)}</span></span>
+                </ChoiceCard>)}
             </fieldset>
-            {scope === 'voice' ? <div className="grid grid-cols-2 gap-2">{categoryLabels.map(([key, label]) => <label key={key}><input type="checkbox" disabled={checkedOnly} checked={categories[key]} onChange={e => { invalidate(); setCategories(c => ({ ...c, [key]: e.target.checked })); }} /> {t(label)}</label>)}</div>
+            {scope === 'voice' ? <div className="grid grid-cols-2 gap-2">{categoryLabels.map(([key, label]) => <label key={key}><Field label={null}><Checkbox type="checkbox" disabled={checkedOnly} checked={categories[key]} onChange={e => { invalidate(); setCategories(c => ({ ...c, [key]: e.target.checked })); }} /></Field> {t(label)}</label>)}</div>
                 : <ScopeDisclosure summary={`bundle.${scope}.summary`} detail={`bundle.${scope}.scope`} />}
-            <p className="text-xs">{t('presets.copy.126')}</p>
-            <label className="block"><input type="checkbox" checked={includeObs} disabled={checkedOnly} onChange={e => { invalidate(); setIncludeObs(e.target.checked); }} /> {t('presets.copy.127')}</label>
+            <p className="text-ui-support">{t('presets.copy.126')}</p>
+            <label className="block"><Field label={null}><Checkbox type="checkbox" checked={includeObs} disabled={checkedOnly} onChange={e => { invalidate(); setIncludeObs(e.target.checked); }} /></Field> {t('presets.copy.127')}</label>
             {includeObs && <div className="space-y-2">
-                <p className="text-xs">{t('presets.copy.128')}</p>
-                {onObsSettings && <Button variant="outline" type="button" className="border rounded p-2" onClick={onObsSettings}>{t('presets.copy.129')}</Button>}
-                <Button variant="outline" type="button" className="border rounded p-2" onClick={() => void run(async () => { invalidate(); const items = await bundleApi.sources(); if (alive.current) { setSources(items); setObs([]); setFilters(new Map()); } })}>{t('presets.copy.130')}</Button>
+                <p className="text-ui-support">{t('presets.copy.128')}</p>
+                {onObsSettings && <Button variant="outline" type="button"  onClick={onObsSettings}>{t('presets.copy.129')}</Button>}
+                <Button variant="outline" type="button"  onClick={() => void run(async () => { invalidate(); const items = await bundleApi.sources(); if (alive.current) { setSources(items); setObs([]); setFilters(new Map()); } })}>{t('presets.copy.130')}</Button>
                 {sources.map(source => {
                     const item = obs.find(s => s.source === source);
-                    return <div key={source} className="border rounded p-2 space-y-1"><label><input type="checkbox" checked={!!item} onChange={e => { invalidate(); setObs(items => e.target.checked ? [...items, { source, volume: true, muted: true, monitor: false, filters: [] }] : items.filter(s => s.source !== source)); }} /> {source}</label>
-                        {item && <div className="pl-4 space-y-1">{([['volume', 'presets.copy.131'], ['muted', 'presets.copy.132'], ['monitor', 'presets.copy.133']] as const).map(([key, label]) => <label className="mr-3" key={key}><input type="checkbox" aria-label={t('presets.copy.134', { arg0: source, arg1: t(label) })} checked={item[key]} onChange={e => updateObs(source, { [key]: e.target.checked })} /> {t(label)}</label>)}
-                        <Button variant="outline" type="button" className="block border rounded p-1" onClick={() => void run(async () => { invalidate(); const current = version.current; const choices = await bundleApi.filters(source); if (alive.current && current === version.current) { setFilters(old => new Map(old).set(source, choices)); updateObs(source, { filters: [] }); } })}>{source}{t('presets.copy.135')}</Button>
-                        {filters.get(source)?.length === 0 && <p className="text-xs">{t('presets.copy.136')}</p>}
-                        {filters.get(source)?.map(filter => <label key={filter.name} className="block text-xs"><input type="checkbox" checked={item.filters.includes(filter.name)} onChange={e => updateObs(source, { filters: e.target.checked ? [...item.filters, filter.name] : item.filters.filter(n => n !== filter.name) })} /> {filter.name}（{filter.kind}{t('presets.copy.137')}{filter.enabled ? t('presets.copy.138') : t('presets.copy.139')}{t('presets.copy.140')}</label>)}</div>}
+                    return <div key={source} className="border rounded-control p-2 space-y-1"><label><Field label={null}><Checkbox type="checkbox" checked={!!item} onChange={e => { invalidate(); setObs(items => e.target.checked ? [...items, { source, volume: true, muted: true, monitor: false, filters: [] }] : items.filter(s => s.source !== source)); }} /></Field> {source}</label>
+                        {item && <div className="pl-4 space-y-1">{([['volume', 'presets.copy.131'], ['muted', 'presets.copy.132'], ['monitor', 'presets.copy.133']] as const).map(([key, label]) => <label className="mr-3" key={key}><Field label={null}><Checkbox type="checkbox" aria-label={t('presets.copy.134', { arg0: source, arg1: t(label) })} checked={item[key]} onChange={e => updateObs(source, { [key]: e.target.checked })} /></Field> {t(label)}</label>)}
+                        <Button variant="outline" type="button" className="block border rounded-control p-1" onClick={() => void run(async () => { invalidate(); const current = version.current; const choices = await bundleApi.filters(source); if (alive.current && current === version.current) { setFilters(old => new Map(old).set(source, choices)); updateObs(source, { filters: [] }); } })}>{source}{t('presets.copy.135')}</Button>
+                        {filters.get(source)?.length === 0 && <p className="text-ui-support">{t('presets.copy.136')}</p>}
+                        {filters.get(source)?.map(filter => <label key={filter.name} className="block text-ui-support"><Field label={null}><Checkbox type="checkbox" checked={item.filters.includes(filter.name)} onChange={e => updateObs(source, { filters: e.target.checked ? [...item.filters, filter.name] : item.filters.filter(n => n !== filter.name) })} /></Field> {filter.name}（{filter.kind}{t('presets.copy.137')}{filter.enabled ? t('presets.copy.138') : t('presets.copy.139')}{t('presets.copy.140')}</label>)}</div>}
                     </div>;
                 })}
             </div>}
             {checkedOnly && <div className="space-y-2">
-                {scope === 'voice' && <p className="text-xs">{t('recovery.checkedScope')}</p>}
-                <Button variant="outline" type="button" className="border rounded p-2" onClick={() => void run(async () => {
+                {scope === 'voice' && <p className="text-ui-support">{t('recovery.checkedScope')}</p>}
+                <Button variant="outline" type="button"  onClick={() => void run(async () => {
                     const current = version.current; const context = readPreparationContext();
                     const stats = await audioApi.getEngineRuntimeStats(); const expected = stats.preparation;
                     if (stats.latencyMetadata?.streamRunning !== true || !expected || expected.controlsPending || expected.muted || expected.outputGain === 0 || !context.usage) throw new Error(t('recovery.readFailed'));
                     if (alive.current && current === version.current) { setCheckedExpected(expected); setCheckedContext(context); setCheckedAcknowledged(false); }
                 })}>{t('recovery.readConditions')}</Button>
-                <label className="flex gap-2"><input type="checkbox" disabled={!checkedExpected} checked={checkedAcknowledged} onChange={e => setCheckedAcknowledged(e.target.checked)} />{t('recovery.checkedAck')}</label>
+                <label className="flex gap-2"><Field label={null}><Checkbox type="checkbox" disabled={!checkedExpected} checked={checkedAcknowledged} onChange={e => setCheckedAcknowledged(e.target.checked)} /></Field>{t('recovery.checkedAck')}</label>
             </div>}
-            {existingName !== undefined && <label className="block"><input type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)} /> {t('presets.copy.141')}</label>}
-            <Button variant="outline" type="button" className="border rounded p-2" disabled={(checkedOnly && (!checkedExpected || !checkedAcknowledged)) || !listReady || !name.trim() || !Object.values(saveCategories).some(Boolean) || (includeObs && obs.length === 0) || (existingName !== undefined && !overwrite)} onClick={() => void run(async () => {
+            {existingName !== undefined && <label className="block"><Field label={null}><Checkbox type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)} /></Field> {t('presets.copy.141')}</label>}
+            <Button variant="outline" type="button"  disabled={(checkedOnly && (!checkedExpected || !checkedAcknowledged)) || !listReady || !name.trim() || !Object.values(saveCategories).some(Boolean) || (includeObs && obs.length === 0) || (existingName !== undefined && !overwrite)} onClick={() => void run(async () => {
                 if (!listReady) return; const saveName = existingName ?? name.trim(); const confirmedOverwrite = existingName !== undefined && overwrite; if (checkedOnly && JSON.stringify(readPreparationContext()) !== JSON.stringify(checkedContext)) throw new Error(t('recovery.readFailed')); const checked = checkedOnly && checkedExpected && checkedContext ? { expected: checkedExpected, usage: checkedContext.usage, location: checkedContext.location } : undefined; invalidate(); if (includeMixing) await bundleApi.save(saveName, saveCategories, includeObs ? obs : null, confirmedOverwrite, checked, true, true, false, true); else if (includeProcess) await bundleApi.save(saveName, saveCategories, includeObs ? obs : null, confirmedOverwrite, checked, false, false, true); else if (includeLive) await bundleApi.save(saveName, saveCategories, includeObs ? obs : null, confirmedOverwrite, checked, true, true); else if (includeOutput) await bundleApi.save(saveName, saveCategories, includeObs ? obs : null, confirmedOverwrite, checked, true); else if (checked) await bundleApi.save(saveName, saveCategories, null, confirmedOverwrite, checked); else await bundleApi.save(saveName, saveCategories, includeObs ? obs : null, confirmedOverwrite);
                 const items = await list(); if (alive.current) { setNames(items); setMessage({ kind: 'success', notice: notice('presets.copy.142') }); }
             })}>{t('presets.copy.143')}</Button>
         </fieldset>
-        <fieldset disabled={busy} className="space-y-2 border border-border rounded-xl p-4"><legend>{t('presets.copy.144')}</legend>
-            <label className="block">{t('presets.copy.145')}<select className="block w-full border border-input rounded-md bg-background px-3 py-2" value={selected} onChange={e => { invalidate(); setSelected(e.target.value); }}><option value="">{t('presets.copy.146')}</option>{names.map(n => <option key={n}>{n}</option>)}</select></label>
-            <Button variant="outline" type="button" className="border rounded p-2 mr-2" onClick={() => void refresh()}>{t('presets.copy.147')}</Button>
-            <Button variant="outline" type="button" className="border rounded p-2" disabled={!selected} onClick={() => void preview()}>{t('presets.copy.148')}</Button>
+        <fieldset disabled={busy} className="space-y-2 border border-border rounded-card p-4"><legend>{t('presets.copy.144')}</legend>
+            <label className="block">{t('presets.copy.145')}<Field label={null}><Select className="w-full" value={selected} onChange={e => { invalidate(); setSelected(e.target.value); }}><option value="">{t('presets.copy.146')}</option>{names.map(n => <option key={n}>{n}</option>)}</Select></Field></label>
+            <Button variant="outline" type="button" className="border rounded-control p-2 mr-2" onClick={() => void refresh()}>{t('presets.copy.147')}</Button>
+            <Button variant="outline" type="button"  disabled={!selected} onClick={() => void preview()}>{t('presets.copy.148')}</Button>
         </fieldset>
-        {recovery && <section aria-label={t('bundle.recoveryTitle')} className="space-y-2 border border-border rounded-xl p-4">
+        {recovery && <section aria-label={t('bundle.recoveryTitle')} className="space-y-2 border border-border rounded-card p-4">
             <h3 className="font-semibold">{t('bundle.recoveryTitle')}</h3>
             <p>{t(recovery.readable ? 'bundle.recoveryExplanation' : 'bundle.recoveryUnreadable')}</p>
-            {recovery.runtimeCheckpoint && recovery.readable && <p className="text-sm">{t('temporary.checkpointRecovery')}</p>}
-            {recovery.readable && <Button variant="outline" type="button" className="border rounded p-2" disabled={busy} onClick={() => void previewRecovery()}>{t('bundle.recoveryPreview')}</Button>}
-            <label className="flex gap-2"><input type="checkbox" checked={recoveryConfirmed} onChange={e => setRecoveryConfirmed(e.target.checked)} />{t('bundle.recoveryConfirmAdopt')}</label>
-            <Button variant="outline" type="button" className="border rounded p-2 disabled:opacity-50" disabled={busy || !recoveryConfirmed} onClick={() => void run(async () => {
+            {recovery.runtimeCheckpoint && recovery.readable && <p className="text-ui-support">{t('temporary.checkpointRecovery')}</p>}
+            {recovery.readable && <Button variant="outline" type="button"  disabled={busy} onClick={() => void previewRecovery()}>{t('bundle.recoveryPreview')}</Button>}
+            <label className="flex gap-2"><Field label={null}><Checkbox type="checkbox" checked={recoveryConfirmed} onChange={e => setRecoveryConfirmed(e.target.checked)} /></Field>{t('bundle.recoveryConfirmAdopt')}</label>
+            <Button variant="outline" type="button"  disabled={busy || !recoveryConfirmed} onClick={() => void run(async () => {
                 await bundleApi.resolveRecovery(recovery.id);
                 if (alive.current) { setRecovery(null); setResult(null); setRecoveryConfirmed(false); invalidate(); }
             })}>{t('bundle.recoveryAdopt')}</Button>
         </section>}
-        {plan && <div className="border border-border rounded-xl p-4 space-y-2" aria-label={t('presets.copy.149')}>{plan.confirmation && <p className="text-xs">{t('recovery.historical', { time: new Date(plan.confirmation.checkedAtUnixMs).toLocaleString() })}</p>}<p>{planIsRecovery && recovery?.runtimeCheckpoint ? t('temporary.checkpointTitle') : plan.name}：{plan.categories.map(name => Object.prototype.hasOwnProperty.call(planCategoryKeys, name) ? t(planCategoryKeys[name]) : name).join('・')}{t('presets.copy.150')}</p><p className="text-xs">{t('presets.copy.151')}</p>
-            <table className="w-full text-xs text-left"><caption>{t('presets.copy.152')}</caption><thead><tr><th>{t('presets.copy.153')}</th><th>{t('presets.copy.154')}</th><th>{t('presets.copy.155')}</th><th>{t('presets.copy.156')}</th></tr></thead><tbody>{plan.auralyn.map((row,i) => <tr key={i}><th scope="row"><ObsText text={row.labelText} legacy={row.label} /></th><td className="break-all"><ObsText text={row.beforeText} legacy={row.before} /></td><td className="break-all"><ObsText text={row.afterText} legacy={row.after} /></td><td>{{same: t('presets.copy.157'), changed: t('presets.copy.158'), notSelected: t('presets.copy.159'), unknown: t('presets.copy.160')}[row.status]}</td></tr>)}</tbody></table>
+        {plan && <div className="border border-border rounded-card p-4 space-y-2" aria-label={t('presets.copy.149')}>{plan.confirmation && <p className="text-ui-support">{t('recovery.historical', { time: new Date(plan.confirmation.checkedAtUnixMs).toLocaleString() })}</p>}<p>{planIsRecovery && recovery?.runtimeCheckpoint ? t('temporary.checkpointTitle') : plan.name}：{plan.categories.map(name => Object.prototype.hasOwnProperty.call(planCategoryKeys, name) ? t(planCategoryKeys[name]) : name).join('・')}{t('presets.copy.150')}</p><p className="text-ui-support">{t('presets.copy.151')}</p>
+            <table className="w-full text-ui-support text-left"><caption>{t('presets.copy.152')}</caption><thead><tr><th>{t('presets.copy.153')}</th><th>{t('presets.copy.154')}</th><th>{t('presets.copy.155')}</th><th>{t('presets.copy.156')}</th></tr></thead><tbody>{plan.auralyn.map((row,i) => <tr key={i}><th scope="row"><ObsText text={row.labelText} legacy={row.label} /></th><td className="break-all"><ObsText text={row.beforeText} legacy={row.before} /></td><td className="break-all"><ObsText text={row.afterText} legacy={row.after} /></td><td>{{same: t('presets.copy.157'), changed: t('presets.copy.158'), notSelected: t('presets.copy.159'), unknown: t('presets.copy.160')}[row.status]}</td></tr>)}</tbody></table>
             {plan.mixing && <MixingConfigurationDiff mixing={plan.mixing} />}
                 {plan.output && <OutputConfigurationDiff output={plan.output} />}
             {plan.live && <LiveConfigurationDiff live={plan.live} />}
@@ -190,15 +195,15 @@ export function BroadcastBundlePanel({ onOperation, onObsSettings, checkedOnly =
             {plan.obs.length > 0 && <ul>{plan.obs.map((c,i) => <li key={i}>{c.source}：<ObsText text={c.labelText} legacy={c.label} /> <ObsText text={c.beforeText} legacy={c.beforeDisplay ?? c.before} /> → <ObsText text={c.afterText} legacy={c.afterDisplay ?? c.after} /></li>)}</ul>}
             {planIsRecovery && <p>{t('bundle.recoveryApplyHint')}</p>}
             {plan.mixing && !plan.running && <p role="status">{t('bundle.mixing.startRequired')}</p>}
-            <Button variant="outline" type="button" className="border rounded p-2" disabled={busy || !onOperation || !!plan.mixing?.missingDevices.length || !!plan.mixing?.missingPlugins.length || (!!plan.mixing && !plan.running) || (plan.process != null && (!plan.running || !plan.process.selectionMatches || !!plan.process.missingDevices.length || !!plan.process.missingPlugins.length)) || !!plan.output?.missingDevices?.length || !!plan.output?.missingPlugins?.length || !recoveryReady || (!planIsRecovery && (!!recovery || !!(result?.undoPending && !result.complete)))} onClick={() => void operate({ action: planIsRecovery ? 'recovery_apply' : 'apply', id: plan.id })}>{t(planIsRecovery ? 'bundle.recoveryApply' : 'presets.copy.161')}</Button></div>}
-        {result && <div className="border border-border rounded-xl p-4 space-y-2" aria-label={t('presets.copy.162')}><div><ObsText text={result.auralynText} legacy={result.auralyn} /></div>{result.summary && <ul>
+            <Button variant="outline" type="button"  disabled={busy || !onOperation || !!plan.mixing?.missingDevices.length || !!plan.mixing?.missingPlugins.length || (!!plan.mixing && !plan.running) || (plan.process != null && (!plan.running || !plan.process.selectionMatches || !!plan.process.missingDevices.length || !!plan.process.missingPlugins.length)) || !!plan.output?.missingDevices?.length || !!plan.output?.missingPlugins?.length || !recoveryReady || (!planIsRecovery && (!!recovery || !!(result?.undoPending && !result.complete)))} onClick={() => void operate({ action: planIsRecovery ? 'recovery_apply' : 'apply', id: plan.id })}>{t(planIsRecovery ? 'bundle.recoveryApply' : 'presets.copy.161')}</Button></div>}
+        {result && <div className="border border-border rounded-card p-4 space-y-2" aria-label={t('presets.copy.162')}><div><ObsText text={result.auralynText} legacy={result.auralyn} /></div>{result.summary && <ul>
             {result.summary.appliedCategories.map(category => <li key={category}>Auralyn {categoryName(category)}{t('presets.copy.163')}</li>)}
             {result.summary.skippedCategories.map(category => <li key={category}>Auralyn {categoryName(category)}{t('presets.copy.164')}</li>)}
             {result.summary.missingPlugins.map((plugin,i) => <li key={`vst-${i}`}>VST {plugin.name}{t('presets.copy.165')}</li>)}
             {result.summary.missingDevices.map((device,i) => <li key={`device-${i}`}>{t('presets.copy.166')}{device.name}{t('presets.copy.167')}</li>)}
-        </ul>}{result.obs.length > 0 && <ul>{result.obs.map((message,i) => <li key={i}>OBS {i + 1}：<ObsText text={result.obsTexts?.length === result.obs.length ? result.obsTexts[i] : null} legacy={message} /></li>)}</ul>}<p className="text-xs">{result.complete ? t('presets.copy.168') : t('presets.copy.169')}</p>
-            {result.undoPending && <Button variant="outline" type="button" className="border rounded p-2" disabled={busy || !onOperation} onClick={() => void operate({ action: 'undo', id: result.id })}>{t('presets.copy.170')}</Button>}
-            <p className="text-xs">{t('presets.copy.171')}</p></div>}
+        </ul>}{result.obs.length > 0 && <ul>{result.obs.map((message,i) => <li key={i}>OBS {i + 1}：<ObsText text={result.obsTexts?.length === result.obs.length ? result.obsTexts[i] : null} legacy={message} /></li>)}</ul>}<p className="text-ui-support">{result.complete ? t('presets.copy.168') : t('presets.copy.169')}</p>
+            {result.undoPending && <Button variant="outline" type="button"  disabled={busy || !onOperation} onClick={() => void operate({ action: 'undo', id: result.id })}>{t('presets.copy.170')}</Button>}
+            <p className="text-ui-support">{t('presets.copy.171')}</p></div>}
         {busy && <p role="status">{t('presets.copy.172')}</p>}
         {message && <div className="space-y-2"><p role={message.kind === 'success' ? 'status' : 'alert'}>{renderNotice(t, message.notice)}{message.kind === 'error' && <> {t('presets.errorNextStep', { action: t('presets.copy.147') })}</>}</p>{message.rawDetail && <ErrorDetails detail={message.rawDetail} />}</div>}
     </section>;

@@ -793,6 +793,8 @@ html[data-app-hidden="true"] *::after {
    focus:outline-hidden のユーティリティより優先し、スクロール領域での欠けを防ぐ。 */
 @media (forced-colors: active) {
   input:focus, select:focus, textarea:focus { outline-offset: -2px; }
+  /* 透明なradioの代わりに、選択カード自身へ強制色の輪郭を描く。 */
+  [data-choice-card]:has(input:focus-visible) { outline: 2px solid Highlight; outline-offset: -2px; }
 }
 
 /* 開閉途中の反転も、現在の高さから補間する。閉じた内容は即時 inert にする。 */

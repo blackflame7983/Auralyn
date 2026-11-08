@@ -1,3 +1,6 @@
+import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
 import { isAppHidden } from '@/lib/appVisibility';
 import { preparationReach } from '@/lib/preparation';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
@@ -143,13 +146,13 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
         return (
             <section
                 aria-label={t('guide.copy.268')}
-                className="rounded-xl border border-border p-4 space-y-2"
+                className="rounded-card border border-border p-4 space-y-2"
             >
                 <h3 className="font-bold">{t('guide.copy.269')}</h3>
-                <p className="text-sm">
+                <p className="text-ui-support">
                     {t('guide.copy.270')}{outputName}{t('guide.copy.271')}</p>
                 {(goal === 'obs' || goal === 'discord') && (
-                    <p className="text-sm text-warning">
+                    <p className="text-ui-support text-warning">
                         {t('guide.copy.272')}{goal === 'obs' ? 'OBS' : 'Discord'}{' '}
                         {t('guide.copy.273')}</p>
                 )}
@@ -160,30 +163,30 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
     return (
         <section
             aria-label={t('guide.copy.274')}
-            className="rounded-xl border border-border p-4 space-y-4"
+            className="rounded-card border border-border p-4 space-y-4"
         >
             <h3 className="font-bold">{t('guide.copy.275')}</h3>
             <details className="space-y-3"><summary className="cursor-pointer font-medium">{t(goal === 'obs' ? 'structure.checkObs' : 'structure.checkReceiver')}</summary>
 
-            <p className="text-sm">
+            <p className="text-ui-support">
                 Auralyn → {outputName} →{' '}
                 {renderNotice(t, receiverDeviceNotice(outputName))} → {goal === 'discord' ? 'Discord' : goal === 'obs' ? 'OBS' : t('guide.copy.276')}{' '}
                 {t('guide.copy.277')}</p>
             {goal === 'obs' ? (
                 <>
-                    <ol className="list-decimal pl-5 text-sm space-y-2">
+                    <ol className="list-decimal pl-5 text-ui-support space-y-2">
                         <li>
                             {t('guide.copy.278')}</li>
                         <li>
                             {t('guide.copy.279')}{renderNotice(t, receiverDeviceNotice(outputName))}{t('guide.copy.280')}</li>
                         <li>{t('guide.copy.281')}</li>
                     </ol>
-                    <p className="text-sm">
+                    <p className="text-ui-support">
                         {t('guide.copy.282')}</p>
                     <fieldset disabled={busy || disabled} className="flex flex-wrap gap-3">
-                        <label className="text-sm">
-                            {t('guide.copy.283')}<input
-                                className="block w-40 bg-background border border-input rounded p-2"
+                        <label className="text-ui-support">
+                            {t('guide.copy.283')}<Field label={null}><Input
+                                className="w-40"
                                 value={host}
                                 onChange={(e) => {
                                     setHost(e.target.value);
@@ -191,11 +194,11 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                                     setResult(null);
                                     setMessage(notice('guide.copy.284'));
                                 }}
-                            />
+                            /></Field>
                         </label>
-                        <label className="text-sm">
-                            {t('guide.copy.285')}<input
-                                className="block w-24 bg-background border border-input rounded p-2"
+                        <label className="text-ui-support">
+                            {t('guide.copy.285')}<Field label={null}><Input
+                                className="w-24"
                                 inputMode="numeric"
                                 value={port}
                                 onChange={(e) => {
@@ -204,11 +207,11 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                                     setResult(null);
                                     setMessage(notice('guide.copy.286'));
                                 }}
-                            />
+                            /></Field>
                         </label>
-                        <label className="text-sm">
-                            {t('guide.copy.287')}<input
-                                className="block w-48 bg-background border border-input rounded p-2"
+                        <label className="text-ui-support">
+                            {t('guide.copy.287')}<Field label={null}><Input
+                                className="w-48"
                                 type="password"
                                 autoComplete="off"
                                 value={password}
@@ -220,48 +223,48 @@ export const ConnectionCheck: React.FC<ConnectionCheckProps> = ({
                                         notice('guide.copy.288'),
                                     );
                                 }}
-                            />
+                            /></Field>
                         </label>
                     </fieldset>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-ui-support text-muted-foreground">
                         {t('guide.copy.289')}</p>
-                    <button
+                    <Button variant="secondary"
                         type="button"
                         disabled={busy || disabled || !validConnection}
                         onClick={connect}
-                        className="px-4 py-2 rounded bg-secondary text-secondary-foreground disabled:opacity-50"
+
                     >
-                        {t('guide.copy.290')}</button>
-                    <p className="text-sm text-warning">
+                        {t('guide.copy.290')}</Button>
+                    <p className="text-ui-support text-warning">
                         {t('guide.copy.291')}</p>
-                    <button
+                    <Button variant="default"
                         type="button"
                         disabled={busy || disabled || !connected}
                         onClick={checkReach}
-                        className="px-4 py-2 rounded bg-primary text-primary-foreground disabled:opacity-50"
+
                     >
-                        {t('guide.copy.292')}</button>
+                        {t('guide.copy.292')}</Button>
 
                 </>
             ) : (
                 <>
-                    <p className="text-sm">
+                    <p className="text-ui-support">
                         {goal === 'discord'
                             ? t('guide.copy.296')
                             : t('guide.copy.297')}
                         {t('guide.copy.298')}{renderNotice(t, receiverDeviceNotice(outputName))}{t('guide.copy.299')}</p>
-                    <p className="text-sm">
+                    <p className="text-ui-support">
                         {t('guide.copy.300')}</p>
                 </>
             )}
             </details>
             {goal === 'obs' ? (                    <p
                         role="status"
-                        className={`text-sm ${result?.reached === true ? 'text-success' : 'text-muted-foreground'}`}
+                        className={`text-ui-support ${result?.reached === true ? 'text-success' : 'text-muted-foreground'}`}
                     >
                         {audioRunning ? t('guide.copy.293') : t('guide.copy.294')}{' '}
                         {busy ? t('guide.copy.295') : renderNotice(t, message)}
-                    </p>) : <p role="status" className="text-sm text-muted-foreground">{t('structure.receiverUnverified')}</p>}
+                    </p>) : <p role="status" className="text-ui-support text-muted-foreground">{t('structure.receiverUnverified')}</p>}
         </section>
     );
 };

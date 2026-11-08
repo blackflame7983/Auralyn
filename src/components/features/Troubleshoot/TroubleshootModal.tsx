@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { destinationChoices } from '@/lib/destinationChoices';
 import { ErrorDetails } from '@/components/ui/ErrorDetails';
 import { notice, renderNotice, type SettingsNotice } from '@/components/features/AudioSettings/settingsNotice';
@@ -481,81 +482,81 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
             <div className="modal-surface-base w-full max-w-lg max-h-[90vh] flex flex-col">
                 <div className="modal-header-base shrink-0">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-warning/10 rounded-lg">
+                        <div className="p-2 bg-warning/10 rounded-card">
                             <MdHelpOutline className="w-5 h-5 text-warning" />
                         </div>
                         <div>
-                            <h2 className="text-lg font-bold text-foreground">{t('guide.copy.405')}</h2>
-                            <p className="text-xs text-muted-foreground">{t('guide.copy.406')}</p>
+                            <h2 className="text-ui-heading font-bold text-foreground">{t('guide.copy.405')}</h2>
+                            <p className="text-ui-support text-muted-foreground">{t('guide.copy.406')}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} aria-label={t('guide.copy.407')} className="p-2 rounded-lg hover:bg-muted text-muted-foreground">
+                    <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('guide.copy.407')} >
                         <MdClose className="w-5 h-5" />
-                    </button>
+                    </Button>
                 </div>
 
                 {showProbeConfirm && (
-                    <div className="px-6 py-4 bg-warning/10 border-b border-warning/20 text-sm space-y-3">
+                    <div className="px-6 py-4 bg-warning/10 border-b border-warning/20 text-ui-support space-y-3">
                         <p className="font-bold text-warning">
                             {t('guide.copy.408')}</p>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
+                        <p className="text-ui-support text-muted-foreground leading-relaxed">
                             {t('guide.copy.409')}</p>
                         <div className="flex gap-2">
-                            <button
-                                className="px-3 py-1.5 text-xs font-bold bg-primary text-primary-foreground rounded-md"
+                            <Button variant="default" size="sm"
+
                                 onClick={() => {
                                     setShowProbeConfirm(false);
                                     probeConfirmRef.current?.(true);
                                     probeConfirmRef.current = null;
                                 }}
                             >
-                                {t('guide.copy.410')}</button>
-                            <button
-                                className="px-3 py-1.5 text-xs font-bold text-muted-foreground hover:bg-muted rounded-md"
+                                {t('guide.copy.410')}</Button>
+                            <Button variant="ghost" size="sm"
+
                                 onClick={() => {
                                     setShowProbeConfirm(false);
                                     probeConfirmRef.current?.(false);
                                     probeConfirmRef.current = null;
                                 }}
                             >
-                                {t('guide.copy.411')}</button>
+                                {t('guide.copy.411')}</Button>
                         </div>
                     </div>
                 )}
 
                 {phase === 'purpose' && rememberedPurpose && !choosePurpose && (
                     <div className="p-6 space-y-3 overflow-y-auto">
-                        <p className="text-sm text-muted-foreground">{t('troubleshoot.savedPurpose')}</p>
-                        <button
+                        <p className="text-ui-support text-muted-foreground">{t('troubleshoot.savedPurpose')}</p>
+                        <Button variant="outline"
                             onClick={() => handleStart(rememberedPurpose)}
                             disabled={isRunning}
-                            className="w-full text-left p-4 rounded-lg border border-primary/50 bg-primary/5 hover:bg-primary/10 transition-colors"
+                            className="border-primary/50 bg-primary/5 hover:bg-primary/10 w-full h-auto min-h-10 flex-col items-start whitespace-normal text-left"
                         >
-                            <div className="font-bold text-sm text-foreground">{t('troubleshoot.runFor', { purpose: t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.label) })}</div>
-                            <div className="text-xs text-muted-foreground mt-1">{t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.hint)}</div>
-                        </button>
-                        <button type="button" onClick={() => setChoosePurpose(true)} className="text-xs font-semibold text-primary underline underline-offset-2 hover:text-foreground">{t('troubleshoot.changePurpose')}</button>
+                            <div className="font-bold text-ui-support text-foreground">{t('troubleshoot.runFor', { purpose: t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.label) })}</div>
+                            <div className="text-ui-support text-muted-foreground mt-1">{t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.hint)}</div>
+                        </Button>
+                        <button type="button" onClick={() => setChoosePurpose(true)} className="text-ui-support font-semibold text-primary underline underline-offset-2 hover:text-foreground">{t('troubleshoot.changePurpose')}</button>
                     </div>
                 )}
                 {phase === 'purpose' && (!rememberedPurpose || choosePurpose) && (
                     <div className="p-6 space-y-3 overflow-y-auto">
-                        <p className="text-sm text-muted-foreground mb-2">{t('guide.copy.412')}</p>
+                        <p className="text-ui-support text-muted-foreground mb-2">{t('guide.copy.412')}</p>
                         {PURPOSE_OPTIONS.map(opt => (
-                            <button
+                            <Button variant="outline"
                                 key={opt.id}
                                 onClick={() => handleStart(opt.id)}
                                 disabled={isRunning}
-                                className="w-full text-left p-4 rounded-lg border border-border hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                                className="w-full h-auto min-h-10 flex-col items-start whitespace-normal text-left"
                             >
-                                <div className="font-bold text-sm text-foreground">{t(opt.label)}</div>
-                                <div className="text-xs text-muted-foreground mt-1">{t(opt.hint)}</div>
-                            </button>
+                                <div className="font-bold text-ui-support text-foreground">{t(opt.label)}</div>
+                                <div className="text-ui-support text-muted-foreground mt-1">{t(opt.hint)}</div>
+                            </Button>
                         ))}
                     </div>
                 )}
 
                 {phase !== 'purpose' && !isRunning && checks.length > 0 && (
-                    <div className={`px-6 py-3 text-sm font-bold flex items-center gap-2 shrink-0 ${
+                    <div className={`px-6 py-3 text-ui-support font-bold flex items-center gap-2 shrink-0 ${
                         errorCount > 0 ? 'bg-destructive/10 text-destructive-text' :
                         warnCount > 0 ? 'bg-warning/10 text-warning' :
                         'bg-success/10 text-success'
@@ -576,27 +577,28 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                             <div key={check.id} className="flex items-start gap-4">
                                 <div className="mt-0.5 shrink-0">{statusIcon(check.status)}</div>
                                 <div className="flex-1 min-w-0">
-                                    <h3 className="font-bold text-sm text-foreground">{renderNotice(t, check.label)}</h3>
-                                    <p className="text-xs text-muted-foreground">{renderNotice(t, check.description)}</p>
-                                    {check.lines && <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{check.lines.map((line, i) => `${i + 1}. ${renderNotice(t, line)}`).join('\n')}</p>}
+                                    <h3 className="font-bold text-ui-support text-foreground">{renderNotice(t, check.label)}</h3>
+                                    <p className="text-ui-support text-muted-foreground">{renderNotice(t, check.description)}</p>
+                                    {check.lines && <p className="text-ui-support text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{check.lines.map((line, i) => `${i + 1}. ${renderNotice(t, line)}`).join('\n')}</p>}
                                     {check.detail && (
                                         typeof check.detail === 'string'
                                             ? <ErrorDetails detail={check.detail} />
-                                            : <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{renderNotice(t, check.detail)}</p>
+                                            : <p className="text-ui-support text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">{renderNotice(t, check.detail)}</p>
                                     )}
                                     {check.fixHint && (
-                                        <p className="text-xs text-warning mt-1 leading-relaxed">
+                                        <p className="text-ui-support text-warning mt-1 leading-relaxed">
                                             {t('guide.diagnostic.fixHint', { hint: renderNotice(t, check.fixHint) })}
                                         </p>
                                     )}
                                     <div className="flex flex-wrap gap-2 mt-2">
                                         {check.action && (
-                                            <button
+                                            <Button variant="outline" size="sm"
                                                 onClick={check.action.onClick}
-                                                className="px-3 py-1 text-xs font-bold text-primary bg-primary/10 border border-primary/20 rounded-md hover:bg-primary/20 transition-colors"
+                                                className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/20"
+
                                             >
                                                 {renderNotice(t, check.action.label)}
-                                            </button>
+                                            </Button>
                                         )}
                                     </div>
                                 </div>
@@ -608,32 +610,32 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                 <div className="px-6 py-4 border-t border-border flex items-center justify-between bg-muted/30 shrink-0">
                     <div className="flex items-center gap-2">
                         {phase !== 'purpose' && (
-                            <button
+                            <Button variant="ghost" size="sm"
                                 onClick={() => { setPhase('purpose'); setChecks([]); }}
                                 disabled={isRunning}
-                                className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                                className="flex items-center gap-1"
                             >
-                                <MdArrowBack className="w-4 h-4" /> {t('guide.copy.417')}</button>
+                                <MdArrowBack className="w-4 h-4" /> {t('guide.copy.417')}</Button>
                         )}
                     </div>
                     <div className="flex items-center gap-2">
                         {phase === 'results' && (
-                            <button
+                            <Button variant="ghost" size="sm"
                                 onClick={() => void handleCopyReport()}
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:bg-muted rounded-md"
+                                className="flex items-center gap-1"
                             >
                                 <MdContentCopy className="w-4 h-4" />
                                 {copyDone ? t('guide.copy.418') : t('guide.copy.419')}
-                            </button>
+                            </Button>
                         )}
                         {purpose && (
-                            <button
+                            <Button variant="ghost" size="sm"
                                 onClick={() => void runDiagnostics(purpose)}
                                 disabled={isRunning}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/10 rounded-md transition-colors disabled:opacity-50"
+                                className="flex items-center gap-1.5"
                             >
                                 <MdRefresh className={`w-4 h-4 ${isRunning ? 'animate-spin' : ''}`} />
-                                {t('guide.copy.420')}</button>
+                                {t('guide.copy.420')}</Button>
                         )}
                     </div>
                 </div>

@@ -1,3 +1,9 @@
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/Select';
+import { Field } from '@/components/ui/Field';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Input } from '@/components/ui/Input';
 import { RecoveryActionsPanel } from './RecoveryActionsPanel';
 import { SavePurposeHelp } from './SavePurposeHelp';
@@ -88,14 +94,14 @@ function CategoryCheckboxes({
     return (
         <div className="grid grid-cols-2 gap-2">
             {items.map(({ key, label, Icon }) => (
-                <label key={key} className="flex items-center gap-2 text-xs cursor-pointer select-none">
-                    <input
+                <label key={key} className="flex items-center gap-2 text-ui-support cursor-pointer select-none">
+                    <Field label={null} id={`${idPrefix}-${key}`}><Checkbox
                         id={`${idPrefix}-${key}`}
                         type="checkbox"
                         checked={categories[key]}
                         onChange={(e) => onChange({ ...categories, [key]: e.target.checked })}
-                        className="rounded border-input"
-                    />
+
+                    /></Field>
                     <Icon className="w-3.5 h-3.5 text-muted-foreground" />
                     <span>{label}</span>
                 </label>
@@ -121,7 +127,7 @@ function ApplyResultSummary({
     const total = applied + summary.skippedCategories.length;
 
     return (
-        <div className="mx-4 mb-4 p-3 rounded-lg border border-border bg-muted/30 text-xs space-y-2">
+        <div className="mx-4 mb-4 p-3 rounded-card border border-border bg-muted/30 text-ui-support space-y-2">
             <p className="font-medium text-foreground">
                 {applied}/{total || applied} {t('presets.copy.006')}{summary.needsEngineRestart && t('presets.copy.007')}
             </p>
@@ -143,8 +149,8 @@ function ApplyResultSummary({
                             <p className="text-muted-foreground">
                                 {md.role === 'input' ? t('presets.copy.011') : t('presets.copy.012')}: 「{md.name}」
                             </p>
-                            <select
-                                className="w-full bg-background border border-input rounded px-2 py-1 text-xs"
+                            <Field label={null}><Select
+                                className="w-full"
                                 value={md.role === 'input' ? inputSub : outputSub}
                                 onChange={(e) => {
                                     if (md.role === 'input') setInputSub(e.target.value);
@@ -155,18 +161,18 @@ function ApplyResultSummary({
                                 {(md.role === 'input' ? devices.inputs : devices.outputs).map(d => (
                                     <option key={d.name} value={d.name}>{d.name}</option>
                                 ))}
-                            </select>
+                            </Select></Field>
                         </div>
                     ))}
-                    <button
+                    <Button variant="default" size="sm"
                         type="button"
-                        className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium"
+
                         onClick={() => onSubstitute({
                             inputDevice: inputSub || undefined,
                             outputDevice: outputSub || undefined,
                         })}
                     >
-                        {t('presets.copy.014')}</button>
+                        {t('presets.copy.014')}</Button>
                 </div>
             )}
         </div>
@@ -402,103 +408,100 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
         <Modal title={t('presets.copy.049')} onClose={onClose}>
         <div className="modal-overlay-base">
             <div
-                className="modal-surface-base w-full max-w-lg bg-background flex flex-col max-h-[85vh]"
+                className="modal-surface-base w-full max-w-lg flex flex-col max-h-[85vh]"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="modal-header-base shrink-0">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-primary/10 rounded-lg">
+                        <div className="p-2 bg-primary/10 rounded-card">
                             <MdFolderOpen className="w-5 h-5 text-primary" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold tracking-tight text-foreground">{t('presets.copy.050')}</h2>
-                            <p className="text-xs text-muted-foreground">{t('presets.copy.051')}</p>
+                            <h2 className="text-ui-heading font-bold tracking-tight text-foreground">{t('presets.copy.050')}</h2>
+                            <p className="text-ui-support text-muted-foreground">{t('presets.copy.051')}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
                         {hasBackup && (
-                            <button
+                            <Button variant="secondary" size="sm"
                                 onClick={handleRestoreBackup}
-                                className="px-3 py-1.5 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg hover:bg-secondary/80 flex items-center gap-1.5"
+                                className="flex items-center gap-1.5"
                                 title={t('presets.copy.052')}
                             >
                                 <MdUndo className="w-4 h-4" />
-                                {t('presets.copy.053')}</button>
+                                {t('presets.copy.053')}</Button>
                         )}
                         {onOpenTemplateWizard && (
-                            <button
+                            <Button variant="secondary" size="sm"
                                 onClick={onOpenTemplateWizard}
-                                className="px-3 py-1.5 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg hover:bg-secondary/80 flex items-center gap-2"
+                                className="flex items-center gap-2"
                             >
                                 <MdAutoFixHigh />
-                                {t('presets.copy.054')}</button>
+                                {t('presets.copy.054')}</Button>
                         )}
-                        <button aria-label={t('presets.copy.055')} onClick={onClose} className="p-2 rounded-lg hover:bg-muted text-muted-foreground">
+                        <Button variant="ghost" size="icon" aria-label={t('presets.copy.055')} onClick={onClose} >
                             <MdClose className="w-5 h-5" />
-                        </button>
+                        </Button>
                     </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto">
                 {temporaryActive && <div className="px-4 pt-3"><TemporarySessionPanel /></div>}
-                <div className="flex gap-2 border-b p-2" role="group" aria-label={t('presets.copy.056')}>
-                    <button type="button" className="border rounded p-2 aria-pressed:border-selection aria-pressed:bg-selection/15 aria-pressed:text-selection" aria-pressed={!bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(false); }}>{t('presets.copy.057')}</button>
-                    <button type="button" className="border rounded p-2 aria-pressed:border-selection aria-pressed:bg-selection/15 aria-pressed:text-selection" aria-pressed={bundleOpen && !recoveryOpen} onClick={() => { setRecoveryOpen(false); setBundleOpen(true); }}>{t('presets.copy.058')}</button>
-                    <button type="button" className="border rounded p-2 aria-pressed:border-selection aria-pressed:bg-selection/15 aria-pressed:text-selection" aria-pressed={recoveryOpen} onClick={() => setRecoveryOpen(true)}>{t('recoveryHub.title')}</button>
-                </div>
+                <Tabs value={recoveryOpen ? 'recovery' : bundleOpen ? 'bundle' : 'preset'} onValueChange={value => { setRecoveryOpen(value === 'recovery'); setBundleOpen(value === 'bundle'); }}>
+ {/* 英語では3つの名前が長く幅に収まらないため、タブを等分して文字を折り返す。 */}
+ <TabsList aria-label={t('presets.copy.056')} className="m-2 grid h-auto grid-cols-3">
+ {(['preset', 'bundle', 'recovery'] as const).map(value => <TabsTrigger key={value} value={value} className="h-auto min-w-0 whitespace-normal text-center">{t(value === 'preset' ? 'presets.copy.057' : value === 'bundle' ? 'presets.copy.058' : 'recoveryHub.title')}</TabsTrigger>)}
+ </TabsList><TabsContent value={recoveryOpen ? 'recovery' : bundleOpen ? 'bundle' : 'preset'}>
                 {recoveryOpen ? <RecoveryActionsPanel onOperation={onBundleOperation} onVoiceCheck={onOpenVoiceCheck} onSettings={onOpenAudioSettings} /> : bundleOpen ? <BroadcastBundlePanel onOperation={onBundleOperation} onObsSettings={onObsSettings} /> : <>
                 <div className="p-4 border-b border-border bg-muted/30 space-y-3">
                     <div className="flex items-center gap-1">
-                        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t('presets.copy.059')}</h3>
+                        <h3 className="text-ui-support font-bold text-muted-foreground uppercase tracking-wider">{t('presets.copy.059')}</h3>
                         <SavePurposeHelp />
                     </div>
                     <SaveScopeSummary kind="profile" />
-                    <div role="group" aria-label={t('profilePurpose.title')} className="flex flex-wrap gap-2">
-                        <button type="button" aria-pressed={!saveCategories.includeAudioConfig} className="border rounded p-2 text-sm aria-pressed:border-selection aria-pressed:bg-selection/15 aria-pressed:text-selection" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: false }))}>{t('profilePurpose.sound')}</button>
-                        <button type="button" aria-pressed={saveCategories.includeAudioConfig} className="border rounded p-2 text-sm aria-pressed:border-selection aria-pressed:bg-selection/15 aria-pressed:text-selection" onClick={() => setSaveCategories(c => ({ ...c, includeAudioConfig: true }))}>{t('profilePurpose.equipment')}</button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{t(saveCategories.includeAudioConfig ? 'profilePurpose.impact' : 'profilePurpose.portable')}</p>
+                    <SegmentedControl label={t('profilePurpose.title')} value={saveCategories.includeAudioConfig ? 'equipment' : 'sound'} onValueChange={value => setSaveCategories(c => ({ ...c, includeAudioConfig: value === 'equipment' }))} options={[{value: 'sound', label: t('profilePurpose.sound')}, {value: 'equipment', label: t('profilePurpose.equipment')}]} />
+                    <p className="text-ui-support text-muted-foreground">{t(saveCategories.includeAudioConfig ? 'profilePurpose.impact' : 'profilePurpose.portable')}</p>
                     {/* 目的の2択で足りる人が多いため、項目ごとの選択は閉じておく。 */}
-                    <details className="text-sm">
-                        <summary className="cursor-pointer text-xs font-medium">{t('profilePurpose.customize')}</summary>
+                    <details className="text-ui-support">
+                        <summary className="cursor-pointer text-ui-support font-medium">{t('profilePurpose.customize')}</summary>
                         <div className="mt-2"><CategoryCheckboxes
                             idPrefix="save"
                             categories={saveCategories}
                             onChange={setSaveCategories}
                         /></div>
                     </details>
-                    <label htmlFor="profile-save-name" className="block text-xs font-medium">{t('presets.copy.061')}</label>
+                    <label htmlFor="profile-save-name" className="block text-ui-support font-medium">{t('presets.copy.061')}</label>
                     <div className="flex gap-2">
-                        <input
+                        <Field label={null} id="profile-save-name"><Input
                             id="profile-save-name"
                             type="text"
                             value={saveName}
                             onChange={(e) => setSaveName(e.target.value)}
                             placeholder={t('presets.copy.062')}
-                            className="flex-1 bg-background border border-input rounded-lg px-3 py-2 text-sm"
+                            className="flex-1"
                             onKeyDown={(e) => e.key === 'Enter' && handleSaveProfile()}
-                        />
-                        <button
+                        /></Field>
+                        <Button variant="default" size="sm"
                             onClick={handleSaveProfile}
                             disabled={!saveName.trim()}
-                            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg disabled:opacity-50"
+                            className="flex items-center gap-2"
                         >
                             <MdSave className="w-4 h-4" />
-                            {t('presets.copy.063')}</button>
+                            {t('presets.copy.063')}</Button>
                     </div>
                 </div>
 
-                <fieldset className="px-4 py-3 border-b text-sm">
+                <fieldset className="px-4 py-3 border-b text-ui-support">
                     <legend>{t('profilePurpose.apply')}</legend>
-                    <label className="flex gap-2"><input type="checkbox" checked={soundOnly} onChange={e => setSoundOnly(e.target.checked)} />{t('profilePurpose.applySound')}</label>
-                    {!soundOnly && <p className="text-xs text-muted-foreground mt-2">{t('profilePurpose.impact')}</p>}
+                    <label className="flex gap-2"><Field label={null}><Checkbox type="checkbox" checked={soundOnly} onChange={e => setSoundOnly(e.target.checked)} /></Field>{t('profilePurpose.applySound')}</label>
+                    {!soundOnly && <p className="text-ui-support text-muted-foreground mt-2">{t('profilePurpose.impact')}</p>}
                 </fieldset>
                 <div className="px-4 py-2 border-b border-border flex items-center justify-end">
-                    <button
+                    <Button variant="outline" size="sm"
                         onClick={handleImport}
-                        className="flex items-center gap-1.5 px-3 py-1 text-xs text-muted-foreground hover:text-primary border border-border rounded-md"
+                        className="flex items-center gap-1.5"
                     >
                         <MdFileUpload className="w-3.5 h-3.5" />
-                        {t('presets.copy.065')}</button>
+                        {t('presets.copy.065')}</Button>
                 </div>
 
                 {applySummary && (
@@ -513,7 +516,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
 
                 <div className="profile-list-region flex-none overflow-hidden flex flex-col">
                     <div className="p-4 pb-2">
-                        <label htmlFor="profile-search" className="block text-xs font-medium mb-1">{t('presets.copy.066')}</label>
+                        <label htmlFor="profile-search" className="block text-ui-support font-medium mb-1">{t('presets.copy.066')}</label>
                         <div className="relative">
                             <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                             <Input
@@ -528,69 +531,69 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
 
                     <div className="max-h-64 overflow-y-auto p-4 pt-0 space-y-2 custom-scrollbar">
-                        {loadError && <div role="alert" className="rounded border border-border p-3 text-sm">
+                        {loadError && <div role="alert" className="rounded-control border border-border p-3 text-ui-support">
                             <p>{renderNotice(t, loadError)}</p>
                             <button type="button" disabled={isLoading} onClick={() => void loadProfiles()} className="mt-2 underline">{t('presets.copy.068')}</button>
                         </div>}
                         {isLoading ? (
-                            <div role="status" className="flex flex-col items-center gap-2 py-8 text-sm text-muted-foreground">
+                            <div role="status" className="flex flex-col items-center gap-2 py-8 text-ui-support text-muted-foreground">
                                 <div aria-hidden="true" className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                                 {t('common.loading')}
                             </div>
                         ) : filteredProfiles.length === 0 && !loadError ? (
                             <div className="text-center py-12 text-muted-foreground">
                                 <MdFolderOpen className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                                <p className="text-sm">{profiles.length ? t('presets.copy.069') : t('presets.copy.070')}</p>
-                                {profiles.length ? <button type="button" onClick={() => { setSearchTerm(''); document.getElementById('profile-search')?.focus(); }} className="mt-2 underline text-sm">{t('presets.copy.071')}</button>
-                                    : <p className="mt-2 text-sm">{t('presets.copy.072')}</p>}
+                                <p className="text-ui-support">{profiles.length ? t('presets.copy.069') : t('presets.copy.070')}</p>
+                                {profiles.length ? <button type="button" onClick={() => { setSearchTerm(''); document.getElementById('profile-search')?.focus(); }} className="mt-2 underline text-ui-support">{t('presets.copy.071')}</button>
+                                    : <p className="mt-2 text-ui-support">{t('presets.copy.072')}</p>}
                             </div>
                         ) : (
                             filteredProfiles.map(profile => (
                                 <div
                                     key={profile.name}
-                                    className={`group flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-accent transition ${
+                                    className={`group flex items-center justify-between p-3 rounded-card border cursor-pointer hover:bg-accent transition ${
                                         profile.name === saveName ? 'border-selection ring-1 ring-selection/50 bg-selection/10' : 'border-border bg-card'
                                     }`}
                                 >
-                                    <button type="button" onClick={() => setSaveName(profile.name)} aria-label={t('presets.copy.073', { arg0: profile.name })} aria-pressed={profile.name === saveName} className="flex items-center gap-3 min-w-0 text-left rounded focus-visible:ring-2 focus-visible:ring-primary">
+                                    <button type="button" onClick={() => setSaveName(profile.name)} aria-label={t('presets.copy.073', { arg0: profile.name })} aria-pressed={profile.name === saveName} className="flex items-center gap-3 min-w-0 text-left rounded-control focus-visible:ring-2 focus-visible:ring-primary">
                                         <CategoryIcons meta={profile} />
                                         <span className={`font-medium truncate ${profile.name === saveName ? 'text-primary' : ''}`}>
                                             {profile.name}
                                         </span>
                                     </button>
                                     <div className="flex items-center gap-1 shrink-0">
-                                        <button
+                                        <Button variant="ghost" size="icon"
                                             onClick={(e) => { e.stopPropagation(); handleApply(profile.name); }}
-                                            className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md"
+
                                             title={t('presets.copy.074')}
                                             aria-label={t('presets.copy.075', { arg0: profile.name })}
                                         >
                                             <MdPlayArrow className="w-4 h-4" />
-                                        </button>
-                                        <button
+                                        </Button>
+                                        <Button variant="ghost" size="icon"
                                             onClick={(e) => { e.stopPropagation(); handleLegacyLoad(profile.name); }}
-                                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md text-xs font-bold"
+
                                             title={t('presets.copy.076')}
                                             aria-label={t('presets.copy.077', { arg0: profile.name })}
                                         >
                                             VST
-                                        </button>
-                                        <button
+                                        </Button>
+                                        <Button variant="ghost" size="icon"
                                             onClick={(e) => { e.stopPropagation(); handleExport(profile.name); }}
-                                            className="p-2 text-muted-foreground hover:text-info hover:bg-info/10 rounded-md"
+
                                             title={t('presets.copy.078')}
                                             aria-label={t('presets.copy.079', { arg0: profile.name })}
                                         >
                                             <MdFileDownload className="w-4 h-4" />
-                                        </button>
-                                        <button
+                                        </Button>
+                                        <Button variant="ghost" size="icon"
                                             onClick={(e) => { e.stopPropagation(); handleDelete(profile.name); }}
-                                            className="p-2 text-muted-foreground hover:text-destructive-text hover:bg-destructive/10 rounded-md"
+
                                             title={t('presets.copy.080')}
                                             aria-label={t('presets.copy.081', { arg0: profile.name })}
                                         >
                                             <MdDelete className="w-4 h-4" />
-                                        </button>
+                                        </Button>
                                     </div>
                                 </div>
                             ))
@@ -598,7 +601,7 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
                 </div>
                 </>}
-                {/* 共有PCでの一時利用はまれな操作なので、使用中でなければ一覧の後ろに置く。 */}
+                </TabsContent></Tabs>{/* 共有PCでの一時利用はまれな操作なので、使用中でなければ一覧の後ろに置く。 */}
                 {!temporaryActive && <div className="px-4 py-3"><TemporarySessionPanel /></div>}
                 </div>
             </div>

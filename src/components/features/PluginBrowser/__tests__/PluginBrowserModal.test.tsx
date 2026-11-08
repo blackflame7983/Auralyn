@@ -53,7 +53,7 @@ it.each(['最近', 'お気に入り'])('%sでも欠損メタデータを安全�
     localStorage.setItem('vst_host_plugin_recent', JSON.stringify(['eq.vst3']));
     localStorage.setItem('vst_host_plugin_favorites', JSON.stringify(['eq.vst3']));
     openBrowser();
-    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${tab}`) }));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: new RegExp(`^${tab}`) }), { button: 0, ctrlKey: false });
     fireEvent.change(screen.getByRole('textbox', { name: 'プラグイン検索' }), { target: { value: 'no-match' } });
     expect(screen.queryByRole('button', { name: 'Legacy EQ を追加' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'プラグイン検索' }), { target: { value: 'legacy' } });
@@ -69,11 +69,11 @@ it.each(['{broken', '{"not":"an array"}', '[null,12]'])('壊れた履歴 %s で�
 
 it('絞り込みの選択状態を公開し、切替後も更新する', () => {
     openBrowser();
-    expect(screen.getByRole('button', { name: 'すべて' })).toHaveAttribute('aria-pressed', 'true');
-    const recent = screen.getByRole('button', { name: '最近' });
-    fireEvent.click(recent);
-    expect(recent).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'すべて' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('tab', { name: 'すべて' })).toHaveAttribute('aria-selected', 'true');
+    const recent = screen.getByRole('tab', { name: '最近' });
+    fireEvent.mouseDown(recent, { button: 0, ctrlKey: false });
+    expect(recent).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'すべて' })).toHaveAttribute('aria-selected', 'false');
 });
 
 it('localeだけでカテゴリ表示を更新しID・検索・実名・favoriteを保持する', () => {

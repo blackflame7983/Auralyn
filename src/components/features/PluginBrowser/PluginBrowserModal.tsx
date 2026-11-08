@@ -1,3 +1,7 @@
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Field } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/button';
 import type { MessageKey } from '@/i18n/messages';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
@@ -230,68 +234,60 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
 
   return (
     <Modal title={t('pluginBrowser.title')} onClose={onClose}>
-        <div className="modal-overlay-base z-[100]">
-      <Panel className="w-[calc(100vw-2rem)] max-w-[700px] h-[calc(100vh-3rem)] max-h-[550px] flex flex-col p-4 sm:p-6 shadow-2xl border border-primary/20 relative overflow-hidden bg-card text-card-foreground">
+        <div className="modal-overlay-base z-[100]"><Tabs value={activeTab} onValueChange={value => setActiveTab(value as TabType)} className="contents">
+      <Panel className="modal-surface-base w-[calc(100vw-2rem)] max-w-[700px] h-[calc(100vh-3rem)] max-h-[550px] flex flex-col p-4 sm:p-6 relative overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-foreground tracking-tight">
+          <h2 className="text-ui-heading font-bold text-foreground tracking-tight">
             {t('pluginBrowser.title')}</h2>
-          <button
+          <Button variant="ghost" size="icon"
             onClick={onClose}
             aria-label={t('pluginBrowser.close')}
-            className="p-1 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+
           >
             <MdClose className="w-5 h-5" />
-          </button>
+          </Button>
         </div>
 
         {/* Tabs */}
-        <div role="group" aria-label={t('pluginBrowser.filter')} className="flex gap-1 mb-4 p-1 bg-muted rounded-lg">
+        <TabsList aria-label={t('pluginBrowser.filter')} className="flex gap-1 mb-4 p-1 bg-muted rounded-card">
           {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              aria-pressed={activeTab === tab.id}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition ${activeTab === tab.id
-                ? 'bg-background text-selection shadow-sm font-bold'
-                : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                }`}
-            >
+            <TabsTrigger value={tab.id} key={tab.id} className="flex-1 gap-1.5">
               {tab.icon}
               {tab.label}
               {tab.id === 'favorites' && favorites.length > 0 && (
-                <span className="text-xs">({favorites.length})</span>
+                <span className="text-ui-support">({favorites.length})</span>
               )}
               {tab.id === 'recent' && recentPaths.length > 0 && (
-                <span className="text-xs">({recentPaths.length})</span>
+                <span className="text-ui-support">({recentPaths.length})</span>
               )}
-            </button>
+            </TabsTrigger>
           ))}
-        </div>
+        </TabsList>
 
-        {/* Search & Refresh */}
+        <TabsContent value={activeTab} className="m-0 flex min-h-0 flex-1 flex-col">{/* Search & Refresh */}
         <div className="flex gap-4 mb-3">
           <div className="relative flex-1">
             <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
+            <Field label={null}><Input
               ref={searchRef}
               type="text"
               placeholder={t('pluginBrowser.searchPlaceholder')}
               aria-label={t('pluginBrowser.search')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-muted/50 border border-input rounded-lg py-2 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary transition"
-            />
+              className="w-full pl-10 pr-4"
+            /></Field>
           </div>
-          <button
+          <Button variant="outline"
             onClick={onScan}
             disabled={isLoading}
             aria-label={t('pluginBrowser.rescanAccessible')}
-            className="px-4 py-2 bg-muted/50 border border-input rounded-lg text-muted-foreground hover:text-primary hover:border-primary/50 transition disabled:opacity-50"
+
             title={t('pluginBrowser.rescan')}
           >
             <MdRefresh className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </button>
+          </Button>
         </div>
 
         {/* Category Filter Chips */}
@@ -300,7 +296,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
             <button
               onClick={() => setSelectedCategory(null)}
               aria-pressed={!selectedCategory}
-              className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+              className={`px-2.5 py-1 text-ui-support rounded-full border transition-colors ${
                 !selectedCategory
                   ? 'bg-selection/15 text-selection border-selection/40 font-bold'
                   : 'bg-muted/50 text-muted-foreground border-border hover:border-primary/30 hover:text-foreground'
@@ -313,7 +309,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                 key={cat.name}
                 onClick={() => setSelectedCategory(selectedCategory === cat.name ? null : cat.name)}
                 aria-pressed={selectedCategory === cat.name}
-                className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                className={`px-2.5 py-1 text-ui-support rounded-full border transition-colors ${
                   selectedCategory === cat.name
                     ? 'bg-selection/15 text-selection border-selection/40 font-bold'
                     : 'bg-muted/50 text-muted-foreground border-border hover:border-primary/30 hover:text-foreground'
@@ -325,30 +321,30 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
           </div>
         )}
 
-        {protectionNotice && <p role="status" className="mb-3 rounded border border-warning/30 bg-warning/10 p-2 text-xs">{protectionNotice}</p>}
-        {notice && notice !== protectionNotice && <p role="status" className="mb-3 text-xs text-warning">{notice}</p>}
+        {protectionNotice && <p role="status" className="mb-3 rounded-control border border-warning/30 bg-warning/10 p-2 text-ui-support">{protectionNotice}</p>}
+        {notice && notice !== protectionNotice && <p role="status" className="mb-3 text-ui-support text-warning">{notice}</p>}
 
         {/* List */}
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center h-40 text-muted-foreground gap-3">
               <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm font-bold">{t('pluginBrowser.scanning')}</p>
-              <p className="text-xs text-center max-w-[80%]">
+              <p className="text-ui-support font-bold">{t('pluginBrowser.scanning')}</p>
+              <p className="text-ui-support text-center max-w-[80%]">
                 {t('pluginBrowser.firstScan')}<br />
                 {t('pluginBrowser.scanWait')}</p>
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center h-40 text-destructive-text gap-2">
               <MdWarning className="w-8 h-8 opacity-50" />
-              <p className="text-sm">{t('pluginBrowser.scanFailed')}</p>
-              <details className="text-xs break-words"><summary>{t('common.rawDetail')}</summary><p>{error}</p></details>
+              <p className="text-ui-support">{t('pluginBrowser.scanFailed')}</p>
+              <details className="text-ui-support break-words"><summary>{t('common.rawDetail')}</summary><p>{error}</p></details>
             </div>
           ) : filteredPlugins.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
               {searchQuery || selectedCategory ? <>
                 <p>{t('pluginBrowser.noMatch')}</p>
-                <button type="button" className="mt-3 rounded border border-border px-3 py-2 text-foreground" onClick={() => { setSearchQuery(''); setSelectedCategory(null); searchRef.current?.focus(); }}>{t('pluginBrowser.resetFilters')}</button>
+                <Button variant="outline" type="button" className="mt-3" onClick={() => { setSearchQuery(''); setSelectedCategory(null); searchRef.current?.focus(); }}>{t('pluginBrowser.resetFilters')}</Button>
                 {activeTab !== 'all' && <button type="button" className="mt-2 underline text-primary" onClick={() => { setActiveTab('all'); setSearchQuery(''); setSelectedCategory(null); searchRef.current?.focus(); }}>{t('pluginBrowser.showAll')}</button>}
               </> : <>
                 {activeTab === 'favorites' && <p>{t('pluginBrowser.noFavorites')}</p>}
@@ -366,7 +362,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                     key={`${plugin.id}-${idx}`}
                     onClick={() => handlePluginSelect(plugin)}
                     onKeyDown={(e) => handlePluginKeyDown(e, plugin)}
-                    className="group flex items-center justify-between p-3 rounded-lg border border-transparent hover:bg-muted/50 hover:border-primary/30 transition-colors text-left cursor-pointer"
+                    className="group flex items-center justify-between p-3 rounded-card border border-transparent hover:bg-muted/50 hover:border-primary/30 transition-colors text-left cursor-pointer"
                     role="button"
                     tabIndex={0}
                     aria-label={t('pluginBrowser.addNamed', { arg0: displayPluginName(plugin) })}
@@ -377,7 +373,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                         onClick={(e) => toggleFavorite(plugin.path, e)}
                         aria-label={isFavorite ? t('pluginBrowser.removeFavoriteNamed', { arg0: displayPluginName(plugin) }) : t('pluginBrowser.addFavoriteNamed', { arg0: displayPluginName(plugin) })}
                         aria-pressed={isFavorite}
-                        className={`p-1 rounded transition-colors ${isFavorite
+                        className={`p-1 rounded-control transition-colors ${isFavorite
                           ? 'text-warning'
                           : 'text-muted-foreground hover:text-warning'
                           }`}
@@ -389,7 +385,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                         <h3 className="font-bold text-foreground group-hover:text-primary transition-colors">
                           {displayPluginName(plugin)}
                         </h3>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-ui-support text-muted-foreground">
                           {plugin.vendor || t('pluginBrowser.unknownVendor')}
                           <span className="opacity-30 mx-1">|</span>
                           <span className="text-primary">{getCategoryLabel(plugin.category, t)}</span>
@@ -397,8 +393,8 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {addedPaths.includes(plugin.path) && <span className="px-2 py-1 text-xs text-muted-foreground rounded border border-border">{t('pluginBrowser.added')}</span>}
-                      <span className="opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 text-xs bg-primary/10 text-primary rounded border border-primary/20">
+                      {addedPaths.includes(plugin.path) && <span className="px-2 py-1 text-ui-support text-muted-foreground rounded-control border border-border">{t('pluginBrowser.added')}</span>}
+                      <span className="opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 text-ui-support bg-primary/10 text-primary rounded-control border border-primary/20">
                         {t('pluginBrowser.add')}</span>
                     </div>
                   </div>
@@ -407,8 +403,8 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
             </div>
           )}
         </div>
-      </Panel>
-    </div>
+</TabsContent>      </Panel>
+    </Tabs></div>
         </Modal>
   );
 };

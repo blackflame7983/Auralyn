@@ -14,9 +14,9 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['dark', 'light'
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
         await page.evaluate(zoom => { document.documentElement.style.zoom = String(zoom); }, zoom);
         const wizard = page.getByRole('dialog');
-        await wizard.getByRole('button', { name: t('wizard.obs'), exact: true }).click();
+        await wizard.getByRole('radio', { name: t('wizard.obs'), exact: true }).click();
         await wizard.getByRole('button', { name: t('common.next'), exact: true }).click();
-        await wizard.getByRole('button', { name: t('guide.copy.202'), exact: true }).click();
+        await wizard.getByRole('radio', { name: t('guide.copy.202'), exact: true }).click();
         const download = wizard.getByRole('button', { name: t('guide.copy.216'), exact: true });
         await expect(download).toBeAttached();
         await settleLayoutMotion(page);

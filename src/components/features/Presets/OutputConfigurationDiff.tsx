@@ -29,7 +29,7 @@ export function OutputConfigurationDiff({ output }: { output: NonNullable<Bundle
         <p>{t('bundle.output.restart')}</p>
         {!!output.missingDevices?.length && <p role="alert">{t('bundle.output.missingDevices', { names: missingDeviceNames(t, output.missingDevices.length, output.missingDeviceLabels) })}</p>}
         {!!output.missingPlugins?.length && <p role="alert">{t('bundle.output.missingPlugins', { names: output.missingPlugins.join(' / ') })}</p>}
-        <table className="w-full table-fixed text-xs text-left"><caption>{t('bundle.output.diff')}</caption>
+        <table className="w-full table-fixed text-ui-support text-left"><caption>{t('bundle.output.diff')}</caption>
             <colgroup><col className="w-1/4" /><col className="w-[37.5%]" /><col className="w-[37.5%]" /></colgroup>
             <thead><tr><th className="p-2">{t('presets.copy.153')}</th><th className="p-2">{t('presets.copy.154')}</th><th className="p-2">{t('presets.copy.155')}</th></tr></thead>
             <tbody><tr><th scope="row" className="p-2 align-top border-t">{t('bundle.output.device')}</th>

@@ -65,7 +65,7 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
             {/* 節を切り替えてもダイアログが上下に跳ばないよう、高さを固定して本文だけをスクロールさせる。 */}
             <div className="modal-surface-base flex h-[min(40rem,100%)] max-h-full w-full max-w-4xl min-w-0 flex-col">
                 <div className="modal-header-base modal-header-muted shrink-0 gap-3">
-                    <h2 className="min-w-0 text-xl font-bold [overflow-wrap:anywhere]">{t('help.title')}</h2>
+                    <h2 className="min-w-0 text-ui-heading font-bold [overflow-wrap:anywhere]">{t('help.title')}</h2>
                     <Button variant="ghost" size="icon" className="shrink-0" onClick={onClose} aria-label={t('common.close')}><MdClose aria-hidden="true" /></Button>
                 </div>
                 <div ref={body} className="modal-body-base min-h-0 min-w-0">
@@ -75,8 +75,8 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                                 className="h-auto min-w-0 max-w-full justify-start whitespace-normal text-left" aria-current={section === value ? 'page' : undefined}
                                 onClick={() => select(value)}>{t(`help.section.${value}`)}</Button>)}
                         </nav>
-                        <section aria-labelledby={heading} className="min-w-0 space-y-4 text-sm leading-relaxed [overflow-wrap:anywhere]">
-                            <h2 id={heading} className="text-lg font-semibold">{t(`help.section.${section}`)}</h2>
+                        <section aria-labelledby={heading} className="min-w-0 space-y-4 text-ui-support leading-relaxed [overflow-wrap:anywhere]">
+                            <h2 id={heading} className="text-ui-heading font-semibold">{t(`help.section.${section}`)}</h2>
                             {section === 'home' && (['stage', 'meters', 'sound', 'check', 'footer'] as const).map(item => <div key={item}>
                                 <h3 className="font-semibold">{t(`help.home.${item}.title`)}</h3>
                                 <p className="mt-1 text-muted-foreground">{t(`help.home.${item}.body`, labels)}</p>

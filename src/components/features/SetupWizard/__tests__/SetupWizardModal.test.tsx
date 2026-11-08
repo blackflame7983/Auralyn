@@ -30,7 +30,7 @@ const openWizard = async () => {
     const onClose = vi.fn();
     const onSkip = vi.fn();
     render(<SetupWizardModal isOpen onClose={onClose} onSkip={onSkip} onApplyConfig={onApplyConfig} />);
-    await screen.findByRole('button', { name: 'OBSで配信' });
+    await screen.findByRole('radio', { name: 'OBSで配信' });
     return { onApplyConfig, onClose, onSkip };
 };
 const quickStart = async () => {
@@ -75,9 +75,9 @@ describe('セットアップの接続チェック', () => {
     it('送り先は共通の順序で表示し、保存済み music は自分で聴くとして扱う', async () => {
         localStorage.setItem('vst_host_setup_goal', 'music');
         await openWizard();
-        const choices = ['OBSで配信', '通話（Discordなど）', '自分で聴く', 'その他のアプリ'].map(name => screen.getByRole('button', { name }));
+        const choices = ['OBSで配信', '通話（Discordなど）', '自分で聴く', 'その他のアプリ'].map(name => screen.getByRole('radio', { name }));
         expect(choices.slice(0, -1).every((node, index) => Boolean(node.compareDocumentPosition(choices[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
-        expect(choices[2]).toHaveAttribute('aria-pressed', 'true');
+        expect(choices[2]).toBeChecked();
         fireEvent.click(choices[2]);
         expect(screen.getByRole('radio', { name: 'PCの音' })).toBeChecked();
         expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
@@ -86,7 +86,7 @@ describe('セットアップの接続チェック', () => {
     it('入力がない場合は次へを無効にし、音の元に応じた理由を表示する', async () => {
         inputs = [];
         await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: '自分で聴く' }));
+        fireEvent.click(screen.getByRole('radio', { name: '自分で聴く' }));
         await screen.findByText('マイクを選ぶと次へ進めます');
         const next = screen.getByRole('button', { name: /次へ/ });
         expect(next).toBeDisabled();
@@ -103,7 +103,7 @@ describe('セットアップの接続チェック', () => {
         vi.mocked(invoke).mockImplementation((command, args, options) => command === 'get_audio_devices'
             ? new Promise(resolve => { resolveDevices = resolve; }) : base(command, args, options));
         render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
-        fireEvent.click(await screen.findByRole('button', { name: 'OBSで配信' }));
+        fireEvent.click(await screen.findByRole('radio', { name: 'OBSで配信' }));
         act(() => { store.setLocale(locale); });
         const next = within(screen.getByTestId('setup-actions')).getByRole('button', { name: locale === 'ja' ? '次へ' : 'Next' });
         expect(next).toBeDisabled();
@@ -122,7 +122,7 @@ describe('セットアップの接続チェック', () => {
         inputs = [];
         const store = createLocaleStore(() => 'ja', () => true);
         render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
-        fireEvent.click(await screen.findByRole('button', { name: '自分で聴く' }));
+        fireEvent.click(await screen.findByRole('radio', { name: '自分で聴く' }));
         await screen.findByText('マイクを選ぶと次へ進めます');
         act(() => { store.setLocale(locale); });
         const next = within(screen.getByTestId('setup-actions')).getByRole('button', { name: locale === 'ja' ? '次へ' : 'Next' });
@@ -185,8 +185,8 @@ describe('セットアップの接続チェック', () => {
         inputs = [mic, device('Second microphone', true)];
         const onApplyConfig = vi.fn(); const onClose = vi.fn();
         render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={onClose} onApplyConfig={onApplyConfig} /></LocaleProvider>);
-        await screen.findByRole('button', { name: 'OBSで配信' });
-        fireEvent.click(screen.getByRole('button', {name: 'OBSで配信'}));
+        await screen.findByRole('radio', { name: 'OBSで配信' });
+        fireEvent.click(screen.getByRole('radio', {name: 'OBSで配信'}));
         const input = screen.getByRole('combobox', {name: '機器'});
         fireEvent.change(input, {target: {value: 'Second microphone'}});
         const dialog = screen.getByRole('dialog');
@@ -246,15 +246,15 @@ describe('セットアップの接続チェック', () => {
         const body = document.querySelector<HTMLElement>('.modal-body-base')!;
         surface.scrollTop = 300;
         body.scrollTop = 120;
-        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
         expect(surface.scrollTop).toBe(0);
         expect(body.scrollTop).toBe(0);
         expect(screen.getByRole('heading', { name: 'マイクを選んでください' })).toHaveFocus();
     });
     const openListeningOutput = async () => {
         await openWizard();
-        await screen.findByRole('button', { name: 'OBSで配信' });
-        fireEvent.click(screen.getByRole('button', { name: '自分で聴く' }));
+        await screen.findByRole('radio', { name: 'OBSで配信' });
+        fireEvent.click(screen.getByRole('radio', { name: '自分で聴く' }));
         const next = screen.getByRole('button', { name: /次へ/ });
         await waitFor(() => expect(next).toBeEnabled());
         fireEvent.click(next);
@@ -269,7 +269,7 @@ describe('セットアップの接続チェック', () => {
         expect(screen.getByText(/Windows の既定の物理出力を確認できませんでした/)).toBeInTheDocument();
         expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
         if (scenario === '既定不明の複数物理出力') {
-            fireEvent.click(screen.getByRole('button', { name: /ヘッドホン・スピーカー/ }));
+            fireEvent.click(screen.getByRole('radio', { name: /ヘッドホン・スピーカー/ }));
             const select = screen.getByRole('combobox', { name: 'ヘッドホン・スピーカー' });
             expect(select).toHaveValue('');
             fireEvent.change(select, { target: { value: 'ヘッドホン' } });
@@ -332,8 +332,8 @@ describe('セットアップの接続チェック', () => {
     it('物理マイクが複数あれば既定の候補でも自動選択せず、明示選択を待つ', async () => {
         inputs = [device('再生リダイレクト', true), { ...device('Microphone USB', true), is_default: false }, mic];
         await openWizard();
-        await screen.findByRole('button', { name: 'OBSで配信' });
-        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        await screen.findByRole('radio', { name: 'OBSで配信' });
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
         const select = screen.getByRole('combobox', { name: '機器' });
         expect(select).toHaveValue('');
         expect(screen.getByRole('button', { name: /次へ/ })).toBeDisabled();
@@ -450,8 +450,8 @@ describe('セットアップの接続チェック', () => {
 
     it('Discord は対応する入力の手動確認を案内し、OBS に接続しない', async () => {
         await openWizard();
-        await screen.findByRole('button', { name: 'OBSで配信' });
-        fireEvent.click(screen.getByRole('button', { name: '通話（Discordなど）' }));
+        await screen.findByRole('radio', { name: 'OBSで配信' });
+        fireEvent.click(screen.getByRole('radio', { name: '通話（Discordなど）' }));
         fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
         fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
         expect(screen.getByText(/Discord の「設定/)).toBeInTheDocument();
@@ -592,7 +592,7 @@ describe('初回選択と表示設定', () => {
         window.addEventListener('preparation-purpose-changed', notified);
         try {
             const { onClose } = await openWizard();
-            fireEvent.click(screen.getByRole('button', { name: '通話（Discordなど）' }));
+            fireEvent.click(screen.getByRole('radio', { name: '通話（Discordなど）' }));
             fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
             fireEvent.click(within(screen.getByRole('alertdialog', { name: 'セットアップを中断しますか？' })).getByRole('button', { name: '中断する' }));
             await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
@@ -603,8 +603,8 @@ describe('初回選択と表示設定', () => {
     it.each([['listening', '自分で聴く'], ['local', '自分で聴く'], ['discord', '通話（Discordなど）']])('保存済みの目的 %s は最初の画面で選択中として示し、保存値は変えない', async (saved, name) => {
         localStorage.setItem('vst_host_setup_goal', saved);
         await openWizard();
-        expect(screen.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'true');
-        expect(screen.getAllByRole('button', { pressed: true })).toHaveLength(1);
+        expect(screen.getByRole('radio', { name })).toBeChecked();
+        expect(screen.getAllByRole('radio', { checked: true })).toHaveLength(1);
         expect(localStorage.getItem('vst_host_setup_goal')).toBe(saved);
     });
     it('設定し直すときは、いま使っているマイクを選んだ状態で入力へ進み、重複した警告を出さない', async () => {
@@ -616,7 +616,7 @@ describe('初回選択と表示設定', () => {
             return base(command, args, options);
         });
         await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
         await waitFor(() => expect(screen.getByRole('combobox', { name: '機器' })).toHaveValue('Second microphone'));
         expect(screen.queryByText('デバイスを選択してください。')).toBeNull();
     });
@@ -640,7 +640,7 @@ describe('初回選択と表示設定', () => {
     it('用途選択では表示モードを選ばせず、スキップでも既存表示を保存し直さない', async () => {
         localStorage.setItem('vst_host_beginner_mode', 'false');
         const { onSkip } = await openWizard();
-        expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+        expect(screen.queryByRole('radio', { name: '配信をはじめたい' })).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'セットアップをスキップ' }));
         await waitFor(() => expect(onSkip).toHaveBeenCalledOnce());
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe('false');
@@ -673,7 +673,7 @@ describe('入力ステップのレベル表示', () => {
         });
         inputs = [mic, device('Second microphone', true)];
         await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
         const input = screen.getByRole('combobox', { name: '機器' });
         fireEvent.change(input, { target: { value: 'USB マイク' } });
         expect(await screen.findByRole('meter', { name: 'マイクの入力レベル' })).toBeInTheDocument();
@@ -689,7 +689,7 @@ describe('PC audio purpose', () => {
     const fx = { active: true, preset: 'singing', amount: 0.7, singing: { lowCutHz: 80, dynamics: 0.4, brightnessDb: 2 }, reverb: { enabled: true, mix: 0.2, decaySeconds: 1, damping: 0.4 } };
     const snapshot = { epoch: 'epoch', revision: '1', appliedRevision: '1', config: fx, pending: false, undoToken: null, error: null };
     const chooseMusic = async () => {
-        fireEvent.click(await screen.findByRole('button', { name: '自分で聴く' }));
+        fireEvent.click(await screen.findByRole('radio', { name: '自分で聴く' }));
         fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
         await screen.findByRole('combobox', { name: '機器' });
     };
@@ -917,7 +917,7 @@ describe('セットアップの見た目と動き（#294）', () => {
     it.each(['ja', 'en'] as const)('済んだ手順だけに完了を添え、現在と未到達の手順を区別する（%s）', async locale => {
         const store = createLocaleStore(() => 'ja', () => true);
         render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
-        await screen.findByRole('button', { name: 'OBSで配信' });
+        await screen.findByRole('radio', { name: 'OBSで配信' });
         await chooseObsRoute();
         act(() => { store.setLocale(locale); });
         const rail = screen.getByRole('navigation', { name: locale === 'ja' ? 'セットアップの進捗' : 'Setup progress' });
@@ -956,7 +956,7 @@ describe('セットアップの見た目と動き（#294）', () => {
             // Portal の中身が後から現れても、手順を変える前の初回表示で印を測る。
             const firstThumb = screen.getByRole('navigation', { name: 'セットアップの進捗' }).querySelector('.setup-rail-thumb');
             expect(firstThumb).toHaveStyle({ transform: 'translateY(72px)', height: '64px' });
-            fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+            fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
             const rail = screen.getByRole('navigation', { name: 'セットアップの進捗' });
             const rows = within(rail).getAllByRole('listitem');
             const thumb = rail.querySelector('.setup-rail-thumb');
@@ -986,7 +986,7 @@ describe('セットアップの見た目と動き（#294）', () => {
         expect(within(rail).getByText('送り先').closest('li')).toHaveAttribute('aria-current', 'step');
         // 高さは手順によらず固定し、中身だけをスクロールする。
         expect(document.querySelector('.setup-surface')).not.toBeNull();
-        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
         await screen.findByRole('combobox', { name: '機器' });
         expect(within(rail).getByText('マイク').closest('li')).toHaveAttribute('aria-current', 'step');
         expect(document.querySelector('.setup-step')).toHaveAttribute('data-dir', '1');
@@ -1003,8 +1003,8 @@ describe('セットアップの見た目と動き（#294）', () => {
 
     it('選んだカードは印を付けて示し、繰り返す点滅を使わない', async () => {
         await openWizard();
-        const obs = screen.getByRole('button', { name: 'OBSで配信' });
-        expect(obs).toHaveAttribute('data-selected', String(obs.getAttribute('aria-pressed') === 'true'));
+        const obs = screen.getByRole('radio', { name: 'OBSで配信' });
+        expect(obs.closest('label')).toHaveAttribute('data-selected', String((obs as HTMLInputElement).checked));
         expect(document.querySelector('[role="dialog"] .animate-pulse')).toBeNull();
     });
 });
@@ -1014,7 +1014,7 @@ describe('セットアップでの ASIO（#291）', () => {
 
     it('ASIO 機器がなければ接続方式を出さず、WASAPI の流れを変えない', async () => {
         await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
         await screen.findByRole('combobox', { name: '機器' });
         expect(screen.queryByRole('radio', { name: 'ASIO（オーディオインターフェース）' })).not.toBeInTheDocument();
     });
@@ -1023,7 +1023,7 @@ describe('セットアップでの ASIO（#291）', () => {
         inputs = [mic, asio(true)];
         outputs = [cable, device('スピーカー'), asio(false)];
         const { onApplyConfig } = await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
         fireEvent.click(await screen.findByRole('radio', { name: 'ASIO（オーディオインターフェース）' }));
         const input = screen.getByRole('combobox', { name: '機器' });
         expect(within(input).queryByRole('option', { name: mic.name })).not.toBeInTheDocument();
@@ -1049,7 +1049,7 @@ describe('セットアップでの ASIO（#291）', () => {
         inputs = [mic, asio(true)];
         outputs = [cable, asio(false)];
         await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
         fireEvent.click(await screen.findByRole('radio', { name: 'ASIO（オーディオインターフェース）' }));
         await waitFor(() => expect(screen.getByRole('combobox', { name: '機器' })).toHaveValue('Test ASIO'));
         fireEvent.click(screen.getByRole('radio', { name: 'WASAPI（標準）' }));
@@ -1062,7 +1062,7 @@ describe('セットアップでの ASIO（#291）', () => {
         inputs = [mic, asio(true), mono(true)];
         outputs = [cable, asio(false), mono(false)];
         await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
         fireEvent.click(await screen.findByRole('radio', { name: 'ASIO（オーディオインターフェース）' }));
         const input = screen.getByRole('combobox', { name: '機器' });
         fireEvent.change(input, { target: { value: 'Test ASIO' } });
@@ -1086,7 +1086,7 @@ describe('セットアップでの ASIO（#291）', () => {
         inputs = [mic, asio(true)];
         outputs = [cable, asio(false)];
         await openWizard();
-        fireEvent.click(screen.getByRole('button', { name: 'OBSで配信' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
         fireEvent.click(await screen.findByRole('radio', { name: 'ASIO（オーディオインターフェース）' }));
         inputs = [mic];
         outputs = [cable];
@@ -1100,7 +1100,7 @@ describe('セットアップでの ASIO（#291）', () => {
 it.each(['obs', 'listening', 'music'] as const)('マイクとPCの音の選択欄は日英で見えるラベルから読み上げ名を得る（%s）', async goal => {
     const store = createLocaleStore(() => 'ja', () => true);
     render(<LocaleProvider store={store}><SetupWizardModal isOpen onClose={vi.fn()} onApplyConfig={vi.fn()} /></LocaleProvider>);
-    fireEvent.click(await screen.findByRole('button', { name: goal === 'obs' ? 'OBSで配信' : '自分で聴く' }));
+    fireEvent.click(await screen.findByRole('radio', { name: goal === 'obs' ? 'OBSで配信' : '自分で聴く' }));
     if (goal === 'music') fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
     const select = await screen.findByRole('combobox', { name: '機器' });
     expect(screen.getByLabelText('機器', { exact: true })).toBe(select);
@@ -1134,12 +1134,28 @@ it('ASIOからPCの音へ切り替えるとWASAPIの既定出力を選ぶ', asyn
 it('PCの音の出力先は2択を2列で並べる', async () => {
     inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
     await openWizard();
-    fireEvent.click(screen.getByRole('button', { name: '自分で聴く' }));
+    fireEvent.click(screen.getByRole('radio', { name: '自分で聴く' }));
     fireEvent.click(screen.getByRole('radio', { name: 'PCの音' }));
     const next = screen.getByRole('button', { name: /次へ/ });
     await waitFor(() => expect(next).toBeEnabled());
     fireEvent.click(next);
-    const option = screen.getByRole('button', { name: message('ja', 'guide.copy.198') });
-    expect(option.parentElement).toHaveClass('grid-cols-2');
-    expect(option.parentElement?.querySelectorAll('[role=button]')).toHaveLength(2);
+    const option = screen.getByRole('radio', { name: message('ja', 'guide.copy.198') });
+    expect(option.closest('[role=radiogroup]')).toHaveClass('grid-cols-2');
+    expect(within(option.closest('[role=radiogroup]') as HTMLElement).getAllByRole('radio')).toHaveLength(2);
+});
+
+it('戻って同じ送り先を決定でき、矢印選択では最初の手順を保つ', async () => {
+    await openWizard();
+    fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
+    expect(screen.queryByRole('radio', { name: 'OBSで配信' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    const from = screen.getByRole('radio', { name: 'OBSで配信' });
+    const to = screen.getByRole('radio', { name: '通話（Discordなど）' });
+    // JSDOMでブラウザ標準の矢印選択を再現する。
+    from.focus(); fireEvent.keyDown(from, { key: 'ArrowRight' });
+    to.focus(); fireEvent.click(to); fireEvent.keyUp(to, { key: 'ArrowRight' });
+    expect(to).toBeChecked(); expect(from).toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
 });

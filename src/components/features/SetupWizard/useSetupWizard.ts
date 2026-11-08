@@ -264,7 +264,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         ...prev, asioChannels: { ...effectiveAsioChannels(prev), [side]: pair },
     }));
 
-    const selectGoal = (goal: UserGoal) => {
+    const selectGoal = (goal: UserGoal, advance = true) => {
         // PCの再生音は WASAPI の仮想ケーブルから受けるため、ASIO を選んでいても WASAPI に戻す。
         if (goal === 'music') selectHost('WASAPI');
         setConfig(prev => goal === 'music' && prev.goal !== 'music'
@@ -272,7 +272,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
             ? { ...prev, goal, input: null, outputMode: 'default', output: verifiedDefaultOutput(normalizeDevices(allDevicesRef.current, 'WASAPI').outputs) }
             : { ...prev, goal, input: prev.goal === 'music' && goal !== 'music' ? null : prev.input });
         // 目的は保存完了時に書く。選んだだけで中断した場合、ホームの用途を変えない。
-        setState('input_selection');
+        if (advance) setState('input_selection');
         // Auto-select will trigger via useEffect if devices are ready
     };
 

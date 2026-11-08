@@ -13,7 +13,7 @@ afterEach(cleanup);
 it('旧format/未指定dataでもID・version・本文を保ち、欠落だけ翻訳する',()=>{
     const store=createLocaleStore(()=> 'ja',()=>true);
     render(<LocaleProvider store={store}><LicenseModal isOpen onClose={vi.fn()}/></LocaleProvider>);
-    fireEvent.click(screen.getByRole('button',{name:'NPM (Frontend)'}));
+    fireEvent.mouseDown(screen.getByRole('tab',{name:'NPM (Frontend)'}), { button: 0, ctrlKey: false });
     fireEvent.click(screen.getByRole('button',{name:/@real\/legacy/}));
     expect(screen.getByRole('heading',{name:/@real\/legacy.*v1.2.3/})).toBeVisible();
     expect(screen.getByText((_,element)=>element?.children.length===0 && element.textContent==='Legacy exact\nLicense text not included.')).toBeVisible();
