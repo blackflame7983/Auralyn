@@ -151,6 +151,7 @@ function AppContent() {
         onStartAudio={sessionMode().reviewOnly || localStorage.getItem(REVIEW_KEY) === 'true' ? undefined : async () => {
           await startHomeAudio(audioConfig, config => handleConfigUpdate(config, { audioStarted: true }));
         }}
+        onOpenShortcuts={ui.openShortcuts}
         onOpenOBSSettings={ui.openObsSettings}
         onOpenSettings={() => ui.setIsSettingsOpen(true)}
         onOpenAudioSettingsRetry={ui.openAudioSettingsRetry}

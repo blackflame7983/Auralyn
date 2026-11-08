@@ -214,3 +214,11 @@ it('不正な入力で学習が失敗したら、以前の声・VST の保存を
     expect(await screen.findByText('この測定は利用できません。条件を確認して測り直してください。')).toBeInTheDocument();
     expect(screen.queryByText(/学習済み RMS/)).not.toBeInTheDocument();
 });
+
+it('使い方の導線から、開いている設定でもホットキータブへ移動する', async () => {
+    const props = { isOpen: true, onClose: vi.fn(), onConfigChange: vi.fn() };
+    const view = render(<AudioSettingsModal {...props} />);
+    view.rerender(<AudioSettingsModal {...props} initialTab="shortcuts" />);
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'ホットキー' })).toHaveAttribute('data-state', 'active'));
+    expect(screen.getByRole('button', { name: '推奨のキーをまとめて入力' })).toBeInTheDocument();
+});

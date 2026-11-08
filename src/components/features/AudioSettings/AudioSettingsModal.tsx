@@ -46,7 +46,7 @@ interface AudioSettingsModalProps {
   singingModel?: SingingDraft;
   onPreviewSinging?: () => void;
   onSaveSingingProfile?: () => void;
-  initialTab?: 'audio' | 'obs' | 'sound';
+  initialTab?: 'audio' | 'obs' | 'sound' | 'shortcuts';
   initialSection?: 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
   isAudioRunning?: boolean;
   allowConnectionRetry?: boolean;
@@ -213,6 +213,8 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'audio' | 'sound' | 'obs' | 'appearance' | 'system' | 'shortcuts'>(initialTab);
+  // F1の使い方から、開いている設定のホットキーにも移動できる。
+  useEffect(() => { if (isOpen) setActiveTab(initialTab); }, [isOpen, initialTab]);
   const [capturingShortcut, setCapturingShortcut] = useState(false);
   const [isBeginnerMode, setIsBeginnerMode] = useState(getBeginnerMode);
   // Persist Advanced Mode selection

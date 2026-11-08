@@ -68,3 +68,13 @@ it.each([['input', 'primaryInput'], ['output', 'liveOutput']] as const)('機器�
     expect(result.current.settingsSection).toBe(section);
     expect(result.current.settingsNeedsRetry).toBe(false);
 });
+
+it('使い方からホットキー設定へ進み、通常の設定入口で移動先を解除する', () => {
+    const { result } = renderHook(() => useUIState());
+    act(() => result.current.openShortcuts());
+    expect(result.current.settingsTab).toBe('shortcuts');
+    expect(result.current.isSettingsOpen).toBe(true);
+    expect(result.current.settingsSection).toBeUndefined();
+    act(() => result.current.setIsSettingsOpen(false));
+    expect(result.current.settingsTab).toBe('audio');
+});

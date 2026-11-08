@@ -9,15 +9,7 @@ import { formatShortcut } from '@/lib/shortcutLabel';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 
-const actions = {
-    muteToggle: 'settings.ShortcutsPanel.363', bypassToggle: 'settings.ShortcutsPanel.366',
-    singingOn: 'settings.ShortcutsPanel.371', talkOn: 'settings.ShortcutsPanel.372',
-    muteOn: 'settings.ShortcutsPanel.364', muteOff: 'settings.ShortcutsPanel.365',
-    bypassOn: 'settings.ShortcutsPanel.367', bypassOff: 'settings.ShortcutsPanel.368',
-    gainUp: 'settings.ShortcutsPanel.369', gainDown: 'settings.ShortcutsPanel.370',
-    noiseToggle: 'settings.ShortcutsPanel.393',
-} as const;
-type Action = keyof typeof actions;
+import { shortcutActions as actions, type ShortcutAction as Action } from '@/lib/shortcutActions';
 type Values = Partial<Record<Action, string>>;
 interface Binding { action: Action; shortcut: string }
 interface Status { bindings: Binding[]; errors: ShortcutError[] }
