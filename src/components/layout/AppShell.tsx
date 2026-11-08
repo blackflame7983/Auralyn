@@ -36,6 +36,7 @@ interface AppShellProps {
     onOpenOBSSettings: () => void;
     children: ReactNode;
     onOpenSettings: () => void;
+    onOpenShortcuts?: () => void;
     onOpenAudioSettingsRetry?: () => void;
     onOpenSoundSettings?: () => void;
     onOpenAudioTuning?: () => void;
@@ -80,6 +81,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     preparationBlocked,
     onOpenOBSSettings,
     onOpenSettings,
+    onOpenShortcuts,
     onOpenAudioSettingsRetry,
     onOpenSoundSettings,
     onOpenAudioTuning,
@@ -302,6 +304,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
             <div className="relative z-10 flex flex-col h-screen">
                 <Header
+                    onOpenShortcuts={onOpenShortcuts}
                     onOpenSettings={onOpenSettings}
                     onOpenOBSGuide={onOpenOBSGuide}
                     onOpenDiscordGuide={onOpenDiscordGuide}

@@ -1,6 +1,7 @@
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useBeginnerMode } from '../../hooks/useBeginnerMode';
-import React, { useState, useEffect } from 'react';
+import { HowToUseModal } from '../features/Guide/HowToUseModal';
+import React, { useState, useEffect, useRef } from 'react';
 import { DeviceStatus } from '../features/DeviceStatus/DeviceStatus';
 import { useTheme } from '../../hooks/useTheme';
 import { DiscordIcon } from '../ui/DiscordIcon';
@@ -34,6 +35,7 @@ import {
 interface HeaderProps {
     stoppedInStrip?: boolean;
     onOpenSettings: () => void;
+    onOpenShortcuts?: () => void;
     onOpenOBSGuide: () => void;
     onOpenDiscordGuide: () => void;
     onOpenTroubleshoot: () => void;
@@ -48,6 +50,8 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
     onOpenSettings,
+    onOpenShortcuts,
+    onOpenWizard,
     onOpenOBSGuide,
     onOpenDiscordGuide,
     onOpenTroubleshoot,
@@ -59,6 +63,23 @@ export const Header: React.FC<HeaderProps> = ({
     isEngineRunning,
     engineProcessReady
 }) => {
+    const [helpOpen, setHelpOpen] = useState(false);
+    const [helpMenuOpen, setHelpMenuOpen] = useState(false);
+    const helpTrigger = useRef<HTMLButtonElement>(null);
+    const menuHelp = useRef(false);
+    useEffect(() => {
+        const open = (event: KeyboardEvent) => {
+            if (event.key !== 'F1' || event.ctrlKey || event.altKey || event.shiftKey || event.metaKey || event.defaultPrevented) return;
+            event.preventDefault();
+            if (event.repeat) return;
+            if (helpTrigger.current?.getAttribute('aria-expanded') === 'true') {
+                menuHelp.current = true;
+                setHelpMenuOpen(false);
+            } else setHelpOpen(true);
+        };
+        window.addEventListener('keydown', open);
+        return () => window.removeEventListener('keydown', open);
+    }, []);
     const t = useMessages();
     const { theme } = useTheme();
     const appUpdate = useAppUpdate();
@@ -165,9 +186,10 @@ export const Header: React.FC<HeaderProps> = ({
                     </Tooltip>
 
                     {/* Help & Guide Dropdown */}
-                    <DropdownMenu>
+                    <DropdownMenu open={helpMenuOpen} onOpenChange={setHelpMenuOpen}>
                         <DropdownMenuTrigger asChild>
                             <button
+                                ref={helpTrigger}
                                 aria-label={t('header.helpOpen')}
                                 className="p-2 px-3 text-muted-foreground hover:text-foreground transition-colors hover:bg-muted rounded-lg flex items-center gap-2"
                             >
@@ -175,7 +197,21 @@ export const Header: React.FC<HeaderProps> = ({
                                 <span className="text-xs font-bold hidden lg:inline-block">{t('header.help')}</span>
                             </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="min-w-[200px]">
+                        <DropdownMenuContent align="end" className="min-w-[200px]" onCloseAutoFocus={event => {
+                            if (menuHelp.current) {
+                                event.preventDefault();
+                                menuHelp.current = false;
+                                helpTrigger.current?.focus();
+                                setHelpOpen(true);
+                            }
+                        }}>
+                            <DropdownMenuItem onSelect={() => {
+                                menuHelp.current = true;
+                            }} className="gap-3 cursor-pointer p-3">
+                                <MdHelpOutline aria-hidden="true" className="h-4 w-4 shrink-0" />
+                                <div className="flex flex-col"><span className="font-bold text-sm">{t('help.title')}</span>
+                                    <span className="text-xs text-muted-foreground">{t('help.hint')}</span></div>
+                            </DropdownMenuItem>
                             <DropdownMenuLabel>{t('header.guides')}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={onOpenOBSGuide} className="gap-3 cursor-pointer p-3">
@@ -220,6 +256,9 @@ export const Header: React.FC<HeaderProps> = ({
                     </DropdownMenu>
                 </div>
             </TooltipProvider>
+            {helpOpen && <HowToUseModal onClose={() => setHelpOpen(false)}
+                onSetup={onOpenWizard} onTroubleshoot={onOpenTroubleshoot}
+                onOBS={onOpenOBSGuide} onDiscord={onOpenDiscordGuide} onShortcuts={onOpenShortcuts ?? onOpenSettings} />}
             {appUpdate.showGuide && <UpdateGuide onClose={appUpdate.closeGuide} />}
             {appUpdate.showAvailable && appUpdate.available && <AvailableUpdateDialog update={appUpdate.available} busy={appUpdate.busy} downloaded={appUpdate.downloaded} onClose={appUpdate.closeAvailable} onDownload={appUpdate.download} onInstall={appUpdate.install} />}
         </header>
