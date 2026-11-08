@@ -143,6 +143,8 @@ pub struct EngineRuntimeStats {
     pub pending_unload_count: u32,
     pub burned_library_count: u32,
     pub global_bypass: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugin_health: Vec<crate::ipc::PluginHealthEntry>,
     pub callback_diagnostics: crate::audio_engine::callback_diagnostics::CallbackSnapshot,
     pub queue_diagnostics: Option<Box<crate::audio_engine::queue_diagnostics::QueueSnapshot>>,
     pub latency_metadata: Option<Box<crate::ipc::LatencyMetadata>>,
@@ -1654,6 +1656,14 @@ impl AudioHost {
         }
     }
 
+    pub fn resume_plugin(&mut self, id: &str) -> Result<()> {
+        match self.execute_command(IpcCommand::ResumePlugin { id: id.to_string() })? {
+            IpcResponse::Success => Ok(()),
+            IpcResponse::Error(e) => Err(anyhow!(e)),
+            _ => Err(anyhow!("Unexpected response type")),
+        }
+    }
+
     pub fn open_editor(&mut self, id: &str) -> Result<()> {
         match self.execute_command(IpcCommand::OpenEditor { id: id.to_string() })? {
             IpcResponse::Success => Ok(()),
@@ -2382,6 +2392,7 @@ impl AudioHost {
                 pending_unload_count,
                 burned_library_count,
                 global_bypass,
+                plugin_health,
                 callback_diagnostics,
                 queue_diagnostics,
                 latency_metadata,
@@ -2420,6 +2431,7 @@ impl AudioHost {
                 pending_unload_count,
                 burned_library_count,
                 global_bypass,
+                plugin_health,
                 callback_diagnostics: *callback_diagnostics,
                 queue_diagnostics,
                 latency_metadata,

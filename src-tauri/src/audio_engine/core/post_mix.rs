@@ -162,6 +162,9 @@ impl Engine {
                                     gain.set_target(value);
                                 }
                             }
+                            AudioThreadMessage::ResumePlugin { index } => {
+                                rack.controls.resume_slot(index);
+                            }
                             unexpected => {
                                 // 受付条件が壊れた場合も RT 側で所有物を破棄せず、安全側で停止する。
                                 std::mem::forget(unexpected);
@@ -225,7 +228,8 @@ fn post_role_command_allowed(command: &Command, running: bool) -> bool {
         | Command::OpenEditor { .. }
         | Command::SetBypass { .. }
         | Command::SetMute { .. }
-        | Command::SetGain { .. } => true,
+        | Command::SetGain { .. }
+        | Command::ResumePlugin { .. } => true,
         Command::LoadPlugin { .. }
         | Command::RestorePlugin { .. }
         | Command::RestoreSessionPlugin { .. }
@@ -271,7 +275,8 @@ impl Rack {
         }
         let mut input_a = true;
         if packet.bypassed == 0 {
-            for &index in &self.controls.order[..self.controls.order_len] {
+            for position in 0..self.controls.order_len {
+                let index = self.controls.order[position];
                 let slot = index as usize;
                 if slot >= MAX_PLUGINS || self.controls.bypassed[slot] {
                     continue;
@@ -285,6 +290,15 @@ impl Rack {
                     current.iter_mut().for_each(|channel| channel.fill(0.0));
                     continue;
                 }
+                if self.controls.health[slot].isolated {
+                    let current = if input_a {
+                        &mut self.input
+                    } else {
+                        &mut self.output
+                    };
+                    crate::audio_engine::plugin_health::silence_used(current, 2, BLOCK_FRAMES);
+                    continue;
+                }
                 let Some(processor) = &mut self.processors[slot] else {
                     continue;
                 };
@@ -294,6 +308,7 @@ impl Rack {
                     (&self.output, &mut self.input)
                 };
                 processor.process_planar(input, output, BLOCK_FRAMES);
+                self.controls.note_processed(slot, output, 2, BLOCK_FRAMES);
                 input_a = !input_a;
                 let output = if input_a {
                     &mut self.input
@@ -366,11 +381,15 @@ mod tests {
             },
             true
         ));
+        assert!(post_role_command_allowed(
+            &Command::ResumePlugin { id: "x".into() },
+            true
+        ));
     }
 
     #[test]
     fn empty_rack_processes_without_allocation() {
-        let engine = Engine::new_post_mix();
+        let mut engine = Engine::new_post_mix();
         let mapping = Mapping::create(48_000).unwrap();
         let port = Mapping::open(&mapping.descriptor())
             .unwrap()
@@ -392,5 +411,75 @@ mod tests {
         assert_eq!(counts, (0, 0));
         assert!(packet.samples.iter().all(|frame| *frame == [1.5, -1.5]));
         assert_eq!(rack.plugin_latency(false), Some(0));
+    }
+
+    #[test]
+    fn one_plugin_nan_is_silenced_per_slot_and_the_rack_keeps_running() {
+        use crate::vst_host::instance::{allocation_counts, ScriptedVst};
+        let mut bad = ScriptedVst::non_finite(f32::NAN, None);
+        let mut next = ScriptedVst::scale(0.5);
+        let mut engine = Engine::new_post_mix();
+        let mapping = Mapping::create(48_000).unwrap();
+        let port = Mapping::open(&mapping.descriptor())
+            .unwrap()
+            .into_worker()
+            .unwrap();
+        let mut controls = engine.prepare_plugin_controls();
+        controls.order[0] = 0;
+        controls.order[1] = 1;
+        controls.order_len = 2;
+        controls.install_slot(0, 4);
+        controls.install_slot(1, 5);
+        let mut processors = std::array::from_fn(|_| None);
+        processors[0] = Some(bad.take());
+        processors[1] = Some(next.take());
+        let mut rack = Rack {
+            port,
+            processors,
+            controls,
+            latencies: [None; MAX_PLUGINS],
+            generation: None,
+            input: vec![vec![0.0; BLOCK_FRAMES]; 2],
+            output: vec![vec![0.0; BLOCK_FRAMES]; 2],
+        };
+        let mut packet = Packet::default();
+        packet.samples.fill([0.5, -0.5]);
+        let mut finite = false;
+        let counts = allocation_counts(|| {
+            finite = rack.process(&mut packet);
+        });
+        assert_eq!(counts, (0, 0));
+        assert!(finite);
+        assert!(packet
+            .samples
+            .iter()
+            .flatten()
+            .all(|sample| sample.is_finite() && *sample == 0.0));
+        assert!(!next.saw_non_finite());
+        assert_eq!((bad.calls(), next.calls()), (1, 1));
+        assert!(!rack.controls.health[0].isolated);
+        let counts = allocation_counts(|| {
+            for _ in 0..9 {
+                assert!(rack.process(&mut packet));
+            }
+        });
+        assert_eq!(counts, (0, 0));
+        assert!(rack.controls.health[0].isolated);
+        assert!(packet
+            .samples
+            .iter()
+            .flatten()
+            .all(|sample| sample.is_finite()));
+        assert!(!next.saw_non_finite());
+        let bad_calls = bad.calls();
+        let next_calls = next.calls();
+        assert!(rack.process(&mut packet));
+        assert_eq!(bad.calls(), bad_calls);
+        assert_eq!(next.calls(), next_calls + 1);
+        assert!(packet.samples.iter().all(|frame| *frame == [0.0, 0.0]));
+        rack.controls.resume_slot(0);
+        assert!(rack.process(&mut packet));
+        assert_eq!(bad.calls(), bad_calls + 1);
+        assert!(!rack.controls.health[0].isolated);
     }
 }

@@ -646,13 +646,7 @@ mod tests {
             let (prod, mut cons) = HeapRb::<AudioThreadMessage>::new(1).split();
             engine.command_tx = Some(prod);
             engine.queue_audio_msg(AudioThreadMessage::SetInputGain(1.0));
-            engine.queue_audio_msg(AudioThreadMessage::AddProcessor {
-                index,
-                processor,
-                initial_gain: 0.0,
-                initial_bypassed: true,
-                initial_muted: true,
-            });
+            engine.queue_add_processor(index, processor, 0.0, true, true);
             assert_eq!(engine.pending_audio_msgs.len(), 1);
             assert!(engine.plugin_manager.get(&id).is_some());
             assert!(matches!(

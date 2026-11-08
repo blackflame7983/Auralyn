@@ -2804,6 +2804,8 @@ mod load_failure_tests;
 #[cfg(test)]
 pub(crate) use instance_safety_tests::allocation_counts;
 #[cfg(test)]
+pub(crate) use instance_safety_tests::ScriptedVst;
+#[cfg(test)]
 pub(crate) use load_failure_tests::with_mock_vst;
 
 #[cfg(test)]

@@ -575,6 +575,19 @@ pub(crate) async fn set_mute(
 }
 
 #[tauri::command]
+pub(crate) async fn resume_plugin(
+    state: State<'_, audio::AudioState>,
+    id: String,
+) -> Result<(), String> {
+    let state = state.0.clone();
+    super::run_blocking(move || {
+        let mut host = state.lock().map_err(|_| "Failed to lock audio state")?;
+        host.resume_plugin(&id).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
 pub(crate) async fn set_gain(
     state: State<'_, audio::AudioState>,
     id: String,
