@@ -42,12 +42,12 @@ interface Props {
 export function SoundChain({ model, audioReady, isEngineRunning, inputName, outputName, vst, listenOpen, onListen, onListenClose,
     onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, stopped = false, vstPanelOpen = false, vstUnrestored = [], unconfigured = false, onExpandedChange }: Props) {
     const t = useMessages();
-    const [expanded, setExpanded] = useState<string | null>(vstPanelOpen ? 'vst' : null);
+    const [purpose] = useDisplayPurpose();
+    const music = purpose === 'music';
+    const [expanded, setExpanded] = useState<string | null>(music && vstPanelOpen ? 'vst' : null);
     const panelId = useId();
     const triggers = useRef<Record<string, HTMLButtonElement | null>>({});
     useEffect(() => { onExpandedChange?.(expanded !== null); }, [expanded, onExpandedChange]);
-    const [purpose] = useDisplayPurpose();
-    const music = purpose === 'music';
     const listenButton = useRef<HTMLButtonElement>(null);
     const { stats, running } = useRuntimeStats();
     const stage = currentStageBreakdown(stats, running);

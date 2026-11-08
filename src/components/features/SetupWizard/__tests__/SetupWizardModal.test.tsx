@@ -1,3 +1,4 @@
+import { saveVstPanelOpen } from '@/hooks/useVstPanel';
 import { useSetupWizard } from '../useSetupWizard';
 import { chooseObsRoute } from './wizardActions';
 import { act, renderHook, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -41,6 +42,7 @@ const quickStart = async () => {
 
 beforeEach(() => {
     localStorage.clear();
+    saveVstPanelOpen(false);
     inputs = [mic];
     outputs = [cable, device('スピーカー')];
     reach = true;
@@ -552,7 +554,7 @@ describe('初回選択と表示設定', () => {
     it.each([
         [false, false], [false, true], [true, false], [true, true],
     ])('初期選択は現在のパネルに合わせ、そのまま保存しても開閉を変えない：panel=%s details=%s', async (panel, details) => {
-        localStorage.setItem('auralyn_vst_panel_open', String(panel));
+        saveVstPanelOpen(panel);
         localStorage.setItem('vst_host_beginner_mode', String(!details));
         await quickStart();
         expect((screen.getByRole('radio', { name: 'VSTで音を調整したい（VST構成を開いておく）' }) as HTMLInputElement).checked).toBe(panel);
@@ -564,7 +566,7 @@ describe('初回選択と表示設定', () => {
     it.each([
         [false, false], [false, true], [true, false], [true, true],
     ])('選んだ開閉を反映し、数値の詳細はVST選択でのみ ON にする：VST=%s details=%s', async (vst, details) => {
-        localStorage.setItem('auralyn_vst_panel_open', String(!vst));
+        saveVstPanelOpen(!vst);
         localStorage.setItem('vst_host_beginner_mode', String(!details));
         await quickStart();
         fireEvent.click(screen.getByRole('radio', { name: vst ? 'VSTで音を調整したい（VST構成を開いておく）' : '配信をはじめたい' }));
@@ -772,7 +774,7 @@ describe('PC audio purpose', () => {
         [true, 'readback'], [false, 'readback'],
     ] as const)('音楽鑑賞は保存待ち・失敗時の開閉を保ち、読み戻し成功後だけ選択を反映する：VST=%s %s', async (vst, result) => {
         inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
-        localStorage.setItem('auralyn_vst_panel_open', String(!vst));
+        saveVstPanelOpen(!vst);
         localStorage.setItem('vst_host_beginner_mode', String(vst));
         const original = vi.mocked(invoke).getMockImplementation()!;
         const inactive = { ...snapshot, config: { ...fx, active: false, reverb: { ...fx.reverb, enabled: false } } };

@@ -55,6 +55,7 @@ vi.mock('sonner', () => ({ Toaster: () => null, toast: { success: vi.fn() } }));
 beforeEach(() => {
     localStorage.clear();
     localStorage.setItem('vst_host_wizard_done', 'true');
+    saveVstPanelOpen(false);
     Object.assign(audioState, { audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: true, engineProcessReady: true });
 });
 afterEach(cleanup);
@@ -73,9 +74,11 @@ it('VST 構成は右パネルを開いたときだけ出し、エフェクトと
         'try_ab_compare',
     ]);
 });
-it('以前の詳細表示を使っていた人は右パネルを開いた状態から始め、数値の詳細の切替ではパネルを閉じない', () => {
+it('以前の詳細表示でも声用途では閉じて始め、明示的に開いた後は数値の詳細の切替で閉じない', () => {
     localStorage.setItem('vst_host_beginner_mode', 'false');
     render(<App />);
+    expect(screen.queryByTestId('plugins')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' }));
     expect(screen.getByTestId('plugins')).toBeVisible();
     act(() => saveBeginnerMode(true));
     expect(screen.getByTestId('plugins')).toBeVisible();
@@ -92,7 +95,8 @@ it.each([
     { label: '開始失敗', audioConfig: { host: 'ASIO' }, isInitializing: false, isEngineRunning: false, engineProcessReady: false },
 ])('$labelでも右パネルのVST準備を残し、チュートリアルは稼働確認後まで表示しない', state => {
     Object.assign(audioState, state);
-    localStorage.setItem('auralyn_vst_panel_open', 'true');
+    // #429: 保存値では開かないため、このウィンドウでの明示操作を設定する。
+    saveVstPanelOpen(true);
     render(<App />);
     expect(screen.getByTestId('plugins')).toBeVisible();
     expect(screen.getByTestId('plugins')).toHaveAttribute('data-audio-ready', 'false');
@@ -102,7 +106,8 @@ it.each([
 });
 
 it('停止中の遅い追加完了で進めず、稼働再開時に同じチュートリアル手順へ戻る', () => {
-    localStorage.setItem('auralyn_vst_panel_open', 'true');
+    // #429: 保存値では開かないため、このウィンドウでの明示操作を設定する。
+    saveVstPanelOpen(true);
     const view = render(<App />);
     const activeStep = () => screen.getAllByTestId('tutorial').find(node => node.dataset.active === 'true')?.textContent;
     expect(activeStep()).toBe('click_add_effect');
@@ -129,7 +134,8 @@ it('停止中の遅い追加完了で進めず、稼働再開時に同じチュ�
 
 it('同じウィンドウの完了通知後もモーダル中は隠し、閉じて稼働確認できた時に最初の案内を表示する', () => {
     localStorage.removeItem('vst_host_wizard_done');
-    localStorage.setItem('auralyn_vst_panel_open', 'true');
+    // #429: 保存値では開かないため、このウィンドウでの明示操作を設定する。
+    saveVstPanelOpen(true);
     const view = render(<App />);
     const activeStep = () => screen.queryAllByTestId('tutorial').find(node => node.dataset.active === 'true')?.textContent;
     expect(activeStep()).toBeUndefined();

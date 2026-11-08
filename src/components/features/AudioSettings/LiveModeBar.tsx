@@ -1,7 +1,7 @@
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useRef } from 'react';
-import { MdShield, MdExpandMore, MdMic, MdMusicNote } from 'react-icons/md';
+import { MdLock, MdExpandMore, MdMic, MdMusicNote } from 'react-icons/md';
 import { cn } from '@/lib/utils';
 import type { LiveModesModel } from '@/hooks/useLiveModes';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -66,12 +66,11 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
                     : ''}
             </span>}
             {(registered || value.armed) && (!safetyOnly || value.armed) && <button type="button" aria-disabled={busy || model.changesBlocked} aria-pressed={value.armed} aria-label={t('liveBar.protect')} aria-describedby="live-protect-state" onClick={() => { if (!busy && !model.changesBlocked) void model.protect(!value.armed); }}
-                title={t(value.armed ? 'liveBar.unlockHint' : 'liveBar.protectHint')}
-                className={cn('inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-ui-support font-medium transition-colors aria-disabled:opacity-50', !embedded && 'ml-auto',
+                title={t(value.armed ? 'liveBar.unlockHint' : 'liveBar.protect')}
+                className={cn('inline-flex min-h-6 min-w-6 items-center justify-center gap-1.5 rounded-md border px-2 py-1 text-ui-support font-medium transition-colors aria-disabled:opacity-50', !embedded && 'ml-auto',
                     value.armed ? 'border-brand bg-brand/15 text-brand' : 'border-border text-muted-foreground hover:text-foreground')}>
-                <MdShield aria-hidden="true" className="h-4 w-4" />
-                {t('liveBar.protect')}
-                <span id="live-protect-state" className="font-semibold">{t(value.armed ? 'liveBar.protectOn' : 'liveBar.protectOff')}</span>
+                <MdLock aria-hidden="true" className="h-4 w-4" />
+                <span id="live-protect-state" className={value.armed ? "font-semibold" : "sr-only"}>{t(value.armed ? 'liveBar.protectOn' : 'liveBar.protectOff')}</span>
             </button>}
             {/* 登録後も同じボタンを保ち、設定を閉じたときのフォーカス復帰先を失わない。 */}
             {!safetyOnly && (onRegister || onPrepareSinging) && <details ref={actionsDetails} className="group min-w-0 max-w-full" onKeyDown={event => {

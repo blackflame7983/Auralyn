@@ -103,13 +103,13 @@ function LiveInputMeter({ running, music }: { running: boolean; music: boolean }
     const t = useMessages();
     const [simple] = useBeginnerMode();
     const reading = useSharedMeter(running, 'input');
-    return <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={18} scale showValues numbers={!simple} />;
+    return <MeterVisual reading={reading} label={t(music ? 'wizard.musicLevel' : 'home.inputLevel')} orientation="horizontal" height={18} scale showValues statusOverlay numbers={!simple} />;
 }
 function LiveOutputMeter({ running }: { running: boolean }) {
     const t = useMessages();
     const [simple] = useBeginnerMode();
     const reading = useSharedMeter(running, 'output');
-    return <MeterVisual reading={reading} label={t('meter.output')} orientation="horizontal" height={18} scale showValues numbers={!simple} />;
+    return <MeterVisual reading={reading} label={t('meter.output')} orientation="horizontal" height={18} scale showValues statusOverlay numbers={!simple} />;
 }
 function LiveAurora({ running, muted }: { running: boolean; muted: boolean }) {
     const reading = useSharedMeter(running, 'input');

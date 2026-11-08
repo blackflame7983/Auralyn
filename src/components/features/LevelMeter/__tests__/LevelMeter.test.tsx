@@ -143,3 +143,31 @@ it.each(['ja', 'en'] as const)('左右のメーターの説明を表示言語に
     expect(screen.getByTitle(locale === 'ja' ? '左' : 'Left')).toBeInTheDocument();
     expect(screen.getByTitle(locale === 'ja' ? '右' : 'Right')).toBeInTheDocument();
 });
+
+
+it.each(['ja', 'en'] as const)('本番帯の横メーターは状態行を増やさず、状態文をバー内に重ねる（%s）', locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    const reading: MeterReading = { levels: [0, 0], peak: [0, 0], clipped: false, state: 'live', resetClip: () => {} };
+    const visual = (state: MeterReading['state'], numbers: boolean) => <LocaleProvider store={store}><MeterVisual label="出力" orientation="horizontal" height={18} showValues statusOverlay numbers={numbers} reading={{ ...reading, state }} /></LocaleProvider>;
+    const { rerender } = render(visual('live', false));
+    for (const numbers of [false, true]) for (const state of ['live', 'silent', 'waiting', 'stale', 'stopped'] as const) {
+        rerender(visual(state, numbers));
+        const meter = screen.getByRole('meter');
+        expect(meter).toHaveStyle({ height: '18px' });
+        expect(meter.parentElement).toHaveClass('flex', 'items-center', 'gap-1');
+        expect(meter.parentElement).not.toHaveClass('grid');
+        // 値欄とクリップの場所は従来の横並びのまま。状態では新しい行を作らない。
+        expect(meter.nextElementSibling).toHaveClass('basis-[12ch]', 'h-4', 'overflow-hidden');
+        expect(meter.parentElement?.lastElementChild).toHaveClass('h-5', 'w-6');
+        if (state !== 'live') {
+            expect(meter.firstElementChild).toHaveClass('bg-muted/40');
+            const status = meter.querySelector('[data-meter-status]');
+            expect(status).toHaveClass('absolute', 'inset-y-0', 'bg-background', 'text-muted-foreground');
+            expect(status?.textContent).toBeTruthy();
+            expect(meter.nextElementSibling).toHaveClass('invisible');
+        } else {
+            expect(meter.querySelector('[data-meter-status]')).toBeNull();
+            expect(meter.nextElementSibling).not.toHaveClass('invisible');
+        }
+    }
+});

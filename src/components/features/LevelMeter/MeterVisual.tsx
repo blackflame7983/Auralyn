@@ -3,10 +3,12 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { MdWarningAmber } from 'react-icons/md';
 import { CLIP_LEVEL, WARNING_LEVEL, meterStatusLabel, toDbfs, type MeterReading } from '@/hooks/useMeterLevels';
 
-export const MeterVisual = memo(function MeterVisual({ reading, label, orientation = 'vertical', height = 32, width = 8, showValues = false, numbers = true, scale = false, stackValues = false }: {
+export const MeterVisual = memo(function MeterVisual({ reading, label, orientation = 'vertical', height = 32, width = 8, showValues = false, numbers = true, scale = false, stackValues = false, statusOverlay = false }: {
     reading: MeterReading; label: string; orientation?: 'horizontal' | 'vertical'; height?: number | string; width?: number; showValues?: boolean;
     /** false では dBFS 値を出さず、無音・停止などの状態だけを言葉で示す（数値の詳細 OFF）。 */
     numbers?: boolean; scale?: boolean; stackValues?: boolean;
+    /** 本番帯は状態をバーの中に重ね、高さと位置を変えない。 */
+    statusOverlay?: boolean;
 }) {
     const t = useMessages();
     const current = reading.state === 'live' || reading.state === 'silent';
@@ -42,34 +44,39 @@ export const MeterVisual = memo(function MeterVisual({ reading, label, orientati
         previousMarkTop = top;
         return true;
     });
+    const horizontalStatus = orientation === 'horizontal' && showValues && statusOverlay;
+    const empty = reading.state !== 'live';
     const stacked = orientation === 'vertical' && stackValues;
-    return <div className={`flex min-w-0 items-center gap-1 ${stacked ? 'h-full min-h-0 flex-col' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`}>
+    return <div className={`flex items-center gap-1 min-w-0 ${stacked ? 'h-full min-h-0 flex-col' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`}>
         <div ref={scaleRef} role="meter" aria-label={label} aria-valuemin={-60} aria-valuemax={0}
             aria-valuenow={current ? Math.max(-60, Math.min(0, Number.isFinite(db) ? db : -60)) : undefined}
             aria-valuetext={accessibleText} title={reading.state === 'waiting' || reading.state === 'stale' ? `${accessibleText} — ${t('meter.waitingHelp')}` : accessibleText}
-            className={`meter-visual flex min-w-0 gap-1 ${stacked ? 'min-h-0 flex-1' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`} style={{ height: stacked ? undefined : height }}>
+            className={`meter-visual relative flex min-w-0 gap-1 ${stacked ? 'min-h-0 flex-1' : ''} ${orientation === 'horizontal' ? 'flex-1' : ''}`} style={{ height: stacked ? undefined : height }}>
             {bars.map((value, i) => {
                 const pct = current ? Math.min(100, Math.max(0, value * 100)) : 0;
                 const peak = current ? Math.min(100, Math.max(0, peaks[i] * 100)) : 0;
                 const color = peaks[i] >= CLIP_LEVEL ? 'bg-meter-danger' : peaks[i] >= WARNING_LEVEL ? 'bg-meter-warning' : 'bg-success';
                 return <div key={i} title={orientation === 'vertical' ? t(i === 0 ? 'meter.left' : 'meter.right') : undefined}
-                    className={`relative overflow-hidden rounded bg-muted ring-1 ring-border ${orientation === 'horizontal' ? 'h-full flex-1' : 'h-full'}`} style={orientation === 'vertical' ? { width } : undefined}>
+                    className={`relative overflow-hidden rounded ${empty ? 'bg-muted/40 ring-border/40' : 'bg-muted ring-border'} ring-1 ${orientation === 'horizontal' ? 'h-full flex-1' : 'h-full'}`} style={orientation === 'vertical' ? { width } : undefined}>
                     <div className={`absolute inset-0 ${orientation === 'horizontal' ? 'origin-left' : 'origin-bottom'} ${color}`} style={{ transform: orientation === 'horizontal' ? `scaleX(${pct / 100})` : `scaleY(${pct / 100})` }} />
-                    {scale && [0, -6, -12, -24, -48].map(mark => <span key={mark} aria-hidden="true" className={`absolute bg-foreground/30 ${orientation === 'horizontal' ? 'top-0 bottom-0 w-px' : 'left-0 right-0 h-px'}`} style={orientation === 'horizontal' ? { left: `${Math.pow(10, mark / 20) * 100}%` } : { bottom: `${Math.pow(10, mark / 20) * 100}%` }} />)}
+                    {scale && [0, -6, -12, -24, -48].map(mark => <span key={mark} aria-hidden="true" className={`absolute ${empty ? 'bg-foreground/[0.12]' : 'bg-foreground/30'} ${orientation === 'horizontal' ? 'top-0 bottom-0 w-px' : 'left-0 right-0 h-px'}`} style={orientation === 'horizontal' ? { left: `${Math.pow(10, mark / 20) * 100}%` } : { bottom: `${Math.pow(10, mark / 20) * 100}%` }} />)}
                     {/* 親と同寸の層を動かし、ピーク線の太さと外枠の角丸は拡縮しない。 */}
                     {current && <div aria-hidden="true" className="absolute inset-0" style={{ transform: orientation === 'horizontal' ? `translateX(${peak}%)` : `translateY(${-peak}%)` }}>
                         <div className={`absolute bg-foreground/80 ${orientation === 'horizontal' ? 'left-0 top-0 bottom-0 w-0.5' : 'bottom-0 left-0 right-0 h-0.5'}`} />
                     </div>}
                 </div>;
             })}
+            {/* 文字の背面を不透明にし、目盛りや減衰中の色と重なっても読めるようにする。 */}
+            {horizontalStatus && empty && <span title={accessibleText} data-meter-status
+                className="pointer-events-none absolute inset-y-0 left-0 z-10 flex items-center rounded bg-background px-1 text-xs leading-4 text-muted-foreground">{displayText}</span>}
             {stacked && scale && <div aria-hidden="true" className="relative h-full w-8 shrink-0 text-xs text-muted-foreground font-mono">
                 {/* 上端の0と下端の目盛りも、この欄の中へ収める。状態表示や値の欄へはみ出させない。 */}
                 {visibleMarks.map(mark => <span key={mark} className="absolute left-1 leading-4"
                     style={{ top: `clamp(0px, calc(${100 - Math.pow(10, mark / 20) * 100}% - 0.5rem), calc(100% - 1rem))` }}>{mark}</span>)}
             </div>}
         </div>
-        {/* 状態は省略せず折り返し、狭い横表示でもバーの幅を確保する。 */}
-        {showValues && (numbers || orientation === 'horizontal') && <span title={accessibleText} data-meter-status className={`min-w-0 max-w-[12ch] basis-[12ch] shrink break-words text-xs leading-4 text-muted-foreground ${orientation === 'horizontal' ? 'text-left' : 'text-right'} ${numbers ? 'font-mono tabular-nums' : ''}`}>{displayText}</span>}
+        {/* 従来の横方向の値欄は保ち、状態文だけをバー内へ移す。行は追加しない。 */}
+        {showValues && (numbers || orientation === 'horizontal') && <span title={accessibleText} data-meter-status={horizontalStatus && empty ? undefined : true} aria-hidden={horizontalStatus && empty ? true : undefined} className={`min-w-0 max-w-[12ch] basis-[12ch] shrink break-words text-xs leading-4 text-muted-foreground ${orientation === 'horizontal' ? 'text-left' : 'text-right'} ${horizontalStatus ? 'h-4 overflow-hidden' : ''} ${horizontalStatus && empty ? 'invisible' : ''} ${numbers ? 'font-mono tabular-nums' : ''}`}>{displayText}</span>}
         {scale && <span className="sr-only">0, −6, −12, −24, −48 dBFS</span>}
         {/* 警告の有無で横バーの幅・縦バーの高さを変えない。解除操作の場所も固定する。 */}
         <span className="inline-flex h-5 w-6 shrink-0 items-center justify-center">

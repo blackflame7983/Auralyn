@@ -13,6 +13,8 @@ test.describe('通常のホーム表示', () => {
             localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
         });
         await page.goto('/');
+        await page.getByRole('button', { name: /^VST / }).click();
+        await page.locator('#vst-panel-toggle').click();
         await expect(page.locator('#vst-panel')).toBeVisible();
         if (source === '大型メーター併用') {
             await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
@@ -117,7 +119,7 @@ test.describe('通常のホーム表示', () => {
         });
         await page.goto('/');
         await expect(page.getByRole('region', { name: 'VST保存済み構成の保護' })).toHaveCount(0);
-        await expect(page.locator('header').getByText('音声処理中', { exact: true })).toHaveCount(0);
+        await expect(page.locator('header').getByText('実行中', { exact: true })).toHaveCount(0);
         const routing = page.locator('[data-live-routing]');
         // 長い機器名は実寸で検査し、IPC側の保存値や音声処理には触れない。
         await page.locator('.live-input-summary .live-device').evaluate(element => { element.textContent = 'Voicemeeter Insert Virtual ASIO'; });

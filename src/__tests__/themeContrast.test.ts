@@ -35,6 +35,8 @@ it('各テーマで状態文字は4.5:1、入力枠とメーターの注意・�
         for (const background of ['background', 'card', 'muted', 'popover', 'accent', 'secondary']) {
             expect(contrast(color('muted-foreground'), color(background)), `${selector} muted-foreground/${background}`).toBeGreaterThanOrEqual(4.5);
         }
+        // 本番帯の状態文は不透明な背景でバーと目盛りを覆い、3テーマとも4.5:1以上を保つ。
+        expect(contrast(color('muted-foreground'), color('background')), `${selector} meter status overlay`).toBeGreaterThanOrEqual(4.5);
         const recoveryPanel = blend(color('destructive'), color('background'), 0.1);
         expect(contrast(color('muted-foreground'), recoveryPanel), `${selector} recovery detail`).toBeGreaterThanOrEqual(4.5);
         // 入力欄・選択欄の枠は、内外に隣接するカード面と背景面の両方で3:1以上を保つ。
