@@ -533,7 +533,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                 </div>
                 {state !== 'configuring' && state !== 'complete' && <div data-testid="setup-actions" className="setup-actions modal-footer-base shrink-0 px-6 py-4">
                     {state === 'usage_selection' && (
-                        <Button variant="default" type="button" disabled={isBusy} onClick={() => void performClose(() => (onSkip || onClose)())} >{t('wizard.skip')}</Button>
+                        <Button variant="ghost" type="button" disabled={isBusy} onClick={() => void performClose(() => (onSkip || onClose)())} >{t('wizard.skip')}</Button>
                     )}
                     {(state === 'input_selection' || state === 'output_selection') && (
                         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">

@@ -191,7 +191,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                                     <MdPlayArrow className="w-4 h-4" /> {t('voice.copy.059')}</>
                             )}
                         </Button>
-                        <Button variant="default" type="button" disabled={!previewBusy && !isPlaying && !stopUnconfirmed && preview?.state !== 'playing' && preview?.state !== 'stopping' && preview?.owner !== 'auto_gain' && !previewError && !preview?.error} onClick={() => void handleStopPreview()} >{t('voice.copy.060')}</Button>
+                        <Button variant="outline" type="button" disabled={!previewBusy && !isPlaying && !stopUnconfirmed && preview?.state !== 'playing' && preview?.state !== 'stopping' && preview?.owner !== 'auto_gain' && !previewError && !preview?.error} onClick={() => void handleStopPreview()} >{t('voice.copy.060')}</Button>
                         <label className="inline-flex items-center gap-2 text-ui-support text-muted-foreground cursor-pointer">
                             <Field label={null}><Checkbox
                                 type="checkbox"

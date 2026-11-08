@@ -183,7 +183,7 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                     )}
 
                     {step === 2 && <SingingRouteGuide hardware={useHardwareMixer} route={route} onRouteChange={chooseRoute} onOpenTiming={() => { setTimingRequested(true); setStep(3); }} />}
-                    {step === 2 && route === 'direct' && <Button variant="secondary" size="sm" type="button" onClick={onOpenAudioSettings} className="mt-3">{t('guide.copy.035')}</Button>}
+                    {step === 2 && route === 'direct' && <Button variant="outline" size="sm" type="button" onClick={onOpenAudioSettings} className="mt-3">{t('guide.copy.035')}</Button>}
                     {step === 2 && route === 'processed' && (
                         <div className="space-y-6">
                             <h3 className="text-ui-heading font-bold text-foreground">{t('guide.copy.030')}</h3>

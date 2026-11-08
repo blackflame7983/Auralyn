@@ -72,7 +72,7 @@ export class ErrorBoundary extends Component<Props, State> {
                                 <MdRefresh className="w-5 h-5" />
                                 {t('boundary.recover')}
                             </Button>
-                            <Button variant="outline"
+                            <Button variant="secondary"
                                 onClick={this.handleReload}
                                 className="flex items-center justify-center gap-2"
                             >

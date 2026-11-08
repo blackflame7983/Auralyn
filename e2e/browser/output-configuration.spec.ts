@@ -32,7 +32,7 @@ for (const liveModes of [false, true]) test(`分離出力と本番モード=${li
     const rack = page.locator('#vst-panel-toggle');
     if (await rack.getAttribute('aria-expanded') !== 'true') await rack.click();
     await page.getByRole('button', { name: '設定の保存・復帰', exact: true }).click();
-    await page.getByRole('button', { name: '今の設定を保存・復帰', exact: true }).click();
+    await page.getByRole('tab', { name: '今の設定を保存・復帰', exact: true }).click();
     await page.getByRole('radio', { name: /分離出力まで/ }).check();
     if (liveModes) await page.getByRole('radio', { name: /歌／雑談モードまで/ }).check();
     await page.getByLabel('OBS込みプロファイル名', { exact: true }).fill('new-output');

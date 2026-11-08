@@ -527,10 +527,10 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                 {phase === 'purpose' && rememberedPurpose && !choosePurpose && (
                     <div className="p-6 space-y-3 overflow-y-auto">
                         <p className="text-ui-support text-muted-foreground">{t('troubleshoot.savedPurpose')}</p>
-                        <Button variant="default"
+                        <Button variant="outline"
                             onClick={() => handleStart(rememberedPurpose)}
                             disabled={isRunning}
-                            className="w-full h-auto min-h-10 flex-col items-start whitespace-normal text-left"
+                            className="border-primary/50 bg-primary/5 hover:bg-primary/10 w-full h-auto min-h-10 flex-col items-start whitespace-normal text-left"
                         >
                             <div className="font-bold text-ui-support text-foreground">{t('troubleshoot.runFor', { purpose: t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.label) })}</div>
                             <div className="text-ui-support text-muted-foreground mt-1">{t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.hint)}</div>
@@ -592,8 +592,9 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                     )}
                                     <div className="flex flex-wrap gap-2 mt-2">
                                         {check.action && (
-                                            <Button variant="default" size="sm"
+                                            <Button variant="outline" size="sm"
                                                 onClick={check.action.onClick}
+                                                className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/20"
 
                                             >
                                                 {renderNotice(t, check.action.label)}

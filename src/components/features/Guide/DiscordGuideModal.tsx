@@ -52,7 +52,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                             <DiscordIcon className="w-5 h-5" />
                         </span>
                         {t('guide.copy.082')}</h2>
-                    <Button variant="default" size="icon" onClick={onClose} aria-label={t('guide.copy.083')} >
+                    <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('guide.copy.083')} >
                         <MdClose className="w-6 h-6" />
                     </Button>
                 </div>
