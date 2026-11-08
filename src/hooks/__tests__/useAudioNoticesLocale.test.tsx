@@ -79,3 +79,25 @@ it('言語切替でOBS leaseを解放せず、最後の利用終了後だけ停�
     const options = vi.mocked(toast.error).mock.calls[0][1] as unknown as {action: {onClick: () => void}};
     await act(async () => options.action.onClick()); expect(disconnect).toHaveBeenCalledTimes(2);
 });
+
+it.each(['legacy-first', 'detail-first'])('エンジン終了通知は%sでも復旧画面へ1回だけ渡し、最新の言語を使う', async order => {
+    const {store, wrapper} = language();
+    const props = {onAddPlugin: vi.fn(async () => true), onResetPlugins: vi.fn(), onCrash: vi.fn(), onLoadPreset: vi.fn(async () => true)};
+    renderHook(() => useAppEvents(props), {wrapper}); await act(async () => {});
+    const subscriptions = vi.mocked(listen).mock.calls.length;
+    act(() => {store.setLocale('en');});
+    expect(listen).toHaveBeenCalledTimes(subscriptions);
+    const legacy = () => notify('audio-error', 'Audio Engine Process Exited (Crash?)');
+    const detail = () => notify('audio-engine-exited', {cause: 'vst_operation', op: 'set_state', name: 'Echo'});
+    if (order === 'legacy-first') { legacy(); detail(); } else { detail(); legacy(); }
+    expect(props.onResetPlugins).toHaveBeenCalledOnce();
+    expect(props.onCrash).toHaveBeenCalledExactlyOnceWith('The audio engine stopped during state application for Echo.');
+});
+
+it('原因不明の終了も既存の復旧画面へ伝える', async () => {
+    const {wrapper} = language();
+    const props = {onAddPlugin: vi.fn(async () => true), onResetPlugins: vi.fn(), onCrash: vi.fn(), onLoadPreset: vi.fn(async () => true)};
+    renderHook(() => useAppEvents(props), {wrapper}); await act(async () => {});
+    notify('audio-engine-exited', {cause: 'unknown'});
+    expect(props.onCrash).toHaveBeenCalledExactlyOnceWith('音声エンジンが停止しました。原因のVSTは特定できません。');
+});

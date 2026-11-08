@@ -1,5 +1,6 @@
 import { useMessages } from '../i18n/LocaleProvider';
 import { renderShortcutError } from '../lib/shortcutNotice';
+import { legacyEngineExit, renderAudioEngineExit, type AudioEngineExit } from '../lib/audioEngineExit';
 import { useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
@@ -85,14 +86,21 @@ export const useAppEvents = ({
     // Audio Engine Crash Listener
     useEffect(() => {
         const unlisten = listen<string>('audio-error', (event) => {
+            // 終了の詳細は専用イベントで表示し、同じ復旧画面を二重に開かない。
+            if (event.payload === legacyEngineExit) return;
             console.error("Audio engine error:", event.payload);
             onResetPlugins();
             onCrash(event.payload);
         });
+        const exited = listen<AudioEngineExit>('audio-engine-exited', event => {
+            onResetPlugins();
+            onCrash(renderAudioEngineExit(t, event.payload));
+        });
         return () => {
             unlisten.then(f => f());
+            exited.then(f => f());
         };
-    }, [onResetPlugins, onCrash]);
+    }, [onResetPlugins, onCrash, t]);
 
     useAudioRecovery();
     useLiveSceneRouting(onLoadPreset);
