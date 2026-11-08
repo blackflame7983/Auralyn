@@ -78,3 +78,12 @@ it('使い方からホットキー設定へ進み、通常の設定入口で移�
     act(() => result.current.setIsSettingsOpen(false));
     expect(result.current.settingsTab).toBe('audio');
 });
+
+it('同じタブへの移動を続けて頼んでも、依頼の番号が進んで設定が切り替えられる', () => {
+    const { result } = renderHook(() => useUIState());
+    act(() => result.current.openShortcuts());
+    const first = result.current.settingsTabRequest;
+    act(() => result.current.openShortcuts());
+    expect(result.current.settingsTab).toBe('shortcuts');
+    expect(result.current.settingsTabRequest).toBeGreaterThan(first);
+});

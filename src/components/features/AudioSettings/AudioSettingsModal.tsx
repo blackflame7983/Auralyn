@@ -47,6 +47,8 @@ interface AudioSettingsModalProps {
   onPreviewSinging?: () => void;
   onSaveSingingProfile?: () => void;
   initialTab?: 'audio' | 'obs' | 'sound' | 'shortcuts';
+  /** 移動の依頼ごとに増える番号。同じ移動先を続けて頼まれても切り替える。 */
+  tabRequest?: number;
   initialSection?: 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
   isAudioRunning?: boolean;
   allowConnectionRetry?: boolean;
@@ -68,7 +70,7 @@ interface AudioSettingsModalProps {
 export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   liveModel: providedLive,
   singingModel: providedSinging, onPreviewSinging, onSaveSingingProfile,
-  initialTab = 'audio', initialSection,
+  initialTab = 'audio', tabRequest = 0, initialSection,
   isOpen,
   onClose,
   onConfigChange,
@@ -214,7 +216,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   // Tab State
   const [activeTab, setActiveTab] = useState<'audio' | 'sound' | 'obs' | 'appearance' | 'system' | 'shortcuts'>(initialTab);
   // 移動先の指定が変わったときだけ切り替え、閉じて再表示した場合は選択中のタブを保つ。
-  useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
+  useEffect(() => { setActiveTab(initialTab); }, [initialTab, tabRequest]);
   const [capturingShortcut, setCapturingShortcut] = useState(false);
   const [isBeginnerMode, setIsBeginnerMode] = useState(getBeginnerMode);
   // Persist Advanced Mode selection

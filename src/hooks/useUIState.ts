@@ -3,7 +3,10 @@ import { useState } from 'react';
 
 export const useUIState = () => {
     const [isSettingsOpen, setSettingsOpen] = useState(false);
-    const [settingsTab, setSettingsTab] = useState<'audio' | 'obs' | 'sound' | 'shortcuts'>('audio');
+    const [settingsTab, setStoredSettingsTab] = useState<'audio' | 'obs' | 'sound' | 'shortcuts'>('audio');
+    // 同じタブへの移動を続けて頼まれても切り替わるよう、頼むたびに番号を進める。
+    const [settingsTabRequest, setSettingsTabRequest] = useState(0);
+    const setSettingsTab = (tab: 'audio' | 'obs' | 'sound' | 'shortcuts') => { setStoredSettingsTab(tab); setSettingsTabRequest(n => n + 1); };
     const [settingsSection, setSettingsSection] = useState<'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput'>();
     const [settingsNeedsRetry, setSettingsNeedsRetry] = useState(false);
     const setIsSettingsOpen = (open: boolean) => {
@@ -75,6 +78,7 @@ export const useUIState = () => {
         isSettingsOpen,
         setIsSettingsOpen,
         settingsTab,
+        settingsTabRequest,
         settingsSection,
         settingsNeedsRetry,
         openAudioSettingsRetry,
