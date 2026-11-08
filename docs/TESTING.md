@@ -48,6 +48,8 @@ WASAPIは入力を先に開始し、制御スレッドで要求バッファ2個�
 
 ## 自動テストの層と実行方法
 
+- `npm run test:user-docs`：日英10ページ、見出しの印、リンク、UI名、表記、使い方の全用語を照合する（起動が書き込み制限で失敗する場合は `npm run test:user-docs -- --configLoader runner`）。
+
 ### Pull Requestの自動チェック
 
 `.github/workflows/rustsec-audit.yml` は PR・main 更新・週次・手動で `src-tauri/Cargo.lock` を最新の RustSec DB と照合する。ローカルでも依存更新時とリリース前に `cargo audit --file src-tauri/Cargo.lock` を実行する。導入と例外の扱いは [DEPENDENCY_MAINTENANCE.md](DEPENDENCY_MAINTENANCE.md) を参照する。これは署名、実機、Rustビルドの検証とは別であり、GitHub 上の実行結果と branch protection 設定は別途確認する。

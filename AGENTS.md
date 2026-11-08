@@ -6,6 +6,7 @@
 - バージョン判定・タグ・リリース提案の正本は [docs/VERSIONING.md](docs/VERSIONING.md)。バージョンに関する旧スキルやモデル別説明より優先する。
 - 配布条件は `docs/RELEASE_PLAN.md`、`SOURCE-DISTRIBUTION.md`、`config/release-policy.json` を参照する。
 - ビルドと検証は `docs/BUILD_GUIDE.md` と `docs/TESTING.md`。依存更新の判断は `docs/DEPENDENCY_MAINTENANCE.md`。
+- 利用者向けドキュメント（`user-docs/`、アプリのヘルプ、公式サイトへの同期）の正本は [docs/USER_DOCS.md](docs/USER_DOCS.md)。
 - `docs/plans/` の計画や過去のチェック済み記録を、現在の実装・検証済みの証拠として扱わない。
 
 ## 作業の進め方
