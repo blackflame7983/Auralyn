@@ -78,6 +78,9 @@ pub const IID_IPLUGINTERFACESUPPORT_BE: TUID = [
     0x49, 0x71, 0xC9, 0x35, 0x7D, 0x52, 0x47, 0x52, 0x95, 0x94, 0x87, 0x79, 0x0B, 0x38, 0x74, 0x28,
 ];
 
+/// IPluginFactory2。バイト列は vst3 crate の IID（Windows の TUID）をそのまま使う。
+pub const IID_IPLUGINFACTORY2: TUID = <vst3::Steinberg::IPluginFactory2 as vst3::Interface>::IID;
+
 #[repr(C)]
 pub struct PClassInfo {
     pub cid: TUID,
@@ -143,6 +146,29 @@ pub struct IPluginFactoryVtbl {
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult,
+}
+
+/// SDK の PClassInfo2。並びは cid, cardinality, category, name, classFlags,
+/// subCategories, vendor, version, sdkVersion。
+#[repr(C)]
+pub struct PClassInfo2 {
+    pub cid: TUID,
+    pub cardinality: i32,
+    pub category: [c_char; 32],
+    pub name: [c_char; 64],
+    pub class_flags: u32,
+    pub sub_categories: [c_char; 128],
+    pub vendor: [c_char; 64],
+    pub version: [c_char; 64],
+    pub sdk_version: [c_char; 64],
+}
+
+/// IPluginFactory に getClassInfo2 を足した vtable。
+#[repr(C)]
+pub struct IPluginFactory2Vtbl {
+    pub base: IPluginFactoryVtbl,
+    pub get_class_info2:
+        unsafe extern "system" fn(this: *mut c_void, index: i32, info: *mut PClassInfo2) -> TResult,
 }
 
 #[repr(C)]

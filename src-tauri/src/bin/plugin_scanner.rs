@@ -1,10 +1,12 @@
 #![warn(clippy::undocumented_unsafe_blocks)]
 use libloading::Library;
-use serde::Serialize;
 use std::env;
-use std::ffi::{c_void, CStr};
+use std::ffi::c_void;
 use std::path::PathBuf;
 use vst_host_lib::vst_host::c_api::{IPluginFactoryVtbl, PFactoryInfo};
+use vst_host_lib::vst_host::class_listing::{
+    decode_fixed_c_string, list_effect_classes, ScanReport, NO_EFFECT_ERROR, SCAN_FORMAT_VERSION,
+};
 
 // We define the function pointer type locally since it's not in c_api.rs
 type GetPluginFactory = unsafe extern "C" fn() -> *mut c_void;
@@ -13,14 +15,15 @@ unsafe fn get_vtbl<T>(ptr: *mut c_void) -> &'static T {
     &**(ptr as *mut *mut T)
 }
 
-#[derive(Serialize)]
-struct ScanResult {
-    path: String,
-    name: String,
-    vendor: String,
-    version: String,
-    success: bool,
-    error: Option<String>,
+fn failed(path: &str, error: String) -> ScanReport {
+    ScanReport {
+        format_version: SCAN_FORMAT_VERSION,
+        path: path.to_string(),
+        success: false,
+        error: Some(error),
+        factory_vendor: None,
+        classes: Vec::new(),
+    }
 }
 
 fn main() {
@@ -43,14 +46,7 @@ fn main() {
     let path = PathBuf::from(path_str);
 
     if !path.exists() {
-        print_json_and_exit(ScanResult {
-            path: path_str.clone(),
-            name: "".to_string(),
-            vendor: "".to_string(),
-            version: "".to_string(),
-            success: false,
-            error: Some("File not found".to_string()),
-        });
+        print_json_and_exit(failed(path_str, "File not found".to_string()));
     }
 
     // SAFETY: ここからはVST3 ABI準拠のDLLを信頼する境界であり、export・vtable・
@@ -61,89 +57,71 @@ fn main() {
     print_json_and_exit(result);
 }
 
-fn print_json_and_exit(result: ScanResult) -> ! {
+fn print_json_and_exit(result: ScanReport) -> ! {
     let json = serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string());
     println!("{}", json);
-    if result.success {
-        std::process::exit(0);
-    } else {
-        std::process::exit(1);
+    // エフェクト0件は走査完了であり、クラッシュではない。ホストが黒名簿へ入れないよう 0 で終える。
+    let completed = result.success || result.error.as_deref() == Some(NO_EFFECT_ERROR);
+    std::process::exit(if completed { 0 } else { 1 });
+}
+
+struct FactoryRelease(*mut c_void);
+
+impl Drop for FactoryRelease {
+    fn drop(&mut self) {
+        if self.0.is_null() {
+            return;
+        }
+        // SAFETY: GetPluginFactory が返した参照を、DLL を捨てる前に1回解放する。
+        unsafe {
+            let vtbl = get_vtbl::<IPluginFactoryVtbl>(self.0);
+            (vtbl.base.release)(self.0);
+        }
     }
 }
 
-unsafe fn load_plugin_info(path: &PathBuf) -> ScanResult {
+unsafe fn load_plugin_info(path: &PathBuf) -> ScanReport {
     let path_str = path.to_string_lossy().to_string();
-
-    // Attempt library load
     let lib = match Library::new(path) {
-        Ok(l) => l,
-        Err(e) => {
-            return ScanResult {
-                path: path_str,
-                name: "".to_string(),
-                vendor: "Unknown".to_string(),
-                version: "".to_string(),
-                success: false,
-                error: Some(format!("Failed to load library: {}", e)),
-            }
-        }
+        Ok(library) => library,
+        Err(error) => return failed(&path_str, format!("Failed to load library: {error}")),
     };
-
-    // Attempt GetPluginFactory
     let factory_proc = match lib.get::<GetPluginFactory>(b"GetPluginFactory") {
-        Ok(p) => p,
-        Err(e) => {
-            return ScanResult {
-                path: path_str,
-                name: "".to_string(),
-                vendor: "Unknown".to_string(),
-                version: "".to_string(),
-                success: false,
-                error: Some(format!("GetPluginFactory not found: {}", e)),
-            }
-        }
+        Ok(symbol) => symbol,
+        Err(error) => return failed(&path_str, format!("GetPluginFactory not found: {error}")),
     };
-
     let factory_ptr = factory_proc();
     if factory_ptr.is_null() {
-        return ScanResult {
-            path: path_str,
-            name: "".to_string(),
-            vendor: "Unknown".to_string(),
-            version: "".to_string(),
-            success: false,
-            error: Some("GetPluginFactory returned null".to_string()),
-        };
+        return failed(&path_str, "GetPluginFactory returned null".to_string());
     }
-
+    let _release = FactoryRelease(factory_ptr);
     let factory_vtbl = get_vtbl::<IPluginFactoryVtbl>(factory_ptr);
     let mut info: PFactoryInfo = std::mem::zeroed();
-    let mut vendor = "Unknown".to_string();
-
-    if (factory_vtbl.get_factory_info)(factory_ptr, &mut info) == 0 {
-        if let Ok(v) = CStr::from_ptr(info.vendor.as_ptr()).to_str() {
-            if !v.is_empty() {
-                vendor = v.to_string();
-            }
-        }
+    let factory_vendor = if (factory_vtbl.get_factory_info)(factory_ptr, &mut info) == 0 {
+        decode_fixed_c_string(&info.vendor)
+    } else {
+        None
+    };
+    let classes = match list_effect_classes(factory_ptr) {
+        Ok(classes) => classes,
+        Err(error) => return failed(&path_str, error.to_string()),
+    };
+    if classes.is_empty() {
+        return ScanReport {
+            format_version: SCAN_FORMAT_VERSION,
+            path: path_str,
+            success: false,
+            error: Some(NO_EFFECT_ERROR.to_string()),
+            factory_vendor,
+            classes: Vec::new(),
+        };
     }
-
-    // Release factory
-    (factory_vtbl.base.release)(factory_ptr);
-
-    // Name is usually derived from filename for VST3 (factory classes have names but often multiple)
-    // For scanner MVP, we use filename as name, similar to existing implementation
-    let name = path
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "Unknown".to_string());
-
-    ScanResult {
+    ScanReport {
+        format_version: SCAN_FORMAT_VERSION,
         path: path_str,
-        name,
-        vendor,
-        version: "0.0.0".to_string(), // TODO: Extract version if possible
         success: true,
         error: None,
+        factory_vendor,
+        classes: classes.into_iter().map(|class| class.entry).collect(),
     }
 }
