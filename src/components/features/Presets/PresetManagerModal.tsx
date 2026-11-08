@@ -447,8 +447,9 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                 <div className="min-h-0 flex-1 overflow-y-auto">
                 {temporaryActive && <div className="px-4 pt-3"><TemporarySessionPanel /></div>}
                 <Tabs value={recoveryOpen ? 'recovery' : bundleOpen ? 'bundle' : 'preset'} onValueChange={value => { setRecoveryOpen(value === 'recovery'); setBundleOpen(value === 'bundle'); }}>
- <TabsList aria-label={t('presets.copy.056')} className="m-2">
- <TabsTrigger value="preset">{t('presets.copy.057')}</TabsTrigger><TabsTrigger value="bundle">{t('presets.copy.058')}</TabsTrigger><TabsTrigger value="recovery">{t('recoveryHub.title')}</TabsTrigger>
+ {/* 英語では3つの名前が長く幅に収まらないため、タブを等分して文字を折り返す。 */}
+ <TabsList aria-label={t('presets.copy.056')} className="m-2 grid h-auto grid-cols-3">
+ {(['preset', 'bundle', 'recovery'] as const).map(value => <TabsTrigger key={value} value={value} className="h-auto min-w-0 whitespace-normal text-center">{t(value === 'preset' ? 'presets.copy.057' : value === 'bundle' ? 'presets.copy.058' : 'recoveryHub.title')}</TabsTrigger>)}
  </TabsList><TabsContent value={recoveryOpen ? 'recovery' : bundleOpen ? 'bundle' : 'preset'}>
                 {recoveryOpen ? <RecoveryActionsPanel onOperation={onBundleOperation} onVoiceCheck={onOpenVoiceCheck} onSettings={onOpenAudioSettings} /> : bundleOpen ? <BroadcastBundlePanel onOperation={onBundleOperation} onObsSettings={onObsSettings} /> : <>
                 <div className="p-4 border-b border-border bg-muted/30 space-y-3">
