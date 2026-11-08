@@ -882,6 +882,12 @@ pub struct MeterLevels {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum EngineEvent {
+    EditorOpened {
+        id: String,
+    },
+    EditorClosed {
+        id: String,
+    },
     MixingSourceFailed,
     MixingOutputFailed,
     Log(String),
@@ -932,7 +938,27 @@ pub struct DeviceInfo {
 
 #[cfg(test)]
 mod tests {
-    use super::Command;
+    use super::{Command, EngineEvent};
+
+    #[test]
+    fn editor_events_roundtrip_with_existing_tags() {
+        for (event, tag) in [
+            (
+                EngineEvent::EditorOpened { id: "eq".into() },
+                "EditorOpened",
+            ),
+            (
+                EngineEvent::EditorClosed { id: "eq".into() },
+                "EditorClosed",
+            ),
+        ] {
+            let expected = serde_json::json!({"type": tag, "payload": {"id": "eq"}});
+            assert_eq!(serde_json::to_value(&event).expect("serialize"), expected);
+            let decoded: EngineEvent =
+                serde_json::from_value(expected.clone()).expect("deserialize");
+            assert_eq!(serde_json::to_value(decoded).expect("serialize"), expected);
+        }
+    }
 
     #[test]
     fn voice_check_commands_roundtrip() {

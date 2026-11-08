@@ -868,6 +868,22 @@ impl AudioHost {
                                         );
                                     }
                                 }
+                                EngineEvent::EditorOpened { id } => {
+                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                        let _ = h.emit(
+                                            "plugin-editor-opened",
+                                            serde_json::json!({ "id": id }),
+                                        );
+                                    }
+                                }
+                                EngineEvent::EditorClosed { id } => {
+                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                        let _ = h.emit(
+                                            "plugin-editor-closed",
+                                            serde_json::json!({ "id": id }),
+                                        );
+                                    }
+                                }
                                 EngineEvent::ProcessingHealth {
                                     state,
                                     kind,
