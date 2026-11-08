@@ -1380,13 +1380,8 @@ unsafe fn read_bus_channel_count(component: *mut c_void, direction: i32) -> Opti
         0,
         &mut info as *mut BusInfo as *mut c_void,
     );
-    if result != K_RESULT_OK {
-        return None;
-    }
-    match info.channel_count {
-        1 | 2 => Some(info.channel_count),
-        _ => None,
-    }
+    // 照会に成功したときは ch 数をそのまま返す。1/2 以外も「対応外」の判断に使う。
+    (result == K_RESULT_OK).then_some(info.channel_count)
 }
 
 // SAFETY: processor は有効な IAudioProcessor。配列はこの呼出し中だけ生きる。
@@ -1457,7 +1452,18 @@ unsafe fn negotiate_main_bus(
             return Ok(candidate);
         }
     }
-    Err(anyhow!(BUS_LAYOUT_UNSUPPORTED))
+    // 配置の更新も現在値の照会も通らない場合、従来は警告だけでステレオとして使っていた。
+    // getBusInfo がステレオ、または取得できない VST はその挙動を保ち、既存のステレオ VST を回帰させない。
+    // getBusInfo が対応できる 1ch 構成を示すときはそれを使う。それ以外（例: 6ch のみ）はロード失敗にする。
+    match (input_default, output_default) {
+        (Some(2) | None, Some(2) | None) => {
+            log::warn!("VST bus arrangement could not be negotiated; keeping the legacy stereo layout");
+            Ok(BusLayout::STEREO)
+        }
+        (Some(1), Some(1)) => Ok(BusLayout::MONO),
+        (Some(1), Some(2)) => Ok(BusLayout::MONO_TO_STEREO),
+        _ => Err(anyhow!(BUS_LAYOUT_UNSUPPORTED)),
+    }
 }
 
 // SAFETY: VST3 は process を処理スレッドで呼ぶ契約。create_processor は COM 参照と DLL を保持し、

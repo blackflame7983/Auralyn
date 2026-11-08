@@ -1357,6 +1357,26 @@ fn failed_arrangement_with_stereo_default_keeps_the_previous_stereo_plugin() {
 }
 
 #[test]
+fn unknown_arrangement_without_bus_info_keeps_the_legacy_stereo_layout() {
+    // 配置の更新も現在値の照会も対応外で、getBusInfo も失敗する VST は、従来どおりステレオで使う。
+    let _guard = set_bus_policy(BusPolicy::Reject {
+        input: 0,
+        output: 0,
+    });
+    BUS_INFO_FAILS.with(|fails| fails.set(true));
+    with_mock_vst(false, |mut instance| {
+        instance.prepare_processing(48_000.0, 256, 2).unwrap();
+        assert_eq!(instance.bus_layout, BusLayout::STEREO);
+        assert_eq!(bus_calls(), vec![(3, 3), (1, 1), (1, 3)]);
+        let processor = instance.create_processor().unwrap();
+        assert_eq!(
+            (processor.input_channels, processor.output_channels),
+            (2, 2)
+        );
+    });
+}
+
+#[test]
 fn missing_bus_info_does_not_block_a_stereo_plugin() {
     let _guard = set_bus_policy(BusPolicy::AcceptAll);
     BUS_INFO_FAILS.with(|fails| fails.set(true));
