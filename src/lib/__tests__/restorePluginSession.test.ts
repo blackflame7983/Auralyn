@@ -72,3 +72,12 @@ it('保存済み構成のうち現在のラックにないVSTだけを、同じ�
 it.each([null, '', '{壊れた', JSON.stringify({ path: 'x' })])('保存値 %j から未読込を推定しない', saved => {
     expect(unrestoredPluginNames(saved, [])).toEqual([]);
 });
+
+it('classId のない旧セッションは path だけで照合し、classId があるときはそれを渡す', async () => {
+    expect((await restorePluginSession([item('old')], vi.fn())).status).toBe('success');
+    expect(audioApi.restorePlugin).toHaveBeenCalledWith({ path: 'old', state: 'saved', bypassed: true, muted: true, gain: 0.5 });
+    expect((await restorePluginSession([{ ...item('kept'), classId: 'ABCDEF' }], vi.fn())).status).toBe('success');
+    expect(audioApi.restorePlugin).toHaveBeenLastCalledWith({ path: 'kept', state: 'saved', bypassed: true, muted: true, gain: 0.5, classId: 'ABCDEF' });
+    const saved = JSON.stringify([item('old'), { ...item('picked'), classId: 'AA' }]);
+    expect(unrestoredPluginNames(saved, [{ path: 'old', classId: 'OTHER' }, { path: 'picked', classId: 'BB' }])).toEqual(['picked']);
+});

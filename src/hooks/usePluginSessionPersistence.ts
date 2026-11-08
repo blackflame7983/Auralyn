@@ -48,6 +48,7 @@ export function usePluginSessionPersistence(plugins: Plugin[], ready: boolean, b
                     enabled: plugin.enabled,
                     muted: plugin.muted,
                     gain: plugin.gain,
+                    ...(plugin.classId ? { classId: plugin.classId } : {}),
                     state: await audioApi.getPluginState(plugin.id),
                 })));
                 if (!active || !canWrite()) throw new PluginClientError('saveChanged');

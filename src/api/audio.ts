@@ -25,8 +25,12 @@ export interface VstPlugin {
     path: string;
     vendor: string;
     category: string;
-    version: string;
+    version?: string;
     id: string;
+    classId?: string;
+    subCategories?: string;
+    /** "class" はクラス名、"file" はファイル名への退避。 */
+    nameSource?: string;
 }
 
 export interface AudioConfig {
@@ -47,7 +51,7 @@ export interface FrontendBootstrapReply {
 }
 
 export interface RackPlugin {
-    id: string; path: string; name: string; enabled: boolean; muted: boolean; gain: number;
+    id: string; path: string; name: string; enabled: boolean; muted: boolean; gain: number; classId?: string;
 }
 export type SessionRackRequest = { action: 'snapshot' }
     | { action: 'retain'; generation: string; revision: string; ids: string[]; inputGain: number | null }
@@ -98,8 +102,8 @@ export const audioApi = {
         return await invoke("clear_blacklist");
     },
     restorePlugin: async (request: RestorePluginRequest): Promise<RestoredPlugin> => invoke('restore_plugin', { request }),
-    loadPlugin: async (path: string): Promise<string> => {
-        return await invoke("load_plugin", { path });
+    loadPlugin: async (path: string, classId?: string): Promise<string | LoadedPlugin> => {
+        return await invoke("load_plugin", classId ? { path, classId } : { path });
     },
     removePlugin: async (id: string) => {
         return await invoke("remove_plugin", { id });
@@ -523,6 +527,8 @@ export interface RestorePluginRequest {
     bypassed: boolean;
     muted: boolean;
     gain: number;
+    classId?: string;
 }
 // prepared:falseは停止中の復元成功。次回Startで処理準備される。
-export interface RestoredPlugin { id: string; name: string; prepared: boolean }
+export interface RestoredPlugin { id: string; name: string; prepared: boolean; classId?: string; legacyClassAmbiguous?: boolean }
+export interface LoadedPlugin { id: string; name: string; classId?: string; legacyClassAmbiguous?: boolean }

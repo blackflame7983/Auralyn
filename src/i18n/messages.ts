@@ -1160,6 +1160,7 @@ const ja = {
     "pluginNotices.saveChanged": "保存中にVST構成または復元状態が変更されました。保存済み構成は保護しています。",
     "pluginNotices.excludedPlugin": "選択したVSTを除外しました：{name}",
     "pluginNotices.pluginRestoreNameFailed": "{name} の復元に失敗しました",
+    "pluginNotices.legacyClassAmbiguous": "このファイルには複数のエフェクトがあります。以前と同じ規則で最初のものを開きました",
     "pluginNotices.rawDetail": "原文の詳細（未翻訳）：{detail}",
 
     "audioNotices.engineStarted": "音声エンジン起動",
@@ -2997,6 +2998,8 @@ const ja = {
     "pluginBrowser.removeFavorite": "お気に入りから削除",
     "pluginBrowser.addFavorite": "お気に入りに追加",
     "pluginBrowser.unknownVendor": "不明なメーカー",
+    "pluginBrowser.unknownMeta": "不明",
+    "pluginBrowser.nameUnavailable": "名前は取得できませんでした",
     "pluginBrowser.add": "追加",
     "pluginBrowser.added": "追加済み",
     "rack.card.reorder": "{arg0}を並べ替え",
@@ -4381,6 +4384,7 @@ const en: Record<MessageKey, string> = {
     "pluginNotices.saveChanged": "The VST configuration or restoration state changed while saving. The saved configuration is protected.",
     "pluginNotices.excludedPlugin": "Excluded the selected VST: {name}",
     "pluginNotices.pluginRestoreNameFailed": "Could not restore {name}",
+    "pluginNotices.legacyClassAmbiguous": "This file contains multiple effects. The first one was opened using the previous rule",
     "pluginNotices.rawDetail": "Original detail (untranslated): {detail}",
 
     "audioNotices.engineStarted": "Audio engine started",
@@ -6219,6 +6223,8 @@ const en: Record<MessageKey, string> = {
     "pluginBrowser.removeFavorite": "Remove from favorites",
     "pluginBrowser.addFavorite": "Add to favorites",
     "pluginBrowser.unknownVendor": "Unknown manufacturer",
+    "pluginBrowser.unknownMeta": "Unknown",
+    "pluginBrowser.nameUnavailable": "The name could not be read",
     "pluginBrowser.add": "Add",
     "pluginBrowser.added": "Added",
     "rack.card.reorder": "Reorder {arg0}",

@@ -3,6 +3,7 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
 import React, { useEffect, useState } from 'react';
 import { MdWarning, MdRestore, MdStop, MdRefresh } from 'react-icons/md';
+import { readPending } from '@/lib/pluginIdentity';
 
 interface RecoveryModalProps {
     isOpen: boolean;
@@ -69,7 +70,7 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
                             <div className="font-bold text-destructive-text mb-1 flex items-center gap-2">
                                 <MdWarning /> {t('recovery.pending')}
                             </div>
-                            <div className="font-mono text-ui-support break-all text-muted-foreground">{pendingPlugin}</div>
+                            <div className="font-mono text-ui-support break-all text-muted-foreground">{readPending(pendingPlugin)?.path ?? pendingPlugin}</div>
                         </div>
                     )}
 

@@ -76,6 +76,6 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
             <details className="space-y-2 border-t border-border pt-3"><summary className="cursor-pointer">{t('postMix.recovery')}</summary><p>{t('postMix.recoveryHelp')}</p><label className="flex gap-2 text-ui-control"><Checkbox disabled={!stopped} checked={resetConfirmed} onChange={e => setResetConfirmed(e.target.checked)} />{t('postMix.recoveryConfirm')}</label><Button variant="destructive" className="h-auto whitespace-normal" disabled={!stopped || !resetConfirmed} onClick={() => { gainQueue.cancel(); void run({ action: 'reset' }); }}>{t('postMix.reset')}</Button>{resetDone && <p role="status">{t('postMix.resetDone')}</p>}</details>
         </div>}
         <MixingError error={error} />
-        <PluginBrowserModal isOpen={browser} onClose={() => setBrowser(false)} plugins={available} isLoading={scanning} onScan={() => void scan()} addedPaths={snapshot?.plugins.map(p => p.path)} onPluginSelect={p => { setBrowser(false); void run({ action: 'add', path: p.path }); }} />
+        <PluginBrowserModal isOpen={browser} onClose={() => setBrowser(false)} plugins={available} isLoading={scanning} onScan={() => void scan()} addedPaths={snapshot?.plugins.map(p => p.classId ? `${p.path}::${p.classId.toUpperCase()}` : p.path)} onPluginSelect={p => { setBrowser(false); void run(p.classId ? { action: 'add', path: p.path, classId: p.classId } : { action: 'add', path: p.path }); }} />
     </details>;
 }

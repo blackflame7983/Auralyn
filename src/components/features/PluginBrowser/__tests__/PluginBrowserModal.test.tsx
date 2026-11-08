@@ -97,6 +97,21 @@ it('localeだけでカテゴリ表示を更新しID・検索・実名・favorite
     expect(JSON.stringify(plugins)).toBe(original);
     expect(scan).not.toHaveBeenCalled();
 });
+it('同じファイルの複数クラスを別項目にし、選択時の classId を渡す', () => {
+    const select = vi.fn();
+    const classes = [
+        { name: 'Delay', path: 'multi.vst3', vendor: '', version: '', classId: 'AA', id: '1', category: 'Fx' },
+        { name: 'Comp', path: 'multi.vst3', vendor: 'Studio', version: '', classId: 'BB', id: '2', category: 'Fx' },
+    ] as VstPlugin[];
+    render(<PluginBrowserModal isOpen onClose={() => {}} plugins={classes} isLoading={false} onScan={vi.fn()} onPluginSelect={select} />);
+    expect(screen.getByRole('button', { name: 'Delay を追加' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Comp を追加' })).toBeInTheDocument();
+    expect(screen.getAllByText('multi.vst3')).toHaveLength(2);
+    expect(screen.getAllByText('不明').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Comp を追加' }));
+    expect(select).toHaveBeenCalledWith(expect.objectContaining({ path: 'multi.vst3', classId: 'BB' }));
+});
+
 it('名前不明の代替は描画時だけ翻訳し、選択したpluginへ注入しない', () => {
     const store = createLocaleStore(() => 'ja', () => true); const select = vi.fn();
     const unnamed = { name: '', path: 'unknown.vst3', vendor: '', category: '' } as VstPlugin;

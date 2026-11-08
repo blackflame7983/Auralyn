@@ -7,6 +7,7 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { VstPlugin } from '../../../api/audio';
+import { fileLabel, pluginKey } from '@/lib/pluginIdentity';
 import { Panel } from '../../ui/Panel/Panel';
 import { MdStar, MdStarBorder, MdHistory, MdGridView, MdClose, MdSearch, MdRefresh, MdWarning } from 'react-icons/md';
 
@@ -162,18 +163,18 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
     localStorage.setItem(STORAGE_KEYS.recent, JSON.stringify(newRecent));
   };
 
-  const toggleFavorite = (path: string, e: React.MouseEvent) => {
+  const toggleFavorite = (key: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (favorites.includes(path)) {
-      saveFavorites(favorites.filter(f => f !== path));
+    if (favorites.includes(key)) {
+      saveFavorites(favorites.filter(f => f !== key));
     } else {
-      saveFavorites([...favorites, path]);
+      saveFavorites([...favorites, key]);
     }
   };
 
   const handlePluginSelect = (plugin: VstPlugin) => {
-    // Add to recent
-    const newRecent = [plugin.path, ...recentPaths.filter(p => p !== plugin.path)].slice(0, MAX_RECENT);
+    const key = pluginKey(plugin);
+    const newRecent = [key, ...recentPaths.filter(p => p !== key)].slice(0, MAX_RECENT);
     saveRecent(newRecent);
     onPluginSelect(plugin);
   };
@@ -211,10 +212,10 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
     }
 
     if (activeTab === 'favorites') {
-      filtered = filtered.filter(p => favorites.includes(p.path));
+      filtered = filtered.filter(p => favorites.includes(pluginKey(p)));
     } else if (activeTab === 'recent') {
       const recentPlugins = recentPaths
-        .map(path => plugins.find(p => p.path === path))
+        .map(path => plugins.find(p => pluginKey(p) === path))
         .filter((p): p is VstPlugin => p !== undefined);
       filtered = recentPlugins.filter(matchesSearch);
     }
@@ -356,10 +357,11 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
           ) : (
             <div className="grid grid-cols-1 gap-1">
               {filteredPlugins.map((plugin, idx) => {
-                const isFavorite = favorites.includes(plugin.path);
+                const key = pluginKey(plugin);
+                const isFavorite = favorites.includes(key);
                 return (
                   <div
-                    key={`${plugin.id}-${idx}`}
+                    key={`${key}-${idx}`}
                     onClick={() => handlePluginSelect(plugin)}
                     onKeyDown={(e) => handlePluginKeyDown(e, plugin)}
                     className="group flex items-center justify-between p-3 rounded-card border border-transparent hover:bg-muted/50 hover:border-primary/30 transition-colors text-left cursor-pointer"
@@ -370,7 +372,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                     <div className="flex items-center gap-3">
                       {/* Favorite Star */}
                       <button
-                        onClick={(e) => toggleFavorite(plugin.path, e)}
+                        onClick={(e) => toggleFavorite(key, e)}
                         aria-label={isFavorite ? t('pluginBrowser.removeFavoriteNamed', { arg0: displayPluginName(plugin) }) : t('pluginBrowser.addFavoriteNamed', { arg0: displayPluginName(plugin) })}
                         aria-pressed={isFavorite}
                         className={`p-1 rounded-control transition-colors ${isFavorite
@@ -384,16 +386,22 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                       <div>
                         <h3 className="font-bold text-foreground group-hover:text-primary transition-colors">
                           {displayPluginName(plugin)}
+                          <span className="ml-2 font-normal text-ui-support text-muted-foreground">{fileLabel(plugin.path)}</span>
                         </h3>
+                        {plugin.nameSource === 'file' && (
+                          <p className="text-ui-support text-muted-foreground">{t('pluginBrowser.nameUnavailable')}</p>
+                        )}
                         <p className="text-ui-support text-muted-foreground">
-                          {plugin.vendor || t('pluginBrowser.unknownVendor')}
+                          <span>{plugin.vendor || t('pluginBrowser.unknownMeta')}</span>
                           <span className="opacity-30 mx-1">|</span>
+                          <span>{plugin.version || t('pluginBrowser.unknownMeta')}</span>
+                          <span className="mx-1">|</span>
                           <span className="text-primary">{getCategoryLabel(plugin.category, t)}</span>
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {addedPaths.includes(plugin.path) && <span className="px-2 py-1 text-ui-support text-muted-foreground rounded-control border border-border">{t('pluginBrowser.added')}</span>}
+                      {addedPaths.includes(key) && <span className="px-2 py-1 text-ui-support text-muted-foreground rounded-control border border-border">{t('pluginBrowser.added')}</span>}
                       <span className="opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 text-ui-support bg-primary/10 text-primary rounded-control border border-primary/20">
                         {t('pluginBrowser.add')}</span>
                     </div>
