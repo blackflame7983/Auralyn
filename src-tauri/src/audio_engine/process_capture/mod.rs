@@ -154,13 +154,20 @@ impl Shared {
                 self.failed.store(true, Ordering::Release);
             } else {
                 let began = starved_at.get_or_insert(self.elapsed_ms());
-                if self.packet_age_ms() >= 30 {
-                    let discarded = queue.discard();
-                    self.paused(discarded);
-                    renderer.wait_for_audio();
-                    *starved_at = None;
-                } else if self.elapsed_ms().saturating_sub(*began) >= 100 {
-                    self.failed.store(true, Ordering::Release);
+                match clock::underrun_action(
+                    self.packet_age_ms(),
+                    self.elapsed_ms().saturating_sub(*began),
+                ) {
+                    clock::UnderrunAction::DiscardAndReprime => {
+                        let discarded = queue.discard();
+                        self.paused(discarded);
+                        renderer.wait_for_audio();
+                        *starved_at = None;
+                    }
+                    clock::UnderrunAction::Fail => {
+                        self.failed.store(true, Ordering::Release);
+                    }
+                    clock::UnderrunAction::Wait => {}
                 }
             }
         }

@@ -305,4 +305,58 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn recovery_skip_moves_the_surviving_impulse_to_the_target_depth() {
+        let rate = 48_000usize;
+        let block = 512usize;
+        let queued = 4_096usize;
+        let mut recovery = Recovery::new(rate, rate, 1, 3);
+        let mut buffer = vec![0.0f32; queued];
+        buffer[100] = -0.5;
+        buffer[4_000] = 0.5;
+        let mut skip = 0;
+        let counts = allocation_counts(|| {
+            for _ in 0..20 {
+                skip = recovery.begin_block(buffer.len(), block, block, false);
+                if skip > 0 {
+                    assert_eq!(recovery.gain, 0.0);
+                    break;
+                }
+                for _ in 0..block {
+                    let _ = recovery.next_gain();
+                }
+            }
+        });
+        assert_eq!(counts, (0, 0));
+        assert_eq!(
+            skip,
+            queued - block,
+            "phase={:?} gain={} high={}",
+            recovery.phase,
+            recovery.gain,
+            recovery.high()
+        );
+        assert_eq!(recovery.target(), block);
+        buffer.drain(..skip);
+        assert_eq!(buffer.len(), recovery.target());
+        assert_eq!(buffer[4_000 - skip], 0.5);
+        assert!(buffer.iter().all(|sample| *sample != -0.5));
+        for _ in 0..block {
+            let _ = recovery.next_gain();
+        }
+        assert_eq!(recovery.gain, 1.0);
+        assert!(!recovery.active());
+        assert_eq!(recovery.status(), 0);
+        let impulse_at = 4_000 - skip;
+        for _ in 0..20 {
+            assert_eq!(recovery.begin_block(buffer.len(), block, block, false), 0);
+            for (index, sample) in buffer.iter().enumerate() {
+                assert_eq!(recovery.next_gain(), 1.0);
+                if index == impulse_at {
+                    assert_eq!(sample * recovery.gain, 0.5);
+                }
+            }
+        }
+    }
 }

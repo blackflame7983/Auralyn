@@ -306,4 +306,68 @@ mod tests {
         assert_eq!(stats.nonfinite_samples, 1);
         assert_eq!(stats.peak, 1.0);
     }
+
+    #[test]
+    fn discontinuity_and_timestamp_error_flags_are_counted_without_moving_samples() {
+        let source = [0.0f32, 0.0, 0.25, -0.25, 0.0, 0.0];
+        let both = AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32
+            | AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32;
+        let mut stats = Stats::default();
+        let mut frames = [[0.0f32; 2]; 8];
+        let mut count = 0usize;
+        let counts = crate::dsp_verification_allocator::allocation_counts(|| {
+            process_packet(
+                Some(sample_bytes(&source)),
+                3,
+                both,
+                &mut stats,
+                &mut |frame| {
+                    frames[count] = frame;
+                    count += 1;
+                },
+            )
+            .unwrap();
+            process_packet(
+                Some(sample_bytes(&source[..2])),
+                1,
+                0,
+                &mut stats,
+                &mut |frame| {
+                    frames[count] = frame;
+                    count += 1;
+                },
+            )
+            .unwrap();
+            process_packet(
+                None,
+                2,
+                AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 | both,
+                &mut stats,
+                &mut |frame| {
+                    frames[count] = frame;
+                    count += 1;
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                process_packet(None, MAX_PACKET_FRAMES + 1, both, &mut stats, &mut |_| {}),
+                Err(PacketError::TooLarge)
+            );
+        });
+        assert_eq!(counts, (0, 0));
+        assert_eq!(stats.discontinuities, 2);
+        assert_eq!(stats.timestamp_errors, 2);
+        assert_eq!(stats.frames, 6);
+        assert_eq!(
+            frames[..count],
+            [
+                [0.0, 0.0],
+                [0.25, -0.25],
+                [0.0, 0.0],
+                [0.0, 0.0],
+                [0.0, 0.0],
+                [0.0, 0.0],
+            ]
+        );
+    }
 }
