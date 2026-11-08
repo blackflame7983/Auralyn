@@ -7,8 +7,10 @@ import { saveBeginnerMode } from '../../../hooks/useBeginnerMode';
 import { getVstPanelOpen, saveVstPanelOpen } from '../../../hooks/useVstPanel';
 import { toast } from 'sonner';
 import { listen } from '@tauri-apps/api/event';
-import { effectiveAsioChannels, isAsioHost, isVirtualOutput, verifiedDefaultOutput, recommendMicrophone, type WizardConfig, type WizardState, type UserGoal, type SetupWizardModalProps } from './wizardModel';
+import { effectiveAsioChannels, isAsioHost, isVirtualOutput, verifiedDefaultOutput, recommendMicrophone, sortWizardInputs, type WizardConfig, type WizardState, type UserGoal, type SetupWizardModalProps } from './wizardModel';
 import type { ChannelRouting } from '@/lib/audioChannelRouting';
+import { readAudioPreferences } from '@/lib/audioPreferences';
+import { resolveAudioDevice } from '@/lib/audioDevices';
 
 // ウィザードの選択・音声操作・開始前状態の復元を描画から分離する。
 export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardModalProps) {
@@ -173,17 +175,17 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
 
     // Auto-select input when devices are loaded (if not already selected)
     useEffect(() => {
-        if (state === 'input_selection' && !config.input && availableInputs.length > 0) {
+        if ((!isAsioHost(config.host) || initialStateReady) && state === 'input_selection' && !config.input && availableInputs.length > 0) {
             autoSelectInput();
         }
-    }, [availableInputs, state, config.input, config.goal]);
+    }, [availableInputs, state, config.host, config.input, config.goal, initialStateReady]);
 
     // 選んだ接続方式の機器だけを出し、別ホストの機器を誤って起動しない。ASIO は入出力が同じ機器のものだけを候補にする。
     const normalizeDevices = (devices: { inputs: AudioDevice[]; outputs: AudioDevice[] }, host: string) => {
         const ofHost = (device: AudioDevice) => device.host.toLowerCase() === host.toLowerCase();
         if (!isAsioHost(host)) return { inputs: devices.inputs.filter(ofHost), outputs: devices.outputs.filter(ofHost) };
         const outputs = devices.outputs.filter(ofHost);
-        return { inputs: devices.inputs.filter(device => ofHost(device) && !!asioOutputFor(device, outputs)), outputs };
+        return { inputs: sortWizardInputs(devices.inputs.filter(device => ofHost(device) && !!asioOutputFor(device, outputs)), host), outputs };
     };
     const asioOutputFor = (input: AudioDevice, outputs: AudioDevice[]) => {
         const sameName = outputs.filter(device => device.name === input.name);
@@ -243,8 +245,13 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         if (availableInputs.length === 0) return;
 
         const candidates = availableInputs.filter(isVirtualOutput);
-        // 設定し直す場合は、いま使っているマイクを先に選ぶ。仮想ケーブルはマイクとして推さない。
-        const current = availableInputs.find(device => device.name === runningInput && !isVirtualOutput(device));
+        // ASIOは保存済みの汎用driverも尊重し、おすすめで選び直さない。
+        const native = initialStateRef.current?.config;
+        const saved = native ? { host: native.host, input: native.input, inputId: native.input_id } : readAudioPreferences();
+        const savedAsio = isAsioHost(config.host) && saved && isAsioHost(saved.host)
+            ? resolveAudioDevice(availableInputs, config.host, saved.input, saved.inputId)
+            : undefined;
+        const current = savedAsio ?? availableInputs.find(device => device.name === runningInput && !isVirtualOutput(device));
         const input = config.goal === 'music' ? (candidates.length === 1 ? candidates[0] : null) : current ?? recommendMicrophone(availableInputs);
         if (input) setConfig(prev => ({ ...prev, input }));
     };

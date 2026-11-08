@@ -6,6 +6,25 @@ use cpal::{
 };
 use std::time::Instant;
 
+/// 壊れた機器値をDSPやstream構築へ渡さず、選び直せる理由を返す。
+pub(super) fn validate_stream_config(device: &str, config: &StreamConfig) -> Result<()> {
+    anyhow::ensure!(
+        (8_000..=192_000).contains(&config.sample_rate),
+        "機器「{}」のサンプルレート {} Hz は範囲外です（8,000～192,000 Hz）。別の機器・接続方式を選んでください。",
+        device,
+        config.sample_rate
+    );
+    if let BufferSize::Fixed(frames) = config.buffer_size {
+        anyhow::ensure!(
+            (1..=16_384).contains(&frames),
+            "機器「{}」のバッファ {} サンプルは範囲外です（1～16,384 サンプル）。別の機器・接続方式を選んでください。",
+            device,
+            frames
+        );
+    }
+    Ok(())
+}
+
 pub(super) struct CapabilitySnapshot {
     default: SupportedStreamConfig,
     supported: Option<Vec<SupportedStreamConfigRange>>,
@@ -217,6 +236,64 @@ pub(super) fn report_phase(phase: &str, started: Instant) {
 mod tests {
     use super::*;
     use cpal::SampleFormat;
+
+    #[test]
+    fn stream_config_rejects_invalid_rates_and_buffers_with_recovery_details() {
+        for (rate, buffer, bad_value) in [
+            (0, 512, "0 Hz"),
+            (7_999, 512, "7999 Hz"),
+            (192_001, 512, "192001 Hz"),
+            (48_000, 0, "0 サンプル"),
+            (48_000, 16_385, "16385 サンプル"),
+        ] {
+            let config = StreamConfig {
+                channels: 2,
+                sample_rate: rate,
+                buffer_size: BufferSize::Fixed(buffer),
+            };
+            let error = validate_stream_config("Test ASIO", &config)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("Test ASIO"), "{error}");
+            assert!(error.contains(bad_value), "{error}");
+            assert!(error.contains("別の機器・接続方式を選んでください"));
+        }
+    }
+
+    #[test]
+    fn stream_config_accepts_rate_and_buffer_boundaries_and_default_buffer() {
+        for rate in [8_000, 48_000, 192_000] {
+            for buffer_size in [
+                BufferSize::Fixed(1),
+                BufferSize::Fixed(16_384),
+                BufferSize::Default,
+            ] {
+                assert!(validate_stream_config(
+                    "Test ASIO",
+                    &StreamConfig {
+                        channels: 2,
+                        sample_rate: rate,
+                        buffer_size,
+                    }
+                )
+                .is_ok());
+            }
+        }
+    }
+
+    #[test]
+    fn zero_default_output_rate_is_rejected_before_building() {
+        let snapshot = CapabilitySnapshot {
+            default: default(0, 2, SupportedBufferSize::Unknown),
+            supported: None,
+        };
+        let config = snapshot.output_config(Some(48_000), None);
+        assert_eq!(config.sample_rate, 0);
+        let built = Cell::new(false);
+        let result = validate_stream_config("Realtek ASIO", &config).map(|()| built.set(true));
+        assert!(result.is_err());
+        assert!(!built.get());
+    }
 
     #[test]
     fn missing_default_rate_never_replaces_the_selected_rate_in_a_retry() {

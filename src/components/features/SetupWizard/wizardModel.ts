@@ -3,6 +3,13 @@ import { isPlaybackInput } from '@/lib/audioDevices';
 
 export const isVirtualOutput = (device: AudioDevice) => /cable|voicemeeter/i.test(device.name);
 
+export const isGenericAsioDriver = (name: string) => /realtek\s*asio|asio4all|flexasio|generic\s+low\s+latency(?:\s+asio)?(?:\s+driver)?|asio2wasapi|voicemeeter/i.test(name);
+
+// 専用driverを先に示し、各グループ内の順序と元の一覧を保つ。
+export const sortWizardInputs = (inputs: AudioDevice[], host: string): AudioDevice[] => isAsioHost(host)
+    ? [...inputs].sort((a, b) => Number(isGenericAsioDriver(a.name)) - Number(isGenericAsioDriver(b.name)))
+    : inputs;
+
 // 「Windows既定」では名前による推測や先頭候補への代替を行わない。
 export const verifiedDefaultOutput = (devices: AudioDevice[]): AudioDevice | null => {
     const defaults = devices.filter(device => device.is_default && !isVirtualOutput(device));
@@ -11,6 +18,10 @@ export const verifiedDefaultOutput = (devices: AudioDevice[]): AudioDevice | nul
 
 /** 再生音の取り込みを除外し、マイクと分かる入力を優先する。 */
 export const recommendMicrophone = (inputs: AudioDevice[]): AudioDevice | null => {
+    if (inputs.length && inputs.every(device => isAsioHost(device.host))) {
+        const dedicated = inputs.filter(device => !isGenericAsioDriver(device.name));
+        if (dedicated.length) return dedicated.length === 1 ? dedicated[0] : null;
+    }
     const candidates = inputs.filter(d => !isPlaybackInput(d.name));
     const microphones = candidates.filter(d => /microphone|\bmic\b|マイク|headset|ヘッドセット/i.test(d.name));
     const choices = microphones.length ? microphones : candidates;

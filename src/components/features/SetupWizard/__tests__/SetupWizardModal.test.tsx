@@ -1012,6 +1012,56 @@ describe('セットアップの見た目と動き（#294）', () => {
 describe('セットアップでの ASIO（#291）', () => {
     const asio = (isInput: boolean): AudioDevice => ({ name: 'Test ASIO', host: 'ASIO', is_input: isInput, index: 0, channels: 8, is_default: false, id: 'asio:test' });
 
+    it.each(['Realtek ASIO', 'VB-Audio Voicemeeter Insert Virtual ASIO'])('専用driverを先に出しても保存済みの%sを上書きしない', async name => {
+        const generic = { ...asio(true), name, id: 'asio:generic' };
+        inputs = [generic, asio(true)];
+        outputs = inputs.map(input => ({ ...input, is_input: false }));
+        const original = vi.mocked(invoke).getMockImplementation()!;
+        let resolveState!: (state: unknown) => void;
+        vi.mocked(invoke).mockImplementation((command, args, options) => command === 'get_audio_state'
+            ? new Promise(resolve => { resolveState = resolve; })
+            : original(command, args, options));
+        const view = renderHook(() => useSetupWizard({ isOpen: true, onClose: vi.fn(), onApplyConfig: vi.fn() }));
+        await waitFor(() => expect(view.result.current.isLoadingDevices).toBe(false));
+        act(() => { view.result.current.selectGoal('obs'); view.result.current.selectHost('ASIO'); });
+        expect(view.result.current.config.input).toBeNull();
+        await act(async () => resolveState({ is_running: false, config: { host: 'ASIO', input: name, input_id: generic.id, output: name } }));
+        await waitFor(() => expect(view.result.current.config.input?.id).toBe(generic.id));
+        expect(view.result.current.availableInputs.map(input => input.name)).toEqual(['Test ASIO', name]);
+        await act(async () => { await view.result.current.loadDevices(true); });
+        expect(view.result.current.config.input?.id).toBe(generic.id);
+        expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
+    });
+
+    it('停止中でエンジン構成がなくても保存済みの汎用driverを推奨で置き換えない', async () => {
+        const generic = { ...asio(true), name: 'Realtek ASIO', id: 'asio:generic' };
+        inputs = [generic, asio(true)];
+        outputs = inputs.map(input => ({ ...input, is_input: false }));
+        const saved = JSON.stringify({ host: 'ASIO', input: generic.name, inputId: generic.id, output: generic.name });
+        localStorage.setItem('vst_host_audio_config', saved);
+        await openWizard();
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
+        fireEvent.click(await screen.findByRole('radio', { name: 'ASIO（オーディオインターフェース）' }));
+        await waitFor(() => expect(screen.getByRole('combobox', { name: '機器' })).toHaveValue(generic.name));
+        expect(localStorage.getItem('vst_host_audio_config')).toBe(saved);
+        expect(invoke).not.toHaveBeenCalledWith('start_audio', expect.anything());
+    });
+
+    it('専用driverの推奨後も汎用driverの明示選択を再検出で上書きしない', async () => {
+        const generic = { ...asio(true), name: 'Realtek ASIO', id: 'asio:generic' };
+        inputs = [generic, asio(true)];
+        outputs = inputs.map(input => ({ ...input, is_input: false }));
+        await openWizard();
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
+        fireEvent.click(await screen.findByRole('radio', { name: 'ASIO（オーディオインターフェース）' }));
+        const input = screen.getByRole('combobox', { name: '機器' });
+        await waitFor(() => expect(input).toHaveValue('Test ASIO'));
+        fireEvent.change(input, { target: { value: generic.name } });
+        fireEvent.click(screen.getByRole('button', { name: '機器を再検出' }));
+        await waitFor(() => expect(invoke).toHaveBeenCalledWith('get_audio_devices', { forceRefresh: true }));
+        expect(input).toHaveValue(generic.name);
+    });
+
     it('ASIO 機器がなければ接続方式を出さず、WASAPI の流れを変えない', async () => {
         await openWizard();
         fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
