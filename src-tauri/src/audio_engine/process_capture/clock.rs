@@ -26,11 +26,15 @@ pub(crate) enum UnderrunAction {
 
 /// starved の経過と、最後の packet からの経過だけで次の動作を決める。
 /// 両方を満たすときは破棄を優先する。時刻の値そのものは見ない。
+/// starved の経過は破棄しない場合だけ読む（RT の時計読取り回数を切り出し前と同じに保つ）。
 #[must_use]
-pub(crate) fn underrun_action(packet_age_ms: u64, starved_for_ms: u64) -> UnderrunAction {
+pub(crate) fn underrun_action(
+    packet_age_ms: u64,
+    starved_for_ms: impl FnOnce() -> u64,
+) -> UnderrunAction {
     if packet_age_ms >= STALE_PACKET_MS {
         UnderrunAction::DiscardAndReprime
-    } else if starved_for_ms >= FRESH_UNDERRUN_FAIL_MS {
+    } else if starved_for_ms() >= FRESH_UNDERRUN_FAIL_MS {
         UnderrunAction::Fail
     } else {
         UnderrunAction::Wait
@@ -516,11 +520,15 @@ mod tests {
 
     #[test]
     fn underrun_action_discards_from_30ms_and_fails_a_fresh_gap_at_100ms() {
-        assert_eq!(underrun_action(0, 0), UnderrunAction::Wait);
-        assert_eq!(underrun_action(29, 99), UnderrunAction::Wait);
-        assert_eq!(underrun_action(30, 0), UnderrunAction::DiscardAndReprime);
-        assert_eq!(underrun_action(30, 100), UnderrunAction::DiscardAndReprime);
-        assert_eq!(underrun_action(29, 100), UnderrunAction::Fail);
+        assert_eq!(underrun_action(0, || 0), UnderrunAction::Wait);
+        assert_eq!(underrun_action(29, || 99), UnderrunAction::Wait);
+        assert_eq!(underrun_action(30, || 0), UnderrunAction::DiscardAndReprime);
+        assert_eq!(underrun_action(29, || 100), UnderrunAction::Fail);
+        // 破棄する場合は starved の経過を読まない（時計読取りを増やさない）。
+        assert_eq!(
+            underrun_action(30, || unreachable!("破棄時は経過時間を読まない")),
+            UnderrunAction::DiscardAndReprime
+        );
         assert_eq!(correction_span(), 1024);
     }
 

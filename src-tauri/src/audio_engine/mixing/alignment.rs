@@ -197,6 +197,42 @@ mod tests {
     }
 
     #[test]
+    fn delay_change_never_replays_an_impulse_written_before_the_reset() {
+        // 旧遅延(1000ms)の線へ入れたインパルスは、resetを省くと新遅延(50ms=2400frame)の
+        // 読出し位置に必ず現れる配置にする。resetで無効化されていれば観測区間は全て無音。
+        let rate = 48_000u32;
+        for (old_offset, new_offset) in [(-1_000, -50), (1_000, 50)] {
+            let new_delays = Delays::new(rate, new_offset, Some(0)).unwrap();
+            let new_delay = new_delays.voice.max(new_delays.accompaniment);
+            assert_eq!(new_delay, 2_400);
+            let mut mixer =
+                AlignedMixer::new(rate, Delays::new(rate, old_offset, Some(0)).unwrap()).unwrap();
+            let impulse = [0.5, -0.5];
+            let (voice, accompaniment) = if old_offset < 0 {
+                (impulse, [0.0; 2])
+            } else {
+                ([0.0; 2], impulse)
+            };
+            assert_eq!(mixer.sample(voice, accompaniment), [0.0; 2]);
+            let mut elapsed = 1usize;
+            assert!(mixer.change(new_delays));
+            let counts = allocation_counts(|| {
+                while !mixer.settled() {
+                    assert_eq!(mixer.sample([0.0; 2], [0.0; 2]), [0.0; 2]);
+                    elapsed += 1;
+                }
+                // reset が無ければ、インパルスは書込みから new_delay 後に読み出される。
+                assert!(elapsed < new_delay);
+                for _ in elapsed..new_delay + 2_000 {
+                    assert_eq!(mixer.sample([0.0; 2], [0.0; 2]), [0.0; 2]);
+                }
+            });
+            assert_eq!(counts, (0, 0));
+            assert_eq!(mixer.delays(), new_delays);
+        }
+    }
+
+    #[test]
     fn rapid_delay_changes_drop_the_old_impulse_and_reset_block_does_not_allocate() {
         let rate = 48_000u32;
         let fade = (rate as usize / 200).max(1);
@@ -240,7 +276,8 @@ mod tests {
             assert_eq!(mixer.delays(), final_delays);
             assert!(mixer.change(Delays::new(rate, 1_000, Some(0)).unwrap()));
             mixer.reset();
-            // 伴奏は1000ms遅れなので、reset直後の512frameは新しい入力も古いbufferも出ない。
+            // 伴奏は1000ms遅れなので、reset直後の512frameは新しい入力が出ないことだけを見る。
+            // 旧音の無効化は delay_change_never_replays_an_impulse_written_before_the_reset で確認する。
             for _ in 0..512 {
                 assert_eq!(mixer.sample([0.0; 2], [0.25, -0.25]), [0.0; 2]);
             }

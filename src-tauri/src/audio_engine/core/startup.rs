@@ -1228,7 +1228,7 @@ impl Engine {
                                 let began = process_starved_at.get_or_insert(shared.elapsed_ms());
                                 match underrun_action(
                                     shared.packet_age_ms(),
-                                    shared.elapsed_ms().saturating_sub(*began),
+                                    || shared.elapsed_ms().saturating_sub(*began),
                                 ) {
                                     UnderrunAction::DiscardAndReprime => {
                                         let discarded = audio_cons.occupied_len() / 2;
