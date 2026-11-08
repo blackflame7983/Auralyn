@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type RefObject } from 'react';
-import { useReducedMotion, type Transition, type Variants } from 'motion/react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, type RefObject } from 'react';
+import type { Transition, Variants } from 'motion/react';
 
 function readToken(name: string) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -19,12 +19,27 @@ function drawerEase(): [number, number, number, number] | 'easeOut' {
     return values?.length === 4 && values.every(Number.isFinite) ? values as [number, number, number, number] : 'easeOut';
 }
 
+const EXIT_GRACE_MS = 150;
+const REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
+
+// Motion の useReducedMotion は初回の値を保持し、起動中の設定変更に追従しないため自前で購読する。
+function subscribeReducedMotion(onChange: () => void) {
+    if (typeof matchMedia !== 'function') return () => {};
+    const media = matchMedia(REDUCED_QUERY);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+}
+
+function prefersReducedMotion() {
+    return typeof matchMedia === 'function' && matchMedia(REDUCED_QUERY).matches;
+}
+
 // 出口の間だけ内容を残す（AnimatePresence）。閉じる操作自体（保存値・フォーカス・inert）は待たせない。
 // transform は文字列で渡し、Motion に WAAPI で合成させる（メインスレッドの毎フレーム更新にしない）。
 export function usePanelMotion(open: boolean, panelRef: RefObject<HTMLElement | null>) {
     const [instant, setInstant] = useState(true);
     const [exiting, setExiting] = useState(false);
-    const reduced = useReducedMotion() ?? false;
+    const reduced = useSyncExternalStore(subscribeReducedMotion, prefersReducedMotion, () => false);
     useEffect(() => {
         const pointer = () => setInstant(false);
         const keyboard = () => setInstant(true);
@@ -47,9 +62,11 @@ export function usePanelMotion(open: boolean, panelRef: RefObject<HTMLElement | 
     useLayoutEffect(() => {
         if (!exiting) return;
         // 終了途中でキーボードへ切り替えたら、残りの動きを待たずに片付ける。
-        if (instant) { finishNow(); return; }
-        // 非表示のウィンドウなどで終了通知が届かなくても必ず片付ける。
-        const timer = window.setTimeout(finishNow, duration * 1000 + 50);
+        if (instant) finishNow();
+        // Motion は描画フレームでアニメーションを作り、finish イベントで完了を返す。非表示のウィンドウや
+        // 最初のフレーム前では finish() が空振りするため、退場の状態は自前で確定させる。要素は inert で操作対象外。
+        // 開始が少し遅れても終わり際を切らないよう、予定より長めに待つ。
+        const timer = window.setTimeout(() => { finishNow(); setExiting(false); }, duration * 1000 + EXIT_GRACE_MS);
         return () => window.clearTimeout(timer);
     }, [exiting, instant, duration, finishNow]);
     const variants = useMemo<Variants>(() => ({

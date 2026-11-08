@@ -497,10 +497,19 @@ test('動きを減らす設定では右パネルを移動せず、キーボー�
     await toggle.click();
     const panel = page.locator('#vst-panel');
     expect(await panel.evaluate(e => getComputedStyle(e).transform)).toBe('none');
-    expect(await panel.evaluate(e => e.getAnimations().every(a => !(a instanceof CSSTransition) || a.transitionProperty === 'opacity'))).toBe(true);
+    // Motion の WAAPI は CSSTransition ではないため、キーフレームに移動が含まれないことも見る。
+    const moves = (e: Element) => e.getAnimations().some(a => a instanceof CSSTransition ? a.transitionProperty !== 'opacity'
+        : (a.effect as KeyframeEffect | null)?.getKeyframes().some(k => k.transform !== undefined && k.transform !== 'none'));
+    expect(await panel.evaluate(moves)).toBe(false);
     await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
     await expect(panel).toHaveCount(0);
+    // 起動中に設定を戻したら、再読込なしで移動ありの出入りに戻る。
     await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await toggle.click();
+    await expect(panel).toHaveAttribute('data-state', 'open');
+    expect(await panel.evaluate(moves)).toBe(true);
+    await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
+    await expect(panel).toHaveCount(0);
     await toggle.focus();
     await page.keyboard.press('Enter');
     await expect(panel).toHaveAttribute('data-state', 'open');
