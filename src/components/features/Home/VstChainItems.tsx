@@ -16,6 +16,7 @@ export function VstChainItems({ plugins, onToggle, onEdit }: {
             <button type="button" aria-pressed={plugin.enabled} aria-label={!plugin.enabled ? `${plugin.name} ${t('chain.vstOff')}${plugin.muted ? ` ${t('chain.vstMuted')}` : ''}` : undefined} title={t('chain.vstToggle')} onClick={() => onToggle(plugin.id, !plugin.enabled)}
                 className={cn('flex min-w-0 items-center gap-1 px-2 py-1.5 font-semibold', plugin.enabled ? 'text-foreground' : 'text-muted-foreground')}>
                 <span className="truncate">{plugin.name}</span>
+                {(plugin.channelLayout === 'mono' || plugin.channelLayout === 'monoToStereo') && <span className="shrink-0 font-normal" title={plugin.channelLayout === 'mono' ? t('rack.card.monoDescription') : t('rack.card.monoInputDescription')}>{plugin.channelLayout === 'mono' ? t('rack.card.monoBadge') : t('rack.card.monoInputBadge')}</span>}
                 {!plugin.enabled && <span className="shrink-0 font-normal">{t('chain.vstOff')}</span>}
                 {plugin.muted && <MdVolumeOff aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-warning" />}
                 {plugin.muted && <span className="sr-only">{t('chain.vstMuted')}</span>}

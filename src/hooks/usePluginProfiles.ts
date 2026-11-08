@@ -1,6 +1,6 @@
 import { useMessages } from '../i18n/LocaleProvider';
 import { pluginNotice, renderPluginNotice, defaultPluginMessages, type PluginNoticeSink, type PluginNoticeFormatter } from '../lib/pluginNotice';
-import { claimLegacyClassWarning } from '../lib/pluginIdentity';
+import { claimLegacyClassWarning, reportedChannelLayout } from '../lib/pluginIdentity';
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { audioApi } from '../api/audio';
 import type { Plugin } from '../components/features/PluginRack/PluginCard';
@@ -218,12 +218,14 @@ export function usePluginProfiles(
                     const restored = await audioApi.restorePlugin({ path: p.path, state: p.state ?? null,
                         bypassed: !p.enabled, muted: p.muted, gain: p.gain, ...(p.classId ? { classId: p.classId } : {}) });
                     // 応答のクラスと名前を画面に使い、保存名と開いた実体がずれて残らないようにする。
+                    const channelLayout = reportedChannelLayout(restored.channelLayout);
                     instance = {
                         ...p,
                         id: restored.id,
                         name: restored.name || p.name,
                         hasEditor: true,
                         ...(restored.classId ? { classId: restored.classId } : {}),
+                        ...(channelLayout ? { channelLayout } : {}),
                     };
                     if (restored.legacyClassAmbiguous && claimLegacyClassWarning(p.path)) {
                         toast.info(t('pluginNotices.legacyClassAmbiguous'));

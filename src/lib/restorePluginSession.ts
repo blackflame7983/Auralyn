@@ -3,7 +3,7 @@ import { audioApi, type RestorePluginRequest, type RestoredPlugin } from '../api
 import type { Plugin } from '../components/features/PluginRack/PluginCard';
 import type { PresetPlugin } from '../api/presets';
 import { toast } from 'sonner';
-import { claimLegacyClassWarning, pendingStorageValue, readPending, samePlugin, type PluginRef } from './pluginIdentity';
+import { claimLegacyClassWarning, pendingStorageValue, readPending, reportedChannelLayout, samePlugin, type PluginRef } from './pluginIdentity';
 
 export function parsePluginSession(value: unknown): PresetPlugin[] {
     if (!Array.isArray(value) || value.length > 32) throw new PluginClientError('sessionShape');
@@ -67,7 +67,8 @@ export async function restorePluginSession(
             localStorage.setItem('vst_host_pending_plugin', pendingStorageValue(item));
             const restored = await (conditionalRestore ?? audioApi.restorePlugin)({ path: item.path, state: item.state ?? null,
                 bypassed: !item.enabled, muted: item.muted, gain: item.gain, ...(item.classId ? { classId: item.classId } : {}) });
-            instance = { ...item, id: restored.id, hasEditor: true, ...(restored.classId ? { classId: restored.classId } : {}) };
+            const channelLayout = reportedChannelLayout(restored.channelLayout);
+            instance = { ...item, id: restored.id, hasEditor: true, ...(restored.classId ? { classId: restored.classId } : {}), ...(channelLayout ? { channelLayout } : {}) };
             if (restored.legacyClassAmbiguous && claimLegacyClassWarning(item.path) && typeof toast.info === 'function') {
                 toast.info(t('pluginNotices.legacyClassAmbiguous'));
             }

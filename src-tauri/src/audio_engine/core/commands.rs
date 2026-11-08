@@ -640,6 +640,14 @@ impl Engine {
                             class_id: opened.map(|instance| instance.class_id.clone()),
                             legacy_class_ambiguous: opened
                                 .is_some_and(|instance| instance.legacy_class_ambiguous),
+                            channel_layout: opened
+                                .map(|instance| {
+                                    crate::ipc::ChannelLayout::from_bus(
+                                        instance.bus_layout.inputs,
+                                        instance.bus_layout.outputs,
+                                    )
+                                })
+                                .unwrap_or_default(),
                         });
                     }
                     Err(e) => self.send_error(e.to_string()),

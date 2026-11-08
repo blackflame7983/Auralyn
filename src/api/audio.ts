@@ -91,6 +91,8 @@ export interface FrontendBootstrapReply {
 
 export interface RackPlugin {
     id: string; path: string; name: string; enabled: boolean; muted: boolean; gain: number; classId?: string;
+    /** 無い旧応答はステレオ。ステレオは省略されることがある。 */
+    channelLayout?: 'stereo' | 'mono' | 'monoToStereo';
 }
 export type SessionRackRequest = { action: 'snapshot' }
     | { action: 'retain'; generation: string; revision: string; ids: string[]; inputGain: number | null }
@@ -587,5 +589,5 @@ export interface RestorePluginRequest {
     classId?: string;
 }
 // prepared:falseは停止中の復元成功。次回Startで処理準備される。
-export interface RestoredPlugin { id: string; name: string; prepared: boolean; classId?: string; legacyClassAmbiguous?: boolean }
-export interface LoadedPlugin { id: string; name: string; classId?: string; legacyClassAmbiguous?: boolean }
+export interface RestoredPlugin { id: string; name: string; prepared: boolean; classId?: string; legacyClassAmbiguous?: boolean; channelLayout?: 'stereo' | 'mono' | 'monoToStereo' }
+export interface LoadedPlugin { id: string; name: string; classId?: string; legacyClassAmbiguous?: boolean; channelLayout?: 'stereo' | 'mono' | 'monoToStereo' }

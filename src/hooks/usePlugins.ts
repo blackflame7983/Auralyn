@@ -4,7 +4,7 @@ import { useMessages } from '../i18n/LocaleProvider';
 import { pluginNotice, renderPluginNotice, defaultPluginMessages, type PluginNotice } from '../lib/pluginNotice';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { audioApi, VstPlugin, type LoadedPlugin, type PluginCatalog, type PluginScanRequest, type RackPlugin, type ScanFailure, type ScanStats } from '../api/audio';
-import { claimLegacyClassWarning, pendingStorageValue, samePlugin } from '../lib/pluginIdentity';
+import { claimLegacyClassWarning, pendingStorageValue, reportedChannelLayout, samePlugin } from '../lib/pluginIdentity';
 import { Plugin } from '../components/features/PluginRack/PluginCard';
 import { usePluginProfiles } from './usePluginProfiles';
 import { restorePluginSession, parsePluginSession, unrestoredPluginNames, SessionRackConflict, type PluginSessionRestoreResult } from '../lib/restorePluginSession';
@@ -19,13 +19,19 @@ function classField(classId?: string): { classId: string } | Record<string, neve
     return classId ? { classId } : {};
 }
 
-function loadedPlugin(result: string | LoadedPlugin, plugin: VstPlugin): { id: string; name: string; classId?: string; legacyClassAmbiguous?: boolean } {
+function layoutField(layout: string | null | undefined): { channelLayout: 'mono' | 'monoToStereo' } | Record<string, never> {
+    const reported = reportedChannelLayout(layout);
+    return reported ? { channelLayout: reported } : {};
+}
+
+function loadedPlugin(result: string | LoadedPlugin, plugin: VstPlugin): { id: string; name: string; classId?: string; legacyClassAmbiguous?: boolean; channelLayout?: 'mono' | 'monoToStereo' } {
     if (typeof result === 'string') return { id: result, name: plugin.name, classId: plugin.classId };
     return {
         id: result.id,
         name: result.name || plugin.name,
         classId: result.classId ?? plugin.classId,
         legacyClassAmbiguous: result.legacyClassAmbiguous,
+        ...layoutField(result.channelLayout),
     };
 }
 
@@ -633,6 +639,7 @@ export const usePlugins = () => {
                 vendor: vstPlugin.vendor,
                 version: vstPlugin.version ?? '',
                 ...classField(loaded.classId),
+                ...layoutField(loaded.channelLayout),
                 enabled: true,
                 hasEditor: true,
                 muted: false,
@@ -760,6 +767,7 @@ export const usePlugins = () => {
                     ...p,
                     id: newId,
                     ...(restored.classId ? { classId: restored.classId } : {}),
+                    ...layoutField(restored.channelLayout),
                     ...(restored.name ? { name: restored.name } : {}),
                 });
                 setPlugins([...reloaded]);
@@ -953,6 +961,7 @@ export const usePlugins = () => {
                         vendor: vst.vendor,
                         version: vst.version ?? '',
                         ...classField(loaded.classId),
+                        ...layoutField(loaded.channelLayout),
                         enabled: true,
                         hasEditor: true,
                         muted: false,

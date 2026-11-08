@@ -54,6 +54,28 @@ it.each([false, true])('詳細・かんたん表示で操作名と有効状態�
     }
 });
 
+it.each([true, false])('モノラルは文字で示し、混ぜ方と片側・逆相の説明を残す（かんたん=%s）', simpleMode => {
+    render(<PluginCard simpleMode={simpleMode}
+        plugin={{ id: '1', name: 'MonoEQ', path: 'eq', vendor: '', version: '', enabled: true, hasEditor: false, muted: false, gain: 1, channelLayout: 'mono' }}
+        onToggle={vi.fn()} onMute={vi.fn()} onGainChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} />);
+    const badge = screen.getByTitle(message('ja', 'rack.card.monoDescription'));
+    expect(badge).toHaveTextContent('モノラル');
+    expect(badge).toHaveTextContent('片側だけの音は約 -6 dB');
+    expect(screen.queryByText('モノラル入力')).not.toBeInTheDocument();
+});
+
+it('モノラル入力は別の文字で示し、ステレオのカードには出さない', () => {
+    const { rerender } = render(<PluginCard simpleMode
+        plugin={{ id: '1', name: 'Widen', path: 'w', vendor: '', version: '', enabled: true, hasEditor: false, muted: false, gain: 1, channelLayout: 'monoToStereo' }}
+        onToggle={vi.fn()} onMute={vi.fn()} onGainChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} />);
+    expect(screen.getByTitle(message('ja', 'rack.card.monoInputDescription'))).toHaveTextContent('モノラル入力');
+    rerender(<PluginCard simpleMode
+        plugin={{ id: '1', name: 'Widen', path: 'w', vendor: '', version: '', enabled: true, hasEditor: false, muted: false, gain: 1, channelLayout: 'stereo' }}
+        onToggle={vi.fn()} onMute={vi.fn()} onGainChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} />);
+    expect(screen.queryByText('モノラル入力')).not.toBeInTheDocument();
+    expect(screen.queryByText('モノラル')).not.toBeInTheDocument();
+});
+
 it('削除確認中のlocale変更は同じdialogと実名を保持し、明示確定時だけ同IDを削除する', () => {
     const store = createLocaleStore(() => 'ja', () => true); const remove = vi.fn();
     render(<LocaleProvider store={store}><PluginCard simpleMode
