@@ -493,14 +493,38 @@ test('動きを減らす設定では右パネルを移動せず、キーボー�
     });
     await page.goto('/');
     if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
+    // Motion の WAAPI は CSSTransition ではないため、キーフレームに移動が含まれるかも見る。
+    // アニメーションは描画フレームで作られ、終わると片付くので、押す前から一定時間フレームごとに観測する。
+    const watchPanelMoves = () => page.evaluate(() => {
+        (window as unknown as { __panelMoves: Promise<boolean> }).__panelMoves = new Promise<boolean>(resolve => {
+            const start = performance.now();
+            const tick = () => {
+                const moving = document.getElementById('vst-panel')?.getAnimations().some(a => a instanceof CSSTransition ? a.transitionProperty !== 'opacity'
+                    : (a.effect as KeyframeEffect | null)?.getKeyframes().some(k => k.transform !== undefined && k.transform !== 'none'));
+                if (moving) resolve(true);
+                else if (performance.now() - start > 600) resolve(false);
+                else requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+        });
+    });
+    const panelMoved = () => page.evaluate(() => (window as unknown as { __panelMoves: Promise<boolean> }).__panelMoves);
     const toggle = page.locator('#vst-panel-toggle');
+    await watchPanelMoves();
     await toggle.click();
     const panel = page.locator('#vst-panel');
     expect(await panel.evaluate(e => getComputedStyle(e).transform)).toBe('none');
-    expect(await panel.evaluate(e => e.getAnimations().every(a => !(a instanceof CSSTransition) || a.transitionProperty === 'opacity'))).toBe(true);
+    expect(await panelMoved()).toBe(false);
     await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
     await expect(panel).toHaveCount(0);
+    // 起動中に設定を戻したら、再読込なしで移動ありの出入りに戻る。
     await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await watchPanelMoves();
+    await toggle.click();
+    await expect(panel).toHaveAttribute('data-state', 'open');
+    expect(await panelMoved()).toBe(true);
+    await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
+    await expect(panel).toHaveCount(0);
     await toggle.focus();
     await page.keyboard.press('Enter');
     await expect(panel).toHaveAttribute('data-state', 'open');
