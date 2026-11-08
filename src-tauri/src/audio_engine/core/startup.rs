@@ -2074,6 +2074,7 @@ mod tests {
                     bypassed: false,
                     muted: false,
                     gain: 1.0,
+                    class_id: None,
                 },
                 1,
                 unix_ms() + 8_000,
