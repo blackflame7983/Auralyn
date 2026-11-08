@@ -2,7 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { audioApi, type EngineRuntimeStats } from '@/api/audio';
 import { listen } from '@tauri-apps/api/event';
-import { refreshRuntimeStats, refreshRuntimeStatsChecked, useRuntimeStats } from '../useRuntimeStats';
+import { refreshRuntimeStats, refreshRuntimeStatsChecked, useRuntimeStats, useRuntimeStatsUnavailable } from '../useRuntimeStats';
 
 const stats = (count: number) => ({ glitchCount: count } as EngineRuntimeStats);
 const handlers = new Map<string, () => void>();
@@ -83,6 +83,28 @@ it('状態通知の購読に失敗したら古い取得結果を捨て、未確�
     expect(retry.result.current).toEqual(stats(1));
 });
 
+
+it('一度取得した統計が失敗したら不明にし、次の成功で戻す', async () => {
+    const view = renderHook(() => ({ stats: useRuntimeStats(), unavailable: useRuntimeStatsUnavailable() }));
+    await act(async () => {});
+    expect(view.result.current.unavailable).toBe(false);
+    vi.mocked(audioApi.getEngineRuntimeStats).mockRejectedValueOnce(new Error('offline'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(view.result.current.stats).toBeNull();
+    expect(view.result.current.unavailable).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(view.result.current.stats).toEqual(stats(1));
+    expect(view.result.current.unavailable).toBe(false);
+});
+
+it('成功のあと2.5秒更新が無いと統計を失効させる', async () => {
+    const view = renderHook(() => useRuntimeStatsUnavailable());
+    await act(async () => {});
+    expect(view.result.current).toBe(false);
+    vi.mocked(audioApi.getEngineRuntimeStats).mockReturnValue(new Promise(() => {}));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+    expect(view.result.current).toBe(true);
+});
 
 it('取得失敗は明示更新の成功とせず、後続の成功で復旧する', async () => {
     const view = renderHook(() => useRuntimeStats());

@@ -472,6 +472,14 @@ export interface PluginHealthEntry {
     /** 起動ごとに振り直す世代。古い統計では欠ける。 */
     token?: number;
 }
+export interface ProcessingHealthSnapshot {
+    state: 'idle' | 'grace' | 'normal' | 'stalled';
+    stallKind?: 'outputCallback' | 'processing' | null;
+    stalledMs: number;
+    recentLate: number;
+    recentUnderflow: number;
+    windowSecs: number;
+}
 
 export interface EngineRuntimeStats {
     processInput?: { capturedFrames: number; nonzeroFrames: number; failed: boolean; waitingForAudio: boolean; inputRateHz: number; correctionLimitPpm: number };
@@ -518,6 +526,7 @@ export interface EngineRuntimeStats {
     builtInEffectsAmount: number;
     builtInSinging?: import('./builtinEffects').SingingParams | null;
     builtInReverb?: import('./builtinEffects').ReverbParams | null;
+    processingHealth?: ProcessingHealthSnapshot | null;
 }
 
 

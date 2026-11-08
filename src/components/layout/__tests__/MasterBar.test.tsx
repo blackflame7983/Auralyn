@@ -367,6 +367,64 @@ it('音切れ増加の表示は10秒保持し、詳細を開けて、再開始�
     expect(screen.queryByRole('button', { name: '直近で音切れを検出' })).toBeNull();
 });
 
+it('処理停止を言葉と印で示し、進みが戻ると消し、詳細に直近の回数を出す', async () => {
+    const health = (state: 'stalled' | 'normal', late: number, underflow: number) => ({
+        glitchCount: 4,
+        enabledPluginCount: 0,
+        activePluginCount: 0,
+        processingHealth: { state, stallKind: state === 'stalled' ? 'processing' as const : null, stalledMs: state === 'stalled' ? 800 : 0, recentLate: late, recentUnderflow: underflow, windowSecs: 60 },
+    });
+    let current = health('stalled', 12, 4);
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => current as EngineRuntimeStats);
+    render(<MasterBar isRunning />);
+    await act(async () => { finishListening(); await vi.advanceTimersByTimeAsync(0); });
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('音声処理が止まっています（無音ではなく処理が進んでいません）');
+    expect(alert.querySelector('svg')).toBeTruthy();
+    expect(alert).toHaveTextContent('自動では再開しません');
+    fireEvent.click(screen.getByRole('button', { name: '音声処理の詳細' }));
+    fireEvent.click(screen.getByText('診断情報'));
+    expect(screen.getByText('直近60秒：遅着 12回 / 音切れの可能性 4回')).toBeVisible();
+    expect(screen.getByText('直近1分の回数が多いです。')).toBeVisible();
+    expect(screen.getByText('累積のグリッチ回数')).toBeVisible();
+    expect(screen.getByText('4')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    current = health('normal', 1, 0);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.queryByText('音声処理が止まっています（無音ではなく処理が進んでいません）')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '音声処理の詳細' }));
+    fireEvent.click(screen.getByText('診断情報'));
+    expect(screen.getByText('直近60秒：遅着 1回 / 音切れの可能性 0回')).toBeVisible();
+    expect(screen.queryByText('直近1分の回数が多いです。')).toBeNull();
+});
+
+it('英語でも処理停止と直近回数を言葉で示す', async () => {
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({
+        glitchCount: 2, enabledPluginCount: 0, activePluginCount: 0,
+        processingHealth: { state: 'stalled', stallKind: 'outputCallback', stalledMs: 500, recentLate: 11, recentUnderflow: 3, windowSecs: 60 },
+    } as EngineRuntimeStats);
+    render(<LocaleProvider store={createLocaleStore(() => 'en', () => true)}><MasterBar isRunning /></LocaleProvider>);
+    await act(async () => { finishListening(); await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByRole('alert')).toHaveTextContent('Audio processing has stopped');
+    fireEvent.click(screen.getByRole('button', { name: message('en', 'master.details') }));
+    fireEvent.click(screen.getByText(message('en', 'structure.diagnostics')));
+    expect(screen.getByText('Last 60 s: late arrivals 11 / possible underruns 3')).toBeVisible();
+});
+
+it('統計を一度受け取った後に失敗したら、状態を取得できないと出す', async () => {
+    vi.mocked(audioApi.getEngineRuntimeStats)
+        .mockResolvedValueOnce({ glitchCount: 0, enabledPluginCount: 0, activePluginCount: 0 } as EngineRuntimeStats)
+        .mockRejectedValue(new Error('offline'));
+    render(<MasterBar isRunning />);
+    await act(async () => { finishListening(); await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.queryByText('音声処理の状態を取得できません。')).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByText('音声処理の状態を取得できません。')).toBeVisible();
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({ glitchCount: 0, enabledPluginCount: 0, activePluginCount: 0 } as EngineRuntimeStats);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.queryByText('音声処理の状態を取得できません。')).toBeNull();
+});
+
 it('音切れ表示が詳細を開いている間に消えても常設の入口へフォーカスを戻す', async () => {
     let count = 0;
     vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => ({ glitchCount: count, enabledPluginCount: 0, activePluginCount: 0 } as EngineRuntimeStats));

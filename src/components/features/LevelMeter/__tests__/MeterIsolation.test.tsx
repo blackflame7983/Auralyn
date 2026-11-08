@@ -9,7 +9,7 @@ import type { PreparationModel } from '@/hooks/usePreparation';
 const controls = vi.hoisted(() => ({ input: vi.fn(), output: vi.fn() }));
 vi.mock('../../Home/InputGainControl', () => ({ InputGainControl: () => { controls.input(); return <button>input control</button>; } }));
 vi.mock('@/components/ui/slider', () => ({ Slider: () => { controls.output(); return <button>output control</button>; } }));
-vi.mock('@/hooks/useRuntimeStats', () => ({ useRuntimeStats: () => null, invalidateRuntimeStats: vi.fn() }));
+vi.mock('@/hooks/useRuntimeStats', () => ({ useRuntimeStats: () => null, useRuntimeStatsUnavailable: () => false, invalidateRuntimeStats: vi.fn() }));
 vi.mock('@/api/audio', () => ({ audioApi: { getAudioState: vi.fn().mockResolvedValue({ is_running: false }) } }));
 const handlers = new Map<string, Set<(event: { payload: unknown }) => void>>();
 const emit = (input: number, output: number) => act(() => handlers.get('audio-level')?.forEach(fn => fn({ payload: { input: [input, input], output: [output, output] } })));
