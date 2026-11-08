@@ -62,6 +62,8 @@ pub struct ProfileBuiltinFx {
     pub singing: Option<crate::audio_engine::singing::SingingParams>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reverb: Option<crate::audio_engine::reverb::ReverbParams>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deesser: Option<crate::audio_engine::deesser::DeEsserParams>,
 }
 
 fn default_schema_version() -> u32 {
@@ -433,12 +435,14 @@ mod tests {
             serde_json::from_str(r#"{"enabled":true,"preset":"warm","amount":0.7}"#).unwrap();
         assert!(old.singing.is_none());
         assert!(old.reverb.is_none());
+        assert!(old.deesser.is_none());
         assert!(!old.reverb.unwrap_or_default().enabled);
         let singing = ProfileBuiltinFx {
             enabled: true,
             preset: "singing".into(),
             amount: 0.7,
             singing: Some(crate::audio_engine::singing::SingingParams::default()),
+            deesser: None,
             reverb: Some(crate::audio_engine::reverb::ReverbParams {
                 enabled: true,
                 ..Default::default()
@@ -568,6 +572,7 @@ mod tests {
                 amount: 0.7,
                 singing: None,
                 reverb: None,
+                deesser: None,
             }),
         };
         let json = serde_json::to_string(&preset).unwrap();

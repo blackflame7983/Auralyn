@@ -122,6 +122,7 @@ fn capture_profile_parts(
         amount: stats.built_in_effects_amount,
         singing: stats.built_in_singing,
         reverb: stats.built_in_reverb,
+        deesser: stats.built_in_deesser,
     };
 
     Ok(Preset::build_from_parts(
@@ -410,12 +411,13 @@ pub(crate) fn apply_profile_with_start_intent_and_ids(
                         .map_err(|e| e.to_string())?;
                     }
                     if profile.builtin_fx.is_none() {
-                        host.set_built_in_effects_with_reverb(
+                        host.set_built_in_effects_from_profile(
                             stats.built_in_effects_enabled,
                             Some(stats.built_in_effects_preset.clone()),
                             stats.built_in_effects_amount,
                             stats.built_in_singing,
                             Some(stats.built_in_reverb.unwrap_or_default()),
+                            stats.built_in_deesser,
                         )
                         .map_err(|e| e.to_string())?;
                     }
@@ -456,12 +458,13 @@ pub(crate) fn apply_profile_with_start_intent_and_ids(
 
     // --- 内蔵 FX ---
     if let Some(ref fx) = profile.builtin_fx {
-        host.set_built_in_effects_with_reverb(
+        host.set_built_in_effects_from_profile(
             fx.enabled,
             Some(fx.preset.clone()),
             fx.amount,
             fx.singing,
             Some(fx.reverb.unwrap_or_default()),
+            fx.deesser,
         )
         .map_err(|e| e.to_string())?;
         summary.applied_builtin_fx = Some(fx.clone());

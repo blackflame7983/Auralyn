@@ -167,6 +167,7 @@ impl Engine {
                 amount: self.builtin.config.amount,
                 singing: self.builtin.config.singing,
                 reverb: self.builtin.config.reverb,
+                deesser: self.builtin.config.deesser,
             },
         })
     }

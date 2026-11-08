@@ -152,6 +152,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                     {(!live || !builtinOn || (stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled)) && <StatusDot tone={live && !builtinOn ? 'off' : builtinTone} className="text-ui-support text-muted-foreground">{stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled ? t('flow.reverbOnly') : live && !builtinOn ? t('flow.disabled') : setting(stage?.builtinVoiceEnabled)}</StatusDot>}
                     {builtinBreakdown}
                     {live && builtinOn && <BuiltinQuick q={q} />}
+                    {stats?.builtInDeesser && <span className="basis-full text-ui-support text-muted-foreground">{t('flow.deesserLine', { amount: Math.round(stats.builtInDeesser.amount * 100) })}</span>}
                 </>,
                 action: live && <BuiltinSwitch q={q} /> }),
         ]),

@@ -578,6 +578,7 @@ export interface EngineRuntimeStats {
     builtInSinging?: import('./builtinEffects').SingingParams | null;
     builtInReverb?: import('./builtinEffects').ReverbParams | null;
     processingHealth?: ProcessingHealthSnapshot | null;
+    builtInDeesser?: import('./builtinEffects').DeEsserParams | null;
 }
 
 

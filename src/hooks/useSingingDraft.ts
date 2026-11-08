@@ -3,7 +3,7 @@ import { notice, renderNotice, type SettingsNotice } from '@/components/features
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { builtinApi, defaultSinging, defaultReverb, type BuiltinConfig, type BuiltinSnapshot, type SingingParams, type ReverbParams } from '@/api/builtinEffects';
+import { builtinApi, defaultSinging, defaultReverb, type BuiltinConfig, type BuiltinSnapshot, type DeEsserParams, type SingingParams, type ReverbParams } from '@/api/builtinEffects';
 import type { VoiceProposal } from '@/api/voiceCheckPreview';
 
 // 親で下書きだけを保持する。画面が取得を依頼するまでEngineへ要求しない。
@@ -123,6 +123,7 @@ export function useSingingDraft() {
         apply: () => transact('apply'), undo: () => transact('undo'), redo: () => transact('redo'),
         applyProposal: (proposal: VoiceProposal) => transact('proposal', undefined, proposal),
         setAppliedActive: (active: boolean) => state.current.snapshot ? transact('apply', { ...state.current.snapshot.config, active }) : Promise.resolve(false),
+        setDeesser: (deesser: DeEsserParams | null) => state.current.snapshot ? transact('apply', { ...state.current.snapshot.config, deesser }) : Promise.resolve(false),
     };
 }
 export type SingingDraft = ReturnType<typeof useSingingDraft>;

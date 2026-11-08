@@ -150,6 +150,8 @@ pub struct Metadata {
     pub singing: Option<crate::audio_engine::singing::SingingParams>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reverb: Option<crate::audio_engine::reverb::ReverbParams>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deesser: Option<crate::audio_engine::deesser::DeEsserParams>,
     pub global_bypass: bool,
     pub plugins: Vec<PluginCondition>,
     pub changed_during_recording: bool,
@@ -1357,6 +1359,7 @@ pub(in crate::audio_engine) mod tests {
                 built_in_amount: 0.5,
                 singing: None,
                 reverb: None,
+                deesser: None,
                 global_bypass: false,
                 plugins: Vec::new(),
                 changed_during_recording: true,

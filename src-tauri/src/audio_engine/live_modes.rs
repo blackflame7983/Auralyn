@@ -405,6 +405,7 @@ pub struct Voice {
     amount: f32,
     legacy: super::core::dsp::RtBuiltInVoiceChain,
     singing: singing::SingingChain,
+    deesser: super::deesser::DeEsser,
 }
 impl Voice {
     pub(crate) fn prepare(config: &Config, rate: u32) -> Result<Self, String> {
@@ -417,6 +418,11 @@ impl Voice {
                 singing::Coefficients::prepare(config.singing.unwrap_or_default(), rate)?,
                 config.active && config.preset == Preset::Singing,
             ),
+            // コンプの後、残響の前。残響は別プロセッサなので Voice の末尾が境界になる。
+            deesser: super::deesser::DeEsser::new(super::deesser::Coefficients::prepare(
+                config.deesser,
+                rate,
+            )?),
         })
     }
     fn update(
@@ -425,14 +431,16 @@ impl Voice {
         preset: Preset,
         amount: f32,
         coefficients: singing::Coefficients,
+        deesser: super::deesser::Coefficients,
     ) {
         self.active = active;
         self.preset = preset;
         self.amount = amount;
         self.singing
             .update(coefficients, active && preset == Preset::Singing);
+        self.deesser.update(deesser);
     }
-    fn process(&mut self, input: [f32; 2]) -> [f32; 2] {
+    pub(crate) fn process(&mut self, input: [f32; 2]) -> [f32; 2] {
         let base = if self.active && self.preset != Preset::Singing {
             let (l, r) = self
                 .legacy
@@ -441,11 +449,12 @@ impl Voice {
         } else {
             input
         };
-        if self.singing.active() {
+        let voiced = if self.singing.active() {
             self.singing.process(input, base)
         } else {
             base
-        }
+        };
+        self.deesser.process(voiced)
     }
 }
 struct Transition {
@@ -474,10 +483,12 @@ impl RtVoice {
         preset: Preset,
         amount: f32,
         coefficients: singing::Coefficients,
+        deesser: super::deesser::Coefficients,
     ) {
         self.transition = None;
         self.done = None;
-        self.current.update(active, preset, amount, coefficients);
+        self.current
+            .update(active, preset, amount, coefficients, deesser);
     }
     pub(crate) fn start(
         &mut self,

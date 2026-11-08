@@ -124,6 +124,8 @@ impl NoiseControlMode {
 
 pub use super::builtin::Preset as BuiltInEffectsPreset;
 
+// 最大 variant はモード遷移の Voice。callback では既存の所有を使い、遷移のたびに Box を確保しない。
+#[allow(clippy::large_enum_variant)]
 pub enum AudioThreadMessage {
     CohortWindow {
         revision: u64,
@@ -193,6 +195,7 @@ pub enum AudioThreadMessage {
         amount: f32,
         singing: super::singing::Coefficients,
         reverb: super::reverb::Coefficients,
+        deesser: super::deesser::Coefficients,
         revision: u64,
     },
     SetLoudnessMeasurement(Option<u64>),
@@ -1764,6 +1767,8 @@ impl Engine {
         }
     }
 
+    // 旧APIの引数を保ったまま、歯擦音の置換有無だけを足している。
+    #[allow(clippy::too_many_arguments)]
     fn legacy_builtin(
         &mut self,
         active: bool,
@@ -1771,14 +1776,31 @@ impl Engine {
         amount: f32,
         singing: Option<super::singing::SingingParams>,
         reverb: Option<super::reverb::ReverbParams>,
+        deesser: Option<super::deesser::DeEsserParams>,
+        replace_deesser: bool,
     ) -> std::result::Result<(), String> {
+        // 旧 API は deesser を知らない。明示したときだけ置き、それ以外は現在値を残す。
+        let deesser = if replace_deesser {
+            deesser
+        } else {
+            self.builtin.config.deesser
+        };
         self.builtin.legacy(super::builtin::Config {
             active,
             preset,
             amount: amount.clamp(0.0, 1.0),
             singing,
             reverb: reverb.or(self.builtin.config.reverb),
+            deesser,
         })
+    }
+
+    fn deesser_coefficients(&self) -> Result<super::deesser::Coefficients> {
+        super::deesser::Coefficients::prepare(
+            self.builtin.config.deesser,
+            self.current_sample_rate.round().clamp(8_000.0, 384_000.0) as u32,
+        )
+        .map_err(|error| anyhow!(error))
     }
 
     fn builtin_coefficients(&self) -> Result<super::singing::Coefficients> {
@@ -1817,6 +1839,9 @@ impl Engine {
                     self.current_sample_rate.round().clamp(8_000.0, 384_000.0) as u32,
                 )
                 .expect("検証済み残響とレート"),
+                deesser: self
+                    .deesser_coefficients()
+                    .expect("検証済み歯擦音抑制とレート"),
                 revision: self.builtin.revision,
             });
         }
@@ -2271,7 +2296,15 @@ mod singing_startup_tests {
         };
         engine.builtin.config.reverb = Some(params);
         engine
-            .legacy_builtin(false, BuiltInEffectsPreset::Broadcast, 0.7, None, None)
+            .legacy_builtin(
+                false,
+                BuiltInEffectsPreset::Broadcast,
+                0.7,
+                None,
+                None,
+                None,
+                false,
+            )
             .unwrap();
         assert!(!engine.builtin.config.active);
         assert_eq!(engine.builtin.config.reverb, Some(params));
@@ -2285,6 +2318,8 @@ mod singing_startup_tests {
                 old_profile.amount,
                 old_profile.singing,
                 Some(old_profile.reverb.unwrap_or_default()),
+                old_profile.deesser,
+                true,
             )
             .unwrap();
         assert!(!engine.builtin.config.reverb.unwrap().enabled);

@@ -180,6 +180,8 @@ pub struct EngineRuntimeStats {
     #[serde(default)]
     pub processing_health:
         Option<Box<crate::audio_engine::processing_watch::ProcessingHealthSnapshot>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub built_in_deesser: Option<crate::audio_engine::deesser::DeEsserParams>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -1874,12 +1876,41 @@ impl AudioHost {
         singing: Option<crate::audio_engine::singing::SingingParams>,
         reverb: Option<crate::audio_engine::reverb::ReverbParams>,
     ) -> Result<()> {
+        self.set_built_in_effects_detailed(active, preset, amount, singing, reverb, None, false)
+    }
+
+    pub fn set_built_in_effects_from_profile(
+        &mut self,
+        active: bool,
+        preset: Option<String>,
+        amount: f32,
+        singing: Option<crate::audio_engine::singing::SingingParams>,
+        reverb: Option<crate::audio_engine::reverb::ReverbParams>,
+        deesser: Option<crate::audio_engine::deesser::DeEsserParams>,
+    ) -> Result<()> {
+        self.set_built_in_effects_detailed(active, preset, amount, singing, reverb, deesser, true)
+    }
+
+    // 旧APIの引数を保ったまま、歯擦音の置換有無だけを足している。
+    #[allow(clippy::too_many_arguments)]
+    fn set_built_in_effects_detailed(
+        &mut self,
+        active: bool,
+        preset: Option<String>,
+        amount: f32,
+        singing: Option<crate::audio_engine::singing::SingingParams>,
+        reverb: Option<crate::audio_engine::reverb::ReverbParams>,
+        deesser: Option<crate::audio_engine::deesser::DeEsserParams>,
+        replace_deesser: bool,
+    ) -> Result<()> {
         match self.execute_command(IpcCommand::SetBuiltInEffects {
             active,
             preset,
             amount,
             singing,
             reverb,
+            deesser,
+            replace_deesser,
         })? {
             IpcResponse::Success => Ok(()),
             IpcResponse::Error(e) => Err(anyhow!(e)),
@@ -2502,6 +2533,7 @@ impl AudioHost {
                 built_in_singing,
                 built_in_reverb,
                 processing_health,
+                built_in_deesser,
             } => Ok(EngineRuntimeStats {
                 process_input,
                 preparation,
@@ -2542,6 +2574,7 @@ impl AudioHost {
                 built_in_singing,
                 built_in_reverb,
                 processing_health,
+                built_in_deesser,
             }),
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("Unexpected response type")),
