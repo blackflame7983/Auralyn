@@ -543,6 +543,8 @@ impl Bridge {
         )
     }
 
+    /// 制御スレッド（ポインタを外す唯一のスレッド）か、busy を保持して稼働中 phase を
+    /// 確かめたコールバックからだけ呼ぶ。
     pub fn request_end(&self, reason: u8) {
         let ptr = self.slot.load(Ordering::SeqCst);
         if ptr.is_null() || reason == END_NONE {
@@ -560,9 +562,12 @@ impl Bridge {
     }
 
     pub fn abandon(&self, reason: u8) {
+        // busy を上げてから稼働中 phase を確かめ、その間だけポインタを使う。
+        // 先に request_end を呼ぶと、コールバックから来た場合に、制御側が SEALED と
+        // busy 0 を確認して解放した直後のポインタを読む競合が残る。
         self.output_busy.fetch_add(1, Ordering::SeqCst);
-        self.request_end(reason);
         if self.blocks_downstream() {
+            self.request_end(reason);
             self.phase.store(SEALED, Ordering::SeqCst);
         }
         self.output_busy.fetch_sub(1, Ordering::SeqCst);
