@@ -490,6 +490,7 @@ fn current_dto(captured: &Captured) -> SummaryDto {
                 enabled: p.plugin.enabled,
                 muted: p.plugin.muted,
                 gain: p.plugin.gain,
+                class_id: p.plugin.class_id.clone(),
             })
             .collect(),
         ..Default::default()

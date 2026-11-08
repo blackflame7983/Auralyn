@@ -52,6 +52,46 @@ function readStoredPaths(key: string): string[] {
   }
 }
 
+function visibleIdentity(plugin: VstPlugin): string {
+  return [plugin.name, fileLabel(plugin.path), plugin.vendor, plugin.version ?? ''].join('\0');
+}
+
+function shortClassId(classId: string | undefined): string | null {
+  if (!classId) return null;
+  const hex = classId.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+  return hex ? hex.slice(0, 8) : null;
+}
+
+/** path だけの旧キーは、そのパスの候補が1つなら新しいキーへ移す。複数や未スキャンは path のまま残す。 */
+function migrateStoredKeys(stored: string[], plugins: VstPlugin[]): { keys: string[]; changed: boolean } {
+  if (plugins.length === 0) return { keys: stored, changed: false };
+  const keys: string[] = [];
+  let changed = false;
+  for (const key of stored) {
+    if (key.includes('::')) {
+      if (!keys.includes(key)) keys.push(key);
+      continue;
+    }
+    const matches = plugins.filter(plugin => plugin.path === key);
+    if (matches.length === 1) {
+      const migrated = pluginKey(matches[0]);
+      if (migrated !== key) changed = true;
+      if (!keys.includes(migrated)) keys.push(migrated);
+    } else if (!keys.includes(key)) {
+      keys.push(key);
+    }
+  }
+  if (keys.length !== stored.length) changed = true;
+  return { keys, changed };
+}
+
+/** 新しいキーは完全一致。path だけの旧キーは、候補が複数のときだけそのパスのクラスをすべて出す。 */
+function storedKeyMatches(plugin: VstPlugin, stored: string, plugins: VstPlugin[]): boolean {
+  if (stored === pluginKey(plugin)) return true;
+  if (stored.includes('::') || plugin.path !== stored) return false;
+  return plugins.filter(candidate => candidate.path === plugin.path).length !== 1;
+}
+
 // Map VST3 category strings to user-friendly Japanese labels
 const CATEGORY_LABELS: Record<string, MessageKey> = {
   'Fx': 'pluginBrowser.category.fx',
@@ -133,11 +173,15 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recentPaths, setRecentPaths] = useState<string[]>([]);
 
-  // Load from localStorage
+  // 候補が見えた時点で、path だけの旧キーを1件なら新しいキーへ移す。
   useEffect(() => {
-    setFavorites(readStoredPaths(STORAGE_KEYS.favorites));
-    setRecentPaths(readStoredPaths(STORAGE_KEYS.recent));
-  }, []);
+    const nextFavorites = migrateStoredKeys(readStoredPaths(STORAGE_KEYS.favorites), plugins);
+    const nextRecent = migrateStoredKeys(readStoredPaths(STORAGE_KEYS.recent), plugins);
+    setFavorites(nextFavorites.keys);
+    setRecentPaths(nextRecent.keys);
+    if (nextFavorites.changed) localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(nextFavorites.keys));
+    if (nextRecent.changed) localStorage.setItem(STORAGE_KEYS.recent, JSON.stringify(nextRecent.keys));
+  }, [plugins]);
 
   // Build category list from plugins
   const categories = useMemo(() => {
@@ -163,18 +207,17 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
     localStorage.setItem(STORAGE_KEYS.recent, JSON.stringify(newRecent));
   };
 
-  const toggleFavorite = (key: string, e: React.MouseEvent) => {
+  const toggleFavorite = (plugin: VstPlugin, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (favorites.includes(key)) {
-      saveFavorites(favorites.filter(f => f !== key));
-    } else {
-      saveFavorites([...favorites, key]);
-    }
+    const key = pluginKey(plugin);
+    // 複数候補の path キーは、星を押したクラスへだけ付け替える。
+    const withoutThis = favorites.filter(stored => stored !== plugin.path && stored !== key);
+    saveFavorites(favorites.includes(key) ? withoutThis : [...withoutThis, key]);
   };
 
   const handlePluginSelect = (plugin: VstPlugin) => {
     const key = pluginKey(plugin);
-    const newRecent = [key, ...recentPaths.filter(p => p !== key)].slice(0, MAX_RECENT);
+    const newRecent = [key, ...recentPaths.filter(stored => stored !== key && stored !== plugin.path)].slice(0, MAX_RECENT);
     saveRecent(newRecent);
     onPluginSelect(plugin);
   };
@@ -212,11 +255,19 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
     }
 
     if (activeTab === 'favorites') {
-      filtered = filtered.filter(p => favorites.includes(pluginKey(p)));
+      filtered = filtered.filter(plugin => favorites.some(stored => storedKeyMatches(plugin, stored, plugins)));
     } else if (activeTab === 'recent') {
-      const recentPlugins = recentPaths
-        .map(path => plugins.find(p => pluginKey(p) === path))
-        .filter((p): p is VstPlugin => p !== undefined);
+      const seen = new Set<string>();
+      const recentPlugins: VstPlugin[] = [];
+      for (const stored of recentPaths) {
+        for (const plugin of plugins) {
+          if (!storedKeyMatches(plugin, stored, plugins)) continue;
+          const key = pluginKey(plugin);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          recentPlugins.push(plugin);
+        }
+      }
       filtered = recentPlugins.filter(matchesSearch);
     }
 
@@ -224,6 +275,14 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   };
 
   const filteredPlugins = getFilteredPlugins();
+  const crowdedIdentities = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const plugin of plugins) {
+      const identity = visibleIdentity(plugin);
+      counts.set(identity, (counts.get(identity) ?? 0) + 1);
+    }
+    return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([identity]) => identity));
+  }, [plugins]);
 
   if (!isOpen) return null;
 
@@ -359,6 +418,8 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               {filteredPlugins.map((plugin, idx) => {
                 const key = pluginKey(plugin);
                 const isFavorite = favorites.includes(key);
+                const shortId = crowdedIdentities.has(visibleIdentity(plugin)) ? shortClassId(plugin.classId) : null;
+                const accessibleName = shortId ? `${displayPluginName(plugin)} ${shortId}` : displayPluginName(plugin);
                 return (
                   <div
                     key={`${key}-${idx}`}
@@ -367,13 +428,13 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                     className="group flex items-center justify-between p-3 rounded-card border border-transparent hover:bg-muted/50 hover:border-primary/30 transition-colors text-left cursor-pointer"
                     role="button"
                     tabIndex={0}
-                    aria-label={t('pluginBrowser.addNamed', { arg0: displayPluginName(plugin) })}
+                    aria-label={t('pluginBrowser.addNamed', { arg0: accessibleName })}
                   >
                     <div className="flex items-center gap-3">
                       {/* Favorite Star */}
                       <button
-                        onClick={(e) => toggleFavorite(key, e)}
-                        aria-label={isFavorite ? t('pluginBrowser.removeFavoriteNamed', { arg0: displayPluginName(plugin) }) : t('pluginBrowser.addFavoriteNamed', { arg0: displayPluginName(plugin) })}
+                        onClick={(e) => toggleFavorite(plugin, e)}
+                        aria-label={isFavorite ? t('pluginBrowser.removeFavoriteNamed', { arg0: accessibleName }) : t('pluginBrowser.addFavoriteNamed', { arg0: accessibleName })}
                         aria-pressed={isFavorite}
                         className={`p-1 rounded-control transition-colors ${isFavorite
                           ? 'text-warning'
@@ -386,6 +447,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                       <div>
                         <h3 className="font-bold text-foreground group-hover:text-primary transition-colors">
                           {displayPluginName(plugin)}
+                          {shortId && <span className="ml-2 font-mono text-ui-support text-muted-foreground">{shortId}</span>}
                           <span className="ml-2 font-normal text-ui-support text-muted-foreground">{fileLabel(plugin.path)}</span>
                         </h3>
                         {plugin.nameSource === 'file' && (

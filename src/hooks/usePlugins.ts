@@ -707,17 +707,25 @@ export const usePlugins = () => {
         if (rejectDuringRestore()) return;
         const generation = restoreGeneration.current;
         const isCurrent = () => generation === restoreGeneration.current;
-        const target = plugins.find(p => p.id === id);
+        const rack = plugins;
+        const targetIndex = rack.findIndex(p => p.id === id);
+        const target = targetIndex >= 0 ? rack[targetIndex] : undefined;
 
         const reloadAllFromUi = async () => {
             const reloaded: Plugin[] = [];
-            for (const p of plugins) {
+            for (const p of rack) {
                 if (!isCurrent()) throw new Error('復元を中断しました');
                 const restored = await audioApi.restorePlugin({ path: p.path, state: null,
                     bypassed: !p.enabled, muted: p.muted, gain: p.gain, ...classField(p.classId) });
                 const newId = restored.id;
                 if (!isCurrent()) { await audioApi.removePlugin(newId); throw new Error('復元を中断しました'); }
-                reloaded.push({ ...p, id: newId });
+                // 再読込は元の並びのまま新しい id に付け替える。path だけで探すと同じファイルの別クラスを開く。
+                reloaded.push({
+                    ...p,
+                    id: newId,
+                    ...(restored.classId ? { classId: restored.classId } : {}),
+                    ...(restored.name ? { name: restored.name } : {}),
+                });
                 setPlugins([...reloaded]);
             }
             setPlugins(reloaded);
@@ -742,7 +750,7 @@ export const usePlugins = () => {
                 try {
                     setPlugins([]);
                     const reloaded = await reloadAllFromUi();
-                    const reopened = reloaded.find(p => p.path === target.path);
+                    const reopened = reloaded[targetIndex];
                     if (!reopened) {
                         throw new Error("復元後に対象プラグインが見つかりませんでした");
                     }
@@ -764,7 +772,12 @@ export const usePlugins = () => {
                     const newId = restored.id;
                     if (!isCurrent()) { await audioApi.removePlugin(newId); return; }
 
-                    setPlugins(prev => prev.map(p => p.id === id ? { ...p, id: newId } : p));
+                    setPlugins(prev => prev.map(p => p.id === id ? {
+                        ...p,
+                        id: newId,
+                        ...(restored.classId ? { classId: restored.classId } : {}),
+                        ...(restored.name ? { name: restored.name } : {}),
+                    } : p));
                     await audioApi.openEditor(newId);
                     toast.success(renderPluginNotice(t, pluginNotice('pluginNotices.editorOpened')), { id: toastId });
                     return;

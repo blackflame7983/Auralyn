@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { audioApi } from '../../api/audio';
 import { liveModesApi } from '../../api/liveModes';
 import { presetApi, type ApplyProfileSummary, type PresetPlugin } from '../../api/presets';
@@ -8,7 +9,7 @@ import type { Plugin } from '../../components/features/PluginRack/PluginCard';
 import { usePluginProfiles } from '../usePluginProfiles';
 import { bundleApi, type BundleResult } from '../../api/bundles';
 
-vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), info: vi.fn() } }));
 const saved: PresetPlugin = { path: 'new', name: 'New', vendor: '', version: '', enabled: false, muted: true, gain: 0.5, state: 'saved' };
 const plugin = (id: string): Plugin => ({ ...saved, id, path: id, enabled: true, muted: false, gain: 1, hasEditor: true });
 function useFixture(initial: Plugin[] = []) {
@@ -211,4 +212,46 @@ it('復元応答待ちの世代変更では返却IDを回収し、古い構成�
     expect(audioApi.removePlugin).toHaveBeenCalledWith('late-id');
     expect(progress).not.toHaveBeenCalledWith([expect.objectContaining({ id: 'late-id' })]);
     expect(loading).not.toHaveBeenLastCalledWith(false);
+});
+
+const keptClass = 'ABCDEF0123456789ABCDEF0123456789';
+const openedClass = 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+
+it('保存と切替前バックアップは classId を落とさない', async () => {
+    const save = vi.spyOn(presetApi, 'save').mockResolvedValue(undefined);
+    const apply = vi.spyOn(presetApi, 'applyProfile').mockResolvedValue({
+        appliedCategories: [], skippedCategories: [], missingDevices: [], missingPlugins: [], needsEngineRestart: false,
+    });
+    const { result } = renderHook(() => useFixture([{ ...plugin('old'), classId: keptClass }]));
+    await act(async () => { expect(await result.current.savePreset('kept')).toBe(true); });
+    expect(save).toHaveBeenCalledWith('kept', [expect.objectContaining({ path: 'old', classId: keptClass, state: 'captured' })]);
+    await act(async () => { await result.current.applyProfile('profile'); });
+    expect(apply).toHaveBeenCalledWith('profile', ['old'], [expect.objectContaining({ classId: keptClass })], expect.anything());
+});
+
+it('プリセット読込は classId を渡し、応答のクラスと名前を画面に残し、旧データの曖昧さは一度だけ知らせる', async () => {
+    vi.mocked(presetApi.load).mockResolvedValue({ name: 'preset', plugins: [{ ...saved, name: 'Saved', classId: keptClass }] });
+    vi.mocked(audioApi.restorePlugin).mockResolvedValue({ id: 'opened-id', name: 'Opened', prepared: true, classId: openedClass, legacyClassAmbiguous: true });
+    const { result } = renderHook(() => useFixture([plugin('old')]));
+    await act(async () => { expect(await result.current.loadPreset('preset')).toBe(true); });
+    await act(async () => { expect(await result.current.loadPreset('preset')).toBe(true); });
+    expect(audioApi.restorePlugin).toHaveBeenCalledWith({ path: 'new', state: 'saved', bypassed: true, muted: true, gain: 0.5, classId: keptClass });
+    expect(result.current.plugins).toEqual([expect.objectContaining({ id: 'opened-id', name: 'Opened', classId: openedClass })]);
+    expect(toast.info).toHaveBeenCalledTimes(1);
+    expect(toast.info).toHaveBeenCalledWith('このファイルには複数のエフェクトがあります。以前と同じ規則で最初のものを開きました');
+});
+
+it('プロファイルと bundle の適用結果は開いた classId をラックへ残す', async () => {
+    const summary: ApplyProfileSummary = {
+        appliedCategories: ['plugins'], skippedCategories: [], missingDevices: [], missingPlugins: [], needsEngineRestart: false,
+        loadedPluginInstances: [{ ...saved, id: 'opened', name: 'Opened', classId: openedClass }],
+    };
+    vi.spyOn(presetApi, 'applyProfile').mockResolvedValue(summary);
+    const applied = renderHook(() => useFixture([plugin('old')]));
+    await act(async () => { await applied.result.current.applyProfile('profile'); });
+    expect(applied.result.current.plugins[0]).toEqual(expect.objectContaining({ id: 'opened', classId: openedClass }));
+    vi.spyOn(bundleApi, 'operation').mockResolvedValue({ id: 'bundle', complete: true, undoPending: false, auralyn: 'done', obs: [], summary });
+    const bundled = renderHook(() => useFixture([plugin('old')]));
+    await act(async () => { await bundled.result.current.runBundle({ action: 'apply', id: 'bundle' }); });
+    expect(bundled.result.current.plugins[0]).toEqual(expect.objectContaining({ id: 'opened', classId: openedClass }));
 });

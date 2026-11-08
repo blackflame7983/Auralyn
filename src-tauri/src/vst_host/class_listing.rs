@@ -403,13 +403,8 @@ mod tests {
         index: i32,
         info: *mut PClassInfo2,
     ) -> TResult {
-        let spec = CATALOG.with(|catalog| {
-            catalog
-                .borrow()
-                .classes
-                .get(index as usize)
-                .map(spec_parts)
-        });
+        let spec =
+            CATALOG.with(|catalog| catalog.borrow().classes.get(index as usize).map(spec_parts));
         let Some((cid, category, name, sub, vendor, version)) = spec else {
             return vst3::Steinberg::kResultFalse;
         };

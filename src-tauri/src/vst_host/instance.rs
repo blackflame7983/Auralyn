@@ -1321,7 +1321,9 @@ impl VstInstance {
         Self::load_with_class(path, None)
     }
 
-    /// `class_id` が Some のときはその CID だけを生成する。見つからない、または生成できない場合は別クラスへ移らない。
+    /// `class_id` が Some のときは、従来の category 部分一致で対象になり得るその CID だけを生成する。
+    /// カタログの楽器除外では落とすクラスでも、旧ロードで開けた CID なら同じクラスを開く。
+    /// 見つからない、または生成できない場合は別クラスへ移らない。
     /// None は旧データ向けで、最初に生成できたクラスを開く。
     pub fn load_with_class(path: &str, class_id: Option<&str>) -> Result<Self> {
         let path_obj = Path::new(path);
@@ -1443,25 +1445,13 @@ impl VstInstance {
                 ),
                 None => None,
             };
-            // 列挙は実体を作らない。指定 CID は候補の中だけを開き、旧データは従来の最初の成功を維持する。
+            // 曖昧告知だけカタログのエフェクト候補数を使う。指定 CID の探索はここを通さない。
             let listed = crate::vst_host::class_listing::list_effect_classes(factory_ptr);
-            let (only_cid, legacy_class_ambiguous) = match &normalized_request {
-                Some(class_id) => {
-                    let classes = listed.map_err(|error| anyhow!(error))?;
-                    let target = classes
-                        .into_iter()
-                        .find(|class| class.entry.class_id == *class_id)
-                        .ok_or_else(|| anyhow!("保存されたエフェクトがこのファイルにありません"))?;
-                    (Some(target.cid), false)
-                }
-                None => (
-                    None,
-                    listed
-                        .as_ref()
-                        .map(|classes| classes.len() >= 2)
-                        .unwrap_or(false),
-                ),
-            };
+            let legacy_class_ambiguous = normalized_request.is_none()
+                && listed
+                    .as_ref()
+                    .map(|classes| classes.len() >= 2)
+                    .unwrap_or(false);
 
             // Find class
             let count = (factory_vtbl.count_classes)(factory_ptr);
@@ -1480,120 +1470,126 @@ impl VstInstance {
                     let category = read_cstr(&class_info.category);
                     let class_name = read_cstr(&class_info.name);
                     let category_lower = category.to_lowercase();
-                    let selected = only_cid.is_some_and(|cid| class_info.cid == cid);
-                    if only_cid.is_some() && !selected {
+                    // カタログの完全一致や楽器除外は使わない。従来ロードと同じ部分一致だけを見る。
+                    let category_matches =
+                        category_lower.contains("audio module") || category_lower.contains("fx");
+                    let selected = normalized_request.as_ref().is_some_and(|class_id| {
+                        crate::vst_host::class_listing::format_class_id(&class_info.cid)
+                            == *class_id
+                    });
+                    // 指定 CID は、その CID を持ち従来規則で対象になり得るクラスだけ。別クラスへは移らない。
+                    let open_this = if normalized_request.is_some() {
+                        selected && category_matches
+                    } else {
+                        category_matches
+                    };
+                    if !open_this {
                         continue;
                     }
 
                     println!("Found class: '{}', Category: '{}'", class_name, category);
 
-                    // 指定 CID は列挙済みのそのクラスだけ。未指定は従来どおり category の部分一致。
-                    if selected
-                        || category_lower.contains("audio module")
-                        || category_lower.contains("fx")
-                    {
-                        let mut obj: *mut c_void = std::ptr::null_mut();
+                    let mut obj: *mut c_void = std::ptr::null_mut();
 
-                        // Use IID from crate
-                        use vst3::Interface;
-                        use vst3::Steinberg::{FUnknown, Vst::IComponent};
+                    // Use IID from crate
+                    use vst3::Interface;
+                    use vst3::Steinberg::{FUnknown, Vst::IComponent};
 
-                        // 1. Try creating IComponent directly (Standard VST3 approach)
-                        //
-                        // Quirk: Insight 2 appears to return an unstable pointer when instantiated
-                        // directly as IComponent in this host. Instantiating via FUnknown and keeping
-                        // that reference alive (see below) is significantly more stable.
-                        // Quirk: Insight 2 is sensitive to instantiation + refcount behavior.
-                        // We prefer the FUnknown + keepalive strategy for stability.
-                        let force_funknown = is_insight2;
-                        let mut res_direct = -1;
-                        if !force_funknown {
-                            res_direct = (factory_vtbl.create_instance)(
-                                factory_ptr,
-                                &class_info.cid as *const _,
-                                &<IComponent as Interface>::IID as *const _ as *const TUID,
-                                &mut obj as *mut _,
-                            );
-
-                            if res_direct == K_RESULT_OK && !obj.is_null() {
-                                println!(
-                                    "Created instance via IComponent directly for '{}'",
-                                    class_name
-                                );
-                                component_ptr = obj;
-                                resources.component = obj;
-                                break;
-                            }
-
-                            println!(
-                                "Direct IComponent creation failed (res={}). Falling back to FUnknown.",
-                                res_direct
-                            );
-                        } else {
-                            println!(
-                                "[Quirk] '{}' -> Skipping direct IComponent instantiation; using FUnknown keepalive.",
-                                plugin_name
-                            );
-                        }
-
-                        // 失敗でも出力参照が渡された場合は、次の試行へ進む前に解放する。
-                        load_resources::release(obj);
-                        obj = std::ptr::null_mut();
-
-                        // 2. Fallback: Try creating with FUNKNOWN
-                        let res_unknown = (factory_vtbl.create_instance)(
+                    // 1. Try creating IComponent directly (Standard VST3 approach)
+                    //
+                    // Quirk: Insight 2 appears to return an unstable pointer when instantiated
+                    // directly as IComponent in this host. Instantiating via FUnknown and keeping
+                    // that reference alive (see below) is significantly more stable.
+                    // Quirk: Insight 2 is sensitive to instantiation + refcount behavior.
+                    // We prefer the FUnknown + keepalive strategy for stability.
+                    let force_funknown = is_insight2;
+                    let mut res_direct = -1;
+                    if !force_funknown {
+                        res_direct = (factory_vtbl.create_instance)(
                             factory_ptr,
                             &class_info.cid as *const _,
-                            &<FUnknown as Interface>::IID as *const _ as *const TUID,
+                            &<IComponent as Interface>::IID as *const _ as *const TUID,
                             &mut obj as *mut _,
                         );
 
-                        if res_unknown == K_RESULT_OK && !obj.is_null() {
-                            println!("Created instance via FUnknown for '{}'", class_name);
-
-                            // Now QueryInterface for IComponent
-                            let unknown_vtbl = get_vtbl::<FUnknownVtbl>(obj);
-                            let mut comp_ptr: *mut c_void = std::ptr::null_mut();
-
-                            let query_res = (unknown_vtbl.query_interface)(
-                                obj,
-                                &<IComponent as Interface>::IID as *const _ as *const TUID,
-                                &mut comp_ptr as *mut *mut c_void,
-                            );
-
-                            if query_res == K_RESULT_OK && !comp_ptr.is_null() {
-                                println!("Successfully queried IComponent for '{}'", class_name);
-                                component_ptr = comp_ptr;
-                                resources.component = comp_ptr;
-                                resources.retained.push(InterfaceRef(obj));
-
-                                // FUnknownは互換性のため保持し、Instance終了時に必ず解放する。
-                                break;
-                            } else {
-                                println!(
-                                    "Failed to query IComponent from FUnknown (res={})",
-                                    query_res
-                                );
-                                load_resources::release(comp_ptr);
-                                (unknown_vtbl.release)(obj);
-                            }
-                        } else {
-                            load_resources::release(obj);
+                        if res_direct == K_RESULT_OK && !obj.is_null() {
                             println!(
+                                "Created instance via IComponent directly for '{}'",
+                                class_name
+                            );
+                            component_ptr = obj;
+                            resources.component = obj;
+                            break;
+                        }
+
+                        println!(
+                            "Direct IComponent creation failed (res={}). Falling back to FUnknown.",
+                            res_direct
+                        );
+                    } else {
+                        println!(
+                                "[Quirk] '{}' -> Skipping direct IComponent instantiation; using FUnknown keepalive.",
+                                plugin_name
+                            );
+                    }
+
+                    // 失敗でも出力参照が渡された場合は、次の試行へ進む前に解放する。
+                    load_resources::release(obj);
+                    obj = std::ptr::null_mut();
+
+                    // 2. Fallback: Try creating with FUNKNOWN
+                    let res_unknown = (factory_vtbl.create_instance)(
+                        factory_ptr,
+                        &class_info.cid as *const _,
+                        &<FUnknown as Interface>::IID as *const _ as *const TUID,
+                        &mut obj as *mut _,
+                    );
+
+                    if res_unknown == K_RESULT_OK && !obj.is_null() {
+                        println!("Created instance via FUnknown for '{}'", class_name);
+
+                        // Now QueryInterface for IComponent
+                        let unknown_vtbl = get_vtbl::<FUnknownVtbl>(obj);
+                        let mut comp_ptr: *mut c_void = std::ptr::null_mut();
+
+                        let query_res = (unknown_vtbl.query_interface)(
+                            obj,
+                            &<IComponent as Interface>::IID as *const _ as *const TUID,
+                            &mut comp_ptr as *mut *mut c_void,
+                        );
+
+                        if query_res == K_RESULT_OK && !comp_ptr.is_null() {
+                            println!("Successfully queried IComponent for '{}'", class_name);
+                            component_ptr = comp_ptr;
+                            resources.component = comp_ptr;
+                            resources.retained.push(InterfaceRef(obj));
+
+                            // FUnknownは互換性のため保持し、Instance終了時に必ず解放する。
+                            break;
+                        } else {
+                            println!(
+                                "Failed to query IComponent from FUnknown (res={})",
+                                query_res
+                            );
+                            load_resources::release(comp_ptr);
+                            (unknown_vtbl.release)(obj);
+                        }
+                    } else {
+                        load_resources::release(obj);
+                        println!(
                                 "Failed to create instance for '{}' (Tried IComponent: {}, FUnknown: {})",
                                 class_name, res_direct, res_unknown
                             );
-                        }
-                        if selected {
-                            return Err(anyhow!("指定したエフェクトを開けませんでした"));
-                        }
+                    }
+                    if selected {
+                        return Err(anyhow!("指定したエフェクトを開けませんでした"));
                     }
                 }
             }
 
             if component_ptr.is_null() {
-                return Err(anyhow!(if only_cid.is_some() {
-                    "指定したエフェクトを開けませんでした"
+                return Err(anyhow!(if normalized_request.is_some() {
+                    "保存されたエフェクトがこのファイルにありません"
                 } else {
                     "No valid Audio Module class found or failed to instantiate"
                 }));

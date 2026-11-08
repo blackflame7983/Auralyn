@@ -2,7 +2,7 @@
 use crate::bundle::mixing_configuration::PostMixPreset;
 use crate::bundle::CapturedPlugin;
 use crate::ipc::{Command, LoadedPlugin, RackPlugin, Response, RestorePluginRequest};
-use crate::vst_host::presets::{Preset, PresetPlugin};
+use crate::vst_host::presets::{LoadedPluginInstance, Preset, PresetPlugin};
 
 const CID: &str = "0123456789ABCDEF0123456789ABCDEF";
 
@@ -167,4 +167,19 @@ fn restore_request_rack_and_load_command_roundtrip_class_id() {
         serde_json::to_value(&ambiguous).unwrap()["legacyClassAmbiguous"],
         true
     );
+}
+
+#[test]
+fn loaded_plugin_instance_keeps_optional_opened_class_id() {
+    let old: LoadedPluginInstance = serde_json::from_str(
+        r#"{"id":"1","path":"a.vst3","name":"A","vendor":"","version":"","enabled":true,"muted":false,"gain":1.0}"#,
+    )
+    .unwrap();
+    assert!(old.class_id.is_none());
+    assert!(serde_json::to_value(&old).unwrap().get("classId").is_none());
+    let opened = LoadedPluginInstance {
+        class_id: Some(CID.into()),
+        ..old
+    };
+    assert_eq!(serde_json::to_value(&opened).unwrap()["classId"], CID);
 }

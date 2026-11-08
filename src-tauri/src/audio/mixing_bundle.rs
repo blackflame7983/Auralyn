@@ -132,6 +132,7 @@ impl AudioHost {
                 enabled: plugin.enabled,
                 muted: plugin.muted,
                 gain: plugin.gain,
+                class_id: result.class_id,
             });
         }
         let actual = self.capture_bundle_state()?;

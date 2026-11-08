@@ -149,6 +149,9 @@ pub struct LoadedPluginInstance {
     pub enabled: bool,
     pub muted: bool,
     pub gain: f32,
+    /// 実際に開いたクラス。無い旧結果は省略のまま読む。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class_id: Option<String>,
 }
 
 /// プロファイル適用結果サマリ

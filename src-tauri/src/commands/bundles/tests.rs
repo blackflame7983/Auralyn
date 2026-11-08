@@ -441,7 +441,7 @@ fn current_dto_contains_only_actual_rack_metadata_not_control_prefs_or_state() {
             muted: true,
             gain: 0.5,
             state: Some("opaque-component-state".into()),
-            class_id: None,
+            class_id: Some("0123456789ABCDEF0123456789ABCDEF".into()),
         },
     });
     let dto = current_dto(&captured);
@@ -454,6 +454,10 @@ fn current_dto_contains_only_actual_rack_metadata_not_control_prefs_or_state() {
     assert_eq!(actual.id, "actual-id");
     assert!(!actual.enabled && actual.muted);
     assert_eq!(actual.gain, 0.5);
+    assert_eq!(
+        actual.class_id.as_deref(),
+        Some("0123456789ABCDEF0123456789ABCDEF")
+    );
     let json = serde_json::to_string(&dto).unwrap();
     assert!(!json.contains("opaque-component-state"));
     assert!(!json.contains("appliedPlugins"));
@@ -1023,6 +1027,7 @@ fn prepared_mixing_voice_is_not_reloaded_and_explicit_empty_stays_applied() {
         enabled: true,
         muted: false,
         gain: 0.8,
+        class_id: plugin.class_id.clone(),
     };
     let initial = selected_start_intent(&target, &before).unwrap();
     let mut summary = ApplyProfileSummary::default();
