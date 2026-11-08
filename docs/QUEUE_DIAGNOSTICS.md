@@ -40,7 +40,7 @@ Engine epochと開始試行の連番を組み合わせ、fallbackを含む開始
 この残量は消費済み音声や満杯時破棄へ加算しない。未起動・失効engineの統計はなしとする。
 各counterは稼働中に同一瞬間の組として取得する保証はなく、相互の保存則は停止後に確認する。
 Engineが統計Arcとqueue observerを保持し、stream/callback終了後に制御側でqueueの最後のArcを解放する。
-RTではsample単位のatomic・時計取得・ログ・割当・待機を追加せず、callback単位に集計して固定個数のatomicを更新する。
+RTではsample単位のatomic・時計取得・ログ・割当・待機を追加せず、callback単位に集計して固定個数のatomicを更新する。処理停止の監視も同じ方針で、出力・入力コールバックの回数だけを足し、判定は制御スレッドで行う（[ISSUE_449_IMPLEMENTATION.md](ISSUE_449_IMPLEMENTATION.md)）。
 
 ## 検証境界
 

@@ -44,7 +44,7 @@ ASIOのnative形式はF32・I16・I24・I32を扱う。整数形式はストリ�
 
 WASAPIは入力を先に開始し、制御スレッドで要求バッファ2個分の入力到着を待ってから出力を開始する。待機は100 ms～1秒で打ち切り、入力失敗・未到着では出力を開始しない。ASIOの共有driverは従来の出力→入力順を維持する。要求サイズと実際のcallbackサイズは異なる場合があり、この準備だけで開始時・稼働後の不足や物理遅延が解消したとは扱わない。開始応答時間、キュー滞留時間、ゼロ埋めの総数・開始区間・その後の増分を同じ機器で反復比較する。
 
-性能比較は [NATIVE_PERFORMANCE_COMPARE.md](NATIVE_PERFORMANCE_COMPARE.md) に従い、同じdev/release構成・機器・rate/buffer・処理・ミュート条件で版を交互に各3回以上測定する。Host全体はWebViewとengineを含む子プロセスも観測する。ビルドや別の試験を同時に走らせず、private/working setの標本最大とOSのプロセス単体の生涯ピークを区別する。`glitch_count` は出力処理の入口間隔が期待周期の1.5倍を超えた回数であり、実際の音切れ数ではない。整数変換時間は現在の `callback_diagnostics.processing_us` に含まれないため、CPU全体と併記する。
+性能比較は [NATIVE_PERFORMANCE_COMPARE.md](NATIVE_PERFORMANCE_COMPARE.md) に従い、同じdev/release構成・機器・rate/buffer・処理・ミュート条件で版を交互に各3回以上測定する。Host全体はWebViewとengineを含む子プロセスも観測する。ビルドや別の試験を同時に走らせず、private/working setの標本最大とOSのプロセス単体の生涯ピークを区別する。`glitch_count` は出力処理の入口間隔が期待周期の1.5倍を超えた回数であり、実際の音切れ数ではない。無音と処理停止の区別、および直近60秒の遅着・underflowは [ISSUE_449_IMPLEMENTATION.md](ISSUE_449_IMPLEMENTATION.md) を参照する。整数変換時間は現在の `callback_diagnostics.processing_us` に含まれないため、CPU全体と併記する。
 
 ## 自動テストの層と実行方法
 
