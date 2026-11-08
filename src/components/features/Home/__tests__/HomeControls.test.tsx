@@ -154,3 +154,19 @@ it('ノイズ低減OFFでも現在の強さを示し、OFFを保ったまま編�
     await act(async () => fireEvent.click(high));
     expect(audioApi.setNoiseControlConfig).toHaveBeenCalledWith(expect.objectContaining({ active: false, mode: 'high' }));
 });
+
+
+it.each(['keyup', 'blur'] as const)('声の量は5%刻みの編集中に送らず、%sで一度だけ確定する', async end => {
+    render(<VoiceQuickControls running />);
+    const slider = await screen.findByRole('slider', { name: '声の整え具合' });
+    await waitFor(() => expect(slider).not.toHaveAttribute('aria-disabled', 'true'));
+    slider.focus();
+    fireEvent.keyDown(slider, { key: 'ArrowRight' });
+    expect(slider).toHaveAttribute('aria-valuenow', '55');
+    expect(slider).toHaveAttribute('aria-valuetext', '55%');
+    expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
+    await act(async () => { if (end === 'keyup') fireEvent.keyUp(slider, { key: 'ArrowRight' }); else fireEvent.blur(slider); });
+    expect(audioApi.setBuiltInEffects).toHaveBeenCalledExactlyOnceWith({ active: true, preset: 'broadcast', amount: 0.55 });
+    fireEvent.blur(slider);
+    expect(audioApi.setBuiltInEffects).toHaveBeenCalledTimes(1);
+});

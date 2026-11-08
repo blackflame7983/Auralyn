@@ -2,6 +2,7 @@ import { useMessages } from '@/i18n/LocaleProvider';
 import { useRef, useState } from 'react';
 import { refreshRuntimeStats, useRuntimeStats } from '@/hooks/useRuntimeStats';
 import { toast } from 'sonner';
+import { SliderField } from '@/components/ui/SliderField';
 import { Switch } from '@/components/ui/switch';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { audioApi, type BuiltInEffectsPreset, type NoiseControlMode } from '@/api/audio';
@@ -60,7 +61,7 @@ export function useVoiceQuick(_running: boolean, enabled = true) {
         preset: next.preset ?? preset,
         amount: Math.max(0, Math.min(100, next.amount ?? shownAmount)) / 100,
     }), t('settings.AudioSettingsModal.008'));
-    const commitAmount = () => { if (amount !== null) { const value = amount; setAmount(null); void applyChain({ amount: value }); } };
+    const commitAmount = (value: number) => { setAmount(null); void applyChain({ amount: value }); };
 
     return { stats, disabled: !stats || busy, noiseOn, noiseMode, applyNoise, chainOn, preset, shownAmount, setAmount, commitAmount, toggleChain, applyChain };
 }
@@ -77,7 +78,7 @@ export function NoiseSwitch({ q }: { q: VoiceQuick }) {
 export function NoiseQuick({ q }: { q: VoiceQuick }) {
     const t = useMessages();
     if (q.noiseMode === 'smart' || q.noiseMode === 'venue') {
-        return <p className="text-xs text-muted-foreground">{t('home.noiseAdvancedMode', { mode: q.noiseMode === 'smart' ? t('master.nrLearn') : t('master.nrVenue') })}</p>;
+        return <p className="text-ui-support text-muted-foreground">{t('home.noiseAdvancedMode', { mode: q.noiseMode === 'smart' ? t('master.nrLearn') : t('master.nrVenue') })}</p>;
     }
     return <SegmentedControl label={t('structure.noise.standard')}
         options={(['low', 'high'] as NoiseControlMode[]).map(mode => ({ value: mode, label: mode === 'low' ? t('master.nrLow') : t('master.nrHigh'), disabled: q.disabled }))}
@@ -91,7 +92,7 @@ export function BuiltinSwitch({ q }: { q: VoiceQuick }) {
 
 export function BuiltinQuick({ q }: { q: VoiceQuick }) {
     const t = useMessages();
-    if (q.preset === 'singing') return <p className="text-xs text-muted-foreground">{t('home.chainSinging')}</p>;
+    if (q.preset === 'singing') return <p className="text-ui-support text-muted-foreground">{t('home.chainSinging')}</p>;
     const presetLabel = (value: BuiltInEffectsPreset) => value === 'broadcast' ? t('settings.AudioSettingsModal.098')
         : value === 'warm' ? t('settings.AudioSettingsModal.099') : t('settings.AudioSettingsModal.100');
     // 5%刻みの操作に十分な長さを保ち、広い窓でもスライダーだけを伸ばし続けない。
@@ -100,14 +101,10 @@ export function BuiltinQuick({ q }: { q: VoiceQuick }) {
             options={quickPresets.map(value => ({ value, label: presetLabel(value), disabled: q.disabled,
                 hint: t(value === 'warm' ? 'home.preset.warmHint' : value === 'bright' ? 'home.preset.brightHint' : 'home.preset.broadcastHint') }))}
             value={q.chainOn ? q.preset : null} onValueChange={preset => void q.applyChain({ preset })} />
-        <label className="flex min-w-[16rem] max-w-[22rem] flex-1 items-center gap-2 text-[13px]">
-            <span className="contents text-muted-foreground">
-                <span className="whitespace-nowrap text-muted-foreground">{t('settings.AudioSettingsModal.103')}</span>
-                <span className="order-last w-10 shrink-0 text-right font-mono tabular-nums text-foreground">{q.shownAmount}%</span>
-            </span>
-            <input type="range" min={0} max={100} step={5} value={q.shownAmount} disabled={q.disabled || !q.chainOn}
-                onChange={event => q.setAmount(Number(event.target.value))} onPointerUp={q.commitAmount} onKeyUp={q.commitAmount} onBlur={q.commitAmount}
-                aria-label={t('settings.AudioSettingsModal.104')} className="min-w-0 flex-1 accent-primary" />
-        </label>
+        <div className="min-w-[10rem] max-w-[15rem] flex-1">
+            <SliderField label={t('settings.AudioSettingsModal.104')} min={0} max={100} step={5} value={q.shownAmount}
+                disabled={q.disabled || !q.chainOn} formatValue={value => `${value}%`}
+                onValueChange={q.setAmount} onValueCommit={q.commitAmount} />
+        </div>
     </div>;
 }

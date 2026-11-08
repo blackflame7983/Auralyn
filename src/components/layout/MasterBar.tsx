@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { clientErrorNotice, type ClientErrorNotice } from '@/lib/clientError';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
@@ -234,15 +235,15 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
                         if (gainDismissedOutside.current && anchor?.getClientRects().length) return;
                         const target = anchor?.getClientRects().length ? anchor : document.querySelector<HTMLElement>('#master-output-gain [role="slider"]');
                         target?.focus({ preventScroll: true });
-                    }} className="z-[200] w-64 rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-lg">
-                    <div className="flex items-center justify-between gap-4 text-sm"><span>{t('master.outputGain')}</span><span className="font-mono tabular-nums">{Math.round(outputGain)}%</span></div>
+                    }} className="z-[200] w-64 rounded-card border border-border bg-popover p-4 text-popover-foreground shadow-lg">
+                    <div className="flex items-center justify-between gap-4 text-ui-support"><span>{t('master.outputGain')}</span><span className="font-mono tabular-nums">{Math.round(outputGain)}%</span></div>
                     <Slider aria-label={t('master.outputGain')} aria-valuetext={`${Math.round(outputGain)}%`} value={[outputGain]} onValueChange={handleOutputGainChange}
                         min={0} max={200} step={1} onDoubleClick={() => handleOutputGainChange([100])} className="mt-4" />
                     <button type="button" disabled={outputGain === 100} onClick={() => handleOutputGainChange([100])}
-                        className="mt-3 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">{t('header.inputGainHint')}</button>
-                    {gainMessage && <div className="mt-3 space-y-2"><p role="alert" className="text-xs text-warning">{t('master.gainUnknown')}</p>
-                        <button type="button" onClick={() => handleOutputGainChange([gainError?.requestedGain ?? outputGain])} className="rounded-md border border-border px-3 py-1.5 text-xs">{t('common.retry')}</button>
-                        <details><summary className="cursor-pointer text-xs">{t('settings.mode.errorDetails')}</summary><p className="mt-2 break-words text-xs text-muted-foreground">{gainMessage}</p></details>
+                        className="mt-3 rounded-control border border-border px-2 py-1 text-ui-support hover:bg-muted disabled:opacity-50">{t('header.inputGainHint')}</button>
+                    {gainMessage && <div className="mt-3 space-y-2"><p role="alert" className="text-ui-support text-warning">{t('master.gainUnknown')}</p>
+                        <button type="button" onClick={() => handleOutputGainChange([gainError?.requestedGain ?? outputGain])} className="rounded-control border border-border px-3 py-1.5 text-ui-support">{t('common.retry')}</button>
+                        <details><summary className="cursor-pointer text-ui-support">{t('settings.mode.errorDetails')}</summary><p className="mt-2 break-words text-ui-support text-muted-foreground">{gainMessage}</p></details>
                     </div>}
                 </Popover.Content></Popover.Portal>
             </Popover.Root>
@@ -264,29 +265,29 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
                     className="w-32 shrink-0"
                     onDoubleClick={() => handleOutputGainChange([100])}
                 />
-                <span className="hidden md:inline text-xs font-mono tabular-nums text-muted-foreground min-w-[32px] text-right">
+                <span className="hidden md:inline text-ui-support font-mono tabular-nums text-muted-foreground min-w-[32px] text-right">
                     {Math.round(outputGain * 10) / 10}%
                 </span>
             </div>
 
-            {hasRecentGlitch && <button type="button" onClick={() => { detailsButtonRef.current?.focus(); setDetailsOpen(true); }} aria-haspopup="dialog" aria-expanded={detailsOpen}
+            {hasRecentGlitch && <Button variant="ghost" size="sm" type="button" onClick={() => { detailsButtonRef.current?.focus(); setDetailsOpen(true); }} aria-haspopup="dialog" aria-expanded={detailsOpen}
                 aria-label={t('master.recentDropout')} title={t('master.recentDropout')}
-                className="rounded p-1 text-warning hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"><MdBolt aria-hidden="true" className="h-4 w-4" /></button>}
-            {hasRecentGlitch && onOpenAudioTuning && <button type="button" onClick={onOpenAudioTuning}
-                className="rounded border border-border px-2 py-1 text-xs hover:bg-muted">{t('settings.audioTuning.open')}</button>}
+                ><MdBolt aria-hidden="true" className="h-4 w-4" /></Button>}
+            {hasRecentGlitch && onOpenAudioTuning && <Button variant="outline" size="sm" type="button" onClick={onOpenAudioTuning}
+                >{t('settings.audioTuning.open')}</Button>}
 
-            <button ref={detailsButtonRef} onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-expanded={detailsOpen}
+            <Button variant="ghost" size="icon" ref={detailsButtonRef} onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-expanded={detailsOpen}
                 aria-label={t('master.details')} title={t('master.details')}
-                className="shrink-0 rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                className="shrink-0">
                 <MdInfoOutline aria-hidden="true" className="h-4 w-4" />
-            </button>
+            </Button>
             {/* 状態は操作の後に配置し、狭い幅では独立した行へ送る。 */}
             {/* 未設定はヘッダーとホームで示すため、ここでは重ねない。 */}
             {(broadcastFailed || (isRunning && processReady !== true)) && (
                 <div className="flex basis-full flex-wrap items-center gap-1.5 min-w-0 max-w-full whitespace-normal break-words lg:basis-auto">
                     <span
                         className={cn(
-                            "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold",
+                            "inline-flex items-center rounded-full border px-2 py-0.5 text-ui-support font-bold",
                             !isRunning || processReady !== true ? "text-muted-foreground border-border bg-muted" : broadcastFailed ? "text-destructive-text border-destructive-text/50 bg-destructive/10" : "text-success border-success/40 bg-success/10"
                         )}
                     >
@@ -296,7 +297,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
                 </div>
             )}
             {gainMessage && (
-                <span role="alert" className="basis-full min-w-0 whitespace-normal break-words text-xs leading-4 text-warning" title={gainMessage}>
+                <span role="alert" className="basis-full min-w-0 whitespace-normal break-words text-ui-support leading-4 text-warning" title={gainMessage}>
                     {t('master.gainUnknown')}
                 </span>
             )}
@@ -304,11 +305,11 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
                 <div className="modal-overlay-base">
                     <div className="modal-surface-base w-full max-w-md max-h-[90vh] flex flex-col whitespace-normal">
                         <div className="modal-header-base gap-3">
-                            <h2 className="text-lg font-bold">{t('master.detailsTitle')}</h2>
-                            <button aria-label={t('common.close')} onClick={() => setDetailsOpen(false)} className="shrink-0 rounded p-2 hover:bg-muted"><MdClose /></button>
+                            <h2 className="text-ui-heading font-bold">{t('master.detailsTitle')}</h2>
+                            <Button variant="ghost" size="icon" aria-label={t('common.close')} onClick={() => setDetailsOpen(false)} className="shrink-0"><MdClose /></Button>
                         </div>
                         <div className="modal-body-base space-y-4">
-                            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 text-sm">
+                            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 text-ui-support">
                                 {[
                                     [t('master.status'), signalLabel],
                                     [t('master.driver'), host ? displayAudioHost(host) : t('master.unset')],
@@ -319,7 +320,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
                                     <dt className="text-muted-foreground">{label}</dt><dd className="break-all text-right">{value}</dd>
                                 </React.Fragment>)}
                             </dl>
-                            <details className="rounded border border-border p-3 space-y-3">
+                            <details className="rounded-control border border-border p-3 space-y-3">
                               <summary className="cursor-pointer font-semibold">{t('structure.diagnostics')}</summary>
                             <LatencyDetails stats={stats} isRunning={isRunning} />
                             <AudioQueueDetails snapshot={stats?.queueDiagnostics} isRunning={isRunning} />

@@ -21,11 +21,11 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
     const t = useMessages();
     const names = unrestoredNamesText(t, unrestored);
     return (
-        <div className="w-full rounded-xl border-2 border-dashed border-muted-foreground/30 bg-muted/5 p-4 space-y-4">
+        <div className="w-full rounded-card border-2 border-dashed border-muted-foreground/30 bg-muted/5 p-4 space-y-4">
             <div className="space-y-1">
-                <h3 className="text-lg font-bold text-foreground">
+                <h3 className="text-ui-heading font-bold text-foreground">
                     {t(names ? 'rack.empty.unrestoredTitle' : 'rack.empty.title')}</h3>
-                <p className="text-muted-foreground leading-relaxed text-sm">
+                <p className="text-muted-foreground leading-relaxed text-ui-support">
                     {names ?? t('rack.empty.scope')}</p>
             </div>
 
@@ -39,13 +39,13 @@ export const PluginRackEmptyState: React.FC<PluginRackEmptyStateProps> = ({
                     <MdAdd className="w-4 h-4" />
                     {t('rack.empty.addVst')}</Button>
 
-                <button
+                <Button variant="link" size="sm"
                     onClick={onOpenTemplates}
-                    className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1.5 underline underline-offset-4"
+                    className="gap-1.5"
                 >
                     <MdAutoFixHigh className="w-4 h-4" />
                     {t('rack.empty.templates')}
-                </button>
+                </Button>
             </div>
         </div>
     );

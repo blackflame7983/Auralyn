@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import type { ReactNode } from 'react';
 import { MdArrowForward, MdMic, MdMusicNote, MdVolumeOff, MdVolumeUp } from 'react-icons/md';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
@@ -41,34 +42,34 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
     const input = model.observation.config?.input ?? inputName;
     const output = model.observation.config?.output ?? outputName;
     const devices = t('live.devices', { input: input ? deviceDisplayName(input) : t('flow.unknown'), output: output ? deviceDisplayName(output) : t('flow.unknown') });
-    return <section aria-label={t('live.strip')} data-muted={muted} data-roomy={roomy} data-compact={compact} className="live-strip relative isolate mb-4 rounded-xl bg-card gaming:bg-card/70 px-5 py-5 min-[1100px]:px-6">
+    return <section aria-label={t('live.strip')} data-muted={muted} data-roomy={roomy} data-compact={compact} className="live-strip relative isolate mb-4 rounded-card bg-card gaming:bg-card/70 px-5 py-5 min-[1100px]:px-6">
         <div data-layout-motion className="live-stage relative isolate">
         {aurora && <LiveAurora running={running} muted={muted} />}
         <div className="live-stage-copy flex max-w-full flex-col items-center gap-2 text-center">
         <div className="flex flex-wrap items-center justify-center gap-3">
             <span role={stopped ? 'status' : undefined} className="text-ui-support text-muted-foreground">{t(running ? 'device.engine' : 'shell.stopped')}</span>
         {!running && onStartAudio && <>
-            <button type="button" onClick={onStartAudio} disabled={starting || controlsDisabled} className="rounded-md bg-primary px-4 py-2 text-ui-control font-semibold text-primary-foreground disabled:opacity-50">{t(starting ? 'home.starting' : 'home.startAudio')}</button>
+            <Button variant="default" size="default" type="button" onClick={onStartAudio} disabled={starting || controlsDisabled}>{t(starting ? 'home.starting' : 'home.startAudio')}</Button>
             <p className="text-ui-support text-muted-foreground">{t('home.startSavedDevices')}</p>
         </>}
         </div>
         <h2 className="live-stage-mode font-semibold">{music ? t('purpose.music') : liveModeName ?? t('liveBar.custom')}</h2>
         {/* 状態 → いまのモード名 → 次の1歩 → モード操作の順に読めるよう、主操作は見出しの直後に置く。 */}
-        {!music && running && !usage && onChooseDestination && <button type="button" onClick={onChooseDestination} className="rounded-md bg-primary px-3 py-2 text-ui-control font-semibold text-primary-foreground">{t('home.chooseDestination')}</button>}
+        {!music && running && !usage && onChooseDestination && <Button variant="default" size="default" type="button" onClick={onChooseDestination}>{t('home.chooseDestination')}</Button>}
         {!music && liveControls && <div data-layout-motion className="live-controls min-w-0 max-w-full">{liveControls}</div>}
         </div>
         </div>
         <div data-layout-motion className="live-meter-pair">
         <div data-layout-motion className="live-input-summary live-channel">
             <span className="live-meter-label flex items-center gap-1.5 text-ui-support text-muted-foreground"><Icon aria-hidden="true" className="h-5 w-5 shrink-0" />{t(music ? 'live.meterInput' : 'live.voice')}</span>
-            {input && (onOpenDevices ? <button type="button" onClick={onOpenDevices} aria-label={devices} title={devices} className="live-device text-left text-ui-support text-muted-foreground hover:text-foreground">{deviceDisplayName(input)}</button> : <span className="live-device text-ui-support text-muted-foreground">{deviceDisplayName(input)}</span>)}
+            {input && (onOpenDevices ? <Button variant="ghost" size="default" type="button" onClick={onOpenDevices} aria-label={devices} title={devices} className="live-device text-left">{deviceDisplayName(input)}</Button> : <span className="live-device text-ui-support text-muted-foreground">{deviceDisplayName(input)}</span>)}
             <div className="live-channel-meter"><LiveInputMeter running={running} music={music} /></div>
             <div className="live-channel-actions"><InputGainControl disabled={controlsDisabled} /></div>
         </div>
         {/* 入出力を左右に並べ、名前・機器・操作と細いバーを同じ列にまとめる。 */}
         <div data-layout-motion className="live-output-summary live-channel">
             <TooltipProvider delayDuration={300}><Tooltip><TooltipTrigger asChild><button type="button" onClick={event => onAdjustOutput?.(event.currentTarget)} aria-label={t('master.outputGain')} aria-haspopup="dialog" aria-expanded={outputGainOpen}
-                className="live-meter-label inline-flex items-center gap-1.5 rounded-md py-1 text-ui-support text-muted-foreground hover:bg-muted hover:text-foreground">
+                className="live-meter-label inline-flex items-center gap-1.5 rounded-control py-1 text-ui-support text-muted-foreground hover:bg-muted hover:text-foreground">
                 <MdVolumeUp aria-hidden="true" className="h-5 w-5" />{t('live.meterOutput')}
             </button></TooltipTrigger><TooltipContent>{t('home.adjustOutput')}</TooltipContent></Tooltip></TooltipProvider>
             <span className="live-device text-ui-support text-muted-foreground" title={output ? deviceDisplayName(output) : undefined}>{output ? deviceDisplayName(output) : t('flow.unknown')}</span>
@@ -78,7 +79,7 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
         </div>
         {startError && <div role="alert" data-layout-motion className="space-y-2 text-ui-control text-destructive-text">
             <p>{t(startPartiallyApplied ? 'home.startIncomplete' : 'home.startFailed')}</p>
-            <button type="button" onClick={onOpenStartErrorSettings ?? onOpenDevices} className="rounded-md border border-border px-3 py-1.5 text-foreground">{t('home.changeDevices')}</button>
+            <Button variant="outline" size="default" type="button" onClick={onOpenStartErrorSettings ?? onOpenDevices}>{t('home.changeDevices')}</Button>
             <details><summary className="cursor-pointer">{t('prep.details')}</summary><p className="break-words">{startError}</p></details>
         </div>}
         <div data-live-routing data-layout-motion className="flex flex-wrap items-center gap-x-3 gap-y-2">

@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { useBeginnerMode } from '../../hooks/useBeginnerMode';
 import { HowToUseModal } from '../features/Guide/HowToUseModal';
@@ -123,7 +124,7 @@ export const Header: React.FC<HeaderProps> = ({
                     {/* Logo Section */}
                     <div className="flex items-center gap-2 select-none shrink-0">
                         <img src="/auralyn_icon.png?v=17" alt="" className="w-7 h-7 object-contain gaming:drop-shadow-[0_0_8px_hsl(var(--brand)/0.5)]" />
-                        <h1 aria-label="Auralyn" className="sr-only lg:not-sr-only text-lg font-bold tracking-tight text-foreground">
+                        <h1 aria-label="Auralyn" className="sr-only lg:not-sr-only text-ui-heading font-bold tracking-tight text-foreground">
                             Aura<span className="text-brand">lyn</span>
                         </h1>
                     </div>
@@ -149,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 onClick={handleToggleMute}
                                 aria-label={t('header.emergency')}
                                 aria-describedby={isGlobalMuted ? 'header-mute-state' : undefined}
-                                className={`press-feedback flex items-center gap-2 px-3 py-1.5 rounded-full border font-bold text-sm shadow-sm text-foreground ${isGlobalMuted
+                                className={`press-feedback flex items-center gap-2 px-3 py-1.5 rounded-full border font-bold text-ui-support shadow-sm text-foreground ${isGlobalMuted
                                     ? 'bg-destructive/10 border-destructive-text ring-2 ring-destructive-text'
                                     : 'bg-background hover:bg-destructive/10 border-destructive-text hover:border-destructive-text'
                                     }`}
@@ -157,7 +158,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 <MdMicOff aria-hidden="true" className="w-5 h-5 shrink-0" />
                                 <span className="flex flex-col items-start whitespace-nowrap">
                                     <span>{t('header.emergency')}</span>
-                                    {isGlobalMuted && <span id="header-mute-state" className="text-xs font-medium">{t('header.muted')}</span>}
+                                    {isGlobalMuted && <span id="header-mute-state" className="text-ui-support font-medium">{t('header.muted')}</span>}
                                 </span>
                             </button>
                         </TooltipTrigger>
@@ -171,14 +172,14 @@ export const Header: React.FC<HeaderProps> = ({
                     {/* Audio Settings */}
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <button
+                            <Button variant="ghost" size="sm"
                                 onClick={onOpenSettings}
                                 aria-label={t('header.audioSettingsOpen')}
-                                className="p-2 px-3 text-muted-foreground hover:text-foreground transition-colors hover:bg-muted rounded-lg flex items-center gap-2"
+                                className="gap-2"
                             >
                                 <MdSettings className="w-5 h-5" />
-                                <span className="text-xs font-bold hidden lg:inline-block">{t('common.settings')}</span>
-                            </button>
+                                <span className="text-ui-support font-bold hidden lg:inline-block">{t('common.settings')}</span>
+                            </Button>
                         </TooltipTrigger>
                         <TooltipContent>
                             <p>{t('header.audioSettings')}</p>
@@ -188,14 +189,14 @@ export const Header: React.FC<HeaderProps> = ({
                     {/* Help & Guide Dropdown */}
                     <DropdownMenu open={helpMenuOpen} onOpenChange={setHelpMenuOpen}>
                         <DropdownMenuTrigger asChild>
-                            <button
+                            <Button variant="ghost" size="sm"
                                 ref={helpTrigger}
                                 aria-label={t('header.helpOpen')}
-                                className="p-2 px-3 text-muted-foreground hover:text-foreground transition-colors hover:bg-muted rounded-lg flex items-center gap-2"
+                                className="gap-2"
                             >
                                 <MdHelpOutline className="w-5 h-5" />
-                                <span className="text-xs font-bold hidden lg:inline-block">{t('header.help')}</span>
-                            </button>
+                                <span className="text-ui-support font-bold hidden lg:inline-block">{t('header.help')}</span>
+                            </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="min-w-[200px]" onCloseAutoFocus={event => {
                             if (menuHelp.current) {
@@ -209,47 +210,47 @@ export const Header: React.FC<HeaderProps> = ({
                                 menuHelp.current = true;
                             }} className="gap-3 cursor-pointer p-3">
                                 <MdHelpOutline aria-hidden="true" className="h-4 w-4 shrink-0" />
-                                <div className="flex flex-col"><span className="font-bold text-sm">{t('help.title')}</span>
-                                    <span className="text-xs text-muted-foreground">{t('help.hint')}</span></div>
+                                <div className="flex flex-col"><span className="font-bold text-ui-support">{t('help.title')}</span>
+                                    <span className="text-ui-support text-muted-foreground">{t('help.hint')}</span></div>
                             </DropdownMenuItem>
                             <DropdownMenuLabel>{t('header.guides')}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={onOpenOBSGuide} className="gap-3 cursor-pointer p-3">
-                                <span className="w-6 h-6 flex items-center justify-center bg-overlay text-discord-foreground rounded-full text-xs font-bold shadow-sm">OBS</span>
+                                <span className="w-6 h-6 flex items-center justify-center bg-overlay text-discord-foreground rounded-full text-ui-support font-bold shadow-sm">OBS</span>
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-sm">{t('header.obs')}</span>
-                                    <span className="text-xs text-muted-foreground">{t('header.obsHint')}</span>
+                                    <span className="font-bold text-ui-support">{t('header.obs')}</span>
+                                    <span className="text-ui-support text-muted-foreground">{t('header.obsHint')}</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuItem onSelect={onOpenDiscordGuide} className="gap-3 cursor-pointer p-3">
                                 <span className="w-6 h-6 flex items-center justify-center bg-discord text-discord-foreground rounded-full shadow-sm"><DiscordIcon className="w-3.5 h-3.5" /></span>
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-sm">{t('header.discord')}</span>
-                                    <span className="text-xs text-muted-foreground">{t('header.discordHint')}</span>
+                                    <span className="font-bold text-ui-support">{t('header.discord')}</span>
+                                    <span className="text-ui-support text-muted-foreground">{t('header.discordHint')}</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={onOpenTroubleshoot} className="gap-3 cursor-pointer p-3">
                                 <MdHelpOutline aria-hidden="true" className="h-4 w-4 shrink-0" />
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-sm">{t('header.noSound')}</span>
-                                    <span className="text-xs text-muted-foreground">{t('header.diagnostics')}</span>
+                                    <span className="font-bold text-ui-support">{t('header.noSound')}</span>
+                                    <span className="text-ui-support text-muted-foreground">{t('header.diagnostics')}</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem disabled={appUpdate.busy} onSelect={() => void appUpdate.checkUpdates()} className="gap-3 cursor-pointer p-3">
                                 <span className="w-6 h-6 flex items-center justify-center bg-info text-info-foreground rounded-full shadow-sm"><MdSystemUpdateAlt className="w-3.5 h-3.5" /></span>
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-sm">{appUpdate.label}</span>
-                                    <span className="text-xs text-muted-foreground">{appUpdate.description}</span>
+                                    <span className="font-bold text-ui-support">{appUpdate.label}</span>
+                                    <span className="text-ui-support text-muted-foreground">{appUpdate.description}</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={() => window.open('https://ofuse.me/o?uid=149216', '_blank')} className="gap-3 cursor-pointer p-3">
                                 <span className="w-6 h-6 flex items-center justify-center bg-brand-secondary text-background rounded-full shadow-sm"><MdFavorite className="w-3.5 h-3.5" /></span>
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-sm">{t('header.support')}</span>
-                                    <span className="text-xs text-muted-foreground">{t('header.supportHint')}</span>
+                                    <span className="font-bold text-ui-support">{t('header.support')}</span>
+                                    <span className="text-ui-support text-muted-foreground">{t('header.supportHint')}</span>
                                 </div>
                             </DropdownMenuItem>
                         </DropdownMenuContent>

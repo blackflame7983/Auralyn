@@ -7,7 +7,7 @@ import { expect, it } from 'vitest';
 const displayExceptions: Record<string, string[]> = {
     'components/features/LevelMeter/LoudnessCheck.tsx': ['text-lg'],
 };
-const baseline = { typography: 538, radius: 329, button: 231, select: 21, checkbox: 23, range: 1, motion: 1 };
+const baseline = { typography: 438, radius: 261, button: 189, select: 19, checkbox: 22, range: 0, motion: 1 };
 type Counts = typeof baseline;
 function count(source: string, file: string): Counts {
     const result: Counts = { typography: 0, radius: 0, button: 0, select: 0, checkbox: 0, range: 0, motion: 0 };

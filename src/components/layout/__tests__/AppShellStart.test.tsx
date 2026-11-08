@@ -77,7 +77,8 @@ it('未設定時は音の流れと次の1歩だけを示し、音声を自動変
     // 音調整は段の名前だけを淡く出し、状態の推測・操作・比較を出さない。
     const chain = screen.getByRole('region', { name: '音調整' });
     expect(chain).toHaveAttribute('inert');
-    expect(chain.className).toContain('opacity-40');
+    expect(chain).toHaveClass('text-muted-foreground');
+    expect(chain.className).not.toMatch(/opacity-/);
     expect(screen.queryByText('状態を読み取れません')).not.toBeInTheDocument();
     expect(screen.queryByText('quick')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'ボイスチェック' })).not.toBeInTheDocument();

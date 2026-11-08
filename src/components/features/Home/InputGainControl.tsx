@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import * as Popover from '@radix-ui/react-popover';
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MdMic, MdMusicNote } from 'react-icons/md';
@@ -69,11 +70,11 @@ export function InputGainControl({ disabled = false }: { disabled?: boolean }) {
     return <Popover.Root open={open} onOpenChange={setOpen}>
         <TooltipProvider delayDuration={300}><Tooltip><TooltipTrigger asChild><Popover.Trigger asChild>
             {/* 短い名前と値で、ツールチップを開かずに操作を見分けられるようにする。 */}
-            <button type="button" disabled={unavailable} aria-label={`${label} ${inputGain}%`} className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[13px] hover:bg-muted">
+            <Button variant="outline" size="sm" type="button" disabled={unavailable} aria-label={`${label} ${inputGain}%`} className="shrink-0 gap-1.5">
                 <Icon aria-hidden="true" className="h-4 w-4" /><span className="live-action-label">{label}</span><span className="font-mono">{inputGain}%</span>
-            </button>
+            </Button>
         </Popover.Trigger></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip></TooltipProvider>
-        {failed && !open && <p role="alert" className="text-xs text-warning">{t('home.inputGainReopen')}</p>}
+        {failed && !open && <p role="alert" className="text-ui-support text-warning">{t('home.inputGainReopen')}</p>}
         <Popover.Portal><Popover.Content aria-label={label} sideOffset={5} collisionPadding={12}
             onCloseAutoFocus={event => {
                 // 重ね表示で背後の入口が操作不可になったら、VSTの作業へフォーカスを渡す。
@@ -81,13 +82,13 @@ export function InputGainControl({ disabled = false }: { disabled?: boolean }) {
                     event.preventDefault();
                     document.getElementById('plugin-rack-heading')?.focus({ preventScroll: true });
                 }
-            }} className="z-[200] w-64 rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-lg">
-            <div className="flex items-center justify-between gap-4 text-sm"><span>{label}</span><span>{inputGain}%</span></div>
+            }} className="z-[200] w-64 rounded-control border border-border bg-popover p-4 text-popover-foreground shadow-lg">
+            <div className="flex items-center justify-between gap-4 text-ui-support"><span>{label}</span><span>{inputGain}%</span></div>
             <Slider aria-label={label} aria-valuetext={`${inputGain}%`} value={[inputGain]} max={200} step={1}
                 onValueChange={change} onDoubleClick={() => change([100])} className="mt-4" />
-            <button type="button" disabled={inputGain === 100} onClick={() => change([100])} className="mt-3 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">{t('header.inputGainHint')}</button>
-            {failed && <div className="mt-3 space-y-2"><p role="alert" className="text-xs text-warning">{t('home.inputGainFailed')}</p>
-                <button type="button" onClick={() => change([inputGain])} className="rounded-md border border-border px-3 py-1.5 text-xs">{t('common.retry')}</button>
+            <Button variant="outline" size="sm" type="button" disabled={inputGain === 100} onClick={() => change([100])} className="mt-3">{t('header.inputGainHint')}</Button>
+            {failed && <div className="mt-3 space-y-2"><p role="alert" className="text-ui-support text-warning">{t('home.inputGainFailed')}</p>
+                <Button variant="outline" size="sm" type="button" onClick={() => change([inputGain])}>{t('common.retry')}</Button>
             </div>}
         </Popover.Content></Popover.Portal>
     </Popover.Root>;

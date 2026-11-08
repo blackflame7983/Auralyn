@@ -783,10 +783,7 @@ html[data-app-hidden="true"] *::after {
 }
 
 /* 操作欄はDOMを保って高さを補間し、閉じている間は操作対象から外す。 */
-.sound-tool-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--motion-panel) var(--ease-out); }
-.sound-tool-panel[data-open="true"] { grid-template-rows: 1fr; }
 @container (max-width: 540px) { .sound-tool-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (prefers-reduced-motion: reduce) { .sound-tool-panel { transition: none; } }
 
 /* 音調整を開いた間は最小窓でも舞台を縮め、開いた操作の場所を確保する。 */
 .live-strip[data-compact="true"] .live-stage { min-height: 0; }

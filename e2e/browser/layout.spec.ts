@@ -199,11 +199,16 @@ test.describe('操作部品のサイズとテーマ', () => {
         for (const width of [960, 1024, 1440, 1920]) {
             await page.setViewportSize({ width, height: 768 });
             const range = page.getByRole('slider', { name: '声の整え具合', exact: true });
-            const box = (await range.boundingBox())!;
+            const track = range.locator('xpath=ancestor::*[@data-orientation="horizontal"][last()]');
+            const box = (await track.boundingBox())!;
             // 20段階の操作に6px以上/段を確保し、長大なバーにしない。
             expect(box.width).toBeGreaterThanOrEqual(120);
             expect(box.width).toBeLessThanOrEqual(240);
-            await expect(range).toHaveAttribute('step', '5');
+            const before = Number(await range.getAttribute('aria-valuenow'));
+            await range.focus();
+            await page.keyboard.down(before >= 100 ? 'ArrowLeft' : 'ArrowRight');
+            await expect(range).toHaveAttribute('aria-valuenow', String(before + (before >= 100 ? -5 : 5)));
+            await page.keyboard.up(before >= 100 ? 'ArrowLeft' : 'ArrowRight');
             await page.screenshot({ path: testInfo.outputPath(`controls-${width}.png`) });
         }
     });

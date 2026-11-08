@@ -572,7 +572,7 @@ UI・文言を変更する PR では、次を確認します。
 
 ### 5.8 部品の一覧（段階1の土台）
 
-役割ごとに下表の部品を使う。見た目・キー操作・読み上げは部品が持ち、利用側では文字・角丸・動きを上書きしない。設定画面の入力・通常操作と選択群は段階2で移行済み。その他の既存の上書きは段階3〜4で除去する。余白や配置だけを呼び出し側で指定する。
+役割ごとに下表の部品を使う。見た目・キー操作・読み上げは部品が持ち、利用側では文字・角丸・動きを上書きしない。設定画面の入力・通常操作と選択群は段階2で移行済み。ホームは段階3で移行済み。残るセットアップ・ガイド・保存と復旧・プリセット・声のチェックの上書きは段階4で除去する。余白や配置だけを呼び出し側で指定する。
 
 | 役割 | 部品 | 使い分け | 例外 |
 | :--- | :--- | :--- | :--- |
@@ -585,7 +585,7 @@ UI・文言を変更する PR では、次を確認します。
 | 入力・選択・チェック | Input / Select / Checkbox | 標準input/select/checkbox。入力・選択は最小40px高、操作文字16px、10px角丸、共通枠・2pxフォーカスリング。チェックは20pxのOS標準描画 | checkboxの形はOS標準描画に従う |
 | 説明・小さな窓 | InfoPopover / Modal / ConfirmDialog | 本文補足は13px。ダイアログ面は既存modal-surface-baseを正とする。Popoverはpopover色の面を使う | フォーカス復帰・Escapeは既存Radix契約を保つ |
 | 静的な折りたたみ | details | 高さの補間が不要な説明 | 全detailsの高さ補間は要求しない |
-| 高さを補間する折りたたみ | Disclosure | SoundChain方式のgrid 0fr→1fr。--motion-panel / --ease-drawer、本文opacityは--motion-base。閉時はinert/aria-hidden、Escapeで入口へ復帰。動きを減らす設定は即時 | SoundChainの置換は段階3 |
+| 高さを補間する折りたたみ | Disclosure | SoundChain方式のgrid 0fr→1fr。--motion-panel / --ease-drawer、本文opacityは--motion-base。閉時はinert/aria-hidden、Escapeで入口へ復帰。動きを減らす設定は即時 | SoundChainは同じ補間クラスを共用し、排他的な開閉と入口への復帰は利用側で保持 |
 
 **文字・寸法・動きのトークン**
 
@@ -598,8 +598,8 @@ UI・文言を変更する PR では、次を確認します。
 
 | 対象 | 許す例外と理由 | 所在 |
 | :--- | :--- | :--- |
-| 本番中の状態付き操作 | 緊急ミュート、操作ロック、出力音量、オケのミュートは押下状態・即時反映・専用寸法を保持。ミュートのピルを許す | MasterBar、LiveModeBar、MixingLiveControlなど |
-| 一覧の行 | 選択線は行の識別用。LicenseModalの4px左線を許す。全枠を3pxに統一しない | Settings/LicenseModal.tsx |
+| 本番中の状態付き操作 | 緊急ミュート、操作ロック、歌／雑談の確定・保留・復旧、出力音量（100%へ戻す・再試行・ミュート中の出力確認入口を含む）、オケのミュート・音量は押下状態・即時反映・失敗表示・ホットキー・フォーカス・専用寸法を保持。VSTを外して比較も既存の状態付き操作を保持。文字・角丸だけ役割トークンにそろえる。ミュートのピルを許す | Header、AppShell、MasterBar、LiveStrip、LiveModeBar、MixingLiveControl |
+| 一覧の行 | 選択線は行の識別用。LicenseModalの4px左線を許す。全枠を3pxに統一しない | Settings/LicenseModal.tsx、Home/VstChainItems.tsx、PluginRack/PluginCard.tsx。VST行は複数行・行の選択・子の操作・並べ替え・即時ゲインを持つため構造と専用寸法を維持 |
 | 舞台のモード名 | 5.7のclampによる表示文字サイズ | layout/MasterBar.tsx、index.css |
 | 画面題名 | セットアップ見出し24px（狭い高さでは20px）、モーダル題名は表示用の大きさを許す | SetupWizardModal.tsx、index.cssなど。既存直書きは上限管理し、追加時は役割トークンを定義する |
 | メーター・波形・再生進捗 | 数値の表示用サイズと即時更新。装飾の補間規則を適用しない | LevelMeter、VoiceCheckModal。直書き試験で許す数値文字はLevelMeter/LoudnessCheck.tsxの判定表示text-lgのみ |
@@ -611,11 +611,11 @@ UI・文言を変更する PR では、次を確認します。
 | :--- | :--- | :--- |
 | セットアップ高さ | 実装。文書をmin(600px, …)へ修正 | 実Tauriの小窓・拡大確認 |
 | レール幅 | 実装。通常200px、高さ500px以下9remを明記 | なし |
-| パネル高さ・曲線・opacity | 文書。Disclosureで0fr→1fr、drawer曲線、opacityを実装 | 段階3でSoundChainへ適用（現在ease-out、opacityなし） |
+| パネル高さ・曲線・opacity | 文書。Disclosureで0fr→1fr、drawer曲線、opacityを実装 | 段階3でSoundChainもdisclosure-panel/contentを共用。排他的な開閉・inert・Escapeの復帰・起動時の規則を維持 |
 | その他の折りたたみ | 実装。静的detailsには高さ補間を求めない | 必要な箇所だけDisclosureへ移行 |
-| 文字3段 | 文書。Button・Tooltip・InfoPopoverを修正 | 設定画面は3段のトークンへ移行済み。設定外のLabel・利用側上書きは段階3〜4 |
-| セグメント選択表示 | 文書。旧segment.tsを廃止 | 設定のバッファ・周波数・測定／会場モードをSegmentedControlへ移行済み。残りは段階3〜4 |
-| 通常ボタン角丸 | 合意した役割トークン。操作10px・カード12px・丸 | 設定の通常操作はButtonへ移行済み（操作10px、面12px）。設定外は段階3〜4。状態付き操作は例外 |
+| 文字3段 | 文書。Button・Tooltip・InfoPopoverを修正 | 設定画面は3段のトークンへ移行済み。ホームも役割トークンへ移行済み。対象外のLabel・利用側上書きは段階4 |
+| セグメント選択表示 | 文書。旧segment.tsを廃止 | 設定のバッファ・周波数・測定／会場モードをSegmentedControlへ移行済み。ホームのVST表示形式も移行済み。残りは段階4 |
+| 通常ボタン角丸 | 合意した役割トークン。操作10px・カード12px・丸 | 設定の通常操作はButtonへ移行済み（操作10px、面12px）。ホームの通常操作もButtonへ移行済み。対象外は段階4。状態付き操作・VST行は例外 |
 | 左の選択線 | 実装。LicenseModalの4pxを行の例外として明記 | なし |
 | 時間・曲線 | 文書。CSS直書きとduration-300をトークン化 | 残存直書きは回帰上限を下げながら移行 |
 | 動きの上限 | 実装。注意リングは状態案内の例外として明記・トークン化 | なし |
@@ -632,3 +632,13 @@ UI・文言を変更する PR では、次を確認します。
 - ホットキーの取得ボタンは操作と取得状態を持つButtonのままとし、radioにしない。Switch・静的details・Modal／ConfirmDialogの確認とフォーカス契約も維持する。LiveModeBarの本番帯とHome・セットアップ・ガイドは対象外。
 - 回帰上限（src全体、共通部品内部を含む実数）：文字538、角丸329、直書きbutton231、select21、checkbox23、range1、動き1。数値の正本はuiConsistency.test.tsのbaselineとする。
 - 画面の操作名は変更していない。利用者向け原稿の名称変更は不要。実Tauriの小窓・拡大とPlaywrightによる配置確認は別途行う。
+
+
+**段階3：ホームの移行**
+
+- 通常操作41箇所をButton、VST表示形式1群（2ボタン）をSegmentedControlへ移行。Select 2箇所・Input 1箇所・Checkbox 1箇所はFieldで関連付けた。用途の選択は既存ChoiceCardを維持する。
+- 声の整え具合1箇所をSliderFieldへ移行。5%刻み、編集中の表示、ポインター／キー終了と未確定時のblurでの確定を維持する。入力ゲインは既存Sliderの即時反映を維持する。
+- SoundChainはDisclosureの補間クラスを共用する。gridの配置と排他的な開閉状態はホームが持ち、Escape・inert・起動時の規則は変えない。未設定の読み文字は不透明度で薄めず、補助文字色で示す。
+- 本番の状態付き操作とVST行は上表の例外を維持する。メーター・波形・オーロラには変更を加えない。
+- 回帰上限（src全体）：文字438、角丸261、直書きbutton189、select19、checkbox22、range0、動き1。段階2の数字は当時の記録であり、現在の正本はuiConsistency.test.tsのbaseline。
+- 画面・操作の名前は変更していない。user-docsの原稿の名称変更は不要。Playwrightと実Tauriの小窓・拡大・実音声確認は未実施。
