@@ -47,11 +47,17 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
     const stats = useRuntimeStats();
     const statsUnavailable = useRuntimeStatsUnavailable();
     const [eventHealth, setEventHealth] = useState<ProcessingHealthSnapshot | null>(null);
+    const eventHealthTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [hasRecentGlitch, setHasRecentGlitch] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
     const glitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const previousGlitchCount = useRef<number | null>(null);
     const previousRunning = useRef(isRunning);
+    const clearEventHealth = useCallback(() => {
+        if (eventHealthTimer.current) clearTimeout(eventHealthTimer.current);
+        eventHealthTimer.current = null;
+        setEventHealth(null);
+    }, []);
     useEffect(() => {
         if (previousRunning.current !== isRunning) invalidateRuntimeStats();
         previousRunning.current = isRunning;
@@ -170,6 +176,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
             previousGlitchCount.current = null;
             if (glitchTimer.current) clearTimeout(glitchTimer.current);
             setHasRecentGlitch(false);
+            clearEventHealth();
             void applyGain();
         });
         const initialize = async () => {
@@ -193,7 +200,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
             window.removeEventListener('output-gain-sync', sync);
             void unlisten.then(f => f()).catch(() => {});
         };
-    }, []);
+    }, [clearEventHealth]);
 
     // Cleanup debounce timer on unmount
     useEffect(() => {
@@ -205,17 +212,28 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
 
     useEffect(() => {
         let disposed = false;
-        const unlisten = listen<ProcessingHealthSnapshot>('audio-processing-health', event => {
-            if (!disposed) setEventHealth(event.payload);
+        const clear = () => { if (!disposed) clearEventHealth(); };
+        // 統計が来ない間も、失効と同じ 2.5 秒でイベント由来の停止を残さない。
+        const unlistenHealth = listen<ProcessingHealthSnapshot>('audio-processing-health', event => {
+            if (disposed) return;
+            if (eventHealthTimer.current) clearTimeout(eventHealthTimer.current);
+            setEventHealth(event.payload);
+            eventHealthTimer.current = setTimeout(clear, 2500);
         });
+        const unlistenLifecycle = Promise.all(
+            ['audio-stopped', 'audio-error', 'audio-stream-error'].map(name => listen(name, clear)),
+        );
         return () => {
             disposed = true;
-            void unlisten.then(stop => stop()).catch(() => {});
+            if (eventHealthTimer.current) clearTimeout(eventHealthTimer.current);
+            void unlistenHealth.then(stop => stop()).catch(() => {});
+            void unlistenLifecycle.then(stops => stops.forEach(stop => stop())).catch(() => {});
         };
-    }, []);
-    useEffect(() => { setEventHealth(null); }, [stats]);
+    }, [clearEventHealth]);
+    useEffect(() => { clearEventHealth(); }, [stats, clearEventHealth]);
+    useEffect(() => { if (!isRunning) clearEventHealth(); }, [isRunning, clearEventHealth]);
     const health = eventHealth ?? stats?.processingHealth ?? null;
-    const processingStalled = health?.state === 'stalled';
+    const processingStalled = isRunning && health?.state === 'stalled';
 
     useEffect(() => {
         onStatsChange?.(stats);

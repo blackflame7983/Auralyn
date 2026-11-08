@@ -85,6 +85,8 @@ struct OutputCounters {
     underflows: AtomicU64,
     startup_zero_filled: AtomicU64,
     startup_underflows: AtomicU64,
+    /// 起動後の再priming待ち。累積の underflows には含め、警告用の差分からだけ引く。
+    reprime_underflows: AtomicU64,
     recovery_discarded: AtomicU64,
     recoveries: AtomicU64,
     recovery_status: AtomicU64,
@@ -212,8 +214,24 @@ impl QueueDiagnostics {
             .saturating_sub(self.output.startup_underflows.load(Ordering::Relaxed))
     }
 
+    /// 警告用。起動時の不足と、プロセス音声の再priming待ちを除く。
+    /// `underflow_callbacks` と `startup_underflow_callbacks` の意味は変えない。
+    pub fn underflow_excluding_startup_and_reprime(&self) -> u64 {
+        self.underflow_excluding_startup()
+            .saturating_sub(self.output.reprime_underflows.load(Ordering::Relaxed))
+    }
+
     /// queue読出しを行ったcallbackだけを数える。故障時の早期無音化やmuteとは別。
     pub fn record_output(&self, requested: usize, consumed: usize) {
+        self.record_output_inner(requested, consumed, false);
+    }
+
+    /// プロセス音声が再primingを待っているcallback。累積の不足には残し、警告用から外す。
+    pub fn record_reprime_wait(&self, requested: usize, consumed: usize) {
+        self.record_output_inner(requested, consumed, true);
+    }
+
+    fn record_output_inner(&self, requested: usize, consumed: usize, reprime_wait: bool) {
         let consumed = consumed.min(requested);
         self.output
             .requested
@@ -230,12 +248,17 @@ impl QueueDiagnostics {
             self.output.underflows.fetch_add(1, Ordering::Relaxed);
             // 単一consumerの消費実績で区切る。待機や先読み、音声の遅延は加えない。
             // 最初の部分読出しで不足した分も開始区間に含め、以降は稼働後の不足とする。
+            // 再primingは起動後だけ別枠にし、起動時分と二重に引かない。
             if previously_consumed == 0 {
                 self.output
                     .startup_zero_filled
                     .fetch_add((requested - consumed) as u64, Ordering::Relaxed);
                 self.output
                     .startup_underflows
+                    .fetch_add(1, Ordering::Relaxed);
+            } else if reprime_wait {
+                self.output
+                    .reprime_underflows
                     .fetch_add(1, Ordering::Relaxed);
             }
         }
@@ -516,6 +539,29 @@ mod tests {
             .remove("startupUnderflowCallbacks");
         let old: super::QueueSnapshot = serde_json::from_value(legacy).expect("legacy snapshot");
         assert!(old.startup_zero_filled_output_frames.is_none());
+    }
+
+    #[test]
+    fn reprime_waits_stay_in_the_cumulative_underflow_and_leave_the_warning() {
+        use super::{QueueDiagnostics, QueueState};
+        let q = QueueDiagnostics::new("reprime".into(), 48_000, 48_000, 2, 2, 4096);
+        assert_eq!(
+            crate::dsp_verification_allocator::allocation_counts(|| {
+                q.record_reprime_wait(100, 0);
+                q.record_output(100, 100);
+                q.record_reprime_wait(100, 0);
+                q.record_reprime_wait(100, 0);
+                q.record_reprime_wait(100, 0);
+                q.record_output(100, 0);
+            }),
+            (0, 0)
+        );
+        let s = q.snapshot(QueueState::Running, Some(0), None);
+        assert_eq!(s.startup_underflow_callbacks, Some(1));
+        assert_eq!(s.underflow_callbacks, 5);
+        assert_eq!(s.zero_filled_output_frames, 500);
+        assert_eq!(q.underflow_excluding_startup(), 4);
+        assert_eq!(q.underflow_excluding_startup_and_reprime(), 1);
     }
 
     #[test]

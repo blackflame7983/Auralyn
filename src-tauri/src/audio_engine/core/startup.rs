@@ -1226,6 +1226,7 @@ impl Engine {
                         );
                     }
                     let to_read = frames * queue_input_channels;
+                    let mut reprime_wait = false;
                     let (consumed_frames, timing_read) = if broadcast_frames.is_some() {
                         for (output, frame) in input_buf[..to_read]
                             .as_chunks_mut::<2>()
@@ -1242,6 +1243,7 @@ impl Engine {
                         };
                         let renderer = renderer.get_mut();
                         let before = renderer.rendered;
+                        let waiting_before = renderer.waiting;
                         renderer
                             .render(&mut input_buf[..to_read], &mut Interleaved(&mut audio_cons));
                         if renderer.failed {
@@ -1273,6 +1275,8 @@ impl Engine {
                         if let Some(shared) = &process_output_shared {
                             shared.rendered(renderer, audio_cons.occupied_len() / 2);
                         }
+                        // 再primingの待ちは無音を返す正常な状態。このcallbackの不足は警告に入れない。
+                        reprime_wait = renderer.waiting > waiting_before;
                         (renderer.rendered.saturating_sub(before) as usize, 0)
                     } else if let Some(timing) = &output_timing {
                         queue_diagnostics::read_complete_frames_observed(
@@ -1294,7 +1298,11 @@ impl Engine {
                     // 分離時の主入力キューは本人用callbackだけが読む。
                     // 配信workerまで加えると読出しと不足を二重計上してしまう。
                     if !separated {
-                        output_queue_diagnostics.record_output(frames, consumed_frames);
+                        if reprime_wait {
+                            output_queue_diagnostics.record_reprime_wait(frames, consumed_frames);
+                        } else {
+                            output_queue_diagnostics.record_output(frames, consumed_frames);
+                        }
                     }
 
                     let ([in_max_l, in_max_r], record_block_start) = route_and_meter_input(

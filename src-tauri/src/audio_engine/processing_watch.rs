@@ -175,8 +175,13 @@ impl ProcessingWatch {
             return self.finish(now, HealthState::Idle, None);
         }
         if self.epoch != Some(sample.attempt_epoch) || self.decreased(&sample) {
+            // 巻戻りは基準を捨てて猶予からやり直す。新しい開始試行だけ、観測前の進捗を認める。
+            let new_attempt = self.epoch != Some(sample.attempt_epoch);
             self.hard_reset(sample);
             self.arm(now);
+            if new_attempt {
+                self.credit_progress_already_made(now, &sample);
+            }
             self.active = true;
             self.suspended = sample.paused_by_mode_silence;
             return self.finish(now, HealthState::Grace, None);
@@ -253,6 +258,19 @@ impl ProcessingWatch {
             self.seen_progress = true;
         }
         if sample.processed_blocks > self.base_processed {
+            self.processed_at = Some(now);
+            self.seen_progress = true;
+        }
+    }
+
+    /// 開始のたびに出力回数と処理完了数は 0 から作り直す。
+    /// 最初の観測がすでに非ゼロなら、その前のブロックを進捗とみなす。
+    fn credit_progress_already_made(&mut self, now: Instant, sample: &ProgressSample) {
+        if sample.output_callbacks > 0 {
+            self.output_at = Some(now);
+            self.seen_progress = true;
+        }
+        if sample.processed_blocks > 0 {
             self.processed_at = Some(now);
             self.seen_progress = true;
         }
@@ -624,5 +642,82 @@ mod tests {
         let again = watch.observe_at(at(start, 1_200), sample);
         assert!(!again.emit);
         assert_eq!(again.snapshot.state, HealthState::Normal);
+    }
+
+    #[test]
+    fn nonzero_first_sample_then_frozen_stalls_after_grace() {
+        let start = Instant::now();
+        let mut watch = ProcessingWatch::new();
+        let mut sample = running(1);
+        sample.output_callbacks = 4;
+        sample.processed_blocks = 4;
+        let first = watch.observe_at(start, sample);
+        assert_eq!(first.snapshot.state, HealthState::Grace);
+        let before = watch.observe_at(at(start, 999), sample);
+        assert_eq!(before.snapshot.state, HealthState::Grace);
+        assert!(before.snapshot.stall_kind.is_none());
+        let stalled = watch.observe_at(at(start, 1_000), sample);
+        assert_eq!(stalled.snapshot.state, HealthState::Stalled);
+        assert_eq!(stalled.snapshot.stall_kind, Some(StallKind::OutputCallback));
+    }
+
+    #[test]
+    fn u64_wrap_restarts_grace_and_drops_the_wrapped_span() {
+        let start = Instant::now();
+        let mut watch = ProcessingWatch::new();
+        let mut sample = running(1);
+        sample.output_callbacks = u64::MAX;
+        sample.processed_blocks = u64::MAX;
+        sample.late_callbacks = 8;
+        sample.underflow_callbacks = 4;
+        watch.observe_at(start, sample);
+        sample.output_callbacks = 0;
+        sample.processed_blocks = 0;
+        sample.late_callbacks = 0;
+        sample.underflow_callbacks = 0;
+        let wrapped = watch.observe_at(at(start, 100), sample);
+        assert_eq!(wrapped.snapshot.state, HealthState::Grace);
+        assert!(wrapped.snapshot.stall_kind.is_none());
+        assert_eq!(wrapped.snapshot.recent_late, 0);
+        assert_eq!(wrapped.snapshot.recent_underflow, 0);
+        let later = watch.observe_at(at(start, 10_000), sample);
+        assert_eq!(later.snapshot.state, HealthState::Grace);
+        assert!(!frequency_warning(
+            later.snapshot.recent_late,
+            later.snapshot.recent_underflow
+        ));
+    }
+
+    #[test]
+    fn anomaly_on_the_60_second_boundary_stays_and_the_next_millisecond_drops() {
+        let start = Instant::now();
+        let mut watch = ProcessingWatch::new();
+        let mut sample = running(1);
+        watch.observe_at(start, sample);
+        sample.late_callbacks = 1;
+        sample.underflow_callbacks = 3;
+        watch.observe_at(at(start, 1_000), sample);
+        let on_boundary = watch.observe_at(at(start, 1_000 + 60_000), sample);
+        assert_eq!(on_boundary.snapshot.recent_late, 1);
+        assert_eq!(on_boundary.snapshot.recent_underflow, 3);
+        let past = watch.observe_at(at(start, 1_000 + 60_001), sample);
+        assert_eq!(past.snapshot.recent_late, 0);
+        assert_eq!(past.snapshot.recent_underflow, 0);
+    }
+
+    #[test]
+    fn ring_keeps_only_the_newest_capacity_inside_the_window() {
+        let start = Instant::now();
+        let mut watch = ProcessingWatch::new();
+        let mut sample = running(1);
+        watch.observe_at(start, sample);
+        sample.late_callbacks = 100;
+        watch.observe_at(at(start, 1), sample);
+        for step in 1..=RING_CAP {
+            sample.late_callbacks = 100 + step as u64;
+            watch.observe_at(at(start, 1 + step as u64), sample);
+        }
+        let kept = watch.snapshot();
+        assert_eq!(kept.recent_late, RING_CAP as u64);
     }
 }

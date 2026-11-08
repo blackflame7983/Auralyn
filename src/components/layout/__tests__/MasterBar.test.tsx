@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { MasterBar } from '../MasterBar';
-import { audioApi, type EngineRuntimeStats } from '../../../api/audio';
+import { audioApi, type EngineRuntimeStats, type ProcessingHealthSnapshot } from '../../../api/audio';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
@@ -20,6 +20,7 @@ let initialized: boolean;
 let finishListening: () => void;
 let started: () => void;
 let unlistenStarted: () => void;
+let eventHandlers: Map<string, Set<(event: { event: string; id: number; payload: unknown }) => void>>;
 
 beforeEach(() => {
     vi.useFakeTimers();
@@ -36,7 +37,11 @@ beforeEach(() => {
     initialized = false;
     vi.mocked(audioApi.getAudioState).mockResolvedValue({ is_running: true, config: null });
     unlistenStarted = vi.fn();
+    eventHandlers = new Map();
     vi.mocked(listen).mockImplementation((event, callback) => {
+        const handlers = eventHandlers.get(event) ?? new Set();
+        handlers.add(callback);
+        eventHandlers.set(event, handlers);
         if (event !== 'audio-started') return Promise.resolve(vi.fn());
         started = () => callback({ event, id: 1, payload: undefined });
         return new Promise((resolve) => {
@@ -396,6 +401,47 @@ it('処理停止を言葉と印で示し、進みが戻ると消し、詳細に�
     fireEvent.click(screen.getByText('診断情報'));
     expect(screen.getByText('直近60秒：遅着 1回 / 音切れの可能性 0回')).toBeVisible();
     expect(screen.queryByText('直近1分の回数が多いです。')).toBeNull();
+});
+
+const stalledEvent = (): ProcessingHealthSnapshot => ({
+    state: 'stalled', stallKind: 'outputCallback', stalledMs: 800, recentLate: 0, recentUnderflow: 0, windowSecs: 60,
+});
+const emit = (event: string, payload?: unknown) => {
+    eventHandlers.get(event)?.forEach(callback => callback({ event, id: 1, payload }));
+};
+
+it('イベントの停止を受けて表示し、稼働していなければ出さない', async () => {
+    vi.mocked(audioApi.getEngineRuntimeStats).mockRejectedValue(new Error('offline'));
+    const view = render(<MasterBar isRunning />);
+    await act(async () => { finishListening(); await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.queryByRole('alert')).toBeNull();
+    await act(async () => { emit('audio-processing-health', stalledEvent()); });
+    expect(screen.getByRole('alert')).toHaveTextContent('音声処理が止まっています（無音ではなく処理が進んでいません）');
+    view.rerender(<MasterBar isRunning={false} />);
+    expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it.each(['audio-stopped', 'audio-error', 'audio-stream-error', 'audio-started'])('%sでイベントの停止表示を消す', async event => {
+    vi.mocked(audioApi.getEngineRuntimeStats).mockRejectedValue(new Error('offline'));
+    render(<MasterBar isRunning />);
+    await act(async () => { finishListening(); await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { emit('audio-processing-health', stalledEvent()); });
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    await act(async () => { emit(event); });
+    expect(screen.queryByText('音声処理が止まっています（無音ではなく処理が進んでいません）')).toBeNull();
+});
+
+it('統計が来ないイベントの停止は2.5秒で消える', async () => {
+    vi.mocked(audioApi.getEngineRuntimeStats).mockRejectedValue(new Error('offline'));
+    render(<MasterBar isRunning />);
+    await act(async () => { finishListening(); await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { emit('audio-processing-health', stalledEvent()); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1499); });
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.queryByText('音声処理が止まっています（無音ではなく処理が進んでいません）')).toBeNull();
 });
 
 it('英語でも処理停止と直近回数を言葉で示す', async () => {
