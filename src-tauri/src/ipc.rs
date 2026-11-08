@@ -882,6 +882,12 @@ pub struct MeterLevels {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "payload")]
 pub enum EngineEvent {
+    ControlStall {
+        command: String,
+        plugin_id: Option<String>,
+        module: Option<String>,
+        elapsed_ms: u64,
+    },
     EditorOpened {
         id: String,
     },
@@ -919,6 +925,42 @@ pub enum EngineEvent {
         recent_underflow: u64,
         window_secs: u32,
     },
+}
+
+#[cfg(test)]
+mod control_stall_tests {
+    use super::{EngineEvent, OutputMessage};
+
+    #[test]
+    fn control_stall_event_round_trips_with_optional_diagnostics() {
+        for (plugin_id, module) in [
+            (Some("vst-1".to_owned()), Some("example.dll".to_owned())),
+            (None, None),
+        ] {
+            let event = OutputMessage::Event(EngineEvent::ControlStall {
+                command: "OpenEditor".into(),
+                plugin_id: plugin_id.clone(),
+                module: module.clone(),
+                elapsed_ms: 5_000,
+            });
+            let json = serde_json::to_value(event).unwrap();
+            let restored: OutputMessage = serde_json::from_value(json.clone()).unwrap();
+            let OutputMessage::Event(EngineEvent::ControlStall {
+                command,
+                plugin_id: restored_plugin,
+                module: restored_module,
+                elapsed_ms,
+            }) = restored
+            else {
+                panic!("ControlStallイベントとして復元できること");
+            };
+            assert_eq!(command, "OpenEditor");
+            assert_eq!(restored_plugin, plugin_id);
+            assert_eq!(restored_module, module);
+            assert_eq!(elapsed_ms, 5_000);
+            assert_eq!(json["data"]["payload"]["elapsed_ms"], 5_000);
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
