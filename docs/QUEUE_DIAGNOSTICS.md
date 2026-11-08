@@ -12,7 +12,7 @@ frameは全チャンネル一組、slotは1チャンネルの1サンプル。
 resamplerのemitまたは同率passthroughを生成とし、その全量を既存push処理へ渡すため段階Aでは生成と投入対象は一致する。
 受入は全output chのpush完了、破棄は投入対象から受入を引いた量で、従来の受入予算と満杯時破棄を維持する。
 出力の要求frameはqueueを読むcallbackだけを数える。読出しと不足補填の合計が要求frameになる。
-不足callbackは不足補填が1frame以上あるcallbackで、開始直後の不足も含む。プロセス音声の再priming待ちで足した不足もこの累積に含める。処理停止の警告が使う直近回数だけから、起動時分と再priming待ちを除く。除くための計数は callback 単位の atomic であり、sample 単位の atomic・時計読取り・ログ・割当・待機は足さない。
+不足callbackは不足補填が1frame以上あるcallbackで、開始直後の不足も含む。プロセス音声と、分離した二入力の独立クロックが再primingを待っている間の不足もこの累積に含める。処理停止の警告が使う直近回数は、起動時分と再priming待ちを除いた不足だけを callback ごとに直接加算する atomic で、二つの累積を読んで引き算しない。再priming待ちの callback はこの atomic を増やさない。sample 単位の atomic・時計読取り・ログ・割当・待機は足さない。
 故障フラグによる早期無音化・グローバルミュート・別の試聴音の無音量をこの不足へ混ぜない。
 
 現在量は制御側のread-only observerによるslot観測を全output chで割った完全frame数。

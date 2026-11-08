@@ -1378,7 +1378,7 @@ impl Engine {
             processed_blocks: self.callback_diagnostics.snapshot().count,
             input_callbacks: self.input_callbacks.load(Ordering::Relaxed),
             late_callbacks: self.stats_glitches.load(Ordering::Relaxed),
-            // 累積の不足はそのまま残し、起動時と再priming待ちだけを警告の回数から外す。
+            // 警告の回数は専用の atomic だけを読む。累積と再priming除外の引き算はしない。
             underflow_callbacks: self
                 .queue_diagnostics
                 .as_ref()

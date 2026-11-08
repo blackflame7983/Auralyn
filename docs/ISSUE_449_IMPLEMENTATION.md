@@ -24,7 +24,7 @@
 
 モード無音で入力を止めている間（`pause_sources`）も判定しない。出力を無音へ寄せているだけで入力コールバックがまだ動く区間は、従来どおり監視する。この間に増えた遅着と underflow は直近回数へ入れない。
 
-underflow は、キューが空で読めなかったコールバック数から、起動時分を引いた値を警告の窓に入れる。プロセス音声が再primingを待っている間の不足は、この警告の窓に入れない。出力コールバックと処理完了の監視はその間も続ける。queue診断の累積 `underflow_callbacks` と `startup_underflow_callbacks` の意味は変えない。
+underflow の警告は、起動時分と再priming待ちを除いた不足だけを数える専用の atomic を制御スレッドが読む。累積と除外数を別々に読んで引き算しない。引き算の途中で両方が増えると観測値が戻り、巻戻りとして直近履歴が消え、停止検知も猶予へ戻るためである。プロセス音声と、分離した二入力の独立クロック（主入力）が再primingを待っている間の不足は累積には残し、この警告用 atomic には足さない。出力コールバックと処理完了の監視はその間も続ける。queue診断の累積 `underflow_callbacks` と `startup_underflow_callbacks` の意味は変えない。
 
 ## 監視する主体
 
@@ -56,10 +56,12 @@ OS 出力コールバック回数は既存の atomic では取れない。`frame
 | コマンド | 結果 |
 | --- | --- |
 | `cargo test --locked --lib processing_watch` | 16 passed、0 failed |
-| `cargo test --locked --lib` | 730 passed、0 failed、5 ignored |
+| `cargo test --locked --lib queue_diagnostics` | 19 passed、0 failed |
+| `cargo test --locked --lib split_monitor` | 16 passed、0 failed |
+| `cargo test --locked --lib` | 733 passed、0 failed、5 ignored |
 | `cargo clippy --locked --all-targets` | 成功。警告なし |
 | `npm test -- --run --maxWorkers=4` | 165 files、1899 passed |
 | `npx tsc --noEmit` | 成功 |
 | `git diff --check` | 指摘なし |
 
-`processing_watch` の 16 件は、無音で進捗がある場合、停止、処理だけが止まる場合、起動猶予、停止・epoch 変更・巻戻り、モード無音、入力回数だけが止まる場合、集中と散発、解消後の解除、RT の atomic 加算が割当 0 であることに加え、初回サンプルが非ゼロのまま固定すると猶予後に Stalled になること、u64 の巻戻り、60 秒ちょうどの境界、リングが一周して古い増分を落とすことを含む。queue 診断は、再priming待ちを累積の不足に残し、警告用の回数から外すことを確認した。UI は MasterBar の統計由来の停止表示に加え、イベントの受信と表示、停止・エラー・再開始での解除、2.5 秒の失効、非稼働では出さないことを DOM で確認した。実機の停止再現は含まない。
+`processing_watch` の 16 件は、無音で進捗がある場合、停止、処理だけが止まる場合、起動猶予、停止・epoch 変更・巻戻り、モード無音、入力回数だけが止まる場合、集中と散発、解消後の解除、RT の atomic 加算が割当 0 であることに加え、初回サンプルが非ゼロのまま固定すると猶予後に Stalled になること、u64 の巻戻り、60 秒ちょうどの境界、リングが一周して古い増分を落とすことを含む。queue 診断は、再priming待ちを累積の不足に残し、警告用の回数から外すことに加え、累積を読んだあと再primingが不足と除外を両方足しても警告回数が戻らず、直近履歴が消えないことを確認した。スレッドを交差させた読取りでも警告回数は単調である。分離した独立クロックは、稼働からモード無音、復帰、再priming完了までを通し、正常な待機では直近頻度の警告が出ず、本当の枯渇は警告対象になることを確認した。UI は MasterBar の統計由来の停止表示に加え、イベントの受信と表示、停止・エラー・再開始での解除、2.5 秒の失効、非稼働では出さないことを DOM で確認した。実機の停止再現は含まない。
