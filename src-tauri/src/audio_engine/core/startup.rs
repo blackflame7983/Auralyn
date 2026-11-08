@@ -725,6 +725,10 @@ impl Engine {
         let callback_rate = self.current_sample_rate as u32;
         let callback_diagnostics = Arc::new(CallbackDiagnostics::default());
         self.callback_diagnostics = callback_diagnostics.clone();
+        let output_callbacks = Arc::new(AtomicU64::new(0));
+        let input_callbacks = Arc::new(AtomicU64::new(0));
+        self.output_callbacks = output_callbacks.clone();
+        self.input_callbacks = input_callbacks.clone();
 
         let mmcss_set_out = Arc::new(AtomicBool::new(false));
         let (mut callback_processors, returned_processors) = callback_owner(CallbackProcessors {
@@ -1222,6 +1226,7 @@ impl Engine {
                         );
                     }
                     let to_read = frames * queue_input_channels;
+                    let mut reprime_wait = false;
                     let (consumed_frames, timing_read) = if broadcast_frames.is_some() {
                         for (output, frame) in input_buf[..to_read]
                             .as_chunks_mut::<2>()
@@ -1238,6 +1243,7 @@ impl Engine {
                         };
                         let renderer = renderer.get_mut();
                         let before = renderer.rendered;
+                        let waiting_before = renderer.waiting;
                         renderer
                             .render(&mut input_buf[..to_read], &mut Interleaved(&mut audio_cons));
                         if renderer.failed {
@@ -1269,6 +1275,8 @@ impl Engine {
                         if let Some(shared) = &process_output_shared {
                             shared.rendered(renderer, audio_cons.occupied_len() / 2);
                         }
+                        // 再primingの待ちは無音を返す正常な状態。このcallbackの不足は警告に入れない。
+                        reprime_wait = renderer.waiting > waiting_before;
                         (renderer.rendered.saturating_sub(before) as usize, 0)
                     } else if let Some(timing) = &output_timing {
                         queue_diagnostics::read_complete_frames_observed(
@@ -1290,7 +1298,11 @@ impl Engine {
                     // 分離時の主入力キューは本人用callbackだけが読む。
                     // 配信workerまで加えると読出しと不足を二重計上してしまう。
                     if !separated {
-                        output_queue_diagnostics.record_output(frames, consumed_frames);
+                        if reprime_wait {
+                            output_queue_diagnostics.record_reprime_wait(frames, consumed_frames);
+                        } else {
+                            output_queue_diagnostics.record_output(frames, consumed_frames);
+                        }
                     }
 
                     let ([in_max_l, in_max_r], record_block_start) = route_and_meter_input(
@@ -1749,6 +1761,7 @@ impl Engine {
                 ) {
                     Ok(worker) => {
                         self.split_worker = Some(worker);
+                        let output_callbacks = output_callbacks.clone();
                         native_stream::build_output(
                             &out_dev,
                             &out_stream_config,
@@ -1756,6 +1769,9 @@ impl Engine {
                             max_frames_per_callback,
                             self.stream_failed.clone(),
                             move |data: &mut [f32], info| {
+                                crate::audio_engine::processing_watch::note_callback(
+                                    &output_callbacks,
+                                );
                                 output_cadence.record(
                                     data.len() / channels_len,
                                     &stats_max_jitter,
@@ -1778,6 +1794,7 @@ impl Engine {
                     Err(_) => Err(cpal::BuildStreamError::DeviceNotAvailable),
                 }
             } else {
+                let output_callbacks = output_callbacks.clone();
                 native_stream::build_output(
                     &out_dev,
                     &out_stream_config,
@@ -1785,6 +1802,7 @@ impl Engine {
                     max_frames_per_callback,
                     self.stream_failed.clone(),
                     move |data: &mut [f32], info| {
+                        crate::audio_engine::processing_watch::note_callback(&output_callbacks);
                         output_cadence.record(
                             data.len() / channels_len,
                             &stats_max_jitter,
@@ -1820,6 +1838,7 @@ impl Engine {
             mmcss_set_in,
             audio_prod,
             batch_timing,
+            input_callbacks,
         };
         let build_input = || {
             let input_build_started = Instant::now();

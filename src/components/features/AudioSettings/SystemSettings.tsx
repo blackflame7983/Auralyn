@@ -15,6 +15,7 @@ import { TabsContent } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { LatencyDetails } from '@/components/layout/LatencyDetails';
+import { recentAnomalyWarning } from '@/components/layout/processingHealth';
 import { MigrationPanel } from './MigrationPanel';
 import { UpdatePreferences } from './UpdatePreferences';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
@@ -320,6 +321,14 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                 <tr className="border-b border-border">
                 <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.176')}</th>
                 <td className="py-2 text-right tabular-nums">{engineStats?.glitchCount ?? '-'}</td>
+                </tr>
+                <tr className="border-b border-border">
+                <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('master.recentAnomaliesLabel')}</th>
+                <td className="py-2 text-right">
+                    <div className="whitespace-normal break-words">{engineStats?.processingHealth ? t('master.recentAnomalies', { window: engineStats.processingHealth.windowSecs, late: engineStats.processingHealth.recentLate, underflow: engineStats.processingHealth.recentUnderflow }) : '-'}</div>
+                    {engineStats?.processingHealth && <div className="mt-1 whitespace-normal break-words text-muted-foreground">{t('master.recentAnomaliesNote')}</div>}
+                    {recentAnomalyWarning(engineStats?.processingHealth) && <div className="mt-1 whitespace-normal break-words">{t('master.recentAnomaliesHigh')}</div>}
+                </td>
                 </tr>
                 <tr className="border-b border-border">
                 <th scope="row" className="py-2 pr-4 text-left font-medium text-muted-foreground">{t('settings.AudioSettingsModal.177')}</th>

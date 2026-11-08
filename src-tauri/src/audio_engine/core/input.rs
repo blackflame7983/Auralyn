@@ -36,6 +36,7 @@ pub(super) struct InputCallback {
     pub(super) mmcss_set_in: Arc<AtomicBool>,
     pub(super) audio_prod: <Arc<HeapRb<f32>> as Split>::Prod,
     pub(super) batch_timing: bool,
+    pub(super) input_callbacks: Arc<AtomicU64>,
 }
 
 impl InputCallback {
@@ -55,7 +56,9 @@ impl InputCallback {
             mmcss_set_in,
             audio_prod,
             batch_timing,
+            input_callbacks,
         } = self;
+        crate::audio_engine::processing_watch::note_callback(input_callbacks);
         let scan_gain = scan_control.sync(&mut *rt_channel_scan);
         if rt_channel_scan.enabled() {
             for frame in data.chunks_exact(*channels) {

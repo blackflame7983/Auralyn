@@ -6,14 +6,15 @@ import { renderNotice } from '@/components/features/AudioSettings/settingsNotice
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { MdGraphicEq, MdVolumeUp, MdVolumeOff, MdBolt, MdClose, MdInfoOutline } from 'react-icons/md';
+import { MdGraphicEq, MdVolumeUp, MdVolumeOff, MdBolt, MdClose, MdInfoOutline, MdWarning } from 'react-icons/md';
 import { Modal } from '../ui/modal';
 import { cn } from '@/lib/utils';
-import { audioApi, EngineRuntimeStats } from '../../api/audio';
+import { audioApi, EngineRuntimeStats, type ProcessingHealthSnapshot } from '../../api/audio';
 import { useSharedMeter } from '../features/LevelMeter/MeterContext';
 import { MeterVisual } from '../features/LevelMeter/MeterVisual';
 import { useBeginnerMode } from '@/hooks/useBeginnerMode';
-import { invalidateRuntimeStats, useRuntimeStats } from '@/hooks/useRuntimeStats';
+import { invalidateRuntimeStats, useRuntimeStats, useRuntimeStatsUnavailable } from '@/hooks/useRuntimeStats';
+import { recentAnomalyWarning } from './processingHealth';
 import { Slider } from '@/components/ui/slider';
 import * as Popover from '@radix-ui/react-popover';
 import { AudioQueueDetails } from './AudioQueueDetails';
@@ -44,11 +45,19 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
     const [simple] = useBeginnerMode();
     const detailsButtonRef = useRef<HTMLButtonElement>(null);
     const stats = useRuntimeStats();
+    const statsUnavailable = useRuntimeStatsUnavailable();
+    const [eventHealth, setEventHealth] = useState<ProcessingHealthSnapshot | null>(null);
+    const eventHealthTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [hasRecentGlitch, setHasRecentGlitch] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
     const glitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const previousGlitchCount = useRef<number | null>(null);
     const previousRunning = useRef(isRunning);
+    const clearEventHealth = useCallback(() => {
+        if (eventHealthTimer.current) clearTimeout(eventHealthTimer.current);
+        eventHealthTimer.current = null;
+        setEventHealth(null);
+    }, []);
     useEffect(() => {
         if (previousRunning.current !== isRunning) invalidateRuntimeStats();
         previousRunning.current = isRunning;
@@ -167,6 +176,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
             previousGlitchCount.current = null;
             if (glitchTimer.current) clearTimeout(glitchTimer.current);
             setHasRecentGlitch(false);
+            clearEventHealth();
             void applyGain();
         });
         const initialize = async () => {
@@ -190,7 +200,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
             window.removeEventListener('output-gain-sync', sync);
             void unlisten.then(f => f()).catch(() => {});
         };
-    }, []);
+    }, [clearEventHealth]);
 
     // Cleanup debounce timer on unmount
     useEffect(() => {
@@ -199,6 +209,31 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
             if (glitchTimer.current) clearTimeout(glitchTimer.current);
         };
     }, []);
+
+    useEffect(() => {
+        let disposed = false;
+        const clear = () => { if (!disposed) clearEventHealth(); };
+        // 統計が来ない間も、失効と同じ 2.5 秒でイベント由来の停止を残さない。
+        const unlistenHealth = listen<ProcessingHealthSnapshot>('audio-processing-health', event => {
+            if (disposed) return;
+            if (eventHealthTimer.current) clearTimeout(eventHealthTimer.current);
+            setEventHealth(event.payload);
+            eventHealthTimer.current = setTimeout(clear, 2500);
+        });
+        const unlistenLifecycle = Promise.all(
+            ['audio-stopped', 'audio-error', 'audio-stream-error'].map(name => listen(name, clear)),
+        );
+        return () => {
+            disposed = true;
+            if (eventHealthTimer.current) clearTimeout(eventHealthTimer.current);
+            void unlistenHealth.then(stop => stop()).catch(() => {});
+            void unlistenLifecycle.then(stops => stops.forEach(stop => stop())).catch(() => {});
+        };
+    }, [clearEventHealth]);
+    useEffect(() => { clearEventHealth(); }, [stats, clearEventHealth]);
+    useEffect(() => { if (!isRunning) clearEventHealth(); }, [isRunning, clearEventHealth]);
+    const health = eventHealth ?? stats?.processingHealth ?? null;
+    const processingStalled = isRunning && health?.state === 'stalled';
 
     useEffect(() => {
         onStatsChange?.(stats);
@@ -270,6 +305,16 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
                 </span>
             </div>
 
+            {processingStalled && <div role="alert" className="basis-full flex min-w-0 items-start gap-2 text-ui-support text-warning">
+                <MdWarning aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="min-w-0 whitespace-normal break-words">
+                    <p>{t('master.processingStalled')}</p>
+                    <p>{t('master.processingStalledHint')}</p>
+                </div>
+            </div>}
+            {isRunning && statsUnavailable && <p role="status" className="basis-full min-w-0 whitespace-normal break-words text-ui-support">
+                <MdInfoOutline aria-hidden="true" className="mr-1 inline h-4 w-4" />{t('master.statsUnavailable')}
+            </p>}
             {hasRecentGlitch && <Button variant="ghost" size="sm" type="button" onClick={() => { detailsButtonRef.current?.focus(); setDetailsOpen(true); }} aria-haspopup="dialog" aria-expanded={detailsOpen}
                 aria-label={t('master.recentDropout')} title={t('master.recentDropout')}
                 ><MdBolt aria-hidden="true" className="h-4 w-4" /></Button>}
@@ -316,6 +361,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
                                     [t('master.rate'), isRunning && sampleRate ? `${sampleRate.toLocaleString()} Hz` : '—'],
                                     [t('master.buffer'), isRunning && bufferSize ? t('master.samples', {frames: bufferSize}) : '—'],
                                     [t('master.vstCount'), isRunning && stats ? t('master.counts', {enabled: stats.enabledPluginCount, total: stats.activePluginCount}) : '—'],
+                                    [t('master.glitchTotal'), stats ? String(stats.glitchCount) : '—'],
                                 ].map(([label, value]) => <React.Fragment key={label}>
                                     <dt className="text-muted-foreground">{label}</dt><dd className="break-all text-right">{value}</dd>
                                 </React.Fragment>)}
@@ -324,6 +370,11 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
                               <summary className="cursor-pointer font-semibold">{t('structure.diagnostics')}</summary>
                             <LatencyDetails stats={stats} isRunning={isRunning} />
                             <AudioQueueDetails snapshot={stats?.queueDiagnostics} isRunning={isRunning} />
+                            <div className="space-y-1 text-ui-support">
+                                <p>{health ? t('master.recentAnomalies', { window: health.windowSecs, late: health.recentLate, underflow: health.recentUnderflow }) : '—'}</p>
+                                <p className="text-muted-foreground">{t('master.recentAnomaliesNote')}</p>
+                                {recentAnomalyWarning(health) && <p>{t('master.recentAnomaliesHigh')}</p>}
+                            </div>
                             </details>
                         </div>
                     </div>

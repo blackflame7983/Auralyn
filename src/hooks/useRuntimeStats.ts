@@ -16,15 +16,34 @@ let subscriptionFailed = false;
 let acceptedSerial = 0;
 let acceptedRevision = -1;
 let acceptedSession = -1;
+let hadStats = false;
+let unavailable = false;
 
+function notify() {
+    listeners.forEach(listener => listener());
+}
 function publish(value: EngineRuntimeStats | null) {
+    if (value) hadStats = true;
     if (snapshot === value) return;
     snapshot = value;
-    listeners.forEach(listener => listener());
+    notify();
+}
+function setUnavailable(next: boolean) {
+    if (unavailable === next) return;
+    unavailable = next;
+    notify();
 }
 export function invalidateRuntimeStats() {
     revision++;
+    hadStats = false;
     clearTimeout(expiry);
+    setUnavailable(false);
+    publish(null);
+}
+function loseRuntimeStats() {
+    revision++;
+    clearTimeout(expiry);
+    if (hadStats) setUnavailable(true);
     publish(null);
 }
 // 明示的な更新は、進行中の古い取得の後に新しい取得を待つ。
@@ -45,12 +64,13 @@ export function refreshRuntimeStats(force = false): Promise<void> {
                     acceptedSerial++;
                     acceptedRevision = requestRevision;
                     acceptedSession = requestSession;
+                    setUnavailable(false);
                     publish(next);
                     clearTimeout(expiry);
-                    expiry = setTimeout(invalidateRuntimeStats, 2500);
+                    expiry = setTimeout(loseRuntimeStats, 2500);
                 }
             } catch {
-                if (listeners.size && revision === requestRevision) invalidateRuntimeStats();
+                if (listeners.size && revision === requestRevision) loseRuntimeStats();
             }
         } while (queued && listeners.size && requestSession === subscriptionSession && !isAppHidden() && !subscriptionFailed);
     };
@@ -112,6 +132,12 @@ function subscribe(listener: () => void) {
 const emptySubscribe = () => () => {};
 const getSnapshot = () => snapshot;
 const getEmptySnapshot = () => null;
+const getUnavailable = () => unavailable;
+const getAvailable = () => false;
+export function useRuntimeStatsUnavailable(enabled = true) {
+    const subscribeEnabled = useCallback((listener: () => void) => enabled ? subscribe(listener) : emptySubscribe(), [enabled]);
+    return useSyncExternalStore(subscribeEnabled, enabled ? getUnavailable : getAvailable, getAvailable);
+}
 export function useRuntimeStats(enabled = true) {
     const subscribeEnabled = useCallback((listener: () => void) => enabled ? subscribe(listener) : emptySubscribe(), [enabled]);
     return useSyncExternalStore(subscribeEnabled, enabled ? getSnapshot : getEmptySnapshot, getEmptySnapshot);

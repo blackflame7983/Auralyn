@@ -85,6 +85,10 @@ struct OutputCounters {
     underflows: AtomicU64,
     startup_zero_filled: AtomicU64,
     startup_underflows: AtomicU64,
+    /// 起動後の再priming待ち。累積の underflows には含め、警告用の回数には足さない。
+    reprime_underflows: AtomicU64,
+    /// 警告の直近回数。起動時と再priming待ちは足さない。二つの累積を引かず、これだけを読む。
+    warning_underflows: AtomicU64,
     recovery_discarded: AtomicU64,
     recoveries: AtomicU64,
     recovery_status: AtomicU64,
@@ -204,8 +208,33 @@ impl QueueDiagnostics {
             .recovery_high
             .store(high as u64, Ordering::Relaxed);
     }
+    /// 起動時の不足を除いた、キューが空で読めなかったコールバック数。
+    pub fn underflow_excluding_startup(&self) -> u64 {
+        self.output
+            .underflows
+            .load(Ordering::Relaxed)
+            .saturating_sub(self.output.startup_underflows.load(Ordering::Relaxed))
+    }
+
+    /// 警告用。起動時の不足と再priming待ちを除いた回数を、専用の atomic から読む。
+    /// 累積と除外数を別々に読んで引くと、その間の加算で値が戻り、監視が巻戻りと判断する。
+    /// `underflow_callbacks` と `startup_underflow_callbacks` の意味は変えない。
+    pub fn underflow_excluding_startup_and_reprime(&self) -> u64 {
+        self.output.warning_underflows.load(Ordering::Relaxed)
+    }
+
     /// queue読出しを行ったcallbackだけを数える。故障時の早期無音化やmuteとは別。
     pub fn record_output(&self, requested: usize, consumed: usize) {
+        self.record_output_inner(requested, consumed, false);
+    }
+
+    /// 再primingを待っているcallback。プロセス入力と分離した独立クロックの両方で使う。
+    /// 累積の不足には残し、警告用の atomic には足さない。
+    pub fn record_reprime_wait(&self, requested: usize, consumed: usize) {
+        self.record_output_inner(requested, consumed, true);
+    }
+
+    fn record_output_inner(&self, requested: usize, consumed: usize, reprime_wait: bool) {
         let consumed = consumed.min(requested);
         self.output
             .requested
@@ -222,12 +251,22 @@ impl QueueDiagnostics {
             self.output.underflows.fetch_add(1, Ordering::Relaxed);
             // 単一consumerの消費実績で区切る。待機や先読み、音声の遅延は加えない。
             // 最初の部分読出しで不足した分も開始区間に含め、以降は稼働後の不足とする。
+            // 再primingは起動後だけ別枠にし、起動時分と二重に引かない。
             if previously_consumed == 0 {
                 self.output
                     .startup_zero_filled
                     .fetch_add((requested - consumed) as u64, Ordering::Relaxed);
                 self.output
                     .startup_underflows
+                    .fetch_add(1, Ordering::Relaxed);
+            } else if reprime_wait {
+                self.output
+                    .reprime_underflows
+                    .fetch_add(1, Ordering::Relaxed);
+            } else {
+                // 再priming待ちでない稼働後の不足だけを、警告用へ直接足す。
+                self.output
+                    .warning_underflows
                     .fetch_add(1, Ordering::Relaxed);
             }
         }
@@ -490,6 +529,7 @@ mod tests {
         assert_eq!(s.startup_underflow_callbacks, Some(2));
         assert_eq!(s.zero_filled_output_frames, 260);
         assert_eq!(s.underflow_callbacks, 3);
+        assert_eq!(q.underflow_excluding_startup(), 1);
         let next = QueueDiagnostics::new("next".into(), 48_000, 48_000, 1, 2, 4096).snapshot(
             QueueState::Running,
             Some(0),
@@ -507,6 +547,193 @@ mod tests {
             .remove("startupUnderflowCallbacks");
         let old: super::QueueSnapshot = serde_json::from_value(legacy).expect("legacy snapshot");
         assert!(old.startup_zero_filled_output_frames.is_none());
+    }
+
+    #[test]
+    fn reprime_waits_stay_in_the_cumulative_underflow_and_leave_the_warning() {
+        use super::{QueueDiagnostics, QueueState};
+        let q = QueueDiagnostics::new("reprime".into(), 48_000, 48_000, 2, 2, 4096);
+        assert_eq!(
+            crate::dsp_verification_allocator::allocation_counts(|| {
+                q.record_reprime_wait(100, 0);
+                q.record_output(100, 100);
+                q.record_reprime_wait(100, 0);
+                q.record_reprime_wait(100, 0);
+                q.record_reprime_wait(100, 0);
+                q.record_output(100, 0);
+            }),
+            (0, 0)
+        );
+        let s = q.snapshot(QueueState::Running, Some(0), None);
+        assert_eq!(s.startup_underflow_callbacks, Some(1));
+        assert_eq!(s.underflow_callbacks, 5);
+        assert_eq!(s.zero_filled_output_frames, 500);
+        assert_eq!(q.underflow_excluding_startup(), 4);
+        assert_eq!(q.underflow_excluding_startup_and_reprime(), 1);
+    }
+
+    #[test]
+    fn warning_underflow_stays_monotonic_when_reads_cross_both_increments() {
+        use super::{QueueDiagnostics, QueueState};
+        use crate::audio_engine::processing_watch::{
+            frequency_warning, HealthState, ProcessingWatch, ProgressSample,
+        };
+        use std::sync::atomic::Ordering;
+        use std::time::{Duration, Instant};
+
+        let q = QueueDiagnostics::new("cross".into(), 48_000, 48_000, 2, 2, 4096);
+        assert_eq!(
+            crate::dsp_verification_allocator::allocation_counts(|| {
+                q.record_output(100, 100);
+                q.record_output(100, 0);
+            }),
+            (0, 0)
+        );
+        let before = q.underflow_excluding_startup_and_reprime();
+        assert_eq!(before, 1);
+
+        // 旧式は累積を読んだあと、再primingが不足と除外を両方足し、その後の引き算が戻る。
+        let underflows_first = q.output.underflows.load(Ordering::Relaxed);
+        let startup = q.output.startup_underflows.load(Ordering::Relaxed);
+        assert_eq!(
+            crate::dsp_verification_allocator::allocation_counts(|| {
+                q.record_reprime_wait(100, 0);
+                q.record_reprime_wait(100, 0);
+                q.record_reprime_wait(100, 0);
+            }),
+            (0, 0)
+        );
+        let reprime_later = q.output.reprime_underflows.load(Ordering::Relaxed);
+        let racy = underflows_first
+            .saturating_sub(startup)
+            .saturating_sub(reprime_later);
+        let after = q.underflow_excluding_startup_and_reprime();
+        assert!(racy < before);
+        assert_eq!(racy, 0);
+        assert_eq!(after, before);
+        let snapshot = q.snapshot(QueueState::Running, Some(0), None);
+        assert_eq!(snapshot.underflow_callbacks, 4);
+        assert_eq!(snapshot.startup_underflow_callbacks, Some(0));
+        assert_eq!(q.underflow_excluding_startup(), 4);
+
+        let start = Instant::now();
+        let mut watch = ProcessingWatch::new();
+        let mut sample = ProgressSample {
+            attempt_epoch: 1,
+            running: true,
+            paused_by_mode_silence: false,
+            output_callbacks: 1,
+            processed_blocks: 1,
+            input_callbacks: 1,
+            late_callbacks: 0,
+            underflow_callbacks: 0,
+            block_period: Duration::from_millis(10),
+        };
+        watch.observe_at(start, sample);
+        sample.output_callbacks = 2;
+        sample.processed_blocks = 2;
+        sample.input_callbacks = 2;
+        sample.underflow_callbacks = before;
+        let recorded = watch.observe_at(start + Duration::from_millis(1_100), sample);
+        assert_eq!(recorded.snapshot.recent_underflow, 1);
+        assert_ne!(recorded.snapshot.state, HealthState::Grace);
+
+        sample.output_callbacks = 3;
+        sample.processed_blocks = 3;
+        sample.input_callbacks = 3;
+        sample.underflow_callbacks = after;
+        let kept = watch.observe_at(start + Duration::from_millis(1_200), sample);
+        assert_eq!(kept.snapshot.recent_underflow, 1);
+        assert_ne!(kept.snapshot.state, HealthState::Grace);
+        assert!(!frequency_warning(
+            kept.snapshot.recent_late,
+            kept.snapshot.recent_underflow
+        ));
+
+        q.record_output(100, 0);
+        q.record_output(100, 0);
+        let risen = q.underflow_excluding_startup_and_reprime();
+        assert_eq!(risen, 3);
+        sample.output_callbacks = 4;
+        sample.processed_blocks = 4;
+        sample.input_callbacks = 4;
+        sample.underflow_callbacks = risen;
+        let warned = watch.observe_at(start + Duration::from_millis(1_300), sample);
+        assert_eq!(warned.snapshot.recent_underflow, 3);
+        assert!(frequency_warning(
+            warned.snapshot.recent_late,
+            warned.snapshot.recent_underflow
+        ));
+        assert_ne!(warned.snapshot.state, HealthState::Grace);
+    }
+
+    #[test]
+    fn warning_underflow_reads_stay_monotonic_across_threads() {
+        use super::QueueDiagnostics;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        let q = Arc::new(QueueDiagnostics::new(
+            "threads".into(),
+            48_000,
+            48_000,
+            2,
+            2,
+            4096,
+        ));
+        q.record_output(32, 32);
+        let start = Arc::new(Barrier::new(2));
+        let done = Arc::new(AtomicBool::new(false));
+        let reader = {
+            let q = Arc::clone(&q);
+            let start = Arc::clone(&start);
+            let done = Arc::clone(&done);
+            thread::spawn(move || {
+                start.wait();
+                let mut last = 0u64;
+                let mut samples = 0u64;
+                while !done.load(Ordering::Acquire) {
+                    let value = q.underflow_excluding_startup_and_reprime();
+                    assert!(
+                        value >= last,
+                        "warning underflow decreased from {last} to {value}"
+                    );
+                    last = value;
+                    samples += 1;
+                }
+                let value = q.underflow_excluding_startup_and_reprime();
+                assert!(value >= last);
+                (value, samples)
+            })
+        };
+        let writer = {
+            let q = Arc::clone(&q);
+            let start = Arc::clone(&start);
+            let done = Arc::clone(&done);
+            thread::spawn(move || {
+                start.wait();
+                for i in 0..8_000 {
+                    if i % 4 == 0 {
+                        q.record_output(8, 0);
+                    } else {
+                        q.record_reprime_wait(8, 0);
+                    }
+                    if i % 32 == 0 {
+                        thread::yield_now();
+                    }
+                }
+                done.store(true, Ordering::Release);
+            })
+        };
+        writer.join().expect("writer");
+        let (last, samples) = reader.join().expect("reader");
+        assert!(samples > 0);
+        assert_eq!(last, 2_000);
+        assert_eq!(q.underflow_excluding_startup_and_reprime(), 2_000);
+        assert_eq!(q.output.underflows.load(Ordering::Relaxed), 8_000);
+        assert_eq!(q.output.reprime_underflows.load(Ordering::Relaxed), 6_000);
+        assert_eq!(q.output.startup_underflows.load(Ordering::Relaxed), 0);
     }
 
     #[test]

@@ -587,6 +587,7 @@ impl Monitor {
             self.recovery.high(),
         );
         let paused = self.input_clock.is_some() && gate.is_some_and(|gate| gate.pause_sources());
+        let mut reprime_wait = false;
         let consumed = if paused {
             self.clock_buffer[..data.len()].fill(0.0);
             if let Some(clock) = &mut self.input_clock {
@@ -596,6 +597,7 @@ impl Monitor {
         } else if let Some(clock) = &mut self.input_clock {
             use super::process_capture::clock::MappedInterleaved;
             let before = clock.rendered;
+            let waiting_before = clock.waiting;
             clock.render(
                 &mut self.clock_buffer[..data.len()],
                 &mut MappedInterleaved {
@@ -619,9 +621,13 @@ impl Monitor {
             if clock.failed {
                 self.main_failed.store(true, Ordering::Release);
                 // 途中まで変換できても、このcallbackは全体を無音のまま返す。
+                // 枯渇は再priming待ちではないので、警告の対象に残す。
                 self.diagnostics.record_output(data.len() / 2, 0);
                 return;
             }
+            // キューを満たすまでの待機は、プロセス入力と同じ再priming待ち。
+            // 累積の不足には残し、警告用の回数には足さない。
+            reprime_wait = clock.waiting > waiting_before;
             // SRCは入力をまとめて先読みするため、queue残量差は出力不足ではない。
             // producerの同時追加にも影響されない、実際に生成した出力frameで数える。
             clock.rendered.saturating_sub(before) as usize
@@ -633,7 +639,11 @@ impl Monitor {
             )
         };
         let read = self.timing.as_ref().map_or(0, |t| t.now_ns());
-        if !paused {
+        // モード無音で入力を止めている間は、待機も不足も数えない。
+        if !paused && reprime_wait {
+            self.diagnostics
+                .record_reprime_wait(data.len() / 2, consumed);
+        } else if !paused {
             self.diagnostics.record_output(data.len() / 2, consumed);
         }
         if let Some(shared) = &self.clock_shared {
@@ -1387,6 +1397,251 @@ mod tests {
         assert!(!monitor.main_failed.load(Ordering::Acquire));
         assert!(output.iter().all(|sample| *sample == 0.0));
         drop(controller);
+    }
+
+    #[test]
+    fn split_reprime_after_mode_silence_is_not_a_frequency_warning_but_starvation_is() {
+        use crate::audio_engine::mode_silence::{self, Request};
+        use crate::audio_engine::processing_watch::{
+            frequency_warning, HealthState, ProcessingWatch, ProgressSample,
+        };
+        use std::time::{Duration, Instant};
+
+        let (_controller, mut monitor, mut input, _queue, _broadcast) = fixture();
+        let monitor = monitor.get_mut();
+        monitor.input_clock =
+            Some(super::super::process_capture::clock::Renderer::new(48_000).unwrap());
+        let mut output = [0.0; 512];
+        monitor.clock_buffer = vec![0.0; output.len()];
+        for _ in 0..4_000 {
+            input.try_push(0.1).unwrap();
+            input.try_push(-0.1).unwrap();
+        }
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| monitor.render(&mut output, None)),
+            (0, 0)
+        );
+        assert!(!monitor.main_failed.load(Ordering::Acquire));
+        assert_eq!(
+            monitor
+                .diagnostics
+                .underflow_excluding_startup_and_reprime(),
+            0
+        );
+        let primed = monitor.diagnostics.snapshot(
+            super::super::queue_diagnostics::QueueState::Running,
+            Some(input.occupied_len()),
+            None,
+        );
+        assert!(primed.consumed_output_frames > 0);
+        assert_eq!(primed.underflow_callbacks, 0);
+
+        let mut gate = mode_silence::Controller::default();
+        let mut scratch = [0.0; 8];
+        gate.request(
+            Request::Begin {
+                id: "reprime".into(),
+            },
+            1,
+            true,
+            true,
+            true,
+            false,
+        )
+        .unwrap();
+        gate.shared
+            .finish(mode_silence::MAIN, gate.shared.ticket(), &mut scratch);
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| {
+                monitor.render_gated(&mut output, None, &gate.shared);
+            }),
+            (0, 0)
+        );
+        gate.shared
+            .finish(mode_silence::SINK, gate.shared.ticket(), &mut scratch);
+        gate.request(
+            Request::Finish {
+                id: "reprime".into(),
+            },
+            1,
+            true,
+            true,
+            true,
+            false,
+        )
+        .unwrap();
+        assert!(gate.shared.pause_sources());
+        gate.shared.source_finished(mode_silence::INPUT);
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| {
+                monitor.render_gated(&mut output, None, &gate.shared);
+            }),
+            (0, 0)
+        );
+        assert_eq!(monitor.input.occupied_len(), 0);
+        let rendered_at_pause = monitor.input_clock.as_ref().unwrap().rendered;
+        gate.shared.worker_drained();
+        gate.shared
+            .finish(mode_silence::MAIN, gate.shared.ticket(), &mut scratch);
+        gate.request(
+            Request::Snapshot {
+                id: "reprime".into(),
+            },
+            1,
+            true,
+            true,
+            true,
+            false,
+        )
+        .unwrap();
+        gate.shared
+            .finish(mode_silence::SINK, gate.shared.ticket(), &mut scratch);
+        let released = gate
+            .request(
+                Request::Snapshot {
+                    id: "reprime".into(),
+                },
+                1,
+                true,
+                true,
+                true,
+                false,
+            )
+            .unwrap();
+        assert!(!released.active);
+        assert!(!gate.shared.pause_sources());
+
+        let warning_before = monitor
+            .diagnostics
+            .underflow_excluding_startup_and_reprime();
+        assert_eq!(warning_before, 0);
+        let waiting_before = monitor.input_clock.as_ref().unwrap().waiting;
+        let reads_before = monitor
+            .diagnostics
+            .snapshot(
+                super::super::queue_diagnostics::QueueState::Running,
+                Some(0),
+                None,
+            )
+            .queue_read_callbacks;
+        for _ in 0..4 {
+            assert_eq!(
+                crate::vst_host::instance::allocation_counts(|| monitor.render(&mut output, None)),
+                (0, 0)
+            );
+            assert!(output.iter().all(|sample| *sample == 0.0));
+        }
+        assert!(monitor.input_clock.as_ref().unwrap().waiting > waiting_before);
+        assert_eq!(
+            monitor.input_clock.as_ref().unwrap().rendered,
+            rendered_at_pause
+        );
+        assert!(!monitor.main_failed.load(Ordering::Acquire));
+        assert_eq!(
+            monitor
+                .diagnostics
+                .underflow_excluding_startup_and_reprime(),
+            warning_before
+        );
+        let waiting = monitor.diagnostics.snapshot(
+            super::super::queue_diagnostics::QueueState::Running,
+            Some(0),
+            None,
+        );
+        assert_eq!(waiting.queue_read_callbacks, reads_before + 4);
+        assert_eq!(waiting.underflow_callbacks, 4);
+        assert_eq!(waiting.startup_underflow_callbacks, Some(0));
+
+        for _ in 0..4_000 {
+            input.try_push(0.1).unwrap();
+            input.try_push(-0.1).unwrap();
+        }
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| monitor.render(&mut output, None)),
+            (0, 0)
+        );
+        assert!(monitor.input_clock.as_ref().unwrap().rendered > rendered_at_pause);
+        assert!(!monitor.main_failed.load(Ordering::Acquire));
+        assert_eq!(
+            monitor
+                .diagnostics
+                .underflow_excluding_startup_and_reprime(),
+            warning_before
+        );
+
+        for step in 1..=3 {
+            monitor.input.skip(monitor.input.occupied_len());
+            monitor.render(&mut output, None);
+            assert!(monitor.main_failed.load(Ordering::Acquire));
+            assert!(output.iter().all(|sample| *sample == 0.0));
+            assert_eq!(
+                monitor
+                    .diagnostics
+                    .underflow_excluding_startup_and_reprime(),
+                step
+            );
+            monitor.main_failed.store(false, Ordering::Release);
+            monitor.input_clock.as_mut().unwrap().wait_for_audio();
+            for _ in 0..4_000 {
+                input.try_push(0.1).unwrap();
+                input.try_push(-0.1).unwrap();
+            }
+            monitor.render(&mut output, None);
+            assert!(!monitor.main_failed.load(Ordering::Acquire));
+            assert_eq!(
+                monitor
+                    .diagnostics
+                    .underflow_excluding_startup_and_reprime(),
+                step
+            );
+        }
+        let cumulative = monitor.diagnostics.snapshot(
+            super::super::queue_diagnostics::QueueState::Running,
+            Some(input.occupied_len()),
+            None,
+        );
+        assert!(cumulative.underflow_callbacks > 3);
+        assert_eq!(
+            monitor
+                .diagnostics
+                .underflow_excluding_startup_and_reprime(),
+            3
+        );
+
+        let start = Instant::now();
+        let mut watch = ProcessingWatch::new();
+        let mut sample = ProgressSample {
+            attempt_epoch: 1,
+            running: true,
+            paused_by_mode_silence: false,
+            output_callbacks: 8,
+            processed_blocks: 8,
+            input_callbacks: 8,
+            late_callbacks: 0,
+            underflow_callbacks: warning_before,
+            block_period: Duration::from_millis(10),
+        };
+        watch.observe_at(start, sample);
+        sample.output_callbacks += 4;
+        sample.processed_blocks += 4;
+        sample.input_callbacks += 4;
+        let quiet = watch.observe_at(start + Duration::from_millis(1_100), sample);
+        assert_eq!(quiet.snapshot.recent_underflow, 0);
+        assert!(!frequency_warning(
+            quiet.snapshot.recent_late,
+            quiet.snapshot.recent_underflow
+        ));
+        sample.output_callbacks += 3;
+        sample.processed_blocks += 3;
+        sample.input_callbacks += 3;
+        sample.underflow_callbacks = 3;
+        let warned = watch.observe_at(start + Duration::from_millis(1_200), sample);
+        assert_eq!(warned.snapshot.recent_underflow, 3);
+        assert!(frequency_warning(
+            warned.snapshot.recent_late,
+            warned.snapshot.recent_underflow
+        ));
+        assert_ne!(warned.snapshot.state, HealthState::Grace);
     }
     #[test]
     fn monitor_preserves_original_input_cohort_and_acknowledges_its_own_window() {
