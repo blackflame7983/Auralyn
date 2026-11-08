@@ -1,10 +1,12 @@
-//! Hostの直列IPCから、終了直前に待っていたVST操作だけを伝える。
+//! Hostの直列IPCから、終了直前の操作と機器の開始直後を伝える。
 use crate::ipc::{Command, Response};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+const DEVICE_OPEN_SETTLING: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +24,14 @@ pub(super) struct ExitPayload {
     name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     elapsed_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    phase: Option<&'static str>,
 }
 
 struct InFlight {
@@ -33,15 +43,42 @@ struct InFlight {
 struct State {
     in_flight: Option<InFlight>,
     awaiting: Option<ExitPayload>,
+    settling: Option<InFlight>,
     plugins: HashMap<String, ExitPayload>,
 }
 
 #[derive(Default)]
 pub(super) struct Operations(Mutex<State>);
 
-impl Operations {
-    pub(super) fn begin(&self, command: &Command) {
-        let Ok(mut state) = self.0.lock() else { return };
+impl State {
+    fn begin(&mut self, command: &Command, now: Instant) {
+        let state = self;
+        if let Command::Start {
+            host,
+            input,
+            output,
+            ..
+        } = command
+        {
+            let details = ExitPayload {
+                cause: "device_open",
+                host: Some(host.clone()),
+                input: input.clone(),
+                output: output.clone(),
+                phase: Some("opening"),
+                ..Default::default()
+            };
+            state.awaiting = Some(details.clone());
+            state.in_flight = Some(InFlight {
+                details,
+                started_at: now,
+            });
+            return;
+        }
+        if matches!(command, Command::Stop) {
+            // 利用者が止めた後の終了を、開始直後の障害と取り違えない。
+            state.settling = None;
+        }
         let (op, id, path, class_id) = match command {
             Command::LoadPlugin { path, class_id } => {
                 ("load", None, Some(path.clone()), class_id.clone())
@@ -89,16 +126,26 @@ impl Operations {
         state.awaiting = Some(details.clone());
         state.in_flight = Some(InFlight {
             details,
-            started_at: Instant::now(),
+            started_at: now,
         });
     }
 
-    pub(super) fn response(&self, response: &Response) {
-        let Ok(mut state) = self.0.lock() else { return };
+    fn response(&mut self, response: &Response, now: Instant) {
+        let state = self;
         state.in_flight = None;
         let Some(mut details) = state.awaiting.take() else {
             return;
         };
+        if details.cause == "device_open" {
+            if matches!(response, Response::Started { .. }) {
+                details.phase = Some("settling");
+                state.settling = Some(InFlight {
+                    details,
+                    started_at: now,
+                });
+            }
+            return;
+        }
         let loaded = match response {
             Response::PluginLoaded {
                 id, name, class_id, ..
@@ -120,8 +167,52 @@ impl Operations {
         }
     }
 
+    fn exit(&mut self, now: Instant) -> ExitPayload {
+        // 開始後の監視中でも、現在待っているVST操作を優先する。
+        let pending = self.in_flight.take().or_else(|| {
+            self.settling.take().filter(|pending| {
+                now.saturating_duration_since(pending.started_at) < DEVICE_OPEN_SETTLING
+            })
+        });
+        let Some(pending) = pending else {
+            return ExitPayload {
+                cause: "unknown",
+                ..Default::default()
+            };
+        };
+        let mut payload = pending.details;
+        payload.elapsed_ms = Some(
+            now.saturating_duration_since(pending.started_at)
+                .as_millis()
+                .min(u128::from(u64::MAX)) as u64,
+        );
+        payload
+    }
+}
+
+impl Operations {
+    pub(super) fn begin(&self, command: &Command) {
+        if let Ok(mut state) = self.0.lock() {
+            state.begin(command, Instant::now());
+        }
+    }
+
+    pub(super) fn response(&self, response: &Response) {
+        if let Ok(mut state) = self.0.lock() {
+            state.response(response, Instant::now());
+        }
+    }
+
     pub(super) fn timeout(&self) {
         if let Ok(mut state) = self.0.lock() {
+            // Hostの待機期限を過ぎても、応答まではドライバーが機器を開いている。
+            if state
+                .in_flight
+                .as_ref()
+                .is_some_and(|pending| pending.details.cause == "device_open")
+            {
+                return;
+            }
             // 遅いload応答のIDは回収するが、待機終了後のクラッシュには結び付けない。
             state.in_flight = None;
         }
@@ -131,26 +222,16 @@ impl Operations {
         if !active.swap(false, Ordering::AcqRel) {
             return None;
         }
-        let pending = self
-            .0
-            .lock()
-            .ok()
-            .and_then(|mut state| state.in_flight.take());
-        let mut payload = ExitPayload {
-            cause: "unknown",
-            ..Default::default()
-        };
-        if let Some(pending) = pending {
-            payload = pending.details;
-            payload.elapsed_ms = Some(
-                pending
-                    .started_at
-                    .elapsed()
-                    .as_millis()
-                    .min(u128::from(u64::MAX)) as u64,
-            );
-        }
-        Some(payload)
+        Some(
+            self.0
+                .lock()
+                .ok()
+                .map(|mut state| state.exit(Instant::now()))
+                .unwrap_or_else(|| ExitPayload {
+                    cause: "unknown",
+                    ..Default::default()
+                }),
+        )
     }
 }
 
@@ -192,6 +273,146 @@ mod tests {
 
     fn exit(operations: &Operations) -> ExitPayload {
         operations.unexpected_exit(&AtomicBool::new(true)).unwrap()
+    }
+
+    fn start() -> Command {
+        Command::Start {
+            host: "ASIO".into(),
+            input: Some("Driver".into()),
+            output: Some("Driver".into()),
+            input_source: None,
+            input_id: None,
+            output_id: None,
+            buffer_size: None,
+            sample_rate: None,
+            initial_controls: None,
+            channel_routing: None,
+        }
+    }
+
+    fn started() -> Response {
+        Response::Started {
+            sample_rate: 48000,
+            buffer_size: 512,
+            routing: None,
+            input_id: None,
+            output_id: None,
+        }
+    }
+
+    #[test]
+    fn start_in_flight_reports_device_opening_without_vst_identity() {
+        let now = Instant::now();
+        let mut state = State::default();
+        state.begin(&start(), now);
+        let payload = state.exit(now + Duration::from_millis(25));
+        assert_eq!(
+            serde_json::to_value(payload).unwrap(),
+            serde_json::json!({
+                "cause": "device_open", "host": "ASIO", "input": "Driver",
+                "output": "Driver", "phase": "opening", "elapsedMs": 25
+            })
+        );
+    }
+
+    #[test]
+    fn successful_start_settles_for_two_seconds_from_response() {
+        let now = Instant::now();
+        for (delay_ms, expected) in [
+            (0, "device_open"),
+            (1999, "device_open"),
+            (2000, "unknown"),
+            (2001, "unknown"),
+        ] {
+            let mut state = State::default();
+            state.begin(&start(), now);
+            let responded = now + Duration::from_secs(5);
+            state.response(&started(), responded);
+            assert!(state.in_flight.is_none());
+            let payload = state.exit(responded + Duration::from_millis(delay_ms));
+            assert_eq!(payload.cause, expected);
+            if expected == "device_open" {
+                assert_eq!(payload.phase, Some("settling"));
+                assert_eq!(payload.elapsed_ms, Some(delay_ms));
+                assert_eq!(payload.host.as_deref(), Some("ASIO"));
+            }
+        }
+    }
+
+    #[test]
+    fn vst_in_flight_takes_priority_over_settling() {
+        let now = Instant::now();
+        let mut state = State::default();
+        state.begin(&start(), now);
+        state.response(&started(), now);
+        state.begin(&load(), now);
+        let payload = state.exit(now);
+        assert_eq!(payload.cause, "vst_operation");
+        assert_eq!(payload.op, Some("load"));
+        assert!(payload.host.is_none() && payload.phase.is_none());
+    }
+
+    #[test]
+    fn only_stop_clears_settling_and_other_responses_do_not_extend_it() {
+        let now = Instant::now();
+        for command in [Command::GetDevices, load(), Command::Stop, start()] {
+            for completed in [false, true] {
+                let mut state = State::default();
+                state.begin(&start(), now);
+                state.response(&started(), now);
+                state.begin(&command, now + Duration::from_secs(1));
+                if completed {
+                    state.response(
+                        &Response::Error("rejected".into()),
+                        now + Duration::from_secs(1),
+                    );
+                }
+                assert_eq!(state.settling.is_none(), matches!(command, Command::Stop));
+                if completed {
+                    assert_eq!(state.exit(now + DEVICE_OPEN_SETTLING).cause, "unknown");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn failed_start_does_not_settle_and_timed_out_start_remains_opening_until_response() {
+        let now = Instant::now();
+        let mut state = State::default();
+        state.begin(&start(), now);
+        state.response(&Response::Error("rejected".into()), now);
+        assert_eq!(state.exit(now).cause, "unknown");
+
+        let operations = Operations::default();
+        operations.begin(&start());
+        operations.timeout();
+        assert_eq!(exit(&operations).phase, Some("opening"));
+        operations.response(&started());
+        assert_eq!(exit(&operations).phase, Some("settling"));
+    }
+
+    #[test]
+    fn intentional_exit_suppresses_opening_and_settling() {
+        for settling in [false, true] {
+            for dropping in [false, true] {
+                let mut host = super::super::AudioHost::new(
+                    std::env::temp_dir().join("auralyn-device-exit-unit"),
+                );
+                host.reset_engine_reader();
+                host.vst_operations.begin(&start());
+                if settling {
+                    host.vst_operations.response(&started());
+                }
+                let active = host.reader_active.clone();
+                let operations = host.vst_operations.clone();
+                if dropping {
+                    drop(host);
+                } else {
+                    host.kill_engine();
+                }
+                assert!(operations.unexpected_exit(&active).is_none());
+            }
+        }
     }
 
     #[test]

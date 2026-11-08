@@ -4,6 +4,7 @@ import { Modal } from '../../ui/modal';
 import React, { useEffect, useState } from 'react';
 import { MdWarning, MdRestore, MdStop, MdRefresh } from 'react-icons/md';
 import { readPending } from '@/lib/pluginIdentity';
+import type { AudioEngineExit } from '@/lib/audioEngineExit';
 
 interface RecoveryModalProps {
     isOpen: boolean;
@@ -12,10 +13,13 @@ interface RecoveryModalProps {
     onWithoutPlugins: () => Promise<void>;
     onKeepStopped: () => Promise<void>;
     error: string | null;
+    exit?: AudioEngineExit;
+    onOpenDeviceSettings?: () => void;
 }
 
-export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, onRecover, onWithoutPlugins, onKeepStopped, error }) => {
+export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, onRecover, onWithoutPlugins, onKeepStopped, error, exit, onOpenDeviceSettings }) => {
     const t = useMessages();
+    const deviceExit = exit?.cause === 'device_open';
     const [pendingPlugin, setPendingPlugin] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [recoveryError, setRecoveryError] = useState(false);
@@ -23,15 +27,15 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
     useEffect(() => {
         if (isOpen) {
             setRecoveryError(false);
-            // Prioritize the one captured at crash time, fallback to current pending
+            // 機器の開始時は、残存するVSTの印を原因候補にしない。
             const detected = localStorage.getItem('vst_host_detected_crash_plugin');
             const pending = localStorage.getItem('vst_host_pending_plugin');
-            setPendingPlugin(detected || pending);
+            setPendingPlugin(deviceExit ? null : detected || pending);
         } else {
             // Cleanup on close
             localStorage.removeItem('vst_host_detected_crash_plugin');
         }
-    }, [isOpen]);
+    }, [isOpen, deviceExit]);
 
     const handleAction = async (action: () => Promise<void>) => {
         setRecoveryError(false);
@@ -61,11 +65,10 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
 
                     <h2 className="text-ui-heading font-bold text-destructive-text">{t('recovery.title')}</h2>
                     <p className="text-muted-foreground">
-                        {t('recovery.description')}<br />
-                        {t('recovery.unknown')}
+                        {deviceExit ? t('recovery.deviceDescription') : <>{t('recovery.description')}<br />{t('recovery.unknown')}</>}
                     </p>
 
-                    {pendingPlugin && (
+                    {!deviceExit && pendingPlugin && (
                         <div className="bg-destructive/10 p-3 rounded-card text-ui-support text-left border border-destructive-text/20 mt-4">
                             <div className="font-bold text-destructive-text mb-1 flex items-center gap-2">
                                 <MdWarning /> {t('recovery.pending')}
@@ -82,7 +85,27 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
                     )}
 
                     <div className="flex flex-col gap-3 mt-6">
-                        {pendingPlugin && (
+                        {deviceExit && <>
+                            <Button variant="default"
+                                onClick={() => void handleAction(onKeepStopped)}
+                                disabled={isLoading}
+                                className="w-full gap-2"
+                            >
+                                <MdStop /> {t('recovery.deviceStop')}
+                            </Button>
+                            {onOpenDeviceSettings && <Button variant="outline"
+                                onClick={() => void handleAction(async () => {
+                                    // 停止の確定前に設定へ移り、自動復旧を再開させない。
+                                    await onKeepStopped();
+                                    onOpenDeviceSettings();
+                                })}
+                                disabled={isLoading}
+                                className="w-full"
+                            >
+                                {t('recovery.chooseDevice')}
+                            </Button>}
+                        </>}
+                        {!deviceExit && pendingPlugin && (
                             <Button variant="default"
                                 onClick={() => void handleAction(() => onRecover(true, pendingPlugin ?? undefined))}
                                 disabled={isLoading}
@@ -93,7 +116,7 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
                             </Button>
                         )}
 
-                        <Button variant={pendingPlugin ? "outline" : "default"}
+                        <Button variant={deviceExit || pendingPlugin ? "outline" : "default"}
                             onClick={() => void handleAction(() => onRecover(false, undefined))}
                             disabled={isLoading}
                             className="w-full gap-2"
@@ -110,13 +133,13 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({ isOpen, onClose, o
                             {t('recovery.empty')}
                         </Button>
                         <p className="text-ui-support text-muted-foreground">{t('recovery.safety')}</p>
-                        <Button variant="ghost"
+                        {!deviceExit && <Button variant="ghost"
                             onClick={() => void handleAction(onKeepStopped)}
                             disabled={isLoading}
                             className="w-full flex items-center justify-center gap-2"
                         >
                             <MdStop /> {t('recovery.stop')}
-                        </Button>
+                        </Button>}
                     </div>
                 </div>
             </div>
