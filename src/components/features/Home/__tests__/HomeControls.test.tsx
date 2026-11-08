@@ -126,7 +126,9 @@ it.each([
     const guard = screen.getByRole('button', { name: labels.lock });
     expect(guard).toHaveAttribute('aria-pressed', 'false');
     expect(guard).toHaveAccessibleDescription(labels.unlocked);
-    expect(guard).toHaveTextContent(labels.unlocked);
+    expect(guard.querySelector('#live-protect-state')).toHaveClass('sr-only');
+    expect(guard).toHaveAttribute('title', labels.lock);
+    expect(guard).toHaveClass('min-h-6', 'min-w-6');
     guard.focus();
     await act(async () => fireEvent.click(guard));
     expect(protect).toHaveBeenCalledWith(true, 'host1');

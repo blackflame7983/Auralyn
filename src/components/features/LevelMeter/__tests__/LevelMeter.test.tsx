@@ -143,3 +143,17 @@ it.each(['ja', 'en'] as const)('左右のメーターの説明を表示言語に
     expect(screen.getByTitle(locale === 'ja' ? '左' : 'Left')).toBeInTheDocument();
     expect(screen.getByTitle(locale === 'ja' ? '右' : 'Right')).toBeInTheDocument();
 });
+
+
+it('横メーターは通常・無音・待機・停止でバーと状態行の予約を保つ', () => {
+    const reading: MeterReading = { levels: [0, 0], peak: [0, 0], clipped: false, state: 'live', resetClip: () => {} };
+    const { container, rerender } = render(<MeterVisual label="出力" orientation="horizontal" height={18} showValues statusAbove numbers={false} reading={reading} />);
+    for (const state of ['live', 'silent', 'waiting', 'stale', 'stopped'] as const) {
+        rerender(<MeterVisual label="出力" orientation="horizontal" height={18} showValues statusAbove numbers={false} reading={{ ...reading, state }} />);
+        const meter = screen.getByRole('meter');
+        expect(meter).toHaveStyle({ height: '18px' });
+        expect(meter).toHaveClass('row-start-2');
+        expect(container.querySelector('[data-meter-status]')).toHaveClass('row-start-1', 'min-h-4');
+        if (state !== 'live') expect(meter.firstElementChild).toHaveClass('bg-muted/40');
+    }
+});

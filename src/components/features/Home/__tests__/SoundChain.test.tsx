@@ -247,6 +247,7 @@ it('空のVSTの追加は右パネルを開いている間は重ねない', () =
     const current = stats(); current.latencyMetadata!.stageBreakdown!.vst = [];
     const p = props();
     const view = render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vstPanelOpen /></RuntimeStatsContext.Provider>);
+    fireEvent.click(screen.getByRole('button', { name: /^外部VST / }));
     expect(screen.queryByRole('button', { name: '追加' })).not.toBeInTheDocument();
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vstPanelOpen={false} /></RuntimeStatsContext.Provider>);
     expect(screen.getByRole('button', { name: '追加' })).toBeInTheDocument();
@@ -260,4 +261,12 @@ it('ノイズ低減と声を整えるの情報ボタンはパネルの名前の�
         const heading = screen.getByRole('heading', { name, level: 3 });
         expect(within(heading.parentElement!).getByRole('button', { name: message('ja', info) })).toBeInTheDocument();
     }
+});
+
+
+it.each(['voice', 'music'] as const)('起動時の音調整は声で閉じ、音楽鑑賞でVSTを開く (%s)', purpose => {
+    localStorage.setItem('auralyn_display_purpose', purpose);
+    render(<SoundChain {...props()} vstPanelOpen />);
+    const items = within(screen.getByRole('list')).getAllByRole('button');
+    expect(items.every(item => item.getAttribute('aria-expanded') === (purpose === 'music' && item.textContent?.startsWith('VST') ? 'true' : 'false'))).toBe(true);
 });

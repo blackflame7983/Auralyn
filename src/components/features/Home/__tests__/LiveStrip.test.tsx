@@ -162,3 +162,11 @@ it.each(['ja', 'en'] as const)('次の1歩の主操作は舞台の中央に置�
     expect(startButton.closest('.live-stage-copy')).not.toBeNull();
     fireEvent.click(startButton); expect(start).toHaveBeenCalledOnce();
 });
+
+
+it.each(['ja', 'en'] as const)('舞台の最上段に稼働と停止を示す (%s)', locale => {
+    const view = render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running /></LocaleProvider>);
+    expect(screen.getByText(locale === 'ja' ? '実行中' : 'Running')).toBeInTheDocument();
+    view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running={false} stopped /></LocaleProvider>);
+    expect(view.container.querySelector('.live-stage [role=status]')).toHaveTextContent(message(locale, 'shell.stopped'));
+});

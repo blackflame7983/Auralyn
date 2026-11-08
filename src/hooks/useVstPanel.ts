@@ -3,24 +3,17 @@ import { readDisplayPurpose } from './useDisplayPurpose';
 
 const KEY = 'auralyn_vst_panel_open';
 const EVENT = 'auralyn-vst-panel-changed';
-// 保存値がない間の既定は表示用途で変わるので、用途の変更でも読み直す。
+// 起動時は表示用途で決め、起動後は利用者が選んだ開閉を共有する。
 const EVENTS = [EVENT, 'storage', 'auralyn-display-purpose-changed', 'preparation-purpose-changed'];
-// 保存できない環境でも、この画面の間は最後に選んだ開閉を使う。
-let unsaved: boolean | null = null;
+// 保存値は次の起動に適用せず、この画面の間の明示操作だけを共有する。
+let sessionOpen: boolean | null = null;
 
-// VST 構成の右パネルを開いておくか。保存値がない間は、以前の「VST・詳細」表示を使っていた人と、
-// 音を VST 構成で整える音楽鑑賞の人を、開いた状態から始める。
-export const getVstPanelOpen = () => {
-    if (unsaved !== null) return unsaved;
-    try {
-        const saved = localStorage.getItem(KEY);
-        if (saved === 'true' || saved === 'false') return saved === 'true';
-        return localStorage.getItem('vst_host_beginner_mode') === 'false' || readDisplayPurpose() === 'music';
-    } catch { return false; }
-};
+// 起動時は保存値や旧表示モードを使わず、声では閉じ、音楽鑑賞では開く。
+export const getVstPanelOpen = () => sessionOpen ?? readDisplayPurpose() === 'music';
 
 export function saveVstPanelOpen(open: boolean) {
-    try { localStorage.setItem(KEY, String(open)); unsaved = null; } catch { unsaved = open; /* 保存できなくても開閉は続ける */ }
+    sessionOpen = open;
+    try { localStorage.setItem(KEY, String(open)); } catch { /* 保存できなくても開閉は続ける */ }
     window.dispatchEvent(new CustomEvent(EVENT, { detail: open }));
 }
 

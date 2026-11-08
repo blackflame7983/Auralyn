@@ -51,15 +51,15 @@ it.each([
     { processReady: false, isRunning: true, host: 'WASAPI', label: '音声停止中' },
     { processReady: true, isRunning: false, host: '', label: '音声未設定' },
     { processReady: true, isRunning: false, host: 'WASAPI', label: '音声停止中' },
-    { processReady: true, isRunning: true, host: 'WASAPI', label: '音声処理中' },
+    { processReady: true, isRunning: true, host: 'WASAPI', label: '実行中' },
 ])('音声状態を一度だけ表示し、停止・未確認では稼働中としない（$label）', props => {
     render(<DeviceStatus {...props} />);
     expect(screen.getByRole('status')).toHaveTextContent(props.label);
     const dot = screen.getByRole('status').previousElementSibling;
-    expect(dot).toHaveClass(props.label === '音声未設定' ? 'bg-muted-foreground' : props.label === '音声停止中' ? 'bg-meter-danger' : props.label === '音声処理中' ? 'bg-success' : 'bg-warning');
+    expect(dot).toHaveClass(props.label === '音声未設定' ? 'bg-muted-foreground' : props.label === '音声停止中' ? 'bg-meter-danger' : props.label === '実行中' ? 'bg-success' : 'bg-warning');
     expect(screen.getAllByText(props.label)).toHaveLength(1);
     expect(screen.queryByText(/エンジン|通過時間/)).not.toBeInTheDocument();
-    if (props.label !== '音声処理中') expect(screen.queryByText('WASAPI')).not.toBeInTheDocument();
+    if (props.label !== '実行中') expect(screen.queryByText('WASAPI')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });
 
