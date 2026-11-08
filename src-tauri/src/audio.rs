@@ -1,4 +1,5 @@
 pub(crate) mod conditions;
+mod engine_exit;
 pub(crate) mod frontend_bootstrap;
 mod live_bundle;
 mod live_modes;
@@ -205,6 +206,7 @@ pub struct AudioHost {
     mode_vst: mode_vst::State,
     voice_activity: Arc<AtomicBool>,
     reader_active: Arc<AtomicBool>,
+    vst_operations: Arc<engine_exit::Operations>,
     child: Option<Child>,
     stdin: Option<BufWriter<ChildStdin>>,
     // We store a sender to satisfy a waiting command.
@@ -467,6 +469,7 @@ impl AudioHost {
             mode_vst,
             voice_activity: Arc::new(AtomicBool::new(false)),
             reader_active: Arc::new(AtomicBool::new(false)),
+            vst_operations: Arc::new(engine_exit::Operations::default()),
             child: None,
             stdin: None,
             pending_reply_tx: Arc::new(ReplySlot::default()),
@@ -733,9 +736,9 @@ impl AudioHost {
 
         // Spawn Output Reader Thread
         // 終了した旧プロセスの応答・終了通知を、新プロセスの待機やUIへ渡さない。
-        self.pending_reply_tx = Arc::new(ReplySlot::default());
-        self.reader_active = Arc::new(AtomicBool::new(true));
+        self.reset_engine_reader();
         let reader_active = self.reader_active.clone();
+        let vst_operations = self.vst_operations.clone();
         let pending_tx_clone = self.pending_reply_tx.clone();
         let emitter_clone = self.emitter.clone();
         self.voice_activity = Arc::new(AtomicBool::new(false));
@@ -758,6 +761,7 @@ impl AudioHost {
                     match serde_json::from_str::<OutputMessage>(json_str) {
                         Ok(msg) => match msg {
                             OutputMessage::Response(resp) => {
+                                vst_operations.response(&resp);
                                 if !pending_tx_clone.deliver(resp) {
                                     log::warn!("Received Response but no one is waiting");
                                 }
@@ -948,13 +952,15 @@ impl AudioHost {
             }
 
             log::warn!("Engine stdout closed.");
-            if !reader_active.swap(false, Ordering::AcqRel) {
+            let Some(exit) = vst_operations.unexpected_exit(&reader_active) else {
                 return;
-            }
+            };
+            log::error!("Audio engine exited: {exit:?}");
             // Notify Frontend of crash/exit
             conditions.engine_event(condition_epoch, false);
             if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
                 let _ = h.emit("audio-conditions-changed", ());
+                let _ = h.emit("audio-engine-exited", exit);
                 let _ = h.emit("audio-error", "Audio Engine Process Exited (Crash?)");
             }
 
@@ -1046,6 +1052,14 @@ impl AudioHost {
         )
     }
 
+    fn reset_engine_reader(&mut self) {
+        // 旧readerの終了を新しい接続へ持ち越さない。
+        self.reader_active.store(false, Ordering::Release);
+        self.pending_reply_tx = Arc::new(ReplySlot::default());
+        self.reader_active = Arc::new(AtomicBool::new(true));
+        self.vst_operations = Arc::new(engine_exit::Operations::default());
+    }
+
     fn execute_running_command_inner(&mut self, cmd: IpcCommand) -> Result<IpcResponse> {
         self.guard_mode_vst()?;
         anyhow::ensure!(
@@ -1057,6 +1071,7 @@ impl AudioHost {
         // IDのない直列プロトコルなので、タイムアウトした応答を受け取るまで
         // 次の要求を送らない。古い応答を新しい操作の成功と取り違えないため。
         let rx = self.pending_reply_tx.begin()?;
+        self.vst_operations.begin(&cmd);
         let sent = match &mut self.stdin {
             Some(stdin) => writeln!(stdin, "{}", json).and_then(|()| stdin.flush()),
             None => Err(std::io::Error::new(
@@ -1066,6 +1081,8 @@ impl AudioHost {
         };
         if let Err(error) = sent {
             self.pending_reply_tx.cancel();
+            self.vst_operations
+                .response(&IpcResponse::Error(error.to_string()));
             // 書きかけのJSONや遅い応答が残る接続を再利用しない。
             self.kill_engine();
             if let Ok(emitter) = self.emitter.lock() {
@@ -1076,8 +1093,11 @@ impl AudioHost {
             return Err(error.into());
         }
 
-        rx.recv_timeout(std::time::Duration::from_secs(10))
-            .map_err(|e| anyhow!("Timeout or disconnect waiting for engine response: {e}"))
+        let response = rx.recv_timeout(std::time::Duration::from_secs(10));
+        if response.is_err() {
+            self.vst_operations.timeout();
+        }
+        response.map_err(|e| anyhow!("Timeout or disconnect waiting for engine response: {e}"))
     }
 
     // 同期呼出元（プロファイル適用）は取得済み一覧だけを読む。
@@ -2831,6 +2851,8 @@ impl AudioHost {
 
 impl Drop for AudioHost {
     fn drop(&mut self) {
+        // アプリ終了によるkillを、readerの異常終了通知から除外する。
+        self.reader_active.store(false, Ordering::Release);
         self.conditions.retire_engine();
         if let Some(mut child) = self.child.take() {
             log::info!("Killing Audio Engine Sidecar (Drop)...");
