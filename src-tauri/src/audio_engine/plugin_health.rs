@@ -144,6 +144,8 @@ struct SlotPublication {
     isolated: AtomicBool,
     invalid_blocks: AtomicU32,
     token: AtomicU64,
+    /// 今の token で停止へ遷移した回数。再開では戻さない。
+    isolation_seq: AtomicU64,
 }
 
 pub(crate) struct PluginHealthShared {
@@ -157,22 +159,37 @@ impl PluginHealthShared {
                 isolated: AtomicBool::new(false),
                 invalid_blocks: AtomicU32::new(0),
                 token: AtomicU64::new(0),
+                isolation_seq: AtomicU64::new(0),
             }),
         }
     }
 
     /// 値を Relaxed で書いてから、token を Release で公開する。
+    /// 停止へ遷移したときだけ `isolation_seq` を 1 進める。すでに停止中の再公開では進めない。
+    /// token が変わったら、前の起動の回数を 0 に戻してから、その公開が停止なら 1 にする。
     pub(crate) fn publish(&self, slot: usize, isolated: bool, invalid_blocks: u32, token: u64) {
         let Some(slot) = self.slots.get(slot) else {
             return;
         };
+        let token_changed = slot.token.load(Ordering::Relaxed) != token;
+        if token_changed {
+            slot.isolation_seq.store(0, Ordering::Relaxed);
+        }
+        let was_isolated = slot.isolated.load(Ordering::Relaxed);
+        if isolated && (token_changed || !was_isolated) {
+            let _ = slot.isolation_seq.fetch_add(1, Ordering::Relaxed);
+        }
         slot.invalid_blocks.store(invalid_blocks, Ordering::Relaxed);
         slot.isolated.store(isolated, Ordering::Relaxed);
         slot.token.store(token, Ordering::Release);
     }
 
-    /// 制御側が今の instance に割り当てた token と一致するときだけ、停止中の件数を返す。
-    pub(crate) fn isolated_blocks(&self, slot: usize, expected_token: u64) -> Option<u32> {
+    /// 制御側が今の instance に割り当てた token と一致するときだけ、停止中の公開値を返す。
+    pub(crate) fn isolated_publication(
+        &self,
+        slot: usize,
+        expected_token: u64,
+    ) -> Option<IsolatedPublication> {
         if expected_token == 0 {
             return None;
         }
@@ -182,12 +199,29 @@ impl PluginHealthShared {
             return None;
         }
         let isolated = slot.isolated.load(Ordering::Relaxed);
-        let blocks = slot.invalid_blocks.load(Ordering::Relaxed);
+        let invalid_blocks = slot.invalid_blocks.load(Ordering::Relaxed);
+        let isolation_seq = slot.isolation_seq.load(Ordering::Relaxed);
         if slot.token.load(Ordering::Acquire) != expected_token {
             return None;
         }
-        isolated.then_some(blocks)
+        isolated.then_some(IsolatedPublication {
+            invalid_blocks,
+            isolation_seq,
+        })
     }
+
+    /// テストが件数だけを見るための読み出し。本番は `isolated_publication` を使う。
+    #[cfg(test)]
+    pub(crate) fn isolated_blocks(&self, slot: usize, expected_token: u64) -> Option<u32> {
+        self.isolated_publication(slot, expected_token)
+            .map(|publication| publication.invalid_blocks)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct IsolatedPublication {
+    pub invalid_blocks: u32,
+    pub isolation_seq: u64,
 }
 
 pub(crate) fn install_slot(
@@ -440,5 +474,68 @@ mod tests {
         assert!(!health[3].isolated);
         assert_eq!(tokens[3], 9);
         assert_eq!(shared.isolated_blocks(3, 9), None);
+    }
+
+    fn isolate(health: &mut SlotHealth, limits: &HealthLimits) {
+        for _ in 0..18 {
+            assert_eq!(health.observe(true, 256, limits), Verdict::Silenced);
+        }
+        assert_eq!(health.observe(true, 256, limits), Verdict::Isolated);
+    }
+
+    #[test]
+    fn isolation_seq_advances_on_each_transition_and_again_after_resume() {
+        let shared = PluginHealthShared::new();
+        let mut health = [SlotHealth::default(); MAX_PLUGINS];
+        let mut tokens = [0; MAX_PLUGINS];
+        install_slot(&mut health, &mut tokens, &shared, 0, 4);
+        let limits = HealthLimits::new(48_000);
+        let counts = crate::dsp_verification_allocator::allocation_counts(|| {
+            isolate(&mut health[0], &limits);
+            shared.publish(0, true, health[0].total_invalid_blocks, tokens[0]);
+            // 停止中のブロックごとの再公開では世代を進めない。
+            shared.publish(0, true, health[0].total_invalid_blocks, tokens[0]);
+        });
+        assert_eq!(counts, (0, 0));
+        assert_eq!(
+            shared
+                .isolated_publication(0, 4)
+                .map(|state| state.isolation_seq),
+            Some(1)
+        );
+
+        let counts = crate::dsp_verification_allocator::allocation_counts(|| {
+            resume_slot(&mut health, &tokens, &shared, 0);
+            isolate(&mut health[0], &limits);
+            shared.publish(0, true, health[0].total_invalid_blocks, tokens[0]);
+        });
+        assert_eq!(counts, (0, 0));
+        assert_eq!(
+            shared
+                .isolated_publication(0, 4)
+                .map(|state| state.isolation_seq),
+            Some(2)
+        );
+        assert_eq!(shared.isolated_publication(0, 5), None);
+    }
+
+    #[test]
+    fn a_new_token_restarts_isolation_seq_and_drops_the_previous_token() {
+        let shared = PluginHealthShared::new();
+        shared.publish(0, true, 3, 1);
+        assert_eq!(
+            shared
+                .isolated_publication(0, 1)
+                .map(|state| state.isolation_seq),
+            Some(1)
+        );
+        shared.publish(0, false, 0, 2);
+        assert_eq!(shared.isolated_publication(0, 1), None);
+        assert_eq!(shared.isolated_publication(0, 2), None);
+        shared.publish(0, true, 2, 2);
+        let next = shared.isolated_publication(0, 2).unwrap();
+        assert_eq!(next.isolation_seq, 1);
+        assert_eq!(next.invalid_blocks, 2);
+        assert_eq!(shared.isolated_publication(0, 1), None);
     }
 }

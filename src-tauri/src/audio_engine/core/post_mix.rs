@@ -477,9 +477,29 @@ mod tests {
         assert_eq!(bad.calls(), bad_calls);
         assert_eq!(next.calls(), next_calls + 1);
         assert!(packet.samples.iter().all(|frame| *frame == [0.0, 0.0]));
+        assert_eq!(
+            rack.controls
+                .health_shared
+                .isolated_publication(0, 4)
+                .map(|state| state.isolation_seq),
+            Some(1)
+        );
         rack.controls.resume_slot(0);
         assert!(rack.process(&mut packet));
         assert_eq!(bad.calls(), bad_calls + 1);
         assert!(!rack.controls.health[0].isolated);
+        let counts = allocation_counts(|| {
+            for _ in 0..9 {
+                assert!(rack.process(&mut packet));
+            }
+        });
+        assert_eq!(counts, (0, 0));
+        assert_eq!(
+            rack.controls
+                .health_shared
+                .isolated_publication(0, 4)
+                .map(|state| state.isolation_seq),
+            Some(2)
+        );
     }
 }

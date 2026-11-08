@@ -463,6 +463,10 @@ export interface PluginHealthEntry {
     id: string;
     state: 'isolated';
     invalidBlocks: number;
+    /** この token で停止へ遷移した回数。古い統計では欠ける。 */
+    isolationSeq?: number;
+    /** 起動ごとに振り直す世代。古い統計では欠ける。 */
+    token?: number;
 }
 
 export interface EngineRuntimeStats {

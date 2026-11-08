@@ -618,6 +618,12 @@ pub struct PluginHealthEntry {
     /// 現在は停止中だけを載せる。
     pub state: String,
     pub invalid_blocks: u32,
+    /// この token で停止へ遷移した回数。古い統計には無いので 0。
+    #[serde(default)]
+    pub isolation_seq: u64,
+    /// 起動ごとに振り直す世代。古い統計には無いので 0。
+    #[serde(default)]
+    pub token: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -919,10 +925,23 @@ mod cohort_compatibility_tests {
             id: "plugin".into(),
             state: "isolated".into(),
             invalid_blocks: 4,
+            isolation_seq: 2,
+            token: 9,
         };
         let value = serde_json::to_value(&entry).unwrap();
         assert_eq!(value["invalidBlocks"], 4);
+        assert_eq!(value["isolationSeq"], 2);
+        assert_eq!(value["token"], 9);
         assert!(value.get("invalid_blocks").is_none());
+        assert!(value.get("isolation_seq").is_none());
         assert_eq!(value["state"], "isolated");
+        let old: super::PluginHealthEntry = serde_json::from_value(serde_json::json!({
+            "id": "plugin",
+            "state": "isolated",
+            "invalidBlocks": 4
+        }))
+        .unwrap();
+        assert_eq!(old.isolation_seq, 0);
+        assert_eq!(old.token, 0);
     }
 }

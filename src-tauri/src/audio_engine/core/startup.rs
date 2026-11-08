@@ -2087,6 +2087,8 @@ mod tests {
                     id: engine.plugin_manager.order[0].clone(),
                     state: "isolated".into(),
                     invalid_blocks: 4,
+                    isolation_seq: 1,
+                    token: old,
                 }]
             );
             let controls = engine.prepare_plugin_controls();

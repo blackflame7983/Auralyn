@@ -71,3 +71,38 @@ it('再開で停止が消えたあと、再び停止したら知らせる', () =
     view.rerender();
     expect(toast.warning).toHaveBeenCalledTimes(2);
 });
+
+it('正常な統計を挟まない再開のあとの再停止を知らせる', () => {
+    const stopped = {
+        pluginHealth: [{ id: '1', state: 'isolated', invalidBlocks: 19, isolationSeq: 1, token: 4 }],
+    } as EngineRuntimeStats;
+    const stoppedAgain = {
+        pluginHealth: [{ id: '1', state: 'isolated', invalidBlocks: 19, isolationSeq: 2, token: 4 }],
+    } as EngineRuntimeStats;
+    holder.stats = stopped;
+    const view = renderHook(() => usePluginHealthNotices(plugins));
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    holder.stats = stoppedAgain;
+    view.rerender();
+    expect(toast.warning).toHaveBeenCalledTimes(2);
+});
+
+it('token が変わった直後の停止を知らせる', () => {
+    const stopped = {
+        pluginHealth: [{ id: '1', state: 'isolated', invalidBlocks: 19, isolationSeq: 1, token: 4 }],
+    } as EngineRuntimeStats;
+    const restarted = {
+        pluginHealth: [{ id: '1', state: 'isolated', invalidBlocks: 19, isolationSeq: 1, token: 5 }],
+    } as EngineRuntimeStats;
+    holder.stats = stopped;
+    const view = renderHook(() => usePluginHealthNotices(plugins));
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    holder.stats = restarted;
+    view.rerender();
+    expect(toast.warning).toHaveBeenCalledTimes(2);
+    holder.stats = null;
+    view.rerender();
+    holder.stats = restarted;
+    view.rerender();
+    expect(toast.warning).toHaveBeenCalledTimes(2);
+});

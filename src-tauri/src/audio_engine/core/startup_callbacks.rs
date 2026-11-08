@@ -795,6 +795,12 @@ mod tests {
         assert_eq!((bad.calls(), next.calls()), (19, 19));
         assert_eq!(shared.isolated_blocks(0, 11), Some(19));
         assert_eq!(shared.isolated_blocks(0, 12), None);
+        assert_eq!(
+            shared
+                .isolated_publication(0, 11)
+                .map(|state| state.isolation_seq),
+            Some(1)
+        );
 
         let counts = allocation_counts(|| {
             let source_a = run(
@@ -811,6 +817,12 @@ mod tests {
         assert_eq!(counts, (0, 0));
         assert!(silent);
         assert_eq!((bad.calls(), next.calls()), (19, 20));
+        assert_eq!(
+            shared
+                .isolated_publication(0, 11)
+                .map(|state| state.isolation_seq),
+            Some(1)
+        );
 
         controls.resume_slot(0);
         assert!(!controls.health[0].isolated);

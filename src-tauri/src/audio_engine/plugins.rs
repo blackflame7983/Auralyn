@@ -155,14 +155,18 @@ impl PluginManager {
                 continue;
             };
             let expected = self.health_tokens.get(index as usize).copied().unwrap_or(0);
-            let Some(invalid_blocks) = self.health_shared.isolated_blocks(index as usize, expected)
+            let Some(publication) = self
+                .health_shared
+                .isolated_publication(index as usize, expected)
             else {
                 continue;
             };
             entries.push(crate::ipc::PluginHealthEntry {
                 id: id.clone(),
                 state: "isolated".to_string(),
-                invalid_blocks,
+                invalid_blocks: publication.invalid_blocks,
+                isolation_seq: publication.isolation_seq,
+                token: expected,
             });
         }
         entries
