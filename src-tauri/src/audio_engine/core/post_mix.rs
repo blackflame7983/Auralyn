@@ -16,6 +16,7 @@ struct Rack {
     generation: Option<u64>,
     input: Vec<Vec<f32>>,
     output: Vec<Vec<f32>>,
+    dry: Vec<Vec<f32>>,
 }
 impl Drop for Worker {
     fn drop(&mut self) {
@@ -130,6 +131,7 @@ impl Engine {
             generation: None,
             input: vec![vec![0.0; BLOCK_FRAMES]; 2],
             output: vec![vec![0.0; BLOCK_FRAMES]; 2],
+            dry: vec![vec![0.0; BLOCK_FRAMES]; 2],
         });
         let (tx, mut rx) = HeapRb::new(256).split();
         let stop = Arc::new(AtomicBool::new(false));
@@ -146,16 +148,16 @@ impl Engine {
                     while let Some(command) = rx.try_pop() {
                         // 構成変更を受付で拒否するため、所有VSTをRTで追加・破棄しない。
                         match command {
-                            AudioThreadMessage::SetBypass { index, active } => {
-                                if let Some(value) = rack.controls.bypassed.get_mut(index as usize)
-                                {
-                                    *value = active;
-                                }
+                            AudioThreadMessage::SetBypass {
+                                index,
+                                active,
+                                latency,
+                            } => {
+                                rack.controls
+                                    .request_bypass(index as usize, active, latency);
                             }
                             AudioThreadMessage::SetMute { index, active } => {
-                                if let Some(value) = rack.controls.muted.get_mut(index as usize) {
-                                    *value = active;
-                                }
+                                rack.controls.request_mute(index as usize, active);
                             }
                             AudioThreadMessage::SetGain { index, value } => {
                                 if let Some(gain) = rack.controls.gains.get_mut(index as usize) {
@@ -273,56 +275,19 @@ impl Rack {
             self.input[0][index] = frame[0];
             self.input[1][index] = frame[1];
         }
-        let mut input_a = true;
-        if packet.bypassed == 0 {
-            for position in 0..self.controls.order_len {
-                let index = self.controls.order[position];
-                let slot = index as usize;
-                if slot >= MAX_PLUGINS || self.controls.bypassed[slot] {
-                    continue;
-                }
-                if self.controls.muted[slot] {
-                    let current = if input_a {
-                        &mut self.input
-                    } else {
-                        &mut self.output
-                    };
-                    current.iter_mut().for_each(|channel| channel.fill(0.0));
-                    continue;
-                }
-                if self.controls.health[slot].isolated {
-                    let current = if input_a {
-                        &mut self.input
-                    } else {
-                        &mut self.output
-                    };
-                    crate::audio_engine::plugin_health::silence_used(current, 2, BLOCK_FRAMES);
-                    continue;
-                }
-                let Some(processor) = &mut self.processors[slot] else {
-                    continue;
-                };
-                let (input, output) = if input_a {
-                    (&self.input, &mut self.output)
-                } else {
-                    (&self.output, &mut self.input)
-                };
-                processor.process_planar(input, output, BLOCK_FRAMES);
-                self.controls.note_processed(slot, output, 2, BLOCK_FRAMES);
-                input_a = !input_a;
-                let output = if input_a {
-                    &mut self.input
-                } else {
-                    &mut self.output
-                };
-                for index in 0..BLOCK_FRAMES {
-                    let gain = self.controls.gains[slot].next();
-                    for channel in output.iter_mut() {
-                        channel[index] *= gain;
-                    }
-                }
-            }
-        }
+        let mut active = self.controls.order_len;
+        let input_a = self.controls.process(startup::PluginBlock {
+            processors: &mut self.processors,
+            planar_buf_a: &mut self.input,
+            planar_buf_b: &mut self.output,
+            dry: &mut self.dry,
+            channels: 2,
+            frames: BLOCK_FRAMES,
+            active_count: &mut active,
+            global_bypass: packet.bypassed != 0,
+            retire_prod: None,
+            pending_retire: None,
+        });
         let output = if input_a { &self.input } else { &self.output };
         for (index, frame) in packet.samples.iter_mut().enumerate() {
             *frame = [output[0][index], output[1][index]];
@@ -403,6 +368,7 @@ mod tests {
             generation: None,
             input: vec![vec![0.0; BLOCK_FRAMES]; 2],
             output: vec![vec![0.0; BLOCK_FRAMES]; 2],
+            dry: vec![vec![0.0; BLOCK_FRAMES]; 2],
         };
         let mut packet = Packet::default();
         packet.samples.fill([1.5, -1.5]);
@@ -441,6 +407,7 @@ mod tests {
             generation: None,
             input: vec![vec![0.0; BLOCK_FRAMES]; 2],
             output: vec![vec![0.0; BLOCK_FRAMES]; 2],
+            dry: vec![vec![0.0; BLOCK_FRAMES]; 2],
         };
         let mut packet = Packet::default();
         packet.samples.fill([0.5, -0.5]);
@@ -501,5 +468,61 @@ mod tests {
                 .map(|state| state.isolation_seq),
             Some(2)
         );
+    }
+
+    #[test]
+    fn post_mix_bypass_fades_and_latency_reports_before_the_fade_ends() {
+        use crate::vst_host::instance::ScriptedVst;
+        let mut plugin = ScriptedVst::scale(-1.0);
+        let mut engine = Engine::new_post_mix();
+        let mapping = Mapping::create(48_000).unwrap();
+        let port = Mapping::open(&mapping.descriptor())
+            .unwrap()
+            .into_worker()
+            .unwrap();
+        let mut controls = engine.prepare_plugin_controls();
+        controls.order[0] = 0;
+        controls.order_len = 1;
+        let mut processors = std::array::from_fn(|_| None);
+        processors[0] = Some(plugin.take());
+        let mut rack = Rack {
+            port,
+            processors,
+            controls,
+            latencies: [None; MAX_PLUGINS],
+            generation: None,
+            input: vec![vec![0.0; BLOCK_FRAMES]; 2],
+            output: vec![vec![0.0; BLOCK_FRAMES]; 2],
+            dry: vec![vec![0.0; BLOCK_FRAMES]; 2],
+        };
+        rack.latencies[0] = Some(32);
+        assert_eq!(rack.plugin_latency(false), Some(32));
+        let mut packet = Packet::default();
+        packet.samples.fill([0.5, 0.0]);
+        assert!(rack.process(&mut packet));
+        assert!((packet.samples[0][0] + 0.5).abs() < 1.0e-4);
+        assert_eq!(plugin.calls(), 1);
+        rack.controls.request_bypass(0, true, 32);
+        // 音声のフェードより先に、bypass 除外の遅延合計が 0 になる。
+        assert_eq!(rack.plugin_latency(false), Some(0));
+        packet.samples.fill([0.5, 0.0]);
+        assert!(rack.process(&mut packet));
+        assert_eq!(plugin.calls(), 2);
+        let mut step = 0.0f32;
+        for pair in packet.samples.windows(2) {
+            step = step.max((pair[1][0] - pair[0][0]).abs());
+        }
+        assert!(step <= 1.0 / 240.0 + 1.0e-3, "{step}");
+        assert!((packet.samples[BLOCK_FRAMES - 1][0] - 0.5).abs() < 1.0e-3);
+        assert!(packet.samples.iter().all(|frame| frame[1] == 0.0));
+        assert!(packet
+            .samples
+            .iter()
+            .all(|frame| frame[0].abs() <= 0.5 + 1.0e-4));
+        let calls = plugin.calls();
+        packet.samples.fill([0.5, 0.0]);
+        assert!(rack.process(&mut packet));
+        assert_eq!(plugin.calls(), calls);
+        assert!((packet.samples[0][0] - 0.5).abs() < 1.0e-3);
     }
 }

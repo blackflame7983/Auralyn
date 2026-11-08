@@ -392,6 +392,9 @@ fn native_window_resize_rejects_frame_overflow_and_preserves_normal_client_size(
     }
 }
 
+/// 遅延線の1チャンネル分。テストの L はこれ以下にする。
+const SCRIPT_DELAY_CAP: usize = 512;
+
 /// テストが指定した値を出す合成 processor。mock はヒープ上に残り、processor より後で破棄する。
 #[repr(C)]
 struct ScriptMock {
@@ -403,6 +406,13 @@ struct ScriptMock {
     replace_value: f32,
     /// 255 は全チャンネル。それ以外は対象チャンネルだけを置き換える。
     replace_channel: u8,
+    /// `get_latency_samples` が返す申告遅延。0 のときは遅延線を通さない。
+    latency: u32,
+    /// 0 以外なら出力へ一極の残響尾を足す。
+    decay: f32,
+    state: [f32; 2],
+    delay: [f32; SCRIPT_DELAY_CAP * 2],
+    delay_pos: [u16; 2],
 }
 
 unsafe extern "system" fn script_process(this: *mut c_void, data: *mut c_void) -> i32 {
@@ -433,10 +443,32 @@ unsafe extern "system" fn script_process(this: *mut c_void, data: *mut c_void) -
             {
                 written = mock.replace_value;
             }
+            if channel < 2 {
+                let latency = (mock.latency as usize).min(SCRIPT_DELAY_CAP);
+                if latency > 0 {
+                    let pos = mock.delay_pos[channel] as usize;
+                    let base = channel * SCRIPT_DELAY_CAP;
+                    let read = (pos + SCRIPT_DELAY_CAP - latency) % SCRIPT_DELAY_CAP;
+                    let delayed = mock.delay[base + read];
+                    mock.delay[base + pos] = written;
+                    mock.delay_pos[channel] = ((pos + 1) % SCRIPT_DELAY_CAP) as u16;
+                    written = delayed;
+                }
+                if mock.decay != 0.0 {
+                    let next = mock.state[channel] * mock.decay + written;
+                    mock.state[channel] = next;
+                    written = next;
+                }
+            }
             *out_ptr.add(frame) = written;
         }
     }
     K_RESULT_OK
+}
+
+unsafe extern "system" fn script_latency(this: *mut c_void) -> u32 {
+    let mock = &*(this as *const ScriptMock);
+    mock.latency
 }
 
 static SCRIPT_VTABLE: IAudioProcessorVtbl = IAudioProcessorVtbl {
@@ -448,7 +480,7 @@ static SCRIPT_VTABLE: IAudioProcessorVtbl = IAudioProcessorVtbl {
     set_bus_arrangements: arrangements,
     get_bus_arrangement: arrangement,
     can_process_sample_size: sample_size,
-    get_latency_samples: samples,
+    get_latency_samples: script_latency,
     setup_processing: setup,
     set_processing: sample_size,
     process: script_process,
@@ -469,6 +501,27 @@ impl ScriptedVst {
         Self::create(1.0, true, value, channel.map(|ch| ch as u8).unwrap_or(255))
     }
 
+    /// 全チャンネルを定数で置き換える。
+    pub(crate) fn constant(value: f32) -> Self {
+        Self::create(1.0, true, value, 255)
+    }
+
+    /// L サンプル遅らせ、`get_latency_samples` で L を申告する。
+    pub(crate) fn delay(latency: u32) -> Self {
+        let vst = Self::create(1.0, false, 0.0, 255);
+        // SAFETY: mock は ScriptedVst が所有し、process 前の同じテストスレッドから書く。
+        unsafe { (*vst.mock.get()).latency = latency.min(SCRIPT_DELAY_CAP as u32) };
+        vst
+    }
+
+    /// 入力へ減衰する内部状態を足す。decay は 1 未満を想定する。
+    pub(crate) fn tail(decay: f32) -> Self {
+        let vst = Self::create(1.0, false, 0.0, 255);
+        // SAFETY: mock は ScriptedVst が所有し、process 前の同じテストスレッドから書く。
+        unsafe { (*vst.mock.get()).decay = decay };
+        vst
+    }
+
     fn create(scale: f32, replace: bool, replace_value: f32, replace_channel: u8) -> Self {
         let mock = Box::new(UnsafeCell::new(ScriptMock {
             vtbl: &SCRIPT_VTABLE,
@@ -478,6 +531,11 @@ impl ScriptedVst {
             replace,
             replace_value,
             replace_channel,
+            latency: 0,
+            decay: 0.0,
+            state: [0.0; 2],
+            delay: [0.0; SCRIPT_DELAY_CAP * 2],
+            delay_pos: [0; 2],
         }));
         let max_block = 4_096;
         let processor = VstProcessor {
@@ -512,5 +570,15 @@ impl ScriptedVst {
     pub(crate) fn saw_non_finite(&self) -> bool {
         // SAFETY: mock は ScriptedVst が所有し、process が戻ったあと同じテストスレッドから読む。
         unsafe { (*self.mock.get()).saw_non_finite }
+    }
+
+    /// vtable の `get_latency_samples` が返す申告値。
+    pub(crate) fn declared_latency(&self) -> u32 {
+        // SAFETY: mock は ScriptedVst が所有し、process の外から同じテストスレッドで vtable を呼ぶ。
+        unsafe {
+            let mock = &*self.mock.get();
+            let vtbl = &*mock.vtbl;
+            (vtbl.get_latency_samples)(self.mock.get().cast())
+        }
     }
 }

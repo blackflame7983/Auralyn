@@ -8,6 +8,8 @@ pub mod noise_learning;
 use noise_learning::{NoiseLearningShared, RtNoiseLearning};
 #[path = "core/dsp.rs"]
 pub(crate) mod dsp;
+#[path = "core/slot_transition.rs"]
+mod slot_transition;
 #[cfg(any(test, feature = "dsp-verification"))]
 use dsp::RtNoiseReducer;
 use dsp::{
@@ -133,6 +135,8 @@ pub enum AudioThreadMessage {
         initial_bypassed: bool,
         initial_muted: bool,
         health_token: u64,
+        /// 申告遅延。不明は `u32::MAX` とし、遷移はディップを選ぶ。
+        latency: u32,
     },
     RemoveProcessor {
         index: u8,
@@ -144,6 +148,8 @@ pub enum AudioThreadMessage {
     SetBypass {
         index: u8,
         active: bool,
+        /// その時点の申告遅延。不明は `u32::MAX`。
+        latency: u32,
     },
     SetMute {
         index: u8,
@@ -1154,6 +1160,7 @@ impl Engine {
         initial_muted: bool,
     ) {
         let health_token = self.plugin_manager.mint_health_token(index);
+        let latency = self.plugin_manager.latency_samples_at(index);
         self.queue_audio_msg(AudioThreadMessage::AddProcessor {
             index,
             processor,
@@ -1161,6 +1168,7 @@ impl Engine {
             initial_bypassed,
             initial_muted,
             health_token,
+            latency,
         });
     }
 

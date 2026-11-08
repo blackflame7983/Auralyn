@@ -618,6 +618,7 @@ impl Engine {
                                 self.queue_audio_msg(AudioThreadMessage::SetBypass {
                                     index,
                                     active: true,
+                                    latency: self.plugin_manager.latency_samples_at(index),
                                 });
                             }
                             if self.plugin_manager.muted.contains(&id) {
@@ -713,7 +714,11 @@ impl Engine {
                 } else {
                     self.plugin_manager.bypassed.remove(&id);
                 }
-                self.queue_audio_msg(AudioThreadMessage::SetBypass { index, active });
+                self.queue_audio_msg(AudioThreadMessage::SetBypass {
+                    index,
+                    active,
+                    latency: self.plugin_manager.latency_samples_at(index),
+                });
                 self.send_response(Response::Success);
             }
             Command::SetMute { id, active } => {

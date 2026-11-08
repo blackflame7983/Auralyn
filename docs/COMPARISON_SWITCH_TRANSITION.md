@@ -29,7 +29,7 @@
 ボイスチェック録音・音量測定の開始要求は、切替が安定するまで既存のFIFO内に残す。
 処理callback自体は継続する。遷移中のblockは通常音声の遅延計測条件から除外する。
 NR・内蔵処理の設定と、全体bypassがVST段だけを切り替える契約は維持する。
-個別VSTのbypass操作の平滑化は今回の対象に含めない。
+個別VSTの切替は当時の対象外。後続の実装と限界は [ISSUE_453_IMPLEMENTATION.md](ISSUE_453_IMPLEMENTATION.md) を参照する。
 
 ## 波形・実Engine・聴感を分けて確認する
 

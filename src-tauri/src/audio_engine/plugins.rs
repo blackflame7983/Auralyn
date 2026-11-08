@@ -201,6 +201,17 @@ impl PluginManager {
         self.rt_index_by_id.get(id).copied()
     }
 
+    /// RT へ渡す申告遅延。processor が無い、または取得できないときは不明として最大値を返す。
+    pub fn latency_samples_at(&self, index: u8) -> u32 {
+        let Some(Some(id)) = self.id_by_rt_index.get(index as usize) else {
+            return u32::MAX;
+        };
+        self.plugins
+            .get(id)
+            .map(|instance| instance.declared_latency_samples().unwrap_or(u32::MAX))
+            .unwrap_or(u32::MAX)
+    }
+
     pub fn reorder_plugins(&mut self, order: Vec<String>) -> Result<()> {
         // 欠落・重複・古いIDを含む要求では、処理中のチェーンを部分的に消さない。
         let requested: HashSet<_> = order.iter().collect();
@@ -465,6 +476,7 @@ fn latency_rows(
     let mut known = true;
     let mut stages = Vec::with_capacity(MAX_PLUGINS);
     for (id, name, bypassed, muted, value) in rows.take(MAX_PLUGINS) {
+        // bypass は制御側が操作を受けた時点で除外する。音声のフェード完了より先に合計が変わる。
         if !global && !bypassed {
             total = total.saturating_add(u64::from(value.unwrap_or(0)));
             known &= value.is_some();

@@ -18,14 +18,6 @@ impl Smoother {
         }
     }
 
-    pub(super) fn new_ramp(start: f32, end: f32) -> Self {
-        Self {
-            current: start,
-            target: end,
-            coeff: 0.005,
-        }
-    }
-
     pub(super) fn set_target(&mut self, target: f32) {
         self.target = target;
     }
