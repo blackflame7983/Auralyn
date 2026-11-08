@@ -15,12 +15,13 @@ unsafe fn get_vtbl<T>(ptr: *mut c_void) -> &'static T {
     &**(ptr as *mut *mut T)
 }
 
-fn failed(path: &str, error: String) -> ScanReport {
+fn failed(path: &str, kind: &str, error: String) -> ScanReport {
     ScanReport {
         format_version: SCAN_FORMAT_VERSION,
         path: path.to_string(),
         success: false,
         error: Some(error),
+        error_kind: Some(kind.to_string()),
         factory_vendor: None,
         classes: Vec::new(),
     }
@@ -46,7 +47,11 @@ fn main() {
     let path = PathBuf::from(path_str);
 
     if !path.exists() {
-        print_json_and_exit(failed(path_str, "File not found".to_string()));
+        print_json_and_exit(failed(
+            path_str,
+            "load_failed",
+            "File not found".to_string(),
+        ));
     }
 
     // SAFETY: ここからはVST3 ABI準拠のDLLを信頼する境界であり、export・vtable・
@@ -84,15 +89,31 @@ unsafe fn load_plugin_info(path: &PathBuf) -> ScanReport {
     let path_str = path.to_string_lossy().to_string();
     let lib = match Library::new(path) {
         Ok(library) => library,
-        Err(error) => return failed(&path_str, format!("Failed to load library: {error}")),
+        Err(error) => {
+            return failed(
+                &path_str,
+                "load_failed",
+                format!("Failed to load library: {error}"),
+            )
+        }
     };
     let factory_proc = match lib.get::<GetPluginFactory>(b"GetPluginFactory") {
         Ok(symbol) => symbol,
-        Err(error) => return failed(&path_str, format!("GetPluginFactory not found: {error}")),
+        Err(error) => {
+            return failed(
+                &path_str,
+                "no_factory",
+                format!("GetPluginFactory not found: {error}"),
+            )
+        }
     };
     let factory_ptr = factory_proc();
     if factory_ptr.is_null() {
-        return failed(&path_str, "GetPluginFactory returned null".to_string());
+        return failed(
+            &path_str,
+            "no_factory",
+            "GetPluginFactory returned null".to_string(),
+        );
     }
     let _release = FactoryRelease(factory_ptr);
     let factory_vtbl = get_vtbl::<IPluginFactoryVtbl>(factory_ptr);
@@ -104,7 +125,7 @@ unsafe fn load_plugin_info(path: &PathBuf) -> ScanReport {
     };
     let classes = match list_effect_classes(factory_ptr) {
         Ok(classes) => classes,
-        Err(error) => return failed(&path_str, error.to_string()),
+        Err(error) => return failed(&path_str, "unknown", error.to_string()),
     };
     if classes.is_empty() {
         return ScanReport {
@@ -112,6 +133,7 @@ unsafe fn load_plugin_info(path: &PathBuf) -> ScanReport {
             path: path_str,
             success: false,
             error: Some(NO_EFFECT_ERROR.to_string()),
+            error_kind: None,
             factory_vendor,
             classes: Vec::new(),
         };
@@ -121,6 +143,7 @@ unsafe fn load_plugin_info(path: &PathBuf) -> ScanReport {
         path: path_str,
         success: true,
         error: None,
+        error_kind: None,
         factory_vendor,
         classes: classes.into_iter().map(|class| class.entry).collect(),
     }

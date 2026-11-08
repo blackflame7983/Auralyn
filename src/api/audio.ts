@@ -33,6 +33,45 @@ export interface VstPlugin {
     nameSource?: string;
 }
 
+export type ScanFailureKind =
+    | 'crashed'
+    | 'timed_out'
+    | 'load_failed'
+    | 'no_factory'
+    | 'invalid_output'
+    | 'spawn_failed'
+    | 'legacy_blacklisted'
+    | 'unknown';
+
+export interface ScanFailure {
+    path: string;
+    name: string;
+    kind: ScanFailureKind;
+    detail?: string | null;
+    scannedAt: string;
+    attempts: number;
+}
+
+export interface ScanStats {
+    reused: number;
+    scanned: number;
+    removed: number;
+}
+
+export interface PluginCatalog {
+    plugins: VstPlugin[];
+    failures: ScanFailure[];
+    stats: ScanStats;
+    generation: number;
+    recoveredFromCorrupt: boolean;
+    saveError: string | null;
+}
+
+export interface PluginScanRequest {
+    mode?: 'incremental' | 'full';
+    retryFailed?: boolean;
+}
+
 export interface AudioConfig {
     sample_rate: number;
     buffer_size: number;
@@ -97,6 +136,15 @@ export const audioApi = {
     },
     scanPlugins: async (): Promise<VstPlugin[]> => {
         return await invoke("scan_plugins");
+    },
+    scanPluginCatalog: async (request?: PluginScanRequest): Promise<PluginCatalog> => {
+        return await invoke("scan_plugin_catalog", {
+            mode: request?.mode,
+            retryFailed: request?.retryFailed ?? false,
+        });
+    },
+    retryPluginScan: async (path: string): Promise<PluginCatalog> => {
+        return await invoke("retry_plugin_scan", { path });
     },
     clearBlacklist: async (): Promise<void> => {
         return await invoke("clear_blacklist");

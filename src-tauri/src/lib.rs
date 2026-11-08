@@ -437,6 +437,8 @@ pub fn run() {
             commands::audio::set_engine_tuning_config,
             commands::audio::get_engine_runtime_stats,
             commands::audio::scan_plugins,
+            commands::audio::scan_plugin_catalog,
+            commands::audio::retry_plugin_scan,
             commands::audio::clear_blacklist,
             commands::audio::start_audio,
             commands::audio::get_process_input_sources,

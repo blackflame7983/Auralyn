@@ -1,6 +1,6 @@
 import { Checkbox } from '@/components/ui/Checkbox';
 import { useEffect, useRef, useState } from 'react';
-import { audioApi, type VstPlugin } from '@/api/audio';
+import { audioApi, type PluginCatalog, type ScanFailure, type ScanStats, type VstPlugin } from '@/api/audio';
 import { mixingApi } from '@/api/mixing';
 import { postMixApi, type PostMixRequest } from '@/api/postMix';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -25,6 +25,9 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
     const { snapshot, busy, stale, error } = resource;
     const [resetConfirmed, setResetConfirmed] = useState(false), [resetDone, setResetDone] = useState(false);
     const [available, setAvailable] = useState<VstPlugin[]>([]), [browser, setBrowser] = useState(false), [scanning, setScanning] = useState(false);
+    const [failures, setFailures] = useState<ScanFailure[]>([]), [stats, setStats] = useState<ScanStats | null>(null);
+    const [retryingPath, setRetryingPath] = useState<string | null>(null);
+    const [catalogNotice, setCatalogNotice] = useState({ recovered: false, saveError: null as string | null });
     const [gains, setGains] = useState<Record<string, number>>({});
     useEffect(() => { if (open && !attempted.current && !disabled) { attempted.current = true; void resource.run('mixingUi.read'); } return () => { attempted.current = false; }; }, [open, disabled]);
     async function run(action: Action) {
@@ -46,7 +49,20 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
     });
     const pendingGains = useRef<Record<string, number>>({});
     useEffect(() => { if (stale || !open) { gainQueue.cancel(); pendingGains.current = {}; } }, [stale, open]);
-    async function scan() { if (scanning || disabled || isMainRunning) return; setScanning(true); try { setAvailable(await audioApi.scanPlugins()); } catch (e) { resource.report('postMix.scan', e); } finally { setScanning(false); } }
+    function applyCatalog(catalog: PluginCatalog) {
+        setAvailable(catalog.plugins); setFailures(catalog.failures); setStats(catalog.stats);
+        setCatalogNotice({ recovered: catalog.recoveredFromCorrupt, saveError: catalog.saveError });
+    }
+    async function scan(request?: { mode?: 'incremental' | 'full'; retryFailed?: boolean }) {
+        if (scanning || disabled || isMainRunning || retryingPath) return;
+        setScanning(true);
+        try { applyCatalog(await audioApi.scanPluginCatalog(request)); } catch (e) { resource.report('postMix.scan', e); } finally { setScanning(false); }
+    }
+    async function retry(path: string) {
+        if (scanning || disabled || isMainRunning || retryingPath) return;
+        setRetryingPath(path);
+        try { applyCatalog(await audioApi.retryPluginScan(path)); } catch (e) { resource.report('postMix.scan', e); } finally { setRetryingPath(current => current === path ? null : current); }
+    }
     const editable = !disabled && !busy && !stale, stopped = editable && !isMainRunning;
     const gainDifferences = snapshot?.plugins.filter(p => gains[p.id] !== undefined && gains[p.id] !== p.gain).map(p => [p.id, gains[p.id]] as const) ?? [];
     const enableReason = !(hasMixing ?? mixConfigured) ? 'mixingUi.postNeedsMix' : !snapshot?.restored ? 'postMix.restoreNeeded' : isMainRunning ? 'postMix.stop' : stale ? 'postMix.stale' : null;
@@ -76,6 +92,6 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
             <details className="space-y-2 border-t border-border pt-3"><summary className="cursor-pointer">{t('postMix.recovery')}</summary><p>{t('postMix.recoveryHelp')}</p><label className="flex gap-2 text-ui-control"><Checkbox disabled={!stopped} checked={resetConfirmed} onChange={e => setResetConfirmed(e.target.checked)} />{t('postMix.recoveryConfirm')}</label><Button variant="destructive" className="h-auto whitespace-normal" disabled={!stopped || !resetConfirmed} onClick={() => { gainQueue.cancel(); void run({ action: 'reset' }); }}>{t('postMix.reset')}</Button>{resetDone && <p role="status">{t('postMix.resetDone')}</p>}</details>
         </div>}
         <MixingError error={error} />
-        <PluginBrowserModal isOpen={browser} onClose={() => setBrowser(false)} plugins={available} isLoading={scanning} onScan={() => void scan()} addedPaths={snapshot?.plugins.map(p => p.classId ? `${p.path}::${p.classId.toUpperCase()}` : p.path)} onPluginSelect={p => { setBrowser(false); void run(p.classId ? { action: 'add', path: p.path, classId: p.classId } : { action: 'add', path: p.path }); }} />
+        <PluginBrowserModal isOpen={browser} onClose={() => setBrowser(false)} plugins={available} failures={failures} stats={stats} recoveredFromCorrupt={catalogNotice.recovered} saveError={catalogNotice.saveError} retryingPath={retryingPath} isLoading={scanning} onScan={request => void scan(request)} onRetry={path => void retry(path)} addedPaths={snapshot?.plugins.map(p => p.classId ? `${p.path}::${p.classId.toUpperCase()}` : p.path)} onPluginSelect={p => { setBrowser(false); void run(p.classId ? { action: 'add', path: p.path, classId: p.classId } : { action: 'add', path: p.path }); }} />
     </details>;
 }

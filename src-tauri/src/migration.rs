@@ -90,7 +90,7 @@ pub fn complete_review(root: &Path) -> anyhow::Result<()> {
 }
 
 fn plain_path(root: &Path, name: &str) -> Result<std::path::PathBuf, String> {
-    let allowed = ["vst_blacklist.json", "shortcuts.json"].contains(&name)
+    let allowed = ["vst_blacklist.json", "vst_catalog.json", "shortcuts.json"].contains(&name)
         || name.strip_prefix("presets/").is_some_and(|n| {
             n.ends_with(".json")
                 && n.len() > 5
@@ -116,7 +116,7 @@ fn plain_path(root: &Path, name: &str) -> Result<std::path::PathBuf, String> {
 fn validate(bundle: &Bundle) -> Result<(), String> {
     if bundle.format != "auralyn-settings"
         || bundle.version != 1
-        || bundle.files.len() > 512
+        || bundle.files.len() > 513
         || bundle.app_version.len() > 64
     {
         return Err("対応していない移行ファイルです。".into());
@@ -184,6 +184,18 @@ fn validate(bundle: &Bundle) -> Result<(), String> {
         if name == "vst_blacklist.json" {
             serde_json::from_value::<crate::vst_host::blacklist::Blacklist>(value.clone())
                 .map_err(|_| "除外リストの形式が正しくありません")?;
+        } else if name == "vst_catalog.json" {
+            let catalog: crate::vst_host::catalog::CatalogFile =
+                serde_json::from_value(value.clone())
+                    .map_err(|_| "スキャン結果の形式が正しくありません")?;
+            if catalog.schema_version != 1
+                || catalog.entries.len() > 100_000
+                || catalog.entries.iter().any(|entry| {
+                    entry.path.is_empty() || entry.path.len() > 32_768 || entry.path.contains('\0')
+                })
+            {
+                return Err("スキャン結果の形式が正しくありません".into());
+            }
         } else if name == "shortcuts.json" {
             let bindings: Vec<crate::shortcuts::Binding> =
                 serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
@@ -248,7 +260,11 @@ fn valid_plugin(value: &serde_json::Value) -> bool {
 
 fn snapshot(root: &Path, ui: BTreeMap<String, String>) -> Result<Bundle, String> {
     let mut files = BTreeMap::new();
-    let mut names = vec!["vst_blacklist.json".to_owned(), "shortcuts.json".to_owned()];
+    let mut names = vec![
+        "vst_blacklist.json".to_owned(),
+        "vst_catalog.json".to_owned(),
+        "shortcuts.json".to_owned(),
+    ];
     if root.join("presets").is_dir() {
         for entry in fs::read_dir(root.join("presets")).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
@@ -257,7 +273,7 @@ fn snapshot(root: &Path, ui: BTreeMap<String, String>) -> Result<Bundle, String>
             }
         }
     }
-    if names.len() > 514 {
+    if names.len() > 515 {
         return Err("移行ファイルが多すぎます。".into());
     }
     let mut total = 0;
@@ -796,5 +812,26 @@ mod tests {
             assert!(!review_required(&root));
         }
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn catalog_export_accepts_schema_1_and_rejects_a_different_schema() {
+        let bundle = Bundle {
+            format: "auralyn-settings".into(),
+            version: 1,
+            app_version: "1.1.0".into(),
+            ui: BTreeMap::new(),
+            files: BTreeMap::from([(
+                "vst_catalog.json".into(),
+                serde_json::json!({"schemaVersion": 1, "entries": []}),
+            )]),
+        };
+        assert!(validate(&bundle).is_ok());
+        let mut rejected = bundle.clone();
+        rejected.files.insert(
+            "vst_catalog.json".into(),
+            serde_json::json!({"schemaVersion": 2, "entries": []}),
+        );
+        assert!(validate(&rejected).is_err());
     }
 }

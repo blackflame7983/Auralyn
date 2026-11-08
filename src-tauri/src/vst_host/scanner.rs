@@ -1,12 +1,23 @@
 use crate::child_process as process;
 use crate::vst_host::blacklist::Blacklist;
-use crate::vst_host::class_listing::{ClassEntry, ScanReport};
+use crate::vst_host::catalog::{
+    self, Candidate, CatalogFile, FailureKind, Outcome, ProbeEffect, ScanMode, ScanStats,
+};
+use crate::vst_host::class_listing::{ClassEntry, ScanReport, SCAN_FORMAT_VERSION};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
 use std::time::Duration;
 use walkdir::WalkDir;
+
+pub const SCAN_BUSY: &str = "スキャン中です";
+const SCAN_TIMEOUT: Duration = Duration::from_secs(30);
+const RETRY_TIMEOUT: Duration = Duration::from_secs(120);
+
+static SCAN_GATE: Mutex<catalog::ScanGate> = Mutex::new(catalog::ScanGate::new());
 
 /// スキャン結果の1クラス。`version` が無いときは取得できていない。
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -37,6 +48,7 @@ struct LegacyScan {
     error: Option<String>,
 }
 
+#[cfg(test)]
 pub(crate) struct ParsedScan {
     pub plugins: Vec<VstPlugin>,
     pub success: bool,
@@ -60,6 +72,7 @@ fn known_text(value: String) -> String {
 }
 
 /// formatVersion 2 をクラスごとに展開し、版フィールドの無い旧出力は1件として読む。
+#[cfg(test)]
 pub(crate) fn plugins_from_scanner_output(stdout: &str) -> Result<ParsedScan, serde_json::Error> {
     let value: serde_json::Value = serde_json::from_str(stdout)?;
     if value
@@ -102,6 +115,7 @@ pub(crate) fn plugins_from_scanner_output(stdout: &str) -> Result<ParsedScan, se
     })
 }
 
+#[cfg(test)]
 fn plugins_from_report(report: ScanReport) -> ParsedScan {
     if !report.success {
         return ParsedScan {
@@ -119,6 +133,99 @@ fn plugins_from_report(report: ScanReport) -> ParsedScan {
         plugins,
         success: true,
         error: None,
+    }
+}
+
+/// 子プロセスの1件分。exit 0 かつ成功でない完了はエフェクトなし。JSON が無い非0終了はクラッシュ。
+pub(crate) fn classify_scanner_output(stdout: &str, exit_success: bool) -> ProbeEffect {
+    let Some(line) = stdout
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with('{'))
+    else {
+        return if exit_success {
+            failed_effect(FailureKind::InvalidOutput, Some("JSONがありません".into()))
+        } else {
+            failed_effect(FailureKind::Crashed, None)
+        };
+    };
+    let value: serde_json::Value = match serde_json::from_str(line) {
+        Ok(value) => value,
+        Err(error) => {
+            return failed_effect(FailureKind::InvalidOutput, Some(error.to_string()));
+        }
+    };
+    if value.get("formatVersion").is_some() {
+        let version = value.get("formatVersion").and_then(|item| item.as_u64());
+        if version != Some(u64::from(SCAN_FORMAT_VERSION)) {
+            return failed_effect(
+                FailureKind::InvalidOutput,
+                Some("formatVersion が対応範囲外です".into()),
+            );
+        }
+        let report: ScanReport = match serde_json::from_value(value) {
+            Ok(report) => report,
+            Err(error) => {
+                return failed_effect(FailureKind::InvalidOutput, Some(error.to_string()))
+            }
+        };
+        return classify_report(report, exit_success);
+    }
+    let legacy: LegacyScan = match serde_json::from_value(value) {
+        Ok(legacy) => legacy,
+        Err(error) => return failed_effect(FailureKind::Unknown, Some(error.to_string())),
+    };
+    if legacy.success && exit_success {
+        let version = if legacy.version.is_empty() || legacy.version == "0.0.0" {
+            None
+        } else {
+            Some(legacy.version)
+        };
+        return ProbeEffect::Legacy {
+            plugin: catalog::LegacyPlugin {
+                name: if legacy.name.is_empty() {
+                    file_label(&legacy.path)
+                } else {
+                    legacy.name
+                },
+                vendor: known_text(legacy.vendor),
+                version,
+            },
+        };
+    }
+    failed_effect(FailureKind::Unknown, legacy.error)
+}
+
+fn classify_report(report: ScanReport, exit_success: bool) -> ProbeEffect {
+    if report.success && exit_success {
+        return ProbeEffect::Classes {
+            classes: report.classes,
+            factory_vendor: report.factory_vendor,
+        };
+    }
+    if exit_success && !report.success && report.error_kind.is_none() {
+        return ProbeEffect::NoEffects;
+    }
+    if let Some(kind) = report.error_kind {
+        return failed_effect(FailureKind::parse(&kind), report.error);
+    }
+    failed_effect(FailureKind::Unknown, report.error)
+}
+
+fn failed_effect(kind: FailureKind, detail: Option<String>) -> ProbeEffect {
+    ProbeEffect::Failed { kind, detail }
+}
+
+pub(crate) fn probe_command(command: &mut Command, timeout: Duration) -> ProbeEffect {
+    match process::run(command, timeout) {
+        Ok(output) => classify_scanner_output(
+            &String::from_utf8_lossy(&output.stdout),
+            output.status.success(),
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::TimedOut => {
+            failed_effect(FailureKind::TimedOut, Some(error.to_string()))
+        }
+        Err(error) => failed_effect(FailureKind::SpawnFailed, Some(error.to_string())),
     }
 }
 
@@ -210,151 +317,278 @@ fn get_scanner_path() -> Option<PathBuf> {
     None
 }
 
-pub fn scan_system_vst3(config_dir: &PathBuf) -> Vec<VstPlugin> {
-    let mut plugins = Vec::new();
-    let mut blacklist = Blacklist::new(config_dir);
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginScanFailure {
+    pub path: String,
+    pub name: String,
+    pub kind: FailureKind,
+    pub detail: Option<String>,
+    pub scanned_at: String,
+    pub attempts: u32,
+}
 
-    let scanner_path = match get_scanner_path() {
-        Some(p) => p,
-        None => {
-            log::error!("Could not find plugin_scanner.exe");
-            return Vec::new();
-        }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCatalogView {
+    pub plugins: Vec<VstPlugin>,
+    pub failures: Vec<PluginScanFailure>,
+    pub stats: ScanStats,
+    pub generation: u64,
+    pub recovered_from_corrupt: bool,
+    pub save_error: Option<String>,
+}
+
+struct ScanGuard(u64);
+
+impl Drop for ScanGuard {
+    fn drop(&mut self) {
+        lock_gate().finish(self.0);
+    }
+}
+
+pub fn scan_system_vst3(config_dir: &Path) -> Result<Vec<VstPlugin>, String> {
+    Ok(scan_plugin_catalog(config_dir, ScanMode::Incremental)?.plugins)
+}
+
+pub fn scan_plugin_catalog(config_dir: &Path, mode: ScanMode) -> Result<PluginCatalogView, String> {
+    run_catalog_scan(config_dir, mode, None, SCAN_TIMEOUT)
+}
+
+pub fn retry_plugin_scan(config_dir: &Path, path: &str) -> Result<PluginCatalogView, String> {
+    if path.is_empty() || path.contains('\0') {
+        return Err("再試行するファイルが指定されていません".into());
+    }
+    run_catalog_scan(config_dir, ScanMode::Incremental, Some(path), RETRY_TIMEOUT)
+}
+
+pub fn clear_scan_exclusions(config_dir: &Path) -> Result<(), String> {
+    let guard = begin_scan()?;
+    let result = (|| {
+        let mut prepared =
+            catalog::prepare_catalog(config_dir, &catalog::utc_timestamp(), SCAN_FORMAT_VERSION)?;
+        catalog::clear_failures(&mut prepared.catalog);
+        catalog::save_catalog(config_dir, &prepared.catalog)?;
+        Blacklist::new(&config_dir.to_path_buf()).clear();
+        Ok(())
+    })();
+    drop(guard);
+    result
+}
+
+fn run_catalog_scan(
+    config_dir: &Path,
+    mode: ScanMode,
+    retry_path: Option<&str>,
+    timeout: Duration,
+) -> Result<PluginCatalogView, String> {
+    let guard = begin_scan()?;
+    let scanner = get_scanner_path().ok_or_else(|| {
+        log::error!("Could not find plugin_scanner.exe");
+        "スキャン用のプログラムが見つかりません".to_string()
+    })?;
+    log::info!("Using scanner binary at: {:?}", scanner);
+    let now = catalog::utc_timestamp();
+    let prepared = catalog::prepare_catalog(config_dir, &now, SCAN_FORMAT_VERSION)?;
+    let mut save_error = prepared.save_error;
+    let candidates = candidates_under(&default_roots());
+    let plan = if let Some(path) = retry_path {
+        let candidate = find_candidate(&candidates, path)
+            .ok_or_else(|| "再試行するファイルが見つかりません".to_string())?;
+        catalog::plan_retry(candidate)
+    } else {
+        catalog::plan_scan(
+            &prepared.catalog.entries,
+            &candidates,
+            mode,
+            SCAN_FORMAT_VERSION,
+        )
     };
-    log::info!("Using scanner binary at: {:?}", scanner_path);
+    let generation = guard.0;
+    let reconciled = catalog::reconcile(
+        prepared.catalog,
+        &plan,
+        |candidate| {
+            log::info!("Scanning: {}", candidate.path);
+            let mut command = Command::new(&scanner);
+            command.arg(&candidate.path);
+            probe_command(&mut command, timeout)
+        },
+        |file| catalog::save_catalog(config_dir, file),
+        &now,
+        || lock_gate().current() == generation,
+        SCAN_FORMAT_VERSION,
+    );
+    if save_error.is_none() {
+        save_error = reconciled.save_error;
+    }
+    log::info!(
+        "VSTスキャン: 再利用 {}、スキャン {}、削除 {}",
+        reconciled.stats.reused,
+        reconciled.stats.scanned,
+        reconciled.stats.removed
+    );
+    let view = view_from(
+        &reconciled.catalog,
+        reconciled.stats,
+        generation,
+        prepared.recovered_from_corrupt,
+        save_error,
+    );
+    drop(guard);
+    Ok(view)
+}
 
-    // Common VST3 paths on Windows
-    let paths = vec![
-        r"C:\Program Files\Common Files\VST3",
-        r"C:\Program Files\Steinberg\VST3",
-    ];
+fn begin_scan() -> Result<ScanGuard, String> {
+    lock_gate()
+        .try_begin()
+        .map(ScanGuard)
+        .ok_or_else(|| SCAN_BUSY.to_string())
+}
 
-    for path_str in paths {
-        let path = Path::new(path_str);
-        if path.exists() {
-            let mut walker = WalkDir::new(path).into_iter();
-            while let Some(entry_res) = walker.next() {
-                let entry = match entry_res {
-                    Ok(e) => e,
-                    Err(_) => continue,
+fn lock_gate() -> std::sync::MutexGuard<'static, catalog::ScanGate> {
+    SCAN_GATE
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+}
+
+fn default_roots() -> Vec<PathBuf> {
+    vec![
+        PathBuf::from(r"C:\Program Files\Common Files\VST3"),
+        PathBuf::from(r"C:\Program Files\Steinberg\VST3"),
+    ]
+}
+
+pub(crate) fn candidates_under(roots: &[PathBuf]) -> Vec<Candidate> {
+    let mut found = Vec::new();
+    let mut seen = HashSet::new();
+    for root in roots {
+        if !root.exists() {
+            continue;
+        }
+        let mut walker = WalkDir::new(root).into_iter();
+        while let Some(entry_res) = walker.next() {
+            let entry = match entry_res {
+                Ok(entry) => entry,
+                Err(_) => continue,
+            };
+            let entry_path = entry.path();
+            if entry_path.extension().is_some_and(|ext| ext == "vst3") {
+                // bundle の中へ降りると、中の binary を別プラグインとして数えてしまう。
+                if entry_path.is_dir() {
+                    walker.skip_current_dir();
+                }
+                let Some(binary) = resolve_binary(entry_path) else {
+                    continue;
                 };
-
-                let entry_path = entry.path();
-                // Check for .vst3 extension
-                if entry_path.extension().is_some_and(|ext| ext == "vst3") {
-                    // CRITICAL FIX: If it's a bundle (directory), do NOT recurse into it.
-                    // This prevents finding the inner binary as a separate entry later.
-                    if entry_path.is_dir() {
-                        walker.skip_current_dir();
-                    }
-
-                    let mut final_path = entry_path.to_path_buf();
-                    let name = entry_path
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().to_string())
-                        .unwrap_or_else(|| "Unknown Plugin".to_string());
-
-                    // If it's a directory (Bundle), look for the binary
-                    if entry_path.is_dir() {
-                        let binary_path = entry_path
-                            .join("Contents/x86_64-win")
-                            .join(format!("{}.vst3", name));
-                        if binary_path.exists() {
-                            final_path = binary_path;
-                        } else {
-                            // Fallback: search safely inside architecture dir
-                            // Note: we can't use the main walker for this as we skipped the dir,
-                            // so we do a localized search here.
-                            let arch_dir = entry_path.join("Contents/x86_64-win");
-                            if arch_dir.exists() {
-                                if let Ok(mut entries) = std::fs::read_dir(arch_dir) {
-                                    if let Some(Ok(inner)) = entries.find(|e| {
-                                        e.as_ref().ok().is_some_and(|dir_entry| {
-                                            dir_entry
-                                                .path()
-                                                .extension()
-                                                .is_some_and(|ext| ext == "vst3")
-                                        })
-                                    }) {
-                                        final_path = inner.path();
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Only process if it points to a file now
-                    if final_path.is_file() {
-                        let path_string = final_path.to_string_lossy().to_string();
-
-                        if blacklist.contains(&path_string) {
-                            log::warn!("Skipping blacklisted plugin: {}", path_string);
-                            continue;
-                        }
-
-                        log::info!("Scanning: {:?}", final_path);
-
-                        // Per-plugin timeout (hang protection) - Increased to 30s
-                        let timeout = Duration::from_secs(30);
-                        let output =
-                            process::run(Command::new(&scanner_path).arg(&path_string), timeout);
-
-                        match output {
-                            Ok(out) => {
-                                if out.status.success() {
-                                    let stdout = String::from_utf8_lossy(&out.stdout);
-                                    match plugins_from_scanner_output(&stdout) {
-                                        Ok(parsed) => {
-                                            if parsed.success {
-                                                plugins.extend(parsed.plugins);
-                                            } else {
-                                                log::warn!(
-                                                    "Plugin scan failed (internal): {:?} - {:?}",
-                                                    final_path,
-                                                    parsed.error
-                                                );
-                                            }
-                                        }
-                                        Err(e) => {
-                                            log::error!(
-                                                "Failed to parse scanner output: {} - Output: {}",
-                                                e,
-                                                stdout
-                                            );
-                                            // Bad output -> likely crash or garbage -> Blacklist (Safe Mode!)
-                                            blacklist.add(&path_string);
-                                        }
-                                    }
-                                } else {
-                                    log::warn!(
-                                        "Plugin scanner crashed or failed: {:?} (Code: {:?})",
-                                        final_path,
-                                        out.status.code()
-                                    );
-                                    // Crash -> Blacklist
-                                    blacklist.add(&path_string);
-                                }
-                            }
-                            Err(e) => {
-                                if e.kind() == std::io::ErrorKind::TimedOut {
-                                    log::warn!(
-                                        "Plugin scanner timed out: {:?} (>{:?})",
-                                        final_path,
-                                        timeout
-                                    );
-                                    blacklist.add(&path_string);
-                                } else {
-                                    log::error!("Failed to spawn scanner: {}", e);
-                                }
-                            }
-                        }
-                    }
+                let Some(file_id) = catalog::file_id(&binary) else {
+                    continue;
+                };
+                let path = catalog::normalize_path(&binary);
+                if seen.insert(path.clone()) {
+                    let bundle_path = entry_path
+                        .is_dir()
+                        .then(|| catalog::normalize_path(entry_path));
+                    found.push(Candidate {
+                        path,
+                        bundle_path,
+                        file_id,
+                    });
                 }
             }
         }
     }
+    found
+}
 
-    plugins
+fn resolve_binary(entry_path: &Path) -> Option<PathBuf> {
+    if entry_path.is_file() {
+        return Some(entry_path.to_path_buf());
+    }
+    let name = entry_path.file_stem()?.to_string_lossy();
+    let expected = entry_path
+        .join("Contents/x86_64-win")
+        .join(format!("{name}.vst3"));
+    if expected.is_file() {
+        return Some(expected);
+    }
+    let arch_dir = entry_path.join("Contents/x86_64-win");
+    let mut entries = std::fs::read_dir(arch_dir).ok()?;
+    entries.find_map(|entry| {
+        let path = entry.ok()?.path();
+        path.extension()
+            .is_some_and(|ext| ext == "vst3")
+            .then_some(path)
+    })
+}
+
+fn find_candidate(candidates: &[Candidate], path: &str) -> Option<Candidate> {
+    let normalized = catalog::normalize_path(Path::new(path));
+    candidates
+        .iter()
+        .find(|candidate| candidate.path == path || candidate.path == normalized)
+        .cloned()
+}
+
+fn view_from(
+    catalog: &CatalogFile,
+    stats: ScanStats,
+    generation: u64,
+    recovered_from_corrupt: bool,
+    save_error: Option<String>,
+) -> PluginCatalogView {
+    let mut plugins = Vec::new();
+    let mut failures = Vec::new();
+    for entry in &catalog.entries {
+        match &entry.outcome {
+            Outcome::Ok {
+                classes,
+                factory_vendor,
+                legacy,
+            } => {
+                if !classes.is_empty() {
+                    plugins.extend(classes.iter().cloned().map(|class| {
+                        plugin_from_class(&entry.path, factory_vendor.clone(), class)
+                    }));
+                } else if let Some(legacy) = legacy {
+                    plugins.push(VstPlugin {
+                        name: legacy.name.clone(),
+                        path: entry.path.clone(),
+                        vendor: legacy.vendor.clone(),
+                        version: legacy.version.clone(),
+                        class_id: None,
+                        sub_categories: None,
+                        name_source: Some("file".to_string()),
+                    });
+                }
+            }
+            Outcome::NoEffects => {}
+            Outcome::Failed {
+                kind,
+                detail,
+                attempts,
+            } => failures.push(PluginScanFailure {
+                path: entry.path.clone(),
+                name: Path::new(&entry.path)
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or_else(|| entry.path.clone()),
+                kind: *kind,
+                detail: detail.clone(),
+                scanned_at: entry.scanned_at.clone(),
+                attempts: *attempts,
+            }),
+        }
+    }
+    PluginCatalogView {
+        plugins,
+        failures,
+        stats,
+        generation,
+        recovered_from_corrupt,
+        save_error,
+    }
 }
 
 #[cfg(test)]
@@ -407,5 +641,205 @@ mod tests {
         .unwrap();
         assert!(!parsed.success);
         assert!(parsed.plugins.is_empty());
+        assert_eq!(
+            parsed.error.as_deref(),
+            Some("対応するエフェクトがありません")
+        );
+    }
+
+    #[test]
+    fn error_kind_selects_the_failure_and_missing_kind_stays_unknown() {
+        let failed = classify_scanner_output(
+            r#"{"formatVersion":2,"path":"C:/A.vst3","success":false,"error":"Failed to load library: boom","errorKind":"load_failed","classes":[]}"#,
+            false,
+        );
+        assert!(matches!(
+            failed,
+            ProbeEffect::Failed {
+                kind: FailureKind::LoadFailed,
+                ..
+            }
+        ));
+        let factory = classify_scanner_output(
+            r#"{"formatVersion":2,"path":"C:/A.vst3","success":false,"error":"GetPluginFactory returned null","errorKind":"no_factory","classes":[]}"#,
+            false,
+        );
+        assert!(matches!(
+            factory,
+            ProbeEffect::Failed {
+                kind: FailureKind::NoFactory,
+                ..
+            }
+        ));
+        let unknown = classify_scanner_output(
+            r#"{"formatVersion":2,"path":"C:/A.vst3","success":false,"error":"Failed to load library: boom","classes":[]}"#,
+            false,
+        );
+        assert!(matches!(
+            unknown,
+            ProbeEffect::Failed {
+                kind: FailureKind::Unknown,
+                ..
+            }
+        ));
+        let crashed = classify_scanner_output("", false);
+        assert!(matches!(
+            crashed,
+            ProbeEffect::Failed {
+                kind: FailureKind::Crashed,
+                ..
+            }
+        ));
+        let invalid = classify_scanner_output("{", true);
+        assert!(matches!(
+            invalid,
+            ProbeEffect::Failed {
+                kind: FailureKind::InvalidOutput,
+                ..
+            }
+        ));
+        let version = classify_scanner_output(r#"{"formatVersion":9,"success":false}"#, false);
+        assert!(matches!(
+            version,
+            ProbeEffect::Failed {
+                kind: FailureKind::InvalidOutput,
+                ..
+            }
+        ));
+        assert!(matches!(
+            classify_scanner_output(
+                r#"{"formatVersion":2,"path":"C:/A.vst3","success":false,"error":"対応するエフェクトがありません","classes":[]}"#,
+                true,
+            ),
+            ProbeEffect::NoEffects
+        ));
+    }
+
+    fn fake_scanner(mode: &str) -> Command {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        let name = format!(
+            "{}::fake_plugin_scanner",
+            module_path!().split_once("::").unwrap().1
+        );
+        command.args(["--exact", &name, "--nocapture"]);
+        command.env("AURALYN_FAKE_SCANNER", mode);
+        command
+    }
+
+    #[test]
+    fn fake_plugin_scanner() {
+        let mode = std::env::var("AURALYN_FAKE_SCANNER").unwrap_or_default();
+        match mode.as_str() {
+            "load_failed" => {
+                println!(
+                    r#"{{"formatVersion":2,"path":"C:/A.vst3","success":false,"error":"Failed to load library: boom","errorKind":"load_failed","classes":[]}}"#
+                );
+                std::process::exit(1);
+            }
+            "no_factory" => {
+                println!(
+                    r#"{{"formatVersion":2,"path":"C:/A.vst3","success":false,"error":"GetPluginFactory returned null","errorKind":"no_factory","classes":[]}}"#
+                );
+                std::process::exit(1);
+            }
+            "crash" => std::process::exit(1),
+            "invalid" => {
+                println!("not-json");
+                std::process::exit(0);
+            }
+            "hang" => std::thread::sleep(Duration::from_secs(5)),
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn child_process_error_kinds_cover_load_factory_crash_timeout_and_spawn() {
+        assert!(matches!(
+            probe_command(&mut fake_scanner("load_failed"), Duration::from_secs(10)),
+            ProbeEffect::Failed {
+                kind: FailureKind::LoadFailed,
+                ..
+            }
+        ));
+        assert!(matches!(
+            probe_command(&mut fake_scanner("no_factory"), Duration::from_secs(10)),
+            ProbeEffect::Failed {
+                kind: FailureKind::NoFactory,
+                ..
+            }
+        ));
+        assert!(matches!(
+            probe_command(&mut fake_scanner("crash"), Duration::from_secs(10)),
+            ProbeEffect::Failed {
+                kind: FailureKind::Crashed,
+                ..
+            }
+        ));
+        assert!(matches!(
+            probe_command(&mut fake_scanner("invalid"), Duration::from_secs(10)),
+            ProbeEffect::Failed {
+                kind: FailureKind::InvalidOutput,
+                ..
+            }
+        ));
+        assert!(matches!(
+            probe_command(&mut fake_scanner("hang"), Duration::from_millis(50)),
+            ProbeEffect::Failed {
+                kind: FailureKind::TimedOut,
+                ..
+            }
+        ));
+        assert!(matches!(
+            probe_command(
+                &mut Command::new("auralyn-missing-plugin-scanner"),
+                Duration::from_secs(5)
+            ),
+            ProbeEffect::Failed {
+                kind: FailureKind::SpawnFailed,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn bundle_candidate_uses_the_inner_binary_and_skips_nested_files() {
+        let root = std::env::temp_dir().join(format!(
+            "auralyn-scan-walk-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let binary = root
+            .join("Foo.vst3")
+            .join("Contents")
+            .join("x86_64-win")
+            .join("Foo.vst3");
+        std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
+        std::fs::write(&binary, b"bundle").unwrap();
+        std::fs::write(root.join("Loose.vst3"), b"loose").unwrap();
+        let nested = root
+            .join("Foo.vst3")
+            .join("Contents")
+            .join("x86_64-win")
+            .join("Other.vst3");
+        std::fs::write(&nested, b"other").unwrap();
+        let found = candidates_under(std::slice::from_ref(&root));
+        let names: Vec<_> = found
+            .iter()
+            .map(|candidate| candidate.path.clone())
+            .collect();
+        assert_eq!(found.len(), 2, "{names:?}");
+        assert!(found
+            .iter()
+            .any(|candidate| candidate.bundle_path.is_some() && candidate.file_id.size == 6));
+        assert!(found
+            .iter()
+            .any(|candidate| candidate.bundle_path.is_none() && candidate.file_id.size == 5));
+        assert!(found
+            .iter()
+            .all(|candidate| !candidate.path.contains("Other.vst3")));
+        let _ = std::fs::remove_dir_all(root);
     }
 }

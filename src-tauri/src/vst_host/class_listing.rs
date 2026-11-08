@@ -251,6 +251,9 @@ pub struct ScanReport {
     pub success: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// ホストが失敗種別を決めるための語。無い旧出力から理由は推定しない。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub factory_vendor: Option<String>,
     #[serde(default)]
