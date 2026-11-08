@@ -16,7 +16,15 @@ it('申告0と未取得を区別し、384k NRフレーム時間と未知の信�
     expect(screen.getByText(/Unavailable VST:.*VST申告 不明/)).toBeInTheDocument();
     expect(screen.getByText(/3840 frame \/ 384000 Hz \/ 10.00 ms/)).toBeInTheDocument();
     expect(screen.getByText(/wet履歴とdry\/wet混合の信号遅延は不明/)).toBeInTheDocument();
-    expect(screen.getByText(/実測総遅延はありません/)).toBeInTheDocument();expect(invoke).not.toHaveBeenCalled();
+    expect(screen.getByText(/実測総遅延はありません/)).toBeInTheDocument();
+    expect(screen.queryByText(/配信用 true-peak 制限（計算値）/)).not.toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalled();
+});
+it('配信用の先読みだけを表示し、自分用は 0 sample のままにする', () => {
+    render(<LatencyStageDetails stats={stats(stage({ broadcastTruePeakSamples: 48, broadcastTruePeakMs: 1, monitorTruePeakSamples: 0 }))} current />);
+    expect(screen.getByText(/配信用 true-peak 制限（計算値）：48 sample \/ 1.000 ms/)).toBeInTheDocument();
+    expect(screen.getByText('自分用の true-peak 制限：0 sample。')).toBeInTheDocument();
+    expect(screen.getByText(/実測総遅延はありません/)).toBeInTheDocument();
 });
 it('旧DTO・null・停止・異なるepoch・未知schemaは現在の段別値へ昇格しない',()=>{
     const view=render(<LatencyStageDetails stats={stats(null)} current />);

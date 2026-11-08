@@ -188,6 +188,8 @@ impl Sender {
 struct Receiver {
     peak: super::peak_protection::Rt,
     peak_shared: Arc<super::peak_protection::Shared>,
+    true_peak: super::true_peak_limiter::Rt,
+    true_peak_shared: Arc<super::true_peak_limiter::Shared>,
     main_failed: Arc<AtomicBool>,
     rx: Rx,
     shared: Arc<Shared>,
@@ -209,19 +211,42 @@ impl Receiver {
     fn render(&mut self, data: &mut [f32]) {
         let ticket = self.shared.gate.ticket();
         self.peak.sync(&self.peak_shared);
-        self.render_inner(data);
+        self.true_peak.sync(&self.true_peak_shared);
+        let live = self.render_inner(data);
         // mute・入力待ちでも係数を進め、無音のまま設定反映を完了する。
         // 補間後の出力を一度だけ処理する。無音経路で新しいPCMを取得しない。
         for output in data.as_chunks_mut::<2>().0 {
             let protected = self.peak.process([output[0], output[1]]);
             output.copy_from_slice(&protected);
         }
+        let frames = data.len() / 2;
+        // 無音へ落ちた区間は先読みを消してから状態だけ進める。古い音をデバイスへ出さない。
+        if live == 0 {
+            self.true_peak.reset_audio();
+            for output in data.as_chunks_mut::<2>().0 {
+                let limited = self.true_peak.process([output[0], output[1]]);
+                output.copy_from_slice(&limited);
+            }
+        } else {
+            for output in data[..live * 2].as_chunks_mut::<2>().0 {
+                let limited = self.true_peak.process([output[0], output[1]]);
+                output.copy_from_slice(&limited);
+            }
+            if live < frames {
+                self.true_peak.reset_audio();
+                for output in data[live * 2..].as_chunks_mut::<2>().0 {
+                    let limited = self.true_peak.process([output[0], output[1]]);
+                    output.copy_from_slice(&limited);
+                }
+            }
+        }
         self.peak.report(&self.peak_shared, 2);
+        self.true_peak.report(&self.true_peak_shared);
         self.shared
             .gate
             .finish(super::mode_silence::SINK, ticket, data);
     }
-    fn render_inner(&mut self, data: &mut [f32]) {
+    fn render_inner(&mut self, data: &mut [f32]) -> usize {
         data.fill(0.0);
         if self.main_failed.load(Ordering::Acquire) {
             self.shared.active.store(false, Ordering::Release);
@@ -245,7 +270,7 @@ impl Receiver {
             self.generation = generation;
             self.primed = false;
             self.phase = 0.0;
-            return;
+            return 0;
         }
         let occupied = self.rx.occupied_len();
         self.shared.queued.store(occupied as u64, Ordering::Relaxed);
@@ -254,10 +279,10 @@ impl Receiver {
                 self.shared
                     .zero
                     .fetch_add((data.len() / 2) as u64, Ordering::Relaxed);
-                return;
+                return 0;
             }
             let (Some(a), Some(b)) = (self.next(), self.next()) else {
-                return;
+                return 0;
             };
             self.pair = [a, b];
             self.primed = true;
@@ -268,6 +293,7 @@ impl Receiver {
         let step = 1.0 + (error * 0.004).clamp(-0.002, 0.002);
         let trim = f32::from_bits(self.shared.broadcast_trim.load(Ordering::Relaxed));
         let total_frames = data.len() / 2;
+        let mut written = 0usize;
         for (index, output) in data.as_chunks_mut::<2>().0.iter_mut().enumerate() {
             if self.shared.muted.load(Ordering::Acquire)
                 || !self.shared.active.load(Ordering::Acquire)
@@ -283,6 +309,7 @@ impl Receiver {
                     .clamp(-f64::from(f32::MAX), f64::from(f32::MAX))
                     as f32;
             }
+            written = index + 1;
             self.phase += step;
             while self.phase >= 1.0 {
                 let Some(next) = self.next() else {
@@ -291,13 +318,14 @@ impl Receiver {
                     self.shared
                         .zero
                         .fetch_add((total_frames - index - 1) as u64, Ordering::Relaxed);
-                    return;
+                    return written;
                 };
                 self.pair[0] = self.pair[1];
                 self.pair[1] = next;
                 self.phase -= 1.0;
             }
         }
+        written
     }
 }
 pub struct Sink {
@@ -307,6 +335,16 @@ pub struct Sink {
     receiver_owner: ControlOwner<Receiver>,
     rate: u32,
 }
+pub(crate) struct SinkProtection {
+    pub peak: (
+        super::peak_protection::Config,
+        Arc<super::peak_protection::Shared>,
+    ),
+    pub true_peak: (
+        super::true_peak_limiter::Config,
+        Arc<super::true_peak_limiter::Shared>,
+    ),
+}
 impl Sink {
     pub(crate) fn start(
         device: &str,
@@ -314,10 +352,7 @@ impl Sink {
         main_id: Option<&str>,
         config: &Config,
         main_failed: Arc<AtomicBool>,
-        peak: (
-            super::peak_protection::Config,
-            Arc<super::peak_protection::Shared>,
-        ),
+        protection: SinkProtection,
         gate: Arc<super::mode_silence::Shared>,
     ) -> Result<(Self, CallbackOwner<Sender>)> {
         config.validate()?;
@@ -358,8 +393,10 @@ impl Sink {
             shared: shared.clone(),
         });
         let (mut receiver, receiver_owner) = callback_owner(Receiver {
-            peak: super::peak_protection::Rt::new(peak.0, rate),
-            peak_shared: peak.1,
+            peak: super::peak_protection::Rt::new(protection.peak.0, rate),
+            peak_shared: protection.peak.1,
+            true_peak: super::true_peak_limiter::Rt::new(protection.true_peak.0, rate),
+            true_peak_shared: protection.true_peak.1,
             main_failed,
             rx,
             shared: shared.clone(),
@@ -453,7 +490,15 @@ mod tests {
                 }
                 .prepare(48000),
             );
+            receiver.true_peak_shared.publish(
+                super::super::true_peak_limiter::Config {
+                    enabled: true,
+                    ..Default::default()
+                }
+                .prepare(48000),
+            );
             assert!(receiver.peak_shared.sink_pending());
+            assert!(receiver.true_peak_shared.pending());
             let mut output = [1.0; 512];
             for _ in 0..4 {
                 assert_eq!(
@@ -465,6 +510,10 @@ mod tests {
             assert!(
                 !receiver.peak_shared.sink_pending(),
                 "silent path {path} must acknowledge applied settings"
+            );
+            assert!(
+                !receiver.true_peak_shared.pending(),
+                "silent path {path} must acknowledge the broadcast true-peak setting"
             );
         }
     }
@@ -484,6 +533,11 @@ mod tests {
             Receiver {
                 peak: crate::audio_engine::peak_protection::Rt::new(Default::default(), 48000),
                 peak_shared: Default::default(),
+                true_peak: crate::audio_engine::true_peak_limiter::Rt::new(
+                    Default::default(),
+                    48000,
+                ),
+                true_peak_shared: Default::default(),
                 main_failed: Arc::new(AtomicBool::new(false)),
                 rx,
                 shared: shared.clone(),
@@ -573,6 +627,35 @@ mod tests {
             .iter()
             .all(|s| s.abs() <= 10.0f32.powf(-6.0 / 20.0) + 1e-6));
         assert!(output.iter().any(|s| *s != 0.0));
+    }
+    #[test]
+    fn muted_broadcast_does_not_emit_a_true_peak_delay_tail() {
+        let (mut tx, mut rx, shared) = fixture(1024, 8);
+        rx.true_peak = super::super::true_peak_limiter::Rt::new(
+            super::super::true_peak_limiter::Config {
+                enabled: true,
+                ceiling_db: -1.0,
+                release_ms: 100.0,
+            },
+            48_000,
+        );
+        for _ in 0..256 {
+            tx.send([0.95, -0.95]);
+        }
+        let mut output = [0.0; 256];
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| rx.render(&mut output)),
+            (0, 0)
+        );
+        assert!(output.iter().any(|sample| sample.abs() > 0.1));
+        shared.muted.store(true, Ordering::Release);
+        shared.generation.fetch_add(1, Ordering::AcqRel);
+        output = [1.0; 256];
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| rx.render(&mut output)),
+            (0, 0)
+        );
+        assert_eq!(output, [0.0; 256]);
     }
     #[test]
     fn frame_alignment_trim_and_render_are_rt_allocation_free() {

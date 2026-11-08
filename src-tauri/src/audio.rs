@@ -217,6 +217,7 @@ pub struct AudioHost {
     session_restore: Option<session_rack::Lease>,
     session_restore_generation: Option<u64>,
     peak_intent: Option<crate::audio_engine::peak_protection::Config>,
+    true_peak_intent: Option<crate::audio_engine::true_peak_limiter::Config>,
     frontend_bootstrap: frontend_bootstrap::Startup,
     device_scan: Option<DeviceScanTicket>,
     active_config: Option<ActiveAudioConfig>,
@@ -359,6 +360,21 @@ impl AudioHost {
             _ => Err(anyhow!("ピーク保護の状態を読み戻せません")),
         }
     }
+    pub fn broadcast_true_peak(
+        &mut self,
+        config: Option<crate::audio_engine::true_peak_limiter::Config>,
+    ) -> Result<crate::audio_engine::true_peak_limiter::Snapshot> {
+        match self.execute_running_command(IpcCommand::BroadcastTruePeak { config })? {
+            IpcResponse::BroadcastTruePeak(snapshot) => {
+                if config.is_some() {
+                    self.true_peak_intent = Some(snapshot.config);
+                }
+                Ok(snapshot)
+            }
+            IpcResponse::Error(error) => Err(anyhow!(error)),
+            _ => Err(anyhow!("配信用 true-peak 制限の状態を読み戻せません")),
+        }
+    }
     pub fn live_output(
         &mut self,
         config: Option<crate::audio_engine::live_output::Config>,
@@ -460,6 +476,7 @@ impl AudioHost {
             session_restore: None,
             session_restore_generation: None,
             peak_intent: None,
+            true_peak_intent: None,
             frontend_bootstrap: frontend_bootstrap::Startup::default(),
             device_scan: None,
             active_config: None,
@@ -936,6 +953,18 @@ impl AudioHost {
                 self.kill_engine();
                 return Err(anyhow!(
                     "ピーク保護を新しいEngineへ引き継げません。音声を開始していません"
+                ));
+            }
+        }
+        if let Some(config) = self.true_peak_intent {
+            let result = self.execute_running_command(IpcCommand::BroadcastTruePeak {
+                config: Some(config),
+            });
+            if !matches!(&result, Ok(IpcResponse::BroadcastTruePeak(snapshot)) if snapshot.config == config)
+            {
+                self.kill_engine();
+                return Err(anyhow!(
+                    "配信用 true-peak 制限を新しいEngineへ引き継げません。音声を開始していません"
                 ));
             }
         }

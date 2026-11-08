@@ -7,6 +7,7 @@ impl Engine {
         if !matches!(
             cmd,
             Command::PeakProtection { config: None }
+                | Command::BroadcastTruePeak { config: None }
                 | Command::LiveOutput { config: None }
                 | Command::LiveMode { .. }
                 | Command::ModeSilence { .. }

@@ -317,6 +317,8 @@ pub struct Engine {
     gain_revision: u64,
     peak_config: super::peak_protection::Config,
     peak_shared: Arc<super::peak_protection::Shared>,
+    true_peak_config: super::true_peak_limiter::Config,
+    true_peak_shared: Arc<super::true_peak_limiter::Shared>,
     output_gain: f32,
     output_gain_revision: u64,
     output_gain_initialized: bool,
@@ -478,6 +480,8 @@ impl Engine {
                 .as_millis() as u64,
             peak_config: Default::default(),
             peak_shared: Default::default(),
+            true_peak_config: Default::default(),
+            true_peak_shared: Default::default(),
             output_gain: 1.0,
             output_gain_revision: 0,
             output_gain_initialized: false,
@@ -1462,6 +1466,31 @@ impl Engine {
         Ok(())
     }
 
+    fn broadcast_true_peak_samples(&self, nominal: Option<u32>) -> u32 {
+        let Some(rate) = nominal else {
+            return 0;
+        };
+        if self.true_peak_config.enabled
+            && self.live_output_config.split_processing
+            && self.live_output_config.device_id.is_some()
+        {
+            super::true_peak_limiter::lookahead_samples(rate)
+        } else {
+            0
+        }
+    }
+
+    fn broadcast_true_peak_ms(&self, nominal: Option<u32>) -> f64 {
+        let Some(rate) = nominal.filter(|rate| *rate > 0) else {
+            return 0.0;
+        };
+        if self.broadcast_true_peak_samples(Some(rate)) == 0 {
+            0.0
+        } else {
+            super::true_peak_limiter::lookahead_ms(rate)
+        }
+    }
+
     fn latency_metadata(
         &self,
         report: (u32, Option<u32>, bool, Vec<crate::ipc::VstLatencyStage>),
@@ -1525,6 +1554,9 @@ impl Engine {
             builtin_voice_enabled: self.builtin.config.active,
             builtin_reverb_enabled: self.builtin.config.reverb.unwrap_or_default().enabled,
             builtin_signal_delay: "unknown".into(),
+            broadcast_true_peak_samples: self.broadcast_true_peak_samples(nominal),
+            broadcast_true_peak_ms: self.broadcast_true_peak_ms(nominal),
+            monitor_true_peak_samples: 0,
         };
         crate::ipc::LatencyMetadata {
             broadcast_state: self.live_output_config.device_id.as_ref().map(|_| {

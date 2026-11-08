@@ -15,6 +15,7 @@ import { TabsContent } from '@/components/ui/tabs';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { NoiseMeasurementPanel } from './NoiseMeasurementPanel';
 import { PeakProtectionPanel } from './PeakProtectionPanel';
+import { BroadcastTruePeakPanel } from './BroadcastTruePeakPanel';
 import { SingingControls } from './SingingControls';
 import { LiveModeControls } from './LiveModeControls';
 
@@ -323,7 +324,8 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
             {isBeginnerMode ? <details open={peakOpen} onToggle={event => setPeakOpen(event.currentTarget.open)} className="rounded-control border border-border p-3 space-y-3">
               <summary className="cursor-pointer text-ui-heading font-semibold">{t('peak.title')}</summary>
               <PeakProtectionPanel />
-            </details> : <PeakProtectionPanel />}
+              <BroadcastTruePeakPanel />
+            </details> : <><PeakProtectionPanel /><BroadcastTruePeakPanel /></>}
           </TabsContent>
 
   );

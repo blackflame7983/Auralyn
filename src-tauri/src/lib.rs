@@ -408,6 +408,7 @@ pub fn run() {
             obs_credentials::migrate_obs_credentials,
             obs_credentials::clear_obs_credentials,
             commands::audio::peak_protection,
+            commands::audio::broadcast_true_peak,
             temporary_session::temporary_session_status,
             temporary_session::acknowledge_session_review,
             temporary_session::restart_temporary_session,
