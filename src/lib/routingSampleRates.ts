@@ -16,7 +16,7 @@ export function checkRouteSampleRatesDisplay(host: string, output: string, repor
     const devices = [renders[0], receiver];
     if (!report.engineSampleRateHz || devices.some(device => !device.mixFormatSampleRateHz)) return { status: 'warning', detail: notice('guide.copy.442') };
     const differences = devices.filter(device => device.mixFormatSampleRateHz !== report.engineSampleRateHz);
-    if (differences.length) return { status: 'warning', detail: notice('guide.copy.443', { arg0: report.engineSampleRateHz, arg1: differences.map(device => `${device.name} ${device.mixFormatSampleRateHz}Hz`).join('、') }) };
+    if (differences.length) return { status: 'warning', detail: notice('guide.copy.443', { arg0: report.engineSampleRateHz, arg1: differences.map(device => `${device.name} ${device.mixFormatSampleRateHz} Hz`).join('、') }) };
     return { status: 'ok', detail: notice('guide.copy.444', { arg0: report.engineSampleRateHz }) };
 }
 

@@ -415,7 +415,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
             lines.push(reportT('guide.copy.395'));
             for (const d of reportRouting.devices) {
                 lines.push(
-                    `[${d.direction}] ${d.name} | ${d.mixFormatSampleRateHz ?? '?'}Hz` +
+                    `[${d.direction}] ${d.name} | ${d.mixFormatSampleRateHz ?? '?'} Hz` +
                     reportT('guide.copy.396', { arg0: d.isDefault ? reportT('guide.copy.397') : '' }) +
                     reportT('guide.copy.398', { arg0: d.isDefaultCommunications ? reportT('guide.copy.399') : '' }) +
                     reportT('guide.copy.400', { arg0: d.isVirtualCable ? reportT('guide.copy.401') : '' }),

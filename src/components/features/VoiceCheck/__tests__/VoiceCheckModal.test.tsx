@@ -257,7 +257,7 @@ it.each([false, true])('残響だけ=%sの候補も準備でき、比較範囲�
     expect(screen.getByText(/元の録音：48000フレーム（1.00秒）/)).toBeInTheDocument();
     if (reverbOnly) {
         expect(screen.getByText(/比較用：168000フレーム（3.50秒）/)).toHaveTextContent('120000フレームの無音');
-        expect(screen.getByText(/残響の比較窓は設定した長さの2倍/)).toHaveTextContent('末尾20ms');
+        expect(screen.getByText(/残響の比較窓は設定した長さの2倍/)).toHaveTextContent('末尾20 ms');
     }
     expect(screen.getByText(/候補作成の完了は、聴いたことや音質改善の判定ではありません/)).toBeInTheDocument();
     expect(audioApi.startVoiceCheck).not.toHaveBeenCalled();
