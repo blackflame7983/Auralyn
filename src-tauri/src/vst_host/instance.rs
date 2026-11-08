@@ -1280,10 +1280,14 @@ pub struct VstInstance {
     pub active_view: *mut c_void,
     pub active_flag: Arc<AtomicBool>,
     editor_env: Option<EditorEnvGuard>,
-    channels: usize,         // Stored from prepare_processing for create_processor
-    max_block_size: usize,   // Stored from prepare_processing for create_processor
-    host_app: *mut c_void,   // IHostApplication context (per-plugin quirks)
-    pub path: String,        // Stored for CWD switching during editor open
+    channels: usize,       // Stored from prepare_processing for create_processor
+    max_block_size: usize, // Stored from prepare_processing for create_processor
+    host_app: *mut c_void, // IHostApplication context (per-plugin quirks)
+    pub path: String,      // Stored for CWD switching during editor open
+    /// 実際に開いたクラスの CID。32桁の大文字16進。
+    pub class_id: String,
+    /// クラス未指定の旧データで、エフェクト候補が2つ以上あった。
+    pub legacy_class_ambiguous: bool,
     module_hmodule: HMODULE, // Plugin DLL module handle (for UI/resource quirks)
     resources: InstanceResources,
 }
@@ -1314,6 +1318,12 @@ unsafe impl Send for VstProcessor {}
 
 impl VstInstance {
     pub fn load(path: &str) -> Result<Self> {
+        Self::load_with_class(path, None)
+    }
+
+    /// `class_id` が Some のときはその CID だけを生成する。見つからない、または生成できない場合は別クラスへ移らない。
+    /// None は旧データ向けで、最初に生成できたクラスを開く。
+    pub fn load_with_class(path: &str, class_id: Option<&str>) -> Result<Self> {
         let path_obj = Path::new(path);
         let plugin_name = path_obj
             .file_stem()
@@ -1357,7 +1367,14 @@ impl VstInstance {
             if factory_ptr.is_null() {
                 return Err(anyhow!("GetPluginFactory returned null"));
             }
-            Self::load_from_factory(path, plugin_name, lib, module_hmodule, factory_ptr)
+            Self::load_from_factory(
+                path,
+                plugin_name,
+                lib,
+                module_hmodule,
+                factory_ptr,
+                class_id,
+            )
         }
     }
 
@@ -1368,6 +1385,7 @@ impl VstInstance {
         lib: Arc<PluginLibrary>,
         module_hmodule: HMODULE,
         factory_ptr: *mut c_void,
+        requested_class_id: Option<&str>,
     ) -> Result<Self> {
         let is_insight2 = plugin_name.contains("Insight 2");
 
@@ -1418,6 +1436,32 @@ impl VstInstance {
         unsafe {
             // Wrap Factory
             let factory_vtbl = get_vtbl::<IPluginFactoryVtbl>(factory_ptr);
+            let normalized_request = match requested_class_id {
+                Some(raw) => Some(
+                    crate::vst_host::class_listing::normalize_class_id(raw)
+                        .ok_or_else(|| anyhow!("VSTのクラスIDが不正です"))?,
+                ),
+                None => None,
+            };
+            // 列挙は実体を作らない。指定 CID は候補の中だけを開き、旧データは従来の最初の成功を維持する。
+            let listed = crate::vst_host::class_listing::list_effect_classes(factory_ptr);
+            let (only_cid, legacy_class_ambiguous) = match &normalized_request {
+                Some(class_id) => {
+                    let classes = listed.map_err(|error| anyhow!(error))?;
+                    let target = classes
+                        .into_iter()
+                        .find(|class| class.entry.class_id == *class_id)
+                        .ok_or_else(|| anyhow!("保存されたエフェクトがこのファイルにありません"))?;
+                    (Some(target.cid), false)
+                }
+                None => (
+                    None,
+                    listed
+                        .as_ref()
+                        .map(|classes| classes.len() >= 2)
+                        .unwrap_or(false),
+                ),
+            };
 
             // Find class
             let count = (factory_vtbl.count_classes)(factory_ptr);
@@ -1436,11 +1480,18 @@ impl VstInstance {
                     let category = read_cstr(&class_info.category);
                     let class_name = read_cstr(&class_info.name);
                     let category_lower = category.to_lowercase();
+                    let selected = only_cid.is_some_and(|cid| class_info.cid == cid);
+                    if only_cid.is_some() && !selected {
+                        continue;
+                    }
 
                     println!("Found class: '{}', Category: '{}'", class_name, category);
 
-                    // VST3 "Audio Module Class"
-                    if category_lower.contains("audio module") || category_lower.contains("fx") {
+                    // 指定 CID は列挙済みのそのクラスだけ。未指定は従来どおり category の部分一致。
+                    if selected
+                        || category_lower.contains("audio module")
+                        || category_lower.contains("fx")
+                    {
                         let mut obj: *mut c_void = std::ptr::null_mut();
 
                         // Use IID from crate
@@ -1533,15 +1584,23 @@ impl VstInstance {
                                 class_name, res_direct, res_unknown
                             );
                         }
+                        if selected {
+                            return Err(anyhow!("指定したエフェクトを開けませんでした"));
+                        }
                     }
                 }
             }
 
             if component_ptr.is_null() {
-                return Err(anyhow!(
+                return Err(anyhow!(if only_cid.is_some() {
+                    "指定したエフェクトを開けませんでした"
+                } else {
                     "No valid Audio Module class found or failed to instantiate"
-                ));
+                }));
             }
+            let opened_class_id = crate::vst_host::class_listing::format_class_id(&class_info.cid);
+            let opened_name =
+                crate::vst_host::class_listing::decode_fixed_c_string(&class_info.name);
 
             // Initialize
             let component_vtbl = get_vtbl::<IComponentVtbl>(component_ptr);
@@ -1961,10 +2020,11 @@ impl VstInstance {
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default();
             let id = format!("{}-{}", plugin_name, start.as_nanos());
+            let name = opened_name.unwrap_or(plugin_name);
 
             Ok(VstInstance {
                 id, // Use the 'id' variable created above (plugin_name-nanos)
-                name: plugin_name.to_string(),
+                name,
                 _library: lib,
                 component: component_ptr,
                 processor: processor_ptr,
@@ -1976,6 +2036,8 @@ impl VstInstance {
                 max_block_size: 0,
                 host_app: host_ctx,
                 path: path.to_string(),
+                class_id: opened_class_id,
+                legacy_class_ambiguous,
                 module_hmodule,
                 resources,
             })

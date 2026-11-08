@@ -9,6 +9,7 @@ fn test_ott_editor_loading() {
     let mut engine = EngineProcess::spawn();
     let response = engine.request(Command::LoadPlugin {
         path: r"C:\Program Files\Common Files\VST3\OTT.vst3".into(),
+        class_id: None,
     });
     let id = match response {
         Response::PluginLoaded { id, .. } if !id.is_empty() => id,

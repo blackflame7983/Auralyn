@@ -44,6 +44,7 @@ impl PostMixPreset {
                 bypassed: !plugin.enabled,
                 muted: plugin.muted,
                 gain: plugin.gain,
+                class_id: plugin.class_id.clone(),
             }
             .validate()?;
             if plugin.gain > 2.0 {

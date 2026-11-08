@@ -1,8 +1,10 @@
 //! 模擬factoryを実際のロード経路へ渡し、失敗段階ごとの解放を検査する。
 use super::*;
 use crate::vst_host::c_api::{
-    IAudioProcessorVtbl, IComponentVtbl, IEditControllerVtbl, IPluginFactoryVtbl, PFactoryInfo,
+    IAudioProcessorVtbl, IComponentVtbl, IEditControllerVtbl, IPluginFactory2Vtbl,
+    IPluginFactoryVtbl, PClassInfo2, PFactoryInfo, IID_IPLUGINFACTORY2,
 };
+use std::cell::RefCell;
 use vst3::Steinberg::{
     FUnknown,
     Vst::{IAudioProcessor, IComponent, IEditController},
@@ -66,6 +68,7 @@ fn with_fixture(stage: Stage, body: impl FnOnce(VstInstance, &mut State)) {
             library,
             HMODULE(std::ptr::null_mut()),
             factory,
+            None,
         )
     }
     .unwrap();
@@ -95,6 +98,7 @@ fn restore_request() -> crate::ipc::RestorePluginRequest {
         bypassed: true,
         muted: true,
         gain: 0.5,
+        class_id: None,
     }
 }
 
@@ -313,7 +317,24 @@ unsafe extern "system" fn query(this: *mut c_void, iid: *const TUID, out: *mut *
             return K_RESULT_OK;
         }
     }
+    if object.kind == "factory" && *iid == IID_IPLUGINFACTORY2 && catalog_factory2() {
+        *out = self::object(
+            object.state,
+            "factory2",
+            (&FACTORY2 as *const IPluginFactory2Vtbl).cast(),
+        );
+        return K_RESULT_OK;
+    }
     K_NO_INTERFACE
+}
+
+fn catalog_factory2() -> bool {
+    CATALOG.with(|catalog| {
+        catalog
+            .borrow()
+            .as_ref()
+            .is_some_and(|catalog| catalog.factory2)
+    })
 }
 
 unsafe extern "system" fn initialize(this: *mut c_void, host: *mut c_void) -> i32 {
@@ -519,28 +540,137 @@ static CONTROLLER: IEditControllerVtbl = IEditControllerVtbl {
     create_view: view,
 };
 
+struct MockClass {
+    cid: TUID,
+    name: &'static str,
+    category: &'static str,
+    sub_categories: Option<&'static str>,
+    fail_create: bool,
+}
+
+struct Catalog {
+    classes: Vec<MockClass>,
+    factory2: bool,
+    created: Vec<TUID>,
+}
+
+thread_local! {
+    static CATALOG: RefCell<Option<Catalog>> = const { RefCell::new(None) };
+}
+
+fn catalog_len() -> Option<usize> {
+    CATALOG.with(|catalog| {
+        catalog
+            .borrow()
+            .as_ref()
+            .map(|catalog| catalog.classes.len())
+    })
+}
+
+fn put_c_string(dst: &mut [c_char], src: &str) {
+    for slot in dst.iter_mut() {
+        *slot = 0;
+    }
+    for (slot, byte) in dst.iter_mut().zip(src.bytes()) {
+        *slot = byte as c_char;
+    }
+}
+
 unsafe extern "system" fn factory_info(_: *mut c_void, _: *mut PFactoryInfo) -> i32 {
     K_RESULT_OK
 }
 unsafe extern "system" fn classes(this: *mut c_void) -> i32 {
+    if let Some(count) = catalog_len() {
+        return count as i32;
+    }
     if (*(*this.cast::<Object>()).state).stage == Stage::NoClass {
         0
     } else {
         1
     }
 }
-unsafe extern "system" fn class_info(_: *mut c_void, _: i32, info: *mut PClassInfo) -> i32 {
-    for (to, from) in (*info).category.iter_mut().zip(b"Audio Module Class") {
-        *to = *from as c_char;
+unsafe extern "system" fn class_info(_: *mut c_void, index: i32, info: *mut PClassInfo) -> i32 {
+    let spec = CATALOG.with(|catalog| {
+        catalog.borrow().as_ref().and_then(|catalog| {
+            catalog
+                .classes
+                .get(index as usize)
+                .map(|class| (class.cid, class.name, class.category))
+        })
+    });
+    if let Some((cid, name, category)) = spec {
+        // SAFETY: info は getClassInfo が渡す領域。カタログの文字列はこの呼び出し中だけ書き込む。
+        unsafe {
+            (*info).cid = cid;
+            put_c_string(&mut (*info).category, category);
+            put_c_string(&mut (*info).name, name);
+        }
+        return K_RESULT_OK;
+    }
+    // SAFETY: カタログ無しの従来モック。category だけをゼロ済み領域へ書く。
+    unsafe {
+        for (to, from) in (*info).category.iter_mut().zip(b"Audio Module Class") {
+            *to = *from as c_char;
+        }
+    }
+    K_RESULT_OK
+}
+unsafe extern "system" fn class_info2(_: *mut c_void, index: i32, info: *mut PClassInfo2) -> i32 {
+    let spec = CATALOG.with(|catalog| {
+        catalog.borrow().as_ref().and_then(|catalog| {
+            catalog
+                .classes
+                .get(index as usize)
+                .map(|class| (class.cid, class.name, class.category, class.sub_categories))
+        })
+    });
+    let Some((cid, name, category, sub)) = spec else {
+        return K_RESULT_FALSE;
+    };
+    // SAFETY: info は getClassInfo2 が渡すゼロ済み領域。この呼び出し中だけ書き込む。
+    unsafe {
+        (*info).cid = cid;
+        put_c_string(&mut (*info).category, category);
+        put_c_string(&mut (*info).name, name);
+        if let Some(sub) = sub {
+            put_c_string(&mut (*info).sub_categories, sub);
+        }
     }
     K_RESULT_OK
 }
 unsafe extern "system" fn create(
     this: *mut c_void,
-    _: *const TUID,
+    cid: *const TUID,
     iid: *const TUID,
     out: *mut *mut c_void,
 ) -> i32 {
+    // SAFETY: cid と iid は createInstance の引数。カタログ試験では component 生成だけを記録する。
+    let (requested, interface) = unsafe { (*cid, *iid) };
+    let rejected = CATALOG.with(|catalog| {
+        let mut catalog = catalog.borrow_mut();
+        let Some(catalog) = catalog.as_mut() else {
+            return false;
+        };
+        if interface != <IComponent as Interface>::IID && interface != <FUnknown as Interface>::IID
+        {
+            return false;
+        }
+        if interface == <IComponent as Interface>::IID {
+            catalog.created.push(requested);
+        }
+        catalog
+            .classes
+            .iter()
+            .find(|class| class.cid == requested)
+            .is_some_and(|class| class.fail_create)
+    });
+    if rejected {
+        // SAFETY: 生成失敗では出力参照を空にする。
+        unsafe {
+            *out = std::ptr::null_mut();
+        }
+        return K_RESULT_FALSE;
+    }
     let state = (*this.cast::<Object>()).state;
     *out = std::ptr::null_mut();
     if (*state).stage == Stage::Creation {
@@ -571,6 +701,16 @@ static FACTORY: IPluginFactoryVtbl = IPluginFactoryVtbl {
     count_classes: classes,
     get_class_info: class_info,
     create_instance: create,
+};
+static FACTORY2: IPluginFactory2Vtbl = IPluginFactory2Vtbl {
+    base: IPluginFactoryVtbl {
+        base: base(),
+        get_factory_info: factory_info,
+        count_classes: classes,
+        get_class_info: class_info,
+        create_instance: create,
+    },
+    get_class_info2: class_info2,
 };
 
 #[test]
@@ -619,6 +759,7 @@ fn real_loader_failure_stages_release_every_acquired_reference() {
                 library.clone(),
                 HMODULE(std::ptr::null_mut()),
                 factory,
+                None,
             )
         };
         match stage {
@@ -735,4 +876,128 @@ fn latency_query_distinguishes_sdk_zero_from_absent_processor_and_reads_once_per
         assert_eq!(state.latency_queries, 5);
         drop(manager);
     });
+}
+
+fn audio_class(
+    byte: u8,
+    name: &'static str,
+    sub: Option<&'static str>,
+    fail_create: bool,
+) -> MockClass {
+    MockClass {
+        cid: [byte; 16],
+        name,
+        category: "Audio Module Class",
+        sub_categories: sub,
+        fail_create,
+    }
+}
+
+fn with_classes(
+    classes: Vec<MockClass>,
+    factory2: bool,
+    requested: Option<&str>,
+    body: impl FnOnce(Result<VstInstance>, Vec<TUID>, &mut State),
+) {
+    CATALOG.with(|catalog| {
+        *catalog.borrow_mut() = Some(Catalog {
+            classes,
+            factory2,
+            created: Vec::new(),
+        });
+    });
+    // SAFETY: 試験用に OS の kernel32 をロードし、VST の初期化関数は呼ばない。
+    let library = Arc::new(unsafe { PluginLibrary::load("kernel32.dll", false) }.unwrap());
+    let mut state = State {
+        stage: Stage::Success,
+        live: 0,
+        latency: 0,
+        latency_queries: 0,
+        events: Vec::new(),
+        host: std::ptr::null_mut(),
+        component_identity: std::ptr::null_mut(),
+    };
+    // SAFETY: state と静的 FACTORY vtable は、生成したモックを解放するまで生存する。
+    let factory = unsafe {
+        object(
+            &mut state,
+            "factory",
+            (&FACTORY as *const IPluginFactoryVtbl).cast(),
+        )
+    };
+    // SAFETY: factory はモックの vtable と参照を持ち、state と library は呼び出し中生存する。
+    let result = unsafe {
+        VstInstance::load_from_factory(
+            "mock.vst3",
+            "Mock".into(),
+            library,
+            HMODULE(std::ptr::null_mut()),
+            factory,
+            requested,
+        )
+    };
+    let created = CATALOG.with(|catalog| {
+        catalog
+            .borrow()
+            .as_ref()
+            .map(|catalog| catalog.created.clone())
+            .unwrap_or_default()
+    });
+    body(result, created, &mut state);
+    CATALOG.with(|catalog| *catalog.borrow_mut() = None);
+    assert_eq!(state.live, 0, "{:?}", state.events);
+}
+
+#[test]
+fn load_with_class_selects_only_the_requested_effect_and_does_not_fall_back() {
+    let first = crate::vst_host::class_listing::format_class_id(&[1; 16]);
+    let second = crate::vst_host::class_listing::format_class_id(&[2; 16]);
+    let instrument = crate::vst_host::class_listing::format_class_id(&[9; 16]);
+    let classes = || {
+        vec![
+            audio_class(1, "Delay", Some("Fx|Delay"), false),
+            audio_class(2, "Comp", Some("Fx|Dynamics"), false),
+            audio_class(9, "Piano", Some("Instrument|Synth"), false),
+        ]
+    };
+    with_classes(classes(), true, Some(&second), |result, created, _| {
+        let instance = result.unwrap();
+        assert_eq!(instance.class_id, second);
+        assert_eq!(instance.name, "Comp");
+        assert!(!instance.legacy_class_ambiguous);
+        assert_eq!(created, vec![[2; 16]]);
+    });
+    with_classes(classes(), true, None, |result, created, _| {
+        let instance = result.unwrap();
+        assert_eq!(instance.class_id, first);
+        assert!(instance.legacy_class_ambiguous);
+        assert_eq!(created, vec![[1; 16]]);
+    });
+    with_classes(classes(), true, Some(&instrument), |result, created, _| {
+        let error = result.err().unwrap();
+        assert!(error
+            .to_string()
+            .contains("保存されたエフェクトがこのファイルにありません"));
+        assert!(created.is_empty());
+    });
+    with_classes(classes(), true, Some("not-a-cid"), |result, created, _| {
+        assert!(result.err().unwrap().to_string().contains("クラスIDが不正"));
+        assert!(created.is_empty());
+    });
+    with_classes(
+        vec![
+            audio_class(1, "Delay", Some("Fx|Delay"), true),
+            audio_class(2, "Comp", Some("Fx|Dynamics"), false),
+        ],
+        true,
+        Some(&first),
+        |result, created, _| {
+            assert!(result
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("指定したエフェクトを開けませんでした"));
+            assert_eq!(created, vec![[1; 16]]);
+        },
+    );
 }

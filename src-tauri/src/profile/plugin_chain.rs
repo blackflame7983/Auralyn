@@ -15,6 +15,7 @@ impl ChainHost for AudioHost {
             bypassed: !plugin.enabled,
             muted: plugin.muted,
             gain: plugin.gain,
+            class_id: plugin.class_id.clone(),
         })
         .map(|restored| restored.id)
         .map_err(|error| error.to_string())
@@ -78,6 +79,7 @@ mod tests {
             muted: true,
             gain: 0.5,
             state: Some(String::new()),
+            class_id: None,
         };
         for fail in [false, true] {
             let mut host = Host {

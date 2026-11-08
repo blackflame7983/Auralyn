@@ -11,6 +11,8 @@ pub mod audio_engine;
 pub mod autostart;
 pub mod bundle;
 mod child_process;
+#[cfg(test)]
+mod class_id_serde_tests;
 pub mod coexistence;
 mod commands;
 mod desktop_integration;

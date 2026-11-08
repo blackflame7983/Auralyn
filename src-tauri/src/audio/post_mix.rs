@@ -15,6 +15,8 @@ pub(crate) struct SavedPlugin {
     enabled: bool,
     muted: bool,
     gain: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    class_id: Option<String>,
 }
 impl From<&PresetPlugin> for SavedPlugin {
     fn from(p: &PresetPlugin) -> Self {
@@ -26,6 +28,7 @@ impl From<&PresetPlugin> for SavedPlugin {
             enabled: p.enabled,
             muted: p.muted,
             gain: p.gain,
+            class_id: p.class_id.clone(),
         }
     }
 }
@@ -95,6 +98,8 @@ pub(crate) enum Request {
         expected_epoch: String,
         expected_revision: String,
         path: String,
+        #[serde(default)]
+        class_id: Option<String>,
     },
     Remove {
         expected_epoch: String,
@@ -234,7 +239,8 @@ fn read(path: &Path) -> Result<(Option<Vec<u8>>, Option<Saved>)> {
                 .ok_or_else(|| anyhow!("保存された配信VSTが不正です"))?;
             anyhow::ensure!(
                 fields.keys().all(|key| [
-                    "path", "name", "vendor", "version", "enabled", "muted", "gain", "state"
+                    "path", "name", "vendor", "version", "enabled", "muted", "gain", "state",
+                    "classId",
                 ]
                 .contains(&key.as_str())),
                 "保存された配信VSTに未知の情報があります"
@@ -483,6 +489,7 @@ impl State {
                 muted: p.muted,
                 gain: p.gain,
                 state: Some(data),
+                class_id: p.class_id.clone(),
             });
         }
         let (after, end_revision) =
@@ -497,14 +504,26 @@ impl State {
             revision == end_revision
                 && before
                     .iter()
-                    .map(|p| (&p.id, &p.path, p.enabled, p.muted, p.gain.to_bits()))
-                    .eq(after.iter().map(|p| (
-                        &p.id,
-                        &p.path,
-                        p.enabled,
-                        p.muted,
-                        p.gain.to_bits()
-                    )))
+                    .map(|p| {
+                        (
+                            &p.id,
+                            &p.path,
+                            p.class_id.as_deref(),
+                            p.enabled,
+                            p.muted,
+                            p.gain.to_bits(),
+                        )
+                    })
+                    .eq(after.iter().map(|p| {
+                        (
+                            &p.id,
+                            &p.path,
+                            p.class_id.as_deref(),
+                            p.enabled,
+                            p.muted,
+                            p.gain.to_bits(),
+                        )
+                    }))
                 && witness == self.bundle_revision(),
             "取得中に配信VSTが変更されました"
         );
@@ -571,6 +590,7 @@ impl State {
                         bypassed: !plugin.enabled,
                         muted: plugin.muted,
                         gain: plugin.gain,
+                        class_id: plugin.class_id.clone(),
                     },
                     operation_id: id,
                     expires_at_ms: crate::audio_engine::restoration::unix_ms().saturating_add(8000),
@@ -809,6 +829,7 @@ impl AudioHost {
                                         bypassed: !plugin.enabled,
                                         muted: plugin.muted,
                                         gain: plugin.gain,
+                                        class_id: plugin.class_id.clone(),
                                     },
                                     operation_id: id,
                                     expires_at_ms: crate::audio_engine::restoration::unix_ms()
@@ -825,7 +846,7 @@ impl AudioHost {
                     state.restored = true;
                     state.enabled = saved.is_some_and(|s| s.enabled);
                 }
-                Request::Add { path, .. } => {
+                Request::Add { path, class_id, .. } => {
                     anyhow::ensure!(
                         state.restored || state.saved.as_ref().is_none_or(|s| s.plugins.is_empty()),
                         "保存した配信VSTを先に復元してください"
@@ -839,7 +860,7 @@ impl AudioHost {
                     );
                     anyhow::ensure!(
                         matches!(
-                            state.command(IpcCommand::LoadPlugin { path })?,
+                            state.command(IpcCommand::LoadPlugin { path, class_id })?,
                             IpcResponse::PluginLoaded { .. }
                         ),
                         "VSTの追加結果を確認できません"
@@ -1013,6 +1034,7 @@ mod tests {
                 muted: false,
                 gain: 0.0,
                 state: Some("private-state".into()),
+                class_id: None,
             }],
         };
         std::fs::write(

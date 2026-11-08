@@ -35,7 +35,10 @@ impl StagedRestore {
         operation_id: u64,
         expires_at_ms: u64,
     ) -> Result<Self> {
-        Self::load_with(request, operation_id, expires_at_ms, VstInstance::load)
+        let class_id = request.class_id.clone();
+        Self::load_with(request, operation_id, expires_at_ms, move |path| {
+            VstInstance::load_with_class(path, class_id.as_deref())
+        })
     }
 
     pub(crate) fn load_with(

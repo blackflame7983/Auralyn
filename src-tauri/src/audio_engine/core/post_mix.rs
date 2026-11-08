@@ -359,7 +359,10 @@ mod tests {
     #[test]
     fn running_worker_rejects_owning_and_device_commands() {
         let commands = [
-            Command::LoadPlugin { path: "x".into() },
+            Command::LoadPlugin {
+                path: "x".into(),
+                class_id: None,
+            },
             Command::UnloadPlugin { id: "x".into() },
             Command::ReorderPlugins { order: vec![] },
             Command::SetPluginState {

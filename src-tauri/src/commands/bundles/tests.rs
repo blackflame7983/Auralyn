@@ -125,6 +125,7 @@ fn live_preview_never_serializes_embedded_component_state() {
         muted: false,
         gain: 1.0,
         state: Some("opaque-component-never-send-to-ui".into()),
+        class_id: None,
     });
     let value = LivePreview {
         before: Some((&live).into()),
@@ -286,6 +287,7 @@ fn saved_preview_rejects_same_revision_edits_and_different_operation() {
         muted: false,
         gain: 1.,
         state: Some("opaque edit".into()),
+        class_id: None,
     });
     assert!(validate(&edited).is_err());
     assert!(validate_saved_preview(&plan, "old-preview", &plan.bundle, Some("original")).is_err());
@@ -439,6 +441,7 @@ fn current_dto_contains_only_actual_rack_metadata_not_control_prefs_or_state() {
             muted: true,
             gain: 0.5,
             state: Some("opaque-component-state".into()),
+            class_id: None,
         },
     });
     let dto = current_dto(&captured);
@@ -764,6 +767,7 @@ fn preview_and_result_expose_differences_without_opaque_state_or_default_buffer_
         muted: false,
         gain: 1.,
         state: Some(secret.into()),
+        class_id: None,
     });
     let dto: SummaryDto = summary.into();
     let json = serde_json::to_string(&dto).unwrap();
@@ -843,6 +847,7 @@ fn selected_backup_does_not_include_untouched_categories_and_empty_rack_is_expli
             enabled: true,
             muted: false,
             gain: 1.,
+            class_id: None,
         },
     });
     assert!(!selected_matches(&target, &actual));
@@ -874,6 +879,7 @@ fn mixing_revision_selection_and_opaque_diff_are_checked() {
             muted: false,
             gain: 1.0,
             state: Some("private-state-one".into()),
+            class_id: None,
         },
         PresetPlugin {
             path: "second.vst3".into(),
@@ -884,6 +890,7 @@ fn mixing_revision_selection_and_opaque_diff_are_checked() {
             muted: false,
             gain: 0.5,
             state: Some("private-state-two".into()),
+            class_id: None,
         },
     ];
     before.mixing = Some(mixing.clone());
@@ -964,6 +971,7 @@ fn prepared_mixing_voice_is_not_reloaded_and_explicit_empty_stays_applied() {
         muted: false,
         gain: 0.8,
         state: Some("opaque".into()),
+        class_id: None,
     };
     let mut target = BundleV1 {
         mixing: Some(empty_mixing()),
@@ -1038,6 +1046,7 @@ fn prepared_mixing_voice_is_not_reloaded_and_explicit_empty_stays_applied() {
         muted: false,
         gain: 1.0,
         state: None,
+        class_id: None,
     });
     assert!(
         add_prepared_summary(&mut ApplyProfileSummary::default(), &target, &[], initial).is_err()
@@ -1137,6 +1146,7 @@ fn mixing_preview_exposes_fields_without_plugin_state_and_detects_missing_input(
             muted: false,
             gain: 0.8,
             state: Some("private-state".into()),
+            class_id: None,
         });
     let devices = audio::AudioDeviceList {
         inputs: vec![],

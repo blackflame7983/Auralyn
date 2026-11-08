@@ -234,8 +234,9 @@ impl PluginManager {
         block_size: usize,
         channels: usize,
         engine_running: bool, // If true, we try to prepare processing immediately
+        class_id: Option<&str>,
     ) -> Result<(String, String, u8, Option<VstProcessor>)> {
-        let mut instance = VstInstance::load(path)?;
+        let mut instance = VstInstance::load_with_class(path, class_id)?;
         let id = instance.id.clone();
         let name = instance.name.clone();
         let rt_index = self.alloc_rt_index(&id)?;

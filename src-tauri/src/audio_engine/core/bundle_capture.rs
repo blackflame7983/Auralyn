@@ -129,6 +129,7 @@ impl Engine {
                     muted: self.plugin_manager.muted.contains(id),
                     gain: *self.plugin_manager.gains.get(id).unwrap_or(&1.0),
                     state: Some(state),
+                    class_id: Some(instance.class_id.clone()).filter(|id| !id.is_empty()),
                 },
             });
         }

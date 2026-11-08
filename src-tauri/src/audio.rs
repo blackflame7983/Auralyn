@@ -1564,15 +1564,27 @@ impl AudioHost {
         }
     }
 
-    pub fn load_plugin(&mut self, path: &str) -> Result<String> {
+    pub fn load_plugin(
+        &mut self,
+        path: &str,
+        class_id: Option<&str>,
+    ) -> Result<crate::ipc::LoadedPlugin> {
         match self.execute_command(IpcCommand::LoadPlugin {
             path: path.to_string(),
+            class_id: class_id.map(str::to_string),
         })? {
             IpcResponse::PluginLoaded {
                 id,
-                name: _,
-                vendor: _,
-            } => Ok(id),
+                name,
+                class_id,
+                legacy_class_ambiguous,
+                ..
+            } => Ok(crate::ipc::LoadedPlugin {
+                id,
+                name,
+                class_id,
+                legacy_class_ambiguous,
+            }),
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("Unexpected response type")),
         }

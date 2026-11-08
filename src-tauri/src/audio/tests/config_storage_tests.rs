@@ -152,6 +152,8 @@ fn restore_requires_matching_operation_and_engine_generation_and_valid_input() {
             id: "id".into(),
             name: "Mock".into(),
             prepared: false,
+            class_id: None,
+            legacy_class_ambiguous: false,
         },
     };
     assert!(validate_restore_response(1, 1, 7, response()).is_ok());
@@ -164,7 +166,8 @@ fn restore_requires_matching_operation_and_engine_generation_and_valid_input() {
             state: None,
             bypassed: false,
             muted: false,
-            gain: f32::NAN
+            gain: f32::NAN,
+            class_id: None,
         })
         .is_err());
     assert!(host.child.is_none());
@@ -174,6 +177,7 @@ fn restore_requires_matching_operation_and_engine_generation_and_valid_input() {
         bypassed: true,
         muted: true,
         gain: 0.0,
+        class_id: None,
     };
     let json = serde_json::to_value(&request).unwrap();
     assert_eq!(json["state"], "");
@@ -524,6 +528,7 @@ fn bundle_restore_fatal_stops_later_chain_requests_before_send_or_spawn() {
         bypassed: false,
         muted: false,
         gain: 1.,
+        class_id: None,
     };
     let result = host.bundle_change_scope(|host| {
         // 最初の要求は既存接続へ送信を試み、閉じたstdinによりfatalになる。

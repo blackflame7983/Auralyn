@@ -68,6 +68,7 @@ fn validate_plugins(binding: &ProfileBinding, plugins: &[PresetPlugin]) -> Resul
             bypassed: !plugin.enabled,
             muted: plugin.muted,
             gain: plugin.gain,
+            class_id: plugin.class_id.clone(),
         }
         .validate()?;
     }

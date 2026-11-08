@@ -121,6 +121,7 @@ impl AudioHost {
                 bypassed: !plugin.enabled,
                 muted: plugin.muted,
                 gain: plugin.gain,
+                class_id: plugin.class_id.clone(),
             })?;
             prepared.push(crate::vst_host::presets::LoadedPluginInstance {
                 id: result.id,

@@ -327,6 +327,7 @@ pub(in crate::audio) mod tests {
             enabled: true,
             muted: false,
             gain: 1.0,
+            class_id: None,
         }
     }
     #[cfg(windows)]
@@ -531,7 +532,8 @@ pub(in crate::audio) mod tests {
                             state: None,
                             bypassed: false,
                             muted: false,
-                            gain: 1.
+                            gain: 1.,
+                            class_id: None,
                         }
                     })
                     .unwrap(),
@@ -630,6 +632,7 @@ mod revision_tests {
                                 bypassed: false,
                                 muted: false,
                                 gain: 1.,
+                                class_id: None,
                             },
                         })
                         .unwrap()

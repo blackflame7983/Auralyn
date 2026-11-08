@@ -833,6 +833,7 @@ mod tests {
             muted: false,
             gain: 0.25,
             state: Some(secret_state.into()),
+            class_id: None,
         });
         let reservation = reserve_runtime_intent(
             &root,
@@ -1100,6 +1101,7 @@ mod tests {
             muted: false,
             gain: 1.0,
             state: Some(state.into()),
+            class_id: None,
         }
     }
     #[test]
@@ -1283,6 +1285,7 @@ mod tests {
             muted: false,
             gain: 1.,
             state: Some(String::new()),
+            class_id: None,
         });
         let overhead = serde_json::to_vec(&bundle).unwrap().len();
         // 有効なBase64の長さを保ち、JSON全体を上限ちょうどにする。
