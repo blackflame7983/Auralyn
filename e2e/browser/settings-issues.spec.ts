@@ -59,12 +59,12 @@ test('稼働中は設定差分で再起動を有効化し、元に戻すと無�
     await expect(details).not.toHaveAttribute('open');
     await details.locator('summary').click();
     await expect(details.getByRole('heading', { name: '音の途切れにくさ' })).toBeVisible();
-    await expect(details.getByRole('button', { name: '標準 配信・会話向け', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await expect(details.getByRole('button', { name: /48 kHz/ })).toHaveAttribute('aria-pressed', 'true');
-    await details.getByRole('button', { name: /途切れにくく/ }).click();
+    await expect(details.getByRole('radio', { name: '標準', exact: true })).toHaveAttribute('aria-checked', 'true');
+    await expect(details.getByRole('radio', { name: /48 kHz/ })).toHaveAttribute('aria-checked', 'true');
+    await details.getByRole('radio', { name: /途切れにくく/ }).click();
     await expect(save).toBeEnabled();
     await expect(dialog.getByText(/変更予定：.*音の途切れにくさ/)).toBeVisible();
-    await details.getByRole('button', { name: '標準 配信・会話向け', exact: true }).click();
+    await details.getByRole('radio', { name: '標準', exact: true }).click();
     await expect(save).toBeDisabled();
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('vst_host_audio_config')!))).toMatchObject(config);
     expect(await page.evaluate(() => (window as any).__e2eStarts)).toEqual([]);

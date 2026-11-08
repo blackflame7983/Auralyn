@@ -1,3 +1,6 @@
+import { Select } from '@/components/ui/Select';
+import { Field } from '@/components/ui/Field';
+import { Button } from '@/components/ui/button';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { notice, renderNotice, type SettingsNotice } from './settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -190,14 +193,14 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
         const modifier = [event.metaKey ? 'Super' : '', event.ctrlKey ? 'Control' : '', event.altKey ? 'Alt' : '', event.shiftKey ? 'Shift' : ''].filter(Boolean).join('+');
         accept(`${modifier}+${event.code}`, action);
     };
-    return <section className="space-y-3 rounded-xl border border-border p-4 pb-0">
+    return <section className="space-y-3 rounded-card border border-border p-4 pb-0">
         <h3 className="text-ui-heading font-semibold">{t('settings.ShortcutsPanel.378')}</h3>
         <div className="flex items-center gap-1 text-ui-support text-muted-foreground">
             <p>{t('shortcuts.streamDeckHint')}</p>
             <InfoPopover label={t('shortcuts.details')}><p>{t('settings.ShortcutsPanel.379')}</p><p className="mt-2">{t('settings.ShortcutsPanel.380')}</p></InfoPopover>
         </div>
-        <button type="button" className="rounded border border-border px-3 py-2 text-ui-control disabled:opacity-50"
-            disabled={!ready || busy || !!capturing} onClick={() => setConfirmRecommended(true)}>{t('shortcuts.applyRecommended')}</button>
+        <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal"
+            disabled={!ready || busy || !!capturing} onClick={() => setConfirmRecommended(true)}>{t('shortcuts.applyRecommended')}</Button>
         <ConfirmDialog isOpen={confirmRecommended} title={t('shortcuts.confirmRecommended')}
             description={t('shortcuts.recommendedDescription', { bindings: recommended.map(({ action, shortcut }) => `${t(actions[action])}: ${formatShortcut(shortcut)}`).join(' / ') })}
             confirmLabel={t('shortcuts.fillRecommended')} onCancel={() => setConfirmRecommended(false)} onConfirm={applyRecommended} />
@@ -208,37 +211,37 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
             const pair = split(values[action] ?? '');
             return <fieldset key={action} className="min-w-0 space-y-1 text-ui-support" disabled={!ready || busy}>
                 <legend className="text-ui-control font-semibold">{label}</legend>
-                <button type="button" aria-label={t('shortcuts.captureNamed', { action: label })} aria-pressed={capturing === action} aria-busy={capturing === action && !armed}
+                <Button type="button" aria-label={t('shortcuts.captureNamed', { action: label })} aria-pressed={capturing === action} aria-busy={capturing === action && !armed}
                     onClick={() => { setMessage([]); capture(capturing === action ? null : action); }}
                     onKeyDown={event => handleCapture(event, action)} onBlur={() => { if (capturing === action) capture(null); }}
-                    className="rounded border border-border px-2 py-1.5 text-left aria-pressed:border-selection aria-pressed:bg-muted disabled:cursor-not-allowed disabled:opacity-50 text-ui-control">
+                    variant={capturing === action ? 'secondary' : 'outline'} className="h-auto min-h-10 whitespace-normal">
                     {capturing === action ? t(armed ? 'shortcuts.captureWaiting' : 'shortcuts.capturePreparing') : formatShortcut(values[action] ?? '') || t('shortcuts.captureEmpty')}
-                </button>
+                </Button>
                 {/* キー入力で登録できない場合の代替手段。既定では閉じて入力方式を1つに見せる。 */}
                 <details>
                 <summary className="cursor-pointer text-muted-foreground">{t('shortcuts.chooseFromList')}</summary>
                 <div className="mt-1 flex flex-wrap gap-1">
-                    <label className="text-ui-control">{t('settings.ShortcutsPanel.381')}<select aria-label={t('settings.ShortcutsPanel.382', { arg0: label })} value={pair.modifier} onChange={e => setValues(v => ({ ...v, [action]: `${e.target.value}+${pair.key}` }))} className="block rounded border border-input bg-background p-2 text-ui-control">
+                    <Field label={t('settings.ShortcutsPanel.381')}><Select aria-label={t('settings.ShortcutsPanel.382', { arg0: label })} value={pair.modifier} onChange={e => setValues(v => ({ ...v, [action]: `${e.target.value}+${pair.key}` }))} >
                         <option value="">{t('settings.ShortcutsPanel.383')}</option>
                         {pair.modifier && !modifiers.includes(pair.modifier) && <option value={pair.modifier}>{pair.modifier}{t('settings.ShortcutsPanel.384')}</option>}
                         {modifiers.map(value => <option key={value} value={value}>{value.replace('Control', 'Ctrl').replace('Super', 'Windows')}</option>)}
-                    </select></label>
-                    <label className="text-ui-control">{t('settings.ShortcutsPanel.385')}<select aria-label={t('settings.ShortcutsPanel.386', { arg0: label })} value={pair.key} onChange={e => setValues(v => ({ ...v, [action]: `${pair.modifier}+${e.target.value}` }))} className="block rounded border border-input bg-background p-2 text-ui-control">
+                    </Select></Field>
+                    <Field label={t('settings.ShortcutsPanel.385')}><Select aria-label={t('settings.ShortcutsPanel.386', { arg0: label })} value={pair.key} onChange={e => setValues(v => ({ ...v, [action]: `${pair.modifier}+${e.target.value}` }))} >
                         <option value="">{t('settings.ShortcutsPanel.387')}</option>
                         {pair.key && !keys.some(([value]) => value === pair.key) && <option value={pair.key}>{pair.key}{t('settings.ShortcutsPanel.388')}</option>}
                         {keys.map(([value, name]) => <option key={value} value={value}>{name}</option>)}
-                    </select></label>
+                    </Select></Field>
                 </div>
                 </details>
                 {/* 未登録の項目には外す対象がないため出さず、同じボタンの羅列を避ける。 */}
-                {values[action] && <button type="button" aria-label={`${t('settings.ShortcutsPanel.389')}${label}`} className="rounded border border-border px-2 py-1 text-muted-foreground hover:text-destructive-text disabled:opacity-50 text-ui-control" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('shortcuts.unbind')}</button>}
+                {values[action] && <Button type="button" aria-label={`${t('settings.ShortcutsPanel.389')}${label}`} variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('shortcuts.unbind')}</Button>}
             </fieldset>;
         })}</div>
         </section>)}
         <div className="sticky bottom-0 -mx-4 px-4 z-10 flex flex-wrap gap-2 border-t border-border bg-card py-2">
-            <button type="button" className="rounded border px-3 py-2 disabled:opacity-50 text-ui-control" disabled={!ready || busy || (!dirty && !registrationFailed) || !!capturing} onClick={() => void save()}>{t('settings.ShortcutsPanel.390')}</button>
-            <button type="button" className="rounded border px-3 py-2 disabled:opacity-50 text-ui-control" disabled={!ready || busy || !dirty || !!capturing} onClick={() => { setValues(saved); setMessage([notice('settings.ShortcutsPanel.391')]); }}>{t('settings.ShortcutsPanel.392')}</button>
-            {message.length > 0 && <p role="status" className="basis-full whitespace-pre-wrap break-words text-sm">{message.map(part => renderNotice(t, part)).join('\n')}</p>}
+            <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!ready || busy || (!dirty && !registrationFailed) || !!capturing} onClick={() => void save()}>{t('settings.ShortcutsPanel.390')}</Button>
+            <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!ready || busy || !dirty || !!capturing} onClick={() => { setValues(saved); setMessage([notice('settings.ShortcutsPanel.391')]); }}>{t('settings.ShortcutsPanel.392')}</Button>
+            {message.length > 0 && <p role="status" className="basis-full whitespace-pre-wrap break-words text-ui-support">{message.map(part => renderNotice(t, part)).join('\n')}</p>}
         </div>
     </section>;
 }

@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
@@ -98,7 +99,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
         const measured = monitorEnabled && monitorState === 'receiving' && right < measuredCount;
         const hasSignal = activeChannels.includes(left) || activeChannels.includes(right);
         pairs.push(
-            <label key={left} hidden={!showAllPairs && loopLimit > 8 && left >= 8 && !isSelected && !hasSignal && focusedPair !== left} className={`${`input-channel-pair flex items-center gap-2 p-2 rounded-md cursor-pointer border focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background ${isSelected
+            <label key={left} hidden={!showAllPairs && loopLimit > 8 && left >= 8 && !isSelected && !hasSignal && focusedPair !== left} className={`${`input-channel-pair flex items-center gap-2 p-2 rounded-control cursor-pointer border focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background ${isSelected
                 ? 'bg-selection/15 border-selection text-selection'
                 : 'bg-card border-border text-foreground hover:bg-muted dark:bg-muted/30 dark:border-transparent dark:text-muted-foreground dark:hover:bg-muted/50'}`} text-ui-control`}>
                 <input
@@ -124,7 +125,7 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
     }
 
     return (
-        <div className="space-y-3 p-4 bg-muted dark:bg-background/50 rounded-lg border border-border">
+        <div className="space-y-3 p-4 bg-muted dark:bg-background/50 rounded-card border border-border">
             <div className="flex items-center gap-1">
             <h3 className="flex items-center gap-2 text-foreground text-ui-heading font-semibold">
                 <MdGraphicEq className="text-primary" aria-hidden="true" />{t('settings.InputChannelSelector.205')}</h3>
@@ -138,11 +139,11 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
                         : monitorState === 'waiting' ? t('settings.InputChannelSelector.208')
                             : t('settings.InputChannelSelector.209')}
             </p>
-            {monitorState === 'error' && <button type="button" className="rounded-md border border-border px-3 py-1.5 text-ui-support"
+            {monitorState === 'error' && <Button type="button" variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal"
                 onClick={() => {
                     if (monitorEnabled) setRetryRevision(value => value + 1);
                     else void retryChannelScan().then(() => { if (mounted.current) setMonitorState('starting'); }).catch(() => {});
-                }}>{t('common.retry')}</button>}
+                }}>{t('common.retry')}</Button>}
             {maxChannels !== 0 && <p id={`${groupId}-help`} className="text-ui-support text-muted-foreground leading-relaxed">
                 {t('settings.inputPairHint')}</p>}
             {maxChannels !== 0 && <fieldset id={`${groupId}-pairs`} aria-describedby={`${groupId}-help`}>
@@ -151,10 +152,10 @@ export const InputChannelSelector: React.FC<InputChannelSelectorProps> = ({ onCh
                     {pairs}
                 </div>
             </fieldset>}
-            {loopLimit > 8 && <button type="button" aria-expanded={showAllPairs} aria-controls={`${groupId}-pairs`}
-                onClick={() => setShowAllPairs(value => !value)} className="rounded-md border border-border px-3 py-1.5 hover:bg-muted text-ui-support">
+            {loopLimit > 8 && <Button type="button" aria-expanded={showAllPairs} aria-controls={`${groupId}-pairs`}
+                onClick={() => setShowAllPairs(value => !value)} variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal">
                 {t(showAllPairs ? 'settings.inputPairsLess' : 'settings.inputPairsAll')}
-            </button>}
+            </Button>}
         </div>
     );
 };

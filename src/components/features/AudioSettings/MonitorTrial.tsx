@@ -1,3 +1,5 @@
+import { Checkbox } from '@/components/ui/Checkbox';
+import { Button } from '@/components/ui/button';
 import { useEffect, useRef, useState } from 'react';
 import { sessionMode } from '@/lib/temporarySession';
 import { audioApi, type AudioDevice, type AudioStateInfo, type EngineRuntimeStats } from '@/api/audio';
@@ -95,7 +97,7 @@ export function MonitorTrial({ devices, onApplied, onBusyChange, disabled = fals
     const recorded = (s: EngineRuntimeStats) => {
         const q = s.resamplerCohortTiming?.periods?.recent.earliestArrivalToEnd;
         const range = (r: { lowerMs: number; upperMs: number | null } | null | undefined) => !r || !Number.isFinite(r.lowerMs) || r.lowerMs < 0 || (r.upperMs !== null && (!Number.isFinite(r.upperMs) || r.upperMs <= r.lowerMs)) ? t('singingRoute.unknown') : r.upperMs === null ? t('batchTiming.rangeOpen', { lower: r.lowerMs.toFixed(2) }) : `${r.lowerMs.toFixed(2)}–${r.upperMs.toFixed(2)} ms`;
-        return <p className="text-sm">{t('monitorTrial.recorded', { p50: range(q?.p50), p95: range(q?.p95), glitches: Number.isSafeInteger(s.glitchCount) && s.glitchCount >= 0 ? s.glitchCount : t('singingRoute.unknown') })}</p>;
+        return <p className="text-ui-support">{t('monitorTrial.recorded', { p50: range(q?.p50), p95: range(q?.p95), glitches: Number.isSafeInteger(s.glitchCount) && s.glitchCount >= 0 ? s.glitchCount : t('singingRoute.unknown') })}</p>;
     };
     async function prepare() {
         if (operation.current || readRecovery().kind !== 'none') return;
@@ -162,31 +164,31 @@ export function MonitorTrial({ devices, onApplied, onBusyChange, disabled = fals
             removeOriginal(); setRecovery({kind: 'none'}); setTrial(null); setHeard(false);
         } catch { setRecovery(readRecovery()); setDeviceMissing(false); setError(true); } finally { operation.current = false; setBusy(false); }
     }
-    return <section aria-label={t('monitorTrial.title')} className="space-y-3 border border-border rounded p-3">
+    return <section aria-label={t('monitorTrial.title')} className="space-y-3 border border-border rounded-control p-3">
         <h3 className="text-ui-heading font-semibold">{t('monitorTrial.title')}</h3>
-        <p className="text-sm">{t('monitorTrial.scope')}</p>
-        <button disabled={busy || disabled || !!trial || !!pending || recovery.kind !== 'none'} onClick={() => void prepare()} className="underline disabled:opacity-50 text-ui-control">{t('monitorTrial.prepare')}</button>
+        <p className="text-ui-support">{t('monitorTrial.scope')}</p>
+        <Button disabled={busy || disabled || !!trial || !!pending || recovery.kind !== 'none'} onClick={() => void prepare()} variant="link" className="h-auto min-h-10 whitespace-normal">{t('monitorTrial.prepare')}</Button>
         {pending && <div className="space-y-2"><p>{t('monitorTrial.change', { before: pending.original.bufferSize!, after: pending.candidate, rate: pending.original.sampleRate! })}</p>
-            {monitorAdvice(pending.before).length > 0 && <details><summary>{t('monitorTrial.fxPlans')}</summary><ul className="list-disc pl-4 text-sm">{monitorAdvice(pending.before).map((a, index) => <li key={index}>{t(`monitorTrial.advice.${a.kind}`, { name: a.name ?? '', samples: a.samples ?? '' })}</li>)}</ul><p className="text-ui-support">{t('monitorTrial.fxBoundary')}</p></details>}
-            <p className="text-sm">{t('monitorTrial.warning')}</p>
-            <button disabled={busy || disabled || recovery.kind !== 'none'} onClick={() => void apply()} className="border rounded p-2 text-ui-control">{t('monitorTrial.apply')}</button>{' '}
-            <button disabled={busy || disabled} onClick={() => setPending(null)} className="link-button text-ui-support">{t('monitorTrial.cancel')}</button>
+            {monitorAdvice(pending.before).length > 0 && <details><summary>{t('monitorTrial.fxPlans')}</summary><ul className="list-disc pl-4 text-ui-support">{monitorAdvice(pending.before).map((a, index) => <li key={index}>{t(`monitorTrial.advice.${a.kind}`, { name: a.name ?? '', samples: a.samples ?? '' })}</li>)}</ul><p className="text-ui-support">{t('monitorTrial.fxBoundary')}</p></details>}
+            <p className="text-ui-support">{t('monitorTrial.warning')}</p>
+            <Button disabled={busy || disabled || recovery.kind !== 'none'} onClick={() => void apply()} variant="outline" className="h-auto min-h-10 whitespace-normal">{t('monitorTrial.apply')}</Button>{' '}
+            <Button disabled={busy || disabled} onClick={() => setPending(null)} variant="link" size="sm" className="h-auto min-h-9 whitespace-normal">{t('monitorTrial.cancel')}</Button>
         </div>}
         {trial && <div className="space-y-2"><p>{t('monitorTrial.requested', { frames: trial.requested })}</p>
             <p>{t('monitorTrial.actual', { rate: trial.applied.sampleRate!, frames: trial.applied.bufferSize! })}</p>
             <details><summary>{t('monitorTrial.before')}</summary>{recorded(trial.before)}</details>
-            <button disabled={busy || disabled} className="link-button text-ui-support" onClick={async () => {
+            <Button disabled={busy || disabled} variant="link" size="sm" className="h-auto min-h-9 whitespace-normal" onClick={async () => {
                 setBusy(true); setError(false); setHeard(false);
                 try { const after = await audioApi.getEngineRuntimeStats(); if (condition(after) !== trial.condition || !after.latencyMetadata?.streamRunning) throw Error(); setTrial({ ...trial, after }); } catch { setError(true); } finally { setBusy(false); }
-            }}>{t('monitorTrial.refresh')}</button>
+            }}>{t('monitorTrial.refresh')}</Button>
             <LatencyDetails stats={trial.after} />
-            <label className="flex gap-2 text-ui-control"><input type="checkbox" checked={heard} onChange={event => setHeard(event.target.checked)} />{t('monitorTrial.heard')}</label>
-            <button disabled={busy || disabled || !heard} className="border rounded p-2 disabled:opacity-50 text-ui-control" onClick={() => void finish(true)}>{t('monitorTrial.keep')}</button>{' '}
-            <button disabled={busy || disabled} className="link-button text-ui-support" onClick={() => void finish(false)}>{t('monitorTrial.restore')}</button>
+            <label className="flex gap-2 text-ui-control"><Checkbox checked={heard} onChange={event => setHeard(event.target.checked)} />{t('monitorTrial.heard')}</label>
+            <Button disabled={busy || disabled || !heard} variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => void finish(true)}>{t('monitorTrial.keep')}</Button>{' '}
+            <Button disabled={busy || disabled} variant="link" size="sm" className="h-auto min-h-9 whitespace-normal" onClick={() => void finish(false)}>{t('monitorTrial.restore')}</Button>
         </div>}
         {recovery.kind !== 'none' && !trial && <div className="space-y-2">
             {recoveryOriginal ? <p>{t('monitorTrial.recovery', { input: recoveryOriginal.input ?? '', output: recoveryOriginal.output ?? '', rate: recoveryOriginal.sampleRate!, frames: recoveryOriginal.bufferSize! })}</p> : <p role="alert">{t('monitorTrial.recoveryUnreadable')}</p>}
-            {recoveryOriginal && <><label className="flex gap-2 text-ui-control"><input type="checkbox" checked={recoverConfirmed} onChange={async e => {
+            {recoveryOriginal && <><label className="flex gap-2 text-ui-control"><Checkbox checked={recoverConfirmed} onChange={async e => {
                 const checked = e.target.checked; const generation = ++confirmationGeneration.current;
                 setRecoverConfirmed(checked); setConfirmedBasis(null);
                 if (!checked) return;
@@ -196,7 +198,7 @@ export function MonitorTrial({ devices, onApplied, onBusyChange, disabled = fals
                     if (generation === confirmationGeneration.current) setConfirmedBasis(JSON.stringify([condition(stats), state]));
                 } catch { if (generation === confirmationGeneration.current) { setDeviceMissing(false); setError(true); } }
             }} />{t('monitorTrial.recoverConfirm')}</label>
-            <button className="border rounded p-2 disabled:opacity-50 text-ui-control" disabled={busy || disabled || !recoverConfirmed || !confirmedBasis} onClick={async () => {
+            <Button variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={busy || disabled || !recoverConfirmed || !confirmedBasis} onClick={async () => {
                 if (operation.current) return;
                 operation.current = true; setBusy(true); setError(false);
                 try {
@@ -213,14 +215,14 @@ export function MonitorTrial({ devices, onApplied, onBusyChange, disabled = fals
                     await restoreChecked(recoveryOriginal, expectedState);
                     removeOriginal(); setRecovery({kind: 'none'}); setRecoverConfirmed(false); setConfirmedBasis(null);
                 } catch (cause) { setRecovery(readRecovery()); setDeviceMissing(cause instanceof RecoveryDeviceError); setError(true); setRecoverConfirmed(false); setConfirmedBasis(null); } finally { operation.current = false; setBusy(false); }
-            }}>{t('monitorTrial.recover')}</button></>}
-            <label className="flex gap-2 text-ui-control"><input type="checkbox" checked={adoptConfirmed} onChange={e => setAdoptConfirmed(e.target.checked)} />{t('monitorTrial.recoveryAdoptConfirm')}</label>
-            <button className="border rounded p-2 disabled:opacity-50 text-ui-control" disabled={busy || disabled || !adoptConfirmed} onClick={() => {
+            }}>{t('monitorTrial.recover')}</Button></>}
+            <label className="flex gap-2 text-ui-control"><Checkbox checked={adoptConfirmed} onChange={e => setAdoptConfirmed(e.target.checked)} />{t('monitorTrial.recoveryAdoptConfirm')}</label>
+            <Button variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={busy || disabled || !adoptConfirmed} onClick={() => {
                 if (operation.current) return;
                 operation.current = true; setBusy(true); setError(false);
                 try { removeOriginal(); setRecovery({kind:'none'}); setAdoptConfirmed(false); } catch { setRecovery(readRecovery()); setError(true); }
                 finally { operation.current = false; setBusy(false); }
-            }}>{t('monitorTrial.recoveryAdopt')}</button>
+            }}>{t('monitorTrial.recoveryAdopt')}</Button>
         </div>}
         {accepted && <p role="status">{t('monitorTrial.accepted')}</p>}
         {error && <p role="alert" className="text-destructive-text">{t(deviceMissing ? 'monitorTrial.recoveryDeviceMissing' : 'monitorTrial.error')}</p>}

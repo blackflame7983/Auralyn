@@ -21,6 +21,20 @@ const openSettings = () => render(<AudioSettingsModal isOpen onClose={() => {}} 
 const hostSelect = () => screen.getAllByRole('combobox').find(element =>
     Array.from((element as HTMLSelectElement).options).some(option => option.value === 'Wasapi'))!;
 
+it('ASIO注意書きを機器の説明として関連付け、WASAPIに戻すと外す', async () => {
+    openSettings();
+    await screen.findByRole('option', { name: 'USB mic' });
+    fireEvent.change(hostSelect(), { target: { value: 'ASIO' } });
+    const device = screen.getByRole('combobox', { name: '機器' });
+    const note = screen.getByText('ASIOモードでは、選択したデバイスが入出力の両方を担当します。');
+    expect(device).toHaveAccessibleDescription(note.textContent!);
+    expect(device.getAttribute('aria-describedby')?.split(/\s+/)).toContain(note.id);
+    expect(device.closest('fieldset')).toContainElement(note);
+    fireEvent.change(hostSelect(), { target: { value: 'Wasapi' } });
+    expect(screen.getByRole('combobox', { name: 'マイク' })).not.toHaveAttribute('aria-describedby');
+    expect(note).not.toBeInTheDocument();
+});
+
 it.each([88200, 192000])('代表値以外の%d Hzでも表示値と開始要求値が一致する', async rate => {
     localStorage.setItem('vst_host_settings_advanced', 'true');
     localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'ASIO device', output: 'ASIO device', sampleRate: rate, bufferSize: 512 }));
@@ -71,11 +85,11 @@ it.each(['周囲の音を測定', 'ノイズ低減の詳細'])('測定の詳細�
     render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
     expect(screen.getByText('ノイズ低減の詳細').closest('details')).not.toHaveAttribute('open');
     fireEvent.click(screen.getByText('ノイズ低減の詳細'));
-    await screen.findByRole('button', { name: '測定値で調整' });
+    await screen.findByRole('radio', { name: '測定値で調整' });
     expect(screen.getByRole('button', { name: '周囲の音を測定' })).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('button', { name: '3秒測定' })).not.toBeInTheDocument();
     expect(request).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '測定値で調整' }));
+    fireEvent.click(screen.getByRole('radio', { name: '測定値で調整' }));
     const start = await screen.findByRole('button', { name: '3秒測定' });
     await waitFor(() => expect(start).toBeEnabled());
     fireEvent.click(start);

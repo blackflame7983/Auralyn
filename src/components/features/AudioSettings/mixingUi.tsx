@@ -3,8 +3,7 @@ import { Slider } from '@/components/ui/slider';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
 
-export const mixingField = 'block w-full rounded-md border border-input bg-background px-3 py-2 text-ui-control';
-export const mixingCard = 'min-w-0 space-y-3 rounded-xl border border-border bg-card p-4';
+export const mixingCard = 'min-w-0 space-y-3 rounded-card border border-border bg-card p-4';
 export const framesToMs = (frames: number | null | undefined, rate: number | null | undefined) =>
     frames != null && rate && rate > 0 ? `${(frames * 1000 / rate).toFixed(1)} ms` : null;
 
@@ -80,17 +79,17 @@ export function MixingError({ error, draftRetained = true }: { draftRetained?: b
         : /not found|missing|見つか|存在し|不在|見当た|がありません/i.test(error.raw) ? 'mixingUi.missing'
         : /corrupt|parse|invalid.*file|破損|decode|解析|形式が|JSON|unexpected.*EOF/i.test(error.raw) ? 'mixingUi.corrupt'
         : /unsupported|not supported|unknown command|unknown variant|非対応|対応してい/i.test(error.raw) ? 'mixingUi.unsupported' : 'mixingUi.unavailable';
-    return <div role="alert" className="space-y-2 text-sm text-destructive-text">
+    return <div role="alert" className={`space-y-2 ${draftRetained ? 'text-ui-support' : 'text-sm'} text-destructive-text`}>
         <p>{t(draftRetained ? 'mixingUi.failure' : 'mixingUi.runtimeFailure', { operation: t(error.operation), cause: t(category) })}</p>
         <details><summary className="cursor-pointer">{t('mixingUi.details')}</summary><p className="break-all whitespace-pre-wrap">{error.raw}</p></details>
     </div>;
 }
 
-export function GainControl({ label, value, disabled, onChange }: { label: string; value: number; disabled?: boolean; onChange: (value: number) => void }) {
+export function GainControl({ label, value, disabled, onChange, settings = false }: { label: string; value: number; disabled?: boolean; onChange: (value: number) => void; settings?: boolean }) {
     const percent = `${Math.round(value * 100)}%`;
-    return <div className="flex min-w-0 items-center gap-3 py-2"><span className="text-sm">{label}</span>
+    return <div className="flex min-w-0 items-center gap-3 py-2"><span className={settings ? 'text-ui-control' : 'text-sm'}>{label}</span>
         <Slider aria-label={label} aria-valuetext={percent} disabled={disabled} value={[value]} min={0} max={2} step={0.01} onValueChange={v => onChange(v[0])} className="min-w-12 flex-1" />
-        <output className="w-12 text-right text-sm tabular-nums">{percent}</output></div>;
+        <output className={`w-12 text-right ${settings ? 'text-ui-support' : 'text-sm'} tabular-nums`}>{percent}</output></div>;
 }
 
 export function ScopeDisclosure({ summary, detail, settings = false }: { summary: MessageKey; detail: MessageKey; settings?: boolean }) {

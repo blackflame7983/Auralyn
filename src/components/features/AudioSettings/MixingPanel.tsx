@@ -1,3 +1,7 @@
+import { Input } from '@/components/ui/Input';
+import { Checkbox } from '@/components/ui/Checkbox';
+import { Select } from '@/components/ui/Select';
+import { Field } from '@/components/ui/Field';
 import { useEffect, useId, useRef, useState } from 'react';
 import { audioApi, type AudioDevice } from '@/api/audio';
 import { liveOutputApi } from '@/api/liveOutput';
@@ -6,7 +10,7 @@ import type { ProcessInputCandidate } from '@/lib/inputSource';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
 import { Button } from '@/components/ui/button';
-import { GainControl, MixingError, framesToMs, mixingCard, mixingField, useQueuedChange, useRevisionedResource } from './mixingUi';
+import { GainControl, MixingError, framesToMs, mixingCard, useQueuedChange, useRevisionedResource } from './mixingUi';
 
 const initialLevels = (): MixLevels => ({ voice: { gain: 1, muted: false }, accompaniment: { gain: 1, muted: false }, monitorAccompaniment: true, offsetMs: 0 });
 const validMixLevels = (value: MixLevels) => [value.voice.gain, value.accompaniment.gain].every(n => Number.isFinite(n) && n >= 0 && n <= 2)
@@ -93,42 +97,42 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     const disableReason = busy || disabled ? 'mixingUi.busy' : stale ? 'mixing.stale' : snapshot?.running ? 'mixing.stopped' : null;
     return <details id="mixing-settings" ref={panel} open={open} className={mixingCard} onToggle={e => setOpen(e.currentTarget.open)}>
         <summary tabIndex={0} className="cursor-pointer text-ui-heading font-semibold">{t('mixing.title')}</summary>
-        <Button className="text-ui-control" variant="outline" size="sm" disabled={!editable} onClick={() => void read()}>{t('mixing.load')}</Button>
-        {snapshot && <div className="space-y-4 text-sm">
+        <Button  variant="outline" size="sm" disabled={!editable} onClick={() => void read()}>{t('mixing.load')}</Button>
+        {snapshot && <div className="space-y-4 text-ui-support">
             {stale && <p role="alert">{t('mixing.stale')}</p>}
-            {!ready && <div><p>{t('mixing.notReady')}</p><Button className="text-ui-control" variant="outline" size="sm" onClick={() => onNavigate?.('output')}>{t('mixingUi.openOutput')}</Button></div>}
-            {!primaryIsVoiceDevice && <div><p>{t('mixing.primary')}</p><Button className="text-ui-control" variant="outline" size="sm" onClick={() => onNavigate?.('input')}>{t('mixingUi.openInput')}</Button></div>}
-            <div className="rounded-md bg-muted/40 p-3"><h4 className="text-ui-control font-semibold">{t('mixingUi.active')}</h4><p>{t('mixing.current')}: {describe(snapshot.config)}</p>
+            {!ready && <div><p>{t('mixing.notReady')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('output')}>{t('mixingUi.openOutput')}</Button></div>}
+            {!primaryIsVoiceDevice && <div><p>{t('mixing.primary')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('input')}>{t('mixingUi.openInput')}</Button></div>}
+            <div className="rounded-control bg-muted/40 p-3"><h4 className="text-ui-control font-semibold">{t('mixingUi.active')}</h4><p>{t('mixing.current')}: {describe(snapshot.config)}</p>
                 {JSON.stringify(snapshot.config) !== JSON.stringify(snapshot.savedConfig) && <p>{t('mixing.changed')} {t('mixing.saved')}: {describe(snapshot.savedConfig)}</p>}</div>
             <h4 className="text-ui-control font-semibold">{t('mixingUi.draft')}</h4>
-            <Button variant="outline" size="sm" className="h-auto whitespace-normal text-ui-control" disabled={!editable || snapshot.running || stale} onClick={() => void run('reload')}>{t('mixing.reload')}</Button>
+            <Button variant="outline" size="sm" className="h-auto whitespace-normal" disabled={!editable || snapshot.running || stale} onClick={() => void run('reload')}>{t('mixing.reload')}</Button>
             {snapshot.running && <p>{t('mixing.stopped')}</p>}
             <fieldset disabled={!editable || snapshot.running} className="space-y-3">
-                <label className="block text-ui-control">{t('mixing.source')}<select className={mixingField} value={kind} onChange={e => { mark(); setKind(e.target.value as 'device' | 'process'); }}><option value="device">{t('mixing.device')}</option><option value="process">{t('mixing.process')}</option></select></label>
-                {kind === 'device' ? <><label className="block text-ui-control">{t('mixing.chooseDevice')}<select className={mixingField} value={device} onChange={e => { mark(); setDevice(e.target.value); const d = devices.find(d => d.id === e.target.value); setChannels([0, d && d.channels > 1 ? 1 : 0]); }}><option value="">{t('mixing.chooseDevice')}</option>{devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
-                    <label className="block text-ui-control">{t('mixing.channels')}<select className={mixingField} disabled={!selectedDevice} value={validDevice ? channels.join(',') : ''} onChange={e => { mark(); setChannels(e.target.value.split(',').map(Number) as [number, number]); }}>
-                        {!validDevice && <option value="">{t('mixingUi.choosePair')}</option>}{pairs.map(p => <option key={p.join(',')} value={p.join(',')}>{p[0] === p[1] ? `${p[0] + 1}` : `${p[0] + 1}–${p[1] + 1}`}</option>)}</select></label></>
-                : <><p className="text-ui-support text-muted-foreground">{t('mixing.routeHelp')}</p><Button className="text-ui-control" variant="outline" size="sm" onClick={() => void refreshApps()}>{t('mixing.refreshApps')}</Button>
-                    <label className="block text-ui-control">{t('mixing.chooseApp')}<select className={mixingField} value={candidate} onChange={e => { mark(); setCandidate(e.target.value); setRoute(''); }}><option value="">{t('mixing.chooseApp')}</option>{apps.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-                    <label className="block text-ui-control">{t('mixing.chooseRoute')}<select className={mixingField} value={route} onChange={e => { mark(); setRoute(e.target.value); }}><option value="">{t('mixing.chooseRoute')}</option>{routes.map(r => <option key={r.id} value={r.id}>{r.name} ({t(r.muted ? 'mixing.muted' : 'mixing.unmuted')})</option>)}</select></label></>}
-                {!confirmed && <label className="flex gap-2 text-ui-control"><input type="checkbox" checked={false} onChange={e => setConfirmedRoute(e.target.checked ? routeKey : '')} />{t('mixing.confirm')}</label>}
+                <Field label={t('mixing.source')}><Select  value={kind} onChange={e => { mark(); setKind(e.target.value as 'device' | 'process'); }}><option value="device">{t('mixing.device')}</option><option value="process">{t('mixing.process')}</option></Select></Field>
+                {kind === 'device' ? <><Field label={t('mixing.chooseDevice')}><Select  value={device} onChange={e => { mark(); setDevice(e.target.value); const d = devices.find(d => d.id === e.target.value); setChannels([0, d && d.channels > 1 ? 1 : 0]); }}><option value="">{t('mixing.chooseDevice')}</option>{devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</Select></Field>
+                    <Field label={t('mixing.channels')}><Select  disabled={!selectedDevice} value={validDevice ? channels.join(',') : ''} onChange={e => { mark(); setChannels(e.target.value.split(',').map(Number) as [number, number]); }}>
+                        {!validDevice && <option value="">{t('mixingUi.choosePair')}</option>}{pairs.map(p => <option key={p.join(',')} value={p.join(',')}>{p[0] === p[1] ? `${p[0] + 1}` : `${p[0] + 1}–${p[1] + 1}`}</option>)}</Select></Field></>
+                : <><p className="text-ui-support text-muted-foreground">{t('mixing.routeHelp')}</p><Button  variant="outline" size="sm" onClick={() => void refreshApps()}>{t('mixing.refreshApps')}</Button>
+                    <Field label={t('mixing.chooseApp')}><Select  value={candidate} onChange={e => { mark(); setCandidate(e.target.value); setRoute(''); }}><option value="">{t('mixing.chooseApp')}</option>{apps.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</Select></Field>
+                    <Field label={t('mixing.chooseRoute')}><Select  value={route} onChange={e => { mark(); setRoute(e.target.value); }}><option value="">{t('mixing.chooseRoute')}</option>{routes.map(r => <option key={r.id} value={r.id}>{r.name} ({t(r.muted ? 'mixing.muted' : 'mixing.unmuted')})</option>)}</Select></Field></>}
+                {!confirmed && <label className="flex gap-2 text-ui-control"><Checkbox checked={false} onChange={e => setConfirmedRoute(e.target.checked ? routeKey : '')} />{t('mixing.confirm')}</label>}
             </fieldset>
-            <div className="flex flex-wrap gap-2"><Button className="text-ui-control" disabled={!!reason} aria-describedby={reason ? reasonId : undefined} onClick={() => void run('configure')}>{t('mixing.save')}</Button>
-                <Button variant="outline" className="text-destructive-text text-ui-control" disabled={!!disableReason} aria-describedby={disableReason ? `${reasonId}-disable` : undefined} onClick={() => { queue.cancel(); void run('disable'); }}>{t('mixing.disable')}</Button></div>
+            <div className="flex flex-wrap gap-2"><Button  disabled={!!reason} aria-describedby={reason ? reasonId : undefined} onClick={() => void run('configure')}>{t('mixing.save')}</Button>
+                <Button variant="outline"  disabled={!!disableReason} aria-describedby={disableReason ? `${reasonId}-disable` : undefined} onClick={() => { queue.cancel(); void run('disable'); }}>{t('mixing.disable')}</Button></div>
             {reason && <p id={reasonId}>{t(reason)}</p>}{disableReason && <p id={`${reasonId}-disable`}>{t(disableReason)}</p>}
             {(['voice', 'accompaniment'] as const).map(key => <fieldset key={key} className="space-y-2"><legend className="text-ui-control font-semibold">{t(key === 'voice' ? 'mixing.voice' : 'mixing.accompaniment')}</legend>
-                <GainControl label={t(key === 'voice' ? 'mixingUi.voiceVolume' : 'mixingUi.accompanimentVolume')} value={levels[key].gain} disabled={disabled || stale} onChange={gain => changeLevels({ ...levelsRef.current, [key]: { ...levelsRef.current[key], gain } })} />
-                <label className="flex gap-2 text-ui-control"><input type="checkbox" disabled={disabled || stale} checked={levels[key].muted} onChange={e => changeLevels({ ...levelsRef.current, [key]: { ...levelsRef.current[key], muted: e.target.checked } })} />{t('mixing.mute')}</label></fieldset>)}
-            <label className="flex gap-2 text-ui-control"><input type="checkbox" disabled={disabled || stale} checked={levels.monitorAccompaniment} onChange={e => changeLevels({ ...levelsRef.current, monitorAccompaniment: e.target.checked })} />{t('mixing.monitor')}</label>
-            <label className="block text-ui-control">{t('mixing.offset')}<input type="number" min="-2000" max="2000" step="1" className={mixingField} aria-invalid={!validLevels} aria-describedby={!validLevels ? `${reasonId}-levels` : undefined} disabled={disabled || stale} value={Number.isNaN(levels.offsetMs) ? '' : levels.offsetMs} onChange={e => changeLevels({ ...levelsRef.current, offsetMs: e.target.value === '' ? NaN : Number(e.target.value) })} /></label>
+                <GainControl settings label={t(key === 'voice' ? 'mixingUi.voiceVolume' : 'mixingUi.accompanimentVolume')} value={levels[key].gain} disabled={disabled || stale} onChange={gain => changeLevels({ ...levelsRef.current, [key]: { ...levelsRef.current[key], gain } })} />
+                <label className="flex gap-2 text-ui-control"><Checkbox disabled={disabled || stale} checked={levels[key].muted} onChange={e => changeLevels({ ...levelsRef.current, [key]: { ...levelsRef.current[key], muted: e.target.checked } })} />{t('mixing.mute')}</label></fieldset>)}
+            <label className="flex gap-2 text-ui-control"><Checkbox disabled={disabled || stale} checked={levels.monitorAccompaniment} onChange={e => changeLevels({ ...levelsRef.current, monitorAccompaniment: e.target.checked })} />{t('mixing.monitor')}</label>
+            <Field label={t('mixing.offset')}><Input type="number" min="-2000" max="2000" step="1"  aria-invalid={!validLevels} aria-describedby={!validLevels ? `${reasonId}-levels` : undefined} disabled={disabled || stale} value={Number.isNaN(levels.offsetMs) ? '' : levels.offsetMs} onChange={e => changeLevels({ ...levelsRef.current, offsetMs: e.target.value === '' ? NaN : Number(e.target.value) })} /></Field>
             {!validLevels && <p id={`${reasonId}-levels`} role="alert">{t('mixingUi.invalidLevels')}</p>}<p className="text-ui-support text-muted-foreground">{t('mixing.offsetHelp')}</p>
             <p>{t('mixingUi.knownMs', { value: framesToMs(snapshot.knownVoiceProcessingFrames, snapshot.primaryClock?.outputRateHz) ?? t('mixing.unknown') })}</p>
             <p>{t('mixing.meter')}: {t('mixing.voice')} {Math.max(...snapshot.voicePeak).toFixed(2)} / {t('mixing.accompaniment')} {Math.max(...snapshot.accompanimentPeak).toFixed(2)} / {t('mixingUi.mix')} {Math.max(...snapshot.mixPeak).toFixed(2)}</p>
             {snapshot.accompaniment?.failed ? <p role="alert">{t('mixing.accompanimentFailed')}</p> : snapshot.accompaniment?.waitingForAudio && <p role="status">{t('mixing.waiting')}</p>}
             {snapshot.pending && <p role="status">{t('mixing.pending')}</p>}{snapshot.failed && <p role="alert">{t('mixing.engineFailed')}</p>}
             <details className="space-y-2 border-t border-border pt-3"><summary className="cursor-pointer">{t('mixing.recoveryTitle')}</summary><p>{t('mixing.recoveryHelp')}</p>
-                <label className="flex gap-2 text-ui-control"><input type="checkbox" disabled={!editable || snapshot.running || stale} checked={resetConfirmed} onChange={e => setResetConfirmed(e.target.checked)} />{t('mixing.recoveryConfirm')}</label>
-                <Button variant="destructive" className="h-auto whitespace-normal text-ui-control" disabled={!editable || snapshot.running || stale || !resetConfirmed} onClick={() => { queue.cancel(); void run('reset'); }}>{t('mixing.recoveryAction')}</Button>{resetSuccess && <p role="status">{t('mixing.recoverySuccess')}</p>}</details>
+                <label className="flex gap-2 text-ui-control"><Checkbox disabled={!editable || snapshot.running || stale} checked={resetConfirmed} onChange={e => setResetConfirmed(e.target.checked)} />{t('mixing.recoveryConfirm')}</label>
+                <Button variant="destructive" className="h-auto whitespace-normal" disabled={!editable || snapshot.running || stale || !resetConfirmed} onClick={() => { queue.cancel(); void run('reset'); }}>{t('mixing.recoveryAction')}</Button>{resetSuccess && <p role="status">{t('mixing.recoverySuccess')}</p>}</details>
         </div>}
         <MixingError error={error} />
     </details>;

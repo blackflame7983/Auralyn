@@ -1,3 +1,6 @@
+import { Field } from '@/components/ui/Field';
+import { Checkbox } from '@/components/ui/Checkbox';
+import { Input } from '@/components/ui/Input';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { Button } from '@/components/ui/button';
 import { InfoPopover } from '@/components/ui/InfoPopover';
@@ -65,21 +68,21 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
     const reverb = draft?.reverb ?? defaultReverb;
     const dirty = Boolean(snapshot && draft && JSON.stringify(snapshot.config) !== JSON.stringify(draft));
     const refreshVisible = compact || !snapshot || Boolean(error || snapshot.error || conflict) || activeRunning !== true;
-    const refreshButton = <Button type="button" variant="outline" disabled={busy} onClick={() => { void model.refresh(); refreshStream.current(); }} className="h-auto whitespace-normal px-3 py-2 text-ui-support">{t('settings.SingingControls.425')}</Button>;
+    const refreshButton = <Button type="button" variant="outline" disabled={busy} onClick={() => { void model.refresh(); refreshStream.current(); }} className="h-auto whitespace-normal">{t('settings.SingingControls.425')}</Button>;
     const historyButtons = <>
-        <Button type="button" variant="outline" disabled={previewActive || busy || !snapshot?.undoToken || snapshot.pending || dirty} onClick={() => void model.undo()} className="h-auto whitespace-normal px-3 py-2 text-ui-support">{t('settings.SingingControls.428')}</Button>
-        <Button type="button" variant="outline" disabled={previewActive || busy || !snapshot?.redoToken || snapshot.pending || dirty} onClick={() => void model.redo()} className="h-auto whitespace-normal px-3 py-2 text-ui-support">{t('history.redo')}</Button>
+        <Button type="button" variant="outline" disabled={previewActive || busy || !snapshot?.undoToken || snapshot.pending || dirty} onClick={() => void model.undo()} className="h-auto whitespace-normal">{t('settings.SingingControls.428')}</Button>
+        <Button type="button" variant="outline" disabled={previewActive || busy || !snapshot?.redoToken || snapshot.pending || dirty} onClick={() => void model.redo()} className="h-auto whitespace-normal">{t('history.redo')}</Button>
     </>;
     const canUndo = Boolean(snapshot?.undoToken || snapshot?.redoToken);
-    const saveButton = onSaveProfile && <div className="flex items-center gap-1"><Button type="button" variant="outline" disabled={previewActive || busy || !snapshot || snapshot.pending} onClick={onSaveProfile} className="h-auto whitespace-normal px-3 py-2 text-ui-support">{t('settings.SingingControls.430')}</Button><SavePurposeHelp /></div>;
+    const saveButton = onSaveProfile && <div className="flex items-center gap-1"><Button type="button" variant="outline" disabled={previewActive || busy || !snapshot || snapshot.pending} onClick={onSaveProfile} className="h-auto whitespace-normal">{t('settings.SingingControls.430')}</Button><SavePurposeHelp /></div>;
     const numeric = (key: 'mix' | 'decaySeconds' | 'damping', label: string, min: number, max: number, step: number) => <div key={key} className="min-w-0 text-ui-support">
         <div className="flex items-center gap-1"><label className="text-ui-control" htmlFor={`${fieldId}-${key}`}>{label}</label><InfoPopover label={t('singing.valueHelp', { name: label })}>{t(`singing.help.${key}`)}<p className="mt-2">{t('singing.help.listen')}</p></InfoPopover></div>
-        <input id={`${fieldId}-${key}`} aria-label={label} type="number" min={min} max={max} step={step} value={key === 'decaySeconds' ? reverb[key] : Math.round(reverb[key] * 100)} onChange={event => {
+        <Field id={`${fieldId}-${key}`} label={<span className="sr-only">{label}</span>}><Input id={`${fieldId}-${key}`} aria-label={label} type="number" min={min} max={max} step={step} value={key === 'decaySeconds' ? reverb[key] : Math.round(reverb[key] * 100)} onChange={event => {
             const number = Number(event.target.value);
             if (event.target.value !== '' && Number.isFinite(number) && number >= min && number <= max) model.editReverb({ [key]: key === 'decaySeconds' ? number : number / 100 });
-        }} className="mt-1 block w-full rounded border border-input bg-background p-2 text-sm" />
+        }}  /></Field>
     </div>;
-    return <section aria-label={t('settings.SingingControls.393')} className="space-y-4 text-sm">
+    return <section aria-label={t('settings.SingingControls.393')} className="space-y-4 text-ui-support">
         <div className="flex items-center gap-1">
             {showHeading && <h3 className={`${compact ? 'text-ui-control' : 'text-ui-heading'} font-semibold`}>{t('settings.SingingControls.394')}</h3>}
             <InfoPopover label={t('singing.guideHelp')}><p>{t('settings.SingingControls.395')}</p><p className="mt-2">{t('settings.SingingControls.433')}</p></InfoPopover>
@@ -92,15 +95,15 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
         {compact && snapshot && <p className="text-ui-support">{t('settings.singing.reverb', { applied: snapshot.config.reverb?.enabled ? 'ON' : 'OFF', draft: reverb.enabled ? 'ON' : 'OFF', mix: Math.round(reverb.mix * 100), decay: reverb.decaySeconds, damping: Math.round(reverb.damping * 100) })}</p>}
         {!compact && <div className="space-y-3">
             <h4 className="text-ui-control font-semibold">{t('singing.prepare')}</h4>
-            <Button type="button" variant="outline" disabled={busy || !snapshot} onClick={model.selectSinging} className="h-auto whitespace-normal px-3 py-2 text-ui-control">{t('settings.SingingControls.405')}</Button>
+            <Button type="button" variant="outline" disabled={busy || !snapshot} onClick={model.selectSinging} className="h-auto whitespace-normal">{t('settings.SingingControls.405')}</Button>
             <fieldset disabled={busy || !draft}>
                 <legend className="sr-only">{t('settings.SingingControls.413')}</legend>
                 <div className="flex flex-wrap items-center gap-2">
-                    <label className="flex items-center gap-2 text-ui-control"><input type="checkbox" checked={reverb.enabled} onChange={event => model.editReverb({ enabled: event.target.checked })} />{t('settings.SingingControls.414')}</label>
+                    <label className="flex items-center gap-2 text-ui-control"><Checkbox checked={reverb.enabled} onChange={event => model.editReverb({ enabled: event.target.checked })} />{t('settings.SingingControls.414')}</label>
                     <InfoPopover label={t('singing.reverbHelp')}>{t('settings.SingingControls.415')}</InfoPopover>
                 </div>
             </fieldset>
-            <details className="rounded-lg border border-border p-3">
+            <details className="rounded-card border border-border p-3">
                 <summary className="cursor-pointer font-medium">{t('singing.fineTune')}</summary>
                 <div className="mt-3 space-y-4">
                     {draft?.preset === 'singing' && params && <fieldset disabled={busy}>
@@ -109,10 +112,10 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
                             ['lowCutHz', t('settings.SingingControls.407'), 40, 160, 1],
                             ['dynamics', t('settings.SingingControls.408'), 0, 100, 1],
                             ['brightnessDb', t('settings.SingingControls.409'), -3, 3, 0.1],
-                        ] as const).map(([key, label, min, max, step]) => <div key={key} className="min-w-0 text-ui-support"><div className="flex items-center gap-1"><label className="text-ui-control" htmlFor={`${fieldId}-${key}`}>{label}</label><InfoPopover label={t('singing.valueHelp', { name: label })}>{t(`singing.help.${key}`)}<p className="mt-2">{t('singing.help.listen')}</p></InfoPopover></div><input id={`${fieldId}-${key}`} aria-label={label} type="number" min={min} max={max} step={step} value={key === 'dynamics' ? Math.round(params[key] * 100) : params[key]} onChange={event => {
+                        ] as const).map(([key, label, min, max, step]) => <div key={key} className="min-w-0 text-ui-support"><div className="flex items-center gap-1"><label className="text-ui-control" htmlFor={`${fieldId}-${key}`}>{label}</label><InfoPopover label={t('singing.valueHelp', { name: label })}>{t(`singing.help.${key}`)}<p className="mt-2">{t('singing.help.listen')}</p></InfoPopover></div><Field id={`${fieldId}-${key}`} label={<span className="sr-only">{label}</span>}><Input id={`${fieldId}-${key}`} aria-label={label} type="number" min={min} max={max} step={step} value={key === 'dynamics' ? Math.round(params[key] * 100) : params[key]} onChange={event => {
                             const number = Number(event.target.value);
                             if (event.target.value !== '' && Number.isFinite(number) && number >= min && number <= max) model.edit({ [key]: key === 'dynamics' ? number / 100 : number });
-                        }} className="mt-1 block w-full rounded border border-input bg-background p-2 text-sm" /></div>)}</div>
+                        }}  /></Field></div>)}</div>
                     </fieldset>}
                     <fieldset disabled={busy || !draft}>
                         <legend className="mb-2 text-ui-control font-semibold">{t('settings.SingingControls.413')}</legend>
@@ -135,17 +138,17 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
             {!compact && <h4 className="text-ui-control font-semibold">{t('singing.listenApply')}</h4>}
             {!compact && <p className="text-ui-support text-muted-foreground">{previewActive ? t('singing.stopPreview') : !snapshot ? t('singing.waitForSettings') : snapshot.pending ? t('singing.waitForApply') : dirty ? t('singing.previewThenApply') : t('singing.noChanges')}</p>}
             <div className="flex flex-wrap gap-2">
-                {onPreview && <Button type="button" variant="secondary" disabled={busy || !draft || conflict} onClick={onPreview} className="h-auto whitespace-normal px-3 py-2 text-ui-control">{t('settings.SingingControls.426')}</Button>}
-                <Button type="button" disabled={previewActive || busy || !dirty || snapshot?.pending || conflict} onClick={() => void model.apply()} className="h-auto whitespace-normal px-3 py-2 text-ui-control">{t('settings.SingingControls.427')}</Button>
+                {onPreview && <Button type="button" variant="secondary" disabled={busy || !draft || conflict} onClick={onPreview} className="h-auto whitespace-normal">{t('settings.SingingControls.426')}</Button>}
+                <Button type="button" disabled={previewActive || busy || !dirty || snapshot?.pending || conflict} onClick={() => void model.apply()} className="h-auto whitespace-normal">{t('settings.SingingControls.427')}</Button>
             </div>
             {(refreshVisible || canUndo) && <div className="flex flex-wrap gap-2">{refreshVisible && refreshButton}{canUndo && historyButtons}</div>}
         </div>
-        {compact ? <>{saveButton}{onSaveProfile && <p className="text-ui-support text-muted-foreground">{t('settings.SingingControls.431')}</p>}</> : <details className="rounded-lg border border-border p-3">
+        {compact ? <>{saveButton}{onSaveProfile && <p className="text-ui-support text-muted-foreground">{t('settings.SingingControls.431')}</p>}</> : <details className="rounded-card border border-border p-3">
             <summary className="cursor-pointer text-ui-support font-medium">{t('singing.otherActions')}</summary>
             <div className="mt-3 flex flex-wrap gap-2">
                 {!refreshVisible && refreshButton}
                 {!canUndo && historyButtons}
-                <Button type="button" variant="outline" disabled={busy || !dirty} onClick={model.resetDraft} className="h-auto whitespace-normal px-3 py-2 text-ui-support">{t('settings.SingingControls.429')}</Button>
+                <Button type="button" variant="outline" disabled={busy || !dirty} onClick={model.resetDraft} className="h-auto whitespace-normal">{t('settings.SingingControls.429')}</Button>
                 {saveButton}
             </div>
             {onSaveProfile && <p className="mt-2 text-ui-support text-muted-foreground">{t('settings.SingingControls.431')}</p>}

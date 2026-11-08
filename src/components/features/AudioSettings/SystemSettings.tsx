@@ -1,3 +1,5 @@
+import { Field } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/button';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { APP_INFO } from '../../../constants/appInfo';
@@ -130,14 +132,14 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
   const { autostartEnabled, setAutostartEnabled, autostartCanChange, setAutostartCanChange, autostartReason, setAutostartReason, engineTuningConfig, setEngineTuningConfig, systemSaving, statsLoading, refreshEngineRuntimeStats, saveEngineTuningConfig, handleDangerousToggle, openSections, setOpenSections } = model;
   return (
           <TabsContent value="system" className="space-y-4">
-            {onOpenWizard && <section className="rounded-xl border border-border p-4 space-y-3">
+            {onOpenWizard && <section className="rounded-card border border-border p-4 space-y-3">
               <h3 className="text-ui-heading font-semibold">{t('settings.system.setup')}</h3>
               <p className="text-ui-support text-muted-foreground">{t('settings.system.setupDescription')}</p>
-              <button type="button" disabled={loading} onClick={() => { onClose(); onOpenWizard(); }} className="rounded-md border border-border px-3 py-2 text-ui-control">{t('settings.AudioSettingsModal.198')}</button>
+              <Button type="button" disabled={loading} onClick={() => { onClose(); onOpenWizard(); }} variant="outline" className="h-auto min-h-10 whitespace-normal">{t('settings.AudioSettingsModal.198')}</Button>
             </section>}
 
             {/* Startup Settings */}
-            <section className="p-4 bg-muted/20 border border-border rounded-xl flex items-center justify-between">
+            <section className="p-4 bg-muted/20 border border-border rounded-card flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-1"><h3 className="text-foreground text-ui-heading font-semibold">{t('settings.AudioSettingsModal.142')}</h3><InfoPopover label={t('settings.AudioSettingsModal.142')}>{t('settings.AudioSettingsModal.143')}</InfoPopover></div>
                 <div className="text-ui-support text-muted-foreground mt-0.5">{autostartReason ? renderNotice(t, autostartReason) : t('settings.system.autostartAudio')}</div>
@@ -172,27 +174,27 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             </section>
 
             <UpdatePreferences />
-            <section className="rounded-xl border border-border p-4 space-y-2">
+            <section className="rounded-card border border-border p-4 space-y-2">
               <div className="flex items-center gap-1"><h3 className="text-ui-heading font-semibold">{t('structure.restart')}</h3><InfoPopover label={t('settings.system.restartHelp')}>{t('settings.system.restartDescription')}</InfoPopover></div>
               <p className="text-ui-support text-muted-foreground">{t('settings.system.restartWarning')}</p>
                 <Button variant="outline"
                   onClick={handleRestart}
                   disabled={loading || !canRestart}
-                  className="text-ui-control"
+
                 >
                   {t('settings.AudioSettingsModal.196')}</Button>
             </section>
             <details open={openSections.optimization} onToggle={event => {
               const open = event.currentTarget.open;
               setOpenSections(prev => ({ ...prev, optimization: open }));
-            }} className="rounded-xl border border-border p-4 space-y-3">
+            }} className="rounded-card border border-border p-4 space-y-3">
               <summary className="cursor-pointer"><h3 className="inline text-ui-heading font-semibold">{t('structure.optimization')}</h3></summary>
             {/* Engine Tuning */}
             <div className="space-y-2">
-              <div className="p-4 bg-muted/20 border border-border rounded-xl space-y-4">
+              <div className="p-4 bg-muted/20 border border-border rounded-card space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-medium text-foreground">{t('settings.AudioSettingsModal.150')}</div>
+                    <div className="text-ui-support font-medium text-foreground">{t('settings.AudioSettingsModal.150')}</div>
                     <div className="text-ui-support text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.151')}</div>
                   </div>
                   <Switch
@@ -206,8 +208,8 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-medium text-muted-foreground text-ui-control">{t('settings.AudioSettingsModal.153')}</label>
-                  <input
+                  <Field label={t('settings.AudioSettingsModal.153')}>
+                  <Input
                     aria-label={t('settings.AudioSettingsModal.154')}
                     type="text"
                     value={engineTuningConfig.affinityMask ?? ''}
@@ -215,14 +217,14 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                       setEngineTuningConfig((prev) => ({ ...prev, affinityMask: e.target.value || null }))
                     }
                     placeholder={t('settings.AudioSettingsModal.155')}
-                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary"
+
                     disabled={systemSaving}
-                  />
+                  /></Field>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-medium text-foreground">{t('settings.AudioSettingsModal.156')}</div>
+                    <div className="text-ui-support font-medium text-foreground">{t('settings.AudioSettingsModal.156')}</div>
                     <div className="text-ui-support text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.157')}</div>
                   </div>
                   <Switch
@@ -242,7 +244,7 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-medium text-foreground">{t('settings.AudioSettingsModal.161')}</div>
+                    <div className="text-ui-support font-medium text-foreground">{t('settings.AudioSettingsModal.161')}</div>
                     <div className="text-ui-support text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.162')}</div>
                   </div>
                   <Switch
@@ -260,17 +262,17 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                   />
                 </div>
 
-                <div className="text-ui-support text-muted-foreground bg-muted/50 p-2 rounded border border-border">
+                <div className="text-ui-support text-muted-foreground bg-muted/50 p-2 rounded-control border border-border">
                   {t('settings.AudioSettingsModal.166')}</div>
 
                 <div className="flex gap-2">
-                  <button
+                  <Button
                     onClick={saveEngineTuningConfig}
                     disabled={systemSaving}
-                    className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition text-ui-support"
+                    variant="default" size="sm" className="h-auto min-h-9 whitespace-normal"
                   >
                     {systemSaving ? t('settings.AudioSettingsModal.167') : t('settings.AudioSettingsModal.168')}
-                  </button>
+                  </Button>
 
                 </div>
 
@@ -282,17 +284,17 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             <details open={openSections.diagnostics} onToggle={event => {
               const open = event.currentTarget.open;
               setOpenSections(prev => ({ ...prev, diagnostics: open }));
-            }} className="rounded-xl border border-border p-4 space-y-3">
+            }} className="rounded-card border border-border p-4 space-y-3">
               <summary className="cursor-pointer"><h3 className="inline text-ui-heading font-semibold">{t('structure.diagnostics')}</h3></summary>
-              <button
+              <Button
                     onClick={refreshEngineRuntimeStats}
                     disabled={statsLoading}
-                    className="px-3 py-1.5 border border-input rounded-md text-muted-foreground hover:text-foreground hover:border-primary/40 disabled:opacity-50 transition flex items-center gap-1 text-ui-support"
+                    variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal gap-1"
                   >
                     <MdRefresh className="w-3 h-3" />
                     {statsLoading ? t('settings.AudioSettingsModal.169') : t('settings.AudioSettingsModal.170')}
-                  </button>
-<table className="w-full text-sm">
+                  </Button>
+<table className="w-full text-ui-support">
                 <caption className="sr-only">{t('structure.statistics')}</caption>
                 <tbody>
                 <tr className="border-b border-border">
@@ -333,17 +335,17 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             <LatencyDetails stats={engineStats} isRunning={!knownStopped} />
             </details>
             {/* Plugin Management */}
-            <section className="rounded-xl border border-border p-4 space-y-4">
+            <section className="rounded-card border border-border p-4 space-y-4">
               <h3 className="text-foreground flex items-center gap-2 text-ui-heading font-semibold">
                 <MdExtension className="w-4 h-4 text-primary" />
                 {t('settings.AudioSettingsModal.179')}</h3>
               <div>
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-medium text-foreground">{t('settings.AudioSettingsModal.180')}</div>
+                    <div className="text-ui-support font-medium text-foreground">{t('settings.AudioSettingsModal.180')}</div>
                     <div className="text-ui-support text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.181')}</div>
                   </div>
-                  <button
+                  <Button
                     onClick={() => {
                       showConfirm({
                         title: notice('settings.AudioSettingsModal.182'),
@@ -364,9 +366,9 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                         },
                       });
                     }}
-                    className="px-3 py-1.5 text-destructive-text bg-destructive/10 hover:bg-destructive/20 border border-destructive-text/20 rounded-md transition-colors whitespace-nowrap text-ui-support"
+                    variant="destructive" size="sm" className="h-auto min-h-9 whitespace-normal"
                   >
-                    {t('settings.AudioSettingsModal.187')}</button>
+                    {t('settings.AudioSettingsModal.187')}</Button>
                 </div>
               </div>
             </section>
@@ -374,23 +376,23 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             <details open={openSections.migration} onToggle={event => {
               const open = event.currentTarget.open;
               setOpenSections(prev => ({ ...prev, migration: open }));
-            }} className="rounded-xl border border-border p-4 space-y-3">
+            }} className="rounded-card border border-border p-4 space-y-3">
               <summary className="cursor-pointer"><h3 className="inline text-ui-heading font-semibold">{t('structure.migration')}</h3></summary>
               <MigrationPanel />
             </details>
 
             {/* Factory Reset */}
-            <section className="rounded-xl border border-border p-4 space-y-4">
+            <section className="rounded-card border border-border p-4 space-y-4">
               <h3 className="text-foreground flex items-center gap-2 text-ui-heading font-semibold">
                 <MdRefresh className="w-4 h-4 text-destructive-text" />
                 {t('settings.AudioSettingsModal.188')}</h3>
               <div>
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-medium text-foreground">{t('settings.AudioSettingsModal.189')}</div>
+                    <div className="text-ui-support font-medium text-foreground">{t('settings.AudioSettingsModal.189')}</div>
                     <div className="text-ui-support text-muted-foreground mt-0.5">{t('settings.AudioSettingsModal.190')}</div>
                   </div>
-                  <button
+                  <Button
                     onClick={() => {
                       showConfirm({
                         title: notice('settings.AudioSettingsModal.191'),
@@ -418,14 +420,14 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                         },
                       });
                     }}
-                    className="px-3 py-1.5 text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-md transition-colors whitespace-nowrap text-ui-support"
+                    variant="destructive" size="sm" className="h-auto min-h-9 whitespace-normal"
                   >
-                    {t('settings.AudioSettingsModal.195')}</button>
+                    {t('settings.AudioSettingsModal.195')}</Button>
                 </div>
               </div>
             </section>
             {/* アプリ情報 */}
-            <div className="p-6 bg-muted/20 border border-border rounded-xl flex flex-col items-center justify-center space-y-3">
+            <div className="p-6 bg-muted/20 border border-border rounded-card flex flex-col items-center justify-center space-y-3">
               <img src="/auralyn_icon.png" alt="Auralyn Icon" className="w-16 h-16 rounded-full shadow-sm object-contain" />
               <div className="text-center">
                 <h3 className="text-foreground text-ui-heading font-semibold">{APP_INFO.NAME}</h3>
@@ -433,16 +435,16 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
               </div>
 
               <div className="flex gap-4 pt-2">
-                <button onClick={() => openUrl('https://www.kuro7983.com/apps/auralyn')} className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 text-ui-support">
+                <Button onClick={() => openUrl('https://www.kuro7983.com/apps/auralyn')} variant="ghost" size="sm" className="h-auto min-h-9 whitespace-normal gap-1">
                   <MdLanguage className="w-3.5 h-3.5" />
-                  {t('settings.AudioSettingsModal.139')}</button>
+                  {t('settings.AudioSettingsModal.139')}</Button>
                 {onOpenLicense && (
-                  <button onClick={onOpenLicense} className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 text-ui-support">
-                    {t('settings.AudioSettingsModal.140')}</button>
+                  <Button onClick={onOpenLicense} variant="ghost" size="sm" className="h-auto min-h-9 whitespace-normal gap-1">
+                    {t('settings.AudioSettingsModal.140')}</Button>
                 )}
-                <button onClick={() => openUrl('https://ofuse.me/o?uid=149216')} className="text-muted-foreground hover:text-brand-secondary transition-colors flex items-center gap-1 text-ui-support">
+                <Button onClick={() => openUrl('https://ofuse.me/o?uid=149216')} variant="ghost" size="sm" className="h-auto min-h-9 whitespace-normal gap-1">
                   <MdFavorite className="w-3 h-3" />
-                  {t('settings.AudioSettingsModal.141')}</button>
+                  {t('settings.AudioSettingsModal.141')}</Button>
               </div>
             </div>
           </TabsContent>

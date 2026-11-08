@@ -25,7 +25,7 @@ it('明示確認前には構成を変更せず、送出先をstable IDで保存�
     fireEvent.click(screen.getByRole('checkbox', { name: /通常出力をヘッドホンへ/ }));
     fireEvent.click(save);
     expect(liveOutputApi.request).toHaveBeenLastCalledWith(expect.objectContaining({ deviceId: 'cable-id', monitorTrim: 1, broadcastTrim: 1 }));
-    await waitFor(() => expect(screen.getByRole('status')).toHaveFocus());
+    await waitFor(() => expect(screen.getByText(message('ja', 'liveOutput.inactive'))).toHaveFocus());
 });
 it('状態の定期取得で未保存の下書きを置き換えない', async () => {
     vi.useFakeTimers();
@@ -71,8 +71,8 @@ it('モニターの明るさは歌向けDSPが受理する範囲だけを選べ�
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'cable-id' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /自分用と配信用の処理を分ける/ }));
     for (const slider of screen.getAllByRole('slider', { name: /明るさ/ })) {
-        expect(slider).toHaveAttribute('min', '-3');
-        expect(slider).toHaveAttribute('max', '3');
+        expect(slider).toHaveAttribute('aria-valuemin', '-3');
+        expect(slider).toHaveAttribute('aria-valuemax', '3');
     }
 });
 

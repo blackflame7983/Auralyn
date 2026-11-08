@@ -13,7 +13,7 @@ import { InfoPopover } from '@/components/ui/InfoPopover';
 export function DisplayPurposeSelector() {
     const t = useMessages();
     const [purpose, setPurpose] = useDisplayPurpose();
-    return <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+    return <div className="mb-3 flex flex-wrap items-center gap-2 text-ui-support">
         <Field label={t('purpose.label')} description={t('purpose.hint')}>
             <Select value={purpose} onChange={event => setPurpose(event.target.value as DisplayPurpose)}>
                 <option value="voice">{t('purpose.voice')}</option><option value="music">{t('purpose.music')}</option>
@@ -28,7 +28,7 @@ export function DisplayPurposeSelector() {
 export function NumericDetailsSwitch() {
     const t = useMessages();
     const [isBeginnerMode, setIsBeginnerMode] = useBeginnerMode();
-    return <div className="mb-3 space-y-1 text-sm">
+    return <div className="mb-3 space-y-1 text-ui-support">
         <div className="flex items-center gap-3">
             <Label className="text-ui-control" htmlFor="numeric-details">{t('details.label')}</Label>
             <Switch id="numeric-details" checked={!isBeginnerMode} onCheckedChange={checked => setIsBeginnerMode(!checked)} aria-describedby="numeric-details-hint" />
@@ -42,7 +42,7 @@ export function NumericDetailsSwitch() {
 export function AuroraDisplaySwitch() {
     const t = useMessages();
     const [shown, setShown] = useAuroraDisplay();
-    return <div className="mb-3 space-y-1 text-sm">
+    return <div className="mb-3 space-y-1 text-ui-support">
         <div className="flex items-center gap-3">
             <Label className="text-ui-control" htmlFor="aurora-display">{t('aurora.label')}</Label>
             <Switch id="aurora-display" checked={shown} onCheckedChange={setShown} aria-describedby="aurora-display-hint" />

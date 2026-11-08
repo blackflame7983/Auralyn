@@ -1,3 +1,4 @@
+import { Checkbox } from '@/components/ui/Checkbox';
 import { useEffect, useRef, useState } from 'react';
 import { audioApi, type VstPlugin } from '@/api/audio';
 import { mixingApi } from '@/api/mixing';
@@ -52,14 +53,14 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
     return <details ref={panel} className={mixingCard} onToggle={e => setOpen(e.currentTarget.open)}>
         <summary className="cursor-pointer text-ui-heading font-semibold">{t('postMix.title')}</summary>
         <ScopeDisclosure settings summary="mixingUi.postScope" detail="postMix.scope" />
-        <Button className="text-ui-control" variant="outline" size="sm" disabled={disabled || busy} onClick={() => void resource.run('mixingUi.read')}>{t('postMix.load')}</Button>
-        {snapshot && <div className="space-y-3 text-sm">
+        <Button  variant="outline" size="sm" disabled={disabled || busy} onClick={() => void resource.run('mixingUi.read')}>{t('postMix.load')}</Button>
+        {snapshot && <div className="space-y-3 text-ui-support">
             {stale && <p role="alert">{t('postMix.stale')}</p>}
             <p>{t('mixingUi.transportMs', { value: framesToMs(snapshot.transportLatencyFrames, snapshot.sampleRate) ?? t('postMix.unknown') })}</p>
             <p>{t('mixingUi.declaredMs', { value: framesToMs(snapshot.declaredPluginLatencyFrames, snapshot.sampleRate) ?? t('postMix.unknown') })}</p>
             <p>{t('postMix.saved')}: {snapshot.savedPlugins.map(p => p.name).join(', ') || t('postMix.none')}</p>
             {!snapshot.restored && <p>{t('postMix.restoreNeeded')}</p>}{isMainRunning && <p>{t('postMix.stop')}</p>}
-            <div className="flex flex-wrap gap-2"><Button className="text-ui-control" variant="outline" size="sm" disabled={!stopped} onClick={() => void run({ action: 'restore_saved' })}>{t('postMix.restore')}</Button><Button className="text-ui-control" variant="outline" size="sm" disabled={!stopped} onClick={() => void run({ action: 'reload' })}>{t('postMix.reload')}</Button></div>
+            <div className="flex flex-wrap gap-2"><Button  variant="outline" size="sm" disabled={!stopped} onClick={() => void run({ action: 'restore_saved' })}>{t('postMix.restore')}</Button><Button  variant="outline" size="sm" disabled={!stopped} onClick={() => void run({ action: 'reload' })}>{t('postMix.reload')}</Button></div>
             <label className="flex items-center gap-2 text-ui-control"><Switch aria-label={t('postMix.enabled')} aria-describedby={enableReason ? 'post-enable-reason' : undefined} disabled={!stopped || (!snapshot.enabled && !!enableReason)} checked={snapshot.enabled} onCheckedChange={enabled => void run({ action: 'enable', enabled })} />{t('postMix.enabled')}</label>
             {enableReason && <p id="post-enable-reason">{t(enableReason)}</p>}
             <PluginList rackKind="broadcast" structureDisabled={!stopped} disabled={!editable} audioReady
@@ -70,9 +71,9 @@ export function PostMixPanel({ mainRunning, hasMixing, disabled = false }: { mai
                 onGainChange={(id, value) => { setGains(old => ({ ...old, [id]: value })); pendingGains.current = { ...pendingGains.current, [id]: value }; gainQueue.enqueue(pendingGains.current); }}
                 onRemove={id => void run({ action: 'remove', id })} onEdit={id => void run({ action: 'editor', id })}
                 onReorder={plugins => void run({ action: 'reorder', ids: plugins.map(p => p.id) })} />
-            {gainDifferences.length > 0 && <div role="status" className="space-y-2"><p id="post-save-gain-reason">{t('mixingUi.gainUnapplied')}</p>{!busy && <Button className="text-ui-control" variant="outline" disabled={!editable} onClick={() => gainQueue.enqueue(Object.fromEntries(gainDifferences))}>{t('mixingUi.retryGain')}</Button>}</div>}
-            <Button className="text-ui-control" variant="outline" disabled={!editable || !snapshot.restored || gainDifferences.length > 0} aria-describedby={gainDifferences.length ? "post-save-gain-reason" : undefined} onClick={() => void run({ action: 'save' })}>{t('postMix.save')}</Button>
-            <details className="space-y-2 border-t border-border pt-3"><summary className="cursor-pointer">{t('postMix.recovery')}</summary><p>{t('postMix.recoveryHelp')}</p><label className="flex gap-2 text-ui-control"><input type="checkbox" disabled={!stopped} checked={resetConfirmed} onChange={e => setResetConfirmed(e.target.checked)} />{t('postMix.recoveryConfirm')}</label><Button variant="destructive" className="h-auto whitespace-normal text-ui-control" disabled={!stopped || !resetConfirmed} onClick={() => { gainQueue.cancel(); void run({ action: 'reset' }); }}>{t('postMix.reset')}</Button>{resetDone && <p role="status">{t('postMix.resetDone')}</p>}</details>
+            {gainDifferences.length > 0 && <div role="status" className="space-y-2"><p id="post-save-gain-reason">{t('mixingUi.gainUnapplied')}</p>{!busy && <Button  variant="outline" disabled={!editable} onClick={() => gainQueue.enqueue(Object.fromEntries(gainDifferences))}>{t('mixingUi.retryGain')}</Button>}</div>}
+            <Button  variant="outline" disabled={!editable || !snapshot.restored || gainDifferences.length > 0} aria-describedby={gainDifferences.length ? "post-save-gain-reason" : undefined} onClick={() => void run({ action: 'save' })}>{t('postMix.save')}</Button>
+            <details className="space-y-2 border-t border-border pt-3"><summary className="cursor-pointer">{t('postMix.recovery')}</summary><p>{t('postMix.recoveryHelp')}</p><label className="flex gap-2 text-ui-control"><Checkbox disabled={!stopped} checked={resetConfirmed} onChange={e => setResetConfirmed(e.target.checked)} />{t('postMix.recoveryConfirm')}</label><Button variant="destructive" className="h-auto whitespace-normal" disabled={!stopped || !resetConfirmed} onClick={() => { gainQueue.cancel(); void run({ action: 'reset' }); }}>{t('postMix.reset')}</Button>{resetDone && <p role="status">{t('postMix.resetDone')}</p>}</details>
         </div>}
         <MixingError error={error} />
         <PluginBrowserModal isOpen={browser} onClose={() => setBrowser(false)} plugins={available} isLoading={scanning} onScan={() => void scan()} addedPaths={snapshot?.plugins.map(p => p.path)} onPluginSelect={p => { setBrowser(false); void run({ action: 'add', path: p.path }); }} />

@@ -169,10 +169,10 @@ it('稼働中の変更なし保存を抑止し、変更を戻すと再び抑止�
     const summary = screen.getByText('接続方式・音切れの設定', { exact: false, selector: 'summary' });
     fireEvent.click(summary);
     await waitFor(() => expect(summary.closest('details')).toHaveAttribute('open'));
-    fireEvent.click(await screen.findByRole('button', { name: /途切れにくく.*音切れ対策/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: '途切れにくく' }));
     expect(save).toBeEnabled();
     expect(screen.getByText('変更予定：音の途切れにくさ')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /標準.*配信・会話向け/ }));
+    fireEvent.click(screen.getByRole('radio', { name: '標準' }));
     expect(save).toBeDisabled();
 });
 
@@ -257,7 +257,7 @@ it('通常は現在値付きで閉じ、再検出の操作領域を確保する'
     const summary = await screen.findByText('接続方式・音切れの設定', { exact: false, selector: 'summary' });
     expect(summary.closest('details')).not.toHaveAttribute('open');
     expect(summary).toHaveTextContent('標準 · 48 kHz');
-    expect(screen.getByRole('button', { name: '機器を再検出' })).toHaveClass('min-h-6');
+    expect(screen.getByRole('button', { name: '機器を再検出' })).toHaveClass('min-h-9');
 });
 
 
@@ -267,7 +267,7 @@ it('入力元・マイク・出力先は同じカードと見出しの階層で�
     for (const name of ['入力元と用途', 'マイク', '出力先']) {
         const group = screen.getByRole('group', { name });
         expect(group.tagName).toBe('FIELDSET');
-        expect(group).toHaveClass('rounded-xl', 'border', 'border-border', 'p-3');
+        expect(group).toHaveClass('rounded-card', 'border', 'border-border', 'p-3');
         expect(group.querySelector('legend')).toHaveClass('text-ui-heading', 'font-semibold');
     }
 });
