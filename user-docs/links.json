@@ -33,5 +33,9 @@
   "glossary.clip": "glossary#term-clip",
   "glossary.buffer": "glossary#term-buffer",
   "glossary.drivers": "glossary#term-drivers",
+  "glossary.singing": "glossary#term-singing",
+  "glossary.talking": "glossary#term-talking",
+  "glossary.asio": "glossary#term-asio",
+  "glossary.wasapi": "glossary#term-wasapi",
   "glossary.dbfs": "glossary#term-dbfs"
 }

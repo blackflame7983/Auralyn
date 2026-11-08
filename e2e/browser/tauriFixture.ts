@@ -43,6 +43,8 @@ export const test = base.extend<{ transport: void; nativeMeterProfile: boolean; 
                 window.dispatchEvent(new Event('preparation-external-change'));
             } });
             Object.assign(window, { __e2eModeWrites: modeWrites });
+            const openedUrls: string[] = [];
+            Object.assign(window, { __e2eOpenedUrls: openedUrls });
             const invoke = async (command: string, args: Record<string, any> = {}) => {
                 // 計測Host自身の窓の観測・配置は実WebView2へ渡す。音声操作はモックのままにする。
                 if (nativeMeterProfile && ['outer_position', 'inner_size', 'outer_size', 'scale_factor', 'is_maximized', 'is_minimized', 'available_monitors', 'set_position', 'set_size', 'set_min_size', 'maximize', 'unmaximize'].some(name => command === `plugin:window|${name}`)) {
@@ -95,6 +97,7 @@ export const test = base.extend<{ transport: void; nativeMeterProfile: boolean; 
                     case 'broadcast_bundle': return args.request.action === 'recovery_status' ? { type: 'recovery', value: null } : { type: 'names', value: [] };
                     case 'get_autostart_status': return { enabled: false, canChange: false, reason: null };
                     case 'get_engine_tuning_config': return { enableAffinityPinning: false, affinityMask: null, enableRealtimePriority: false, enableTimeCriticalAudioThreads: false };
+                    case 'plugin:opener|open_url': openedUrls.push(args.url); return;
                     case 'get_shortcuts': return { bindings: [], errors: [] };
                     // 音のトラブル診断を閉じるときの後始末。鳴らしていない試験音の停止は何もしない。
                     case 'stop_test_tone': return;

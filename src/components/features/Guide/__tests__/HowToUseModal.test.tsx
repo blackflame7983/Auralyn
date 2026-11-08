@@ -1,5 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { glossary, glossaryDocName, getUserDocUrl } from '@/lib/userDocs';
 import { invoke } from '@tauri-apps/api/core';
 import { Header } from '@/components/layout/Header';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
@@ -32,7 +34,7 @@ it.each(['ja', 'en'] as const)('メニュー先頭から開き、節を保存し
     const terms = within(dialog).getByRole('button', { name: message(locale, 'help.section.terms') });
     fireEvent.click(terms);
     expect(terms).toHaveAttribute('aria-current', 'page');
-    expect(within(dialog).getAllByRole('heading', { level: 3 })).toHaveLength(13);
+    expect(within(dialog).getAllByRole('heading', { level: 3 })).toHaveLength(glossary[locale].length);
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     await waitFor(() => expect(trigger).toHaveFocus());
     fireEvent.keyDown(window, { key: 'F1' });
@@ -106,4 +108,28 @@ it('知らない操作の割り当てが混ざっても、分かる操作の割�
     fireEvent.click(within(dialog).getByRole('button', { name: message('ja', 'help.section.keys') }));
     expect(await within(dialog).findByText(message('ja', shortcutActions.gainUp))).toBeInTheDocument();
     expect(within(dialog).queryByText(message('ja', 'help.keys.fallback'))).not.toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('各節と症状・用語から正しいドキュメントを開く（%s）', locale => {
+    open(locale); fireEvent.keyDown(window, { key: 'F1' });
+    const sections = { home: 'help.home', setup: 'help.setup', trouble: 'help.troubleshooting', terms: 'help.glossary', keys: 'help.shortcuts' } as const;
+    for (const [section, name] of Object.entries(sections)) {
+        fireEvent.click(screen.getByRole('button', { name: message(locale, `help.section.${section}` as 'help.section.home') }));
+        fireEvent.click(screen.getByRole('button', { name: new RegExp(message(locale, 'help.readMore')) }));
+        expect(openUrl).toHaveBeenLastCalledWith(getUserDocUrl(name, locale));
+        if (section === 'terms') for (const term of glossary[locale]) {
+            const heading = screen.getByRole('heading', { name: term.title });
+            const item = within(heading.parentElement!);
+            expect(item.getByText(term.summary)).toBeInTheDocument();
+            fireEvent.click(item.getByRole('button'));
+            expect(openUrl).toHaveBeenLastCalledWith(getUserDocUrl(glossaryDocName(term.anchor), locale));
+        }
+        if (section === 'trouble') {
+            const symptoms = ['troubleshooting.no-sound', 'troubleshooting.not-received', 'troubleshooting.dropouts'] as const;
+            screen.getAllByRole('button', { name: new RegExp(`^${message(locale, 'help.learnMore')}`) }).forEach((button, index) => {
+                fireEvent.click(button);
+                expect(openUrl).toHaveBeenLastCalledWith(getUserDocUrl(symptoms[index], locale));
+            });
+        }
+    }
 });
