@@ -15,6 +15,8 @@ import { UnsetFlow } from '../features/Home/UnsetFlow';
 import { usePreparation } from '@/hooks/usePreparation';
 import { useVstPanel } from '@/hooks/useVstPanel';
 import { usePanelMotion } from '@/hooks/usePanelMotion';
+import { AnimatePresence } from 'motion/react';
+import { VstPanelAside } from './VstPanelAside';
 import { useLayoutMotion, useSettledReady } from '@/hooks/useLayoutMotion';
 import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Header } from './Header';
@@ -185,7 +187,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const settledReady = useSettledReady(preparation.observation.availability);
     const roomyMeters = audioReady && settledReady && !preparationExpanded && !soundExpanded && !isLargeMeterOpen && !loudnessEnabled && !panelOverlays && !hasStreamMix;
     const panelRef = useRef<HTMLElement>(null);
-    const panelMotion = usePanelMotion(Boolean(vstPanel) && vstPanelOpen);
+    const panelMotion = usePanelMotion(Boolean(vstPanel) && vstPanelOpen, panelRef);
     useEffect(() => {
         if (!panelOverlays) return;
         const close = (event: KeyboardEvent) => {
@@ -375,14 +377,15 @@ export const AppShell: React.FC<AppShellProps> = ({
                 {panelOverlays && <div aria-hidden="true" className="vst-panel-scrim absolute inset-0 z-[44] bg-overlay/35" onClick={() => setVstPanelOpen(false)} />}
                 {/* パネルと同じ時間で予約幅を戻す。退場後のアンマウントではホームの幅を変えない。 */}
                 {vstPanel && <div aria-hidden="true" className="vst-panel-space" data-state={vstPanelOpen ? 'open' : 'closed'} />}
-                {panelMotion.present && <aside ref={panelRef} id="vst-panel" aria-labelledby="plugin-rack-heading"
+                <AnimatePresence onExitComplete={panelMotion.onExitComplete}>
+                {Boolean(vstPanel) && vstPanelOpen && <VstPanelAside key="vst-panel" ref={panelRef} id="vst-panel" aria-labelledby="plugin-rack-heading"
                     data-pointer-focus={rackPointerFocus || undefined} onKeyDownCapture={() => setRackPointerFocus(false)}
-                    data-state={vstPanelOpen ? 'open' : 'closed'} aria-hidden={!vstPanelOpen} inert={!vstPanelOpen}
-                    onTransitionEnd={panelMotion.onTransitionEnd}
+                    {...panelMotion.motionProps}
                     className="vst-panel-motion absolute inset-y-0 right-0 z-[45] w-[min(420px,100%)] overflow-y-auto border-l border-border bg-background p-4 shadow-2xl scrollbar-thin">
                     {meterSuspendedNotice}
                     {vstPanel}
-                </aside>}
+                </VstPanelAside>}
+                </AnimatePresence>
                 </div>
 
                 {/* Master Section Footer */}

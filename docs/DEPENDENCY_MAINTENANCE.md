@@ -424,3 +424,13 @@ UI監査で、Tailwind v4 が `tailwind.config.js` を読んでおらず、`tail
 npm 10.9.4 で `npm install` / `npm uninstall` を行うと `libc` 欄が再び落ちる。lockfile を更新するときは、差分に `libc` の削除が混ざっていないか確認する。
 
 アプリ番号は1.1.0を維持。配布物を再生成して再配布する際は `VERSIONING.md` に従って別途判定する。
+
+## 2026-11-08 Motion の小規模試行
+
+右パネル本体の出入りだけを `motion` 14.10.1（MIT、依存は framer-motion・motion-dom・motion-utils）へ置き換えた。目的は、退場の保持・途中反転・終了通知の待ち合わせを手作りの処理から実績のある実装へ移せるかを見ること。
+
+- lockfile は npm 10.9.4 の `libc` 欄落ちを避け、Motion 関連4件の追加だけにした。npm ライセンス一覧は72→76件。
+- production build の main チャンクは 400.39 kB（gzip 111.70 kB）→ 492.79 kB（gzip 145.03 kB）。全機能版の `motion` 部品では 541.51 kB（gzip 159.38 kB）だったため、`LazyMotion`+`domAnimation` と `m` を使う。
+- 開発サーバーのブラウザで、transform と opacity が CSS transition ではなく WAAPI の Animation で動くことを確認した。開くときは予約幅の CSS transition よりパネルが数十ms遅れて始まる（React の確定後に開始するため）。
+- フロント1,632件、右パネルを含むブラウザ e2e 46件、型検査、release readiness が成功。実 Tauri（WebView2）でのフレーム間隔、非表示ウィンドウでの退場の片付け、署名付き配布は未確認。
+- 他の動きへ広げるかは、この結果と実 Tauri の確認を見て別途決める。

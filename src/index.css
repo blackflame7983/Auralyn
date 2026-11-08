@@ -587,21 +587,9 @@
 @media (min-width: 1200px) {
   .vst-panel-space[data-state="open"] { width: 420px; }
 }
-.vst-panel-motion {
-  opacity: 1;
-  transform: translateX(0);
-  transition: transform var(--motion-panel) var(--ease-drawer), opacity var(--motion-panel) var(--ease-drawer);
-}
+/* 本体の出入りは Motion（usePanelMotion）が同じトークンで動かす。閉じ始めたら押させない。 */
 .vst-panel-motion[data-state="closed"] {
-  opacity: 0;
-  transform: translateX(100%);
   pointer-events: none;
-}
-@starting-style {
-  .vst-panel-motion {
-    opacity: 0;
-    transform: translateX(100%);
-  }
 }
 .large-meter-motion {
   max-height: 720px;
@@ -663,7 +651,6 @@
 }
 [data-panel-instant] .workspace-body,
 [data-panel-instant] .vst-panel-space,
-[data-panel-instant] .vst-panel-motion,
 [data-panel-instant] .large-meter-motion {
   transition: none;
 }
@@ -676,11 +663,6 @@
   .workspace-body { transition: none; }
   .vst-panel-space {
     transition: none;
-  }
-  .vst-panel-motion,
-  .vst-panel-motion[data-state="closed"] {
-    transform: none;
-    transition-property: opacity;
   }
   .large-meter-motion {
     transition: none;
