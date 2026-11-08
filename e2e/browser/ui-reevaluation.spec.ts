@@ -17,7 +17,8 @@ for (const locale of ['ja', 'en'] as const) {
         const setup = page.getByRole('button', { name: t('unsetFlow.chooseDestination'), exact: true });
         await setup.click();
         // 中断の確認は、最初の手順より先へ進んだときだけ出る。送り先を1つ選んで次の手順へ進める。
-        await page.getByRole('dialog').getByText(t('prep.obs'), { exact: true }).click();
+        // 送り先のカードは ChoiceCard（標準の radio がカード全体を受け持つ）なので、radio として押す。
+        await page.getByRole('dialog').getByRole('radio', { name: new RegExp(t('prep.obs')) }).click();
         await page.getByRole('button', { name: t('wizard.close'), exact: true }).click();
         await expect(page.getByText(t('wizard.interruptHint'), { exact: true })).toBeVisible();
         await page.getByRole('button', { name: t('wizard.leave'), exact: true }).click();
