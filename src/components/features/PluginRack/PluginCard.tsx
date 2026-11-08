@@ -1,5 +1,5 @@
 import { useMessages } from '@/i18n/LocaleProvider';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
@@ -8,7 +8,9 @@ import { Switch } from '@/components/ui/switch';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { useBeginnerMode } from '@/hooks/useBeginnerMode';
-import { MdClose, MdDragIndicator } from 'react-icons/md';
+import { MdClose, MdDragIndicator, MdWarning } from 'react-icons/md';
+import { toast } from 'sonner';
+import { audioApi } from '@/api/audio';
 import { currentStageBreakdown, useRuntimeStats } from '@/components/layout/RuntimeStatsContext';
 import {
     Tooltip,
@@ -55,6 +57,24 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
     const declared = matched.length === 1 && matched[0].state !== 'unavailable' && Number.isInteger(matched[0].declaredSamples)
         && matched[0].declaredSamples! >= 0 && matched[0].declaredSamples! <= 4294967295 ? matched[0].declaredSamples : null;
     const latency = simple || rackKind === 'broadcast' ? '' : declared === null ? t('rack.latencyUnknown') : t('rack.latencyReported', { samples: declared });
+    const isolated = rackKind === 'voice'
+        ? stats?.pluginHealth?.find(entry => entry.id === plugin.id && entry.state === 'isolated')
+        : undefined;
+    const announced = useRef(false);
+    useEffect(() => {
+        if (!isolated) {
+            announced.current = false;
+            return;
+        }
+        if (announced.current) return;
+        announced.current = true;
+        toast.warning(t('rack.card.isolatedToast', { arg0: plugin.name }));
+    }, [isolated, plugin.name, t]);
+    const resume = () => {
+        void audioApi.resumePlugin(plugin.id).catch(() => {
+            toast.error(t('rack.card.resumeFailed'));
+        });
+    };
 
     // Calculate dB value for display
     const dbValue = plugin.gain === 0 ? '-inf' : (20 * Math.log10(plugin.gain)).toFixed(1);
@@ -142,6 +162,8 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                 </TooltipContent>
                             </Tooltip>
                         </div>
+
+                        {isolated && <IsolatedNotice name={plugin.name} onResume={resume} />}
 
                         {/* Gain Slider */}
                         <div className="flex items-center gap-3">
@@ -275,6 +297,8 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                         </Tooltip>
                     </div>
 
+                    {isolated && <IsolatedNotice name={plugin.name} onResume={resume} />}
+
                     {/* Gain Fader */}
                     <div className="flex items-center gap-3 text-ui-support text-muted-foreground">
                         <span className="tracking-wider">{t('rack.card.gain')}</span>
@@ -319,3 +343,26 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
         </TooltipProvider>
     );
 };
+
+function IsolatedNotice({ name, onResume }: { name: string; onResume: () => void }) {
+    const t = useMessages();
+    return (
+        <div role="status" className="flex items-start gap-2 border border-destructive-text/40 bg-destructive/10 px-2 py-1.5 text-ui-support text-destructive-text">
+            <MdWarning className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+                <p className="font-semibold">{t('rack.card.isolated')}</p>
+                <p>{t('rack.card.isolatedDetail')}</p>
+            </div>
+            <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0 text-ui-support"
+                aria-label={t('rack.card.resumeAccessible', { arg0: name })}
+                onClick={onResume}
+            >
+                {t('rack.card.resume')}
+            </Button>
+        </div>
+    );
+}
