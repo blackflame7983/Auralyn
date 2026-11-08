@@ -9,6 +9,37 @@ const BLOCK: usize = 256;
 pub const TARGET: usize = 2048;
 pub const CAPACITY: usize = 16_384;
 const LIMIT: f64 = 0.002;
+/// 最後の packet からこれ以上空いた underrun は、queue を捨てて再 priming する。
+const STALE_PACKET_MS: u64 = 30;
+/// packet が新しいまま underrun がこれ以上続けば失敗にし、無音で埋め続けない。
+const FRESH_UNDERRUN_FAIL_MS: u64 = 100;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum UnderrunAction {
+    /// まだ待っている。queue は捨てず、失敗にもしない。
+    Wait,
+    /// 古い packet を捨て、resampler を初期化してから新しい音を待つ。
+    DiscardAndReprime,
+    /// 新しい packet があるのに埋まらない。失敗として止める。
+    Fail,
+}
+
+/// starved の経過と、最後の packet からの経過だけで次の動作を決める。
+/// 両方を満たすときは破棄を優先する。時刻の値そのものは見ない。
+/// starved の経過は破棄しない場合だけ読む（RT の時計読取り回数を切り出し前と同じに保つ）。
+#[must_use]
+pub(crate) fn underrun_action(
+    packet_age_ms: u64,
+    starved_for_ms: impl FnOnce() -> u64,
+) -> UnderrunAction {
+    if packet_age_ms >= STALE_PACKET_MS {
+        UnderrunAction::DiscardAndReprime
+    } else if starved_for_ms() >= FRESH_UNDERRUN_FAIL_MS {
+        UnderrunAction::Fail
+    } else {
+        UnderrunAction::Wait
+    }
+}
 
 pub trait FrameQueue {
     fn frames(&self) -> usize;
@@ -283,10 +314,38 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dsp_verification_allocator::allocation_counts;
     use ringbuf::{
         traits::{Observer, Producer, Split},
         HeapRb,
     };
+
+    fn correction_span() -> usize {
+        (LIMIT / 0.004 * TARGET as f64).round() as usize
+    }
+
+    fn assert_depth_after_render(queued: usize, setpoint: usize, ppm: f64) {
+        let span = correction_span();
+        // render 直後なので、飽和幅から 1 block だけ下へずれた値も範囲に含める。
+        assert!(
+            queued + span + BLOCK >= setpoint && queued <= setpoint + span,
+            "ppm={ppm}, queued={queued}, setpoint={setpoint}, span={span}"
+        );
+    }
+
+    fn push_fractional(
+        tx: &mut impl Producer<Item = [f32; 2]>,
+        fraction: &mut f64,
+        frames: f64,
+        sample: [f32; 2],
+    ) {
+        *fraction += frames;
+        let incoming = *fraction as usize;
+        *fraction -= incoming as f64;
+        for _ in 0..incoming {
+            tx.try_push(sample).unwrap();
+        }
+    }
 
     #[test]
     fn signed_clock_offsets_stay_bounded_and_limits_are_explicit() {
@@ -457,6 +516,212 @@ mod tests {
             renderer.render(&mut output, &mut Stereo(&mut rx));
             assert_eq!(output, [0.0; 512]);
         }
+    }
+
+    #[test]
+    fn underrun_action_discards_from_30ms_and_fails_a_fresh_gap_at_100ms() {
+        assert_eq!(underrun_action(0, || 0), UnderrunAction::Wait);
+        assert_eq!(underrun_action(29, || 99), UnderrunAction::Wait);
+        assert_eq!(underrun_action(30, || 0), UnderrunAction::DiscardAndReprime);
+        assert_eq!(underrun_action(29, || 100), UnderrunAction::Fail);
+        // 破棄する場合は starved の経過を読まない（時計読取りを増やさない）。
+        assert_eq!(
+            underrun_action(30, || unreachable!("破棄時は経過時間を読まない")),
+            UnderrunAction::DiscardAndReprime
+        );
+        assert_eq!(correction_span(), 1024);
+    }
+
+    #[test]
+    fn stale_resume_discards_the_queued_impulse_and_depth_stays_inside_the_correction_band() {
+        let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
+        let mut renderer = Renderer::new(48_000).unwrap();
+        let mut output = [0.0; BLOCK * 2];
+        let setpoint = callback_target(48_000, 48_000, BLOCK);
+        let mut fraction = 0.0;
+        for _ in 0..setpoint {
+            tx.try_push([0.55, -0.55]).unwrap();
+        }
+        let mut saw_old = false;
+        for _ in 0..4 {
+            push_fractional(&mut tx, &mut fraction, BLOCK as f64, [0.55, -0.55]);
+            renderer.render(&mut output, &mut Stereo(&mut rx));
+            assert!(!renderer.failed);
+            if output.iter().any(|sample| *sample > 0.4) {
+                saw_old = true;
+                break;
+            }
+        }
+        assert!(saw_old, "再開前に古い振幅へ入っていること");
+        let queued_before = rx.occupied_len();
+        tx.try_push([0.85, -0.85]).unwrap();
+        for _ in 0..64 {
+            tx.try_push([0.55, -0.55]).unwrap();
+        }
+        let stale = queued_before + 65;
+        assert_eq!(rx.occupied_len(), stale);
+        let counts = allocation_counts(|| {
+            assert_eq!(Stereo(&mut rx).discard(), stale);
+            renderer.wait_for_audio();
+            assert_eq!(rx.occupied_len(), 0);
+            for _ in 0..setpoint {
+                tx.try_push([-0.2, -0.2]).unwrap();
+            }
+            renderer.render(&mut output, &mut Stereo(&mut rx));
+        });
+        assert_eq!(counts, (0, 0));
+        assert!(!renderer.failed && !renderer.failed_underrun);
+        assert!(
+            output
+                .iter()
+                .all(|sample| sample.is_finite() && sample.abs() < 0.35),
+            "古い 0.55 が再 priming 後に残った"
+        );
+        // 制御が無いと +1500ppm は 4000 callback で約 1536 frame 溜まり、±1024 を超える。
+        for ppm in [1_500.0, -1_500.0] {
+            fraction = 0.0;
+            for _ in 0..4000 {
+                push_fractional(
+                    &mut tx,
+                    &mut fraction,
+                    BLOCK as f64 * (1.0 + ppm / 1_000_000.0),
+                    [-0.2, -0.2],
+                );
+                renderer.render(&mut output, &mut Stereo(&mut rx));
+                assert!(!renderer.failed, "ppm={ppm}");
+                assert!(renderer.correction_ppm.abs() <= LIMIT * 1_000_000.0 + 1e-3);
+                assert_depth_after_render(rx.occupied_len(), setpoint, ppm);
+                assert!(output
+                    .iter()
+                    .all(|sample| sample.is_finite() && sample.abs() < 0.35));
+            }
+            assert_eq!(renderer.underruns, 0);
+            assert!(output.iter().any(|sample| *sample < -0.1));
+        }
+    }
+
+    #[test]
+    fn consumer_pause_below_overfull_returns_depth_inside_the_correction_band() {
+        let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
+        let mut renderer = Renderer::new(48_000).unwrap();
+        let mut output = [0.0; BLOCK * 2];
+        let setpoint = callback_target(48_000, 48_000, BLOCK);
+        for _ in 0..setpoint {
+            tx.try_push([0.1, -0.1]).unwrap();
+        }
+        renderer.render(&mut output, &mut Stereo(&mut rx));
+        assert!(!renderer.failed);
+        let extra = 1_500;
+        for _ in 0..extra {
+            tx.try_push([0.1, -0.1]).unwrap();
+        }
+        let paused = rx.occupied_len();
+        assert!(paused > setpoint + correction_span());
+        assert!(paused < CAPACITY - BLOCK);
+        let net_drain = BLOCK as f64 * (1.0 / (1.0 - LIMIT) - 1.0);
+        let shed = (paused - setpoint) as f64;
+        let limit_callbacks = (shed / net_drain).ceil() as usize + BLOCK;
+        let mut fraction = 0.0;
+        let mut entered = None;
+        let counts = allocation_counts(|| {
+            for step in 0..limit_callbacks {
+                push_fractional(&mut tx, &mut fraction, BLOCK as f64, [0.1, -0.1]);
+                renderer.render(&mut output, &mut Stereo(&mut rx));
+                assert!(!renderer.failed);
+                assert!(rx.occupied_len() < CAPACITY - BLOCK);
+                if rx.occupied_len() + correction_span() + BLOCK >= setpoint
+                    && rx.occupied_len() <= setpoint + correction_span()
+                {
+                    entered = Some(step);
+                    break;
+                }
+            }
+        });
+        assert_eq!(counts, (0, 0));
+        let entered = entered.expect("停止中の滞留が補正の範囲へ戻らない");
+        for _ in 0..200 {
+            push_fractional(&mut tx, &mut fraction, BLOCK as f64, [0.1, -0.1]);
+            renderer.render(&mut output, &mut Stereo(&mut rx));
+            assert!(!renderer.failed);
+            assert_depth_after_render(rx.occupied_len(), setpoint, 0.0);
+        }
+        assert!(entered < limit_callbacks);
+        assert_eq!(renderer.underruns, 0);
+        assert!(output.iter().all(|sample| sample.is_finite()));
+    }
+
+    #[test]
+    fn packet_burst_overfull_fails_and_stays_silent() {
+        let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
+        let mut renderer = Renderer::new(48_000).unwrap();
+        let mut output = [0.0; BLOCK * 2];
+        let setpoint = callback_target(48_000, 48_000, BLOCK);
+        for _ in 0..setpoint {
+            tx.try_push([0.1, -0.1]).unwrap();
+        }
+        renderer.render(&mut output, &mut Stereo(&mut rx));
+        assert!(!renderer.failed);
+        while rx.occupied_len() < CAPACITY - BLOCK {
+            tx.try_push([0.9, -0.9]).unwrap();
+        }
+        let counts = allocation_counts(|| {
+            renderer.render(&mut output, &mut Stereo(&mut rx));
+        });
+        assert_eq!(counts, (0, 0));
+        assert!(renderer.failed && !renderer.failed_underrun);
+        assert_eq!(renderer.underruns, 0);
+        assert_eq!(output, [0.0; BLOCK * 2]);
+        while rx.occupied_len() > setpoint {
+            rx.try_pop().unwrap();
+        }
+        let counts = allocation_counts(|| {
+            renderer.render(&mut output, &mut Stereo(&mut rx));
+        });
+        assert_eq!(counts, (0, 0));
+        assert!(renderer.failed && !renderer.failed_underrun);
+        assert_eq!(output, [0.0; BLOCK * 2]);
+    }
+
+    #[test]
+    fn new_renderer_after_rate_change_does_not_keep_the_previous_signal() {
+        let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
+        let mut old = Renderer::new(48_000).unwrap();
+        let mut output = [0.0; BLOCK * 2];
+        for _ in 0..callback_target(48_000, 48_000, BLOCK) {
+            tx.try_push([0.4, -0.4]).unwrap();
+        }
+        old.render(&mut output, &mut Stereo(&mut rx));
+        assert!(old.rendered > 0);
+        while rx.try_pop().is_some() {}
+        old.render(&mut output, &mut Stereo(&mut rx));
+        assert!(old.failed && old.failed_underrun);
+
+        let (mut fresh_tx, mut fresh_rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
+        let mut fresh = Renderer::with_rates(44_100, 48_000).unwrap();
+        assert!(!fresh.failed && !fresh.failed_underrun);
+        assert_eq!(fresh.rendered, 0);
+        assert_eq!(fresh.underruns, 0);
+        let counts = allocation_counts(|| {
+            fresh.render(&mut output, &mut Stereo(&mut fresh_rx));
+        });
+        assert_eq!(counts, (0, 0));
+        assert_eq!(output, [0.0; BLOCK * 2]);
+        assert!(!fresh.failed);
+        assert!(old.failed);
+        let primed = callback_target(44_100, 48_000, BLOCK);
+        for _ in 0..primed {
+            fresh_tx.try_push([-0.15, -0.15]).unwrap();
+        }
+        let counts = allocation_counts(|| {
+            fresh.render(&mut output, &mut Stereo(&mut fresh_rx));
+        });
+        assert_eq!(counts, (0, 0));
+        assert!(!fresh.failed, "queued={}", fresh_rx.occupied_len());
+        assert!(fresh.rendered > 0);
+        assert!(output
+            .iter()
+            .all(|sample| sample.is_finite() && *sample < 0.2));
+        assert!(output.iter().any(|sample| *sample < -0.05));
     }
 }
 

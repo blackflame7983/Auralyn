@@ -1211,7 +1211,9 @@ impl Engine {
                         }
                         (frames, 0)
                     } else if let Some(renderer) = &mut process_renderer {
-                        use crate::audio_engine::process_capture::clock::Interleaved;
+                        use crate::audio_engine::process_capture::clock::{
+                            underrun_action, Interleaved, UnderrunAction,
+                        };
                         let renderer = renderer.get_mut();
                         let before = renderer.rendered;
                         renderer
@@ -1224,14 +1226,21 @@ impl Engine {
                                 shared.failed.store(true, Ordering::Release);
                             } else {
                                 let began = process_starved_at.get_or_insert(shared.elapsed_ms());
-                                if shared.packet_age_ms() >= 30 {
-                                    let discarded = audio_cons.occupied_len() / 2;
-                                    audio_cons.skip(discarded * 2);
-                                    shared.paused(discarded);
-                                    renderer.wait_for_audio();
-                                    process_starved_at = None;
-                                } else if shared.elapsed_ms().saturating_sub(*began) >= 100 {
-                                    shared.failed.store(true, Ordering::Release);
+                                match underrun_action(
+                                    shared.packet_age_ms(),
+                                    || shared.elapsed_ms().saturating_sub(*began),
+                                ) {
+                                    UnderrunAction::DiscardAndReprime => {
+                                        let discarded = audio_cons.occupied_len() / 2;
+                                        audio_cons.skip(discarded * 2);
+                                        shared.paused(discarded);
+                                        renderer.wait_for_audio();
+                                        process_starved_at = None;
+                                    }
+                                    UnderrunAction::Fail => {
+                                        shared.failed.store(true, Ordering::Release);
+                                    }
+                                    UnderrunAction::Wait => {}
                                 }
                             }
                         }

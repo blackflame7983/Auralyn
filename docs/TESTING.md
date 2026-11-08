@@ -487,6 +487,8 @@ Win32で強制表示する末尾の復帰は実際のトレイクリックの受
 
 通常のcallback、配信queue満杯、mute世代、モード切替、配信workerの停止注入でRTのalloc/free 0を確認する。clock差の試験は数値列の合成であり、実clockの長時間安定や聴感の合格とは区別する。通常設定やOBS collectionを変更して試験を代用しない。
 
+再生再開、consumerの停止、機器の再open、packetの集中、時刻の欠落と逆行、epoch変更、ppm、rate変更、RT割当の境界は [SYNC_BOUNDARY_VERIFICATION.md](SYNC_BOUNDARY_VERIFICATION.md) に整理する。
+
 
 ## 未解決Issueの回帰確認（#150・#152〜#156）
 
