@@ -87,6 +87,9 @@ export const test = base.extend<{ transport: void; nativeMeterProfile: boolean; 
                     case 'peak_protection':
                         if (args.config != null) { unexpected.push(command); throw new Error('この試験ではピーク保護を変更しません'); }
                         return { config: { enabled: false, ceilingDb: -1, releaseMs: 100 }, running: audioRunning, pending: false, revision: '1', reductionDb: 0, addedLatencySamples: 0 };
+                    case 'broadcast_true_peak':
+                        if (args.config != null) { unexpected.push(command); throw new Error('この試験では配信用 true-peak 制限を変更しません'); }
+                        return { config: { enabled: false, ceilingDb: -1, releaseMs: 100 }, running: audioRunning, pending: false, applied: false, revision: '1', reductionDb: 0, addedLatencySamples: 0 };
                     case 'live_modes':
                         if (args.request.action === 'save') {
                             if (args.request.expectedVersion !== definitions.version) throw new Error('登録内容のバージョン不一致');

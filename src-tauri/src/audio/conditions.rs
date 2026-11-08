@@ -215,6 +215,7 @@ pub(super) fn command_changes(command: &Command) -> bool {
         | Command::StopVoiceCheckRecording
         | Command::ExportVoiceCheck { .. } => false,
         Command::PeakProtection { config } => config.is_some(),
+        Command::BroadcastTruePeak { config } => config.is_some(),
         Command::NoiseMeasurement { request } => !matches!(request, crate::audio_engine::core::noise_learning::Request::Snapshot),
         Command::VoiceCheckPreview { request } => matches!(request.action, crate::audio_engine::voice_check::preview::Action::ApplyNoise { .. } | crate::audio_engine::voice_check::preview::Action::UndoNoise { .. } | crate::audio_engine::voice_check::preview::Action::RedoNoise { .. }),
         Command::LiveOutput { config } => config.is_some(),
@@ -277,6 +278,12 @@ mod tests {
             request: Noise::Snapshot
         }));
         assert!(!command_changes(&Command::PeakProtection { config: None }));
+        assert!(!command_changes(&Command::BroadcastTruePeak {
+            config: None
+        }));
+        assert!(command_changes(&Command::BroadcastTruePeak {
+            config: Some(Default::default())
+        }));
         assert!(command_changes(&Command::NoiseMeasurement {
             request: Noise::Invalidate
         }));

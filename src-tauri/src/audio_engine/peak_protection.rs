@@ -138,6 +138,9 @@ pub(crate) struct Rt {
     mix: f32,
     ceiling: f32,
     minimum: f32,
+    /// サンプルへ掛けたゲイン。試験で、ゲイン以外の折れを見る。
+    #[cfg(test)]
+    output_gain: f32,
 }
 impl Rt {
     pub(crate) fn new(config: Config, rate: u32) -> Self {
@@ -149,7 +152,13 @@ impl Rt {
             mix: if p.enabled { 1.0 } else { 0.0 },
             ceiling: p.ceiling,
             minimum: 1.0,
+            #[cfg(test)]
+            output_gain: 1.0,
         }
+    }
+    #[cfg(test)]
+    pub(crate) fn applied_gain(&self) -> f32 {
+        self.output_gain
     }
     pub(crate) fn sync(&mut self, shared: &Shared) {
         if let Some((revision, p)) = shared.read() {
@@ -164,6 +173,10 @@ impl Rt {
         self.ceiling += (p.ceiling - self.ceiling).clamp(-p.ramp, p.ramp);
         if !p.enabled && self.mix == 0.0 {
             self.gain = 1.0;
+            #[cfg(test)]
+            {
+                self.output_gain = 1.0;
+            }
             return samples;
         }
         let samples = samples.map(|s| if s.is_finite() { s } else { 0.0 });
@@ -176,6 +189,10 @@ impl Rt {
             gain = gain.min((p.ceiling / peak.max(f32::MIN_POSITIVE)).min(1.0));
         }
         self.minimum = self.minimum.min(gain);
+        #[cfg(test)]
+        {
+            self.output_gain = gain;
+        }
         samples.map(|s| s * gain)
     }
     pub(crate) fn report(&mut self, shared: &Shared, path: u8) {

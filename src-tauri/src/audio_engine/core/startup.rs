@@ -657,6 +657,10 @@ impl Engine {
 
         self.peak_shared
             .publish(self.peak_config.prepare(self.current_sample_rate as u32));
+        self.true_peak_shared.publish(
+            self.true_peak_config
+                .prepare(self.current_sample_rate as u32),
+        );
         let peak_shared = self.peak_shared.clone();
         let mut rt_peak = crate::audio_engine::peak_protection::Rt::new(
             self.peak_config,
@@ -806,7 +810,10 @@ impl Engine {
                     self.gain_main_device.as_deref(),
                     &self.live_output_config,
                     self.stream_failed.clone(),
-                    (self.peak_config, self.peak_shared.clone()),
+                    crate::audio_engine::live_output::SinkProtection {
+                        peak: (self.peak_config, self.peak_shared.clone()),
+                        true_peak: (self.true_peak_config, self.true_peak_shared.clone()),
+                    },
                     self.mode_silence.shared.clone(),
                 ) {
                     Ok((sink, sender)) => {

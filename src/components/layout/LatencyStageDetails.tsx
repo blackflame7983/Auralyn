@@ -26,6 +26,9 @@ export function LatencyStageDetails({ stats, current }: { stats?: EngineRuntimeS
             <p>{t('latencyStages.nrFrame', { value: frameKnown ? `${n!.frameSamples} frame / ${n!.configuredRateHz} Hz / ${n!.framePeriodMs!.toFixed(2)} ms` : t('latencyStages.unknown'), state: n?.enabled ? 'ON' : 'OFF' })}</p>
             <p>{t('latencyStages.nrUnknown')}</p>
             <p>{t('latencyStages.builtin', { voice: s.builtinVoiceEnabled ? 'ON' : 'OFF', reverb: s.builtinReverbEnabled ? 'ON' : 'OFF' })}</p>
+            {uint(s.broadcastTruePeakSamples) && typeof s.broadcastTruePeakMs === 'number' && Number.isFinite(s.broadcastTruePeakMs) && s.broadcastTruePeakMs >= 0 && s.broadcastTruePeakMs < 1000
+                && <p>{t('latencyStages.broadcastTruePeak', { samples: String(s.broadcastTruePeakSamples), ms: s.broadcastTruePeakMs.toFixed(3) })}</p>}
+            {s.monitorTruePeakSamples === 0 && <p>{t('latencyStages.monitorTruePeak')}</p>}
         </>}
         <p className="text-muted-foreground">{t('latencyStages.limits')}</p>
     </section>;

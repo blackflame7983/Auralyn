@@ -43,3 +43,4 @@ pub mod noise_candidate;
 
 pub mod peak_protection;
 pub(crate) mod plugin_health;
+pub mod true_peak_limiter;

@@ -462,6 +462,7 @@ export interface LatencyStageBreakdown {
     vst: { id: string; name: string; state: 'active' | 'bypassed' | 'muted' | 'unavailable'; bypassed: boolean; muted: boolean; declaredSamples: number | null }[];
     nr: { enabled: boolean; configuredRateHz: number | null; frameSamples: number | null; framePeriodMs: number | null; modelRateHz: number; modelFrameSamples: number; signalDelay: 'unknown' };
     builtinVoiceEnabled: boolean; builtinReverbEnabled: boolean; builtinSignalDelay: 'unknown';
+    broadcastTruePeakSamples?: number; broadcastTruePeakMs?: number; monitorTruePeakSamples?: number;
 }
 
 export interface FrameTimingSnapshot {

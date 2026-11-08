@@ -273,6 +273,14 @@ pub struct LatencyStages {
     pub builtin_voice_enabled: bool,
     pub builtin_reverb_enabled: bool,
     pub builtin_signal_delay: String,
+    /// 分離した配信用デバイスへ渡す直前の先読み。無効・単一出力・デバイス未設定は 0。
+    #[serde(default)]
+    pub broadcast_true_peak_samples: u32,
+    #[serde(default)]
+    pub broadcast_true_peak_ms: f64,
+    /// 自分用の経路には true-peak 制限を入れない。
+    #[serde(default)]
+    pub monitor_true_peak_samples: u32,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -587,6 +595,9 @@ pub enum Command {
     PeakProtection {
         config: Option<crate::audio_engine::peak_protection::Config>,
     },
+    BroadcastTruePeak {
+        config: Option<crate::audio_engine::true_peak_limiter::Config>,
+    },
     NoiseMeasurement {
         request: crate::audio_engine::core::noise_learning::Request,
     },
@@ -704,6 +715,7 @@ pub enum Response {
     ModeMonitor(Box<crate::audio_engine::split_monitor::StateSnapshot>),
     ModeSilence(crate::audio_engine::mode_silence::Snapshot),
     PeakProtection(crate::audio_engine::peak_protection::Snapshot),
+    BroadcastTruePeak(crate::audio_engine::true_peak_limiter::Snapshot),
     NoiseMeasurement(Box<crate::audio_engine::core::noise_learning::Snapshot>),
     LiveOutput(Box<crate::audio_engine::live_output::Status>),
     PluginRack {

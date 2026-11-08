@@ -353,6 +353,36 @@ impl Engine {
                     status.running && self.live_output.is_some() && self.peak_shared.sink_pending();
                 self.send_response(Response::PeakProtection(status));
             }
+            Command::BroadcastTruePeak { config } => {
+                if let Some(config) = config {
+                    if self.live_modes.armed {
+                        self.send_error(
+                            "本番保護を解除してから配信用 true-peak 制限を変更してください".into(),
+                        );
+                        return;
+                    }
+                    match config.validate() {
+                        Ok(config) => {
+                            self.true_peak_config = config;
+                            self.true_peak_shared
+                                .publish(config.prepare(self.current_sample_rate as u32));
+                            self.preparation_routing_revision =
+                                self.preparation_routing_revision.saturating_add(1);
+                        }
+                        Err(error) => {
+                            self.send_error(error);
+                            return;
+                        }
+                    }
+                }
+                let status = self.true_peak_shared.status(
+                    self.true_peak_config,
+                    self.processing_running(),
+                    self.true_peak_route(),
+                    self.current_sample_rate.round().clamp(1.0, 384_000.0) as u32,
+                );
+                self.send_response(Response::BroadcastTruePeak(status));
+            }
             Command::LiveOutput { config } => {
                 if let Some(config) = config {
                     if let Err(error) = config.validate() {

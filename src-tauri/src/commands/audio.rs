@@ -128,6 +128,22 @@ pub(crate) async fn peak_protection(
 }
 
 #[tauri::command]
+pub(crate) async fn broadcast_true_peak(
+    state: State<'_, audio::AudioState>,
+    config: Option<audio_engine::true_peak_limiter::Config>,
+) -> Result<audio_engine::true_peak_limiter::Snapshot, String> {
+    let state = state.0.clone();
+    super::run_blocking(move || {
+        state
+            .lock()
+            .map_err(|_| "音声状態を取得できません")?
+            .broadcast_true_peak(config)
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
 pub(crate) async fn live_output(
     state: State<'_, audio::AudioState>,
     config: Option<audio_engine::live_output::Config>,
