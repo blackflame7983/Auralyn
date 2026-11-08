@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 import { TutorialProvider, useTutorial } from './contexts/TutorialContext';
 import { TutorialOverlay } from './components/features/Tutorial/TutorialOverlay';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { crashedPluginMarker } from './lib/audioEngineExit';
 
 function AppContent() {
     const t = useMessages();
@@ -60,10 +61,10 @@ function AppContent() {
   useAppEvents({
     onAddPlugin: pluginsApi.addPlugin,
     onResetPlugins: pluginsApi.resetPlugins,
-    onCrash: (err) => {
-      const pending = localStorage.getItem('vst_host_pending_plugin');
-      if (pending) {
-        localStorage.setItem('vst_host_detected_crash_plugin', pending);
+    onCrash: (err, exit) => {
+      const crashed = crashedPluginMarker(exit, localStorage.getItem('vst_host_pending_plugin'));
+      if (crashed) {
+        localStorage.setItem('vst_host_detected_crash_plugin', crashed);
       }
       ui.setCrashError(err);
       ui.setIsRecoveryModalOpen(true);

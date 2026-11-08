@@ -1,5 +1,6 @@
 import type { useMessages } from '../i18n/LocaleProvider';
 import type { MessageKey } from '../i18n/messages';
+import { pendingStorageValue } from './pluginIdentity';
 
 const operationKeys = {
     load: 'audioNotices.vstOp.load',
@@ -29,4 +30,14 @@ export function renderAudioEngineExit(t: ReturnType<typeof useMessages>, exit: A
     const name = exit.name?.trim() || exit.path?.split(/[\\/]/).filter(Boolean).pop() || t('audioNotices.vstFallback');
     const key = exit.op && Object.prototype.hasOwnProperty.call(operationKeys, exit.op) ? operationKeys[exit.op] : 'audioNotices.vstOp.other';
     return t('audioNotices.engineExitedVst', { name, operation: t(key) });
+}
+
+/**
+ * 復旧画面で除外候補にするVSTの印を決める。
+ * Hostが操作中のVSTを特定できたときはそれを優先する。読み込み・復元以外（エディターを開く・状態の取得など）でも除外できるようにするため。
+ * 特定できないときは、従来どおり読み込み中の印を使う。
+ */
+export function crashedPluginMarker(exit: AudioEngineExit | undefined, pending: string | null): string | null {
+    if (exit?.cause === 'vst_operation' && exit.path) return pendingStorageValue({ path: exit.path, classId: exit.classId });
+    return pending;
 }
