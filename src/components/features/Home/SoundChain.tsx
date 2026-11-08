@@ -113,9 +113,9 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                     <div id={id} tabIndex={id ? -1 : undefined} data-on={on} className="flex flex-wrap items-center gap-3 border-t border-border py-3" title={title}>
                         <div className="inline-flex items-center gap-1">
                             <h3 className="text-ui-control font-semibold">{name}</h3>
-                            {key === 'noise' && <InfoPopover label={t('info.noise')}>{t('home.noiseScope')}</InfoPopover>}
-                            {key === 'builtin' && <InfoPopover label={t('settings.builtinHelp')}><p>{t('settings.AudioSettingsModal.096')}</p>{builtinDetails && <p>{builtinDetails}</p>}</InfoPopover>}
-                            {key === 'vst' && quiet && <InfoPopover label={t('chain.vstEmptyName')}>{t('chain.vstEmptyHint')}</InfoPopover>}
+                            {key === 'noise' && <InfoPopover docName="home.noise-reduction" label={t('info.noise')}>{t('home.noiseScope')}</InfoPopover>}
+                            {key === 'builtin' && <InfoPopover docName="home.voice-shaping" label={t('settings.builtinHelp')}><p>{t('settings.AudioSettingsModal.096')}</p>{builtinDetails && <p>{builtinDetails}</p>}</InfoPopover>}
+                            {key === 'vst' && quiet && <InfoPopover docName="home.vst" label={t('chain.vstEmptyName')}>{t('chain.vstEmptyHint')}</InfoPopover>}
                         </div>
                         {sub && <div className="sr-only">{sub}</div>}
                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">{body}</div>

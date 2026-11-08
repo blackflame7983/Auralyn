@@ -2,6 +2,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { buildUserDocUrl, getUserDocUrl, glossary, glossaryDocName, type UserDocName } from '../lib/userDocs';
 import { message, type MessageKey } from '../i18n/messages';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -97,13 +98,15 @@ describe('利用者向け原稿', () => {
         }
     }
     it('使い方の全用語に短い定義と補足がある', () => {
-        const termKeys = keys.filter(key => /^help\.term\..+\.title$/.test(key));
-        expect(termKeys.length).toBeGreaterThan(0);
         for (const locale of locales) {
             const body = docs[locale].glossary.body;
             const terms = [...body.matchAll(/^### (.+) \{#term-[a-z-]+\}\n\n([^\n]+)\n\n([^#][\s\S]*?)(?=\n###? |$)/gm)];
             expect(terms.length).toBe(docs[locale].glossary.anchors.filter(anchor => anchor.startsWith('term-')).length);
-            for (const key of termKeys) expect(terms.map(term => term[1])).toContain(message(locale, key));
+            expect(glossary[locale]).toHaveLength(terms.length);
+            for (const term of glossary[locale]) {
+                expect(terms.map(value => [value[1], value[2]])).toContainEqual([term.title, term.summary]);
+                expect(links[glossaryDocName(term.anchor)]).toBe(`glossary#${term.anchor}`);
+            }
             for (const term of terms) {
                 expect(term[2].match(locale === 'ja' ? /。/g : /\.(?: |$)/g)).toHaveLength(1);
                 expect(term[3].trim().length).toBeGreaterThan(0);
@@ -111,4 +114,33 @@ describe('利用者向け原稿', () => {
             for (const term of ['ASIO', 'WASAPI', 'VST', 'dBFS']) expect(terms.map(value => value[1])).toContain(term);
         }
     });
+});
+
+// 型検査に加え、データ・JSX属性・関数引数で参照した名前を原稿一覧と照合する。
+function sourceFiles(directory: string): string[] {
+    return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+        const path = resolve(directory, entry.name);
+        return entry.isDirectory() ? sourceFiles(path) : /\.tsx?$/.test(path) && !/\.test\./.test(path) ? [path] : [];
+    });
+}
+it('アプリのコードで使うドキュメント名がすべて一覧にある', () => {
+    const used = sourceFiles(resolve(root, 'src')).flatMap(path =>
+        [...readFileSync(path, 'utf8').matchAll(/["']((?:help|home|troubleshooting|glossary)\.[a-z]+(?:[.-][a-z]+)*)["']/g)]
+            .map(match => match[1]).filter(name => !keys.includes(name as MessageKey)));
+    expect(used.length).toBeGreaterThan(0);
+    for (const name of used) expect(Object.prototype.hasOwnProperty.call(links, name), name).toBe(true);
+});
+
+it('すべての名前が日英のURLになり、クエリを付けない', () => {
+    for (const locale of locales) for (const [name, target] of Object.entries(links)) {
+        const prefix = `https://www.kuro7983.com/${locale === 'en' ? 'en/' : ''}apps/auralyn/docs`;
+        const url = getUserDocUrl(name as UserDocName, locale);
+        expect(url).toBe(`${prefix}/${target}`);
+        expect(new URL(url).search).toBe('');
+    }
+    for (const locale of locales) {
+        const prefix = `https://www.kuro7983.com/${locale === 'en' ? 'en/' : ''}apps/auralyn/docs`;
+        expect(buildUserDocUrl('index', locale)).toBe(prefix);
+        expect(buildUserDocUrl('index#start', locale)).toBe(`${prefix}#start`);
+    }
 });

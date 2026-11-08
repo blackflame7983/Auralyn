@@ -3,14 +3,16 @@ import { invoke } from '@tauri-apps/api/core';
 import { MdClose } from 'react-icons/md';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
-import { useMessages } from '@/i18n/LocaleProvider';
+import { UserDocLink } from '@/components/ui/UserDocLink';
+import { glossary, glossaryDocName, type UserDocName } from '@/lib/userDocs';
+import { useLocale, useMessages } from '@/i18n/LocaleProvider';
 import { shortcutActions, type ShortcutAction } from '@/lib/shortcutActions';
 import { formatShortcut } from '@/lib/shortcutLabel';
 
 const sections = ['home', 'setup', 'trouble', 'terms', 'keys'] as const;
 type Section = typeof sections[number];
 const storageKey = 'auralyn_help_section';
-const terms = ['destination', 'cable', 'noise', 'voice', 'vst', 'current', 'modes', 'lock', 'monitor', 'clip', 'buffer', 'drivers', 'dbfs'] as const;
+const sectionDocs = { home: 'help.home', setup: 'help.setup', trouble: 'help.troubleshooting', terms: 'help.glossary', keys: 'help.shortcuts' } as const satisfies Record<Section, UserDocName>;
 type Binding = { action: ShortcutAction; shortcut: string };
 
 interface Props {
@@ -24,6 +26,7 @@ interface Props {
 
 export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDiscord, onShortcuts }: Props) {
     const t = useMessages();
+    const { locale } = useLocale();
     const heading = useId();
     const [section, setSection] = useState<Section>(() => {
         try {
@@ -80,19 +83,20 @@ export function HowToUseModal({ onClose, onSetup, onTroubleshoot, onOBS, onDisco
                             </div>)}
                             {section === 'setup' && <><p>{t('help.setup.body', labels)}</p><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onSetup)}>{t('header.setupOpen')}</Button></>}
                             {section === 'trouble' && <>
-                                <h3 className="font-semibold">{t('help.trouble.silent')}</h3><p>{t('help.trouble.silentBody', labels)}</p>
+                                <h3 className="font-semibold">{t('help.trouble.silent')}</h3><p>{t('help.trouble.silentBody', labels)}</p><UserDocLink name="troubleshooting.no-sound" compact />
                                 <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onTroubleshoot)}>{t('header.noSound')}</Button>
-                                <h3 className="font-semibold">{t('help.trouble.receiver')}</h3><p>{t('help.trouble.receiverBody')}</p>
+                                <h3 className="font-semibold">{t('help.trouble.receiver')}</h3><p>{t('help.trouble.receiverBody')}</p><UserDocLink name="troubleshooting.not-received" compact />
                                 <div className="flex flex-wrap gap-2"><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onOBS)}>{t('header.obs')}</Button><Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onDiscord)}>{t('header.discord')}</Button></div>
-                                <h3 className="font-semibold">{t('help.trouble.dropouts')}</h3><p>{t('help.trouble.dropoutsBody')}</p>
+                                <h3 className="font-semibold">{t('help.trouble.dropouts')}</h3><p>{t('help.trouble.dropoutsBody')}</p><UserDocLink name="troubleshooting.dropouts" compact />
                                 <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onTroubleshoot)}>{t('header.noSound')}</Button>
                             </>}
-                            {section === 'terms' && terms.map(term => <div key={term}><h3 className="font-semibold">{t(`help.term.${term}.title`)}</h3><p className="mt-1 text-muted-foreground">{t(`help.term.${term}.body`)}</p></div>)}
+                            {section === 'terms' && glossary[locale].map(term => <div key={term.anchor}><h3 className="font-semibold">{term.title}</h3><p className="mt-1 text-muted-foreground">{term.summary}</p><UserDocLink name={glossaryDocName(term.anchor)} compact /></div>)}
                             {section === 'keys' && <>
                                 <p>{t('help.keys.f1')}</p>
                                 {bindings === null ? <p role="status">{t('help.keys.fallback')}</p> : <dl className="space-y-3">{Object.entries(shortcutActions).map(([action, label]) => <div key={action} className="flex flex-wrap justify-between gap-2"><dt className="min-w-0 max-w-full">{t(label)}</dt><dd className="min-w-0 max-w-full font-mono">{formatShortcut(bindings.find(binding => binding.action === action)?.shortcut ?? '') || t('help.keys.unassigned')}</dd></div>)}</dl>}
                                 <Button variant="outline" className="h-auto min-w-0 max-w-full whitespace-normal" onClick={() => go(onShortcuts)}>{t('help.keys.settings')}</Button>
                             </>}
+                            <UserDocLink name={sectionDocs[section]} />
                         </section>
                     </div>
                 </div>
