@@ -67,11 +67,17 @@ type AudioConfig = import('@/lib/audioPreferences').AudioPreferences;
 interface PluginsApi {
     plugins: Plugin[];
     availablePlugins: VstPlugin[];
+    scanFailures?: import('@/api/audio').ScanFailure[];
+    scanStats?: import('@/api/audio').ScanStats | null;
+    catalogRecovered?: boolean;
+    catalogSaveError?: string | null;
+    retryingPath?: string | null;
     isScanning: boolean;
     error: string | null;
     scanError?: string | null;
     sessionProtectionReason?: string | null;
-    scanPlugins: () => Promise<void>;
+    scanPlugins: (request?: import('@/api/audio').PluginScanRequest) => Promise<void>;
+    retryPluginScan?: (path: string) => Promise<void>;
     addPlugin: (vstPlugin: VstPlugin) => Promise<boolean>;
     loadPreset: (name: string) => Promise<boolean>;
     savePreset: (name: string) => Promise<boolean>;
@@ -171,12 +177,18 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onClose={() => ui.setIsBrowserOpen(false)}
                         onPluginSelect={handlePluginSelect}
                         plugins={pluginsApi.availablePlugins}
+                        failures={pluginsApi.scanFailures}
+                        stats={pluginsApi.scanStats}
+                        recoveredFromCorrupt={pluginsApi.catalogRecovered}
+                        saveError={pluginsApi.catalogSaveError}
+                        retryingPath={pluginsApi.retryingPath}
                         addedPaths={pluginsApi.plugins.map(plugin => plugin.classId ? `${plugin.path}::${plugin.classId.toUpperCase()}` : plugin.path)}
                         isLoading={pluginsApi.isScanning}
                         error={pluginsApi.scanError}
                         notice={pluginsApi.error}
                         protectionNotice={pluginsApi.sessionProtectionReason}
                         onScan={pluginsApi.scanPlugins}
+                        onRetry={pluginsApi.retryPluginScan}
                     />
                 </Suspense>
             )}

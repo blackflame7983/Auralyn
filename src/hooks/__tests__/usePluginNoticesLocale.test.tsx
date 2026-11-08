@@ -29,7 +29,7 @@ beforeEach(() => {
     vi.spyOn(audioApi, 'restorePlugin').mockImplementation(async request => ({id: request.path, name: request.path, prepared: false}));
     vi.spyOn(audioApi, 'removePlugin').mockResolvedValue(undefined);
     vi.spyOn(audioApi, 'setInputGain').mockResolvedValue(undefined); vi.spyOn(audioApi, 'setOutputGain').mockResolvedValue(undefined);
-    vi.spyOn(audioApi, 'scanPlugins').mockResolvedValue([]); vi.spyOn(audioApi, 'getPluginState').mockResolvedValue('runtime');
+    vi.spyOn(audioApi, 'scanPluginCatalog').mockResolvedValue({ plugins: [], failures: [], stats: { reused: 0, scanned: 0, removed: 0 }, generation: 1, recoveredFromCorrupt: false, saveError: null }); vi.spyOn(audioApi, 'getPluginState').mockResolvedValue('runtime');
     vi.spyOn(audioApi, 'start').mockResolvedValue({sample_rate: 48000, buffer_size: 512, channels: 2}); vi.spyOn(audioApi, 'stop').mockResolvedValue(undefined);
     localStorage.setItem(KEY, original); localStorage.setItem(BACKUP, 'immutable backup');
 });
@@ -59,7 +59,7 @@ it.each(['retained', 'partial'])('%sのnoticeはlocaleだけで再表示し、62
     expect(result.current.plugins.map(p => p.id)).toEqual(snapshot.ids);
     expect(audioApi.sessionRack).toHaveBeenCalledTimes(snapshot.requests); expect(audioApi.restorePlugin).toHaveBeenCalledTimes(snapshot.restores);
     expect(audioApi.setInputGain).toHaveBeenCalledTimes(snapshot.input); expect(audioApi.setOutputGain).toHaveBeenCalledTimes(snapshot.output);
-    expect(audioApi.scanPlugins).not.toHaveBeenCalled(); expect(audioApi.getPluginState).not.toHaveBeenCalled(); expect(audioApi.start).not.toHaveBeenCalled(); expect(audioApi.stop).not.toHaveBeenCalled();
+    expect(audioApi.scanPluginCatalog).not.toHaveBeenCalled(); expect(audioApi.getPluginState).not.toHaveBeenCalled(); expect(audioApi.start).not.toHaveBeenCalled(); expect(audioApi.stop).not.toHaveBeenCalled();
     act(() => {store.setLocale('ja');}); expect(result.current.error?.match(/今のVSTの変更は自動保存しません/g)).toHaveLength(1);
 });
 it('profile保存の遅い失敗もkeyで保持し、locale変更で保存要求やstate採取を再実行しない', async () => {
@@ -79,7 +79,7 @@ it('スキャン失敗は復元通知と別に保持し、再スキャン成功�
     const { result } = renderHook(() => usePlugins()); await act(async () => {});
     const notice = result.current.error;
     expect(result.current.sessionProtectionReason).toContain('自動保存');
-    vi.mocked(audioApi.scanPlugins).mockRejectedValueOnce(new Error('scan failed'));
+    vi.mocked(audioApi.scanPluginCatalog).mockRejectedValueOnce(new Error('scan failed'));
     await act(async () => { await result.current.scanPlugins(); });
     expect(result.current.error).toBe(notice);
     expect(result.current.scanError).toContain('スキャンに失敗');

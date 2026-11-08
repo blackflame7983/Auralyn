@@ -675,7 +675,45 @@ pub(crate) async fn scan_plugins(
         if !config_dir.exists() {
             std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
         }
-        Ok(vst_host::scan_system_vst3(&config_dir))
+        vst_host::scan_system_vst3(&config_dir)
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn scan_plugin_catalog(
+    app: tauri::AppHandle,
+    mode: Option<String>,
+    retry_failed: Option<bool>,
+) -> Result<vst_host::PluginCatalogView, String> {
+    let mode = match mode.as_deref() {
+        None | Some("incremental") => vst_host::catalog::ScanMode::Incremental,
+        Some("full") => vst_host::catalog::ScanMode::Full {
+            retry_failed: retry_failed.unwrap_or(false),
+        },
+        Some(_) => return Err("スキャンの種類が不正です".into()),
+    };
+    super::run_blocking(move || {
+        let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+        if !config_dir.exists() {
+            std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+        }
+        vst_host::scan_plugin_catalog(&config_dir, mode)
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn retry_plugin_scan(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<vst_host::PluginCatalogView, String> {
+    super::run_blocking(move || {
+        let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+        if !config_dir.exists() {
+            std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+        }
+        vst_host::scanner::retry_plugin_scan(&config_dir, &path)
     })
     .await
 }
@@ -684,9 +722,10 @@ pub(crate) async fn scan_plugins(
 pub(crate) async fn clear_blacklist(app: AppHandle) -> Result<(), String> {
     super::run_blocking(move || {
         let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-        let mut blacklist = vst_host::blacklist::Blacklist::new(&config_dir);
-        blacklist.clear();
-        Ok(())
+        if !config_dir.exists() {
+            std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+        }
+        vst_host::scanner::clear_scan_exclusions(&config_dir)
     })
     .await
 }

@@ -3,7 +3,7 @@ import { explicitSessionStartRequired } from '@/lib/temporarySession';
 import { useMessages } from '../i18n/LocaleProvider';
 import { pluginNotice, renderPluginNotice, defaultPluginMessages, type PluginNotice } from '../lib/pluginNotice';
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { audioApi, VstPlugin, type LoadedPlugin, type RackPlugin } from '../api/audio';
+import { audioApi, VstPlugin, type LoadedPlugin, type PluginCatalog, type PluginScanRequest, type RackPlugin, type ScanFailure, type ScanStats } from '../api/audio';
 import { claimLegacyClassWarning, pendingStorageValue, samePlugin } from '../lib/pluginIdentity';
 import { Plugin } from '../components/features/PluginRack/PluginCard';
 import { usePluginProfiles } from './usePluginProfiles';
@@ -47,6 +47,11 @@ async function restoreSavedGains(check: () => void) {
 export const usePlugins = () => {
     const [plugins, setPlugins] = useState<Plugin[]>([]);
     const [availablePlugins, setAvailablePlugins] = useState<VstPlugin[]>([]);
+    const [scanFailures, setScanFailures] = useState<ScanFailure[]>([]);
+    const [scanStats, setScanStats] = useState<ScanStats | null>(null);
+    const [catalogRecovered, setCatalogRecovered] = useState(false);
+    const [catalogSaveError, setCatalogSaveError] = useState<string | null>(null);
+    const [retryingPath, setRetryingPath] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isScanning, setIsScanning] = useState(false);
     const t = useMessages();
@@ -571,19 +576,41 @@ export const usePlugins = () => {
         return true;
     }, []);
 
-    const scanPlugins = useCallback(async () => {
+    const applyCatalog = useCallback((result: PluginCatalog) => {
+        setAvailablePlugins(result.plugins);
+        setScanFailures(result.failures);
+        setScanStats(result.stats);
+        setCatalogRecovered(result.recoveredFromCorrupt);
+        setCatalogSaveError(result.saveError);
+    }, []);
+
+    const scanPlugins = useCallback(async (request?: PluginScanRequest) => {
         setIsScanning(true);
         setScanError(null);
         try {
-            const result = await audioApi.scanPlugins();
-            setAvailablePlugins(result);
+            applyCatalog(await audioApi.scanPluginCatalog(request));
         } catch (err) {
             console.error("Failed to scan plugins:", err);
-            setScanError(pluginNotice('pluginNotices.scanFailed'));
+            const text = err instanceof Error ? err.message : String(err);
+            setScanError(pluginNotice(text.includes('スキャン中です') ? 'pluginBrowser.scanBusy' : 'pluginNotices.scanFailed'));
         } finally {
             setIsScanning(false);
         }
-    }, []);
+    }, [applyCatalog]);
+
+    const retryPluginScan = useCallback(async (path: string) => {
+        setRetryingPath(path);
+        setScanError(null);
+        try {
+            applyCatalog(await audioApi.retryPluginScan(path));
+        } catch (err) {
+            console.error("Failed to retry plugin scan:", err);
+            const text = err instanceof Error ? err.message : String(err);
+            setScanError(pluginNotice(text.includes('スキャン中です') ? 'pluginBrowser.scanBusy' : 'pluginNotices.scanFailed'));
+        } finally {
+            setRetryingPath(current => current === path ? null : current);
+        }
+    }, [applyCatalog]);
 
     const addPlugin = useCallback(async (vstPlugin: VstPlugin) => {
         if (rejectDuringRestore()) return false;
@@ -964,7 +991,13 @@ export const usePlugins = () => {
     return {
         plugins,
         availablePlugins,
+        scanFailures,
+        scanStats,
+        catalogRecovered,
+        catalogSaveError,
+        retryingPath,
         scanPlugins,
+        retryPluginScan,
         addPlugin,
         removePlugin,
         togglePlugin,

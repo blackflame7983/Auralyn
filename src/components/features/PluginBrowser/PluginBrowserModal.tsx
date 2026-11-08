@@ -6,7 +6,8 @@ import type { MessageKey } from '@/i18n/messages';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { VstPlugin } from '../../../api/audio';
+import { VstPlugin, type PluginScanRequest, type ScanFailure, type ScanFailureKind, type ScanStats } from '../../../api/audio';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { fileLabel, pluginKey } from '@/lib/pluginIdentity';
 import { Panel } from '../../ui/Panel/Panel';
 import { MdStar, MdStarBorder, MdHistory, MdGridView, MdClose, MdSearch, MdRefresh, MdWarning } from 'react-icons/md';
@@ -16,11 +17,17 @@ interface PluginBrowserModalProps {
   onClose: () => void;
   onPluginSelect: (plugin: VstPlugin) => void;
   plugins: VstPlugin[];
+  failures?: ScanFailure[];
+  stats?: ScanStats | null;
+  recoveredFromCorrupt?: boolean;
+  saveError?: string | null;
+  retryingPath?: string | null;
   isLoading: boolean;
   error?: string | null;
   notice?: string | null;
   protectionNotice?: string | null;
-  onScan: () => void;
+  onScan: (request?: PluginScanRequest) => void;
+  onRetry?: (path: string) => void;
   /** VST 構成に入っているプラグインのパス。追加済みであることを一覧に示す。 */
   addedPaths?: string[];
 }
@@ -42,6 +49,25 @@ const SIMPLE_CATEGORY_KEYS: Record<string, MessageKey> = {
   'ツール': 'pluginBrowser.category.tools', 'ノイズ除去': 'pluginBrowser.category.noiseReduction',
   'インストゥルメント': 'pluginBrowser.category.instrument', 'エフェクト (その他)': 'pluginBrowser.category.otherFx',
 };
+
+function failureKey(kind: ScanFailureKind | string): MessageKey {
+  switch (kind) {
+    case 'crashed': return 'pluginBrowser.failure.crashed';
+    case 'timed_out': return 'pluginBrowser.failure.timedOut';
+    case 'load_failed': return 'pluginBrowser.failure.loadFailed';
+    case 'no_factory': return 'pluginBrowser.failure.noFactory';
+    case 'invalid_output': return 'pluginBrowser.failure.invalidOutput';
+    case 'spawn_failed': return 'pluginBrowser.failure.spawnFailed';
+    case 'legacy_blacklisted': return 'pluginBrowser.failure.legacyBlacklisted';
+    default: return 'pluginBrowser.failure.unknown';
+  }
+}
+
+function formatScannedAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
 
 function readStoredPaths(key: string): string[] {
   try {
@@ -188,12 +214,18 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   onClose,
   onPluginSelect,
   plugins: suppliedPlugins,
+  failures = [],
+  stats = null,
+  recoveredFromCorrupt = false,
+  saveError = null,
+  retryingPath = null,
   isLoading,
   error,
   notice,
   protectionNotice,
   addedPaths = [],
-  onScan
+  onScan,
+  onRetry,
 }) => {
     const t = useMessages();
   // スキャナーや旧キャッシュで省略されたメタデータを、すべてのタブで安全に扱う。
@@ -211,6 +243,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recentPaths, setRecentPaths] = useState<string[]>([]);
+  const [includeFailed, setIncludeFailed] = useState(false);
 
   // 候補が見えた時点で、path だけの旧キーを1件なら新しいキーへ移す。
   // お気に入りと履歴の両方が書けたときだけ移行完了にする。片方だけ残さない。
@@ -398,14 +431,27 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
             /></Field>
           </div>
           <Button variant="outline"
-            onClick={onScan}
-            disabled={isLoading}
+            onClick={() => onScan()}
+            disabled={isLoading || Boolean(retryingPath)}
             aria-label={t('pluginBrowser.rescanAccessible')}
 
             title={t('pluginBrowser.rescan')}
           >
             <MdRefresh className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
+        </div>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal"
+            disabled={isLoading || Boolean(retryingPath)}
+            onClick={() => onScan({ mode: 'full', retryFailed: includeFailed })}
+          >
+            {t('pluginBrowser.fullScan')}
+          </Button>
+          <label className="flex items-center gap-2 text-ui-support" htmlFor="plugin-scan-include-failed">
+            <Checkbox id="plugin-scan-include-failed" checked={includeFailed} disabled={isLoading || Boolean(retryingPath)} onChange={event => setIncludeFailed(event.target.checked)} />
+            {t('pluginBrowser.includeFailed')}
+          </label>
+          <p className="w-full text-ui-support text-muted-foreground">{t('pluginBrowser.includeFailedHelp')}</p>
         </div>
 
         {/* Category Filter Chips */}
@@ -443,7 +489,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
         {notice && notice !== protectionNotice && <p role="status" className="mb-3 text-ui-support text-warning">{notice}</p>}
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center h-40 text-muted-foreground gap-3">
               <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -530,6 +576,33 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               })}
             </div>
           )}
+          {!isLoading && (stats || recoveredFromCorrupt || saveError || failures.length > 0) && <section className="space-y-2 border-t border-border pt-3" aria-label={t('pluginBrowser.failuresTitle')}>
+            {stats && <p role="status">{t('pluginBrowser.scanStats', { reused: stats.reused, scanned: stats.scanned, removed: stats.removed })}</p>}
+            {recoveredFromCorrupt && <p role="status">{t('pluginBrowser.catalogRecovered')}</p>}
+            {saveError && <p role="alert">{t('pluginBrowser.catalogSaveFailed')}</p>}
+            {failures.length > 0 && <>
+              <h3 className="text-ui-heading font-semibold">{t('pluginBrowser.failuresTitle')}</h3>
+              <p className="text-ui-support text-muted-foreground">{t('pluginBrowser.retryAuth')}</p>
+              <ul className="space-y-2">
+                {failures.map(failure => (
+                  <li key={failure.path} className="space-y-1 rounded-control border border-border p-2">
+                    <p className="font-medium" title={failure.path}>{failure.name}</p>
+                    <p className="text-ui-support">{t(failureKey(failure.kind))}</p>
+                    <p className="text-ui-support text-muted-foreground">{t('pluginBrowser.failure.attempted', { time: formatScannedAt(failure.scannedAt), count: failure.attempts })}</p>
+                    {failure.detail && <details className="text-ui-support break-words"><summary>{t('common.rawDetail')}</summary><p>{failure.detail}</p></details>}
+                    <Button variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal"
+                      aria-label={t('pluginBrowser.retryNamed', { name: failure.name })}
+                      aria-busy={retryingPath === failure.path}
+                      disabled={!onRetry || isLoading || Boolean(retryingPath)}
+                      onClick={() => onRetry?.(failure.path)}
+                    >
+                      {retryingPath === failure.path ? t('pluginBrowser.retrying') : t('pluginBrowser.retryOne')}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </>}
+          </section>}
         </div>
 </TabsContent>      </Panel>
     </Tabs></div>

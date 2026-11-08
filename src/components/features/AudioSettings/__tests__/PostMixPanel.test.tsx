@@ -18,7 +18,7 @@ async function setup(value = snapshot(), mainRunning = false) {
 }
 it('読込だけでは復元せず、一覧の明示取得と選択で追加する', async () => {
     const request = await setup();
-    vi.spyOn(audioApi, 'scanPlugins').mockResolvedValue([{ id: 'vst', name: 'EQ', path: 'eq.vst3', vendor: '', category: 'Fx', version: '' }]);
+    vi.spyOn(audioApi, 'scanPluginCatalog').mockResolvedValue({ plugins: [{ id: 'vst', name: 'EQ', path: 'eq.vst3', vendor: '', category: 'Fx', version: '' }], failures: [], stats: { reused: 0, scanned: 1, removed: 0 }, generation: 1, recoveredFromCorrupt: false, saveError: null });
     expect(screen.getByText(/VSTの処理待ち：不明/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'VSTを追加' }));
     const browser = await screen.findByRole('dialog');
