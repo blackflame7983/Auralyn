@@ -553,6 +553,8 @@ impl ScriptedVst {
             active_flag: Arc::new(AtomicBool::new(true)),
             max_block_size: max_block,
             _num_channels: 2,
+            input_channels: 2,
+            output_channels: 2,
         };
         Self {
             mock,
