@@ -781,6 +781,10 @@ pub enum Response {
         built_in_effects_amount: f32,
         built_in_singing: Option<crate::audio_engine::singing::SingingParams>,
         built_in_reverb: Option<crate::audio_engine::reverb::ReverbParams>,
+        /// 無音と処理停止の区別、および直近窓の遅着・underflow。古いEngineでは欠ける。
+        #[serde(default)]
+        processing_health:
+            Option<Box<crate::audio_engine::processing_watch::ProcessingHealthSnapshot>>,
     },
     // ... existing code ...
     PluginState {
@@ -834,6 +838,14 @@ pub enum EngineEvent {
     VoiceCheckEnvelope {
         raw_peaks: Vec<f32>,
         processed_peaks: Vec<f32>,
+    },
+    ProcessingHealth {
+        state: crate::audio_engine::processing_watch::HealthState,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<crate::audio_engine::processing_watch::StallKind>,
+        recent_late: u64,
+        recent_underflow: u64,
+        window_secs: u32,
     },
 }
 
@@ -943,6 +955,7 @@ mod cohort_compatibility_tests {
             let super::Response::RuntimeStats {
                 resampler_cohort_timing,
                 preparation,
+                processing_health,
                 ..
             } = response
             else {
@@ -950,6 +963,7 @@ mod cohort_compatibility_tests {
             };
             assert!(resampler_cohort_timing.is_none());
             assert!(preparation.is_none());
+            assert!(processing_health.is_none());
         }
     }
 

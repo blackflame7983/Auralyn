@@ -1141,6 +1141,7 @@ impl Engine {
                     built_in_effects_amount: self.built_in_effects_amount,
                     built_in_singing: self.builtin.config.singing,
                     built_in_reverb: self.builtin.config.reverb,
+                    processing_health: Some(Box::new(self.processing_watch.snapshot())),
                 });
             }
             Command::CaptureBundleState | Command::CaptureMixingBundleState => {

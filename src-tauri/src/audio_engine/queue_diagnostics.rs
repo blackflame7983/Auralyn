@@ -204,6 +204,14 @@ impl QueueDiagnostics {
             .recovery_high
             .store(high as u64, Ordering::Relaxed);
     }
+    /// 起動時の不足を除いた、キューが空で読めなかったコールバック数。
+    pub fn underflow_excluding_startup(&self) -> u64 {
+        self.output
+            .underflows
+            .load(Ordering::Relaxed)
+            .saturating_sub(self.output.startup_underflows.load(Ordering::Relaxed))
+    }
+
     /// queue読出しを行ったcallbackだけを数える。故障時の早期無音化やmuteとは別。
     pub fn record_output(&self, requested: usize, consumed: usize) {
         let consumed = consumed.min(requested);
@@ -490,6 +498,7 @@ mod tests {
         assert_eq!(s.startup_underflow_callbacks, Some(2));
         assert_eq!(s.zero_filled_output_frames, 260);
         assert_eq!(s.underflow_callbacks, 3);
+        assert_eq!(q.underflow_excluding_startup(), 1);
         let next = QueueDiagnostics::new("next".into(), 48_000, 48_000, 1, 2, 4096).snapshot(
             QueueState::Running,
             Some(0),

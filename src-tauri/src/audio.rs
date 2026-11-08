@@ -177,6 +177,9 @@ pub struct EngineRuntimeStats {
     pub built_in_effects_amount: f32,
     pub built_in_singing: Option<crate::audio_engine::singing::SingingParams>,
     pub built_in_reverb: Option<crate::audio_engine::reverb::ReverbParams>,
+    #[serde(default)]
+    pub processing_health:
+        Option<Box<crate::audio_engine::processing_watch::ProcessingHealthSnapshot>>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -842,6 +845,38 @@ impl AudioHost {
                                                 state,
                                                 position_ms,
                                                 duration_ms,
+                                            },
+                                        );
+                                    }
+                                }
+                                EngineEvent::ProcessingHealth {
+                                    state,
+                                    kind,
+                                    recent_late,
+                                    recent_underflow,
+                                    window_secs,
+                                } => {
+                                    if let Some(h) = emitter_clone.lock().unwrap().as_ref() {
+                                        #[derive(serde::Serialize, Clone)]
+                                        #[serde(rename_all = "camelCase")]
+                                        struct ProcessingHealthPayload {
+                                            state:
+                                                crate::audio_engine::processing_watch::HealthState,
+                                            stall_kind: Option<
+                                                crate::audio_engine::processing_watch::StallKind,
+                                            >,
+                                            recent_late: u64,
+                                            recent_underflow: u64,
+                                            window_secs: u32,
+                                        }
+                                        let _ = h.emit(
+                                            "audio-processing-health",
+                                            ProcessingHealthPayload {
+                                                state,
+                                                stall_kind: kind,
+                                                recent_late,
+                                                recent_underflow,
+                                                window_secs,
                                             },
                                         );
                                     }
@@ -2435,6 +2470,7 @@ impl AudioHost {
                 built_in_effects_amount,
                 built_in_singing,
                 built_in_reverb,
+                processing_health,
             } => Ok(EngineRuntimeStats {
                 process_input,
                 preparation,
@@ -2474,6 +2510,7 @@ impl AudioHost {
                 built_in_effects_amount,
                 built_in_singing,
                 built_in_reverb,
+                processing_health,
             }),
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("Unexpected response type")),

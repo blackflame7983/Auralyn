@@ -432,6 +432,10 @@ pub struct Engine {
     // Diagnostics
     stats_max_jitter: Arc<AtomicU64>,
     stats_glitches: Arc<AtomicU64>,
+    // OS出力コールバックと入力コールバックの回数。処理完了数は callback_diagnostics.count。
+    output_callbacks: Arc<AtomicU64>,
+    input_callbacks: Arc<AtomicU64>,
+    processing_watch: super::processing_watch::ProcessingWatch,
 }
 
 impl Default for Engine {
@@ -556,6 +560,9 @@ impl Engine {
             voice_input_gain: 1.0,
             stats_max_jitter: Arc::new(AtomicU64::new(0)),
             stats_glitches: Arc::new(AtomicU64::new(0)),
+            output_callbacks: Arc::new(AtomicU64::new(0)),
+            input_callbacks: Arc::new(AtomicU64::new(0)),
+            processing_watch: super::processing_watch::ProcessingWatch::new(),
         }
     }
 
@@ -614,6 +621,7 @@ impl Engine {
         let mut updates_received = 0;
         let mut last_data_time = Instant::now();
         let mut last_heartbeat = Instant::now();
+        let mut last_processing_watch = Instant::now();
         let mut last_meter_was_zero = false;
         let mut last_channel_scan_was_zero = false;
         let mut last_channel_scan_generation = self.scan_generation;
@@ -730,12 +738,14 @@ impl Engine {
                     }
                     // -------------------------------------------
 
-                    // Heartbeat (1s) & Diagnostics
-                    if last_heartbeat.elapsed() >= Duration::from_secs(1) {
-                        let _max_jitter = self.stats_max_jitter.load(Ordering::Relaxed);
-                        let _glitches = self.stats_glitches.load(Ordering::Relaxed);
-                        let _frames = self.frames_processed.load(Ordering::Relaxed);
+                    // 無音と処理停止を区別する。コールバックは回数だけを足し、判定はここだけで行う。
+                    if last_processing_watch.elapsed() >= Duration::from_millis(250) {
+                        self.poll_processing_health();
+                        last_processing_watch = Instant::now();
+                    }
 
+                    // Heartbeat (1s)
+                    if last_heartbeat.elapsed() >= Duration::from_secs(1) {
                         // Check Priority Class
                         // SAFETY: 現プロセスの疑似ハンドルを取得し、優先度の読み取りにだけ使う。
                         unsafe {
@@ -1352,6 +1362,46 @@ impl Engine {
     fn stop_audio(&mut self) {
         self.clear_audio_resources();
         self.send_event(EngineEvent::Stopped);
+    }
+
+    fn processing_progress_sample(&self) -> super::processing_watch::ProgressSample {
+        let block_period = if self.current_sample_rate > 0.0 && self.current_block_size > 0 {
+            Duration::from_secs_f64(self.current_block_size as f64 / self.current_sample_rate)
+        } else {
+            Duration::ZERO
+        };
+        super::processing_watch::ProgressSample {
+            attempt_epoch: self.queue_attempt,
+            running: self.processing_running() && self.queue_state == QueueState::Running,
+            paused_by_mode_silence: self.mode_silence.shared.pause_sources(),
+            output_callbacks: self.output_callbacks.load(Ordering::Relaxed),
+            processed_blocks: self.callback_diagnostics.snapshot().count,
+            input_callbacks: self.input_callbacks.load(Ordering::Relaxed),
+            late_callbacks: self.stats_glitches.load(Ordering::Relaxed),
+            underflow_callbacks: self
+                .queue_diagnostics
+                .as_ref()
+                .map(|diagnostics| diagnostics.underflow_excluding_startup())
+                .unwrap_or(0),
+            block_period,
+        }
+    }
+
+    fn poll_processing_health(&mut self) {
+        let output = self
+            .processing_watch
+            .observe_at(Instant::now(), self.processing_progress_sample());
+        if !output.emit {
+            return;
+        }
+        let snapshot = output.snapshot;
+        self.send_event(EngineEvent::ProcessingHealth {
+            state: snapshot.state,
+            kind: snapshot.stall_kind,
+            recent_late: snapshot.recent_late,
+            recent_underflow: snapshot.recent_underflow,
+            window_secs: snapshot.window_secs,
+        });
     }
 
     fn set_global_mute_intent(&mut self, active: bool) {

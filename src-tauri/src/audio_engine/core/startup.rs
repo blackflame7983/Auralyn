@@ -725,6 +725,10 @@ impl Engine {
         let callback_rate = self.current_sample_rate as u32;
         let callback_diagnostics = Arc::new(CallbackDiagnostics::default());
         self.callback_diagnostics = callback_diagnostics.clone();
+        let output_callbacks = Arc::new(AtomicU64::new(0));
+        let input_callbacks = Arc::new(AtomicU64::new(0));
+        self.output_callbacks = output_callbacks.clone();
+        self.input_callbacks = input_callbacks.clone();
 
         let mmcss_set_out = Arc::new(AtomicBool::new(false));
         let (mut callback_processors, returned_processors) = callback_owner(CallbackProcessors {
@@ -1749,6 +1753,7 @@ impl Engine {
                 ) {
                     Ok(worker) => {
                         self.split_worker = Some(worker);
+                        let output_callbacks = output_callbacks.clone();
                         native_stream::build_output(
                             &out_dev,
                             &out_stream_config,
@@ -1756,6 +1761,9 @@ impl Engine {
                             max_frames_per_callback,
                             self.stream_failed.clone(),
                             move |data: &mut [f32], info| {
+                                crate::audio_engine::processing_watch::note_callback(
+                                    &output_callbacks,
+                                );
                                 output_cadence.record(
                                     data.len() / channels_len,
                                     &stats_max_jitter,
@@ -1778,6 +1786,7 @@ impl Engine {
                     Err(_) => Err(cpal::BuildStreamError::DeviceNotAvailable),
                 }
             } else {
+                let output_callbacks = output_callbacks.clone();
                 native_stream::build_output(
                     &out_dev,
                     &out_stream_config,
@@ -1785,6 +1794,7 @@ impl Engine {
                     max_frames_per_callback,
                     self.stream_failed.clone(),
                     move |data: &mut [f32], info| {
+                        crate::audio_engine::processing_watch::note_callback(&output_callbacks);
                         output_cadence.record(
                             data.len() / channels_len,
                             &stats_max_jitter,
@@ -1820,6 +1830,7 @@ impl Engine {
             mmcss_set_in,
             audio_prod,
             batch_timing,
+            input_callbacks,
         };
         let build_input = || {
             let input_build_started = Instant::now();
