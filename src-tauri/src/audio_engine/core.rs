@@ -1466,14 +1466,21 @@ impl Engine {
         Ok(())
     }
 
+    fn true_peak_route(&self) -> super::true_peak_limiter::Route {
+        super::true_peak_limiter::Route {
+            split: self.live_output_config.split_processing,
+            sink: self.live_output_config.device_id.is_some(),
+        }
+    }
+
     fn broadcast_true_peak_samples(&self, nominal: Option<u32>) -> u32 {
         let Some(rate) = nominal else {
             return 0;
         };
-        if self.true_peak_config.enabled
-            && self.live_output_config.split_processing
-            && self.live_output_config.device_id.is_some()
-        {
+        if super::true_peak_limiter::is_applied(
+            self.true_peak_config.enabled,
+            self.true_peak_route(),
+        ) {
             super::true_peak_limiter::lookahead_samples(rate)
         } else {
             0

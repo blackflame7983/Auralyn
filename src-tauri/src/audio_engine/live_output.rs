@@ -395,7 +395,14 @@ impl Sink {
         let (mut receiver, receiver_owner) = callback_owner(Receiver {
             peak: super::peak_protection::Rt::new(protection.peak.0, rate),
             peak_shared: protection.peak.1,
-            true_peak: super::true_peak_limiter::Rt::new(protection.true_peak.0, rate),
+            true_peak: super::true_peak_limiter::Rt::new(
+                protection.true_peak.0,
+                rate,
+                super::true_peak_limiter::Route {
+                    split: config.split_processing,
+                    sink: true,
+                },
+            ),
             true_peak_shared: protection.true_peak.1,
             main_failed,
             rx,
@@ -536,6 +543,7 @@ mod tests {
                 true_peak: crate::audio_engine::true_peak_limiter::Rt::new(
                     Default::default(),
                     48000,
+                    crate::audio_engine::true_peak_limiter::Route::ENGAGED,
                 ),
                 true_peak_shared: Default::default(),
                 main_failed: Arc::new(AtomicBool::new(false)),
@@ -629,6 +637,60 @@ mod tests {
         assert!(output.iter().any(|s| *s != 0.0));
     }
     #[test]
+    fn split_off_sink_does_not_limit_while_split_on_does() {
+        let hot = super::super::true_peak_limiter::Config {
+            enabled: true,
+            ceiling_db: -12.0,
+            release_ms: 20.0,
+        };
+        let (mut dry_tx, mut dry_rx, _) = fixture(1024, 8);
+        dry_rx.true_peak = super::super::true_peak_limiter::Rt::new(
+            hot,
+            48_000,
+            super::super::true_peak_limiter::Route {
+                split: false,
+                sink: true,
+            },
+        );
+        assert_eq!(dry_rx.true_peak.added_latency_samples(), 0);
+        for _ in 0..256 {
+            dry_tx.send([0.8, -0.4]);
+        }
+        let mut output = [0.0; 128];
+        dry_rx.render(&mut output);
+        assert!(
+            output
+                .chunks(2)
+                .skip(8)
+                .all(|frame| (frame[0] - 0.8).abs() < 1.0e-4 && (frame[1] + 0.4).abs() < 1.0e-4),
+            "分離OFFの sink は true-peak を掛けない"
+        );
+        let (mut wet_tx, mut wet_rx, _) = fixture(4096, 8);
+        wet_rx.true_peak_shared.publish(hot.prepare(48_000));
+        wet_rx.true_peak = super::super::true_peak_limiter::Rt::new(
+            hot,
+            48_000,
+            super::super::true_peak_limiter::Route::ENGAGED,
+        );
+        assert_eq!(
+            wet_rx.true_peak.added_latency_samples(),
+            super::super::true_peak_limiter::lookahead_samples(48_000)
+        );
+        for _ in 0..2_048 {
+            wet_tx.send([0.8, -0.4]);
+        }
+        let mut limited = [0.0; 512];
+        for _ in 0..4 {
+            wet_rx.render(&mut limited);
+        }
+        let ceiling = 10.0f32.powf(-12.0 / 20.0) + 1.0e-4;
+        assert!(limited.iter().any(|sample| sample.abs() > 0.05));
+        assert!(
+            limited.iter().all(|sample| sample.abs() <= ceiling),
+            "分離ONでは天井を超えない"
+        );
+    }
+    #[test]
     fn muted_broadcast_does_not_emit_a_true_peak_delay_tail() {
         let (mut tx, mut rx, shared) = fixture(1024, 8);
         rx.true_peak = super::super::true_peak_limiter::Rt::new(
@@ -638,6 +700,7 @@ mod tests {
                 release_ms: 100.0,
             },
             48_000,
+            super::super::true_peak_limiter::Route::ENGAGED,
         );
         for _ in 0..256 {
             tx.send([0.95, -0.95]);

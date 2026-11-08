@@ -2,6 +2,40 @@ use super::Engine;
 use crate::ipc::{Response, SignalCorrespondence};
 
 #[test]
+fn true_peak_latency_follows_split_and_sink() {
+    let mut engine = Engine::new();
+    engine.current_sample_rate = 48_000.0;
+    engine.true_peak_config.enabled = true;
+    let samples = |engine: &Engine| {
+        engine
+            .latency_metadata((0, Some(0), false, vec![]))
+            .stage_breakdown
+            .expect("内訳")
+            .broadcast_true_peak_samples
+    };
+    assert_eq!(samples(&engine), 0, "単一出力では先読みを表示しない");
+    engine.set_live_output_config(super::super::live_output::Config {
+        split_processing: false,
+        device_id: Some("broadcast".into()),
+        ..Default::default()
+    });
+    assert_eq!(samples(&engine), 0, "分離OFFで sink があっても先読みは 0");
+    engine.set_live_output_config(super::super::live_output::Config {
+        split_processing: true,
+        device_id: Some("broadcast".into()),
+        ..Default::default()
+    });
+    assert_eq!(
+        samples(&engine),
+        super::super::true_peak_limiter::lookahead_samples(48_000)
+    );
+    let off = samples(&engine);
+    engine.true_peak_config.enabled = false;
+    assert!(off > 0);
+    assert_eq!(samples(&engine), 0, "OFF では分離していても 0");
+}
+
+#[test]
 fn latency_metadata_separates_fixed_default_stop_nr_and_vst_only_bypass() {
     let mut engine = Engine::new();
     assert!(engine

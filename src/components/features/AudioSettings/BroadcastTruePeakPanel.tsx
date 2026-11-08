@@ -59,6 +59,7 @@ export function BroadcastTruePeakPanel() {
         </p>
         {status && <p className="text-ui-support">{t('truePeak.reduction', { db: Math.max(0, status.reductionDb).toFixed(1) })}</p>}
         {status && <p className="text-ui-support">{t('truePeak.latency', { samples: String(status.addedLatencySamples) })}</p>}
+        {status?.config.enabled && !status.applied && <p className="text-ui-support">{t('truePeak.notApplied')}</p>}
         <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!status || busy || !Number.isFinite(ceiling) || ceiling < -12 || ceiling > -0.1 || !Number.isFinite(release) || release < 20 || release > 1000} onClick={() => void apply(true)}>{t(status?.config.enabled ? 'truePeak.apply' : 'truePeak.enable')}</Button>
         <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!status?.config.enabled || busy} onClick={() => void apply(false)}>{t('truePeak.disable')}</Button>
         <details className="text-ui-support text-muted-foreground"><summary className="cursor-pointer">{t('truePeak.limitsTitle')}</summary><p className="mt-2">{t('truePeak.limits')}</p></details>

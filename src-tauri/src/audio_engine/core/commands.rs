@@ -378,7 +378,7 @@ impl Engine {
                 let status = self.true_peak_shared.status(
                     self.true_peak_config,
                     self.processing_running(),
-                    self.live_output.is_some(),
+                    self.true_peak_route(),
                     self.current_sample_rate.round().clamp(1.0, 384_000.0) as u32,
                 );
                 self.send_response(Response::BroadcastTruePeak(status));

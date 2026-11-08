@@ -1,22 +1,26 @@
 //! 配信用 sink 向けの先読み true-peak 制限。
 //!
-//! サンプルピーク保護（`peak_protection`）とは別物で、遅延のある経路だけに使う。
-//! 4倍の短い Hann 窓 sinc でサンプル間の山を見積もり、その山が出力へ届く前に
-//! 減衰を終える。係数はここで独自に作る。測定試験の長い 8倍 Blackman とは
-//! 配列も窓も次数も共有しない。
+//! サンプルピーク保護（`peak_protection`）とは別物で、分離した配信用 sink だけに使う。
+//! 4倍の短い Hann 窓 sinc でサンプル間の山を見積もり、必要 gain のスライディング最小を
+//! 箱型平均で滑らかにする。山が遅延線から出る時点で、その包絡は必要 gain 以下になっている。
+//! 係数はここで独自に作る。測定試験の長い 8倍 Blackman とは配列も窓も次数も共有しない。
 //!
 //! ON/OFF で遅延が変わるときは、短いフェードアウトのあと遅延線を消してから
 //! フェードインする。消す前の音を、新しい遅延の先から出さない。
+//! 天井の変更はフェードも履歴消去もせず、短い線形ランプだけ行う。ランプ中の必要 gain は
+//! 今の天井から計算する。
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 const TAPS: usize = 16;
 const ANALYZED: usize = 7;
-const FUTURE: usize = 8;
+/// 補間点は履歴の中心にある。最新サンプルから見た群遅延。
+const GROUP_DELAY: usize = TAPS - 1 - ANALYZED;
 const PHASES: [f64; 3] = [0.25, 0.5, 0.75];
-/// 短い FIR が見落としやすい分を、検出側の天井だけ少し下げる。
-/// 出力の保証値は設定した天井で測る。この係数は外部実装から写していない。
-const GUARD_DB: f32 = 0.40;
+/// 4倍・16 tap が見落とす急な立上りの分だけ、検出に使う天井を下げる。
+/// 余裕なしの最悪は 48 kHz の立上りで +0.28 dB。0.20 dB で許容 0.1 dB の内側に入る。
+/// 出力の合否は設定した天井で測る。
+const GUARD_DB: f32 = 0.20;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -67,11 +71,36 @@ pub(crate) struct Prepared {
     ramp: f32,
 }
 
-/// 48 kHz で約 1 ms。レートに比例し、フィルタが収まる長さを下回らない。
-/// すべてのレートで 0.5 ms とは限らない。
+/// 包絡を滑らかにする長さ。48 kHz で 1 ms。すべてのレートで 0.5 ms とは限らない。
+fn envelope_samples(rate: u32) -> usize {
+    let proportional = (f64::from(rate.max(1)) * 0.001).round() as usize;
+    proportional.max(GROUP_DELAY)
+}
+
+/// 遅延線の長さ。包絡長に補間 FIR の群遅延を足し、ゲインを掛ける位置を山の位置に合わせる。
 pub(crate) fn lookahead_samples(rate: u32) -> u32 {
-    let proportional = (f64::from(rate.max(1)) * 0.001).round() as u32;
-    proportional.max((FUTURE + TAPS) as u32)
+    (envelope_samples(rate) + GROUP_DELAY) as u32
+}
+
+/// 設定の ON と、実際に遅延が付く状態を分ける。
+/// 分離した配信用 sink があり、かつ有効なときだけ適用する。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Route {
+    pub split: bool,
+    pub sink: bool,
+}
+
+impl Route {
+    /// 分離した配信用 sink がある経路。アルゴリズム試験の既定。
+    #[cfg(test)]
+    pub(crate) const ENGAGED: Self = Self {
+        split: true,
+        sink: true,
+    };
+}
+
+pub(crate) fn is_applied(enabled: bool, route: Route) -> bool {
+    enabled && route.split && route.sink
 }
 
 pub(crate) fn lookahead_ms(rate: u32) -> f64 {
@@ -139,21 +168,19 @@ impl Shared {
         &self,
         config: Config,
         running: bool,
-        sink_active: bool,
+        route: Route,
         rate: u32,
     ) -> Snapshot {
         let minimum = f32::from_bits(self.minimum_gain.swap(1.0f32.to_bits(), Ordering::AcqRel));
+        let applied = is_applied(config.enabled, route);
         Snapshot {
             config,
             running,
-            pending: running && sink_active && self.pending(),
+            pending: running && route.sink && self.pending(),
+            applied,
             revision: self.revision.load(Ordering::Acquire).to_string(),
             reduction_db: -20.0 * minimum.max(1.0e-12).log10(),
-            added_latency_samples: if config.enabled {
-                lookahead_samples(rate)
-            } else {
-                0
-            },
+            added_latency_samples: if applied { lookahead_samples(rate) } else { 0 },
         }
     }
 }
@@ -164,6 +191,9 @@ pub struct Snapshot {
     pub config: Config,
     pub running: bool,
     pub pending: bool,
+    /// 分離した配信用 sink で、今この設定が遅延を足しているか。
+    #[serde(default)]
+    pub applied: bool,
     pub revision: String,
     pub reduction_db: f32,
     pub added_latency_samples: u32,
@@ -182,17 +212,27 @@ pub(crate) struct Rt {
     #[cfg_attr(not(test), allow(dead_code))]
     rate: u32,
     lookahead: usize,
-    coeff: [[f32; TAPS]; 3],
+    envelope: usize,
     guard: f32,
+    coeff: [[f32; TAPS]; 3],
     delay_l: Vec<f32>,
     delay_r: Vec<f32>,
     pos: usize,
+    /// 単調 deque。直近 L+1 の山の最大を、割当なしで出す。
+    peak_age: Vec<u32>,
+    peak_value: Vec<f32>,
+    peak_head: usize,
+    peak_len: usize,
+    peak_now: u32,
+    /// スライディング最大の履歴。長さは包絡で、箱型平均の入力になる。
+    held: Vec<f32>,
+    held_write: usize,
+    box_sum: f32,
+    sum_ceiling: f32,
+    sum_refresh: u32,
     hist_l: [f32; TAPS],
     hist_r: [f32; TAPS],
-    seen: u32,
     gain: f32,
-    attack_step: f32,
-    attack_left: u32,
     ceiling: f32,
     applied_ceiling: f32,
     release: f32,
@@ -203,32 +243,44 @@ pub(crate) struct Rt {
     stage: Stage,
     wet: bool,
     target_enabled: bool,
+    route: Route,
     revision: u64,
     minimum: f32,
 }
 
 impl Rt {
-    pub(crate) fn new(config: Config, rate: u32) -> Self {
+    pub(crate) fn new(config: Config, rate: u32, route: Route) -> Self {
         let prepared = config.prepare(rate);
-        let lookahead = lookahead_samples(rate) as usize;
+        let envelope = envelope_samples(rate);
+        let lookahead = envelope + GROUP_DELAY;
         let mut coeff = [[0.0f32; TAPS]; 3];
         for (phase, frac) in PHASES.iter().enumerate() {
             coeff[phase] = design_hann_phase(*frac);
         }
+        let applied = is_applied(prepared.enabled, route);
+        let guard = 10.0f32.powf(-GUARD_DB / 20.0);
         Self {
             rate,
             lookahead,
+            envelope,
+            guard,
             coeff,
-            guard: 10.0f32.powf(-GUARD_DB / 20.0),
             delay_l: vec![0.0; lookahead],
             delay_r: vec![0.0; lookahead],
             pos: 0,
+            peak_age: vec![0; envelope + 1],
+            peak_value: vec![0.0; envelope + 1],
+            peak_head: 0,
+            peak_len: 0,
+            peak_now: 0,
+            held: vec![0.0; envelope],
+            held_write: 0,
+            box_sum: envelope as f32,
+            sum_ceiling: prepared.ceiling * guard,
+            sum_refresh: 0,
             hist_l: [0.0; TAPS],
             hist_r: [0.0; TAPS],
-            seen: 0,
             gain: 1.0,
-            attack_step: 0.0,
-            attack_left: 0,
             ceiling: prepared.ceiling,
             applied_ceiling: prepared.ceiling,
             release: prepared.release,
@@ -237,14 +289,15 @@ impl Rt {
             fade: 1.0,
             prime_left: 0,
             stage: Stage::Stable,
-            wet: prepared.enabled,
+            wet: applied,
             target_enabled: prepared.enabled,
+            route,
             revision: 0,
             minimum: 1.0,
         }
     }
 
-    /// 今の経路の遅延。バイパス中は 0。試験と、切替途中の実遅延の確認に使う。
+    /// 今の経路の遅延。適用されていないときは 0。試験と、切替途中の実遅延の確認に使う。
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn added_latency_samples(&self) -> u32 {
         if self.wet {
@@ -254,10 +307,29 @@ impl Rt {
         }
     }
 
+    fn desired(&self) -> bool {
+        is_applied(self.target_enabled, self.route)
+    }
+
+    #[cfg(test)]
+    fn applied_gain(&self) -> f32 {
+        self.gain
+    }
+
+    #[cfg(test)]
+    fn current_ceiling(&self) -> f32 {
+        self.applied_ceiling
+    }
+
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn retained_bytes(&self) -> usize {
         std::mem::size_of::<Self>()
-            + (self.delay_l.capacity() + self.delay_r.capacity()) * std::mem::size_of::<f32>()
+            + (self.delay_l.capacity()
+                + self.delay_r.capacity()
+                + self.peak_value.capacity()
+                + self.held.capacity())
+                * std::mem::size_of::<f32>()
+            + self.peak_age.capacity() * std::mem::size_of::<u32>()
     }
 
     pub(crate) fn sync(&mut self, shared: &Shared) {
@@ -291,19 +363,27 @@ impl Rt {
     pub(crate) fn reset_audio(&mut self) {
         self.delay_l.fill(0.0);
         self.delay_r.fill(0.0);
+        self.peak_age.fill(0);
+        self.peak_value.fill(0.0);
+        self.held.fill(0.0);
         self.hist_l = [0.0; TAPS];
         self.hist_r = [0.0; TAPS];
         self.pos = 0;
-        self.seen = 0;
+        self.peak_head = 0;
+        self.peak_len = 0;
+        self.peak_now = 0;
+        self.held_write = 0;
+        self.box_sum = self.envelope as f32;
+        self.sum_ceiling = self.applied_ceiling * self.guard;
+        self.sum_refresh = 0;
         self.gain = 1.0;
-        self.attack_step = 0.0;
-        self.attack_left = 0;
     }
 
     /// レート変更で作り直す。制御スレッド専用で、古いサンプルは持たない。
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn rebuild(&mut self, rate: u32) {
         let enabled = self.target_enabled;
+        let route = self.route;
         let ceiling_db = 20.0 * self.ceiling.max(1.0e-12).log10();
         let release_ms = release_ms_from_coeff(self.release, self.rate);
         *self = Self::new(
@@ -313,13 +393,14 @@ impl Rt {
                 release_ms,
             },
             rate,
+            route,
         );
     }
 
     pub(crate) fn process(&mut self, sample: [f32; 2]) -> [f32; 2] {
         self.applied_ceiling = approach(self.applied_ceiling, self.ceiling, self.ramp);
         if (self.stage == Stage::Stable || self.stage == Stage::FadeIn)
-            && self.wet != self.target_enabled
+            && self.wet != self.desired()
         {
             self.stage = Stage::FadeOut;
         }
@@ -350,7 +431,7 @@ impl Rt {
                 let faded = source.map(|value| value * self.fade);
                 if self.fade <= 0.0 {
                     self.reset_audio();
-                    self.wet = self.target_enabled;
+                    self.wet = self.desired();
                     if self.wet {
                         self.prime_left = self.lookahead as u32;
                         self.stage = Stage::Prime;
@@ -378,7 +459,7 @@ impl Rt {
             .fetch_min(self.minimum.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
         self.minimum = 1.0;
         if self.stage == Stage::Stable
-            && self.wet == self.target_enabled
+            && self.wet == self.desired()
             && (self.applied_ceiling - self.ceiling).abs() < 1.0e-5
         {
             shared.applied.store(self.revision, Ordering::Release);
@@ -388,22 +469,10 @@ impl Rt {
     fn process_wet(&mut self, sample: [f32; 2]) -> [f32; 2] {
         let delayed = [self.delay_l[self.pos], self.delay_r[self.pos]];
         self.push_hist(sample);
-        self.seen = self.seen.saturating_add(1);
-        // 先読みの未来側が揃ったサンプルから検出する。バッファ全体を待たない。
-        let need = if self.seen > FUTURE as u32 {
-            let ceiling = self.applied_ceiling * self.guard;
-            let peak = self.estimate();
-            let need = if peak <= ceiling {
-                1.0
-            } else {
-                (ceiling / peak).clamp(0.0, 1.0)
-            };
-            self.retune(need);
-            Some(need)
-        } else {
-            None
-        };
-        self.advance_gain(need);
+        // 補間の中心は GROUP_DELAY だけ過去を見ている。その山に対する必要 gain を、
+        // 直近 L+1 の最小（山の最大）から作り、長さ L の箱型平均で滑らかにする。
+        let attack = self.attack_envelope(self.estimate());
+        self.follow_envelope(attack);
         self.delay_l[self.pos] = sample[0];
         self.delay_r[self.pos] = sample[1];
         self.pos += 1;
@@ -415,31 +484,70 @@ impl Rt {
         delayed.map(|value| value * gain)
     }
 
-    fn retune(&mut self, need: f32) {
-        // 山が出力へ届くより少し前に減衰を終える。
-        let deadline = self.lookahead.saturating_sub(FUTURE + 8).max(1) as u32;
-        if need + 1.0e-6 < self.gain {
-            let projected = self.gain - self.attack_step * deadline as f32;
-            if self.attack_left == 0 || need < projected - 1.0e-5 {
-                self.attack_step = (self.gain - need) / deadline as f32;
-                self.attack_left = deadline;
-            }
+    /// 今の天井で必要 gain を作り直す。天井ランプの途中でも、過去の山を古い天井のまま使わない。
+    fn attack_envelope(&mut self, peak: f32) -> f32 {
+        let sliding = self.push_sliding_peak(peak);
+        let ceiling = self.applied_ceiling * self.guard;
+        let old_peak = self.held[self.held_write];
+        self.held[self.held_write] = sliding;
+        self.held_write += 1;
+        if self.held_write == self.held.len() {
+            self.held_write = 0;
         }
+        self.sum_refresh = self.sum_refresh.saturating_add(1);
+        // 天井が動いたときと、定期的な再計算で、増分和の誤差を消す。
+        if (ceiling - self.sum_ceiling).abs() > 1.0e-6 || self.sum_refresh >= self.envelope as u32 {
+            let mut sum = 0.0f32;
+            for value in &self.held {
+                sum += required_gain(ceiling, *value);
+            }
+            self.box_sum = sum;
+            self.sum_ceiling = ceiling;
+            self.sum_refresh = 0;
+        } else {
+            self.box_sum += required_gain(ceiling, sliding) - required_gain(ceiling, old_peak);
+        }
+        self.box_sum / self.envelope as f32
     }
 
-    fn advance_gain(&mut self, need: Option<f32>) {
-        if self.attack_left > 0 {
-            self.gain = (self.gain - self.attack_step).max(0.0);
-            self.attack_left -= 1;
-            if self.attack_left == 0 {
-                self.attack_step = 0.0;
+    fn push_sliding_peak(&mut self, peak: f32) -> f32 {
+        let window = self.envelope as u32;
+        self.peak_now = self.peak_now.wrapping_add(1);
+        let now = self.peak_now;
+        while self.peak_len > 0 && now.wrapping_sub(self.peak_age[self.peak_head]) > window {
+            self.peak_head += 1;
+            if self.peak_head == self.peak_age.len() {
+                self.peak_head = 0;
             }
-            return;
+            self.peak_len -= 1;
         }
-        if let Some(need) = need {
-            // 必要な減衰より速く戻さない。山が続いている間は need で頭を押さえる。
+        while self.peak_len > 0 {
+            let back = (self.peak_head + self.peak_len - 1) % self.peak_age.len();
+            if self.peak_value[back] <= peak {
+                self.peak_len -= 1;
+            } else {
+                break;
+            }
+        }
+        let back = (self.peak_head + self.peak_len) % self.peak_age.len();
+        self.peak_age[back] = now;
+        self.peak_value[back] = peak;
+        self.peak_len += 1;
+        self.peak_value[self.peak_head]
+    }
+
+    fn follow_envelope(&mut self, attack: f32) {
+        let attack = if attack.is_finite() {
+            attack.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        if attack < self.gain {
+            // 下がる方向は、平滑済みの attack へすぐ従う。release では山を逃さない。
+            self.gain = attack;
+        } else {
             let released = 1.0 - (1.0 - self.gain) * self.release;
-            self.gain = released.min(need).clamp(0.0, 1.0);
+            self.gain = released.min(attack).clamp(0.0, 1.0);
         }
     }
 
@@ -474,6 +582,17 @@ impl Rt {
         } else {
             0.0
         }
+    }
+}
+
+fn required_gain(ceiling: f32, peak: f32) -> f32 {
+    if !ceiling.is_finite() || ceiling <= 0.0 {
+        return 0.0;
+    }
+    if !peak.is_finite() || peak <= ceiling {
+        1.0
+    } else {
+        (ceiling / peak).clamp(0.0, 1.0)
     }
 }
 
@@ -535,6 +654,7 @@ mod tests {
                 release_ms: 100.0,
             },
             rate,
+            Route::ENGAGED,
         )
     }
 
@@ -573,15 +693,23 @@ mod tests {
 
     #[test]
     fn lookahead_scales_with_rate_and_bypass_adds_no_delay() {
-        for (rate, samples) in [(44_100, 44u32), (48_000, 48), (96_000, 96), (192_000, 192)] {
-            assert_eq!(lookahead_samples(rate), samples.max((FUTURE + TAPS) as u32));
-            let mut bypass = Rt::new(Config::default(), rate);
+        for (rate, envelope) in [(44_100, 44u32), (48_000, 48), (96_000, 96), (192_000, 192)] {
+            assert_eq!(
+                lookahead_samples(rate),
+                envelope + GROUP_DELAY as u32,
+                "{rate} Hz の遅延は包絡 {envelope} に群遅延を足した長さ"
+            );
+            let mut bypass = Rt::new(Config::default(), rate, Route::ENGAGED);
             assert_eq!(bypass.added_latency_samples(), 0);
             assert_eq!(bypass.process([0.2, -0.4]), [0.2, -0.4]);
             let limited = enabled(rate);
             assert_eq!(limited.added_latency_samples(), lookahead_samples(rate));
             let ms = lookahead_ms(rate);
-            assert!((ms - 1.0).abs() < 0.05, "{rate} Hz の先読みは {ms:.3} ms");
+            let envelope_ms = f64::from(envelope) * 1000.0 / f64::from(rate);
+            assert!(
+                ms > envelope_ms && ms < envelope_ms + 0.3,
+                "{rate} Hz の先読みは包絡 {envelope_ms:.3} ms に群遅延を足して {ms:.3} ms"
+            );
         }
     }
 
@@ -799,6 +927,217 @@ mod tests {
     }
 
     #[test]
+    fn route_application_matches_displayed_latency() {
+        let config = Config {
+            enabled: true,
+            ceiling_db: -12.0,
+            release_ms: 20.0,
+        };
+        let cases = [
+            (false, true, false, "分離OFFでsinkあり"),
+            (false, false, false, "単一出力"),
+            (true, false, false, "分離ONだがsinkなし"),
+            (true, true, true, "分離ON"),
+        ];
+        for (split, sink, expect_applied, label) in cases {
+            let route = Route { split, sink };
+            let shared = Shared::default();
+            let status = shared.status(config, true, route, 48_000);
+            let mut rt = Rt::new(config, 48_000, route);
+            assert_eq!(status.applied, expect_applied, "{label}");
+            assert_eq!(
+                status.added_latency_samples,
+                rt.added_latency_samples(),
+                "{label} の表示遅延と処理器の遅延"
+            );
+            assert_eq!(
+                rt.added_latency_samples(),
+                if expect_applied {
+                    lookahead_samples(48_000)
+                } else {
+                    0
+                },
+                "{label}"
+            );
+            let mut impulse_at = None;
+            for index in 0..2_000 {
+                let sample = if index == 80 { 4.0 } else { 0.0 };
+                let output = rt.process([sample, 0.0])[0];
+                if impulse_at.is_none() && output.abs() > 0.05 {
+                    impulse_at = Some(index);
+                }
+                assert!(output.is_finite(), "{label} の出力 {output}");
+                if expect_applied {
+                    assert!(output.abs() <= 1.0, "{label} の出力 {output}");
+                }
+            }
+            if expect_applied {
+                let at = impulse_at.expect("分離ONではインパルスが減衰して出る");
+                assert!(
+                    at >= 80 + lookahead_samples(48_000) as usize - 2,
+                    "{label} の山は遅延の後に出るはずですが {at}"
+                );
+                assert!(impulse_at.unwrap() < 80 + lookahead_samples(48_000) as usize + 8);
+            } else {
+                assert_eq!(impulse_at, Some(80), "{label} は遅延も減衰もしない");
+            }
+        }
+    }
+
+    #[test]
+    fn impulses_and_program_signals_stay_inside_the_ceiling() {
+        let rates = [44_100u32, 48_000, 96_000, 192_000];
+        let ceilings = [-12.0f32, -6.0, -1.0, -0.1];
+        let releases = [20.0f32, 100.0, 1000.0];
+        let mut worst = f64::NEG_INFINITY;
+        let mut worst_label = String::new();
+        for rate in rates {
+            for ceiling_db in ceilings {
+                for release_ms in releases {
+                    for amplitude in 1..=10 {
+                        let (over, sample_abs) = limit_signal(
+                            &single_impulse(amplitude as f32),
+                            rate,
+                            Config {
+                                enabled: true,
+                                ceiling_db,
+                                release_ms,
+                            },
+                        );
+                        if over > worst {
+                            worst = over;
+                            worst_label = format!(
+                                "{rate} Hz 天井 {ceiling_db} dB release {release_ms} ms 振幅 {amplitude}"
+                            );
+                        }
+                        assert!(over <= 0.1, "{worst_label} の超過 {over:.3} dB");
+                        assert!(
+                            sample_abs <= 1.0,
+                            "{rate} Hz 天井 {ceiling_db} の出力絶対値 {sample_abs}"
+                        );
+                    }
+                }
+            }
+        }
+        eprintln!("単発インパルスの最悪超過: {worst:.3} dB（{worst_label}）");
+        for rate in rates {
+            for (ceiling_db, release_ms) in [(-1.0, 100.0), (-12.0, 20.0), (-0.1, 20.0)] {
+                let config = Config {
+                    enabled: true,
+                    ceiling_db,
+                    release_ms,
+                };
+                let signals: [(&str, Vec<[f32; 2]>); 6] = [
+                    ("fs/4", quarter_frames(2.0)),
+                    ("15 kHz 急な立上り", sudden_onset(rate)),
+                    ("帯域制限インパルス", bandlimited_impulse(rate)),
+                    ("帯域制限雑音", bandlimited_noise(rate)),
+                    ("左だけ", one_sided_hot(rate)),
+                    ("12 kHz 45°", quarter_frames(1.8)),
+                ];
+                for (name, signal) in signals {
+                    let (over, sample_abs) = limit_signal(&signal, rate, config);
+                    assert!(sample_abs <= 1.0, "{name} の出力絶対値 {sample_abs}");
+                    if over > worst {
+                        worst = over;
+                        worst_label = format!(
+                            "{name} {rate} Hz 天井 {ceiling_db} dB release {release_ms} ms"
+                        );
+                    }
+                }
+            }
+        }
+        eprintln!("評価信号を含めた最悪超過: {worst:.3} dB（{worst_label}）");
+        assert!(worst <= 0.1, "最悪超過 {worst:.3} dB（{worst_label}）");
+    }
+
+    #[test]
+    fn ceiling_ramp_uses_the_current_ceiling() {
+        let mut rt = enabled(48_000);
+        let mut meter = TruePeakMeter::new();
+        for index in 0..2_000 {
+            let frame = quarter_sample(index, 2.0);
+            let output = rt.process(frame);
+            meter.push(output[0] as f64);
+        }
+        rt.apply_config(Config {
+            enabled: true,
+            ceiling_db: -12.0,
+            release_ms: 20.0,
+        });
+        let mut ceilings = Vec::new();
+        let mut peaks = Vec::new();
+        for index in 0..4_000 {
+            let output = rt.process(quarter_sample(index, 2.0));
+            assert!(output
+                .iter()
+                .all(|value| value.is_finite() && value.abs() <= 1.0));
+            ceilings.push(f64::from(rt.current_ceiling()));
+            peaks.push(meter.push(output[0] as f64));
+        }
+        let mut worst = f64::NEG_INFINITY;
+        for index in 96..peaks.len() {
+            let reference = ceilings[index - 64];
+            if peaks[index] > 0.0 {
+                worst = worst.max(20.0 * (peaks[index] / reference).log10());
+            }
+        }
+        assert!(
+            worst <= 0.1,
+            "天井ランプ中の超過 {worst:.3} dB。測定器の遅れ分だけ前の天井と比べています"
+        );
+        let settled = 20.0
+            * (peaks.last().copied().unwrap_or(0.0) / ceilings.last().copied().unwrap_or(1.0))
+                .log10();
+        assert!(settled <= 0.1, "ランプ完了後の超過 {settled:.3} dB");
+    }
+
+    fn quarter_sample(index: usize, amplitude: f32) -> [f32; 2] {
+        let value = (std::f64::consts::PI * index as f64 / 2.0 + std::f64::consts::FRAC_PI_4).sin()
+            as f32
+            * amplitude;
+        [value, value * 0.5]
+    }
+
+    fn quarter_frames(amplitude: f32) -> Vec<[f32; 2]> {
+        (0..4_096)
+            .map(|index| quarter_sample(index, amplitude))
+            .collect()
+    }
+
+    fn single_impulse(amplitude: f32) -> Vec<[f32; 2]> {
+        let mut input = vec![[0.0; 2]; 1_536];
+        input[64] = [amplitude, amplitude * 0.25];
+        input
+    }
+
+    fn limit_signal(input: &[[f32; 2]], rate: u32, config: Config) -> (f64, f32) {
+        let mut rt = Rt::new(config, rate, Route::ENGAGED);
+        let mut left = TruePeakMeter::new();
+        let mut right = TruePeakMeter::new();
+        let ceiling = 10.0f64.powf(f64::from(config.ceiling_db) / 20.0);
+        let mut true_peak = 0.0f64;
+        let mut sample_abs = 0.0f32;
+        for (index, frame) in input.iter().enumerate() {
+            let output = rt.process(*frame);
+            sample_abs = sample_abs.max(output[0].abs()).max(output[1].abs());
+            assert!(output.iter().all(|value| value.is_finite()));
+            let peak = left
+                .push(output[0] as f64)
+                .max(right.push(output[1] as f64));
+            if index > 64 {
+                true_peak = true_peak.max(peak);
+            }
+        }
+        let overshoot = if true_peak > 0.0 {
+            20.0 * (true_peak / ceiling).log10()
+        } else {
+            -120.0
+        };
+        (overshoot, sample_abs)
+    }
+
+    #[test]
     fn evaluation_table_shows_a_clear_true_peak_reduction() {
         let rate = 48_000u32;
         let mut rows = Vec::new();
@@ -811,15 +1150,23 @@ mod tests {
                 clear_failures += 1;
                 weak_margin = weak_margin.min(metric[1].overshoot_db - metric[2].overshoot_db);
             }
+            let quiet = format!(
+                "{} / {}",
+                fmt_optional(metric[2].quiet_error),
+                fmt_optional(metric[1].quiet_error)
+            );
             rows.push(format!(
-                "| {label} | {bare:.2} | {sample:.2} | {candidate:.2} | {exceed:.3} | {atten:.2} | {thd:.3} |",
+                "| {label} | {bare:.2} | {sample:.2} | {candidate:.2} | {exceed:.3} | {atten:.2} | {thd} | {quiet} | {bend:.5} |",
                 bare = metric[0].overshoot_db,
                 sample = metric[1].overshoot_db,
                 candidate = metric[2].overshoot_db,
                 exceed = metric[2].exceed_ratio * 100.0,
                 atten = metric[2].attenuation_db,
-                thd = metric[2].thd,
+                thd = fmt_optional(metric[2].thd),
+                quiet = quiet,
+                bend = metric[2].bend,
             ));
+            assert_metric(label, &metric);
         };
         push_row(
             "12 kHz (fs/4) / 45°",
@@ -846,22 +1193,31 @@ mod tests {
                 clear_failures += 1;
                 weak_margin = weak_margin.min(sample.overshoot_db - candidate.overshoot_db);
             }
+            let label = format!("{freq:.0} Hz / {phase:.0}°");
+            let quiet = format!(
+                "{} / {}",
+                fmt_optional(candidate.quiet_error),
+                fmt_optional(sample.quiet_error)
+            );
             rows.push(format!(
-                "| {freq:.0} Hz / {phase:.0}° | {bare:.2} | {sample:.2} | {candidate:.2} | {exceed:.3} | {atten:.2} | {thd:.3} |",
+                "| {label} | {bare:.2} | {sample:.2} | {candidate:.2} | {exceed:.3} | {atten:.2} | {thd} | {quiet} | {bend:.5} |",
                 bare = bare.overshoot_db,
                 sample = sample.overshoot_db,
                 candidate = candidate.overshoot_db,
                 exceed = candidate.exceed_ratio * 100.0,
                 atten = candidate.attenuation_db,
-                thd = candidate.thd,
+                thd = fmt_optional(candidate.thd),
+                quiet = quiet,
+                bend = candidate.bend,
             ));
+            assert_metric(&label, &[bare, sample, candidate]);
         }
         let impulse = render_custom(&bandlimited_impulse(48_000), rate);
         let noise = render_custom(&bandlimited_noise(48_000), rate);
         let onset = render_custom(&sudden_onset(48_000), rate);
         let one_sided = render_custom(&one_sided_hot(48_000), rate);
         eprintln!("評価（48 kHz、天井 -1 dBFS、超過は測定器の true-peak）");
-        eprintln!("| 信号 | 保護なし dB | sample-peak dB | 候補 dB | 候補の超過率 % | 候補の平均減衰 dB | 候補 THD |");
+        eprintln!("| 信号 | 保護なし dB | sample-peak dB | 候補 dB | 候補の超過率 % | 候補の平均減衰 dB | 候補 THD | 天井未満の相対誤差 候補/sample-peak | 候補の折れ残差 |");
         for row in &rows {
             eprintln!("{row}");
         }
@@ -872,14 +1228,18 @@ mod tests {
             ("左だけの過大音", one_sided),
         ] {
             eprintln!(
-                "| {name} | {:.2} | {:.2} | {:.2} | {:.3} | {:.2} | {:.3} |",
+                "| {name} | {:.2} | {:.2} | {:.2} | {:.3} | {:.2} | {} | {} / {} | {:.5} |",
                 metric[0].overshoot_db,
                 metric[1].overshoot_db,
                 metric[2].overshoot_db,
                 metric[2].exceed_ratio * 100.0,
                 metric[2].attenuation_db,
-                metric[2].thd
+                fmt_optional(metric[2].thd),
+                fmt_optional(metric[2].quiet_error),
+                fmt_optional(metric[1].quiet_error),
+                metric[2].bend
             );
+            assert_metric(name, &metric);
             worst_candidate = worst_candidate.max(metric[2].overshoot_db);
             if metric[1].overshoot_db > 0.3 {
                 clear_failures += 1;
@@ -915,34 +1275,56 @@ mod tests {
     #[test]
     #[ignore]
     fn bench_one_second_against_sample_peak() {
-        let rate = 48_000usize;
-        let mut candidate = enabled(rate as u32);
-        let mut sample = super::super::peak_protection::Rt::new(
-            super::super::peak_protection::Config {
-                enabled: true,
-                ceiling_db: -1.0,
-                release_ms: 100.0,
-            },
-            rate as u32,
+        let (candidate_ms, sample_ms, ratio) = debug_cpu_median(5);
+        eprintln!(
+            "CPU中央値（debug、5回、他の試験と分けて測る。release は未測定）: 候補 {candidate_ms:.1} ms / sample-peak {sample_ms:.1} ms / 比 {ratio:.2}"
         );
+        assert!(ratio < 12.0, "CPU比 {ratio:.2}");
+    }
+
+    fn debug_cpu_median(runs: usize) -> (f64, f64, f64) {
+        let rate = 48_000usize;
         let mut signal = vec![[0.0f32; 2]; rate];
         for (index, frame) in signal.iter_mut().enumerate() {
             let value =
                 (2.0 * std::f64::consts::PI * 19_000.0 * index as f64 / rate as f64).sin() as f32;
             *frame = [value * 1.5, value * -1.2];
         }
-        let candidate_time = time_processor(&mut signal, |frame| {
-            candidate.process(frame);
-        });
-        let sample_time = time_processor(&mut signal, |frame| {
-            sample.process(frame);
-        });
-        let ratio = candidate_time.as_secs_f64() / sample_time.as_secs_f64().max(1.0e-9);
-        eprintln!(
-            "1秒: 候補 {:?} / sample-peak {:?} / 比 {ratio:.2}",
-            candidate_time, sample_time
-        );
-        assert!(ratio < 12.0, "CPU比 {ratio:.2}");
+        let mut ratios = Vec::with_capacity(runs);
+        let mut candidate_ms = Vec::with_capacity(runs);
+        let mut sample_ms = Vec::with_capacity(runs);
+        for _ in 0..runs {
+            let mut candidate = enabled(rate as u32);
+            let mut sample = super::super::peak_protection::Rt::new(
+                super::super::peak_protection::Config {
+                    enabled: true,
+                    ceiling_db: -1.0,
+                    release_ms: 100.0,
+                },
+                rate as u32,
+            );
+            let candidate_time = time_processor(&mut signal, |frame| {
+                candidate.process(frame);
+            });
+            let sample_time = time_processor(&mut signal, |frame| {
+                sample.process(frame);
+            });
+            let candidate = candidate_time.as_secs_f64() * 1000.0;
+            let sample = sample_time.as_secs_f64() * 1000.0;
+            ratios.push(candidate / sample.max(1.0e-9));
+            candidate_ms.push(candidate);
+            sample_ms.push(sample);
+        }
+        (
+            median(&mut candidate_ms),
+            median(&mut sample_ms),
+            median(&mut ratios),
+        )
+    }
+
+    fn median(values: &mut [f64]) -> f64 {
+        values.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+        values[values.len() / 2]
     }
 
     fn time_processor(
@@ -967,9 +1349,46 @@ mod tests {
         overshoot_db: f64,
         exceed_ratio: f64,
         attenuation_db: f64,
-        thd: f64,
+        /// 正弦だけ測る。過渡は None で、0 にはしない。
+        thd: Option<f64>,
+        /// 天井未満の区間で、遅延を揃えた入力との相対誤差。静かな区間が足りなければ None。
+        quiet_error: Option<f64>,
+        /// 出力と「遅延入力 × 適用ゲイン」の差。純ゲインならほぼ 0。
+        bend: f64,
+        full_scale_peak: f64,
         output: Vec<f64>,
         input: Vec<f64>,
+    }
+
+    fn fmt_optional(value: Option<f64>) -> String {
+        match value {
+            Some(value) => format!("{value:.3}"),
+            None => "未測定".to_string(),
+        }
+    }
+
+    fn assert_metric(label: &str, metric: &[Metric; 3]) {
+        assert!(
+            metric[2].overshoot_db <= 0.1,
+            "{label} の超過 {:.3} dB",
+            metric[2].overshoot_db
+        );
+        assert!(
+            metric[2].full_scale_peak <= 1.0,
+            "{label} の出力絶対値 {:.4}",
+            metric[2].full_scale_peak
+        );
+        assert!(
+            metric[2].bend < 1.0e-3,
+            "{label} の折れ残差 {:.5}。ゲイン以外で波形を折っています",
+            metric[2].bend
+        );
+        if let Some(thd) = metric[2].thd {
+            assert!(
+                thd < 0.02,
+                "{label} の THD 相当 {thd:.4} が正弦の採否 0.02 を超えています"
+            );
+        }
     }
 
     fn render_sine(
@@ -1043,6 +1462,8 @@ mod tests {
         let mut points = 0u64;
         let mut output = Vec::with_capacity(input.len());
         let mut dry = Vec::with_capacity(input.len());
+        let mut gains = Vec::with_capacity(input.len());
+        let mut full_scale_peak = 0.0f64;
         let mut out_sq = 0.0f64;
         let mut in_sq = 0.0f64;
         let mut counted = 0u64;
@@ -1052,8 +1473,17 @@ mod tests {
                 Processor::SamplePeak => sample_peak.process(*frame),
                 Processor::Candidate => candidate.process(*frame),
             };
+            let applied = match processor {
+                Processor::Bare => 1.0,
+                Processor::SamplePeak => f64::from(sample_peak.applied_gain()),
+                Processor::Candidate => f64::from(candidate.applied_gain()),
+            };
             output.push(processed[0] as f64);
             dry.push(frame[0] as f64);
+            gains.push(applied);
+            full_scale_peak = full_scale_peak
+                .max(processed[0].abs() as f64)
+                .max(processed[1].abs() as f64);
             if index < skip {
                 meter.push(processed[0] as f64);
                 continue;
@@ -1089,17 +1519,66 @@ mod tests {
                 exceed as f64 / points as f64
             },
             attenuation_db,
-            thd: freq
-                .map(|freq| residual_ratio(&output[skip..], freq, rate))
-                .unwrap_or(0.0),
+            thd: freq.and_then(|freq| residual_ratio(&output[skip..], freq, rate)),
+            quiet_error: quiet_relative_error(&output, &dry, latency, ceiling),
+            bend: gain_residual(&output, &dry, &gains, skip, latency),
+            full_scale_peak,
             output,
             input: dry,
         }
     }
 
-    fn residual_ratio(output: &[f64], freq: f64, rate: u32) -> f64 {
+    fn quiet_relative_error(
+        output: &[f64],
+        input: &[f64],
+        latency: usize,
+        ceiling: f64,
+    ) -> Option<f64> {
+        let mut error = 0.0;
+        let mut energy = 0.0;
+        let mut count = 0usize;
+        for index in latency..output.len() {
+            let dry = input[index - latency];
+            let magnitude = dry.abs();
+            if magnitude < ceiling && magnitude > 1.0e-4 {
+                let delta = output[index] - dry;
+                error += delta * delta;
+                energy += magnitude * magnitude;
+                count += 1;
+            }
+        }
+        if count < 32 || energy < 1.0e-18 {
+            None
+        } else {
+            Some((error / energy).sqrt())
+        }
+    }
+
+    fn gain_residual(
+        output: &[f64],
+        input: &[f64],
+        gain: &[f64],
+        skip: usize,
+        latency: usize,
+    ) -> f64 {
+        let mut error = 0.0;
+        let mut energy = 0.0;
+        for index in skip..output.len() {
+            let predicted = input[index - latency] * gain[index];
+            let delta = output[index] - predicted;
+            error += delta * delta;
+            energy += output[index] * output[index];
+        }
+        if energy < 1.0e-18 {
+            0.0
+        } else {
+            (error / energy).sqrt()
+        }
+    }
+
+    fn residual_ratio(output: &[f64], freq: f64, rate: u32) -> Option<f64> {
         if output.len() < 32 {
-            return 0.0;
+            return None;
         }
         let mut sin_energy = 0.0;
         let mut cos_energy = 0.0;
@@ -1118,7 +1597,7 @@ mod tests {
         }
         let det = sin_energy * cos_energy - cross * cross;
         if det.abs() < 1.0e-12 {
-            return 0.0;
+            return None;
         }
         let sine_gain = (sin_proj * cos_energy - cos_proj * cross) / det;
         let cosine_gain = (cos_proj * sin_energy - sin_proj * cross) / det;
@@ -1132,9 +1611,9 @@ mod tests {
             energy += value * value;
         }
         if energy == 0.0 {
-            0.0
+            None
         } else {
-            (error / energy).sqrt()
+            Some((error / energy).sqrt())
         }
     }
 
