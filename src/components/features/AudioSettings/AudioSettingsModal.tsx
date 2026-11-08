@@ -542,7 +542,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <legend className="px-1 text-ui-heading font-semibold">
                     <label htmlFor={inputId}>{t(isAsio ? 'settings.AudioSettingsModal.037' : pcInput ? 'wizard.pcAudio' : 'settings.AudioSettingsModal.038')}</label>
                   </legend>
-                  <Field id={inputId} label={null}><Select
+                  <Field id={inputId} label={null} description={isAsio ? t('settings.AudioSettingsModal.044') : undefined}><Select
                     id={inputId}
                     value={needsDeviceChoice ? '' : selectedInputKey}
                     onChange={(e) => { editConnection('input'); setSelectedInputKey(e.target.value); setNeedsDeviceChoice(!e.target.value); }}
@@ -554,7 +554,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       <option key={`${audioDeviceKey(device)}-${i}`} value={audioDeviceKey(device)} disabled={!device.id && filteredInputs.filter(item => item.name === device.name).length > 1}>{device.name}{filteredInputs.filter(item => item.name === device.name).length > 1 && device.id ? ` (${device.id})` : ''}</option>
                     ))}
                   </Select></Field>
-                  {isAsio && <p className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.044')}</p>}
                   <MicrophonePermissionGuide />
                 </fieldset>
 

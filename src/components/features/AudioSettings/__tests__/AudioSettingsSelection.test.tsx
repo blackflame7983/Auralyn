@@ -21,6 +21,20 @@ const openSettings = () => render(<AudioSettingsModal isOpen onClose={() => {}} 
 const hostSelect = () => screen.getAllByRole('combobox').find(element =>
     Array.from((element as HTMLSelectElement).options).some(option => option.value === 'Wasapi'))!;
 
+it('ASIO注意書きを機器の説明として関連付け、WASAPIに戻すと外す', async () => {
+    openSettings();
+    await screen.findByRole('option', { name: 'USB mic' });
+    fireEvent.change(hostSelect(), { target: { value: 'ASIO' } });
+    const device = screen.getByRole('combobox', { name: '機器' });
+    const note = screen.getByText('ASIOモードでは、選択したデバイスが入出力の両方を担当します。');
+    expect(device).toHaveAccessibleDescription(note.textContent!);
+    expect(device.getAttribute('aria-describedby')?.split(/\s+/)).toContain(note.id);
+    expect(device.closest('fieldset')).toContainElement(note);
+    fireEvent.change(hostSelect(), { target: { value: 'Wasapi' } });
+    expect(screen.getByRole('combobox', { name: 'マイク' })).not.toHaveAttribute('aria-describedby');
+    expect(note).not.toBeInTheDocument();
+});
+
 it.each([88200, 192000])('代表値以外の%d Hzでも表示値と開始要求値が一致する', async rate => {
     localStorage.setItem('vst_host_settings_advanced', 'true');
     localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'ASIO', input: 'ASIO device', output: 'ASIO device', sampleRate: rate, bufferSize: 512 }));

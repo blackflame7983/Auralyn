@@ -1,5 +1,6 @@
 import { message } from '../../src/i18n/messages';
 import { test, expect } from './tauriFixture';
+import { expectFieldDescriptionBelow } from './fieldDescription';
 
 // セットアップだけで ASIO 機器を選び、音の確認まで終えられる（#291）。
 test('セットアップで ASIO を選び、同じ機器のチャンネルで音を確認する', async ({ page }, info) => {
@@ -55,11 +56,7 @@ for (const locale of ['ja', 'en'] as const) {
         const dialog = page.getByRole('dialog');
         const device = dialog.getByRole('combobox', { name: message(locale, 'guide.copy.188'), exact: true });
         const note = dialog.getByText(message(locale, 'settings.AudioSettingsModal.044'), { exact: true });
-        await note.scrollIntoViewIfNeeded();
-        await expect(note).toBeInViewport({ ratio: 1 });
-        expect(await note.evaluate(el => el.scrollWidth <= el.clientWidth && getComputedStyle(el).textOverflow !== 'ellipsis')).toBe(true);
-        expect(await note.evaluate(el => el.previousElementSibling?.tagName)).toBe('SELECT');
-        expect((await note.boundingBox())!.y).toBeGreaterThanOrEqual((await device.boundingBox())!.y + (await device.boundingBox())!.height);
+        await expectFieldDescriptionBelow(device, note);
         await page.screenshot({ path: info.outputPath('asio-note-150.png') });
     });
 }

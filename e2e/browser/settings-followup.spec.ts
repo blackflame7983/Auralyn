@@ -1,5 +1,6 @@
 import { test, expect } from './tauriFixture';
 import { message } from '../../src/i18n/messages';
+import { expectFieldDescriptionBelow } from './fieldDescription';
 
 for (const locale of ['ja', 'en'] as const) {
     // 機器選択と設定復帰は両言語・代表テーマで検証する。
@@ -110,8 +111,8 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await expect(dialog.getByText(message(locale, 'settings.connection.restoreHint'), { exact: true })).toHaveCount(0);
         await dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.035'), exact: true }).selectOption('ASIO');
         const input = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.037'), exact: true });
-        await expect(input.locator('..').getByText(message(locale, 'settings.AudioSettingsModal.044'), { exact: true })).toBeVisible();
-        await expect(input.locator('..').getByText(message(locale, 'settings.MicrophonePermissionGuide.238'), { exact: true })).toBeVisible();
+        await expectFieldDescriptionBelow(input, dialog.getByText(message(locale, 'settings.AudioSettingsModal.044'), { exact: true }));
+        await expect(dialog.getByRole('group', { name: message(locale, 'settings.AudioSettingsModal.037'), exact: true }).getByText(message(locale, 'settings.MicrophonePermissionGuide.238'), { exact: true })).toBeVisible();
         await input.evaluate(el => el.scrollIntoView({ block: 'start' }));
         expect(await dialog.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
         await page.screenshot({ path: info.outputPath('asio-near-device.png'), animations: 'disabled' });
