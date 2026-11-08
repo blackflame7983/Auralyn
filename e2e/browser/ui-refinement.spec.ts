@@ -69,8 +69,19 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
             expect(bars).toHaveLength(2);
             expect(Math.abs(bars[0].top - bars[1].top)).toBeLessThanOrEqual(1);
             expect(bars[0].right).toBeLessThan(bars[1].left);
-            const distances = await live.locator('[data-meter-status]').evaluateAll(nodes => nodes.map(el => el.previousElementSibling!.getBoundingClientRect().top - el.getBoundingClientRect().bottom));
-            expect(distances.every(distance => distance >= 0 && distance <= 8)).toBe(true);
+            // 状態文は別の行を増やさず、18pxのバー内に重ねて収める。
+            const statuses = live.locator('[data-meter-status]');
+            await expect(statuses).toHaveCount(2);
+            expect(await statuses.evaluateAll(nodes => nodes.every(el => {
+                const meter = el.closest('[role="meter"]');
+                if (!meter) return false;
+                const bar = meter.getBoundingClientRect();
+                const text = el.getBoundingClientRect();
+                return getComputedStyle(el).position === 'absolute'
+                    && text.left >= bar.left && text.right <= bar.right
+                    && text.top >= bar.top && text.bottom <= bar.bottom
+                    && el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight;
+            }))).toBe(true);
             const box = await live.boundingBox(); expect(box!.height).toBeGreaterThan(250);
             await expect(page.getByRole('region', { name: message('ja', 'prep.title'), exact: true })).toBeInViewport();
         }
