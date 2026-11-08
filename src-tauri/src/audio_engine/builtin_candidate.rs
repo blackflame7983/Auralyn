@@ -382,6 +382,9 @@ fn render(
         true,
     );
     let mut legacy = crate::audio_engine::core::dsp::RtBuiltInVoiceChain::new(rate);
+    let mut deesser = crate::audio_engine::deesser::DeEsser::new(
+        crate::audio_engine::deesser::Coefficients::prepare(config.deesser, rate)?,
+    );
     let mut reverb =
         crate::audio_engine::reverb::Reverb::new(config.reverb.unwrap_or_default(), rate)?;
     let fade_frames = if total_frames > recording.frames {
@@ -412,6 +415,7 @@ fn render(
             let (l, r) = legacy.process_sample(raw[0], raw[1], config.preset, config.amount);
             [l, r]
         };
+        let processed = deesser.process(processed);
         let mut processed = reverb.process(processed, false);
         if fade_frames > 0 && index >= total_frames - fade_frames {
             let gain = (total_frames - 1 - index) as f32 / fade_frames as f32;
@@ -609,6 +613,7 @@ mod tests {
             amount: 0.7,
             singing: None,
             reverb: None,
+            deesser: None,
         }
         .normalize()
         .unwrap();

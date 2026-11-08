@@ -3,9 +3,11 @@ import type { HistoryReason } from './history';
 
 export interface SingingParams { lowCutHz: number; dynamics: number; brightnessDb: number }
 export interface ReverbParams { enabled: boolean; mix: number; decaySeconds: number; damping: number }
+export interface DeEsserParams { amount: number }
 export interface BuiltinConfig {
     active: boolean; preset: 'broadcast' | 'warm' | 'bright' | 'singing'; amount: number; singing: SingingParams | null;
     reverb?: ReverbParams | null;
+    deesser?: DeEsserParams | null;
 }
 export interface BuiltinSnapshot {
     epoch: string; revision: string; appliedRevision: string; config: BuiltinConfig;

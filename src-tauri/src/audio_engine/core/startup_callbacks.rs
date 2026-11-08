@@ -1004,9 +1004,10 @@ pub(super) fn apply_commands(context: CommandContext<'_>) -> bool {
                 amount,
                 singing,
                 reverb,
+                deesser,
                 revision,
             } => {
-                rt_voice.update_normal(active, preset, amount.clamp(0.0, 1.0), singing);
+                rt_voice.update_normal(active, preset, amount.clamp(0.0, 1.0), singing, deesser);
                 rt_reverb.update(reverb);
                 builtin_applied.store(revision, Ordering::Release);
             }

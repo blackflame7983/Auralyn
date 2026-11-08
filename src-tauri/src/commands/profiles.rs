@@ -94,6 +94,7 @@ pub(crate) async fn save_profile(
                     amount: builtin_fx_amount.unwrap_or(stats.built_in_effects_amount),
                     singing: stats.built_in_singing,
                     reverb: stats.built_in_reverb,
+                    deesser: stats.built_in_deesser,
                 });
             }
         }

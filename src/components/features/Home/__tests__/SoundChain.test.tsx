@@ -110,6 +110,23 @@ it('音声処理中は声の段にその場の操作を出し、設定状態の�
     expect(screen.queryByText(message('ja', 'home.soundAfterSetup'))).not.toBeInTheDocument();
 });
 
+it.each(['ja', 'en'] as const)('声の処理と残響がOFFでも歯擦音があれば段はONで、折り畳みは歯擦音のみと示す (%s)', locale => {
+    const current = stats();
+    current.latencyMetadata!.stageBreakdown!.builtinVoiceEnabled = false;
+    current.latencyMetadata!.stageBreakdown!.builtinReverbEnabled = false;
+    current.builtInDeesser = { amount: 0.8 };
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><RuntimeStatsContext.Provider value={{ stats: current, running: true }}>
+        <SoundChain {...props()} />
+    </RuntimeStatsContext.Provider></LocaleProvider>);
+    const row = screen.getAllByRole('listitem')[1];
+    const summary = message(locale, 'flow.deesserOnly');
+    expect(screen.getByRole('button', { name: new RegExp(summary) })).toBeInTheDocument();
+    expect(row.querySelector('[data-on]')).toHaveAttribute('data-on', 'true');
+    expect(row.querySelector('[data-tone]')).toHaveAttribute('data-tone', 'ok');
+    expect(row).toHaveTextContent(message(locale, 'flow.builtinParts', { voice: message(locale, 'flow.disabled'), reverb: message(locale, 'flow.disabled') }));
+    expect(row).toHaveTextContent(message(locale, 'flow.deesserLine', { amount: 80 }));
+});
+
 it('声の処理がOFFでも残響が有効なら、残響のみONと明示する', () => {
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
     const builtin = screen.getAllByRole('listitem')[1];

@@ -35,6 +35,8 @@ export function useSoundSettings(engineStats: EngineRuntimeStats | null, singing
   const [builtInEffectsPreset, setBuiltInEffectsPreset] = useState<BuiltInEffectsPreset>('broadcast');
   const [builtInEffectsAmount, setBuiltInEffectsAmount] = useState(70);
   const builtInEffectsAmountEditing = useRef(false);
+  const [deesserAmount, setDeesserAmount] = useState(50);
+  const deesserEditing = useRef(false);
 
   useEffect(() => {
     if (!engineStats) return;
@@ -54,6 +56,13 @@ export function useSoundSettings(engineStats: EngineRuntimeStats | null, singing
       setNoiseStrength(Math.round(engineStats.noiseControlStrength * 100));
     }
   }, [engineStats]);
+
+  useEffect(() => {
+    const amount = singingModel.snapshot?.config.deesser?.amount;
+    if (!deesserEditing.current && amount !== undefined && Number.isFinite(amount)) {
+      setDeesserAmount(Math.round(Math.min(1, Math.max(0, amount)) * 100));
+    }
+  }, [singingModel.snapshot]);
 
   // プロファイル適用時にノイズ/内蔵 FX のローカル state を同期
   useEffect(() => {
@@ -138,7 +147,19 @@ export function useSoundSettings(engineStats: EngineRuntimeStats | null, singing
     void applyBuiltInEffects({ amount: Number(value) });
   };
 
-  return { noiseMode, setNoiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, preparingMode, setPreparingMode, singingOpen, setSingingOpen, peakOpen, setPeakOpen };
+  const applyDeesser = async (enabled: boolean, amount = deesserAmount) => {
+    const value = enabled ? { amount: Math.max(0, Math.min(100, amount)) / 100 } : null;
+    const accepted = await singingModel.setDeesser(value);
+    if (accepted) toast.success(t('settings.deesserUpdated'));
+    else if (singingModel.snapshot) toast.error(t('settings.deesserUpdateFailed'));
+  };
+
+  const commitDeesserAmount = (value: number) => {
+    deesserEditing.current = false;
+    void applyDeesser(true, value);
+  };
+
+  return { noiseMode, setNoiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, deesserAmount, setDeesserAmount, deesserEditing, applyDeesser, commitDeesserAmount, preparingMode, setPreparingMode, singingOpen, setSingingOpen, peakOpen, setPeakOpen };
 }
 
 interface SoundSettingsProps {
@@ -158,7 +179,7 @@ interface SoundSettingsProps {
 }
 export function SoundSettings({ model, engineStats, singingModel, liveModel, isBeginnerMode, settingsBody, soundStart, onClose, onOpenVoiceCheck, onPreviewSinging, onSaveSingingProfile, onOpenMixing, streamMixAvailable = true }: SoundSettingsProps) {
   const t = useMessages();
-  const { noiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, preparingMode, setPreparingMode, singingOpen, setSingingOpen, peakOpen, setPeakOpen } = model;
+  const { noiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, deesserAmount, setDeesserAmount, deesserEditing, applyDeesser, commitDeesserAmount, preparingMode, setPreparingMode, singingOpen, setSingingOpen, peakOpen, setPeakOpen } = model;
   return (
           <TabsContent value="sound" className="space-y-4">
             <div className="flex items-center gap-1 text-ui-support text-muted-foreground"><InfoPopover label={t('settings.soundHelp')}>{t('settings.AudioSettingsModal.092')}</InfoPopover><span aria-hidden="true">{t('settings.soundHelpShort')}</span></div>
@@ -297,6 +318,28 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                       onValueCommit={value => commitBuiltInEffectsAmount(String(value))} />
                   </div>
                   </fieldset>
+                  <div className="space-y-3 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label className="font-bold text-foreground text-ui-control">{t('settings.deesser')}</Label>
+                        <p className="text-ui-support text-muted-foreground">{t('settings.deesserHint')}</p>
+                        {engineStats?.latencyMetadata?.processingContext === 'broadcastWorker' && <p className="text-ui-support text-muted-foreground">{t('settings.deesserSplit')}</p>}
+                      </div>
+                      <Switch
+                        disabled={!singingModel.snapshot || singingModel.busy}
+                        checked={!!singingModel.snapshot?.config.deesser}
+                        onCheckedChange={checked => { void applyDeesser(checked); }}
+                        aria-label={t('settings.deesser')}
+                      />
+                    </div>
+                    <div className="w-full max-w-[22rem]">
+                      <SliderField label={t('settings.deesserAmount')}
+                        disabled={!singingModel.snapshot?.config.deesser || singingModel.busy}
+                        min={0} max={100} step={5} value={deesserAmount} formatValue={value => `${value}%`}
+                        onValueChange={value => { deesserEditing.current = true; setDeesserAmount(value); }}
+                        onValueCommit={value => commitDeesserAmount(value)} />
+                    </div>
+                  </div>
                 </div>
 
             </fieldset>

@@ -126,6 +126,45 @@ it.each(['ja', 'en'] as const)('歌向けON/OFFは全値を保持し、短いプ
 });
 
 
+it.each(['ja', 'en'] as const)('分離中だけ、歯擦音は配信側に適用され自分用は変わらないと示す（%s）', async locale => {
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({
+        builtInEffectsEnabled: true, builtInEffectsPreset: 'singing', builtInEffectsAmount: 0.6,
+        latencyMetadata: { processingContext: 'broadcastWorker' },
+    } as EngineRuntimeStats);
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);
+    expect(await screen.findByText(message(locale, 'settings.deesserSplit'))).toBeInTheDocument();
+});
+
+it('分離していないときは歯擦音の配信側注意を出さない', async () => {
+    render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    await screen.findByRole('switch', { name: '歯擦音を抑える（サ行）' });
+    await waitFor(() => expect(audioApi.getEngineRuntimeStats).toHaveBeenCalled());
+    expect(screen.queryByText(message('ja', 'settings.deesserSplit'))).not.toBeInTheDocument();
+});
+
+it('歯擦音のONは声の設定を残して量0.5で適用し、OFFで外す', async () => {
+    render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const toggle = await screen.findByRole('switch', { name: '歯擦音を抑える（サ行）' });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(screen.getByText('強すぎると子音がこもります')).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: '抑える量' })).toHaveAttribute('data-disabled');
+    fireEvent.click(toggle);
+    await waitFor(() => expect(builtinApi.request).toHaveBeenCalledWith({ action: 'apply', epoch: 'engine', expectedRevision: '2', config: {
+        active: true, preset: 'singing', amount: 0.6, singing: { lowCutHz: 110, dynamics: 0.65, brightnessDb: -1 },
+        deesser: { amount: 0.5 },
+    } }));
+    expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
+    await waitFor(() => {
+        expect(toggle).toBeEnabled();
+        expect(toggle).toBeChecked();
+    });
+    fireEvent.click(toggle);
+    await waitFor(() => expect(builtinApi.request).toHaveBeenCalledWith({ action: 'apply', epoch: 'engine', expectedRevision: '3', config: {
+        active: true, preset: 'singing', amount: 0.6, singing: { lowCutHz: 110, dynamics: 0.65, brightnessDb: -1 },
+        deesser: null,
+    } }));
+});
+
 it.each([true, false])('音づくりの基本を先に置き、歌向けの欄を閉じて直接入口を基本操作へ合わせる（かんたん=%s）', async beginner => {
     localStorage.setItem('vst_host_beginner_mode', String(beginner));
     render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);

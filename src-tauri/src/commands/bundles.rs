@@ -1580,6 +1580,7 @@ fn builtin_matches(expected: &ProfileBuiltinFx, actual: &ProfileBuiltinFx) -> bo
         } else {
             expected.singing == actual.singing
         }
+        && expected.deesser == actual.deesser
 }
 
 fn selected_matches(target: &BundleV1, after: &Captured) -> bool {

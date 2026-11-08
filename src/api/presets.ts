@@ -36,6 +36,7 @@ export interface ProfileNoiseControl {
 export interface ProfileBuiltinFx {
     reverb?: import('./builtinEffects').ReverbParams | null;
     singing?: import('./builtinEffects').SingingParams | null;
+    deesser?: import('./builtinEffects').DeEsserParams | null;
     preset: string;
     enabled: boolean;
     amount: number;

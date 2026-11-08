@@ -1,4 +1,5 @@
 //! 内蔵処理設定の制御側CAS。既存APIも同じrevisionへ集約する。
+use super::deesser::DeEsserParams;
 use super::singing::SingingParams;
 use serde::{Deserialize, Serialize};
 use std::sync::{
@@ -35,6 +36,9 @@ pub struct Config {
     pub singing: Option<SingingParams>,
     #[serde(default)]
     pub reverb: Option<super::reverb::ReverbParams>,
+    /// None は OFF。旧 JSON に項目が無くても読める。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deesser: Option<DeEsserParams>,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -44,6 +48,7 @@ impl Default for Config {
             amount: 0.7,
             singing: None,
             reverb: None,
+            deesser: None,
         }
     }
 }
@@ -56,6 +61,9 @@ impl Config {
             params.validate()?;
         }
         if let Some(params) = self.singing {
+            params.validate()?;
+        }
+        if let Some(params) = self.deesser {
             params.validate()?;
         }
         if self.preset == Preset::Singing && self.singing.is_none() {
@@ -381,6 +389,7 @@ mod tests {
             amount: 0.7,
             singing: None,
             reverb: None,
+            deesser: None,
         };
         apply(&mut controller, config.clone()).unwrap();
         assert_eq!(controller.config.singing, Some(SingingParams::default()));
@@ -426,6 +435,24 @@ mod tests {
         .unwrap()
         .singing
         .is_none());
+        let old =
+            serde_json::from_str::<Config>(r#"{"active":false,"preset":"broadcast","amount":0.7}"#)
+                .unwrap();
+        assert!(old.deesser.is_none());
+        assert_eq!(old, Config::default());
+        let enabled = Config {
+            deesser: Some(super::super::deesser::DeEsserParams { amount: 0.4 }),
+            ..Config::default()
+        };
+        let restored: Config =
+            serde_json::from_str(&serde_json::to_string(&enabled).unwrap()).unwrap();
+        assert_eq!(restored.deesser, enabled.deesser);
+        assert!(Config {
+            deesser: Some(super::super::deesser::DeEsserParams { amount: f32::NAN }),
+            ..Config::default()
+        }
+        .normalize()
+        .is_err());
     }
 
     #[test]

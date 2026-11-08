@@ -515,6 +515,7 @@ mod tests {
                         low_cut_hz: cutoff,
                         ..Default::default()
                     }),
+                    deesser: None,
                 })
                 .unwrap();
             engine.publish_builtin();

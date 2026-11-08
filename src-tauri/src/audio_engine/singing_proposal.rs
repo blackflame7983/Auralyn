@@ -421,6 +421,10 @@ fn evaluate_grid_checked(
             .map_err(|_| Message::new("proposal.invalidConfig", "候補の係数を準備できません。"))?,
         true,
     );
+    let mut deesser = super::deesser::DeEsser::new(
+        super::deesser::Coefficients::prepare(config.deesser, rate)
+            .map_err(|_| Message::new("proposal.invalidConfig", "歯擦音抑制を準備できません。"))?,
+    );
     let mut reverb = if with_tail {
         Some(
             super::reverb::Reverb::new(config.reverb.unwrap_or_default(), rate)
@@ -468,6 +472,7 @@ fn evaluate_grid_checked(
                 windows[i / window] += gained;
             }
         });
+        let output = deesser.process(output);
         let output = if let Some(r) = &mut reverb {
             r.process(output, false)
         } else {

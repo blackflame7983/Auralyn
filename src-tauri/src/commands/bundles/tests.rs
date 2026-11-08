@@ -526,6 +526,7 @@ fn captured() -> Captured {
             amount: 0.7,
             singing: None,
             reverb: None,
+            deesser: None,
         },
     };
     Captured {

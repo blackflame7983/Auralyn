@@ -231,6 +231,7 @@ pub fn validate(bundle: &BundleV1) -> Result<(), String> {
             amount: fx.amount,
             singing: fx.singing,
             reverb: fx.reverb,
+            deesser: fx.deesser,
         }
         .normalize()?;
     }
@@ -1241,6 +1242,7 @@ mod tests {
                 amount: 0.7,
                 singing: None,
                 reverb: None,
+                deesser: None,
             });
         value
     }

@@ -900,9 +900,19 @@ impl Engine {
                 amount,
                 singing,
                 reverb,
+                deesser,
+                replace_deesser,
             } => {
                 let normalized_preset = normalize_built_in_effects_preset(preset.as_deref());
-                match self.legacy_builtin(active, normalized_preset, amount, singing, reverb) {
+                match self.legacy_builtin(
+                    active,
+                    normalized_preset,
+                    amount,
+                    singing,
+                    reverb,
+                    deesser,
+                    replace_deesser,
+                ) {
                     Ok(()) => {
                         self.live_modes.custom();
                         self.publish_builtin();
@@ -1005,6 +1015,7 @@ impl Engine {
                     built_in_amount: self.built_in_effects_amount,
                     singing: self.builtin.config.singing,
                     reverb: self.builtin.config.reverb,
+                    deesser: self.builtin.config.deesser,
                     global_bypass: self.global_bypass,
                     plugins: self
                         .plugin_manager
@@ -1190,6 +1201,7 @@ impl Engine {
                     built_in_singing: self.builtin.config.singing,
                     built_in_reverb: self.builtin.config.reverb,
                     processing_health: Some(Box::new(self.processing_watch.snapshot())),
+                    built_in_deesser: self.builtin.config.deesser,
                 });
             }
             Command::CaptureBundleState | Command::CaptureMixingBundleState => {

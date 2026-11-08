@@ -12,6 +12,7 @@ export interface VoiceRecordingMetadata {
     builtInAmount: number; globalBypass: boolean;
     reverb?: import('./builtinEffects').ReverbParams | null;
     singing?: import('./builtinEffects').SingingParams | null;
+    deesser?: import('./builtinEffects').DeEsserParams | null;
     plugins: { id: string; name: string; enabled: boolean; muted: boolean; gain: number }[];
     changedDuringRecording: boolean; rawTap: string; processedTap: string; vstParametersVerified: boolean;
 }

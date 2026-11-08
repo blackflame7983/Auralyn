@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 /// 入力と物理出力の対応。旧データでは従来の条件付き insert を維持する。
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "mode", rename_all = "camelCase")]
@@ -615,6 +619,11 @@ pub enum Command {
         singing: Option<crate::audio_engine::singing::SingingParams>,
         #[serde(default)]
         reverb: Option<crate::audio_engine::reverb::ReverbParams>,
+        /// 旧コマンドは項目を欠く。そのときは現在の歯擦音抑制を残す。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        deesser: Option<crate::audio_engine::deesser::DeEsserParams>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        replace_deesser: bool,
     },
     BuiltinEffects {
         request: crate::audio_engine::builtin::Request,
@@ -839,6 +848,8 @@ pub enum Response {
         #[serde(default)]
         processing_health:
             Option<Box<crate::audio_engine::processing_watch::ProcessingHealthSnapshot>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        built_in_deesser: Option<crate::audio_engine::deesser::DeEsserParams>,
     },
     // ... existing code ...
     PluginState {
