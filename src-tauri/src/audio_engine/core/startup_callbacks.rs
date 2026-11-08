@@ -1082,6 +1082,59 @@ mod tests {
     use super::*;
     use crate::vst_host::instance::{allocation_counts, ScriptedVst};
 
+    #[test]
+    fn dsp464_input_meter_is_after_input_gain_before_voice_vst() {
+        use crate::audio_engine::voice_check::VoiceCheckShared;
+        let frames = 256;
+        let input: Vec<_> = (0..frames).flat_map(|_| [0.4, -0.2]).collect();
+        let mut recorder = RtVoiceCheck::new(Arc::new(VoiceCheckShared::new()), 48_000);
+        for input_gain in [1.0, 0.5, 0.0] {
+            let (mut a, mut b, mut dry) = buffers(frames, 0.0);
+            let mut input_peak = [0.0; 2];
+            assert_eq!(
+                allocation_counts(|| {
+                    (input_peak, _) = route_and_meter_input(
+                        frames,
+                        2,
+                        &input,
+                        0,
+                        1,
+                        input_gain,
+                        &mut a,
+                        2,
+                        &mut recorder,
+                    );
+                }),
+                (0, 0)
+            );
+            assert_eq!(input_peak, [0.4 * input_gain, 0.2 * input_gain]);
+            // 実際のVST処理段へ同じplanarを渡す。入力メーターはVST後の値ではない。
+            let mut vst = ScriptedVst::scale(0.25);
+            let (mut controls, _) = fresh_controls(48_000);
+            controls.order[0] = 0;
+            controls.order_len = 1;
+            controls.install_slot(0, 464);
+            let mut processors = std::array::from_fn(|_| None);
+            processors[0] = Some(vst.take());
+            let source_a = run(
+                &mut controls,
+                &mut processors,
+                &mut a,
+                &mut b,
+                &mut dry,
+                frames,
+            );
+            let produced = output(source_a, &a, &b);
+            assert_eq!(produced[0][frames - 1], 0.1 * input_gain);
+            assert_eq!(produced[1][frames - 1], -0.05 * input_gain);
+            assert_eq!(input_peak, [0.4 * input_gain, 0.2 * input_gain]);
+            eprintln!(
+                "#464 input_gain={input_gain}: input={input_peak:?}, post_vst={:?}",
+                [produced[0][frames - 1], produced[1][frames - 1]]
+            );
+        }
+    }
+
     fn fresh_controls(rate: u32) -> (PluginControls, Arc<PluginHealthShared>) {
         let shared = Arc::new(PluginHealthShared::new());
         let controls = PluginControls::new(rate, shared.clone());

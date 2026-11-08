@@ -480,6 +480,55 @@ impl Drop for Sink {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dsp464_broadcast_trim_and_mute_are_after_sender_and_independent_of_monitor_trim() {
+        for case in [
+            "unity",
+            "monitor_trim",
+            "broadcast_trim",
+            "monitor_mute",
+            "global_mute",
+        ] {
+            let (mut sender, mut receiver, shared) = fixture(2048, 128);
+            let config = Config {
+                monitor_trim: if case == "monitor_trim" { 0.25 } else { 1.0 },
+                broadcast_trim: if case == "broadcast_trim" { 0.5 } else { 1.0 },
+                monitor_muted: case == "monitor_mute",
+                ..Default::default()
+            };
+            shared.update(&config);
+            shared.muted.store(case == "global_mute", Ordering::Release);
+            sender.begin_block();
+            for _ in 0..1024 {
+                sender.send([0.4, -0.2]);
+            }
+            let mut output = [0.0; 512];
+            receiver.render(&mut output);
+            let expected = if case == "global_mute" {
+                0.0
+            } else {
+                0.4 * config.broadcast_trim
+            };
+            let peak = output.as_chunks::<2>().0.iter().fold([0.0_f32; 2], |p, f| {
+                [p[0].max(f[0].abs()), p[1].max(f[1].abs())]
+            });
+            assert_eq!(peak, [expected, expected * 0.5]);
+            assert_eq!(
+                sender.monitor_gain(),
+                if config.monitor_muted {
+                    0.0
+                } else {
+                    config.monitor_trim
+                }
+            );
+            assert!(!shared.failed.load(Ordering::Acquire));
+            eprintln!(
+                "#464 sink {case}: broadcast_peak={peak:?}, monitor_gain={}",
+                sender.monitor_gain()
+            );
+        }
+    }
     #[test]
     fn silent_sink_paths_settle_peak_configuration_without_audio_or_rt_allocation() {
         for path in 0..4 {

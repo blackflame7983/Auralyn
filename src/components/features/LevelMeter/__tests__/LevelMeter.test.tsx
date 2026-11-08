@@ -8,9 +8,33 @@ import { LargeLevelMeter } from '../LargeLevelMeter';
 import { MeterProvider } from '../MeterContext';
 import { MeterVisual } from '../MeterVisual';
 import type { MeterReading } from '@/hooks/useMeterLevels';
+import { message } from '@/i18n/messages';
 
 const handlers = new Map<string, Set<(event: { payload: unknown }) => void>>();
 const emit = (name: string, payload?: unknown) => act(() => handlers.get(name)?.forEach(fn => fn({ payload })));
+
+it.each(['ja', 'en'] as const)('#464: 異なる入力・出力の左右ピークを正しい名前のメーターへ渡す（%s）', locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <MeterProvider running><LevelMeter running type="input" /><LevelMeter running type="output" /></MeterProvider>
+    </LocaleProvider>);
+    // IPCのMeterLevelsと同じ形。入出力と左右の取り違えを別々に検出する。
+    emit('audio-level', { input: [.25, .125], output: [.75, .5] });
+    act(() => vi.advanceTimersByTime(16));
+    for (const [type, values] of [['input', [.25, .125]], ['output', [.75, .5]]] as const) {
+        const name = message(locale, 'meter.accessibleLevel', {
+            arg0: message(locale, type === 'input' ? 'meter.input' : 'meter.output'),
+            arg1: message(locale, 'meter.state.active'),
+        });
+        const meter = screen.getByRole('meter', { name });
+        expect(meter).toHaveAttribute('aria-valuenow', String(20 * Math.log10(values[0] * .8)));
+        for (const [index, side] of (locale === 'ja' ? ['左', '右'] : ['Left', 'Right']).entries()) {
+            const track = meter.querySelector(`[title="${side}"]`)!;
+            // バーは最初の平滑化tickで80%、ピークは受信値そのもの。
+            expect(track.firstElementChild).toHaveStyle({ transform: `scaleY(${values[index] * .8})` });
+            expect(track.lastElementChild).toHaveStyle({ transform: `translateY(${-values[index] * 100}%)` });
+        }
+    }
+});
 beforeEach(() => {
     vi.useFakeTimers(); handlers.clear();
     vi.mocked(listen).mockImplementation(async (name, callback) => {
