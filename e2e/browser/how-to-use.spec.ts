@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { test, expect } from './tauriFixture';
-import links from '../../user-docs/links.json';
 import { message, type MessageKey } from '../../src/i18n/messages';
+
+// Playwright は Node の ESM で読み込むため、JSON は import せずファイルとして読む。
+const links: Record<string, string> = JSON.parse(readFileSync(new URL('../../user-docs/links.json', import.meta.url), 'utf8'));
 
 test.use({ liveHome: true });
 
