@@ -246,6 +246,143 @@ mod tests {
         }
     }
     #[test]
+    fn dsp464_timestamp_error_burst_and_recovery_keep_renderer_position_identical() {
+        use super::super::clock::{Interleaved, Renderer, CAPACITY};
+        use ringbuf::{
+            traits::{Observer, Producer, Split},
+            HeapRb,
+        };
+
+        let (mut control_tx, mut control_rx) = HeapRb::<f32>::new(CAPACITY * 2).split();
+        let (mut flagged_tx, mut flagged_rx) = HeapRb::<f32>::new(CAPACITY * 2).split();
+        let mut control = Renderer::new(RATE).unwrap();
+        let mut flagged = Renderer::new(RATE).unwrap();
+        let mut control_stats = Stats::default();
+        let mut flagged_stats = Stats::default();
+        let mut expected = [0.0; 512];
+        let mut actual = [0.0; 512];
+        let mut nonzero = 0;
+        for packet in 0..512 {
+            // 連番rampにより、フレームの重複・欠落・復帰時の位置ずれを可視化する。
+            let source: Vec<f32> = (0..256)
+                .flat_map(|i| {
+                    let x = (packet * 256 + i + 1) as f32 / 1_000_000.0;
+                    [x, -x]
+                })
+                .collect();
+            process_packet(
+                Some(sample_bytes(&source)),
+                256,
+                0,
+                &mut control_stats,
+                &mut |frame| {
+                    assert_eq!(control_tx.push_slice(&frame), 2);
+                },
+            )
+            .unwrap();
+            let flags = if (160..224).contains(&packet) {
+                AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32
+            } else {
+                0
+            };
+            process_packet(
+                Some(sample_bytes(&source)),
+                256,
+                flags,
+                &mut flagged_stats,
+                &mut |frame| {
+                    assert_eq!(flagged_tx.push_slice(&frame), 2);
+                },
+            )
+            .unwrap();
+            control.render(&mut expected, &mut Interleaved(&mut control_rx));
+            flagged.render(&mut actual, &mut Interleaved(&mut flagged_rx));
+            assert!(!control.failed && !flagged.failed, "packet={packet}");
+            assert_eq!(actual, expected, "packet={packet}");
+            assert_eq!(control_rx.occupied_len(), flagged_rx.occupied_len());
+            assert_eq!(control.rendered, flagged.rendered);
+            assert_eq!(control.waiting, flagged.waiting);
+            assert_eq!(control.correction_ppm, flagged.correction_ppm);
+            nonzero += actual.iter().filter(|x| x.abs() > 0.001).count();
+        }
+        assert!(nonzero > 100_000);
+        assert_eq!(control_stats.frames, 131_072);
+        assert_eq!(flagged_stats.frames, control_stats.frames);
+        assert_eq!(flagged_stats.timestamp_errors, 64);
+        assert_eq!(control_stats.timestamp_errors, 0);
+        eprintln!(
+            "#464 timestamp-error: 64 packets, position/latency difference=0 frames, rendered={}",
+            flagged.rendered
+        );
+    }
+
+    #[test]
+    fn dsp464_pcm_gap_latches_failure_until_explicit_reprime() {
+        use super::super::clock::{Interleaved, Renderer, CAPACITY};
+        use ringbuf::{
+            traits::{Consumer, Observer, Producer, Split},
+            HeapRb,
+        };
+
+        let (mut tx, mut rx) = HeapRb::<f32>::new(CAPACITY * 2).split();
+        let mut renderer = Renderer::new(RATE).unwrap();
+        let mut stats = Stats::default();
+        let old = [0.2, -0.2].repeat(4096);
+        process_packet(
+            Some(sample_bytes(&old)),
+            4096,
+            0,
+            &mut stats,
+            &mut |frame| {
+                assert_eq!(tx.push_slice(&frame), 2);
+            },
+        )
+        .unwrap();
+        let mut output = [0.0; 512];
+        renderer.render(&mut output, &mut Interleaved(&mut rx));
+        assert!(output.iter().any(|x| x.abs() > 0.1));
+        // パケットそのものを送らない。timestamp-errorだけのケースと区別する。
+        let mut callbacks = 0;
+        while !renderer.failed && callbacks < 32 {
+            renderer.render(&mut output, &mut Interleaved(&mut rx));
+            callbacks += 1;
+        }
+        assert!(renderer.failed && renderer.failed_underrun);
+        assert_eq!(renderer.underruns, 1);
+        let stopped_at = renderer.rendered;
+        rx.skip(rx.occupied_len());
+        let fresh = [-0.3, 0.3].repeat(4096);
+        process_packet(
+            Some(sample_bytes(&fresh)),
+            4096,
+            AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32,
+            &mut stats,
+            &mut |frame| {
+                assert_eq!(tx.push_slice(&frame), 2);
+            },
+        )
+        .unwrap();
+        let queued = rx.occupied_len();
+        renderer.render(&mut output, &mut Interleaved(&mut rx));
+        assert_eq!(output, [0.0; 512]);
+        assert_eq!(renderer.rendered, stopped_at);
+        assert_eq!(rx.occupied_len(), queued);
+        assert!(renderer.failed);
+        // 現行契約は明示的な再prime。復帰を自動で同期成功と見なさない。
+        renderer.wait_for_audio();
+        renderer.render(&mut output, &mut Interleaved(&mut rx));
+        assert!(!renderer.failed && !renderer.failed_underrun);
+        assert!(output
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .skip(128)
+            .all(|frame| frame[0] < -0.29 && frame[1] > 0.29));
+        assert_eq!(stats.discontinuities, 1);
+        eprintln!("#464 PCM gap: failed after {callbacks} empty callbacks at output frame {stopped_at}; resumed only after explicit reprime");
+    }
+
+    #[test]
     fn pcm_processing_including_failure_has_no_rust_allocation_or_deallocation() {
         let data = [0.5f32, -0.5, f32::NAN, f32::INFINITY];
         let mut stats = Stats::default();

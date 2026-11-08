@@ -323,6 +323,46 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     #[test]
+    fn dsp464_fft_high_rate_sines_preserve_passband_and_reject_aliases() {
+        for (input_rate, output_rate) in [(176_400, 44_100), (192_000, 48_000)] {
+            for frequency in [1_000.0, 30_000.0, 40_000.0] {
+                // f64で位相を作り、f32の大きな位相丸めを阻止帯の残留と混同しない。
+                let input: Vec<f32> = (0..input_rate / 4)
+                    .map(|n| {
+                        (0.5 * (std::f64::consts::TAU * frequency * n as f64 / input_rate as f64)
+                            .sin()) as f32
+                    })
+                    .collect();
+                let mut stream = StreamResampler::new(input_rate, output_rate, 1).unwrap();
+                let mut output = Vec::new();
+                for packet in input.chunks(777) {
+                    stream
+                        .process_into(packet, |chunk| output.extend_from_slice(chunk))
+                        .unwrap();
+                }
+                // 50msを捨て、整数周期になる100msの定常区間でRMS比を測る。
+                let settled = &output[output_rate / 20..output_rate / 20 + output_rate / 10];
+                let mean_square = |samples: &[f32]| {
+                    samples.iter().map(|&x| f64::from(x).powi(2)).sum::<f64>()
+                        / samples.len() as f64
+                };
+                let db = 10.0 * (mean_square(settled) / mean_square(&input)).log10();
+                eprintln!("#464 FFT {input_rate}->{output_rate} {frequency}Hz: {db:.6} dB");
+                assert!(db.is_finite());
+                if frequency == 1_000.0 {
+                    assert!(db.abs() <= 0.5, "{input_rate}->{output_rate}: {db} dB");
+                } else {
+                    // 60dBは残留振幅0.1%以下。f32の丸め床より十分上の品質下限。
+                    assert!(
+                        db <= -60.0,
+                        "{input_rate}->{output_rate} {frequency}Hz: {db} dB"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn mode_silence_resampler_discards_old_carry_without_rt_allocation() {
         let mut stream = StreamResampler::new(44100, 48000, 2).unwrap();
         let data = vec![0.7; stream.input_chunk_size * 3];

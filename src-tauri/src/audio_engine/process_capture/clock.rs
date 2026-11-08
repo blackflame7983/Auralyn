@@ -348,6 +348,62 @@ mod tests {
     }
 
     #[test]
+    fn dsp464_clock_high_rate_sines_reject_aliases_at_ratio_limits() {
+        for (input_rate, output_rate) in [(176_400, 44_100), (192_000, 48_000)] {
+            for ppm in [-2_000.0, 0.0, 2_000.0] {
+                for frequency in [1_000.0, 30_000.0, 40_000.0] {
+                    let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
+                    let mut renderer = Renderer::with_rates(input_rate, output_rate).unwrap();
+                    let target = callback_target(input_rate, output_rate, BLOCK);
+                    let depth = (target as isize - (ppm / 2_000.0 * 1024.0) as isize) as usize;
+                    let mut ordinal = 0usize;
+                    let mut output = [0.0; BLOCK * 2];
+                    let mut power = 0.0;
+                    let mut measured = 0;
+                    for block in 0..64 {
+                        // 最初だけ正規の深さでprimeし、その後はキュー深さで比率端へ動かす。
+                        let fill = if block == 0 { target } else { depth };
+                        while rx.occupied_len() < fill {
+                            let x = (0.5
+                                * (std::f64::consts::TAU * frequency * ordinal as f64
+                                    / f64::from(input_rate))
+                                .sin()) as f32;
+                            tx.try_push([x, -x]).unwrap();
+                            ordinal += 1;
+                        }
+                        renderer.render(&mut output, &mut Stereo(&mut rx));
+                        assert!(!renderer.failed, "{input_rate}->{output_rate}, {ppm}ppm");
+                        if block >= 16 {
+                            assert!((renderer.correction_ppm - ppm).abs() < 1e-6);
+                            for frame in output.as_chunks::<2>().0 {
+                                assert_eq!(frame[0], -frame[1]);
+                                power += f64::from(frame[0]).powi(2);
+                                measured += 1;
+                            }
+                        }
+                    }
+                    // 入力振幅0.5の正弦波RMSを基準とし、立上がり4096出力frameは除く。
+                    let db = 10.0 * (power / measured as f64 / 0.125).log10();
+                    eprintln!("#464 clock {input_rate}->{output_rate} {ppm:+}ppm {frequency}Hz: {db:.6} dB");
+                    assert!(db.is_finite());
+                    if frequency == 1_000.0 {
+                        assert!(
+                            db.abs() <= 0.5,
+                            "{input_rate}->{output_rate}, {ppm}ppm: {db} dB"
+                        );
+                    } else {
+                        // 最悪値は192→48kHz・30kHz入力で−70.109dB。約2.1dBの余裕。
+                        assert!(
+                            db <= -68.0,
+                            "{input_rate}->{output_rate}, {ppm}ppm {frequency}Hz: {db} dB"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn signed_clock_offsets_stay_bounded_and_limits_are_explicit() {
         for ppm in [-1500.0, -500.0, 0.0, 500.0, 1500.0] {
             let mut queued = TARGET as f64;

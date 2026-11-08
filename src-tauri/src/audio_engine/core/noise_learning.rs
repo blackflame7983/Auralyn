@@ -712,6 +712,59 @@ mod tests {
     }
 
     #[test]
+    fn dsp464_rebuilt_noise_measurement_duration_and_10ms_windows_follow_rate() {
+        let shared = Arc::new(NoiseLearningShared::new());
+        for rate in [48_000usize, 96_000, 44_100] {
+            shared.cancel_capture();
+            let generation = shared.generation.load(Ordering::Acquire);
+            let mut learning = RtNoiseLearning::new(shared.clone());
+            let window = rate / 100;
+            let duration = rate * 3;
+            // 制御側からRTへ渡るframe単位の契約。機器streamは起動しない。
+            learning.start_with_generation(duration as u64, generation, window);
+            let quiet = vec![0.002; window];
+            learning.analyze_block(&quiet, None, window - 1);
+            assert_eq!(learning.window_count, window - 1);
+            assert_eq!(learning.max_energy, 0.0);
+            learning.analyze_block(&quiet, None, 1);
+            assert_eq!(learning.window_count, 0);
+            assert!((learning.min_energy - 0.002f32 as f64 * 0.002f32 as f64).abs() < 1e-12);
+            let samples = [0.01; 511];
+            let mut remaining = duration - window - 1;
+            while remaining > 0 {
+                let frames = remaining.min(samples.len());
+                learning.analyze_block(&samples, None, frames);
+                remaining -= frames;
+            }
+            assert_eq!(learning.count, (duration - 1) as u64);
+            assert_eq!(learning.remaining_frames, 1);
+            assert_eq!(learning.window_count, window - 1);
+            assert_eq!(shared.state_label(), "capturing");
+            assert!(shared.progress() < 1.0);
+            assert_ne!(shared.result_generation.load(Ordering::Acquire), generation);
+            learning.analyze_block(&samples, None, 1);
+            assert_eq!(learning.window_count, 0);
+            assert_eq!(shared.state_label(), "ready");
+            assert_eq!(shared.progress(), 1.0);
+            assert_eq!(
+                shared.measured_frames.load(Ordering::Acquire),
+                duration as u64
+            );
+            assert_eq!(shared.result_generation.load(Ordering::Acquire), generation);
+            assert!(
+                (shared.variation_ppm.load(Ordering::Acquire) as f64 / 1_000_000.0 - 5.0).abs()
+                    < 0.00001
+            );
+            learning.analyze_block(&samples, None, samples.len());
+            assert_eq!(
+                shared.measured_frames.load(Ordering::Acquire),
+                duration as u64
+            );
+            eprintln!("#464 noise {rate}Hz: 10ms={window} frames, duration={duration} frames");
+        }
+    }
+
+    #[test]
     fn measurement_is_a_candidate_until_explicit_acceptance_and_invalidation_holds_applied_mix() {
         for rate in [8_000, 44_100, 48_000, 96_000, 192_000, 384_000] {
             let shared = Arc::new(NoiseLearningShared::new());
