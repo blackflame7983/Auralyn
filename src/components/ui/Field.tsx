@@ -6,7 +6,7 @@ export function Field({ id, label, description, error, children }: { id?: string
     const controlId = id ?? generated;
     return <FieldContext.Provider value={{ id: controlId, description: description ? `${controlId}-description` : undefined, error: error ? `${controlId}-error` : undefined }}>
         <div className="space-y-2">
-            <label htmlFor={controlId} className="block text-ui-control font-medium">{label}</label>
+            {label != null && <label htmlFor={controlId} className="block text-ui-control font-medium">{label}</label>}
             {children}
             {description && <p id={`${controlId}-description`} className="text-ui-support text-muted-foreground">{description}</p>}
             {error && <p id={`${controlId}-error`} role="alert" className="text-ui-support text-destructive-text">{error}</p>}

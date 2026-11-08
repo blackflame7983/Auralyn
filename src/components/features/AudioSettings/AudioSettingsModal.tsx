@@ -1,3 +1,7 @@
+import { Input } from '@/components/ui/Input';
+import { Field } from '@/components/ui/Field';
+import { Select } from '@/components/ui/Select';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { ProcessInputPanel } from './ProcessInputPanel';
 import { deviceInput, readInputSource, type InputSourceRequest } from '@/lib/inputSource';
 import { InfoPopover } from '@/components/ui/InfoPopover';
@@ -480,22 +484,22 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         <div className="fixed inset-0 z-[100] flex justify-end bg-background/90 gaming:bg-background/80 gaming:backdrop-blur-sm">
       <div className="settings-surface h-full w-full max-w-5xl flex flex-col overflow-hidden border-l border-border bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3 shrink-0">
-          <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+          <h2 className="text-ui-heading font-bold text-foreground flex items-center gap-2">
             <MdSettings className="w-5 h-5 text-primary" />
             {t('common.settings')}
           </h2>
-          <button
+          <Button
             onClick={onClose}
             disabled={isApplying}
             aria-label={t('settings.close')}
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-primary focus:not-focus-visible:outline-none text-ui-support"
+            variant="ghost" size="icon"
           >
             <MdClose className="w-5 h-5" />
-          </button>
+          </Button>
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} orientation="vertical" className="flex min-h-0 flex-1">
-          <TabsList aria-label={t('common.settings')} className="h-auto w-40 shrink-0 flex-col items-stretch justify-start gap-1 rounded-none border-r border-border p-2 overflow-y-auto">
+          <TabsList aria-label={t('common.settings')} className="h-auto w-40 shrink-0 flex-col items-stretch justify-start gap-1 rounded-control border-r border-border p-2 overflow-y-auto">
             <TabsTrigger className="justify-start gap-2 text-ui-control" value="audio"><MdMic aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.audio')}</TabsTrigger>
             <TabsTrigger className="justify-start gap-2 text-ui-control" value="sound"><MdGraphicEq aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.sound')}</TabsTrigger>
             <TabsTrigger className="justify-start gap-2 text-ui-control" value="obs"><MdCast aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.obs')}</TabsTrigger>
@@ -505,26 +509,26 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           </TabsList>
           <div ref={settingsBody} className={`min-w-0 flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent ${activeTab === 'shortcuts' ? 'pb-0' : ''}`}>
           <TabsContent value="audio" className="space-y-4">
-            {reviewRequired && <div className="rounded border border-input bg-muted p-3 text-sm space-y-2">
+            {reviewRequired && <div className="rounded-control border border-input bg-muted p-3 text-ui-support space-y-2">
               <p>{t('settings.AudioSettingsModal.029')}</p>
               {importedPlugins.length > 0 && <ul className="max-h-24 overflow-auto break-all">{importedPlugins.map((p, i) => <li key={i}>{p.name} — {p.path}</li>)}</ul>}
-              <label className="flex gap-2 text-ui-control"><input type="checkbox" checked={migrationConfirmed} onChange={e => setMigrationConfirmed(e.target.checked)} />{t('settings.AudioSettingsModal.030')}</label>
+              <label className="flex gap-2 text-ui-control"><Checkbox checked={migrationConfirmed} onChange={e => setMigrationConfirmed(e.target.checked)} />{t('settings.AudioSettingsModal.030')}</label>
             </div>}
             {!!error && <MicrophonePermissionGuide expanded={/アクセス.*拒否|0x80070005|access.*denied/i.test(renderNotice(t, error))} />}
 
             {loading ? (
-              <div role="status" className="flex flex-col items-center gap-2 py-8 text-sm text-muted-foreground">
+              <div role="status" className="flex flex-col items-center gap-2 py-8 text-ui-support text-muted-foreground">
                 <div aria-hidden="true" className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                 {t('common.loading')}
               </div>
             ) : error ? (
               <div className="space-y-4">
-                <div role="alert" className="space-y-2 text-foreground text-sm text-center py-4 bg-destructive/10 rounded-lg">
+                <div role="alert" className="space-y-2 text-foreground text-ui-support text-center py-4 bg-destructive/10 rounded-card">
                   <p>{renderNotice(t, error)}</p>
                   {startStateUnknown && <p>{t('settings.startUnknown')}</p>}
                 </div>
-                <button onClick={() => setError(null)} className="w-full py-2 bg-primary text-primary-foreground rounded-md text-ui-control">{t('settings.AudioSettingsModal.031')}</button>
-                <button onClick={onClose} className="w-full py-2 bg-muted text-foreground rounded-md border border-input text-ui-control">{t('common.close')}</button>
+                <Button onClick={() => setError(null)} variant="default" className="h-auto min-h-10 whitespace-normal w-full">{t('settings.AudioSettingsModal.031')}</Button>
+                <Button onClick={onClose} variant="outline" className="h-auto min-h-10 whitespace-normal w-full">{t('common.close')}</Button>
               </div>
             ) : (
               <div className="space-y-6">
@@ -534,22 +538,22 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   setInputSource(next);
                 }} disabled={isApplying} isAsio={isAsio} status={engineStats?.processInput} onChooseConnection={chooseConnection} /></div>
                 {/* Input Device */}
-                {!processInput && <fieldset className="space-y-3 rounded-xl border border-border p-3">
+                {!processInput && <fieldset className="space-y-3 rounded-card border border-border p-3">
                   <legend className="px-1 text-ui-heading font-semibold">
                     <label htmlFor={inputId}>{t(isAsio ? 'settings.AudioSettingsModal.037' : pcInput ? 'wizard.pcAudio' : 'settings.AudioSettingsModal.038')}</label>
                   </legend>
-                  <select
+                  <Field id={inputId} label={null}><Select
                     id={inputId}
                     value={needsDeviceChoice ? '' : selectedInputKey}
                     onChange={(e) => { editConnection('input'); setSelectedInputKey(e.target.value); setNeedsDeviceChoice(!e.target.value); }}
                     disabled={filteredInputs.length === 0}
-                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary transition custom-select disabled:opacity-50 text-ui-control"
+
                   >
                     {(needsDeviceChoice || !selectedInputKey) && <option value="">{t(filteredInputs.length ? 'settings.selectDevice' : 'settings.AudioSettingsModal.040')}</option>}
                     {filteredInputs.map((device, i) => (
                       <option key={`${audioDeviceKey(device)}-${i}`} value={audioDeviceKey(device)} disabled={!device.id && filteredInputs.filter(item => item.name === device.name).length > 1}>{device.name}{filteredInputs.filter(item => item.name === device.name).length > 1 && device.id ? ` (${device.id})` : ''}</option>
                     ))}
-                  </select>
+                  </Select></Field>
                   {isAsio && <p className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.044')}</p>}
                   <MicrophonePermissionGuide />
                 </fieldset>
@@ -572,50 +576,50 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
                 {/* Output Device - Hide for ASIO */}
                 {!isAsio && (
-                  <fieldset className="space-y-3 rounded-xl border border-border p-3">
+                  <fieldset className="space-y-3 rounded-card border border-border p-3">
                     <legend className="px-1 text-ui-heading font-semibold">{t('settings.AudioSettingsModal.041')}</legend>
-                    <select
+                    <Field label={<span className="sr-only">{t('settings.AudioSettingsModal.042')}</span>}><Select
                     aria-label={t('settings.AudioSettingsModal.042')}
                       value={selectedOutputKey}
                       onChange={(e) => { editConnection('output'); setSelectedOutputKey(e.target.value); }}
                       disabled={filteredOutputs.length === 0}
-                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary transition custom-select disabled:opacity-50 text-ui-control"
+
                     >
                       {!selectedOutputKey && <option value="">{t(filteredOutputs.length ? 'settings.selectDevice' : 'settings.AudioSettingsModal.043')}</option>}
                       {filteredOutputs.map((device, i) => (
                         <option key={`${audioDeviceKey(device)}-${i}`} value={audioDeviceKey(device)} disabled={!device.id && filteredOutputs.filter(item => item.name === device.name).length > 1}>{device.name}{filteredOutputs.filter(item => item.name === device.name).length > 1 && device.id ? ` (${device.id})` : ''}</option>
                       ))}
-                    </select>
+                    </Select></Field>
                   </fieldset>
                 )}
 
                 {processInput && <p className="text-ui-support text-muted-foreground">{t('processInput.outputHelp')}</p>}
 
                 {!savedConnection && savedRestoreAvailable && <div className="space-y-1">
-                  <button type="button" onClick={() => void restoreSavedConnection()} disabled={isApplying} className="rounded text-ui-support text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50">{t('settings.connection.restoreSaved')}</button>
+                  <Button type="button" onClick={() => void restoreSavedConnection()} disabled={isApplying} variant="link" size="sm" className="h-auto min-h-9 whitespace-normal">{t('settings.connection.restoreSaved')}</Button>
                   <p className="text-ui-support text-muted-foreground">{t('settings.connection.restoreHint')}</p>
                 </div>}
                 {restoreNotice && <p role="status" className="text-ui-support text-muted-foreground">{restoreNotice}</p>}
 
               </div>
             )}
-            <details id="live-output-settings" onToggle={e => { if (e.currentTarget.open) setLoadOutput(true); }} className="rounded-xl border border-border p-4 space-y-3">
+            <details id="live-output-settings" onToggle={e => { if (e.currentTarget.open) setLoadOutput(true); }} className="rounded-card border border-border p-4 space-y-3">
               <summary className="cursor-pointer text-ui-heading font-semibold">{t('liveOutput.title')}</summary>
               <LiveOutputPanel autoLoad={loadOutput} outputs={devices.outputs} inputName={inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : selectedInputDevice?.name} monitorName={selectedOutputDevice?.name} disabled={loading} onBusyChange={setLoading} />
             </details>
             {/* 配信中に触る配信ミックスはホームのパネルへ移し、ここは機器と接続だけにする（#299）。 */}
-            <section aria-labelledby="stream-mix-settings-heading" className="space-y-2 rounded-xl border border-border p-4">
+            <section aria-labelledby="stream-mix-settings-heading" className="space-y-2 rounded-card border border-border p-4">
               <h3 id="stream-mix-settings-heading" className="text-ui-heading font-semibold">{t('streamMix.title')}</h3>
               <p className="text-ui-support text-muted-foreground">{t('streamMix.settingsHint')}</p>
               {!streamMixAvailable && <p id="stream-mix-voice-only" className="text-ui-support text-muted-foreground">{t('streamMix.voiceOnly')}</p>}
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-2 text-ui-control"><input type="checkbox" checked={streamMixShown} disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : 'stream-mix-voice-only'} onChange={event => saveStreamMixPanel(event.target.checked)} />{t('streamMix.show')}</label>
+                <label className="flex items-center gap-2 text-ui-control"><Checkbox checked={streamMixShown} disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : 'stream-mix-voice-only'} onChange={event => saveStreamMixPanel(event.target.checked)} />{t('streamMix.show')}</label>
                 <Button type="button" variant="outline" size="sm" disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : 'stream-mix-voice-only'} onClick={() => { openStreamMixPanel(); onClose(); }}>{t('streamMix.openHome')}</Button>
               </div>
             </section>
 
             {!loading && !error && <div className="space-y-6">
-                <details ref={tuningDetails} open={tuningOpen} onToggle={event => setTuningOpen(event.currentTarget.open)} className="rounded-xl border border-border p-3 space-y-3">
+                <details ref={tuningDetails} open={tuningOpen} onToggle={event => setTuningOpen(event.currentTarget.open)} className="rounded-card border border-border p-3 space-y-3">
                   <summary className="cursor-pointer text-ui-heading font-semibold">
                     {t('settings.audioTuning.title')}
                     {/* 現在の接続方式を見出しに出し、ASIOを探す人にもWASAPIの人にも自分の設定だと分かるようにする。サンプル数は中の詳細に置く。 */}
@@ -627,26 +631,26 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <label className="font-medium text-muted-foreground text-ui-control">{t('settings.AudioSettingsModal.032')}</label>
-                    <button
+                    <Button
                       onClick={() => fetchDevices(true)}
-                      className="link-button min-h-6 min-w-6 rounded-md border border-input px-2 py-1 text-primary hover:bg-muted flex items-center gap-1 transition-colors text-ui-support"
+                      variant="link" size="sm" className="h-auto min-h-9 whitespace-normal gap-1"
                       title={t('settings.AudioSettingsModal.033')}
                     >
                       <MdRefresh className="w-3 h-3" />
-                      {t('settings.AudioSettingsModal.034')}</button>
+                      {t('settings.AudioSettingsModal.034')}</Button>
                   </div>
-                  <select
+                  <Field label={<span className="sr-only">{t('settings.AudioSettingsModal.035')}</span>}><Select
                     ref={hostSelect}
                     aria-label={t('settings.AudioSettingsModal.035')}
                     value={selectedHost}
                     onChange={(e) => { editConnection('host'); setSelectedHost(e.target.value); }}
-                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary transition custom-select text-ui-control"
+
                   >
                     {!selectedHost && <option value="">{t('settings.AudioSettingsModal.036')}</option>}
                     {availableHosts.map((host) => (
                       <option key={host} value={host}>{displayAudioHost(host)}</option>
                     ))}
-                  </select>
+                  </Select></Field>
                   <p className="text-ui-support text-muted-foreground">{t(isAsio ? 'settings.connection.asioHint' : 'settings.connection.wasapiHint')}</p>
                 </div>
 
@@ -667,35 +671,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <div className="space-y-4">
                     {/* Latency Profile */}
                     <div className="space-y-2">
-                      <div className="grid grid-cols-3 gap-2">
-                        {[
-                          { label: t('settings.AudioSettingsModal.048'), value: 128, desc: t('settings.AudioSettingsModal.050') },
-                          { label: t('settings.AudioSettingsModal.051'), value: 512, desc: t('settings.AudioSettingsModal.053') },
-                          { label: t('settings.AudioSettingsModal.054'), value: 1024, desc: t('settings.AudioSettingsModal.056') },
-                        ].map((profile) => {
-                          const disabled = canChangeBufferSize && !supportedBufferSizes.includes(profile.value);
-                          return (
-                            <button
-                              key={profile.value}
-                              type="button"
-                              aria-pressed={selectedBufferSize === profile.value}
-                              onClick={() => { editConnection('buffer'); setSelectedBufferSize(profile.value); }}
-                              disabled={disabled}
-                              className={`${`
-                                        flex flex-col items-center justify-center p-2 rounded-lg border transition-colors
-                                        ${selectedBufferSize === profile.value
-                                  ? 'bg-selection/15 border-selection text-selection'
-                                  : 'bg-background border-input text-muted-foreground hover:border-primary/50'
-                                }
-                                        ${disabled ? 'opacity-30 cursor-not-allowed bg-muted' : ''}
-                                    `} text-ui-control`}
-                            >
-                              <span className="text-sm font-bold">{profile.label}</span>
-                              <span className="text-ui-support">{profile.desc}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
+                      <SegmentedControl label={t('settings.AudioSettingsModal.065')} value={String(selectedBufferSize)}
+                        onValueChange={value => { editConnection('buffer'); setSelectedBufferSize(Number(value)); }}
+                        options={[
+                          { label: t('settings.AudioSettingsModal.048'), value: '128', hint: t('settings.AudioSettingsModal.050') },
+                          { label: t('settings.AudioSettingsModal.051'), value: '512', hint: t('settings.AudioSettingsModal.053') },
+                          { label: t('settings.AudioSettingsModal.054'), value: '1024', hint: t('settings.AudioSettingsModal.056') },
+                        ].map(profile => ({ ...profile, disabled: canChangeBufferSize && !supportedBufferSizes.includes(Number(profile.value)) }))} />
                       {/* 3択以外の値（数値で指定した値）でも、現在値が選ばれていないように見せない。 */}
                       {selectedBufferSize > 0 && ![128, 512, 1024].includes(selectedBufferSize) && (
                         <p role="status" className="text-ui-support text-muted-foreground text-center">{t('settings.bufferCustom', { size: selectedBufferSize })}</p>
@@ -708,28 +690,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     {/* Quality Profile */}
                     <div className="space-y-2">
                       <label className="font-medium text-muted-foreground text-ui-control">{t('settings.AudioSettingsModal.060')}</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { label: t('settings.AudioSettingsModal.061'), value: 48000, desc: t('settings.AudioSettingsModal.062') },
-                          { label: t('settings.AudioSettingsModal.063'), value: 44100, desc: t('settings.AudioSettingsModal.064') },
-                        ].map((profile) => (
-                          <button
-                            type="button" aria-pressed={selectedSampleRate === profile.value}
-                            key={profile.value}
-                            onClick={() => { editConnection('rate'); setSelectedSampleRate(profile.value); }}
-                            className={`${`
-                                        flex flex-col items-center justify-center p-2 rounded-lg border transition-colors
-                                        ${selectedSampleRate === profile.value
-                                ? 'bg-selection/15 border-selection text-selection'
-                                : 'bg-background border-input text-muted-foreground hover:border-primary/50'
-                              }
-                                    `} text-ui-control`}
-                          >
-                            <span className="text-sm font-bold">{profile.label}</span>
-                            <span className="text-ui-support">{profile.desc}</span>
-                          </button>
-                        ))}
-                      </div>
+                      <SegmentedControl label={t('settings.AudioSettingsModal.060')} value={String(selectedSampleRate)}
+                        onValueChange={value => { editConnection('rate'); setSelectedSampleRate(Number(value)); }}
+                        options={[
+                          { label: t('settings.AudioSettingsModal.061'), value: '48000', hint: t('settings.AudioSettingsModal.062') },
+                          { label: t('settings.AudioSettingsModal.063'), value: '44100', hint: t('settings.AudioSettingsModal.064') },
+                        ]} />
                     </div>
                   </div>
                 ) : (
@@ -738,45 +704,45 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     {/* Buffer Size */}
                     {canChangeBufferSize ? (
                       <div className="space-y-2">
-                        <label className="font-medium text-muted-foreground text-ui-control">{t('settings.AudioSettingsModal.065')}</label>
-                        <select
+                        <Field label={t('settings.AudioSettingsModal.065')}>
+                        <Select
                     aria-label={t('settings.AudioSettingsModal.066')}
                           value={selectedBufferSize}
                           onChange={(e) => { editConnection('buffer'); setSelectedBufferSize(Number(e.target.value)); }}
-                          className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary transition custom-select text-ui-control"
+
                         >
                           {supportedBufferSizes.map(size => (
                             <option key={size} value={size}>{size} {t('settings.AudioSettingsModal.067')}</option>
                           ))}
-                        </select>
+                        </Select></Field>
                       </div>
                     ) : (
                       <div className="space-y-2 opacity-50 pointer-events-none">
                         <label className="font-medium text-muted-foreground text-ui-control">{t('settings.AudioSettingsModal.068')}</label>
-                        <div className="w-full bg-muted border border-input rounded-md px-3 py-2 text-sm text-muted-foreground">
+                        <div className="w-full bg-muted border border-input rounded-control px-3 py-2 text-ui-support text-muted-foreground">
                           {t('settings.AudioSettingsModal.069')}</div>
                       </div>
                     )}
 
                     {/* Sample Rate */}
                     <div className="space-y-2">
-                      <label className="font-medium text-muted-foreground text-ui-control">{t('master.rate')}</label>
-                      <select
+                      <Field label={t('master.rate')}>
+                      <Select
                     aria-label={t('master.rate')}
                         value={selectedSampleRate}
                         onChange={(e) => { editConnection('rate'); setSelectedSampleRate(Number(e.target.value)); }}
-                        className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-hidden focus:border-primary focus:ring-1 focus:ring-primary transition custom-select text-ui-control"
+
                       >
                         {sampleRates.options.map(({ rate, supported }) => (
                           <option key={rate} value={rate} disabled={!supported}>{formatSampleRate(rate)} kHz{!supported ? ` ${t('settings.rateUnsupported')}` : ''}</option>
                         ))}
-                      </select>
+                      </Select></Field>
                       {(sampleRates.inputUnknown || sampleRates.outputUnknown) && <p className="text-ui-support text-muted-foreground">
                         {t(sampleRates.inputUnknown && sampleRates.outputUnknown ? 'settings.rateUnknownBoth' : sampleRates.inputUnknown ? 'settings.rateUnknownInput' : 'settings.rateUnknownOutput')}
                       </p>}
                       {!sampleRates.options.find(option => option.rate === selectedSampleRate)?.supported && <p className="text-ui-support text-warning">{t('settings.rateSelectedUnsupported')}</p>}
                       {!isAsio && (
-                        <div className="text-ui-support text-warning flex items-start gap-1.5 bg-warning/10 p-1.5 rounded border border-warning/20 mt-2">
+                        <div className="text-ui-support text-warning flex items-start gap-1.5 bg-warning/10 p-1.5 rounded-control border border-warning/20 mt-2">
                           <MdWarning className="w-3 h-3 mt-0.5 shrink-0" />
                           <span>
                             {t('settings.AudioSettingsModal.070')}</span>
@@ -789,7 +755,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
                 {!isBeginnerMode && <>
                 {/* Latency Estimate */}
-                <div className="text-ui-support text-muted-foreground bg-muted/50 rounded p-2 flex items-center justify-between mt-4">
+                <div className="text-ui-support text-muted-foreground bg-muted/50 rounded-control p-2 flex items-center justify-between mt-4">
                   <span className="flex items-center gap-1">{t('settings.AudioSettingsModal.068')} <InfoPopover label={t('info.buffer')}>{t('settings.AudioSettingsModal.071')}</InfoPopover></span>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-foreground">{selectedBufferMs === null ? t('settings.AudioSettingsModal.072') : `${selectedBufferMs.toFixed(2)} ms`}</span>
@@ -798,7 +764,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
                 {/* Tips Section (Only in Advanced Mode) */}
                 {isAdvancedMode && (
-                  <details className="text-ui-support text-muted-foreground bg-muted/50 rounded border border-border mt-2">
+                  <details className="text-ui-support text-muted-foreground bg-muted/50 rounded-control border border-border mt-2">
                     <summary className="p-2 cursor-pointer hover:bg-muted/80 transition-colors text-ui-control font-semibold flex items-center gap-2">
                       <MdLightbulb className="w-4 h-4 text-primary" />
                       {t('settings.AudioSettingsModal.073')}</summary>
@@ -826,14 +792,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 </>}
                 </details>
                 {/* Preset Section */}
-                <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-3">
+                <div className="p-4 bg-muted/20 rounded-card border border-border space-y-3">
                   <SaveScopeSummary kind="io" />
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-1"><label className="font-medium text-muted-foreground text-ui-control">{t('settings.AudioSettingsModal.086')}</label><InfoPopover label={t('info.preset')}>{t('settings.AudioSettingsModal.085')}</InfoPopover></span>
                     <div className="flex gap-2">
-                      <select
+                      <Field label={<span className="sr-only">{t('settings.AudioSettingsModal.087')}</span>}><Select
                   aria-label={t('settings.AudioSettingsModal.087')}
-                        className="bg-background border border-input rounded px-2 py-1 text-foreground focus:outline-hidden focus:border-primary text-ui-control"
+
                         value={presets[presetName] ? presetName : ''}
                         onChange={(e) => handleLoadPreset(e.target.value)}
                       >
@@ -841,40 +807,38 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                         {Object.keys(presets).map(k => (
                           <option key={k} value={k}>{k}</option>
                         ))}
-                      </select>
+                      </Select></Field>
                     </div>
                   </div>
                   <div className="flex items-end gap-2">
-                    <label className="flex flex-1 flex-col gap-1 text-muted-foreground text-ui-control">
-                      {t('settings.AudioSettingsModal.089')}
-                      <input
+                    <Field label={t('settings.AudioSettingsModal.089')}><Input
                         type="text"
-                        className="bg-background border border-input rounded px-3 py-1.5 text-sm text-foreground focus:outline-hidden focus:border-primary"
+
                         value={presetName}
                         onChange={(e) => setPresetName(e.target.value)}
                       />
-                    </label>
-                    <button
+                    </Field>
+                    <Button
                       onClick={handleSavePreset}
                       disabled={!presetName}
-                      className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-primary disabled:opacity-50 transition-colors text-ui-control"
+                      variant="ghost" className="h-auto min-h-10 whitespace-normal"
                       title={t('settings.AudioSettingsModal.090')}
                     >
                       <MdSave size={18} />
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       onClick={handleDeletePreset}
                       disabled={!presetName || !presets[presetName]}
-                      className="p-1.5 rounded hover:bg-card text-muted-foreground hover:text-destructive-text disabled:opacity-50 transition-colors text-ui-control"
+                      variant="ghost" className="h-auto min-h-10 whitespace-normal"
                       title={t('settings.AudioSettingsModal.091')}
                     >
                       <MdDelete size={18} />
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
               </div>}
-            <details className="rounded-xl border border-border p-4 space-y-3">
+            <details className="rounded-card border border-border p-4 space-y-3">
               <summary className="cursor-pointer text-ui-heading font-semibold">{t('structure.monitor')}</summary>
               <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await system.refreshEngineRuntimeStats(); }} />
             </details>
@@ -902,21 +866,21 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <h3 className="mb-3 flex items-center gap-2 text-foreground text-ui-heading font-semibold">
                   {t('settings.AudioSettingsModal.130')}</h3>
                 <RadioGroup value={theme} onValueChange={(v) => setTheme(v as any)} className="grid auto-rows-fr gap-3">
-                  <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('light')}>
+                  <div className="flex items-center space-x-2 border border-border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('light')}>
                     <RadioGroupItem value="light" id="theme-light" />
                     <Label htmlFor="theme-light" className="cursor-pointer flex-1 text-ui-control">
                       <span className="font-bold block">{t('header.light')}</span>
                       <span className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.131')}</span>
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('dark')}>
+                  <div className="flex items-center space-x-2 border border-border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('dark')}>
                     <RadioGroupItem value="dark" id="theme-dark" />
                     <Label htmlFor="theme-dark" className="cursor-pointer flex-1 text-ui-control">
                       <span className="font-bold block">{t('header.dark')}</span>
                       <span className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.132')}</span>
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2 border border-border p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('gaming')}>
+                  <div className="flex items-center space-x-2 border border-border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('gaming')}>
                     <RadioGroupItem value="gaming" id="theme-gaming" className="text-brand border-brand" />
                     <Label htmlFor="theme-gaming" className="cursor-pointer flex-1 text-ui-control">
                       <span className="font-bold block">{t('header.gaming')}</span>
@@ -951,7 +915,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             </div>
             <Button onClick={handleSave} disabled={loading || !inputReady || !selectedOutputDevice || !canSaveConnection || (reviewRequired && !migrationConfirmed)}
               aria-describedby={`settings-connection-changes${streamRunning ? ' settings-save-restart' : ''}`}
-              className="px-5 font-bold text-ui-control">
+              >
               {t(streamRunning ? 'settings.saveRestart' : 'settings.AudioSettingsModal.197')}
             </Button>
           </div>

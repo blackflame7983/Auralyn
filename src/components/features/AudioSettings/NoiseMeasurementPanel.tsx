@@ -1,3 +1,5 @@
+import { Checkbox } from '@/components/ui/Checkbox';
+import { Button } from '@/components/ui/button';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
 import { useEffect, useRef, useState } from 'react';
@@ -95,19 +97,19 @@ export function NoiseMeasurementPanel({ embedded = false }: { embedded?: boolean
         } catch { if (active.current && version === serial.current) { setError(true); setSnapshot(null); } }
         finally { writing.current = false; if (active.current) setBusy(false); }
     };
-    return <section aria-label={t('measurement.title')} className={embedded ? 'mt-3 space-y-3' : 'space-y-3 rounded-md border border-border p-3'}>
+    return <section aria-label={t('measurement.title')} className={embedded ? 'mt-3 space-y-3' : 'space-y-3 rounded-control border border-border p-3'}>
         {!embedded && <h3 className="text-ui-heading font-semibold">{t('measurement.title')}</h3>}
         <p className="text-ui-support text-muted-foreground">{t('measurement.scope')}</p>
         <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={busy || !snapshot || snapshot.state === 'capturing'} onClick={() => snapshot && void run({ action: 'start', epoch: snapshot.epoch, generation: snapshot.generation })} className="rounded border border-border px-3 py-2 disabled:opacity-50 text-ui-support">{t('settings.AudioSettingsModal.121')}</button>
-            <button type="button" disabled={busy || !snapshot || snapshot.state !== 'capturing'} onClick={() => snapshot && void run({ action: 'cancel', epoch: snapshot.epoch, generation: snapshot.generation })} className="rounded border border-border px-3 py-2 disabled:opacity-50 text-ui-support">{t('settings.AudioSettingsModal.122')}</button>
-            <button type="button" disabled={busy} onClick={() => void run({ action: 'snapshot' })} className="rounded border border-border px-3 py-2 disabled:opacity-50 text-ui-support">{t('prep.refresh')}</button>
+            <Button type="button" disabled={busy || !snapshot || snapshot.state === 'capturing'} onClick={() => snapshot && void run({ action: 'start', epoch: snapshot.epoch, generation: snapshot.generation })} variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal">{t('settings.AudioSettingsModal.121')}</Button>
+            <Button type="button" disabled={busy || !snapshot || snapshot.state !== 'capturing'} onClick={() => snapshot && void run({ action: 'cancel', epoch: snapshot.epoch, generation: snapshot.generation })} variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal">{t('settings.AudioSettingsModal.122')}</Button>
+            <Button type="button" disabled={busy} onClick={() => void run({ action: 'snapshot' })} variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal">{t('prep.refresh')}</Button>
         </div>
         <p role="status" className="text-ui-support">{error ? t('measurement.error') : snapshot ? t(stateLabels[snapshot.state]) : t('prep.checking')}{snapshot?.state === 'capturing' && ` ${Math.round(snapshot.progress * 100)}%`}</p>
         {snapshot?.quality.map(code => <p key={code} className="text-ui-support text-warning">{t(qualityLabels[code] ?? 'measurement.uncertain')}</p>)}
         {snapshot?.state === 'review' && <>
-            <label className="flex items-center gap-2 text-ui-control"><input type="checkbox" checked={quiet} onChange={e => setQuiet(e.target.checked)} />{t('measurement.quiet')}</label>
-            <button type="button" disabled={!quiet || busy} onClick={() => void run({ action: 'approve', epoch: snapshot.epoch, generation: snapshot.generation, acknowledgedQuiet: quiet })} className="rounded bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50 text-ui-support">{t('measurement.use')}</button>
+            <label className="flex items-center gap-2 text-ui-control"><Checkbox checked={quiet} onChange={e => setQuiet(e.target.checked)} />{t('measurement.quiet')}</label>
+            <Button type="button" disabled={!quiet || busy} onClick={() => void run({ action: 'approve', epoch: snapshot.epoch, generation: snapshot.generation, acknowledgedQuiet: quiet })} variant="default" size="sm" className="h-auto min-h-9 whitespace-normal">{t('measurement.use')}</Button>
         </>}
         {snapshot?.previousAvailable && snapshot.state !== 'approved' && <p className="text-ui-support text-muted-foreground">{t('measurement.previous')}</p>}
         <details className="text-ui-support space-y-2"><summary className="cursor-pointer">{t('measurement.conditions')}</summary>

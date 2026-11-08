@@ -10,7 +10,7 @@ export function UpdatePreferences() {
     const [policy, setPolicy] = useState(readUpdatePolicy);
     const [standalone, setStandalone] = useState(false);
     useEffect(() => { let active = true; desktopApi.getDistribution().then(d => { if (active) setStandalone(d === 'standalone'); }).catch(() => {}); return () => { active = false; }; }, []);
-    return <section className="space-y-3 rounded-xl border border-border p-4">
+    return <section className="space-y-3 rounded-card border border-border p-4">
         <div className="flex items-center gap-1"><h3 className="text-ui-heading font-semibold">{t('settings.UpdatePreferences.434')}</h3>
             <InfoPopover label={t('settings.UpdatePreferences.434')}>{t('settings.UpdatePreferences.435')}</InfoPopover>
         </div>

@@ -37,22 +37,25 @@ it.each(['mouse', 'touch', 'pen', 'keyboard', 'blur'] as const)('内蔵FX量の�
     vi.mocked(audioApi.setBuiltInEffects).mockImplementation(async config => { amount = config.amount; });
     render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const slider = await screen.findByRole('slider', { name: message('ja', 'settings.AudioSettingsModal.104') });
-    await waitFor(() => { expect(slider).toBeEnabled(); expect(slider).toHaveValue('60'); });
-    fireEvent.change(slider, { target: { value: '85' } });
+    await waitFor(() => { expect(slider).toBeEnabled(); expect(slider).toHaveAttribute('aria-valuenow', '60'); });
+    const track = slider.closest<HTMLElement>('.touch-none')!;
+    vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 100 } as DOMRect);
+    if (input === 'keyboard' || input === 'blur') fireEvent.keyDown(slider, { key: 'End' });
+    else fireEvent.pointerDown(track, { pointerId: 1, pointerType: input, clientX: 85 });
     const requests = vi.mocked(audioApi.getEngineRuntimeStats).mock.calls.length;
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
     expect(vi.mocked(audioApi.getEngineRuntimeStats).mock.calls.length).toBeGreaterThan(requests);
-    expect(slider).toHaveValue('85');
+    expect(slider).toHaveAttribute('aria-valuenow', input === 'keyboard' || input === 'blur' ? '100' : '85');
     expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
-    if (input === 'keyboard') fireEvent.keyUp(slider, { key: 'ArrowRight' });
+    if (input === 'keyboard') fireEvent.keyUp(slider, { key: 'End' });
     else if (input === 'blur') fireEvent.blur(slider);
-    else fireEvent.pointerUp(slider, { pointerType: input });
-    await waitFor(() => expect(audioApi.setBuiltInEffects).toHaveBeenCalledExactlyOnceWith({ active: true, preset: 'broadcast', amount: 0.85 }));
+    else fireEvent.pointerUp(track, { pointerId: 1, pointerType: input, clientX: 85 });
+    await waitFor(() => expect(audioApi.setBuiltInEffects).toHaveBeenCalledExactlyOnceWith({ active: true, preset: 'broadcast', amount: input === 'keyboard' || input === 'blur' ? 1 : 0.85 }));
     fireEvent.blur(slider);
     expect(audioApi.setBuiltInEffects).toHaveBeenCalledTimes(1);
     amount = 0.4;
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
-    expect(slider).toHaveValue('40');
+    expect(slider).toHaveAttribute('aria-valuenow', '40');
 });
 
 it('ホットキーの入力中に Escape すると入力だけを取り消し、設定は閉じない', async () => {
@@ -100,7 +103,7 @@ it.each(['ja', 'en'] as const)('歌向けON/OFFは全値を保持し、短いプ
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);
     const toggle = await screen.findByRole('switch', { name: message(locale, 'settings.AudioSettingsModal.097') });
     await waitFor(() => expect(toggle).toBeEnabled());
-    expect(screen.getByRole('slider', { name: message(locale, 'settings.AudioSettingsModal.104') })).toBeDisabled();
+    expect(screen.getByRole('slider', { name: message(locale, 'settings.AudioSettingsModal.104') })).toHaveAttribute('data-disabled');
     expect(screen.getByText(message(locale, 'settings.AudioSettingsModal.102'))).toBeInTheDocument();
     fireEvent.click(toggle);
     await waitFor(() => expect(builtinApi.request).toHaveBeenCalledWith({ action: 'apply', epoch: 'engine', expectedRevision: '2', config: {
@@ -158,7 +161,7 @@ it('声・VST の保存適用でモードが変わっても音づくりの表示
         builtinFx: { preset: 'warm', enabled: false, amount: 0.4 },
     } })); });
     await act(async () => {});
-    expect(screen.getByRole('button', { name: message('ja', 'master.nrVenue') })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('radio', { name: message('ja', 'master.nrVenue') })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: message('ja', 'master.nrLow') })).toHaveAttribute('aria-checked', 'false');
     expect(noise).toBeChecked();
     expect(low).toBeEnabled();

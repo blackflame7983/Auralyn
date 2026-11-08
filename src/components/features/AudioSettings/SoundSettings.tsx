@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { SliderField } from '@/components/ui/SliderField';
 import { Disclosure } from '@/components/ui/Disclosure';
 import { useEffect, useRef, useState, type RefObject } from 'react';
@@ -160,10 +161,10 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
   return (
           <TabsContent value="sound" className="space-y-4">
             <div className="flex items-center gap-1 text-ui-support text-muted-foreground"><InfoPopover label={t('settings.soundHelp')}>{t('settings.AudioSettingsModal.092')}</InfoPopover><span aria-hidden="true">{t('settings.soundHelpShort')}</span></div>
-            {!engineStats && <p role="status" className="text-sm text-muted-foreground">{t('settings.AudioSettingsModal.094')}</p>}
+            {!engineStats && <p role="status" className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.094')}</p>}
             <fieldset disabled={!engineStats || noiseActionBusy} className="min-w-0 space-y-4">
                 {/* Noise reduction */}
-                <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
+                <div className="p-4 bg-muted/20 rounded-card border border-border space-y-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-1">
                       <h3 ref={soundStart} tabIndex={-1} className="text-foreground text-ui-heading font-semibold">{t('settings.AudioSettingsModal.105')}</h3>
@@ -177,15 +178,15 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                         {t('settings.AudioSettingsModal.112')}{onOpenVoiceCheck ? (
                           <>
                             {' '}
-                            <button
+                            <Button
                               type="button"
                               onClick={() => {
                                 onClose();
                                 onOpenVoiceCheck();
                               }}
-                              className="underline underline-offset-2 hover:text-foreground font-medium text-ui-control"
+                              variant="link" className="h-auto min-h-10 whitespace-normal"
                             >
-                              {t('settings.AudioSettingsModal.113')}</button>
+                              {t('settings.AudioSettingsModal.113')}</Button>
                           </>
                         ) : (
                           t('settings.AudioSettingsModal.114')
@@ -219,29 +220,12 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                     </summary>
                     {noiseAdvancedOpen && <div className="space-y-4 pt-4">
                   <fieldset className="max-w-[22rem] space-y-2"><legend className="text-ui-control font-semibold">{t('structure.noise.adaptive')}</legend>
-                    <div className="grid grid-cols-2 gap-2">
-                      {([
-                        ['smart', t('master.nrLearn')],
-                        ['venue', t('master.nrVenue')]
-                      ] as Array<[NoiseControlMode, string]>).map(([mode, label]) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        aria-pressed={noiseMode === mode}
-                        onClick={() => {
-                          setNoiseMeasurementOpen(mode === 'smart' || mode === 'venue');
-                          applyNoiseControlConfig({ mode });
-                        }}
-                        className={`${`px-3 py-2 rounded-md border text-ui-support font-bold transition-colors ${
-                          noiseMode === mode
-                            ? engineStats?.noiseReductionEnabled ? 'border-selection bg-selection/15 text-selection' : 'border-muted-foreground/50 bg-muted text-foreground'
-                            : 'border-input bg-background text-muted-foreground hover:text-foreground'
-                        }`} text-ui-control`}
-                      >
-                        {label}
-                      </button>
-                      ))}
-                    </div>
+                    <SegmentedControl<NoiseControlMode> label={t('structure.noise.adaptive')} value={noiseMode}
+                      options={[{ value: 'smart', label: t('master.nrLearn') }, { value: 'venue', label: t('master.nrVenue') }]}
+                      onValueChange={mode => {
+                        setNoiseMeasurementOpen(mode === 'smart' || mode === 'venue');
+                        void applyNoiseControlConfig({ mode });
+                      }} />
                   </fieldset>
                   {(noiseMode === 'smart' || noiseMode === 'venue') && <p className="max-w-prose text-ui-support text-muted-foreground leading-relaxed">{t(noiseMode === 'smart' ? 'settings.AudioSettingsModal.115' : 'settings.AudioSettingsModal.116')}</p>}
 
@@ -257,7 +241,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                     {noiseMeasurementOpen && <NoiseMeasurementPanel embedded />}
                   </Disclosure>
 
-                  <div className="flex items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2">
+                  <div className="flex items-center justify-between gap-3 rounded-control border border-input bg-background px-3 py-2">
                     <div>
                       <Label className="font-bold text-foreground text-ui-control">{t('settings.AudioSettingsModal.127')}</Label>
                       <InfoPopover label={t('info.voiceGuard')}>{t('settings.AudioSettingsModal.128')}</InfoPopover>
@@ -278,7 +262,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                 </div>
 
                 {/* Built-in Effects */}
-                <div className="p-4 bg-muted/20 rounded-xl border border-border space-y-4">
+                <div className="p-4 bg-muted/20 rounded-card border border-border space-y-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-1">
                       <h3 className="text-foreground text-ui-heading font-semibold">{t('settings.AudioSettingsModal.095')}</h3>
@@ -305,35 +289,19 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
 
                   <div className="w-full max-w-[22rem] space-y-2">
                     {singingModel.snapshot?.config.preset === 'singing' && <p className="text-ui-support">{t('settings.AudioSettingsModal.102')}</p>}
-                    <div className="flex items-center gap-2 text-[13px]">
-                      <span className="text-muted-foreground">{t('settings.AudioSettingsModal.103')}</span>
-                      <span className="order-last w-10 shrink-0 text-right font-mono tabular-nums text-foreground">{builtInEffectsAmount}%</span>
-                    <input
-                      type="range"
+                    <SliderField label={t('settings.AudioSettingsModal.104')}
                       disabled={singingModel.snapshot?.config.preset === 'singing' || !singingModel.snapshot || singingModel.busy}
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={builtInEffectsAmount}
-                      onChange={(e) => {
-                        builtInEffectsAmountEditing.current = true;
-                        setBuiltInEffectsAmount(Number(e.target.value));
-                      }}
-                      onPointerUp={(e) => commitBuiltInEffectsAmount(e.currentTarget.value)}
-                      onKeyUp={(e) => commitBuiltInEffectsAmount(e.currentTarget.value)}
-                      onBlur={(e) => commitBuiltInEffectsAmount(e.currentTarget.value)}
-                      className="min-w-0 flex-1 accent-primary"
-                      aria-label={t('settings.AudioSettingsModal.104')}
-                    />
-                    </div>
+                      min={0} max={100} step={5} value={builtInEffectsAmount} formatValue={value => `${value}%`}
+                      onValueChange={value => { builtInEffectsAmountEditing.current = true; setBuiltInEffectsAmount(value); }}
+                      onValueCommit={value => commitBuiltInEffectsAmount(String(value))} />
                   </div>
                   </fieldset>
                 </div>
 
             </fieldset>
             <div className="flex flex-wrap gap-3">
-              {onOpenVoiceCheck && <button onClick={onOpenVoiceCheck} className="h-10 px-4 rounded-md border border-input hover:bg-muted text-ui-control">{t('settings.AudioSettingsModal.093')}</button>}
-              <button type="button" disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : "sound-stream-mix-voice-only"} onClick={onOpenMixing} className="rounded-md border border-border px-3 py-2 hover:bg-muted text-ui-control disabled:opacity-50">{t('mixingHome.open')}</button>
+              {onOpenVoiceCheck && <Button onClick={onOpenVoiceCheck} variant="outline" className="h-auto min-h-10 whitespace-normal">{t('settings.AudioSettingsModal.093')}</Button>}
+              <Button type="button" disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : "sound-stream-mix-voice-only"} onClick={onOpenMixing} variant="outline" className="h-auto min-h-10 whitespace-normal">{t('mixingHome.open')}</Button>
               {!streamMixAvailable && <p id="sound-stream-mix-voice-only" className="text-ui-support text-muted-foreground">{t('streamMix.voiceOnly')}</p>}
             </div>
             <LiveModeControls model={liveModel} onAdjust={mode => {
@@ -343,16 +311,16 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
               target?.scrollIntoView?.({ block: 'start' });
               (target instanceof HTMLDetailsElement ? target.querySelector('summary') : target)?.focus({ preventScroll: true });
             }} />
-            <details id="singing-settings" open={singingOpen} onToggle={event => setSingingOpen(event.currentTarget.open)} className="rounded border border-border p-3 space-y-3">
+            <details id="singing-settings" open={singingOpen} onToggle={event => setSingingOpen(event.currentTarget.open)} className="rounded-control border border-border p-3 space-y-3">
               <summary className="cursor-pointer text-ui-heading font-semibold">{t('structure.singing')}</summary>
               <SingingControls showHeading={false} model={singingModel} onPreview={onPreviewSinging} onSaveProfile={onSaveSingingProfile} />
-              {preparingMode === 'singing' && <button type="button" className="rounded-md border border-border px-3 py-2 hover:bg-muted text-ui-control" onClick={() => {
+              {preparingMode === 'singing' && <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => {
                 const target = settingsBody.current?.querySelector<HTMLElement>('#live-mode-settings');
                 if (target) { target.scrollIntoView?.({ block: 'start' }); (target.querySelector<HTMLElement>('h3') ?? target).focus({ preventScroll: true }); }
-              }}>{t('settings.mode.return')}</button>}
+              }}>{t('settings.mode.return')}</Button>}
             </details>
             {/* 出力の安全装置は上級設定。数値の詳細を出さない間は閉じた欄に置く。 */}
-            {isBeginnerMode ? <details open={peakOpen} onToggle={event => setPeakOpen(event.currentTarget.open)} className="rounded border border-border p-3 space-y-3">
+            {isBeginnerMode ? <details open={peakOpen} onToggle={event => setPeakOpen(event.currentTarget.open)} className="rounded-control border border-border p-3 space-y-3">
               <summary className="cursor-pointer text-ui-heading font-semibold">{t('peak.title')}</summary>
               <PeakProtectionPanel />
             </details> : <PeakProtectionPanel />}

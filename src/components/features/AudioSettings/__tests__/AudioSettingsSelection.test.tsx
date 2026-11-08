@@ -71,11 +71,11 @@ it.each(['周囲の音を測定', 'ノイズ低減の詳細'])('測定の詳細�
     render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
     expect(screen.getByText('ノイズ低減の詳細').closest('details')).not.toHaveAttribute('open');
     fireEvent.click(screen.getByText('ノイズ低減の詳細'));
-    await screen.findByRole('button', { name: '測定値で調整' });
+    await screen.findByRole('radio', { name: '測定値で調整' });
     expect(screen.getByRole('button', { name: '周囲の音を測定' })).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('button', { name: '3秒測定' })).not.toBeInTheDocument();
     expect(request).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '測定値で調整' }));
+    fireEvent.click(screen.getByRole('radio', { name: '測定値で調整' }));
     const start = await screen.findByRole('button', { name: '3秒測定' });
     await waitFor(() => expect(start).toBeEnabled());
     fireEvent.click(start);

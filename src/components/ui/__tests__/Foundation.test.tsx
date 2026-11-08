@@ -94,3 +94,11 @@ it('Disclosureを外から閉じてもフォーカスを隠れた中身に残さ
     rerender(<Disclosure open={false} label="詳細"><Input aria-label="中身" /></Disclosure>);
     expect(screen.getByRole('button', { name: '詳細' })).toHaveFocus();
 });
+
+it('Fieldは外部のラベルを重複させず説明とエラーを関連付ける', () => {
+    render(<><label htmlFor="device">機器</label><Field id="device" label={null} description="選択の説明" error="選択してください"><Select><option value="">未選択</option></Select></Field></>);
+    const select = screen.getByRole('combobox', { name: '機器' });
+    expect(screen.getAllByText('機器', { selector: 'label' })).toHaveLength(1);
+    expect(select).toHaveAccessibleDescription('選択の説明 選択してください');
+    expect(select).toHaveAttribute('aria-invalid', 'true');
+});
