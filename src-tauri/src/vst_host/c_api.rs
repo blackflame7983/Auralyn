@@ -267,6 +267,29 @@ pub struct ProcessSetup {
     pub sample_rate: f64,
 }
 
+/// SDK の `BusInfo`。並びは media type、方向、ch 数、名前、bus 種別、フラグ。
+/// `String128` は 16bit 文字 128 要素。この版の構造体に speaker 配列は無い。
+#[repr(C)]
+pub struct BusInfo {
+    pub media_type: i32,
+    pub direction: i32,
+    pub channel_count: i32,
+    pub name: [u16; 128],
+    pub bus_type: i32,
+    pub flags: u32,
+}
+
+/// `MediaTypes::kAudio`
+pub const MEDIA_AUDIO: i32 = 0;
+/// `BusDirections::kInput`
+pub const BUS_INPUT: i32 = 0;
+/// `BusDirections::kOutput`
+pub const BUS_OUTPUT: i32 = 1;
+/// `SpeakerArr::kMono`（`kSpeakerL`）
+pub const SPEAKER_MONO: u64 = 1;
+/// `SpeakerArr::kStereo`（`kSpeakerL | kSpeakerR`）
+pub const SPEAKER_STEREO: u64 = 3;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ViewRect {

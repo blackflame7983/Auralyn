@@ -1740,7 +1740,14 @@ impl Engine {
             self.send_response(Response::RackConflict);
             return;
         }
-        let setup = self.processing_running().then(|| self.processor_setup());
+        let (rate, capacity, channels) = self.processor_setup();
+        if let Err(error) = staged.instance.negotiate_bus_layout(channels as i32) {
+            self.send_error(error.to_string());
+            return;
+        }
+        let setup = self
+            .processing_running()
+            .then_some((rate, capacity, channels));
         let processor = match staged.finish(setup) {
             Ok(processor) => processor,
             Err(error) => {
@@ -1765,6 +1772,14 @@ impl Engine {
         let opened = self.plugin_manager.plugins.get(&id);
         let class_id = opened.map(|instance| instance.class_id.clone());
         let legacy_class_ambiguous = opened.is_some_and(|instance| instance.legacy_class_ambiguous);
+        let channel_layout = opened
+            .map(|instance| {
+                crate::ipc::ChannelLayout::from_bus(
+                    instance.bus_layout.inputs,
+                    instance.bus_layout.outputs,
+                )
+            })
+            .unwrap_or_default();
         let prepared = processor.is_some();
         if let Some(processor) = processor {
             self.queue_add_processor(index, processor, gain, bypassed, muted);
@@ -1783,6 +1798,7 @@ impl Engine {
                 prepared,
                 class_id,
                 legacy_class_ambiguous,
+                channel_layout,
             },
         });
     }

@@ -1782,6 +1782,7 @@ mod tests {
                 muted: source_plugin.muted,
                 gain: source_plugin.gain,
                 class_id: None,
+                channel_layout: crate::ipc::ChannelLayout::Stereo,
             };
             let original = builtin::Config {
                 active: true,
@@ -1942,6 +1943,7 @@ mod tests {
                                 muted: request.muted,
                                 gain: request.gain,
                                 class_id: request.class_id.clone(),
+                                channel_layout: crate::ipc::ChannelLayout::Stereo,
                             });
                             revision += 1;
                             IpcResponse::PluginRestored {
@@ -1952,6 +1954,7 @@ mod tests {
                                     prepared: scenario != "recovery",
                                     class_id: None,
                                     legacy_class_ambiguous: false,
+                                    channel_layout: crate::ipc::ChannelLayout::Stereo,
                                 },
                             }
                         }

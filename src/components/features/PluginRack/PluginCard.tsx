@@ -30,6 +30,28 @@ export interface Plugin {
     muted: boolean;
     gain: number;
     classId?: string;
+    /** 交渉済みの入出力。ステレオと未交渉は付けない。 */
+    channelLayout?: 'stereo' | 'mono' | 'monoToStereo';
+}
+
+function ChannelBadge({ layout }: { layout?: Plugin['channelLayout'] }) {
+    const t = useMessages();
+    if (layout !== 'mono' && layout !== 'monoToStereo') return null;
+    const label = layout === 'mono' ? t('rack.card.monoBadge') : t('rack.card.monoInputBadge');
+    const description = layout === 'mono' ? t('rack.card.monoDescription') : t('rack.card.monoInputDescription');
+    return (
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <span title={description} className="inline-flex shrink-0 items-center rounded-control border border-border bg-muted px-1.5 py-0.5 text-ui-support font-semibold text-foreground">
+                    <span>{label}</span>
+                    <span className="sr-only"> {description}</span>
+                </span>
+            </TooltipTrigger>
+            <TooltipContent>
+                <p>{description}</p>
+            </TooltipContent>
+        </Tooltip>
+    );
 }
 
 interface PluginCardProps {
@@ -113,6 +135,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                 {plugin.name}
                                 {plugin.muted && <span className="ml-2 text-ui-support text-muted-foreground">{t('rack.card.simpleMuted')}</span>}
                             </h3>
+                            <ChannelBadge layout={plugin.channelLayout} />
                             {/* 省スペース表示でも復旧に必要なミュート操作を残す。 */}
                             <Button
                                 variant="outline"
@@ -231,9 +254,12 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                         />
                         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                             {plugin.muted && <span className="text-ui-support text-destructive-text font-semibold">{t('rack.card.muted')}</span>}
-                            <h3 className={cn("font-bold tracking-tight text-ui-support truncate transition-colors", plugin.enabled ? "text-foreground" : "text-muted-foreground")}>
-                                {plugin.name}
-                            </h3>
+                            <div className="flex min-w-0 items-center gap-1.5">
+                                <h3 className={cn("min-w-0 font-bold tracking-tight text-ui-support truncate transition-colors", plugin.enabled ? "text-foreground" : "text-muted-foreground")}>
+                                    {plugin.name}
+                                </h3>
+                                <ChannelBadge layout={plugin.channelLayout} />
+                            </div>
                             {plugin.vendor && <div className="text-ui-support text-muted-foreground truncate">{plugin.vendor}</div>}
                             <div className="text-ui-support text-muted-foreground truncate" title={latency}>{latency}</div>
                         </div>

@@ -35,9 +35,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::vst_host::c_api::{
-    AudioBusBuffers, FUnknownVtbl, IAudioProcessorVtbl, IComponentHandler2Vtbl, IComponentVtbl,
-    IConnectionPointVtbl, IEditControllerVtbl, IHostApplicationVtbl, IPlugFrameVtbl, IPlugViewVtbl,
-    IPluginFactoryVtbl, ITimerHandlerVtbl, PClassInfo, TResult, ViewRect, K_RESULT_OK, TUID,
+    AudioBusBuffers, BusInfo, FUnknownVtbl, IAudioProcessorVtbl, IComponentHandler2Vtbl,
+    IComponentVtbl, IConnectionPointVtbl, IEditControllerVtbl, IHostApplicationVtbl,
+    IPlugFrameVtbl, IPlugViewVtbl, IPluginFactoryVtbl, ITimerHandlerVtbl, PClassInfo, TResult,
+    ViewRect, BUS_INPUT, BUS_OUTPUT, K_RESULT_OK, MEDIA_AUDIO, SPEAKER_MONO, SPEAKER_STEREO, TUID,
 };
 
 const K_NO_INTERFACE: TResult = -2147467262;
@@ -1280,7 +1281,9 @@ pub struct VstInstance {
     pub active_view: *mut c_void,
     pub active_flag: Arc<AtomicBool>,
     editor_env: Option<EditorEnvGuard>,
-    channels: usize,       // Stored from prepare_processing for create_processor
+    channels: usize, // Stored from prepare_processing for create_processor
+    /// 交渉済みの main bus。未交渉の初期値はステレオ。
+    pub bus_layout: BusLayout,
     max_block_size: usize, // Stored from prepare_processing for create_processor
     host_app: *mut c_void, // IHostApplication context (per-plugin quirks)
     pub path: String,      // Stored for CWD switching during editor open
@@ -1309,6 +1312,152 @@ pub struct VstProcessor {
     // Safety constants
     max_block_size: usize,
     _num_channels: usize,
+    /// プラグイン main bus の入力 ch 数。1 または 2。
+    input_channels: usize,
+    /// プラグイン main bus の出力 ch 数。1 または 2。
+    output_channels: usize,
+}
+
+/// ホストがプラグインの main bus に使う入出力 ch 数。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BusLayout {
+    pub inputs: u8,
+    pub outputs: u8,
+}
+
+impl BusLayout {
+    pub const STEREO: Self = Self {
+        inputs: 2,
+        outputs: 2,
+    };
+    pub const MONO: Self = Self {
+        inputs: 1,
+        outputs: 1,
+    };
+    pub const MONO_TO_STEREO: Self = Self {
+        inputs: 1,
+        outputs: 2,
+    };
+}
+
+const BUS_LAYOUT_UNSUPPORTED: &str = "入出力の構成（モノラル/ステレオ）に対応していません";
+
+fn speaker_for(channels: u8) -> u64 {
+    if channels == 1 {
+        SPEAKER_MONO
+    } else {
+        SPEAKER_STEREO
+    }
+}
+
+fn layout_from_speakers(input: u64, output: u64) -> Option<BusLayout> {
+    let channels = |speaker| match speaker {
+        SPEAKER_MONO => Some(1),
+        SPEAKER_STEREO => Some(2),
+        _ => None,
+    };
+    Some(BusLayout {
+        inputs: channels(input)?,
+        outputs: channels(output)?,
+    })
+}
+
+// SAFETY: component は有効な IComponent。info はこの呼出し中だけ生きる。
+unsafe fn read_bus_channel_count(component: *mut c_void, direction: i32) -> Option<i32> {
+    let vtbl = get_vtbl::<IComponentVtbl>(component);
+    let mut info = BusInfo {
+        media_type: 0,
+        direction,
+        channel_count: 0,
+        name: [0; 128],
+        bus_type: 0,
+        flags: 0,
+    };
+    let result = (vtbl.get_bus_info)(
+        component,
+        MEDIA_AUDIO,
+        direction,
+        0,
+        &mut info as *mut BusInfo as *mut c_void,
+    );
+    if result != K_RESULT_OK {
+        return None;
+    }
+    match info.channel_count {
+        1 | 2 => Some(info.channel_count),
+        _ => None,
+    }
+}
+
+// SAFETY: processor は有効な IAudioProcessor。配列はこの呼出し中だけ生きる。
+unsafe fn try_set_arrangement(processor: *mut c_void, input: u64, output: u64) -> bool {
+    let vtbl = get_vtbl::<IAudioProcessorVtbl>(processor);
+    let mut inputs = [input];
+    let mut outputs = [output];
+    (vtbl.set_bus_arrangements)(
+        processor,
+        inputs.as_mut_ptr().cast(),
+        1,
+        outputs.as_mut_ptr().cast(),
+        1,
+    ) == K_RESULT_OK
+}
+
+// SAFETY: processor は有効な IAudioProcessor。value はこの呼出し中だけ生きる。
+unsafe fn read_arrangement(processor: *mut c_void, direction: i32) -> Option<u64> {
+    let vtbl = get_vtbl::<IAudioProcessorVtbl>(processor);
+    let mut value = 0u64;
+    let result = (vtbl.get_bus_arrangement)(
+        processor,
+        direction,
+        0,
+        &mut value as *mut u64 as *mut c_void,
+    );
+    (result == K_RESULT_OK).then_some(value)
+}
+
+// SAFETY: 両ポインタは有効な VST3 インターフェース。component は非アクティブ。
+unsafe fn negotiate_main_bus(
+    component: *mut c_void,
+    processor: *mut c_void,
+    host_channels: i32,
+) -> Result<BusLayout> {
+    // モノラル出力機器は従来どおり 1ch を渡し、配置の拒否ではロードを失敗させない。
+    if host_channels == 1 {
+        let _ = try_set_arrangement(processor, SPEAKER_MONO, SPEAKER_MONO);
+        return Ok(BusLayout::MONO);
+    }
+
+    // 既定 ch 数は参考にする。取得失敗は不明のまま、ステレオから順に試す。
+    let input_default = read_bus_channel_count(component, BUS_INPUT);
+    let output_default = read_bus_channel_count(component, BUS_OUTPUT);
+    log::debug!(
+        "VST main bus channel count before negotiation: input={input_default:?} output={output_default:?}"
+    );
+
+    // 既存のステレオ VST を先に採用する。配置の更新に失敗しても、現在値が同じならその構成で使う。
+    for candidate in [
+        BusLayout::STEREO,
+        BusLayout::MONO,
+        BusLayout::MONO_TO_STEREO,
+    ] {
+        let input = speaker_for(candidate.inputs);
+        let output = speaker_for(candidate.outputs);
+        if try_set_arrangement(processor, input, output) {
+            return Ok(candidate);
+        }
+        let current = match (
+            read_arrangement(processor, BUS_INPUT),
+            read_arrangement(processor, BUS_OUTPUT),
+        ) {
+            (Some(current_in), Some(current_out)) => layout_from_speakers(current_in, current_out),
+            _ => None,
+        };
+        if current == Some(candidate) {
+            return Ok(candidate);
+        }
+    }
+    Err(anyhow!(BUS_LAYOUT_UNSUPPORTED))
 }
 
 // SAFETY: VST3 は process を処理スレッドで呼ぶ契約。create_processor は COM 参照と DLL を保持し、
@@ -2055,6 +2204,7 @@ impl VstInstance {
                 active_flag: Arc::new(AtomicBool::new(true)),
                 editor_env: None,
                 channels: 2,
+                bus_layout: BusLayout::STEREO,
                 max_block_size: 0,
                 host_app: host_ctx,
                 path: path.to_string(),
@@ -2106,12 +2256,15 @@ impl VstInstance {
             (vtbl.base.add_ref)(self.processor);
         }
 
-        let channels = self.channels.max(1);
+        let input_channels = usize::from(self.bus_layout.inputs).max(1);
+        let output_channels = usize::from(self.bus_layout.outputs).max(1);
         let cap = self.max_block_size.max(1024);
-        let mut ins = Vec::with_capacity(channels);
-        let mut outs = Vec::with_capacity(channels);
-        for _ in 0..channels {
+        let mut ins = Vec::with_capacity(input_channels);
+        let mut outs = Vec::with_capacity(output_channels);
+        for _ in 0..input_channels {
             ins.push(vec![0.0; cap]);
+        }
+        for _ in 0..output_channels {
             outs.push(vec![0.0; cap]);
         }
 
@@ -2120,16 +2273,35 @@ impl VstInstance {
             _library: self._library.clone(),
             scratch_inputs: ins,
             scratch_outputs: outs,
-            // Pre-allocate pointer vectors
-            input_ptrs: Vec::with_capacity(channels),
-            output_ptrs: Vec::with_capacity(channels),
+            // 実 bus の ch 数だけを先に確保し、process 中の push で再確保しない。
+            input_ptrs: Vec::with_capacity(input_channels),
+            output_ptrs: Vec::with_capacity(output_channels),
             // Pre-allocate bus buffers
             bus_inputs: Vec::with_capacity(2),
             bus_outputs: Vec::with_capacity(2),
             active_flag: self.active_flag.clone(),
             max_block_size: cap,
-            _num_channels: channels,
+            _num_channels: input_channels.max(output_channels),
+            input_channels,
+            output_channels,
         })
+    }
+
+    /// 非アクティブのまま main bus のモノラル／ステレオを決める。結果は保存しない。
+    pub fn negotiate_bus_layout(&mut self, host_channels: i32) -> Result<()> {
+        if host_channels <= 0 {
+            return Err(anyhow!("Invalid VST processing configuration"));
+        }
+        // SAFETY: null を除外した component と processor は resources が参照と DLL を保持する。
+        // 呼出しは制御スレッドで、setActive 前の bus 照会と配置だけを行う。
+        unsafe {
+            if self.component.is_null() || self.processor.is_null() {
+                return Err(anyhow!("VST processing interfaces are unavailable"));
+            }
+            self.bus_layout = negotiate_main_bus(self.component, self.processor, host_channels)?;
+            self.channels = usize::from(self.bus_layout.inputs.max(self.bus_layout.outputs));
+        }
+        Ok(())
     }
 
     pub fn prepare_processing(
@@ -2139,19 +2311,21 @@ impl VstInstance {
         channels: i32,
     ) -> Result<()> {
         self.stop_processing();
-        // SAFETY: null を除外した component と processor は resources が参照と DLL を保持し、設定値は FFI 呼び出し前に検証する。
+        if self.component.is_null() || self.processor.is_null() {
+            return Err(anyhow!("VST processing interfaces are unavailable"));
+        }
+        if !sample_rate.is_finite() || sample_rate <= 0.0 || block_size <= 0 || channels <= 0 {
+            return Err(anyhow!("Invalid VST processing configuration"));
+        }
+        // SDK の処理開始順は、非アクティブ中の setBusArrangements のあと setupProcessing、そのあと setActive。
+        // setupProcessing で現在の bus の ch 数に合わせて内部バッファを確保する実装があるため、配置を先に決める。
+        // どちらも setActive より前に行う。多ch機器でもプラグインへ渡す main bus は 1 本で、1ch 以外はステレオ候補から交渉する。
+        self.negotiate_bus_layout(channels)?;
+        // SAFETY: 上で null を除外した component と processor は resources が参照と DLL を保持する。設定値は検証済み。
         unsafe {
-            if self.component.is_null() || self.processor.is_null() {
-                return Err(anyhow!("VST processing interfaces are unavailable"));
-            }
-            if !sample_rate.is_finite() || sample_rate <= 0.0 || block_size <= 0 || channels <= 0 {
-                return Err(anyhow!("Invalid VST processing configuration"));
-            }
-
             let proc_vtbl = get_vtbl::<IAudioProcessorVtbl>(self.processor);
             let comp_vtbl = get_vtbl::<IComponentVtbl>(self.component);
 
-            // 1. Setup Processing
             let mut setup = crate::vst_host::c_api::ProcessSetup {
                 process_mode: crate::vst_host::c_api::K_REALTIME,
                 symbolic_sample_size: crate::vst_host::c_api::K_SAMPLE_32,
@@ -2165,39 +2339,7 @@ impl VstInstance {
                 return Err(anyhow!("VST setup_processing failed"));
             }
 
-            // 2. Set Bus Arrangements (Stereo -> Stereo usually)
-            // We verify if plugin supports it?
-            // Just try to set what we have.
-            // We need pointers to SpeakerArrangement (u64 bitmask?)
-            // Wait, set_bus_arrangements takes *mut c_void for definitions?
-            // Wrapper in vst3-sys implies SpeakerArrangement is needed.
-            // But my definitions used c_void. Let's look at `set_bus_arrangements` signature in `c_api.rs`.
-            // `inputs: *mut c_void, num_ins: i32, ...`
-            // These void pointers are actually pointers to `SpeakerArrangement` (u64).
-
-            // SpeakerArrangement: kStereo = 3 (bits 0 and 1 set)
-            // NOTE: 初期実装は Stereo/Mono のみサポート。
-            // 多chデバイス(ASIO 8ch等)でも、プラグインに渡すバスは基本Stereo(2ch)に固定する。
-            let plugin_channels: i32 = if channels == 1 { 1 } else { 2 };
-
-            let mut speaker_arr: u64 = if plugin_channels == 1 { 1 } else { 3 };
-
-            // We pass pointers to valid arrangements
-            // Check how many buses the plugin has.
-            // For MVP assuming 1 input 1 output bus.
-            let res = (proc_vtbl.set_bus_arrangements)(
-                self.processor,
-                &mut speaker_arr as *mut _ as *mut c_void,
-                1, // num inputs
-                &mut speaker_arr as *mut _ as *mut c_void,
-                1, // num outputs
-            );
-
-            if res != K_RESULT_OK {
-                eprintln!("Warning: set_bus_arrangements failed");
-            }
-
-            // 3. Activate Component
+            // Activate Component
             self.resources.component_active = true;
             if (comp_vtbl.set_active)(self.component, 1) != K_RESULT_OK {
                 // 1 = true
@@ -2226,8 +2368,6 @@ impl VstInstance {
             //     sample_rate, block_size, channels
             // );
 
-            // Store for create_processor
-            self.channels = plugin_channels as usize;
             self.max_block_size = block_size.max(0) as usize;
             self.resources.prepared = true;
         }

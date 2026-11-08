@@ -6,6 +6,11 @@ import { message } from '@/i18n/messages';
 import { VstChainItems } from '../VstChainItems';
 
 afterEach(cleanup);
+it('モノラルVSTはチェーン上でも文字で分かる', () => {
+    render(<VstChainItems plugins={[{ id: 'a', name: 'MonoEQ', enabled: true, muted: false, hasEditor: false, path: '', vendor: '', version: '', gain: 1, channelLayout: 'mono' }]}
+        onToggle={vi.fn()} onEdit={vi.fn()} />);
+    expect(screen.getByText('モノラル')).toHaveAttribute('title', message('ja', 'rack.card.monoDescription'));
+});
 it.each(['ja', 'en'] as const)('無効VSTの見える名前と読み上げ名は名前とオフ状態にする (%s)', locale => {
     const toggle = vi.fn();
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}>

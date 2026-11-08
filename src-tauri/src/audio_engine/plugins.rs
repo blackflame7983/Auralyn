@@ -252,6 +252,10 @@ impl PluginManager {
         let id = instance.id.clone();
         let name = instance.name.clone();
         let rt_index = self.alloc_rt_index(&id)?;
+        if let Err(error) = instance.negotiate_bus_layout(channels as i32) {
+            self.free_rt_index(&id);
+            return Err(error);
+        }
 
         // Deferred Logic
         if instance.needs_deferred_connection() {

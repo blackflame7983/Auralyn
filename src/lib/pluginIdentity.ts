@@ -8,6 +8,13 @@ export function pluginKey(plugin: PluginRef): string {
     return plugin.classId ? `${plugin.path}::${plugin.classId.toUpperCase()}` : plugin.path;
 }
 
+export type ReportedChannelLayout = 'mono' | 'monoToStereo';
+
+/** ステレオと未交渉はバッジにしない。保存もしない。 */
+export function reportedChannelLayout(layout: string | null | undefined): ReportedChannelLayout | undefined {
+    return layout === 'mono' || layout === 'monoToStereo' ? layout : undefined;
+}
+
 export function fileLabel(path: string): string {
     const parts = path.split(/[/\\]/);
     return parts[parts.length - 1] || path;

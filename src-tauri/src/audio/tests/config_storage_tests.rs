@@ -154,6 +154,7 @@ fn restore_requires_matching_operation_and_engine_generation_and_valid_input() {
             prepared: false,
             class_id: None,
             legacy_class_ambiguous: false,
+            channel_layout: crate::ipc::ChannelLayout::Stereo,
         },
     };
     assert!(validate_restore_response(1, 1, 7, response()).is_ok());

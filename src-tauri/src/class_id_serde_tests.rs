@@ -122,6 +122,7 @@ fn restore_request_rack_and_load_command_roundtrip_class_id() {
         muted: false,
         gain: 1.0,
         class_id: Some(CID.into()),
+        channel_layout: crate::ipc::ChannelLayout::Stereo,
     };
     let json = serde_json::to_value(&rack).unwrap();
     assert_eq!(json.as_object().unwrap().len(), 7);
@@ -153,20 +154,34 @@ fn restore_request_rack_and_load_command_roundtrip_class_id() {
         vendor: String::new(),
         class_id: Some(CID.into()),
         legacy_class_ambiguous: false,
+        channel_layout: crate::ipc::ChannelLayout::Stereo,
     };
     let json = serde_json::to_value(&loaded).unwrap();
     assert!(json["payload"].get("legacyClassAmbiguous").is_none());
+    assert!(json["payload"].get("channelLayout").is_none());
     assert_eq!(json["payload"]["classId"], CID);
     let ambiguous = LoadedPlugin {
         id: "id".into(),
         name: "Unit".into(),
         class_id: None,
         legacy_class_ambiguous: true,
+        channel_layout: crate::ipc::ChannelLayout::Mono,
     };
-    assert_eq!(
-        serde_json::to_value(&ambiguous).unwrap()["legacyClassAmbiguous"],
-        true
-    );
+    let ambiguous_json = serde_json::to_value(&ambiguous).unwrap();
+    assert_eq!(ambiguous_json["legacyClassAmbiguous"], true);
+    assert_eq!(ambiguous_json["channelLayout"], "mono");
+    let legacy_rack = serde_json::json!({
+        "id": "id",
+        "path": "unit.vst3",
+        "name": "Unit",
+        "enabled": true,
+        "muted": false,
+        "gain": 1.0
+    });
+    assert!(serde_json::from_value::<RackPlugin>(legacy_rack)
+        .unwrap()
+        .channel_layout
+        .is_stereo());
 }
 
 #[test]

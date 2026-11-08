@@ -105,6 +105,8 @@ fn fixture() -> Fixture {
         active_flag: Arc::new(AtomicBool::new(true)),
         max_block_size: 4,
         _num_channels: 2,
+        input_channels: 2,
+        output_channels: 2,
     };
     Fixture { processor, mock }
 }

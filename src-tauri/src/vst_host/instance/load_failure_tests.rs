@@ -1,10 +1,10 @@
 //! 模擬factoryを実際のロード経路へ渡し、失敗段階ごとの解放を検査する。
 use super::*;
 use crate::vst_host::c_api::{
-    IAudioProcessorVtbl, IComponentVtbl, IEditControllerVtbl, IPluginFactory2Vtbl,
+    BusInfo, IAudioProcessorVtbl, IComponentVtbl, IEditControllerVtbl, IPluginFactory2Vtbl,
     IPluginFactoryVtbl, PClassInfo2, PFactoryInfo, IID_IPLUGINFACTORY2,
 };
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use vst3::Steinberg::{
     FUnknown,
     Vst::{IAudioProcessor, IComponent, IEditController},
@@ -413,7 +413,75 @@ unsafe extern "system" fn processing(this: *mut c_void, enabled: i32) -> i32 {
         K_RESULT_OK
     }
 }
+#[derive(Clone, Copy, Debug)]
+enum BusPolicy {
+    AcceptAll,
+    Only { input: u64, output: u64 },
+    Reject { input: u64, output: u64 },
+}
+
+thread_local! {
+    static BUS_POLICY: Cell<BusPolicy> = const { Cell::new(BusPolicy::AcceptAll) };
+    static BUS_CURRENT: Cell<(u64, u64)> = const { Cell::new((3, 3)) };
+    static BUS_CALLS: RefCell<Vec<(u64, u64)>> = const { RefCell::new(Vec::new()) };
+    static BUS_INFO_FAILS: Cell<bool> = const { Cell::new(false) };
+    static BUS_INFO_CALLS: Cell<u32> = const { Cell::new(0) };
+    static BUS_SETUP_SEEN: Cell<bool> = const { Cell::new(false) };
+    static BUS_ARRANGE_SEEN: Cell<bool> = const { Cell::new(false) };
+    static BUS_ARRANGE_BEFORE_SETUP: Cell<bool> = const { Cell::new(false) };
+    static BUS_ARRANGE_AFTER_SETUP: Cell<bool> = const { Cell::new(false) };
+}
+
+fn reported_arrangement() -> (u64, u64) {
+    match BUS_POLICY.with(|policy| policy.get()) {
+        BusPolicy::Only { input, output } | BusPolicy::Reject { input, output } => (input, output),
+        BusPolicy::AcceptAll => BUS_CURRENT.with(|current| current.get()),
+    }
+}
+
+fn read_arrangement_pair(
+    inputs: *mut c_void,
+    num_ins: i32,
+    outputs: *mut c_void,
+    num_outs: i32,
+) -> Option<(u64, u64)> {
+    if inputs.is_null() || outputs.is_null() || num_ins < 1 || num_outs < 1 {
+        return None;
+    }
+    // SAFETY: setBusArrangements が渡す SpeakerArrangement の先頭を、この呼出し中だけ読む。
+    unsafe { Some((*inputs.cast::<u64>(), *outputs.cast::<u64>())) }
+}
+
+struct BusPolicyGuard;
+
+impl Drop for BusPolicyGuard {
+    fn drop(&mut self) {
+        BUS_POLICY.with(|policy| policy.set(BusPolicy::AcceptAll));
+        BUS_CURRENT.with(|current| current.set((3, 3)));
+        BUS_CALLS.with(|calls| calls.borrow_mut().clear());
+        BUS_INFO_FAILS.with(|fails| fails.set(false));
+        BUS_INFO_CALLS.with(|calls| calls.set(0));
+        BUS_SETUP_SEEN.with(|seen| seen.set(false));
+        BUS_ARRANGE_SEEN.with(|seen| seen.set(false));
+        BUS_ARRANGE_BEFORE_SETUP.with(|flag| flag.set(false));
+        BUS_ARRANGE_AFTER_SETUP.with(|flag| flag.set(false));
+    }
+}
+
+fn set_bus_policy(policy: BusPolicy) -> BusPolicyGuard {
+    BUS_POLICY.with(|policy_slot| policy_slot.set(policy));
+    BusPolicyGuard
+}
+
+fn bus_calls() -> Vec<(u64, u64)> {
+    BUS_CALLS.with(|calls| calls.borrow().clone())
+}
+
 unsafe extern "system" fn setup(this: *mut c_void, _: *mut c_void) -> i32 {
+    if BUS_ARRANGE_SEEN.with(|seen| seen.get()) && !BUS_SETUP_SEEN.with(|seen| seen.get()) {
+        BUS_ARRANGE_BEFORE_SETUP.with(|flag| flag.set(true));
+    }
+    BUS_SETUP_SEEN.with(|seen| seen.set(true));
     if (*(*this.cast::<Object>()).state).stage == Stage::Setup {
         K_RESULT_FALSE
     } else {
@@ -447,7 +515,30 @@ unsafe extern "system" fn samples(this: *mut c_void) -> u32 {
 unsafe extern "system" fn buses(_: *mut c_void, _: i32, _: i32) -> i32 {
     1
 }
-unsafe extern "system" fn bus_info(_: *mut c_void, _: i32, _: i32, _: i32, _: *mut c_void) -> i32 {
+unsafe extern "system" fn bus_info(
+    _: *mut c_void,
+    _: i32,
+    dir: i32,
+    _: i32,
+    info: *mut c_void,
+) -> i32 {
+    BUS_INFO_CALLS.with(|calls| calls.set(calls.get().saturating_add(1)));
+    if BUS_INFO_FAILS.with(|fails| fails.get()) {
+        return K_RESULT_FALSE;
+    }
+    if !info.is_null() {
+        let (input, output) = reported_arrangement();
+        let arrangement = if dir == 0 { input } else { output };
+        // SAFETY: getBusInfo が渡す BusInfo へ、この呼出し中だけ既定 ch 数を書く。
+        unsafe {
+            let info = &mut *(info.cast::<BusInfo>());
+            info.channel_count = match arrangement {
+                1 => 1,
+                3 => 2,
+                _ => 0,
+            };
+        }
+    }
     K_RESULT_OK
 }
 unsafe extern "system" fn routing(_: *mut c_void, _: *mut c_void, _: *mut c_void) -> i32 {
@@ -458,14 +549,43 @@ unsafe extern "system" fn activate_bus(_: *mut c_void, _: i32, _: i32, _: i32, _
 }
 unsafe extern "system" fn arrangements(
     _: *mut c_void,
-    _: *mut c_void,
-    _: i32,
-    _: *mut c_void,
-    _: i32,
+    inputs: *mut c_void,
+    num_ins: i32,
+    outputs: *mut c_void,
+    num_outs: i32,
 ) -> i32 {
-    K_RESULT_OK
+    if BUS_SETUP_SEEN.with(|seen| seen.get()) {
+        BUS_ARRANGE_AFTER_SETUP.with(|flag| flag.set(true));
+    }
+    BUS_ARRANGE_SEEN.with(|seen| seen.set(true));
+    let requested = read_arrangement_pair(inputs, num_ins, outputs, num_outs);
+    if let Some(pair) = requested {
+        BUS_CALLS.with(|calls| calls.borrow_mut().push(pair));
+    }
+    let accept = match BUS_POLICY.with(|policy| policy.get()) {
+        BusPolicy::AcceptAll => true,
+        BusPolicy::Only { input, output } => requested == Some((input, output)),
+        BusPolicy::Reject { .. } => false,
+    };
+    if accept {
+        if let Some(pair) = requested {
+            BUS_CURRENT.with(|current| current.set(pair));
+        }
+        K_RESULT_OK
+    } else {
+        K_RESULT_FALSE
+    }
 }
-unsafe extern "system" fn arrangement(_: *mut c_void, _: i32, _: i32, _: *mut c_void) -> i32 {
+unsafe extern "system" fn arrangement(_: *mut c_void, dir: i32, _: i32, arr: *mut c_void) -> i32 {
+    if arr.is_null() {
+        return K_RESULT_FALSE;
+    }
+    let (input, output) = reported_arrangement();
+    let value = if dir == 0 { input } else { output };
+    // SAFETY: getBusArrangement が渡す u64 へ、この呼出し中だけ現在の配置を書く。
+    unsafe {
+        *arr.cast::<u64>() = value;
+    }
     K_RESULT_OK
 }
 unsafe extern "system" fn param_info(_: *mut c_void, _: i32, _: *mut c_void) -> i32 {
@@ -1137,4 +1257,129 @@ fn legacy_opened_class_reopens_from_its_cid_without_catalog_exclusion_or_fallbac
             assert!(created.is_empty());
         },
     );
+}
+
+#[test]
+fn stereo_only_bus_is_adopted_before_setup_and_survives_another_rate() {
+    let _guard = set_bus_policy(BusPolicy::Only {
+        input: 3,
+        output: 3,
+    });
+    with_mock_vst(false, |mut instance| {
+        instance.prepare_processing(48_000.0, 256, 2).unwrap();
+        assert_eq!(instance.bus_layout, BusLayout::STEREO);
+        assert!(BUS_ARRANGE_BEFORE_SETUP.with(|flag| flag.get()));
+        assert!(!BUS_ARRANGE_AFTER_SETUP.with(|flag| flag.get()));
+        assert!(BUS_INFO_CALLS.with(|calls| calls.get()) >= 2);
+        assert_eq!(bus_calls(), vec![(3, 3)]);
+        instance.prepare_processing(96_000.0, 128, 2).unwrap();
+        assert_eq!(instance.bus_layout, BusLayout::STEREO);
+        let processor = instance.create_processor().unwrap();
+        assert_eq!(
+            (processor.input_channels, processor.output_channels),
+            (2, 2)
+        );
+    });
+}
+
+#[test]
+fn mono_only_bus_is_chosen_after_stereo_is_rejected_and_kept_on_reprepare() {
+    let _guard = set_bus_policy(BusPolicy::Only {
+        input: 1,
+        output: 1,
+    });
+    with_mock_vst(false, |mut instance| {
+        instance.prepare_processing(48_000.0, 256, 2).unwrap();
+        assert_eq!(instance.bus_layout, BusLayout::MONO);
+        assert_eq!(bus_calls(), vec![(3, 3), (1, 1)]);
+        instance.prepare_processing(44_100.0, 512, 2).unwrap();
+        assert_eq!(instance.bus_layout, BusLayout::MONO);
+        let processor = instance.create_processor().unwrap();
+        assert_eq!(
+            (processor.input_channels, processor.output_channels),
+            (1, 1)
+        );
+        assert_eq!(processor.scratch_inputs.len(), 1);
+        assert_eq!(processor.scratch_outputs.len(), 1);
+        assert!(processor.input_ptrs.capacity() >= 1);
+        assert!(processor.output_ptrs.capacity() >= 1);
+    });
+}
+
+#[test]
+fn mono_to_stereo_bus_is_the_third_candidate() {
+    let _guard = set_bus_policy(BusPolicy::Only {
+        input: 1,
+        output: 3,
+    });
+    with_mock_vst(false, |mut instance| {
+        instance.prepare_processing(48_000.0, 256, 8).unwrap();
+        assert_eq!(instance.bus_layout, BusLayout::MONO_TO_STEREO);
+        assert_eq!(bus_calls(), vec![(3, 3), (1, 1), (1, 3)]);
+        let processor = instance.create_processor().unwrap();
+        assert_eq!(
+            (processor.input_channels, processor.output_channels),
+            (1, 2)
+        );
+        assert_eq!(processor.input_ptrs.capacity(), 1);
+        assert_eq!(processor.output_ptrs.capacity(), 2);
+    });
+}
+
+#[test]
+fn unsupported_bus_fails_prepare_instead_of_continuing() {
+    let _guard = set_bus_policy(BusPolicy::Reject {
+        input: 0,
+        output: 0,
+    });
+    with_mock_vst(false, |mut instance| {
+        let error = instance
+            .prepare_processing(48_000.0, 256, 2)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("入出力の構成（モノラル/ステレオ）に対応していません"));
+        assert!(instance.create_processor().is_none());
+        assert_eq!(bus_calls(), vec![(3, 3), (1, 1), (1, 3)]);
+    });
+}
+
+#[test]
+fn failed_arrangement_with_stereo_default_keeps_the_previous_stereo_plugin() {
+    let _guard = set_bus_policy(BusPolicy::Reject {
+        input: 3,
+        output: 3,
+    });
+    with_mock_vst(false, |mut instance| {
+        instance.prepare_processing(48_000.0, 256, 2).unwrap();
+        assert_eq!(instance.bus_layout, BusLayout::STEREO);
+        assert_eq!(bus_calls(), vec![(3, 3)]);
+    });
+}
+
+#[test]
+fn missing_bus_info_does_not_block_a_stereo_plugin() {
+    let _guard = set_bus_policy(BusPolicy::AcceptAll);
+    BUS_INFO_FAILS.with(|fails| fails.set(true));
+    with_mock_vst(false, |mut instance| {
+        instance.prepare_processing(48_000.0, 256, 2).unwrap();
+        assert_eq!(instance.bus_layout, BusLayout::STEREO);
+        assert!(BUS_INFO_CALLS.with(|calls| calls.get()) >= 2);
+    });
+}
+
+#[test]
+fn mono_output_device_stays_mono_even_when_arrangement_is_rejected() {
+    let _guard = set_bus_policy(BusPolicy::Reject {
+        input: 0,
+        output: 0,
+    });
+    with_mock_vst(false, |mut instance| {
+        instance.prepare_processing(48_000.0, 256, 1).unwrap();
+        assert_eq!(instance.bus_layout, BusLayout::MONO);
+        let processor = instance.create_processor().unwrap();
+        assert_eq!(
+            (processor.input_channels, processor.output_channels),
+            (1, 1)
+        );
+    });
 }

@@ -328,6 +328,7 @@ pub(in crate::audio) mod tests {
             muted: false,
             gain: 1.0,
             class_id: None,
+            channel_layout: crate::ipc::ChannelLayout::Stereo,
         }
     }
     #[cfg(windows)]

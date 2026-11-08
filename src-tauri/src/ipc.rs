@@ -336,6 +336,30 @@ impl RestorePluginRequest {
     }
 }
 
+/// 交渉した main bus。旧データに無いときはステレオとして読む。ステレオは送らない。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ChannelLayout {
+    #[default]
+    Stereo,
+    Mono,
+    MonoToStereo,
+}
+
+impl ChannelLayout {
+    pub fn is_stereo(&self) -> bool {
+        matches!(self, Self::Stereo)
+    }
+
+    pub fn from_bus(inputs: u8, outputs: u8) -> Self {
+        match (inputs, outputs) {
+            (1, 1) => Self::Mono,
+            (1, 2) => Self::MonoToStereo,
+            _ => Self::Stereo,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoadedPlugin {
@@ -345,6 +369,8 @@ pub struct LoadedPlugin {
     pub class_id: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub legacy_class_ambiguous: bool,
+    #[serde(default, skip_serializing_if = "ChannelLayout::is_stereo")]
+    pub channel_layout: ChannelLayout,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -359,6 +385,8 @@ pub struct RestoredPlugin {
     /// クラス未指定で、エフェクト候補が2つ以上あった。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub legacy_class_ambiguous: bool,
+    #[serde(default, skip_serializing_if = "ChannelLayout::is_stereo")]
+    pub channel_layout: ChannelLayout,
 }
 
 /// 保存stateやview生成を含まない、稼働中ラックへの再接続用情報。
@@ -373,6 +401,8 @@ pub struct RackPlugin {
     pub gain: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub class_id: Option<String>,
+    #[serde(default, skip_serializing_if = "ChannelLayout::is_stereo")]
+    pub channel_layout: ChannelLayout,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -732,6 +762,12 @@ pub enum Response {
             skip_serializing_if = "std::ops::Not::not"
         )]
         legacy_class_ambiguous: bool,
+        #[serde(
+            default,
+            rename = "channelLayout",
+            skip_serializing_if = "ChannelLayout::is_stereo"
+        )]
+        channel_layout: ChannelLayout,
     },
     RuntimeStats {
         #[serde(default, skip_serializing_if = "Option::is_none")]

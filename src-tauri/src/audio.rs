@@ -1578,12 +1578,14 @@ impl AudioHost {
                 name,
                 class_id,
                 legacy_class_ambiguous,
+                channel_layout,
                 ..
             } => Ok(crate::ipc::LoadedPlugin {
                 id,
                 name,
                 class_id,
                 legacy_class_ambiguous,
+                channel_layout,
             }),
             IpcResponse::Error(e) => Err(anyhow!(e)),
             _ => Err(anyhow!("Unexpected response type")),
