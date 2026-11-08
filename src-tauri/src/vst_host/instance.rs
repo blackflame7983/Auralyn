@@ -1316,16 +1316,29 @@ pub struct VstProcessor {
 // バッファへの一時ポインタは process 中だけ使い、移動後に共有して同時操作しない。
 unsafe impl Send for VstProcessor {}
 
+/// クラスを開くときの許容規則。通常追加と互換復元で分ける。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClassLoadPolicy {
+    /// `load_plugin` とブラウザからの追加。指定 CID は `list_effect_classes` の対象だけ。
+    Catalog,
+    /// 保存データの復元。従来の category 部分一致で開けた CID を、別クラスへ移さず開く。
+    Legacy,
+}
+
 impl VstInstance {
     pub fn load(path: &str) -> Result<Self> {
-        Self::load_with_class(path, None)
+        Self::load_with_class(path, None, ClassLoadPolicy::Legacy)
     }
 
-    /// `class_id` が Some のときは、従来の category 部分一致で対象になり得るその CID だけを生成する。
-    /// カタログの楽器除外では落とすクラスでも、旧ロードで開けた CID なら同じクラスを開く。
-    /// 見つからない、または生成できない場合は別クラスへ移らない。
+    /// `class_id` が Some のときは、その CID だけを生成する。見つからない、または生成できない場合は別クラスへ移らない。
+    /// `Catalog` はカタログの対象条件を満たさない CID を拒否する。
+    /// `Legacy` は従来の category 部分一致で対象になり得る CID を開く。カタログで除外した楽器でも、旧ロードで開けた CID なら同じクラスを開く。
     /// None は旧データ向けで、最初に生成できたクラスを開く。
-    pub fn load_with_class(path: &str, class_id: Option<&str>) -> Result<Self> {
+    pub fn load_with_class(
+        path: &str,
+        class_id: Option<&str>,
+        policy: ClassLoadPolicy,
+    ) -> Result<Self> {
         let path_obj = Path::new(path);
         let plugin_name = path_obj
             .file_stem()
@@ -1376,6 +1389,7 @@ impl VstInstance {
                 module_hmodule,
                 factory_ptr,
                 class_id,
+                policy,
             )
         }
     }
@@ -1388,6 +1402,7 @@ impl VstInstance {
         module_hmodule: HMODULE,
         factory_ptr: *mut c_void,
         requested_class_id: Option<&str>,
+        policy: ClassLoadPolicy,
     ) -> Result<Self> {
         let is_insight2 = plugin_name.contains("Insight 2");
 
@@ -1445,13 +1460,20 @@ impl VstInstance {
                 ),
                 None => None,
             };
-            // 曖昧告知だけカタログのエフェクト候補数を使う。指定 CID の探索はここを通さない。
+            // 曖昧告知はカタログのエフェクト候補数。通常追加の指定 CID も、同じ列挙に含まれるときだけ開く。
             let listed = crate::vst_host::class_listing::list_effect_classes(factory_ptr);
             let legacy_class_ambiguous = normalized_request.is_none()
                 && listed
                     .as_ref()
                     .map(|classes| classes.len() >= 2)
                     .unwrap_or(false);
+            let requested_in_catalog = normalized_request.as_ref().is_some_and(|class_id| {
+                listed.as_ref().ok().is_some_and(|classes| {
+                    classes
+                        .iter()
+                        .any(|class| class.entry.class_id == *class_id)
+                })
+            });
 
             // Find class
             let count = (factory_vtbl.count_classes)(factory_ptr);
@@ -1470,16 +1492,20 @@ impl VstInstance {
                     let category = read_cstr(&class_info.category);
                     let class_name = read_cstr(&class_info.name);
                     let category_lower = category.to_lowercase();
-                    // カタログの完全一致や楽器除外は使わない。従来ロードと同じ部分一致だけを見る。
+                    // 復元と、クラス未指定の旧データは従来の部分一致。通常追加の指定 CID はカタログ対象だけ。
                     let category_matches =
                         category_lower.contains("audio module") || category_lower.contains("fx");
                     let selected = normalized_request.as_ref().is_some_and(|class_id| {
                         crate::vst_host::class_listing::format_class_id(&class_info.cid)
                             == *class_id
                     });
-                    // 指定 CID は、その CID を持ち従来規則で対象になり得るクラスだけ。別クラスへは移らない。
+                    // 指定 CID が見つからない、または規則の対象外なら別クラスへは移らない。
                     let open_this = if normalized_request.is_some() {
-                        selected && category_matches
+                        selected
+                            && match policy {
+                                ClassLoadPolicy::Catalog => requested_in_catalog,
+                                ClassLoadPolicy::Legacy => category_matches,
+                            }
                     } else {
                         category_matches
                     };

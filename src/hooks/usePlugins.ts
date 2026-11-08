@@ -4,7 +4,7 @@ import { useMessages } from '../i18n/LocaleProvider';
 import { pluginNotice, renderPluginNotice, defaultPluginMessages, type PluginNotice } from '../lib/pluginNotice';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { audioApi, VstPlugin, type LoadedPlugin, type RackPlugin } from '../api/audio';
-import { claimLegacyClassWarning, pendingStorageValue } from '../lib/pluginIdentity';
+import { claimLegacyClassWarning, pendingStorageValue, samePlugin } from '../lib/pluginIdentity';
 import { Plugin } from '../components/features/PluginRack/PluginCard';
 import { usePluginProfiles } from './usePluginProfiles';
 import { restorePluginSession, parsePluginSession, unrestoredPluginNames, SessionRackConflict, type PluginSessionRestoreResult } from '../lib/restorePluginSession';
@@ -280,8 +280,17 @@ export const usePlugins = () => {
             if (missing.length !== items.length || missing.some((value, index) => value !== missingRecovery.missing[index])) throw new Error('changed');
             const remaining = items.filter((_, index) => !missing[index]);
             const rack = await audioApi.sessionRack({ action: 'snapshot' }); check();
-            if (rack.status !== 'snapshot' || rack.plugins.length !== remaining.length || rack.plugins.some((plugin, index) => plugin.path !== remaining[index].path)) throw new Error('rack mismatch');
-            const session = await Promise.all(rack.plugins.map(async (plugin, index) => ({ ...remaining[index], enabled: plugin.enabled, muted: plugin.muted, gain: plugin.gain, state: await audioApi.getPluginState(plugin.id) })));
+            // 保存側に CID があるときは path だけでは足りない。違うクラスの state をその CID へ結び付けない。
+            if (rack.status !== 'snapshot' || rack.plugins.length !== remaining.length || rack.plugins.some((plugin, index) => !samePlugin(remaining[index], plugin))) throw new Error('rack mismatch');
+            const session = await Promise.all(rack.plugins.map(async (plugin, index) => ({
+                ...remaining[index],
+                enabled: plugin.enabled,
+                muted: plugin.muted,
+                gain: plugin.gain,
+                // 旧データに CID が無いときだけ、実際に開いているクラスを保存結果へ残す。
+                ...classField(remaining[index].classId || plugin.classId),
+                state: await audioApi.getPluginState(plugin.id),
+            })));
             check();
             // 毎回固有名で原本を退避し、既存の自動バックアップは上書きしない。
             protectPluginSession(missingRecovery.saved);

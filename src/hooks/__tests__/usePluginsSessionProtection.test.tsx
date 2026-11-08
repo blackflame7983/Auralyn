@@ -292,3 +292,44 @@ it.each(['success', 'all-missing', 'nonmissing-failure', 'state-failure', 'backu
     expect(localStorage.getItem(PLUGIN_SESSION_BACKUP_KEY)).toBe('previous backup');
     expect(audioApi.removePlugin).not.toHaveBeenCalled();
 });
+
+const savedClass = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+const rackClass = 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+
+it('欠落VSTを除く保存は、保存CIDと実ラックCIDが違うとき保存せず保護を維持する', async () => {
+    const saved = JSON.stringify([savedPlugin('ozone'), { ...savedPlugin('insight'), classId: savedClass }]);
+    localStorage.setItem(PLUGIN_SESSION_KEY, saved);
+    vi.mocked(audioApi.restorePlugin).mockImplementation(async request => {
+        if (request.path === 'ozone') throw new Error('load failed');
+        return { id: request.path, name: request.path, prepared: false, classId: rackClass };
+    });
+    vi.spyOn(audioApi, 'missingVstPaths').mockResolvedValue([true, false]);
+    const { result } = renderHook(() => usePlugins());
+    await flush();
+    await act(async () => { await result.current.checkMissingPlugins(); });
+    let failure: unknown;
+    await act(async () => { try { await result.current.saveWithoutMissingPlugins(); } catch (error) { failure = error; } });
+    expect(failure).toBeDefined();
+    expect(localStorage.getItem(PLUGIN_SESSION_PROTECTED_KEY)).toBe('true');
+    expect(localStorage.getItem(PLUGIN_SESSION_KEY)).toBe(saved);
+    expect(localStorage.getItem(PLUGIN_SESSION_KEY)).not.toContain('current-state');
+});
+
+it('欠落VSTを除く保存は、保存にCIDが無いとき実ラックのCIDを引き継ぐ', async () => {
+    const saved = JSON.stringify([savedPlugin('ozone'), savedPlugin('insight')]);
+    localStorage.setItem(PLUGIN_SESSION_KEY, saved);
+    vi.mocked(audioApi.restorePlugin).mockImplementation(async request => {
+        if (request.path === 'ozone') throw new Error('load failed');
+        return { id: request.path, name: request.path, prepared: false, classId: rackClass };
+    });
+    vi.spyOn(audioApi, 'missingVstPaths').mockResolvedValue([true, false]);
+    const { result } = renderHook(() => usePlugins());
+    await flush();
+    await act(async () => { await result.current.checkMissingPlugins(); });
+    let failure: unknown;
+    await act(async () => { try { await result.current.saveWithoutMissingPlugins(); } catch (error) { failure = error; } });
+    expect(failure).toBeUndefined();
+    expect(localStorage.getItem(PLUGIN_SESSION_PROTECTED_KEY)).toBeNull();
+    const session = JSON.parse(localStorage.getItem(PLUGIN_SESSION_KEY) ?? '[]') as Array<{ path: string; classId?: string; state?: string }>;
+    expect(session).toEqual([expect.objectContaining({ path: 'insight', classId: rackClass, state: 'current-state' })]);
+});

@@ -69,6 +69,7 @@ fn with_fixture(stage: Stage, body: impl FnOnce(VstInstance, &mut State)) {
             HMODULE(std::ptr::null_mut()),
             factory,
             None,
+            ClassLoadPolicy::Legacy,
         )
     }
     .unwrap();
@@ -760,6 +761,7 @@ fn real_loader_failure_stages_release_every_acquired_reference() {
                 HMODULE(std::ptr::null_mut()),
                 factory,
                 None,
+                ClassLoadPolicy::Legacy,
             )
         };
         match stage {
@@ -897,6 +899,7 @@ fn with_classes(
     classes: Vec<MockClass>,
     factory2: bool,
     requested: Option<&str>,
+    policy: ClassLoadPolicy,
     body: impl FnOnce(Result<VstInstance>, Vec<TUID>, &mut State),
 ) {
     CATALOG.with(|catalog| {
@@ -934,6 +937,7 @@ fn with_classes(
             HMODULE(std::ptr::null_mut()),
             factory,
             requested,
+            policy,
         )
     };
     let created = CATALOG.with(|catalog| {
@@ -960,31 +964,56 @@ fn load_with_class_selects_only_the_requested_effect_and_does_not_fall_back() {
             audio_class(9, "Piano", Some("Instrument|Synth"), false),
         ]
     };
-    with_classes(classes(), true, Some(&second), |result, created, _| {
-        let instance = result.unwrap();
-        assert_eq!(instance.class_id, second);
-        assert_eq!(instance.name, "Comp");
-        assert!(!instance.legacy_class_ambiguous);
-        assert_eq!(created, vec![[2; 16]]);
-    });
-    with_classes(classes(), true, None, |result, created, _| {
-        let instance = result.unwrap();
-        assert_eq!(instance.class_id, first);
-        assert!(instance.legacy_class_ambiguous);
-        assert_eq!(created, vec![[1; 16]]);
-    });
-    // カタログでは楽器として除外しても、category が従来規則に合う CID は別クラスへ移さず開く。
-    with_classes(classes(), true, Some(&instrument), |result, created, _| {
-        let instance = result.unwrap();
-        assert_eq!(instance.class_id, instrument);
-        assert_eq!(instance.name, "Piano");
-        assert!(!instance.legacy_class_ambiguous);
-        assert_eq!(created, vec![[9; 16]]);
-    });
-    with_classes(classes(), true, Some("not-a-cid"), |result, created, _| {
-        assert!(result.err().unwrap().to_string().contains("クラスIDが不正"));
-        assert!(created.is_empty());
-    });
+    with_classes(
+        classes(),
+        true,
+        Some(&second),
+        ClassLoadPolicy::Catalog,
+        |result, created, _| {
+            let instance = result.unwrap();
+            assert_eq!(instance.class_id, second);
+            assert_eq!(instance.name, "Comp");
+            assert!(!instance.legacy_class_ambiguous);
+            assert_eq!(created, vec![[2; 16]]);
+        },
+    );
+    with_classes(
+        classes(),
+        true,
+        None,
+        ClassLoadPolicy::Legacy,
+        |result, created, _| {
+            let instance = result.unwrap();
+            assert_eq!(instance.class_id, first);
+            assert!(instance.legacy_class_ambiguous);
+            assert_eq!(created, vec![[1; 16]]);
+        },
+    );
+    // 通常追加は、カタログで除外した楽器 CID を生成しない。別クラスへも移らない。
+    with_classes(
+        classes(),
+        true,
+        Some(&instrument),
+        ClassLoadPolicy::Catalog,
+        |result, created, _| {
+            assert!(result
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("保存されたエフェクトがこのファイルにありません"));
+            assert!(created.is_empty());
+        },
+    );
+    with_classes(
+        classes(),
+        true,
+        Some("not-a-cid"),
+        ClassLoadPolicy::Catalog,
+        |result, created, _| {
+            assert!(result.err().unwrap().to_string().contains("クラスIDが不正"));
+            assert!(created.is_empty());
+        },
+    );
     with_classes(
         vec![
             audio_class(1, "Delay", Some("Fx|Delay"), true),
@@ -992,6 +1021,7 @@ fn load_with_class_selects_only_the_requested_effect_and_does_not_fall_back() {
         ],
         true,
         Some(&first),
+        ClassLoadPolicy::Catalog,
         |result, created, _| {
             assert!(result
                 .err()
@@ -1031,31 +1061,80 @@ fn legacy_opened_class_reopens_from_its_cid_without_catalog_exclusion_or_fallbac
             },
         ]
     };
-    with_classes(classes(), true, None, |result, created, _| {
-        let instance = result.unwrap();
-        assert_eq!(instance.class_id, piano);
-        assert_eq!(instance.name, "Piano");
-        assert_eq!(created, vec![[9; 16]]);
-    });
-    with_classes(classes(), true, Some(&piano), |result, created, _| {
-        let instance = result.unwrap();
-        assert_eq!(instance.class_id, piano);
-        assert_eq!(instance.name, "Piano");
-        assert_eq!(created, vec![[9; 16]]);
-        assert_ne!(instance.class_id, delay);
-    });
-    with_classes(classes(), true, Some(&old_fx), |result, created, _| {
-        let instance = result.unwrap();
-        assert_eq!(instance.class_id, old_fx);
-        assert_eq!(instance.name, "OldFx");
-        assert_eq!(created, vec![[4; 16]]);
-    });
-    with_classes(classes(), true, Some(&controller), |result, created, _| {
-        assert!(result
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("保存されたエフェクトがこのファイルにありません"));
-        assert!(created.is_empty());
-    });
+    with_classes(
+        classes(),
+        true,
+        None,
+        ClassLoadPolicy::Legacy,
+        |result, created, _| {
+            let instance = result.unwrap();
+            assert_eq!(instance.class_id, piano);
+            assert_eq!(instance.name, "Piano");
+            assert_eq!(created, vec![[9; 16]]);
+        },
+    );
+    with_classes(
+        classes(),
+        true,
+        Some(&piano),
+        ClassLoadPolicy::Legacy,
+        |result, created, _| {
+            let instance = result.unwrap();
+            assert_eq!(instance.class_id, piano);
+            assert_eq!(instance.name, "Piano");
+            assert_eq!(created, vec![[9; 16]]);
+            assert_ne!(instance.class_id, delay);
+        },
+    );
+    // 同じ楽器 CID でも、通常追加は拒否する。復元の許可と対にする。
+    with_classes(
+        classes(),
+        true,
+        Some(&piano),
+        ClassLoadPolicy::Catalog,
+        |result, created, _| {
+            assert!(result
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("保存されたエフェクトがこのファイルにありません"));
+            assert!(created.is_empty());
+        },
+    );
+    with_classes(
+        classes(),
+        true,
+        Some(&old_fx),
+        ClassLoadPolicy::Legacy,
+        |result, created, _| {
+            let instance = result.unwrap();
+            assert_eq!(instance.class_id, old_fx);
+            assert_eq!(instance.name, "OldFx");
+            assert_eq!(created, vec![[4; 16]]);
+        },
+    );
+    with_classes(
+        classes(),
+        true,
+        Some(&old_fx),
+        ClassLoadPolicy::Catalog,
+        |result, created, _| {
+            assert!(result.is_err());
+            assert!(created.is_empty());
+        },
+    );
+    with_classes(
+        classes(),
+        true,
+        Some(&controller),
+        ClassLoadPolicy::Legacy,
+        |result, created, _| {
+            assert!(result
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("保存されたエフェクトがこのファイルにありません"));
+            assert!(created.is_empty());
+        },
+    );
 }

@@ -56,10 +56,49 @@ function visibleIdentity(plugin: VstPlugin): string {
   return [plugin.name, fileLabel(plugin.path), plugin.vendor, plugin.version ?? ''].join('\0');
 }
 
-function shortClassId(classId: string | undefined): string | null {
+const MIN_CLASS_PREFIX = 8;
+const MAX_CLASS_PREFIX = 32;
+
+function classHex(classId: string | undefined): string | null {
   if (!classId) return null;
   const hex = classId.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
-  return hex ? hex.slice(0, 8) : null;
+  return hex ? hex.slice(0, MAX_CLASS_PREFIX) : null;
+}
+
+/** 重複グループの中で、先頭から一意になる最短の桁。8桁より短くせず、32桁で打ち切る。 */
+function uniqueClassPrefixes(hexes: Array<string | null>): Array<string | null> {
+  return hexes.map((hex, index) => {
+    if (!hex) return null;
+    let length = Math.min(MIN_CLASS_PREFIX, hex.length);
+    while (length < hex.length) {
+      const prefix = hex.slice(0, length);
+      const collided = hexes.some((other, otherIndex) =>
+        otherIndex !== index && !!other && other.slice(0, length) === prefix);
+      if (!collided) break;
+      length += 1;
+    }
+    return hex.slice(0, length);
+  });
+}
+
+function classPrefixByPlugin(plugins: VstPlugin[]): Map<VstPlugin, string> {
+  const groups = new Map<string, number[]>();
+  plugins.forEach((plugin, index) => {
+    const identity = visibleIdentity(plugin);
+    const bucket = groups.get(identity);
+    if (bucket) bucket.push(index);
+    else groups.set(identity, [index]);
+  });
+  const labels = new Map<VstPlugin, string>();
+  for (const indexes of groups.values()) {
+    if (indexes.length < 2) continue;
+    const prefixes = uniqueClassPrefixes(indexes.map(index => classHex(plugins[index].classId)));
+    indexes.forEach((index, offset) => {
+      const prefix = prefixes[offset];
+      if (prefix) labels.set(plugins[index], prefix);
+    });
+  }
+  return labels;
 }
 
 /** path だけの旧キーは、そのパスの候補が1つなら新しいキーへ移す。複数や未スキャンは path のまま残す。 */
@@ -174,13 +213,39 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   const [recentPaths, setRecentPaths] = useState<string[]>([]);
 
   // 候補が見えた時点で、path だけの旧キーを1件なら新しいキーへ移す。
+  // お気に入りと履歴の両方が書けたときだけ移行完了にする。片方だけ残さない。
   useEffect(() => {
-    const nextFavorites = migrateStoredKeys(readStoredPaths(STORAGE_KEYS.favorites), plugins);
-    const nextRecent = migrateStoredKeys(readStoredPaths(STORAGE_KEYS.recent), plugins);
+    const favoriteStored = readStoredPaths(STORAGE_KEYS.favorites);
+    const recentStored = readStoredPaths(STORAGE_KEYS.recent);
+    const nextFavorites = migrateStoredKeys(favoriteStored, plugins);
+    const nextRecent = migrateStoredKeys(recentStored, plugins);
+    if (!nextFavorites.changed && !nextRecent.changed) {
+      setFavorites(nextFavorites.keys);
+      setRecentPaths(nextRecent.keys);
+      return;
+    }
+    const previousFavorites = localStorage.getItem(STORAGE_KEYS.favorites);
+    const previousRecent = localStorage.getItem(STORAGE_KEYS.recent);
+    const restoreStored = (key: string, previous: string | null) => {
+      try {
+        if (previous === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, previous);
+      } catch {
+        // 戻し書きも失敗したときは旧キーを残し、次の表示で再試行する。
+      }
+    };
+    try {
+      if (nextFavorites.changed) localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(nextFavorites.keys));
+      if (nextRecent.changed) localStorage.setItem(STORAGE_KEYS.recent, JSON.stringify(nextRecent.keys));
+    } catch {
+      restoreStored(STORAGE_KEYS.favorites, previousFavorites);
+      restoreStored(STORAGE_KEYS.recent, previousRecent);
+      setFavorites(favoriteStored);
+      setRecentPaths(recentStored);
+      return;
+    }
     setFavorites(nextFavorites.keys);
     setRecentPaths(nextRecent.keys);
-    if (nextFavorites.changed) localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(nextFavorites.keys));
-    if (nextRecent.changed) localStorage.setItem(STORAGE_KEYS.recent, JSON.stringify(nextRecent.keys));
   }, [plugins]);
 
   // Build category list from plugins
@@ -275,14 +340,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
   };
 
   const filteredPlugins = getFilteredPlugins();
-  const crowdedIdentities = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const plugin of plugins) {
-      const identity = visibleIdentity(plugin);
-      counts.set(identity, (counts.get(identity) ?? 0) + 1);
-    }
-    return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([identity]) => identity));
-  }, [plugins]);
+  const classPrefixes = useMemo(() => classPrefixByPlugin(plugins), [plugins]);
 
   if (!isOpen) return null;
 
@@ -418,7 +476,7 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               {filteredPlugins.map((plugin, idx) => {
                 const key = pluginKey(plugin);
                 const isFavorite = favorites.includes(key);
-                const shortId = crowdedIdentities.has(visibleIdentity(plugin)) ? shortClassId(plugin.classId) : null;
+                const shortId = classPrefixes.get(plugin) ?? null;
                 const accessibleName = shortId ? `${displayPluginName(plugin)} ${shortId}` : displayPluginName(plugin);
                 return (
                   <div

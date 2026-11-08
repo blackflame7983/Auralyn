@@ -3,9 +3,10 @@ import { createLocaleStore } from '@/i18n/locale';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { VstPlugin } from '@/api/audio';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { PluginBrowserModal } from '../PluginBrowserModal';
 
-afterEach(() => { cleanup(); localStorage.clear(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 const plugins = [
     { name: 'Legacy EQ', path: 'eq.vst3', vendor: null, category: undefined },
@@ -127,6 +128,44 @@ it('表示が同じ複数クラスは CID の先頭8桁を見える文字と読�
     expect(screen.getByText('11223344')).toBeInTheDocument();
     expect(screen.queryByText('FFFFFFFF')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Delay AABBCCDD をお気に入りに追加' })).toBeInTheDocument();
+});
+
+it('先頭8桁が同じCIDは、重複グループ内で一意になる長さまで見える文字と読み上げ名を伸ばす', () => {
+    const shared = { name: 'Delay', path: 'multi.vst3', vendor: 'Studio', version: '1.0', category: 'Fx' };
+    const classes = [
+        { ...shared, classId: 'AABBCCDD11223344556677889900AAAA', id: '1' },
+        { ...shared, classId: 'AABBCCDD99AABBCCDDEEFF0011223344', id: '2' },
+    ] as VstPlugin[];
+    render(<PluginBrowserModal isOpen onClose={() => {}} plugins={classes} isLoading={false} onScan={vi.fn()} onPluginSelect={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Delay AABBCCDD1 を追加' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delay AABBCCDD9 を追加' })).toBeInTheDocument();
+    expect(screen.getByText('AABBCCDD1')).toBeInTheDocument();
+    expect(screen.getByText('AABBCCDD9')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delay AABBCCDD1 をお気に入りに追加' })).toBeInTheDocument();
+});
+
+it('履歴の移行保存が失敗しても画面を維持し、お気に入りだけ移行済みにしない', () => {
+    const single = 'SINGLECID0123456789ABCDEF01234567';
+    localStorage.setItem('vst_host_plugin_favorites', JSON.stringify(['only.vst3']));
+    localStorage.setItem('vst_host_plugin_recent', JSON.stringify(['only.vst3']));
+    const prior = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+        if (key === 'vst_host_plugin_recent') {
+            const error = new Error('quota');
+            error.name = 'QuotaExceededError';
+            throw error;
+        }
+        return prior.call(this, key, value);
+    });
+    const classes = [
+        { name: 'Only', path: 'only.vst3', vendor: 'Studio', version: '1', category: 'Fx', classId: single, id: '1' },
+    ] as VstPlugin[];
+    render(<ErrorBoundary><PluginBrowserModal isOpen onClose={() => {}} plugins={classes} isLoading={false} onScan={vi.fn()} onPluginSelect={vi.fn()} /></ErrorBoundary>);
+    expect(screen.getByRole('heading', { name: 'VSTを追加' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '画面の表示中にエラーが発生しました' })).not.toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('vst_host_plugin_favorites') ?? '[]')).toEqual(['only.vst3']);
+    expect(JSON.parse(localStorage.getItem('vst_host_plugin_recent') ?? '[]')).toEqual(['only.vst3']);
+    expect(screen.getByRole('button', { name: 'Only を追加' })).toBeInTheDocument();
 });
 
 it('お気に入りと履歴の path だけの旧キーは候補が1つなら移し、複数なら割り当てない', () => {

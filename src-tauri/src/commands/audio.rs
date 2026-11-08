@@ -507,6 +507,8 @@ pub(crate) async fn restore_plugin(
     .await
 }
 
+/// ブラウザや IPC からの通常追加。エンジンはカタログ対象の CID だけを開く。
+/// 保存データの復元は `restore_plugin` が旧ロード規則を使う。
 #[tauri::command]
 pub(crate) async fn load_plugin(
     state: State<'_, audio::AudioState>,

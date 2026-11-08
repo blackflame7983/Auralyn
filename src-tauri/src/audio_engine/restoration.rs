@@ -1,7 +1,7 @@
 //! 未公開のVSTを制御STA上で復元する。期限超過・失敗では所有値を公開しない。
 use crate::{
     ipc::RestorePluginRequest,
-    vst_host::instance::{VstInstance, VstProcessor},
+    vst_host::instance::{ClassLoadPolicy, VstInstance, VstProcessor},
 };
 use anyhow::{anyhow, ensure, Context, Result};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -37,7 +37,7 @@ impl StagedRestore {
     ) -> Result<Self> {
         let class_id = request.class_id.clone();
         Self::load_with(request, operation_id, expires_at_ms, move |path| {
-            VstInstance::load_with_class(path, class_id.as_deref())
+            VstInstance::load_with_class(path, class_id.as_deref(), ClassLoadPolicy::Legacy)
         })
     }
 
