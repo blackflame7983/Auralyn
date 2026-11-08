@@ -72,26 +72,26 @@ it('削除確認中のlocale変更は同じdialogと実名を保持し、明示�
 const plugin = { id: '1', name: 'OTT', path: 'ott', vendor: '', version: '', enabled: true, hasEditor: false, muted: false, gain: 1 };
 const isolatedStats = { pluginHealth: [{ id: '1', state: 'isolated', invalidBlocks: 3 }] } as EngineRuntimeStats;
 
-it.each([false, true])('停止中は理由と再開を出し、新しく止まったときだけ知らせる（かんたん=%s）', simpleMode => {
+it.each([false, true])('停止中は理由と再開を出し、カード自体は知らせない（かんたん=%s）', simpleMode => {
     vi.mocked(toast.warning).mockClear();
     vi.spyOn(audioApi, 'resumePlugin').mockResolvedValue(undefined);
     const card = <PluginCard simpleMode={simpleMode} plugin={plugin}
         onToggle={vi.fn()} onMute={vi.fn()} onGainChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} />;
-    const view = render(<RuntimeStatsContext.Provider value={{ stats: isolatedStats, running: true }}>{card}</RuntimeStatsContext.Provider>);
+    const first = render(<RuntimeStatsContext.Provider value={{ stats: isolatedStats, running: true }}>{card}</RuntimeStatsContext.Provider>);
     const status = screen.getByRole('status');
     expect(status).toHaveTextContent(message('ja', 'rack.card.isolated'));
     expect(status).toHaveTextContent(message('ja', 'rack.card.isolatedDetail'));
+    expect(status).toHaveTextContent('このVSTから後段へ渡す音声を無音にしています');
     expect(status.querySelector('svg')).toBeTruthy();
-    expect(toast.warning).toHaveBeenCalledTimes(1);
-    view.rerender(<RuntimeStatsContext.Provider value={{ stats: isolatedStats, running: true }}>{card}</RuntimeStatsContext.Provider>);
-    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.warning).not.toHaveBeenCalled();
+    first.unmount();
+    const view = render(<RuntimeStatsContext.Provider value={{ stats: isolatedStats, running: true }}>{card}</RuntimeStatsContext.Provider>);
+    expect(toast.warning).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'rack.card.resumeAccessible', { arg0: 'OTT' }) }));
     expect(audioApi.resumePlugin).toHaveBeenCalledWith('1');
     const cleared = { pluginHealth: [] } as unknown as EngineRuntimeStats;
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: cleared, running: true }}>{card}</RuntimeStatsContext.Provider>);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    view.rerender(<RuntimeStatsContext.Provider value={{ stats: isolatedStats, running: true }}>{card}</RuntimeStatsContext.Provider>);
-    expect(toast.warning).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('button', { name: 'OTTをミュート' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'OTTを削除' })).toBeInTheDocument();
 });

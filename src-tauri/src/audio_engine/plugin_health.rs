@@ -58,6 +58,9 @@ pub(crate) struct SlotHealth {
     pub(crate) window_elapsed_frames: u64,
     pub(crate) window_invalid_frames: u64,
     pub(crate) consecutive_invalid_blocks: u32,
+    /// 今の窓に入った無効ブロック数。窓を閉じると 0 に戻す。
+    pub(crate) window_invalid_blocks: u32,
+    /// 表示用の累計。窓をまたいでも戻さず、停止判定には使わない。
     pub(crate) total_invalid_blocks: u32,
     pub(crate) isolated: bool,
 }
@@ -86,6 +89,7 @@ impl SlotHealth {
             self.consecutive_invalid_frames =
                 self.consecutive_invalid_frames.saturating_add(frames);
             self.consecutive_invalid_blocks = self.consecutive_invalid_blocks.saturating_add(1);
+            self.window_invalid_blocks = self.window_invalid_blocks.saturating_add(1);
             self.total_invalid_blocks = self.total_invalid_blocks.saturating_add(1);
             self.window_invalid_frames = self.window_invalid_frames.saturating_add(frames);
         } else {
@@ -93,10 +97,12 @@ impl SlotHealth {
             self.consecutive_invalid_blocks = 0;
         }
         self.window_elapsed_frames = self.window_elapsed_frames.saturating_add(frames);
-        // 連続は「100 ms 以上」かつ「2 ブロック以上」。散発も最初の 1 ブロックだけでは止めない。
+        // 連続は「100 ms 以上」かつ「2 ブロック以上」。
+        // 散発は今の窓の無効時間が 250 ms 以上、かつ窓内の無効ブロックが 2 つ以上。
+        // 生涯累計は窓をまたいでも残るので、ここでの下限には使わない。
         let continuous = self.consecutive_invalid_blocks >= CONTINUOUS_MIN_BLOCKS
             && self.consecutive_invalid_frames >= limits.continuous_frames;
-        let sporadic = self.total_invalid_blocks >= CONTINUOUS_MIN_BLOCKS
+        let sporadic = self.window_invalid_blocks >= CONTINUOUS_MIN_BLOCKS
             && self.window_invalid_frames >= limits.sporadic_frames;
         if continuous || sporadic {
             self.isolated = true;
@@ -104,6 +110,7 @@ impl SlotHealth {
         if limits.window_frames > 0 && self.window_elapsed_frames >= limits.window_frames {
             self.window_elapsed_frames = 0;
             self.window_invalid_frames = 0;
+            self.window_invalid_blocks = 0;
         }
         if self.isolated {
             Verdict::Isolated
@@ -318,11 +325,35 @@ mod tests {
         assert_eq!(health.observe(false, rest, &limits), Verdict::Pass);
         assert_eq!(health.window_elapsed_frames, 0);
         assert_eq!(health.window_invalid_frames, 0);
+        assert_eq!(health.window_invalid_blocks, 0);
         for _ in 0..5 {
             assert_eq!(health.observe(true, burst, &limits), Verdict::Silenced);
             assert_eq!(health.observe(false, 64, &limits), Verdict::Pass);
         }
         assert_eq!(health.observe(true, burst, &limits), Verdict::Isolated);
+    }
+
+    #[test]
+    fn sporadic_window_does_not_carry_invalid_blocks_into_the_next_window() {
+        // 48 kHz / 16384 フレーム。異常→正常→正常で窓が閉じ、次の異常は新しい窓の 1 件目。
+        // 生涯累計が 2 でも、窓内が 1 件なら止めない。同じ窓の 2 件目で初めて止める。
+        let limits = HealthLimits::new(48_000);
+        let block = 16_384usize;
+        let mut health = SlotHealth::default();
+        assert_eq!(health.observe(true, block, &limits), Verdict::Silenced);
+        assert_eq!(health.observe(false, block, &limits), Verdict::Pass);
+        assert_eq!(health.observe(false, block, &limits), Verdict::Pass);
+        assert_eq!(health.window_elapsed_frames, 0);
+        assert_eq!(health.window_invalid_frames, 0);
+        assert_eq!(health.window_invalid_blocks, 0);
+        assert_eq!(health.total_invalid_blocks, 1);
+        assert_eq!(health.observe(true, block, &limits), Verdict::Silenced);
+        assert!(!health.isolated);
+        assert_eq!(health.window_invalid_blocks, 1);
+        assert_eq!(health.total_invalid_blocks, 2);
+        assert_eq!(health.observe(true, block, &limits), Verdict::Isolated);
+        assert_eq!(health.window_invalid_blocks, 2);
+        assert_eq!(health.total_invalid_blocks, 3);
     }
 
     #[test]

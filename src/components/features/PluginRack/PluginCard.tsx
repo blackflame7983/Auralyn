@@ -1,5 +1,5 @@
 import { useMessages } from '@/i18n/LocaleProvider';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
@@ -60,16 +60,6 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
     const isolated = rackKind === 'voice'
         ? stats?.pluginHealth?.find(entry => entry.id === plugin.id && entry.state === 'isolated')
         : undefined;
-    const announced = useRef(false);
-    useEffect(() => {
-        if (!isolated) {
-            announced.current = false;
-            return;
-        }
-        if (announced.current) return;
-        announced.current = true;
-        toast.warning(t('rack.card.isolatedToast', { arg0: plugin.name }));
-    }, [isolated, plugin.name, t]);
     const resume = () => {
         void audioApi.resumePlugin(plugin.id).catch(() => {
             toast.error(t('rack.card.resumeFailed'));
