@@ -18,10 +18,14 @@ for (const theme of ['dark', 'light', 'gaming']) {
         const prep = page.getByRole('region', { name: message('ja', 'prep.title'), exact: true });
         await expect(prep.getByRole('button', { name: message('ja', 'prep.steps') })).toHaveAttribute('aria-expanded', 'false');
         expect((await prep.boundingBox())!.height).toBeLessThan(55);
-        await expect(page.getByRole('radio')).toHaveCount(0);
+        await expect(prep.getByRole('radiogroup', { name: message('ja', 'prep.usage'), exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: message('ja', 'header.setupOpen'), exact: true })).toHaveCount(0);
-        for (const key of ['header.emergency', 'liveBar.singing', 'liveBar.talk', 'liveBar.actions'] as const) {
+        for (const key of ['header.emergency', 'liveBar.actions'] as const) {
             await expect(page.getByRole('button', { name: message('ja', key), exact: true })).toBeInViewport();
+        }
+        const modes = page.getByRole('radiogroup', { name: message('ja', 'liveBar.mode'), exact: true });
+        for (const key of ['liveBar.singing', 'liveBar.talk'] as const) {
+            await expect(modes.getByRole('radio', { name: message('ja', key), exact: true })).toBeInViewport();
         }
         await expect(page.getByRole('button', { name: message('ja', 'home.voiceCheck'), exact: true })).toBeInViewport();
         await page.evaluate(() => { const emit = () => (window as any).__e2eEmit('audio-level', { input: [0.2, 0.15], output: [0.15, 0.1] }); emit(); window.setInterval(emit, 100); });
@@ -55,8 +59,9 @@ test('音楽鑑賞は送り先を変更せず、再生元と聴く機器を示�
     await expect(page.locator('main')).not.toContainText(message('ja', 'purpose.liveDetails'));
     await expect(page.locator('main')).toContainText('CABLE Output');
     await expect(page.locator('main')).toContainText('スピーカー');
-    await page.getByRole('button', { name: message('ja', 'prep.steps') }).click();
-    await expect(page.getByRole('radio')).toHaveCount(0);
+    const prep = page.getByRole('region', { name: message('ja', 'prep.title'), exact: true });
+    await prep.getByRole('button', { name: message('ja', 'prep.steps') }).click();
+    await expect(prep.getByRole('radiogroup', { name: message('ja', 'prep.usage'), exact: true })).toHaveCount(0);
     await expect(page.getByRole('region', { name: message('ja', 'flow.diagram') })).toContainText(message('ja', 'music.source'));
     expect(await page.evaluate(() => localStorage.getItem('vst_host_setup_goal'))).toBe('obs');
     await page.screenshot({ path: info.outputPath('music.png') });

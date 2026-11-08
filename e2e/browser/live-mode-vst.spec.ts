@@ -56,7 +56,7 @@ test('登録したVST構成で切替を始め、進行中は二重操作を防�
     await expect(select.locator('option')).toHaveCount(3);
     await select.selectOption('歌用VST');
     await expect(modes).toContainText('切替中は音が止まります');
-    await modes.getByRole('radio', { name: '歌モードの組み合わせを保存', exact: true }).click();
+    await modes.getByRole('button', { name: '歌モードの組み合わせを保存', exact: true }).click();
     await expect(modes).toContainText('保存済みのVST：歌用VST');
     await page.keyboard.press('Escape');
     const singing = page.getByRole('radio', { name: '歌', exact: true });

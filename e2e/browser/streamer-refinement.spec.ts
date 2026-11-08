@@ -160,7 +160,7 @@ test('登録したモードの違いが分かり、歌向けの調整へ直接�
     const modes = settings.locator('#live-mode-settings');
     await expect(modes).toContainText('歌唱と雑談に同じ設定');
     await expect(modes).toContainText('声 ON・残響 OFF');
-    await modes.getByRole('radio', { name: '歌モードの音を調整', exact: true }).click();
+    await modes.getByRole('button', { name: '歌モードの音を調整', exact: true }).click();
     await expect(page.locator('#singing-settings')).toHaveAttribute('open', '');
     await expect(page.locator('#singing-settings > summary')).toBeFocused();
     await page.getByRole('button', { name: 'モード登録へ戻る', exact: true }).click();

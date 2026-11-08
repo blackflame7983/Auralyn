@@ -18,4 +18,4 @@ export function useFieldControl(props: { id?: string; 'aria-describedby'?: strin
     return { id: field?.id ?? props.id, 'aria-describedby': [props['aria-describedby'], field?.description, field?.error].filter(Boolean).join(' ') || undefined, 'aria-invalid': field?.error ? true : props['aria-invalid'] };
 }
 // ネイティブ入力間で枠・操作領域・フォーカスを共有する。
-export const fieldControlClass = 'min-h-10 w-full rounded-control border border-input bg-background px-3 py-2 text-ui-control focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 aria-invalid:border-destructive';
+export const fieldControlClass = 'min-h-10 w-full rounded-control border border-input bg-background px-3 py-2 text-ui-control focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 aria-invalid:border-destructive-text';
