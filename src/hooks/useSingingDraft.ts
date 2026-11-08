@@ -123,7 +123,19 @@ export function useSingingDraft() {
         apply: () => transact('apply'), undo: () => transact('undo'), redo: () => transact('redo'),
         applyProposal: (proposal: VoiceProposal) => transact('proposal', undefined, proposal),
         setAppliedActive: (active: boolean) => state.current.snapshot ? transact('apply', { ...state.current.snapshot.config, active }) : Promise.resolve(false),
-        setDeesser: (deesser: DeEsserParams | null) => state.current.snapshot ? transact('apply', { ...state.current.snapshot.config, deesser }) : Promise.resolve(false),
+        setDeesser: async (deesser: DeEsserParams | null) => {
+            if (!state.current.snapshot) return false;
+            const accepted = await transact('apply', { ...state.current.snapshot.config, deesser });
+            if (!accepted) return false;
+            const draft = state.current.draft;
+            // 未適用の歌向け下書きが残っていても、成功した歯擦音だけを写す。明るさなどは戻さない。
+            if (draft && JSON.stringify(draft.deesser ?? null) !== JSON.stringify(deesser)) {
+                const next = { ...draft, deesser };
+                state.current = { ...state.current, draft: next };
+                setDraft(next);
+            }
+            return true;
+        },
     };
 }
 export type SingingDraft = ReturnType<typeof useSingingDraft>;

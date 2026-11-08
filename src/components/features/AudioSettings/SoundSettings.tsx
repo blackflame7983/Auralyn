@@ -323,6 +323,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                       <div>
                         <Label className="font-bold text-foreground text-ui-control">{t('settings.deesser')}</Label>
                         <p className="text-ui-support text-muted-foreground">{t('settings.deesserHint')}</p>
+                        {engineStats?.latencyMetadata?.processingContext === 'broadcastWorker' && <p className="text-ui-support text-muted-foreground">{t('settings.deesserSplit')}</p>}
                       </div>
                       <Switch
                         disabled={!singingModel.snapshot || singingModel.busy}

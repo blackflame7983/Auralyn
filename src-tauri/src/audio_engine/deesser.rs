@@ -1,8 +1,8 @@
-//! 内蔵ディエッサー。係数は制御側で作り、サンプル処理では固定状態だけを更新する。
-//! 第三者の実装や係数表は使わず、RBJ の2次フィルタと相補の引き算だけで組む。
+//! 内蔵ディエッサー。検出の係数はレート決定時に作り、ハイシェルフは平滑化した減衰量から約 16 サンプルごとに更新する。
+//! 第三者の実装や係数表は使わず、RBJ Audio EQ Cookbook の high-shelf（S = 1）と検出用バンドパスだけで組む。
 use serde::{Deserialize, Serialize};
 
-/// 歯擦音抑制。`None` は OFF。amount は 0 で減衰なし、1 で最大約 -10 dB。
+/// 歯擦音抑制。`None` は OFF。amount は 0 で減衰なし、1 で最大約 −12 dB。
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeEsserParams {
@@ -19,20 +19,29 @@ impl DeEsserParams {
     }
 }
 
-/// サンプル処理に渡す固定係数。フィルタ係数はレート決定時に一度だけ計算する。
+/// サンプル処理に渡すレート依存の係数。シェルフの b/a はここに置かず、減衰量からその場で作る。
 #[derive(Clone, Copy, Debug)]
 pub struct Coefficients {
-    lowpass: [f32; 5],
     sibilance: [f32; 5],
     voice: [f32; 5],
+    /// コーナーの cos(w0)。レート決定時に一度だけ計算する。
+    cos_w0: f32,
+    /// コーナーの sin(w0)。S = 1 の alpha はゲインに依存しないので、ここから都度取る。
+    sin_w0: f32,
     attack: f32,
     release: f32,
     pub(crate) threshold: f32,
-    pub(crate) min_gain: f32,
+    /// 減衰の天井。0 以下。amount 1 で −12 dB。
+    max_db: f32,
     smooth: f32,
+    command_smooth: f32,
     mix_step: f32,
     enabled: bool,
 }
+
+/// しきい値を超えてから、この倍率に達したとき減衰指令を天井まで開く。
+const FULL_OPEN_RATIO: f32 = 1.35;
+const COEFF_INTERVAL: u8 = 16;
 
 impl Coefficients {
     pub(crate) fn prepare(params: Option<DeEsserParams>, rate: u32) -> Result<Self, String> {
@@ -44,19 +53,21 @@ impl Coefficients {
         }
         let rate_f = f64::from(rate);
         let amount = params.map_or(0.0, |params| params.amount);
-        let (min_gain, threshold) = gain_law(amount);
-        let lowpass = lowpass(5_500.0_f64.min(rate_f * 0.45).max(200.0), rate_f)?;
+        let (threshold, max_db) = gain_law(amount);
+        let w0 = std::f64::consts::TAU * shelf_hz(rate_f) / rate_f;
         let (sib_hz, sib_q) = band(4_500.0, 10_000.0, rate_f)?;
         let (voice_hz, voice_q) = band(200.0, 4_000.0, rate_f)?;
         let coefficients = Self {
-            lowpass,
             sibilance: bandpass(sib_hz, sib_q, rate_f)?,
             voice: bandpass(voice_hz, voice_q, rate_f)?,
+            cos_w0: w0.cos() as f32,
+            sin_w0: w0.sin() as f32,
             attack: (-1.0 / (rate_f * 0.001)).exp() as f32,
             release: (-1.0 / (rate_f * 0.060)).exp() as f32,
             threshold,
-            min_gain,
+            max_db,
             smooth: (1.0 - (-1.0 / (rate_f * 0.015)).exp()) as f32,
+            command_smooth: (1.0 - (-1.0 / (rate_f * 0.008)).exp()) as f32,
             mix_step: (1.0 / (rate_f * 0.015)) as f32,
             enabled: params.is_some(),
         };
@@ -68,17 +79,19 @@ impl Coefficients {
     }
 
     fn is_finite(&self) -> bool {
-        self.lowpass
+        self.sibilance
             .iter()
-            .chain(&self.sibilance)
             .chain(&self.voice)
             .all(|v| v.is_finite())
             && [
+                self.cos_w0,
+                self.sin_w0,
                 self.attack,
                 self.release,
                 self.threshold,
-                self.min_gain,
+                self.max_db,
                 self.smooth,
+                self.command_smooth,
                 self.mix_step,
             ]
             .iter()
@@ -86,31 +99,73 @@ impl Coefficients {
     }
 }
 
-/// amount 0 は減衰 0 dB、amount 1 は -10 dB。しきい値は広い雑音より上、狭い歯擦音より下。
-fn gain_law(amount: f32) -> (f32, f32) {
-    let min_gain = if amount == 0.0 {
-        1.0
-    } else {
-        10.0f32.powf(-10.0 * amount / 20.0)
-    };
-    (min_gain, 3.0 - 1.4 * amount)
+/// コーナーは約 4.5 kHz。Nyquist の 0.45 倍以上になるレートでは、その値未満へ下げる。
+fn shelf_hz(rate: f64) -> f64 {
+    let limit = rate * 0.5 * 0.45;
+    4_500.0_f64.min(limit * (1.0 - 1.0e-6)).max(40.0)
 }
 
-fn lowpass(hz: f64, rate: f64) -> Result<[f32; 5], String> {
-    let w = std::f64::consts::TAU * hz / rate;
-    let c = w.cos();
-    let alpha = w.sin() / std::f64::consts::SQRT_2;
-    let norm = 1.0 + alpha;
-    biquad(
+/// amount 0 は減衰 0 dB、amount 1 は −12 dB。しきい値は広い雑音の揺れより上、狭い歯擦音より下。
+fn gain_law(amount: f32) -> (f32, f32) {
+    (3.0 - 0.4 * amount, -12.0 * amount)
+}
+
+/// 比がしきい値以下なら 0。`FULL_OPEN_RATIO` 倍で 1 になり、それ以上は天井で止める。
+fn openness(ratio: f32, threshold: f32) -> f32 {
+    if !(ratio.is_finite() && threshold > 0.0 && ratio > threshold) {
+        return 0.0;
+    }
+    let span = threshold * (FULL_OPEN_RATIO - 1.0);
+    ((ratio - threshold) / span).clamp(0.0, 1.0)
+}
+
+/// RBJ high-shelf。戻り値は正規化前の (b0, b1, b2) と (a0, a1, a2)。S = 1。
+fn high_shelf_parts(cos_w0: f64, sin_w0: f64, gain_db: f64) -> ([f64; 3], [f64; 3]) {
+    let amplitude = if gain_db == 0.0 {
+        1.0
+    } else {
+        10.0_f64.powf(gain_db / 40.0)
+    };
+    let alpha = sin_w0 * std::f64::consts::FRAC_1_SQRT_2;
+    let sqrt_a = if gain_db == 0.0 {
+        1.0
+    } else {
+        amplitude.sqrt()
+    };
+    let ap = amplitude + 1.0;
+    let am = amplitude - 1.0;
+    let two = 2.0 * sqrt_a * alpha;
+    let cos_ap = ap * cos_w0;
+    let cos_am = am * cos_w0;
+    (
         [
-            (1.0 - c) * 0.5,
-            1.0 - c,
-            (1.0 - c) * 0.5,
-            -2.0 * c,
-            1.0 - alpha,
+            amplitude * (ap + cos_am + two),
+            -2.0 * amplitude * (am + cos_ap),
+            amplitude * (ap + cos_am - two),
         ],
-        norm,
+        [ap - cos_am + two, 2.0 * (am - cos_ap), ap - cos_am - two],
     )
+}
+
+/// 正規化済み [b0, b1, b2, a1, a2]。0 dB では b = a なので、状態 0 の TDF-II は入力と一致する。
+fn high_shelf(cos_w0: f32, sin_w0: f32, gain_db: f32) -> [f32; 5] {
+    let (b, a) = high_shelf_parts(f64::from(cos_w0), f64::from(sin_w0), f64::from(gain_db));
+    if !(a[0].is_finite() && a[0].abs() > 1.0e-18 && b.iter().chain(&a).all(|v| v.is_finite())) {
+        return [1.0, 0.0, 0.0, 0.0, 0.0];
+    }
+    let inv = 1.0 / a[0];
+    let coeffs = [
+        (b[0] * inv) as f32,
+        (b[1] * inv) as f32,
+        (b[2] * inv) as f32,
+        (a[1] * inv) as f32,
+        (a[2] * inv) as f32,
+    ];
+    if coeffs.iter().all(|value| value.is_finite()) {
+        coeffs
+    } else {
+        [1.0, 0.0, 0.0, 0.0, 0.0]
+    }
 }
 
 fn bandpass(hz: f64, q: f64, rate: f64) -> Result<[f32; 5], String> {
@@ -158,6 +213,7 @@ struct Filter {
 }
 
 impl Filter {
+    /// Transposed direct form II。係数を差し替えても遅延線を組み直さない。
     fn sample(&mut self, x: f32, c: [f32; 5]) -> f32 {
         let y = c[0] * x + self.z[0];
         self.z[0] = tiny(c[1] * x - c[3] * y + self.z[1]);
@@ -179,34 +235,44 @@ fn tiny(x: f32) -> f32 {
     }
 }
 
-/// 追加遅延 0 の分割帯域ディエッサー。無効化が完了したあとは入力をそのまま返す。
+/// 動的ハイシェルフ。無効化が完了したあとは入力をそのまま返す。
 pub(crate) struct DeEsser {
     coeffs: Coefficients,
-    low: [Filter; 2],
+    shelf: [Filter; 2],
+    shelf_c: [f32; 5],
     sib: [Filter; 2],
     voice: [Filter; 2],
     sib_env: f32,
     voice_env: f32,
     threshold: f32,
-    min_gain: f32,
-    gain: f32,
+    max_db: f32,
+    command_db: f32,
+    applied_db: f32,
+    ratio: f32,
     mix: f32,
+    hold: u8,
 }
 
 impl DeEsser {
     pub(crate) fn new(coefficients: Coefficients) -> Self {
-        Self {
+        let mut processor = Self {
             threshold: coefficients.threshold,
-            min_gain: coefficients.min_gain,
-            gain: 1.0,
+            max_db: coefficients.max_db,
+            command_db: 0.0,
+            applied_db: 0.0,
+            ratio: 0.0,
             mix: if coefficients.enabled { 1.0 } else { 0.0 },
             sib_env: 0.0,
             voice_env: 0.0,
-            low: [Filter::default(); 2],
+            shelf: [Filter::default(); 2],
+            shelf_c: [1.0, 0.0, 0.0, 0.0, 0.0],
             sib: [Filter::default(); 2],
             voice: [Filter::default(); 2],
+            hold: 0,
             coeffs: coefficients,
-        }
+        };
+        processor.shelf_c = high_shelf(coefficients.cos_w0, coefficients.sin_w0, 0.0);
+        processor
     }
 
     pub(crate) fn update(&mut self, coefficients: Coefficients) {
@@ -219,14 +285,24 @@ impl DeEsser {
 
     /// 検出とフィルタの状態を消す。ON/OFF のランプ位置は維持する。
     pub(crate) fn reset(&mut self) {
-        self.low = [Filter::default(); 2];
+        self.shelf = [Filter::default(); 2];
         self.sib = [Filter::default(); 2];
         self.voice = [Filter::default(); 2];
         self.sib_env = 0.0;
         self.voice_env = 0.0;
         self.threshold = self.coeffs.threshold;
-        self.min_gain = self.coeffs.min_gain;
-        self.gain = 1.0;
+        self.max_db = self.coeffs.max_db;
+        self.command_db = 0.0;
+        self.applied_db = 0.0;
+        self.ratio = 0.0;
+        self.hold = 0;
+        self.shelf_c = high_shelf(self.coeffs.cos_w0, self.coeffs.sin_w0, 0.0);
+    }
+
+    /// 直近サンプルの検出比と、シェルフへ実際に渡した減衰指令（dB、0 以下）。
+    #[cfg(test)]
+    fn observation(&self) -> (f32, f32) {
+        (self.ratio, self.applied_db)
     }
 
     pub(crate) fn process(&mut self, input: [f32; 2]) -> [f32; 2] {
@@ -235,45 +311,37 @@ impl DeEsser {
         }
         let blend = self.coeffs.smooth;
         self.threshold += (self.coeffs.threshold - self.threshold) * blend;
-        self.min_gain += (self.coeffs.min_gain - self.min_gain) * blend;
+        self.max_db += (self.coeffs.max_db - self.max_db) * blend;
         let x = input.map(|sample| if sample.is_finite() { sample } else { 0.0 });
-        let mut low = [0.0; 2];
         let mut sib = [0.0; 2];
         let mut voice = [0.0; 2];
         for ch in 0..2 {
-            low[ch] = self.low[ch].sample(x[ch], self.coeffs.lowpass);
             sib[ch] = self.sib[ch].sample(x[ch], self.coeffs.sibilance);
             voice[ch] = self.voice[ch].sample(x[ch], self.coeffs.voice);
         }
         self.follow(sib[0] * sib[0], sib[1] * sib[1], true);
         self.follow(voice[0] * voice[0], voice[1] * voice[1], false);
         let ratio = self.sib_env / (self.voice_env + 1.0e-8);
-        let openness = if ratio.is_finite() && ratio > self.threshold {
-            (1.0 - self.threshold / ratio).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        self.gain = 1.0 + (self.min_gain - 1.0) * openness;
-        if !self.gain.is_finite() {
-            self.gain = 1.0;
+        self.ratio = if ratio.is_finite() { ratio } else { 0.0 };
+        let target = self.max_db * openness(self.ratio, self.threshold);
+        let floor = self.max_db.min(0.0);
+        self.command_db = (self.command_db
+            + (target - self.command_db) * self.coeffs.command_smooth)
+            .clamp(floor, 0.0);
+        if !self.command_db.is_finite() {
+            self.command_db = 0.0;
             self.reset();
         }
-        let wet = std::array::from_fn(|ch| {
-            if self.gain == 1.0 {
-                x[ch]
-            } else {
-                let y = x[ch] + (self.gain - 1.0) * (x[ch] - low[ch]);
-                if y.is_finite() {
-                    y
-                } else {
-                    0.0
-                }
-            }
-        });
-        let target = if self.coeffs.enabled { 1.0 } else { 0.0 };
+        if self.hold == 0 {
+            self.shelf_c = high_shelf(self.coeffs.cos_w0, self.coeffs.sin_w0, self.command_db);
+            self.applied_db = self.command_db;
+        }
+        self.hold = (self.hold + 1) % COEFF_INTERVAL;
+        let wet = std::array::from_fn(|ch| self.shelf[ch].sample(x[ch], self.shelf_c));
+        let target_mix = if self.coeffs.enabled { 1.0 } else { 0.0 };
         let step = self.coeffs.mix_step;
-        if self.mix != target {
-            self.mix = (self.mix + (target - self.mix).clamp(-step, step)).clamp(0.0, 1.0);
+        if self.mix != target_mix {
+            self.mix = (self.mix + (target_mix - self.mix).clamp(-step, step)).clamp(0.0, 1.0);
         }
         let output = if self.mix == 0.0 {
             x
@@ -362,16 +430,48 @@ mod tests {
             .collect()
     }
 
-    fn rms(samples: &[f32]) -> f32 {
-        let energy = samples
-            .iter()
-            .map(|sample| f64::from(*sample).powi(2))
-            .sum::<f64>();
-        (energy / samples.len() as f64).sqrt() as f32
+    fn stereo(mono: &[f32]) -> Vec<[f32; 2]> {
+        mono.iter().map(|sample| [*sample, *sample * 0.8]).collect()
     }
 
-    fn db(processed: f32, dry: f32) -> f32 {
-        20.0 * (processed / dry).log10()
+    struct Probe {
+        db: f32,
+        ratio: f32,
+        command_db: f32,
+        peak: f32,
+    }
+
+    /// 検出比・シェルフへ渡した減衰指令・実出力の RMS を、同じ窓で分けて取る。
+    fn probe(rate: u32, amount: f32, input: &[[f32; 2]], skip_ms: u32, take_ms: u32) -> Probe {
+        let mut deesser =
+            DeEsser::new(Coefficients::prepare(Some(DeEsserParams { amount }), rate).unwrap());
+        let start = (u64::from(rate) * u64::from(skip_ms) / 1000) as usize;
+        let take = (u64::from(rate) * u64::from(take_ms) / 1000) as usize;
+        let mut dry = 0.0f64;
+        let mut wet = 0.0f64;
+        let mut ratio = 0.0f64;
+        let mut command = 0.0f64;
+        let mut peak = 0.0f32;
+        let mut count = 0usize;
+        for (index, frame) in input.iter().copied().enumerate() {
+            let y = deesser.process(frame);
+            assert!(y.iter().all(|sample| sample.is_finite()));
+            peak = peak.max(y[0].abs());
+            if (start..start + take).contains(&index) {
+                dry += f64::from(frame[0]).powi(2);
+                wet += f64::from(y[0]).powi(2);
+                let (read_ratio, read_command) = deesser.observation();
+                ratio += f64::from(read_ratio);
+                command += f64::from(read_command);
+                count += 1;
+            }
+        }
+        Probe {
+            db: 10.0 * (wet / dry).log10() as f32,
+            ratio: (ratio / count.max(1) as f64) as f32,
+            command_db: (command / count.max(1) as f64) as f32,
+            peak,
+        }
     }
 
     fn run(rate: u32, amount: Option<f32>, input: &[[f32; 2]]) -> Vec<[f32; 2]> {
@@ -390,32 +490,69 @@ mod tests {
         &samples[start..start + take]
     }
 
-    fn channel(samples: &[[f32; 2]], ch: usize) -> Vec<f32> {
-        samples.iter().map(|frame| frame[ch]).collect()
-    }
-
-    /// 交差と同じ2次ローパスの補信号。窓の先頭はフィルタの立ち上がりを除く。
-    fn high_band_db(dry: &[f32], wet: &[f32], rate: u32) -> f32 {
-        let coeffs = lowpass(
-            5_500.0_f64.min(f64::from(rate) * 0.45).max(200.0),
-            f64::from(rate),
-        )
-        .unwrap();
-        let skip = (rate / 50) as usize;
-        let energy = |samples: &[f32]| {
+    #[test]
+    fn zero_db_shelf_coefficients_match_and_pass_audio_unchanged() {
+        for rate in [8_000, 16_000, 44_100, 48_000, 96_000, 192_000] {
+            let hz = shelf_hz(f64::from(rate));
+            assert!(
+                hz < f64::from(rate) * 0.5 * 0.45,
+                "コーナーが Nyquist の 0.45 倍以上 rate={rate} hz={hz}"
+            );
+            let w0 = std::f64::consts::TAU * hz / f64::from(rate);
+            let (b, a) = high_shelf_parts(w0.cos(), w0.sin(), 0.0);
+            assert_eq!(b, a, "0 dB で b と a が一致しない rate={rate}");
+            let coeffs = high_shelf(w0.cos() as f32, w0.sin() as f32, 0.0);
+            assert_eq!(coeffs[0], 1.0);
+            assert_eq!(coeffs[1], coeffs[3]);
+            assert_eq!(coeffs[2], coeffs[4]);
             let mut filter = Filter::default();
-            let mut sum = 0.0f64;
-            let mut count = 0usize;
-            for (index, sample) in samples.iter().enumerate() {
-                let high = *sample - filter.sample(*sample, coeffs);
-                if index >= skip && high.is_finite() {
-                    sum += f64::from(high).powi(2);
-                    count += 1;
+            for i in 0..256 {
+                let sample = (i as f32 * 0.17).sin() * 0.4;
+                assert_eq!(filter.sample(sample, coeffs), sample, "rate={rate}");
+            }
+            for gain in [0.0, -6.0, -12.0] {
+                let shelf = high_shelf(w0.cos() as f32, w0.sin() as f32, gain);
+                assert!(
+                    shelf.iter().all(|value| value.is_finite()),
+                    "rate={rate} gain={gain}"
+                );
+            }
+        }
+        let rate = 48_000u32;
+        let hz = shelf_hz(f64::from(rate));
+        let w0 = std::f64::consts::TAU * hz / f64::from(rate);
+        let cut = high_shelf(w0.cos() as f32, w0.sin() as f32, -12.0);
+        let mut filter = Filter::default();
+        assert!(
+            filter.sample(1.0, cut).abs() > 0.05,
+            "先頭サンプルに応答がない"
+        );
+        let tone = |frequency: f32| {
+            let mut filter = Filter::default();
+            let skip = rate as usize / 20;
+            let n = rate as usize / 5;
+            let mut dry = 0.0f64;
+            let mut wet = 0.0f64;
+            for i in 0..n {
+                let x = (std::f32::consts::TAU * frequency * i as f32 / rate as f32).sin() * 0.5;
+                let y = filter.sample(x, cut);
+                if i >= skip {
+                    dry += f64::from(x).powi(2);
+                    wet += f64::from(y).powi(2);
                 }
             }
-            (sum / count.max(1) as f64).sqrt() as f32
+            10.0 * (wet / dry).log10() as f32
         };
-        db(energy(wet), energy(dry))
+        let low = tone(200.0);
+        let six = tone(6_000.0);
+        let eight = tone(8_000.0);
+        eprintln!("deesser shelf low={low:.3} six={six:.3} eight={eight:.3}");
+        assert!(low > -0.25, "低域まで削れている {low}");
+        assert!(six <= -8.0, "6 kHz が −8 dB に届かない {six}");
+        assert!(
+            eight < six,
+            "8 kHz が 6 kHz より浅くない eight={eight} six={six}"
+        );
     }
 
     #[test]
@@ -467,117 +604,85 @@ mod tests {
             ("breath", white(7, n, 0.02)),
             ("broadband", white(11, n, 0.2)),
         ];
-        for (name, mono) in cases {
-            let input: Vec<[f32; 2]> = mono.iter().map(|sample| [*sample, *sample * 0.8]).collect();
+        let mut sibilance_full = 0.0f32;
+        for (name, mono) in &cases {
+            let input = stereo(mono);
             for amount in [0.5, 1.0] {
-                let output = run(rate, Some(amount), &input);
-                assert!(
-                    output.iter().flatten().all(|sample| sample.is_finite()),
-                    "{name} amount={amount}"
+                let reading = probe(rate, amount, &input, 250, 400);
+                eprintln!(
+                    "deesser {name} amount={amount} ratio={:.3} command_db={:.3} out_db={:.3} peak={:.4}",
+                    reading.ratio, reading.command_db, reading.db, reading.peak
                 );
-                let dry = window(&input, rate, 250, 400);
-                let wet = window(&output, rate, 250, 400);
-                let change = db(rms(&channel(wet, 0)), rms(&channel(dry, 0)));
-                let high = high_band_db(&channel(dry, 0), &channel(wet, 0), rate);
-                let peak = output
-                    .iter()
-                    .map(|frame| frame[0].abs())
-                    .fold(0.0, f32::max);
-                eprintln!("deesser {name} amount={amount} db={change:.3} high_db={high:.3} peak={peak:.4}");
-                assert!(peak.is_finite() && peak < 1.5, "{name} peak={peak}");
-                if name == "vowel" {
-                    assert!(change.abs() < 0.5, "母音 {change} dB");
+                assert!(
+                    reading.peak.is_finite() && reading.peak < 1.5,
+                    "{name} peak={}",
+                    reading.peak
+                );
+                assert!(
+                    reading.db.is_finite() && reading.command_db.is_finite(),
+                    "{name}"
+                );
+                if *name == "vowel" {
+                    assert!(reading.db.abs() < 0.5, "母音 {} dB", reading.db);
                 }
-                if name == "sibilance" && amount == 1.0 {
-                    assert!((-10.5..-2.0).contains(&change), "歯擦音 {change} dB");
+                if *name == "sibilance" && amount == 1.0 {
+                    sibilance_full = reading.db;
+                    assert!(reading.db <= -8.0, "歯擦音の実出力 {} dB", reading.db);
+                    assert!(
+                        reading.command_db <= -8.0,
+                        "減衰指令 {} dB",
+                        reading.command_db
+                    );
+                }
+                if (*name == "breath" || *name == "broadband") && amount == 1.0 {
+                    assert!(reading.db > -1.5, "{name} の誤作動 {} dB", reading.db);
                 }
             }
-            let half = db(
-                rms(&channel(
-                    window(&run(rate, Some(0.5), &input), rate, 250, 400),
-                    0,
-                )),
-                rms(&channel(window(&input, rate, 250, 400), 0)),
-            );
-            let full = db(
-                rms(&channel(
-                    window(&run(rate, Some(1.0), &input), rate, 250, 400),
-                    0,
-                )),
-                rms(&channel(window(&input, rate, 250, 400), 0)),
-            );
-            if name == "sibilance" {
+            if *name == "sibilance" {
+                let half = probe(rate, 0.5, &input, 250, 400).db;
+                let full = probe(rate, 1.0, &input, 250, 400).db;
                 assert!(
                     full < half - 0.5,
                     "量を上げると減衰が増える half={half} full={full}"
                 );
             }
-            if name == "breath" || name == "broadband" {
-                let sibilance = db(
-                    rms(&channel(
-                        window(
-                            &run(rate, Some(1.0), &{
-                                let noise = band_noise(rate, n, 0.45);
-                                noise
-                                    .iter()
-                                    .map(|sample| [*sample, *sample])
-                                    .collect::<Vec<_>>()
-                            }),
-                            rate,
-                            250,
-                            400,
-                        ),
-                        0,
-                    )),
-                    rms(&channel(
-                        window(
-                            &{
-                                let noise = band_noise(rate, n, 0.45);
-                                noise
-                                    .iter()
-                                    .map(|sample| [*sample, *sample])
-                                    .collect::<Vec<_>>()
-                            },
-                            rate,
-                            250,
-                            400,
-                        ),
-                        0,
-                    )),
-                );
+        }
+        for (name, mono) in &cases {
+            if *name == "breath" || *name == "broadband" {
+                let full = probe(rate, 1.0, &stereo(mono), 250, 400).db;
                 assert!(
-                    full > sibilance + 1.0,
-                    "{name} {full} dB が歯擦音 {sibilance} dB 以上に削れている"
+                    full > sibilance_full + 1.0,
+                    "{name} {full} dB が歯擦音 {sibilance_full} dB 以上に削れている"
                 );
             }
         }
         for rate in [16_000, 44_100, 48_000, 96_000, 192_000] {
             let n = rate as usize / 2;
-            let vowel_in: Vec<[f32; 2]> = vowel(rate, n)
-                .into_iter()
-                .map(|sample| [sample, sample])
-                .collect();
-            let sib_in: Vec<[f32; 2]> = band_noise(rate, n, 0.45)
-                .into_iter()
-                .map(|sample| [sample, sample])
-                .collect();
-            let measure = |input: &[[f32; 2]]| {
-                db(
-                    rms(&channel(
-                        window(&run(rate, Some(1.0), input), rate, 150, 200),
-                        0,
-                    )),
-                    rms(&channel(window(input, rate, 150, 200), 0)),
-                )
-            };
-            let vowel_db = measure(&vowel_in);
-            let sib_db = measure(&sib_in);
-            eprintln!("deesser rate={rate} vowel={vowel_db:.3} sibilance={sib_db:.3}");
-            assert!(vowel_db.abs() < 0.5, "rate={rate} 母音 {vowel_db}");
-            assert!(
-                (-10.5..-1.0).contains(&sib_db),
-                "rate={rate} 歯擦音 {sib_db}"
+            let vowel_in = stereo(&vowel(rate, n));
+            let sib_in = stereo(&band_noise(rate, n, 0.45));
+            let vowel_reading = probe(rate, 1.0, &vowel_in, 150, 200);
+            let sib_reading = probe(rate, 1.0, &sib_in, 150, 200);
+            eprintln!(
+                "deesser rate={rate} vowel_db={:.3} vowel_ratio={:.3} sib_db={:.3} sib_ratio={:.3} sib_command={:.3}",
+                vowel_reading.db, vowel_reading.ratio, sib_reading.db, sib_reading.ratio, sib_reading.command_db
             );
+            assert!(
+                vowel_reading.db.abs() < 0.5,
+                "rate={rate} 母音 {}",
+                vowel_reading.db
+            );
+            assert!(
+                sib_reading.db.is_finite() && sib_reading.peak < 1.5,
+                "rate={rate}"
+            );
+            assert!(
+                sib_reading.db < -1.0,
+                "rate={rate} 歯擦音 {}",
+                sib_reading.db
+            );
+            if rate == 48_000 {
+                assert!(sib_reading.db <= -8.0, "48 kHz の実出力 {}", sib_reading.db);
+            }
         }
     }
 
@@ -589,22 +694,14 @@ mod tests {
         let loud: Vec<[f32; 2]> = sib.iter().map(|sample| [*sample, *sample]).collect();
         let one: Vec<[f32; 2]> = sib.iter().map(|sample| [*sample, 0.0]).collect();
         let scaled: Vec<[f32; 2]> = sib.iter().map(|sample| [*sample, *sample * 0.2]).collect();
-        let loud_out = run(rate, Some(1.0), &loud);
-        let one_out = run(rate, Some(1.0), &one);
-        let scaled_out = run(rate, Some(1.0), &scaled);
-        let loud_db = db(
-            rms(&channel(window(&loud_out, rate, 150, 200), 0)),
-            rms(&channel(window(&loud, rate, 150, 200), 0)),
-        );
-        let one_db = db(
-            rms(&channel(window(&one_out, rate, 150, 200), 0)),
-            rms(&channel(window(&one, rate, 150, 200), 0)),
-        );
+        let loud_db = probe(rate, 1.0, &loud, 150, 200).db;
+        let one_db = probe(rate, 1.0, &one, 150, 200).db;
         eprintln!("deesser linked loud={loud_db:.3} one_side={one_db:.3}");
         assert!(
             (loud_db - one_db).abs() < 0.4,
             "片側でも検出が落ちる loud={loud_db} one={one_db}"
         );
+        let scaled_out = run(rate, Some(1.0), &scaled);
         let compared = window(&scaled_out, rate, 150, 200);
         let ratio_error = compared
             .iter()
@@ -614,71 +711,113 @@ mod tests {
         assert!(ratio_error < 0.02, "左右のゲインがずれている {ratio_error}");
     }
 
+    /// 出力のサンプル差が、同じ区間の入力差をどれだけ超えるか。高域が戻るだけではクリックにしない。
+    fn transition_excess(start: Option<f32>, next: Option<f32>) -> f32 {
+        let rate = 48_000usize;
+        let update_at = rate / 2;
+        let sib = band_noise(rate as u32, rate, 0.4);
+        let params = |amount: Option<f32>| amount.map(|amount| DeEsserParams { amount });
+        let mut processor =
+            DeEsser::new(Coefficients::prepare(params(start), rate as u32).unwrap());
+        let mut previous = 0.0f32;
+        let mut previous_in = 0.0f32;
+        let mut excess = 0.0f32;
+        for (i, sample) in sib.iter().copied().enumerate() {
+            if i == update_at {
+                processor.update(Coefficients::prepare(params(next), rate as u32).unwrap());
+            }
+            let frame = processor.process([sample, sample]);
+            if i > 0 && (update_at..update_at + rate / 20).contains(&i) {
+                let out_jump = (frame[0] - previous).abs();
+                let in_jump = (sample - previous_in).abs();
+                excess = excess.max(out_jump - in_jump);
+            }
+            previous = frame[0];
+            previous_in = sample;
+            assert!(frame[0].is_finite());
+        }
+        excess
+    }
+
     #[test]
-    fn enable_amount_and_reset_do_not_click_or_keep_old_detection() {
+    fn enable_amount_reset_and_coefficient_updates_do_not_click() {
         let rate = 48_000u32;
+        let disable = transition_excess(Some(1.0), None);
+        let enable = transition_excess(None, Some(1.0));
+        eprintln!("deesser click excess disable={disable:.5} enable={enable:.5}");
+        assert!(disable < 0.08, "OFF で入力以上に跳ねる {disable}");
+        assert!(enable < 0.08, "OFF→ON で入力以上に跳ねる {enable}");
+
         let n = rate as usize;
         let sib = band_noise(rate, n, 0.4);
-        let mut active =
-            DeEsser::new(Coefficients::prepare(Some(DeEsserParams { amount: 1.0 }), rate).unwrap());
+        let mut shaped =
+            DeEsser::new(Coefficients::prepare(Some(DeEsserParams { amount: 0.2 }), rate).unwrap());
         let mut previous = 0.0f32;
         let mut steady = 0.0f32;
         let mut transition = 0.0f32;
+        let mut on_update = 0.0f32;
+        let mut off_update = 0.0f32;
         for (i, sample) in sib.iter().copied().enumerate() {
-            let frame = active.process([sample, sample]);
-            let jump = (frame[0] - previous).abs();
-            if (rate as usize / 5..rate as usize / 2).contains(&i) {
-                steady = steady.max(jump);
-            }
-            if i == rate as usize / 2 {
-                active.update(Coefficients::prepare(None, rate).unwrap());
-            }
-            if (rate as usize / 2..rate as usize / 2 + rate as usize / 20).contains(&i) {
-                transition = transition.max(jump);
-            }
-            previous = frame[0];
-            assert!(frame[0].is_finite());
-        }
-        eprintln!("deesser click steady={steady:.5} disable={transition:.5}");
-        assert!(
-            transition < steady * 1.5 + 0.02,
-            "OFF で差分が跳ねる steady={steady} transition={transition}"
-        );
-
-        let mut shaped =
-            DeEsser::new(Coefficients::prepare(Some(DeEsserParams { amount: 0.2 }), rate).unwrap());
-        previous = 0.0;
-        steady = 0.0;
-        transition = 0.0;
-        for (i, sample) in sib.iter().copied().enumerate() {
-            if i == rate as usize / 2 {
+            if i == n / 2 {
                 shaped.update(
                     Coefficients::prepare(Some(DeEsserParams { amount: 1.0 }), rate).unwrap(),
                 );
             }
             let frame = shaped.process([sample, sample]);
             let jump = (frame[0] - previous).abs();
-            if (rate as usize / 5..rate as usize / 2).contains(&i) {
+            if (n / 5..n / 2).contains(&i) {
                 steady = steady.max(jump);
+                if i % usize::from(COEFF_INTERVAL) == 0 {
+                    on_update = on_update.max(jump);
+                } else {
+                    off_update = off_update.max(jump);
+                }
             }
-            if (rate as usize / 2..rate as usize / 2 + rate as usize / 20).contains(&i) {
+            if (n / 2..n / 2 + n / 20).contains(&i) {
                 transition = transition.max(jump);
             }
             previous = frame[0];
         }
-        eprintln!("deesser click amount steady={steady:.5} change={transition:.5}");
+        eprintln!(
+            "deesser click amount steady={steady:.5} change={transition:.5} coeff_on={on_update:.5} coeff_off={off_update:.5}"
+        );
         assert!(transition < steady * 1.5 + 0.02, "量の変更で差分が跳ねる");
+        assert!(
+            on_update < off_update * 1.25 + 0.02,
+            "係数更新のサンプルだけ跳ねる on={on_update} off={off_update}"
+        );
 
         let mut used =
             DeEsser::new(Coefficients::prepare(Some(DeEsserParams { amount: 1.0 }), rate).unwrap());
-        for sample in sib.iter().take(rate as usize / 5) {
-            used.process([*sample, *sample]);
+        let vowel = vowel(rate, rate as usize / 5);
+        let mut previous = 0.0f32;
+        let mut steady = 0.0f32;
+        let mut boundary = 0.0f32;
+        for (i, sample) in vowel.iter().enumerate() {
+            if i == vowel.len() / 2 {
+                used.reset();
+            }
+            let frame = used.process([*sample, *sample]);
+            let jump = (frame[0] - previous).abs();
+            if (rate as usize / 50..vowel.len() / 2).contains(&i) {
+                steady = steady.max(jump);
+            }
+            if i == vowel.len() / 2 {
+                boundary = jump;
+            }
+            previous = frame[0];
         }
-        used.reset();
+        eprintln!("deesser click reset steady={steady:.5} boundary={boundary:.5}");
+        assert!(
+            boundary < steady * 1.5 + 0.02,
+            "reset で母音が跳ねる steady={steady} boundary={boundary}"
+        );
+
         let mut fresh =
             DeEsser::new(Coefficients::prepare(Some(DeEsserParams { amount: 1.0 }), rate).unwrap());
-        let vowel = vowel(rate, rate as usize / 10);
-        for sample in &vowel {
+        used.reset();
+        fresh.reset();
+        for sample in vowel.iter().take(rate as usize / 10) {
             assert_eq!(
                 used.process([*sample, *sample]),
                 fresh.process([*sample, *sample])
@@ -756,10 +895,7 @@ mod tests {
         }
         let change = 10.0 * (wet_energy / plain_energy).log10();
         eprintln!("deesser after voice chain db={change:.3}");
-        assert!(
-            change < -2.0,
-            "Voice の後段で歯擦音が下がっていない {change}"
-        );
+        assert!(change < -8.0, "Voice の後段で歯擦音が −8 dB 未満 {change}");
     }
 
     #[test]

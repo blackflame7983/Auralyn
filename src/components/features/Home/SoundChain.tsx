@@ -63,11 +63,16 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         : stage.vst.some(v => v.state === 'muted') ? t('flow.vstMixed')
         : setting(stage.vst.some(v => v.state === 'active'));
     const builtinDetails = stage ? t('flow.builtinParts', { voice: setting(stage.builtinVoiceEnabled), reverb: setting(stage.builtinReverbEnabled) }) : undefined;
-    const partial = Boolean(stage && stage.builtinVoiceEnabled !== stage.builtinReverbEnabled);
+    const voiceEnabled = stage?.builtinVoiceEnabled === true;
+    const reverbEnabled = stage?.builtinReverbEnabled === true;
+    // 声の active はそのまま。段の ON は残響と歯擦音も含む。歯擦音だけのときは要約を分ける。
+    const deesserEnabled = Boolean(stage && stats?.builtInDeesser);
+    const deesserOnly = deesserEnabled && !voiceEnabled && !reverbEnabled;
+    const partial = Boolean(stage && voiceEnabled !== reverbEnabled);
     // 状態は色の点と文言で示す。未確認は注意、OFF は中立で、問題とは区別する（DESIGN.md 5.1）。
     const tone = (value: boolean | undefined): StatusTone => value === undefined ? 'warn' : value ? 'ok' : 'off';
     const vstTone: StatusTone = vstStatus === t('flow.enabled') ? 'ok' : vstStatus === t('flow.disabled') || vstStatus === t('flow.noVst') ? 'off' : 'warn';
-    const builtinTone: StatusTone = partial ? 'ok' : tone(stage?.builtinVoiceEnabled);
+    const builtinTone: StatusTone = deesserOnly || partial ? 'ok' : tone(stage?.builtinVoiceEnabled);
     const actualInput = model.observation.config?.input ?? inputName;
     const actualOutput = model.observation.config?.output ?? outputName;
 
@@ -87,7 +92,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         const open = expanded === key;
         const summary = stopped ? t('shell.stopped') : key === 'noise'
             ? live ? noiseOn ? t(q.noiseMode === 'high' ? 'master.nrHigh' : q.noiseMode === 'smart' ? 'master.nrLearn' : q.noiseMode === 'venue' ? 'master.nrVenue' : 'master.nrLow') : t('flow.disabled') : setting(stage?.nr.enabled)
-            : key === 'builtin' ? stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled ? t('flow.reverbOnly')
+            : key === 'builtin' ? deesserOnly ? t('flow.deesserOnly')
+                : stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled ? t('flow.reverbOnly')
                 : live ? builtinOn ? t(q.preset === 'singing' ? 'chain.singingShort' : q.preset === 'warm' ? 'settings.AudioSettingsModal.099' : q.preset === 'bright' ? 'settings.AudioSettingsModal.100' : 'settings.AudioSettingsModal.098') : t('flow.disabled') : setting(stage?.builtinVoiceEnabled)
             : vstUnrestored.length ? unrestoredNamesText(t, vstUnrestored) : vstStatus === t('flow.enabled') ? t('chain.vstCount', { count: stage?.vst.length ?? 0 }) : vstStatus;
         return <li key={key} className="contents">
@@ -132,7 +138,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
     };
     const builtinTag = t('chain.tagBuiltin');
     const noiseOn = live ? q.noiseOn : stage?.nr.enabled === true;
-    const builtinOn = live ? q.chainOn || partial : stage?.builtinVoiceEnabled === true || partial;
+    const builtinOn = (live ? q.chainOn || partial : voiceEnabled || partial) || deesserOnly;
     const vstOn = vstTone === 'ok';
     // 声の処理と残響は別の設定。声ON・残響OFFを異常に見せず、逆の場合だけ「残響のみ」を伝える。
     const builtinBreakdown = builtinDetails && <span className={music && partial ? 'text-ui-support text-muted-foreground' : 'sr-only'}>{builtinDetails}</span>;
@@ -149,7 +155,7 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 action: live && <NoiseSwitch q={q} /> }),
             row({ key: 'builtin', id: 'home-builtin', on: builtinOn, quiet: !builtinOn, tag: builtinTag, builtin: true, name: t('settings.AudioSettingsModal.095'), sub: t('chain.builtinSub'), title: builtinDetails,
                 body: <>
-                    {(!live || !builtinOn || (stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled)) && <StatusDot tone={live && !builtinOn ? 'off' : builtinTone} className="text-ui-support text-muted-foreground">{stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled ? t('flow.reverbOnly') : live && !builtinOn ? t('flow.disabled') : setting(stage?.builtinVoiceEnabled)}</StatusDot>}
+                    {(!live || !builtinOn || (stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled)) && <StatusDot tone={live && !builtinOn ? 'off' : builtinTone} className="text-ui-support text-muted-foreground">{deesserOnly ? t('flow.deesserOnly') : stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled ? t('flow.reverbOnly') : live && !builtinOn ? t('flow.disabled') : setting(stage?.builtinVoiceEnabled)}</StatusDot>}
                     {builtinBreakdown}
                     {live && builtinOn && <BuiltinQuick q={q} />}
                     {stats?.builtInDeesser && <span className="basis-full text-ui-support text-muted-foreground">{t('flow.deesserLine', { amount: Math.round(stats.builtInDeesser.amount * 100) })}</span>}

@@ -126,6 +126,22 @@ it.each(['ja', 'en'] as const)('歌向けON/OFFは全値を保持し、短いプ
 });
 
 
+it.each(['ja', 'en'] as const)('分離中だけ、歯擦音は配信側に適用され自分用は変わらないと示す（%s）', async locale => {
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({
+        builtInEffectsEnabled: true, builtInEffectsPreset: 'singing', builtInEffectsAmount: 0.6,
+        latencyMetadata: { processingContext: 'broadcastWorker' },
+    } as EngineRuntimeStats);
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);
+    expect(await screen.findByText(message(locale, 'settings.deesserSplit'))).toBeInTheDocument();
+});
+
+it('分離していないときは歯擦音の配信側注意を出さない', async () => {
+    render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    await screen.findByRole('switch', { name: '歯擦音を抑える（サ行）' });
+    await waitFor(() => expect(audioApi.getEngineRuntimeStats).toHaveBeenCalled());
+    expect(screen.queryByText(message('ja', 'settings.deesserSplit'))).not.toBeInTheDocument();
+});
+
 it('歯擦音のONは声の設定を残して量0.5で適用し、OFFで外す', async () => {
     render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const toggle = await screen.findByRole('switch', { name: '歯擦音を抑える（サ行）' });

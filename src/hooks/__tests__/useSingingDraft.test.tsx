@@ -151,6 +151,28 @@ it('停止中は保持設定を表示し、数値入力が下書きだけ変え�
 });
 
 
+it('歌向け明るさの未適用編集のあと歯擦音をONにしても、下書き適用で歯擦音が戻らない', async () => {
+    current.config = { active: true, preset: 'broadcast', amount: 0.7, singing: null, deesser: null };
+    const { result } = renderHook(() => useSingingDraft());
+    await act(async () => { await result.current.refresh(); });
+    act(() => result.current.edit({ brightnessDb: 1.5 }));
+    await act(async () => { expect(await result.current.setDeesser({ amount: 0.5 })).toBe(true); });
+    expect(current.config.deesser).toEqual({ amount: 0.5 });
+    expect(current.config.singing).toBeNull();
+    expect(result.current.draft?.singing?.brightnessDb).toBe(1.5);
+    expect(result.current.draft?.deesser).toEqual({ amount: 0.5 });
+    await act(async () => { expect(await result.current.apply()).toBe(true); });
+    expect(current.config.deesser).toEqual({ amount: 0.5 });
+    expect(current.config.singing?.brightnessDb).toBe(1.5);
+    act(() => result.current.edit({ brightnessDb: 2 }));
+    await act(async () => { expect(await result.current.setDeesser(null)).toBe(true); });
+    expect(result.current.draft?.singing?.brightnessDb).toBe(2);
+    expect(result.current.draft?.deesser).toBeNull();
+    await act(async () => { expect(await result.current.apply()).toBe(true); });
+    expect(current.config.deesser).toBeNull();
+    expect(current.config.singing?.brightnessDb).toBe(2);
+});
+
 it('適用済みのON/OFFを切り替えても編集中の歌向け下書きは失わない', async () => {
     current.config = { active: true, preset: 'singing', amount: 0.7, singing: defaultSinging };
     const { result } = renderHook(() => useSingingDraft());
