@@ -72,7 +72,7 @@ it.each(['周囲の音を測定', 'ノイズ低減の詳細'])('測定の詳細�
     expect(screen.getByText('ノイズ低減の詳細').closest('details')).not.toHaveAttribute('open');
     fireEvent.click(screen.getByText('ノイズ低減の詳細'));
     await screen.findByRole('button', { name: '測定値で調整' });
-    expect(screen.getByText('周囲の音を測定').closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByRole('button', { name: '周囲の音を測定' })).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('button', { name: '3秒測定' })).not.toBeInTheDocument();
     expect(request).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '測定値で調整' }));
@@ -150,14 +150,17 @@ it('数値の詳細を出さない間はノイズ低減の強さを弱／強だ�
     expect(screen.queryByRole('slider', { name: 'ノイズ低減の抑制強度' })).not.toBeInTheDocument();
 });
 
-it('ノイズ低減OFF中に強度を変更してもONにせず、タッチ・ペンのpointer操作で確定する', async () => {
+it.each(['touch', 'pen'])('ノイズ低減OFF中に強度を変更してもONにせず、%sのpointer操作で確定する', async pointerType => {
     localStorage.setItem('vst_host_beginner_mode', 'false');
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     fireEvent.click(screen.getByText('ノイズ低減の詳細'));
     const slider = await screen.findByRole('slider', { name: 'ノイズ低減の抑制強度' });
     await waitFor(() => expect(slider).toBeEnabled());
-    fireEvent.change(slider, { target: { value: '100' } });
-    fireEvent.pointerUp(slider, { pointerType: 'touch' });
+    const track = slider.closest<HTMLElement>('.touch-none')!;
+    vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 100 } as DOMRect);
+    fireEvent.pointerDown(track, { pointerId: 1, pointerType, clientX: 75 });
+    expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'set_noise_control_config')).toHaveLength(0);
+    fireEvent.pointerUp(track, { pointerId: 1, pointerType, clientX: 75 });
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_noise_control_config', {
         active: false, mode: 'smart', strength: 1, voiceGuard: true,
     }));
@@ -179,7 +182,7 @@ it('声を守るの変更でも明示したON/OFF状態を維持する', async (
 
 it('モードの選択だけではOFFのノイズ低減を起動しない', async () => {
     render(<AudioSettingsModal initialTab="sound" isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    const mode = await screen.findByRole('button', { name: '強' });
+    const mode = await screen.findByRole('radio', { name: '強' });
     await waitFor(() => expect(mode).toBeEnabled());
     fireEvent.click(mode);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_noise_control_config', {

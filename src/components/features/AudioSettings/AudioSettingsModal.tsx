@@ -35,7 +35,7 @@ import { REVIEW_KEY } from '@/api/migration';
 import { readAudioPreferences, savedAudioPreferences, type AudioPreferences } from '@/lib/audioPreferences';
 import { audioApi } from '@/api/audio';
 import { displayAudioHost } from '@/lib/audioDevices';
-import { segmentButtonClass } from '@/components/ui/segment';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { audioDeviceKey, useAudioDeviceSelection } from './useAudioDeviceSelection';
 import { ConnectionApplyError, ConnectionStartError, useAudioConnectionController } from './useAudioConnectionController';
 import { formatSampleRate, sampleRateOptions } from './sampleRateOptions';
@@ -296,7 +296,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
     setTuningOpen(true);
     const frame = requestAnimationFrame(() => {
       tuningDetails.current?.scrollIntoView?.({ block: 'start' });
-      tuningDetails.current?.querySelector<HTMLElement>('[data-tuning-control]')?.focus({ preventScroll: true });
+      tuningDetails.current?.querySelector<HTMLElement>('[data-tuning-control] [tabindex="0"]')?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
   }, [isOpen, initialSection, loading, error, activeTab]);
@@ -653,19 +653,12 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 {/* 切替は対象の見出しと同じ行に置く。 */}
                 <div className="flex flex-wrap justify-between items-center gap-2">
                   <h3 className="text-ui-heading font-semibold">{t('settings.AudioSettingsModal.047')}</h3>
-                  <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-lg">
-                    <button
-                      type="button" data-tuning-control aria-pressed={!isAdvancedMode}
-                      onClick={() => setIsAdvancedMode(false)}
-                      className={`${segmentButtonClass(!isAdvancedMode)} text-ui-control`}
-                    >
-                      {t('settings.AudioSettingsModal.045')}</button>
-                    <button
-                      type="button" aria-pressed={isAdvancedMode}
-                      onClick={() => setIsAdvancedMode(true)}
-                      className={`${segmentButtonClass(isAdvancedMode)} text-ui-control`}
-                    >
-                      {t('settings.AudioSettingsModal.046')}</button>
+                  <div data-tuning-control>
+                    <SegmentedControl label={t('settings.AudioSettingsModal.047')} value={isAdvancedMode ? 'advanced' : 'simple'}
+                      onValueChange={value => setIsAdvancedMode(value === 'advanced')} options={[
+                        { value: 'simple', label: t('settings.AudioSettingsModal.045') },
+                        { value: 'advanced', label: t('settings.AudioSettingsModal.046') },
+                      ]} />
                   </div>
                 </div>
 

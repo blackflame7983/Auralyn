@@ -218,7 +218,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
     const signalLabel = processReady === null ? t('master.unverified') : !isRunning ? (host ? t('shell.stopped') : t('shell.unconfigured')) : processReady === false ? t('prep.failed') : broadcastFailed ? t('liveOutput.shortFailed') : stats?.latencyMetadata?.processingContext === 'broadcastWorker' ? t('liveOutput.branchLabel') : isFxActive ? t('master.vst') : (isCleanActive ? t('master.nr') : t('master.raw'));
 
     return (
-        <div className="relative flex flex-wrap items-center justify-end gap-x-3 gap-y-2 px-3 py-2 border-l border-border bg-background gaming:bg-card/30 gaming:backdrop-blur-sm transition-colors duration-300 min-w-0">
+        <div className="relative flex flex-wrap items-center justify-end gap-x-3 gap-y-2 px-3 py-2 border-l border-border bg-background gaming:bg-card/30 gaming:backdrop-blur-sm transition-colors duration-(--motion-panel) min-w-0">
             <Popover.Root open={Boolean(outputGainAnchor)} onOpenChange={open => { if (!open) onOutputGainClose?.(); }}>
                 {outputGainAnchor && <Popover.Anchor virtualRef={{ current: outputGainAnchor }} />}
                 <Popover.Portal><Popover.Content aria-label={t('master.outputGain')} side="bottom" align="end" sideOffset={8} collisionPadding={12}

@@ -237,10 +237,10 @@ it('設定画面内で開始後の反映に失敗しても、稼働中の同じ�
 it('3択にない256サンプルは数値指定として開き、選択状態を公開する', async () => {
     localStorage.setItem('vst_host_audio_config', JSON.stringify({ ...config, bufferSize: 256 }));
     render(<AudioSettingsModal isOpen currentBufferSize={256} initialSection="audioTuning" onClose={vi.fn()} onConfigChange={vi.fn()} />);
-    const numeric = await screen.findByRole('button', { name: '数値で指定' });
-    await waitFor(() => expect(numeric).toHaveAttribute('aria-pressed', 'true'));
-    expect(numeric).toHaveClass('border-selection');
-    expect(screen.getByRole('button', { name: 'おまかせ' })).toHaveAttribute('aria-pressed', 'false');
+    const numeric = await screen.findByRole('radio', { name: '数値で指定' });
+    await waitFor(() => expect(numeric).toHaveAttribute('aria-checked', 'true'));
+    expect(numeric.closest('[role="radiogroup"]')?.querySelector('[data-segment-indicator]')).toHaveClass('border-segment-accent');
+    expect(screen.getByRole('radio', { name: 'おまかせ' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('combobox', { name: 'バッファサイズ' })).toHaveValue('256');
 });
 

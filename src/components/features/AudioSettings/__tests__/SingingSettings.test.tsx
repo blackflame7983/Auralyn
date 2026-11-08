@@ -108,7 +108,7 @@ it.each(['ja', 'en'] as const)('歌向けON/OFFは全値を保持し、短いプ
         reverb: { ...defaultReverb, enabled: true },
     } }));
     expect(audioApi.setBuiltInEffects).not.toHaveBeenCalled();
-    const legacy = screen.getByRole('button', { name: message(locale, 'settings.AudioSettingsModal.098') });
+    const legacy = screen.getByRole('radio', { name: message(locale, 'settings.AudioSettingsModal.098') });
     await waitFor(() => expect(legacy).toBeDisabled());
     expect(screen.getAllByText(message(locale, 'settings.fxOffHint')).length).toBeGreaterThan(0);
     fireEvent.click(toggle);
@@ -116,7 +116,7 @@ it.each(['ja', 'en'] as const)('歌向けON/OFFは全値を保持し、短いプ
     fireEvent.click(screen.getByRole('button', { name: message(locale, 'settings.soundHelp') }));
     expect(screen.getByText(message(locale, 'settings.AudioSettingsModal.092'))).toBeVisible();
     for (const key of ['settings.AudioSettingsModal.099', 'settings.AudioSettingsModal.100'] as const) {
-        expect(screen.getByRole('button', { name: message(locale, key) })).toBeEnabled();
+        expect(screen.getByRole('radio', { name: message(locale, key) })).toBeEnabled();
     }
     fireEvent.click(legacy);
     await waitFor(() => expect(audioApi.setBuiltInEffects).toHaveBeenCalledWith({ active: true, preset: 'broadcast', amount: 0.6 }));
@@ -146,9 +146,9 @@ it('声・VST の保存適用でモードが変わっても音づくりの表示
     render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const noise = await screen.findByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.107') });
     await waitFor(() => expect(noise).toBeEnabled());
-    const low = screen.getByRole('button', { name: message('ja', 'master.nrLow') });
+    const low = screen.getByRole('radio', { name: message('ja', 'master.nrLow') });
     await waitFor(() => expect(low).toBeEnabled());
-    expect(low).toHaveAttribute('aria-pressed', 'true');
+    expect(low).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByText(message('ja', 'settings.noiseOffHint'))).toBeVisible();
     fireEvent.click(screen.getByText(message('ja', 'settings.noiseDetails')));
     expect(await screen.findByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.129') })).toBeEnabled();
@@ -159,7 +159,7 @@ it('声・VST の保存適用でモードが変わっても音づくりの表示
     } })); });
     await act(async () => {});
     expect(screen.getByRole('button', { name: message('ja', 'master.nrVenue') })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: message('ja', 'master.nrLow') })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('radio', { name: message('ja', 'master.nrLow') })).toHaveAttribute('aria-checked', 'false');
     expect(noise).toBeChecked();
     expect(low).toBeEnabled();
     expect(screen.getByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.129') })).toBeEnabled();

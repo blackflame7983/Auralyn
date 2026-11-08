@@ -75,7 +75,7 @@ test('保存済み256サンプルは数値選択として復元する', async ({
     const dialog = await openSettings(page);
     const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
     if (!await details.evaluate(node => (node as HTMLDetailsElement).open)) await details.locator('summary').click();
-    await expect(details.getByRole('button', { name: '数値で指定', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(details.getByRole('radio', { name: '数値で指定', exact: true })).toHaveAttribute('aria-checked', 'true');
     await expect(details.getByRole('combobox', { name: 'バッファサイズ' })).toHaveValue('256');
     await expect(dialog.getByRole('button', { name: '保存して再起動' })).toBeDisabled();
 });
@@ -117,7 +117,7 @@ test('音切れ通知から調整欄へ移動し、変更なしでは再起動�
     const dialog = page.getByRole('dialog', { name: '設定', exact: true });
     const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
     await expect(details).toHaveAttribute('open');
-    await expect(details.getByRole('button', { name: 'おまかせ', exact: true })).toBeFocused();
+    await expect(details.getByRole('radio', { name: 'おまかせ', exact: true })).toBeFocused();
     await expect(dialog.getByRole('button', { name: '保存して再起動' })).toBeDisabled();
     expect(await page.evaluate(() => (window as any).__e2eStarts)).toEqual([]);
 });
@@ -197,8 +197,8 @@ test.describe('ホームと設定の共通操作', () => {
         });
         await page.goto('/');
         const names = ['弱', '強', '配信', '低め', '明瞭'];
-        const home = [...names.slice(0, 2).map(name => page.locator('#home-noise').getByRole('button', { name, exact: true })),
-            ...names.slice(2).map(name => page.locator('#home-builtin').getByRole('button', { name, exact: true }))];
+        const home = [...names.slice(0, 2).map(name => page.locator('#home-noise').getByRole('radio', { name, exact: true })),
+            ...names.slice(2).map(name => page.locator('#home-builtin').getByRole('radio', { name, exact: true }))];
         const dimensions = async (button: typeof home[number]) => button.evaluate(node => {
             const style = getComputedStyle(node);
             // 位置によって 0.00003px のような画素未満の誤差が出るため、高さは 0.1px 単位で比べる。
@@ -215,7 +215,7 @@ test.describe('ホームと設定の共通操作', () => {
         const dialog = page.getByRole('dialog', { name: '設定', exact: true });
         await dialog.getByRole('tab', { name: '音づくり', exact: true }).click();
         for (let i = 0; i < names.length; i++) {
-            const button = dialog.getByRole('button', { name: names[i], exact: true });
+            const button = dialog.getByRole('radio', { name: names[i], exact: true });
             await expect(button).toBeVisible();
             expect(await dimensions(button)).toEqual(sizes[i]);
         }

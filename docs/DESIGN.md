@@ -359,7 +359,7 @@ V-01の初回/再訪/環境変更後、OBS/OBS未起動の通話を分けて記�
 | 危険 | 危険色の枠線または塗り | 停止・削除・初期化。確認を挟む |
 
 - 押せないボタンは、どの強さでも見た目で区別する（`disabled:opacity-50` など）。押せない理由は画面に表示する。`sr-only` だけに書かない。
-- 角丸はテーマによらず共通にし、通常ボタンは10px、大きな操作は12pxを基準にする。Gamingでも角丸を極端に小さくしない。ネイティブの選択欄と展開した候補にもテーマの背景・文字色を適用する。
+- 角丸はテーマによらず共通にし、操作は10px、カードは12pxを基準にする。Gamingでも角丸を極端に小さくしない。ネイティブの選択欄と展開した候補にもテーマの背景・文字色を適用する。
 
 ### 5.3 文字
 
@@ -462,7 +462,7 @@ Auralyn は作業の道具です。動きは状態の変化を伝えるときだ
 
 **セットアップ（A）**
 
-- 高さを固定したダイアログ（高さ560px、または画面の高さに収まる値）にする。左の手順レール（幅200px）と右の中身、下の操作欄で構成する（#294）。
+- 高さを固定したダイアログ（高さ `min(600px, calc(100dvh - 2rem))`）にする。左の手順レール（通常幅200px、高さ500px以下では9rem）と右の中身、下の操作欄で構成する（#294）。
 - 手順の名前は、ホームの流れの区間名とそろえる（送り先・マイク・出力先・確認。2.2）。
 - 現在の手順の印（`accent` の面と、左端3pxの主色の線）はレールの上を縦に滑る。済んだ手順と現在の手順の番号は主色で塗る。
 - 手順の見出しは24px・太さ600にする。そのほかの文字は、5.3の3段を守る。
@@ -488,7 +488,7 @@ Auralyn は作業の道具です。動きは状態の変化を伝えるときだ
 | 手順レールの印 | 縦の移動と高さ、`--motion-panel`、`ease-in-out` |
 | 選択カード | 線と面は150msで変える。チェックは0.6倍から200msで拡大する。押下中は0.98倍にする |
 | 次に決める区間 | 外側の波紋を1.8秒ごとに繰り返す。画面内で繰り返してよい動きは、この1か所だけにする |
-| パネルの開閉 | 行の高さを `grid-template-rows` の 0fr→1fr で、`--motion-panel` と `--ease-drawer` を使って変える。中身は不透明度を200msで変える |
+| 高さを補間するパネルの開閉（静的detailsを除く） | 行の高さを `grid-template-rows` の 0fr→1fr で、`--motion-panel` と `--ease-drawer` を使って変える。中身は不透明度を200msで変える |
 | 主ボタン | 押下中は0.97倍にする。ホバーでは矢印を4px進める |
 
 - パネルの開閉は、5.6の「高さを遷移させない」の例外とする。中身の読み込みで高さが一度に変わり、下の要素が跳ねる（#298）のを避けるため。対象は、開閉する1つの要素の行の高さだけにする。
@@ -568,3 +568,57 @@ UI・文言を変更する PR では、次を確認します。
 - ラベルは実装と同じ言葉を使い、文中の操作名は「」で囲む。ホームの操作名とホットキーの操作名は既存の文言キー・共通定義を参照する。
 - 既存のModalとボタンを再利用し、フォーカスの閉じ込め、Esc、入口へのフォーカス復帰を共通化する。セットアップ・診断・ガイド・ホットキー設定へは使い方を閉じて移る。
 - 最後に見た節をlocalStorageへ保存する。保存できなくても開閉・閲覧は続けられる。割り当てはキーボード操作の節で一度だけ既存のget_shortcutsから読み、失敗時は設定のホットキーへ案内する。音声操作・新しいIPC・タイマーは追加しない。
+
+
+### 5.8 部品の一覧（段階1の土台）
+
+役割ごとに下表の部品を使う。見た目・キー操作・読み上げは部品が持ち、利用側では文字・角丸・動きを上書きしない。既存の上書きは段階2〜4で除去する。余白や配置だけを呼び出し側で指定する。
+
+| 役割 | 部品 | 使い分け | 例外 |
+| :--- | :--- | :--- | :--- |
+| 操作ボタン | Button | primary=`default`、secondary=`outline`、quiet=`ghost`、danger=`destructive`。既存variantは互換用に残す | 本番中の状態付き操作は下記 |
+| 値を1つ選ぶ | SegmentedControl | radiogroup/radio、aria-checked。矢印・Home/Endで移動と選択、端は循環。無効は飛ばす。Tabは選択中の1つ（未選択・無効なら最初の有効な値）。選択表示は確定値に従う | readOnlyの現在値は操作外のstatusとして示す |
+| ページを切り替える | Tabs（Radix） | ページ移動に限定し、値の選択と区別する | なし |
+| カードで選ぶ | ChoiceCard | PreparationPanel方式の標準radioとlabel。グループには同じnameと見出しを付ける。矢印操作はブラウザ標準 | 再押下で解除するフィルターはradioではない |
+| 量を変える | SliderField / Slider（Radix） | SliderFieldがラベル、値、formatValueによる単位のaria-valuetext、離したとき・キーを離したときの確定を持つ。フォーカスを失うと未確定値だけ確定する | 計測値・再生進捗は下記 |
+| 入力の関連付け | Field | label・説明・エラーをInput/Select/Checkboxへ自動関連付け。外部aria-describedbyを保持し、エラー時aria-invalid | 同じFieldには操作を1つ置く |
+| 入力・選択・チェック | Input / Select / Checkbox | 標準input/select/checkbox。入力・選択は最小40px高、操作文字16px、10px角丸、共通枠・2pxフォーカスリング。チェックは20pxのOS標準描画 | checkboxの形はOS標準描画に従う |
+| 説明・小さな窓 | InfoPopover / Modal / ConfirmDialog | 本文補足は13px。ダイアログ面は既存modal-surface-baseを正とする。Popoverはpopover色の面を使う | フォーカス復帰・Escapeは既存Radix契約を保つ |
+| 静的な折りたたみ | details | 高さの補間が不要な説明 | 全detailsの高さ補間は要求しない |
+| 高さを補間する折りたたみ | Disclosure | SoundChain方式のgrid 0fr→1fr。--motion-panel / --ease-drawer、本文opacityは--motion-base。閉時はinert/aria-hidden、Escapeで入口へ復帰。動きを減らす設定は即時 | SoundChainの置換は段階3 |
+
+**文字・寸法・動きのトークン**
+
+- 文字は見出し `text-ui-heading` 20px、操作 `text-ui-control` 16px、補足 `text-ui-support` 13px。Button既定は16px・高さ40px・左右16px・上下8px、smは13px・高さ36px・左右12px。lgは高さ44px、iconは40px角。既存より文字を大きくし、高さは維持する。長文操作は段階2〜4で折り返しを個別確認する。
+- 角丸は操作 `--radius-control: 10px` / `rounded-control`、カード `--radius-card: 12px` / `rounded-card`、円・ピル `rounded-full` の3つ。互換の `rounded-md` は10px、`rounded-lg` は12pxに対応する。新規コードで互換名を増やさない。
+- セットアップの手順は `--motion-step` 260ms、波紋は `--motion-ripple` 1800ms、注意リングは `--motion-attention` 1200ms。後2つは300ms上限の例外で、操作完了を待たせない状態案内。繰り返しのspin/pulseも状態案内の例外とし、動きを減らす設定で停止する。
+- CSSの曲線は `var(--ease-out)` / `var(--ease-in-out)` / `var(--ease-drawer)` を使う。CSSキーワード直書きとメニュー退場ease-inは使わない。Tailwindのease-out/ease-in-outは@themeで定義した曲線を使う。
+
+**例外の一覧**
+
+| 対象 | 許す例外と理由 | 所在 |
+| :--- | :--- | :--- |
+| 本番中の状態付き操作 | 緊急ミュート、操作ロック、出力音量、オケのミュートは押下状態・即時反映・専用寸法を保持。ミュートのピルを許す | MasterBar、LiveModeBar、MixingLiveControlなど |
+| 一覧の行 | 選択線は行の識別用。LicenseModalの4px左線を許す。全枠を3pxに統一しない | Settings/LicenseModal.tsx |
+| 舞台のモード名 | 5.7のclampによる表示文字サイズ | layout/MasterBar.tsx、index.css |
+| 画面題名 | セットアップ見出し24px（狭い高さでは20px）、モーダル題名は表示用の大きさを許す | SetupWizardModal.tsx、index.cssなど。既存直書きは上限管理し、追加時は役割トークンを定義する |
+| メーター・波形・再生進捗 | 数値の表示用サイズと即時更新。装飾の補間規則を適用しない | LevelMeter、VoiceCheckModal。直書き試験で許す数値文字はLevelMeter/LoudnessCheck.tsxの判定表示text-lgのみ |
+| 繰り返しの波紋・注意リング | 上記トークンの長時間アニメーション。reduced motionで停止 | index.css |
+
+**棚卸しとの照合と移行判断（#362）**
+
+| 棚卸しの項目 | 正とする側・段階1の対応 | 段階2〜4に残すこと |
+| :--- | :--- | :--- |
+| セットアップ高さ | 実装。文書をmin(600px, …)へ修正 | 実Tauriの小窓・拡大確認 |
+| レール幅 | 実装。通常200px、高さ500px以下9remを明記 | なし |
+| パネル高さ・曲線・opacity | 文書。Disclosureで0fr→1fr、drawer曲線、opacityを実装 | 段階3でSoundChainへ適用（現在ease-out、opacityなし） |
+| その他の折りたたみ | 実装。静的detailsには高さ補間を求めない | 必要な箇所だけDisclosureへ移行 |
+| 文字3段 | 文書。Button・Tooltip・InfoPopoverを修正 | Labelを含む残存文字・利用側上書きを移行 |
+| セグメント選択表示 | 文書。旧segment.tsを廃止 | 独自の選択群を段階2〜4で移行 |
+| 通常ボタン角丸 | 合意した役割トークン。操作10px・カード12px・丸 | 大きな操作の旧12px指定は操作10pxへ移行。状態付き操作は例外 |
+| 左の選択線 | 実装。LicenseModalの4pxを行の例外として明記 | なし |
+| 時間・曲線 | 文書。CSS直書きとduration-300をトークン化 | 残存直書きは回帰上限を下げながら移行 |
+| 動きの上限 | 実装。注意リングは状態案内の例外として明記・トークン化 | なし |
+| セットアップのチェック | 実装。transform 200msに加えopacity 150msを明記 | なし |
+
+直書きの回帰防止は `src/__tests__/uiConsistency.test.ts` で行う。srcのTS/TSX/CSSを対象に、prototypes・__tests__・*.test.*を除く。トークン定義の時間と上表のファイル・クラス単位の許可だけを除外する。共通部品内部の標準要素も数に含める。上限超過は失敗、減少は上限更新を促す。これは既存直書きの容認を拡大する仕組みではなく、段階2〜4で減らすための基準である。

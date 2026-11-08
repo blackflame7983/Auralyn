@@ -1,3 +1,4 @@
+import { Input } from '@/components/ui/Input';
 import { RecoveryActionsPanel } from './RecoveryActionsPanel';
 import { SavePurposeHelp } from './SavePurposeHelp';
 import { TemporarySessionPanel } from './TemporarySessionPanel';
@@ -515,13 +516,13 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                         <label htmlFor="profile-search" className="block text-xs font-medium mb-1">{t('presets.copy.066')}</label>
                         <div className="relative">
                             <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                            <input
+                            <Input
                                 id="profile-search"
                                 type="text"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 placeholder={t('presets.copy.067')}
-                                className="w-full bg-muted/50 border border-input rounded-lg pl-9 pr-3 py-2 text-xs"
+                                className="pl-9"
                             />
                         </div>
                     </div>

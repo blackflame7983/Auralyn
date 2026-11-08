@@ -48,8 +48,8 @@ for (const theme of ['light', 'dark', 'gaming']) {
         }, theme);
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
-        const low = page.locator('#home-noise').getByRole('button', { name: '弱', exact: true });
-        const broadcast = page.locator('#home-builtin').getByRole('button', { name: '配信', exact: true });
+        const low = page.locator('#home-noise').getByRole('radio', { name: '弱', exact: true });
+        const broadcast = page.locator('#home-builtin').getByRole('radio', { name: '配信', exact: true });
         await page.locator('.sound-tool-list > li > div > button').nth(0).click();
         await expect(low).toBeVisible();
         const a = (await low.boundingBox())!;

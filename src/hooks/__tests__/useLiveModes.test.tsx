@@ -235,7 +235,7 @@ it('復旧済み失敗の後は操作を再試行できる', async () => {
     expect(liveModesApi.request).toHaveBeenCalledWith({ action: 'bind_profile', expectedVersion: '3', mode: 'singing', name: 'voice' });
     function Panel() { return <LiveModeBar model={useLiveModes()} />; }
     render(<Panel />);
-    expect(await screen.findByRole('button', { name: '歌' })).toBeEnabled();
+    expect(await screen.findByRole('radio', { name: '歌' })).toBeEnabled();
 });
 it('手動復旧待ちでは通常操作を拒否し復旧だけを送る', async () => {
     vi.mocked(liveModesApi.request).mockResolvedValue(liveSnapshot({ transaction: { id: 'tx', phase: 'recovery_required', target: null, error: null, recoveryAvailable: true } }));

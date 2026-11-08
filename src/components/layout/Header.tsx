@@ -114,7 +114,7 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     return (
-        <header className={`h-16 shrink-0 overflow-x-auto flex items-center justify-between px-4 xl:px-6 border-b sticky top-0 z-50 transition-colors duration-300 gaming:backdrop-blur-md ${theme === 'light'
+        <header className={`h-16 shrink-0 overflow-x-auto flex items-center justify-between px-4 xl:px-6 border-b sticky top-0 z-50 transition-colors duration-(--motion-panel) gaming:backdrop-blur-md ${theme === 'light'
             ? 'bg-card border-border/20 shadow-sm'
             : 'bg-background gaming:bg-background/80 border-border/40'
             }`}>

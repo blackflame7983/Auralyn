@@ -1,3 +1,4 @@
+import { ChoiceCard } from '@/components/ui/ChoiceCard';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { useInputMeterState } from '../LevelMeter/MeterContext';
@@ -104,11 +105,10 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
     // 送り先は4つだけなので、選択欄ではなくセットアップと同じアイコンのボタンで選ぶ（DESIGN.md 2.2）。
     // 中身は標準のラジオボタンにし、矢印キーでの移動と読み上げを保つ。
     const usagePicker = <div ref={usageRef} role="radiogroup" aria-labelledby={`${stepsId}-usage`} className={cn('grid gap-2 sm:grid-cols-2', next === 'purpose' && 'rounded-lg ring-1 ring-primary/60 p-1')}>
-        {destinationChoices.map(({ value, label, icon: Icon }) => <label key={value} className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm has-[:checked]:border-selection has-[:checked]:bg-selection/15 has-[:checked]:text-selection has-[:checked]:font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary">
-            <input type="radio" name={`${stepsId}-usage-choice`} value={value} checked={context.usage === value} className="sr-only"
-                onChange={() => model.changeContext({ usage: value, receiver: '' })} />
-            <Icon aria-hidden="true" className="h-4 w-4 shrink-0" /><span className="min-w-0 truncate">{t(label)}</span>
-        </label>)}
+        {destinationChoices.map(({ value, label, icon: Icon }) => <ChoiceCard key={value} name={`${stepsId}-usage-choice`} value={value} checked={context.usage === value}
+            onChange={() => model.changeContext({ usage: value, receiver: '' })}>
+            <span className="flex items-center gap-2"><Icon aria-hidden="true" className="h-4 w-4 shrink-0" /><span>{t(label)}</span></span>
+        </ChoiceCard>)}
     </div>;
     // 問題がなく畳んでいる間は枠を付けず、状態の1行だけにしてホームの主役（本番帯と声の処理）を目立たせる。
     return <section aria-label={t('prep.title')} className={cn('space-y-3', open ? 'rounded-xl border border-border bg-card gaming:bg-card/70 p-4' : 'px-1 py-0.5')}>

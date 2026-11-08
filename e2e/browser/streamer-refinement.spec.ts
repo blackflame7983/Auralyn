@@ -146,7 +146,7 @@ test('モードの初回読込に失敗してもホームから再取得して�
     await page.goto('/');
     await expect(page.getByRole('alert')).toContainText('モードの状態を取得できません');
     await page.getByRole('button', { name: 'モードの状態を再取得', exact: true }).click();
-    await expect(page.getByRole('button', { name: '歌', exact: true })).toBeVisible();
+    await expect(page.getByRole('radio', { name: '歌', exact: true })).toBeVisible();
     await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
