@@ -56,10 +56,10 @@ test('登録したVST構成で切替を始め、進行中は二重操作を防�
     await expect(select.locator('option')).toHaveCount(3);
     await select.selectOption('歌用VST');
     await expect(modes).toContainText('切替中は音が止まります');
-    await modes.getByRole('button', { name: '歌モードの組み合わせを保存', exact: true }).click();
+    await modes.getByRole('radio', { name: '歌モードの組み合わせを保存', exact: true }).click();
     await expect(modes).toContainText('保存済みのVST：歌用VST');
     await page.keyboard.press('Escape');
-    const singing = page.getByRole('button', { name: '歌', exact: true });
+    const singing = page.getByRole('radio', { name: '歌', exact: true });
     await singing.click();
     await expect(singing).toBeDisabled();
     await expect(page.getByText('VSTと内蔵設定を切替中です。', { exact: true })).toBeVisible();
@@ -67,7 +67,7 @@ test('登録したVST構成で切替を始め、進行中は二重操作を防�
     await page.screenshot({ path: testInfo.outputPath('switching.png') });
     await page.evaluate(() => (window as any).__issue151.finish());
     await expect(singing).toBeEnabled();
-    await expect(singing).toHaveAttribute('aria-pressed', 'true');
+    await expect(singing).toHaveAttribute('aria-checked', 'true');
     expect(await page.evaluate(() => (window as any).__issue151.writes.map((item: any) => item.action))).toEqual(['bind_profile', 'singing_on']);
 });
 
@@ -76,7 +76,7 @@ test('復旧が必要な失敗では通常切替を止め、明示復旧の完�
     await page.goto('/');
     await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toBeHidden();
     await page.evaluate(() => (window as any).__issue151.fail(true));
-    const singing = page.getByRole('button', { name: '歌', exact: true });
+    const singing = page.getByRole('radio', { name: '歌', exact: true });
     await expect(singing).toBeDisabled();
     const recover = page.getByRole('button', { name: '以前の状態を復旧する', exact: true });
     await expect(recover).toBeVisible();
@@ -86,7 +86,7 @@ test('復旧が必要な失敗では通常切替を止め、明示復旧の完�
     await page.screenshot({ path: testInfo.outputPath('recovery.png') });
     await page.evaluate(() => (window as any).__issue151.finish());
     await expect(singing).toBeEnabled();
-    await expect(singing).toHaveAttribute('aria-pressed', 'false');
+    await expect(singing).toHaveAttribute('aria-checked', 'false');
     expect(await page.evaluate(() => (window as any).__issue151.writes.map((item: any) => item.action))).toEqual(['recover']);
 });
 
@@ -94,7 +94,7 @@ test('元の状態へ戻せた失敗は警告を残しつつ再試行できる',
     await page.goto('/');
     await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toBeHidden();
     await page.evaluate(() => (window as any).__issue151.fail(false));
-    const singing = page.getByRole('button', { name: '歌', exact: true });
+    const singing = page.getByRole('radio', { name: '歌', exact: true });
     await expect(singing).toBeEnabled();
     await expect(page.getByRole('button', { name: '以前の状態を復旧する', exact: true })).toHaveCount(0);
     await singing.click();

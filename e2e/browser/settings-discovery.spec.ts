@@ -64,9 +64,9 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await expect(section.getByText('登録済み', { exact: true })).toHaveCount(1);
     await page.keyboard.press('Escape');
     const live = page.getByRole('region', { name: '本番', exact: true });
-    const modes = live.getByRole('group', { name: 'モード切替', exact: true });
-    await expect(modes.getByRole('button', { name: '歌', exact: true })).toBeEnabled();
-    await expect(modes.getByRole('button', { name: '雑談', exact: true })).toBeDisabled();
+    const modes = live.getByRole('radiogroup', { name: 'モード切替', exact: true });
+    await expect(modes.getByRole('radio', { name: '歌', exact: true })).toBeEnabled();
+    await expect(modes.getByRole('radio', { name: '雑談', exact: true })).toBeDisabled();
     await expect(actions).toBeFocused();
     await actions.click();
     await page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).click();
@@ -74,7 +74,7 @@ test('未登録の入口から歌・雑談を登録し、ホームの切替と�
     await saveTalk.click();
     await expect(section.getByText('登録済み', { exact: true })).toHaveCount(2);
     await page.keyboard.press('Escape');
-    await expect(modes.getByRole('button', { name: '雑談', exact: true })).toBeEnabled();
+    await expect(modes.getByRole('radio', { name: '雑談', exact: true })).toBeEnabled();
     await expect.poll(() => page.evaluate(() => (window as any).__e2eModeWrites.length)).toBe(2);
     await expect(register).toHaveCount(0);
     await actions.click();

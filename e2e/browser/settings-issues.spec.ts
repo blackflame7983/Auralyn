@@ -75,7 +75,7 @@ test('保存済み256サンプルは数値選択として復元する', async ({
     const dialog = await openSettings(page);
     const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
     if (!await details.evaluate(node => (node as HTMLDetailsElement).open)) await details.locator('summary').click();
-    await expect(details.getByRole('button', { name: '数値で指定', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(details.getByRole('radio', { name: '数値で指定', exact: true })).toHaveAttribute('aria-checked', 'true');
     await expect(details.getByRole('combobox', { name: 'バッファサイズ' })).toHaveValue('256');
     await expect(dialog.getByRole('button', { name: '保存して再起動' })).toBeDisabled();
 });
@@ -117,7 +117,7 @@ test('音切れ通知から調整欄へ移動し、変更なしでは再起動�
     const dialog = page.getByRole('dialog', { name: '設定', exact: true });
     const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
     await expect(details).toHaveAttribute('open');
-    await expect(details.getByRole('button', { name: 'おまかせ', exact: true })).toBeFocused();
+    await expect(details.getByRole('radio', { name: 'おまかせ', exact: true })).toBeFocused();
     await expect(dialog.getByRole('button', { name: '保存して再起動' })).toBeDisabled();
     expect(await page.evaluate(() => (window as any).__e2eStarts)).toEqual([]);
 });

@@ -1,3 +1,4 @@
+import { Checkbox } from '@/components/ui/Checkbox';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useEffect, useState } from 'react';
 import { readUpdatePolicy, saveUpdatePolicy } from '@/hooks/useUpdates';
@@ -13,8 +14,8 @@ export function UpdatePreferences() {
         <div className="flex items-center gap-1"><h3 className="text-ui-heading font-semibold">{t('settings.UpdatePreferences.434')}</h3>
             <InfoPopover label={t('settings.UpdatePreferences.434')}>{t('settings.UpdatePreferences.435')}</InfoPopover>
         </div>
-        <label className="flex gap-2 text-ui-control"><input type="checkbox" disabled={!standalone} checked={policy.automatic} onChange={e => { const next = { ...policy, automatic: e.target.checked }; saveUpdatePolicy(next); setPolicy(next); }} />{t('settings.UpdatePreferences.436')}</label>
-        <label className="flex gap-2 text-ui-control"><input type="checkbox" disabled={!standalone || !policy.automatic} checked={policy.download} onChange={e => { const next = { ...policy, download: e.target.checked }; saveUpdatePolicy(next); setPolicy(next); }} />{t('settings.UpdatePreferences.437')}</label>
+        <label className="flex gap-2 text-ui-control"><Checkbox disabled={!standalone} checked={policy.automatic} onChange={e => { const next = { ...policy, automatic: e.target.checked }; saveUpdatePolicy(next); setPolicy(next); }} />{t('settings.UpdatePreferences.436')}</label>
+        <label className="flex gap-2 text-ui-control"><Checkbox disabled={!standalone || !policy.automatic} checked={policy.download} onChange={e => { const next = { ...policy, download: e.target.checked }; saveUpdatePolicy(next); setPolicy(next); }} />{t('settings.UpdatePreferences.437')}</label>
         {!standalone && <p className="text-ui-support text-muted-foreground">{t('settings.UpdatePreferences.438')}</p>}
     </section>;
 }

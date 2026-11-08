@@ -1,3 +1,5 @@
+import { SliderField } from '@/components/ui/SliderField';
+import { Disclosure } from '@/components/ui/Disclosure';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { audioApi, type BuiltInEffectsPreset, type EngineRuntimeStats, type NoiseControlMode } from '../../../api/audio';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -245,33 +247,15 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
 
                   {/* 強さはふだん弱／強の2択だけにし、数値の強さは外観の「数値の詳細を表示」で出す。 */}
                   {!isBeginnerMode && <div className="max-w-[22rem] space-y-2">
-                    <div className="flex items-center justify-between text-ui-support">
-                      <span className="text-muted-foreground">{t('settings.AudioSettingsModal.119')}</span>
-                      <span className="font-mono text-foreground">{noiseStrength}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={25}
-                      max={125}
-                      step={5}
-                      value={noiseStrength}
-                      onChange={(e) => {
-                        noiseStrengthEditing.current = true;
-                        setNoiseStrength(Number(e.target.value));
-                      }}
-                      onPointerUp={(e) => commitNoiseStrength(e.currentTarget.value)}
-                      onKeyUp={(e) => commitNoiseStrength(e.currentTarget.value)}
-                      onBlur={(e) => commitNoiseStrength(e.currentTarget.value)}
-                      className="w-full accent-primary"
-                      aria-label={t('settings.AudioSettingsModal.120')}
-                    />
+                    <SliderField disabled={!engineStats || noiseActionBusy} label={t('settings.AudioSettingsModal.120')} min={25} max={125} step={5} value={noiseStrength}
+                      formatValue={value => `${value}%`} onValueChange={value => { noiseStrengthEditing.current = true; setNoiseStrength(value); }}
+                      onValueCommit={value => commitNoiseStrength(String(value))} />
                   </div>}
 
-                  <details open={noiseMeasurementOpen} onToggle={event => setNoiseMeasurementOpen(event.currentTarget.open)} className="rounded-md border border-border p-3 text-sm">
-                    <summary className="text-ui-control font-semibold">{t('measurement.title')}</summary>
-                    {/* 閉じると測定欄を外し、その欄が開始した測定だけを既存の後片付けで取り消す。 */}
+                  <Disclosure open={noiseMeasurementOpen} onOpenChange={setNoiseMeasurementOpen} label={t('measurement.title')}>
+                    {/* 閉じると測定欄を外し、既存の後片付けを維持する。 */}
                     {noiseMeasurementOpen && <NoiseMeasurementPanel embedded />}
-                  </details>
+                  </Disclosure>
 
                   <div className="flex items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2">
                     <div>

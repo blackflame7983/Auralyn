@@ -1,3 +1,5 @@
+import { Field } from '@/components/ui/Field';
+import { Select } from '@/components/ui/Select';
 import { useDisplayPurpose, type DisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { useBeginnerMode } from '@/hooks/useBeginnerMode';
 import { useAuroraDisplay } from '@/hooks/useAuroraDisplay';
@@ -12,13 +14,11 @@ export function DisplayPurposeSelector() {
     const t = useMessages();
     const [purpose, setPurpose] = useDisplayPurpose();
     return <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-        <label className="flex items-center gap-3 text-ui-control">{t('purpose.label')}
-            <select value={purpose} onChange={event => setPurpose(event.target.value as DisplayPurpose)} aria-describedby="display-purpose-hint"
-                className="rounded border border-input bg-background px-2 py-1 text-ui-control">
+        <Field label={t('purpose.label')} description={t('purpose.hint')}>
+            <Select value={purpose} onChange={event => setPurpose(event.target.value as DisplayPurpose)}>
                 <option value="voice">{t('purpose.voice')}</option><option value="music">{t('purpose.music')}</option>
-            </select>
-        </label>
-        <span id="display-purpose-hint" className="sr-only">{t('purpose.hint')}</span>
+            </Select>
+        </Field>
         <InfoPopover label={t('purpose.label')}>{t('purpose.hint')}</InfoPopover>
     </div>;
 }

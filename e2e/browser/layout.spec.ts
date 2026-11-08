@@ -376,7 +376,7 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
             }, theme);
             await page.goto('/');
             const live = page.getByRole('region', { name: '本番', exact: true });
-            const modes = live.getByRole('group', { name: 'モード切替' });
+            const modes = live.getByRole('radiogroup', { name: 'モード切替' });
             await expect(modes).toBeVisible();
             await live.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
             if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
@@ -385,13 +385,13 @@ test.describe('登録済みの歌・雑談と右パネル', () => {
             await expect(page.locator('.large-meter-motion')).toBeHidden();
             await page.locator('.vst-panel-scrim').click({ position: { x: 20, y: 20 } });
             await expect(page.locator('#vst-panel')).toHaveCount(0);
-            for (const name of ['歌', '雑談']) await reachable(modes.getByRole('button', { name, exact: true }), page);
+            for (const name of ['歌', '雑談']) await reachable(modes.getByRole('radio', { name, exact: true }), page);
             await expect(page.locator('.large-meter-motion')).toBeVisible();
             if (await page.locator('.sound-tool-list > li > div > button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.sound-tool-list > li > div > button').last().click();
             await page.locator('#vst-panel-toggle').click();
             await page.setViewportSize({ width: 1600, height: 900 });
             await expect(page.locator('main')).not.toHaveAttribute('inert', '');
-            for (const name of ['歌', '雑談']) await reachable(modes.getByRole('button', { name, exact: true }), page);
+            for (const name of ['歌', '雑談']) await reachable(modes.getByRole('radio', { name, exact: true }), page);
             await reachable(live.getByRole('button', { name: /100%/ }), page);
             await page.screenshot({ path: testInfo.outputPath(`registered-modes-${theme}.png`) });
         });

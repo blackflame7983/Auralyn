@@ -292,7 +292,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         <InputGainDisabledContext.Provider value={panelOverlays}><MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef} data-panel-instant={panelMotion.instant || undefined}
             data-vst-open={Boolean(vstPanel) && vstPanelOpen || undefined} data-vst-overlay={panelOverlays || undefined} data-large-meter={isLargeMeterOpen || undefined}
             data-meter-suspended={panelMotion.present && !panelBeside || undefined}
-            className="app-shell min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-300">
+            className="app-shell min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-(--motion-panel)">
             {/* ゲーミングだけに表示する静止した背景の光と格子。 */}
             <div data-gaming-backdrop className="hidden gaming:block">
                 <div className="fixed inset-0 pointer-events-none z-0">
@@ -385,7 +385,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </div>
 
                 {/* Master Section Footer */}
-                <footer ref={footerRef} className="bg-background border-t border-border px-4 z-50 footer-shadow shrink-0 transition-colors duration-300">
+                <footer ref={footerRef} className="bg-background border-t border-border px-4 z-50 footer-shadow shrink-0 transition-colors duration-(--motion-panel)">
                     <div className="mx-auto max-w-[1180px] w-full flex items-center gap-3">
                     {/* 比べる音がない未設定の間は出さない。比較中のまま未設定になった場合は解除できるよう残す。 */}
                     {(configured || isABBypassed) && <div className="flex shrink-0 items-center py-2">

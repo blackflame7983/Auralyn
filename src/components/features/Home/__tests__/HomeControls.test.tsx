@@ -47,7 +47,7 @@ it.each(['normal', 'protected', 'recovery', 'snapshotError'] as const)('音楽�
 
 it('ノイズ低減の強さは現在の抑制強度と声を守る設定を保ったまま切り替える', async () => {
     render(<VoiceQuickControls running />);
-    const high = await screen.findByRole('button', { name: '強' });
+    const high = await screen.findByRole('radio', { name: '強' });
     await waitFor(() => expect(high).toBeEnabled());
     await act(async () => fireEvent.click(high));
     expect(audioApi.setNoiseControlConfig).toHaveBeenCalledWith({ active: true, mode: 'high', strength: 0.6, voiceGuard: false });
@@ -93,7 +93,7 @@ it('操作中に無効になったら、終わった操作の再取得で古い�
 });
 it('プリセットはかかり具合を保って反映する', async () => {
     render(<VoiceQuickControls running />);
-    const bright = await screen.findByRole('button', { name: '明瞭' });
+    const bright = await screen.findByRole('radio', { name: '明瞭' });
     await waitFor(() => expect(bright).toBeEnabled());
     await act(async () => fireEvent.click(bright));
     expect(audioApi.setBuiltInEffects).toHaveBeenCalledWith({ active: true, preset: 'bright', amount: 0.5 });
@@ -121,8 +121,8 @@ it.each([
     function Bar() { return <LiveModeBar model={useLiveModes()} />; }
     render(<LocaleContext.Provider value={{ locale: labels.locale, setLocale: vi.fn() }}><Bar /></LocaleContext.Provider>);
     await screen.findByRole('region', { name: labels.region });
-    expect(screen.getByRole('button', { name: labels.sing })).toBeEnabled();
-    expect(screen.getByRole('button', { name: labels.talk })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: labels.sing })).toBeEnabled();
+    expect(screen.getByRole('radio', { name: labels.talk })).toBeDisabled();
     const guard = screen.getByRole('button', { name: labels.lock });
     expect(guard).toHaveAttribute('aria-pressed', 'false');
     expect(guard).toHaveAccessibleDescription(labels.unlocked);
@@ -147,10 +147,10 @@ it.each([
 it('ノイズ低減OFFでも現在の強さを示し、OFFを保ったまま編集できる', async () => {
     vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue(stats({ noiseReductionEnabled: false, noiseReductionMode: 'low' }));
     render(<VoiceQuickControls running />);
-    const low = await screen.findByRole('button', { name: '弱' });
-    await waitFor(() => expect(low).toHaveAttribute('aria-pressed', 'true'));
-    const high = screen.getByRole('button', { name: '強' });
-    expect(high).toHaveAttribute('aria-pressed', 'false');
+    const low = await screen.findByRole('radio', { name: '弱' });
+    await waitFor(() => expect(low).toHaveAttribute('aria-checked', 'true'));
+    const high = screen.getByRole('radio', { name: '強' });
+    expect(high).toHaveAttribute('aria-checked', 'false');
     await act(async () => fireEvent.click(high));
     expect(audioApi.setNoiseControlConfig).toHaveBeenCalledWith(expect.objectContaining({ active: false, mode: 'high' }));
 });

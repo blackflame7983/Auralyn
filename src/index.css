@@ -64,6 +64,8 @@
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
 
+  --radius-control: 10px;
+  --radius-card: 12px;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -145,6 +147,9 @@
   --motion-base: 200ms;
   --motion-panel: 240ms;
   --motion-aurora: 800ms;
+  --motion-step: 260ms;
+  --motion-ripple: 1800ms;
+  --motion-attention: 1200ms;
 }
 
 .dark {
@@ -298,7 +303,7 @@
     opacity: 0.7;
     -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z'/></svg>") center / contain no-repeat;
     mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z'/></svg>") center / contain no-repeat;
-    transition: transform 150ms ease-out;
+    transition: transform var(--motion-fast) var(--ease-out);
   }
   /* 先頭に自前のアイコンを持つ開閉欄は、山形を重ねない。 */
   summary:has(> svg:first-child)::before {
@@ -401,7 +406,7 @@
 .setup-heading { font-size: 1.5rem; line-height: 1.35; font-weight: 600; letter-spacing: -0.01em; color: hsl(var(--foreground)); }
 @keyframes setup-step-in { from { opacity: 0; transform: translateX(var(--setup-from, 28px)); } }
 @keyframes setup-fade-in { from { opacity: 0; } }
-.setup-step { animation: setup-step-in 260ms var(--ease-out) both; }
+.setup-step { animation: setup-step-in var(--motion-step) var(--ease-out) both; }
 .setup-step[data-dir="-1"] { --setup-from: -28px; }
 .setup-choice {
   /* 拡大時の端数をスクロール境界に重ねず、フォーカスの輪郭にも余白を残す。 */
@@ -437,7 +442,7 @@
 .unset-flow-node[data-state="next"] { box-shadow: inset 0 0 0 2px hsl(var(--primary)); background: hsl(var(--primary) / 0.06); }
 .unset-flow-node[data-state="next"]::after {
   content: ""; position: absolute; inset: -4px; border-radius: 16px; border: 2px solid hsl(var(--primary) / 0.5);
-  animation: unset-flow-ripple 1.8s var(--ease-out) infinite; pointer-events: none;
+  animation: unset-flow-ripple var(--motion-ripple) var(--ease-out) infinite; pointer-events: none;
 }
 @keyframes unset-flow-ripple { from { opacity: 0.9; transform: scale(0.98); } to { opacity: 0; transform: scale(1.06); } }
 .unset-flow-node[data-state="set"] { background: hsl(var(--muted)); box-shadow: none; }
@@ -606,7 +611,7 @@
   transition: translate var(--motion-panel) var(--ease-drawer);
 }
 .vst-panel-scrim {
-  animation: surface-appear var(--motion-base) ease-out;
+  animation: surface-appear var(--motion-base) var(--ease-out);
 }
 @keyframes surface-appear {
   from { opacity: 0; }
@@ -615,7 +620,7 @@
 .modal-overlay-base,
 .app-dialog[data-state="open"],
 [data-radix-menu-content][data-state="open"] {
-  animation: surface-appear var(--motion-base) ease-out;
+  animation: surface-appear var(--motion-base) var(--ease-out);
 }
 @keyframes surface-open {
   from { opacity: 0; transform: scale(0.97); }
@@ -639,7 +644,7 @@
 [data-attention] {
   outline: 2px solid hsl(var(--warning));
   outline-offset: 3px;
-  animation: attention-ring 1.2s var(--ease-out);
+  animation: attention-ring var(--motion-attention) var(--ease-out);
 }
 @keyframes attention-ring {
   from { outline-offset: 8px; outline-color: hsl(var(--warning) / 0); }
@@ -653,7 +658,7 @@
 }
 /* Radix の Presence に終了だけを任せ、選択した操作は待たせない。 */
 [data-radix-menu-content][data-state="closed"] {
-  animation: surface-disappear var(--motion-fast) ease-in;
+  animation: surface-disappear var(--motion-fast) var(--ease-out);
   pointer-events: none;
 }
 [data-panel-instant] .workspace-body,
@@ -791,4 +796,13 @@ html[data-app-hidden="true"] *::after {
    focus:outline-hidden のユーティリティより優先し、スクロール領域での欠けを防ぐ。 */
 @media (forced-colors: active) {
   input:focus, select:focus, textarea:focus { outline-offset: -2px; }
+}
+
+/* 開閉途中の反転も、現在の高さから補間する。閉じた内容は即時 inert にする。 */
+.disclosure-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--motion-panel) var(--ease-drawer); }
+.disclosure-panel[data-open="true"] { grid-template-rows: 1fr; }
+.disclosure-content { opacity: 0; transition: opacity var(--motion-base) var(--ease-out); }
+.disclosure-panel[data-open="true"] .disclosure-content { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .disclosure-panel, .disclosure-content { transition: none; }
 }

@@ -54,8 +54,8 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
     test(`本番帯の優先順位と高さ配分 ${theme} ${size.width}x${size.height}`, async ({ page }, info) => {
         await page.setViewportSize(size); await prepare(page, theme);
         const live = page.getByRole('region', { name: message('ja', 'live.strip'), exact: true });
-        const modes = live.getByRole('group', { name: message('ja', 'liveBar.mode') });
-        for (const key of ['liveBar.singing', 'liveBar.talk'] as const) await expect(modes.getByRole('button', { name: message('ja', key), exact: true })).toBeInViewport();
+        const modes = live.getByRole('radiogroup', { name: message('ja', 'liveBar.mode') });
+        for (const key of ['liveBar.singing', 'liveBar.talk'] as const) await expect(modes.getByRole('radio', { name: message('ja', key), exact: true })).toBeInViewport();
         await expect(modes.locator('[aria-current=true]')).toHaveText(message('ja', 'liveBar.custom'));
         await expect(live.getByRole('button', { name: message('ja', 'liveBar.protect'), exact: true })).toHaveAttribute('title', message('ja', 'liveBar.protect'));
         await expect(live.getByRole('button', { name: message('ja', 'liveBar.editRegistration'), exact: true })).toHaveCount(0);
@@ -125,11 +125,11 @@ for (const theme of ['light', 'dark', 'gaming']) test(`設定の階層と明示�
     await page.setViewportSize({ width: 900, height: 600 }); await prepare(page, theme);
     await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
     const live = page.getByRole('region', { name: message('ja', 'live.strip'), exact: true });
-    const modes = live.getByRole('group', { name: message('ja', 'liveBar.mode') });
+    const modes = live.getByRole('radiogroup', { name: message('ja', 'liveBar.mode') });
     const custom = modes.locator('[aria-current=true]');
     expect(await custom.evaluate(el => el.parentElement!.querySelector('[data-segment-indicator]')!.parentElement!.contains(el))).toBe(false);
-    await modes.getByRole('button', { name: '歌', exact: true }).click();
-    await expect(modes.getByRole('button', { name: '歌', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await modes.getByRole('radio', { name: '歌', exact: true }).click();
+    await expect(modes.getByRole('radio', { name: '歌', exact: true })).toHaveAttribute('aria-checked', 'true');
     const marker = modes.locator('[data-segment-indicator]');
     // 拡大時の境界線は物理ピクセルに丸められるため、CSS上の厳密な3px比較はしない。
     expect(await marker.evaluate(el => parseFloat(getComputedStyle(el).borderBottomWidth))).toBeGreaterThanOrEqual(2.5);
@@ -152,20 +152,20 @@ for (const theme of ['light', 'dark', 'gaming']) test(`設定の階層と明示�
 test('選択背景が確定値へ移動し、ミュート押下と動きを減らす設定を守る', async ({ page }, info) => {
     await page.setViewportSize({ width: 1280, height: 800 }); await prepare(page);
     await page.locator('.sound-tool-list > li > div > button').first().click();
-    const noise = page.getByRole('group', { name: message('ja', 'structure.noise.standard') });
+    const noise = page.getByRole('radiogroup', { name: message('ja', 'structure.noise.standard') });
     const indicator = noise.locator('[data-segment-indicator]');
-    await expect(noise.getByRole('button', { name: message('ja', 'master.nrLow'), exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(noise.getByRole('radio', { name: message('ja', 'master.nrLow'), exact: true })).toHaveAttribute('aria-checked', 'true');
     const before = await indicator.boundingBox();
-    await noise.getByRole('button', { name: message('ja', 'master.nrHigh'), exact: true }).focus();
+    await noise.getByRole('radio', { name: message('ja', 'master.nrHigh'), exact: true }).focus();
     expect(await page.evaluate(() => (window as any).__refineActions)).toEqual([]);
     await page.keyboard.press('Enter');
-    await expect(noise.getByRole('button', { name: message('ja', 'master.nrHigh'), exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(noise.getByRole('radio', { name: message('ja', 'master.nrHigh'), exact: true })).toHaveAttribute('aria-checked', 'true');
     await expect.poll(async () => (await indicator.boundingBox())!.x).toBeGreaterThan(before!.x + 20);
     expect(await indicator.evaluate(el => getComputedStyle(el).transitionDuration)).toBe('0.2s');
-    const modes = page.getByRole('group', { name: message('ja', 'liveBar.mode') });
+    const modes = page.getByRole('radiogroup', { name: message('ja', 'liveBar.mode') });
     const modeMarker = await modes.locator('[data-segment-indicator]').elementHandle();
-    await modes.getByRole('button', { name: message('ja', 'liveBar.singing'), exact: true }).click();
-    await expect(modes.getByRole('button', { name: message('ja', 'liveBar.singing'), exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await modes.getByRole('radio', { name: message('ja', 'liveBar.singing'), exact: true }).click();
+    await expect(modes.getByRole('radio', { name: message('ja', 'liveBar.singing'), exact: true })).toHaveAttribute('aria-checked', 'true');
     expect(await modeMarker!.evaluate(el => el.isConnected)).toBe(true);
     const protect = page.getByRole('button', { name: message('ja', 'liveBar.protect'), exact: true });
     await protect.focus();
