@@ -172,6 +172,7 @@ pub struct Monitor {
     jobs: JobRx,
     shared: Arc<Controls>,
     levels: Arc<AtomicU64>,
+    trim: super::gain_ramp::GainRamp,
     main_failed: Arc<AtomicBool>,
     voice: RtVoice,
     reverb: reverb::Reverb,
@@ -308,6 +309,17 @@ impl Controller {
             broadcast,
             jobs,
             shared: shared.clone(),
+            trim: super::gain_ramp::GainRamp::new(
+                {
+                    let levels = levels.load(Ordering::Acquire);
+                    if levels >> 32 != 0 {
+                        0.0
+                    } else {
+                        f32::from_bits(levels as u32)
+                    }
+                },
+                rate,
+            ),
             levels,
             main_failed,
             voice,
@@ -568,6 +580,7 @@ impl Monitor {
         } else {
             f32::from_bits(levels as u32)
         };
+        self.trim.set_target(trim);
         let skip = self.recovery.begin_block(
             self.input.occupied_len() / self.input_channels,
             data.len() / 2,
@@ -710,6 +723,7 @@ impl Monitor {
                 self.shared.completed.fetch_max(revision, Ordering::Release);
             }
             self.output_gain += (target_gain - self.output_gain) * 0.005;
+            let trim = self.trim.next();
             if !muted {
                 for ch in 0..2 {
                     output[ch] = if rendered[ch].is_finite() {
@@ -875,6 +889,72 @@ mod tests {
             assert_eq!(output, [0.0; 256]);
         }
         assert!(!controller.shared.failed.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn trim479_monitor_trim_and_mute_retarget_without_steps_or_rt_allocation() {
+        for sine in [false, true] {
+            let (_controller, mut renderer, mut input, _queue, mut broadcast) =
+                fixture_with_channels(None, 2, [0, 1]);
+            let mut previous = [0.0f32; 2];
+            let mut worst = 0.0f32;
+            let mut worst_excess = 0.0f32;
+            // 変更間隔は20 ms未満。mute解除も、muteランプの途中で行う。
+            for block in 0..48 {
+                let setting = match block {
+                    1 => Some((0.2f32, false)),
+                    6 => Some((0.8, false)),
+                    11 => Some((0.8, true)),
+                    16 => Some((0.8, false)),
+                    _ => None,
+                };
+                if let Some((trim, muted)) = setting {
+                    renderer.get_mut().levels.store(
+                        u64::from(trim.to_bits()) | (u64::from(muted) << 32),
+                        Ordering::Release,
+                    );
+                }
+                let mut dry = [0.0f32; 64];
+                for (index, sample) in dry.iter_mut().enumerate() {
+                    *sample = if sine {
+                        0.5 * (std::f32::consts::TAU * 50.0 * (block * 64 + index) as f32 / 48000.0)
+                            .sin()
+                    } else {
+                        0.5
+                    };
+                    // fixtureの入力gain=0.5を相殺し、実出力振幅を0.5にする。
+                    input.try_push(*sample * 2.0).unwrap();
+                    input.try_push(-*sample * 2.0).unwrap();
+                }
+                let mut output = [0.0; 128];
+                assert_eq!(
+                    crate::dsp_verification_allocator::allocation_counts(|| {
+                        renderer.get_mut().render(&mut output, None);
+                    }),
+                    (0, 0)
+                );
+                while broadcast.try_pop().is_some() {}
+                for (index, (frame, sample)) in
+                    output.as_chunks::<2>().0.iter().zip(dry).enumerate()
+                {
+                    assert_eq!(frame[1], -frame[0]);
+                    if block != 0 || index != 0 {
+                        let step = (frame[0] - previous[0]).abs();
+                        let signal_step = (sample - previous[1]).abs();
+                        worst = worst.max(step);
+                        worst_excess = worst_excess.max(step - signal_step);
+                        assert!(step <= signal_step + 0.5 / 960.0 + 2.0e-6);
+                    }
+                    previous = [frame[0], sample];
+                    if block >= 31 {
+                        assert!((frame[0] - sample * 0.8).abs() < 1.0e-6);
+                    }
+                }
+            }
+            eprintln!(
+                "trim479 monitor sine={sine}: max_step={worst:.9}, max_excess={worst_excess:.9}"
+            );
+        }
     }
 
     #[test]
