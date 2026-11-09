@@ -33,6 +33,9 @@ it('個別名や未知の操作がなくても安全な文言を返す', () => {
 });
 
 describe('crashedPluginMarker', () => {
+    it('機器開始時は残存する読み込み中の印をVSTの除外候補にしない', () => {
+        expect(crashedPluginMarker({ cause: 'device_open', path: 'stale.vst3' }, 'pending.vst3')).toBeNull();
+    });
     it('Hostが特定したVSTを、読み込み以外の操作でも除外候補にする', () => {
         const marker = crashedPluginMarker({ cause: 'vst_operation', op: 'open_editor', path: 'C:/VST/Echo.vst3', classId: 'abc' }, null);
         expect(readPending(marker)).toEqual({ path: 'C:/VST/Echo.vst3', classId: 'abc' });
@@ -46,5 +49,31 @@ describe('crashedPluginMarker', () => {
         expect(crashedPluginMarker({ cause: 'unknown' }, 'A.vst3')).toBe('A.vst3');
         expect(crashedPluginMarker({ cause: 'vst_operation', op: 'processing_setup' }, null)).toBeNull();
         expect(crashedPluginMarker(undefined, null)).toBeNull();
+    });
+});
+
+describe.each(['ja', 'en'] as const)('%sの機器開始時の終了表示', locale => {
+    it.each(['opening', 'settling'] as const)('%sを区別して同じASIOドライバー名は一度だけ表示する', phase => {
+        const rendered = renderAudioEngineExit((key, args) => message(locale, key, args), {
+            cause: 'device_open', phase, host: 'ASIO', input: ' Driver ', output: 'Driver', name: 'stale VST',
+        });
+        expect(rendered).toBe(locale === 'ja'
+            ? phase === 'opening' ? 'Driverを開く途中で音声エンジンが停止しました。' : 'Driverで音声を始めた直後に音声エンジンが停止しました。'
+            : phase === 'opening' ? 'The audio engine stopped while opening Driver.' : 'The audio engine stopped just after starting audio with Driver.');
+    });
+
+    it.each([
+        { input: 'Mic', output: 'Speakers', expected: 'Mic / Speakers' },
+        { input: 'Mic', expected: 'Mic' },
+        { output: 'Speakers', expected: 'Speakers' },
+        { input: ' ', output: '', host: ' WASAPI ', expected: 'WASAPI' },
+        { expected: locale === 'ja' ? '音声機器' : 'the audio device' },
+    ])('機器名を組み合わせ、なければHost名へ戻す: $expected', ({ expected, ...devices }) => {
+        const rendered = renderAudioEngineExit((key, args) => message(locale, key, args), {
+            cause: 'device_open', phase: 'opening', ...devices,
+        });
+        expect(rendered).toBe(locale === 'ja'
+            ? `${expected}を開く途中で音声エンジンが停止しました。`
+            : `The audio engine stopped while opening ${expected}.`);
     });
 });

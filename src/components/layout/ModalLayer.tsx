@@ -6,6 +6,7 @@ import { VstPlugin } from '../../api/audio';
 import { audioApi } from '../../api/audio';
 import { channelRoutingFor } from '@/lib/audioChannelRouting';
 import type { Plugin } from '../features/PluginRack/PluginCard';
+import type { AudioEngineExit } from '@/lib/audioEngineExit';
 
 // Lazy load modals
 const AudioSettingsModal = lazy(() => import('../features/AudioSettings/AudioSettingsModal').then(m => ({ default: m.AudioSettingsModal })));
@@ -52,6 +53,7 @@ interface UIState {
     isRecoveryModalOpen: boolean;
     setIsRecoveryModalOpen: (v: boolean) => void;
     crashError: string | null;
+    crashExit?: AudioEngineExit;
     isPresetManagerOpen: boolean;
     setIsPresetManagerOpen: (v: boolean) => void;
     isLargeMeterOpen: boolean;
@@ -320,6 +322,8 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         isOpen={ui.isRecoveryModalOpen}
                         onClose={() => ui.setIsRecoveryModalOpen(false)}
                         error={ui.crashError}
+                        exit={ui.crashExit}
+                        onOpenDeviceSettings={() => ui.setIsSettingsOpen(true)}
                         onKeepStopped={pluginsApi.keepSessionStopped}
                         onWithoutPlugins={() => pluginsApi.resumeWithoutPlugins(() => audioApi.start(audioConfig.host, audioConfig.input, audioConfig.output, audioConfig.bufferSize || 512, audioConfig.sampleRate || 48000, audioConfig.inputId, audioConfig.outputId, undefined, channelRoutingFor(audioConfig), ...(audioConfig.inputSource ? [{ source: audioConfig.inputSource }] as const : [])))}
                         onRecover={async (_safeMode, excludePath) => {
