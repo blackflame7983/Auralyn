@@ -7,6 +7,7 @@ pub mod class_listing;
 pub mod instance;
 pub mod presets;
 pub mod scanner;
+pub mod state_drift;
 
 pub use blacklist::Blacklist;
 pub use instance::VstInstance;

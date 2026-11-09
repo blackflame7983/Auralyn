@@ -501,7 +501,8 @@ pub(crate) fn candidates_under(roots: &[PathBuf]) -> Vec<Candidate> {
     found
 }
 
-fn resolve_binary(entry_path: &Path) -> Option<PathBuf> {
+/// `.vst3` のファイル、またはバンドル（Contents/x86_64-win）から読み込む実体を探す。
+pub fn resolve_binary(entry_path: &Path) -> Option<PathBuf> {
     if entry_path.is_file() {
         return Some(entry_path.to_path_buf());
     }

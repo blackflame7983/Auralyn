@@ -1,3 +1,14 @@
+// 子モジュールの診断もstdout（IPC・検証CLIのJSON）へ混ぜない。
+// コールバックからも呼ばれるため、明示的なtrace有効時だけstderrへ出す。
+#[allow(unused_macros)]
+macro_rules! println {
+    ($($tt:tt)*) => {{
+        if $crate::vst_host::instance::vst_trace_enabled() {
+            eprintln!($($tt)*);
+        }
+    }};
+}
+
 mod load_resources;
 use load_resources::{InstanceResources, InterfaceRef};
 mod host_objects;
@@ -48,17 +59,6 @@ const K_RESULT_FALSE: TResult = 1;
 fn vst_trace_enabled() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
     *ON.get_or_init(|| std::env::var_os("AURALYN_VST_TRACE").is_some())
-}
-
-// `println!` in this module must never write to stdout (stdout is reserved for IPC framing in `audio_engine`).
-// Also, VST3 callbacks can be invoked from real-time contexts; default is "quiet" unless explicitly enabled.
-#[allow(unused_macros)]
-macro_rules! println {
-    ($($tt:tt)*) => {{
-        if vst_trace_enabled() {
-            eprintln!($($tt)*);
-        }
-    }};
 }
 
 fn env_flag(name: &str) -> bool {

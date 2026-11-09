@@ -175,18 +175,22 @@ fn plugin_failure_and_inactive_or_missing_processor_do_not_leave_stale_audio() {
     let input = vec![vec![1.0; 4]; 2];
     let mut output = vec![vec![9.0; 5]; 2];
     test.fail();
-    test.processor.process_planar(&input, &mut output, 4);
+    assert!(!test
+        .processor
+        .process_planar_checked(&input, &mut output, 4));
     assert_eq!(test.calls(), 1);
     assert_eq!(output, vec![vec![0.0, 0.0, 0.0, 0.0, 9.0]; 2]);
     test.processor.active_flag.store(false, Ordering::SeqCst);
     let mut short = vec![vec![9.0; 2]; 2];
-    test.processor.process_planar(&input, &mut short, 4);
+    assert!(!test.processor.process_planar_checked(&input, &mut short, 4));
     assert_eq!(test.calls(), 1);
     assert_eq!(short, [vec![0.0; 2], vec![0.0; 2]]);
     test.processor.active_flag.store(true, Ordering::SeqCst);
     test.processor.ptr = std::ptr::null_mut();
     output.iter_mut().for_each(|channel| channel.fill(9.0));
-    test.processor.process_planar(&input, &mut output, 4);
+    assert!(!test
+        .processor
+        .process_planar_checked(&input, &mut output, 4));
     assert_eq!(test.calls(), 1);
     assert_eq!(output, vec![vec![0.0, 0.0, 0.0, 0.0, 9.0]; 2]);
 }

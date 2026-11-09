@@ -121,6 +121,45 @@ it('エディターが開いているVSTだけ10秒ごとに取得する', async
     expect(read.mock.calls).toEqual([['eq'], ['eq']]);
 });
 
+it('取得のたびに状態が変わるVSTも、閉じていれば保存が増えず、表示中だけ10秒ごとに書く', async () => {
+    let revision = 0;
+    const read = vi.spyOn(audioApi, 'getPluginState').mockImplementation(async () => `state-${++revision}`);
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    const sessionWrites = () => write.mock.calls.filter(([key]) => key === PLUGIN_SESSION_KEY).length;
+    const plugins = [plugin('drifting')];
+    renderHook(() => usePluginSessionPersistence(plugins, true, false));
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(read).toHaveBeenCalledOnce();
+    expect(sessionWrites()).toBe(1);
+
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+    expect(read).toHaveBeenCalledOnce();
+    expect(sessionWrites()).toBe(1);
+
+    act(() => editorEvent('opened', 'drifting'));
+    // 10秒未満では書かず、各10秒の境界で1回だけ書く。
+    for (let tick = 0; tick < 3; tick++) {
+        const before = sessionWrites();
+        await act(() => vi.advanceTimersByTimeAsync(9999));
+        expect(sessionWrites()).toBe(before);
+        await act(() => vi.advanceTimersByTimeAsync(1));
+        expect(sessionWrites()).toBe(before + 1);
+    }
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    // 35秒の表示中に、10秒ごとの3回だけ書く（5秒の端数では書かない）。
+    expect(sessionWrites() - 1).toBe(3);
+    expect(read).toHaveBeenCalledTimes(4);
+
+    const beforeClose = sessionWrites();
+    await act(async () => editorEvent('closed', 'drifting'));
+    expect(sessionWrites()).toBe(beforeClose + 1);
+    expect(read).toHaveBeenCalledTimes(5);
+    expect(JSON.parse(localStorage.getItem(PLUGIN_SESSION_KEY)!)[0].state).toBe('state-5');
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+    expect(read).toHaveBeenCalledTimes(5);
+    expect(sessionWrites()).toBe(beforeClose + 1);
+});
+
 it('同じ内容の自動保存と明示保存はlocalStorageへ再書き込みしない', async () => {
     vi.spyOn(audioApi, 'getPluginState').mockResolvedValue('state');
     const write = vi.spyOn(Storage.prototype, 'setItem');
