@@ -99,6 +99,8 @@ impl Shared {
                 },
                 monitor_accompaniment: state & 4 != 0,
                 offset_ms: self.offset_ms.load(Ordering::Relaxed),
+                // 確認の記録は制御側だけで保持し、音声callbackへ文字列を持ち込まない。
+                offset_context: None,
             },
             revision,
             mute_generation: self.mute_generation.load(Ordering::Relaxed),

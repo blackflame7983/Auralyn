@@ -1,6 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
 
-export interface MixLevels { voice: { gain: number; muted: boolean }; accompaniment: { gain: number; muted: boolean }; monitorAccompaniment: boolean; offsetMs: number }
+export interface OffsetContext {
+    voiceInputId: string;
+    voiceChannels: [number, number];
+    accompaniment: string;
+    outputId: string;
+    broadcastId: string | null;
+}
+export interface MixLevels { voice: { gain: number; muted: boolean }; accompaniment: { gain: number; muted: boolean }; monitorAccompaniment: boolean; offsetMs: number; offsetContext?: OffsetContext | null }
 export type MixSource = { kind: 'device'; config: { host: 'WASAPI'; inputId: string; inputChannels: [number, number] } } | { kind: 'process_loopback'; config: { appKey: string; appName: string; rawEndpointId: string; purpose: 'music' } };
 export interface MixConfig { version: 1; source: MixSource; levels: MixLevels }
 export interface ProcessInputSnapshot { capturedFrames: number; nonzeroFrames: number; failed: boolean; waitingForAudio: boolean; inputRateHz: number; correctionLimitPpm: number; queuedFrames: number; renderedFrames: number; correctionPpm: number; pauseResets: number; waitingDiscardedFrames: number; discontinuities: number; timestampErrors: number; nonfiniteSamples: number }
