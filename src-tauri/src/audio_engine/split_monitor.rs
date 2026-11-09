@@ -828,6 +828,82 @@ mod tests {
     fn fixture() -> Fixture {
         fixture_with_state(None)
     }
+
+    #[test]
+    fn dsp464_monitor_and_broadcast_taps_follow_input_gain_output_gain_trim_and_mute() {
+        for case in [
+            "unity",
+            "input_gain",
+            "output_gain",
+            "monitor_trim",
+            "monitor_mute",
+            "global_mute",
+            "peak_protection",
+        ] {
+            let (mut controller, mut renderer, mut input, _, mut broadcast) =
+                fixture_with_channels(None, 2, [0, 1]);
+            let input_gain = if case == "input_gain" { 0.25 } else { 0.5 };
+            controller.message(&AudioThreadMessage::SetInputGain(input_gain));
+            if case == "output_gain" {
+                controller.message(&AudioThreadMessage::SetOutputGain {
+                    value: 0.5,
+                    revision: 1,
+                });
+            }
+            let trim: f32 = if case == "monitor_trim" { 0.25 } else { 1.0 };
+            let muted = case == "monitor_mute";
+            renderer.get_mut().levels.store(
+                u64::from(trim.to_bits()) | (u64::from(muted) << 32),
+                Ordering::Release,
+            );
+            if case == "global_mute" {
+                controller.message(&AudioThreadMessage::SetGlobalMute(true));
+            }
+            let amplitude = if case == "peak_protection" { 4.0 } else { 0.4 };
+            if case == "peak_protection" {
+                renderer.get_mut().peak_shared.publish(
+                    super::super::peak_protection::Config {
+                        enabled: true,
+                        ceiling_db: -6.020_6,
+                        ..Default::default()
+                    }
+                    .prepare(48_000),
+                );
+            }
+            let mut output = [0.0; 512];
+            let mut common = [0.0; 2];
+            // 出力gainの補間が収束してから観測する。デバイスも実時間の待機も使わない。
+            for _ in 0..32 {
+                for _ in 0..256 {
+                    input.try_push(amplitude).unwrap();
+                    input.try_push(-amplitude * 0.5).unwrap();
+                }
+                renderer.get_mut().render(&mut output, None);
+                while let Some(frame) = broadcast.try_pop() {
+                    common = frame.voice;
+                }
+            }
+            let pre_output = amplitude * input_gain;
+            assert_eq!(common, [pre_output, -pre_output * 0.5]);
+            let expected = if muted || case == "global_mute" {
+                0.0
+            } else if case == "peak_protection" {
+                0.5
+            } else {
+                pre_output * trim * if case == "output_gain" { 0.5 } else { 1.0 }
+            };
+            let peak = output.as_chunks::<2>().0.iter().fold([0.0_f32; 2], |p, f| {
+                [p[0].max(f[0].abs()), p[1].max(f[1].abs())]
+            });
+            for (a, e) in peak.into_iter().zip([expected, expected * 0.5]) {
+                assert!(
+                    (a - e).abs() < 1e-5,
+                    "{case}: actual={peak:?}, expected={expected}"
+                );
+            }
+            eprintln!("#464 split {case}: broadcast_tap={common:?}, monitor_peak={peak:?}");
+        }
+    }
     fn fixture_with_state(initial_state: Option<&State>) -> Fixture {
         fixture_with_channels(initial_state, 2, [1, 0])
     }

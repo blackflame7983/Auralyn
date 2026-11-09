@@ -203,6 +203,43 @@ impl Broadcast {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dsp464_voice_peak_precedes_alignment_while_mix_peak_follows_alignment() {
+        let levels = super::super::Levels {
+            offset_ms: -100,
+            ..Default::default()
+        };
+        let shared = Arc::new(Shared::new(&levels));
+        shared.update(&levels, Some(0)).unwrap();
+        let source = Arc::new(process_capture::Shared::new(Arc::default()));
+        let mut worker = Broadcast::new(48_000, shared.clone(), source).unwrap();
+        let frames = [BroadcastFrame::default(); 256];
+        let mut audio = vec![vec![0.0; 256]; 2];
+        // 無音でgainだけ収束させる。遅延線には有音をまだ入れない。
+        worker.process(&mut audio, &frames);
+        audio[0][0] = 0.4;
+        audio[1][0] = -0.2;
+        worker.process(&mut audio, &frames);
+        assert_eq!(Shared::peaks(&shared.voice_peak), [0.4, 0.2]);
+        assert_eq!(Shared::peaks(&shared.mix_peak), [0.0; 2]);
+        assert!(audio.iter().flatten().all(|sample| *sample == 0.0));
+        let mut rendered = 0;
+        let mut impulse = None;
+        for _ in 0..20 {
+            audio.iter_mut().for_each(|channel| channel.fill(0.0));
+            worker.process(&mut audio, &frames);
+            assert_eq!(Shared::peaks(&shared.voice_peak), [0.0; 2]);
+            if let Some(index) = audio[0].iter().position(|sample| *sample != 0.0) {
+                assert_eq!(Shared::peaks(&shared.mix_peak), [0.4, 0.2]);
+                assert_eq!([audio[0][index], audio[1][index]], [0.4, -0.2]);
+                impulse = Some(256 + rendered + index);
+            }
+            rendered += 256;
+        }
+        assert_eq!(impulse, Some(4800));
+        eprintln!("#464 alignment: voice_peak=[0.4,0.2] before delay, mix_peak=[0.4,0.2] at 4800 frames (100 ms)");
+    }
     #[test]
     fn invalid_declared_delay_mutes_broadcast_without_allocating_an_error_in_processing() {
         let shared = Arc::new(Shared::new(&super::super::Levels::default()));

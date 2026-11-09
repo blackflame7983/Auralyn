@@ -193,3 +193,7 @@ impl Render {
         [self.samples[index * 2], self.samples[index * 2 + 1]]
     }
 }
+
+#[cfg(test)]
+#[path = "input_route_tests.rs"]
+mod route_tests;

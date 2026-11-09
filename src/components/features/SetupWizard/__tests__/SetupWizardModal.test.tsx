@@ -1012,6 +1012,37 @@ describe('セットアップの見た目と動き（#294）', () => {
 describe('セットアップでの ASIO（#291）', () => {
     const asio = (isInput: boolean): AudioDevice => ({ name: 'Test ASIO', host: 'ASIO', is_input: isInput, index: 0, channels: 8, is_default: false, id: 'asio:test' });
 
+    it('#464: 3ch ASIOの最後のモノラル候補を空にせず、開始と保存へ[2,2]を渡す', async () => {
+        inputs = [{ ...asio(true), channels: 3 }];
+        outputs = [{ ...asio(false), channels: 3 }];
+        const { onApplyConfig } = await openWizard();
+        fireEvent.click(screen.getByRole('radio', { name: 'OBSで配信' }));
+        fireEvent.click(await screen.findByRole('radio', { name: 'ASIO（オーディオインターフェース）' }));
+        await waitFor(() => expect(screen.getByRole('combobox', { name: '機器' })).toHaveValue('Test ASIO'));
+        fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
+        for (const name of ['入力チャンネル', '出力チャンネル']) {
+            const select = await screen.findByRole('combobox', { name });
+            const options = within(select).getAllByRole('option') as HTMLOptionElement[];
+            expect(options.map(option => option.value.split(',').map(Number))).toEqual([[0, 1], [2, 2]]);
+            expect(options.every(option => option.textContent?.trim())).toBe(true);
+            expect(select).toHaveValue('0,1');
+            fireEvent.change(select, { target: { value: '2,2' } });
+            expect(select).toHaveValue('2,2');
+            expect((select as HTMLSelectElement).selectedOptions).toHaveLength(1);
+        }
+        fireEvent.click(screen.getByRole('button', { name: /次へ/ }));
+        fireEvent.click(await screen.findByRole('button', { name: 'マイクの音を流して確認' }));
+        await screen.findByRole('button', { name: 'マイクの確認を停止' });
+        const routing = { inputChannels: [2, 2], outputRouting: { mode: 'independent', channels: [2, 2] } };
+        expect(invoke).toHaveBeenCalledWith('start_audio', expect.objectContaining({ host: 'ASIO', channelRouting: routing }));
+        fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
+        await screen.findByRole('heading', { name: '音声設定を保存しました' });
+        const starts = vi.mocked(invoke).mock.calls.filter(([command]) => command === 'start_audio');
+        expect(starts.length).toBeGreaterThan(0);
+        for (const [, payload] of starts) expect(payload).toEqual(expect.objectContaining({ channelRouting: routing }));
+        expect(onApplyConfig).toHaveBeenCalledExactlyOnceWith('ASIO', 'Test ASIO', 'Test ASIO', expect.objectContaining({ routing }));
+    });
+
     it.each(['Realtek ASIO', 'VB-Audio Voicemeeter Insert Virtual ASIO'])('専用driverを先に出しても保存済みの%sを上書きしない', async name => {
         const generic = { ...asio(true), name, id: 'asio:generic' };
         inputs = [generic, asio(true)];
