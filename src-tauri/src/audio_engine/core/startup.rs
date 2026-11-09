@@ -1432,6 +1432,7 @@ impl Engine {
                             }
                         }
                         if let Some(shared) = &process_output_shared {
+                            renderer.report_resume(shared);
                             shared.rendered(renderer, audio_cons.occupied_len() / 2);
                         }
                         // 再primingの待ちは無音を返す正常な状態。このcallbackの不足は警告に入れない。

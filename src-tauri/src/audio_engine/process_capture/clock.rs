@@ -9,6 +9,13 @@ const BLOCK: usize = 256;
 pub const TARGET: usize = 2048;
 pub const CAPACITY: usize = 16_384;
 const LIMIT: f64 = 0.002;
+// 窓の底の丸め・callback到着順の余裕。SRCの消費単位（BLOCK）とは別に取る。
+const RESUME_MARGIN: usize = 32;
+const RESUME_WINDOW_MS: usize = 40;
+
+fn correction_span() -> usize {
+    (LIMIT / 0.004 * TARGET as f64).round() as usize
+}
 /// 最後の packet からこれ以上空いた underrun は、queue を捨てて再 priming する。
 const STALE_PACKET_MS: u64 = 30;
 /// packet が新しいまま underrun がこれ以上続けば失敗にし、無音で埋め続けない。
@@ -169,6 +176,15 @@ pub struct Renderer {
     output: Vec<Vec<f32>>,
     cursor: usize,
     primed: bool,
+    previous_floor: Option<usize>,
+    window_floor: usize,
+    window_frames: usize,
+    fade_out: usize,
+    fade_out_gain: f32,
+    fade_in: usize,
+    resume_resets: u64,
+    resume_discarded: u64,
+    pending_resume: Option<usize>,
     pub failed: bool,
     pub failed_underrun: bool,
     pub underruns: u64,
@@ -183,6 +199,11 @@ impl Renderer {
         self.resampler.reset();
         self.cursor = BLOCK;
         self.primed = false;
+        self.previous_floor = None;
+        self.window_floor = usize::MAX;
+        self.window_frames = 0;
+        self.fade_out = 0;
+        self.fade_in = 0;
         self.failed = false;
         self.failed_underrun = false;
     }
@@ -242,6 +263,15 @@ impl Renderer {
             output,
             cursor: BLOCK,
             primed: false,
+            previous_floor: None,
+            window_floor: usize::MAX,
+            window_frames: 0,
+            fade_out: 0,
+            fade_out_gain: 1.0,
+            fade_in: 0,
+            resume_resets: 0,
+            resume_discarded: 0,
+            pending_resume: None,
             failed: false,
             failed_underrun: false,
             underruns: 0,
@@ -252,7 +282,53 @@ impl Renderer {
         })
     }
 
+    /// 既存のsnapshot統計へ一度だけ加算する（音声callback内で確保しない）。
+    pub(crate) fn report_resume(&mut self, shared: &super::Shared) {
+        if let Some(discarded) = self.pending_resume.take() {
+            shared.paused(discarded);
+        }
+    }
+
+    fn fade_frames(&self) -> usize {
+        (self.output_rate as usize / 200).max(1)
+    }
+
     pub fn render(&mut self, samples: &mut [f32], rx: &mut impl FrameQueue) {
+        self.render_inner(samples, rx);
+        let frames = samples.len() / 2;
+        if frames == 0 || self.failed || self.fade_out > 0 || (!self.primed && self.fade_in == 0) {
+            return;
+        }
+        // render後の底を、出力時間40ms以上の非スライディング窓で比較する。
+        // frame数を積算するのでcallback長が変わっても40ms未満では判定せず、確保もしない。
+        // packetの鋸歯状の揺れを除く代わりに、検出まで最大約2窓（約80ms、
+        // callback単位の切上げ分を除く）だけ余分に古い音を鳴らすことを許容する。
+        self.window_floor = self.window_floor.min(rx.frames());
+        self.window_frames += frames;
+        if self.window_frames < (self.output_rate as usize * RESUME_WINDOW_MS).div_ceil(1000) {
+            return;
+        }
+        let floor = self.window_floor;
+        self.window_floor = usize::MAX;
+        self.window_frames = 0;
+        let target = callback_target(self.input_rate, self.output_rate, frames);
+        if floor > target + correction_span()
+            && self
+                .previous_floor
+                .is_some_and(|previous| floor.saturating_sub(previous) > BLOCK + RESUME_MARGIN)
+        {
+            // 底そのものの跳びだけを再開として数え、緩やかなクロック差では発火しない。
+            // fade in中の再停止も、現在のgainから滑らかに下げる。
+            self.fade_out_gain = 1.0 - self.fade_in as f32 / self.fade_frames() as f32;
+            self.fade_out = self.fade_frames();
+            self.fade_in = 0;
+            self.previous_floor = None;
+        } else {
+            self.previous_floor = Some(floor);
+        }
+    }
+
+    fn render_inner(&mut self, samples: &mut [f32], rx: &mut impl FrameQueue) {
         samples.fill(0.0);
         if self.failed {
             return;
@@ -285,7 +361,7 @@ impl Renderer {
             self.failed = true;
             return;
         }
-        for frame in samples.as_chunks_mut::<2>().0 {
+        for (index, frame) in samples.as_chunks_mut::<2>().0.iter_mut().enumerate() {
             if self.cursor == BLOCK {
                 let needed = self.resampler.input_frames_next();
                 if needed > self.input[0].len() || rx.frames() < needed {
@@ -322,6 +398,36 @@ impl Renderer {
             }
             self.cursor += 1;
             self.rendered += 1;
+            if self.fade_out > 0 {
+                self.fade_out -= 1;
+                let gain = self.fade_out_gain * self.fade_out as f32 / self.fade_frames() as f32;
+                frame[0] *= gain;
+                frame[1] *= gain;
+                if self.fade_out == 0 {
+                    // 破棄直後の古さの上限は入力target frame。SRC内の旧世代もresetする。
+                    let to_discard = rx.frames().saturating_sub(target);
+                    let mut discarded = 0;
+                    for _ in 0..to_discard {
+                        if rx.pop_frame().is_none() {
+                            break;
+                        }
+                        discarded += 1;
+                    }
+                    self.wait_for_audio();
+                    self.fade_in = self.fade_frames();
+                    self.resume_resets += 1;
+                    self.resume_discarded += discarded as u64;
+                    self.pending_resume = Some(discarded);
+                    // 残りは意図した無音。次callbackから新しい世代をfade inする。
+                    self.rendered += (frames - index - 1) as u64;
+                    return;
+                }
+            } else if self.fade_in > 0 {
+                self.fade_in -= 1;
+                let gain = 1.0 - self.fade_in as f32 / self.fade_frames() as f32;
+                frame[0] *= gain;
+                frame[1] *= gain;
+            }
         }
     }
 }
@@ -334,10 +440,6 @@ mod tests {
         traits::{Observer, Producer, Split},
         HeapRb,
     };
-
-    fn correction_span() -> usize {
-        (LIMIT / 0.004 * TARGET as f64).round() as usize
-    }
 
     fn assert_depth_after_render(queued: usize, setpoint: usize, ppm: f64) {
         let span = correction_span();
@@ -668,6 +770,288 @@ mod tests {
             }
             assert_eq!(renderer.underruns, 0);
             assert!(output.iter().any(|sample| *sample < -0.1));
+        }
+    }
+
+    // 100Hz・振幅0.2（逆相stereo）。callback間も含めた隣接差を測る。
+    fn resume478_push_tone(
+        tx: &mut impl Producer<Item = [f32; 2]>,
+        ordinal: &mut usize,
+        n: usize,
+        rate: u32,
+    ) {
+        for _ in 0..n {
+            let x = (std::f64::consts::TAU * 100.0 * *ordinal as f64 / f64::from(rate)).sin()
+                as f32
+                * 0.2;
+            tx.try_push([x, -x]).unwrap();
+            *ordinal += 1;
+        }
+    }
+
+    #[test]
+    fn resume478_repeated_consumer_pauses_bound_depth_steps_and_allocations() {
+        for (input_rate, output_rate, frames) in [
+            (48_000, 48_000, 256),
+            (44_100, 48_000, 128),
+            (96_000, 48_000, 1024),
+        ] {
+            for pause_ms in [20, 100, 500] {
+                // 500msも保持できる設定。既定容量を越える場合は別試験で失敗を固定する。
+                let capacity = 65_536;
+                let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(capacity).split();
+                let mut renderer =
+                    Renderer::with_rates_and_capacity(input_rate, output_rate, capacity).unwrap();
+                let target = callback_target(input_rate, output_rate, frames);
+                let mut output = vec![0.0; frames * 2];
+                let shared = super::super::Shared::new(std::sync::Arc::default());
+                let mut ordinal = 0;
+                let mut fraction = 0.0;
+                let mut previous = [0.0f32; 2];
+                let mut max_step = 0.0f32;
+                resume478_push_tone(&mut tx, &mut ordinal, target, input_rate);
+                for _ in 0..16 {
+                    resume478_push_tone(
+                        &mut tx,
+                        &mut ordinal,
+                        frames * input_rate as usize / output_rate as usize,
+                        input_rate,
+                    );
+                    renderer.render(&mut output, &mut Stereo(&mut rx));
+                    previous.copy_from_slice(&output[output.len() - 2..]);
+                }
+                let mut depths = [0usize; 5];
+                let window_callbacks =
+                    (output_rate as usize * RESUME_WINDOW_MS).div_ceil(1000 * frames);
+                let settled_callback =
+                    2 * window_callbacks + 2 * renderer.fade_frames().div_ceil(frames);
+                for depth in &mut depths {
+                    // producerは動き続け、consumerだけを止める。
+                    resume478_push_tone(
+                        &mut tx,
+                        &mut ordinal,
+                        input_rate as usize * pause_ms / 1000,
+                        input_rate,
+                    );
+                    for callback in 0..40.max(settled_callback + 1) {
+                        fraction += frames as f64 * f64::from(input_rate) / f64::from(output_rate);
+                        let incoming = fraction as usize;
+                        fraction -= incoming as f64;
+                        let counts = allocation_counts(|| {
+                            resume478_push_tone(&mut tx, &mut ordinal, incoming, input_rate);
+                            let resets = renderer.resume_resets;
+                            renderer.render(&mut output, &mut Stereo(&mut rx));
+                            if renderer.resume_resets > resets {
+                                assert_eq!(rx.occupied_len(), target);
+                            }
+                            renderer.report_resume(&shared);
+                        });
+                        assert_eq!(counts, (0, 0));
+                        assert!(
+                            !renderer.failed,
+                            "{input_rate}->{output_rate}, {pause_ms}ms"
+                        );
+                        for pair in output.as_chunks::<2>().0 {
+                            assert_eq!(pair[0], -pair[1]);
+                            for ch in 0..2 {
+                                max_step = max_step.max((pair[ch] - previous[ch]).abs());
+                            }
+                            previous = *pair;
+                        }
+                        // 2窓分の検出待ちとfade out/inの後で、繰返しの深さを比較する。
+                        if callback == settled_callback {
+                            *depth = rx.occupied_len();
+                            assert_depth_after_render(*depth, target, 0.0);
+                        }
+                    }
+                    assert_eq!(renderer.fade_out, 0);
+                    assert_eq!(renderer.fade_in, 0);
+                }
+                assert!(
+                    max_step < 0.01,
+                    "{input_rate}->{output_rate}, {pause_ms}ms: step={max_step}"
+                );
+                assert_eq!(renderer.underruns, 0);
+                let snapshot = shared.snapshot();
+                assert_eq!(snapshot.pause_resets, renderer.resume_resets);
+                assert_eq!(snapshot.waiting_discarded_frames, renderer.resume_discarded);
+                if pause_ms >= 100 {
+                    assert_eq!(renderer.resume_resets, 5);
+                }
+                eprintln!("#478 {input_rate}->{output_rate} frames={frames} pause={pause_ms}ms target={target} depths={depths:?} max_step={max_step:.8} resets={}", renderer.resume_resets);
+            }
+        }
+    }
+
+    #[test]
+    fn resume478_discards_old_queue_and_src_history_even_when_fades_cross_callbacks() {
+        let frames = 128;
+        let target = callback_target(48_000, 48_000, frames);
+        let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
+        let mut renderer = Renderer::new(48_000).unwrap();
+        let mut output = [0.0; 256];
+        let window_callbacks = (48_000 * RESUME_WINDOW_MS).div_ceil(1000 * frames);
+        for _ in 0..target + BLOCK {
+            tx.try_push([0.5, -0.5]).unwrap();
+        }
+        for _ in 0..8 {
+            for _ in 0..frames {
+                tx.try_push([0.5, -0.5]).unwrap();
+            }
+            renderer.render(&mut output, &mut Stereo(&mut rx));
+        }
+        assert!(output.iter().any(|sample| *sample > 0.49));
+        for _ in 0..4800 {
+            tx.try_push([0.5, -0.5]).unwrap();
+        }
+        for _ in 0..target {
+            tx.try_push([-0.2, 0.2]).unwrap();
+        }
+        for _ in 0..2 * window_callbacks + renderer.fade_frames().div_ceil(frames) {
+            for _ in 0..frames {
+                tx.try_push([-0.2, 0.2]).unwrap();
+            }
+            assert_eq!(
+                allocation_counts(|| renderer.render(&mut output, &mut Stereo(&mut rx))),
+                (0, 0)
+            );
+            if renderer.resume_resets == 1 {
+                break;
+            }
+        }
+        assert_eq!(renderer.resume_resets, 1);
+        assert_eq!(rx.occupied_len(), target);
+        assert_eq!(output[output.len() - 2..], [0.0; 2]);
+        // 新しい音だけを出す。SRC内部の0.5も、queue先頭の旧世代も残さない。
+        let mut previous = 0.0f32;
+        let mut max_step = 0.0f32;
+        for callback in 0..2 * window_callbacks + 2 * renderer.fade_frames().div_ceil(frames) + 1 {
+            for _ in 0..frames {
+                tx.try_push([-0.2, 0.2]).unwrap();
+            }
+            assert_eq!(
+                allocation_counts(|| renderer.render(&mut output, &mut Stereo(&mut rx))),
+                (0, 0)
+            );
+            for pair in output.as_chunks::<2>().0 {
+                assert!(pair[0] <= 1e-4 && pair[0] > -0.25);
+                max_step = max_step.max((pair[0] - previous).abs());
+                previous = pair[0];
+            }
+            if callback == 0 {
+                // fade in途中で再びconsumerを止めても、窓の再集計後に旧音を破棄する。
+                for _ in 0..4800 {
+                    tx.try_push([-0.2, 0.2]).unwrap();
+                }
+            }
+        }
+        assert!(!renderer.failed);
+        assert_eq!(renderer.resume_resets, 2);
+        assert!(max_step < 0.01, "step={max_step}");
+        eprintln!(
+            "#478 history depth={} target={target} max_step={max_step:.8} resets={}",
+            rx.occupied_len(),
+            renderer.resume_resets
+        );
+    }
+
+    #[test]
+    fn resume478_default_capacity_500ms_fails_without_hiding_overflow() {
+        for _ in 0..5 {
+            let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
+            let mut renderer = Renderer::new(48_000).unwrap();
+            let mut output = [0.0; BLOCK * 2];
+            for _ in 0..callback_target(48_000, 48_000, BLOCK) {
+                tx.try_push([0.2; 2]).unwrap();
+            }
+            renderer.render(&mut output, &mut Stereo(&mut rx));
+            let mut rejected = 0;
+            let counts = allocation_counts(|| {
+                for _ in 0..24_000 {
+                    rejected += usize::from(tx.try_push([0.2; 2]).is_err());
+                }
+                renderer.render(&mut output, &mut Stereo(&mut rx));
+            });
+            assert_eq!(counts, (0, 0));
+            assert!(rejected > 0);
+            assert!(renderer.failed && !renderer.failed_underrun);
+            assert_eq!(renderer.resume_resets, 0);
+            assert!(output.iter().all(|s| *s == 0.0));
+            renderer.render(&mut output, &mut Stereo(&mut rx));
+            assert!(renderer.failed);
+            assert!(output.iter().all(|s| *s == 0.0));
+        }
+    }
+
+    #[test]
+    fn resume478_gradual_1500ppm_drift_never_triggers_a_resume() {
+        for (input_rate, output_rate) in [(48_000, 48_000), (44_100, 48_000), (96_000, 44_100)] {
+            let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
+            let mut renderer = Renderer::with_rates(input_rate, output_rate).unwrap();
+            let mut output = [0.0; BLOCK * 2];
+            let target = callback_target(input_rate, output_rate, BLOCK);
+            for _ in 0..target {
+                tx.try_push([0.2, -0.2]).unwrap();
+            }
+            renderer.render(&mut output, &mut Stereo(&mut rx));
+            let mut fraction = 0.0;
+            for _ in 0..4000 {
+                assert_eq!(
+                    allocation_counts(|| {
+                        push_fractional(
+                            &mut tx,
+                            &mut fraction,
+                            BLOCK as f64 * f64::from(input_rate) / f64::from(output_rate) * 1.0015,
+                            [0.2, -0.2],
+                        );
+                        renderer.render(&mut output, &mut Stereo(&mut rx));
+                    }),
+                    (0, 0)
+                );
+                assert!(!renderer.failed);
+                assert_depth_after_render(rx.occupied_len(), target, 1500.0);
+                assert!(renderer.correction_ppm.abs() <= 2000.0 + 1e-3);
+            }
+            assert_eq!(renderer.resume_resets, 0);
+            assert_eq!(renderer.resume_discarded, 0);
+        }
+    }
+
+    // 10msのpacket到着で瞬間的に補正帯を越えても、窓の底が跳ばなければ再開と扱わない。
+    #[test]
+    fn resume478_packet_bursts_with_1500ppm_drift_never_trigger_a_resume() {
+        for (input_rate, output_rate) in [(48_000u32, 48_000u32), (96_000, 48_000)] {
+            let packet = input_rate as usize / 100;
+            let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
+            let mut renderer = Renderer::with_rates(input_rate, output_rate).unwrap();
+            let mut output = [0.0; BLOCK * 2];
+            let target = callback_target(input_rate, output_rate, BLOCK);
+            for _ in 0..target {
+                tx.try_push([0.2, -0.2]).unwrap();
+            }
+            renderer.render(&mut output, &mut Stereo(&mut rx));
+            let per_callback =
+                BLOCK as f64 * f64::from(input_rate) / f64::from(output_rate) * 1.0015;
+            let mut owed = 0.0;
+            for _ in 0..4000 {
+                owed += per_callback;
+                while owed >= packet as f64 {
+                    for _ in 0..packet {
+                        tx.try_push([0.2, -0.2]).unwrap();
+                    }
+                    owed -= packet as f64;
+                }
+                renderer.render(&mut output, &mut Stereo(&mut rx));
+                assert!(!renderer.failed, "{input_rate}->{output_rate}");
+                assert!(rx.occupied_len() <= target + correction_span() + packet);
+            }
+            assert_eq!(renderer.resume_resets, 0, "{input_rate}->{output_rate}");
+            assert_eq!(renderer.resume_discarded, 0);
+            eprintln!(
+                "#478 packet {input_rate}->{output_rate} depth={} target={target} resume_resets={}",
+                rx.occupied_len(),
+                renderer.resume_resets
+            );
         }
     }
 

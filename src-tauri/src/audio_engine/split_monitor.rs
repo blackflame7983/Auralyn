@@ -1268,18 +1268,25 @@ mod tests {
         let mut skips = 0;
         let mut faded = false;
         let mut previous_gain = 1.0;
-        for _ in 0..120 {
-            while input.occupied_len() < 4096 {
+        for block in 0..120 {
+            // 破棄直後の一括補充は再開と判定される。速度差の滞留を徐々に戻す。
+            let fill = if block == 0 {
+                4096
+            } else {
+                (input.occupied_len() + output.len() + 64).min(4096)
+            };
+            while input.occupied_len() < fill {
                 input.try_push(0.2).unwrap();
                 input.try_push(-0.4).unwrap();
             }
+            let queued_before = input.occupied_len();
             assert_eq!(
                 crate::vst_host::instance::allocation_counts(|| renderer
                     .get_mut()
                     .render(&mut output, None)),
                 (0, 0)
             );
-            if input.occupied_len() < 4096 - output.len() {
+            if input.occupied_len() < queued_before.saturating_sub(output.len()) {
                 skips += 1;
                 assert_eq!(previous_gain, 0.0);
             }
