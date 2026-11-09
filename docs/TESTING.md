@@ -4,6 +4,8 @@
 
 類似アプリとの比較やリソース使用量を含む評価の軸は [EVALUATION_CRITERIA.md](EVALUATION_CRITERIA.md) に定める。
 
+検証用のビルド・一時領域の作成と終了後の整理は [ビルド領域・容量管理](BUILD_GUIDE.md#ビルド領域容量管理) に従う。並行検証に必要な隔離と証跡を保ち、再生成可能な成果物を作業ごとに残し続けない。
+
 ## Tauri MCP による実アプリの確認
 
 通常の `npm run tauri dev` と配布設定は、意図的に `withGlobalTauri: false` とする。MCPによるWebView操作・撮影には、debugビルド限定のbridgeとグローバルAPIを有効にする上書きが必要である。[セキュリティ設定](SECURITY_RUNTIME.md)を参照し、通常設定やcapabilityを変更しない。既存アプリが動作中なら音声や保存状態への影響を確認してから扱う。
