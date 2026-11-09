@@ -7,6 +7,11 @@ use std::ffi::c_void;
 use std::sync::atomic::Ordering;
 
 impl VstProcessor {
+    /// 制御側で取得済みの値だけを返す。問い合わせ API は呼ばない。
+    pub(crate) fn tail_samples(&self) -> Option<u32> {
+        self.tail_samples
+    }
+
     pub(crate) fn reset_processing(&mut self) -> bool {
         if !self.active_flag.load(Ordering::SeqCst) || self.ptr.is_null() {
             return false;
@@ -543,6 +548,7 @@ mod reset_tests {
                 fail_state: failure,
             }));
             let mut processor = VstProcessor {
+                tail_samples: None,
                 ptr: mock.get().cast(),
                 // SAFETY: テスト用の既知のWindows DLLを保持するだけで、VST呼出し先は別途所有するmockのvtableを使う。
                 _library: Arc::new(unsafe { PluginLibrary::load("kernel32.dll", false) }.unwrap()),
@@ -684,6 +690,7 @@ mod layout_tests {
         }));
         let cap = 8;
         let processor = VstProcessor {
+            tail_samples: None,
             ptr: probe.get().cast(),
             // SAFETY: DLL 保持だけに kernel32 を使い、処理先はテスト内の probe である。
             _library: Arc::new(unsafe { PluginLibrary::load("kernel32.dll", false) }.unwrap()),

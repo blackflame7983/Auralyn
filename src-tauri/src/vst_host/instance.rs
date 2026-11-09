@@ -1296,6 +1296,8 @@ pub struct VstInstance {
 }
 
 pub struct VstProcessor {
+    /// 制御側で取得した tail。RT では問い合わせず、この値だけを参照する。
+    tail_samples: Option<u32>,
     ptr: *mut c_void,
     _library: Arc<PluginLibrary>,
     scratch_inputs: Vec<Vec<f32>>,
@@ -1457,7 +1459,9 @@ unsafe fn negotiate_main_bus(
     // getBusInfo が対応できる 1ch 構成を示すときはそれを使う。それ以外（例: 6ch のみ）はロード失敗にする。
     match (input_default, output_default) {
         (Some(2) | None, Some(2) | None) => {
-            log::warn!("VST bus arrangement could not be negotiated; keeping the legacy stereo layout");
+            log::warn!(
+                "VST bus arrangement could not be negotiated; keeping the legacy stereo layout"
+            );
             Ok(BusLayout::STEREO)
         }
         (Some(1), Some(1)) => Ok(BusLayout::MONO),
@@ -2274,7 +2278,14 @@ impl VstInstance {
             outs.push(vec![0.0; cap]);
         }
 
+        // getTailSamples は UI-thread / Setup Done の API。RT へ渡す前に取得する。
+        // SAFETY: prepared を確認済みで、instance が processor の参照と DLL を保持する。
+        let tail_samples = unsafe {
+            let vtbl = get_vtbl::<IAudioProcessorVtbl>(self.processor);
+            (vtbl.get_tail_samples)(self.processor)
+        };
         Some(VstProcessor {
+            tail_samples: Some(tail_samples),
             ptr: self.processor,
             _library: self._library.clone(),
             scratch_inputs: ins,

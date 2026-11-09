@@ -92,6 +92,7 @@ fn fixture() -> Fixture {
         fail: false,
     }));
     let processor = VstProcessor {
+        tail_samples: Some(0),
         ptr: mock.get().cast(),
         // VSTのインストールに依存せず、DLL保持フィールドだけを構成する。
         // SAFETY: OS の kernel32 を DLL 保持の試験用にロードし、VST の初期化関数は呼ばない。
@@ -413,8 +414,12 @@ struct ScriptMock {
     /// 0 以外なら出力へ一極の残響尾を足す。
     decay: f32,
     state: [f32; 2],
-    delay: [f32; SCRIPT_DELAY_CAP * 2],
-    delay_pos: [u16; 2],
+    delay: Vec<f32>,
+    delay_frames: usize,
+    delay_pos: [usize; 2],
+    tail_samples: u32,
+    tail_queries: u32,
+    processed_frames: u64,
 }
 
 unsafe extern "system" fn script_process(this: *mut c_void, data: *mut c_void) -> i32 {
@@ -428,6 +433,7 @@ unsafe extern "system" fn script_process(this: *mut c_void, data: *mut c_void) -
     let output = &*data.outputs;
     let channels = output.num_channels.max(0) as usize;
     let frames = data.num_samples.max(0) as usize;
+    mock.processed_frames += frames as u64;
     for channel in 0..channels {
         let in_ptr = *input.channel_buffers32.add(channel);
         let out_ptr = *output.channel_buffers32.add(channel);
@@ -446,14 +452,15 @@ unsafe extern "system" fn script_process(this: *mut c_void, data: *mut c_void) -
                 written = mock.replace_value;
             }
             if channel < 2 {
-                let latency = (mock.latency as usize).min(SCRIPT_DELAY_CAP);
+                let latency = mock.delay_frames;
+                let capacity = mock.delay.len() / 2;
                 if latency > 0 {
-                    let pos = mock.delay_pos[channel] as usize;
-                    let base = channel * SCRIPT_DELAY_CAP;
-                    let read = (pos + SCRIPT_DELAY_CAP - latency) % SCRIPT_DELAY_CAP;
+                    let pos = mock.delay_pos[channel];
+                    let base = channel * capacity;
+                    let read = (pos + capacity - latency) % capacity;
                     let delayed = mock.delay[base + read];
                     mock.delay[base + pos] = written;
-                    mock.delay_pos[channel] = ((pos + 1) % SCRIPT_DELAY_CAP) as u16;
+                    mock.delay_pos[channel] = (pos + 1) % capacity;
                     written = delayed;
                 }
                 if mock.decay != 0.0 {
@@ -473,6 +480,12 @@ unsafe extern "system" fn script_latency(this: *mut c_void) -> u32 {
     mock.latency
 }
 
+unsafe extern "system" fn script_tail(this: *mut c_void) -> u32 {
+    let mock = &mut *(this as *mut ScriptMock);
+    mock.tail_queries += 1;
+    mock.tail_samples
+}
+
 static SCRIPT_VTABLE: IAudioProcessorVtbl = IAudioProcessorVtbl {
     base: FUnknownVtbl {
         query_interface: query,
@@ -486,7 +499,7 @@ static SCRIPT_VTABLE: IAudioProcessorVtbl = IAudioProcessorVtbl {
     setup_processing: setup,
     set_processing: sample_size,
     process: script_process,
-    get_tail_samples: samples,
+    get_tail_samples: script_tail,
 };
 
 pub(crate) struct ScriptedVst {
@@ -512,7 +525,23 @@ impl ScriptedVst {
     pub(crate) fn delay(latency: u32) -> Self {
         let vst = Self::create(1.0, false, 0.0, 255);
         // SAFETY: mock は ScriptedVst が所有し、process 前の同じテストスレッドから書く。
-        unsafe { (*vst.mock.get()).latency = latency.min(SCRIPT_DELAY_CAP as u32) };
+        unsafe {
+            (*vst.mock.get()).latency = latency.min(SCRIPT_DELAY_CAP as u32);
+            (*vst.mock.get()).delay_frames = latency.min(SCRIPT_DELAY_CAP as u32) as usize;
+        };
+        vst
+    }
+
+    /// 申告遅延とは独立した内部 delay。確保は構築時だけ行う。
+    pub(crate) fn delayed_tail(frames: usize, tail_samples: u32) -> Self {
+        let vst = Self::create(1.0, false, 0.0, 255);
+        // SAFETY: 構築中の mock を同じテストスレッドだけが参照する。
+        unsafe {
+            let mock = &mut *vst.mock.get();
+            mock.delay = vec![0.0; frames * 2];
+            mock.delay_frames = frames;
+            mock.tail_samples = tail_samples;
+        }
         vst
     }
 
@@ -536,11 +565,17 @@ impl ScriptedVst {
             latency: 0,
             decay: 0.0,
             state: [0.0; 2],
-            delay: [0.0; SCRIPT_DELAY_CAP * 2],
+            delay: vec![0.0; SCRIPT_DELAY_CAP * 2],
+            delay_frames: 0,
+            // 倍率だけのVSTは尾を持たない。kNoTail（0）は不明として扱うため、短い既知の尾を返す。
+            tail_samples: 1,
+            tail_queries: 0,
+            processed_frames: 0,
             delay_pos: [0; 2],
         }));
         let max_block = 4_096;
         let processor = VstProcessor {
+            tail_samples: Some(0),
             ptr: mock.get().cast(),
             // SAFETY: kernel32 を DLL 保持の試験用にロードし、VST の初期化関数は呼ばない。
             _library: Arc::new(unsafe { PluginLibrary::load("kernel32.dll", false) }.unwrap()),
@@ -563,7 +598,20 @@ impl ScriptedVst {
     }
 
     pub(crate) fn take(&mut self) -> VstProcessor {
-        self.processor.take().expect("synthetic processor")
+        let mut processor = self.processor.take().expect("synthetic processor");
+        // SAFETY: 本番の create_processor と同様に、RT へ渡す前の制御側で取得する。
+        processor.tail_samples = Some(unsafe { script_tail(self.mock.get().cast()) });
+        processor
+    }
+
+    pub(crate) fn tail_queries(&self) -> u32 {
+        // SAFETY: process が戻った後、所有する mock を同じテストスレッドだけが読む。
+        unsafe { (*self.mock.get()).tail_queries }
+    }
+
+    pub(crate) fn processed_frames(&self) -> u64 {
+        // SAFETY: process が戻った後、所有する mock を同じテストスレッドだけが読む。
+        unsafe { (*self.mock.get()).processed_frames }
     }
 
     pub(crate) fn calls(&self) -> u32 {
