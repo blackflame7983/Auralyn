@@ -1,4 +1,4 @@
-//! 有限回の滞留回復。速度差を繰り返しの破棄で隠さず、ASRCは行わない。
+//! 再開境界と有限回の滞留回復。速度差を繰り返しの破棄で隠さず、ASRCは行わない。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
     Running,
@@ -20,6 +20,8 @@ pub struct Recovery {
     used: bool,
     unsupported: bool,
     exhausted: bool,
+    previous_depth: Option<usize>,
+    resume: bool,
 }
 
 impl Recovery {
@@ -37,6 +39,8 @@ impl Recovery {
             used: false,
             unsupported: false,
             exhausted: false,
+            previous_depth: None,
+            resume: false,
         }
     }
     /// 読出し前の完全frame数。burstは入力側が観測した最大生成量。
@@ -48,6 +52,11 @@ impl Recovery {
         burst: usize,
         blocked: bool,
     ) -> usize {
+        // 前回の読出し後からの増分だけを見る。初回の深さは停止の証拠にしない。
+        let growth = self
+            .previous_depth
+            .map(|previous| queued.saturating_sub(previous));
+        self.previous_depth = Some(queued.saturating_sub(frames));
         self.block = self.block.max(frames).max(burst);
         let required = self.block.checked_mul(self.high_blocks + 1);
         if self.block == 0 || required.is_none_or(|n| n > self.capacity) {
@@ -55,15 +64,34 @@ impl Recovery {
         }
         if blocked || self.unsupported {
             self.high_frames = 0;
+            self.resume = false;
             if self.phase != Phase::Running {
                 self.phase = Phase::Up;
             }
             return 0;
         }
+        // 入力burstとは別に32 frameの丸め・到着順の余裕を持つ。
+        if queued > self.high()
+            && growth.is_some_and(|n| n > frames.saturating_add(burst).saturating_add(32))
+        {
+            self.resume = true;
+            self.high_frames = 0;
+            // 既に無音なら、そのまま破棄する。fade中の停止も回復枠を消費しない。
+            if self.phase != Phase::Silent {
+                self.phase = Phase::Down;
+            }
+        }
         if self.phase == Phase::Silent {
-            self.used = true;
+            if !self.resume {
+                self.used = true;
+            }
+            self.resume = false;
+            self.high_frames = 0;
             self.phase = Phase::Up;
-            return queued.saturating_sub(self.target_blocks * self.block);
+            // 破棄直後の古さの上限はtarget_blocks × block frame。
+            let skip = queued.saturating_sub(self.target_blocks * self.block);
+            self.previous_depth = Some(queued.saturating_sub(skip).saturating_sub(frames));
+            return skip;
         }
         if self.phase == Phase::Running {
             if queued > self.high_blocks * self.block {
@@ -151,6 +179,133 @@ mod tests {
     use crate::dsp_verification_allocator::allocation_counts;
 
     #[test]
+    fn resume478_packet_bursts_with_gradual_backlog_never_bypass_drift_budget() {
+        for rate in [48_000, 96_000] {
+            let packet = rate / 100;
+            let frames = packet / 2;
+            let mut r = Recovery::new(16_384, rate, 1, 3);
+            let mut queued = 2 * packet;
+            let mut owed = 0.0;
+            let mut skips = 0;
+            let counts = allocation_counts(|| {
+                for _ in 0..12_000 {
+                    // 入力を10msのpacketで届け、+1500ppmの滞留も重ねる。
+                    owed += frames as f64 * 1.0015;
+                    while owed >= packet as f64 {
+                        queued += packet;
+                        owed -= packet as f64;
+                    }
+                    let skip = r.begin_block(queued, frames, packet, false);
+                    assert!(!r.resume, "packet到着を再開と誤判定した");
+                    if skip > 0 {
+                        queued -= skip;
+                        assert_eq!(queued, r.target());
+                        assert!(r.used);
+                        skips += 1;
+                    }
+                    assert!(queued >= frames && queued < r.capacity);
+                    queued -= frames;
+                    for _ in 0..frames {
+                        r.next_gain();
+                    }
+                }
+            });
+            assert_eq!(counts, (0, 0));
+            assert_eq!(skips, 1);
+            assert_eq!(r.status(), 2);
+            eprintln!("#478 recovery packet rate={rate} depth={queued} target={} skips={skips} resume=false status={}", r.target(), r.status());
+        }
+    }
+
+    #[test]
+    fn resume478_three_resume_boundaries_recover_without_consuming_drift_budget() {
+        let mut r = Recovery::new(8192, 48_000, 1, 3);
+        let block = 256;
+        let mut queued = block;
+        let mut previous = 1.0f32;
+        let mut max_step = 0.0f32;
+        let counts = allocation_counts(|| {
+            r.begin_block(queued, block, block, false);
+            for _ in 0..block {
+                r.next_gain();
+            }
+            for _ in 0..3 {
+                queued = 4096;
+                assert_eq!(r.begin_block(queued, block, block, false), 0);
+                assert_eq!(r.phase, Phase::Down);
+                let mut skipped = false;
+                for _ in 0..12 {
+                    for _ in 0..block {
+                        let gain = r.next_gain();
+                        max_step = max_step.max((gain - previous).abs());
+                        previous = gain;
+                    }
+                    // 通常の入力と読出しは同量なのでqueuedは増えない。
+                    let skip = r.begin_block(queued, block, block, false);
+                    if skip > 0 {
+                        assert_eq!(r.gain, 0.0);
+                        queued -= skip;
+                        assert_eq!(queued, r.target());
+                        skipped = true;
+                    }
+                }
+                assert!(skipped);
+                assert!(!r.used);
+                assert_eq!(r.phase, Phase::Running);
+                assert_eq!(r.status(), 0);
+            }
+        });
+        assert_eq!(counts, (0, 0));
+        assert!(max_step <= 1.0 / 480.0 + 1e-6);
+        eprintln!(
+            "#478 recovery target={} max_gain_step={max_step:.8}",
+            r.target()
+        );
+        // 再開を3回処理した後も、緩やかな滞留の回復枠は残る。
+        let mut skips = 0;
+        for _ in 0..2400 {
+            queued = (queued + 1).min(2048);
+            let skip = r.begin_block(queued, block, block, false);
+            if skip > 0 {
+                queued -= skip;
+                skips += 1;
+            }
+            for _ in 0..block {
+                r.next_gain();
+            }
+        }
+        assert_eq!(skips, 1);
+        assert_eq!(r.status(), 2);
+    }
+
+    #[test]
+    fn resume478_gradual_growth_exhausts_on_second_recovery_attempt() {
+        let mut r = Recovery::new(8192, 48_000, 1, 3);
+        let mut queued = 256usize;
+        let mut skips = 0;
+        assert_eq!(
+            allocation_counts(|| {
+                for _ in 0..4000 {
+                    queued = queued.saturating_add(4).min(4096);
+                    let skip = r.begin_block(queued, 256, 256, false);
+                    if skip > 0 {
+                        queued -= skip;
+                        assert_eq!(queued, r.target());
+                        skips += 1;
+                    }
+                    for _ in 0..256 {
+                        r.next_gain();
+                    }
+                }
+            }),
+            (0, 0)
+        );
+        assert_eq!(skips, 1);
+        assert!(r.used);
+        assert_eq!(r.status(), 2);
+    }
+
+    #[test]
     fn loudness_request_during_down_or_silent_measures_only_next_unity_block() {
         for silent in [false, true] {
             let mut r = Recovery::new(4363, 96000, 1, 3);
@@ -212,14 +367,19 @@ mod tests {
     }
 
     #[test]
-    fn one_recovery_then_second_pause_keeps_unity_and_reports_exhausted_without_allocating() {
+    fn one_recovery_then_second_gradual_backlog_keeps_unity_and_reports_exhausted_without_allocating(
+    ) {
         let mut r = Recovery::new(4363, 96000, 1, 3);
         let counts = allocation_counts(|| {
             let mut skips = 0;
+            let mut queued = 4096;
             for _ in 0..400 {
-                let skip = r.begin_block(4096, 512, 512, false);
+                // 破棄した分を一括補充すると再開境界になるため、滞留を少しずつ戻す。
+                queued = (queued + 16).min(4096);
+                let skip = r.begin_block(queued, 512, 512, false);
                 if skip > 0 {
                     assert_eq!(r.gain, 0.0);
+                    queued -= skip;
                     skips += 1;
                 }
                 for _ in 0..512 {

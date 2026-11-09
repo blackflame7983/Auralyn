@@ -322,3 +322,43 @@ fn dsp464_track_meters_are_after_track_gain_before_monitor_gate_and_downstream_p
         assert!((monitor_music[1] + 0.1 * mg * gate).abs() < 1e-5);
     }
 }
+
+#[test]
+fn resume478_mixing_route_publishes_resume_counts_once_per_boundary() {
+    let (mut tx, mut render) = source(RATE);
+    let mut ordinal = 0;
+    fill(&mut tx, &mut ordinal, |_| [0.2, -0.2]);
+    render.begin_block(BLOCK, false, (0, 0));
+    let mut discarded = 0;
+    for boundary in 1..=3 {
+        for _ in 0..4800 {
+            assert_eq!(tx.push_slice(&[-0.1, 0.1]), 2);
+        }
+        assert_eq!(
+            crate::dsp_verification_allocator::allocation_counts(|| {
+                // 最大2窓（約80ms）とfadeの後に、同じ境界が一度だけ通知される。
+                for _ in 0..(RATE as usize * 80).div_ceil(1000 * BLOCK) + 3 {
+                    for _ in 0..BLOCK {
+                        assert_eq!(tx.push_slice(&[-0.1, 0.1]), 2);
+                    }
+                    render.begin_block(BLOCK, false, (0, 0));
+                }
+            }),
+            (0, 0)
+        );
+        let snapshot = render.shared.snapshot();
+        assert_eq!(snapshot.pause_resets, boundary);
+        assert!(snapshot.waiting_discarded_frames > discarded);
+        discarded = snapshot.waiting_discarded_frames;
+        for _ in 0..4 {
+            for _ in 0..BLOCK {
+                assert_eq!(tx.push_slice(&[-0.1, 0.1]), 2);
+            }
+            render.begin_block(BLOCK, false, (0, 0));
+        }
+        let snapshot = render.shared.snapshot();
+        assert_eq!(snapshot.pause_resets, boundary);
+        assert_eq!(snapshot.waiting_discarded_frames, discarded);
+        assert!(!snapshot.failed);
+    }
+}

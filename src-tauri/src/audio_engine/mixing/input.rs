@@ -185,6 +185,7 @@ impl Render {
             &mut self.starved_at,
             &mut self.samples[..frames * 2],
         );
+        self.renderer.report_resume(&self.shared);
         if self.shared.failed.load(Ordering::Acquire) {
             self.samples[..frames * 2].fill(0.0);
         }
