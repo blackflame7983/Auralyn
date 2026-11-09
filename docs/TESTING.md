@@ -143,6 +143,55 @@ cargo test --locked --test repro_ott -- --ignored
 OTTがない、デバイスを開けない、録音できない、エディタが開けない場合は成功へ読み替えない。
 GUI応答の成功だけでは描画欠け・DPI・聴感・OBSへの到達を保証しない。以下の実機手順と分けて記録する。
 
+### 自発的に状態が変わるVSTの確認（#465）
+
+開発用CLI `vst_state_drift` は、操作なしで生成信号をVSTへ渡し、`getState`の内容を比較する。
+本体と同じカタログクラス選択・bus交渉・遅延接続・処理準備を使うが、音声デバイスとエディターは開かず、出力音声は破棄する。
+`externalBin`には追加せず、配布物には含めない。新しいcrate依存は不要。
+
+PowerShellの例（既存の `src-tauri/target` に出力する）：
+
+```powershell
+Set-Location D:\Programming\App\VSTHost\src-tauri
+cargo run --locked --bin vst_state_drift -- --help
+cargo run --locked --bin vst_state_drift -- --plugin 'C:\Program Files\Common Files\VST3\TDR Nova.vst3' --seconds 60 --interval 5 --signal noise
+# 音声時間10秒分を待機なしで処理し、JSONで報告する。
+cargo run --locked --bin vst_state_drift -- --plugin 'C:\Program Files\Common Files\VST3\TDR Nova.vst3' --seconds 10 --interval 2 --fast --json
+$LASTEXITCODE
+```
+
+`--plugin`は必須。`.vst3`のファイルとバンドル（フォルダー）のどちらも指定でき、バンドルはスキャンと同じ規則で`Contents_64-win`の実体を読む。複数クラスのVSTは`--class <CID>`でカタログの対象クラスを選べる。
+既定は60秒、5秒間隔、48000 Hz、512 frame、2 ch、`silence`。
+`--seconds`、`--interval`、`--rate`、`--block`は正の整数、`--channels`は1または2を指定する。
+`--signal noise`は固定種の一様乱数（約-20 dBFS RMS）、`sine`は1 kHz（-18 dBFS peak）。左右には同じ信号を渡す。
+
+処理前に状態を連続2回取得し、その後は指定間隔を越えた最初のblock末尾と計測終了時に取得する。
+最後のblockも全体を処理するため、計測時間は最大1 block未満だけ長くなる。
+経過msは壁時計でなく処理frame数から計算する。最初の2行はどちらも0 ms。
+JSONの`initial_size`は最初の状態のbyte数、`initial_reads_equal`は連続取得の一致を表す。
+各`sample`には大きさ、直前から変わったか、異なるbyte数、最初に違う位置（0始まり）、初期状態から変わったかを記録する。
+長さが違うときは末尾の追加・欠落も異なるbyteに数える。生の状態データは出力しない。
+
+| 判定 | 観測した内容 | 今の保存の仕組みとの関係 |
+| --- | --- | --- |
+| `Stable` | 計測中に変化なし | 同じ内容は再書き込みしない |
+| `ChangesOnRead` | 処理前の連続2回が異なる | 取得に伴う変化の候補。表示中も毎回状態が異なれば、10秒ごとの取得で毎回書き込む |
+| `DriftsWithAudio` | 処理前は一致し、音声処理後に変化 | 表示中は10秒ごとに取得し、前回保存した内容と異なる場合に書き込む |
+
+どの判定でも、エディターを閉じて操作していなければ定期取得がなく、書き込みは増えない。
+閉じた直後には1回保存し、構成変更の2秒後と明示保存でも取得する。同じ内容なら書き込まない。
+Auralynには「未保存の印」の表示はないため、#465の完了条件は保存頻度で確認する。
+`src/hooks/__tests__/usePluginSessionPersistence.test.tsx`では、取得のたびに状態が変わるmockを使い、閉じたまま60秒は増えず、表示中35秒は3回、閉じると1回、その後60秒は増えないことを確認する。
+
+終了コードは0が変化なし、2が変化あり、1がエラー。
+状態取得や処理に失敗した場合はそこで止め、JSONの`report.error`と取得行の`error`に原因を残し、`verdict`は`null`にする。
+読込・引数エラーはトップレベルの`error`となる。診断ログはstderr、JSONはstdoutへ出す。
+
+この道具では処理と状態取得を同じスレッドで交互に行う。本体は別スレッドで並行するため、結果は本体の動作を保証しない。
+判定名は観測条件の分類であり、変化の原因を断定するものではない。
+実時間依存のVSTは`--fast`の有無で、乱数や非同期処理を使うVSTは再実行でも結果が異なり得る。
+必要に応じて実時間でも繰り返し、信号・rate・block・クラスと結果を一緒に記録する。
+
 ## 現行の検証手順（2026-10-15 改訂）
 
 プロセス入力の改善版での長時間運転・異常時停止は[2026-11-02の後続記録](PROCESS_LOOPBACK_FOLLOWUP_2026-11-02.md)を参照する。

@@ -192,9 +192,18 @@ impl VstProcessor {
         outputs: &mut [Vec<f32>],
         num_samples: usize,
     ) {
+        self.process_planar_checked(inputs, outputs, num_samples);
+    }
+
+    /// 検証用に処理の成否も返す。従来の無音化とRT無割当の挙動は共通に保つ。
+    pub fn process_planar_checked(
+        &mut self,
+        inputs: &[Vec<f32>],
+        outputs: &mut [Vec<f32>],
+        num_samples: usize,
+    ) -> bool {
         if self.needs_host_conversion(inputs, outputs) {
-            self.process_planar_converted(inputs, outputs, num_samples);
-            return;
+            return self.process_planar_converted(inputs, outputs, num_samples);
         }
         let ch_count = inputs
             .len()
@@ -220,7 +229,7 @@ impl VstProcessor {
                 .any(|ch| ch.len() < num_samples)
         {
             Self::silence_planar(outputs, num_samples);
-            return;
+            return false;
         }
 
         // SAFETY: create_processor が add_ref した processor と DLL を保持する。上で各チャネルの長さとフレーム数を検証し、呼び出し中はスライスが生存する。
@@ -294,6 +303,7 @@ impl VstProcessor {
                 // VST3 spec says if process returns error, outputs are undefined. Best to silence everything.
                 Self::silence_planar(outputs, num_samples);
             }
+            res == K_RESULT_OK
         }
     }
 
@@ -303,7 +313,7 @@ impl VstProcessor {
         inputs: &[Vec<f32>],
         outputs: &mut [Vec<f32>],
         num_samples: usize,
-    ) {
+    ) -> bool {
         let in_ch = self.input_channels;
         let out_ch = self.output_channels;
         let in_read = if in_ch == 1 { 2 } else { in_ch };
@@ -350,7 +360,7 @@ impl VstProcessor {
             || !reserved
         {
             Self::silence_planar(outputs, num_samples);
-            return;
+            return false;
         }
 
         if in_ch == 1 {
@@ -443,6 +453,7 @@ impl VstProcessor {
         } else {
             Self::silence_planar(outputs, num_samples);
         }
+        result == K_RESULT_OK
     }
 }
 
