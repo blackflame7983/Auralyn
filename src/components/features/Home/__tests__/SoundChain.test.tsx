@@ -291,3 +291,14 @@ it.each(['voice', 'music'] as const)('起動時の音調整は声で閉じ、音
     const items = within(screen.getByRole('list')).getAllByRole('button');
     expect(items.every(item => item.getAttribute('aria-expanded') === (purpose === 'music' && item.textContent?.startsWith('VST') ? 'true' : 'false'))).toBe(true);
 });
+
+
+it('設定済みの声表示では3連モジュールに専用SVGビジュアル（ゲージ・トーンカーブ・スロット）を描画し、未設定時は隠す', () => {
+    const view = render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>);
+    expect(view.container.querySelector('[data-signal-visual="noise"] svg')).not.toBeNull();
+    expect(view.container.querySelector('[data-signal-visual="builtin"] svg')).not.toBeNull();
+    expect(view.container.querySelector('[data-signal-visual="vst"] svg')).not.toBeNull();
+    expect(view.container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
+    view.rerender(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} unconfigured /></RuntimeStatsContext.Provider>);
+    expect(view.container.querySelector('[data-signal-visual]')).toBeNull();
+});

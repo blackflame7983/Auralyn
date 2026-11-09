@@ -137,3 +137,17 @@ it('再開に失敗したらその旨を知らせる', async () => {
     await act(async () => { await Promise.resolve(); });
     expect(toast.error).toHaveBeenCalledWith(message('ja', 'rack.card.resumeFailed'));
 });
+
+it('U04: かんたん表示では主操作行（有効/無効スイッチ・ON/OFFバッジ・設定画面）と出力行（ゲイン・ミュート）を分離し誤操作を防ぐ', () => {
+    const view = render(<PluginCard simpleMode
+        plugin={{ id: '1', name: 'OTT', path: 'ott', vendor: '', version: '', enabled: true, hasEditor: true, muted: false, gain: 1 }}
+        onToggle={vi.fn()} onMute={vi.fn()} onGainChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} />);
+    const primaryRow = view.container.querySelector('[data-plugin-row="primary"]')!;
+    const outputRow = view.container.querySelector('[data-plugin-row="output"]')!;
+    expect(primaryRow).toBeTruthy();
+    expect(outputRow).toBeTruthy();
+    expect(primaryRow.querySelector('[data-plugin-bypass-state="active"]')).toHaveTextContent('ON');
+    expect(primaryRow.contains(screen.getByRole('switch', { name: 'OTTを有効にする' }))).toBe(true);
+    expect(primaryRow.contains(screen.getByRole('button', { name: 'OTTをミュート' }))).toBe(false);
+    expect(outputRow.contains(screen.getByRole('button', { name: 'OTTをミュート' }))).toBe(true);
+});

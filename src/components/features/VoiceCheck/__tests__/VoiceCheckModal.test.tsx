@@ -300,3 +300,30 @@ it.each(['ja', 'en'] as const)('再生中は一時停止とせず停止・先頭
     await waitFor(() => expect(voicePreviewApi.request).toHaveBeenCalledWith(expect.objectContaining({ action: 'stop' })));
     await waitFor(() => expect(screen.getByRole('button', { name: locale === 'ja' ? '選んだ試聴先で再生' : 'Play through the selected output' })).toBeEnabled());
 });
+
+it('U01: 非仮想モニター出力を自動選択してチェックなしで即再生でき、仮想ケーブル選択時のみ注意バナーと確認を求める', async () => {
+    vi.mocked(voicePreviewApi.request).mockImplementation(async request => previewSnapshot(request, {
+        recordingId: 9, durationMs: 1000, state: request.action === 'start' ? 'playing' : 'idle',
+        devices: [
+            { id: 'cable', name: 'CABLE Input (VB-Audio Virtual Cable)' },
+            { id: 'hp', name: 'Headphones (Realtek Audio)' },
+        ],
+    }));
+    open();
+    const select = await screen.findByRole('combobox', { name: 'ボイスチェックの試聴先' });
+    await waitFor(() => expect(select).toHaveValue('hp'));
+    expect(screen.queryByText(/試聴先に仮想ケーブルが選ばれています/)).not.toBeInTheDocument();
+    const play = screen.getByRole('button', { name: '選んだ試聴先で再生' });
+    expect(play).toBeEnabled();
+    fireEvent.click(play);
+    await waitFor(() => expect(voicePreviewApi.request).toHaveBeenCalledWith(expect.objectContaining({ action: 'start', deviceId: 'hp', recordingId: 9 })));
+
+    fireEvent.click(await screen.findByRole('button', { name: '再生を停止（再生は先頭から）' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeEnabled());
+
+    fireEvent.change(select, { target: { value: 'cable' } });
+    expect(screen.getByText(/試聴先に仮想ケーブルが選ばれています/)).toBeVisible();
+    expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ }));
+    expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeEnabled();
+});
