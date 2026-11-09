@@ -304,6 +304,11 @@ impl Engine {
                         .split_monitor
                         .as_ref()
                         .is_some_and(|m| m.shared.failed.load(Ordering::Acquire));
+                self.mode_silence.configure_fade(
+                    self.stop_fade.clone(),
+                    self.stop_fade_roles(),
+                    self.stream_failed.clone(),
+                );
                 match self.mode_silence.request(
                     request,
                     self.queue_attempt,

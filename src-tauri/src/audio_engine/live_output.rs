@@ -186,6 +186,7 @@ impl Sender {
     }
 }
 struct Receiver {
+    stop_fade: super::stop_fade::StopFadeRt,
     trim: super::gain_ramp::GainRamp,
     peak: super::peak_protection::Rt,
     peak_shared: Arc<super::peak_protection::Shared>,
@@ -210,6 +211,7 @@ impl Receiver {
         Some(f.sample)
     }
     fn render(&mut self, data: &mut [f32]) {
+        self.stop_fade.begin_block();
         let ticket = self.shared.gate.ticket();
         self.peak.sync(&self.peak_shared);
         self.true_peak.sync(&self.true_peak_shared);
@@ -241,11 +243,16 @@ impl Receiver {
                 }
             }
         }
+        // trim・両ピーク保護の後、デバイスへ返す最後の倍率。
+        for output in data.as_chunks_mut::<2>().0 {
+            *output = self.stop_fade.apply(*output);
+        }
         self.peak.report(&self.peak_shared, 2);
         self.true_peak.report(&self.true_peak_shared);
         self.shared
             .gate
             .finish(super::mode_silence::SINK, ticket, data);
+        self.stop_fade.end_block(data.len() / 2);
     }
     fn render_inner(&mut self, data: &mut [f32]) -> usize {
         data.fill(0.0);
@@ -341,6 +348,7 @@ pub struct Sink {
     rate: u32,
 }
 pub(crate) struct SinkProtection {
+    pub stop_fade: Arc<super::stop_fade::StopFade>,
     pub peak: (
         super::peak_protection::Config,
         Arc<super::peak_protection::Shared>,
@@ -398,6 +406,11 @@ impl Sink {
             shared: shared.clone(),
         });
         let (mut receiver, receiver_owner) = callback_owner(Receiver {
+            stop_fade: super::stop_fade::StopFadeRt::new(
+                protection.stop_fade,
+                super::stop_fade::SINK,
+                rate,
+            ),
             trim: super::gain_ramp::GainRamp::new(config.broadcast_trim, rate),
             peak: super::peak_protection::Rt::new(protection.peak.0, rate),
             peak_shared: protection.peak.1,
@@ -440,6 +453,11 @@ impl Sink {
             },
             sender,
         ))
+    }
+    pub(crate) fn running(&self) -> bool {
+        self.stream.is_some()
+            && self.shared.active.load(Ordering::Acquire)
+            && !self.shared.failed.load(Ordering::Acquire)
     }
     pub fn deactivate(&self) {
         self.shared.active.store(false, Ordering::Release);
@@ -486,6 +504,64 @@ impl Drop for Sink {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fade481_sink_sine_after_trim_and_limiters_converges_without_allocations() {
+        use crate::audio_engine::stop_fade::{SignalCheck, StopFade, StopFadeRt, SINK};
+        let (mut sender, mut receiver, _) = fixture(2048, 256);
+        let (mut dry_sender, mut dry_receiver, _) = fixture(2048, 256);
+        let fade = Arc::new(StopFade::default());
+        receiver.stop_fade = StopFadeRt::new(fade.clone(), SINK, 48000);
+        let mut check = SignalCheck::default();
+        let mut source = 0;
+        let mut generation = 0;
+        let mut faded = 0u32;
+        for block in 0..16 {
+            if block == 3 {
+                generation = fade.request();
+            }
+            sender.begin_block();
+            dry_sender.begin_block();
+            while sender.tx.occupied_len() < 256 {
+                let value = 0.5
+                    * (std::f32::consts::TAU * 1000.0 * source as f32 / 48000.0
+                        + std::f32::consts::FRAC_PI_3)
+                        .sin();
+                sender.send([value, -value]);
+                dry_sender.send([value, -value]);
+                source += 1;
+            }
+            let mut output = [0.0; 128];
+            let mut dry = [0.0; 128];
+            assert_eq!(
+                crate::dsp_verification_allocator::allocation_counts(|| {
+                    receiver.render(&mut output);
+                    dry_receiver.render(&mut dry);
+                }),
+                (0, 0)
+            );
+            for (frame, input) in output.as_chunks::<2>().0.iter().zip(dry.as_chunks::<2>().0) {
+                if generation != 0 {
+                    faded += 1;
+                }
+                let gain = if generation == 0 {
+                    1.0
+                } else {
+                    480u32.saturating_sub(faded) as f32 / 480.0
+                };
+                check.frame(*frame, *input, gain, 480);
+            }
+            assert!(receiver.primed);
+            if generation != 0 {
+                assert_eq!(fade.acknowledged(1 << SINK, generation), faded >= 480);
+            }
+        }
+        assert_eq!(receiver.stop_fade.apply([0.5; 2]), [0.0; 2]);
+        eprintln!(
+            "fade481 sink: max_step={:.9}, max_excess={:.9}",
+            check.max_step, check.max_excess
+        );
+    }
 
     #[test]
     fn tail482_true_peak_sink_mute_resume_discards_lookahead() {
@@ -702,6 +778,11 @@ mod tests {
                 shared: shared.clone(),
             },
             Receiver {
+                stop_fade: super::super::stop_fade::StopFadeRt::new(
+                    Arc::default(),
+                    super::super::stop_fade::SINK,
+                    48000,
+                ),
                 trim: super::super::gain_ramp::GainRamp::new(1.0, 48000),
                 peak: crate::audio_engine::peak_protection::Rt::new(Default::default(), 48000),
                 peak_shared: Default::default(),
