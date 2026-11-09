@@ -1139,6 +1139,16 @@ impl Engine {
         let build_output = || {
             let output_build_started = Instant::now();
             let mut output_cadence = OutputCadence::new(callback_rate);
+            let levels = monitor_levels.load(Ordering::Relaxed);
+            let initial_monitor_gain = if separated {
+                1.0
+            } else if levels >> 32 != 0 {
+                0.0
+            } else {
+                f32::from_bits(levels as u32)
+            };
+            let mut monitor_trim =
+                super::super::gain_ramp::GainRamp::new(initial_monitor_gain, callback_rate);
             // スイープ用の領域はストリーム構築時に確保し、コールバックでは再利用する。
             let measure_bridge = measure_output;
             let mut measure_dry = vec![0.0f32; max_frames_per_callback.max(1)];
@@ -1840,6 +1850,8 @@ impl Engine {
                             } else {
                                 f32::from_bits(levels as u32)
                             };
+                            monitor_trim.set_target(monitor_gain);
+                            let monitor_gain = monitor_trim.next();
                             let main_l = main_l * monitor_gain;
                             let main_r = main_r * monitor_gain;
                             // Left
