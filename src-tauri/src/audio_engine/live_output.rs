@@ -488,6 +488,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn tail482_true_peak_sink_mute_resume_discards_lookahead() {
+        let (mut tx, mut rx, shared) = fixture(2048, 8);
+        rx.true_peak = super::super::true_peak_limiter::Rt::new(
+            super::super::true_peak_limiter::Config {
+                enabled: true,
+                ..Default::default()
+            },
+            48_000,
+            super::super::true_peak_limiter::Route::ENGAGED,
+        );
+        for _ in 0..1_024 {
+            tx.send([0.7, -0.7]);
+        }
+        let mut audio = [0.0; 256];
+        rx.render(&mut audio);
+        assert!(audio.iter().any(|sample| sample.abs() > 0.1));
+        shared.muted.store(true, Ordering::Release);
+        shared.generation.fetch_add(1, Ordering::AcqRel);
+        // 短い無音 callback だけで先読みを捨てることを確かめる。
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| rx.render(&mut [0.0; 2])),
+            (0, 0)
+        );
+        shared.muted.store(false, Ordering::Release);
+        shared.generation.fetch_add(1, Ordering::AcqRel);
+        rx.render(&mut [0.0; 2]);
+        tx.begin_block();
+        for _ in 0..1_024 {
+            tx.send([0.0; 2]);
+        }
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| {
+                for _ in 0..4 {
+                    rx.render(&mut audio);
+                    assert_eq!(audio, [0.0; 256]);
+                }
+            }),
+            (0, 0)
+        );
+    }
+
+    #[test]
     fn trim479_broadcast_dc_and_sine_retarget_without_steps_or_rt_allocation() {
         const N: usize = 960;
         for sine in [false, true] {

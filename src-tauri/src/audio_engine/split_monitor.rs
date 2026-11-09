@@ -844,6 +844,54 @@ mod tests {
     }
 
     #[test]
+    fn tail482_monitor_restore_enabled_reverb_discards_old_tail() {
+        let (mut controller, mut renderer, mut input, _, mut broadcast) = fixture();
+        let state = State {
+            mode: Mode::Singing,
+            config: super::super::builtin::Config {
+                reverb: Some(reverb::ReverbParams {
+                    enabled: true,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        };
+        controller.restore(state.clone(), 2).unwrap();
+        let mut output = [0.0; 256];
+        renderer.get_mut().render(&mut output, None);
+        for _ in 0..32 {
+            for _ in 0..256 {
+                input.try_push(0.5).unwrap();
+            }
+            renderer.get_mut().render(&mut output, None);
+            while broadcast.try_pop().is_some() {}
+        }
+        assert!(output.iter().any(|s| s.abs() > 0.01));
+        // 同じ有効な残響設定への復元でも、失敗先に残った音は消す。
+        controller.restore(state, 3).unwrap();
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| renderer
+                .get_mut()
+                .render(&mut output, None)),
+            (0, 0)
+        );
+        for _ in 0..750 {
+            for _ in 0..256 {
+                input.try_push(0.0).unwrap();
+            }
+            assert_eq!(
+                crate::vst_host::instance::allocation_counts(|| renderer
+                    .get_mut()
+                    .render(&mut output, None)),
+                (0, 0)
+            );
+            while broadcast.try_pop().is_some() {}
+            assert_eq!(output, [0.0; 256]);
+        }
+        assert!(!controller.shared.failed.load(Ordering::Acquire));
+    }
+
+    #[test]
     fn trim479_monitor_trim_and_mute_retarget_without_steps_or_rt_allocation() {
         for sine in [false, true] {
             let (_controller, mut renderer, mut input, _queue, mut broadcast) =

@@ -620,6 +620,46 @@ pub(crate) fn guard(
 mod tests {
     use super::*;
     #[test]
+    fn tail482_deesser_normal_disable_enable_discards_old_state() {
+        use crate::audio_engine::deesser::{Coefficients, DeEsserParams};
+        let enabled = Config {
+            deesser: Some(DeEsserParams { amount: 1.0 }),
+            ..Default::default()
+        };
+        let disabled = Config::default();
+        let singing = singing::Coefficients::prepare(Default::default(), 48_000).unwrap();
+        let off = Coefficients::prepare(None, 48_000).unwrap();
+        let on = Coefficients::prepare(enabled.deesser, 48_000).unwrap();
+        let mut used = RtVoice::new(Voice::prepare(&enabled, 48_000).unwrap());
+        let mut fresh = RtVoice::new(Voice::prepare(&disabled, 48_000).unwrap());
+        let mut changed = false;
+        for i in 0..4_800 {
+            let x = (i as f32 * std::f32::consts::TAU * 7_000.0 / 48_000.0).sin() * 0.8;
+            changed |= (used.process([x, -x])[0] - x).abs() > 0.01;
+        }
+        assert!(changed, "抑制の内部状態を作る");
+        assert_eq!(
+            crate::vst_host::instance::allocation_counts(|| {
+                used.update_normal(false, Preset::Broadcast, 0.7, singing, off);
+                for _ in 0..1_024 {
+                    used.process([0.0; 2]);
+                }
+                used.update_normal(false, Preset::Broadcast, 0.7, singing, on);
+                fresh.update_normal(false, Preset::Broadcast, 0.7, singing, on);
+                for i in 0..4_800 {
+                    let x = if i == 0 { 0.4 } else { 0.0 };
+                    assert_eq!(
+                        used.process([x, -x]),
+                        fresh.process([x, -x]),
+                        "再有効化後に古い検出・フィルタ状態を持ち越さない"
+                    );
+                }
+            }),
+            (0, 0)
+        );
+    }
+
+    #[test]
     fn custom_monitor_keeps_its_own_generation_without_becoming_a_pending_mode_switch() {
         let mut controller = Controller::new();
         controller.custom(); // 個別編集で本人用処理の完了世代とは分かれる。
