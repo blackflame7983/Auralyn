@@ -27,6 +27,7 @@ export function ObsModeRoutingSettings() {
     return <section aria-label={t('settings.ObsModeRoutingSettings.311')} className="rounded-control border border-border p-3 space-y-3 text-ui-support">
         <h3 className="text-ui-heading font-semibold">{t('settings.ObsModeRoutingSettings.312')}</h3>
         <p>{t('settings.ObsModeRoutingSettings.313')}</p>
+        <p className="text-muted-foreground">{t('settings.apply.sceneDraft')}</p>
         <fieldset disabled={busy} className="space-y-2"><legend className="sr-only">{t('settings.ObsModeRoutingSettings.314')}</legend>
             <Field label={t('settings.ObsModeRoutingSettings.315')}><Select aria-label={t('settings.ObsModeRoutingSettings.316')} value={strategy} onChange={event => setStrategy(event.target.value as LiveRouting['strategy'])} >
                 <option value="none">{t('settings.ObsModeRoutingSettings.317')}</option><option value="preset">{t('settings.ObsModeRoutingSettings.318')}</option><option value="mode">{t('settings.ObsModeRoutingSettings.319')}</option>

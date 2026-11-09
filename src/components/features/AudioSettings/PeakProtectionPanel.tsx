@@ -48,6 +48,7 @@ export function PeakProtectionPanel() {
     return <section aria-label={t('peak.title')} className="p-4 rounded-card border space-y-3">
         <h3 className="text-ui-heading font-semibold">{t('peak.title')}</h3>
         <p className="text-ui-support text-muted-foreground">{t('peak.scope')}</p>
+        <p className="text-ui-support text-muted-foreground">{t('settings.apply.protectionDraft')}</p>
         <div className="grid sm:grid-cols-2 gap-3 text-ui-support">
             <Field label={t('peak.ceiling')}><Input type="number"  min={-12} max={-0.1} step={0.1} value={ceiling} onChange={e => { edited.current = true; setCeiling(e.target.valueAsNumber); }} /></Field>
             <Field label={t('peak.release')}><Input type="number"  min={20} max={1000} step={10} value={release} onChange={e => { edited.current = true; setRelease(e.target.valueAsNumber); }} /></Field>

@@ -116,8 +116,7 @@ it.each(['ja', 'en'] as const)('歌向けON/OFFは全値を保持し、短いプ
     expect(screen.getAllByText(message(locale, 'settings.fxOffHint')).length).toBeGreaterThan(0);
     fireEvent.click(toggle);
     await waitFor(() => expect(legacy).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: message(locale, 'settings.soundHelp') }));
-    expect(screen.getByText(message(locale, 'settings.AudioSettingsModal.092'))).toBeVisible();
+    expect(screen.getByText(message(locale, 'settings.apply.soundImmediate'))).toBeVisible();
     for (const key of ['settings.AudioSettingsModal.099', 'settings.AudioSettingsModal.100'] as const) {
         expect(screen.getByRole('radio', { name: message(locale, key) })).toBeEnabled();
     }

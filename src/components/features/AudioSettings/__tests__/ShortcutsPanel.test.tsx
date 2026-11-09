@@ -61,7 +61,7 @@ it('内部コードを入力せず選択して保存し、解除と未保存の�
     await waitFor(() => expect(key).toBeEnabled());
     expect(key).toHaveValue('KeyM');
     fireEvent.change(key, { target: { value: 'KeyN' } });
-    fireEvent.click(screen.getByRole('button', { name: '変更を取り消す' }));
+    fireEvent.click(screen.getByRole('button', { name: 'キー設定の編集を取り消す' }));
     expect(key).toHaveValue('KeyM');
     fireEvent.change(key, { target: { value: 'KeyN' } });
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
@@ -82,7 +82,7 @@ it('保存失敗後も既存登録へ取り消せ、未完の組合せは送ら�
     fireEvent.change(key, { target: { value: 'KeyN' } });
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
     expect(await screen.findByRole('status')).toHaveTextContent('保存できませんでした');
-    fireEvent.click(screen.getByRole('button', { name: '変更を取り消す' }));
+    fireEvent.click(screen.getByRole('button', { name: 'キー設定の編集を取り消す' }));
     expect(key).toHaveValue('KeyM');
 });
 it('歌と雑談は明示登録できるが自動キーはなく、9件以上は既存登録を変えない', async () => {
@@ -160,7 +160,7 @@ it.each([
     fireEvent.click(screen.getByRole('button', { name: 'Save key settings' }));
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(expected));
     expect(key).toHaveValue('KeyN');
-    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard key edits' }));
     expect(key).toHaveValue('KeyM');
     expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'save_shortcuts')).toHaveLength(1);
 });
@@ -183,7 +183,7 @@ it('保存待機中の言語切替でも要求を増やさず、成功後の解�
     expect(screen.getByRole('status')).toHaveTextContent('Original detail (untranslated): OS 1419');
     expect(screen.getByLabelText('Emergency mute (toggle) regular key')).toHaveValue('KeyP');
     expect(screen.getByRole('button', { name: 'Save key settings' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Discard changes' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Discard key edits' })).toBeDisabled();
     expect(invoke).toHaveBeenCalledTimes(2);
 });
 
@@ -334,7 +334,7 @@ it('未設定と編集状態を示し、入力待ち中は保存できず取り�
     open();
     const input = screen.getByRole('button', { name: '緊急ミュート（オン）のキーを入力' });
     const save = screen.getByRole('button', { name: 'キー設定を保存' });
-    const discard = screen.getByRole('button', { name: '変更を取り消す' });
+    const discard = screen.getByRole('button', { name: 'キー設定の編集を取り消す' });
     await waitFor(() => expect(input).toBeEnabled());
     expect(input).toHaveTextContent('未設定');
     expect(save).toBeDisabled();
@@ -381,7 +381,7 @@ it.each(['ja', 'en'] as const)('起動時の登録失敗は変更なしでも再
     const store = createLocaleStore(() => locale, () => true);
     render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
     const save = screen.getByRole('button', { name: locale === 'ja' ? 'キー設定を保存' : 'Save key settings' });
-    const discard = screen.getByRole('button', { name: locale === 'ja' ? '変更を取り消す' : 'Discard changes' });
+    const discard = screen.getByRole('button', { name: locale === 'ja' ? 'キー設定の編集を取り消す' : 'Discard key edits' });
     await waitFor(() => expect(save).toBeEnabled());
     expect(discard).toBeDisabled();
     const input = screen.getByRole('button', { name: locale === 'ja' ? '緊急ミュート（切替）のキーを入力' : 'Enter keys for Emergency mute (toggle)' });
@@ -508,7 +508,7 @@ it('上限8件を越えず、再実行しても既存の入力を変更しない
 it('一括入力も取り消せて、キー入力待ち中は一括操作できない', async () => {
     open(false, []);
     await fillRecommended();
-    fireEvent.click(screen.getByRole('button', { name: '変更を取り消す' }));
+    fireEvent.click(screen.getByRole('button', { name: 'キー設定の編集を取り消す' }));
     const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     expect(input).toHaveTextContent('未設定');
     expect(screen.getByRole('button', { name: 'キー設定を保存' })).toBeDisabled();
@@ -521,8 +521,8 @@ it('一括入力のOS競合は既存の保存失敗表示を使い、保存済�
     vi.mocked(invoke).mockRejectedValueOnce({ code: 'registrationConflict', detail: 'OS 1409' });
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
     expect(await screen.findByRole('status')).toHaveTextContent('OS 1409');
-    await waitFor(() => expect(screen.getByRole('button', { name: '変更を取り消す' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: '変更を取り消す' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'キー設定の編集を取り消す' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'キー設定の編集を取り消す' }));
     expect(screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' })).toHaveTextContent('Alt + M');
     expect(screen.getByRole('button', { name: 'VSTを外して比較（切替）のキーを入力' })).toHaveTextContent('未設定');
 });

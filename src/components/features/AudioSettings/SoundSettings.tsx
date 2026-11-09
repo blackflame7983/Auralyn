@@ -182,7 +182,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
   const { noiseMode, noiseMeasurementOpen, setNoiseMeasurementOpen, noiseAdvancedOpen, setNoiseAdvancedOpen, noiseStrength, setNoiseStrength, noiseVoiceGuard, setNoiseVoiceGuard, noiseActionBusy, noiseStrengthEditing, builtInEffectsEnabled, builtInEffectsPreset, builtInEffectsAmount, setBuiltInEffectsAmount, builtInEffectsAmountEditing, applyNoiseControlConfig, commitNoiseStrength, applyBuiltInEffects, commitBuiltInEffectsAmount, deesserAmount, setDeesserAmount, deesserEditing, applyDeesser, commitDeesserAmount, preparingMode, setPreparingMode, singingOpen, setSingingOpen, peakOpen, setPeakOpen } = model;
   return (
           <TabsContent value="sound" className="space-y-4">
-            <div className="flex items-center gap-1 text-ui-support text-muted-foreground"><InfoPopover label={t('settings.soundHelp')}>{t('settings.AudioSettingsModal.092')}</InfoPopover><span aria-hidden="true">{t('settings.soundHelpShort')}</span></div>
+            <p className="text-ui-support text-muted-foreground">{t('settings.apply.soundImmediate')}</p>
             {!engineStats && <p role="status" className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.094')}</p>}
             <fieldset disabled={!engineStats || noiseActionBusy} className="min-w-0 space-y-4">
                 {/* Noise reduction */}

@@ -20,7 +20,7 @@ afterEach(() => { cleanup(); vi.useRealTimers(); });
 it('明示確認前には構成を変更せず、送出先をstable IDで保存する', async () => {
     render(<LiveOutputPanel outputs={outputs} />);
     fireEvent.click(screen.getByText('現在の構成・稼働状態を取得')); await screen.findByRole('combobox');
-    const save = screen.getByText('この構成を保存・反映'); expect(save).toBeDisabled();
+    const save = screen.getByText('出力構成を保存・反映'); expect(save).toBeDisabled();
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'cable-id' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /通常出力をヘッドホンへ/ }));
     fireEvent.click(save);
@@ -42,7 +42,7 @@ it('処理分離は明示選択した専用内蔵設定だけを追加し、VST�
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'cable-id' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /自分用と配信用の処理を分ける/ }));
     expect(screen.getByText(/この自分用設定と追加出力を変更・復元しません/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('checkbox', { name: /通常出力をヘッドホンへ/ })); fireEvent.click(screen.getByText('この構成を保存・反映'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /通常出力をヘッドホンへ/ })); fireEvent.click(screen.getByText('出力構成を保存・反映'));
     expect(liveOutputApi.request).toHaveBeenLastCalledWith(expect.objectContaining({ splitProcessing: true, monitorSinging: expect.objectContaining({ preset: 'singing' }), monitorTalk: expect.objectContaining({ reverb: expect.objectContaining({ enabled: false }) }) }));
 });
 it('消失出力へ代替せず、配信失敗と主出力の状態を混同しない', async () => {
@@ -62,7 +62,7 @@ it('配信出力を無効にすると処理分離も解除し、自分用の設�
     expect(screen.getByRole('checkbox', { name: /自分用と配信用の処理を分ける/ })).not.toBeChecked();
     expect(screen.getByRole('checkbox', { name: /自分用と配信用の処理を分ける/ })).toBeDisabled();
     fireEvent.click(screen.getByRole('checkbox', { name: /通常出力をヘッドホンへ/ }));
-    fireEvent.click(screen.getByText('この構成を保存・反映'));
+    fireEvent.click(screen.getByText('出力構成を保存・反映'));
     expect(liveOutputApi.request).toHaveBeenLastCalledWith(expect.objectContaining({ deviceId: null, splitProcessing: false, monitorSinging: singing }));
 });
 it('モニターの明るさは歌向けDSPが受理する範囲だけを選べる', async () => {

@@ -96,7 +96,7 @@ test.describe('設定済みの停止中', () => {
         await expect(page.getByRole('dialog', { name: '設定', exact: true })).toBeVisible();
         expect(await page.evaluate(() => (window as any).__e2eStarts.length)).toBe(1);
         await page.evaluate(() => { (window as any).__e2eSaveFailure = false; });
-        await page.getByRole('button', { name: '保存して再起動', exact: true }).click();
+        await page.getByRole('button', { name: '接続を保存して再起動', exact: true }).click();
         await expect(page.getByRole('dialog', { name: '設定', exact: true })).toHaveCount(0);
         await expect(error).toHaveCount(0);
     });

@@ -64,6 +64,7 @@ export function LiveOutputPanel({ outputs, inputName, monitorName, onBusyChange,
     return <section className="space-y-3 border border-border rounded-control p-3" aria-label={t('liveOutput.title')}>
         <h3 className="text-ui-heading font-semibold">{t('liveOutput.title')}</h3>
         <p className="text-ui-support">{t('liveOutput.scope')}</p>
+        <p className="text-ui-support text-muted-foreground">{t('settings.apply.outputDraft')}</p>
         <details className="text-ui-support"><summary>{t('liveOutput.limitsTitle')}</summary><p>{t('liveOutput.limits')}</p><p>{t('liveOutput.saveBoundary')}</p></details>
         <Button disabled={busy || disabled} variant="link" size="sm" className="h-auto min-h-9 whitespace-normal" onClick={() => void request()}>{t('liveOutput.refresh')}</Button>
         {draft && <div className="space-y-3">
@@ -89,7 +90,7 @@ export function LiveOutputPanel({ outputs, inputName, monitorName, onBusyChange,
             <p className="text-ui-support">{t('liveOutput.diff', { before: status?.config.deviceId ? t('liveOutput.enabled') : t('liveOutput.disabled'), after: draft.deviceId ? t('liveOutput.enabled') : t('liveOutput.disabled') })}</p>
             <label className="flex gap-2 text-ui-control"><Checkbox disabled={busy || disabled}  checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{t('liveOutput.confirm')}</label>
             <Button disabled={busy || disabled || !confirmed} variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => void request(true)}>{t('liveOutput.save')}</Button>{' '}
-            <Button disabled={busy || disabled} variant="link" size="sm" className="h-auto min-h-9 whitespace-normal" onClick={() => { setDraft(status?.config ?? null); setConfirmed(false); }}>{t('monitorTrial.cancel')}</Button>
+            <Button disabled={busy || disabled} variant="link" size="sm" className="h-auto min-h-9 whitespace-normal" onClick={() => { setDraft(status?.config ?? null); setConfirmed(false); }}>{t('settings.apply.discardOutput')}</Button>
         </div>}
         {previous && <Button disabled={busy || disabled} variant="link" size="sm" className="h-auto min-h-9 whitespace-normal" onClick={() => { setDraft(previous); setConfirmed(false); }}>{t('liveOutput.undo')}</Button>}
         <div className="space-y-2 border-t border-border pt-3">

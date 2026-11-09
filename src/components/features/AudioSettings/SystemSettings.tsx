@@ -192,6 +192,7 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
               <summary className="cursor-pointer"><h3 className="inline text-ui-heading font-semibold">{t('structure.optimization')}</h3></summary>
             {/* Engine Tuning */}
             <div className="space-y-2">
+              <p className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.166')}</p>
               <div className="p-4 bg-muted/20 border border-border rounded-card space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -262,9 +263,6 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                     disabled={systemSaving}
                   />
                 </div>
-
-                <div className="text-ui-support text-muted-foreground bg-muted/50 p-2 rounded-control border border-border">
-                  {t('settings.AudioSettingsModal.166')}</div>
 
                 <div className="flex gap-2">
                   <Button

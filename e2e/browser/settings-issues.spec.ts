@@ -52,7 +52,7 @@ async function openSettings(page: Page) {
 
 test('稼働中は設定差分で再起動を有効化し、元に戻すと無効にする', async ({ page }) => {
     const dialog = await openSettings(page);
-    const save = dialog.getByRole('button', { name: '保存して再起動', exact: true });
+    const save = dialog.getByRole('button', { name: '接続を保存して再起動', exact: true });
     await expect(save).toBeDisabled();
     await expect(dialog.getByText('変更はありません')).toBeVisible();
     const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
@@ -77,14 +77,14 @@ test('保存済み256サンプルは数値選択として復元する', async ({
     if (!await details.evaluate(node => (node as HTMLDetailsElement).open)) await details.locator('summary').click();
     await expect(details.getByRole('radio', { name: '数値で指定', exact: true })).toHaveAttribute('aria-checked', 'true');
     await expect(details.getByRole('combobox', { name: 'バッファサイズ' })).toHaveValue('256');
-    await expect(dialog.getByRole('button', { name: '保存して再起動' })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: '接続を保存して再起動' })).toBeDisabled();
 });
 
 test.describe('停止中', () => {
     test.use({ stoppedHome: true });
     test('設定済みでも保存して開始できる', async ({ page }) => {
         const dialog = await openSettings(page);
-        const start = dialog.getByRole('button', { name: '保存して開始', exact: true });
+        const start = dialog.getByRole('button', { name: '接続を保存して開始', exact: true });
         await expect(start).toBeEnabled();
         await start.click();
         await expect(dialog).toHaveCount(0);
@@ -98,7 +98,7 @@ test.describe('未設定', () => {
     test('初回の接続設定から開始できる', async ({ page }) => {
         await page.addInitScript(() => localStorage.removeItem('vst_host_audio_config'));
         const dialog = await openSettings(page);
-        await expect(dialog.getByRole('button', { name: '保存して開始', exact: true })).toBeEnabled();
+        await expect(dialog.getByRole('button', { name: '接続を保存して開始', exact: true })).toBeEnabled();
         expect(await page.evaluate(() => (window as any).__e2eStarts)).toEqual([]);
     });
 });
@@ -118,7 +118,7 @@ test('音切れ通知から調整欄へ移動し、変更なしでは再起動�
     const details = dialog.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
     await expect(details).toHaveAttribute('open');
     await expect(details.getByRole('radio', { name: 'おまかせ', exact: true })).toBeFocused();
-    await expect(dialog.getByRole('button', { name: '保存して再起動' })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: '接続を保存して再起動' })).toBeDisabled();
     expect(await page.evaluate(() => (window as any).__e2eStarts)).toEqual([]);
 });
 
@@ -128,7 +128,7 @@ test('ホットキーは未設定を示し、一覧から変更・取消・保�
     const field = dialog.locator('fieldset').filter({ has: page.locator('legend', { hasText: '緊急ミュート（オン）' }) });
     await expect(field.getByRole('button', { name: '緊急ミュート（オン）のキーを入力' })).toHaveText('未設定');
     const save = dialog.getByRole('button', { name: 'キー設定を保存' });
-    const discard = dialog.getByRole('button', { name: '変更を取り消す' });
+    const discard = dialog.getByRole('button', { name: 'キー設定の編集を取り消す' });
     await expect(save).toBeDisabled();
     await field.locator('summary').focus();
     await page.keyboard.press('Enter');

@@ -29,7 +29,7 @@ it('設定起動に失敗しても手動の手順と再試行を残す', async (
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
 });
 
-it.each(['保存して開始', '音声処理を再起動'])('%sのアクセス拒否から戻っても選択したデバイスと保存値を保ち、明示操作で再試行する', async action => {
+it.each(['接続を保存して開始', '音声処理を再起動'])('%sのアクセス拒否から戻っても選択したデバイスと保存値を保ち、明示操作で再試行する', async action => {
     const devices = {
         inputs: ['Mic A', 'Mic B'].map(name => ({ name, host: 'Wasapi', channels: 2 })),
         outputs: [{ name: 'Headphones', host: 'Wasapi', channels: 2 }],
@@ -63,7 +63,7 @@ it.each(['保存して開始', '音声処理を再起動'])('%sのアクセス�
     expect(localStorage.getItem('vst_host_audio_config')).toBe(saved);
     fireEvent.click(screen.getByRole('button', { name: '設定に戻って再試行' }));
     expect(screen.getByRole('combobox', { name: 'マイク' })).toHaveValue('Mic B');
-    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    fireEvent.click(screen.getByRole('button', { name: '接続を保存して開始' }));
     await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ input: 'Mic B' }), { audioStarted: true }));
     expect(start).toHaveBeenCalledTimes(2);
 });

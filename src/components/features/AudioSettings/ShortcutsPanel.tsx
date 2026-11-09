@@ -195,6 +195,7 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
     };
     return <section className="space-y-3 rounded-card border border-border p-4 pb-0">
         <h3 className="text-ui-heading font-semibold">{t('settings.ShortcutsPanel.378')}</h3>
+        <p className="text-ui-support text-muted-foreground">{t('settings.apply.shortcutsDraft')}</p>
         <div className="flex items-center gap-1 text-ui-support text-muted-foreground">
             <p>{t('shortcuts.streamDeckHint')}</p>
             <InfoPopover label={t('shortcuts.details')}><p>{t('settings.ShortcutsPanel.379')}</p><p className="mt-2">{t('settings.ShortcutsPanel.380')}</p></InfoPopover>
