@@ -18,12 +18,24 @@ impl Default for Track {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OffsetContext {
+    pub voice_input_id: String,
+    pub voice_channels: [usize; 2],
+    pub accompaniment: String,
+    pub output_id: String,
+    pub broadcast_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Levels {
     pub voice: Track,
     pub accompaniment: Track,
     pub monitor_accompaniment: bool,
     /// 正はオケ、負は声を追加で待たせる。既知の処理待ちとは別に保持する。
     pub offset_ms: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset_context: Option<OffsetContext>,
 }
 impl Default for Levels {
     fn default() -> Self {
@@ -32,6 +44,7 @@ impl Default for Levels {
             accompaniment: Default::default(),
             monitor_accompaniment: true,
             offset_ms: 0,
+            offset_context: None,
         }
     }
 }
@@ -43,6 +56,20 @@ impl Levels {
                 .any(|track| !track.gain.is_finite() || !(0.0..=2.0).contains(&track.gain))
         {
             return Err("ミックスの音量は0〜2倍、時間差は±2,000msで指定してください".into());
+        }
+        if let Some(context) = &self.offset_context {
+            if [
+                Some(context.voice_input_id.as_str()),
+                Some(context.accompaniment.as_str()),
+                Some(context.output_id.as_str()),
+                context.broadcast_id.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .any(|value| value.len() > 16384)
+            {
+                return Err("時間差を確認した機器の識別情報が長すぎます".into());
+            }
         }
         Ok(())
     }
@@ -197,6 +224,43 @@ pub struct ClockSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn legacy_levels_without_offset_context_remain_readable() {
+        let json = serde_json::json!({
+            "voice": {"gain": 1.0, "muted": false},
+            "accompaniment": {"gain": 1.0, "muted": false},
+            "monitorAccompaniment": true, "offsetMs": -20
+        });
+        let levels: Levels = serde_json::from_value(json.clone()).unwrap();
+        levels.validate().unwrap();
+        assert_eq!(levels.offset_ms, -20);
+        assert_eq!(levels.offset_context, None);
+        assert_eq!(serde_json::to_value(levels).unwrap(), json);
+    }
+
+    #[test]
+    fn offset_context_round_trips_and_limits_identity_length() {
+        for broadcast_id in [None, Some("broadcast".into())] {
+            let mut levels = Levels {
+                offset_ms: 20,
+                offset_context: Some(OffsetContext {
+                    voice_input_id: "mic".into(),
+                    voice_channels: [2, 3],
+                    accompaniment: r#"["device","music",0,1]"#.into(),
+                    output_id: "phones".into(),
+                    broadcast_id,
+                }),
+                ..Default::default()
+            };
+            levels.validate().unwrap();
+            let json = serde_json::to_value(&levels).unwrap();
+            assert_eq!(json["offsetContext"]["voiceInputId"], "mic");
+            assert_eq!(serde_json::from_value::<Levels>(json).unwrap(), levels);
+            levels.offset_context.as_mut().unwrap().accompaniment = "x".repeat(16385);
+            assert!(levels.validate().is_err());
+        }
+    }
+
     #[test]
     fn invalid_gain_offset_identity_and_saved_target_are_rejected() {
         let mut levels = Levels {

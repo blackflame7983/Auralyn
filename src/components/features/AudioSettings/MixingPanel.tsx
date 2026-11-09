@@ -3,14 +3,20 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { Select } from '@/components/ui/Select';
 import { Field } from '@/components/ui/Field';
 import { useEffect, useId, useRef, useState } from 'react';
-import { audioApi, type AudioDevice } from '@/api/audio';
-import { liveOutputApi } from '@/api/liveOutput';
+import { audioApi, type ActiveAudioConfig, type AudioDevice } from '@/api/audio';
+import { liveOutputApi, type LiveOutputConfig } from '@/api/liveOutput';
 import { mixingApi, type MixConfig, type MixLevels } from '@/api/mixing';
 import type { ProcessInputCandidate } from '@/lib/inputSource';
 import { useMessages } from '@/i18n/LocaleProvider';
 import type { MessageKey } from '@/i18n/messages';
 import { Button } from '@/components/ui/button';
 import { GainControl, MixingError, framesToMs, mixingCard, useQueuedChange, useRevisionedResource } from './mixingUi';
+import { currentOffsetContext, mixingConfigurationValue, offsetContextChanges, offsetStatus, type OffsetContextField } from '@/lib/offsetContext';
+
+const contextLabels: Record<OffsetContextField, MessageKey> = {
+    voiceInputId: 'mixing.offsetVoiceInput', voiceChannels: 'mixing.offsetChannels', accompaniment: 'mixing.accompaniment',
+    outputId: 'mixing.offsetOutput', broadcastId: 'mixing.offsetBroadcast',
+};
 
 const initialLevels = (): MixLevels => ({ voice: { gain: 1, muted: false }, accompaniment: { gain: 1, muted: false }, monitorAccompaniment: true, offsetMs: 0 });
 const validMixLevels = (value: MixLevels) => [value.voice.gain, value.accompaniment.gain].every(n => Number.isFinite(n) && n >= 0 && n <= 2)
@@ -22,9 +28,17 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     const t = useMessages(), reasonId = useId();
     const [open, setOpen] = useState(initiallyOpen), panel = useRef<HTMLDetailsElement>(null);
     const [ready, setReady] = useState(false);
+    const [audioConfig, setAudioConfig] = useState<ActiveAudioConfig | null>(null);
+    const [broadcastConfig, setBroadcastConfig] = useState<LiveOutputConfig | null>(null);
+    async function readContext() {
+        const [audio, output] = await Promise.all([audioApi.getAudioState().catch(() => null), liveOutputApi.request().catch(e => { setBroadcastConfig(null); throw e; })]);
+        setAudioConfig(audio?.config ?? null); setBroadcastConfig(output.config);
+        setReady(!!output.config.deviceId && !!output.config.splitProcessing);
+        return { audio: audio?.config, broadcast: output.config };
+    }
     const resource = useRevisionedResource(async () => {
-        const [mix, output] = await Promise.all([mixingApi.request({ action: 'snapshot' }), liveOutputApi.request()]);
-        setReady(!!output.config.deviceId && !!output.config.splitProcessing); return mix;
+        const [mix] = await Promise.all([mixingApi.request({ action: 'snapshot' }), readContext()]);
+        return mix;
     }, open, () => !!panel.current?.getClientRects().length);
     const { snapshot, busy, stale, error } = resource;
     useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
@@ -43,6 +57,8 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     const routeKey = JSON.stringify([primaryInputId, kind, kind === 'device' ? [device, channels] : [selected?.appKey, candidate, route]]);
     const confirmed = confirmedRoute === routeKey;
     const validLevels = validMixLevels(levels);
+    const currentContext = currentOffsetContext(audioConfig, (snapshot?.config ?? snapshot?.savedConfig)?.source, broadcastConfig);
+    const status = offsetStatus(levels, currentContext);
     const editable = !disabled && !busy;
     // 適用中の機器経路は確認済みとして扱い、同じ経路の再適用で確認を求めない。
     const draftFrom = (config: MixConfig | null, active = false) => {
@@ -54,7 +70,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
     };
     async function read() { const next = await resource.run('mixingUi.read'); if (next && !dirty.current && !initialized.current) draftFrom(next.config ?? next.savedConfig, !!next.config); }
     useEffect(() => { if (open && !attempted.current && !disabled) { attempted.current = true; void read(); } return () => { attempted.current = false; }; }, [open, disabled]);
-    async function run(action: 'reload' | 'reset' | 'configure' | 'disable' | 'levels', value = levelsRef.current) {
+    async function run(action: 'reload' | 'reset' | 'configure' | 'disable' | 'levels', value = levelsRef.current, confirmOffset = false) {
         if (disabled || (action === 'reset' && (!resetConfirmed || snapshot?.running)) || ((action === 'levels' || action === 'configure') && !validMixLevels(value))) return null;
         setResetSuccess(false);
         const operation: MessageKey = action === 'levels' ? 'mixingUi.levels' : action === 'configure' ? 'mixing.save' : action === 'disable' ? 'mixing.disable' : action === 'reset' ? 'mixing.recoveryAction' : 'mixing.reload';
@@ -65,11 +81,27 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
                 if (action === 'reset' && (result.config || result.savedConfig || result.error)) throw new Error('reset did not clear settings');
                 return result;
             }
+            const previous = (witness.config ?? witness.savedConfig)?.levels;
+            // 連続操作で待機していた音量変更にも、直前に保存できた確認の記録を引き継ぐ。
+            if (value.offsetMs === previous?.offsetMs && (previous.offsetContext !== undefined || value.offsetContext !== undefined)) {
+                value = { ...value, offsetContext: previous.offsetContext };
+            }
+            const config: MixConfig | null = action === 'disable' || action === 'levels' ? null : { version: 1, levels: value, source: kind === 'device' ? { kind: 'device', config: { host: 'WASAPI', inputId: device, inputChannels: channels } } : { kind: 'process_loopback', config: { appKey: selected!.appKey, appName: selected!.name, rawEndpointId: route, purpose: 'music' } } };
+            if ((action === 'levels' || action === 'configure') && (confirmOffset || value.offsetMs !== previous?.offsetMs)) {
+                const fresh = await readContext();
+                const context = currentOffsetContext(fresh.audio, action === 'levels' ? witness.config?.source : config?.source, fresh.broadcast);
+                if (confirmOffset && !context) throw new Error(t('mixing.offsetUnknown'));
+                value = { ...value, offsetContext: context };
+                if (config) config.levels = value;
+            }
             if (action === 'levels') return mixingApi.request({ action, ...expected, levels: value });
-            const config: MixConfig | null = action === 'disable' ? null : { version: 1, levels: value, source: kind === 'device' ? { kind: 'device', config: { host: 'WASAPI', inputId: device, inputChannels: channels } } : { kind: 'process_loopback', config: { appKey: selected!.appKey, appName: selected!.name, rawEndpointId: route, purpose: 'music' } } };
             return mixingApi.request({ action: 'configure', ...expected, config, ...(config?.source.kind === 'process_loopback' ? { candidateId: candidate } : {}) });
         });
         if (next && !next.error) {
+            if ((action === 'levels' || action === 'configure') && next.config && levelsRef.current.offsetMs === next.config.levels.offsetMs) {
+                const updated = { ...levelsRef.current, offsetContext: next.config.levels.offsetContext };
+                levelsRef.current = updated; setLevels(updated);
+            }
             if (action === 'reload' || action === 'reset') draftFrom(next.config ?? next.savedConfig, !!next.config);
             if (action === 'reset') { setApps([]); setResetConfirmed(false); setResetSuccess(true); }
             window.dispatchEvent(new Event('mixing-settings-changed'));
@@ -103,7 +135,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
             {!ready && <div><p>{t('mixing.notReady')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('output')}>{t('mixingUi.openOutput')}</Button></div>}
             {!primaryIsVoiceDevice && <div><p>{t('mixing.primary')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('input')}>{t('mixingUi.openInput')}</Button></div>}
             <div className="rounded-control bg-muted/40 p-3"><h4 className="text-ui-control font-semibold">{t('mixingUi.active')}</h4><p>{t('mixing.current')}: {describe(snapshot.config)}</p>
-                {JSON.stringify(snapshot.config) !== JSON.stringify(snapshot.savedConfig) && <p>{t('mixing.changed')} {t('mixing.saved')}: {describe(snapshot.savedConfig)}</p>}</div>
+                {mixingConfigurationValue(snapshot.config) !== mixingConfigurationValue(snapshot.savedConfig) && <p>{t('mixing.changed')} {t('mixing.saved')}: {describe(snapshot.savedConfig)}</p>}</div>
             <h4 className="text-ui-control font-semibold">{t('mixingUi.draft')}</h4>
             <Button variant="outline" size="sm" className="h-auto whitespace-normal" disabled={!editable || snapshot.running || stale} onClick={() => void run('reload')}>{t('mixing.reload')}</Button>
             {snapshot.running && <p>{t('mixing.stopped')}</p>}
@@ -126,6 +158,13 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
             <label className="flex gap-2 text-ui-control"><Checkbox disabled={disabled || stale} checked={levels.monitorAccompaniment} onChange={e => changeLevels({ ...levelsRef.current, monitorAccompaniment: e.target.checked })} />{t('mixing.monitor')}</label>
             <Field label={t('mixing.offset')}><Input type="number" min="-2000" max="2000" step="1"  aria-invalid={!validLevels} aria-describedby={!validLevels ? `${reasonId}-levels` : undefined} disabled={disabled || stale} value={Number.isNaN(levels.offsetMs) ? '' : levels.offsetMs} onChange={e => changeLevels({ ...levelsRef.current, offsetMs: e.target.value === '' ? NaN : Number(e.target.value) })} /></Field>
             {!validLevels && <p id={`${reasonId}-levels`} role="alert">{t('mixingUi.invalidLevels')}</p>}<p className="text-ui-support text-muted-foreground">{t('mixing.offsetHelp')}</p>
+            {status === 'unconfirmed' && <div className="space-y-2 text-ui-support">
+                <p role="status">{t('mixing.offsetUnconfirmed')} {levels.offsetContext && currentContext
+                    ? t('mixing.offsetChanged', { fields: offsetContextChanges(levels.offsetContext, currentContext).map(key => t(contextLabels[key])).join(' / ') })
+                    : t('mixing.offsetLegacy')}</p>
+                <Button variant="outline" size="sm" className="h-auto whitespace-normal" disabled={!editable || stale || !validLevels || !snapshot.config} onClick={() => { queue.cancel(); void run('levels', levelsRef.current, true); }}>{t('mixing.offsetConfirm')}</Button>
+            </div>}
+            {status === 'unknown' && <p role="status" className="text-ui-support text-muted-foreground">{t('mixing.offsetUnknown')}</p>}
             <p>{t('mixingUi.knownMs', { value: framesToMs(snapshot.knownVoiceProcessingFrames, snapshot.primaryClock?.outputRateHz) ?? t('mixing.unknown') })}</p>
             <p>{t('mixing.meter')}: {t('mixing.voice')} {Math.max(...snapshot.voicePeak).toFixed(2)} / {t('mixing.accompaniment')} {Math.max(...snapshot.accompanimentPeak).toFixed(2)} / {t('mixingUi.mix')} {Math.max(...snapshot.mixPeak).toFixed(2)}</p>
             {snapshot.accompaniment?.failed ? <p role="alert">{t('mixing.accompanimentFailed')}</p> : snapshot.accompaniment?.waitingForAudio && <p role="status">{t('mixing.waiting')}</p>}

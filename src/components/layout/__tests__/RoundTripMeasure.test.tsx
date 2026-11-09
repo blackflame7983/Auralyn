@@ -135,6 +135,9 @@ it('機器・レート・バッファ・世代が変わると条件不一致に�
     expect(conditionsMatch(saved, conditions({ bufferSize: 0 }))).toBe(false);
     expect(conditionsMatch(saved, conditions({ sampleRate: 96000 }))).toBe(false);
     expect(conditionsMatch(saved, conditions({ outputDeviceId: 'other' }))).toBe(false);
+    expect(conditionsMatch(saved, conditions({ inputDeviceId: 'other' }))).toBe(false);
+    expect(conditionsMatch(saved, conditions({ inputChannel: 1 }))).toBe(false);
+    expect(conditionsMatch(saved, conditions({ inputChannelRight: 1 }))).toBe(false);
     const stats = {
         latencyMetadata: { schemaVersion: 1, streamRunning: true, nominalSampleRateHz: 48000, fixedBufferRequestFrames: null, nrConfiguredEnabled: false, nrProcessingRateHz: null, nrProcessingFrameSamples: null, vstReportedLatencySamples: 0, signalCorrespondence: 'unmeasured' },
         preparation: { inputChannels: [0, 1] },
