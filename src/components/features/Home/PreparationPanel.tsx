@@ -159,7 +159,7 @@ export function PreparationPanel({ mutedInStrip = false, diagnosticAttention = f
         <div className="space-y-1 text-ui-support"><p id={`${stepsId}-usage`}>{t('prep.usage')}</p>{usagePicker}</div>
 
         {(next === 'sound' || next === 'listen' || next === 'receiver') && <Field key={next} label={t(next === 'receiver' && context.usage === 'listening' ? 'prep.ackLocal' : music && next === 'sound' ? 'music.ackSound' : music && next === 'listen' ? 'music.ackListen' : acknowledgeLabels[next])}>
-            <Checkbox checked={false} disabled={pending || observation.availability !== 'ready' || (next === 'receiver' && context.usage !== 'listening' && !context.receiver.trim())}
+            <Checkbox checked={false} disabled={pending || observation.availability !== 'ready'}
                 onChange={e => {
                     if (!e.target.checked) return;
                     const checkbox = e.currentTarget;

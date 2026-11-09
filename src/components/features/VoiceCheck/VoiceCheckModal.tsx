@@ -33,7 +33,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
         busy, qualityReport, analyzing, streamStatus, recordingError,
         refreshStream, handleStartRecording, handleStopRecording, handleTogglePlayback,
         handleSourceChange, handleExport, handleAnalyze,
-        preview, previewDevices, previewDeviceId, setPreviewDeviceId, safeOutput, setSafeOutput,
+        preview, previewDevices, previewDeviceId, setPreviewDeviceId, safeOutput, setSafeOutput, selectedOutputIsVirtual, outputConfirmed,
         previewBusy, previewError, stopUnconfirmed, preparePreview, refreshPreviewDevices, handleStopPreview,
         levelMatch, setLevelMatch, candidate, candidateMode, prepareNoise, applyNoise, undoNoise, redoNoise, prepareCandidate, prepareProposal, invalidateProposalPreferences, returnToRecording } = useVoiceCheck(isOpen, manualCandidate && singingModel?.draft && singingModel.snapshot ? {
             config: singingModel.draft, revision: singingModel.snapshot.revision, epoch: singingModel.snapshot.epoch, draftRevision: singingModel.draftRevision,
@@ -165,6 +165,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             <Button variant="outline" size="sm" type="button" disabled={previewBusy || !preview || preview.state === 'closed' || isPlaying} onClick={() => void refreshPreviewDevices()} >{t('voice.copy.040')}</Button>
                         </div>
                         <p className="text-ui-support text-muted-foreground">{t('voice.copy.038')}</p>
+                        {selectedOutputIsVirtual && <p role="status" className="rounded-control border border-warning bg-warning/10 px-3 py-2 text-ui-support text-warning">{t('voice.virtualOutputWarning')}</p>}
                         <label className="flex items-start gap-2 text-ui-support"><Field label={null}><Checkbox type="checkbox" checked={safeOutput} disabled={!previewDevices.some(device => device.id === previewDeviceId) || previewBusy || isPlaying} onChange={event => setSafeOutput(event.target.checked)} className="mt-0.5" /></Field><span>{t('voice.copy.045')}</span></label>
                         {(previewError || preview?.error) && <p role="alert" className="text-ui-support text-destructive-text">{previewError || preview?.error}</p>}
                         {preview?.conflict && <p className="text-ui-support">{preview.conflict}{t('voice.copy.046')}</p>}
@@ -180,7 +181,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                     <div className="flex flex-wrap items-center gap-3">
                         <Button variant="secondary"
                             onClick={handleTogglePlayback}
-                            disabled={Boolean(comparingCandidate && candidate?.state !== 'ready') || !hasRecording || isRecording || busy || previewBusy || !safeOutput || !previewDeviceId || !previewDevices.some(device => device.id === previewDeviceId) || !preview?.recordingId || preview.state === 'stopping' || preview.state === 'closed' || stopUnconfirmed || Boolean(preview.conflict) || preview.owner === 'auto_gain' || streamStatus !== 'ready'}
+                            disabled={Boolean(comparingCandidate && candidate?.state !== 'ready') || !hasRecording || isRecording || busy || previewBusy || !outputConfirmed || !previewDeviceId || !previewDevices.some(device => device.id === previewDeviceId) || !preview?.recordingId || preview.state === 'stopping' || preview.state === 'closed' || stopUnconfirmed || Boolean(preview.conflict) || preview.owner === 'auto_gain' || streamStatus !== 'ready'}
                              className="gap-2"
                         >
                             {isPlaying ? (
@@ -209,7 +210,7 @@ export const VoiceCheckModal: React.FC<VoiceCheckModalProps> = ({ isOpen, onClos
                             <MdSave className="w-4 h-4" />
                             {t('voice.copy.062')}</Button>
                     </div>
-                    {hasRecording && (!safeOutput || !previewDeviceId || !previewDevices.some(device => device.id === previewDeviceId)) && <p className="text-ui-support text-muted-foreground">{t('voice.playbackRequirements')}</p>}
+                    {hasRecording && (!outputConfirmed || !previewDeviceId || !previewDevices.some(device => device.id === previewDeviceId)) && <p className="text-ui-support text-muted-foreground">{t('voice.playbackRequirements')}</p>}
                     </section>
                     <label className="flex items-start gap-2 text-ui-support"><Field label={null}><Checkbox type="checkbox" checked={levelMatch} disabled={previewBusy || isRecording || !preview?.levelMatchAvailable || preview?.state === 'stopping'} onChange={event => setLevelMatch(event.target.checked)} className="mt-1" /></Field><span>{t('voice.copy.063')}</span></label>
                     <p className="text-ui-support text-muted-foreground">{t('voice.copy.064')}{preview?.levelMatchAvailable === false && t('voice.copy.065')} {t('voice.copy.066')}</p>

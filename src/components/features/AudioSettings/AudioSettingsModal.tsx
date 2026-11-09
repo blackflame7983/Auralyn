@@ -169,6 +169,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const [restoreNotice, setRestoreNotice] = useState('');
   const restoreSavedConnection = async () => {
     if (isApplying) return;
+    setError(null);
     setLoading(true); setRestoreNotice('');
     try {
       const saved = await audioApi.getSavedAudioConfig();
@@ -339,6 +340,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   const handleSave = async () => {
     if (!canSaveConnection || isApplying) return;
     if (retryRestart.current) { await performRestart(); return; }
+    setError(null);
     setLoading(true);
     try {
       await connection.apply(false);
@@ -356,6 +358,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
   const performRestart = async () => {
     retryRestart.current = true;
+    setError(null);
     setLoading(true);
     try {
       await connection.apply(true);
@@ -521,17 +524,16 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <div aria-hidden="true" className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                 {t('common.loading')}
               </div>
-            ) : error ? (
-              <div className="space-y-4">
+            ) : (
+              <div className="space-y-6">
+              {error && <div className="space-y-4">
                 <div role="alert" className="space-y-2 text-foreground text-ui-support text-center py-4 bg-destructive/10 rounded-card">
                   <p>{renderNotice(t, error)}</p>
                   {startStateUnknown && <p>{t('settings.startUnknown')}</p>}
                 </div>
                 <Button onClick={() => setError(null)} variant="default" className="h-auto min-h-10 whitespace-normal w-full">{t('settings.AudioSettingsModal.031')}</Button>
                 <Button onClick={onClose} variant="outline" className="h-auto min-h-10 whitespace-normal w-full">{t('common.close')}</Button>
-              </div>
-            ) : (
-              <div className="space-y-6">
+              </div>}
                 <div id="primary-input-settings" tabIndex={-1}><ProcessInputPanel value={inputSource} onChange={next => {
                   editConnection('source');
                   if (processInput && next.source.kind === 'device') setNeedsDeviceChoice(true);
@@ -554,7 +556,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       <option key={`${audioDeviceKey(device)}-${i}`} value={audioDeviceKey(device)} disabled={!device.id && filteredInputs.filter(item => item.name === device.name).length > 1}>{device.name}{filteredInputs.filter(item => item.name === device.name).length > 1 && device.id ? ` (${device.id})` : ''}</option>
                     ))}
                   </Select></Field>
-                  <MicrophonePermissionGuide />
+                  {!error && <MicrophonePermissionGuide />}
                 </fieldset>
 
                 }
@@ -617,7 +619,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               </div>
             </section>
 
-            {!loading && !error && <div className="space-y-6">
+            {!loading && <div className="space-y-6">
                 <details ref={tuningDetails} open={tuningOpen} onToggle={event => setTuningOpen(event.currentTarget.open)} className="rounded-card border border-border p-3 space-y-3">
                   <summary className="cursor-pointer text-ui-heading font-semibold">
                     {t('settings.audioTuning.title')}
@@ -907,7 +909,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             canRestart={inputReady && !!selectedOutputDevice && (!reviewRequired || migrationConfirmed)} knownStopped={connection.knownStopped} />
           </div>
         </Tabs>
-        {activeTab === 'audio' && !loading && !error && (
+        {(activeTab === 'audio' || changedFields.length > 0 || connectionRetry) && !loading && (
           <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-2 flex flex-wrap items-center justify-end gap-3">
             {/* 稼働中の保存は再起動になり、音が途切れることを押す前に示す。 */}
             <div className="min-w-0 space-y-1 text-ui-support text-muted-foreground" id="settings-connection-changes">
