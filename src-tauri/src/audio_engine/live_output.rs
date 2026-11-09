@@ -186,6 +186,7 @@ impl Sender {
     }
 }
 struct Receiver {
+    trim: super::gain_ramp::GainRamp,
     peak: super::peak_protection::Rt,
     peak_shared: Arc<super::peak_protection::Shared>,
     true_peak: super::true_peak_limiter::Rt,
@@ -272,6 +273,8 @@ impl Receiver {
             self.phase = 0.0;
             return 0;
         }
+        let trim = f32::from_bits(self.shared.broadcast_trim.load(Ordering::Relaxed));
+        self.trim.set_target(trim);
         let occupied = self.rx.occupied_len();
         self.shared.queued.store(occupied as u64, Ordering::Relaxed);
         if !self.primed {
@@ -285,13 +288,14 @@ impl Receiver {
                 return 0;
             };
             self.pair = [a, b];
+            // 無音からの再開では、以前の世代の音量を引き継がない。
+            self.trim.jump(trim);
             self.primed = true;
         }
         // 同一公称rateの独立clockを±2000ppmの有界線形補間で追従する。
         // それ以上の差・callback停止は不足/満杯として明示し、無期限同期は保証しない。
         let error = (occupied as f64 - self.target as f64) / self.target.max(1) as f64;
         let step = 1.0 + (error * 0.004).clamp(-0.002, 0.002);
-        let trim = f32::from_bits(self.shared.broadcast_trim.load(Ordering::Relaxed));
         let total_frames = data.len() / 2;
         let mut written = 0usize;
         for (index, output) in data.as_chunks_mut::<2>().0.iter_mut().enumerate() {
@@ -302,6 +306,7 @@ impl Receiver {
                 self.primed = false;
                 break;
             }
+            let trim = self.trim.next();
             for (ch, sample) in output.iter_mut().enumerate() {
                 let a = f64::from(self.pair[0][ch]);
                 let b = f64::from(self.pair[1][ch]);
@@ -393,6 +398,7 @@ impl Sink {
             shared: shared.clone(),
         });
         let (mut receiver, receiver_owner) = callback_owner(Receiver {
+            trim: super::gain_ramp::GainRamp::new(config.broadcast_trim, rate),
             peak: super::peak_protection::Rt::new(protection.peak.0, rate),
             peak_shared: protection.peak.1,
             true_peak: super::true_peak_limiter::Rt::new(
@@ -480,6 +486,73 @@ impl Drop for Sink {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn trim479_broadcast_dc_and_sine_retarget_without_steps_or_rt_allocation() {
+        const N: usize = 960;
+        for sine in [false, true] {
+            let (mut sender, mut receiver, shared) = fixture(2048, 256);
+            let (mut dry_sender, mut dry_receiver, _) = fixture(2048, 256);
+            let mut source_index = 0;
+            let mut previous = [0.0f32; 2];
+            let mut worst = 0.0f32;
+            let mut worst_excess = 0.0f32;
+            for block in 0..32 {
+                if block == 1 || block == 6 {
+                    shared.update(&Config {
+                        broadcast_trim: if block == 1 { 0.2 } else { 0.8 },
+                        ..Default::default()
+                    });
+                }
+                sender.begin_block();
+                dry_sender.begin_block();
+                // 比較側も同じ補間・clock追従を通し、信号自体の変化とtrimの変化を分ける。
+                while sender.tx.occupied_len() < 256 {
+                    let value = if sine {
+                        0.5 * (std::f32::consts::TAU * 50.0 * source_index as f32 / 48000.0).sin()
+                    } else {
+                        0.5
+                    };
+                    sender.send([value, -value]);
+                    dry_sender.send([value, -value]);
+                    source_index += 1;
+                }
+                let mut output = [0.0; 128];
+                let mut dry = [0.0; 128];
+                assert_eq!(
+                    crate::dsp_verification_allocator::allocation_counts(|| {
+                        receiver.render(&mut output);
+                        dry_receiver.render(&mut dry);
+                    }),
+                    (0, 0)
+                );
+                for (index, (frame, input)) in output
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .zip(dry.as_chunks::<2>().0)
+                    .enumerate()
+                {
+                    assert_eq!(frame[1], -frame[0]);
+                    if block != 0 || index != 0 {
+                        let step = (frame[0] - previous[0]).abs();
+                        let signal_step = (input[0] - previous[1]).abs();
+                        worst = worst.max(step);
+                        worst_excess = worst_excess.max(step - signal_step);
+                        assert!(step <= signal_step + 0.5 / N as f32 + 2.0e-6);
+                    }
+                    previous = [frame[0], input[0]];
+                    if block >= 21 {
+                        assert!((frame[0] - 0.8 * input[0]).abs() < 1.0e-6);
+                    }
+                }
+                assert!(receiver.primed);
+            }
+            eprintln!(
+                "trim479 broadcast sine={sine}: max_step={worst:.9}, max_excess={worst_excess:.9}"
+            );
+        }
+    }
 
     #[test]
     fn dsp464_broadcast_trim_and_mute_are_after_sender_and_independent_of_monitor_trim() {
@@ -587,6 +660,7 @@ mod tests {
                 shared: shared.clone(),
             },
             Receiver {
+                trim: super::super::gain_ramp::GainRamp::new(1.0, 48000),
                 peak: crate::audio_engine::peak_protection::Rt::new(Default::default(), 48000),
                 peak_shared: Default::default(),
                 true_peak: crate::audio_engine::true_peak_limiter::Rt::new(

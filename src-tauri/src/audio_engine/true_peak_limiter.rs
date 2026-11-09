@@ -768,6 +768,105 @@ mod tests {
     }
 
     #[test]
+    fn trim479_retarget_during_each_stage_settles_without_replaying_impulse() {
+        for (name, stage) in [
+            ("FadeOut", Stage::FadeOut),
+            ("Prime", Stage::Prime),
+            ("FadeIn", Stage::FadeIn),
+        ] {
+            for final_enabled in [false, true] {
+                let shared = Shared::default();
+                let mut rt = enabled(48_000);
+                let mut previous = 0.0;
+                for _ in 0..2000 {
+                    previous = rt.process([0.75, 0.0])[0];
+                }
+                // 右だけに印を入れる。先読みから出る前にresetで消え、後の切替で再生されない。
+                rt.process([0.75, 0.9]);
+                rt.apply_config(Config {
+                    enabled: stage == Stage::Prime || !final_enabled,
+                    ..Default::default()
+                });
+                rt.request_reset();
+                let mut worst = 0.0f32;
+                let mut reached = false;
+                for _ in 0..1000 {
+                    if rt.stage == stage {
+                        reached = true;
+                        break;
+                    }
+                    let frame = rt.process([0.75, 0.0]);
+                    assert!(frame.iter().all(|s| s.is_finite()));
+                    assert_eq!(frame[1], 0.0);
+                    worst = worst.max((frame[0] - previous).abs());
+                    previous = frame[0];
+                }
+                assert!(reached, "{name}に到達しませんでした");
+                if stage == Stage::Prime && final_enabled {
+                    // PrimeはONへ向かう時だけ存在する。途中でOFFを要求してからONに戻す。
+                    rt.apply_config(Config {
+                        enabled: false,
+                        ..Default::default()
+                    });
+                }
+                let middle = match stage {
+                    Stage::Prime => rt.lookahead / 2,
+                    _ => (0.5 / rt.fade_step) as usize,
+                };
+                for _ in 0..middle {
+                    let frame = rt.process([0.75, 0.0]);
+                    assert!(frame.iter().all(|s| s.is_finite()));
+                    assert_eq!(frame[1], 0.0);
+                    worst = worst.max((frame[0] - previous).abs());
+                    previous = frame[0];
+                }
+                assert!(rt.stage == stage, "{name}の途中で変更する必要があります");
+                let config = Config {
+                    enabled: final_enabled,
+                    ceiling_db: -6.0,
+                    ..Default::default()
+                };
+                let revision = shared.publish(config.prepare(48_000));
+                rt.sync(&shared);
+                // 最後の設定へ落ち着くまで、再送でも遷移が再開始しないことを確認する。
+                for index in 0..4000 {
+                    if index % 64 == 0 {
+                        rt.sync(&shared);
+                    }
+                    let frame = rt.process([0.75, 0.0]);
+                    assert!(frame.iter().all(|s| s.is_finite()));
+                    assert_eq!(frame[1], 0.0, "{name}の切替後に古いインパルスが出ました");
+                    worst = worst.max((frame[0] - previous).abs());
+                    previous = frame[0];
+                }
+                let mut reference = Rt::new(config, 48_000, Route::ENGAGED);
+                let mut expected = [0.0; 2];
+                for _ in 0..6000 {
+                    expected = reference.process([0.75, 0.0]);
+                }
+                assert!((previous - expected[0]).abs() < 1.0e-4);
+                assert!(rt.stage == Stage::Stable);
+                assert_eq!(rt.wet, final_enabled);
+                assert_eq!(
+                    rt.added_latency_samples(),
+                    if final_enabled {
+                        lookahead_samples(48_000)
+                    } else {
+                        0
+                    }
+                );
+                assert!((rt.applied_ceiling - config.prepare(48_000).ceiling).abs() < 1.0e-6);
+                rt.report(&shared);
+                assert_eq!(shared.applied.load(Ordering::Acquire), revision);
+                assert!(worst < 0.05, "{name}: 隣接差 {worst}");
+                eprintln!(
+                    "trim479 true_peak {name} final_enabled={final_enabled}: max_step={worst:.9}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn switches_ceiling_rate_and_restart_do_not_click_or_replay_old_audio() {
         let mut rt = enabled(48_000);
         let mut previous = 0.0f32;

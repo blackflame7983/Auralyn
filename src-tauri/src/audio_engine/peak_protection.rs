@@ -184,7 +184,8 @@ impl Rt {
         let wanted = (self.ceiling / peak.max(f32::MIN_POSITIVE)).min(1.0);
         self.gain = wanted.min(1.0 - (1.0 - self.gain) * p.release);
         let mut gain = 1.0 + (self.gain - 1.0) * self.mix;
-        // 過大ピークのattackは即時。切替ramp中も有効な天井を超えない。
+        // 天井を守ることを段差の抑制より優先する。天井を下げた瞬間の段差は許容し、
+        // その後はrampで追従する。過大ピークのattackも即時に行う。
         if p.enabled {
             gain = gain.min((p.ceiling / peak.max(f32::MIN_POSITIVE)).min(1.0));
         }
@@ -217,6 +218,51 @@ impl Rt {
 mod tests {
     use super::*;
     use crate::dsp_verification_allocator::allocation_counts;
+
+    #[test]
+    fn trim479_lower_ceiling_prioritizes_limit_over_single_step() {
+        for rate in [44_100, 48_000, 96_000, 192_000] {
+            let old = Config {
+                enabled: true,
+                ceiling_db: -1.0,
+                ..Default::default()
+            };
+            let new = Config {
+                ceiling_db: -6.0,
+                ..old
+            };
+            let shared = Shared::default();
+            let mut rt = Rt::new(old, rate);
+            let old_ceiling = old.prepare(rate).ceiling;
+            let prepared = new.prepare(rate);
+            let new_ceiling = prepared.ceiling;
+            let mut previous = rt.process([2.0, -1.0])[0];
+            assert!((previous - old_ceiling).abs() < 1.0e-6);
+            shared.publish(prepared);
+            rt.sync(&shared);
+            let first = rt.process([2.0, -1.0]);
+            let first_step = (first[0] - previous).abs();
+            assert!(first_step <= old_ceiling - new_ceiling + 1.0e-6);
+            assert!(first.iter().all(|s| s.abs() <= new_ceiling + 1.0e-6));
+            assert!((first[0] - new_ceiling).abs() < 1.0e-6);
+            previous = first[0];
+            let mut worst = 0.0f32;
+            for _ in 0..rate / 10 {
+                let frame = rt.process([2.0, -1.0]);
+                assert!(frame
+                    .iter()
+                    .all(|s| s.is_finite() && s.abs() <= new_ceiling + 1.0e-6));
+                let step = (frame[0] - previous).abs();
+                worst = worst.max(step);
+                assert!(step <= 2.0 * prepared.ramp + 1.0e-6);
+                assert_eq!(frame[1], -frame[0] * 0.5);
+                previous = frame[0];
+            }
+            assert!((previous - new_ceiling).abs() < 1.0e-6);
+            eprintln!("trim479 peak {rate} Hz: first_step={first_step:.9}, subsequent_max_step={worst:.9}");
+        }
+    }
+
     #[test]
     fn off_is_exact_and_protection_never_boosts_normal_or_silent_input() {
         for rate in [8000, 44100, 48000, 96000, 192000, 384000] {
