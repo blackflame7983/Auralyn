@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 
@@ -85,8 +85,15 @@ impl Shared {
     }
 }
 
+struct EntryFade {
+    shared: Arc<super::stop_fade::StopFade>,
+    roles: u8,
+    failed: Arc<AtomicBool>,
+}
+
 #[derive(Default)]
 pub(crate) struct Controller {
+    entry_fade: Option<EntryFade>,
     pub(crate) shared: Arc<Shared>,
     id: Option<String>,
     serial: u64,
@@ -94,6 +101,21 @@ pub(crate) struct Controller {
     roles: u64,
 }
 impl Controller {
+    pub(crate) fn configure_fade(
+        &mut self,
+        shared: Arc<super::stop_fade::StopFade>,
+        roles: u8,
+        failed: Arc<AtomicBool>,
+    ) {
+        self.entry_fade = Some(EntryFade {
+            shared,
+            roles,
+            failed,
+        });
+    }
+    pub(crate) fn clear_fade(&mut self) {
+        self.entry_fade = None;
+    }
     pub(crate) fn invalidate(&mut self) {
         if self.shared.active() {
             self.shared
@@ -142,6 +164,10 @@ impl Controller {
                     (1 << INPUT) | if split { 1 << MONITOR } else { 0 },
                     Ordering::Release,
                 );
+                // HELDを公開する前なら、sender・sinkのPCMを捨てずに出力末尾でfadeできる。
+                if let Some(fade) = &self.entry_fade {
+                    fade.shared.fade_and_wait(fade.roles, &fade.failed);
+                }
                 self.shared
                     .state
                     .store((self.serial << 3) | HELD, Ordering::Release);
@@ -174,6 +200,9 @@ impl Controller {
         if state & 7 == SINKS && self.shared.acknowledged(self.roles & (1 << SINK), state) {
             state = (self.serial << 3) | RELEASED;
             self.shared.state.store(state, Ordering::Release);
+            if let Some(fade) = &self.entry_fade {
+                fade.shared.resume();
+            }
         }
         Ok(Snapshot {
             id: id.clone(),
@@ -229,6 +258,84 @@ mod tests {
             (0, 0)
         );
         assert_eq!(data, [0.0; 16]);
+    }
+
+    #[test]
+    fn fade481_mode_silence_fades_before_hold_and_resumes_only_after_drain() {
+        use crate::audio_engine::stop_fade::{StopFade, StopFadeRt, MAIN as FADE_MAIN};
+        let fade = Arc::new(StopFade::default());
+        let mut controller = Controller::default();
+        controller.configure_fade(
+            fade.clone(),
+            1 << FADE_MAIN,
+            Arc::new(AtomicBool::new(false)),
+        );
+        let stop = AtomicBool::new(false);
+        let saw_fade_before_hold = AtomicBool::new(false);
+        let gate = controller.shared.clone();
+        let mut rt = std::thread::scope(|scope| {
+            let handle = scope.spawn(|| {
+                let mut rt = StopFadeRt::new(fade.clone(), FADE_MAIN, 48000);
+                while !stop.load(Ordering::Acquire) {
+                    rt.begin_block();
+                    for _ in 0..64 {
+                        let sample = rt.apply([0.5; 2])[0];
+                        if sample > 0.0 && sample < 0.5 && gate.ticket() == 0 {
+                            saw_fade_before_hold.store(true, Ordering::Release);
+                        }
+                    }
+                    rt.end_block(64);
+                    std::thread::yield_now();
+                }
+                rt
+            });
+            let value = controller
+                .request(
+                    Request::Begin { id: "fade".into() },
+                    1,
+                    true,
+                    false,
+                    false,
+                    false,
+                )
+                .unwrap();
+            assert!(value.active && !value.ready);
+            stop.store(true, Ordering::Release);
+            handle.join().unwrap()
+        });
+        assert!(saw_fade_before_hold.load(Ordering::Acquire));
+        rt.begin_block();
+        assert_eq!(rt.apply([0.5; 2]), [0.0; 2]);
+        rt.end_block(1);
+        ack(&controller.shared, MAIN);
+        controller
+            .request(
+                Request::Finish { id: "fade".into() },
+                1,
+                true,
+                false,
+                false,
+                false,
+            )
+            .unwrap();
+        assert!(controller.shared.pause_input(|| {}));
+        controller.shared.worker_drained();
+        ack(&controller.shared, MAIN);
+        assert!(
+            !controller
+                .request(
+                    Request::Snapshot { id: "fade".into() },
+                    1,
+                    true,
+                    false,
+                    false,
+                    false
+                )
+                .unwrap()
+                .active
+        );
+        rt.begin_block();
+        assert_eq!(rt.apply([0.5; 2]), [0.5; 2]);
     }
 
     #[test]

@@ -333,6 +333,7 @@ pub struct Engine {
     gain_preview: Option<auto_gain_preview::Preview>,
     gain_main_device: Option<String>,
     stream_failed: Arc<AtomicBool>,
+    stop_fade: Arc<super::stop_fade::StopFade>,
     live_output: Option<super::live_output::Sink>,
     live_output_config: super::live_output::Config,
     live_output_error: Option<String>,
@@ -498,6 +499,7 @@ impl Engine {
             gain_preview: None,
             gain_main_device: None,
             stream_failed: Arc::new(AtomicBool::new(false)),
+            stop_fade: Arc::default(),
             output_stream: None,
             post_role: false,
             processing_restart_revision: crate::vst_host::instance::processing_restart_revision(),
@@ -654,7 +656,7 @@ impl Engine {
                     self.handle_command(cmd, target);
                 }
                 Event::UserEvent(UserEvent::Shutdown) => {
-                    self.stop_audio();
+                    self.stop_audio_immediately();
                     target.exit();
                 }
                 Event::UserEvent(UserEvent::Timer) => {}
@@ -685,11 +687,11 @@ impl Engine {
                     let block_capacity_failed = self.block_capacity_failed.swap(false, Ordering::AcqRel);
                     let nr_failed = self.nr_failed.swap(false, Ordering::AcqRel);
                     if let Some(message) = self.input_stream.as_ref().and_then(input::InputStream::failure_message) {
-                        self.stop_audio();
+                        self.stop_audio_immediately();
                         self.send_event(EngineEvent::Error(message.into()));
                     }
                     if resampling_failed || block_capacity_failed || nr_failed {
-                        self.stop_audio();
+                        self.stop_audio_immediately();
                         let reason = match (resampling_failed, block_capacity_failed) {
                             (true, true) => "レート変換に失敗し、デバイスから受け取った音声ブロックも処理容量を超えたため音声を停止しました。",
                             (_, true) => "デバイスから受け取った音声ブロックが処理容量を超えたため音声を停止しました。バッファサイズを指定して再開してください。",
@@ -755,7 +757,7 @@ impl Engine {
                             }
                             Ok(None) => { self.acknowledge_processing_preparation(); },
                             Err(error) => {
-                                self.stop_audio();
+                                self.stop_audio_immediately();
                                 self.send_event(EngineEvent::Error(format!("VST {id} の遅延初期化に失敗したため音声を停止しました: {error}")));
                             }
                         }
@@ -1389,7 +1391,53 @@ impl Engine {
         )
     }
 
+    fn stop_fade_roles(&self) -> u8 {
+        use super::stop_fade::{MAIN, MONITOR, SINK};
+        let mut roles = 0;
+        if self.output_stream.is_some() {
+            roles |= 1
+                << if self.split_monitor.is_some() {
+                    MONITOR
+                } else {
+                    MAIN
+                };
+        }
+        if self.live_output.as_ref().is_some_and(|sink| sink.running()) {
+            roles |= 1 << SINK;
+        }
+        roles
+    }
+
+    fn fade_before_stop(&self) {
+        // 機器・処理の失敗では、callbackの到着を待たず従来どおり回収する。
+        if self.nr_failed.load(Ordering::Acquire)
+            || self.resampling_failed.load(Ordering::Acquire)
+            || self.block_capacity_failed.load(Ordering::Acquire)
+            || self
+                .input_stream
+                .as_ref()
+                .is_some_and(|s| s.failure_message().is_some())
+            || self
+                .split_monitor
+                .as_ref()
+                .is_some_and(|m| m.shared.failed.load(Ordering::Acquire))
+            || self
+                .live_output
+                .as_ref()
+                .is_some_and(|s| s.snapshot().failed)
+        {
+            return;
+        }
+        self.stop_fade
+            .fade_and_wait(self.stop_fade_roles(), &self.stream_failed);
+    }
+
     fn stop_audio(&mut self) {
+        self.fade_before_stop();
+        self.stop_audio_immediately();
+    }
+
+    fn stop_audio_immediately(&mut self) {
         self.clear_audio_resources();
         self.send_event(EngineEvent::Stopped);
     }
@@ -2001,6 +2049,8 @@ impl Engine {
         }
         self.split_monitor = None;
         self.live_output = None;
+        self.mode_silence.clear_fade();
+        self.stop_fade = Arc::default();
         if let Some(timing) = &mut self.frame_timing {
             timing.seal();
         }
@@ -2646,3 +2696,29 @@ mod preparation_status_tests {
 #[cfg(test)]
 #[path = "core/history_tests.rs"]
 mod history_tests;
+
+#[cfg(test)]
+mod stop_fade_tests {
+    use super::*;
+
+    #[test]
+    fn fade481_stream_failure_and_stopped_engine_skip_fade_and_clear_resources() {
+        for failed in [false, true] {
+            let mut engine = Engine::new();
+            engine.stream_failed.store(failed, Ordering::Release);
+            engine
+                .pending_audio_msgs
+                .push(AudioThreadMessage::StopTestTone);
+            let fade = engine.stop_fade.clone();
+            assert_eq!(engine.stop_fade_roles(), 0);
+            let start = Instant::now();
+            engine.stop_audio();
+            assert!(start.elapsed() < Duration::from_millis(50));
+            assert_eq!(fade.request(), 1, "停止前の要求を送っていない");
+            assert!(!engine.processing_running());
+            assert!(engine.pending_audio_msgs.is_empty());
+            assert!(engine.input_stream.is_none() && engine.output_stream.is_none());
+            assert!(engine.live_output.is_none() && engine.split_monitor.is_none());
+        }
+    }
+}

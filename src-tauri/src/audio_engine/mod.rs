@@ -31,6 +31,7 @@ pub mod reverb;
 
 pub mod live_modes;
 pub mod mode_silence;
+pub(crate) mod stop_fade;
 
 pub mod queue_recovery;
 
