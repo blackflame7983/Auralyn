@@ -417,6 +417,7 @@ impl Engine {
         if self.output_stream.is_some() || self.input_stream.is_some() {
             // 同じStart内の再設定は、利用者のStop通知と区別する。
             // 成功時はStartedだけを通知し、失敗時はstart_audio_implがStoppedを送る。
+            self.fade_before_stop();
             self.clear_audio_resources();
         }
 
@@ -922,6 +923,7 @@ impl Engine {
                     &self.live_output_config,
                     self.stream_failed.clone(),
                     crate::audio_engine::live_output::SinkProtection {
+                        stop_fade: self.stop_fade.clone(),
                         peak: (self.peak_config, self.peak_shared.clone()),
                         true_peak: (self.true_peak_config, self.true_peak_shared.clone()),
                     },
@@ -989,6 +991,7 @@ impl Engine {
                     self.restored_monitor.as_ref(),
                     channels,
                 )?;
+            renderer.get_mut().set_stop_fade(self.stop_fade.clone());
             if let Some(start) = self.mixing_start.clone() {
                 self.mixing_shared = Some(Arc::new(
                     crate::audio_engine::mixing::controls::Shared::new_at(
@@ -1152,8 +1155,17 @@ impl Engine {
             // スイープ用の領域はストリーム構築時に確保し、コールバックでは再利用する。
             let measure_bridge = measure_output;
             let mut measure_dry = vec![0.0f32; max_frames_per_callback.max(1)];
+            let mut main_stop_fade = super::super::stop_fade::StopFadeRt::new(
+                self.stop_fade.clone(),
+                super::super::stop_fade::MAIN,
+                callback_rate,
+            );
             let mut process_output =
-                move |data: &mut [f32], info: Option<&cpal::OutputCallbackInfo>| {
+                move |data: &mut [f32], output_context: OutputCallbackContext<'_>| {
+                    let OutputCallbackContext {
+                        info,
+                        mut stop_fade,
+                    } = output_context;
                     if dsp_silence.drain_worker() {
                         measure_bridge.abandon_stopped();
                         if let Some(mixer) = &mut broadcast_mixer {
@@ -1718,10 +1730,11 @@ impl Engine {
                             let gain = rt_output_gain.next();
                             let sample = measure_dry.get(i).copied().unwrap_or(0.0) * gain;
                             let [main_l, main_r] = rt_peak.process([sample, sample]);
-                            let sent = super::super::queue_diagnostics::write_output_frame(
+                            let sent = write_faded_output_frame(
                                 &mut data[i * channels..(i + 1) * channels],
                                 output_pair,
                                 [main_l, main_r],
+                                stop_fade.as_deref_mut(),
                             );
                             out_max_l = out_max_l.max(sent[0]);
                             out_max_r = out_max_r.max(sent[1]);
@@ -1752,10 +1765,11 @@ impl Engine {
                             let main_r = tone_r * gain;
                             let [main_l, main_r] = rt_peak.process([main_l, main_r]);
 
-                            let sent = super::super::queue_diagnostics::write_output_frame(
+                            let sent = write_faded_output_frame(
                                 &mut data[i * channels..(i + 1) * channels],
                                 output_pair,
                                 [main_l, main_r],
+                                stop_fade.as_deref_mut(),
                             );
                             out_max_l = out_max_l.max(sent[0]);
                             out_max_r = out_max_r.max(sent[1]);
@@ -1787,10 +1801,11 @@ impl Engine {
                             let main_r = main_r * gain;
                             let [main_l, main_r] = rt_peak.process([main_l, main_r]);
 
-                            let sent = super::super::queue_diagnostics::write_output_frame(
+                            let sent = write_faded_output_frame(
                                 &mut data[i * channels..(i + 1) * channels],
                                 output_pair,
                                 [main_l, main_r],
+                                stop_fade.as_deref_mut(),
                             );
                             out_max_l = out_max_l.max(sent[0]);
                             out_max_r = out_max_r.max(sent[1]);
@@ -1855,10 +1870,11 @@ impl Engine {
                             let main_l = main_l * monitor_gain;
                             let main_r = main_r * monitor_gain;
                             // Left
-                            let sent = super::super::queue_diagnostics::write_output_frame(
+                            let sent = write_faded_output_frame(
                                 &mut data[i * channels..(i + 1) * channels],
                                 output_pair,
                                 [main_l, main_r],
+                                stop_fade.as_deref_mut(),
                             );
                             out_max_l = out_max_l.max(sent[0]);
                             out_max_r = out_max_r.max(sent[1]);
@@ -1930,7 +1946,13 @@ impl Engine {
                 match crate::audio_engine::split_monitor::Worker::start_gated(
                     move |data| {
                         let ticket = output_silence.ticket();
-                        process_output(data, None);
+                        process_output(
+                            data,
+                            OutputCallbackContext {
+                                info: None,
+                                stop_fade: None,
+                            },
+                        );
                         output_silence.finish(
                             crate::audio_engine::mode_silence::MAIN,
                             ticket,
@@ -1993,12 +2015,20 @@ impl Engine {
                             &stats_glitches,
                         );
                         let ticket = output_silence.ticket();
-                        process_output(data, Some(info));
+                        main_stop_fade.begin_block();
+                        process_output(
+                            data,
+                            OutputCallbackContext {
+                                info: Some(info),
+                                stop_fade: Some(&mut main_stop_fade),
+                            },
+                        );
                         output_silence.finish(
                             crate::audio_engine::mode_silence::MAIN,
                             ticket,
                             data,
                         );
+                        main_stop_fade.end_block(data.len() / channels_len);
                     },
                     err_fn_ipc,
                 )
@@ -2235,8 +2265,97 @@ impl Engine {
     }
 }
 
+struct OutputCallbackContext<'a> {
+    info: Option<&'a cpal::OutputCallbackInfo>,
+    stop_fade: Option<&'a mut super::super::stop_fade::StopFadeRt>,
+}
+
+// 全出力枝でtrim・保護の後に同じ停止倍率を掛け、物理出力へ書く。
+fn write_faded_output_frame(
+    output: &mut [f32],
+    pair: [usize; 2],
+    samples: [f32; 2],
+    fade: Option<&mut super::super::stop_fade::StopFadeRt>,
+) -> [f32; 2] {
+    super::super::queue_diagnostics::write_output_frame(
+        output,
+        pair,
+        fade.map_or(samples, |fade| fade.apply(samples)),
+    )
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fade481_main_sine_after_trim_routes_and_converges_without_allocations() {
+        use crate::audio_engine::stop_fade::{SignalCheck, StopFade, StopFadeRt, MAIN};
+        use std::sync::Arc;
+        for pair in [[0, 1], [1, 0], [0, 0], [2, 3]] {
+            let shared = Arc::new(StopFade::default());
+            let mut rt = StopFadeRt::new(shared.clone(), MAIN, 48_000);
+            let mut trim = crate::audio_engine::gain_ramp::GainRamp::new(0.7, 48_000);
+            let mut check = SignalCheck::default();
+            let mut generation = 0;
+            let mut index = 0;
+            let mut faded = 0u32;
+            for block in 0..16 {
+                if block == 3 {
+                    generation = shared.request();
+                }
+                let frames = [31, 64, 127][block % 3];
+                assert_eq!(
+                    crate::dsp_verification_allocator::allocation_counts(|| {
+                        rt.begin_block();
+                        for _ in 0..frames {
+                            let sample = 0.5
+                                * (std::f32::consts::TAU * 1000.0 * index as f32 / 48000.0
+                                    + std::f32::consts::FRAC_PI_3)
+                                    .sin()
+                                * trim.next();
+                            index += 1;
+                            let mut output = [0.0; 4];
+                            super::write_faded_output_frame(
+                                &mut output,
+                                pair,
+                                [sample, -sample],
+                                Some(&mut rt),
+                            );
+                            if generation != 0 {
+                                faded += 1;
+                            }
+                            let gain = if generation == 0 {
+                                1.0
+                            } else {
+                                480u32.saturating_sub(faded) as f32 / 480.0
+                            };
+                            let right = if pair[0] == pair[1] {
+                                output[pair[0]]
+                            } else {
+                                -output[pair[1]]
+                            };
+                            check.frame([output[pair[0]], right], [sample; 2], gain, 480);
+                            for (ch, value) in output.iter().enumerate() {
+                                if !pair.contains(&ch) {
+                                    assert_eq!(*value, 0.0);
+                                }
+                            }
+                        }
+                        rt.end_block(frames);
+                    }),
+                    (0, 0)
+                );
+                if generation != 0 {
+                    assert_eq!(shared.acknowledged(1 << MAIN, generation), faded >= 480);
+                }
+            }
+            assert!(faded > 480);
+            eprintln!(
+                "fade481 main {pair:?}: max_step={:.9}, max_excess={:.9}",
+                check.max_step, check.max_excess
+            );
+        }
+    }
+
     use super::*;
 
     fn attempt_log() -> StartAttemptLog {

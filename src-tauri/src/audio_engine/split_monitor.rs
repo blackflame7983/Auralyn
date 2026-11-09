@@ -162,6 +162,8 @@ pub struct Controller {
     revision: u64,
 }
 pub struct Monitor {
+    stop_fade: super::stop_fade::StopFadeRt,
+    rate: u32,
     timing: Option<super::frame_timing::OutputRecorder>,
     diagnostics: Arc<super::queue_diagnostics::QueueDiagnostics>,
     input_buffer: Vec<f32>,
@@ -300,6 +302,12 @@ impl Controller {
             3,
         );
         let (monitor, owner) = callback_owner(Monitor {
+            rate,
+            stop_fade: super::stop_fade::StopFadeRt::new(
+                Arc::default(),
+                super::stop_fade::MONITOR,
+                rate,
+            ),
             timing,
             diagnostics,
             input_buffer: vec![0.0; max_frames * input_channels],
@@ -470,6 +478,11 @@ impl Drop for Controller {
     }
 }
 impl Monitor {
+    pub(crate) fn set_stop_fade(&mut self, shared: Arc<super::stop_fade::StopFade>) {
+        self.stop_fade =
+            super::stop_fade::StopFadeRt::new(shared, super::stop_fade::MONITOR, self.rate);
+    }
+
     pub(crate) fn configure_mixing(
         &mut self,
         mixing: super::mixing::runtime::Monitor,
@@ -485,7 +498,9 @@ impl Monitor {
     }
     #[cfg(test)]
     pub fn render(&mut self, data: &mut [f32], info: Option<&cpal::OutputCallbackInfo>) {
+        self.stop_fade.begin_block();
         self.render_inner(data, info, None);
+        self.stop_fade.end_block(data.len() / 2);
     }
     pub(crate) fn render_gated(
         &mut self,
@@ -493,6 +508,7 @@ impl Monitor {
         info: Option<&cpal::OutputCallbackInfo>,
         gate: &super::mode_silence::Shared,
     ) {
+        self.stop_fade.begin_block();
         let ticket = gate.ticket();
         if gate.drain_monitor_input() {
             self.input
@@ -508,6 +524,7 @@ impl Monitor {
         }
         self.render_inner(data, info, Some(gate));
         gate.finish(super::mode_silence::MONITOR, ticket, data);
+        self.stop_fade.end_block(data.len() / 2);
     }
     fn render_inner(
         &mut self,
@@ -739,7 +756,7 @@ impl Monitor {
                 }
             }
             let protected = self.peak.process([output[0], output[1]]);
-            output[..2].copy_from_slice(&protected);
+            output[..2].copy_from_slice(&self.stop_fade.apply(protected));
         }
         self.peak.report(&self.peak_shared, 1);
         if let Some(mixing) = &self.mixing {
@@ -841,6 +858,66 @@ mod tests {
     );
     fn fixture() -> Fixture {
         fixture_with_state(None)
+    }
+
+    #[test]
+    fn fade481_monitor_sine_fades_only_device_output_without_allocations() {
+        use crate::audio_engine::stop_fade::{SignalCheck, StopFade, MONITOR};
+        let (_controller, mut renderer, mut input, _queue, mut broadcast) =
+            fixture_with_channels(None, 2, [0, 1]);
+        let (_dry_controller, mut dry_renderer, mut dry_input, _dry_queue, mut dry_broadcast) =
+            fixture_with_channels(None, 2, [0, 1]);
+        let fade = Arc::new(StopFade::default());
+        renderer.get_mut().set_stop_fade(fade.clone());
+        let mut check = SignalCheck::default();
+        let mut generation = 0;
+        let mut faded = 0u32;
+        for block in 0..16 {
+            if block == 3 {
+                generation = fade.request();
+            }
+            for index in 0..64 {
+                let value = 0.5
+                    * (std::f32::consts::TAU * 1000.0 * (block * 64 + index) as f32 / 48000.0
+                        + std::f32::consts::FRAC_PI_3)
+                        .sin();
+                for tx in [&mut input, &mut dry_input] {
+                    tx.try_push(value * 2.0).unwrap();
+                    tx.try_push(-value * 2.0).unwrap();
+                }
+            }
+            let mut output = [0.0; 128];
+            let mut dry = [0.0; 128];
+            assert_eq!(
+                crate::dsp_verification_allocator::allocation_counts(|| {
+                    renderer.get_mut().render(&mut output, None);
+                    dry_renderer.get_mut().render(&mut dry, None);
+                }),
+                (0, 0)
+            );
+            while let Some(frame) = broadcast.try_pop() {
+                // 配信用の共通PCMへ本人用fadeを掛けない。
+                assert_eq!(frame.voice, dry_broadcast.try_pop().unwrap().voice);
+            }
+            for (frame, source) in output.as_chunks::<2>().0.iter().zip(dry.as_chunks::<2>().0) {
+                if generation != 0 {
+                    faded += 1;
+                }
+                let gain = if generation == 0 {
+                    1.0
+                } else {
+                    480u32.saturating_sub(faded) as f32 / 480.0
+                };
+                check.frame(*frame, *source, gain, 480);
+            }
+            if generation != 0 {
+                assert_eq!(fade.acknowledged(1 << MONITOR, generation), faded >= 480);
+            }
+        }
+        eprintln!(
+            "fade481 monitor: max_step={:.9}, max_excess={:.9}",
+            check.max_step, check.max_excess
+        );
     }
 
     #[test]
