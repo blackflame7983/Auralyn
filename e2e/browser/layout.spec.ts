@@ -420,12 +420,32 @@ test(`右パネルの出入り・連続開閉・ホームの幅復帰 ${width}px
     const panel = page.locator('#vst-panel');
     await expect(panel).toHaveAttribute('data-state', 'open');
     await settleLayoutMotion(page);
-    await page.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
-    await expect(panel).toHaveAttribute('inert', '');
-    await expect(panel).toHaveAttribute('aria-hidden', 'true');
-    await expect(toggle).toBeFocused();
-    // スクロール待ちを挟まず、終了途中に同じ実ボタンから再度開く。
-    await toggle.evaluate((e: HTMLButtonElement) => e.click());
+    // 閉じる→終了途中の状態確認→同じ実ボタンで再度開く、をページ内の1つの流れで行う。
+    // Playwright の往復を挟むと、遅いCIでは確認の途中で終了処理が終わり、要素が外れる。
+    const reopened = await panel.evaluate(async e => {
+        // 開いている間は切替ボタンが描き直されるため、閉じた後に取り直す。
+        const toggleButton = () => document.querySelector<HTMLButtonElement>('#vst-panel-toggle');
+        const committed = new Promise<void>(resolve => {
+            const observer = new MutationObserver(() => {
+                if (!e.hasAttribute('inert')) return;
+                observer.disconnect();
+                resolve();
+            });
+            observer.observe(e, { attributes: true, attributeFilter: ['inert'] });
+        });
+        (e.querySelector('button[aria-label="VST構成を閉じる"]') as HTMLButtonElement).click();
+        await committed;
+        const closing = { inert: e.getAttribute('inert'), hidden: e.getAttribute('aria-hidden') };
+        // 焦点の移動は commit 後の effect で行われるため、終了途中のうちに数フレームだけ待つ。
+        for (let frame = 0; frame < 10 && document.activeElement !== toggleButton(); frame++) {
+            await new Promise(requestAnimationFrame);
+        }
+        const focused = toggleButton() !== null && document.activeElement === toggleButton();
+        const mounted = e.isConnected;
+        toggleButton()?.click();
+        return { ...closing, focused, mounted };
+    });
+    expect(reopened).toEqual({ inert: '', hidden: 'true', focused: true, mounted: true });
     await expect(panel).toHaveAttribute('data-state', 'open');
     await expect(panel).not.toHaveAttribute('inert', '');
     await settleLayoutMotion(page);
