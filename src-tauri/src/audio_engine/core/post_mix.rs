@@ -522,6 +522,10 @@ mod tests {
             .samples
             .iter()
             .all(|frame| frame[0].abs() <= 0.5 + 1.0e-4));
+        // 申告された1サンプルの尾を無音で排出してから、呼び出しを止める（#482）。
+        packet.samples.fill([0.5, 0.0]);
+        assert!(rack.process(&mut packet));
+        assert!((packet.samples[0][0] - 0.5).abs() < 1.0e-3);
         let calls = plugin.calls();
         packet.samples.fill([0.5, 0.0]);
         assert!(rack.process(&mut packet));

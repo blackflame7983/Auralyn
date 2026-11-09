@@ -44,6 +44,9 @@ pub(in crate::audio_engine::core) struct PluginControls {
     pub(in crate::audio_engine::core) health_shared: Arc<PluginHealthShared>,
     pub(in crate::audio_engine::core) transitions: [SlotTransition; MAX_PLUGINS],
     pub(in crate::audio_engine::core) chain: ChainFade,
+    /// 最後に入力を通したブロックから、無音で進める残りフレーム数。
+    drain_remaining: [u32; MAX_PLUGINS],
+    drain_cap: u32,
 }
 
 impl PluginControls {
@@ -60,6 +63,8 @@ impl PluginControls {
             health_shared: shared,
             transitions: std::array::from_fn(|_| SlotTransition::at_rest(rate, 0, false, false)),
             chain: ChainFade::new(rate),
+            drain_remaining: [0; MAX_PLUGINS],
+            drain_cap: rate.saturating_mul(5),
         }
     }
 
@@ -137,6 +142,37 @@ impl PluginControls {
                     retire_later[idx] = true;
                     continue;
                 }
+                if self.transitions[idx].is_settled_dry()
+                    || self.transitions[idx].is_settled_silent()
+                {
+                    let drain_frames = frames.min(self.drain_remaining[idx] as usize);
+                    if drain_frames > 0 {
+                        // dry を無音入力に、使っていない A/B を捨てる出力に使う。
+                        // 現在の経路の入力と出力には混ぜず、callback で確保しない。
+                        silence_used(dry, channels, drain_frames);
+                        let discarded = if current_source_is_a {
+                            &mut *planar_buf_b
+                        } else {
+                            &mut *planar_buf_a
+                        };
+                        if let Some(proc) = processors[idx].as_mut() {
+                            proc.process_planar(dry, discarded, drain_frames);
+                            self.drain_remaining[idx] -= drain_frames as u32;
+                            self.note_processed(idx, discarded, channels, drain_frames);
+                        } else {
+                            self.drain_remaining[idx] = 0;
+                        }
+                        if self.health[idx].isolated {
+                            let current = if current_source_is_a {
+                                &mut *planar_buf_a
+                            } else {
+                                &mut *planar_buf_b
+                            };
+                            silence_used(current, channels, frames);
+                            continue;
+                        }
+                    }
+                }
                 if self.transitions[idx].is_settled_dry() {
                     copy_planar(
                         planar_buf_a,
@@ -164,6 +200,8 @@ impl PluginControls {
                         } else {
                             (&*planar_buf_b, &mut *planar_buf_a)
                         };
+                        self.drain_remaining[idx] =
+                            drain_frames_for(proc.tail_samples(), self.drain_cap);
                         proc.process_planar(in_bufs, out_bufs, frames);
                         self.note_processed(idx, out_bufs, channels, frames);
                         true
@@ -205,6 +243,8 @@ impl PluginControls {
                 }
                 let called = if needs_wet {
                     if let Some(proc) = processors[idx].as_mut() {
+                        self.drain_remaining[idx] =
+                            drain_frames_for(proc.tail_samples(), self.drain_cap);
                         proc.process_planar(in_bufs, out_bufs, frames);
                         true
                     } else {
@@ -375,6 +415,7 @@ impl PluginControls {
         self.bypassed[slot] = bypassed;
         self.muted[slot] = muted;
         self.transitions[slot].note_added(latency, bypassed, muted);
+        self.drain_remaining[slot] = 0;
     }
 
     /// 即時に取り除けるとき true。処理中なら dry への遷移を始め、完了ブロックで retire する。
@@ -486,6 +527,7 @@ impl PluginControls {
         self.muted[slot] = false;
         self.gains[slot] = Smoother::new(1.0);
         self.transitions[slot].reset_idle();
+        self.drain_remaining[slot] = 0;
         remove_from_order(&mut self.order, &mut self.order_len, slot as u8);
         plugin_health::clear_slot(
             &mut self.health,
@@ -672,6 +714,15 @@ fn commit_soft_order(
     }
     controls.order = live;
     controls.order_len = live_len;
+}
+
+// 排出の長さ。kNoTail（0）は残響を持つVSTでも返すことが多いため、不明として上限を使う。
+// 無限（kInfiniteTail）や上限を超える値も上限に丸める。
+fn drain_frames_for(tail: Option<u32>, cap: u32) -> u32 {
+    match tail {
+        Some(samples) if samples > 0 => samples.min(cap),
+        _ => cap,
+    }
 }
 
 fn copy_dry(input: &[Vec<f32>], dry: &mut [Vec<f32>], channels: usize, frames: usize) {
@@ -1619,6 +1670,319 @@ mod tests {
         drop(impulse);
     }
 
+    fn tail482_run(
+        controls: &mut PluginControls,
+        processors: &mut [Option<VstProcessor>; MAX_PLUGINS],
+        a: &mut [Vec<f32>],
+        b: &mut [Vec<f32>],
+        dry: &mut [Vec<f32>],
+        frames: usize,
+    ) -> bool {
+        let mut source = true;
+        assert_eq!(
+            allocation_counts(|| {
+                source = run(controls, processors, a, b, dry, frames);
+            }),
+            (0, 0)
+        );
+        source
+    }
+
+    // 実時間の sleep ではなく、48 kHz の callback を回して内部状態を進める。
+    fn tail482_stale_impulse_case(bypass: bool, tail: u32) {
+        let mut plugin = ScriptedVst::delayed_tail(48_000, tail);
+        let (mut controls, _) = fresh_controls(48_000);
+        controls.order[0] = 0;
+        controls.order_len = 1;
+        let mut processors = std::array::from_fn(|_| None);
+        processors[0] = Some(plugin.take());
+        let frames = 480;
+        let (mut a, mut b, mut dry) = buffers(frames, 0.0);
+        for block in 0..10 {
+            fill(&mut a, frames, 0.0, 0.0);
+            if block == 0 {
+                a[0][0] = 0.8;
+                a[1][0] = -0.6;
+            }
+            tail482_run(
+                &mut controls,
+                &mut processors,
+                &mut a,
+                &mut b,
+                &mut dry,
+                frames,
+            );
+        }
+        if bypass {
+            controls.request_bypass(0, true, 0);
+        } else {
+            controls.request_mute(0, true);
+        }
+        // 無限 tail は上限の5秒も含めて待つ。
+        for _ in 0..610 {
+            fill(&mut a, frames, 0.0, 0.0);
+            tail482_run(
+                &mut controls,
+                &mut processors,
+                &mut a,
+                &mut b,
+                &mut dry,
+                frames,
+            );
+        }
+        let calls = plugin.calls();
+        for _ in 0..10 {
+            fill(&mut a, frames, 0.0, 0.0);
+            tail482_run(
+                &mut controls,
+                &mut processors,
+                &mut a,
+                &mut b,
+                &mut dry,
+                frames,
+            );
+        }
+        assert_eq!(plugin.calls(), calls, "排出後は process を止める");
+        if bypass {
+            controls.request_bypass(0, false, 0);
+        } else {
+            controls.request_mute(0, false);
+        }
+        let mut peak = 0.0_f32;
+        for _ in 0..200 {
+            fill(&mut a, frames, 0.0, 0.0);
+            let source = tail482_run(
+                &mut controls,
+                &mut processors,
+                &mut a,
+                &mut b,
+                &mut dry,
+                frames,
+            );
+            for ch in output(source, &a, &b).iter().take(2) {
+                for sample in &ch[..frames] {
+                    peak = peak.max(sample.abs());
+                }
+            }
+        }
+        eprintln!(
+            "#482 bypass={bypass}, tail={tail}, resumed_peak={peak}, calls_before_resume={calls}"
+        );
+        assert_eq!(plugin.tail_queries(), 1, "RT では tail を問い合わせない");
+        assert_eq!(
+            calls,
+            11 + drain_frames_for(Some(tail), 240_000).div_ceil(480)
+        );
+        assert_eq!(
+            peak, 0.0,
+            "解除後の古いインパルス: bypass={bypass}, tail={tail}, peak={peak}"
+        );
+        drop(processors);
+    }
+
+    #[test]
+    fn tail482_bypass_delay() {
+        tail482_stale_impulse_case(true, 48_000);
+    }
+    #[test]
+    fn tail482_mute_delay() {
+        tail482_stale_impulse_case(false, 48_000);
+    }
+    #[test]
+    fn tail482_bypass_infinite_tail() {
+        tail482_stale_impulse_case(true, u32::MAX);
+    }
+    #[test]
+    fn tail482_mute_infinite_tail() {
+        tail482_stale_impulse_case(false, u32::MAX);
+    }
+    // 残響を持つのに kNoTail（0）を返すVSTも、上限まで排出して古い音を出さない。
+    #[test]
+    fn tail482_bypass_reported_no_tail() {
+        tail482_stale_impulse_case(true, 0);
+    }
+    #[test]
+    fn tail482_drain_length_treats_zero_and_infinite_as_unknown() {
+        assert_eq!(drain_frames_for(Some(0), 240_000), 240_000);
+        assert_eq!(drain_frames_for(None, 240_000), 240_000);
+        assert_eq!(drain_frames_for(Some(u32::MAX), 240_000), 240_000);
+        assert_eq!(drain_frames_for(Some(48_000), 240_000), 48_000);
+    }
+
+    #[test]
+    fn tail482_resume_during_drain_is_finite_and_fades_from_current_level() {
+        for bypass in [true, false] {
+            let mut plugin = ScriptedVst::delayed_tail(48_000, 48_000);
+            let (mut controls, _) = fresh_controls(48_000);
+            controls.order[0] = 0;
+            controls.order_len = 1;
+            let mut processors = std::array::from_fn(|_| None);
+            processors[0] = Some(plugin.take());
+            let frames = 64;
+            let (mut a, mut b, mut dry) = buffers(frames, 0.0);
+            for _ in 0..800 {
+                fill(&mut a, frames, 0.4, -0.3);
+                tail482_run(
+                    &mut controls,
+                    &mut processors,
+                    &mut a,
+                    &mut b,
+                    &mut dry,
+                    frames,
+                );
+            }
+            if bypass {
+                controls.request_bypass(0, true, 0);
+            } else {
+                controls.request_mute(0, true);
+            }
+            for _ in 0..20 {
+                fill(&mut a, frames, 0.4, -0.3);
+                tail482_run(
+                    &mut controls,
+                    &mut processors,
+                    &mut a,
+                    &mut b,
+                    &mut dry,
+                    frames,
+                );
+            }
+            assert!(
+                controls.transitions[0].is_settled_dry()
+                    || controls.transitions[0].is_settled_silent()
+            );
+            let before = plugin.calls();
+            for _ in 0..10 {
+                fill(&mut a, frames, 0.4, -0.3);
+                tail482_run(
+                    &mut controls,
+                    &mut processors,
+                    &mut a,
+                    &mut b,
+                    &mut dry,
+                    frames,
+                );
+            }
+            assert_eq!(plugin.calls(), before + 10, "排出中も呼び出す");
+            let mut heard = [
+                vec![if bypass { 0.4 } else { 0.0 }],
+                vec![if bypass { -0.3 } else { 0.0 }],
+            ];
+            if bypass {
+                controls.request_bypass(0, false, 0);
+            } else {
+                controls.request_mute(0, false);
+            }
+            for _ in 0..10 {
+                fill(&mut a, frames, 0.4, -0.3);
+                let source = tail482_run(
+                    &mut controls,
+                    &mut processors,
+                    &mut a,
+                    &mut b,
+                    &mut dry,
+                    frames,
+                );
+                collect(&mut heard, source, &a, &b, frames);
+            }
+            assert_eq!(
+                plugin.calls(),
+                before + 20,
+                "解除で排出を止め、通常処理だけを呼ぶ"
+            );
+            assert!(heard.iter().flatten().all(|s| s.is_finite()));
+            assert!(within_bound(&heard, click_limit(48_000)));
+            assert!(controls.transitions[0].is_settled_wet());
+            assert_eq!(heard[0].last(), Some(&0.4));
+            drop(processors);
+        }
+    }
+
+    #[test]
+    fn tail482_drain_uses_silence_discards_output_and_stops_at_report_or_cap() {
+        for bypass in [true, false] {
+            for tail in [48_001_u32, u32::MAX, u32::MAX - 1] {
+                let mut plugin = ScriptedVst::delayed_tail(48_000, tail);
+                let (mut controls, _) = fresh_controls(48_000);
+                controls.order[0] = 0;
+                controls.order_len = 1;
+                let mut processors = std::array::from_fn(|_| None);
+                processors[0] = Some(plugin.take());
+                let frames = 480;
+                let (mut a, mut b, mut dry) = buffers(frames, 0.0);
+                a[0][0] = 0.8;
+                a[1][0] = -0.6;
+                tail482_run(
+                    &mut controls,
+                    &mut processors,
+                    &mut a,
+                    &mut b,
+                    &mut dry,
+                    frames,
+                );
+                if bypass {
+                    controls.request_bypass(0, true, 0);
+                } else {
+                    controls.request_mute(0, true);
+                }
+                fill(&mut a, frames, 0.0, 0.0);
+                tail482_run(
+                    &mut controls,
+                    &mut processors,
+                    &mut a,
+                    &mut b,
+                    &mut dry,
+                    frames,
+                );
+                let drained = tail.min(240_000);
+                for _ in 0..drained.div_ceil(frames as u32) + 3 {
+                    // 流れている音は排出の入力にしない。経路へも排出の音を混ぜない。
+                    fill(&mut a, frames, 0.3, -0.2);
+                    let source = tail482_run(
+                        &mut controls,
+                        &mut processors,
+                        &mut a,
+                        &mut b,
+                        &mut dry,
+                        frames,
+                    );
+                    let produced = output(source, &a, &b);
+                    assert!(produced[0][..frames]
+                        .iter()
+                        .all(|s| *s == if bypass { 0.3 } else { 0.0 }));
+                    assert!(produced[1][..frames]
+                        .iter()
+                        .all(|s| *s == if bypass { -0.2 } else { 0.0 }));
+                }
+                assert_eq!(plugin.calls(), 2 + drained.div_ceil(frames as u32));
+                assert_eq!(
+                    plugin.processed_frames(),
+                    960 + u64::from(drained),
+                    "最後の排出も残りフレームだけを処理する"
+                );
+                if bypass {
+                    controls.request_bypass(0, false, 0);
+                } else {
+                    controls.request_mute(0, false);
+                }
+                for _ in 0..200 {
+                    fill(&mut a, frames, 0.0, 0.0);
+                    let source = tail482_run(
+                        &mut controls,
+                        &mut processors,
+                        &mut a,
+                        &mut b,
+                        &mut dry,
+                        frames,
+                    );
+                    assert!(output(source, &a, &b).iter().flatten().all(|s| *s == 0.0));
+                }
+                assert_eq!(plugin.tail_queries(), 1);
+                drop(processors);
+            }
+        }
+    }
+
     #[test]
     fn mute_fades_out_while_calling_the_plugin_and_then_skips_it() {
         let mut plugin = ScriptedVst::scale(1.0);
@@ -1657,6 +2021,17 @@ mod tests {
             }
         }
         assert!(controls.transitions[0].is_settled_silent());
+        // 申告された1サンプルの尾を無音で排出してから、呼び出しを止める（#482）。
+        fill(&mut planar_a, frames, 0.8, 0.0);
+        let source_a = run(
+            &mut controls,
+            &mut processors,
+            &mut planar_a,
+            &mut planar_b,
+            &mut dry,
+            frames,
+        );
+        collect(&mut heard, source_a, &planar_a, &planar_b, frames);
         let calls_while_fading = plugin.calls();
         assert!(calls_while_fading > 1);
         for _ in 0..3 {
