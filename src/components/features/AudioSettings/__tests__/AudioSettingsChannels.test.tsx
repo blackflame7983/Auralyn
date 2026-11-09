@@ -57,7 +57,7 @@ it('初回の空configは独立出力1/2で始まり、入力3/4を選んでも�
     await screen.findByRole('radio', { name: '入力チャンネル 3/4' });
     expect(screen.getByRole('combobox', { name: '音声の返却方法' })).toHaveValue('independent');
     fireEvent.click(screen.getByRole('radio', { name: '入力チャンネル 3/4' }));
-    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    fireEvent.click(screen.getByRole('button', { name: '接続を保存して開始' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('start_audio', expect.objectContaining({
         channelRouting: { inputChannels: [2, 3], outputRouting: { mode: 'independent', channels: [0, 1] } },
     })));
@@ -78,10 +78,10 @@ it('設定プリセットは同名機器のIDと独立した入力・出力ペ�
     const update = vi.fn();
     render(<AudioSettingsModal isOpen onClose={() => {}} onConfigChange={update} />);
     await screen.findByRole('radio', { name: '入力チャンネル 5/6' });
-    fireEvent.change(screen.getByRole('combobox', { name: '入出力の保存' }), { target: { value: 'other' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '入出力プリセット' }), { target: { value: 'other' } });
     expect(screen.getByRole('radio', { name: '入力チャンネル 5/6' })).toBeChecked();
     expect(screen.getByRole('combobox', { name: '出力チャンネル' })).toHaveValue('2,3');
-    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    fireEvent.click(screen.getByRole('button', { name: '接続を保存して開始' }));
     await waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({
         inputId: 'driver-B', outputId: 'driver-B', inputChannels: [4, 5], outputRouting: { mode: 'independent', channels: [2, 3] },
     }), { audioStarted: true }));
@@ -96,7 +96,7 @@ it.each(['independent', 'insert'] as const)('入力3/4と出力の返却方法�
     fireEvent.change(screen.getByRole('combobox', { name: '音声の返却方法' }), { target: { value: mode } });
     if (mode === 'independent') expect(screen.getByRole('combobox', { name: '出力チャンネル' })).toHaveValue('0,1');
     expect(update).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    fireEvent.click(screen.getByRole('button', { name: '接続を保存して開始' }));
     const outputRouting = mode === 'independent' ? { mode, channels: [0, 1] } : { mode };
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('start_audio', expect.objectContaining({
         channelRouting: { inputChannels: [2, 3], outputRouting },
@@ -137,7 +137,7 @@ it('多入力では選択中と信号のあるペアを残し、全ペアを展�
     expect(screen.getByRole('radio', { name: '入力チャンネル 13/14' })).toBeVisible();
 });
 
-it.each(['保存して開始', '音声処理を再起動'])(
+it.each(['接続を保存して開始', '音声処理を再起動'])(
     'ASIOからWASAPIの%sでエンジンと保存値を0/1へ更新する',
     async (action) => {
         const update = vi.fn();
@@ -183,7 +183,7 @@ it('ASIOを維持する保存では6/7を維持する', async () => {
         />
     );
     await screen.findByRole('option', { name: 'ASIO device' });
-    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    fireEvent.click(screen.getByRole('button', { name: '接続を保存して開始' }));
     await waitFor(() =>
         expect(update).toHaveBeenCalledWith(
             expect.objectContaining({ host: 'ASIO', inputChannels: [6, 7] }), { audioStarted: true }
@@ -300,7 +300,7 @@ it('ペア変更は下書きであり、保存開始後にのみ適用する', a
     fireEvent.click(pair);
     expect(update).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
-    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    fireEvent.click(screen.getByRole('button', { name: '接続を保存して開始' }));
     await waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({ inputChannels: [2, 3] }), { audioStarted: true }));
     expect(invoke).toHaveBeenCalledWith(expect.stringMatching(/start_audio|restart_audio_engine/), expect.objectContaining({ channelRouting: expect.objectContaining({ inputChannels: [2, 3] }) }));
         expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
@@ -523,7 +523,7 @@ it('同名の入出力をIDで復元・選び直し、選んだIDで開始と保
     expect(outputSelect).toHaveValue('id:out-b');
     fireEvent.change(inputSelect, { target: { value: 'id:mic-a' } });
     fireEvent.change(outputSelect, { target: { value: 'id:out-a' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    fireEvent.click(screen.getByRole('button', { name: '接続を保存して開始' }));
     await waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({ input: '同名マイク', inputId: 'mic-a', output: '同名出力', outputId: 'out-a' }), { audioStarted: true }));
     expect(invoke).toHaveBeenCalledWith('start_audio', expect.objectContaining({ input: '同名マイク', inputId: 'mic-a', output: '同名出力', outputId: 'out-a' }));
 });
@@ -537,7 +537,7 @@ it('IDを保存していない同名機器は勝手に選択しない', async ()
     render(<AudioSettingsModal isOpen onClose={() => {}} onConfigChange={vi.fn()} />);
     const option = await screen.findByRole('option', { name: '同名マイク (a)' });
     expect(option.closest('select')).toHaveValue('');
-    expect(screen.getByRole('button', { name: '保存して開始' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '接続を保存して開始' })).toBeDisabled();
 });
 
 
@@ -552,11 +552,11 @@ it('開始前の入力検証で拒否されたら保存せず、開始要求か�
     const save = vi.fn();
     render(<AudioSettingsModal isOpen onClose={() => {}} onConfigChange={save} currentInputChannels={[6, 7]} />);
     await screen.findByRole('option', { name: 'ASIO device' });
-    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    fireEvent.click(screen.getByRole('button', { name: '接続を保存して開始' }));
     await screen.findByText(/routing rejected/);
     expect(save).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '設定に戻って再試行' }));
-    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    fireEvent.click(screen.getByRole('button', { name: '接続を保存して開始' }));
     await waitFor(() => expect(save).toHaveBeenCalledOnce());
     expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'start_audio')).toHaveLength(2);
     expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());

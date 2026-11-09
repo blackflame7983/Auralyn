@@ -30,16 +30,16 @@ function Harness() {
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 it.each([
-    { operation: '保存して開始', host: 'Wasapi', failAt: null },
+    { operation: '接続を保存して開始', host: 'Wasapi', failAt: null },
     { operation: '音声処理を再起動', host: 'Wasapi', failAt: null },
     { operation: '通常再起動', host: 'Wasapi', failAt: null },
-    { operation: '保存して開始', host: 'ASIO', failAt: null },
+    { operation: '接続を保存して開始', host: 'ASIO', failAt: null },
     { operation: '音声処理を再起動', host: 'ASIO', failAt: null },
-    { operation: '保存して開始', host: 'ASIO', failAt: 'start' },
+    { operation: '接続を保存して開始', host: 'ASIO', failAt: 'start' },
     { operation: '音声処理を再起動', host: 'ASIO', failAt: 'start' },
-    { operation: '保存して開始', host: 'ASIO', failAt: 'channels' },
+    { operation: '接続を保存して開始', host: 'ASIO', failAt: 'channels' },
     { operation: '音声処理を再起動', host: 'ASIO', failAt: 'channels' },
-    { operation: '保存して開始', host: 'ASIO', failAt: 'complete' },
+    { operation: '接続を保存して開始', host: 'ASIO', failAt: 'complete' },
     { operation: '音声処理を再起動', host: 'ASIO', failAt: 'complete' },
 ])('$host・$operation・初回失敗=$failAt: 確認後の開始成功時だけ各VSTを1回復元する', async ({ operation, host, failAt }) => {
     localStorage.clear();
@@ -122,15 +122,15 @@ it.each([
         expect(enginePaths).toEqual([]);
     }
     fireEvent.click(screen.getByRole('button', { name: '設定を表示' }));
-    await screen.findByRole('button', { name: '保存して開始' });
+    await screen.findByRole('button', { name: '接続を保存して開始' });
     if (operation !== '通常再起動') {
-        expect(screen.getByRole('button', { name: '保存して開始' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: '接続を保存して開始' })).toBeDisabled();
         if (host === 'ASIO') {
             fireEvent.click(await screen.findByRole('radio', { name: '入力チャンネル 7/8' }));
             expect(JSON.parse(localStorage.getItem('vst_host_audio_config')!).inputChannels).toEqual([0, 1]);
             expect(invoke).not.toHaveBeenCalledWith('set_input_channels', expect.anything());
             expect(localStorage.getItem(REVIEW_KEY)).toBe('true');
-            expect(screen.getByRole('button', { name: '保存して開始' })).toBeDisabled();
+            expect(screen.getByRole('button', { name: '接続を保存して開始' })).toBeDisabled();
             await openSystemTab();
             expect(screen.getByRole('button', { name: '音声処理を再起動' })).toBeDisabled();
             fireEvent.keyDown(screen.getByRole('tab', { name: 'オーディオ' }), { key: 'Enter' });
@@ -140,9 +140,9 @@ it.each([
         }
         fireEvent.click(screen.getByRole('checkbox', { name: '移行した入力・出力先・VSTを確認しました' }));
     }
-    await waitFor(() => expect(screen.getByRole('button', { name: '保存して開始' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: '接続を保存して開始' })).toBeEnabled());
     const start = async () => {
-        if (operation === '保存して開始') fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+        if (operation === '接続を保存して開始') fireEvent.click(screen.getByRole('button', { name: '接続を保存して開始' }));
         else {
             await openSystemTab();
             fireEvent.click(screen.getByRole('button', { name: '音声処理を再起動' }));
@@ -163,10 +163,10 @@ it.each([
         expect(localStorage.getItem(REVIEW_KEY)).toBe('true');
         expect(screen.getByTestId('chain')).toBeEmptyDOMElement();
         fireEvent.click(screen.getByRole('button', { name: '設定に戻って再試行' }));
-        await screen.findByRole('button', { name: '保存して開始' });
+        await screen.findByRole('button', { name: '接続を保存して開始' });
         await start();
     }
-    await waitFor(() => expect(screen.queryByRole('button', { name: '保存して開始' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('button', { name: '接続を保存して開始' })).not.toBeInTheDocument());
     await waitFor(() => expect(screen.getByTestId('chain')).toHaveTextContent(paths.join(',')));
     expect(localStorage.getItem(REVIEW_KEY)).toBeNull();
     expect(enginePaths).toEqual(paths);

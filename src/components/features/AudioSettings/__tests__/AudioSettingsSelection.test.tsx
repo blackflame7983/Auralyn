@@ -42,8 +42,8 @@ it.each([88200, 192000])('代表値以外の%d Hzでも表示値と開始要求�
     render(<AudioSettingsModal isOpen currentSampleRate={rate} onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const sampleRate = await screen.findByRole('combobox', { name: 'サンプルレート' });
     expect(sampleRate).toHaveValue(String(rate));
-    await waitFor(() => expect(screen.getByRole('button', { name: '保存して開始' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '接続を保存して開始' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '接続を保存して開始' }));
     await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', 'ASIO device', 'ASIO device', 512, rate, undefined, undefined, undefined, expect.objectContaining({ outputRouting: expect.any(Object) }), { source: { kind: "device", config: { purpose: "voice" } } }));
 });
 
@@ -58,8 +58,8 @@ it('ASIO能力未取得でも960サンプルの表示値と開始要求値が一
     const buffer = await screen.findByRole('combobox', { name: 'バッファサイズ' });
     expect(buffer).toHaveValue('960');
     expect(screen.getByRole('option', { name: '960 サンプル' })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole('button', { name: '保存して開始' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: '保存して開始' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '接続を保存して開始' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '接続を保存して開始' }));
     await waitFor(() => expect(start).toHaveBeenCalledWith('ASIO', 'ASIO device', 'ASIO device', 960, 48000, undefined, undefined, undefined, expect.objectContaining({ outputRouting: expect.any(Object) }), { source: { kind: "device", config: { purpose: "voice" } } }));
 });
 
@@ -119,7 +119,7 @@ it('接続設定と即時反映の音づくりを分け、操作名を公開す�
     fireEvent.mouseDown(screen.getByRole('tab', { name: '音づくり' }), { button: 0, ctrlKey: false });
     expect(screen.getByRole('switch', { name: 'ノイズ低減' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: '声を整える' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '保存して開始' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '接続を保存して開始' })).not.toBeInTheDocument();
     expect(input.compareDocumentPosition(host) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
 });

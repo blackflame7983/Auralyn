@@ -12,7 +12,7 @@ it('未設定の従来方式を説明し、明示保存でだけ背景連動と�
     fireEvent.click(screen.getByRole('button', { name: 'シーンの割当を追加' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'OBSシーン名 1' }), { target: { value: '歌枠' } });
     expect(localStorage.getItem(LIVE_ROUTING_KEY)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '連動方式を保存' }));
+    fireEvent.click(screen.getByRole('button', { name: 'シーン連動設定を保存' }));
     expect(readLiveRouting()).toEqual({ version: 1, strategy: 'mode', explicitEnabled: true, mappings: { 歌枠: 'singing' } });
     expect(screen.getByRole('status')).toHaveTextContent('次の実際のシーン変更');
 });
@@ -20,7 +20,7 @@ it('空欄・重複のシーン割当は保存原本を置換しない', () => {
     render(<ObsModeRoutingSettings />);
     fireEvent.change(screen.getByRole('combobox', { name: 'OBSシーンの連動方式' }), { target: { value: 'mode' } });
     fireEvent.click(screen.getByRole('button', { name: 'シーンの割当を追加' }));
-    fireEvent.click(screen.getByRole('button', { name: '連動方式を保存' }));
+    fireEvent.click(screen.getByRole('button', { name: 'シーン連動設定を保存' }));
     expect(screen.getByRole('status')).toHaveTextContent('空欄・重複');
     expect(readLiveRouting()).toBeNull();
 });

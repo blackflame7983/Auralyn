@@ -809,6 +809,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       </Select></Field>
                     </div>
                   </div>
+                  <p className="text-ui-support text-muted-foreground">{t('settings.apply.connectionPreset')}</p>
                   <div className="flex items-end gap-2">
                     <Field label={t('settings.AudioSettingsModal.089')}><Input
                         type="text"
@@ -822,6 +823,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       disabled={!presetName}
                       variant="ghost" className="h-auto min-h-10 whitespace-normal"
                       title={t('settings.AudioSettingsModal.090')}
+                      aria-label={t('settings.AudioSettingsModal.090')}
                     >
                       <MdSave size={18} />
                     </Button>
@@ -830,6 +832,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       disabled={!presetName || !presets[presetName]}
                       variant="ghost" className="h-auto min-h-10 whitespace-normal"
                       title={t('settings.AudioSettingsModal.091')}
+                      aria-label={t('settings.AudioSettingsModal.091')}
                     >
                       <MdDelete size={18} />
                     </Button>
@@ -856,6 +859,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           </TabsContent>
 
           <TabsContent value="appearance" className="space-y-6">
+            <p className="text-ui-support text-muted-foreground">{t('settings.apply.appearanceImmediate')}</p>
             <LanguageSelector />
             <DisplayPurposeSelector />
             <NumericDetailsSwitch />
@@ -904,7 +908,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           </div>
         </Tabs>
         {activeTab === 'audio' && !loading && !error && (
-          <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-2 flex items-center justify-end gap-3">
+          <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-2 flex flex-wrap items-center justify-end gap-3">
             {/* 稼働中の保存は再起動になり、音が途切れることを押す前に示す。 */}
             <div className="min-w-0 space-y-1 text-ui-support text-muted-foreground" id="settings-connection-changes">
               <p>{allowConnectionRetry || connectionRetry ? t('settings.connection.retry') : !savedConnection
