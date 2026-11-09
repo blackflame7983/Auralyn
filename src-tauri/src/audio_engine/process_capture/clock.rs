@@ -119,13 +119,28 @@ fn correction_at(queued: usize, target: usize) -> f64 {
     -(error * 0.004).clamp(-LIMIT, LIMIT)
 }
 
+// 下げる変換では、sincの長さが入力のsample数で数えられ、遷移帯域が比率の分だけ広がる。
+// 出力rateで見た長さを一定に保つため、比率（最大4）に合わせて伸ばす（#486）。
+fn sinc_len(input_rate: u32, output_rate: u32) -> usize {
+    // 48→44.1kHz のような小さな比は従来の長さのまま、整数比に近い下げだけを伸ばす。
+    let ratio = (f64::from(input_rate) / f64::from(output_rate))
+        .round()
+        .clamp(1.0, 4.0) as usize;
+    128 * ratio
+}
+
+// SRCが保持する前後の履歴。sincの長さの両側と、補間の余裕。
+fn src_history(input_rate: u32, output_rate: u32) -> usize {
+    2 * sinc_len(input_rate, output_rate) + 4
+}
+
 // 1 callback全体とSRCの先読みを満たす。実行中の確保は行わない。
 fn callback_target(input_rate: u32, output_rate: u32, frames: usize) -> usize {
     let output = frames.div_ceil(BLOCK) * BLOCK;
     TARGET
         + (output as f64 * f64::from(input_rate) / f64::from(output_rate) / (1.0 - LIMIT)).ceil()
             as usize
-        + 260
+        + src_history(input_rate, output_rate)
 }
 
 pub fn queue_capacity(input_rate: u32, output_rate: u32, max_frames: usize) -> Result<usize> {
@@ -200,7 +215,7 @@ impl Renderer {
             f64::from(output_rate) / f64::from(input_rate),
             1.01,
             SincInterpolationParameters {
-                sinc_len: 128,
+                sinc_len: sinc_len(input_rate, output_rate),
                 f_cutoff: 0.94,
                 interpolation: SincInterpolationType::Cubic,
                 oversampling_factor: 128,
@@ -214,8 +229,8 @@ impl Renderer {
         let max_input =
             ((BLOCK as f64 * f64::from(input_rate) / f64::from(output_rate) / (1.0 - LIMIT)).ceil()
                 as usize
-                + 260)
-                .max(resampler.input_frames_max());
+                + src_history(input_rate, output_rate))
+            .max(resampler.input_frames_max());
         let input = vec![vec![0.0; max_input]; 2];
         let output = resampler.output_buffer_allocate(true);
         Ok(Self {
@@ -349,7 +364,7 @@ mod tests {
 
     #[test]
     fn dsp464_clock_high_rate_sines_reject_aliases_at_ratio_limits() {
-        for (input_rate, output_rate) in [(176_400, 44_100), (192_000, 48_000)] {
+        for (input_rate, output_rate) in [(96_000, 48_000), (176_400, 44_100), (192_000, 48_000)] {
             for ppm in [-2_000.0, 0.0, 2_000.0] {
                 for frequency in [1_000.0, 30_000.0, 40_000.0] {
                     let (mut tx, mut rx) = HeapRb::<[f32; 2]>::new(CAPACITY).split();
@@ -392,9 +407,9 @@ mod tests {
                             "{input_rate}->{output_rate}, {ppm}ppm: {db} dB"
                         );
                     } else {
-                        // 最悪値は192→48kHz・30kHz入力で−70.109dB。約2.1dBの余裕。
+                        // sincの長さを比率に合わせる前は、192→48kHz・30kHz入力で−70dBだった（#486）。
                         assert!(
-                            db <= -68.0,
+                            db <= -120.0,
                             "{input_rate}->{output_rate}, {ppm}ppm {frequency}Hz: {db} dB"
                         );
                     }
