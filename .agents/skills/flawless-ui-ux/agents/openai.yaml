@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flawless UI/UX"
+  short_description: "Contextual art direction and practical UI/UX refinement"
+  default_prompt: "Use $flawless-ui-ux to design or improve this interface for its users and purpose."

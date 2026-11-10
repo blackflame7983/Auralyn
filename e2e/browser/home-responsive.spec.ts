@@ -3,6 +3,34 @@ import { settleLayoutMotion } from './layoutMotion';
 
 test.use({ liveHome: true, builtinEnabled: true });
 
+for (const size of [{ width: 900, height: 600 }, { width: 1280, height: 800 }, { width: 1920, height: 1080 }]) {
+    test(`モジュールの開閉中も舞台と作業幅を保つ ${size.width}x${size.height}`, async ({ page }) => {
+        await page.setViewportSize(size);
+        await page.addInitScript(() => {
+            localStorage.setItem('vst_host_wizard_done', 'true');
+            localStorage.setItem('vst_host_setup_goal', 'obs');
+            localStorage.setItem('auralyn_vst_panel_open', 'false');
+            localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+        });
+        await page.goto('/');
+        await expect(page.locator('.live-strip')).toBeVisible();
+        await settleLayoutMotion(page);
+        for (const key of ['noise', 'builtin', 'vst']) for (const open of [true, false]) {
+            const samples = await page.evaluate(async key => {
+                const stage = document.querySelector('.live-stage')!;
+                const main = document.querySelector('main')!;
+                const measure = () => ({ height: stage.getBoundingClientRect().height, width: main.clientWidth, font: getComputedStyle(document.querySelector('.live-stage-mode')!).fontSize });
+                const frames = [measure()];
+                (document.querySelector(`[data-stage-key="${key}"] > button`) as HTMLButtonElement).click();
+                for (let i = 0; i < 30; i++) { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); frames.push(measure()); }
+                return frames;
+            }, key);
+            expect(samples.every(frame => Math.abs(frame.height - samples[0].height) < 1 && frame.width === samples[0].width && frame.font === samples[0].font)).toBe(true);
+            await expect(page.locator(`[data-stage-key="${key}"] > button`)).toHaveAttribute('aria-expanded', String(open));
+        }
+    });
+}
+
 for (const theme of ['light', 'dark', 'gaming']) {
     for (const [width, height] of [[900, 600], [1024, 768], [1200, 1920], [1920, 1080]]) {
         test(`ホームの高さとVST併用 ${theme} ${width}×${height}`, async ({ page }, testInfo) => {
@@ -134,6 +162,7 @@ for (const locale of ['ja', 'en']) {
             await settleLayoutMotion(page);
             await expect(devices).toHaveCount(2);
             for (const device of await devices.all()) {
+                await device.scrollIntoViewIfNeeded();
                 await expect(device).toBeInViewport({ ratio: 1 });
                 expect(await device.evaluate(el => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight && getComputedStyle(el).textOverflow !== 'ellipsis')).toBe(true);
             }
@@ -170,7 +199,7 @@ for (const locale of ['ja', 'en']) {
             await tools.first().click();
             await expect(live).toHaveAttribute('data-stage', 'yield');
             await settleLayoutMotion(page);
-            expect((await live.locator('.live-stage').boundingBox())!.height).toBeLessThan(closedStageHeight);
+            expect((await live.locator('.live-stage').boundingBox())!.height).toBeCloseTo(closedStageHeight, 1);
             const panel = page.locator('#home-noise');
             await panel.scrollIntoViewIfNeeded();
             await expect(panel).toBeInViewport({ ratio: 1 });
@@ -198,6 +227,8 @@ for (const locale of ['ja', 'en']) {
 
 for (const theme of ['light', 'dark']) test(`オーロラの前後の光柱が実際に着色される ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
+    // GPUを利用できない環境でも、代替表示の光柱に着色が残る。
+    await page.addInitScript(() => Object.defineProperty(window, 'WebGLRenderingContext', { value: undefined }));
     await page.addInitScript(theme => {
         localStorage.setItem('vst_host_theme', theme);
         localStorage.setItem('vst_host_wizard_done', 'true');

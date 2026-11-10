@@ -48,6 +48,6 @@ export function AuroraDisplaySwitch() {
             <Switch id="aurora-display" checked={shown} onCheckedChange={setShown} aria-describedby="aurora-display-hint" />
             <InfoPopover label={t('aurora.label')}>{t('aurora.hint')}</InfoPopover>
         </div>
-        <span id="aurora-display-hint" className="sr-only">{t('aurora.hint')}</span>
+        <p id="aurora-display-hint" className="text-muted-foreground">{t('aurora.hint')}</p>
     </div>;
 }

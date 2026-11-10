@@ -1,4 +1,6 @@
-import { memo, useId, type CSSProperties } from 'react';
+import { memo, useEffect, useId, useRef, type CSSProperties } from 'react';
+import { addAppVisibilityListener, isAppHidden, removeAppVisibilityListener } from '@/lib/appVisibility';
+import { createAuroraRenderer } from './auroraRenderer';
 
 // 垂直方向の光柱（レイ）が連なる複数層のカーテン状オーロラを描画する。
 // メーターの更新ごとに親が再描画されても、5%刻みのエネルギーが変わったときだけ描き直す。
@@ -33,6 +35,7 @@ export const AuroraRibbons = memo(function AuroraRibbons({ running, energy }: { 
         { d: 'M-40 164 C 220 198, 440 118, 720 156 S 1040 196, 1280 142 S 1420 128, 1520 158', width: 32, opacity: 0.22 },
     ];
     return <div aria-hidden="true" className="live-aurora" data-lit={running} style={style}>
+        <AuroraCanvas running={running} energy={energy} />
         <svg className="h-full w-full" viewBox="0 0 1440 260" preserveAspectRatio="xMidYMid slice">
             <defs>
                 {/* 下端のエメラルド/ティールから上端のローズへ抜ける光柱グラデーション */}
@@ -75,3 +78,72 @@ export const AuroraRibbons = memo(function AuroraRibbons({ running, energy }: { 
         </svg>
     </div>;
 });
+
+// Reactの描画やメーター購読をフレームループに巻き込まない。30fps・最大1.25倍解像度で負荷を抑える。
+function AuroraCanvas({ running, energy }: { running: boolean; energy: number }) {
+    const ref = useRef<HTMLCanvasElement>(null);
+    const input = useRef(energy);
+    useEffect(() => { input.current = energy; }, [energy]);
+    useEffect(() => {
+        const canvas = ref.current;
+        if (!canvas || !running || typeof WebGLRenderingContext === 'undefined') return;
+        const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+        let renderer: ReturnType<typeof createAuroraRenderer> = null;
+        let frame = 0, phase = 0, last = 0, drawn = 0, strength = 0;
+        let inView = true, lost = false;
+        const stop = () => { cancelAnimationFrame(frame); frame = 0; canvas.dataset.animated = 'false'; };
+        const visible = () => !lost && inView && !isAppHidden() && getComputedStyle(canvas.parentElement!).display !== 'none';
+        const render = (now: number) => {
+            const delta = Math.min((now - last) / 1000, 0.1);
+            last = now;
+            phase += delta;
+            strength += (input.current - strength) * (1 - Math.exp(-delta * 3));
+            renderer!.draw(reduced.matches ? 0 : phase, reduced.matches ? 0.35 : strength);
+            canvas.dataset.ready = 'true';
+            drawn = now;
+        };
+        const tick = (now: number) => {
+            const elapsed = now - drawn;
+            if (elapsed >= 1000 / 30) {
+                render(now);
+                // 60Hz等のフレーム境界との差を持ち越し、毎回丸めて20fpsへ落ちることを避ける。
+                drawn = now - elapsed % (1000 / 30);
+            }
+            frame = requestAnimationFrame(tick);
+        };
+        const refresh = () => {
+            stop();
+            if (!visible()) return;
+            // ゲーミングや非表示の状態で新しいGPU資源を確保しない。
+            renderer ??= createAuroraRenderer(canvas);
+            if (!renderer) return;
+            renderer.refreshPalette();
+            const rect = canvas.getBoundingClientRect();
+            const scale = Math.min(devicePixelRatio || 1, 1.25);
+            const width = Math.max(1, Math.round(rect.width * scale)), height = Math.max(1, Math.round(rect.height * scale));
+            if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+            last = performance.now();
+            render(last);
+            if (!reduced.matches) { canvas.dataset.animated = 'true'; frame = requestAnimationFrame(tick); }
+        };
+        const contextLost = (event: Event) => { event.preventDefault(); lost = true; stop(); canvas.dataset.ready = 'false'; };
+        const contextRestored = () => { renderer?.dispose(); renderer = null; lost = false; refresh(); };
+        const resize = new ResizeObserver(refresh);
+        const intersection = new IntersectionObserver(entries => { inView = entries[0].isIntersecting; refresh(); });
+        const theme = new MutationObserver(refresh);
+        resize.observe(canvas); intersection.observe(canvas);
+        theme.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        reduced.addEventListener('change', refresh);
+        addAppVisibilityListener(refresh);
+        canvas.addEventListener('webglcontextlost', contextLost);
+        canvas.addEventListener('webglcontextrestored', contextRestored);
+        refresh();
+        return () => {
+            stop(); resize.disconnect(); intersection.disconnect(); theme.disconnect();
+            reduced.removeEventListener('change', refresh); removeAppVisibilityListener(refresh);
+            canvas.removeEventListener('webglcontextlost', contextLost); canvas.removeEventListener('webglcontextrestored', contextRestored);
+            renderer?.dispose(); canvas.dataset.ready = 'false';
+        };
+    }, [running]);
+    return <canvas ref={ref} className="live-aurora-canvas" />;
+}

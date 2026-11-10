@@ -4,9 +4,17 @@ import { createLocaleStore } from '@/i18n/locale';
 import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { message } from '@/i18n/messages';
 import { readDisplayPurpose } from '@/hooks/useDisplayPurpose';
-import { DisplayPurposeSelector } from '../DisplayPurposeSelector';
+import { AuroraDisplaySwitch, DisplayPurposeSelector } from '../DisplayPurposeSelector';
 
 afterEach(() => { cleanup(); localStorage.clear(); });
+
+it.each(['ja', 'en'] as const)('オーロラの表示条件は情報ボタンを開かず読める (%s)', locale => {
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><AuroraDisplaySwitch /></LocaleProvider>);
+    const hint = screen.getByText(message(locale, 'aurora.hint'));
+    expect(hint).toBeVisible();
+    expect(hint).not.toHaveClass('sr-only');
+    expect(screen.getByRole('switch')).toHaveAccessibleDescription(message(locale, 'aurora.hint'));
+});
 
 it.each(['ja', 'en'] as const)('表示用途を切り替えても、セットアップの音声用途は変えない (%s)', locale => {
     localStorage.setItem('vst_host_setup_goal', 'obs');

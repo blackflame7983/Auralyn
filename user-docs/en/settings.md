@@ -34,6 +34,8 @@ Save scene linking settings in their own section. Once enabled and saved, linkin
 
 Choose a theme in “Appearance”. You can also choose whether to show numerical details. Open details when needed.
 
+The aurora remains hidden in the Gaming theme even when its display switch is on. The conditions are shown below the switch. With reduced motion enabled, the aurora stays still.
+
 Display changes take effect immediately without changing audio connections or mute.
 
 ## Hotkeys {#shortcuts}

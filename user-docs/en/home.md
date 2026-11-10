@@ -21,7 +21,7 @@ While waiting for a signal, silent or stopped, the bars keep their size and posi
 
 Use the switches in the noise reduction and voice shaping headers to turn each effect on or off directly. The VST header has a button to add or edit effects. Press an item name to open detailed adjustments. Change one thing at a time and [listen](./sound.md#voice-check).
 
-For voice use, detailed adjustments and the VST panel start closed to leave more room for the stage. The header switches remain available while details are closed. For music listening, VST starts open. You can open or close them after startup.
+For voice use, detailed adjustments and the VST panel start closed. The header switches remain available while details are closed. Opening or closing details keeps the live stage at the same height. Scroll vertically to reach adjustments in a small window. For music listening, VST starts open. You can open or close them after startup.
 
 ## Audio check {#audio-check}
 
