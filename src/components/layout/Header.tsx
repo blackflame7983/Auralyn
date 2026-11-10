@@ -65,6 +65,12 @@ export const Header: React.FC<HeaderProps> = ({
     engineProcessReady
 }) => {
     const [helpOpen, setHelpOpen] = useState(false);
+    // 開発プレビューの ?screen=help だけ、使い方を最初から開く。本番ビルドでは消える。
+    useEffect(() => {
+        if (!import.meta.env.DEV) return;
+        const params = new URLSearchParams(location.search);
+        if (params.get('mock') !== null && params.get('screen') === 'help') setHelpOpen(true);
+    }, []);
     const [helpMenuOpen, setHelpMenuOpen] = useState(false);
     const helpTrigger = useRef<HTMLButtonElement>(null);
     const menuHelp = useRef(false);

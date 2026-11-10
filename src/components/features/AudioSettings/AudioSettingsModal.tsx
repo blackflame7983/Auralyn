@@ -50,7 +50,7 @@ interface AudioSettingsModalProps {
   singingModel?: SingingDraft;
   onPreviewSinging?: () => void;
   onSaveSingingProfile?: () => void;
-  initialTab?: 'audio' | 'obs' | 'sound' | 'shortcuts';
+  initialTab?: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
   /** 移動の依頼ごとに増える番号。同じ移動先を続けて頼まれても切り替える。 */
   tabRequest?: number;
   initialSection?: 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';

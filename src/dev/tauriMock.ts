@@ -107,6 +107,10 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
             case 'stop_test_tone': return;
             case 'obs_connection_status': return false;
             case 'get_obs_credentials': return null;
+            // 履歴がない状態。null のままだと設定の OBS タブが件数参照で画面全体を落とす。
+            case 'obs_setup_history': return [];
+            case 'scan_plugin_catalog':
+            case 'retry_plugin_scan': return { plugins: [], failures: [], stats: { reused: 0, scanned: 0, removed: 0 }, generation: 1, recoveredFromCorrupt: false, saveError: null };
             case 'get_window_activity': return true;
             case 'obs_live_scene_status': return { connected: false, connectionGeneration: 0, sequence: 0 };
             case 'set_loudness_measurement':
