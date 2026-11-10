@@ -7,7 +7,15 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => {
   const { default: packageJson } = await import('./package.json', { with: { type: 'json' } });
   return {
-    plugins: [react()],
+    plugins: [
+      react(),
+      // 開発サーバーだけ、?mock= の模擬応答を main.tsx より前に読み込む（src/dev/previewMock.ts）。
+      {
+        name: 'auralyn-preview-mock',
+        apply: 'serve',
+        transformIndexHtml: () => [{ tag: 'script', attrs: { type: 'module', src: '/src/dev/previewMock.ts' }, injectTo: 'head' }],
+      },
+    ],
     define: {
       'import.meta.env.PACKAGE_VERSION': JSON.stringify(packageJson.version),
     },
