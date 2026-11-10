@@ -113,7 +113,7 @@ test('緊急ミュートの通信失敗では外部アプリでのミュート�
     await expect(page.getByRole('dialog', { name: '設定', exact: true })).toBeVisible({ timeout: 15_000 });
 });
 
-test('出力音量の失敗は小窓でも再試行でき、確認できるまでは保存値を変えない', async ({ page }, testInfo) => {
+test('出力音量の失敗はフッターで再試行でき、確認できるまでは保存値を変えない', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 768 });
     await page.addInitScript(() => {
         const original = (window as any).__TAURI_INTERNALS__.invoke;
@@ -122,9 +122,8 @@ test('出力音量の失敗は小窓でも再試行でき、確認できるま�
             ? Promise.reject(new Error('pipe disconnected')) : original(command, args);
     });
     await page.goto('/');
-    await page.locator('.live-output-summary').getByRole('button', { name: '出力音量', exact: true }).click();
-    const popup = page.getByRole('dialog', { name: '出力音量', exact: true });
-    await popup.getByRole('slider').press('ArrowRight');
+    const popup = page.locator('footer');
+    await popup.getByRole('slider', { name: '出力音量', exact: true }).press('ArrowRight');
     await expect(popup.getByRole('alert')).toContainText('音量を確認できません');
     expect(await page.evaluate(() => localStorage.getItem('vst_host_output_gain'))).not.toBe('101');
     // 定期取得で表示が旧値へ戻っても、再試行は失敗した101%を送る。

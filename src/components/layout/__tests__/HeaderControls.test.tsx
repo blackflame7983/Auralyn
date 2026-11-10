@@ -31,12 +31,16 @@ it.each(['ja', 'en'] as const)('共通ヘッダーの入口とミュートの状
     expect(muteButton).toHaveClass('font-medium', 'text-ui-support');
     expect(muteButton).not.toHaveClass('font-bold');
     expect(muteButton).toHaveAttribute('aria-pressed', 'false');
+    expect(muteButton).toHaveClass('bg-background');
+    expect(muteButton).not.toHaveClass('ring-2');
     fireEvent.click(muteButton);
     expect(mute).toHaveBeenCalledOnce();
     const callback = vi.mocked(listen).mock.calls.find(([event]) => event === 'global-mute-changed')![1];
     act(() => callback({ event: 'global-mute-changed', id: 1, payload: true }));
     expect(screen.getByRole('button', { name: message(locale, 'header.emergency') })).toBe(muteButton);
     expect(muteButton).toHaveAttribute('aria-pressed', 'true');
+    expect(muteButton).toHaveClass('bg-destructive/10', 'ring-2', 'ring-destructive-text');
+    expect(muteButton).not.toHaveClass('bg-background');
     expect(muteButton).toHaveAccessibleDescription(message(locale, 'header.muted'));
     fireEvent.click(screen.getByRole('button', { name: message(locale, 'header.audioSettingsOpen') }));
     expect(props.onOpenSettings).toHaveBeenCalledOnce();

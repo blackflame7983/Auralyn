@@ -304,9 +304,11 @@ it('フッターの実高さを大型メーターの余白へ公開し、終了�
     const disconnect = vi.fn();
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(() => ({ height }) as DOMRect);
     vi.stubGlobal('ResizeObserver', class {
-        constructor(callback: () => void) { resize = callback; }
-        observe() {}
-        disconnect = disconnect;
+        callback: () => void;
+        constructor(callback: () => void) { this.callback = callback; }
+        observe(target: Element) { if (target.tagName === 'FOOTER') resize = this.callback; }
+        unobserve() {}
+        disconnect() { if (this.callback === resize) disconnect(); }
     });
     try {
         const view = render(<AppShell {...commonProps}><p>rack</p></AppShell>);

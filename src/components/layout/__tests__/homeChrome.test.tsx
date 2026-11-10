@@ -79,7 +79,7 @@ it('出力音量の操作部品を2つマウントすると開発時とテスト
   expect(() => render(<><OutputGainControl /><OutputGainControl /></>)).toThrow(/already mounted/);
 });
 
-it('通知行は本物の Toaster の高さを本文の押し下げに使う', async () => {
+it('通知行は先頭だけでなく表示中の全通知と間隔の高さを確保する', async () => {
   const { container } = render(<NoticeLane />);
   await act(async () => {
     toast('届きました', { id: 'home-notice-lane' });
@@ -87,7 +87,13 @@ it('通知行は本物の Toaster の高さを本文の押し下げに使う', a
   });
   const toaster = container.querySelector<HTMLElement>('[data-sonner-toaster]');
   expect(toaster).not.toBeNull();
-  await act(async () => { toaster!.style.setProperty('--front-toast-height', '48px'); });
+  const notification = toaster!.querySelector<HTMLElement>('[data-sonner-toast]')!;
+  Object.defineProperty(notification, 'offsetHeight', { value: 48 });
+  const second = notification.cloneNode(true) as HTMLElement;
+  Object.defineProperty(second, 'offsetHeight', { value: 64 });
+  await act(async () => { toaster!.append(second); });
+  expect(container.querySelector('.notice-lane')).toHaveStyle({ minHeight: '126px' });
+  await act(async () => { second.remove(); });
   expect(container.querySelector('.notice-lane')).toHaveStyle({ minHeight: '48px' });
 });
 

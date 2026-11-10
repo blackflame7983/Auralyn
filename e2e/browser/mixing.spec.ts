@@ -175,7 +175,7 @@ test.describe('本番中の配信ミックスの配置', () => {
                 expect(bounds.bottom).toBeLessThanOrEqual(bounds.chainTop);
                 expect(bounds.bottom).toBeLessThanOrEqual(bounds.footerTop);
                 expect(bounds.borders).toEqual(['0px', '0px', '0px', '0px']);
-                await expect(page.locator('.live-strip')).toHaveAttribute('data-roomy', 'false');
+                await expect(page.locator('.live-strip')).toHaveAttribute('data-stage', 'full');
                 // 折りたたみが0件でも素通りしないよう、先に件数を確かめる。
                 await expect(panel.locator(':scope > details > summary')).not.toHaveCount(0);
                 for (const summary of await panel.locator(':scope > details > summary').all()) {
