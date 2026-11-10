@@ -287,9 +287,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
             setMissingSavedDevice(false);
             return;
         }
-        if (!listed.some(device => device.id === currentId)) {
-            setMissingSavedDevice(true);
-        }
+        setMissingSavedDevice(!listed.some(device => device.id === currentId));
     }, []);
     const [safeOutput, setSafeOutput] = useState(false);
     const [options, setOptions] = useState<VoicePreviewOptions>({ source: 'processed', loopPlayback: true, levelMatch: false });
@@ -616,7 +614,13 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         outputConfirmed: safeOutput || (devices.some(device => device.id === deviceId && !isVirtualAudioOutput(device.name)) && !missingSavedDevice),
         previewBusy, previewError: renderNotice(t, previewError), stopUnconfirmed, preparePreview,
         source: options.source, loopPlayback: options.loopPlayback, levelMatch: options.levelMatch,
-        setPreviewDeviceId: (id: string) => { deviceIdRef.current = id; setDeviceId(id); setSafeOutput(false); try { localStorage.setItem(PREVIEW_DEVICE_KEY, id); } catch { setPreviewError(notice('voice.copy.130')); } },
+        setPreviewDeviceId: (id: string) => {
+            deviceIdRef.current = id;
+            setDeviceId(id);
+            setMissingSavedDevice(!devices.some(device => device.id === id));
+            setSafeOutput(false);
+            try { localStorage.setItem(PREVIEW_DEVICE_KEY, id); } catch { setPreviewError(notice('voice.copy.130')); }
+        },
         refreshPreviewDevices: () => runPreview({ action: 'devices' }),
         handleStopPreview: () => runPreview({ action: 'stop' }),
         stopForRecording: closePreview,

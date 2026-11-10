@@ -176,7 +176,7 @@ it('声単体の録音地点をOBS最終ミックスと到達確認から区別�
     expect(audioApi.startVoiceCheck).not.toHaveBeenCalled();
 });
 
-it('保存した試聴先が消えても代替せず、再選択と取り込み確認を求める', async () => {
+it('保存した試聴先が消えても代替せず、物理出力を選び直すと追加確認なしで再生できる', async () => {
     localStorage.setItem('vst_host_voice_check_preview_device', 'missing-device');
     vi.mocked(voicePreviewApi.request).mockImplementation(async request => previewSnapshot(request, { recordingId: 9, durationMs: 1000, devices: request.action === 'devices' ? [{ id: 'hp', name: 'Headphones' }] : [] }));
     open();
@@ -191,10 +191,10 @@ it('保存した試聴先が消えても代替せず、再選択と取り込み�
     expect(screen.getByText(/再生するには、試聴先を選び/)).toBeVisible();
     fireEvent.change(select, { target: { value: 'hp' } });
     expect(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ })).not.toBeChecked();
-    expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ }));
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeEnabled();
     expect(screen.queryByText(/再生するには、試聴先を選び/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '選んだ試聴先で再生' }));
+    await waitFor(() => expect(voicePreviewApi.request).toHaveBeenCalledWith(expect.objectContaining({ action: 'start', deviceId: 'hp' })));
 });
 
 it('AutoGainの所有と停止操作を区別し、取り込み確認があっても競合時は開始できない', async () => {
