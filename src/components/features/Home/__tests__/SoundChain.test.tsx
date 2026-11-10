@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { EngineRuntimeStats } from '@/api/audio';
 import type { PreparationModel } from '@/hooks/usePreparation';
 import { buildPreparationObservation } from '@/lib/preparation';
@@ -11,8 +11,9 @@ import { RuntimeStatsContext } from '@/components/layout/RuntimeStatsContext';
 import { SoundChain } from '../SoundChain';
 import { VstChainItems } from '../VstChainItems';
 
+const quick = vi.hoisted(() => ({ noiseMode: 'low', noiseOn: true }));
 vi.mock('../VoiceQuickControls', () => ({
-    useVoiceQuick: (_running: boolean, enabled: boolean) => ({ stats: enabled ? {} : null, noiseOn: true, chainOn: true }),
+    useVoiceQuick: (_running: boolean, enabled: boolean) => ({ stats: enabled ? {} : null, ...quick, chainOn: true }),
     NoiseSwitch: () => <span>noise-switch</span>, NoiseQuick: () => <span>noise-quick</span>,
     BuiltinSwitch: () => <span>builtin-switch</span>, BuiltinQuick: () => <span>builtin-quick</span>,
 }));
@@ -45,6 +46,7 @@ const model = (): PreparationModel => ({ context: { ...context, usage: 'obs' }, 
     confirm: vi.fn(), unconfirm: vi.fn(), refresh: vi.fn(), reset: vi.fn(), changeContext: vi.fn() });
 const props = () => ({ model: model(), audioReady: false, isEngineRunning: true, listenOpen: false, onListen: vi.fn(), onListenClose: vi.fn(),
     onOpenSettings: vi.fn(), onOpenOBSSettings: vi.fn(), onOpenSoundSettings: vi.fn(), onOpenVst: vi.fn() });
+beforeEach(() => { quick.noiseMode = 'low'; quick.noiseOn = true; });
 afterEach(() => { cleanup(); localStorage.clear(); });
 
 it('外部 VST を使っていないと確認できたら薄い1行と追加の入口だけにし、未確認なら編集の入口を残す', () => {
@@ -228,7 +230,7 @@ it('保存済みのVSTを読み込めていない空の段は「未追加」と�
 it('項目は1つだけ開き、Escapeで閉じて項目にフォーカスを戻す', () => {
     const expanded = vi.fn();
     render(<SoundChain {...props()} audioReady onExpandedChange={expanded} />);
-    const triggers = screen.getAllByRole('button', { expanded: false }).filter(button => button.hasAttribute('aria-controls') && button.closest('ol'));
+    const triggers = screen.getAllByRole('button', { expanded: false }).filter(button => button.hasAttribute('aria-controls') && button.closest('ol') && button.id !== 'vst-panel-toggle');
     expect(triggers).toHaveLength(3);
     fireEvent.click(triggers[0]);
     expect(triggers[0]).toHaveAttribute('aria-expanded', 'true');
@@ -252,7 +254,7 @@ it.each(['ja', 'en'] as const)('停止中は3項目を中立の停止表示に�
         <SoundChain {...props()} stopped audioReady isEngineRunning={false} />
     </RuntimeStatsContext.Provider></LocaleProvider>);
     const chain = screen.getByRole('list');
-    const buttons = within(chain).getAllByRole('button');
+    const buttons = within(chain).getAllByRole('button').filter(button => button.id !== 'vst-panel-toggle');
     expect(buttons).toHaveLength(3);
     for (const button of buttons) {
         expect(button).toHaveTextContent(message(locale, 'shell.stopped'));
@@ -288,7 +290,7 @@ it('ノイズ低減と声を整えるの情報ボタンはパネルの名前の�
 it.each(['voice', 'music'] as const)('起動時の音調整は声で閉じ、音楽鑑賞でVSTを開く (%s)', purpose => {
     localStorage.setItem('auralyn_display_purpose', purpose);
     render(<SoundChain {...props()} vstPanelOpen />);
-    const items = within(screen.getByRole('list')).getAllByRole('button');
+    const items = within(screen.getByRole('list')).getAllByRole('button').filter(button => button.id !== 'vst-panel-toggle');
     expect(items.every(item => item.getAttribute('aria-expanded') === (purpose === 'music' && item.textContent?.startsWith('VST') ? 'true' : 'false'))).toBe(true);
 });
 
@@ -301,4 +303,22 @@ it('設定済みの声表示では3連モジュールに専用SVGビジュアル
     expect(view.container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} unconfigured /></RuntimeStatsContext.Provider>);
     expect(view.container.querySelector('[data-signal-visual]')).toBeNull();
+});
+
+it.each(['ja', 'en'] as const)('ノイズ低減の図は実測にないdB値を出さず、現在のモードと停止状態を示す (%s)', locale => {
+    const content = () => <LocaleProvider store={createLocaleStore(() => locale, () => true)}>
+        <RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...props()} audioReady /></RuntimeStatsContext.Provider>
+    </LocaleProvider>;
+    const view = render(content());
+    const graphic = () => view.container.querySelector('[data-signal-visual="noise"]')!;
+    for (const [mode, label] of [['low', 'master.nrLow'], ['high', 'master.nrHigh'], ['smart', 'master.nrLearn'], ['venue', 'master.nrVenue']] as const) {
+        quick.noiseMode = mode;
+        view.rerender(content());
+        expect(graphic()).toHaveTextContent(message(locale, label));
+        expect(graphic()).not.toHaveTextContent(/dB/);
+    }
+    quick.noiseOn = false;
+    view.rerender(content());
+    expect(graphic()).toHaveTextContent(message(locale, 'flow.disabled'));
+    expect(graphic()).not.toHaveTextContent(/dB/);
 });

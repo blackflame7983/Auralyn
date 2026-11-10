@@ -36,14 +36,14 @@ export const AuroraRibbons = memo(function AuroraRibbons({ running, energy }: { 
         <svg className="h-full w-full" viewBox="0 0 1440 260" preserveAspectRatio="xMidYMid slice">
             <defs>
                 {/* 下端のエメラルド/ティールから上端のローズへ抜ける光柱グラデーション */}
-                <linearGradient id={`${id}-ray-a`} x1="0" y1="1" x2="0" y2="0">
+                <linearGradient id={`${id}-ray-a`} gradientUnits="userSpaceOnUse" x1="0" y1="260" x2="0" y2="0">
                     <stop offset="0%" stopColor="hsl(var(--aurora-teal))" stopOpacity="0" />
                     <stop offset="16%" stopColor="hsl(var(--aurora-green))" stopOpacity="0.95" />
                     <stop offset="52%" stopColor="hsl(var(--aurora-teal))" stopOpacity="0.62" />
                     <stop offset="86%" stopColor="hsl(var(--aurora-rose))" stopOpacity="0.32" />
                     <stop offset="100%" stopColor="hsl(var(--aurora-rose))" stopOpacity="0" />
                 </linearGradient>
-                <linearGradient id={`${id}-ray-b`} x1="0" y1="1" x2="0" y2="0">
+                <linearGradient id={`${id}-ray-b`} gradientUnits="userSpaceOnUse" x1="0" y1="260" x2="0" y2="0">
                     <stop offset="0%" stopColor="hsl(var(--aurora-green))" stopOpacity="0" />
                     <stop offset="18%" stopColor="hsl(var(--aurora-teal))" stopOpacity="0.82" />
                     <stop offset="58%" stopColor="hsl(var(--aurora-green))" stopOpacity="0.48" />

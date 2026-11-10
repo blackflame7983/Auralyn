@@ -39,11 +39,12 @@ interface Props {
 }
 
 // 3連シグナルチェーンモジュール用の視覚グラフィック（文字に頼らず処理状態を一目で伝える専用SVG）。
-// 読み上げや文言検索と干渉しないよう aria-hidden とし、ON/OFF の生文字列は含めない。
-function ModuleGraphic({ kind, on, noiseMode, preset, amount, vstSlots }: {
+// 装飾は aria-hidden とし、状態の読み上げはヘッダーにまとめる。
+function ModuleGraphic({ kind, on, noiseMode, noiseLabel, preset, amount, vstSlots }: {
     kind: string;
     on: boolean;
     noiseMode?: string;
+    noiseLabel?: string | null;
     preset?: string;
     amount?: number;
     vstSlots?: { id: string; name: string; state: string }[];
@@ -51,7 +52,6 @@ function ModuleGraphic({ kind, on, noiseMode, preset, amount, vstSlots }: {
     const gradId = useId().replace(/:/g, '');
     if (kind === 'noise') {
         const dash = !on ? '0 220' : noiseMode === 'high' ? '142 220' : noiseMode === 'smart' || noiseMode === 'venue' ? '116 220' : '84 220';
-        const meterLabel = !on ? '0 dB' : noiseMode === 'high' ? '−14 dB' : noiseMode === 'smart' || noiseMode === 'venue' ? 'AUTO' : '−6 dB';
         return <div aria-hidden="true" data-signal-visual="noise" className="sound-module-visual">
             <svg className="sound-nr-gauge" viewBox="0 0 88 54">
                 <defs>
@@ -64,7 +64,7 @@ function ModuleGraphic({ kind, on, noiseMode, preset, amount, vstSlots }: {
                 <path d="M 14 46 A 30 30 0 0 1 74 46" fill="none" stroke={`url(#${gradId}-nr)`} strokeWidth="7" strokeLinecap="round"
                     strokeDasharray={dash} />
             </svg>
-            <span className="sound-visual-badge font-mono tabular-nums">{meterLabel}</span>
+            <span className="sound-visual-badge">{noiseLabel}</span>
         </div>;
     }
     if (kind === 'builtin') {
@@ -169,23 +169,25 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 : live ? builtinOn ? t(q.preset === 'singing' ? 'chain.singingShort' : q.preset === 'warm' ? 'settings.AudioSettingsModal.099' : q.preset === 'bright' ? 'settings.AudioSettingsModal.100' : 'settings.AudioSettingsModal.098') : t('flow.disabled') : setting(stage?.builtinVoiceEnabled)
             : vstUnrestored.length ? unrestoredNamesText(t, vstUnrestored) : vstStatus === t('flow.enabled') ? t('chain.vstCount', { count: stage?.vst.length ?? 0 }) : vstStatus;
         return <li key={key} className="contents">
-            <div data-on={on} data-stage-key={key} className="sound-module-item min-w-0">
+            <div data-on={on} data-stage-key={key} className={cn('sound-module-item sound-module-card min-w-0', open && 'bg-muted')}>
                 <Button variant="ghost" size="default" type="button" id={key === 'vst' ? 'vst-tool-toggle' : undefined} ref={node => { triggers.current[key] = node; }}
                     aria-label={unconfigured ? name : `${name} ${summary}`} aria-expanded={open} aria-controls={`${panelId}-${key}`} onClick={() => setExpanded(open ? null : key)} onKeyDown={event => { if (event.key === 'Escape' && open) { event.preventDefault(); setExpanded(null); } }}
-                    className={cn('sound-module-card h-auto w-full flex-col items-stretch justify-between gap-2.5 whitespace-normal text-left', open && 'bg-muted')}>
-                    <span className="flex w-full items-center justify-between gap-2 min-w-0">
+                    className={cn('h-auto min-h-10 min-w-0 justify-start whitespace-normal p-0 text-left', action ? key === 'vst' ? emptyVst ? 'w-[calc(100%_-_5rem)]' : 'w-[calc(100%_-_7rem)]' : 'w-[calc(100%_-_3rem)]' : 'w-full')}>
+                    <span className="flex w-full items-center gap-2 min-w-0">
                         <span className="flex items-center gap-2 min-w-0 break-words">
                             <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
                             <span className="min-w-0">
                                 <span className="sr-only">{tag}</span>
                                 <span className="block text-ui-control font-semibold">{name}</span>
+                                {/* 設定状態は名前の下に置き、右の主操作に必要な幅を確保する。 */}
+                                {!unconfigured && <StatusDot tone={stopped ? 'off' : key === 'noise' ? tone(live ? noiseOn : stage?.nr.enabled) : key === 'builtin' ? (live && !(stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled) ? tone(builtinOn) : builtinTone) : vstTone} className="text-ui-support text-muted-foreground">{summary}</StatusDot>}
                             </span>
                         </span>
-                        {/* 点の色は、隣の文字と同じ情報源から決める。本番の値が分かっているときは観測の未確認で注意色にしない。 */}
-                        {!unconfigured && <StatusDot tone={stopped ? 'off' : key === 'noise' ? tone(live ? noiseOn : stage?.nr.enabled) : key === 'builtin' ? (live && !(stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled) ? tone(builtinOn) : builtinTone) : vstTone} className="text-ui-support text-muted-foreground shrink-0">{summary}</StatusDot>}
                     </span>
-                    {!unconfigured && !music && <ModuleGraphic kind={key} on={on} noiseMode={q.noiseMode} preset={q.preset} amount={q.shownAmount} vstSlots={ validVst ? stage?.vst : undefined } />}
                 </Button>
+                {/* 開閉ボタンと主操作を兄弟にし、スイッチ操作で詳細を開閉しない。 */}
+                {action && <div className="absolute right-3 top-2 flex min-h-10 items-center">{action}</div>}
+                {!unconfigured && !music && <ModuleGraphic kind={key} on={on} noiseMode={q.noiseMode} noiseLabel={summary} preset={q.preset} amount={q.shownAmount} vstSlots={validVst ? stage?.vst : undefined} />}
             </div>
             <div id={`${panelId}-${key}`} className="disclosure-panel col-span-full order-last" data-open={open} aria-hidden={!open} inert={!open}
                 onKeyDown={event => {
@@ -203,7 +205,6 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                         </div>
                         {sub && <div className="sr-only">{sub}</div>}
                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">{body}</div>
-                        {action}
                         {(key === 'vst' ? checkUnavailable : voiceUnavailable && !unconfigured) && <div className="basis-full text-ui-support text-muted-foreground" role="status">
                             <span>{t('home.checkUnavailable')}</span>
                             {music && <Button variant="outline" size="default" type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="ml-2">{t('home.moreSound')}</Button>}
