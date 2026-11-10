@@ -80,11 +80,13 @@ it.each(['ja', 'en'] as const)('会場の再生注意は閉じた条件パネル
     fireEvent.click(screen.getByRole('checkbox', { name: message(locale, 'prep.ackSound') }));
     expect(model.confirm).toHaveBeenCalledWith('sound');
 });
-it('対象入力がなければ受け側確認を記録できず、推奨操作で条件を開き入力へフォーカスする', () => {
+it('対象入力が未入力でも受け側確認をそのまま記録でき、推奨操作で任意の入力欄へもフォーカスできる（U02）', () => {
     const model = fixture(); checked(model, 'sound'); checked(model, 'listen'); model.context.receiver = '';
     render(<PreparationPanel model={model} {...callbacks()} />);
     expand();
-    expect(screen.getByRole('checkbox')).toBeDisabled();
+    expect(screen.getByRole('checkbox')).toBeEnabled();
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(model.confirm).toHaveBeenCalledWith('receiver');
     fireEvent.click(screen.getByRole('button', { name: message('ja', 'prep.targetAction') }));
     expect(screen.getByRole('textbox', { name: message('ja', 'prep.target') })).toHaveFocus();
 });

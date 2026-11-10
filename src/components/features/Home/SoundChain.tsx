@@ -38,7 +38,79 @@ interface Props {
     unconfigured?: boolean;
 }
 
-// 音の流れと声の調整を1本のチェーンにまとめる。各段で状態を見て、その場で操作できる。
+// 3連シグナルチェーンモジュール用の視覚グラフィック（文字に頼らず処理状態を一目で伝える専用SVG）。
+// 装飾は aria-hidden とし、状態の読み上げはヘッダーにまとめる。
+function ModuleGraphic({ kind, on, noiseMode, noiseLabel, preset, amount, vstSlots }: {
+    kind: string;
+    on: boolean;
+    noiseMode?: string;
+    noiseLabel?: string | null;
+    preset?: string;
+    amount?: number;
+    vstSlots?: { id: string; name: string; state: string }[];
+}) {
+    const gradId = useId().replace(/:/g, '');
+    if (kind === 'noise') {
+        const dash = !on ? '0 220' : noiseMode === 'high' ? '142 220' : noiseMode === 'smart' || noiseMode === 'venue' ? '116 220' : '84 220';
+        return <div aria-hidden="true" data-signal-visual="noise" className="sound-module-visual">
+            <svg className="sound-nr-gauge" viewBox="0 0 88 54">
+                <defs>
+                    <linearGradient id={`${gradId}-nr`} x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="hsl(var(--aurora-teal))" />
+                        <stop offset="100%" stopColor="hsl(var(--aurora-green))" />
+                    </linearGradient>
+                </defs>
+                <path d="M 14 46 A 30 30 0 0 1 74 46" fill="none" stroke="hsl(var(--border))" strokeWidth="7" strokeLinecap="round" />
+                <path d="M 14 46 A 30 30 0 0 1 74 46" fill="none" stroke={`url(#${gradId}-nr)`} strokeWidth="7" strokeLinecap="round"
+                    strokeDasharray={dash} />
+            </svg>
+            <span className="sound-visual-badge">{noiseLabel}</span>
+        </div>;
+    }
+    if (kind === 'builtin') {
+        const pct = on ? (amount ?? 70) : 0;
+        const factor = pct / 100;
+        const yLow = preset === 'warm' ? Math.round(38 - factor * 16) : Math.round(42 - factor * 4);
+        const yMid = preset === 'singing' ? Math.round(34 - factor * 14) : Math.round(36 - factor * 12);
+        const yHigh = preset === 'bright' ? Math.round(38 - factor * 24) : Math.round(36 - factor * 18);
+        const curvePath = `M 0 ${yLow} Q 45 ${yLow}, 90 ${yMid} T 180 ${yHigh}`;
+        return <div aria-hidden="true" data-signal-visual="builtin" className="sound-module-visual">
+            <svg className="sound-eq-graph" viewBox="0 0 180 52" preserveAspectRatio="none">
+                <defs>
+                    <linearGradient id={`${gradId}-eq`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={on ? '0.32' : '0.06'} />
+                        <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+                    </linearGradient>
+                </defs>
+                <line x1="0" y1="26" x2="180" y2="26" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 3" />
+                <path d={`${curvePath} L 180 52 L 0 52 Z`} fill={`url(#${gradId}-eq)`} />
+                <path d={curvePath} fill="none" stroke={on ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))'} strokeWidth="2.25" strokeLinecap="round" />
+            </svg>
+            <span className="sound-visual-badge font-mono tabular-nums">{`${pct}%`}</span>
+        </div>;
+    }
+    const slots = vstSlots && vstSlots.length > 0 ? vstSlots.slice(0, 4) : [];
+    return <div aria-hidden="true" data-signal-visual="vst" className="sound-module-visual">
+        <svg className="sound-vst-bars" viewBox="0 0 180 52" preserveAspectRatio="none">
+            {[0, 1, 2, 3].map(idx => {
+                const slot = slots[idx];
+                const active = on && slot?.state === 'active';
+                const x = 10 + idx * 42;
+                const barH = slot ? (active ? 32 : 20) : 10;
+                const y = 42 - barH;
+                return <g key={idx}>
+                    <rect x={x} y={10} width="32" height="32" rx="5" fill="hsl(var(--muted))" stroke="hsl(var(--border))" strokeWidth="1" />
+                    <rect x={x + 6} y={y} width="20" height={barH} rx="3"
+                        fill={active ? 'hsl(var(--primary))' : slot ? 'hsl(var(--warning))' : 'hsl(var(--border))'}
+                        fillOpacity={active ? '0.85' : '0.45'} />
+                </g>;
+            })}
+        </svg>
+        <span className="sound-visual-badge font-mono tabular-nums">{`${slots.length}`}</span>
+    </div>;
+}
+
+// 音の流れと声の調整を3連シグナルチェーンにまとめる。各段で視覚グラフィックと状態を見て、その場で操作できる。
 // 設定状態と音の到達確認は異なる。値を取得できないときは OFF と推測しない。
 export function SoundChain({ model, audioReady, isEngineRunning, inputName, outputName, vst, listenOpen, onListen, onListenClose,
     onOpenSettings, onOpenOBSSettings, onOpenSoundSettings, onOpenVst, stopped = false, vstPanelOpen = false, vstUnrestored = [], unconfigured = false, onExpandedChange }: Props) {
@@ -97,18 +169,25 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                 : live ? builtinOn ? t(q.preset === 'singing' ? 'chain.singingShort' : q.preset === 'warm' ? 'settings.AudioSettingsModal.099' : q.preset === 'bright' ? 'settings.AudioSettingsModal.100' : 'settings.AudioSettingsModal.098') : t('flow.disabled') : setting(stage?.builtinVoiceEnabled)
             : vstUnrestored.length ? unrestoredNamesText(t, vstUnrestored) : vstStatus === t('flow.enabled') ? t('chain.vstCount', { count: stage?.vst.length ?? 0 }) : vstStatus;
         return <li key={key} className="contents">
-            <div data-on={on} className="min-w-0">
+            <div data-on={on} data-stage-key={key} className={cn('sound-module-item sound-module-card min-w-0', open && 'bg-muted')}>
                 <Button variant="ghost" size="default" type="button" id={key === 'vst' ? 'vst-tool-toggle' : undefined} ref={node => { triggers.current[key] = node; }}
                     aria-label={unconfigured ? name : `${name} ${summary}`} aria-expanded={open} aria-controls={`${panelId}-${key}`} onClick={() => setExpanded(open ? null : key)} onKeyDown={event => { if (event.key === 'Escape' && open) { event.preventDefault(); setExpanded(null); } }}
-                    className={cn('h-auto w-full justify-start gap-2 whitespace-normal text-left', open && 'bg-muted')}>
-                    <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 break-words">
-                        <span className="sr-only">{tag}</span>
-                        <span className="block text-ui-control font-semibold">{name}</span>
-                        {/* 点の色は、隣の文字と同じ情報源から決める。本番の値が分かっているときは観測の未確認で注意色にしない。 */}
-                        {!unconfigured && <StatusDot tone={stopped ? 'off' : key === 'noise' ? tone(live ? noiseOn : stage?.nr.enabled) : key === 'builtin' ? (live && !(stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled) ? tone(builtinOn) : builtinTone) : vstTone} className="text-ui-support text-muted-foreground">{summary}</StatusDot>}
+                    className={cn('h-auto min-h-10 min-w-0 justify-start whitespace-normal p-0 text-left', action ? key === 'vst' ? emptyVst ? 'w-[calc(100%_-_5rem)]' : 'w-[calc(100%_-_7rem)]' : 'w-[calc(100%_-_3rem)]' : 'w-full')}>
+                    <span className="flex w-full items-center gap-2 min-w-0">
+                        <span className="flex items-center gap-2 min-w-0 break-words">
+                            <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0">
+                                <span className="sr-only">{tag}</span>
+                                <span className="block text-ui-control font-semibold">{name}</span>
+                                {/* 設定状態は名前の下に置き、右の主操作に必要な幅を確保する。 */}
+                                {!unconfigured && <StatusDot tone={stopped ? 'off' : key === 'noise' ? tone(live ? noiseOn : stage?.nr.enabled) : key === 'builtin' ? (live && !(stage?.builtinReverbEnabled && !stage.builtinVoiceEnabled) ? tone(builtinOn) : builtinTone) : vstTone} className="text-ui-support text-muted-foreground">{summary}</StatusDot>}
+                            </span>
+                        </span>
                     </span>
                 </Button>
+                {/* 開閉ボタンと主操作を兄弟にし、スイッチ操作で詳細を開閉しない。 */}
+                {action && <div className="absolute right-3 top-2 flex min-h-10 items-center">{action}</div>}
+                {!unconfigured && !music && <ModuleGraphic kind={key} on={on} noiseMode={q.noiseMode} noiseLabel={summary} preset={q.preset} amount={q.shownAmount} vstSlots={validVst ? stage?.vst : undefined} />}
             </div>
             <div id={`${panelId}-${key}`} className="disclosure-panel col-span-full order-last" data-open={open} aria-hidden={!open} inert={!open}
                 onKeyDown={event => {
@@ -126,7 +205,6 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
                         </div>
                         {sub && <div className="sr-only">{sub}</div>}
                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">{body}</div>
-                        {action}
                         {(key === 'vst' ? checkUnavailable : voiceUnavailable && !unconfigured) && <div className="basis-full text-ui-support text-muted-foreground" role="status">
                             <span>{t('home.checkUnavailable')}</span>
                             {music && <Button variant="outline" size="default" type="button" onClick={onOpenSoundSettings ?? onOpenSettings} className="ml-2">{t('home.moreSound')}</Button>}
@@ -200,8 +278,8 @@ export function SoundChain({ model, audioReady, isEngineRunning, inputName, outp
         {!audioReady && !stopped ? <p className="text-ui-support text-muted-foreground">{t(inputName && outputName ? 'home.soundAfterStart' : 'home.soundAfterSetup')}</p>
             : music ? (noiseOn || builtinOn) && <div className="flex flex-wrap items-center gap-2 text-ui-support text-warning"><span>{t('flow.voiceStillOn')}</span><Button variant="outline" size="default" type="button" onClick={onOpenSoundSettings ?? onOpenSettings}>{t('home.moreSound')}</Button><InfoPopover label={t('chain.voiceTools')}><p>{builtinDetails}</p><p>{t('settings.AudioSettingsModal.105')}: {setting(stage?.nr.enabled)}</p></InfoPopover></div>
             : null}
-        {/* 狭い作業幅では項目を折り返し、文字は省略しない。 */}
-        <ol aria-label={t('flow.title')} className="sound-tool-list mt-2 grid grid-cols-3">
+        {/* 狭い作業幅では項目を折り返し、文字や視覚グラフィックを潰さない。 */}
+        <ol aria-label={t('flow.title')} className="sound-tool-list mt-3 grid grid-cols-3 gap-3">
             {rows}
         </ol>
 

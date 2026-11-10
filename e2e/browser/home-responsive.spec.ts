@@ -49,7 +49,7 @@ for (const theme of ['light', 'dark', 'gaming']) {
                     expect((await meter.boundingBox())!.y).toBeGreaterThan((await record.boundingBox())!.y);
                 }
                 await page.locator('.sound-tool-list > li > div > button').nth(1).click();
-                await expect(page.locator('#home-builtin').getByRole('switch')).toBeInViewport();
+                await expect(page.locator('[data-stage-key="builtin"]').getByRole('switch')).toBeInViewport();
             } else {
                 await expect(page.locator('main')).toHaveAttribute('inert', '');
                 await expect(page.locator('.large-meter-motion')).toBeHidden();
@@ -140,7 +140,24 @@ for (const locale of ['ja', 'en']) {
             expect(await page.locator('main').evaluate(e => ({ width: e.scrollWidth <= e.clientWidth, height: e.scrollHeight <= e.clientHeight }))).toEqual({ width: true, height: true });
             const tools = page.locator('.sound-tool-list > li > div > button');
             await expect(tools).toHaveCount(3);
-            for (const tool of await tools.all()) await expect(tool).toHaveAttribute('aria-expanded', 'false');
+            for (const tool of await tools.all()) {
+                await expect(tool).toHaveAttribute('aria-expanded', 'false');
+                expect(await tool.evaluate(el => {
+                    const r = el.getBoundingClientRect();
+                    return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+                })).toBe(true);
+            }
+            // 主操作は詳細を開かず操作でき、開閉ボタンとは別の当たり判定を持つ。
+            const switches = page.locator('.sound-module-item [role="switch"]');
+            await expect(switches).toHaveCount(2);
+            for (const control of await switches.all()) {
+                await expect(control).toBeInViewport({ ratio: 1 });
+                expect(await control.evaluate(el => {
+                    const r = el.getBoundingClientRect();
+                    return !el.closest('[inert]') && !el.parentElement!.closest('button')
+                        && el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+                })).toBe(true);
+            }
             const tops = await tools.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top));
             expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
             const closedStageHeight = (await live.locator('.live-stage').boundingBox())!.height;
@@ -170,3 +187,44 @@ for (const locale of ['ja', 'en']) {
         });
     }
 }
+
+for (const theme of ['light', 'dark']) test(`オーロラの前後の光柱が実際に着色される ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.addInitScript(theme => {
+        localStorage.setItem('vst_host_theme', theme);
+        localStorage.setItem('vst_host_wizard_done', 'true');
+        localStorage.setItem('vst_host_setup_goal', 'obs');
+        localStorage.setItem('auralyn_vst_panel_open', 'false');
+        localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+    }, theme);
+    await page.goto('/');
+    const svg = page.locator('.live-aurora svg');
+    await expect(svg).toBeVisible();
+    const coloredPixels = await svg.evaluate(async element => {
+        const result: number[] = [];
+        for (const layer of ['back', 'front']) {
+            // 装飾背景と太い曲線を除いた複製を描き、光柱そのものの着色を検証する。
+            const copy = element.cloneNode(true) as SVGSVGElement;
+            copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+            copy.setAttribute('width', '1440'); copy.setAttribute('height', '260');
+            for (const color of ['--aurora-teal', '--aurora-green', '--aurora-rose']) copy.style.setProperty(color, getComputedStyle(element).getPropertyValue(color));
+            copy.querySelectorAll('path').forEach(path => path.remove());
+            copy.querySelector(`.live-aurora-curtain-${layer === 'back' ? 'front' : 'back'}`)!.remove();
+            const image = new Image();
+            image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(copy))}`;
+            await image.decode();
+            const canvas = document.createElement('canvas'); canvas.width = 1440; canvas.height = 260;
+            const ctx = canvas.getContext('2d')!;
+            ctx.drawImage(image, 0, 0);
+            const pixels = ctx.getImageData(0, 0, 1440, 260).data;
+            let colored = 0;
+            for (let i = 0; i < pixels.length; i += 4) {
+                if (pixels[i + 3] > 8 && Math.max(pixels[i], pixels[i + 1], pixels[i + 2]) - Math.min(pixels[i], pixels[i + 1], pixels[i + 2]) > 20) colored++;
+            }
+            result.push(colored);
+        }
+        return result;
+    });
+    expect(coloredPixels).toHaveLength(2);
+    for (const count of coloredPixels) expect(count).toBeGreaterThan(500);
+});

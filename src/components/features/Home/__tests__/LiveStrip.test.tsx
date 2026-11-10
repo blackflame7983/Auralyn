@@ -170,3 +170,11 @@ it.each(['ja', 'en'] as const)('舞台の最上段に稼働と停止を示す (%
     view.rerender(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><LiveStrip model={fixture()} running={false} stopped /></LocaleProvider>);
     expect(view.container.querySelector('.live-stage [role=status]')).toHaveTextContent(message(locale, 'shell.stopped'));
 });
+
+
+it('本番帯のオーロラは複数層の光柱カーテンを描画し、標準絵文字を含まない', () => {
+    const { container } = render(<LiveStrip model={fixture()} running />);
+    expect(container.querySelectorAll('.live-aurora-curtain')).toHaveLength(2);
+    expect(container.querySelectorAll('.live-aurora-curtain line').length).toBeGreaterThanOrEqual(60);
+    expect(container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
+});

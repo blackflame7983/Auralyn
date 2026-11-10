@@ -263,12 +263,32 @@ export function useVoiceCheck(isOpen: boolean, candidateDraft?: CandidateDraft, 
 }
 
 const PREVIEW_DEVICE_KEY = 'vst_host_voice_check_preview_device';
+export const isVirtualAudioOutput = (name: string) => /virtual|vb-|voicemeeter|cable/i.test(name);
 function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateDraft, proposalBasis?: ProposalBasis, manualCandidate = Boolean(candidateDraft)) {
     const t = useMessages();
     const [snapshot, setSnapshot] = useState<VoicePreviewSnapshot | null>(null);
     const snapshotRef = useRef<VoicePreviewSnapshot | null>(null);
     const [devices, setDevices] = useState<VoicePreviewSnapshot['devices']>([]);
     const [deviceId, setDeviceId] = useState(() => { try { return localStorage.getItem(PREVIEW_DEVICE_KEY) ?? ''; } catch { return ''; } });
+    const deviceIdRef = useRef(deviceId);
+    deviceIdRef.current = deviceId;
+    const [missingSavedDevice, setMissingSavedDevice] = useState(false);
+    const syncPreviewDevices = useCallback((listed: VoicePreviewSnapshot['devices']) => {
+        setDevices(listed);
+        if (listed.length === 0) return;
+        const currentId = deviceIdRef.current;
+        if (!currentId) {
+            // 非仮想モニター出力（ヘッドホン・スピーカー等）を自動初期選択し、録音完了後に即再生できるようにする（U01）。
+            const preferred = listed.find(device => !isVirtualAudioOutput(device.name)) ?? listed[0];
+            if (preferred) {
+                deviceIdRef.current = preferred.id;
+                setDeviceId(preferred.id);
+            }
+            setMissingSavedDevice(false);
+            return;
+        }
+        setMissingSavedDevice(!listed.some(device => device.id === currentId));
+    }, []);
     const [safeOutput, setSafeOutput] = useState(false);
     const [options, setOptions] = useState<VoicePreviewOptions>({ source: 'processed', loopPlayback: true, levelMatch: false });
     const optionsRef = useRef(options);
@@ -372,7 +392,10 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         setOptions(optionsRef.current);
         try {
             const next = await session.send({ action: 'open' });
-            if (accept(next, session, version, requestSequence)) setStopUnconfirmed(false);
+            if (accept(next, session, version, requestSequence)) {
+                setStopUnconfirmed(false);
+                if (next.devices.length > 0) syncPreviewDevices(next.devices);
+            }
         } catch {
             if (alive.current && controller.current === session && version === revision.current) setPreviewError(notice('voice.copy.126'));
         } finally {
@@ -410,7 +433,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
             }
             if (accepted) {
                 if (action.action === 'devices') {
-                    setDevices(next.devices);
+                    syncPreviewDevices(next.devices);
                     setSafeOutput(false);
                 }
                 if (changing) {
@@ -586,9 +609,18 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
     return {
         prepareNoise, applyNoise, undoNoise, redoNoise, candidate, candidateMode, prepareCandidate, prepareProposal, invalidateProposalPreferences, returnToRecording,
         preview: snapshot, previewDevices: devices, previewDeviceId: deviceId, safeOutput, setSafeOutput,
+        selectedOutputIsVirtual: Boolean(devices.find(device => device.id === deviceId && isVirtualAudioOutput(device.name))),
+        requiresSafeOutputConfirm: Boolean(devices.find(device => device.id === deviceId && isVirtualAudioOutput(device.name))) || missingSavedDevice,
+        outputConfirmed: safeOutput || (devices.some(device => device.id === deviceId && !isVirtualAudioOutput(device.name)) && !missingSavedDevice),
         previewBusy, previewError: renderNotice(t, previewError), stopUnconfirmed, preparePreview,
         source: options.source, loopPlayback: options.loopPlayback, levelMatch: options.levelMatch,
-        setPreviewDeviceId: (id: string) => { setDeviceId(id); setSafeOutput(false); try { localStorage.setItem(PREVIEW_DEVICE_KEY, id); } catch { setPreviewError(notice('voice.copy.130')); } },
+        setPreviewDeviceId: (id: string) => {
+            deviceIdRef.current = id;
+            setDeviceId(id);
+            setMissingSavedDevice(!devices.some(device => device.id === id));
+            setSafeOutput(false);
+            try { localStorage.setItem(PREVIEW_DEVICE_KEY, id); } catch { setPreviewError(notice('voice.copy.130')); }
+        },
         refreshPreviewDevices: () => runPreview({ action: 'devices' }),
         handleStopPreview: () => runPreview({ action: 'stop' }),
         stopForRecording: closePreview,
@@ -598,7 +630,9 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         handleTogglePlayback: async () => {
             if (snapshotRef.current?.state === 'playing' || snapshotRef.current?.state === 'stopping') { await runPreview({ action: 'stop' }); return; }
             const current = snapshotRef.current;
-            if (!safeOutput || !deviceId || !devices.some(device => device.id === deviceId) || !current?.recordingId || stopUnconfirmed) return;
+            const currentDevice = devices.find(device => device.id === deviceId);
+            const currentConfirmed = safeOutput || (Boolean(currentDevice && !isVirtualAudioOutput(currentDevice.name)) && !missingSavedDevice);
+            if (!currentConfirmed || !deviceId || !currentDevice || !current?.recordingId || stopUnconfirmed) return;
             const preparedCandidate = candidateRef.current;
             const comparison = candidateMode !== 'normal';
             if (comparison && (!preparedCandidate || preparedCandidate.state !== 'ready' || !candidateExpected.current || preparedCandidate.recordingId !== current.recordingId)) return;

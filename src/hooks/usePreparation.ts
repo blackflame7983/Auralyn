@@ -170,8 +170,10 @@ export function usePreparation({ blocked = false, running = false }: { blocked?:
             const next = await refresh();
             const ctx = currentContext.current;
             if (!next?.keys || next.keys[stage] !== expectedKey || next.availability !== 'ready' || version !== generation.current || !ctx.usage
-                || (stage === 'receiver' && ctx.usage !== 'listening' && !ctx.receiver.trim()) || blockedRef.current || isAppHidden()) return;
-            setRecords(old => ({ ...old, [stage]: { key: next.keys![stage], at: Date.now(), target: stage === 'receiver' ? ctx.receiver : next.config?.input ?? '', expired: false } }));
+                || blockedRef.current || isAppHidden()) return;
+            const receiverFallback = ctx.usage === 'obs' ? 'OBS' : ctx.usage === 'discord' ? 'Discord' : ctx.usage === 'other' ? (next.config?.output ?? '') : '';
+            setRecords(old => ({ ...old, [stage]: { key: next.keys![stage], at: Date.now(), target: stage === 'receiver' ? (ctx.receiver.trim() || receiverFallback) : next.config?.input ?? '', expired: false } }));
+
         } finally { if (alive.current) setConfirming(false); }
     };
     const unconfirm = (stage: PreparationStage) => setRecords(old => old[stage] ? { ...old, [stage]: { ...old[stage]!, expired: true } } : old);

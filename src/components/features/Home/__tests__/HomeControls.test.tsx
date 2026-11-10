@@ -8,6 +8,9 @@ import { useLiveModes } from '@/hooks/useLiveModes';
 import { liveSnapshot } from '@/hooks/__tests__/liveModesFixture';
 import { LiveModeBar } from '../../AudioSettings/LiveModeBar';
 import { BuiltinQuick, BuiltinSwitch, NoiseQuick, NoiseSwitch, useVoiceQuick } from '../VoiceQuickControls';
+import { SoundChain } from '../SoundChain';
+import type { PreparationModel } from '@/hooks/usePreparation';
+import { emptyObservation } from '@/lib/preparation';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
@@ -28,6 +31,34 @@ beforeEach(() => {
     vi.spyOn(audioApi, 'setBuiltInEffects').mockResolvedValue(undefined);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+it('閉じたモジュールのヘッダーで直接ON/OFFでき、詳細の開閉や歌向け設定に干渉しない', async () => {
+    const expanded = vi.fn();
+    const request = vi.spyOn(builtinApi, 'request').mockImplementation(async req => ({
+        epoch: 'e1', revision: '3', appliedRevision: '3', config: req.action === 'apply' ? req.config : singing, pending: false, undoToken: null, error: null,
+    }));
+    const model: PreparationModel = {
+        context: { location: 'home', usage: 'obs', signal: 'separate', receiver: '' }, observation: emptyObservation('ready'), records: {}, checking: false, confirming: false,
+        confirm: vi.fn(), unconfirm: vi.fn(), refresh: vi.fn(), reset: vi.fn(), changeContext: vi.fn(),
+    };
+    const view = render(<SoundChain model={model} audioReady isEngineRunning listenOpen={false} onListen={vi.fn()} onListenClose={vi.fn()}
+        onOpenSettings={vi.fn()} onOpenOBSSettings={vi.fn()} onExpandedChange={expanded} />);
+    const noise = await screen.findByRole('switch', { name: 'ノイズ低減' });
+    const builtin = screen.getByRole('switch', { name: '声を整える' });
+    await waitFor(() => expect(noise).toBeEnabled());
+    for (const control of [noise, builtin]) {
+        expect(control.closest('.sound-module-item')).not.toBeNull();
+        expect(control.closest('[inert]')).toBeNull();
+        expect(control.parentElement!.closest('button')).toBeNull();
+    }
+    await act(async () => fireEvent.click(noise));
+    expect(audioApi.setNoiseControlConfig).toHaveBeenCalledExactlyOnceWith({ active: false, mode: 'low', strength: 0.6, voiceGuard: false });
+    await waitFor(() => expect(builtin).toBeEnabled());
+    await act(async () => fireEvent.click(builtin));
+    expect(request.mock.calls.filter(([req]) => req.action === 'apply')).toEqual([[{ action: 'apply', epoch: 'e1', expectedRevision: '3', config: { ...singing, active: false } }]]);
+    expect(expanded.mock.calls.every(([open]) => open === false)).toBe(true);
+    expect(view.container.querySelectorAll('.disclosure-panel[data-open="true"]')).toHaveLength(0);
+});
 
 it.each(['normal', 'protected', 'recovery', 'snapshotError'] as const)('音楽鑑賞の初期取得で安全状態を読み、必要な操作だけ残す (%s)', async kind => {
     const snapshot = liveSnapshot({ armed: kind === 'protected', error: kind === 'snapshotError' ? 'fixture error' : null,

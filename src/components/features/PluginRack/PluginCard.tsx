@@ -123,7 +123,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
 
                     {/* 右パネルの幅でも名前が潰れないよう、名前と操作の行と、ゲインの行に分ける。 */}
                     <div className="flex flex-col gap-1.5 py-2 pl-9 pr-3">
-                        <div className="flex items-center gap-2">
+                        <div data-plugin-row="primary" className="flex items-center gap-2">
                             <Switch
                                 aria-label={t('rack.card.enable', { arg0: plugin.name })}
                                 disabled={disabled}
@@ -131,23 +131,12 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                 onCheckedChange={(checked) => onToggle(plugin.id, checked)}
                                 className="shrink-0"
                             />
+                            <span data-plugin-bypass-state={plugin.enabled ? 'active' : 'bypassed'} className={cn("shrink-0 rounded-control border px-1.5 py-0.5 text-ui-support font-mono font-semibold", plugin.enabled ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted text-muted-foreground")}>{plugin.enabled ? 'ON' : 'OFF'}</span>
                             <h3 className={cn("min-w-0 flex-1 font-bold text-ui-support truncate transition-colors", plugin.enabled ? "text-foreground" : "text-muted-foreground")}>
                                 {plugin.name}
                                 {plugin.muted && <span className="ml-2 text-ui-support text-muted-foreground">{t('rack.card.simpleMuted')}</span>}
                             </h3>
                             <ChannelBadge layout={plugin.channelLayout} />
-                            {/* 省スペース表示でも復旧に必要なミュート操作を残す。 */}
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="press-feedback h-8 text-ui-support shrink-0 aria-pressed:bg-destructive/10 aria-pressed:text-destructive-text dark:aria-pressed:text-destructive-text aria-pressed:border-destructive-text/50"
-                                aria-label={t('rack.card.muteAccessible', { arg0: plugin.name })}
-                                disabled={disabled}
-                                aria-pressed={plugin.muted}
-                                onClick={() => onMute(plugin.id, !plugin.muted)}
-                            >
-                                {t('rack.card.mute')}
-                            </Button>
                             {/* 削除は編集と見た目・位置を分け、常に表示して誤操作と見落としを防ぐ。 */}
                             <Button
                                 variant="secondary"
@@ -180,7 +169,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                         {isolated && <IsolatedNotice name={plugin.name} onResume={resume} />}
 
                         {/* Gain Slider */}
-                        <div className="flex items-center gap-3">
+                        <div data-plugin-row="output" className="flex items-center gap-3">
                             <span className="max-w-[40%] shrink-0 truncate text-ui-support text-muted-foreground" title={latency}>{latency}</span>
                             <div className="relative h-4 flex-1 flex items-center" onPointerDown={(e) => e.stopPropagation()}>
                                 <Slider
@@ -197,6 +186,18 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin, onToggle, onMute
                                 />
                             </div>
                             <span className="text-ui-support font-mono text-muted-foreground w-12 text-right">{Math.round(plugin.gain * 100)}%</span>
+                            {/* 省スペース表示でも復旧に必要なミュート操作を残す。 */}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="press-feedback h-8 text-ui-support shrink-0 aria-pressed:bg-destructive/10 aria-pressed:text-destructive-text dark:aria-pressed:text-destructive-text aria-pressed:border-destructive-text/50"
+                                aria-label={t('rack.card.muteAccessible', { arg0: plugin.name })}
+                                disabled={disabled}
+                                aria-pressed={plugin.muted}
+                                onClick={() => onMute(plugin.id, !plugin.muted)}
+                            >
+                                {t('rack.card.mute')}
+                            </Button>
                         </div>
                     </div>
                 </Card>

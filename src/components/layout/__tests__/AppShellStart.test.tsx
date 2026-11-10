@@ -407,7 +407,7 @@ it('音量チェックの停止未確認でもホームの診断へ直接進め�
 });
 
 
-it('広い窓で別の音調整を開いてからVSTパネルを閉じても、操作可能なVST項目へ戻す', () => {
+it('広い窓で別の音調整を開いてからVSTパネルを閉じても、ヘッダーの編集へ戻す', () => {
     vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: query === '(min-width: 1200px)', addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     try {
         const { container } = render(<AppShell {...commonProps} vstPanel={<button type="button" onClick={() => saveVstPanelOpen(false)}>close-panel</button>}><p>rack</p></AppShell>);
@@ -417,14 +417,15 @@ it('広い窓で別の音調整を開いてからVSTパネルを閉じても、�
         fireEvent.click(edit);
         expect(container.querySelector('main')).not.toHaveAttribute('inert');
         fireEvent.click(screen.getByRole('button', { name: /^ノイズ低減 / }));
-        expect(edit.closest('[inert]')).not.toBeNull();
+        expect(edit.closest('[inert]')).toBeNull();
         const close = screen.getByRole('button', { name: 'close-panel' });
         close.focus();
         fireEvent.click(close);
-        expect(tool).toHaveFocus();
-        expect(tool.closest('[inert], [aria-hidden="true"]')).toBeNull();
-        // 復帰先から項目を開き、編集を再開できる。
-        fireEvent.click(tool);
-        expect(edit.closest('[inert]')).toBeNull();
+        expect(edit).toHaveFocus();
+        expect(edit.closest('[inert], [aria-hidden="true"]')).toBeNull();
+        expect(tool).toHaveAttribute('aria-expanded', 'false');
+        // 詳細を開き直さず、復帰先からVSTの編集を再開できる。
+        fireEvent.click(edit);
+        expect(screen.getByRole('button', { name: 'close-panel' })).toBeInTheDocument();
     } finally { vi.unstubAllGlobals(); }
 });

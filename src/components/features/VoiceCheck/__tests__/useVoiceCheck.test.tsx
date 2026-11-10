@@ -39,6 +39,41 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
+it.each(['select', 'rediscover'] as const)('消失した保存済み試聴先を%sで復旧すると、物理出力は確認操作なしで再生できる', async recovery => {
+    localStorage.setItem('vst_host_voice_check_preview_device', 'saved-headphones');
+    const headphones = { id: 'headphones', name: 'Headphones' };
+    let devices = [headphones, { id: 'cable', name: 'CABLE Input (VB-Audio)' }];
+    vi.mocked(voicePreviewApi.request).mockImplementation(async request => previewSnapshot(request, {
+        recordingId: 9, durationMs: 1000, devices,
+        state: request.action === 'start' ? 'playing' : 'idle',
+    }));
+    const { result } = renderHook(() => useVoiceCheck(true));
+    await waitFor(() => expect(result.current.previewDevices).toHaveLength(2));
+    expect(result.current.outputConfirmed).toBe(false);
+    await act(async () => { await result.current.handleTogglePlayback(); });
+    expect(vi.mocked(voicePreviewApi.request).mock.calls.some(([request]) => request.action === 'start')).toBe(false);
+    if (recovery === 'select') act(() => result.current.setPreviewDeviceId('headphones'));
+    else {
+        devices = [{ ...headphones, id: 'saved-headphones' }, devices[1]];
+        await act(async () => { await result.current.refreshPreviewDevices(); });
+    }
+    expect(result.current.safeOutput).toBe(false);
+    expect(result.current.requiresSafeOutputConfirm).toBe(false);
+    expect(result.current.outputConfirmed).toBe(true);
+    await act(async () => { await result.current.handleTogglePlayback(); });
+    expect(voicePreviewApi.request).toHaveBeenCalledWith(expect.objectContaining({ action: 'start', deviceId: recovery === 'select' ? 'headphones' : 'saved-headphones' }));
+    await act(async () => { await result.current.handleStopPreview(); });
+    act(() => result.current.setPreviewDeviceId('cable'));
+    expect(result.current.requiresSafeOutputConfirm).toBe(true);
+    expect(result.current.outputConfirmed).toBe(false);
+    const starts = () => vi.mocked(voicePreviewApi.request).mock.calls.filter(([request]) => request.action === 'start').length;
+    await act(async () => { await result.current.handleTogglePlayback(); });
+    expect(starts()).toBe(1);
+    act(() => result.current.setSafeOutput(true));
+    await act(async () => { await result.current.handleTogglePlayback(); });
+    expect(starts()).toBe(2);
+});
+
 it.each(['success', 'failure'] as const)('解析待ちの非表示後に再実行でき、旧%s応答は新しい解析へ干渉しない', async outcome => {
     const previous = deferred<QualityReport>();
     const current = deferred<QualityReport>();

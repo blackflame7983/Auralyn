@@ -333,7 +333,7 @@ it('入力元への移動は設定のエラー表示が終わるまで待機す�
     vi.spyOn(audioApi, 'getDevices').mockRejectedValueOnce(new Error('enumeration failed'));
     const view = render(<AudioSettingsModal isOpen initialSection="primaryInput" onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const retry = await screen.findByRole('button', { name: '設定に戻って再試行' });
-    expect(document.getElementById('primary-input-settings')).toBeNull();
+    expect(document.getElementById('primary-input-settings')).not.toBeNull();
     retry.focus();
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 40)); });
     expect(retry).toHaveFocus();
@@ -348,4 +348,40 @@ it('接続の折りたたみ見出しも通常セクションと同じトーク�
     const summary = screen.getByText('接続方式・音切れの設定', { exact: false, selector: 'summary' });
     expect(summary).toHaveClass('text-ui-heading', 'font-semibold');
     expect(summary).not.toHaveClass('text-sm');
+});
+
+it('U03: エラー時もデバイス選択フォームを維持し、また未保存の接続変更があれば別タブへ移動しても適用フッターを維持する', async () => {
+    vi.spyOn(audioApi, 'getDevices').mockResolvedValue({
+        ...devices,
+        inputs: [
+            ...devices.inputs,
+            { ...devices.inputs[0], name: 'Broken Mic', index: 1 },
+            { ...devices.inputs[0], name: 'Backup Mic', index: 2 },
+        ],
+    });
+    const start = vi.spyOn(audioApi, 'start')
+        .mockRejectedValueOnce(new Error('Device start rejected'))
+        .mockResolvedValue({ sample_rate: 48000, buffer_size: 512, channels: 2 });
+    const changed = vi.fn();
+    render(<AudioSettingsModal isOpen isAudioRunning currentConfig={config} onClose={vi.fn()} onConfigChange={changed} />);
+
+    const micSelect = await screen.findByRole('combobox', { name: 'マイク' });
+    await waitFor(() => expect(micSelect).toHaveValue('Mic'));
+    fireEvent.change(micSelect, { target: { value: 'Broken Mic' } });
+    expect(screen.getByText('変更予定：マイク')).toBeInTheDocument();
+
+    // 別タブ（外観・表示）へ移動しても未保存変更と適用フッターが消えないことを確認する
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'システム' }), { button: 0, ctrlKey: false });
+    expect(screen.getByText('変更予定：マイク')).toBeVisible();
+    const saveBtn = screen.getByRole('button', { name: '接続を保存して再起動' });
+    expect(saveBtn).toBeEnabled();
+
+    // オーディオタブへ戻り、エラーが発生してもフォームが消えず別デバイスを選び直せることを確認する
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'オーディオ' }), { button: 0, ctrlKey: false });
+    fireEvent.click(saveBtn);
+    await screen.findByText(/Device start rejected/);
+    expect(screen.getByRole('combobox', { name: 'マイク' })).toBeVisible();
+    fireEvent.change(screen.getByRole('combobox', { name: 'マイク' }), { target: { value: 'Backup Mic' } });
+    fireEvent.click(screen.getByRole('button', { name: '接続を保存して再起動' }));
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(2));
 });
