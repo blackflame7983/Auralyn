@@ -28,6 +28,8 @@ it.each(['ja', 'en'] as const)('共通ヘッダーの入口とミュートの状
     expect(screen.queryByRole('button', { name: message(locale, 'header.compare') })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: message(locale, 'header.setupOpen') })).not.toBeInTheDocument();
     expect(muteButton).toHaveTextContent(message(locale, 'header.emergency'));
+    expect(muteButton).toHaveClass('font-medium', 'text-ui-support');
+    expect(muteButton).not.toHaveClass('font-bold');
     expect(muteButton).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(muteButton);
     expect(mute).toHaveBeenCalledOnce();

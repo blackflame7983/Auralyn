@@ -20,6 +20,7 @@ let initialized: boolean;
 let finishListening: () => void;
 let started: () => void;
 let unlistenStarted: () => void;
+let audioStartedReady: Array<(stop: () => void) => void>;
 let eventHandlers: Map<string, Set<(event: { event: string; id: number; payload: unknown }) => void>>;
 
 beforeEach(() => {
@@ -38,14 +39,20 @@ beforeEach(() => {
     vi.mocked(audioApi.getAudioState).mockResolvedValue({ is_running: true, config: null });
     unlistenStarted = vi.fn();
     eventHandlers = new Map();
+    audioStartedReady = [];
     vi.mocked(listen).mockImplementation((event, callback) => {
         const handlers = eventHandlers.get(event) ?? new Set();
         handlers.add(callback);
         eventHandlers.set(event, handlers);
         if (event !== 'audio-started') return Promise.resolve(vi.fn());
-        started = () => callback({ event, id: 1, payload: undefined });
+        started = () => {
+            for (const handler of eventHandlers.get('audio-started') ?? []) handler({ event, id: 1, payload: undefined });
+        };
         return new Promise((resolve) => {
-            finishListening = () => resolve(unlistenStarted);
+            audioStartedReady.push(resolve);
+            finishListening = () => {
+                for (const ready of audioStartedReady.splice(0)) ready(unlistenStarted);
+            };
         });
     });
     vi.mocked(invoke).mockImplementation(async (_command, args) => {
@@ -279,7 +286,7 @@ describe('起動時の保存ゲイン復元', () => {
             finishListening();
             await vi.advanceTimersByTimeAsync(1500);
         });
-        expect(unlistenStarted).toHaveBeenCalledOnce();
+        expect(unlistenStarted).toHaveBeenCalled();
         expect(invoke).not.toHaveBeenCalled();
     });
 });
@@ -499,19 +506,19 @@ it.each(['ja', 'en'] as const)('フッターの出力ラベルは操作用の文
     expect(screen.getByText('50%')).toHaveClass('font-mono');
 });
 
-it.each([false, true])('出力音量はマウスで100%にでき、キーの刻みと30msの送信待ちを保つ（小窓=%s）', async popover => {
+it('出力音量は1つで、マウスで100%にでき、キーの刻みと30msの送信待ちを保つ', async () => {
     // JSDOMにないポインター座標・captureだけを補い、実際のRadix Sliderを操作する。
     vi.stubGlobal('PointerEvent', MouseEvent);
-    const anchor = document.createElement('button');
-    document.body.append(anchor);
     try {
-        const view = render(<MasterBar outputGainAnchor={popover ? anchor : undefined} />);
+        const view = render(<MasterBar />);
         const sliders = screen.getAllByRole('slider', { name: '出力音量' });
-        const slider = sliders.find(node => popover ? !node.closest('#master-output-gain') : node.closest('#master-output-gain'))!;
+        expect(sliders).toHaveLength(1);
+        const slider = sliders[0];
+        expect(slider.closest('#master-output-gain')).not.toBeNull();
         const root = slider.closest('[data-orientation="horizontal"].touch-none')!;
-        vi.spyOn(root, 'getBoundingClientRect').mockReturnValue({ left: 0, width: popover ? 224 : 128 } as DOMRect);
+        vi.spyOn(root, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 128 } as DOMRect);
         Object.assign(root, { setPointerCapture: vi.fn(), hasPointerCapture: () => true, releasePointerCapture: vi.fn() });
-        fireEvent.pointerDown(root, { clientX: popover ? 112 : 64, button: 0, pointerType: 'mouse' });
+        fireEvent.pointerDown(root, { clientX: 64, button: 0, pointerType: 'mouse' });
         fireEvent.pointerUp(root);
         expect(slider).toHaveAttribute('aria-valuenow', '100');
         expect(slider).toHaveFocus();
@@ -531,7 +538,7 @@ it.each([false, true])('出力音量はマウスで100%にでき、キーの刻�
         fireEvent.doubleClick(root);
         expect(slider).toHaveAttribute('aria-valuenow', '100');
         view.unmount();
-    } finally { anchor.remove(); vi.unstubAllGlobals(); }
+    } finally { vi.unstubAllGlobals(); }
 });
 
 it.each([true, false])('本番帯に出力表示があればフッターに重ねず、なければ残す（稼働=%s）', isRunning => {

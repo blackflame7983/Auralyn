@@ -60,7 +60,7 @@ export function HomePanels({ diagnosticAttention, stoppedInStrip, homeActionInSt
                 receiver={{ label: t(music && !broadcastId ? 'prep.localReceiver' : 'live.destination'), value: music ? broadcastId ? t('flow.receiverUnknown') : t('prep.local') : model.context.usage ? t(({ obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' } as const)[model.context.usage]) : undefined,
                     warning: !music && model.context.usage !== 'listening' && confirmationState(model.records, 'receiver') !== 'confirmed' ? t('flow.receiverUnknown') : undefined }} /></div>
             {!homeActionInStrip && model.observation.availability !== 'muted' && <p role="status" className="text-ui-support text-muted-foreground">{statusText ?? t(availabilityLabels[model.observation.availability])}</p>}
-            {(music || configured && !configureIsPrimary) && <Button variant="outline" size="default" type="button" onClick={onOpenSettings}>{t('home.changeDevices')}</Button>}
+            {(music || configured && !configureIsPrimary) && <Button variant="outline" size="default" type="button" onClick={onOpenSettings} className="home-action">{t('home.changeDevices')}</Button>}
             {model.observation.routing && (model.observation.routing.deviceId || model.observation.routing.splitProcessing) && !['unknown', 'stopped', 'unconfigured', 'failed', 'pending'].includes(model.observation.availability) && <div className="basis-full"><RouteSummary routing={model.observation.routing} output={actualOutput} onSettings={onOpenSettings} resolvedName={broadcastName ?? null} /></div>}
         </section>} />
 

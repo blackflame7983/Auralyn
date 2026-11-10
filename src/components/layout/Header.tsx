@@ -124,7 +124,7 @@ export const Header: React.FC<HeaderProps> = ({
                     {/* Logo Section */}
                     <div className="flex items-center gap-2 select-none shrink-0">
                         <img src="/auralyn_icon.png?v=17" alt="" className="w-7 h-7 object-contain gaming:drop-shadow-[0_0_8px_hsl(var(--brand)/0.5)]" />
-                        <h1 aria-label="Auralyn" className="sr-only lg:not-sr-only text-ui-heading font-bold tracking-tight text-foreground">
+                        <h1 aria-label="Auralyn" className="sr-only lg:not-sr-only text-[1.0625rem] font-medium leading-none tracking-tight text-foreground">
                             Aura<span className="text-brand">lyn</span>
                         </h1>
                     </div>
@@ -150,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 onClick={handleToggleMute}
                                 aria-label={t('header.emergency')}
                                 aria-describedby={isGlobalMuted ? 'header-mute-state' : undefined}
-                                className={`press-feedback flex items-center gap-2 px-3 py-1.5 rounded-full border font-bold text-ui-support shadow-sm text-foreground ${isGlobalMuted
+                                className={`press-feedback flex items-center gap-2 px-3 py-1.5 rounded-full border font-medium text-ui-support shadow-sm text-foreground ${isGlobalMuted}
                                     ? 'bg-destructive/10 border-destructive-text ring-2 ring-destructive-text'
                                     : 'bg-background hover:bg-destructive/10 border-destructive-text hover:border-destructive-text'
                                     }`}

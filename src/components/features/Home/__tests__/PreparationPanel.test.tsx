@@ -249,14 +249,14 @@ it('畳んでいる間は状態を読み上げ対象にし、機器名と、ヘ�
     expect(screen.queryByText(message('ja', 'shell.stopped'))).not.toBeInTheDocument();
 });
 
-it.each(['ja', 'en'] as const)('音声チェックのh2は開閉してもホームのセクション見出しの大きさと太さを保つ（%s）', locale => {
+it.each(['ja', 'en'] as const)('音声チェックのh2は開閉してもホームの細いセクション見出しを保つ（%s）', locale => {
     render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><PreparationPanel model={fixture()} {...callbacks()} /></LocaleProvider>);
     const heading = screen.getByRole('heading', { level: 2, name: message(locale, 'prep.title') });
-    expect(heading).toHaveClass('text-ui-heading', 'font-semibold');
-    expect(heading).not.toHaveClass('text-xs', 'text-sm', 'font-bold');
+    expect(heading).toHaveClass('home-title');
+    expect(heading).not.toHaveClass('text-ui-heading', 'text-xs', 'text-sm', 'font-bold');
     expand(locale);
-    expect(heading).toHaveClass('text-ui-heading', 'font-semibold');
-    expect(heading).not.toHaveClass('text-xs', 'text-sm', 'font-bold');
+    expect(heading).toHaveClass('home-title');
+    expect(heading).not.toHaveClass('text-ui-heading', 'text-xs', 'text-sm', 'font-bold');
 });
 
 it.each(['ja', 'en'] as const)('畳んだホームの入口から1回で接続診断を開く（%s）', async locale => {
