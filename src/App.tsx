@@ -18,11 +18,8 @@ import { PluginList } from './components/features/PluginRack/PluginList';
 import { VstChainItems } from './components/features/Home/VstChainItems';
 import { ModalLayer } from './components/layout/ModalLayer';
 import { SessionRecoveryNotice } from './components/features/Recovery/SessionRecoveryNotice';
-import { Toaster } from 'sonner';
-
 import { usePlugins } from './hooks/usePlugins';
 import { usePluginHealthNotices } from './hooks/usePluginHealthNotices';
-import { useTheme } from './hooks/useTheme';
 import { useAudioConfig } from './hooks/useAudioConfig';
 import { useAppEvents } from './hooks/useAppEvents';
 import { useUIState } from './hooks/useUIState';
@@ -36,7 +33,6 @@ import { crashedPluginMarker } from './lib/audioEngineExit';
 
 function AppContent() {
     const t = useMessages();
-  const { theme } = useTheme();
   const { currentStep, completeStep } = useTutorial();
 
   // Custom Hooks
@@ -281,8 +277,6 @@ function AppContent() {
           pluginsApi={pluginsApi}
           onPluginAdded={handlePluginAdded}
         />
-
-        <Toaster position="bottom-right" offset={{ bottom: 'calc(var(--app-footer-height, 4rem) + 16px)', right: 16 }} theme={theme === 'light' ? 'light' : 'dark'} richColors />
       </AppShell>
     </>
   );

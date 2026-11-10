@@ -1,5 +1,3 @@
-import { Button } from '@/components/ui/button';
-import { useStreamMixPanel } from '@/lib/streamMixPanel';
 import { useDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { HomeAudioStartError } from '@/lib/startHomeAudio';
 import { renderClientError } from '@/lib/clientError';
@@ -7,6 +5,7 @@ import { useUsageWindow } from '@/hooks/useUsageWindow';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
 import { LoudnessCheck } from '../features/LevelMeter/LoudnessCheck';
 import { HomePanels } from '../features/Home/HomePanels';
+import { actionWord, ChannelAction } from '../features/Home/ChannelAction';
 import { LiveStrip } from '../features/Home/LiveStrip';
 import { InputGainDisabledContext } from '../features/Home/InputGainContext';
 import { LiveControlsHiddenContext } from '../features/Home/LiveControlsContext';
@@ -17,9 +16,12 @@ import { useVstPanel } from '@/hooks/useVstPanel';
 import { usePanelMotion } from '@/hooks/usePanelMotion';
 import { AnimatePresence } from 'motion/react';
 import { VstPanelAside } from './VstPanelAside';
-import { useLayoutMotion, useSettledReady } from '@/hooks/useLayoutMotion';
+import { useLayoutMotion } from '@/hooks/useLayoutMotion';
 import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { deriveHomeChrome } from './homeChrome';
 import { Header } from './Header';
+import { NoticeLane } from './NoticeLane';
+import { focusOutputGain } from './OutputGainControl';
 import { audioApi } from '../../api/audio';
 import { AudioCheckIcon, LevelMeterIcon } from '@/components/ui/AudioControlIcons';
 import { cn } from '@/lib/utils';
@@ -130,8 +132,6 @@ export const AppShell: React.FC<AppShellProps> = ({
     }, []);
     const canStart = Boolean(onStartAudio && currentHost && currentInput && currentOutput);
     const [purpose] = useDisplayPurpose();
-    const streamMixShown = useStreamMixPanel();
-    const hasStreamMix = purpose === 'voice' && streamMixShown && Boolean(streamMixPanel);
     useUsageWindow(purpose);
     const [runtimeStats, setRuntimeStats] = useState<EngineRuntimeStats | null>(null);
     useEffect(() => { setRuntimeStats(null); }, [isEngineRunning]);
@@ -165,7 +165,6 @@ export const AppShell: React.FC<AppShellProps> = ({
         startError instanceof HomeAudioStartError ? startError.cause : startError);
     const preparation = usePreparation({ blocked: preparationBlocked, running: audioReady });
     const [soundExpanded, setSoundExpanded] = useState(false);
-    const [preparationExpanded, setPreparationExpanded] = useState(false);
     const [loudnessEnabled, setLoudnessEnabled] = useState(false);
     const [measurement, setMeasurement] = useState({ active: false, busy: false, stopUnconfirmed: false });
     const [measurementRequest, setMeasurementRequest] = useState<{id: number; action: 'start' | 'stop'}>();
@@ -183,9 +182,6 @@ export const AppShell: React.FC<AppShellProps> = ({
         return () => media.removeEventListener('change', update);
     }, [isLargeMeterOpen]);
     const panelOverlays = Boolean(vstPanel) && vstPanelOpen && !panelBeside;
-    // 反映待ちの間は直前の判定を使い、メーターの配置を畳まない（#298）。
-    const settledReady = useSettledReady(preparation.observation.availability);
-    const roomyMeters = audioReady && settledReady && !preparationExpanded && !soundExpanded && !isLargeMeterOpen && !loudnessEnabled && !panelOverlays && !hasStreamMix;
     const panelRef = useRef<HTMLElement>(null);
     const panelMotion = usePanelMotion(Boolean(vstPanel) && vstPanelOpen, panelRef);
     useEffect(() => {
@@ -228,6 +224,11 @@ export const AppShell: React.FC<AppShellProps> = ({
     // 未設定の間は本番帯を出さず、準備の主ボタンを先頭にする。
     const quietStopped = canStart && !isEngineRunning && engineProcessReady === true;
     const configured = Boolean(currentHost) && preparation.observation.availability !== 'unconfigured';
+    const chrome = deriveHomeChrome({
+        configured,
+        soundExpanded,
+        vstPanel: { present: Boolean(vstPanel), open: vstPanelOpen, wide: panelBeside },
+    });
     // 音楽鑑賞の聴き比べは、準備の手順とチェーン列のどちらからも開く。
     const [listenOpen, setListenOpen] = useState(false);
     const openListen = purpose === 'music' ? () => setListenOpen(true) : onOpenVoiceCheck;
@@ -236,36 +237,33 @@ export const AppShell: React.FC<AppShellProps> = ({
     // 大型メーターは声のレベルを大きく見るためのものなので、ヘッダーではなく本番帯のメーター横から開く。
     const largeMeterLabel = t(isLargeMeterOpen ? 'header.meterClose' : 'header.meterOpen');
     const meterSuspended = isLargeMeterOpen && panelMotion.present && !panelBeside;
-    const largeMeterButton = <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" type="button" id="large-meter-toggle" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
+    const largeMeterButton = <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><ChannelAction id="large-meter-toggle" onClick={onToggleLargeMeter} aria-pressed={isLargeMeterOpen}
         aria-label={largeMeterLabel} aria-describedby={meterSuspended ? 'large-meter-suspended' : undefined}
-        className={cn('shrink-0 gap-1.5', isLargeMeterOpen ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border hover:bg-muted')}>
-        <span className="relative"><LevelMeterIcon className="h-[18px] w-[18px]" />{meterSuspended && <span aria-hidden="true" className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-warning" />}</span><span className="live-action-label">{t('home.largeMeterLabel')}</span>
-    </Button></TooltipTrigger><TooltipContent><p>{t(meterSuspended ? 'home.meterSuspended' : 'home.largeMeterTool')}</p><p className="max-w-64 text-ui-support">{t('meter.arrivalUnverified')}</p></TooltipContent></Tooltip></TooltipProvider>;
+        word={actionWord(t('home.largeMeterLabel'))}
+        icon={<span className="relative"><LevelMeterIcon className="h-[18px] w-[18px]" />{meterSuspended && <span aria-hidden="true" className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-warning" />}</span>}
+        className={cn(isLargeMeterOpen ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border hover:bg-muted')}
+    /></TooltipTrigger><TooltipContent><p>{t(meterSuspended ? 'home.meterSuspended' : 'home.largeMeterTool')}</p><p className="max-w-64 text-ui-support">{t('meter.arrivalUnverified')}</p></TooltipContent></Tooltip></TooltipProvider>;
     const meterSuspendedNotice = meterSuspended ? <span id="large-meter-suspended" role="status" className="mb-3 text-ui-support text-muted-foreground">{t('home.meterSuspended')}</span> : null;
     const loudnessAction = !loudnessEnabled && !measurement.active ? <span className="flex shrink-0 items-center gap-2">
         <span id="loudness-toggle-description" className={!audioReady && !quietStopped ? 'whitespace-nowrap text-ui-support text-muted-foreground' : 'sr-only'}>{!audioReady ? t(engineProcessReady === null ? 'loudness.audioUnknown' : 'loudness.needsAudio') : t('loudness.scope')}</span>
-        <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" type="button" aria-pressed={measurement.active} aria-describedby="loudness-toggle-description"
+        <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><ChannelAction aria-pressed={measurement.active} aria-describedby="loudness-toggle-description"
             onClick={() => { setLoudnessEnabled(true); setMeasurementRequest({ id: ++requestId.current, action: measurement.active ? 'stop' : 'start' }); }}
             disabled={measurement.busy || (!measurement.active && !audioReady)}
             aria-label={loudnessLabel}
-            className="gap-1.5">
-            <AudioCheckIcon className="h-[18px] w-[18px]" /><span className="live-action-label">{t('shell.loudness')}</span>
-        </Button></TooltipTrigger><TooltipContent><p>{t('home.loudnessTool')}</p><p className="max-w-64 text-ui-support">{t('loudness.scope')}</p></TooltipContent></Tooltip></TooltipProvider>
+            word={actionWord(t('shell.loudness'))}
+            icon={<AudioCheckIcon className="h-[18px] w-[18px]" />}
+        /></TooltipTrigger><TooltipContent><p>{t('home.loudnessTool')}</p><p className="max-w-64 text-ui-support">{t('loudness.scope')}</p></TooltipContent></Tooltip></TooltipProvider>
     </span> : null;
-    const focusOutputControl = (anchor?: HTMLButtonElement) => {
+    const focusOutputControl = () => {
         const zeroGain = runtimeStats?.preparation?.muted === false && runtimeStats.preparation.outputGain === 0;
-        // 音量ゼロは押した場所で直せるよう出力音量の小窓を開く。ミュートは解除ボタンへ移り、移動先を短く示す。
-        if (zeroGain && anchor?.getClientRects().length) { setOutputGainAnchor(anchor); return; }
-        const target = document.querySelector<HTMLElement>(zeroGain ? '#master-output-gain [role="slider"]' : '#emergency-mute');
+        // 音量ゼロはフッターの出力音量へ、ミュートは解除ボタンへ移す。
+        if (zeroGain) { focusOutputGain(); return; }
+        const target = document.getElementById('emergency-mute');
         if (!target) return;
         target.focus();
         target.dataset.attention = '';
         window.setTimeout(() => { delete target.dataset.attention; }, 1200);
     };
-    const [outputGainAnchor, setOutputGainAnchor] = useState<HTMLButtonElement | null>(null);
-    const closeOutputGain = useCallback(() => setOutputGainAnchor(null), []);
-    const toggleOutputGain = useCallback((anchor: HTMLButtonElement) => setOutputGainAnchor(current => current === anchor ? null : anchor), []);
-    useEffect(() => { if (panelOverlays || !configured) closeOutputGain(); }, [panelOverlays, configured, closeOutputGain]);
     const soundChain = <SoundChain onExpandedChange={setSoundExpanded} stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} vstUnrestored={vstUnrestored} listenOpen={listenOpen} onListen={openListen} onListenClose={() => setListenOpen(false)}
         onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} unconfigured={!configured} />;
@@ -321,20 +319,22 @@ export const AppShell: React.FC<AppShellProps> = ({
                     engineProcessReady={engineProcessReady}
                     stoppedInStrip={quietStopped}
                 />
+                <NoticeLane />
                 {/* 重ね表示は中央の作業領域だけを覆う。緊急ミュートと出力音量は操作できるままにする。 */}
                 <div className="workspace-body relative flex min-h-0 flex-1">
                 <main
+                    data-density="home"
                     inert={panelOverlays}
                     className="home-main min-w-0 flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent"
                 >
                     {/* 左右に分けると片側だけが詰まって見えるので、どの幅でも上から1列に並べ、広い画面では中央に寄せる。 */}
-                    <div ref={homeContentRef} className="home-content mx-auto max-w-[1180px]" data-roomy={roomyMeters}>
+                    <div ref={homeContentRef} className="home-content mx-auto max-w-[1180px]">
                         {notices}
                         {/* 音量チェックと大型メーターは本番帯のメーター横に置き、ホーム上部に常設の行を作らない。
                             未設定の間は準備の主ボタンを先頭にし、止まったメーターを重ねない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、本番帯がなくても残す。 */}
                         {configured
-                            ? <LiveStrip compact={soundExpanded} liveModeName={liveModeName} stopped={quietStopped} roomy={roomyMeters} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} onAdjustOutput={toggleOutputGain} controlsDisabled={panelOverlays} outputGainOpen={Boolean(outputGainAnchor)} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
+                            ? <LiveStrip stage={chrome.kind === 'daily' ? chrome.stage : 'full'} liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} onCheckOutput={focusOutputControl} controlsDisabled={panelOverlays} liveControls={liveControls} onOpenDevices={onOpenSettings} inputName={currentInput} outputName={currentOutput} meterAction={<span className="flex shrink-0 items-center gap-2">{loudnessAction}{largeMeterButton}</span>} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-card border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
                         {/* 本番操作は音調整・診断より前へ置き、表示中はメーターの大型化より操作幅と高さを優先する。 */}
                         {/* 未設定の間は音の流れと次の1歩だけを出す（#297）ため、配信ミックスは置かない。 */}
@@ -354,7 +354,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {!configured && <UnsetFlow usage={preparation.context.usage || null} music={purpose === 'music'} onSetup={onOpenWizard}
                             input={preparation.observation.config?.input ?? currentInput} output={preparation.observation.config?.output ?? currentOutput} />}
                         {configured && <div className="min-w-0"><HomePanels diagnosticAttention={startError !== null || measurement.stopUnconfirmed} stoppedInStrip={quietStopped}
-                            onExpandedChange={setPreparationExpanded}
                             model={preparation}
                             homeActionInStrip={canStart && !isEngineRunning || purpose !== 'music' && audioReady && !preparation.context.usage}
                             destinationRequest={destinationRequest}
@@ -389,10 +388,10 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </div>
 
                 {/* Master Section Footer */}
-                <footer ref={footerRef} className="bg-background border-t border-border px-4 z-50 footer-shadow shrink-0 transition-colors duration-(--motion-panel)">
+                <footer ref={footerRef} data-density="home" className="bg-background border-t border-border px-4 z-50 footer-shadow shrink-0 transition-colors duration-(--motion-panel)">
                     <div className="mx-auto max-w-[1180px] w-full flex items-center gap-3">
                     {/* 比べる音がない未設定の間は出さない。比較中のまま未設定になった場合は解除できるよう残す。 */}
-                    {(configured || isABBypassed) && <div className="flex shrink-0 items-center py-2">
+                    {(chrome.footer.compare === 'always' || isABBypassed) && <div className="flex shrink-0 items-center py-2">
                         {/* Effect Compare Button */}
                         <TooltipProvider>
                             <Tooltip>
@@ -405,7 +404,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                         aria-checked={isABBypassed}
                                         aria-describedby={isABBypassed ? 'footer-compare-state' : undefined}
                                         className={cn(
-                                            "flex items-center gap-1.5 px-2.5 py-1 rounded-card border text-ui-control font-semibold whitespace-nowrap shrink-0",
+                                            "home-control flex items-center gap-1.5 px-2.5 py-1 rounded-card border text-ui-control whitespace-nowrap shrink-0",
                                             isABBypassed
                                                 ? "bg-warning/10 text-warning border-warning/50 ring-1 ring-warning/30"
                                                 : "bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground"
@@ -427,10 +426,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                         </TooltipProvider>
                     </div>}
                     {/* 比較ボタンを出さない間は、区切りの線だけが左端に残らないようにする。 */}
-                    <div className={cn('flex-1 min-w-0', !(configured || isABBypassed) && '[&>div]:border-l-transparent')}>
+                    <div className={cn('flex-1 min-w-0', !(chrome.footer.compare === 'always' || isABBypassed) && '[&>div]:border-l-transparent')}>
                         <MasterBar
-                            outputMeterInHome={configured}
-                            outputGainAnchor={outputGainAnchor} onOutputGainClose={closeOutputGain}
+                            outputMeterInHome={!chrome.footer.outputMeter}
                             onStatsChange={setRuntimeStats}
                             isRunning={isEngineRunning}
                             processReady={engineProcessReady}

@@ -14,20 +14,16 @@ import { toDbfs } from '@/hooks/useMeterLevels';
 import { AuroraRibbons } from './AuroraRibbons';
 import { InputGainControl } from './InputGainControl';
 import { deviceDisplayName } from '@/lib/audioRouting';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const destinations: Record<PreparationUse, MessageKey> = { obs: 'prep.obs', discord: 'prep.call', other: 'prep.other', listening: 'prep.local' };
 
 // 舞台に状態とモード、下段に声と出力をまとめる。操作条件と共有メーターは従来どおり。
-export function LiveStrip({ onStartAudio, stopped = false, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, liveModeName, meterAction, onOpenDevices, onOpenStartErrorSettings, onCheckOutput, onAdjustOutput, outputGainOpen = false, controlsDisabled = false, inputName, outputName, roomy = false, compact = false }: {
+export function LiveStrip({ onStartAudio, stopped = false, starting = false, startError, startPartiallyApplied = false, onChooseDestination, model, running, liveControls, liveModeName, meterAction, onOpenDevices, onOpenStartErrorSettings, onCheckOutput, controlsDisabled = false, inputName, outputName, stage = 'full' }: {
     onStartAudio?: () => void; stopped?: boolean; starting?: boolean; startError?: string | null; startPartiallyApplied?: boolean; onChooseDestination?: () => void;
     model: PreparationModel; running: boolean; liveControls?: ReactNode; liveModeName?: string; meterAction?: ReactNode; onOpenDevices?: () => void; onOpenStartErrorSettings?: () => void;
     onCheckOutput?: (anchor: HTMLButtonElement) => void;
-    onAdjustOutput?: (anchor: HTMLButtonElement) => void;
-    outputGainOpen?: boolean;
     controlsDisabled?: boolean;
-    roomy?: boolean;
-    compact?: boolean;
+    stage?: 'full' | 'yield';
     /** 準備の観測で機器を取れない間に使う、AppShell が持つ機器名。 */
     inputName?: string; outputName?: string;
 }) {
@@ -42,20 +38,20 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
     const input = model.observation.config?.input ?? inputName;
     const output = model.observation.config?.output ?? outputName;
     const devices = t('live.devices', { input: input ? deviceDisplayName(input) : t('flow.unknown'), output: output ? deviceDisplayName(output) : t('flow.unknown') });
-    return <section aria-label={t('live.strip')} data-muted={muted} data-roomy={roomy} data-compact={compact} className="live-strip relative isolate mb-4 rounded-card bg-card gaming:bg-card/70 px-5 py-5 min-[1100px]:px-6">
+    return <section aria-label={t('live.strip')} data-muted={muted} data-stage={stage} className="live-strip relative isolate mb-4 rounded-card bg-card gaming:bg-card/70 px-5 py-5 min-[1100px]:px-6">
         <div data-layout-motion className="live-stage relative isolate">
         {aurora && <LiveAurora running={running} muted={muted} />}
         <div className="live-stage-copy flex max-w-full flex-col items-center gap-2 text-center">
         <div className="flex flex-wrap items-center justify-center gap-3">
             <span role={stopped ? 'status' : undefined} className="text-ui-support text-muted-foreground">{t(running ? 'device.engine' : 'shell.stopped')}</span>
         {!running && onStartAudio && <>
-            <Button variant="default" size="default" type="button" onClick={onStartAudio} disabled={starting || controlsDisabled}>{t(starting ? 'home.starting' : 'home.startAudio')}</Button>
+            <Button variant="default" size="default" type="button" onClick={onStartAudio} disabled={starting || controlsDisabled} className="home-action">{t(starting ? 'home.starting' : 'home.startAudio')}</Button>
             <p className="text-ui-support text-muted-foreground">{t('home.startSavedDevices')}</p>
         </>}
         </div>
-        <h2 className="live-stage-mode font-semibold">{music ? t('purpose.music') : liveModeName ?? t('liveBar.custom')}</h2>
+        <h2 className="live-stage-mode">{music ? t('purpose.music') : liveModeName ?? t('liveBar.custom')}</h2>
         {/* 状態 → いまのモード名 → 次の1歩 → モード操作の順に読めるよう、主操作は見出しの直後に置く。 */}
-        {!music && running && !usage && onChooseDestination && <Button variant="default" size="default" type="button" onClick={onChooseDestination}>{t('home.chooseDestination')}</Button>}
+        {!music && running && !usage && onChooseDestination && <Button variant="default" size="default" type="button" onClick={onChooseDestination} className="home-action">{t('home.chooseDestination')}</Button>}
         {!music && liveControls && <div data-layout-motion className="live-controls min-w-0 max-w-full">{liveControls}</div>}
         </div>
         </div>
@@ -68,10 +64,9 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
         </div>
         {/* 入出力を左右に並べ、名前・機器・操作と細いバーを同じ列にまとめる。 */}
         <div data-layout-motion className="live-output-summary live-channel">
-            <TooltipProvider delayDuration={300}><Tooltip><TooltipTrigger asChild><button type="button" onClick={event => onAdjustOutput?.(event.currentTarget)} aria-label={t('master.outputGain')} aria-haspopup="dialog" aria-expanded={outputGainOpen}
-                className="live-meter-label inline-flex items-center gap-1.5 rounded-control py-1 text-ui-support text-muted-foreground hover:bg-muted hover:text-foreground">
+            <span className="live-meter-label inline-flex items-center gap-1.5 py-1 text-ui-support text-muted-foreground">
                 <MdVolumeUp aria-hidden="true" className="h-5 w-5" />{t('live.meterOutput')}
-            </button></TooltipTrigger><TooltipContent>{t('home.adjustOutput')}</TooltipContent></Tooltip></TooltipProvider>
+            </span>
             <span className="live-device text-ui-support text-muted-foreground" title={output ? deviceDisplayName(output) : undefined}>{output ? deviceDisplayName(output) : t('flow.unknown')}</span>
             <div className="live-channel-meter live-output-meter"><LiveOutputMeter running={running} /></div>
             <div className="live-channel-actions flex flex-wrap items-center gap-2">{meterAction}</div>
@@ -79,7 +74,7 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
         </div>
         {startError && <div role="alert" data-layout-motion className="space-y-2 text-ui-control text-destructive-text">
             <p>{t(startPartiallyApplied ? 'home.startIncomplete' : 'home.startFailed')}</p>
-            <Button variant="outline" size="default" type="button" onClick={onOpenStartErrorSettings ?? onOpenDevices}>{t('home.changeDevices')}</Button>
+            <Button variant="outline" size="default" type="button" onClick={onOpenStartErrorSettings ?? onOpenDevices} className="home-action">{t('home.changeDevices')}</Button>
             <details><summary className="cursor-pointer">{t('prep.details')}</summary><p className="break-words">{startError}</p></details>
         </div>}
         <div data-live-routing data-layout-motion className="flex flex-wrap items-center gap-x-3 gap-y-2">

@@ -183,7 +183,7 @@ for (const theme of ['light', 'dark', 'gaming']) {
 
 test.describe('ホームと設定の共通操作', () => {
     test.use({ builtinEnabled: true });
-    test('ノイズ低減と声のプリセットの寸法を揃える', async ({ page }) => {
+    test('ノイズ低減と声のプリセットは各画面内で寸法を揃え、ホームをコンパクトにする', async ({ page }) => {
         await page.addInitScript(() => {
             const original = (window as any).__TAURI_INTERNALS__.invoke;
             (window as any).__TAURI_INTERNALS__.invoke = async (command: string, args: unknown) => {
@@ -202,22 +202,31 @@ test.describe('ホームと設定の共通操作', () => {
         const dimensions = async (button: typeof home[number]) => button.evaluate(node => {
             const style = getComputedStyle(node);
             // 位置によって 0.00003px のような画素未満の誤差が出るため、高さは 0.1px 単位で比べる。
-            return { height: Math.round(node.getBoundingClientRect().height * 10) / 10, padding: style.padding, minWidth: style.minWidth };
+            return { height: Math.round(node.getBoundingClientRect().height * 10) / 10, padding: style.padding, minWidth: style.minWidth, fontSize: style.fontSize };
         });
-        const sizes = [];
+        const sizes: Awaited<ReturnType<typeof dimensions>>[] = [];
         for (let i = 0; i < home.length; i++) {
             const trigger = page.locator('.sound-tool-list > li > div > button').nth(i < 2 ? 0 : 1);
             if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click();
             await expect(home[i]).toBeVisible();
             sizes.push(await dimensions(home[i]));
         }
+        expect(sizes.slice(0, 2).every(size => JSON.stringify(size) === JSON.stringify(sizes[0]))).toBe(true);
+        expect(sizes.slice(2).every(size => JSON.stringify(size) === JSON.stringify(sizes[2]))).toBe(true);
+        const settingsSizes: Awaited<ReturnType<typeof dimensions>>[] = [];
         await page.getByRole('button', { name: '設定を開く', exact: true }).click();
         const dialog = page.getByRole('dialog', { name: '設定', exact: true });
         await dialog.getByRole('tab', { name: '音づくり', exact: true }).click();
         for (let i = 0; i < names.length; i++) {
             const button = dialog.getByRole('radio', { name: names[i], exact: true });
             await expect(button).toBeVisible();
-            expect(await dimensions(button)).toEqual(sizes[i]);
+            const size = await dimensions(button);
+            settingsSizes.push(size);
+            expect(sizes[i].fontSize).toBe('13px');
+            expect(size.fontSize).toBe('16px');
+            expect(size.height).toBeGreaterThan(sizes[i].height);
         }
+        expect(settingsSizes.slice(0, 2).every(size => JSON.stringify(size) === JSON.stringify(settingsSizes[0]))).toBe(true);
+        expect(settingsSizes.slice(2).every(size => JSON.stringify(size) === JSON.stringify(settingsSizes[2]))).toBe(true);
     });
 });

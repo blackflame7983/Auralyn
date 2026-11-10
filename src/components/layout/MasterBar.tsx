@@ -1,34 +1,23 @@
 import { Button } from '@/components/ui/button';
 import { displayAudioHost } from '@/lib/audioDevices';
-import { clientErrorNotice, type ClientErrorNotice } from '@/lib/clientError';
-import { isAppHidden, addAppVisibilityListener, removeAppVisibilityListener } from '@/lib/appVisibility';
-import { renderNotice } from '@/components/features/AudioSettings/settingsNotice';
 import { useMessages } from '@/i18n/LocaleProvider';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { MdGraphicEq, MdVolumeUp, MdVolumeOff, MdBolt, MdClose, MdInfoOutline, MdWarning } from 'react-icons/md';
+import { MdGraphicEq, MdBolt, MdClose, MdInfoOutline, MdWarning } from 'react-icons/md';
 import { Modal } from '../ui/modal';
 import { cn } from '@/lib/utils';
-import { audioApi, EngineRuntimeStats, type ProcessingHealthSnapshot } from '../../api/audio';
+import { type EngineRuntimeStats, type ProcessingHealthSnapshot } from '../../api/audio';
 import { useSharedMeter } from '../features/LevelMeter/MeterContext';
 import { MeterVisual } from '../features/LevelMeter/MeterVisual';
 import { useBeginnerMode } from '@/hooks/useBeginnerMode';
 import { invalidateRuntimeStats, useRuntimeStats, useRuntimeStatsUnavailable } from '@/hooks/useRuntimeStats';
 import { recentAnomalyWarning } from './processingHealth';
-import { Slider } from '@/components/ui/slider';
-import * as Popover from '@radix-ui/react-popover';
 import { AudioQueueDetails } from './AudioQueueDetails';
 import { LatencyDetails } from './LatencyDetails';
-import {
-    restoreSavedOutputGain,
-    readOutputGainStatus,
-    setOutputGain as applyOutputGain,
-} from '@/api/outputGain';
+import { OutputGainControl } from './OutputGainControl';
 
 interface MasterBarProps {
     outputMeterInHome?: boolean;
-    outputGainAnchor?: HTMLButtonElement | null;
-    onOutputGainClose?: () => void;
     isRunning?: boolean;
     processReady?: boolean | null;
     host?: string;
@@ -40,7 +29,7 @@ interface MasterBarProps {
     onOpenAudioTuning?: () => void;
 }
 
-export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false, host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, outputGainAnchor, onOutputGainClose, onOpenAudioTuning }) => {
+export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false, host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, onOpenAudioTuning }) => {
     const t = useMessages();
     const [simple] = useBeginnerMode();
     const detailsButtonRef = useRef<HTMLButtonElement>(null);
@@ -66,149 +55,17 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
         setHasRecentGlitch(false);
     }, [isRunning]);
 
-    // Master output gain (persisted)
-    const [outputGain, setOutputGain] = useState<number>(() => {
-        const saved = localStorage.getItem('vst_host_output_gain');
-        return saved ? parseFloat(saved) : 100;
-    });
-    const outputGainDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const gainRequestGeneration = useRef(0);
-    const [gainError, setGainError] = useState<{ notice: ClientErrorNotice; requestedGain: number } | null>(null);
-    const [gainRestoreError, setGainRestoreError] = useState<ClientErrorNotice | null>(null);
-    const gainMessage = renderNotice(t, gainError?.notice ?? gainRestoreError);
-    const lastGainAnchor = useRef<HTMLButtonElement | null>(null);
-    const gainDismissedOutside = useRef(false);
-    if (outputGainAnchor) lastGainAnchor.current = outputGainAnchor;
-    // 幅の変更で入口が隠れた場合は閉じる。音量の同期・適用処理はフッターと共有する。
     useEffect(() => {
-        if (!outputGainAnchor) return;
-        gainDismissedOutside.current = false;
-        const checkAnchor = () => {
-            if (!outputGainAnchor.getClientRects().length || outputGainAnchor.closest('[inert]')) onOutputGainClose?.();
-        };
-        const observer = new ResizeObserver(checkAnchor);
-        observer.observe(outputGainAnchor);
-        window.addEventListener('resize', checkAnchor);
-        return () => { observer.disconnect(); window.removeEventListener('resize', checkAnchor); };
-    }, [outputGainAnchor, onOutputGainClose]);
-
-    const handleOutputGainChange = useCallback((values: number[]) => {
-        const generation = ++gainRequestGeneration.current;
-        setGainError(null);
-        window.dispatchEvent(new Event('output-gain-intent'));
-        const pct = values[0];
-        setOutputGain(pct);
-        if (outputGainDebounce.current) clearTimeout(outputGainDebounce.current);
-        outputGainDebounce.current = setTimeout(() => {
-            // 状態取得で表示が実値へ戻っても、失敗した要求値を再試行できるように残す。
-            applyOutputGain(pct / 100).catch((e) => {
-                if (generation === gainRequestGeneration.current) setGainError({ notice: clientErrorNotice(e), requestedGain: pct });
-            });
-        }, 30);
-    }, []);
-
-    // reloadは読取だけ。実際の開始通知を受けた時だけ保存gainの初期化を行う。
-    useEffect(() => {
-        let disposed = false;
-        let refreshing = false;
-        let applying = false;
-        let applyAgain = false;
-        let restorePending = false;
-        let timer: ReturnType<typeof setInterval> | undefined;
-        const applyGain = async () => {
-            if (disposed) return;
-            if (applying) {
-                applyAgain = true;
-                return;
-            }
-            applying = true;
-            const saved = localStorage.getItem('vst_host_output_gain');
-            const pct = saved ? parseFloat(saved) : 100;
-            try {
-                // 保存音量の初期化は観測に付随する処理。新しいchildは要求しない。
-                const process = await audioApi.getAudioState();
-                if (disposed) return;
-                if (!process.is_running) {
-                    restorePending = true;
-                    setGainRestoreError(null);
-                    return;
-                }
-                await restoreSavedOutputGain(pct / 100);
-                restorePending = false;
-                if (!disposed) setGainRestoreError(null);
-            } catch (e) {
-                restorePending = true;
-                if (!disposed) setGainRestoreError(clientErrorNotice(e));
-            } finally {
-                applying = false;
-                if (applyAgain && !disposed) {
-                    applyAgain = false;
-                    void applyGain();
-                }
-            }
-        };
-
-        const sync = (event: Event) => {
-            if (!disposed) setOutputGain((event as CustomEvent<number>).detail);
-        };
-        window.addEventListener('output-gain-sync', sync);
-        const refresh = async () => {
-            if (refreshing || isAppHidden()) return;
-            refreshing = true;
-            try {
-                if (restorePending) await applyGain();
-                else {
-                    const process = await audioApi.getAudioState();
-                    if (disposed || !process.is_running) return;
-                    const state = await readOutputGainStatus();
-                    if (!disposed && state.settled && !state.streamFailed && Number.isFinite(state.confirmedGain)) {
-                        setOutputGain(state.confirmedGain * 100);
-                    }
-                }
-            } catch {
-                /* エンジン停止中は保存値を維持する。 */
-            } finally {
-                refreshing = false;
-            }
-        };
-        // mount直後のstatusはLSへ公開しない。初回bootstrap待ちの保存音量を保持する。
         const unlisten = listen('audio-started', () => {
             previousGlitchCount.current = null;
             if (glitchTimer.current) clearTimeout(glitchTimer.current);
             setHasRecentGlitch(false);
             clearEventHealth();
-            void applyGain();
         });
-        const initialize = async () => {
-            try {
-                await unlisten;
-                if (disposed) return;
-                await refresh();
-                if (!disposed) timer = setInterval(() => void refresh(), 1000);
-            } catch (e) {
-                if (!disposed) setGainRestoreError(clientErrorNotice(e));
-            }
-        };
-        void initialize();
-        const visibility = () => { if (!isAppHidden()) void refresh(); };
-        addAppVisibilityListener(visibility);
-
-        return () => {
-            disposed = true;
-            clearInterval(timer);
-            removeAppVisibilityListener(visibility);
-            window.removeEventListener('output-gain-sync', sync);
-            void unlisten.then(f => f()).catch(() => {});
-        };
+        return () => { void unlisten.then(stop => stop()).catch(() => {}); };
     }, [clearEventHealth]);
 
-    // Cleanup debounce timer on unmount
-    useEffect(() => {
-        return () => {
-            if (outputGainDebounce.current) clearTimeout(outputGainDebounce.current);
-            if (glitchTimer.current) clearTimeout(glitchTimer.current);
-        };
-    }, []);
+    useEffect(() => () => { if (glitchTimer.current) clearTimeout(glitchTimer.current); }, []);
 
     useEffect(() => {
         let disposed = false;
@@ -255,55 +112,8 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
 
     return (
         <div className="relative flex flex-wrap items-center justify-end gap-x-3 gap-y-2 px-3 py-2 border-l border-border bg-background gaming:bg-card/30 gaming:backdrop-blur-sm transition-colors duration-(--motion-panel) min-w-0">
-            <Popover.Root open={Boolean(outputGainAnchor)} onOpenChange={open => { if (!open) onOutputGainClose?.(); }}>
-                {outputGainAnchor && <Popover.Anchor virtualRef={{ current: outputGainAnchor }} />}
-                <Popover.Portal><Popover.Content aria-label={t('master.outputGain')} side="bottom" align="end" sideOffset={8} collisionPadding={12}
-                    onInteractOutside={event => {
-                        // 入口の再クリックは親で開閉し、別の操作へ進んだ場合はそのフォーカスを奪わない。
-                        if (outputGainAnchor?.contains(event.target as Node)) event.preventDefault();
-                        else gainDismissedOutside.current = true;
-                    }}
-                    onCloseAutoFocus={event => {
-                        event.preventDefault();
-                        const anchor = lastGainAnchor.current;
-                        if (anchor?.closest('[inert]') || document.activeElement?.closest('#vst-panel')) return;
-                        if (gainDismissedOutside.current && anchor?.getClientRects().length) return;
-                        const target = anchor?.getClientRects().length ? anchor : document.querySelector<HTMLElement>('#master-output-gain [role="slider"]');
-                        target?.focus({ preventScroll: true });
-                    }} className="z-[200] w-64 rounded-card border border-border bg-popover p-4 text-popover-foreground shadow-lg">
-                    <div className="flex items-center justify-between gap-4 text-ui-support"><span>{t('master.outputGain')}</span><span className="font-mono tabular-nums">{Math.round(outputGain)}%</span></div>
-                    <Slider aria-label={t('master.outputGain')} aria-valuetext={`${Math.round(outputGain)}%`} value={[outputGain]} onValueChange={handleOutputGainChange}
-                        min={0} max={200} step={1} onDoubleClick={() => handleOutputGainChange([100])} className="mt-4" />
-                    <button type="button" disabled={outputGain === 100} onClick={() => handleOutputGainChange([100])}
-                        className="mt-3 rounded-control border border-border px-2 py-1 text-ui-support hover:bg-muted disabled:opacity-50">{t('header.inputGainHint')}</button>
-                    {gainMessage && <div className="mt-3 space-y-2"><p role="alert" className="text-ui-support text-warning">{t('master.gainUnknown')}</p>
-                        <button type="button" onClick={() => handleOutputGainChange([gainError?.requestedGain ?? outputGain])} className="rounded-control border border-border px-3 py-1.5 text-ui-support">{t('common.retry')}</button>
-                        <details><summary className="cursor-pointer text-ui-support">{t('settings.mode.errorDetails')}</summary><p className="mt-2 break-words text-ui-support text-muted-foreground">{gainMessage}</p></details>
-                    </div>}
-                </Popover.Content></Popover.Portal>
-            </Popover.Root>
             {!outputMeterInHome && <MasterOutputMeter running={isRunning} numbers={!simple} />}
-
-            {/* Master Output Volume */}
-            <div className="flex shrink-0 items-center gap-2 border-l border-border pl-3 ml-1">
-                {outputGain === 0 ? <MdVolumeOff aria-hidden="true" className="w-4 h-4 text-warning flex-shrink-0" /> : <MdVolumeUp aria-hidden="true" className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
-                <span aria-hidden="true" className="hidden lg:inline text-ui-control font-medium text-muted-foreground">{t('master.outputGain')}</span>
-                <Slider
-                    id="master-output-gain"
-                    aria-label={t('master.outputGain')}
-                    aria-valuetext={`${outputGain}%`}
-                    value={[outputGain]}
-                    onValueChange={handleOutputGainChange}
-                    min={0}
-                    max={200}
-                    step={1}
-                    className="w-32 shrink-0"
-                    onDoubleClick={() => handleOutputGainChange([100])}
-                />
-                <span className="hidden md:inline text-ui-support font-mono tabular-nums text-muted-foreground min-w-[32px] text-right">
-                    {Math.round(outputGain * 10) / 10}%
-                </span>
-            </div>
+            <OutputGainControl />
 
             {processingStalled && <div role="alert" className="basis-full flex min-w-0 items-start gap-2 text-ui-support text-warning">
                 <MdWarning aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
@@ -340,11 +150,6 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
                     </span>
                     {broadcastFailed && <span role="alert" className="sr-only">{t('liveOutput.failed')}</span>}
                 </div>
-            )}
-            {gainMessage && (
-                <span role="alert" className="basis-full min-w-0 whitespace-normal break-words text-ui-support leading-4 text-warning" title={gainMessage}>
-                    {t('master.gainUnknown')}
-                </span>
             )}
             {detailsOpen && <Modal title={t('master.detailsTitle')} onClose={() => setDetailsOpen(false)}>
                 <div className="modal-overlay-base">

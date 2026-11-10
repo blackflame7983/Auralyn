@@ -177,7 +177,8 @@ it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態
     </LocaleProvider>);
     const compare = screen.getByRole('switch', { name: message(locale, 'header.compare') });
     expect(compare.closest('footer')).not.toBeNull();
-    expect(compare).toHaveClass('text-ui-control', 'py-1');
+    expect(compare).toHaveClass('text-ui-control', 'py-1', 'home-control');
+    expect(compare).not.toHaveClass('font-semibold');
     expect(compare).not.toHaveClass('font-mono');
     expect(compare).not.toHaveClass('text-xs');
     expect(compare).toHaveAttribute('aria-checked', 'false');
@@ -303,9 +304,11 @@ it('フッターの実高さを大型メーターの余白へ公開し、終了�
     const disconnect = vi.fn();
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(() => ({ height }) as DOMRect);
     vi.stubGlobal('ResizeObserver', class {
-        constructor(callback: () => void) { resize = callback; }
-        observe() {}
-        disconnect = disconnect;
+        callback: () => void;
+        constructor(callback: () => void) { this.callback = callback; }
+        observe(target: Element) { if (target.tagName === 'FOOTER') resize = this.callback; }
+        unobserve() {}
+        disconnect() { if (this.callback === resize) disconnect(); }
     });
     try {
         const view = render(<AppShell {...commonProps}><p>rack</p></AppShell>);
@@ -376,8 +379,9 @@ it('配信ミックスは表示を選んだとき本番帯の直後へ置き、�
     const chain = screen.getByRole('region', { name: '音調整' });
     expect(strip.nextElementSibling).toBe(mix);
     expect(mix.compareDocumentPosition(chain) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(strip).toHaveAttribute('data-roomy', 'false');
-    expect(strip.closest('.home-content')).toHaveAttribute('data-roomy', 'false');
+    expect(strip).toHaveAttribute('data-stage', 'full');
+    expect(strip).not.toHaveAttribute('data-roomy');
+    expect(strip.closest('.home-content')).not.toHaveAttribute('data-roomy');
     // 未設定に戻ったら、表示を選んでいても音の流れと次の1歩より上へ出さない（#297）。
     view.rerender(<AppShell {...props} currentHost=""><p>rack</p></AppShell>);
     expect(screen.queryByRole('region', { name: '配信ミックス' })).not.toBeInTheDocument();

@@ -38,6 +38,8 @@ it.each(['ja', 'en'] as const)('本番帯に入力メーター・送り先・歌
     expect(strip).toHaveTextContent(message(locale, 'live.destination'));
     expect(strip).toHaveTextContent(`${message(locale, 'prep.call')} · CABLE Output`);
     expect(within(strip).getByRole('button', { name: 'mode' })).toBeInTheDocument();
+    expect(within(strip).queryByRole('button', { name: message(locale, 'master.outputGain') })).not.toBeInTheDocument();
+    expect(within(strip).getByText(message(locale, 'live.meterOutput'))).toBeInTheDocument();
     // 各列に機器名を出し、同じ名前を繰り返さない。
     expect(within(strip).getAllByText('Mic')).toHaveLength(1);
     // マイク音量はメーター横から合わせる。

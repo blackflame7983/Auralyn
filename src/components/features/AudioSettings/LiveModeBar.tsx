@@ -31,7 +31,7 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
     useEffect(() => (registered || value?.transaction ? activate() : undefined), [registered, Boolean(value?.transaction), activate]);
     if (!value) return error ? <section aria-label={t('liveBar.label')} className="flex flex-wrap items-center gap-2">
         <p role="alert" className="text-ui-support text-warning">{error}</p>
-        <Button variant="outline" size="sm" type="button" disabled={busy} onClick={() => void refresh()} >{t('settings.LiveModeControls.236')}</Button>
+        <Button variant="outline" size="sm" type="button" disabled={busy} onClick={() => void refresh()} className={cn(embedded && 'home-action')}>{t('settings.LiveModeControls.236')}</Button>
     </section> : null;
     if (safetyOnly && !value.armed && !value.transaction && !error && !value.error) return null;
     if (!registered && !onRegister && !value.transaction && !value.armed && !error && !value.error) return null;
@@ -87,7 +87,7 @@ export function LiveModeBar({ model, refreshKey, embedded = false, onRegister, o
                 </div>
             </details>}
             {(error || value.error) && <div className="basis-full space-y-2"><p role="alert" className="text-ui-support text-destructive-text">{error || t('liveNotices.operationFailed')}</p>
-                <Button variant="outline" size="sm" type="button" disabled={busy} onClick={() => void refresh()} >{t('settings.LiveModeControls.236')}</Button>
+                <Button variant="outline" size="sm" type="button" disabled={busy} onClick={() => void refresh()} className={cn(embedded && 'home-action')}>{t('settings.LiveModeControls.236')}</Button>
             </div>}
         </section>
     );

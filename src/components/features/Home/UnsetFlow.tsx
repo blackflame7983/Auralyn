@@ -34,10 +34,10 @@ export function UnsetFlow({ usage, input, output, music = false, onSetup }: {
                 <Button variant="ghost" size="default" type="button" onClick={onSetup} data-state={node.state} aria-current={node.state === 'next' ? 'step' : undefined}
                     aria-label={`${t(node.label)} ${node.value ?? (node.state === 'next' ? t('unsetFlow.next') : t('unsetFlow.empty'))}、${t(stateLabel[node.state])}`}
                     className="unset-flow-node min-w-0 gap-3 text-left h-auto whitespace-normal justify-start">
-                    <span className="unset-flow-icon grid h-10 w-10 shrink-0 place-items-center rounded-full"><node.icon aria-hidden="true" className="h-5 w-5" /></span>
+                    <span className="unset-flow-icon grid h-8 w-8 shrink-0 place-items-center rounded-full"><node.icon aria-hidden="true" className="h-4 w-4" /></span>
                     <span className="min-w-0">
                         <span className="block text-ui-support text-muted-foreground">{t(node.label)}</span>
-                        <span className="block truncate text-ui-control font-semibold" title={node.value}>{node.value ?? (node.state === 'next' ? t('unsetFlow.next') : <span aria-hidden="true">—</span>)}</span>
+                        <span className="home-card-name block truncate" title={node.value}>{node.value ?? (node.state === 'next' ? t('unsetFlow.next') : <span aria-hidden="true">—</span>)}</span>
                     </span>
                 </Button>
                 {index < nodes.length - 1 && <span aria-hidden="true" className="unset-flow-link" data-lit={node.state === 'set' && nodes[index + 1].state === 'set'} />}
@@ -45,7 +45,7 @@ export function UnsetFlow({ usage, input, output, music = false, onSetup }: {
         </ol>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
             {next === 'destination' && <p className="text-ui-control text-muted-foreground">{t('unsetFlow.hint')}</p>}
-            <Button variant="default" size="default" type="button" onClick={onSetup} className="unset-flow-primary ml-auto gap-2">
+            <Button variant="default" size="default" type="button" onClick={onSetup} className="home-action unset-flow-primary ml-auto gap-2">
                 {t(action)}<MdArrowForward aria-hidden="true" className="unset-flow-arrow h-5 w-5" />
             </Button>
         </div>

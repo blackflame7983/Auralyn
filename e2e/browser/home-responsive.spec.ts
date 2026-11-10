@@ -17,13 +17,15 @@ for (const theme of ['light', 'dark', 'gaming']) {
             await page.goto('/');
             await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
             const live = page.getByRole('region', { name: '本番', exact: true });
-            await expect(live).toHaveAttribute('data-roomy', 'true');
+            await expect(live).toHaveAttribute('data-stage', 'full');
             const input = page.getByRole('meter', { name: 'マイクの入力レベル', exact: true });
             await expect(input).toBeVisible();
             await expect(page.locator('#home-builtin')).toHaveAttribute('data-on', 'true');
             if (height >= 900) {
                 expect((await input.boundingBox())!.height).toBe(18);
-                expect((await live.locator('.live-stage').boundingBox())!.height).toBeGreaterThanOrEqual(160);
+                const stageHeight = (await live.locator('.live-stage').boundingBox())!.height;
+                expect(stageHeight).toBeGreaterThanOrEqual(Math.min(256, Math.max(120, height - 640)));
+                expect(stageHeight).toBeLessThanOrEqual(256);
             }
             await live.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
             // 合成通知で静止画にもレベルを残す。実音声やドライバーの試験ではない。
@@ -125,7 +127,7 @@ for (const locale of ['ja', 'en']) {
             await page.goto('/');
             await page.evaluate(() => (window as any).__e2eSetOutputMuted(false));
             const live = page.locator('.live-strip');
-            await expect(live).toHaveAttribute('data-roomy', 'true');
+            await expect(live).toHaveAttribute('data-stage', 'full');
             await settleLayoutMotion(page);
             const devices = live.locator('.live-device');
             await devices.evaluateAll(nodes => nodes.forEach(node => { node.textContent = 'Voicemeeter Insert Virtual ASIO (Virtual Audio Interface)'; }));
@@ -137,11 +139,14 @@ for (const locale of ['ja', 'en']) {
             }
 
             await expect(live.getByRole('heading', { name: locale === 'ja' ? 'いまの調整' : 'Custom sound' })).toBeVisible();
-            expect(await page.locator('main').evaluate(e => ({ width: e.scrollWidth <= e.clientWidth, height: e.scrollHeight <= e.clientHeight }))).toEqual({ width: true, height: true });
+            // 長い機器名を省略せずに表示するため、縦スクロールは許す。
+            expect(await page.locator('main').evaluate(e => e.scrollWidth <= e.clientWidth)).toBe(true);
             const tools = page.locator('.sound-tool-list > li > div > button');
             await expect(tools).toHaveCount(3);
             for (const tool of await tools.all()) {
                 await expect(tool).toHaveAttribute('aria-expanded', 'false');
+                await tool.scrollIntoViewIfNeeded();
+                await expect(tool).toBeInViewport({ ratio: 1 });
                 expect(await tool.evaluate(el => {
                     const r = el.getBoundingClientRect();
                     return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
@@ -151,6 +156,7 @@ for (const locale of ['ja', 'en']) {
             const switches = page.locator('.sound-module-item [role="switch"]');
             await expect(switches).toHaveCount(2);
             for (const control of await switches.all()) {
+                await control.scrollIntoViewIfNeeded();
                 await expect(control).toBeInViewport({ ratio: 1 });
                 expect(await control.evaluate(el => {
                     const r = el.getBoundingClientRect();
@@ -162,16 +168,18 @@ for (const locale of ['ja', 'en']) {
             expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
             const closedStageHeight = (await live.locator('.live-stage').boundingBox())!.height;
             await tools.first().click();
-            await expect(live).toHaveAttribute('data-roomy', 'false');
-            await expect(live).toHaveAttribute('data-compact', 'true');
+            await expect(live).toHaveAttribute('data-stage', 'yield');
             await settleLayoutMotion(page);
             expect((await live.locator('.live-stage').boundingBox())!.height).toBeLessThan(closedStageHeight);
             const panel = page.locator('#home-noise');
+            await panel.scrollIntoViewIfNeeded();
             await expect(panel).toBeInViewport({ ratio: 1 });
             expect((await panel.boundingBox())!.y + (await panel.boundingBox())!.height).toBeLessThanOrEqual(640);
             await tools.first().press('Escape');
             await expect(tools.first()).toBeFocused();
-            await expect(live).toHaveAttribute('data-roomy', 'true');
+            await expect(live).toHaveAttribute('data-stage', 'full');
+            await settleLayoutMotion(page);
+            expect((await live.locator('.live-stage').boundingBox())!.height).toBeCloseTo(closedStageHeight, 1);
             expect(await live.locator('.meter-visual').first().evaluate(e => e.getBoundingClientRect().height)).toBeCloseTo(18, 1); // 画素未満の誤差は許す
             const aurora = live.locator('.live-aurora');
             if (theme === 'gaming') await expect(aurora).toBeHidden();

@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import * as Popover from '@radix-ui/react-popover';
+import { actionWord, ChannelAction } from './ChannelAction';
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MdMic, MdMusicNote } from 'react-icons/md';
 import { audioApi } from '@/api/audio';
@@ -70,9 +71,7 @@ export function InputGainControl({ disabled = false }: { disabled?: boolean }) {
     return <Popover.Root open={open} onOpenChange={setOpen}>
         <TooltipProvider delayDuration={300}><Tooltip><TooltipTrigger asChild><Popover.Trigger asChild>
             {/* 短い名前と値で、ツールチップを開かずに操作を見分けられるようにする。 */}
-            <Button variant="outline" size="sm" type="button" disabled={unavailable} aria-label={`${label} ${inputGain}%`} className="shrink-0 gap-1.5">
-                <Icon aria-hidden="true" className="h-4 w-4" /><span className="live-action-label">{label}</span><span className="font-mono">{inputGain}%</span>
-            </Button>
+            <ChannelAction disabled={unavailable} aria-label={`${label} ${inputGain}%`} word={actionWord(label)} icon={<Icon aria-hidden="true" className="h-4 w-4" />} detail={<span className="font-mono">{inputGain}%</span>} />
         </Popover.Trigger></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip></TooltipProvider>
         {failed && !open && <p role="alert" className="text-ui-support text-warning">{t('home.inputGainReopen')}</p>}
         <Popover.Portal><Popover.Content aria-label={label} sideOffset={5} collisionPadding={12}

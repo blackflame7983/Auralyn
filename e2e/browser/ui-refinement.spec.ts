@@ -65,6 +65,7 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
             await settleLayoutMotion(page);
             expect((await live.getByRole('meter').first().boundingBox())!.height).toBe(18);
             expect((await live.locator('.live-stage').boundingBox())!.height).toBeGreaterThanOrEqual(160);
+            expect((await live.locator('.live-stage').boundingBox())!.height).toBeLessThanOrEqual(256);
             const bars = await live.getByRole('meter').evaluateAll(nodes => nodes.map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top }; }));
             expect(bars).toHaveLength(2);
             expect(Math.abs(bars[0].top - bars[1].top)).toBeLessThanOrEqual(1);
@@ -87,7 +88,7 @@ for (const theme of ['light', 'dark', 'gaming']) for (const size of [{ width: 12
         }
         await page.screenshot({ path: info.outputPath('healthy.png') });
         await page.getByRole('button', { name: message('ja', 'prep.steps'), exact: true }).click();
-        await expect(live).toHaveAttribute('data-roomy', 'false');
+        await expect(live).toHaveAttribute('data-stage', 'full');
         await expect(page.getByRole('radiogroup', { name: message('ja', 'prep.usage') })).toBeVisible();
         await live.getByRole('button', { name: message('ja', 'liveBar.actions'), exact: true }).click();
         await page.getByRole('button', { name: message('ja', 'home.singingSetup'), exact: true }).click();
