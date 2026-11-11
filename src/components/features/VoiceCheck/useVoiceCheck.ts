@@ -270,12 +270,15 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
     const snapshotRef = useRef<VoicePreviewSnapshot | null>(null);
     const [devices, setDevices] = useState<VoicePreviewSnapshot['devices']>([]);
     const [previewDevicesStatus, setPreviewDevicesStatus] = useState<'pending' | 'loading' | 'ready' | 'error'>('pending');
+    // 停止などで一覧の応答が失効したときは、取得前の確定状態へ戻す。
+    const settledDevicesStatus = useRef<'pending' | 'ready' | 'error'>('pending');
     const [deviceId, setDeviceId] = useState(() => { try { return localStorage.getItem(PREVIEW_DEVICE_KEY) ?? ''; } catch { return ''; } });
     const deviceIdRef = useRef(deviceId);
     deviceIdRef.current = deviceId;
     const [missingSavedDevice, setMissingSavedDevice] = useState(false);
     const syncPreviewDevices = useCallback((listed: VoicePreviewSnapshot['devices']) => {
         setDevices(listed);
+        settledDevicesStatus.current = 'ready';
         setPreviewDevicesStatus('ready');
         if (listed.length === 0) return;
         const currentId = deviceIdRef.current;
@@ -355,7 +358,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         const session = controller.current;
         const version = ++revision.current;
         mutating.current = false;
-        if (!unmount && alive.current) { setPreviewBusy(false); setSafeOutput(false); }
+        if (!unmount && alive.current) { setPreviewBusy(false); setSafeOutput(false); setPreviewDevicesStatus(settledDevicesStatus.current); }
         if (!session) return true;
         const requestSequence = ++sequence.current;
         try {
@@ -386,7 +389,8 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         const requestSequence = ++sequence.current;
         setSafeOutput(false);
         setDevices([]);
-        setPreviewDevicesStatus('loading');
+        settledDevicesStatus.current = 'pending';
+        setPreviewDevicesStatus('pending');
         setPreviewBusy(true);
         setPreviewError('');
         setSnapshot(null);
@@ -397,10 +401,12 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
             const next = await session.send({ action: 'open' });
             if (accept(next, session, version, requestSequence)) {
                 setStopUnconfirmed(false);
-                syncPreviewDevices(next.devices);
+                // open の空配列は未取得。0件と確定するのは devices の応答だけ。
+                if (next.devices.length > 0) syncPreviewDevices(next.devices);
             }
         } catch {
             if (alive.current && controller.current === session && version === revision.current) {
+                settledDevicesStatus.current = 'error';
                 setPreviewDevicesStatus('error');
                 setPreviewError(notice('voice.copy.126'));
             }
@@ -424,6 +430,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         const requestSequence = ++sequence.current;
         if (exclusive) { mutating.current = true; setPreviewBusy(true); }
         if (action.action === 'devices') setPreviewDevicesStatus('loading');
+        else if (exclusive) setPreviewDevicesStatus(settledDevicesStatus.current);
         const expectationAtRequest = candidateExpected.current;
         const ownNoiseChange = action.action === 'apply_noise' || action.action === 'undo_noise' || action.action === 'redo_noise' ? { session, version } : null;
         if (ownNoiseChange) noiseMutation.current = ownNoiseChange;
@@ -452,7 +459,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
             return action.action === 'prepare_noise' || action.action === 'apply_noise' || action.action === 'undo_noise' || action.action === 'redo_noise' ? accepted : true;
         } catch (error) {
             if (alive.current && controller.current === session && version === revision.current) {
-                if (action.action === 'devices') setPreviewDevicesStatus('error');
+                if (action.action === 'devices') { settledDevicesStatus.current = 'error'; setPreviewDevicesStatus('error'); }
                 setPreviewError(notice('voice.copy.128', { arg0: clientErrorNotice(error) }));
                 if (action.action === 'stop') setStopUnconfirmed(true);
             }
