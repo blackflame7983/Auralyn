@@ -12,7 +12,7 @@ const f0=c=>{ let h=c.toLowerCase(); if(h.length===4) h="#"+[...h.slice(1)].map(
  if(!a||a==="ff") return "$"+hit[0]; const vn=hit[0]+"-a"+Math.round(parseInt(a,16)/2.55); if(!V[vn]&&!add[vn]) add[vn]={type:"color",value:modes.map(m=>({value:val(hit[0],m)+a,theme:{mode:m}}))}; return "$"+vn }
 const mc=c=>{ if(typeof c!=="string"||c[0]!=="#") return c; if(!memo.has(c)) memo.set(c,f0(c)); return memo.get(c) }
 const mf=f=>Array.isArray(f)?f.map(mf):typeof f==="string"?mc(f):f&&f.type==="color"?{...f,color:mc(f.color)}:f&&f.type==="gradient"&&f.colors?{...f,colors:f.colors.map(s=>({...s,color:mc(s.color)}))}:f
-const screens=Get((n,c)=>{ if(c.depth===0){ c.skipChildren(); return n.type==="frame"&&!n.reusable&&!/^(Components|②|③)/.test(n.name||"")?n.id:undefined } return undefined })
+const screens=Get((n,c)=>{ if(c.depth===0){ c.skipChildren(); return n.type==="frame"&&!n.reusable&&!/^(Components|②|③|⑤|Flow)/.test(n.name||"")&&!/（画像/.test(n.name||"")?n.id:undefined } return undefined })
 const batch=screens.slice(from,to), ups=[]
 for(const s of batch) Get(s,n=>{ const u={}; for(const k of ["fill","stroke"]) if(n[k]!==undefined){ const v=mf(n[k]); if(JSON.stringify(v)!==JSON.stringify(n[k])) u[k]=v } if(Object.keys(u).length) ups.push([n.id,u]); return undefined })
 if(Object.keys(add).length) SetVariables(add)
