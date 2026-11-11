@@ -1,3 +1,4 @@
+import { ThemeSwatch } from './ThemeSwatch';
 import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
 import { Select } from '@/components/ui/Select';
@@ -871,26 +872,29 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <h3 className="mb-3 flex items-center gap-2 text-foreground text-ui-heading font-semibold">
                   {t('settings.AudioSettingsModal.130')}</h3>
                 <RadioGroup value={theme} onValueChange={(v) => setTheme(v as any)} className="grid auto-rows-fr gap-3">
-                  <div className="flex items-center space-x-2 border border-border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('light')}>
+                  <div className={`flex min-w-0 items-center gap-3 border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer ${theme === 'light' ? 'border-selection ring-1 ring-selection' : 'border-border'}`} onClick={() => setTheme('light')}>
                     <RadioGroupItem value="light" id="theme-light" />
-                    <Label htmlFor="theme-light" className="cursor-pointer flex-1 text-ui-control">
+                    <Label htmlFor="theme-light" className="min-w-0 cursor-pointer flex-1 text-ui-control">
                       <span className="font-bold block">{t('header.light')}</span>
                       <span className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.131')}</span>
                     </Label>
+                    <ThemeSwatch theme="light" />
                   </div>
-                  <div className="flex items-center space-x-2 border border-border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('dark')}>
+                  <div className={`flex min-w-0 items-center gap-3 border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer ${theme === 'dark' ? 'border-selection ring-1 ring-selection' : 'border-border'}`} onClick={() => setTheme('dark')}>
                     <RadioGroupItem value="dark" id="theme-dark" />
-                    <Label htmlFor="theme-dark" className="cursor-pointer flex-1 text-ui-control">
+                    <Label htmlFor="theme-dark" className="min-w-0 cursor-pointer flex-1 text-ui-control">
                       <span className="font-bold block">{t('header.dark')}</span>
                       <span className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.132')}</span>
                     </Label>
+                    <ThemeSwatch theme="dark" />
                   </div>
-                  <div className="flex items-center space-x-2 border border-border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('gaming')}>
+                  <div className={`flex min-w-0 items-center gap-3 border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer ${theme === 'gaming' ? 'border-selection ring-1 ring-selection' : 'border-border'}`} onClick={() => setTheme('gaming')}>
                     <RadioGroupItem value="gaming" id="theme-gaming" className="text-brand border-brand" />
-                    <Label htmlFor="theme-gaming" className="cursor-pointer flex-1 text-ui-control">
+                    <Label htmlFor="theme-gaming" className="min-w-0 cursor-pointer flex-1 text-ui-control">
                       <span className="font-bold block">{t('header.gaming')}</span>
                       <span className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.133')}</span>
                     </Label>
+                    <ThemeSwatch theme="gaming" />
                   </div>
                 </RadioGroup>
               </div>
