@@ -234,11 +234,11 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                         void applyNoiseControlConfig({ mode });
                       }} />
                   </fieldset>
+                  {(noiseMode === 'smart' || noiseMode === 'venue') && <p role="status" className="text-ui-support text-muted-foreground">{t('settings.noiseAdvancedActive', { mode: t(noiseMode === 'smart' ? 'master.nrLearn' : 'master.nrVenue') })}</p>}
                   {(noiseMode === 'low' || noiseMode === 'high') && <p className="text-ui-support text-muted-foreground">{t(noiseMode === 'low' ? 'settings.AudioSettingsModal.117' : 'settings.AudioSettingsModal.118')}</p>}
                   <details open={noiseAdvancedOpen} onToggle={event => setNoiseAdvancedOpen(event.currentTarget.open)} className="border-t border-border pt-3">
                     <summary className="cursor-pointer text-ui-control font-semibold">
                       {t('settings.noiseDetails')}
-                      {(noiseMode === 'smart' || noiseMode === 'venue') && <span className="ml-3 text-ui-support font-normal text-muted-foreground">{t(noiseMode === 'smart' ? 'master.nrLearn' : 'master.nrVenue')}</span>}
                     </summary>
                     {noiseAdvancedOpen && <div className="space-y-4 pt-4">
                   <fieldset className="space-y-2"><legend className="text-ui-control font-semibold">{t('structure.noise.adaptive')}</legend>

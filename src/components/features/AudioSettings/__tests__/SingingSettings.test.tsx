@@ -218,3 +218,42 @@ it('統計の取得失敗は停止と断定せず根拠未取得として示す'
     expect(await screen.findByText(/根拠情報を未取得です/)).toBeInTheDocument();
     expect(screen.queryByText(/音声は停止中・未確認です/)).not.toBeInTheDocument();
 });
+
+it.each(['low', 'high', 'smart', 'venue'] as const)('ノイズ低減OFFでも保存モード%sの選択状態または詳細状態を示す', async mode => {
+    vi.mocked(audioApi.getEngineRuntimeStats).mockResolvedValue({ noiseReductionEnabled: false, noiseReductionMode: mode, noiseControlStrength: 0.8, noiseVoiceGuard: true } as EngineRuntimeStats);
+    const setNoise = vi.spyOn(audioApi, 'setNoiseControlConfig').mockResolvedValue(undefined);
+    render(<AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} />);
+    const toggle = await screen.findByRole('switch', { name: message('ja', 'settings.AudioSettingsModal.107') });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(toggle).not.toBeChecked();
+    const low = screen.getByRole('radio', { name: message('ja', 'master.nrLow') });
+    const high = screen.getByRole('radio', { name: message('ja', 'master.nrHigh') });
+    await waitFor(() => {
+        expect(low).toHaveAttribute('aria-checked', String(mode === 'low'));
+        expect(high).toHaveAttribute('aria-checked', String(mode === 'high'));
+    });
+    if (mode === 'smart' || mode === 'venue') {
+        const name = message('ja', mode === 'smart' ? 'master.nrLearn' : 'master.nrVenue');
+        expect(screen.getByText(`詳細で調整中（${name}）`)).toBeVisible();
+        expect(screen.getByText(message('ja', 'settings.noiseDetails')).closest('details')).not.toHaveAttribute('open');
+        fireEvent.click(screen.getByText(message('ja', 'settings.noiseDetails')));
+        expect(await screen.findByRole('radio', { name })).toHaveAttribute('aria-checked', 'true');
+    } else expect(screen.queryByText(/詳細で調整中/)).not.toBeInTheDocument();
+    expect(setNoise).not.toHaveBeenCalled();
+});
+
+it('英語でも詳細モードを表示し、弱を選ぶ明示操作でだけ設定を反映する', async () => {
+    let mode = 'venue';
+    vi.mocked(audioApi.getEngineRuntimeStats).mockImplementation(async () => ({ noiseReductionEnabled: true, noiseReductionMode: mode, noiseControlStrength: 0.8, noiseVoiceGuard: true } as EngineRuntimeStats));
+    const setNoise = vi.spyOn(audioApi, 'setNoiseControlConfig').mockImplementation(async config => { mode = config.mode; });
+    const store = createLocaleStore(() => 'en', () => true);
+    render(<LocaleProvider store={store}><AudioSettingsModal isOpen initialTab="sound" onClose={vi.fn()} onConfigChange={vi.fn()} /></LocaleProvider>);
+    expect(await screen.findByText('Using advanced settings (Venue)')).toBeVisible();
+    expect(setNoise).not.toHaveBeenCalled();
+    const low = screen.getByRole('radio', { name: message('en', 'master.nrLow') });
+    await waitFor(() => expect(low).toBeEnabled());
+    fireEvent.click(low);
+    await waitFor(() => expect(setNoise).toHaveBeenCalledExactlyOnceWith({ active: true, mode: 'low', strength: 0.8, voiceGuard: true }));
+    await waitFor(() => expect(low).toHaveAttribute('aria-checked', 'true'));
+    expect(screen.queryByText(/Using advanced settings/)).not.toBeInTheDocument();
+});
