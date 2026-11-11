@@ -165,8 +165,8 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                 {t('guide.copy.031')}</p>
 
                             <div className="flex flex-col gap-4 py-4">
-                                <div className="bg-card border border-border p-4 rounded-card flex items-center justify-between">
-                                    <div>
+                                <div className="bg-card border border-border p-4 rounded-card flex min-w-0 flex-wrap items-center justify-between gap-3">
+                                    <div className="min-w-0 flex-1 wrap-anywhere">
                                         <div className="font-bold text-foreground mb-1">{t('guide.copy.032')}</div>
                                         <div className="text-ui-support text-primary font-mono">
                                             {useHardwareMixer ? t('guide.copy.033') : t('guide.copy.034')}

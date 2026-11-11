@@ -149,8 +149,8 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                 </div>
 
                 {/* Content */}
-                <div className="modal-body-base">
-                    <div className="mb-4 rounded-lg border border-border p-4 space-y-2">
+                <div className="modal-body-base min-w-0 wrap-anywhere">
+                    <div role="note" className="mb-4 rounded-card border border-info/30 bg-info/10 p-4 space-y-2">
                         <p className="text-sm font-semibold">{t('presets.copy.092')}</p>
                         <p className="text-sm text-muted-foreground">{t('presets.copy.093')}</p>
                         <p className="text-sm text-muted-foreground">{t('presets.copy.094')}</p>
@@ -165,7 +165,7 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                         setSelectedTemplate(template);
                                         setStep(2);
                                     }}
-                                    className="flex flex-col text-left p-6 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-colors group h-full"
+                                    className="flex min-w-0 w-full flex-col whitespace-normal text-left p-6 rounded-card border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-colors group h-full"
                                 >
                                     <div className="text-xl font-bold mb-2 group-hover:text-primary transition-colors">{templateText(template, 'name')}</div>
                                     <div className="text-sm text-muted-foreground mb-4 flex-1">{templateText(template, 'description')}</div>
