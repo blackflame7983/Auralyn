@@ -509,20 +509,19 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
           ) : filteredPlugins.length === 0 ? (
             <div className="flex min-w-0 flex-col items-center justify-center min-h-40 py-6 text-center wrap-anywhere text-muted-foreground">
               {searchQuery || selectedCategory ? <>
-                <p>{searchQuery ? t('pluginBrowser.searchNoMatch', { query: searchQuery }) : t('pluginBrowser.noMatch')}</p>
+                <h3 className="text-ui-control font-semibold">{searchQuery ? t('pluginBrowser.searchNoMatch', { query: searchQuery }) : t('pluginBrowser.noMatch')}</h3>
                 <Button variant="outline" type="button" className="mt-3" onClick={() => { setSearchQuery(''); setSelectedCategory(null); searchRef.current?.focus(); }}>{t('pluginBrowser.resetFilters')}</Button>
                 {activeTab !== 'all' && <button type="button" className="mt-2 underline text-primary" onClick={() => { setActiveTab('all'); setSearchQuery(''); setSelectedCategory(null); searchRef.current?.focus(); }}>{t('pluginBrowser.showAll')}</button>}
               </> : <>
-                {activeTab === 'favorites' && <p>{t('pluginBrowser.noFavorites')}</p>}
-                {activeTab === 'recent' && <p>{t('pluginBrowser.noRecent')}</p>}
+                {activeTab === 'favorites' && <h3 className="text-ui-control font-semibold">{t('pluginBrowser.noFavorites')}</h3>}
+                {activeTab === 'recent' && <h3 className="text-ui-control font-semibold">{t('pluginBrowser.noRecent')}</h3>}
                 {activeTab === 'all' && <>
-                  <p>{t('pluginBrowser.notFound')}</p>
+                  <h3 className="text-ui-control font-semibold">{t(failures.length > 0 ? 'pluginBrowser.emptyFailed' : 'pluginBrowser.notFound')}</h3>
                   {failures.length > 0 ? <>
                     <p>{t('pluginBrowser.failedCount', { count: failures.length })}</p>
                     <Button variant="outline" size="sm" className="mt-3" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: true })}>{t('pluginBrowser.forceRescan')}</Button>
                   </> : <>
                     <p className="text-center">{t('pluginBrowser.emptyScanHint')}</p>
-                    <Button variant="outline" size="sm" className="mt-3" disabled={Boolean(retryingPath)} onClick={() => onScan()}>{t('pluginBrowser.rescan')}</Button>
                   </>}
                 </>}
                 {activeTab !== 'all' && <button type="button" className="mt-3 underline text-primary" onClick={() => setActiveTab('all')}>{t('pluginBrowser.showAll')}</button>}

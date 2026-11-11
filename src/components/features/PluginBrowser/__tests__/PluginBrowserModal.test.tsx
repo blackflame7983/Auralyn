@@ -26,8 +26,11 @@ it('候補ゼロとスキャン失敗に、それぞれ既存のスキャン操�
     const view = render(<PluginBrowserModal {...props} />);
     expect(screen.getByText(/Common Files\/VST3 と Steinberg\/VST3/)).toBeInTheDocument();
     scan.mockClear();
-    fireEvent.click(screen.getByRole('button', { name: '再スキャン' }));
-    expect(scan).toHaveBeenCalledWith();
+    expect(screen.getByRole('heading', { name: 'まだVSTが登録されていません' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'すべて再スキャン' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: '再スキャン', exact: true })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'すべて再スキャン' }));
+    expect(scan).toHaveBeenCalledWith({ mode: 'full', retryFailed: false });
     view.rerender(<PluginBrowserModal {...props} error="scan error" />);
     fireEvent.click(screen.getByRole('button', { name: '失敗分を含めて再スキャン' }));
     expect(scan).toHaveBeenLastCalledWith({ mode: 'full', retryFailed: true });
@@ -37,6 +40,8 @@ it('読み取れなかった候補がある空一覧は件数と再スキャン�
     const scan = vi.fn();
     render(<PluginBrowserModal isOpen onClose={vi.fn()} plugins={[]} isLoading={false} onScan={scan} onPluginSelect={vi.fn()}
         failures={[{ path: 'broken.vst3', name: 'Broken', kind: 'timed_out', scannedAt: '2026-11-08T01:02:03Z', attempts: 1 }]} />);
+    expect(screen.getByRole('heading', { name: 'VSTを読み取れませんでした' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'まだVSTが登録されていません' })).not.toBeInTheDocument();
     expect(screen.getByText('読み取れなかったプラグイン：1 件')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '失敗分を含めて再スキャン' }));
     expect(scan).toHaveBeenLastCalledWith({ mode: 'full', retryFailed: true });
@@ -45,6 +50,8 @@ it('読み取れなかった候補がある空一覧は件数と再スキャン�
 it.each(['最近', 'お気に入り'])('%sが空なら全候補へ戻れる', tab => {
     openBrowser();
     fireEvent.mouseDown(screen.getByRole('tab', { name: tab }), { button: 0, ctrlKey: false });
+    expect(screen.getByRole('heading', { name: tab === '最近' ? '最近使用したプラグインがありません' : 'お気に入りがありません' })).toBeInTheDocument();
+    expect(screen.queryByText(/Common Files\/VST3/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'すべてのプラグインを表示' }));
     expect(screen.getByRole('button', { name: 'Legacy EQ を追加' })).toBeInTheDocument();
 });
@@ -65,7 +72,7 @@ it('欠損メタデータを含んでも検索不一致・名前・ベンダー�
     const select = openBrowser();
     const search = screen.getByRole('textbox', { name: 'プラグイン検索' });
     fireEvent.change(search, { target: { value: 'no-such-plugin' } });
-    expect(screen.getByText('「no-such-plugin」に一致する候補はありません。')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '「no-such-plugin」に一致する候補はありません。' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '検索・カテゴリを解除' }));
     expect(search).toHaveValue('');
     expect(search).toHaveFocus();
