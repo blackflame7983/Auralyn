@@ -535,6 +535,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <Button onClick={() => setError(null)} variant="default" className="h-auto min-h-10 whitespace-normal w-full">{t('settings.AudioSettingsModal.031')}</Button>
                 <Button onClick={onClose} variant="outline" className="h-auto min-h-10 whitespace-normal w-full">{t('common.close')}</Button>
               </div>}
+                <section aria-label={t('settings.connection.summary')} className="space-y-2 border-b border-border pb-4">
+                  <h3 className="text-ui-heading font-semibold">{t('settings.connection.summary')}</h3>
+                  <p className="min-w-0 wrap-anywhere text-ui-support">{t('settings.connection.summaryValues', {
+                    host: displayAudioHost(selectedHost),
+                    input: (processInput && inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : needsDeviceChoice ? '' : selectedInput) || t('settings.connection.notSelected'),
+                    output: selectedOutputDevice?.name || t('settings.connection.notSelected'),
+                  })}</p>
+                </section>
                 <div id="primary-input-settings" tabIndex={-1}><ProcessInputPanel value={inputSource} onChange={next => {
                   editConnection('source');
                   if (processInput && next.source.kind === 'device') setNeedsDeviceChoice(true);

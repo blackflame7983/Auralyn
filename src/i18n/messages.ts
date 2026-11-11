@@ -1,6 +1,16 @@
 import type { Locale } from './locale';
 
 const ja = {
+    "settings.connection.summary": "選択中の入出力",
+    "settings.connection.summaryValues": "{host}：{input} → {output}",
+    "settings.connection.notSelected": "未選択",
+    "settings.system.preferences": "通常の設定",
+    "settings.system.maintenance": "音声処理の再起動・診断と設定の管理",
+    "settings.connection.summary": "Selected input and output",
+    "settings.connection.summaryValues": "{host}: {input} → {output}",
+    "settings.connection.notSelected": "Not selected",
+    "settings.system.preferences": "Preferences",
+    "settings.system.maintenance": "Audio restart, diagnostics and settings management",
     "shortcuts.enterKeys": "キーを入力",
     "shortcuts.enterKeys": "Enter keys",
     "pluginBrowser.emptyScanHint": "候補がありません。Common Files/VST3 と Steinberg/VST3 の標準フォルダーから探します。VST3を用意してスキャンしてください。",
@@ -3403,6 +3413,11 @@ const ja = {
 } as const;
 export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
+    "settings.connection.summary": "Selected input and output",
+    "settings.connection.summaryValues": "{host}: {input} → {output}",
+    "settings.connection.notSelected": "Not selected",
+    "settings.system.preferences": "Preferences",
+    "settings.system.maintenance": "Audio restart, diagnostics and settings management",
     "shortcuts.enterKeys": "Enter keys",
     "pluginBrowser.emptyScanHint": "No plugins are available. Scanning searches the standard Common Files/VST3 and Steinberg/VST3 folders. Install a VST3 plugin, then scan.",
     "pluginBrowser.searchNoMatch": "No plugins match “{query}”.",
