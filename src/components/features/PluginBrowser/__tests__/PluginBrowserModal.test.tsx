@@ -20,6 +20,35 @@ function openBrowser() {
     return select;
 }
 
+it('候補ゼロとスキャン失敗に、それぞれ既存のスキャン操作を案内する', () => {
+    const scan = vi.fn();
+    const props = { isOpen: true, onClose: vi.fn(), plugins: [], isLoading: false, onScan: scan, onPluginSelect: vi.fn() };
+    const view = render(<PluginBrowserModal {...props} />);
+    expect(screen.getByText(/Common Files\/VST3 と Steinberg\/VST3/)).toBeInTheDocument();
+    scan.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: '再スキャン' }));
+    expect(scan).toHaveBeenCalledWith();
+    view.rerender(<PluginBrowserModal {...props} error="scan error" />);
+    fireEvent.click(screen.getByRole('button', { name: '失敗分を含めて再スキャン' }));
+    expect(scan).toHaveBeenLastCalledWith({ mode: 'full', retryFailed: true });
+});
+
+it('読み取れなかった候補がある空一覧は件数と再スキャンを示す', () => {
+    const scan = vi.fn();
+    render(<PluginBrowserModal isOpen onClose={vi.fn()} plugins={[]} isLoading={false} onScan={scan} onPluginSelect={vi.fn()}
+        failures={[{ path: 'broken.vst3', name: 'Broken', kind: 'timed_out', scannedAt: '2026-11-08T01:02:03Z', attempts: 1 }]} />);
+    expect(screen.getByText('読み取れなかったプラグイン：1 件')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '失敗分を含めて再スキャン' }));
+    expect(scan).toHaveBeenLastCalledWith({ mode: 'full', retryFailed: true });
+});
+
+it.each(['最近', 'お気に入り'])('%sが空なら全候補へ戻れる', tab => {
+    openBrowser();
+    fireEvent.mouseDown(screen.getByRole('tab', { name: tab }), { button: 0, ctrlKey: false });
+    fireEvent.click(screen.getByRole('button', { name: 'すべてのプラグインを表示' }));
+    expect(screen.getByRole('button', { name: 'Legacy EQ を追加' })).toBeInTheDocument();
+});
+
 it('保護と操作の通知があっても一覧を表示し、実際の取得失敗と区別する', () => {
     const props = { isOpen: true, onClose: vi.fn(), plugins, isLoading: false, onScan: vi.fn(), onPluginSelect: vi.fn(), protectionNotice: '保護中：追加分は自動保存されません', notice: '復元を再試行してください' };
     const view = render(<PluginBrowserModal {...props} />);
@@ -36,7 +65,7 @@ it('欠損メタデータを含んでも検索不一致・名前・ベンダー�
     const select = openBrowser();
     const search = screen.getByRole('textbox', { name: 'プラグイン検索' });
     fireEvent.change(search, { target: { value: 'no-such-plugin' } });
-    expect(screen.getByText('検索条件に一致するプラグインがありません')).toBeInTheDocument();
+    expect(screen.getByText('「no-such-plugin」に一致する候補はありません。')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '検索・カテゴリを解除' }));
     expect(search).toHaveValue('');
     expect(search).toHaveFocus();

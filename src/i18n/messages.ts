@@ -1,6 +1,14 @@
 import type { Locale } from './locale';
 
 const ja = {
+    "pluginBrowser.emptyScanHint": "候補がありません。Common Files/VST3 と Steinberg/VST3 の標準フォルダーから探します。VST3を用意してスキャンしてください。",
+    "pluginBrowser.searchNoMatch": "「{query}」に一致する候補はありません。",
+    "pluginBrowser.failedCount": "読み取れなかったプラグイン：{count} 件",
+    "pluginBrowser.forceRescan": "失敗分を含めて再スキャン",
+    "pluginBrowser.emptyScanHint": "No plugins are available. Scanning searches the standard Common Files/VST3 and Steinberg/VST3 folders. Install a VST3 plugin, then scan.",
+    "pluginBrowser.searchNoMatch": "No plugins match “{query}”.",
+    "pluginBrowser.failedCount": "Plugins that could not be scanned: {count}",
+    "pluginBrowser.forceRescan": "Rescan including failed plugins",
     "voice.recordingSection": "録音",
     "voice.comparisonSection": "加工前後の比較",
     "voice.previewPreparing": "試聴を準備しています。",
@@ -3393,6 +3401,10 @@ const ja = {
 } as const;
 export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
+    "pluginBrowser.emptyScanHint": "No plugins are available. Scanning searches the standard Common Files/VST3 and Steinberg/VST3 folders. Install a VST3 plugin, then scan.",
+    "pluginBrowser.searchNoMatch": "No plugins match “{query}”.",
+    "pluginBrowser.failedCount": "Plugins that could not be scanned: {count}",
+    "pluginBrowser.forceRescan": "Rescan including failed plugins",
     "voice.recordingSection": "Recording",
     "voice.comparisonSection": "Compare before and after",
     "voice.previewPreparing": "Preparing listening.",
