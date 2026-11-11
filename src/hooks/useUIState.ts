@@ -10,10 +10,11 @@ export const useUIState = () => {
     const setSettingsTab = (tab: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => { setStoredSettingsTab(tab); setSettingsTabRequest(n => n + 1); };
     const [settingsSection, setSettingsSection] = useState<'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput'>();
     const [settingsNeedsRetry, setSettingsNeedsRetry] = useState(false);
-    const setIsSettingsOpen = (open: boolean) => {
+    // 開く画面とタブを一度に指定し、既定タブへの初期化で移動先を失わないようにする。
+    const setIsSettingsOpen = (open: boolean, tab: typeof settingsTab = 'audio') => {
         setSettingsNeedsRetry(false);
         setSettingsSection(undefined);
-        setSettingsTab('audio');
+        setSettingsTab(tab);
         setSettingsOpen(open);
     };
     const openShortcuts = () => {

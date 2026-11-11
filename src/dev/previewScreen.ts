@@ -26,8 +26,7 @@ export const previewScreenNames = [
 export type PreviewScreenName = (typeof previewScreenNames)[number];
 
 export interface PreviewScreenControls {
-    setIsSettingsOpen: (open: boolean) => void;
-    setSettingsTab: (tab: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => void;
+    setIsSettingsOpen: (open: boolean, tab?: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => void;
     openSoundSettings: () => void;
     openObsSettings: () => void;
     openShortcuts: () => void;
@@ -48,9 +47,9 @@ export function applyPreviewScreen(screen: string, ui: PreviewScreenControls): b
         case 'settings-audio': ui.setIsSettingsOpen(true); return true;
         case 'settings-sound': ui.openSoundSettings(); return true;
         case 'settings-obs': ui.openObsSettings(); return true;
-        case 'settings-appearance': ui.setIsSettingsOpen(true); ui.setSettingsTab('appearance'); return true;
+        case 'settings-appearance': ui.setIsSettingsOpen(true, 'appearance'); return true;
         case 'settings-shortcuts': ui.openShortcuts(); return true;
-        case 'settings-system': ui.setIsSettingsOpen(true); ui.setSettingsTab('system'); return true;
+        case 'settings-system': ui.setIsSettingsOpen(true, 'system'); return true;
         case 'obs-guide': ui.setIsOBSGuideOpen(true); return true;
         case 'discord-guide': ui.setIsDiscordGuideOpen(true); return true;
         case 'troubleshoot': ui.setIsTroubleshootOpen(true); return true;
