@@ -58,6 +58,7 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
     const [message, setMessage] = useState<SettingsNotice[]>([]);
     const [capturing, setCapturing] = useState<Action | null>(null);
     const [armed, setArmed] = useState(false);
+    const [listOpen, setListOpen] = useState<Partial<Record<Action, boolean>>>({});
     const session = useRef<{ active: boolean; token: string | null }>({ active: false, token: null });
     const captureQueue = useRef<Promise<void>>(Promise.resolve());
     const acceptRef = useRef<(shortcut: string, action: Action) => void>(() => {});
@@ -210,11 +211,11 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
         <div className="divide-y divide-border">{group.actions.map(action => {
             const label = t(actions[action]);
             const pair = split(values[action] ?? '');
-            return <fieldset key={action} className="min-w-0 py-3 text-ui-support" disabled={!ready || busy}>
+            return <fieldset key={action} className="min-w-0 py-1.5 text-ui-support" disabled={!ready || busy}>
                 <legend className="sr-only">{label}</legend>
                 <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-center">
                 <span aria-hidden="true" className="min-w-0 break-words text-ui-control font-semibold">{label}</span>
-                <span className="min-w-0 break-words">{values[action] ? <kbd className="rounded-control border border-border bg-muted px-2 py-1 font-mono">{formatShortcut(values[action])}</kbd> : <span className="text-muted-foreground">{t('shortcuts.captureEmpty')}</span>}</span>
+                <span data-shortcut-binding className="min-w-0 break-words">{values[action] ? <kbd className="rounded-control border border-border bg-muted px-2 py-1 font-mono">{formatShortcut(values[action])}</kbd> : <span className="text-muted-foreground">{t('shortcuts.captureEmpty')}</span>}</span>
                 <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" aria-label={t('shortcuts.captureNamed', { action: label })} aria-pressed={capturing === action} aria-busy={capturing === action && !armed}
                     onClick={() => { setMessage([]); capture(capturing === action ? null : action); }}
@@ -222,13 +223,15 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
                     variant={capturing === action ? 'secondary' : 'outline'} className="h-auto min-h-10 whitespace-normal">
                     {capturing === action ? t(armed ? 'shortcuts.captureWaiting' : 'shortcuts.capturePreparing') : t('shortcuts.enterKeys')}
                 </Button>
+                <Button type="button" variant="ghost" size="sm" className="h-auto min-h-9 whitespace-normal"
+                    aria-label={t('shortcuts.chooseFromListNamed', { action: label })} aria-expanded={!!listOpen[action]} aria-controls={`${headingId}-${action}-list`}
+                    onClick={() => setListOpen(previous => ({ ...previous, [action]: !previous[action] }))}>{t('shortcuts.chooseFromList')}</Button>
                 {values[action] && <Button type="button" aria-label={`${t('settings.ShortcutsPanel.389')}${label}`} variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => setValues(v => ({ ...v, [action]: '' }))}>{t('shortcuts.unbind')}</Button>}
                 </div>
                 </div>
                 {/* キー入力で登録できない場合の代替手段。既定では閉じて入力方式を1つに見せる。 */}
-                <details>
-                <summary className="mt-2 cursor-pointer text-ui-support text-muted-foreground underline">{t('shortcuts.chooseFromList')}</summary>
-                <div className="mt-1 flex flex-wrap gap-1">
+                <div id={`${headingId}-${action}-list`} hidden={!listOpen[action]}>
+                <div className="mt-2 flex flex-wrap gap-1">
                     <Field label={t('settings.ShortcutsPanel.381')}><Select aria-label={t('settings.ShortcutsPanel.382', { arg0: label })} value={pair.modifier} onChange={e => setValues(v => ({ ...v, [action]: `${e.target.value}+${pair.key}` }))} >
                         <option value="">{t('settings.ShortcutsPanel.383')}</option>
                         {pair.modifier && !modifiers.includes(pair.modifier) && <option value={pair.modifier}>{pair.modifier}{t('settings.ShortcutsPanel.384')}</option>}
@@ -240,7 +243,7 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
                         {keys.map(([value, name]) => <option key={value} value={value}>{name}</option>)}
                     </Select></Field>
                 </div>
-                </details>
+                </div>
 
             </fieldset>;
         })}</div>

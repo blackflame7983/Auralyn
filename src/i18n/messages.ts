@@ -2,6 +2,7 @@ import type { Locale } from './locale';
 
 const ja = {
     "shortcuts.enterKeys": "キーを入力",
+    "shortcuts.chooseFromListNamed": "{action}のキーを一覧から選ぶ",
     "voice.devicesLoading": "試聴先を取得しています。",
     "voice.devicesError": "試聴先を取得できませんでした。再準備または一覧の更新を試してください。",
     "voice.devicesPending": "試聴先はまだ取得していません。",
@@ -3408,6 +3409,7 @@ const ja = {
 export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
     "shortcuts.enterKeys": "Enter keys",
+    "shortcuts.chooseFromListNamed": "Choose keys for {action} from a list",
     "voice.devicesLoading": "Loading listening outputs.",
     "voice.devicesError": "Could not load listening outputs. Prepare listening again or refresh the list.",
     "voice.devicesPending": "Listening outputs have not been loaded yet.",

@@ -26,10 +26,13 @@ it('操作ごとに割当と変更操作を並べ、一覧選択を開ける', a
     expect(row.querySelector('legend')).toHaveTextContent('緊急ミュート（切替）');
     expect(row.querySelector('kbd')).toHaveTextContent('Alt + M');
     expect(change).toHaveTextContent('キーを入力');
-    const details = row.querySelector('details')!;
-    expect(details).not.toHaveAttribute('open');
-    fireEvent.click(details.querySelector('summary')!);
-    expect(details).toHaveAttribute('open');
+    const choose = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを一覧から選ぶ' });
+    expect(choose).toHaveAttribute('aria-expanded', 'false');
+    const list = document.getElementById(choose.getAttribute('aria-controls')!)!;
+    expect(list).not.toBeVisible();
+    fireEvent.click(choose);
+    expect(choose).toHaveAttribute('aria-expanded', 'true');
+    expect(list).toBeVisible();
     expect(row.querySelector('select')).toBeEnabled();
 });
 it('キー入力で既存形式を作り、重複と OS 予約を検出し保存しない', async () => {
@@ -433,10 +436,12 @@ it('英語でも未設定を示し、代替の一覧選択にキーボードで�
     const input = screen.getByRole('button', { name: 'Enter keys for Emergency mute (on)' });
     await waitFor(() => expect(input).toBeEnabled());
     expect(input.closest('fieldset')).toHaveTextContent('Not set');
-    const summary = screen.getAllByText('Choose from a list')[1];
-    summary.focus();
-    expect(summary).toHaveFocus();
-    expect(summary.tagName).toBe('SUMMARY');
+    const choose = screen.getByRole('button', { name: 'Choose keys for Emergency mute (on) from a list' });
+    choose.focus();
+    expect(choose).toHaveFocus();
+    fireEvent.click(choose);
+    expect(choose).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('combobox', { name: 'Emergency mute (on) regular key' })).toBeVisible();
 });
 
 
