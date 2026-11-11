@@ -353,3 +353,47 @@ it('U01: 非仮想モニター出力を自動選択してチェックなしで�
     fireEvent.click(screen.getByRole('checkbox', { name: /選んだ試聴先がOBS/ }));
     expect(screen.getByRole('button', { name: '選んだ試聴先で再生' })).toBeEnabled();
 });
+
+it.each(['ja', 'en'] as const)('試聴準備失敗の理由と再試行を警告に集約し、選択欄は短い状態だけを示す（%s）', async locale => {
+    vi.mocked(voicePreviewApi.request).mockRejectedValue(new Error('open failed'));
+    const store = createLocaleStore(() => locale, () => true);
+    render(<LocaleProvider store={store}><VoiceCheckModal isOpen onClose={vi.fn()} /></LocaleProvider>);
+    const alert = await screen.findByRole('alert');
+    const retry = locale === 'ja' ? '試聴を再準備' : 'Prepare listening again';
+    expect(alert).toContainElement(screen.getByRole('button', { name: retry }));
+    const status = locale === 'ja' ? '試聴先を取得できません' : 'Could not load listening outputs';
+    expect(screen.getAllByText(status, { exact: true })).toHaveLength(1);
+    expect(screen.getByRole('option', { name: status })).toBeInTheDocument();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+});
+
+it('未取得・取得中・取得済み0件・取得失敗を選択欄で区別する', async () => {
+    let resolveDevices!: (value: ReturnType<typeof previewSnapshot>) => void;
+    let requestDevices!: Parameters<typeof previewSnapshot>[0];
+    vi.mocked(voicePreviewApi.request).mockImplementation(request => {
+        if (request.action === 'devices') {
+            requestDevices = request;
+            return new Promise(resolve => { resolveDevices = resolve; });
+        }
+        return Promise.resolve(previewSnapshot(request));
+    });
+    open();
+    await waitFor(() => expect(record()).toBeEnabled());
+    act(() => {
+        for (const [event, callback] of vi.mocked(listen).mock.calls) {
+            if (event === 'voice-check-state') callback({ event, id: 1, payload: { state: 'ready', position_ms: 0, duration_ms: 1000 } });
+        }
+    });
+    const refresh = await screen.findByRole('button', { name: '試聴先を取得・更新' });
+    await waitFor(() => expect(refresh).toBeEnabled());
+    expect(screen.getByRole('option', { name: '試聴先はまだ取得していません。' })).toBeInTheDocument();
+    fireEvent.click(refresh);
+    expect(await screen.findByRole('option', { name: '試聴先を取得しています。' })).toBeInTheDocument();
+    await act(async () => { resolveDevices(previewSnapshot(requestDevices)); });
+    expect(screen.getByRole('option', { name: '試聴先が見つかりません。一覧を更新してください。' })).toBeInTheDocument();
+    vi.mocked(voicePreviewApi.request).mockRejectedValueOnce(new Error('devices unavailable'));
+    fireEvent.click(refresh);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '試聴先を取得できません' })).toBeInTheDocument();
+    expect(screen.getAllByText('試聴先を取得できません', { exact: true })).toHaveLength(1);
+});
