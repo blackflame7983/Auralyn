@@ -85,6 +85,9 @@ it.each(['ja', 'en'] as const)('キー操作%sは同じstable IDとキーを保�
     vi.mocked(invoke).mockImplementation(async (command, args) => command === 'save_shortcuts' ? { bindings: (args as { bindings: unknown[] }).bindings, errors: [] } : { bindings: [], errors: [] });
     render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
     const label = locale === 'ja' ? '歌モード' : 'Switch to Sing mode';
+    const choose = screen.getByRole('button', { name: locale === 'ja' ? `${label}のキーを一覧から選ぶ` : `Choose keys for ${label} from a list` });
+    await waitFor(() => expect(choose).toBeEnabled());
+    fireEvent.click(choose);
     const modifier = screen.getByRole('combobox', { name: locale === 'ja' ? `${label}の修飾キー` : `${label} modifier` });
     await waitFor(() => expect(modifier).toBeEnabled());
     fireEvent.change(modifier, { target: { value: 'Alt' } });

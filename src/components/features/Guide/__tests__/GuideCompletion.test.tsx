@@ -109,11 +109,11 @@ it.each([OBSGuideModal, DiscordGuideModal])('戻って同じ機器を決定で�
 });
 
 it('Discordの注意チップは警告アイコンを持ち、OBSの通常チップには付けない', () => {
-    const view = render(<DiscordGuideModal isOpen onClose={vi.fn()} />);
+    const view = render(<DiscordGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} />);
     const warning = screen.getByText('ループバックを利用（エコーに注意）');
     expect(warning.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
     view.unmount();
-    render(<OBSGuideModal isOpen onClose={vi.fn()} />);
+    render(<OBSGuideModal isOpen onClose={vi.fn()} onOpenAudioSettings={vi.fn()} />);
     for (const label of ['ループバック機能を利用', '仮想ケーブルを利用']) {
         const chip = screen.getByText(label);
         expect(chip).toBeInTheDocument();

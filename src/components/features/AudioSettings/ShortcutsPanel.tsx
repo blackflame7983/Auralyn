@@ -211,7 +211,7 @@ export function ShortcutsPanel({ onCaptureChange }: { onCaptureChange?: (capturi
         <div className="divide-y divide-border">{group.actions.map(action => {
             const label = t(actions[action]);
             const pair = split(values[action] ?? '');
-            return <fieldset key={action} className="min-w-0 py-1.5 text-ui-support" disabled={!ready || busy}>
+            return <fieldset key={action} className="min-w-0 py-1 text-ui-support" disabled={!ready || busy}>
                 <legend className="sr-only">{label}</legend>
                 <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-center">
                 <span aria-hidden="true" className="min-w-0 break-words text-ui-control font-semibold">{label}</span>

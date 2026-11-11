@@ -28,7 +28,7 @@ it('候補ゼロとスキャン失敗に、それぞれ既存のスキャン操�
     scan.mockClear();
     expect(screen.getByRole('heading', { name: 'まだVSTが登録されていません' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'すべて再スキャン' })).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: '再スキャン', exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '再スキャン' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'すべて再スキャン' }));
     expect(scan).toHaveBeenCalledWith({ mode: 'full', retryFailed: false });
     view.rerender(<PluginBrowserModal {...props} error="scan error" />);
