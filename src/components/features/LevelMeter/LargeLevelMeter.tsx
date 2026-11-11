@@ -54,16 +54,16 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
     }} data-detailed={detailed || undefined} data-horizontal={horizontal || undefined} className={cn(
         'large-meter-motion bg-background/95 border-border flex flex-col gap-2',
         horizontal ? 'w-full rounded-card border p-5' : 'fixed top-16 bottom-[calc(var(--app-footer-height,4rem)+1rem)] right-0 z-40 border-l px-1 py-2',
-        !horizontal && (detailed ? 'w-24' : 'w-16')
+        !horizontal && (detailed ? 'w-24' : 'w-[5.5rem]')
     )}>
         <div className={horizontal ? 'flex flex-row-reverse items-center justify-between gap-3' : 'contents'}>
-        <div className="flex items-center justify-center">
-            <Button variant="ghost" size="icon" type="button" data-meter-action="details" onClick={() => setDetailed(!detailed)} aria-pressed={detailed}
+        <div className="flex items-center justify-center gap-1">
+            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" type="button" data-meter-action="details" onClick={() => setDetailed(!detailed)} aria-pressed={detailed}
                 aria-label={t(detailed ? 'meter.miniView' : 'meter.detailedView')} title={t(detailed ? 'meter.miniView' : 'meter.detailedView')}
                 >
                 {detailed ? <MdCloseFullscreen aria-hidden="true" className="h-4 w-4" /> : <MdOpenInFull aria-hidden="true" className="h-4 w-4" />}
             </Button>
-            <Button variant="ghost" size="icon" type="button" data-meter-action="close" onClick={onClose} aria-label={t('header.meterClose')} title={t('common.close')}
+            <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" type="button" data-meter-action="close" onClick={onClose} aria-label={t('header.meterClose')} title={t('common.close')}
                 ><MdClose aria-hidden="true" className="h-4 w-4" /></Button>
         </div>
         <div className="flex items-center justify-center gap-1 text-ui-support text-muted-foreground" title={t(meterStatusLabel(reading.state))}>
@@ -76,7 +76,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
             </InfoPopover>}
         </div>
         </div>
-        <span role="status" title={t(meterStatusLabel(reading.state))} className="h-4 shrink-0 text-center text-ui-support leading-4 text-muted-foreground">
+        <span role="status" title={t(meterStatusLabel(reading.state))} className="min-h-5 shrink-0 whitespace-nowrap text-center text-ui-support leading-5 text-muted-foreground">
             {reading.state === 'live' ? '' : t(reading.state === 'stopped' ? 'meter.stoppedShort' : reading.state === 'silent' ? 'meter.state.silent' : 'meter.waitingShort')}
         </span>
         <div className="flex-1 min-h-0 flex justify-center items-stretch">

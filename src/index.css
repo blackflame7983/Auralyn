@@ -508,7 +508,7 @@
   --vst-panel-width: 0px;
 }
 .app-shell[data-large-meter] {
-  --visible-meter-width: 64px;
+  --visible-meter-width: 88px;
 }
 .app-shell[data-large-meter]:has(.large-meter-motion[data-detailed]) {
   --visible-meter-width: 96px;
@@ -596,7 +596,7 @@
   max-height: 720px;
   /* 親の幅指定は開閉時だけ変わる。フレームごとにCSS変数を更新せず translate を遷移させる。 */
   /* 広い窓でもホーム（最大1180px）の右隣へ置く。ホームの左右余白の差と12pxの間隔を含める。 */
-  translate: calc(-1 * (var(--vst-panel-width, 0px) + max(0px, (100vw - var(--vst-panel-width, 0px) - var(--visible-meter-width, 64px) - 1228px) / 2))) 0;
+  translate: calc(-1 * (var(--vst-panel-width, 0px) + max(0px, (100vw - var(--vst-panel-width, 0px) - var(--visible-meter-width, 88px) - 1228px) / 2))) 0;
   transition: translate var(--motion-panel) var(--ease-drawer);
 }
 .vst-panel-scrim {
