@@ -134,10 +134,11 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
             {stale && <p role="alert">{t('mixing.stale')}</p>}
             {!ready && <div><p>{t('mixing.notReady')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('output')}>{t('mixingUi.openOutput')}</Button></div>}
             {!primaryIsVoiceDevice && <div><p>{t('mixing.primary')}</p><Button  variant="outline" size="sm" onClick={() => onNavigate?.('input')}>{t('mixingUi.openInput')}</Button></div>}
-            <div className="rounded-control bg-muted/40 p-3"><h4 className="text-ui-control font-semibold">{t('mixingUi.active')}</h4><p>{t('mixing.current')}: {describe(snapshot.config)}</p>
-                {mixingConfigurationValue(snapshot.config) !== mixingConfigurationValue(snapshot.savedConfig) && <p>{t('mixing.changed')} {t('mixing.saved')}: {describe(snapshot.savedConfig)}</p>}</div>
-            <h4 className="text-ui-control font-semibold">{t('mixingUi.draft')}</h4>
-            <Button variant="outline" size="sm" className="h-auto whitespace-normal" disabled={!editable || snapshot.running || stale} onClick={() => void run('reload')}>{t('mixing.reload')}</Button>
+            <section aria-labelledby={`${reasonId}-active`} className="rounded-control border border-border bg-muted/40 p-3"><h4 id={`${reasonId}-active`} className="text-ui-control font-semibold">{t('mixingUi.active')}</h4><p>{t('mixing.current')}: {describe(snapshot.config)}</p>
+                {mixingConfigurationValue(snapshot.config) !== mixingConfigurationValue(snapshot.savedConfig) && <p>{t('mixing.changed')} {t('mixing.saved')}: {describe(snapshot.savedConfig)}</p>}</section>
+            <section aria-labelledby={`${reasonId}-draft`} className="rounded-control border border-border bg-muted/40 p-3 space-y-3">
+            <h4 id={`${reasonId}-draft`} className="text-ui-control font-semibold">{t('mixingUi.draft')}</h4>
+            <Button variant="outline" className="h-auto min-h-10 whitespace-normal" disabled={!editable || snapshot.running || stale} onClick={() => void run('reload')}>{t('mixing.reload')}</Button>
             {snapshot.running && <p>{t('mixing.stopped')}</p>}
             <fieldset disabled={!editable || snapshot.running} className="space-y-3">
                 <Field label={t('mixing.source')}><Select  value={kind} onChange={e => { mark(); setKind(e.target.value as 'device' | 'process'); }}><option value="device">{t('mixing.device')}</option><option value="process">{t('mixing.process')}</option></Select></Field>
@@ -165,6 +166,7 @@ export function MixingPanel({ inputs, primaryInputId, primaryIsVoiceDevice, disa
                 <Button variant="outline" size="sm" className="h-auto whitespace-normal" disabled={!editable || stale || !validLevels || !snapshot.config} onClick={() => { queue.cancel(); void run('levels', levelsRef.current, true); }}>{t('mixing.offsetConfirm')}</Button>
             </div>}
             {status === 'unknown' && <p role="status" className="text-ui-support text-muted-foreground">{t('mixing.offsetUnknown')}</p>}
+            </section>
             <p>{t('mixingUi.knownMs', { value: framesToMs(snapshot.knownVoiceProcessingFrames, snapshot.primaryClock?.outputRateHz) ?? t('mixing.unknown') })}</p>
             <p>{t('mixing.meter')}: {t('mixing.voice')} {Math.max(...snapshot.voicePeak).toFixed(2)} / {t('mixing.accompaniment')} {Math.max(...snapshot.accompanimentPeak).toFixed(2)} / {t('mixingUi.mix')} {Math.max(...snapshot.mixPeak).toFixed(2)}</p>
             {snapshot.accompaniment?.failed ? <p role="alert">{t('mixing.accompanimentFailed')}</p> : snapshot.accompaniment?.waitingForAudio && <p role="status">{t('mixing.waiting')}</p>}

@@ -35,6 +35,21 @@ it('最新状態の再取得で編集中の入力元と音量を失わない', a
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
     expect(screen.getByRole('combobox', { name: '入力ペア' })).toHaveValue('2,3'); expect(voice()).toHaveAttribute('aria-valuetext', '1%');
 });
+it('動作中と編集中を区別し、保存内容の明示的な読み直しで下書きを置き換える', async () => {
+    const request = await setup();
+    const active = screen.getByRole('region', { name: '動作中の設定' });
+    const draft = screen.getByRole('region', { name: '編集中の内容' });
+    expect(active).toHaveTextContent('Music');
+    expect(within(active).queryByRole('combobox')).not.toBeInTheDocument();
+    const pair = within(draft).getByRole('combobox', { name: '入力ペア' });
+    fireEvent.change(pair, { target: { value: '2,3' } });
+    expect(pair).toHaveValue('2,3');
+    expect(request).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(draft).getByRole('button', { name: '保存内容で編集中の内容を置き換える' }));
+    await waitFor(() => expect(pair).toHaveValue('0,1'));
+    expect(request).toHaveBeenLastCalledWith({ action: 'reload', expectedEpoch: 'e', expectedRevision: '1' });
+    expect(active).toHaveTextContent('Music');
+});
 it('前提の不足から設定欄へ移動でき、準備状態を自動更新する', async () => {
     const navigate = vi.fn(); await setup(snapshot(), false, false, navigate);
     fireEvent.click(screen.getByRole('button', { name: '配信用の分離出力を設定' })); expect(navigate).toHaveBeenCalledWith('output');
