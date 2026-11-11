@@ -39,6 +39,30 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
+it('試聴先の取得中・取得済み0件・失敗・再取得成功を区別する', async () => {
+    const opening = deferred<ReturnType<typeof previewSnapshot>>();
+    let openRequest: Parameters<typeof previewSnapshot>[0] | undefined;
+    let failDevices = true;
+    vi.mocked(voicePreviewApi.request).mockImplementation(async request => {
+        if (request.action === 'open') { openRequest = request; return opening.promise; }
+        if (request.action === 'devices' && failDevices) throw new Error('unavailable');
+        return previewSnapshot(request, { devices: request.action === 'devices' ? [{ id: 'hp', name: 'Headphones' }] : [] });
+    });
+    const { result } = renderHook(() => useVoiceCheck(true));
+    await waitFor(() => expect(openRequest).toBeDefined());
+    expect(result.current.previewDevicesStatus).toBe('loading');
+    await act(async () => opening.resolve(previewSnapshot(openRequest!)));
+    expect(result.current.previewDevicesStatus).toBe('ready');
+    expect(result.current.previewDevices).toEqual([]);
+    await act(async () => { await result.current.refreshPreviewDevices(); });
+    expect(result.current.previewDevicesStatus).toBe('error');
+    failDevices = false;
+    await act(async () => { await result.current.refreshPreviewDevices(); });
+    expect(result.current.previewDevicesStatus).toBe('ready');
+    expect(result.current.previewDevices).toEqual([{ id: 'hp', name: 'Headphones' }]);
+    expect(result.current.outputConfirmed).toBe(true);
+});
+
 it.each(['select', 'rediscover'] as const)('消失した保存済み試聴先を%sで復旧すると、物理出力は確認操作なしで再生できる', async recovery => {
     localStorage.setItem('vst_host_voice_check_preview_device', 'saved-headphones');
     const headphones = { id: 'headphones', name: 'Headphones' };

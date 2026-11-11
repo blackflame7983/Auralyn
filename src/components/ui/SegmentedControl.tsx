@@ -49,7 +49,7 @@ export function SegmentedControl<T extends string>({ label, options, value, onVa
                     const next = event.key === 'Home' ? enabled[0] : event.key === 'End' ? enabled[enabled.length - 1] : enabled[(position + (['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1) + enabled.length) % enabled.length];
                     buttons.current[next]?.focus();
                     onValueChange(choices[next].value);
-                }} onClick={() => onValueChange(option.value)}>{option.label}</button>;
+                }} onClick={() => onValueChange(option.value)}><MdCheck aria-hidden="true" className={cn('h-4 w-4 shrink-0', !active && 'invisible')} />{option.label}</button>;
             return option.hint ? <Tooltip key={option.value}><TooltipTrigger asChild>{control}</TooltipTrigger><TooltipContent className="max-w-64">{option.hint}</TooltipContent></Tooltip>
                 : <span key={option.value} className="contents">{control}</span>;
         })}</div>
