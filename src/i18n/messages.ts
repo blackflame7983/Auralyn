@@ -1,6 +1,8 @@
 import type { Locale } from './locale';
 
 const ja = {
+    "shortcuts.enterKeys": "キーを入力",
+    "shortcuts.enterKeys": "Enter keys",
     "pluginBrowser.emptyScanHint": "候補がありません。Common Files/VST3 と Steinberg/VST3 の標準フォルダーから探します。VST3を用意してスキャンしてください。",
     "pluginBrowser.searchNoMatch": "「{query}」に一致する候補はありません。",
     "pluginBrowser.failedCount": "読み取れなかったプラグイン：{count} 件",
@@ -3401,6 +3403,7 @@ const ja = {
 } as const;
 export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
+    "shortcuts.enterKeys": "Enter keys",
     "pluginBrowser.emptyScanHint": "No plugins are available. Scanning searches the standard Common Files/VST3 and Steinberg/VST3 folders. Install a VST3 plugin, then scan.",
     "pluginBrowser.searchNoMatch": "No plugins match “{query}”.",
     "pluginBrowser.failedCount": "Plugins that could not be scanned: {count}",
