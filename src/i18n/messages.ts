@@ -3411,7 +3411,7 @@ const ja = {
     "obs.target": "接続先（ホスト名・ポート・パスワード）",
     "obs.prepare": "OBS 側の準備",
     "troubleshoot.savedPurpose": "セットアップまたは前回の診断で選んだ用途で確認します。",
-    "troubleshoot.runFor": "{purpose}で診断する",
+    "troubleshoot.start": "診断を開始",
     "troubleshoot.changePurpose": "用途を変える",
     "session.retryDetails": "保存済みの並びを読み直す",
 } as const;
@@ -6828,7 +6828,7 @@ const en: Record<MessageKey, string> = {
     "obs.target": "Connection target (host, port, password)",
     "obs.prepare": "Preparing OBS",
     "troubleshoot.savedPurpose": "Checks for the use you chose in Setup or the last diagnosis.",
-    "troubleshoot.runFor": "Diagnose for {purpose}",
+    "troubleshoot.start": "Start diagnosis",
     "troubleshoot.changePurpose": "Choose a different use",
     "session.retryDetails": "Reload the saved chain",
 };

@@ -171,10 +171,27 @@ it('遅い診断中のlocale切替は再測定せず、結果とコピーはク�
 it('セットアップで選んだ用途を初期値にし、別の用途にも切り替えられる', () => {
     localStorage.setItem('vst_host_setup_goal', 'listening');
     render(<TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /自分で聴くで診断する/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /自分で聴く.*診断を開始/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /OBSで配信/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '用途を変える' }));
     expect(screen.getByRole('button', { name: /OBSで配信/ })).toBeInTheDocument();
+});
+
+it.each(['ja', 'en'] as const)('開始操作を明示し、操作がないフッターは描画しない（%s）', async locale => {
+    localStorage.setItem('vst_host_setup_goal', 'obs');
+    vi.mocked(invoke).mockResolvedValue({ is_running: false, config: null });
+    render(<LocaleProvider store={createLocaleStore(() => locale, () => true)}><TroubleshootModal isOpen onClose={vi.fn()} onOpenSettings={vi.fn()} onOpenOBSGuide={vi.fn()} /></LocaleProvider>);
+    const dialog = screen.getByRole('dialog');
+    const start = screen.getByRole('button', { name: new RegExp(message(locale, 'troubleshoot.start')) });
+    expect(start).toHaveTextContent(message(locale, destinationChoices.find(option => option.value === 'obs')!.label));
+    expect(dialog.querySelector('footer')).toBeNull();
+    expect(invoke).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'troubleshoot.changePurpose') }));
+    expect(screen.getAllByRole('button', { name: new RegExp(message(locale, 'troubleshoot.start')) })).toHaveLength(4);
+    expect(dialog.querySelector('footer')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /OBS/ }));
+    await screen.findByRole('button', { name: message(locale, 'guide.copy.419') });
+    expect(dialog.querySelector('footer')).toContainElement(screen.getByRole('button', { name: message(locale, 'guide.copy.419') }));
 });
 
 it('診断から用途を切り替えると、保存後に準備欄へ共用の変更通知を送る', async () => {
