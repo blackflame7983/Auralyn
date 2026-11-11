@@ -386,7 +386,9 @@ it('未取得・取得中・取得済み0件・取得失敗を選択欄で区別
     });
     const refresh = await screen.findByRole('button', { name: '試聴先を取得・更新' });
     await waitFor(() => expect(refresh).toBeEnabled());
-    expect(screen.getByRole('option', { name: '試聴先はまだ取得していません。' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '試聴先は未取得です' })).toBeInTheDocument();
+    // 「準備ができました」と並んでも、次に押す操作が分かる。
+    expect(screen.getByText('「試聴先を取得・更新」を押すと、選べる試聴先を読み込みます。')).toBeInTheDocument();
     fireEvent.click(refresh);
     expect(await screen.findByRole('option', { name: '試聴先を取得しています。' })).toBeInTheDocument();
     await act(async () => { resolveDevices(previewSnapshot(requestDevices)); });

@@ -512,7 +512,8 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
             && expected.baseRevision === proposalBasis.revision && expected.draftRevision === proposalBasis.draftRevision) return;
         const previous = candidateRef.current;
         clearCandidate();
-        revision.current += 1; mutating.current = false; setPreviewBusy(false);
+        // 取得中の一覧応答は revision で破棄されるため、表示も確定済みの状態へ戻す。
+        revision.current += 1; mutating.current = false; setPreviewBusy(false); setPreviewDevicesStatus(settledDevicesStatus.current);
         if (previous && controller.current?.ready) {
             const session = controller.current;
             void session.send({ action: 'cancel_candidate', candidateId: previous.id }).catch(() => {
