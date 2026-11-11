@@ -30,7 +30,7 @@ const markWizardDone = () => {
 
 interface UIState {
     settingsSection?: 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
-    settingsTab?: 'audio' | 'obs' | 'sound' | 'shortcuts';
+    settingsTab?: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
     settingsTabRequest?: number;
     settingsNeedsRetry?: boolean;
     isSettingsOpen: boolean;

@@ -83,11 +83,11 @@ export function LiveStrip({ onStartAudio, stopped = false, starting = false, sta
                 <span className="text-muted-foreground">{t('live.destination')}</span>
                 <span className="truncate font-semibold" title={receiver || undefined}>{usage ? t(destinations[usage]) : t('live.noDestination')}{usage && usage !== 'listening' && receiver ? ` · ${receiver}` : ''}</span>
             </p>}
-            <span role="status" aria-hidden={!muted} className={`inline-flex shrink-0 ${muted ? '' : 'invisible'}`}>
+            <span role="status" aria-hidden={!muted} className={`inline-flex min-w-0 max-w-full ${muted ? '' : 'invisible'}`}>
                 {/* 読み上げ名は見えている状態名にし、押した結果はツールチップで補う（DESIGN.md 3.3）。 */}
                 <button type="button" onClick={event => onCheckOutput?.(event.currentTarget)} tabIndex={muted ? 0 : -1}
-                    title={t('prep.checkOutput')} className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-ui-support font-bold text-warning hover:bg-warning/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warning">
-                    <MdVolumeOff aria-hidden="true" className="h-4 w-4" />{t('prep.muted')}
+                    title={t('prep.checkOutput')} className="inline-flex min-w-0 items-center gap-1 whitespace-normal rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-left text-ui-support font-bold text-warning hover:bg-warning/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warning">
+                    <MdVolumeOff aria-hidden="true" className="h-4 w-4 shrink-0" /><span className="min-w-0 wrap-anywhere">{t('prep.muted')}</span>
                 </button>
             </span>
         </div>

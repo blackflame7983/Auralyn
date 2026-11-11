@@ -45,6 +45,21 @@ function AppContent() {
   );
 
   const audioReady = !isInitializing && Boolean(audioConfig.host) && isEngineRunning && engineProcessReady === true;
+  const previewMarked = useRef(false);
+  // 起動の覆いが消えてから画面を開き、取り込み側が待てる印を html に付ける。本番ビルドでは消える。
+  useEffect(() => {
+    if (!import.meta.env.DEV || isInitializing || previewMarked.current) return;
+    const params = new URLSearchParams(location.search);
+    if (params.get('mock') === null) return;
+    previewMarked.current = true;
+    const screen = params.get('screen');
+    const mark = () => { document.documentElement.dataset.auralynPreview = screen || 'home'; };
+    if (!screen) { mark(); return; }
+    void import('./dev/previewScreen').then(({ applyPreviewScreen }) => {
+      if (!applyPreviewScreen(screen, ui)) console.warn(`[preview-mock] 未定義の画面: ${screen}。`);
+      mark();
+    });
+  }, [isInitializing, ui]);
   const tutorialEligible = useRef(false);
   // 初回の使い方案内は VST ラックの操作を指すので、右パネルを開いている間だけ進める。
   tutorialEligible.current = audioReady && vstPanelOpen;

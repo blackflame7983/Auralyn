@@ -269,12 +269,17 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
     const [snapshot, setSnapshot] = useState<VoicePreviewSnapshot | null>(null);
     const snapshotRef = useRef<VoicePreviewSnapshot | null>(null);
     const [devices, setDevices] = useState<VoicePreviewSnapshot['devices']>([]);
+    const [previewDevicesStatus, setPreviewDevicesStatus] = useState<'pending' | 'loading' | 'ready' | 'error'>('pending');
+    // 停止などで一覧の応答が失効したときは、取得前の確定状態へ戻す。
+    const settledDevicesStatus = useRef<'pending' | 'ready' | 'error'>('pending');
     const [deviceId, setDeviceId] = useState(() => { try { return localStorage.getItem(PREVIEW_DEVICE_KEY) ?? ''; } catch { return ''; } });
     const deviceIdRef = useRef(deviceId);
     deviceIdRef.current = deviceId;
     const [missingSavedDevice, setMissingSavedDevice] = useState(false);
     const syncPreviewDevices = useCallback((listed: VoicePreviewSnapshot['devices']) => {
         setDevices(listed);
+        settledDevicesStatus.current = 'ready';
+        setPreviewDevicesStatus('ready');
         if (listed.length === 0) return;
         const currentId = deviceIdRef.current;
         if (!currentId) {
@@ -353,7 +358,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         const session = controller.current;
         const version = ++revision.current;
         mutating.current = false;
-        if (!unmount && alive.current) { setPreviewBusy(false); setSafeOutput(false); }
+        if (!unmount && alive.current) { setPreviewBusy(false); setSafeOutput(false); setPreviewDevicesStatus(settledDevicesStatus.current); }
         if (!session) return true;
         const requestSequence = ++sequence.current;
         try {
@@ -384,6 +389,8 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         const requestSequence = ++sequence.current;
         setSafeOutput(false);
         setDevices([]);
+        settledDevicesStatus.current = 'pending';
+        setPreviewDevicesStatus('pending');
         setPreviewBusy(true);
         setPreviewError('');
         setSnapshot(null);
@@ -394,10 +401,15 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
             const next = await session.send({ action: 'open' });
             if (accept(next, session, version, requestSequence)) {
                 setStopUnconfirmed(false);
+                // open の空配列は未取得。0件と確定するのは devices の応答だけ。
                 if (next.devices.length > 0) syncPreviewDevices(next.devices);
             }
         } catch {
-            if (alive.current && controller.current === session && version === revision.current) setPreviewError(notice('voice.copy.126'));
+            if (alive.current && controller.current === session && version === revision.current) {
+                settledDevicesStatus.current = 'error';
+                setPreviewDevicesStatus('error');
+                setPreviewError(notice('voice.copy.126'));
+            }
         } finally {
             if (alive.current && controller.current === session && version === revision.current) setPreviewBusy(false);
         }
@@ -417,6 +429,8 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
         const version = exclusive ? ++revision.current : revision.current;
         const requestSequence = ++sequence.current;
         if (exclusive) { mutating.current = true; setPreviewBusy(true); }
+        if (action.action === 'devices') setPreviewDevicesStatus('loading');
+        else if (exclusive) setPreviewDevicesStatus(settledDevicesStatus.current);
         const expectationAtRequest = candidateExpected.current;
         const ownNoiseChange = action.action === 'apply_noise' || action.action === 'undo_noise' || action.action === 'redo_noise' ? { session, version } : null;
         if (ownNoiseChange) noiseMutation.current = ownNoiseChange;
@@ -445,6 +459,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
             return action.action === 'prepare_noise' || action.action === 'apply_noise' || action.action === 'undo_noise' || action.action === 'redo_noise' ? accepted : true;
         } catch (error) {
             if (alive.current && controller.current === session && version === revision.current) {
+                if (action.action === 'devices') { settledDevicesStatus.current = 'error'; setPreviewDevicesStatus('error'); }
                 setPreviewError(notice('voice.copy.128', { arg0: clientErrorNotice(error) }));
                 if (action.action === 'stop') setStopUnconfirmed(true);
             }
@@ -497,7 +512,8 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
             && expected.baseRevision === proposalBasis.revision && expected.draftRevision === proposalBasis.draftRevision) return;
         const previous = candidateRef.current;
         clearCandidate();
-        revision.current += 1; mutating.current = false; setPreviewBusy(false);
+        // 取得中の一覧応答は revision で破棄されるため、表示も確定済みの状態へ戻す。
+        revision.current += 1; mutating.current = false; setPreviewBusy(false); setPreviewDevicesStatus(settledDevicesStatus.current);
         if (previous && controller.current?.ready) {
             const session = controller.current;
             void session.send({ action: 'cancel_candidate', candidateId: previous.id }).catch(() => {
@@ -608,7 +624,7 @@ function useIndependentVoicePreview(isOpen: boolean, candidateDraft?: CandidateD
     };
     return {
         prepareNoise, applyNoise, undoNoise, redoNoise, candidate, candidateMode, prepareCandidate, prepareProposal, invalidateProposalPreferences, returnToRecording,
-        preview: snapshot, previewDevices: devices, previewDeviceId: deviceId, safeOutput, setSafeOutput,
+        preview: snapshot, previewDevices: devices, previewDevicesStatus, previewDeviceId: deviceId, safeOutput, setSafeOutput,
         selectedOutputIsVirtual: Boolean(devices.find(device => device.id === deviceId && isVirtualAudioOutput(device.name))),
         requiresSafeOutputConfirm: Boolean(devices.find(device => device.id === deviceId && isVirtualAudioOutput(device.name))) || missingSavedDevice,
         outputConfirmed: safeOutput || (devices.some(device => device.id === deviceId && !isVirtualAudioOutput(device.name)) && !missingSavedDevice),

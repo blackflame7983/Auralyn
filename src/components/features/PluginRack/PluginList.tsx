@@ -137,7 +137,7 @@ export const PluginList: React.FC<PluginListProps> = ({
 
     return (
         <TooltipProvider>
-            <div className="w-full space-y-4">
+            <div className="min-w-0 w-full space-y-4 wrap-anywhere">
                 {/* Header / Rack Ears */}
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4 px-2">
                     <h2 id={rackKind === 'voice' ? "plugin-rack-heading" : "post-mix-rack-heading"} tabIndex={-1} className="text-ui-heading font-bold text-muted-foreground">{t(rackKind === 'voice' ? 'rack.title' : 'postMix.current')}</h2>

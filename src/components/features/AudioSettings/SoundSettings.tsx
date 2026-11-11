@@ -226,7 +226,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
 
                   {!engineStats?.noiseReductionEnabled && <p className="text-ui-support text-muted-foreground">{t('settings.noiseOffHint')}</p>}
                   <div className="min-w-0 space-y-4">
-                  <fieldset className="max-w-[22rem] space-y-2"><legend className="sr-only">{t('structure.noise.standard')}</legend>
+                  <fieldset className="space-y-2"><legend className="sr-only">{t('structure.noise.standard')}</legend>
                     <SegmentedControl label={t('structure.noise.standard')}
                       options={([{ value: 'low', label: t('master.nrLow') }, { value: 'high', label: t('master.nrHigh') }] as Array<{ value: NoiseControlMode; label: string }>)}
                       value={noiseMode} onValueChange={mode => {
@@ -234,14 +234,14 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                         void applyNoiseControlConfig({ mode });
                       }} />
                   </fieldset>
+                  {(noiseMode === 'smart' || noiseMode === 'venue') && <p role="status" className="text-ui-support text-muted-foreground">{t('settings.noiseAdvancedActive', { mode: t(noiseMode === 'smart' ? 'master.nrLearn' : 'master.nrVenue') })}</p>}
                   {(noiseMode === 'low' || noiseMode === 'high') && <p className="text-ui-support text-muted-foreground">{t(noiseMode === 'low' ? 'settings.AudioSettingsModal.117' : 'settings.AudioSettingsModal.118')}</p>}
                   <details open={noiseAdvancedOpen} onToggle={event => setNoiseAdvancedOpen(event.currentTarget.open)} className="border-t border-border pt-3">
                     <summary className="cursor-pointer text-ui-control font-semibold">
                       {t('settings.noiseDetails')}
-                      {(noiseMode === 'smart' || noiseMode === 'venue') && <span className="ml-3 text-ui-support font-normal text-muted-foreground">{t(noiseMode === 'smart' ? 'master.nrLearn' : 'master.nrVenue')}</span>}
                     </summary>
                     {noiseAdvancedOpen && <div className="space-y-4 pt-4">
-                  <fieldset className="max-w-[22rem] space-y-2"><legend className="text-ui-control font-semibold">{t('structure.noise.adaptive')}</legend>
+                  <fieldset className="space-y-2"><legend className="text-ui-control font-semibold">{t('structure.noise.adaptive')}</legend>
                     <SegmentedControl<NoiseControlMode> label={t('structure.noise.adaptive')} value={noiseMode}
                       options={[{ value: 'smart', label: t('master.nrLearn') }, { value: 'venue', label: t('master.nrVenue') }]}
                       onValueChange={mode => {
@@ -252,7 +252,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                   {(noiseMode === 'smart' || noiseMode === 'venue') && <p className="max-w-prose text-ui-support text-muted-foreground leading-relaxed">{t(noiseMode === 'smart' ? 'settings.AudioSettingsModal.115' : 'settings.AudioSettingsModal.116')}</p>}
 
                   {/* 強さはふだん弱／強の2択だけにし、数値の強さは外観の「数値の詳細を表示」で出す。 */}
-                  {!isBeginnerMode && <div className="max-w-[22rem] space-y-2">
+                  {!isBeginnerMode && <div className="space-y-2">
                     <SliderField disabled={!engineStats || noiseActionBusy} label={t('settings.AudioSettingsModal.120')} min={25} max={125} step={5} value={noiseStrength}
                       formatValue={value => `${value}%`} onValueChange={value => { noiseStrengthEditing.current = true; setNoiseStrength(value); }}
                       onValueCommit={value => commitNoiseStrength(String(value))} />
@@ -309,7 +309,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                     value={singingModel.snapshot?.config.preset ?? builtInEffectsPreset}
                     onValueChange={preset => void applyBuiltInEffects({ active: true, preset })} />
 
-                  <div className="w-full max-w-[22rem] space-y-2">
+                  <div className="w-full space-y-2">
                     {singingModel.snapshot?.config.preset === 'singing' && <p className="text-ui-support">{t('settings.AudioSettingsModal.102')}</p>}
                     <SliderField label={t('settings.AudioSettingsModal.104')}
                       disabled={singingModel.snapshot?.config.preset === 'singing' || !singingModel.snapshot || singingModel.busy}
@@ -332,7 +332,7 @@ export function SoundSettings({ model, engineStats, singingModel, liveModel, isB
                         aria-label={t('settings.deesser')}
                       />
                     </div>
-                    <div className="w-full max-w-[22rem]">
+                    <div className="w-full">
                       <SliderField label={t('settings.deesserAmount')}
                         disabled={!singingModel.snapshot?.config.deesser || singingModel.busy}
                         min={0} max={100} step={5} value={deesserAmount} formatValue={value => `${value}%`}

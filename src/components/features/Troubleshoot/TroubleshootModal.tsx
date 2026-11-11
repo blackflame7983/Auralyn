@@ -11,7 +11,7 @@ import { checkRouteSampleRatesDisplay } from '../../../lib/routingSampleRates';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     MdClose, MdCheckCircle, MdError, MdWarning, MdRefresh, MdHelpOutline,
-    MdContentCopy, MdArrowBack,
+    MdContentCopy, MdArrowBack, MdArrowForward,
 } from 'react-icons/md';
 import { listen } from '@tauri-apps/api/event';
 import { getVersion } from '@tauri-apps/api/app';
@@ -530,10 +530,13 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                         <Button variant="outline"
                             onClick={() => handleStart(rememberedPurpose)}
                             disabled={isRunning}
-                            className="border-primary/50 bg-primary/5 hover:bg-primary/10 w-full h-auto min-h-10 flex-col items-start whitespace-normal text-left"
+                            className="w-full h-auto min-h-10 justify-between gap-4 whitespace-normal text-left"
                         >
-                            <div className="font-bold text-ui-support text-foreground">{t('troubleshoot.runFor', { purpose: t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.label) })}</div>
-                            <div className="text-ui-support text-muted-foreground mt-1">{t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.hint)}</div>
+                            <span className="min-w-0">
+                                <span className="block text-ui-control font-semibold">{t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.label)}</span>
+                                <span className="block text-ui-support text-muted-foreground mt-1">{t(PURPOSE_OPTIONS.find(option => option.id === rememberedPurpose)!.hint)}</span>
+                            </span>
+                            <span className="flex shrink-0 items-center gap-1 text-ui-support">{t('troubleshoot.start')}<MdArrowForward aria-hidden="true" /></span>
                         </Button>
                         <button type="button" onClick={() => setChoosePurpose(true)} className="text-ui-support font-semibold text-primary underline underline-offset-2 hover:text-foreground">{t('troubleshoot.changePurpose')}</button>
                     </div>
@@ -546,10 +549,13 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                 key={opt.id}
                                 onClick={() => handleStart(opt.id)}
                                 disabled={isRunning}
-                                className="w-full h-auto min-h-10 flex-col items-start whitespace-normal text-left"
+                                className="w-full h-auto min-h-10 justify-between gap-4 whitespace-normal text-left"
                             >
-                                <div className="font-bold text-ui-support text-foreground">{t(opt.label)}</div>
-                                <div className="text-ui-support text-muted-foreground mt-1">{t(opt.hint)}</div>
+                                <span className="min-w-0">
+                                    <span className="block text-ui-control font-semibold">{t(opt.label)}</span>
+                                    <span className="block text-ui-support text-muted-foreground mt-1">{t(opt.hint)}</span>
+                                </span>
+                                <span className="flex shrink-0 items-center gap-1 text-ui-support">{t('troubleshoot.start')}<MdArrowForward aria-hidden="true" /></span>
                             </Button>
                         ))}
                     </div>
@@ -607,7 +613,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                     </div>
                 )}
 
-                <div className="px-6 py-4 border-t border-border flex items-center justify-between bg-muted/30 shrink-0">
+                {(phase !== 'purpose' || purpose !== null) && <footer className="px-6 py-4 border-t border-border flex items-center justify-between bg-muted/30 shrink-0">
                     <div className="flex items-center gap-2">
                         {phase !== 'purpose' && (
                             <Button variant="ghost" size="sm"
@@ -638,7 +644,7 @@ export const TroubleshootModal: React.FC<TroubleshootModalProps> = ({
                                 {t('guide.copy.420')}</Button>
                         )}
                     </div>
-                </div>
+                </footer>}
             </div>
         </div>
         </Modal>

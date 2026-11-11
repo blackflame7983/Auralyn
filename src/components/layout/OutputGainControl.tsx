@@ -162,7 +162,7 @@ export function OutputGainControl() {
         className="w-32 shrink-0"
         onDoubleClick={() => handleOutputGainChange([100])}
       />
-      <span className="hidden md:inline text-ui-support font-mono tabular-nums text-muted-foreground min-w-[32px] text-right">
+      <span className="hidden md:inline w-[6ch] min-w-[6ch] shrink-0 whitespace-nowrap text-ui-support font-mono tabular-nums text-muted-foreground text-right">
         {Math.round(outputGain * 10) / 10}%
       </span>
     </div>

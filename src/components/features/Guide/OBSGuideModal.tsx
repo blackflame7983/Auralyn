@@ -1,4 +1,4 @@
-import { ChoiceCard } from '@/components/ui/ChoiceCard';
+import { DeviceChoiceCard } from './DeviceChoiceCard';
 import { Button } from '@/components/ui/button';
 import { SingingRouteChoice, SingingRouteGuide, type SingingRoute } from './SingingRouteGuide';
 import { useMessages } from '@/i18n/LocaleProvider';
@@ -101,35 +101,14 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                         <div className="space-y-6">
                             <SingingRouteChoice value={route} onChange={chooseRoute} />
                             {route === 'processed' ? <>
-                            <h3 className="text-ui-heading font-bold text-foreground">{t('guide.copy.003')}</h3>
-                            <p className="text-muted-foreground">
-                                {t('guide.copy.004')}</p>
-
-                            <div className="grid md:grid-cols-2 gap-4 mt-4">
-                                <ChoiceCard name="obs-device" value="true" onChange={() => setUseHardwareMixer(true)} onActivate={nextStep} aria-label={t('guide.copy.005')} checked={useHardwareMixer === true}
-                                >
-                                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                        <MdMic className="w-6 h-6 text-primary" />
-                                    </div>
-                                    <h4 className="font-bold text-foreground mb-2">{t('guide.copy.006')}</h4>
-                                    <p className="text-ui-support text-muted-foreground">
-                                        {t('guide.copy.008')}</p>
-                                    <span className="inline-block mt-4 text-ui-support font-bold text-primary bg-primary/10 px-2 py-1 rounded-control">
-                                        {t('guide.copy.009')}</span>
-                                </ChoiceCard>
-
-                                <ChoiceCard name="obs-device" value="false" onChange={() => setUseHardwareMixer(false)} onActivate={nextStep} aria-label={t('guide.copy.010')} checked={useHardwareMixer === false}
-                                >
-                                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                        <MdHeadphones className="w-6 h-6 text-primary" />
-                                    </div>
-                                    <h4 className="font-bold text-foreground mb-2">{t('guide.copy.011')}</h4>
-                                    <p className="text-ui-support text-muted-foreground">
-                                        {t('guide.copy.013')}</p>
-                                    <span className="inline-block mt-4 text-ui-support font-bold text-primary bg-primary/10 px-2 py-1 rounded-control">
-                                        {t('guide.copy.014')}</span>
-                                </ChoiceCard>
-                            </div>
+                                <div className="space-y-2 text-left">
+                                    <h3 className="text-ui-heading font-bold text-foreground">{t('guide.copy.003')}</h3>
+                                    <p className="text-muted-foreground">{t('guide.copy.004')}</p>
+                                </div>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <DeviceChoiceCard name="obs-device" value="true" label={t('guide.copy.005')} title={t('guide.copy.006')} description={t('guide.copy.008')} badge={t('guide.copy.009')} icon={<MdMic className="h-6 w-6" />} checked={useHardwareMixer === true} onChange={() => setUseHardwareMixer(true)} onActivate={nextStep} />
+                                    <DeviceChoiceCard name="obs-device" value="false" label={t('guide.copy.010')} title={t('guide.copy.011')} description={t('guide.copy.013')} badge={t('guide.copy.014')} icon={<MdHeadphones className="h-6 w-6" />} checked={useHardwareMixer === false} onChange={() => setUseHardwareMixer(false)} onActivate={nextStep} />
+                                </div>
                             </> : <p className="text-ui-support text-muted-foreground">{t('singingRoute.directInstructions')}</p>}
                         </div>
                     )}
@@ -186,8 +165,8 @@ export const OBSGuideModal: React.FC<OBSGuideModalProps> = ({ isOpen, onClose, o
                                 {t('guide.copy.031')}</p>
 
                             <div className="flex flex-col gap-4 py-4">
-                                <div className="bg-card border border-border p-4 rounded-card flex items-center justify-between">
-                                    <div>
+                                <div className="bg-card border border-border p-4 rounded-card flex min-w-0 flex-wrap items-center justify-between gap-3">
+                                    <div className="min-w-0 flex-1 wrap-anywhere">
                                         <div className="font-bold text-foreground mb-1">{t('guide.copy.032')}</div>
                                         <div className="text-ui-support text-primary font-mono">
                                             {useHardwareMixer ? t('guide.copy.033') : t('guide.copy.034')}

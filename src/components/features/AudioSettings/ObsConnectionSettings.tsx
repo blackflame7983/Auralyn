@@ -279,9 +279,10 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
 
             <div className="space-y-4">
               {/* 接続 → 到達確認 → 設定の変更 → 連動 の順に並べる。 */}
-              <section aria-label={t('obs.section.connect')} className="rounded-card border border-border p-4 space-y-3">
+              <section aria-label={t('obs.section.connect')} className="space-y-3">
+                <h3 className="text-ui-heading font-semibold">{t('obs.section.connect')}</h3>
                 {isObsConnected && (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-muted/50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
                     <Button
                       type="button"
                       variant="outline"
@@ -296,7 +297,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                 )}
                 {/* 入力欄は接続中も残し、接続先の確認だけできるよう折りたたむ。 */}
                 <details ref={connectionDetails} open className="space-y-3">
-                  <summary onClick={() => { connectionDetailsTouched.current = true; }} className="cursor-pointer text-ui-heading font-semibold">{t('obs.section.connect')}{isObsConnected && <span role="status"> — {t('settings.obs.connectedTarget', { host: obsHost, port: obsPort })} · {t('settings.ObsConnectionSettings.291')}</span>}</summary>
+                  <summary onClick={() => { connectionDetailsTouched.current = true; }} className="cursor-pointer text-ui-heading font-semibold">{t('obs.target')}{isObsConnected && <span role="status"> — {t('settings.obs.connectedTarget', { host: obsHost, port: obsPort })} · {t('settings.ObsConnectionSettings.291')}</span>}</summary>
                   <div className="space-y-4 pt-2">
                   <div className="space-y-2">
                     <Field label={t('settings.ObsConnectionSettings.280')}>
@@ -384,7 +385,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                 )}
               </section>
               {isObsConnected && (
-                <section aria-label={t('obs.section.reach')} className="rounded-card border border-border p-4 space-y-3">
+                <section aria-label={t('obs.section.reach')} className="space-y-3 border-t border-border pt-4">
                   <h3 className="text-foreground text-ui-heading font-semibold">{t('obs.section.reach')}</h3>
                   <div className="space-y-3">
 
@@ -452,7 +453,7 @@ export function ObsConnectionSettings({ showConfirm, onClose, onOpenOBSGuide, on
                   </div>
                 </section>
               )}
-              <section aria-label={t('settings.ObsConnectionSettings.298')} className="rounded-card border border-border p-4 space-y-3">
+              <section aria-label={t('settings.ObsConnectionSettings.298')} className="space-y-3 border-t border-border pt-4">
                 <h3 className="text-foreground text-ui-heading font-semibold">{t('settings.ObsConnectionSettings.298')}</h3>
                 <ObsSafeSetup
                   connected={isObsConnected}

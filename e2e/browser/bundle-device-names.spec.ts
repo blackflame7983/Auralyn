@@ -31,7 +31,7 @@ for (const locale of ['ja', 'en'] as const) for (const missing of [false, true])
         const rack = page.locator('#vst-panel-toggle');
         if (await rack.getAttribute('aria-expanded') !== 'true') await rack.click();
         await page.getByRole('button', { name: message(locale, 'rack.manageProfiles'), exact: true }).click();
-        await page.getByRole('tab', { name: message(locale, 'presets.copy.058'), exact: true }).click();
+        await page.getByRole('tab', { name: message(locale, 'presets.tab.bundle'), exact: true }).click();
         await page.getByRole('combobox', { name: message(locale, 'presets.copy.145'), exact: true }).selectOption('mix');
         await page.getByRole('button', { name: message(locale, 'presets.copy.148'), exact: true }).click();
         const mixing = page.getByRole('region', { name: message(locale, 'bundle.mixing.diff'), exact: true });

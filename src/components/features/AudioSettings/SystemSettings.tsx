@@ -133,14 +133,10 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
   const { autostartEnabled, setAutostartEnabled, autostartCanChange, setAutostartCanChange, autostartReason, setAutostartReason, engineTuningConfig, setEngineTuningConfig, systemSaving, statsLoading, refreshEngineRuntimeStats, saveEngineTuningConfig, handleDangerousToggle, openSections, setOpenSections } = model;
   return (
           <TabsContent value="system" className="space-y-4">
-            {onOpenWizard && <section className="rounded-card border border-border p-4 space-y-3">
-              <h3 className="text-ui-heading font-semibold">{t('settings.system.setup')}</h3>
-              <p className="text-ui-support text-muted-foreground">{t('settings.system.setupDescription')}</p>
-              <Button type="button" disabled={loading} onClick={() => { onClose(); onOpenWizard(); }} variant="outline" className="h-auto min-h-10 whitespace-normal">{t('settings.AudioSettingsModal.198')}</Button>
-            </section>}
-
+            <section aria-label={t('settings.system.preferences')} className="space-y-3">
+              <h3 className="text-ui-heading font-semibold">{t('settings.system.preferences')}</h3>
             {/* Startup Settings */}
-            <section className="p-4 bg-muted/20 border border-border rounded-card flex items-center justify-between">
+            <section className="flex items-center justify-between gap-3 py-2">
               <div>
                 <div className="flex items-center gap-1"><h3 className="text-foreground text-ui-heading font-semibold">{t('settings.AudioSettingsModal.142')}</h3><InfoPopover label={t('settings.AudioSettingsModal.142')}>{t('settings.AudioSettingsModal.143')}</InfoPopover></div>
                 <div className="text-ui-support text-muted-foreground mt-0.5">{autostartReason ? renderNotice(t, autostartReason) : t('settings.system.autostartAudio')}</div>
@@ -175,6 +171,16 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
             </section>
 
             <UpdatePreferences />
+            </section>
+            <section aria-label={t('settings.system.maintenance')} className="space-y-4 border-t border-border pt-5">
+              <h3 className="text-ui-heading font-semibold">{t('settings.system.maintenance')}</h3>
+            {onOpenWizard && <section className="rounded-card border border-border p-4 space-y-3">
+              <h3 className="text-ui-heading font-semibold">{t('settings.system.setup')}</h3>
+              <p className="text-ui-support text-muted-foreground">{t('settings.system.setupDescription')}</p>
+              <Button type="button" disabled={loading} onClick={() => { onClose(); onOpenWizard(); }} variant="outline" className="h-auto min-h-10 whitespace-normal">{t('settings.AudioSettingsModal.198')}</Button>
+            </section>}
+
+
             <section className="rounded-card border border-border p-4 space-y-2">
               <div className="flex items-center gap-1"><h3 className="text-ui-heading font-semibold">{t('structure.restart')}</h3><InfoPopover label={t('settings.system.restartHelp')}>{t('settings.system.restartDescription')}</InfoPopover></div>
               <p className="text-ui-support text-muted-foreground">{t('settings.system.restartWarning')}</p>
@@ -432,6 +438,7 @@ export function SystemSettings({ model, engineStats, loading, setLoading, showCo
                     {t('settings.AudioSettingsModal.195')}</Button>
                 </div>
               </div>
+            </section>
             </section>
             {/* アプリ情報 */}
             <div className="p-6 bg-muted/20 border border-border rounded-card flex flex-col items-center justify-center space-y-3">

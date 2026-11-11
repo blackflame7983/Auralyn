@@ -80,6 +80,7 @@
   配色（DESIGN.md 5.1、BRANDING.md「静かな面、一か所の光」）
   面（背景・カード・枠線・文字）は彩度の低い段階で作り、色はメーター・状態色・本番帯のオーロラに集める。
 */
+[data-theme-preview="light"],
 :root {
   color-scheme: light;
   --background: 220 14% 97%;
@@ -152,6 +153,8 @@
   --motion-attention: 1200ms;
 }
 
+[data-theme-preview="dark"],
+[data-theme-preview="gaming"],
 .dark {
   color-scheme: dark;
   /* オーロラ（既定）: わずかに青みのある黒の地。面は色相を持たせず、主色を Aurora Teal にする。 */
@@ -206,6 +209,7 @@
   --aurora-strength: 1;
 }
 
+[data-theme-preview="gaming"],
 .gaming {
   /* ゲーミング: 黒に近い地に、ネオンのマゼンタを主色と選択色にし、オーロラ（シアン主色）と見てすぐ区別できるようにする。 */
   --background: 270 25% 3%;
@@ -504,7 +508,7 @@
   --vst-panel-width: 0px;
 }
 .app-shell[data-large-meter] {
-  --visible-meter-width: 64px;
+  --visible-meter-width: 88px;
 }
 .app-shell[data-large-meter]:has(.large-meter-motion[data-detailed]) {
   --visible-meter-width: 96px;
@@ -592,7 +596,7 @@
   max-height: 720px;
   /* 親の幅指定は開閉時だけ変わる。フレームごとにCSS変数を更新せず translate を遷移させる。 */
   /* 広い窓でもホーム（最大1180px）の右隣へ置く。ホームの左右余白の差と12pxの間隔を含める。 */
-  translate: calc(-1 * (var(--vst-panel-width, 0px) + max(0px, (100vw - var(--vst-panel-width, 0px) - var(--visible-meter-width, 64px) - 1228px) / 2))) 0;
+  translate: calc(-1 * (var(--vst-panel-width, 0px) + max(0px, (100vw - var(--vst-panel-width, 0px) - var(--visible-meter-width, 88px) - 1228px) / 2))) 0;
   transition: translate var(--motion-panel) var(--ease-drawer);
 }
 .vst-panel-scrim {

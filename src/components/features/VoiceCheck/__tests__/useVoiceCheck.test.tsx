@@ -39,6 +39,72 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
+it('試聴先の取得中・取得済み0件・失敗・再取得成功を区別する', async () => {
+    const opening = deferred<ReturnType<typeof previewSnapshot>>();
+    let openRequest: Parameters<typeof previewSnapshot>[0] | undefined;
+    let deviceResult: 'empty' | 'fail' | 'found' = 'empty';
+    vi.mocked(voicePreviewApi.request).mockImplementation(async request => {
+        if (request.action === 'open') { openRequest = request; return opening.promise; }
+        if (request.action === 'devices' && deviceResult === 'fail') throw new Error('unavailable');
+        return previewSnapshot(request, { devices: request.action === 'devices' && deviceResult === 'found' ? [{ id: 'hp', name: 'Headphones' }] : [] });
+    });
+    const { result } = renderHook(() => useVoiceCheck(true));
+    await waitFor(() => expect(openRequest).toBeDefined());
+    expect(result.current.previewDevicesStatus).toBe('pending');
+    await act(async () => opening.resolve(previewSnapshot(openRequest!)));
+    expect(result.current.previewDevicesStatus).toBe('pending');
+    await act(async () => { await result.current.refreshPreviewDevices(); });
+    expect(result.current.previewDevicesStatus).toBe('ready');
+    expect(result.current.previewDevices).toEqual([]);
+    deviceResult = 'fail';
+    await act(async () => { await result.current.refreshPreviewDevices(); });
+    expect(result.current.previewDevicesStatus).toBe('error');
+    deviceResult = 'found';
+    await act(async () => { await result.current.refreshPreviewDevices(); });
+    expect(result.current.previewDevicesStatus).toBe('ready');
+    expect(result.current.previewDevices).toEqual([{ id: 'hp', name: 'Headphones' }]);
+    expect(result.current.outputConfirmed).toBe(true);
+});
+
+it('一覧取得中に停止したら取得前の表示へ戻り、遅い一覧応答を表示しない', async () => {
+    const listed = deferred<ReturnType<typeof previewSnapshot>>();
+    let deviceRequest: Parameters<typeof previewSnapshot>[0] | undefined;
+    vi.mocked(voicePreviewApi.request).mockImplementation(async request => {
+        if (request.action === 'devices') { deviceRequest = request; return listed.promise; }
+        return previewSnapshot(request, { state: request.action === 'stop' ? 'stopped' : 'idle' });
+    });
+    const { result } = renderHook(() => useVoiceCheck(true));
+    await waitFor(() => expect(result.current.preview).not.toBeNull());
+    act(() => { void result.current.refreshPreviewDevices(); });
+    await waitFor(() => expect(deviceRequest).toBeDefined());
+    expect(result.current.previewDevicesStatus).toBe('loading');
+    await act(async () => { await result.current.handleStopPreview(); });
+    expect(result.current.previewDevicesStatus).toBe('pending');
+    await act(async () => listed.resolve(previewSnapshot(deviceRequest!, { devices: [{ id: 'hp', name: 'Headphones' }] })));
+    expect(result.current.previewDevicesStatus).toBe('pending');
+    expect(result.current.previewDevices).toEqual([]);
+});
+
+it('一覧取得中に下書きが変わったら取得前の表示へ戻り、取得中のまま残らない', async () => {
+    const draft = singingDraft();
+    const listed = deferred<ReturnType<typeof previewSnapshot>>();
+    let deviceRequest: Parameters<typeof previewSnapshot>[0] | undefined;
+    vi.mocked(voicePreviewApi.request).mockImplementation(async request => {
+        if (request.action === 'devices') { deviceRequest = request; return listed.promise; }
+        return previewSnapshot(request);
+    });
+    const { result, rerender } = renderHook(({ draft }) => useVoiceCheck(true, draft), { initialProps: { draft } });
+    await waitFor(() => expect(result.current.preview).not.toBeNull());
+    act(() => { void result.current.refreshPreviewDevices(); });
+    await waitFor(() => expect(deviceRequest).toBeDefined());
+    expect(result.current.previewDevicesStatus).toBe('loading');
+    rerender({ draft: { ...draft, draftRevision: 2, config: { ...draft.config, singing: { ...defaultSinging, lowCutHz: 120 } } } });
+    expect(result.current.previewDevicesStatus).toBe('pending');
+    await act(async () => listed.resolve(previewSnapshot(deviceRequest!, { devices: [{ id: 'hp', name: 'Headphones' }] })));
+    expect(result.current.previewDevicesStatus).toBe('pending');
+    expect(result.current.previewBusy).toBe(false);
+});
+
 it.each(['select', 'rediscover'] as const)('消失した保存済み試聴先を%sで復旧すると、物理出力は確認操作なしで再生できる', async recovery => {
     localStorage.setItem('vst_host_voice_check_preview_device', 'saved-headphones');
     const headphones = { id: 'headphones', name: 'Headphones' };

@@ -447,14 +447,14 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                 <div className="min-h-0 flex-1 overflow-y-auto">
                 {temporaryActive && <div className="px-4 pt-3"><TemporarySessionPanel /></div>}
                 <Tabs value={recoveryOpen ? 'recovery' : bundleOpen ? 'bundle' : 'preset'} onValueChange={value => { setRecoveryOpen(value === 'recovery'); setBundleOpen(value === 'bundle'); }}>
- {/* 英語では3つの名前が長く幅に収まらないため、タブを等分して文字を折り返す。 */}
  <TabsList aria-label={t('presets.copy.056')} className="m-2 grid h-auto grid-cols-3">
- {(['preset', 'bundle', 'recovery'] as const).map(value => <TabsTrigger key={value} value={value} className="h-auto min-w-0 whitespace-normal text-center">{t(value === 'preset' ? 'presets.copy.057' : value === 'bundle' ? 'presets.copy.058' : 'recoveryHub.title')}</TabsTrigger>)}
+ {(['preset', 'bundle', 'recovery'] as const).map(value => <TabsTrigger key={value} value={value} className="min-w-0 text-center">{t(`presets.tab.${value}`)}</TabsTrigger>)}
  </TabsList><TabsContent value={recoveryOpen ? 'recovery' : bundleOpen ? 'bundle' : 'preset'}>
+                <p className="px-4 py-3 text-ui-support text-muted-foreground">{t(recoveryOpen ? 'presets.intro.recovery' : bundleOpen ? 'presets.intro.bundle' : 'presets.intro.preset')}</p>
                 {recoveryOpen ? <RecoveryActionsPanel onOperation={onBundleOperation} onVoiceCheck={onOpenVoiceCheck} onSettings={onOpenAudioSettings} /> : bundleOpen ? <BroadcastBundlePanel onOperation={onBundleOperation} onObsSettings={onObsSettings} /> : <>
                 <div className="p-4 border-b border-border bg-muted/30 space-y-3">
                     <div className="flex items-center gap-1">
-                        <h3 className="text-ui-support font-bold text-muted-foreground uppercase tracking-wider">{t('presets.copy.059')}</h3>
+                        <h3 className="text-ui-heading font-semibold">{t('presets.copy.059')}</h3>
                         <SavePurposeHelp />
                     </div>
                     <SaveScopeSummary kind="profile" />
@@ -490,20 +490,11 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                     </div>
                 </div>
 
-                <fieldset className="px-4 py-3 border-b text-ui-support">
-                    <legend>{t('profilePurpose.apply')}</legend>
+                <fieldset className="mx-4 my-4 space-y-3 text-ui-support">
+                    <legend className="text-ui-heading font-semibold mb-3">{t('profilePurpose.apply')}</legend>
                     <label className="flex gap-2"><Field label={null}><Checkbox type="checkbox" checked={soundOnly} onChange={e => setSoundOnly(e.target.checked)} /></Field>{t('profilePurpose.applySound')}</label>
                     {!soundOnly && <p className="text-ui-support text-muted-foreground mt-2">{t('profilePurpose.impact')}</p>}
                 </fieldset>
-                <div className="px-4 py-2 border-b border-border flex items-center justify-end">
-                    <Button variant="outline" size="sm"
-                        onClick={handleImport}
-                        className="flex items-center gap-1.5"
-                    >
-                        <MdFileUpload className="w-3.5 h-3.5" />
-                        {t('presets.copy.065')}</Button>
-                </div>
-
                 {applySummary && (
                     <ApplyResultSummary
                         summary={applySummary}
@@ -515,8 +506,13 @@ export const PresetManagerModal: React.FC<PresetManagerModalProps> = ({
                 )}
 
                 <div className="profile-list-region flex-none overflow-hidden flex flex-col">
-                    <div className="p-4 pb-2">
-                        <label htmlFor="profile-search" className="block text-ui-support font-medium mb-1">{t('presets.copy.066')}</label>
+                    <div className="p-4 pb-2 border-t border-border space-y-3">
+                        <h3 className="text-ui-heading font-semibold">{t('presets.savedProfiles')}</h3>
+                        <Button variant="outline" size="sm" onClick={handleImport} className="gap-1.5">
+                            <MdFileUpload className="w-3.5 h-3.5" />
+                            {t('presets.copy.065')}
+                        </Button>
+                        <label htmlFor="profile-search" className="block text-ui-control font-medium">{t('presets.copy.066')}</label>
                         <div className="relative">
                             <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                             <Input

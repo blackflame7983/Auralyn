@@ -1,3 +1,4 @@
+import { ThemeSwatch } from './ThemeSwatch';
 import { Input } from '@/components/ui/Input';
 import { Field } from '@/components/ui/Field';
 import { Select } from '@/components/ui/Select';
@@ -50,7 +51,7 @@ interface AudioSettingsModalProps {
   singingModel?: SingingDraft;
   onPreviewSinging?: () => void;
   onSaveSingingProfile?: () => void;
-  initialTab?: 'audio' | 'obs' | 'sound' | 'shortcuts';
+  initialTab?: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
   /** 移動の依頼ごとに増える番号。同じ移動先を続けて頼まれても切り替える。 */
   tabRequest?: number;
   initialSection?: 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
@@ -534,6 +535,14 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <Button onClick={() => setError(null)} variant="default" className="h-auto min-h-10 whitespace-normal w-full">{t('settings.AudioSettingsModal.031')}</Button>
                 <Button onClick={onClose} variant="outline" className="h-auto min-h-10 whitespace-normal w-full">{t('common.close')}</Button>
               </div>}
+                <section aria-label={t('settings.connection.summary')} className="space-y-2 border-b border-border pb-4">
+                  <h3 className="text-ui-heading font-semibold">{t('settings.connection.summary')}</h3>
+                  <p className="min-w-0 wrap-anywhere text-ui-support">{t('settings.connection.summaryValues', {
+                    host: displayAudioHost(selectedHost),
+                    input: (processInput && inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : needsDeviceChoice ? '' : selectedInput) || t('settings.connection.notSelected'),
+                    output: selectedOutputDevice?.name || t('settings.connection.notSelected'),
+                  })}</p>
+                </section>
                 <div id="primary-input-settings" tabIndex={-1}><ProcessInputPanel value={inputSource} onChange={next => {
                   editConnection('source');
                   if (processInput && next.source.kind === 'device') setNeedsDeviceChoice(true);
@@ -871,26 +880,29 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 <h3 className="mb-3 flex items-center gap-2 text-foreground text-ui-heading font-semibold">
                   {t('settings.AudioSettingsModal.130')}</h3>
                 <RadioGroup value={theme} onValueChange={(v) => setTheme(v as any)} className="grid auto-rows-fr gap-3">
-                  <div className="flex items-center space-x-2 border border-border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('light')}>
+                  <div className={`flex min-w-0 items-center gap-3 border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer ${theme === 'light' ? 'border-selection ring-1 ring-selection' : 'border-border'}`} onClick={() => setTheme('light')}>
                     <RadioGroupItem value="light" id="theme-light" />
-                    <Label htmlFor="theme-light" className="cursor-pointer flex-1 text-ui-control">
+                    <Label htmlFor="theme-light" className="min-w-0 cursor-pointer flex-1 text-ui-control">
                       <span className="font-bold block">{t('header.light')}</span>
                       <span className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.131')}</span>
                     </Label>
+                    <ThemeSwatch theme="light" />
                   </div>
-                  <div className="flex items-center space-x-2 border border-border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('dark')}>
+                  <div className={`flex min-w-0 items-center gap-3 border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer ${theme === 'dark' ? 'border-selection ring-1 ring-selection' : 'border-border'}`} onClick={() => setTheme('dark')}>
                     <RadioGroupItem value="dark" id="theme-dark" />
-                    <Label htmlFor="theme-dark" className="cursor-pointer flex-1 text-ui-control">
+                    <Label htmlFor="theme-dark" className="min-w-0 cursor-pointer flex-1 text-ui-control">
                       <span className="font-bold block">{t('header.dark')}</span>
                       <span className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.132')}</span>
                     </Label>
+                    <ThemeSwatch theme="dark" />
                   </div>
-                  <div className="flex items-center space-x-2 border border-border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme('gaming')}>
+                  <div className={`flex min-w-0 items-center gap-3 border p-3 rounded-card hover:bg-muted/50 transition-colors cursor-pointer ${theme === 'gaming' ? 'border-selection ring-1 ring-selection' : 'border-border'}`} onClick={() => setTheme('gaming')}>
                     <RadioGroupItem value="gaming" id="theme-gaming" className="text-brand border-brand" />
-                    <Label htmlFor="theme-gaming" className="cursor-pointer flex-1 text-ui-control">
+                    <Label htmlFor="theme-gaming" className="min-w-0 cursor-pointer flex-1 text-ui-control">
                       <span className="font-bold block">{t('header.gaming')}</span>
                       <span className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.133')}</span>
                     </Label>
+                    <ThemeSwatch theme="gaming" />
                   </div>
                 </RadioGroup>
               </div>

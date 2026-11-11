@@ -18,6 +18,23 @@ function open(fail = false, bindings = initial) {
     });
     render(<ShortcutsPanel />);
 }
+it('操作ごとに割当と変更操作を並べ、一覧選択を開ける', async () => {
+    open();
+    const change = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
+    await waitFor(() => expect(change).toBeEnabled());
+    const row = change.closest('fieldset')!;
+    expect(row.querySelector('legend')).toHaveTextContent('緊急ミュート（切替）');
+    expect(row.querySelector('kbd')).toHaveTextContent('Alt + M');
+    expect(change).toHaveTextContent('キーを入力');
+    const choose = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを一覧から選ぶ' });
+    expect(choose).toHaveAttribute('aria-expanded', 'false');
+    const list = document.getElementById(choose.getAttribute('aria-controls')!)!;
+    expect(list).not.toBeVisible();
+    fireEvent.click(choose);
+    expect(choose).toHaveAttribute('aria-expanded', 'true');
+    expect(list).toBeVisible();
+    expect(row.querySelector('select')).toBeEnabled();
+});
 it('キー入力で既存形式を作り、重複と OS 予約を検出し保存しない', async () => {
     open();
     const input = screen.getByRole('button', { name: '緊急ミュート（オン）のキーを入力' });
@@ -29,7 +46,7 @@ it('キー入力で既存形式を作り、重複と OS 予約を検出し保存
     fireEvent.keyDown(input, { key: 'F4', code: 'F4', altKey: true });
     expect(screen.getByRole('status')).toHaveTextContent('OS の予約操作');
     fireEvent.keyDown(input, { key: 'z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
-    expect(input).toHaveTextContent('Ctrl + Shift + Z');
+    expect(input.closest('fieldset')).toHaveTextContent('Ctrl + Shift + Z');
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
     await screen.findByText('キー設定を保存しました。');
     expect(invoke).toHaveBeenCalledWith('save_shortcuts', { bindings: [
@@ -43,7 +60,7 @@ it('未対応キーと Escape は登録せず、取り消して既存の値を�
     fireEvent.click(input); await waitFor(() => expect(invoke).toHaveBeenCalledWith('begin_shortcut_capture')); fireEvent.keyDown(input, { key: 'a', code: 'KeyA' });
     expect(screen.getByRole('status')).toHaveTextContent('対応していません');
     fireEvent.keyDown(input, { key: 'Escape', code: 'Escape' });
-    expect(input).toHaveTextContent('Alt + M');
+    expect(input.closest('fieldset')).toHaveTextContent('Alt + M');
     expect(invoke).not.toHaveBeenCalledWith('save_shortcuts', expect.anything());
 });
 it('保存済みの修飾キー順が異なっても同じ組合せを重複として検出する', async () => {
@@ -216,7 +233,7 @@ it('開始応答待ちの入力は無視し、解除後の遅い応答も解放�
     expect(input).toHaveTextContent('キー入力を準備しています。まだキーを押さないでください。');
     fireEvent.keyDown(input, { key: 'z', code: 'KeyZ', altKey: true });
     fireEvent.blur(input);
-    expect(input).toHaveTextContent('Alt + M');
+    expect(input.closest('fieldset')).toHaveTextContent('Alt + M');
     await act(async () => finish('42'));
     expect(invoke).toHaveBeenCalledWith('end_shortcut_capture', { token: '42' });
 });
@@ -323,7 +340,7 @@ it.each([
     fireEvent.click(own);
     await waitFor(() => expect(own).toHaveAttribute('aria-busy', 'false'));
     act(() => receive({ payload: { token: '1', shortcut: stored } }));
-    expect(own).toHaveTextContent(canonical);
+    expect(own.closest('fieldset')).toHaveTextContent(canonical);
     expect(own).toHaveAttribute('aria-pressed', 'false');
     vi.mocked(listen).mockReset();
     vi.mocked(listen).mockImplementation(async () => () => {});
@@ -336,7 +353,7 @@ it('未設定と編集状態を示し、入力待ち中は保存できず取り�
     const save = screen.getByRole('button', { name: 'キー設定を保存' });
     const discard = screen.getByRole('button', { name: 'キー設定の編集を取り消す' });
     await waitFor(() => expect(input).toBeEnabled());
-    expect(input).toHaveTextContent('未設定');
+    expect(input.closest('fieldset')).toHaveTextContent('未設定');
     expect(save).toBeDisabled();
     expect(discard).toBeDisabled();
     const key = screen.getByLabelText('緊急ミュート（切替）の通常キー');
@@ -418,11 +435,13 @@ it('英語でも未設定を示し、代替の一覧選択にキーボードで�
     render(<LocaleProvider store={store}><ShortcutsPanel /></LocaleProvider>);
     const input = screen.getByRole('button', { name: 'Enter keys for Emergency mute (on)' });
     await waitFor(() => expect(input).toBeEnabled());
-    expect(input).toHaveTextContent('Not set');
-    const summary = screen.getAllByText('Choose from a list')[1];
-    summary.focus();
-    expect(summary).toHaveFocus();
-    expect(summary.tagName).toBe('SUMMARY');
+    expect(input.closest('fieldset')).toHaveTextContent('Not set');
+    const choose = screen.getByRole('button', { name: 'Choose keys for Emergency mute (on) from a list' });
+    choose.focus();
+    expect(choose).toHaveFocus();
+    fireEvent.click(choose);
+    expect(choose).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('combobox', { name: 'Emergency mute (on) regular key' })).toBeVisible();
 });
 
 
@@ -480,11 +499,11 @@ it('未保存の割り当てと別表記の重複キーを保護して、飛ば�
     fireEvent.change(screen.getByLabelText('緊急ミュート（切替）の修飾キー'), { target: { value: 'Alt' } });
     fireEvent.change(screen.getByLabelText('緊急ミュート（切替）の通常キー'), { target: { value: 'KeyZ' } });
     await fillRecommended();
-    expect(input).toHaveTextContent('Alt + Z');
+    expect(input.closest('fieldset')).toHaveTextContent('Alt + Z');
     expect(screen.getByRole('status')).toHaveTextContent('2件入力しました');
     expect(screen.getByRole('status')).toHaveTextContent('割り当て済みのため変更しませんでした');
     expect(screen.getByRole('status')).toHaveTextContent('Ctrl + Alt + B が別の操作');
-    expect(screen.getByRole('button', { name: 'VSTを外して比較（切替）のキーを入力' })).toHaveTextContent('未設定');
+    expect(screen.getByRole('button', { name: 'VSTを外して比較（切替）のキーを入力' }).closest('fieldset')).toHaveTextContent('未設定');
     fireEvent.click(screen.getByRole('button', { name: 'キー設定を保存' }));
     await screen.findByText('キー設定を保存しました。');
     expect(invoke).toHaveBeenCalledWith('save_shortcuts', { bindings: [
@@ -510,7 +529,7 @@ it('一括入力も取り消せて、キー入力待ち中は一括操作でき�
     await fillRecommended();
     fireEvent.click(screen.getByRole('button', { name: 'キー設定の編集を取り消す' }));
     const input = screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
-    expect(input).toHaveTextContent('未設定');
+    expect(input.closest('fieldset')).toHaveTextContent('未設定');
     expect(screen.getByRole('button', { name: 'キー設定を保存' })).toBeDisabled();
     fireEvent.click(input);
     expect(screen.getByRole('button', { name: '推奨のキーをまとめて入力' })).toBeDisabled();
@@ -523,8 +542,8 @@ it('一括入力のOS競合は既存の保存失敗表示を使い、保存済�
     expect(await screen.findByRole('status')).toHaveTextContent('OS 1409');
     await waitFor(() => expect(screen.getByRole('button', { name: 'キー設定の編集を取り消す' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'キー設定の編集を取り消す' }));
-    expect(screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' })).toHaveTextContent('Alt + M');
-    expect(screen.getByRole('button', { name: 'VSTを外して比較（切替）のキーを入力' })).toHaveTextContent('未設定');
+    expect(screen.getByRole('button', { name: '緊急ミュート（切替）のキーを入力' }).closest('fieldset')).toHaveTextContent('Alt + M');
+    expect(screen.getByRole('button', { name: 'VSTを外して比較（切替）のキーを入力' }).closest('fieldset')).toHaveTextContent('未設定');
 });
 it('英語でも推奨入力の確認と結果を表示する', async () => {
     vi.mocked(invoke).mockResolvedValue({ bindings: [], errors: [] });
@@ -545,7 +564,7 @@ it.each(['ja', 'en'] as const)('ホットキーは常設操作の正規名で表
         ? ['緊急ミュート（切替）', '緊急ミュート（オン）', '緊急ミュート（解除）', 'VSTを外して比較（切替）', 'VSTを外して比較（開始）', 'VSTを外して比較（終了）', '出力音量を1%上げる', '出力音量を1%下げる', '歌モード', '雑談モード', 'ノイズ低減を切り替える']
         : ['Emergency mute (toggle)', 'Emergency mute (on)', 'Emergency mute (off)', 'Compare without VST (toggle)', 'Compare without VST (start)', 'Compare without VST (end)', 'Increase output volume by 1%', 'Decrease output volume by 1%', 'Switch to Sing mode', 'Switch to Talk mode', 'Toggle noise reduction'];
     for (const name of names) {
-        expect(screen.getByText(name, { exact: true })).toBeVisible();
+        expect(screen.getByText(name, { exact: true, selector: 'span' })).toBeVisible();
         expect(screen.getByRole('button', { name: locale === 'ja' ? `${name}のキーを入力` : `Enter keys for ${name}` })).toBeInTheDocument();
     }
     const firstKey = screen.getByLabelText(locale === 'ja' ? `${names[0]}の通常キー` : `${names[0]} regular key`);

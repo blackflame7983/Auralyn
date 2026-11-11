@@ -256,7 +256,7 @@ test('最小〜最大: VST は作業幅を保って重なり、広い窓では�
     await page.getByRole('button', { name: '大型レベルメーターを開く', exact: true }).click();
     const meter = page.locator('.large-meter-motion');
     await expect(meter).toBeVisible();
-    expect((await meter.boundingBox())!.width).toBe(64);
+    expect((await meter.boundingBox())!.width).toBe(88);
     for (const width of [900, 960, 1024, 1280, 1440, 1536, 1920]) {
         await page.setViewportSize({ width, height: 768 });
         const main = page.locator('main');
@@ -313,7 +313,7 @@ test('細身・詳細メーターはホームの近くに並び、目盛りが�
             })).toBeLessThanOrEqual(24);
             const content = (await page.locator('main > .mx-auto').boundingBox())!;
             const box = (await meter.boundingBox())!;
-            expect(box.width).toBe(detailed ? 96 : 64);
+            expect(box.width).toBe(detailed ? 96 : 88);
             expect(box.x - content.x - content.width).toBeGreaterThanOrEqual(8);
             const track = (await meter.getByRole('meter').boundingBox())!;
             const status = (await meter.getByRole('status').boundingBox())!;

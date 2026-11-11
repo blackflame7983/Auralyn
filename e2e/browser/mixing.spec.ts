@@ -35,6 +35,10 @@ test('オケは1段で自動表示し、キーボードの音量調整を適用�
     await page.setViewportSize({ width: 900, height: 600 }); await fixture(page); await page.goto('/'); const dialog = await streamMix(page);
     const mixing = dialog.locator('#mixing-settings'); await keyboardOpen(page, mixing.locator('summary').first());
     await expect(mixing.getByText('適用中の入力元:', { exact: false })).toBeVisible(); await expect(mixing.getByText('声の処理待ち：10.0 ms', { exact: true })).toBeVisible();
+    await expect(mixing.getByRole('region', { name: '動作中の設定' })).toBeVisible();
+    const draft = mixing.getByRole('region', { name: '編集中の内容' });
+    const reload = draft.getByRole('button', { name: '保存内容で編集中の内容を置き換える' });
+    expect(await reload.evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(40);
     const slider = mixing.getByRole('slider', { name: '声の音量' }); await slider.scrollIntoViewIfNeeded(); await slider.focus(); await page.keyboard.press('ArrowRight');
     await expect(slider).toHaveAttribute('aria-valuetext', '1%');
     await expect.poll(() => page.evaluate(() => (window as any).__mixRequests.some((r: any) => r.action === 'levels' && r.levels.voice.gain === 0.01 && r.expectedRevision === '1'))).toBe(true);

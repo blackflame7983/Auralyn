@@ -123,14 +123,25 @@ test('音切れ通知から調整欄へ移動し、変更なしでは再起動�
 });
 
 test('ホットキーは未設定を示し、一覧から変更・取消・保存できる', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
     const dialog = await openSettings(page);
     await dialog.getByRole('tab', { name: 'ホットキー', exact: true }).click();
     const field = dialog.locator('fieldset').filter({ has: page.locator('legend', { hasText: '緊急ミュート（オン）' }) });
-    await expect(field.getByRole('button', { name: '緊急ミュート（オン）のキーを入力' })).toHaveText('未設定');
+    await expect(field.locator('[data-shortcut-binding]')).toHaveText('未設定');
+    await expect(field.getByRole('button', { name: '緊急ミュート（オン）のキーを入力' })).toHaveText('キーを入力');
     const save = dialog.getByRole('button', { name: 'キー設定を保存' });
     const discard = dialog.getByRole('button', { name: 'キー設定の編集を取り消す' });
     await expect(save).toBeDisabled();
-    await field.locator('summary').focus();
+    const rows = dialog.locator('fieldset').filter({ has: page.locator('[data-shortcut-binding]') });
+    const saveTop = (await save.boundingBox())!.y;
+    const visibleRows = await rows.evaluateAll((elements, saveTop) => elements.filter(element => {
+        const row = element.getBoundingClientRect();
+        const scroller = element.closest('.overflow-y-auto')!.getBoundingClientRect();
+        return row.top >= scroller.top && row.bottom <= Math.min(scroller.bottom, saveTop);
+    }).length, saveTop);
+    expect(visibleRows).toBeGreaterThanOrEqual(8);
+    for (const row of await rows.all()) expect((await row.boundingBox())!.height).toBeLessThanOrEqual(56);
+    await field.getByRole('button', { name: '緊急ミュート（オン）のキーを一覧から選ぶ' }).focus();
     await page.keyboard.press('Enter');
     await field.getByRole('combobox', { name: '緊急ミュート（オン）の修飾キー' }).selectOption('Alt');
     await field.getByRole('combobox', { name: '緊急ミュート（オン）の通常キー' }).selectOption('KeyM');
