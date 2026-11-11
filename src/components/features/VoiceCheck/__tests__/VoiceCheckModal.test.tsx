@@ -64,6 +64,32 @@ it('試聴エラーは録音前でも開き、停止と再試行の操作を表�
     // 失敗・停止未確認では停止を再送できるようにする。
     expect(screen.getByRole('button', { name: '試聴を停止' })).toBeEnabled();
     expect(screen.getByText('再生できないとき')).toBeVisible();
+    const warning = screen.getByRole('alert');
+    expect(warning).toHaveTextContent('試聴の停止を確認できません');
+    expect(warning).toContainElement(screen.getByRole('button', { name: '試聴を再準備' }));
+    expect(screen.getAllByRole('button', { name: '試聴を再準備', hidden: true })).toHaveLength(1);
+});
+
+it('試聴準備の失敗から再試行し、準備中と完了を表示する', async () => {
+    let resolveRetry!: (value: Awaited<ReturnType<typeof voicePreviewApi.request>>) => void;
+    let opens = 0;
+    let retryRequest!: Parameters<typeof previewSnapshot>[0];
+    vi.mocked(voicePreviewApi.request).mockImplementation(request => {
+        if (request.action === 'open') {
+            opens += 1;
+            if (opens === 1) return Promise.reject(new Error('open failed'));
+            retryRequest = request;
+            return new Promise(resolve => { resolveRetry = resolve; });
+        }
+        return Promise.resolve(previewSnapshot(request));
+    });
+    open();
+    expect(await screen.findByRole('alert')).toHaveTextContent('試聴の準備');
+    fireEvent.click(screen.getByRole('button', { name: '試聴を再準備' }));
+    await screen.findByText('試聴を準備しています。');
+    await act(async () => { resolveRetry(previewSnapshot(retryRequest)); });
+    // 録音前は準備完了後に試聴欄を閉じ、失敗表示を残さない。
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
 });
 
 it('録音がなくても前回のノイズ低減を戻す操作は隠さない', async () => {

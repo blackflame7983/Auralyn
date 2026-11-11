@@ -1,6 +1,10 @@
 import type { Locale } from './locale';
 
 const ja = {
+    "voice.recordingSection": "録音",
+    "voice.comparisonSection": "加工前後の比較",
+    "voice.previewPreparing": "試聴を準備しています。",
+    "voice.previewReady": "試聴の準備ができました。",
     "help.title": "使い方",
     "help.readMore": "ドキュメントで詳しく読む",
     "help.learnMore": "詳しく",
@@ -3389,6 +3393,10 @@ const ja = {
 } as const;
 export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
+    "voice.recordingSection": "Recording",
+    "voice.comparisonSection": "Compare before and after",
+    "voice.previewPreparing": "Preparing listening.",
+    "voice.previewReady": "Listening is ready.",
     "help.title": "How to use",
     "help.readMore": "Read more in the documentation",
     "help.learnMore": "Learn more",
