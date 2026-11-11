@@ -1,4 +1,4 @@
-import { ChoiceCard } from '@/components/ui/ChoiceCard';
+import { DeviceChoiceCard } from './DeviceChoiceCard';
 import { Button } from '@/components/ui/button';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { Modal } from '../../ui/modal';
@@ -80,37 +80,15 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                     <div className="space-y-6">
                         {step === 0 && (
                             <div className="space-y-6">
-                                <div className="text-center space-y-2">
-                                    <h3 className="text-ui-heading font-bold">{t('guide.copy.084')}</h3>
-                                    <p className="text-muted-foreground">
-                                        {t('guide.copy.085')}</p>
+                                <div className="space-y-2 text-left">
+                                    <h3 className="text-ui-heading font-bold text-foreground">{t('guide.copy.084')}</h3>
+                                    <p className="text-muted-foreground">{t('guide.copy.085')}</p>
+                                </div>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <DeviceChoiceCard name="discord-device" value="true" label={t('guide.copy.086')} title={t('guide.copy.087')} description={t('guide.copy.089')} badge={t('guide.copy.090')} icon={<MdMic className="h-6 w-6" />} checked={useHardwareMixer === true} onChange={() => setUseHardwareMixer(true)} onActivate={nextStep} warning />
+                                    <DeviceChoiceCard name="discord-device" value="false" label={t('guide.copy.091')} title={t('guide.copy.092')} description={t('guide.copy.094')} badge={t('guide.copy.095')} icon={<MdHeadphones className="h-6 w-6" />} checked={useHardwareMixer === false} onChange={() => setUseHardwareMixer(false)} onActivate={nextStep} />
                                 </div>
 
-                                <div className="grid md:grid-cols-2 gap-6 mt-8">
-                                    <ChoiceCard name="discord-device" value="true" onChange={() => setUseHardwareMixer(true)} onActivate={nextStep} aria-label={t('guide.copy.086')} checked={useHardwareMixer === true}
-                                    >
-                                        <div className="w-16 h-16 rounded-full bg-discord/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                            <MdMic className="w-8 h-8 text-discord-text" />
-                                        </div>
-                                        <h4 className="font-bold text-foreground text-ui-heading mb-2">{t('guide.copy.087')}</h4>
-                                        <p className="text-ui-support text-muted-foreground mb-4">
-                                            {t('guide.copy.089')}</p>
-                                        <div className="flex items-center gap-2 text-ui-support font-bold text-warning bg-warning/10 px-3 py-1 rounded-full">
-                                            <MdWarning /> {t('guide.copy.090')}</div>
-                                    </ChoiceCard>
-
-                                    <ChoiceCard name="discord-device" value="false" onChange={() => setUseHardwareMixer(false)} onActivate={nextStep} aria-label={t('guide.copy.091')} checked={useHardwareMixer === false}
-                                    >
-                                        <div className="w-16 h-16 rounded-full bg-discord/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                            <MdHeadphones className="w-8 h-8 text-discord-text" />
-                                        </div>
-                                        <h4 className="font-bold text-foreground text-ui-heading mb-2">{t('guide.copy.092')}</h4>
-                                        <p className="text-ui-support text-muted-foreground mb-4">
-                                            {t('guide.copy.094')}</p>
-                                        <div className="flex items-center gap-2 text-ui-support font-bold text-muted-foreground bg-muted px-3 py-1 rounded-full">
-                                            <MdCheckCircle /> {t('guide.copy.095')}</div>
-                                    </ChoiceCard>
-                                </div>
                             </div>
                         )}
 
@@ -259,8 +237,7 @@ export const DiscordGuideModal: React.FC<DiscordGuideModalProps> = ({ isOpen, on
                     <Button variant="ghost"
                         onClick={prevStep}
                         aria-label={t('guide.copy.136')}
-                        disabled={step === 0}
-                        className="flex items-center gap-1"
+                        className={step === 0 ? "invisible gap-1" : "gap-1"}
                     >
                         <MdArrowBack /> {t('guide.copy.137')}</Button>
                     <div className="flex gap-2">
