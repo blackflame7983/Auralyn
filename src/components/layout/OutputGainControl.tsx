@@ -146,29 +146,29 @@ export function OutputGainControl() {
 
   useEffect(() => () => { if (outputGainDebounce.current) clearTimeout(outputGainDebounce.current); }, []);
 
-  return <>
-    <div className="flex shrink-0 items-center gap-2 border-l border-border pl-3 ml-1">
+  return <div className="flex min-w-0 flex-col gap-1.5">
+    <div className="flex min-w-0 items-center gap-2">
       {outputGain === 0 ? <MdVolumeOff aria-hidden="true" className="w-4 h-4 text-warning flex-shrink-0" /> : <MdVolumeUp aria-hidden="true" className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
-      <span aria-hidden="true" className="hidden lg:inline text-ui-control font-medium text-muted-foreground">{t('master.outputGain')}</span>
-      <Slider
-        id="master-output-gain"
-        aria-label={t('master.outputGain')}
-        aria-valuetext={`${outputGain}%`}
-        value={[outputGain]}
-        onValueChange={handleOutputGainChange}
-        min={0}
-        max={200}
-        step={1}
-        className="w-32 shrink-0"
-        onDoubleClick={() => handleOutputGainChange([100])}
-      />
-      <span className="hidden md:inline w-[6ch] min-w-[6ch] shrink-0 whitespace-nowrap text-ui-support font-mono tabular-nums text-muted-foreground text-right">
+      <span aria-hidden="true" className="min-w-0 flex-1 text-ui-control font-medium text-muted-foreground">{t('master.outputGain')}</span>
+      <span className="w-[6ch] min-w-[6ch] shrink-0 whitespace-nowrap text-right text-ui-support font-mono tabular-nums text-muted-foreground">
         {Math.round(outputGain * 10) / 10}%
       </span>
     </div>
-    {gainMessage && <div className="order-last basis-full flex min-w-0 flex-wrap items-center gap-2">
+    <Slider
+      id="master-output-gain"
+      aria-label={t('master.outputGain')}
+      aria-valuetext={`${outputGain}%`}
+      value={[outputGain]}
+      onValueChange={handleOutputGainChange}
+      min={0}
+      max={200}
+      step={1}
+      className="w-full"
+      onDoubleClick={() => handleOutputGainChange([100])}
+    />
+    {gainMessage && <div className="flex min-w-0 flex-col items-start gap-2">
       <span role="alert" className="min-w-0 whitespace-normal break-words text-ui-support leading-4 text-warning" title={gainMessage}>{t('master.gainUnknown')}</span>
       <button type="button" onClick={() => handleOutputGainChange([gainError?.requestedGain ?? outputGain])} className="rounded-control border border-border px-3 py-1.5 text-ui-support">{t('common.retry')}</button>
     </div>}
-  </>;
+  </div>;
 }

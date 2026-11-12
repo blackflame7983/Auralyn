@@ -20,6 +20,7 @@ import { useLayoutMotion } from '@/hooks/useLayoutMotion';
 import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { deriveHomeChrome } from './homeChrome';
 import { Header } from './Header';
+import { EmergencyMuteButton } from './EmergencyMuteButton';
 import { NoticeLane } from './NoticeLane';
 import { focusOutputGain } from './OutputGainControl';
 import { audioApi } from '../../api/audio';
@@ -136,25 +137,9 @@ export const AppShell: React.FC<AppShellProps> = ({
     const [runtimeStats, setRuntimeStats] = useState<EngineRuntimeStats | null>(null);
     useEffect(() => { setRuntimeStats(null); }, [isEngineRunning]);
     const shellRef = useRef<HTMLDivElement>(null);
-    const footerRef = useRef<HTMLElement>(null);
     // 状態や幅で区画の高さ・並びが変わっても跳ねさせず、位置を補間する（#298）。
     const homeContentRef = useRef<HTMLDivElement>(null);
     useLayoutMotion(homeContentRef);
-    // 折り返したフッターが大型メーターを覆わないよう、実高さを共有する。
-    useLayoutEffect(() => {
-        const shell = shellRef.current;
-        const footer = footerRef.current;
-        if (!shell || !footer) return;
-        const updateHeight = () => {
-            const height = footer.getBoundingClientRect().height;
-            if (height > 0) shell.style.setProperty('--app-footer-height', `${height}px`);
-        };
-        updateHeight();
-        if (typeof ResizeObserver === 'undefined') return;
-        const observer = new ResizeObserver(updateHeight);
-        observer.observe(footer);
-        return () => observer.disconnect();
-    }, []);
 
     const audioReady = Boolean(currentHost) && isEngineRunning && engineProcessReady === true;
     // イベント・定期取得のどちらで復旧しても開始失敗を解除する。開始後の反映失敗は残す。
@@ -256,7 +241,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     </span> : null;
     const focusOutputControl = () => {
         const zeroGain = runtimeStats?.preparation?.muted === false && runtimeStats.preparation.outputGain === 0;
-        // 音量ゼロはフッターの出力音量へ、ミュートは解除ボタンへ移す。
+        // 音量ゼロは右の列の出力音量へ、ミュートは解除ボタンへ移す。
         if (zeroGain) { focusOutputGain(); return; }
         const target = document.getElementById('emergency-mute');
         if (!target) return;
@@ -320,8 +305,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                     stoppedInStrip={quietStopped}
                 />
                 <NoticeLane />
-                {/* 重ね表示は中央の作業領域だけを覆う。緊急ミュートと出力音量は操作できるままにする。 */}
-                <div className="workspace-body relative flex min-h-0 flex-1">
+                {/* 重ね表示と暗幕は中央の作業領域だけを覆う。右の列は操作できるままにする。 */}
+                <div className="flex min-h-0 flex-1">
+                <div className="workspace-body relative flex min-h-0 min-w-0 flex-1">
                 <main
                     data-density="home"
                     inert={panelOverlays}
@@ -386,14 +372,20 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </VstPanelAside>}
                 </AnimatePresence>
                 </div>
-
-                {/* Master Section Footer */}
-                <footer ref={footerRef} data-density="home" className="bg-background border-t border-border px-4 z-50 footer-shadow shrink-0 transition-colors duration-(--motion-panel)">
-                    <div className="mx-auto max-w-[1180px] w-full flex items-center gap-3">
-                    {/* 比べる音がない未設定の間は出さない。比較中のまま未設定になった場合は解除できるよう残す。 */}
-                    {(chrome.footer.compare === 'always' || isABBypassed) && <div className="flex shrink-0 items-center py-2">
-                        {/* Effect Compare Button */}
-                        <TooltipProvider>
+                <aside aria-label={t('shell.safetyColumn')} className="flex w-[var(--safety-column-width)] shrink-0 flex-col gap-3 overflow-hidden border-l border-border bg-card p-3">
+                    <EmergencyMuteButton onOpenSettings={onOpenSettings} />
+                    <MasterBar
+                        outputMeterInHome={!chrome.footer.outputMeter}
+                        onStatsChange={setRuntimeStats}
+                        isRunning={isEngineRunning}
+                        processReady={engineProcessReady}
+                        host={currentHost}
+                        sampleRate={currentSampleRate}
+                        bufferSize={currentBufferSize}
+                        onOpenVoiceCheck={onOpenVoiceCheck}
+                        onOpenSoundSettings={onOpenSoundSettings}
+                        onOpenAudioTuning={onOpenAudioTuning}
+                        compare={(chrome.footer.compare === 'always' || isABBypassed) && <TooltipProvider>
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <button
@@ -402,9 +394,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                                         aria-label={t('header.compare')}
                                         role="switch"
                                         aria-checked={isABBypassed}
-                                        aria-describedby={isABBypassed ? 'footer-compare-state' : undefined}
+                                        aria-describedby={isABBypassed ? 'safety-compare-state' : undefined}
                                         className={cn(
-                                            "home-control flex items-center gap-1.5 px-2.5 py-1 rounded-card border text-ui-control whitespace-nowrap shrink-0",
+                                            "home-control flex w-full min-w-0 items-center gap-1.5 rounded-card border px-2.5 py-1 text-ui-control",
                                             isABBypassed
                                                 ? "bg-warning/10 text-warning border-warning/50 ring-1 ring-warning/30"
                                                 : "bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground"
@@ -413,9 +405,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                                         <span aria-hidden="true" className={cn('inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5', isABBypassed ? 'bg-warning' : 'bg-muted-foreground/40')}>
                                             <span className={cn('h-4 w-4 rounded-full bg-background', isABBypassed && 'translate-x-4')} />
                                         </span>
-                                        <span className="flex flex-col items-start">
+                                        <span className="flex min-w-0 flex-col items-start text-left">
                                             <span>{t('header.compare')}</span>
-                                            {isABBypassed && <span id="footer-compare-state" className="text-ui-support font-medium">{t('header.vstOff')}</span>}
+                                            {isABBypassed && <span id="safety-compare-state" className="text-ui-support font-medium">{t('header.vstOff')}</span>}
                                         </span>
                                     </button>
                                 </TooltipTrigger>
@@ -423,25 +415,10 @@ export const AppShell: React.FC<AppShellProps> = ({
                                     <p>{isABBypassed ? t('header.compareEndHint') : t('header.compareStartHint')}</p>
                                 </TooltipContent>
                             </Tooltip>
-                        </TooltipProvider>
-                    </div>}
-                    {/* 比較ボタンを出さない間は、区切りの線だけが左端に残らないようにする。 */}
-                    <div className={cn('flex-1 min-w-0', !(chrome.footer.compare === 'always' || isABBypassed) && '[&>div]:border-l-transparent')}>
-                        <MasterBar
-                            outputMeterInHome={!chrome.footer.outputMeter}
-                            onStatsChange={setRuntimeStats}
-                            isRunning={isEngineRunning}
-                            processReady={engineProcessReady}
-                            host={currentHost}
-                            sampleRate={currentSampleRate}
-                            bufferSize={currentBufferSize}
-                            onOpenVoiceCheck={onOpenVoiceCheck}
-                            onOpenSoundSettings={onOpenSoundSettings}
-                            onOpenAudioTuning={onOpenAudioTuning}
-                        />
-                    </div>
-                    </div>
-                </footer>
+                        </TooltipProvider>}
+                    />
+                </aside>
+                </div>
             </div>
         </div></RuntimeStatsContext.Provider></MeterProvider></InputGainDisabledContext.Provider>
     );

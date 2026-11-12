@@ -53,7 +53,7 @@ export const LargeLevelMeter: React.FC<LargeLevelMeterProps> = ({ onClose, runni
         if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) focusedAction.current = null;
     }} data-detailed={detailed || undefined} data-horizontal={horizontal || undefined} className={cn(
         'large-meter-motion bg-background/95 border-border flex flex-col gap-2',
-        horizontal ? 'w-full rounded-card border p-5' : 'fixed top-16 bottom-[calc(var(--app-footer-height,4rem)+1rem)] right-0 z-40 border-l px-1 py-2',
+        horizontal ? 'w-full rounded-card border p-5' : 'fixed top-16 bottom-4 right-[var(--safety-column-width)] z-40 border-l px-1 py-2',
         !horizontal && (detailed ? 'w-24' : 'w-[5.5rem]')
     )}>
         <div className={horizontal ? 'flex flex-row-reverse items-center justify-between gap-3' : 'contents'}>

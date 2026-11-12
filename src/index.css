@@ -506,6 +506,7 @@
 .app-shell {
   --visible-meter-width: 0px;
   --vst-panel-width: 0px;
+  --safety-column-width: 212px;
 }
 .app-shell[data-large-meter] {
   --visible-meter-width: 88px;
@@ -519,7 +520,10 @@
 /* ホームとVSTを同じ中央領域に置き、最大化時の余白を外側へ集める。
    最大幅と予約幅を同時に動かすので、auto marginの切替による跳躍を作らない。 */
 .workspace-body {
-  width: 100%;
+  /* 右の列は窓の右端に付くため、この領域は残りの幅で中央へ寄せる。列幅は最大幅に足さない。 */
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
   margin-inline: auto;
   max-width: calc(1228px + var(--vst-panel-width) + var(--visible-meter-width));
   transition: max-width var(--motion-panel) var(--ease-drawer);
@@ -583,7 +587,7 @@
 }
 .vst-panel-space[data-state="open"] {
   /* 狭い窓のホームは縮めない。余白が増えるにつれ、パネル用の幅を少しずつ空ける。 */
-  width: clamp(0px, calc(100vw - 1020px - var(--visible-meter-width)), 420px);
+  width: clamp(0px, calc(100vw - var(--safety-column-width) - 1020px - var(--visible-meter-width)), 420px);
 }
 @media (min-width: 1200px) {
   .vst-panel-space[data-state="open"] { width: 420px; }
@@ -595,8 +599,8 @@
 .large-meter-motion {
   max-height: 720px;
   /* 親の幅指定は開閉時だけ変わる。フレームごとにCSS変数を更新せず translate を遷移させる。 */
-  /* 広い窓でもホーム（最大1180px）の右隣へ置く。ホームの左右余白の差と12pxの間隔を含める。 */
-  translate: calc(-1 * (var(--vst-panel-width, 0px) + max(0px, (100vw - var(--vst-panel-width, 0px) - var(--visible-meter-width, 88px) - 1228px) / 2))) 0;
+  /* 広い窓でもホーム（最大1180px）の右隣へ置く。右の列の幅を消費幅に足し、窓の右端には付けない。 */
+  translate: calc(-1 * (var(--vst-panel-width, 0px) + max(0px, (100vw - var(--safety-column-width, 212px) - var(--vst-panel-width, 0px) - var(--visible-meter-width, 88px) - 1228px) / 2))) 0;
   transition: translate var(--motion-panel) var(--ease-drawer);
 }
 .vst-panel-scrim {
@@ -724,9 +728,6 @@
   .tutorial-spotlight {
     box-shadow: 0 0 0 4px hsl(var(--success) / 0.5), 0 0 0 9999px hsl(var(--overlay) / 0.5);
   }
-  .footer-shadow {
-    box-shadow: 0 -5px 20px hsl(var(--overlay) / 0.15);
-  }
 }
 
 /* Sonnerの状態色もヘッダー・フッターと同じ定義へ揃える。 */
@@ -780,7 +781,8 @@ html[data-app-hidden="true"] *::after {
 .sound-nr-gauge { width: 4.5rem; height: 2.75rem; flex-shrink: 0; }
 .sound-eq-graph, .sound-vst-bars { width: 100%; height: 2.5rem; flex: 1 1 0%; min-width: 0; }
 .sound-visual-badge { font-size: 0.8125rem; line-height: 1.2; font-weight: 600; color: hsl(var(--foreground)); flex-shrink: 0; }
-@container (max-width: 720px) { .sound-tool-list { grid-template-columns: minmax(0, 1fr); } .sound-module-item::after { display: none; } }
+/* 右の列（212px）を置いても、配信・通話の最小 960×640（音調整の内側の幅 666px）で3列を保つ。 */
+@container (max-width: 660px) { .sound-tool-list { grid-template-columns: minmax(0, 1fr); } .sound-module-item::after { display: none; } }
 @container (max-width: 540px) { .sound-tool-list { grid-template-columns: minmax(0, 1fr); } }
 @media (max-height: 700px) { .sound-module-card { padding-block: 0.375rem; } .sound-module-visual { min-height: 2.5rem; padding: 0.25rem 0.5rem; } .sound-nr-gauge { width: 3.75rem; height: 2.25rem; } .sound-eq-graph, .sound-vst-bars { height: 2rem; } }
 

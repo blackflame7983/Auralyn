@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { displayAudioHost } from '@/lib/audioDevices';
 import { useMessages } from '@/i18n/LocaleProvider';
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { MdGraphicEq, MdBolt, MdClose, MdInfoOutline, MdWarning } from 'react-icons/md';
 import { Modal } from '../ui/modal';
@@ -27,9 +27,11 @@ interface MasterBarProps {
     onOpenVoiceCheck?: () => void;
     onOpenSoundSettings?: () => void;
     onOpenAudioTuning?: () => void;
+    /** 出力音量と、下端の状態表示のあいだに置く操作。 */
+    compare?: ReactNode;
 }
 
-export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false, host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, onOpenAudioTuning }) => {
+export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false, host, sampleRate, bufferSize, isRunning = false, processReady, onStatsChange, onOpenAudioTuning, compare }) => {
     const t = useMessages();
     const [simple] = useBeginnerMode();
     const detailsButtonRef = useRef<HTMLButtonElement>(null);
@@ -111,18 +113,19 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
     const signalLabel = processReady === null ? t('master.unverified') : !isRunning ? (host ? t('shell.stopped') : t('shell.unconfigured')) : processReady === false ? t('prep.failed') : broadcastFailed ? t('liveOutput.shortFailed') : stats?.latencyMetadata?.processingContext === 'broadcastWorker' ? t('liveOutput.branchLabel') : isFxActive ? t('master.vst') : (isCleanActive ? t('master.nr') : t('master.raw'));
 
     return (
-        <div className="relative flex flex-wrap items-center justify-end gap-x-3 gap-y-2 px-3 py-2 border-l border-border bg-background gaming:bg-card/30 gaming:backdrop-blur-sm transition-colors duration-(--motion-panel) min-w-0">
-            {!outputMeterInHome && <MasterOutputMeter running={isRunning} numbers={!simple} />}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+            {!outputMeterInHome && <div className="flex items-center justify-between gap-2"><MasterOutputMeter running={isRunning} numbers={!simple} /></div>}
             <OutputGainControl />
-
-            {processingStalled && <div role="alert" className="basis-full flex min-w-0 items-start gap-2 text-ui-support text-warning">
+            {compare}
+            <div className="mt-auto flex min-w-0 flex-col gap-2">
+            {processingStalled && <div role="alert" className="flex min-w-0 items-start gap-2 text-ui-support text-warning">
                 <MdWarning aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="min-w-0 whitespace-normal break-words">
                     <p>{t('master.processingStalled')}</p>
                     <p>{t('master.processingStalledHint')}</p>
                 </div>
             </div>}
-            {isRunning && statsUnavailable && <p role="status" className="basis-full min-w-0 whitespace-normal break-words text-ui-support">
+            {isRunning && statsUnavailable && <p role="status" className="min-w-0 whitespace-normal break-words text-ui-support">
                 <MdInfoOutline aria-hidden="true" className="mr-1 inline h-4 w-4" />{t('master.statsUnavailable')}
             </p>}
             {hasRecentGlitch && <Button variant="ghost" size="sm" type="button" onClick={() => { detailsButtonRef.current?.focus(); setDetailsOpen(true); }} aria-haspopup="dialog" aria-expanded={detailsOpen}
@@ -139,7 +142,7 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
             {/* 状態は操作の後に配置し、狭い幅では独立した行へ送る。 */}
             {/* 未設定はヘッダーとホームで示すため、ここでは重ねない。 */}
             {(broadcastFailed || (isRunning && processReady !== true)) && (
-                <div className="flex basis-full flex-wrap items-center gap-1.5 min-w-0 max-w-full whitespace-normal break-words lg:basis-auto">
+                <div className="flex flex-wrap items-center gap-1.5 min-w-0 max-w-full whitespace-normal break-words">
                     <span
                         className={cn(
                             "inline-flex items-center rounded-full border px-2 py-0.5 text-ui-support font-bold",
@@ -185,11 +188,12 @@ export const MasterBar: React.FC<MasterBarProps> = ({ outputMeterInHome = false,
                     </div>
                 </div>
             </Modal>}
+            </div>
         </div>
     );
 };
 
-// クリップの印もメーターと同じ葉で描き、フッターの操作へ更新を伝えない。
+// クリップの印もメーターと同じ葉で描き、右の列の操作へ更新を伝えない。
 function MasterOutputMeter({ running, numbers }: { running: boolean; numbers: boolean }) {
     const t = useMessages();
     const meter = useSharedMeter(running, 'output');

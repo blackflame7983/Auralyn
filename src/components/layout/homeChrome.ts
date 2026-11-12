@@ -1,3 +1,4 @@
+/** `footer` は右の列の出し分け。名前はフッター時代のまま、条件は変えない。 */
 export type HomeChrome =
   | { readonly kind: 'setup'; readonly vstPanel: 'closed' | 'beside' | 'overlay'; readonly footer: { readonly compare: 'whileActive'; readonly outputMeter: true } }
   | { readonly kind: 'daily'; readonly vstPanel: 'closed' | 'beside' | 'overlay'; readonly stage: 'full' | 'yield'; readonly footer: { readonly compare: 'always'; readonly outputMeter: false } };
