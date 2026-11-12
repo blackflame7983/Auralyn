@@ -27,11 +27,11 @@ For voice use, detailed adjustments and the VST panel start closed to leave more
 
 Use “Preparation” to check connections and destination. “Connection details” leads to setup. Distinguish the output device from the destination purpose and check the receiving app too.
 
-## Footer and output volume {#output-volume}
+## Live controls on the right {#output-volume}
 
-Adjust loudness with “Output volume”. “Compare without VST” temporarily bypasses external VST effects only. Noise reduction and voice shaping continue.
+Use the column on the right for “Emergency mute”, “Output volume”, and “Compare without VST”. Adjust loudness with “Output volume”. “Compare without VST” temporarily bypasses external VST effects only. Noise reduction and voice shaping continue.
 
-To silence audio immediately, use “Emergency mute” in the header.
+To silence audio immediately, use “Emergency mute” in the same column.
 
 ## Related pages {#related}
 
