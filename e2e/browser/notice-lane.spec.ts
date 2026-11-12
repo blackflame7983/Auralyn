@@ -34,7 +34,7 @@ test('複数通知を展開・縮小しても本文と重ならず、退場後�
                 return box.top >= lane.top - 1 && box.bottom <= lane.bottom + 1 && box.bottom <= main.top + 1;
             });
         })).toBe(true);
-        await expect(page.locator('footer').getByRole('slider', { name: '出力音量', exact: true })).toBeInViewport({ ratio: 1 });
+        await expect(page.getByRole('complementary', { name: '本番中の操作' }).getByRole('slider', { name: '出力音量', exact: true })).toBeInViewport({ ratio: 1 });
     }
     await page.screenshot({ path: info.outputPath('three-notifications.png') });
     // 通常通知が消えた後も、無期限の通信失敗通知は本文を覆わず、再試行への入口を保つ。

@@ -6,6 +6,7 @@ import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { createLocaleStore } from '@/i18n/locale';
 import { message } from '@/i18n/messages';
 import { Header } from '../Header';
+import { EmergencyMuteButton } from '../EmergencyMuteButton';
 import { DeviceStatus } from '@/components/features/DeviceStatus/DeviceStatus';
 
 vi.mock('@/components/ui/slider', () => ({ Slider: () => null }));
@@ -16,17 +17,31 @@ vi.mock('sonner', () => ({ toast: { warning: vi.fn(), success: vi.fn(), error: v
 beforeEach(() => { localStorage.clear(); vi.mocked(listen).mockClear(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-it.each(['ja', 'en'] as const)('共通ヘッダーの入口とミュートの状態を公開する（%s）', async locale => {
+it.each(['ja', 'en'] as const)('共通ヘッダーの入口を公開し、緊急ミュートは置かない（%s）', async locale => {
     const store = createLocaleStore(() => locale, () => true);
-    const mute = vi.spyOn(audioApi, 'toggleGlobalMute').mockResolvedValue(undefined);
     const props = { onOpenSettings: vi.fn(), onOpenOBSGuide: vi.fn(), onOpenDiscordGuide: vi.fn(),
         onOpenTroubleshoot: vi.fn(), onOpenWizard: vi.fn(),
         currentHost: 'WASAPI', isEngineRunning: true, engineProcessReady: true };
     const view = render(<LocaleProvider store={store}><Header {...props} /></LocaleProvider>);
     expect(screen.queryByText(message(locale, 'device.engine'))).not.toBeInTheDocument();
-    const muteButton = screen.getByRole('button', { name: message(locale, 'header.emergency') });
+    expect(screen.queryByRole('button', { name: message(locale, 'header.emergency') })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: message(locale, 'header.compare') })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: message(locale, 'header.setupOpen') })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: message(locale, 'header.audioSettingsOpen') }));
+    expect(props.onOpenSettings).toHaveBeenCalledOnce();
+    // 数値の詳細でもセットアップは設定と問題発生時の入口に置く。
+    localStorage.setItem('vst_host_beginner_mode', 'false');
+    act(() => window.dispatchEvent(new CustomEvent('vst_host_beginner_mode_changed', { detail: false })));
+    view.rerender(<LocaleProvider store={store}><Header {...props} /></LocaleProvider>);
+    expect(screen.queryByRole('button', { name: message(locale, 'header.setupOpen') })).not.toBeInTheDocument();
+    expect(props.onOpenWizard).not.toHaveBeenCalled();
+});
+
+it.each(['ja', 'en'] as const)('緊急ミュートは名前を固定し、状態を別に示す（%s）', async locale => {
+    const store = createLocaleStore(() => locale, () => true);
+    const mute = vi.spyOn(audioApi, 'toggleGlobalMute').mockResolvedValue(undefined);
+    render(<LocaleProvider store={store}><EmergencyMuteButton onOpenSettings={vi.fn()} /></LocaleProvider>);
+    const muteButton = screen.getByRole('button', { name: message(locale, 'header.emergency') });
     expect(muteButton).toHaveTextContent(message(locale, 'header.emergency'));
     expect(muteButton).toHaveClass('font-medium', 'text-ui-support');
     expect(muteButton).not.toHaveClass('font-bold');
@@ -42,14 +57,6 @@ it.each(['ja', 'en'] as const)('共通ヘッダーの入口とミュートの状
     expect(muteButton).toHaveClass('bg-destructive/10', 'ring-2', 'ring-destructive-text');
     expect(muteButton).not.toHaveClass('bg-background');
     expect(muteButton).toHaveAccessibleDescription(message(locale, 'header.muted'));
-    fireEvent.click(screen.getByRole('button', { name: message(locale, 'header.audioSettingsOpen') }));
-    expect(props.onOpenSettings).toHaveBeenCalledOnce();
-    // 数値の詳細でもセットアップは設定と問題発生時の入口に置く。
-    localStorage.setItem('vst_host_beginner_mode', 'false');
-    act(() => window.dispatchEvent(new CustomEvent('vst_host_beginner_mode_changed', { detail: false })));
-    view.rerender(<LocaleProvider store={store}><Header {...props} /></LocaleProvider>);
-    expect(screen.queryByRole('button', { name: message(locale, 'header.setupOpen') })).not.toBeInTheDocument();
-    expect(props.onOpenWizard).not.toHaveBeenCalled();
 });
 
 it.each([

@@ -58,7 +58,10 @@ it('設定済みホームの出力音量は本文の外に1つだけで、本番
   const sliders = screen.getAllByRole('slider', { name: '出力音量' });
   expect(sliders).toHaveLength(1);
   expect(sliders[0].closest('main')).toBeNull();
-  expect(sliders[0].closest('footer')).not.toBeNull();
+  const column = sliders[0].closest('aside');
+  expect(column).toHaveAttribute('aria-label', '本番中の操作');
+  expect(document.querySelector('footer')).toBeNull();
+  expect(column).toContainElement(screen.getByRole('button', { name: '緊急ミュート' }));
   const strip = screen.getByRole('region', { name: '本番' });
   expect(strip.querySelector('button[aria-label="出力音量"]')).toBeNull();
   expect(screen.getAllByRole('switch', { name: 'VSTを外して比較' })).toHaveLength(1);

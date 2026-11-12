@@ -13,7 +13,7 @@ import { saveStreamMixPanel } from '@/lib/streamMixPanel';
 import { saveVstPanelOpen } from '@/hooks/useVstPanel';
 
 vi.mock('../Header', () => ({ Header: () => null }));
-vi.mock('../MasterBar', () => ({ MasterBar: () => null }));
+vi.mock('../MasterBar', () => ({ MasterBar: ({ compare }: { compare?: React.ReactNode }) => <>{compare}</> }));
 const measurementProps = vi.hoisted(() => ({current: null as any}));
 vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: (props: unknown) => { measurementProps.current = props; return null; } }));
 vi.mock('../../features/Home/VoiceQuickControls', () => ({ useVoiceQuick: () => ({ stats: {}, noiseOn: true, chainOn: true }), NoiseSwitch: () => null, NoiseQuick: () => <p>quick</p>, BuiltinSwitch: () => null, BuiltinQuick: () => null }));
@@ -176,7 +176,7 @@ it.each(['ja', 'en'] as const)('フッターの原音比較で固定名・状態
         <AppShell {...commonProps}><p>rack</p></AppShell>
     </LocaleProvider>);
     const compare = screen.getByRole('switch', { name: message(locale, 'header.compare') });
-    expect(compare.closest('footer')).not.toBeNull();
+    expect(compare.closest('aside')).toHaveAttribute('aria-label', message(locale, 'shell.safetyColumn'));
     expect(compare).toHaveClass('text-ui-control', 'py-1', 'home-control');
     expect(compare).not.toHaveClass('font-semibold');
     expect(compare).not.toHaveClass('font-mono');
@@ -259,7 +259,7 @@ it('VST 構成は右パネルで開閉し、大型メーターは本番帯のメ
     fireEvent.click(screen.getByRole('button', { name: /^VST / }));
     fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' }));
     // 開いたら見出しへ移り、キーボードでもそのまま続けられる。
-    expect(screen.getByRole('complementary')).toHaveTextContent('rack-panel');
+    expect(screen.getByRole('complementary', { name: 'rack-panel' })).toHaveTextContent('rack-panel');
     expect(screen.getByText('rack-panel')).toHaveFocus();
     expect(localStorage.getItem('auralyn_vst_panel_open')).toBe('true');
     const meter = within(screen.getByRole('region', { name: '本番' })).getByRole('button', { name: '大型レベルメーターを開く' });
@@ -279,11 +279,13 @@ it('狭い幅では右パネルを重ねて背景の誤操作を防ぎ、閉じ�
     expect(toggle).toHaveAttribute('aria-controls', 'vst-panel');
     expect(container.firstElementChild).toHaveAttribute('data-vst-overlay', 'true');
     expect(container.querySelector('main')).toHaveAttribute('inert');
-    expect(container.querySelector('footer')!.closest('[inert]')).toBeNull();
+    const column = screen.getByRole('complementary', { name: '本番中の操作' });
+    expect(column.closest('[inert]')).toBeNull();
+    expect(column).not.toHaveAttribute('inert');
     const close = screen.getByRole('button', { name: 'close-panel' });
     close.focus();
     fireEvent.click(close);
-    expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+    expect(screen.queryByRole('complementary', { name: 'rack-panel' })).not.toBeInTheDocument();
     expect(container.firstElementChild).not.toHaveAttribute('data-vst-open');
     expect(container.querySelector('main')).not.toHaveAttribute('inert');
     expect(toggle).toHaveFocus();
@@ -298,30 +300,11 @@ it.each([true, false])('背景の静止した光と格子はゲーミングだ�
     glows.forEach(glow => expect(glow.className).not.toContain('animate-'));
 });
 
-it('フッターの実高さを大型メーターの余白へ公開し、終了時に監視を解除する', () => {
-    let height = 88;
-    let resize!: () => void;
-    const disconnect = vi.fn();
-    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(() => ({ height }) as DOMRect);
-    vi.stubGlobal('ResizeObserver', class {
-        callback: () => void;
-        constructor(callback: () => void) { this.callback = callback; }
-        observe(target: Element) { if (target.tagName === 'FOOTER') resize = this.callback; }
-        unobserve() {}
-        disconnect() { if (this.callback === resize) disconnect(); }
-    });
-    try {
-        const view = render(<AppShell {...commonProps}><p>rack</p></AppShell>);
-        const shell = document.querySelector<HTMLElement>('[style*="--app-footer-height"]')!;
-        expect(shell.style.getPropertyValue('--app-footer-height')).toBe('88px');
-        height = 120;
-        act(resize);
-        expect(shell.style.getPropertyValue('--app-footer-height')).toBe('120px');
-        view.unmount();
-        expect(disconnect).toHaveBeenCalledOnce();
-    } finally {
-        vi.unstubAllGlobals();
-    }
+it('フッターはなく、右の列は大型メーター用のフッター高さを公開しない', () => {
+    render(<AppShell {...commonProps}><p>rack</p></AppShell>);
+    expect(document.querySelector('footer')).toBeNull();
+    expect(document.querySelector('[style*="--app-footer-height"]')).toBeNull();
+    expect(screen.getByRole('complementary', { name: '本番中の操作' })).toBeInTheDocument();
 });
 
 it('モード切替は本番帯の中に置く', () => {

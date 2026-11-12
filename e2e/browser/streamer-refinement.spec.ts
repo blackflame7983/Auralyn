@@ -99,7 +99,7 @@ test('緊急ミュートの通信失敗では外部アプリでのミュート�
         await new Promise(requestAnimationFrame);
         await Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})));
     });
-    expect((await failure.boundingBox())!.y + (await failure.boundingBox())!.height).toBeLessThanOrEqual((await page.locator('footer').boundingBox())!.y);
+    expect((await failure.boundingBox())!.y + (await failure.boundingBox())!.height).toBeLessThanOrEqual((await page.getByRole('complementary', { name: '本番中の操作' }).boundingBox())!.y + 1);
     await page.screenshot({ path: testInfo.outputPath('mute-failure.png') });
     await expect(page.getByRole('button', { name: '緊急ミュート', exact: true })).toHaveAttribute('aria-pressed', 'false');
     // cold loadのモジュール取得と、取得後のdialog表示を別々に確認する。
@@ -113,7 +113,7 @@ test('緊急ミュートの通信失敗では外部アプリでのミュート�
     await expect(page.getByRole('dialog', { name: '設定', exact: true })).toBeVisible({ timeout: 15_000 });
 });
 
-test('出力音量の失敗はフッターで再試行でき、確認できるまでは保存値を変えない', async ({ page }, testInfo) => {
+test('出力音量の失敗は右の列で再試行でき、確認できるまでは保存値を変えない', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 768 });
     await page.addInitScript(() => {
         const original = (window as any).__TAURI_INTERNALS__.invoke;
@@ -122,7 +122,7 @@ test('出力音量の失敗はフッターで再試行でき、確認できる�
             ? Promise.reject(new Error('pipe disconnected')) : original(command, args);
     });
     await page.goto('/');
-    const popup = page.locator('footer');
+    const popup = page.getByRole('complementary', { name: '本番中の操作' });
     await popup.getByRole('slider', { name: '出力音量', exact: true }).press('ArrowRight');
     await expect(popup.getByRole('alert')).toContainText('音量を確認できません');
     expect(await page.evaluate(() => localStorage.getItem('vst_host_output_gain'))).not.toBe('101');
