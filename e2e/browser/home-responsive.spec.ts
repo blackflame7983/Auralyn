@@ -26,25 +26,20 @@ for (const theme of ['light', 'dark', 'gaming']) {
             // 合成通知で静止画にもレベルを残す。実音声やドライバーの試験ではない。
             await page.evaluate(() => (window as any).__e2eEmit('audio-level', { input: [0.35, 0.3], output: [0.3, 0.25] }));
             await page.screenshot({ path: testInfo.outputPath('home.png') });
-            await page.locator('#vst-panel-toggle').click();
-            const panel = page.locator('#vst-panel');
-            await expect(panel).toHaveAttribute('data-state', 'open');
+            await page.locator('#home-vst-open').click();
+            const vstPage = page.locator('[data-vst-page]');
+            await expect(vstPage).toBeVisible();
+            await expect(page.locator('.home-content')).toHaveCount(0);
             const meter = page.getByRole('meter', { name: '出力', exact: true });
             await expect(meter).toBeVisible();
-            if (width >= 1200) {
-                await expect(page.locator('main')).not.toHaveAttribute('inert', '');
-                await expect.poll(async () => {
-                    const p = (await panel.boundingBox())!, m = (await meter.boundingBox())!;
-                    // 出力メーターは右の列にあり、横並びのパネルとは重ならない。
-                    return m.x >= p.x + p.width - 1 || p.x >= m.x + m.width - 1;
-                }).toBe(true);
-                await expect(page.getByRole('button', { name: 'ボイスチェック', exact: true })).toBeInViewport();
-                await expect(page.locator('#home-builtin').getByRole('switch')).toBeInViewport();
-            } else {
-                await expect(page.locator('main')).toHaveAttribute('inert', '');
-            }
+            await expect(page.locator('main')).not.toHaveAttribute('inert', '');
+            await expect.poll(async () => {
+                const p = (await vstPage.boundingBox())!, m = (await meter.boundingBox())!;
+                // 出力メーターは右の列にあり、VSTのページとは重ならない。
+                return m.x >= p.x + p.width - 1 || p.x >= m.x + m.width - 1;
+            }).toBe(true);
             expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-            await page.screenshot({ path: testInfo.outputPath('panel.png') });
+            await page.screenshot({ path: testInfo.outputPath('vst-page.png') });
         });
     }
 }
@@ -131,7 +126,7 @@ for (const locale of ['ja', 'en']) {
             const cards = page.locator('.sound-module-item');
             await expect(cards).toHaveCount(3);
             await expect(page.locator('.sound-module-item h3[aria-expanded]')).toHaveCount(0);
-            await expect(page.locator('#vst-panel-toggle')).toHaveAttribute('aria-expanded', 'false');
+            await expect(page.locator('#home-vst-open')).not.toHaveAttribute('aria-expanded');
             const switches = page.locator('.sound-module-item [role="switch"]');
             await expect(switches).toHaveCount(2);
             for (const control of await switches.all()) {
@@ -186,4 +181,33 @@ for (const theme of ['light', 'dark']) test(`音の流れはテーマにかか�
     await expect(graph).toHaveAttribute('data-flow', 'time');
     await expect(page.locator('.live-aurora')).toHaveCount(0);
     expect(await graph.evaluate(el => el.tagName)).toBe('CANVAS');
+});
+
+test('1200〜1411pxの音調整は3列で、1280×800の出力先名は縦に積まない', async ({ page }) => {
+    await page.addInitScript(() => {
+        localStorage.setItem('vst_host_wizard_done', 'true');
+        localStorage.setItem('vst_host_setup_goal', 'obs');
+        localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'WASAPI', input: 'CABLE Output', output: 'スピーカー', sampleRate: 48000, bufferSize: 512 }));
+    });
+    await page.goto('/');
+    const measured: { width: number; columns: number; name: { width: number; height: number; line: number; text: string } }[] = [];
+    for (const width of [1200, 1280, 1411]) {
+        await page.setViewportSize({ width, height: 800 });
+        const row = await page.evaluate(() => {
+            const list = document.querySelector('.sound-tool-list') as HTMLElement;
+            const names = [...document.querySelectorAll('aside[aria-label="本番中の操作"] p.truncate')] as HTMLElement[];
+            const name = names.find(el => (el.textContent ?? '').includes('スピーカー')) ?? names[names.length - 1];
+            const box = name.getBoundingClientRect();
+            const line = parseFloat(getComputedStyle(name).lineHeight);
+            return {
+                columns: getComputedStyle(list).gridTemplateColumns.split(' ').filter(Boolean).length,
+                name: { width: Math.round(box.width), height: Math.round(box.height), line: Math.round(line), text: name.textContent ?? '' },
+            };
+        });
+        measured.push({ width, ...row });
+        expect(row.columns, `${width}px`).toBe(3);
+        expect(row.name.height, row.name.text).toBeLessThanOrEqual(row.name.line + 2);
+        expect(row.name.width).toBeGreaterThan(row.name.line * 2);
+    }
+    console.log(JSON.stringify(measured));
 });

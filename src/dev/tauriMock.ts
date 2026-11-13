@@ -74,10 +74,20 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
                 return;
             case 'get_audio_state': return { is_running: true, config: liveHome ? { host: 'WASAPI', input: mic.name, output: output.name, sample_rate: 48000, buffer_size: 512 } : null };
             case 'get_audio_devices': return { inputs: [mic], outputs: [output] };
-            case 'session_rack':
+            case 'session_rack': {
+                const previewPlugins = new URLSearchParams(location.search).get('previewPlugins') === '1';
+                if (previewPlugins && args.request.action === 'begin') return { status: 'ready', token: 'preview' };
+                if (previewPlugins && args.request.action === 'add') return { status: 'restored', plugin: { id: args.request.request.path, name: args.request.request.path, prepared: true } };
+                if (previewPlugins && (args.request.action === 'finish' || args.request.action === 'retain')) return { status: 'finished' };
                 if (args.request.action === 'retain' && args.request.ids.length === 0 && args.request.inputGain === null) return { status: 'finished' };
                 if (args.request.action !== 'snapshot') { unexpected.push(command); throw new Error('空ラックの確認以外は実行しません'); }
                 return { status: 'snapshot', generation: '1', revision: '1', running: audioRunning, present: false, restoreEligible: true, plugins: [] };
+            }
+            case 'get_plugin_state':
+                if (new URLSearchParams(location.search).get('previewPlugins') === '1') return '';
+                unexpected.push(command);
+                if (strict) throw new Error(`未定義のテストIPC: ${command}`);
+                return null;
             case 'set_output_gain': outputGain = args.value; gainWrites.push(args.value); return;
             case 'auto_gain': return { revision: 1, gain: outputGain, confirmedGain: outputGain, settled: true, running: audioRunning, streamFailed: false, phase: 'idle', id: null, playing: false, devices: [] };
             case 'get_plugins': case 'list_presets': case 'list_profiles': return [];
@@ -110,6 +120,8 @@ export function installTauriMock({ liveHome, stoppedHome, registeredModes, built
             // 履歴がない状態。null のままだと設定の OBS タブが件数参照で画面全体を落とす。
             case 'obs_setup_history': return [];
             case 'scan_plugin_catalog':
+                if (new URLSearchParams(location.search).get('previewScanError') === '1') throw new Error('一覧を取れませんでした');
+                return { plugins: [], failures: [], stats: { reused: 0, scanned: 0, removed: 0 }, generation: 1, recoveredFromCorrupt: false, saveError: null };
             case 'retry_plugin_scan': return { plugins: [], failures: [], stats: { reused: 0, scanned: 0, removed: 0 }, generation: 1, recoveredFromCorrupt: false, saveError: null };
             case 'get_window_activity': return true;
             case 'obs_live_scene_status': return { connected: false, connectionGeneration: 0, sequence: 0 };

@@ -12,12 +12,8 @@ import { LiveControlsHiddenContext } from '../features/Home/LiveControlsContext'
 import { SoundChain } from '../features/Home/SoundChain';
 import { UnsetFlow } from '../features/Home/UnsetFlow';
 import { usePreparation } from '@/hooks/usePreparation';
-import { useVstPanel } from '@/hooks/useVstPanel';
-import { usePanelMotion } from '@/hooks/usePanelMotion';
-import { AnimatePresence } from 'motion/react';
-import { VstPanelAside } from './VstPanelAside';
 import { useLayoutMotion } from '@/hooks/useLayoutMotion';
-import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { ReactNode, useState, useCallback, useEffect, useRef } from 'react';
 import { deriveHomeChrome } from './homeChrome';
 import { AppRail, type RailDestination } from './AppRail';
 import { PageSlot } from './pageSlot';
@@ -90,8 +86,8 @@ interface AppShellProps {
     vstEditors?: ReactNode;
     /** 保存済み構成から読み込めていないVSTの名前。 */
     vstUnrestored?: string[];
-    /** 右パネルに出す VST ラック。 */
-    vstPanel?: ReactNode;
+    /** VST のページを開く。追加から開くときは true。 */
+    onOpenVst?: (focusAdd?: boolean) => void;
     /** 表示を選んだ配信ミックス。本番帯の直下へ置く。 */
     streamMixPanel?: ReactNode;
 }
@@ -136,7 +132,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     vstChain,
     vstEditors,
     vstUnrestored,
-    vstPanel,
+    onOpenVst,
     streamMixPanel
 }) => {
     const t = useMessages();
@@ -181,71 +177,12 @@ export const AppShell: React.FC<AppShellProps> = ({
     const [measurement, setMeasurement] = useState({ active: false, busy: false, stopUnconfirmed: false });
     const [measurementRequest, setMeasurementRequest] = useState<{id: number; action: 'start' | 'stop'}>();
     const requestId = useRef(0);
-    // VST 構成は右パネルで編集する。開いたら見出しへ移り、キーボードでもそのまま続けられるようにする。
-    const [vstPanelOpen, setVstPanelOpen] = useVstPanel();
-    // ホームの操作幅を保てない間は重ね表示にする。メーター併用時はその幅も確保する。
-    // 境目は右の列（212px）を置く前のまま。1200〜1411px で横に並べると中央が以前より212px狭い（段階 A の既知の点）。
-    const [panelBeside, setPanelBeside] = useState(false);
-    useLayoutEffect(() => {
-        const media = window.matchMedia?.('(min-width: 1200px)');
-        if (!media) return;
-        const update = () => setPanelBeside(media.matches);
-        update();
-        media.addEventListener('change', update);
-        return () => media.removeEventListener('change', update);
-    }, []);
-    const panelOverlays = Boolean(vstPanel) && vstPanelOpen && !panelBeside;
-    const panelRef = useRef<HTMLElement>(null);
-    const panelMotion = usePanelMotion(Boolean(vstPanel) && vstPanelOpen, panelRef);
-    useEffect(() => {
-        if (!panelOverlays) return;
-        const close = (event: KeyboardEvent) => {
-            // 入れ子のメニューや設定画面の Escape は、その画面に任せる。
-            if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) {
-                event.preventDefault();
-                setVstPanelOpen(false);
-            }
-        };
-        window.addEventListener('keydown', close);
-        return () => window.removeEventListener('keydown', close);
-    }, [panelOverlays, setVstPanelOpen]);
-    useEffect(() => {
-        if (panelOverlays && document.activeElement?.closest('main'))
-            document.getElementById('plugin-rack-heading')?.focus({ preventScroll: true });
-    }, [panelOverlays]);
-    const [focusRack, setFocusRack] = useState(0);
-    const [rackPointerFocus, setRackPointerFocus] = useState(false);
-    const openRack = (event?: React.MouseEvent<HTMLButtonElement>) => {
-        setRackPointerFocus(Boolean(event && event.detail > 0));
-        setVstPanelOpen(true); setFocusRack(n => n + 1);
-    };
-    useEffect(() => registerRackOpener(() => {
-        setRackPointerFocus(true);
-        setVstPanelOpen(true);
-        setFocusRack(n => n + 1);
-    }), []);
-    useEffect(() => {
-        if (!focusRack) return;
-        document.getElementById('plugin-rack-heading')?.focus({ preventScroll: true });
-    }, [focusRack]);
-    // パネルを閉じてフォーカスの行き場がなくなったら、開いたボタンへ戻してキーボード操作を続けられるようにする。
-    const panelWasOpen = useRef(vstPanelOpen);
-    useEffect(() => {
-        if (panelWasOpen.current && !vstPanelOpen && (document.activeElement === document.body || !document.activeElement || panelRef.current?.contains(document.activeElement))) {
-            const edit = document.getElementById('vst-panel-toggle');
-            // 別の音調整を開いている間も、表示中のVST項目から操作を続けられる。
-            const target = edit && !edit.closest('[inert], [aria-hidden="true"]') ? edit : document.getElementById('vst-tool-toggle');
-            target?.focus({ preventScroll: true });
-        }
-        panelWasOpen.current = vstPanelOpen;
-    }, [vstPanelOpen]);
+    // 音づくりなど、シェルの外から VST のページを開く。
+    useEffect(() => registerRackOpener(() => { onOpenVst?.(false); }), [onOpenVst]);
     // 未設定の間は本番帯を出さず、準備の主ボタンを先頭にする。
     const quietStopped = canStart && !isEngineRunning && engineProcessReady === true;
     const configured = Boolean(currentHost) && preparation.observation.availability !== 'unconfigured';
-    const chrome = deriveHomeChrome({
-        configured,
-        vstPanel: { present: Boolean(vstPanel), open: vstPanelOpen, wide: panelBeside },
-    });
+    const chrome = deriveHomeChrome({ configured });
     // 音楽鑑賞の聴き比べは、準備の手順とチェーン列のどちらからも開く。
     const [listenOpen, setListenOpen] = useState(false);
     const openListen = purpose === 'music' ? () => setListenOpen(true) : onOpenVoiceCheck;
@@ -273,9 +210,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     };
     const soundChain = <SoundChain stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} vstEditors={vstEditors} vstUnrestored={vstUnrestored}
-        onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} unconfigured={!configured} />;
-    // ページを開いている間は、右パネルよりページを現在地にする。
-    const railCurrent: RailDestination = page !== 'home' ? page : Boolean(vstPanel) && vstPanelOpen ? 'vst' : 'home';
+        onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={focusAdd => onOpenVst?.(focusAdd)} unconfigured={!configured} />;
+    const railCurrent: RailDestination = page;
     const openSettingsTab = (tab: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => {
         if (onOpenSettingsTab) onOpenSettingsTab(tab);
         else onOpenSettings();
@@ -312,9 +248,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     }, []);
 
     return (
-        <MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef} data-panel-instant={panelMotion.instant || undefined}
-            data-vst-open={Boolean(vstPanel) && vstPanelOpen || undefined} data-vst-overlay={panelOverlays || undefined}
-            data-meter-suspended={panelMotion.present && !panelBeside || undefined}
+        <MeterProvider running={isEngineRunning}><RuntimeStatsContext.Provider value={{ stats: runtimeStats, running: audioReady }}><div ref={shellRef}
             className="app-shell min-h-screen bg-muted/30 dark:bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden transition-colors duration-(--motion-panel)">
             {/* ゲーミングだけに表示する静止した背景の光と格子。 */}
             <div data-gaming-backdrop className="hidden gaming:block">
@@ -327,9 +261,9 @@ export const AppShell: React.FC<AppShellProps> = ({
 
             <div className="relative z-10 flex h-screen">
                 <AppRail current={railCurrent}
-                    onHome={() => requestLeave(() => { onCloseSettings?.(); setVstPanelOpen(false); mainRef.current?.scrollTo({ top: 0 }); })}
+                    onHome={() => requestLeave(() => { onCloseSettings?.(); mainRef.current?.scrollTo({ top: 0 }); })}
                     onSound={() => openSettingsTab('sound')}
-                    onVst={() => openRack()}
+                    onVst={() => onOpenVst?.()}
                     onConnect={() => openSettingsTab('audio')}
                     onSettings={() => openSettingsTab('appearance')}
                     onOpenShortcuts={onOpenShortcuts}
@@ -350,12 +284,10 @@ export const AppShell: React.FC<AppShellProps> = ({
                         onSettings={onOpenSettings} onClose={() => { setListenOpen(false); listenButton.current?.focus(); }} />}
                 />
                 <NoticeLane />
-                {/* 重ね表示と暗幕は中央の作業領域だけを覆う。右の列は操作できるままにする。 */}
                 <div className="workspace-body relative flex min-h-0 min-w-0 flex-1">
                 <main
                     ref={mainRef}
                     data-density="home"
-                    inert={panelOverlays}
                     className={page === 'home'
                         ? 'home-main min-w-0 flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent'
                         : 'home-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-4 pt-2 lg:px-6'}
@@ -367,7 +299,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {/* 未設定の間は音の流れ（UnsetFlow）を先頭にし、いまの状態は出さない。
                             歌・雑談の切替は本番保護の解除や失敗の表示を兼ねるので、未設定でも条件を満たせば残す。 */}
                         {configured
-                            ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} engineProcessReady={engineProcessReady} controlsDisabled={panelOverlays} liveControls={liveControls} onOpenDevices={onOpenSettings} outputName={currentOutput} />
+                            ? <LiveStrip liveModeName={liveModeName} stopped={quietStopped} onStartAudio={canStart ? startAudio : undefined} starting={starting} startError={startErrorDetail} startPartiallyApplied={startPartiallyApplied} onOpenStartErrorSettings={startPartiallyApplied ? onOpenAudioSettingsRetry ?? onOpenSettings : onOpenSettings} onChooseDestination={audioReady ? () => setDestinationRequest(n => n + 1) : undefined} model={preparation} running={isEngineRunning} engineProcessReady={engineProcessReady} liveControls={liveControls} onOpenDevices={onOpenSettings} outputName={currentOutput} />
                             : liveControls && <div hidden={!liveControlsWhileUnconfigured} data-unconfigured-live className="mb-4 rounded-card border border-border bg-card gaming:bg-card/70 px-4 py-3 empty:hidden"><LiveControlsHiddenContext.Provider value={!liveControlsWhileUnconfigured}>{liveControls}</LiveControlsHiddenContext.Provider></div>}
                         {/* 未設定の間は UnsetFlow が音の流れなので、空の帯は重ねない。 */}
                         {configured && <SoundFlow running={isEngineRunning} music={purpose === 'music'} action={loudnessAction} />}
@@ -406,17 +338,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                     </div>
                     </>}
                 </main>
-                {panelOverlays && <div aria-hidden="true" className="vst-panel-scrim absolute inset-0 z-[44] bg-overlay/35" onClick={() => setVstPanelOpen(false)} />}
-                {/* パネルと同じ時間で予約幅を戻す。退場後のアンマウントではホームの幅を変えない。 */}
-                {vstPanel && <div aria-hidden="true" className="vst-panel-space" data-state={vstPanelOpen ? 'open' : 'closed'} />}
-                <AnimatePresence onExitComplete={panelMotion.onExitComplete}>
-                {Boolean(vstPanel) && vstPanelOpen && <VstPanelAside key="vst-panel" ref={panelRef} id="vst-panel" aria-labelledby="plugin-rack-heading"
-                    data-pointer-focus={rackPointerFocus || undefined} onKeyDownCapture={() => setRackPointerFocus(false)}
-                    {...panelMotion.motionProps}
-                    className="vst-panel-motion absolute inset-y-0 right-0 z-[45] w-[min(420px,100%)] overflow-y-auto border-l border-border bg-background p-4 shadow-2xl scrollbar-thin">
-                    {vstPanel}
-                </VstPanelAside>}
-                </AnimatePresence>
                 </div>
                 </div>
                 {/* 上の3操作は縮めない。下の状態表示だけが、収まらないときに縦へ送る（MasterBar）。 */}

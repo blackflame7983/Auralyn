@@ -489,24 +489,14 @@ body:has(.app-shell) {
 
 
 
-/* パネル・予約幅・メーターを同じ曲線で連動させ、退場の最後にホームが跳ねないようにする。
-   予約幅だけはレイアウトを遷移させる。ホーム全体を scale で伸ばして文字を変形させない。 */
 .app-shell {
-  --vst-panel-width: 0px;
   --rail-width: 76px;
   --safety-column-width: 212px;
 }
-.app-shell[data-vst-open] {
-  --vst-panel-width: 420px;
-}
-/* ホームとVSTを同じ中央領域に置き、最大化時の余白を外側へ集める。
-   最大幅と予約幅を同時に動かすので、auto marginの切替による跳躍を作らない。 */
+/* 右の列は窓の右端に付く。中央は残りの幅を使う。 */
 .workspace-body {
-  /* 右の列は窓の右端に付くため、この領域は残りの幅で中央へ寄せる。列幅は最大幅に足さない。 */
   width: 100%;
-  margin-inline: auto;
-  max-width: calc(1228px + var(--vst-panel-width));
-  transition: max-width var(--motion-panel) var(--ease-drawer);
+  min-width: 0;
 }
 .sound-chain { container-type: inline-size; }
 .input-channel-pair[hidden] { display: none; }
@@ -515,26 +505,6 @@ body:has(.app-shell) {
 #emergency-mute:active {
   background-color: hsl(var(--destructive) / 0.3);
   border-color: hsl(var(--destructive-text));
-}
-.vst-panel-space {
-  flex: 0 0 auto;
-  width: 0;
-  transition: width var(--motion-panel) var(--ease-drawer);
-}
-.vst-panel-space[data-state="open"] {
-  /* 狭い窓のホームは縮めない。余白が増えるにつれ、パネル用の幅を少しずつ空ける。 */
-  /* レールは作業領域の外なので、予約幅の計算からレール分を引く。横に並べる境目（1200px）は変えない。 */
-  width: clamp(0px, calc(100vw - var(--rail-width) - var(--safety-column-width) - 1020px), 420px);
-}
-@media (min-width: 1200px) {
-  .vst-panel-space[data-state="open"] { width: 420px; }
-}
-/* 本体の出入りは Motion（usePanelMotion）が同じトークンで動かす。閉じ始めたら押させない。 */
-.vst-panel-motion[data-state="closed"] {
-  pointer-events: none;
-}
-.vst-panel-scrim {
-  animation: surface-appear var(--motion-base) var(--ease-out);
 }
 @keyframes surface-appear {
   from { opacity: 0; }
@@ -555,13 +525,6 @@ body:has(.app-shell) {
   animation: surface-open var(--motion-base) var(--ease-out);
 }
 [data-radix-menu-content] { transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
-/* 入力方法は既存のパネル制御と揃え、キーボードでは拡大せず表示する。 */
-@media (prefers-reduced-motion: no-preference) {
-  body:has(.app-shell[data-panel-instant]) .app-dialog[data-state="open"] > :not(.sr-only),
-  body:has(.app-shell[data-panel-instant]) [data-radix-menu-content][data-state="open"] {
-    animation-name: surface-appear;
-  }
-}
 .settings-surface { transform-origin: top right; }
 /* マウス操作では focus-visible が出ないため、案内で移した先を短く示す。 */
 [data-attention] {
@@ -573,8 +536,6 @@ body:has(.app-shell) {
   from { outline-offset: 8px; outline-color: hsl(var(--warning) / 0); }
   to { outline-offset: 3px; outline-color: hsl(var(--warning)); }
 }
-#plugin-rack-heading:focus:not(:focus-visible) { outline: none; }
-.vst-panel-motion[data-pointer-focus] #plugin-rack-heading:focus { outline: none; }
 @keyframes surface-disappear {
   from { opacity: 1; }
   to { opacity: 0; }
@@ -584,20 +545,11 @@ body:has(.app-shell) {
   animation: surface-disappear var(--motion-fast) var(--ease-out);
   pointer-events: none;
 }
-[data-panel-instant] .workspace-body,
-[data-panel-instant] .vst-panel-space {
-  transition: none;
-}
-
 /*
   動きを減らす設定（DESIGN.md 5.6）。全体を0秒にせず、色と不透明度の変化は残し、
   移動・拡大と繰り返しの動きだけを止める。ユーティリティより後に効くよう layer の外に置く。
 */
 @media (prefers-reduced-motion: reduce) {
-  .workspace-body { transition: none; }
-  .vst-panel-space {
-    transition: none;
-  }
   [data-attention] {
     animation: none;
   }
@@ -615,7 +567,6 @@ body:has(.app-shell) {
   .aurora-glow {
     animation: none;
   }
-  .vst-panel-scrim,
   .modal-overlay-base,
   .app-dialog[data-state],
   .app-dialog[data-state] > :not(.sr-only),

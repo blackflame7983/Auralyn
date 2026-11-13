@@ -9,7 +9,9 @@ it('外部VSTの準備と設定値の手動調整を明示し、内蔵ボイス�
     const settings = vi.fn();
     render(<TemplateWizardModal isOpen onClose={vi.fn()} availablePlugins={[]} onApplyTemplate={vi.fn()}
         onScan={vi.fn()} isScanning={false} onOpenSoundSettings={settings} />);
-    expect(screen.getByText(/各VSTの設定値は自動調整しません/)).toBeInTheDocument();
+    expect(screen.getAllByText('適用すると、いまのVSTの並びを置き換えます。').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('VSTは別に用意します。設定値は自動では合わせません。').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText('適用の前に'));
     fireEvent.click(screen.getByRole('button', { name: '外部VSTを使わず、声を整える機能を設定する' }));
     expect(settings).toHaveBeenCalledOnce();
 });
@@ -41,6 +43,7 @@ it('適用中は画面移動・閉じる・構成変更を止め、失敗後に�
     const apply = screen.getByRole('button', { name: 'VST構成を置き換える' });
     await waitFor(() => expect(apply).toBeEnabled());
     fireEvent.click(apply);
+    fireEvent.click(screen.getByText('適用の前に'));
     const blocked = ['閉じる', 'キャンセル', '← 戻る', '外部VSTを使わず、声を整える機能を設定する'];
     for (const name of blocked) {
         const button = screen.getByRole('button', { name });

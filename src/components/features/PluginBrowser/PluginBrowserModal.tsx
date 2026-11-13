@@ -441,12 +441,12 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
           </Button>
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal"
+          {!(activeTab === 'all' && plugins.length === 0 && failures.length === 0 && !searchQuery && !selectedCategory && !error) && <Button variant="outline" size="sm" className="h-auto min-h-9 whitespace-normal"
             disabled={isLoading || Boolean(retryingPath)}
             onClick={() => onScan({ mode: 'full', retryFailed: includeFailed })}
           >
             {t('pluginBrowser.fullScan')}
-          </Button>
+          </Button>}
           <label className="flex items-center gap-2 text-ui-support" htmlFor="plugin-scan-include-failed">
             <Checkbox id="plugin-scan-include-failed" checked={includeFailed} disabled={isLoading || Boolean(retryingPath)} onChange={event => setIncludeFailed(event.target.checked)} />
             {t('pluginBrowser.includeFailed')}
@@ -504,13 +504,14 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
               <p className="text-ui-support">{t('pluginBrowser.scanFailed')}</p>
               {failures.length > 0 && <p>{t('pluginBrowser.failedCount', { count: failures.length })}</p>}
               <details className="text-ui-support break-words"><summary>{t('common.rawDetail')}</summary><p>{error}</p></details>
-              <Button variant="outline" size="sm" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: true })}>{t('pluginBrowser.forceRescan')}</Button>
+              <p className="text-ui-support text-muted-foreground">{t('pluginBrowser.scanFailedNext')}</p>
+              <Button variant="outline" size="sm" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: true })}>{t('pluginBrowser.retryScan')}</Button>
             </div>
           ) : filteredPlugins.length === 0 ? (
             <div className="flex min-w-0 flex-col items-center justify-center min-h-40 py-6 text-center wrap-anywhere text-muted-foreground">
               {searchQuery || selectedCategory ? <>
                 <h3 className="text-ui-control font-semibold">{searchQuery ? t('pluginBrowser.searchNoMatch', { query: searchQuery }) : t('pluginBrowser.noMatch')}</h3>
-                <Button variant="outline" type="button" className="mt-3" onClick={() => { setSearchQuery(''); setSelectedCategory(null); searchRef.current?.focus(); }}>{t('pluginBrowser.resetFilters')}</Button>
+                <Button variant="outline" type="button" className="mt-3" onClick={() => { setSearchQuery(''); setSelectedCategory(null); searchRef.current?.focus(); }}>{t(searchQuery ? 'pluginBrowser.clearSearch' : 'pluginBrowser.resetFilters')}</Button>
                 {activeTab !== 'all' && <button type="button" className="mt-2 underline text-primary" onClick={() => { setActiveTab('all'); setSearchQuery(''); setSelectedCategory(null); searchRef.current?.focus(); }}>{t('pluginBrowser.showAll')}</button>}
               </> : <>
                 {activeTab === 'favorites' && <h3 className="text-ui-control font-semibold">{t('pluginBrowser.noFavorites')}</h3>}
@@ -519,9 +520,10 @@ export const PluginBrowserModal: React.FC<PluginBrowserModalProps> = ({
                   <h3 className="text-ui-control font-semibold">{t(failures.length > 0 ? 'pluginBrowser.emptyFailed' : 'pluginBrowser.notFound')}</h3>
                   {failures.length > 0 ? <>
                     <p>{t('pluginBrowser.failedCount', { count: failures.length })}</p>
-                    <Button variant="outline" size="sm" className="mt-3" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: true })}>{t('pluginBrowser.forceRescan')}</Button>
+                    <Button variant="outline" size="sm" className="mt-3" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: true })}>{t('pluginBrowser.retryScan')}</Button>
                   </> : <>
                     <p className="text-center">{t('pluginBrowser.emptyScanHint')}</p>
+                    <Button variant="outline" size="sm" className="mt-3" disabled={Boolean(retryingPath)} onClick={() => onScan({ mode: 'full', retryFailed: includeFailed })}>{t('pluginBrowser.fullScan')}</Button>
                   </>}
                 </>}
                 {activeTab !== 'all' && <button type="button" className="mt-3 underline text-primary" onClick={() => setActiveTab('all')}>{t('pluginBrowser.showAll')}</button>}

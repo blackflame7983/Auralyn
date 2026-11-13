@@ -65,6 +65,7 @@ interface UIState {
     setIsTroubleshootOpen: (v: boolean) => void;
     isVoiceCheckOpen: boolean;
     setIsVoiceCheckOpen: (v: boolean) => void;
+    openVst: (focusAdd?: boolean) => void;
     applyNavigation?: (next: { page: 'home' }) => void;
     leave?: (action: () => void) => void;
 }
@@ -270,6 +271,7 @@ export function ModalLayer({ ui, audioConfig, handleConfigUpdate, pluginsApi, on
                         onClose={() => {
                             ui.setIsWizardOpen(false);
                         }}
+                        onCompleted={openVstPage => { if (openVstPage) ui.openVst(); }}
                         onSkip={() => {
                             ui.setIsWizardOpen(false);
                             markWizardDone();

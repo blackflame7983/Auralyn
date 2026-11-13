@@ -87,13 +87,6 @@ export function useLayoutMotion(ref: RefObject<HTMLElement | null>, enabled = tr
             ready = true;
         };
 
-        // 幅の遷移は親と兄弟で起きるため、同じ作業領域で両方の終了を待つ。
-        const workspace = root.closest('.workspace-body') ?? root;
-        const transitions = new Map<EventTarget, Set<string>>();
-        const widthAnimating = () => [workspace, ...workspace.querySelectorAll(':scope > .vst-panel-space')].some(element =>
-            element.getAnimations?.().some(animation =>
-                'transitionProperty' in animation && ['width', 'max-width'].includes(String(animation.transitionProperty)) &&
-                (animation.playState === 'running' || animation.pending)));
         let frame: number | null = null;
         let resizeTimer: ReturnType<typeof setTimeout> | null = null;
         const cancelMoves = () => { for (const element of tracked) moves.get(element)?.cancel(); };
@@ -102,36 +95,8 @@ export function useLayoutMotion(ref: RefObject<HTMLElement | null>, enabled = tr
             cancelFrame();
             frame = requestAnimationFrame(() => {
                 frame = null;
-                if (widthAnimating()) { settle(); return; }
-                if (transitions.size === 0 && resizeTimer === null) measure(true);
+                if (resizeTimer === null) measure(true);
             });
-        };
-        const isWidthTransition = (event: TransitionEvent) => {
-            const target = event.target;
-            return !event.pseudoElement && target instanceof HTMLElement && (
-                (target === workspace && event.propertyName === 'max-width') ||
-                (target.parentElement === workspace && target.matches('.vst-panel-space') && event.propertyName === 'width')
-            );
-        };
-        const transitionRun = (event: Event) => {
-            const transition = event as TransitionEvent;
-            if (!isWidthTransition(transition)) return;
-            const target = transition.target!;
-            const properties = transitions.get(target) ?? new Set<string>();
-            properties.add(transition.propertyName);
-            transitions.set(target, properties);
-            cancelFrame();
-            cancelMoves();
-        };
-        const transitionDone = (event: Event) => {
-            const transition = event as TransitionEvent;
-            if (!isWidthTransition(transition)) return;
-            const target = transition.target!;
-            const properties = transitions.get(target);
-            if (!properties?.delete(transition.propertyName)) return;
-            if (properties.size === 0) transitions.delete(target);
-            // cancel → run の反転と、最後の ResizeObserver 通知を同じフレームにまとめる。
-            if (transitions.size === 0 && resizeTimer === null) settle();
         };
         const windowResize = () => {
             cancelFrame();
@@ -140,22 +105,19 @@ export function useLayoutMotion(ref: RefObject<HTMLElement | null>, enabled = tr
             // ドラッグ中は自然な配置に即座に追従させ、静まってから基準位置だけ更新する。
             resizeTimer = setTimeout(() => {
                 resizeTimer = null;
-                if (transitions.size === 0) settle();
+                settle();
             }, 120);
         };
         const motionChange = () => {
             cancelMoves();
-            if (transitions.size === 0 && resizeTimer === null && frame === null) measure(true);
+            if (resizeTimer === null && frame === null) measure(true);
         };
-        workspace.addEventListener('transitionrun', transitionRun);
-        workspace.addEventListener('transitionend', transitionDone);
-        workspace.addEventListener('transitioncancel', transitionDone);
         window.addEventListener('resize', windowResize);
         reduced?.addEventListener?.('change', motionChange);
 
-        // 通常の内容変更だけを補間する。連続する幅変更中は位置を読み直さない。
+        // 通常の内容変更だけを補間する。窓の大きさを変えている間は位置を読み直さない。
         const resize = new ResizeObserver(() => {
-            if (!widthAnimating() && transitions.size === 0 && resizeTimer === null && frame === null) measure();
+            if (resizeTimer === null && frame === null) measure();
         });
         const observe = () => {
             const before = trackedSet;
@@ -168,24 +130,11 @@ export function useLayoutMotion(ref: RefObject<HTMLElement | null>, enabled = tr
         measure();
         const mutation = new MutationObserver(records => {
             if (records.some(record => record.type === 'childList' && root.contains(record.target))) observe();
-            // パネルの退場完了で予約要素が先に外れると、取消イベントが親へ届かないことがある。
-            let removed = false;
-            for (const target of transitions.keys()) {
-                if (target instanceof HTMLElement && !workspace.contains(target)) {
-                    transitions.delete(target);
-                    removed = true;
-                }
-            }
-            if (removed && transitions.size === 0 && resizeTimer === null) settle();
         });
         mutation.observe(root, { childList: true, subtree: true });
-        if (workspace !== root) mutation.observe(workspace, { childList: true });
         return () => {
             resize.disconnect();
             mutation.disconnect();
-            workspace.removeEventListener('transitionrun', transitionRun);
-            workspace.removeEventListener('transitionend', transitionDone);
-            workspace.removeEventListener('transitioncancel', transitionDone);
             window.removeEventListener('resize', windowResize);
             reduced?.removeEventListener?.('change', motionChange);
             cancelFrame();

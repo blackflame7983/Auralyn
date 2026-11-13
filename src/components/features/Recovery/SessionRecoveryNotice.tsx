@@ -24,7 +24,7 @@ const labels = {
     retained: 'session.retained',
 } as const;
 
-// 右パネルの開閉に関係なく、保護理由と明示的な再試行をホームに残す。
+// ページが変わっても、保護理由と明示的な再試行をホームに残す。
 export function SessionRecoveryNotice({ status, protectedSession, reason, busy, onRetry, unrestored = [], missingRecovery, onCheckMissing, onSaveWithoutMissing }: SessionRecoveryNoticeProps) {
     const t = useMessages();
     const [recoveryError, setRecoveryError] = useState(false);

@@ -11,64 +11,62 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const width of [1200, 1600, 1920, 2560]) {
-    test(`ホームとVSTを隣接させ開閉後も主要操作を保つ ${width}`, async ({ page }, testInfo) => {
+    test(`VSTのページは右の列と重ならず、ホームへ戻って開き直せる ${width}`, async ({ page }, testInfo) => {
         await page.setViewportSize({ width, height: 768 });
         await page.goto('/');
-                const toggle = page.locator('#vst-panel-toggle');
-        const panel = page.locator('#vst-panel');
+        const toggle = page.locator('#home-vst-open');
         await toggle.click();
-        await expect(panel).toHaveAttribute('data-state', 'open');
-        await page.locator('.workspace-body').evaluate(async node => {
-            await new Promise(requestAnimationFrame);
-            await Promise.all(node.getAnimations({ subtree: true })
-                .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
-                .map(animation => animation.finished.catch(() => {})));
-        });
+        const vstPage = page.locator('[data-vst-page]');
+        await expect(vstPage).toBeVisible();
+        await expect(page.locator('.home-content')).toHaveCount(0);
         await expect.poll(async () => {
             const gap = await page.evaluate(() => {
-                const p = document.querySelector('#vst-panel')!.getBoundingClientRect();
-                const h = document.querySelector('.home-content')!.getBoundingClientRect();
-                return p.left - h.right;
+                const pageBox = document.querySelector('[data-vst-page]')!.getBoundingClientRect();
+                const meter = document.querySelector('[role="meter"][aria-label="出力"]')!.getBoundingClientRect();
+                return meter.left - pageBox.right;
             });
-            return gap >= 0 && gap <= 26;
+            return gap >= -1;
         }).toBe(true);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-        if (width === 2560) await page.screenshot({ path: testInfo.outputPath('adjacent-home-vst.png') });
-        await page.locator('#plugin-rack-heading').press('Escape');
-        // 横並びではEscapeを閉じる操作に割り当てないため、専用の閉じる操作を使う。
-        if (await panel.count()) await panel.getByRole('button', { name: 'VST構成を閉じる', exact: true }).click();
-        await expect(panel).toHaveCount(0);
-        await expect(toggle).toBeFocused();
+        if (width === 2560) await page.screenshot({ path: testInfo.outputPath('vst-page.png') });
+        await page.keyboard.press('Escape');
+        await expect(vstPage).toBeVisible();
+        await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
+        await expect(vstPage).toHaveCount(0);
+        await expect(toggle).toHaveText('追加');
+        await toggle.focus();
         await toggle.press('Enter');
-        await expect(page.locator('#plugin-rack-heading')).toBeFocused();
-        await expect(page.locator('.app-shell')).toHaveAttribute('data-panel-instant', 'true');
+        await expect(page.locator('#add-effect-btn')).toBeFocused();
+        await expect(page.locator('.app-shell')).not.toHaveAttribute('data-panel-instant');
     });
 }
 
-test('最小画面でパネルを重ねても右の列の出力メーターは残り、大型メーターの一時非表示は出さない', async ({ page }, testInfo) => {
+test('最小画面でVSTのページを開いても右の列の出力メーターは残り、大型メーターは出さない', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 960, height: 640 });
     await page.goto('/');
     const meter = page.getByRole('meter', { name: '出力', exact: true });
     await expect(meter).toBeVisible();
     await expect(page.locator('.large-meter-motion')).toHaveCount(0);
-    await page.locator('#vst-panel-toggle').click();
-    await expect(page.locator('main')).toHaveAttribute('inert', '');
+    await page.locator('#home-vst-open').click();
+    await expect(page.locator('[data-vst-page]')).toBeVisible();
+    await expect(page.locator('main')).not.toHaveAttribute('inert', '');
     await expect(meter).toBeVisible();
     await expect(page.locator('#large-meter-suspended')).toHaveCount(0);
-    await page.screenshot({ path: testInfo.outputPath('suspended-meter.png') });
-    await page.locator('#plugin-rack-heading').focus();
+    await page.screenshot({ path: testInfo.outputPath('vst-page-meter.png') });
     await page.keyboard.press('Escape');
-    await expect(page.locator('#vst-panel')).toHaveCount(0);
+    await expect(page.locator('[data-vst-page]')).toBeVisible();
     await expect(meter).toBeVisible();
 });
 
-test('動きを減らす設定でも広い画面のホームとパネルが隣接する', async ({ page }) => {
+test('動きを減らす設定でもVSTのページは右の列と重ならない', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.setViewportSize({ width: 2560, height: 1369 });
     await page.goto('/');
-    await page.locator('#vst-panel-toggle').click();
-    await expect(page.getByRole('meter', { name: '出力', exact: true })).toBeVisible();
-    const home = (await page.locator('.home-content').boundingBox())!, panel = (await page.locator('#vst-panel').boundingBox())!;
-    expect(panel.x - home.x - home.width).toBeLessThanOrEqual(26);
+    await page.locator('#home-vst-open').click();
+    const meter = page.getByRole('meter', { name: '出力', exact: true });
+    await expect(meter).toBeVisible();
+    const pageBox = (await page.locator('[data-vst-page]').boundingBox())!;
+    const meterBox = (await meter.boundingBox())!;
+    expect(meterBox.x).toBeGreaterThanOrEqual(pageBox.x + pageBox.width - 1);
     expect(await page.locator('.workspace-body').evaluate(node => getComputedStyle(node).transitionDuration)).toBe('0s');
 });

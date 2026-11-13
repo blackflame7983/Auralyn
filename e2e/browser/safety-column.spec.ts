@@ -124,15 +124,15 @@ test.describe('右の本番中の操作', () => {
         ]);
     });
 
-    test('右パネルを重ねても右の列の3操作が押せる', async ({ page }) => {
+    test('VSTのページを開いても右の列の3操作が押せる', async ({ page }) => {
         await page.addInitScript(configuredStorage);
         await page.goto('/');
         await ready(page);
         for (const size of [{ width: 960, height: 640 }, { width: 1024, height: 768 }]) {
             await page.setViewportSize(size);
-            await page.locator('#vst-panel-toggle').click();
-            await expect(page.locator('#vst-panel')).toHaveAttribute('data-state', 'open');
-            await expect(page.locator('main')).toHaveAttribute('inert', '');
+            await page.locator('#home-vst-open').click();
+            await expect(page.locator('[data-vst-page]')).toBeVisible();
+            await expect(page.locator('main')).not.toHaveAttribute('inert', '');
             const aside = column(page);
             await expect(aside).not.toHaveAttribute('inert', '');
             const controls = [
@@ -147,13 +147,15 @@ test.describe('右の本番中の操作', () => {
                     const target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
                     return {
                         inColumn: Boolean(target?.closest('aside[aria-label="本番中の操作"]')),
-                        covered: Boolean(target?.closest('.vst-panel-scrim')),
+                        covered: Boolean(target?.closest('.vst-panel-scrim, [data-vst-page]')),
                     };
                 });
                 expect(hit).toEqual({ inColumn: true, covered: false });
             }
             await page.keyboard.press('Escape');
-            await expect(page.locator('#vst-panel')).toHaveCount(0);
+            await expect(page.locator('[data-vst-page]')).toBeVisible();
+            await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true }).click();
+            await expect(page.locator('[data-vst-page]')).toHaveCount(0);
         }
     });
 
@@ -232,8 +234,8 @@ async function shoot(page: Page, state: string, theme: string, width: number, he
     if (state === 'first') await expect(page.getByRole('dialog', { name: 'セットアップ' })).toBeVisible();
     else await ready(page);
     if (panel) {
-        await page.locator('#vst-panel-toggle').click();
-        await expect(page.locator('#vst-panel')).toBeVisible();
+        await page.locator('#home-vst-open').click();
+        await expect(page.locator('[data-vst-page]')).toBeVisible();
     }
     const suffix = panel ? '-panel' : '';
     await page.screenshot({ path: `docs/verification/design-renewal-stage-a/${state}-${theme}-${width}x${height}${suffix}.png` });

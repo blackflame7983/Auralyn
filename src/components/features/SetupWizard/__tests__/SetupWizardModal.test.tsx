@@ -1,4 +1,3 @@
-import { saveVstPanelOpen } from '@/hooks/useVstPanel';
 import { useSetupWizard } from '../useSetupWizard';
 import { chooseObsRoute } from './wizardActions';
 import { act, renderHook, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -25,13 +24,15 @@ let startFails: boolean;
 let startError: string;
 let obsFails: boolean;
 
+const vstChoice = 'VSTで音を調整したい（完了後にVSTのページを開く）';
 const openWizard = async () => {
     const onApplyConfig = vi.fn();
     const onClose = vi.fn();
     const onSkip = vi.fn();
-    render(<SetupWizardModal isOpen onClose={onClose} onSkip={onSkip} onApplyConfig={onApplyConfig} />);
+    const onCompleted = vi.fn();
+    render(<SetupWizardModal isOpen onClose={onClose} onSkip={onSkip} onApplyConfig={onApplyConfig} onCompleted={onCompleted} />);
     await screen.findByRole('radio', { name: 'OBSで配信' });
-    return { onApplyConfig, onClose, onSkip };
+    return { onApplyConfig, onClose, onSkip, onCompleted };
 };
 const quickStart = async () => {
     const callbacks = await openWizard();
@@ -42,7 +43,6 @@ const quickStart = async () => {
 
 beforeEach(() => {
     localStorage.clear();
-    saveVstPanelOpen(false);
     inputs = [mic];
     outputs = [cable, device('スピーカー')];
     reach = true;
@@ -551,31 +551,33 @@ describe('セットアップの接続チェック', () => {
 });
 
 describe('初回選択と表示設定', () => {
-    it.each([
-        [false, false], [false, true], [true, false], [true, true],
-    ])('初期選択は現在のパネルに合わせ、そのまま保存しても開閉を変えない：panel=%s details=%s', async (panel, details) => {
-        saveVstPanelOpen(panel);
+    it.each([false, true])('初期選択はVSTのページを開かず、そのまま保存しても数値の詳細を変えない：details=%s', async details => {
         localStorage.setItem('vst_host_beginner_mode', String(!details));
-        await quickStart();
-        expect((screen.getByRole('radio', { name: 'VSTで音を調整したい（VST構成を開いておく）' }) as HTMLInputElement).checked).toBe(panel);
+        const { onCompleted } = await quickStart();
+        expect(screen.getByRole('radio', { name: vstChoice })).not.toBeChecked();
+        expect(screen.getByRole('radio', { name: '配信をはじめたい' })).toBeChecked();
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
         await screen.findByRole('heading', { name: '音声設定を保存しました' });
-        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe(String(panel));
-        expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(!(details || panel)));
+        fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
+        expect(localStorage.getItem('auralyn_vst_panel_open')).toBeNull();
+        expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(!details));
+        expect(onCompleted).not.toHaveBeenCalled();
     });
     it.each([
         [false, false], [false, true], [true, false], [true, true],
-    ])('選んだ開閉を反映し、数値の詳細はVST選択でのみ ON にする：VST=%s details=%s', async (vst, details) => {
-        saveVstPanelOpen(!vst);
+    ])('VSTを選んだときだけ完了後にページを開き、数値の詳細はVST選択でのみ ON にする：VST=%s details=%s', async (vst, details) => {
         localStorage.setItem('vst_host_beginner_mode', String(!details));
-        await quickStart();
-        fireEvent.click(screen.getByRole('radio', { name: vst ? 'VSTで音を調整したい（VST構成を開いておく）' : '配信をはじめたい' }));
+        const { onCompleted } = await quickStart();
+        fireEvent.click(screen.getByRole('radio', { name: vst ? vstChoice : '配信をはじめたい' }));
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(!details));
-        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe(String(!vst));
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
         await screen.findByRole('heading', { name: '音声設定を保存しました' });
-        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe(String(vst));
+        expect(onCompleted).not.toHaveBeenCalled();
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(!(details || vst)));
+        fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
+        expect(localStorage.getItem('auralyn_vst_panel_open')).toBeNull();
+        if (vst) expect(onCompleted).toHaveBeenCalledWith(true);
+        else expect(onCompleted).not.toHaveBeenCalled();
     });
     it('確認画面で表示を選んだ後に中断しても既存の表示設定を変えない', async () => {
         localStorage.setItem('vst_host_beginner_mode', 'false');
@@ -772,9 +774,8 @@ describe('PC audio purpose', () => {
         [true, 'success'], [false, 'success'],
         [true, 'reject'], [false, 'reject'],
         [true, 'readback'], [false, 'readback'],
-    ] as const)('音楽鑑賞は保存待ち・失敗時の開閉を保ち、読み戻し成功後だけ選択を反映する：VST=%s %s', async (vst, result) => {
+    ] as const)('音楽鑑賞は保存待ち・失敗時にページを開かず、読み戻し成功後だけ数値の詳細と完了を反映する：VST=%s %s', async (vst, result) => {
         inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
-        saveVstPanelOpen(!vst);
         localStorage.setItem('vst_host_beginner_mode', String(vst));
         const original = vi.mocked(invoke).getMockImplementation()!;
         const inactive = { ...snapshot, config: { ...fx, active: false, reverb: { ...fx.reverb, enabled: false } } };
@@ -783,7 +784,7 @@ describe('PC audio purpose', () => {
             if (command === 'builtin_effects') return inactive;
             return original(command, args);
         });
-        const { onApplyConfig } = await openWizard();
+        const { onApplyConfig, onCompleted } = await openWizard();
         let finish!: () => void;
         const pending = new Promise<void>(resolve => { finish = resolve; });
         onApplyConfig.mockImplementation(async (host, input, output, actual) => {
@@ -793,15 +794,18 @@ describe('PC audio purpose', () => {
             if (result !== 'readback') localStorage.setItem('vst_host_wizard_done', 'true');
         });
         await toConfirm();
-        fireEvent.click(screen.getByRole('radio', { name: vst ? 'VSTで音を調整したい（VST構成を開いておく）' : '音を手軽に調整したい' }));
+        fireEvent.click(screen.getByRole('radio', { name: vst ? vstChoice : '音を手軽に調整したい' }));
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
         await waitFor(() => expect(onApplyConfig).toHaveBeenCalledOnce());
-        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe(String(!vst));
+        expect(onCompleted).not.toHaveBeenCalled();
         await act(async () => { finish(); });
         if (result === 'success') await screen.findByRole('heading', { name: '音声設定を保存しました' });
         else await screen.findByRole('alert');
-        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe(String(result === 'success' ? vst : !vst));
+        expect(localStorage.getItem('auralyn_vst_panel_open')).toBeNull();
         expect(localStorage.getItem('vst_host_beginner_mode')).toBe(String(result === 'success' && vst ? false : vst));
+        if (result === 'success') fireEvent.click(screen.getByRole('button', { name: 'セットアップを閉じる' }));
+        if (result === 'success' && vst) expect(onCompleted).toHaveBeenCalledWith(true);
+        else expect(onCompleted).not.toHaveBeenCalled();
     });
     it('音楽鑑賞の新規利用者が手軽を選ぶと、用途の既定値より明示的に閉じる選択を優先する', async () => {
         inputs = [device('CABLE Output', true)]; outputs = [device('Headphones')];
@@ -821,7 +825,7 @@ describe('PC audio purpose', () => {
         fireEvent.click(screen.getByRole('button', { name: '設定を保存して開始' }));
         await screen.findByRole('heading', { name: '音声設定を保存しました' });
         expect(localStorage.getItem('vst_host_setup_goal')).toBe('music');
-        expect(localStorage.getItem('auralyn_vst_panel_open')).toBe('false');
+        expect(localStorage.getItem('auralyn_vst_panel_open')).toBeNull();
         expect(localStorage.getItem('vst_host_beginner_mode')).toBeNull();
     });
     it('保存途中の失敗では、この操作が書いた保存値を条件付きで戻す', async () => {

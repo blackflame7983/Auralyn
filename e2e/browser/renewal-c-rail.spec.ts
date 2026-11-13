@@ -93,7 +93,7 @@ test('960と1024の日本語で音調整の見出しと状態は1行', async ({ 
     await page.goto('/');
     await ready(page);
     await expect(page.locator('.sound-module-card [role="switch"]')).toHaveCount(2);
-    await expect(page.locator('#vst-panel-toggle')).toBeVisible();
+    await expect(page.locator('#home-vst-open')).toBeVisible();
     const measure = async (width: number, height: number) => {
         await page.setViewportSize({ width, height });
         return page.evaluate(() => {
@@ -117,7 +117,7 @@ test('960と1024の日本語で音調整の見出しと状態は1行', async ({ 
                     const head = element.closest('.sound-module-card')?.querySelector('h3')?.parentElement;
                     return { width: Math.round(box.width), height: Math.round(box.height), inHeading: Boolean(head?.contains(element)) };
                 }),
-                vstInHeading: Boolean(document.querySelector('.sound-module-card h3')?.parentElement?.querySelector('#vst-panel-toggle')),
+                vstInHeading: Boolean(document.querySelector('.sound-module-card h3')?.parentElement?.querySelector('#home-vst-open')),
             };
         });
     };

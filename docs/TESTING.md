@@ -122,7 +122,7 @@ Cargoの既定保存先は `src-tauri/target/native-e2e`。通常開発とは異
 ブラウザ画面試験のIPCモックの本体は `src/dev/tauriMock.ts` にあり、`e2e/browser/tauriFixture.ts` と開発プレビューで共有する。開発サーバー（`npm run dev`）で `http://localhost:1420/?mock=<状態>` を開くと、Tauriなしのブラウザで画面を再現できる。用途は Pencil（pen.dev）などのデザインツールへの取り込みと見た目の確認で、音声処理・IPC・実機の受入には使わない。
 
 - 状態は `live-home`（実行中・登録済みモード）、`live-home-builtin`（内蔵エフェクトON）、`stopped-home`（停止中）、`first-run`（初回セットアップ）。定義は `src/dev/previewMock.ts`。
-- 画面は `?screen=` で最初から開く。`settings-audio`（接続のページ）、`settings-sound`（音づくり）、`settings-obs`、`settings-appearance`、`settings-shortcuts`、`settings-system`（設定の各区分）、`obs-guide`、`discord-guide`、`troubleshoot`、`voice-check`、`help`、`plugin-browser`、`presets`、`template-wizard`、`license`、`stream-mix`、`vst-panel`。起動の覆いが消えると `html` の `data-auralyn-preview` にその名前（画面指定がなければ `home`）が付く。接続・音づくり・設定は中央のページで、`[data-settings-page]` に出る。診断情報や確認などのモーダルは `#root` の外に出るため、取り込みは `body` を使う。
+- 画面は `?screen=` で最初から開く。`settings-audio`（接続のページ）、`settings-sound`（音づくり）、`settings-obs`、`settings-appearance`、`settings-shortcuts`、`settings-system`（設定の各区分）、`obs-guide`、`discord-guide`、`troubleshoot`、`voice-check`、`help`、`plugin-browser`、`presets`、`template-wizard`、`license`、`stream-mix`、`vst`（`vst-panel` も同じページを開く）。起動の覆いが消えると `html` の `data-auralyn-preview` にその名前（画面指定がなければ `home`）が付く。接続・音づくり・設定は中央のページで、`[data-settings-page]` に出る。診断情報や確認などのモーダルは `#root` の外に出るため、取り込みは `body` を使う。
 - 設定済みの状態では、開いたブラウザの localStorage にセットアップ完了と機器設定を書き込む。状態が持つ保存値以外は、切り替えるたびに消す。プレビュー専用のブラウザで使う。
 - 未定義のIPCはプレビューでは失敗させず `window.__e2eUnexpected` に記録する。試験（`strict: true`）では従来どおり失敗させる。
 - 読込は `vite.config.ts` の serve 専用プラグインで行い、本番ビルドには含まれない。Tauri上（`__TAURI_INTERNALS__` がある場合）では何もしない。

@@ -12,13 +12,12 @@ import { HomeAudioStartError } from '@/lib/startHomeAudio';
 import { FixedClientError } from '@/lib/clientError';
 import { saveDisplayPurpose } from '@/hooks/useDisplayPurpose';
 import { saveStreamMixPanel } from '@/lib/streamMixPanel';
-import { saveVstPanelOpen } from '@/hooks/useVstPanel';
 
 vi.mock('../MasterBar', () => ({ MasterBar: ({ compare, input, lock }: { compare?: React.ReactNode; input?: React.ReactNode; lock?: React.ReactNode }) => <>{input}{lock}{compare}</> }));
 const measurementProps = vi.hoisted(() => ({current: null as any}));
 vi.mock('../../features/LevelMeter/LoudnessCheck', () => ({ LoudnessCheck: (props: unknown) => { measurementProps.current = props; return null; } }));
 vi.mock('../../features/Home/VoiceQuickControls', () => ({ useVoiceQuick: () => ({ stats: {}, noiseOn: true, chainOn: true, preset: 'broadcast', shownAmount: 50 }), NoiseSwitch: () => null, NoiseQuick: () => <p>quick</p>, BuiltinSwitch: () => null, BuiltinQuick: () => null, BuiltinAmount: () => null, BuiltinPresets: () => null, ToneGuide: () => null }));
-beforeEach(() => { vi.mocked(listen).mockClear(); localStorage.clear(); saveVstPanelOpen(false); saveStreamMixPanel(false); });
+beforeEach(() => { vi.mocked(listen).mockClear(); localStorage.clear(); saveStreamMixPanel(false); });
 afterEach(async () => { await act(async () => {}); cleanup(); vi.restoreAllMocks(); });
 
 it.each([false, true])('音声停止中の入口は設定を開き、稼働中には表示しない（稼働=%s）', running => {
@@ -254,36 +253,32 @@ it('入出力・声の調整・試聴を保持する', async () => {
 });
 
 
-it('VST 構成は右パネルで開閉し、大型メーターの入口は置かない', () => {
-    render(<AppShell {...commonProps} vstPanel={<h2 id="plugin-rack-heading" tabIndex={-1}>rack-panel</h2>}><p>rack</p></AppShell>);
-    expect(screen.queryByText('rack-panel')).not.toBeInTheDocument();
+it('ホームとレールのVST入口はページを開き、大型メーターの入口は置かない', () => {
+    const onOpenVst = vi.fn();
+    const { container } = render(<AppShell {...commonProps} onOpenVst={onOpenVst}><p>rack</p></AppShell>);
     expect(screen.queryByRole('button', { name: /大型レベルメーター/ })).not.toBeInTheDocument();
+    expect(document.getElementById('vst-panel')).toBeNull();
+    expect(container.querySelector('main')).not.toHaveAttribute('inert');
     fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' }));
-    // 開いたら見出しへ移り、キーボードでもそのまま続けられる。
-    expect(screen.getByRole('complementary', { name: 'rack-panel' })).toHaveTextContent('rack-panel');
-    expect(screen.getByText('rack-panel')).toHaveFocus();
-    expect(localStorage.getItem('auralyn_vst_panel_open')).toBe('true');
+    expect(onOpenVst).toHaveBeenCalledWith(false);
+    onOpenVst.mockClear();
+    fireEvent.click(within(screen.getByRole('navigation', { name: '行き先' })).getByRole('button', { name: 'VST' }));
+    expect(onOpenVst).toHaveBeenCalledWith();
 });
 
-it('狭い幅では右パネルを重ねて背景の誤操作を防ぎ、閉じたら入口へ戻す', () => {
-    const { container } = render(<AppShell {...commonProps} vstPanel={<button type="button" onClick={() => saveVstPanelOpen(false)}>close-panel</button>}><p>rack</p></AppShell>);
+it('VSTの入口はホームを操作不能にせず、開閉の印を付けない', () => {
+    const onOpenVst = vi.fn();
+    const { container } = render(<AppShell {...commonProps} onOpenVst={onOpenVst}><p>rack</p></AppShell>);
     const toggle = screen.getByRole('button', { name: 'VSTを編集' });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-expanded');
+    expect(toggle).not.toHaveAttribute('aria-controls');
     fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(toggle).toHaveAttribute('aria-controls', 'vst-panel');
-    expect(container.firstElementChild).toHaveAttribute('data-vst-overlay', 'true');
-    expect(container.querySelector('main')).toHaveAttribute('inert');
-    const column = screen.getByRole('complementary', { name: '本番中の操作' });
-    expect(column.closest('[inert]')).toBeNull();
-    expect(column).not.toHaveAttribute('inert');
-    const close = screen.getByRole('button', { name: 'close-panel' });
-    close.focus();
-    fireEvent.click(close);
-    expect(screen.queryByRole('complementary', { name: 'rack-panel' })).not.toBeInTheDocument();
+    expect(onOpenVst).toHaveBeenCalledWith(false);
+    expect(container.firstElementChild).not.toHaveAttribute('data-vst-overlay');
     expect(container.firstElementChild).not.toHaveAttribute('data-vst-open');
     expect(container.querySelector('main')).not.toHaveAttribute('inert');
-    expect(toggle).toHaveFocus();
+    const column = screen.getByRole('complementary', { name: '本番中の操作' });
+    expect(column).not.toHaveAttribute('inert');
 });
 
 it.each([true, false])('背景の静止した光と格子はゲーミングだけに表示する（稼働=%s）', running => {
@@ -389,22 +384,19 @@ currentHost="WASAPI" currentInput="Mic" currentOutput="Speakers" engineProcessRe
 });
 
 
-it('広い窓で別の音調整を開いてからVSTパネルを閉じても、ヘッダーの編集へ戻す', () => {
+it('広い窓でもVSTの入口はホームを覆わず、同じ入口から開き直せる', () => {
     vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: query === '(min-width: 1200px)', addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     try {
-        const { container } = render(<AppShell {...commonProps} vstPanel={<button type="button" onClick={() => saveVstPanelOpen(false)}>close-panel</button>}><p>rack</p></AppShell>);
+        const onOpenVst = vi.fn();
+        const { container } = render(<AppShell {...commonProps} onOpenVst={onOpenVst}><p>rack</p></AppShell>);
         const edit = screen.getByRole('button', { name: 'VSTを編集' });
         fireEvent.click(edit);
         expect(container.querySelector('main')).not.toHaveAttribute('inert');
         expect(edit.closest('[inert]')).toBeNull();
-        const close = screen.getByRole('button', { name: 'close-panel' });
-        close.focus();
-        fireEvent.click(close);
-        expect(edit).toHaveFocus();
-        expect(edit.closest('[inert], [aria-hidden="true"]')).toBeNull();
-        expect(edit).toHaveAttribute('aria-expanded', 'false');
-        // 詳細を開き直さず、復帰先からVSTの編集を再開できる。
+        expect(edit.closest('[aria-hidden="true"]')).toBeNull();
         fireEvent.click(edit);
-        expect(screen.getByRole('button', { name: 'close-panel' })).toBeInTheDocument();
+        expect(onOpenVst).toHaveBeenCalledTimes(2);
+        expect(onOpenVst).toHaveBeenNthCalledWith(1, false);
+        expect(onOpenVst).toHaveBeenNthCalledWith(2, false);
     } finally { vi.unstubAllGlobals(); }
 });

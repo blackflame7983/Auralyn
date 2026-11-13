@@ -3,19 +3,16 @@ import { MixingLiveControl } from '@/components/features/Home/MixingLiveControl'
 import { readPreparationContext } from '@/lib/preparation';
 import { stageModeKey } from '@/lib/stageModeName';
 import { useDisplayPurpose } from './hooks/useDisplayPurpose';
-import { InfoPopover } from '@/components/ui/InfoPopover';
 import { sessionMode } from './lib/temporarySession';
 import { REVIEW_KEY } from './api/migration';
 import { startHomeAudio } from './lib/startHomeAudio';
 import { useMessages, LocalizedMessage } from '@/i18n/LocaleProvider';
-import { useVstPanel } from './hooks/useVstPanel';
-import { MdClose } from 'react-icons/md';
 import { useLiveModes } from './hooks/useLiveModes';
 import { LiveModeBar, LiveModeSwitch } from './components/features/AudioSettings/LiveModeBar';
 import { LiveProtectButton } from './components/features/AudioSettings/LiveProtectButton';
 import { useEffect, useRef } from 'react';
 import { AppShell } from './components/layout/AppShell';
-import { PluginList } from './components/features/PluginRack/PluginList';
+import { VstPage } from './components/features/PluginRack/VstPage';
 import { VstChainItems } from './components/features/Home/VstChainItems';
 import { ModalLayer } from './components/layout/ModalLayer';
 import { PageSlotProvider } from './components/layout/pageSlot';
@@ -41,7 +38,6 @@ function AppContent() {
   // Custom Hooks
   const ui = useUIState();
   const [displayPurpose] = useDisplayPurpose();
-  const [vstPanelOpen, setVstPanelOpen] = useVstPanel();
   const { audioConfig, handleConfigUpdate, isInitializing, isEngineRunning, engineProcessReady } = useAudioConfig(
     () => ui.setIsWizardOpen(true),
     () => ui.setIsSettingsOpen(true)
@@ -64,11 +60,11 @@ function AppContent() {
     });
   }, [isInitializing, ui]);
   const tutorialEligible = useRef(false);
-  // 初回の使い方案内は VST ラックの操作を指すので、右パネルを開いている間だけ進める。
-  tutorialEligible.current = audioReady && vstPanelOpen;
+  // 初回の使い方案内は VST のページを開いている間だけ進める。
+  tutorialEligible.current = audioReady && ui.page === 'vst';
 
   const pluginsApi = usePlugins();
-  // 右パネルを閉じても、停止の toast はここから出す。カードは表示と再開だけ。
+  // ページを移動しても、停止の toast はここから出す。カードは表示と再開だけ。
   usePluginHealthNotices(pluginsApi.plugins);
   const liveModel = useLiveModes(pluginsApi.isLoading);
 
@@ -125,11 +121,12 @@ function AppContent() {
     ui.isPresetManagerOpen, ui.isTroubleshootOpen, ui.isVoiceCheckOpen,
   ].some(Boolean);
 
-  const pluginRack = (
-    <PluginList
+  const vstPage = ui.page === 'vst' ? <VstPage
       plugins={pluginsApi.plugins}
       audioReady={audioReady}
-      onAddClick={() => ui.setIsBrowserOpen(true)}
+      focusNonce={ui.vstOpenNonce}
+      focusAdd={ui.vstFocusAdd}
+      onAdd={() => ui.setIsBrowserOpen(true)}
       onToggle={pluginsApi.togglePlugin}
       onMute={pluginsApi.toggleMute}
       onGainChange={pluginsApi.setPluginGain}
@@ -139,15 +136,68 @@ function AppContent() {
       onOpenPresets={() => ui.setIsPresetManagerOpen(true)}
       onOpenTemplates={() => ui.setIsTemplateWizardOpen(true)}
       unrestored={pluginsApi.sessionUnrestored}
-      headerAction={<>
-        <InfoPopover label={t('info.rack')}>{t('app.rackHint')}</InfoPopover>
-        <button type="button" onClick={() => setVstPanelOpen(false)} aria-label={t('rack.closePanel')} title={t('rack.closePanel')}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
-          <MdClose aria-hidden="true" className="h-4 w-4" />
-        </button>
-      </>}
-    />
-  );
+      tutorial={audioReady && !isModalOpen ? <>
+            {!ui.isBrowserOpen && !isInitializing && (
+              <TutorialOverlay
+                targetId="add-effect-btn"
+                step="click_add_effect"
+                side="top"
+                align="center"
+                content={
+                  <div className="space-y-2">
+                    <strong className="block text-info font-bold">
+                      {t('guide.copy.427')}</strong>
+                    <p>
+                      {t('guide.copy.428')}</p>
+                  </div>
+                }
+              />
+            )}
+            <TutorialOverlay
+              targetId="first-plugin-card"
+              step="explain_plugin_card"
+              side="bottom"
+              align="start"
+              content={
+                <div className="space-y-2">
+                  <strong className="block text-info font-bold">{t('guide.copy.429')}</strong>
+                  <p>
+                    {t('guide.copy.430')}<br />
+                    {t('guide.copy.431')}</p>
+                </div>
+              }
+            />
+            <TutorialOverlay
+              targetId="first-plugin-card"
+              step="try_edit_plugin"
+              side="bottom"
+              align="start"
+              content={
+                <div className="space-y-2">
+                  <strong className="block text-info font-bold">
+                    {t('guide.copy.432')}</strong>
+                  <p>
+                    {t('guide.copy.433')}<br />
+                    {t('guide.copy.434')}</p>
+                </div>
+              }
+            />
+            <TutorialOverlay
+              targetId="ab-compare-btn"
+              step="try_ab_compare"
+              side="top"
+              align="start"
+              content={
+                <div className="space-y-2">
+                  <strong className="block text-warning font-bold">
+                    {t('guide.copy.435')}</strong>
+                  <p>
+                    {t('guide.copy.436')}</p>
+                </div>
+              }
+            />
+          </> : null}
+    /> : null;
 
   return (
     <>
@@ -213,7 +263,7 @@ function AppContent() {
         vstChain={<VstChainItems part="toggle" plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
         vstEditors={<VstChainItems part="editor" plugins={pluginsApi.plugins} onToggle={pluginsApi.togglePlugin} onEdit={pluginsApi.openEditor} />}
         vstUnrestored={pluginsApi.sessionUnrestored}
-        vstPanel={pluginRack}
+        onOpenVst={ui.openVst}
         isEngineRunning={isEngineRunning}
         engineProcessReady={engineProcessReady}
         notices={<>
@@ -234,72 +284,8 @@ function AppContent() {
       >
         {/* 音楽鑑賞では日常の歌・雑談操作を出さず、保護や復旧が必要な場合だけ操作を残す。 */}
         {displayPurpose === 'music' && <><LiveModeBar model={liveModel} refreshKey={isModalOpen} safetyOnly /><MixingLiveControl running={audioReady} blocked={isModalOpen || isInitializing} onSettings={ui.openMixingSettings} errorsOnly /></>}
-        {/* VST ラックは AppShell の右パネルに出す。 */}
-        {audioReady && vstPanelOpen && !isModalOpen && (
-          <>
-            {!ui.isBrowserOpen && !isInitializing && (
-              <TutorialOverlay
-                targetId="add-effect-btn"
-                step="click_add_effect"
-                side="top"
-                align="center"
-                content={
-                  <div className="space-y-2">
-                    <strong className="block text-info font-bold">
-                      {t('guide.copy.427')}</strong>
-                    <p>
-                      {t('guide.copy.428')}</p>
-                  </div>
-                }
-              />
-            )}
-            <TutorialOverlay
-              targetId="first-plugin-card"
-              step="explain_plugin_card"
-              side="bottom"
-              align="start"
-              content={
-                <div className="space-y-2">
-                  <strong className="block text-info font-bold">{t('guide.copy.429')}</strong>
-                  <p>
-                    {t('guide.copy.430')}<br />
-                    {t('guide.copy.431')}</p>
-                </div>
-              }
-            />
-            <TutorialOverlay
-              targetId="first-plugin-card"
-              step="try_edit_plugin"
-              side="bottom"
-              align="start"
-              content={
-                <div className="space-y-2">
-                  <strong className="block text-info font-bold">
-                    {t('guide.copy.432')}</strong>
-                  <p>
-                    {t('guide.copy.433')}<br />
-                    {t('guide.copy.434')}</p>
-                </div>
-              }
-            />
-            <TutorialOverlay
-              targetId="ab-compare-btn"
-              step="try_ab_compare"
-              side="top"
-              align="start"
-              content={
-                <div className="space-y-2">
-                  <strong className="block text-warning font-bold">
-                    {t('guide.copy.435')}</strong>
-                  <p>
-                    {t('guide.copy.436')}</p>
-                </div>
-              }
-            />
-          </>
-        )}
-
       </AppShell>
+      {vstPage}
       </PageSlotProvider>
     </>
   );

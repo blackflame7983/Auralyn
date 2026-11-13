@@ -51,3 +51,12 @@ it('保存済みのVSTを読み込めていない空ラックは「まだない�
     expect(screen.getByText('読み込めていないVST：Ozone 12 Equalizer')).toBeInTheDocument();
     expect(screen.queryByText('VSTエフェクトはまだありません')).toBeNull();
 });
+
+it('音楽鑑賞では、ホームにない声の調整を案内しない', () => {
+    localStorage.setItem('auralyn_display_purpose', 'music');
+    try {
+        render(<PluginRackEmptyState onAddClick={vi.fn()} onOpenTemplates={vi.fn()} />);
+        expect(screen.getByText('VSTを追加すると、再生元の音に上から順にかかります。')).toBeVisible();
+        expect(screen.queryByText('ノイズ低減と声を整える機能は、ホームの音調整で調整できます。')).not.toBeInTheDocument();
+    } finally { localStorage.removeItem('auralyn_display_purpose'); }
+});

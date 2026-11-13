@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import type { Plugin } from '../PluginRack/PluginCard';
 
 // チェーン列の VST 段。押すとオン・オフし、エディタはアイコンから開く。
-// 追加・ゲイン・並べ替え・削除は右パネルの VST 構成で行い、ここには重ねない（DESIGN.md 2.3）。
+// 追加・ゲイン・並べ替え・削除は VST のページで行い、ここには重ねない（DESIGN.md 2.3）。
 export function VstChainItems({ plugins, onToggle, onEdit, part = 'all' }: {
     plugins: Plugin[]; onToggle: (id: string, enabled: boolean) => void; onEdit: (id: string) => void;
     /** toggle は ON/OFF、editor は画面を開く。all は従来どおり同じ行に両方。 */

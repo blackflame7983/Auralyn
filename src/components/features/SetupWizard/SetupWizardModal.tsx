@@ -516,11 +516,11 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = (props) => {
                                     </div>
                                     {config.goal !== 'music' && onOpenVoiceCheck && <Button variant="default"
                                         type="button"
-                                        onClick={() => { onClose(); onOpenVoiceCheck(); }}
+                                        onClick={() => { onClose(); if (panelChoice) props.onCompleted?.(true); onOpenVoiceCheck(); }}
                                         className="gap-2"
                                     ><MdHearing aria-hidden="true" />{t('home.voiceCheck')}</Button>}
                                     <Button variant={config.goal !== 'music' && onOpenVoiceCheck ? 'outline' : 'default'}
-                                        onClick={onClose}
+                                        onClick={() => { onClose(); if (panelChoice) props.onCompleted?.(true); }}
                                         className="gap-2"
                                     >
                                         {t('common.close')}

@@ -4,6 +4,13 @@ import { Modal } from '../../ui/modal';
 import React, { useState, useEffect } from 'react';
 import { MdClose, MdAutoFixHigh, MdCheck, MdArrowForward } from 'react-icons/md';
 import { CHAIN_TEMPLATES, CHAIN_TEMPLATE_COPY, ChainTemplate } from '../../../templates/chainTemplates';
+import type { MessageKey } from '@/i18n/messages';
+
+const templateUse: Record<string, MessageKey> = {
+    chatting: 'templates.chatting.use',
+    singing: 'templates.singing.use',
+    ASMR: 'templates.ASMR.use',
+};
 import { VstPlugin } from '../../../api/audio';
 import { toast } from 'sonner';
 
@@ -150,36 +157,42 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
 
                 {/* Content */}
                 <div className="modal-body-base min-w-0 wrap-anywhere">
-                    <div role="note" className="mb-4 rounded-card border border-info/30 bg-info/10 p-4 space-y-2">
-                        <p className="text-sm font-semibold">{t('presets.copy.092')}</p>
-                        <p className="text-sm text-muted-foreground">{t('presets.copy.093')}</p>
-                        <p className="text-sm text-muted-foreground">{t('presets.copy.094')}</p>
-                        {onOpenSoundSettings && <button onClick={onOpenSoundSettings} disabled={loading} className="text-sm underline text-primary disabled:opacity-50">{t('presets.copy.095')}</button>}
-                    </div>
+                    <details className="mb-4 rounded-card border border-border px-3 py-2">
+                        <summary className="cursor-pointer text-ui-control font-medium">{t('templates.beforeSummary')}</summary>
+                        <div className="mt-2 space-y-2 text-ui-support text-muted-foreground">
+                            <p>{t('templates.beforeBody')}</p>
+                            {onOpenSoundSettings && <button type="button" onClick={onOpenSoundSettings} disabled={loading} className="underline text-primary disabled:opacity-50">{t('presets.copy.095')}</button>}
+                        </div>
+                    </details>
                     {step === 1 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {CHAIN_TEMPLATES.map(template => (
-                                <button
-                                    key={template.id}
-                                    onClick={() => {
-                                        setSelectedTemplate(template);
-                                        setStep(2);
-                                    }}
-                                    className="flex min-w-0 w-full flex-col whitespace-normal text-left p-6 rounded-card border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-colors group h-full"
-                                >
-                                    <div className="text-xl font-bold mb-2 group-hover:text-primary transition-colors">{templateText(template, 'name')}</div>
-                                    <div className="text-sm text-muted-foreground mb-4 flex-1">{templateText(template, 'description')}</div>
-                                    <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
-                                        <div className="font-bold mb-1">{t('presets.copy.096')}</div>
-                                        <div className="flex flex-wrap gap-1">
+                                <div key={template.id} className="flex min-w-0 flex-col gap-2 whitespace-normal p-6 rounded-card border-2 border-border">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedTemplate(template);
+                                            setStep(2);
+                                        }}
+                                        className="flex min-w-0 w-full flex-col text-left hover:text-primary"
+                                    >
+                                        <span className="text-ui-heading font-bold">{templateText(template, 'name')}</span>
+                                        <span className="mt-2 text-ui-support text-muted-foreground">{templateText(template, 'description')}</span>
+                                        <span className="mt-2 text-ui-support text-foreground"><span className="text-muted-foreground">{t('templates.suits')}</span> {t(templateUse[template.id])}</span>
+                                        <span className="mt-1 text-ui-support text-foreground">{t('templates.applyReplaces')}</span>
+                                        <span className="mt-1 text-ui-support text-muted-foreground">{t('templates.beforeCheck')}</span>
+                                    </button>
+                                    <details className="text-ui-support text-muted-foreground">
+                                        <summary className="cursor-pointer">{t('templates.chainDetails')}</summary>
+                                        <div className="mt-1 flex flex-wrap gap-1">
                                             {template.slots.map((_slot, i) => (
-                                                <span key={i} className="inline-block px-1.5 py-0.5 bg-background border border-border rounded text-xs">
+                                                <span key={i} className="inline-block rounded-control border border-border bg-background px-1.5 py-0.5">
                                                     {slotText(template, i, 'label')}
                                                 </span>
                                             ))}
                                         </div>
-                                    </div>
-                                </button>
+                                    </details>
+                                </div>
                             ))}
                         </div>
                     ) : (
@@ -231,7 +244,10 @@ export const TemplateWizardModal: React.FC<TemplateWizardModalProps> = ({
                                                     </select>
                                                 </div>
 
-                                                <p className="text-sm text-muted-foreground">{slotText(selectedTemplate!, index, 'notes')}</p>
+                                                <details className="text-ui-support text-muted-foreground">
+                                                    <summary className="cursor-pointer">{t('templates.slotNotes')}</summary>
+                                                    <p className="mt-1">{slotText(selectedTemplate!, index, 'notes')}</p>
+                                                </details>
 
                                                 {assigned && (
                                                     <div className="text-xs text-primary flex items-center gap-1">

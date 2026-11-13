@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import { audioApi, type AudioDevice, type AudioStateInfo, type NoiseControlMode } from '../../../api/audio';
 import { builtinApi, type BuiltinSnapshot } from '@/api/builtinEffects';
 import { saveBeginnerMode } from '../../../hooks/useBeginnerMode';
-import { getVstPanelOpen, saveVstPanelOpen } from '../../../hooks/useVstPanel';
 import { toast } from 'sonner';
 import { listen } from '@tauri-apps/api/event';
 import { effectiveAsioChannels, isAsioHost, isVirtualOutput, verifiedDefaultOutput, recommendMicrophone, sortWizardInputs, type WizardConfig, type WizardState, type UserGoal, type SetupWizardModalProps } from './wizardModel';
@@ -13,12 +12,11 @@ import { readAudioPreferences } from '@/lib/audioPreferences';
 import { resolveAudioDevice } from '@/lib/audioDevices';
 
 // ウィザードの選択・音声操作・開始前状態の復元を描画から分離する。
-export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardModalProps) {
+export function useSetupWizard({ isOpen, onClose, onApplyConfig, onCompleted }: SetupWizardModalProps) {
 
     const [audioStartError, setAudioStartError] = useState('');
-    const [panelChoice, setPanelChoice] = useState(getVstPanelOpen);
-    // 選択はパネルの開閉だけを表す。数値の詳細は VST を選んだときだけ有効にする。
-    const applyPanelChoice = () => saveVstPanelOpen(panelChoice);
+    // 選択は、完了後に VST のページを開くかどうか。数値の詳細は VST を選んだときだけ有効にする。
+    const [panelChoice, setPanelChoice] = useState(false);
 
     // State Preservation Logic
     const initialStateRef = useRef<AudioStateInfo | null>(null);
@@ -76,7 +74,8 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
         operationRef.current = false;
         setIsBusy(false);
         next();
-        if (state !== 'complete') {
+        if (state === 'complete' && panelChoice) onCompleted?.(true);
+        else if (state !== 'complete') {
             toast.info(createElement(LocalizedMessage, { id: 'guide.copy.244' }));
         }
     };
@@ -118,7 +117,7 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                 setSavedGoal(goal === 'obs' || goal === 'discord' || goal === 'listening' || goal === 'music' || goal === 'other' ? goal : null);
             } catch { setSavedGoal(null); }
             setInitialStateReady(false);
-            setPanelChoice(getVstPanelOpen());
+            setPanelChoice(false);
             setInitialStateError(false);
             loadDevices();
             // Capture initial state
@@ -449,14 +448,11 @@ export function useSetupWizard({ isOpen, onClose, onApplyConfig }: SetupWizardMo
                     window.dispatchEvent(new Event('preparation-purpose-changed'));
                     throw error;
                 }
-                // 保存の確認に成功してから開閉する。失敗時はパネルの状態を変えない。
-                applyPanelChoice();
                 window.dispatchEvent(new Event('preparation-purpose-changed'));
             } else {
                 await onApplyConfig(config.host, config.input.name, config.output.name, actualConfig);
                 if (config.goal) localStorage.setItem('vst_host_setup_goal', config.goal);
                 if (panelChoice) saveBeginnerMode(false);
-                applyPanelChoice();
                 window.dispatchEvent(new Event('preparation-purpose-changed'));
             }
             hasTouchedEngineRef.current = false;

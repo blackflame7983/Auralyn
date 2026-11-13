@@ -1,5 +1,4 @@
 // 開発プレビュー（?mock=）で、俯瞰用に画面を最初から開く。本番ビルドからは読み込まない。
-import { saveVstPanelOpen } from '@/hooks/useVstPanel';
 import { openStreamMixPanel } from '@/lib/streamMixPanel';
 
 export const previewScreenNames = [
@@ -19,7 +18,7 @@ export const previewScreenNames = [
     'template-wizard',
     'license',
     'stream-mix',
-    'vst-panel',
+    'vst',
 ] as const;
 
 export type PreviewScreenName = (typeof previewScreenNames)[number];
@@ -37,6 +36,7 @@ export interface PreviewScreenControls {
     setIsPresetManagerOpen: (open: boolean) => void;
     setIsTemplateWizardOpen: (open: boolean) => void;
     setIsLicenseModalOpen: (open: boolean) => void;
+    openVst: (focusAdd?: boolean) => void;
 }
 
 // 開けたら true。使い方はレールのヘルプが同じクエリを見て開く。
@@ -58,7 +58,8 @@ export function applyPreviewScreen(screen: string, ui: PreviewScreenControls): b
         case 'template-wizard': ui.setIsTemplateWizardOpen(true); return true;
         case 'license': ui.setIsLicenseModalOpen(true); return true;
         case 'stream-mix': openStreamMixPanel(); return true;
-        case 'vst-panel': saveVstPanelOpen(true); return true;
+        case 'vst':
+        case 'vst-panel': ui.openVst(); return true;
         default: return false;
     }
 }

@@ -63,7 +63,7 @@ it('外部 VST を使っていないと確認できたら薄い1行と追加の�
     expect(screen.getByRole('dialog', { name: '外部VST' })).toHaveTextContent(hint);
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: '追加' }));
-    expect(p.onOpenVst).toHaveBeenCalledOnce();
+    expect(p.onOpenVst).toHaveBeenCalledWith(true);
     view.rerender(<RuntimeStatsContext.Provider value={{ stats: null, running: true }}><SoundChain {...p} vst={vst} /></RuntimeStatsContext.Provider>);
     expect(screen.getByRole('button', { name: 'VSTを編集' })).toBeInTheDocument();
     expect(screen.queryByText('使っていません')).not.toBeInTheDocument();
@@ -168,12 +168,12 @@ it('現在の世代と不一致または停止時は処理の設定を OFF と�
     expect(screen.queryByText('OFF')).not.toBeInTheDocument();
 });
 
-it('VST の行から右パネルの VST 構成を開き、ボイスチェックは音調整に置かず、その他の操作から OBS 連携と詳しい調整へ進める', async () => {
+it('VST の行から VST のページを開き、ボイスチェックは音調整に置かず、その他の操作から OBS 連携と詳しい調整へ進める', async () => {
     const p = props();
     render(<RuntimeStatsContext.Provider value={{ stats: stats(), running: true }}><SoundChain {...p} audioReady vst={<span>vst-items</span>} /></RuntimeStatsContext.Provider>);
     // 機器名は本番帯に出すので、声の処理には入力・出力の段を置かない。
     expect(screen.queryByRole('button', { name: /^入力/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' })); expect(p.onOpenVst).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'VSTを編集' })); expect(p.onOpenVst).toHaveBeenCalledWith(false);
     expect(screen.getAllByRole('listitem')[2]).toHaveTextContent('vst-items');
     // ボイスチェックは上の帯へ移した。音調整の見出しには残さない。
     expect(screen.queryByRole('button', { name: 'ボイスチェック' })).not.toBeInTheDocument();
@@ -201,7 +201,7 @@ it('VST段は押してオン・オフし、エディタは有効なときだけ�
     fireEvent.click(gate); expect(toggle).toHaveBeenLastCalledWith('b', true);
     fireEvent.click(screen.getByRole('button', { name: 'EQの画面を開く' })); expect(edit).toHaveBeenCalledWith('a');
     expect(screen.getByRole('button', { name: 'Gateの画面を開く' })).toBeDisabled();
-    // 追加は右パネルで行い、チップの列には置かない。
+    // 追加は VST のページで行い、チップの列には置かない。
     expect(screen.queryByRole('button', { name: '追加' })).not.toBeInTheDocument();
 });
 
@@ -252,13 +252,14 @@ it.each(['ja', 'en'] as const)('停止中は3項目を中立の停止表示に�
 });
 
 
-it('空のVSTの追加は右パネルを開いている間は重ねない', () => {
+it('空のVSTの追加は常にページを開き、追加ボタンへ焦点を頼む', () => {
     const current = stats(); current.latencyMetadata!.stageBreakdown!.vst = [];
     const p = props();
-    const view = render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vstPanelOpen /></RuntimeStatsContext.Provider>);
-    expect(screen.queryByRole('button', { name: '追加' })).not.toBeInTheDocument();
-    view.rerender(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} vstPanelOpen={false} /></RuntimeStatsContext.Provider>);
-    expect(screen.getByRole('button', { name: '追加' })).toBeInTheDocument();
+    render(<RuntimeStatsContext.Provider value={{ stats: current, running: true }}><SoundChain {...p} /></RuntimeStatsContext.Provider>);
+    const add = screen.getByRole('button', { name: '追加' });
+    expect(add).not.toHaveAttribute('aria-expanded');
+    fireEvent.click(add);
+    expect(p.onOpenVst).toHaveBeenCalledWith(true);
 });
 
 
@@ -271,11 +272,11 @@ it('ノイズ低減と声を整えるの情報ボタンはパネルの名前の�
 });
 
 
-it.each(['voice', 'music'] as const)('起動時の音調整カードは開閉しない (%s)', purpose => {
+it.each(['voice', 'music'] as const)('起動時の音調整カードは開閉せず、VSTの入口も開閉にしない (%s)', purpose => {
     localStorage.setItem('auralyn_display_purpose', purpose);
-    render(<SoundChain {...props()} vstPanelOpen />);
-    expect(within(screen.getByRole('list')).queryAllByRole('button', { expanded: true }).filter(button => button.id !== 'vst-panel-toggle')).toHaveLength(0);
-    expect(screen.getByRole('button', { name: 'VSTを編集' })).toHaveAttribute('aria-expanded', 'true');
+    render(<SoundChain {...props()} />);
+    expect(within(screen.getByRole('list')).queryAllByRole('button', { expanded: true })).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'VSTを編集' })).not.toHaveAttribute('aria-expanded');
 });
 
 
