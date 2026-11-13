@@ -26,7 +26,7 @@ for (const size of [{ width: 900, height: 600 }, { width: 640, height: 600 }]) {
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
         await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
-        const dialog = page.getByRole('dialog', { name: '設定', exact: true });
+        const dialog = page.locator('[data-settings-page]');
         await dialog.getByRole('combobox', { name: '入力元', exact: true }).selectOption('process');
         await dialog.getByRole('combobox', { name: '再生中のアプリ' }).selectOption('app-1');
         await dialog.getByRole('combobox', { name: '入力の用途' }).focus();

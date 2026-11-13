@@ -91,11 +91,11 @@ test.describe('設定済みの停止中', () => {
         await expect(page.getByRole('button', { name: '音声を開始', exact: true })).toHaveCount(0);
         await expect(page.getByText('音声を開始できませんでした。', { exact: false })).toHaveCount(0);
         await error.getByRole('button', { name: '入出力を変更' }).click();
-        await expect(page.getByRole('dialog', { name: '設定', exact: true })).toBeVisible();
+        await expect(page.locator('[data-settings-page]')).toBeVisible();
         expect(await page.evaluate(() => (window as any).__e2eStarts.length)).toBe(1);
         await page.evaluate(() => { (window as any).__e2eSaveFailure = false; });
         await page.getByRole('button', { name: '接続を保存して再起動', exact: true }).click();
-        await expect(page.getByRole('dialog', { name: '設定', exact: true })).toHaveCount(0);
+        await expect(page.locator('[data-settings-page]')).toHaveCount(0);
         await expect(error).toHaveCount(0);
     });
     test('開始の主操作が最小窓内に1つあり、保存済み機器で開始できる', async ({ page }, info) => {
@@ -126,6 +126,6 @@ test.describe('設定済みの停止中', () => {
         await expect(error).toContainText('機器が見つかりません');
         await page.screenshot({ path: info.outputPath('start-failed.png') });
         await error.getByRole('button', { name: '入出力を変更', exact: true }).click();
-        await expect(page.getByRole('dialog', { name: '設定', exact: true })).toBeVisible();
+        await expect(page.locator('[data-settings-page]')).toBeVisible();
     });
 });

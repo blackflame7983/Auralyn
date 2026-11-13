@@ -49,26 +49,33 @@ for (const theme of ['light', 'dark', 'gaming']) {
     }
 }
 
-test('設定の拡大表示はポインター時だけで、動きを減らす設定では止まる', async ({ page }) => {
+test('接続のページは見出しへ移り、Escでは閉じず、未保存なら確認してからホームへ戻る', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('vst_host_wizard_done', 'true'));
     await page.goto('/');
-    const settings = page.getByRole('button', { name: '接続（オーディオの設定）', exact: true });
-    const surface = page.locator('.settings-surface');
-    await settings.click();
-    expect(await surface.evaluate(e => getComputedStyle(e).animationName)).toBe('surface-open');
-    const close = page.getByRole('button', { name: '設定画面を閉じる', exact: true });
-    await expect(close).toBeFocused();
-    expect(await close.evaluate(e => getComputedStyle(e).outlineStyle)).toBe('none');
+    const open = page.getByRole('button', { name: '接続（オーディオの設定）', exact: true });
+    const surface = page.locator('[data-settings-page]');
+    const heading = page.getByRole('heading', { level: 1, name: '接続', exact: true });
+    await open.click();
+    await expect(surface).toHaveAttribute('data-settings-page', 'connect');
+    await expect(heading).toBeFocused();
     await page.keyboard.press('Escape');
-    await settings.focus();
-    await page.keyboard.press('Enter');
-    expect(await surface.evaluate(e => getComputedStyle(e).animationName)).toBe('surface-appear');
-    await expect(close).toBeFocused();
-    expect(await close.evaluate(e => e.matches(':focus-visible'))).toBe(true);
-    await page.keyboard.press('Escape');
+    await expect(surface).toHaveAttribute('data-settings-page', 'connect');
+    const tuning = surface.locator('details').filter({ has: page.locator('summary', { hasText: '接続方式・音切れの設定' }) }).first();
+    await tuning.locator('summary').filter({ hasText: '接続方式・音切れの設定' }).click();
+    await tuning.getByRole('radio', { name: /途切れにくく/ }).click();
+    const home = page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: 'ホーム', exact: true });
+    const leave = page.getByRole('alertdialog', { name: '保存していない変更があります' });
+    await home.click();
+    await expect(leave.getByRole('button', { name: 'このページに戻る', exact: true })).toBeFocused();
+    await expect(leave).toHaveAccessibleDescription('保存せずに移動すると、このページで変えた内容は捨てられます。');
+    await leave.getByRole('button', { name: 'このページに戻る', exact: true }).click();
+    await expect(surface).toHaveAttribute('data-settings-page', 'connect');
+    await home.click();
+    await leave.getByRole('button', { name: '変更を捨てて移動', exact: true }).click();
+    await expect(surface).toHaveCount(0);
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await settings.click();
-    expect(await surface.evaluate(e => getComputedStyle(e).animationName)).toBe('none');
+    await open.click();
+    await expect(heading).toBeFocused();
 });
 
 test('縦横を切り替えても右の列の出力メーターが残り、大型メーターは出さない', async ({ page }) => {

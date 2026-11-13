@@ -13,6 +13,7 @@ vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark', setTheme:
 let current: BuiltinSnapshot;
 beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'Wasapi', input: '', output: '', sampleRate: 48000, bufferSize: 512 }));
     current = { epoch: 'engine', revision: '2', appliedRevision: '2', pending: false, undoToken: null, error: null,
         config: { active: true, preset: 'singing', amount: 0.6, singing: { lowCutHz: 110, dynamics: 0.65, brightnessDb: -1 } } };
     vi.spyOn(builtinApi, 'request').mockImplementation(async request => {
@@ -61,8 +62,7 @@ it.each(['mouse', 'touch', 'pen', 'keyboard', 'blur'] as const)('内蔵FX量の�
 it('ホットキーの入力中に Escape すると入力だけを取り消し、設定は閉じない', async () => {
     vi.mocked(invoke).mockImplementation(async command => command === 'get_shortcuts' ? { bindings: [{ action: 'muteToggle', shortcut: 'Alt+KeyM' }], errors: [] } : null);
     const onClose = vi.fn();
-    render(<AudioSettingsModal isOpen onClose={onClose} onConfigChange={vi.fn()} />);
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'ホットキー' }), { button: 0, ctrlKey: false });
+    render(<AudioSettingsModal isOpen initialTab="shortcuts" onClose={onClose} onConfigChange={vi.fn()} />);
     const button = await screen.findByRole('button', { name: '緊急ミュート（切替）のキーを入力' });
     await waitFor(() => expect(button).toBeEnabled());
     fireEvent.click(button);
@@ -83,7 +83,7 @@ it('設定画面の遅延根拠は手動停止で失効し、遅い旧stats応�
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     const system = await screen.findByRole('tab', { name: 'システム' });
     fireEvent.keyDown(system, { key: 'Enter' });
-    fireEvent.click(screen.getByText('診断情報'));
+    fireEvent.click(screen.getByRole('button', { name: '診断情報を開く' }));
     await screen.findByText('256 sample / 5.33 ms');
     fireEvent.click(screen.getByRole('button', { name: '統計を更新' }));
     act(() => { for (const [name, callback] of vi.mocked(listen).mock.calls) if (name === 'audio-stopped') callback({ event: name, id: 1, payload: null }); });
@@ -170,7 +170,7 @@ it.each([true, false])('音づくりの基本を先に置き、歌向けの欄�
     const noise = await screen.findByRole('heading', { name: 'ノイズ低減' });
     const builtIn = screen.getByRole('heading', { name: '声を整える' });
     expect(noise.compareDocumentPosition(builtIn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(noise).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: '音づくり' })).toHaveFocus());
     expect(screen.getByText('歌向けに整える').closest('details')).not.toHaveAttribute('open');
     expect(screen.getByRole('heading', { name: 'モード登録' })).toBeVisible();
     expect(screen.getByRole('button', { name: '適用済み設定を歌モードへ登録' })).toBeVisible();
@@ -214,7 +214,7 @@ it('統計の取得失敗は停止と断定せず根拠未取得として示す'
     vi.mocked(audioApi.getEngineRuntimeStats).mockRejectedValue(new Error('offline'));
     render(<AudioSettingsModal isOpen onClose={vi.fn()} onConfigChange={vi.fn()} />);
     fireEvent.keyDown(await screen.findByRole('tab', { name: 'システム' }), { key: 'Enter' });
-    fireEvent.click(screen.getByText('診断情報'));
+    fireEvent.click(screen.getByRole('button', { name: '診断情報を開く' }));
     expect(await screen.findByText(/根拠情報を未取得です/)).toBeInTheDocument();
     expect(screen.queryByText(/音声は停止中・未確認です/)).not.toBeInTheDocument();
 });

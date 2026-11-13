@@ -2,7 +2,7 @@
 title: "Troubleshooting"
 description: "Find checks and a next action for each symptom."
 order: 7
-uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Preparation", "Audio", "Connection and dropout settings", "Compare without VST", "Add VST", "Rescan"]
+uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Preparation", "Connection", "Connection and dropout settings", "Compare without VST", "Add VST", "Rescan"]
 ---
 
 ## No sound {#no-sound}
@@ -20,13 +20,13 @@ uiLabels: ["Emergency mute", "Output volume", "Diagnose audio problems", "Prepar
 ## Sound cuts out {#dropouts}
 
 1. Check first: use “Diagnose audio problems” to check audio processing status.
-2. One action in Auralyn: increase the buffer in “Audio” → “Connection and dropout settings”. This may improve stability but increases latency.
+2. One action in Auralyn: increase the buffer in “Connection” → “Connection and dropout settings”. This may improve stability but increases latency.
 3. If it persists: compare with external VSTs bypassed using “Compare without VST”. For call-only dropouts, also compare [receiving-app processing](./discord.md#processing).
 
 ## Audio is delayed {#latency}
 
 1. Check first: whether monitoring passes through OBS or Windows.
-2. One action in Auralyn: try a smaller buffer in “Audio” → “Connection and dropout settings”. Revert if dropouts increase.
+2. One action in Auralyn: try a smaller buffer in “Connection” → “Connection and dropout settings”. Revert if dropouts increase.
 3. If it persists: compare external VSTs and monitoring routes one at a time. OBS sync offset cannot speed up your own monitor.
 
 ## VST will not load {#vst-load}

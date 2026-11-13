@@ -20,6 +20,9 @@ import { useLayoutMotion } from '@/hooks/useLayoutMotion';
 import React, { ReactNode, useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { deriveHomeChrome } from './homeChrome';
 import { AppRail, type RailDestination } from './AppRail';
+import { PageSlot } from './pageSlot';
+import { requestLeave } from './pageLeave';
+import type { AppPage } from '@/hooks/useUIState';
 import { StatusBand } from './StatusBand';
 import { useSessionElapsed } from '@/hooks/useSessionElapsed';
 import { formatAudioRoute } from '@/lib/audioRouteLine';
@@ -49,11 +52,12 @@ interface AppShellProps {
     onOpenOBSSettings: () => void;
     children: ReactNode;
     onOpenSettings: () => void;
-    /** 設定のモーダルが開いているか。レールの現在地は、開いている区分で決める。 */
-    settingsOpen?: boolean;
-    settingsTab?: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
+    /** 中央に出しているページ。ホーム以外のとき、レールの現在地はページで決める。 */
+    page?: AppPage;
     onOpenSettingsTab?: (tab: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => void;
     onCloseSettings?: () => void;
+    /** 設定ページや案内など、ホームの中身とは別に常に出す層。 */
+    overlays?: ReactNode;
     /** 上の帯に置く歌／雑談の切替。説明は liveControls に残す。 */
     liveModeSwitch?: ReactNode;
     onOpenShortcuts?: () => void;
@@ -103,10 +107,10 @@ export const AppShell: React.FC<AppShellProps> = ({
     preparationBlocked,
     onOpenOBSSettings,
     onOpenSettings,
-    settingsOpen = false,
-    settingsTab = 'audio',
+    page = 'home',
     onOpenSettingsTab,
     onCloseSettings,
+    overlays,
     liveModeSwitch,
     onOpenShortcuts,
     onOpenAudioSettingsRetry,
@@ -264,10 +268,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     const soundChain = <SoundChain stopped={quietStopped} model={preparation} audioReady={audioReady} isEngineRunning={isEngineRunning} inputName={currentInput} outputName={currentOutput}
         vst={vstChain} vstEditors={vstEditors} vstUnrestored={vstUnrestored}
         onOpenSettings={onOpenSettings} onOpenOBSSettings={onOpenOBSSettings} onOpenSoundSettings={onOpenSoundSettings} onOpenVst={openRack} vstPanelOpen={Boolean(vstPanel) && vstPanelOpen} unconfigured={!configured} />;
-    // 設定のモーダルが前面なので、開いている間は右パネルより設定の区分を現在地にする。
-    const railCurrent: RailDestination = settingsOpen
-        ? settingsTab === 'sound' ? 'sound' : settingsTab === 'audio' ? 'connect' : 'settings'
-        : Boolean(vstPanel) && vstPanelOpen ? 'vst' : 'home';
+    // ページを開いている間は、右パネルよりページを現在地にする。
+    const railCurrent: RailDestination = page !== 'home' ? page : Boolean(vstPanel) && vstPanelOpen ? 'vst' : 'home';
     const openSettingsTab = (tab: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => {
         if (onOpenSettingsTab) onOpenSettingsTab(tab);
         else onOpenSettings();
@@ -319,7 +321,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
             <div className="relative z-10 flex h-screen">
                 <AppRail current={railCurrent}
-                    onHome={() => { onCloseSettings?.(); setVstPanelOpen(false); mainRef.current?.scrollTo({ top: 0 }); }}
+                    onHome={() => requestLeave(() => { onCloseSettings?.(); setVstPanelOpen(false); mainRef.current?.scrollTo({ top: 0 }); })}
                     onSound={() => openSettingsTab('sound')}
                     onVst={() => openRack()}
                     onConnect={() => openSettingsTab('audio')}
@@ -348,8 +350,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                     ref={mainRef}
                     data-density="home"
                     inert={panelOverlays}
-                    className="home-main min-w-0 flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent"
+                    className={page === 'home'
+                        ? 'home-main min-w-0 flex-1 overflow-y-auto p-4 lg:p-6 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent'
+                        : 'home-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-4 pt-2 lg:px-6'}
                 >
+                    {page !== 'home' ? <PageSlot className="flex min-h-0 flex-1 flex-col" /> : <>
                     {/* 左右に分けると片側だけが詰まって見えるので、どの幅でも上から1列に並べ、広い画面では中央に寄せる。 */}
                     <div ref={homeContentRef} className="home-content mx-auto max-w-[1180px]">
                         {notices}
@@ -393,6 +398,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         </div>
                         {!configured && soundChain}
                     </div>
+                    </>}
                 </main>
                 {panelOverlays && <div aria-hidden="true" className="vst-panel-scrim absolute inset-0 z-[44] bg-overlay/35" onClick={() => setVstPanelOpen(false)} />}
                 {/* パネルと同じ時間で予約幅を戻す。退場後のアンマウントではホームの幅を変えない。 */}
@@ -459,6 +465,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     />
                 </aside>
             </div>
+            {overlays}
         </div></RuntimeStatsContext.Provider></MeterProvider>
     );
 };

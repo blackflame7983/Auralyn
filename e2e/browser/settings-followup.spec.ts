@@ -22,7 +22,7 @@ for (const locale of ['ja', 'en'] as const) {
         await page.goto('/');
         await expect(page.getByText(message(locale, 'app.initializing'), { exact: true })).toHaveCount(0);
         await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
-        const dialog = page.getByRole('dialog', { name: message(locale, 'common.settings'), exact: true });
+        const dialog = page.locator('[data-settings-page]');
         const input = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.038'), exact: true });
         const output = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.042'), exact: true });
         await expect(input).toHaveValue(''); await expect(output).toHaveValue('');
@@ -52,7 +52,7 @@ for (const locale of ['ja', 'en'] as const) {
             (window as any).__e2eStartFailure = true;
         }, { locale, theme });
         await page.goto('/');
-        const dialog = page.getByRole('dialog', { name: message(locale, 'common.settings'), exact: true });
+        const dialog = page.locator('[data-settings-page]');
         await expect(dialog).toBeVisible();
         await expect(page.getByRole('dialog', { name: message(locale, 'wizard.title'), exact: true })).toHaveCount(0);
         const input = dialog.getByRole('combobox', { name: message(locale, 'settings.AudioSettingsModal.037'), exact: true });
@@ -97,7 +97,7 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         await expect(unconfigured.locator('..').locator('[aria-hidden=true]')).toHaveClass(/bg-muted-foreground/);
         await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
         await page.evaluate(() => { document.documentElement.style.zoom = '1.5'; });
-        const dialog = page.getByRole('dialog', { name: message(locale, 'common.settings'), exact: true });
+        const dialog = page.locator('[data-settings-page]');
         const changes = dialog.locator('#settings-connection-changes');
         await expect(changes).toContainText(message(locale, 'settings.connection.firstStart', { host: 'WASAPI', input: 'Test microphone', output: 'Test headphones' }));
         await expect(changes).not.toContainText(message(locale, 'settings.connection.changes', { fields: '' }));
@@ -117,7 +117,8 @@ for (const locale of ['ja', 'en'] as const) for (const theme of ['light', 'dark'
         expect(await dialog.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
         await page.screenshot({ path: info.outputPath('asio-near-device.png'), animations: 'disabled' });
         await page.evaluate(() => { (window as any).__e2eSavedAudioAvailable = true; });
-        await dialog.getByRole('button', { name: message(locale, 'settings.close'), exact: true }).click();
+        await page.getByRole('navigation', { name: message(locale, 'rail.label') }).getByRole('button', { name: message(locale, 'rail.home'), exact: true }).click();
+        await page.getByRole('alertdialog', { name: message(locale, 'settings.leave.title') }).getByRole('button', { name: message(locale, 'settings.leave.discard'), exact: true }).click();
         await page.getByRole('button', { name: message(locale, 'rail.connectName'), exact: true }).click();
         const restore = dialog.getByRole('button', { name: message(locale, 'settings.connection.restoreSaved'), exact: true });
         await expect(restore).toBeVisible();

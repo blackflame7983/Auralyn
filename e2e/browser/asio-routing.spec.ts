@@ -36,7 +36,7 @@ for (const mode of ['independent', 'insert'] as const) {
         await page.goto('/');
         await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
         await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
-        const dialog = page.getByRole('dialog', { name: '設定', exact: true });
+        const dialog = page.locator('[data-settings-page]');
         await expect(dialog.getByRole('combobox', { name: '音声の返却方法' })).toHaveValue('legacy');
         await dialog.getByRole('radio', { name: '入力チャンネル 3/4' }).check();
         await dialog.getByRole('combobox', { name: '音声の返却方法' }).selectOption(mode);
@@ -63,7 +63,7 @@ test('アプリの音声を選べない理由から接続方式の選択へ移�
     await page.goto('/');
     await expect(page.getByText('音声エンジンを起動しています…', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: '設定', exact: true });
+    const dialog = page.locator('[data-settings-page]');
     await expect(dialog.getByRole('option', { name: 'アプリの音声（WASAPI）' })).toHaveJSProperty('disabled', true);
     await expect(dialog.getByRole('combobox', { name: '入力元' })).toHaveAccessibleDescription(/ASIO のため、アプリの音声は選べません/);
     await dialog.getByRole('button', { name: '接続方式を変える', exact: true }).click();

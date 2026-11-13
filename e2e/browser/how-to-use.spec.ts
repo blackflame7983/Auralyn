@@ -65,7 +65,7 @@ for (const locale of ['ja', 'en'] as const) for (const size of [{ width: 960, he
         await page.keyboard.press('F1');
         await dialog.getByRole('button', { name: t('help.section.keys'), exact: true }).click();
         await dialog.getByRole('button', { name: t('help.keys.settings'), exact: true }).click();
-        const settings = page.getByRole('dialog', { name: t('common.settings'), exact: true });
+        const settings = page.locator('[data-settings-page]');
         await expect(settings.getByRole('tab', { name: t('settings.shortcuts'), exact: true })).toHaveAttribute('data-state', 'active');
     });
 }

@@ -20,10 +20,11 @@ import { LanguageSelector } from '@/i18n/LanguageSelector';
 import { useMessages } from '@/i18n/LocaleProvider';
 import { useSingingDraft, type SingingDraft } from '../../../hooks/useSingingDraft';
 import { useLiveModes, type LiveModesModel } from '@/hooks/useLiveModes';
-import { Modal } from '../../ui/modal';
+import { PagePortal } from '@/components/layout/pageSlot';
+import { allowNextLeave, registerLeaveGuard, requestLeave, setPageLocked } from '@/components/layout/pageLeave';
 import { MicrophonePermissionGuide } from './MicrophonePermissionGuide';
-import React, { useEffect, useId, useState, useMemo, useRef } from 'react';
-import { MdClose, MdSettings, MdRefresh, MdWarning, MdLightbulb, MdSave, MdDelete, MdPalette, MdMic, MdGraphicEq, MdCast, MdKeyboard, MdTune } from 'react-icons/md';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useState, useMemo, useRef } from 'react';
+import { MdRefresh, MdWarning, MdLightbulb, MdSave, MdDelete } from 'react-icons/md';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -54,6 +55,8 @@ interface AudioSettingsModalProps {
   initialTab?: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system';
   /** 移動の依頼ごとに増える番号。同じ移動先を続けて頼まれても切り替える。 */
   tabRequest?: number;
+  /** 区分の切替を、未保存の確認を通す親の入口へ渡す。無いときはこの画面の中で切り替える。 */
+  onRequestTab?: (tab: 'audio' | 'obs' | 'sound' | 'appearance' | 'shortcuts' | 'system') => void;
   initialSection?: 'liveModes' | 'singing' | 'audioTuning' | 'liveOutput' | 'primaryInput';
   isAudioRunning?: boolean;
   allowConnectionRetry?: boolean;
@@ -75,7 +78,7 @@ interface AudioSettingsModalProps {
 export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   liveModel: providedLive,
   singingModel: providedSinging, onPreviewSinging, onSaveSingingProfile,
-  initialTab = 'audio', tabRequest = 0, initialSection,
+  initialTab = 'audio', tabRequest = 0, onRequestTab, initialSection,
   isOpen,
   onClose,
   onConfigChange,
@@ -221,9 +224,19 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'audio' | 'sound' | 'obs' | 'appearance' | 'system' | 'shortcuts'>(initialTab);
+  const [shortcutsDirty, setShortcutsDirty] = useState(false);
+  useEffect(() => {
+    setPageLocked(isApplying);
+    const unregister = registerLeaveGuard(() => {
+      if (isApplying) return 'block';
+      if (activeTab === 'audio' && hasConnectionChanges) return 'confirm';
+      if (activeTab === 'shortcuts' && shortcutsDirty) return 'confirm';
+      return 'allow';
+    });
+    return () => { unregister(); setPageLocked(false); };
+  }, [isApplying, activeTab, hasConnectionChanges, shortcutsDirty]);
   // 移動先の指定が変わったときだけ切り替え、閉じて再表示した場合は選択中のタブを保つ。
   useEffect(() => { setActiveTab(initialTab); }, [initialTab, tabRequest]);
-  const [capturingShortcut, setCapturingShortcut] = useState(false);
   const [isBeginnerMode, setIsBeginnerMode] = useState(getBeginnerMode);
   // Persist Advanced Mode selection
   useEffect(() => {
@@ -246,6 +259,13 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   }, []);
 
   const settingsBody = useRef<HTMLDivElement>(null);
+  const pageHeading = useRef<HTMLHeadingElement>(null);
+  const [headingNode, setHeadingNode] = useState<HTMLHeadingElement | null>(null);
+  // 中央へ差し込むまでは見出しが無い。付いたときだけ焦点を移す。
+  const headingRef = useCallback((node: HTMLHeadingElement | null) => {
+    pageHeading.current = node;
+    setHeadingNode(current => current === node ? current : node);
+  }, []);
   const [loadOutput, setLoadOutput] = useState(false);
   const outputFocusPending = useRef(false);
   useEffect(() => {
@@ -256,6 +276,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   }, [loading, loadOutput]);
   // 配信ミックスのパネルから来たときは、出力先・入力元の区画を開いて操作できる所へ移す（#299）。
   const deviceTargetShown = useRef(false);
+  useEffect(() => { deviceTargetShown.current = false; }, [tabRequest]);
   useEffect(() => {
     if (!isOpen) { deviceTargetShown.current = false; return; }
     if ((initialSection !== 'liveOutput' && initialSection !== 'primaryInput') || deviceTargetShown.current || loading || error || activeTab !== 'audio') return;
@@ -269,9 +290,28 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       (el.querySelector<HTMLElement>('summary, select') ?? el).focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [isOpen, initialSection, loading, error, activeTab]);
+  }, [isOpen, initialSection, loading, error, activeTab, tabRequest]);
   const soundStart = useRef<HTMLHeadingElement>(null);
-  useEffect(() => { settingsBody.current?.scrollTo?.({ top: 0 }); }, [activeTab]);
+  useEffect(() => { settingsBody.current?.scrollTo?.({ top: 0 }); }, [activeTab, tabRequest]);
+  // 場所の指定が無いときは、開いたページの見出しへ移す。ページ内の操作からは焦点を奪わない。
+  // 確認を閉じた直後は、入口のボタンへ焦点が戻るのが見出しより後になるので、そのときだけ取り直す。
+  useLayoutEffect(() => {
+    if (!isOpen || initialSection) return;
+    const focusHeading = () => {
+      const heading = pageHeading.current;
+      if (!heading) return;
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || active === document.body || heading.contains(active)) {
+        if (document.activeElement !== heading) heading.focus({ preventScroll: true });
+        return;
+      }
+      if (settingsBody.current?.contains(active) || active.closest('[data-settings-page]')) return;
+      heading.focus({ preventScroll: true });
+    };
+    focusHeading();
+    const frame = requestAnimationFrame(focusHeading);
+    return () => cancelAnimationFrame(frame);
+  }, [isOpen, activeTab, tabRequest, initialSection, headingNode]);
   useEffect(() => {
     if (isOpen && initialTab === 'sound') {
       const frame = requestAnimationFrame(() => {
@@ -305,7 +345,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       tuningDetails.current?.querySelector<HTMLElement>('[data-tuning-control] [tabindex="0"]')?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [isOpen, initialSection, loading, error, activeTab]);
+  }, [isOpen, initialSection, loading, error, activeTab, tabRequest]);
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -377,7 +417,9 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
       // Optional: formatting toast success
     } catch (err) {
       setConnectionRetry(true);
-      setActiveTab('audio');
+      allowNextLeave();
+      if (onRequestTab) onRequestTab('audio');
+      else setActiveTab('audio');
       console.error('Failed to restart engine:', err);
       // 再起動はプラグインを失うため、直前の接続へ戻せたときも通常の再起動と同じく復元する（#289）。
       if (err instanceof ConnectionStartError && err.rollback === 'restored' && onEngineRestarted && !reviewRequired) {
@@ -482,34 +524,42 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   };
 
   if (!isOpen) return null;
+  const pageKind = activeTab === 'audio' ? 'connect' : activeTab === 'sound' ? 'sound' : 'settings';
+  const pageTitle = t(pageKind === 'connect' ? 'rail.connect' : pageKind === 'sound' ? 'rail.sound' : 'rail.settings');
+  const pageLead = activeTab === 'audio' ? t('settings.page.connectLead')
+    : activeTab === 'sound' ? t('settings.apply.soundImmediate')
+    : activeTab === 'appearance' ? t('settings.apply.appearanceImmediate')
+    : activeTab === 'shortcuts' ? t('settings.apply.shortcutsDraft')
+    : activeTab === 'obs' ? t('settings.page.obsLead')
+    : t('settings.page.systemLead');
+  const leavePage = () => requestLeave(onClose);
+  const chooseTab = (tab: typeof activeTab) => {
+    // システムの再起動は接続の未保存を適用するので、捨てる確認には通さない（6.3）。
+    if (tab === 'system' && activeTab === 'audio') {
+      if (onRequestTab) onRequestTab(tab);
+      else setActiveTab(tab);
+      return;
+    }
+    if (onRequestTab) onRequestTab(tab);
+    else requestLeave(() => setActiveTab(tab));
+  };
 
   return (
-    <Modal title={t('common.settings')} onClose={onClose} dismissible={!isApplying} onEscapeKeyDown={event => { if (capturingShortcut) event.preventDefault(); }} initialFocusRef={initialTab === 'sound' ? soundStart : undefined}>
-        <div className="fixed inset-0 z-[100] flex justify-end bg-background/90 gaming:bg-background/80 gaming:backdrop-blur-sm">
-      <div className="settings-surface h-full w-full max-w-5xl flex flex-col overflow-hidden border-l border-border bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3 shrink-0">
-          <h2 className="text-ui-heading font-bold text-foreground flex items-center gap-2">
-            <MdSettings className="w-5 h-5 text-primary" />
-            {t('common.settings')}
-          </h2>
-          <Button
-            onClick={onClose}
-            disabled={isApplying}
-            aria-label={t('settings.close')}
-            variant="ghost" size="icon"
-          >
-            <MdClose className="w-5 h-5" />
-          </Button>
-        </div>
-
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} orientation="vertical" className="flex min-h-0 flex-1">
-          <TabsList aria-label={t('common.settings')} className="h-auto w-40 shrink-0 flex-col items-stretch justify-start gap-1 rounded-control border-r border-border p-2 overflow-y-auto">
-            <TabsTrigger className="justify-start gap-2 text-ui-control" value="audio"><MdMic aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.audio')}</TabsTrigger>
-            <TabsTrigger className="justify-start gap-2 text-ui-control" value="sound"><MdGraphicEq aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.sound')}</TabsTrigger>
-            <TabsTrigger className="justify-start gap-2 text-ui-control" value="obs"><MdCast aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.obs')}</TabsTrigger>
-            <TabsTrigger className="justify-start gap-2 text-ui-control" value="appearance"><MdPalette aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.appearance')}</TabsTrigger>
-            <TabsTrigger className="justify-start gap-2 text-ui-control" value="shortcuts"><MdKeyboard aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.shortcuts')}</TabsTrigger>
-            <TabsTrigger className="justify-start gap-2 text-ui-control" value="system"><MdTune aria-hidden="true" className="h-4 w-4 shrink-0" />{t('settings.system')}</TabsTrigger>
+    <PagePortal>
+      <div data-settings-page={pageKind} className="settings-page flex h-full min-h-0 flex-col overflow-hidden">
+        <header className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1 pb-2">
+          <h1 ref={headingRef} tabIndex={-1} className="text-ui-heading font-semibold text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{pageTitle}</h1>
+          <p className="min-w-0 flex-1 break-words text-ui-support text-muted-foreground">{pageLead}</p>
+        </header>
+        <Tabs value={activeTab} onValueChange={value => chooseTab(value as typeof activeTab)} className="flex min-h-0 flex-1 flex-col">
+          {/* レールが移動を持つときは、設定のページでだけ4区分を出す。単体で開いたときは、この画面の中で切り替える。 */}
+          <TabsList hidden={!!onRequestTab && pageKind !== 'settings'} aria-label={t('rail.settings')} className="h-auto w-full shrink-0 justify-start gap-1 overflow-x-auto">
+            {!onRequestTab && <TabsTrigger className="text-ui-control" value="audio" disabled={isApplying}>{t('settings.audio')}</TabsTrigger>}
+            {!onRequestTab && <TabsTrigger className="text-ui-control" value="sound" disabled={isApplying}>{t('settings.sound')}</TabsTrigger>}
+            <TabsTrigger className="text-ui-control" value="appearance" disabled={isApplying} title={isApplying ? t('settings.leave.blocked') : undefined}>{t('settings.appearance')}</TabsTrigger>
+            <TabsTrigger className="text-ui-control" value="shortcuts" disabled={isApplying} title={isApplying ? t('settings.leave.blocked') : undefined}>{t('settings.shortcuts')}</TabsTrigger>
+            <TabsTrigger className="text-ui-control" value="obs" disabled={isApplying} title={isApplying ? t('settings.leave.blocked') : undefined}>{t('settings.obs')}</TabsTrigger>
+            <TabsTrigger className="text-ui-control" value="system" disabled={isApplying} title={isApplying ? t('settings.leave.blocked') : undefined}>{t('settings.system')}</TabsTrigger>
           </TabsList>
           <div ref={settingsBody} className={`min-w-0 flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-muted-foreground scrollbar-track-transparent ${activeTab === 'shortcuts' ? 'pb-0' : ''}`}>
           <TabsContent value="audio" className="space-y-4">
@@ -520,7 +570,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             </div>}
             {!!error && <MicrophonePermissionGuide expanded={/アクセス.*拒否|0x80070005|access.*denied/i.test(renderNotice(t, error))} />}
 
-            {loading ? (
+            {isApplying ? (
               <div role="status" className="flex flex-col items-center gap-2 py-8 text-ui-support text-muted-foreground">
                 <div aria-hidden="true" className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                 {t('common.loading')}
@@ -533,14 +583,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   {startStateUnknown && <p>{t('settings.startUnknown')}</p>}
                 </div>
                 <Button onClick={() => setError(null)} variant="default" className="h-auto min-h-10 whitespace-normal w-full">{t('settings.AudioSettingsModal.031')}</Button>
-                <Button onClick={onClose} variant="outline" className="h-auto min-h-10 whitespace-normal w-full">{t('common.close')}</Button>
+                <Button onClick={() => requestLeave(onClose)} variant="outline" className="h-auto min-h-10 whitespace-normal w-full">{t('settings.returnHome')}</Button>
               </div>}
                 <section aria-label={t('settings.connection.summary')} className="space-y-2 border-b border-border pb-4">
                   <h3 className="text-ui-heading font-semibold">{t('settings.connection.summary')}</h3>
-                  <p className="min-w-0 wrap-anywhere text-ui-support">{t('settings.connection.summaryValues', {
+                  <p className="min-w-0 break-words text-ui-support">{t('settings.connection.summaryValues', {
                     host: displayAudioHost(selectedHost),
                     input: (processInput && inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : needsDeviceChoice ? '' : selectedInput) || t('settings.connection.notSelected'),
                     output: selectedOutputDevice?.name || t('settings.connection.notSelected'),
+                    rate: `${selectedSampleRate / 1000} kHz`,
                   })}</p>
                 </section>
                 <div id="primary-input-settings" tabIndex={-1}><ProcessInputPanel value={inputSource} onChange={next => {
@@ -555,12 +606,16 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   </legend>
                   <Field id={inputId} label={null} description={isAsio ? t('settings.AudioSettingsModal.044') : undefined}><Select
                     id={inputId}
+                    className="max-w-full"
+                    title={selectedInput || undefined}
                     value={needsDeviceChoice ? '' : selectedInputKey}
                     onChange={(e) => { editConnection('input'); setSelectedInputKey(e.target.value); setNeedsDeviceChoice(!e.target.value); }}
-                    disabled={filteredInputs.length === 0}
-
+                    disabled={devicesLoading || filteredInputs.length === 0}
                   >
-                    {(needsDeviceChoice || !selectedInputKey) && <option value="">{t(filteredInputs.length ? 'settings.selectDevice' : 'settings.AudioSettingsModal.040')}</option>}
+                    {devicesLoading && <option value={needsDeviceChoice ? '' : selectedInputKey}>{t('common.loading')}</option>}
+                    {!devicesLoading && filteredInputs.length === 0 && <option value="">{t('settings.AudioSettingsModal.040')}</option>}
+                    {!devicesLoading && filteredInputs.length > 0 && (needsDeviceChoice || !selectedInputKey) && <option value="">{t('settings.selectDevice')}</option>}
+                    {!devicesLoading && !!selectedInputKey && !needsDeviceChoice && !filteredInputs.some(device => audioDeviceKey(device) === selectedInputKey) && <option value={selectedInputKey}>{t('settings.deviceMissing', { name: selectedInput || selectedInputKey })}</option>}
                     {filteredInputs.map((device, i) => (
                       <option key={`${audioDeviceKey(device)}-${i}`} value={audioDeviceKey(device)} disabled={!device.id && filteredInputs.filter(item => item.name === device.name).length > 1}>{device.name}{filteredInputs.filter(item => item.name === device.name).length > 1 && device.id ? ` (${device.id})` : ''}</option>
                     ))}
@@ -579,8 +634,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                       monitorEnabled={connection.monitorInput}
                       onChannelMapped={channels => { editConnection('channels'); connection.setChannels(channels); }}
                     />
-                    <OutputChannelSelector value={connection.outputRouting} maxChannels={selectedOutputDevice?.channels ?? 0}
-                      disabled={isApplying} onChange={routing => { editConnection('routing'); connection.setOutputRouting(routing); }} />
                   </div>
                 )}
 
@@ -590,20 +643,26 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <legend className="px-1 text-ui-heading font-semibold">{t('settings.AudioSettingsModal.041')}</legend>
                     <Field label={<span className="sr-only">{t('settings.AudioSettingsModal.042')}</span>}><Select
                     aria-label={t('settings.AudioSettingsModal.042')}
+                      className="max-w-full"
+                      title={selectedOutput || undefined}
                       value={selectedOutputKey}
                       onChange={(e) => { editConnection('output'); setSelectedOutputKey(e.target.value); }}
-                      disabled={filteredOutputs.length === 0}
-
+                      disabled={devicesLoading || filteredOutputs.length === 0}
                     >
-                      {!selectedOutputKey && <option value="">{t(filteredOutputs.length ? 'settings.selectDevice' : 'settings.AudioSettingsModal.043')}</option>}
+                      {devicesLoading && <option value={selectedOutputKey}>{t('common.loading')}</option>}
+                      {!devicesLoading && filteredOutputs.length === 0 && <option value="">{t('settings.AudioSettingsModal.043')}</option>}
+                      {!devicesLoading && filteredOutputs.length > 0 && !selectedOutputKey && <option value="">{t('settings.selectDevice')}</option>}
+                      {!devicesLoading && !!selectedOutputKey && !filteredOutputs.some(device => audioDeviceKey(device) === selectedOutputKey) && <option value={selectedOutputKey}>{t('settings.deviceMissing', { name: selectedOutput || selectedOutputKey })}</option>}
                       {filteredOutputs.map((device, i) => (
                         <option key={`${audioDeviceKey(device)}-${i}`} value={audioDeviceKey(device)} disabled={!device.id && filteredOutputs.filter(item => item.name === device.name).length > 1}>{device.name}{filteredOutputs.filter(item => item.name === device.name).length > 1 && device.id ? ` (${device.id})` : ''}</option>
                       ))}
                     </Select></Field>
                   </fieldset>
                 )}
+                {isAsio && <OutputChannelSelector value={connection.outputRouting} maxChannels={selectedOutputDevice?.channels ?? 0}
+                  disabled={isApplying} onChange={routing => { editConnection('routing'); connection.setOutputRouting(routing); }} />}
 
-                {processInput && <p className="text-ui-support text-muted-foreground">{t('processInput.outputHelp')}</p>}
+                {processInput && <p className="break-words text-ui-support text-muted-foreground">{t('processInput.outputHelp')}</p>}
 
                 {!savedConnection && savedRestoreAvailable && <div className="space-y-1">
                   <Button type="button" onClick={() => void restoreSavedConnection()} disabled={isApplying} variant="link" size="sm" className="h-auto min-h-9 whitespace-normal">{t('settings.connection.restoreSaved')}</Button>
@@ -624,11 +683,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
               {!streamMixAvailable && <p id="stream-mix-voice-only" className="text-ui-support text-muted-foreground">{t('streamMix.voiceOnly')}</p>}
               <div className="flex flex-wrap items-center gap-3">
                 <label className="flex items-center gap-2 text-ui-control"><Checkbox checked={streamMixShown} disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : 'stream-mix-voice-only'} onChange={event => saveStreamMixPanel(event.target.checked)} />{t('streamMix.show')}</label>
-                <Button type="button" variant="outline" size="sm" disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : 'stream-mix-voice-only'} onClick={() => { openStreamMixPanel(); onClose(); }}>{t('streamMix.openHome')}</Button>
+                <Button type="button" variant="outline" size="sm" disabled={!streamMixAvailable} aria-describedby={streamMixAvailable ? undefined : 'stream-mix-voice-only'} onClick={() => requestLeave(() => { openStreamMixPanel(); onClose(); })}>{t('streamMix.openHome')}</Button>
               </div>
             </section>
 
-            {!loading && <div className="space-y-6">
+            {!isApplying && <div className="space-y-6">
                 <details ref={tuningDetails} open={tuningOpen} onToggle={event => setTuningOpen(event.currentTarget.open)} className="rounded-card border border-border p-3 space-y-3">
                   <summary className="cursor-pointer text-ui-heading font-semibold">
                     {t('settings.audioTuning.title')}
@@ -652,11 +711,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <Field label={<span className="sr-only">{t('settings.AudioSettingsModal.035')}</span>}><Select
                     ref={hostSelect}
                     aria-label={t('settings.AudioSettingsModal.035')}
+                    className="max-w-full"
+                    title={selectedHost ? displayAudioHost(selectedHost) : undefined}
                     value={selectedHost}
                     onChange={(e) => { editConnection('host'); setSelectedHost(e.target.value); }}
-
+                    disabled={devicesLoading}
                   >
-                    {!selectedHost && <option value="">{t('settings.AudioSettingsModal.036')}</option>}
+                    {devicesLoading && <option value={selectedHost}>{t('common.loading')}</option>}
+                    {!devicesLoading && !selectedHost && <option value="">{t('settings.AudioSettingsModal.036')}</option>}
+                    {!devicesLoading && !!selectedHost && !availableHosts.some(host => host.toLowerCase() === selectedHost.toLowerCase()) && <option value={selectedHost}>{t('settings.deviceMissing', { name: displayAudioHost(selectedHost) })}</option>}
                     {availableHosts.map((host) => (
                       <option key={host} value={host}>{displayAudioHost(host)}</option>
                     ))}
@@ -800,6 +863,10 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 )}
 
                 </>}
+                <details className="rounded-card border border-border p-4 space-y-3">
+                  <summary className="cursor-pointer text-ui-heading font-semibold">{t('structure.monitor')}</summary>
+                  <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await system.refreshEngineRuntimeStats(); }} />
+                </details>
                 </details>
                 {/* Preset Section */}
                 <div className="p-4 bg-muted/20 rounded-card border border-border space-y-3">
@@ -851,26 +918,21 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 </div>
 
               </div>}
-            <details className="rounded-card border border-border p-4 space-y-3">
-              <summary className="cursor-pointer text-ui-heading font-semibold">{t('structure.monitor')}</summary>
-              <MonitorTrial devices={devices.outputs} disabled={loading} onBusyChange={setLoading} onApplied={async config => { await onConfigChange(config, { audioStarted: true }); await system.refreshEngineRuntimeStats(); }} />
-            </details>
           </TabsContent>
 
           <SoundSettings model={sound} engineStats={engineStats} singingModel={singingModel} liveModel={providedLive ?? localLive}
             isBeginnerMode={isBeginnerMode} settingsBody={settingsBody} soundStart={soundStart}
-            onClose={onClose} onOpenVoiceCheck={onOpenVoiceCheck} onPreviewSinging={onPreviewSinging} onSaveSingingProfile={onSaveSingingProfile} streamMixAvailable={streamMixAvailable} onOpenMixing={() => { if (streamMixAvailable) { openStreamMixPanel(); onClose(); } }} />
+            onClose={leavePage} onOpenVoiceCheck={onOpenVoiceCheck} onPreviewSinging={onPreviewSinging} onSaveSingingProfile={onSaveSingingProfile} streamMixAvailable={streamMixAvailable} onOpenMixing={() => { if (streamMixAvailable) requestLeave(() => { openStreamMixPanel(); onClose(); }); }} />
           <TabsContent value="obs" className="space-y-4">
             <ObsConnectionSettings
               showConfirm={showConfirm}
-              onClose={onClose}
+              onClose={leavePage}
               onOpenOBSGuide={onOpenOBSGuide}
               onOpenTroubleshoot={onOpenTroubleshoot}
             />
           </TabsContent>
 
           <TabsContent value="appearance" className="space-y-6">
-            <p className="text-ui-support text-muted-foreground">{t('settings.apply.appearanceImmediate')}</p>
             <LanguageSelector />
             <DisplayPurposeSelector />
             <NumericDetailsSwitch />
@@ -883,7 +945,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <RadioGroupItem value="light" id="theme-light" />
                     <Label htmlFor="theme-light" className="min-w-0 cursor-pointer flex-1 text-ui-control">
                       <span className="font-bold block">{t('header.light')}</span>
-                      <span className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.131')}</span>
+                      <span className="break-words text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.131')}</span>
                     </Label>
                     <ThemeSwatch theme="light" />
                   </div>
@@ -891,7 +953,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <RadioGroupItem value="dark" id="theme-dark" />
                     <Label htmlFor="theme-dark" className="min-w-0 cursor-pointer flex-1 text-ui-control">
                       <span className="font-bold block">{t('header.dark')}</span>
-                      <span className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.132')}</span>
+                      <span className="break-words text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.132')}</span>
                     </Label>
                     <ThemeSwatch theme="dark" />
                   </div>
@@ -899,7 +961,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                     <RadioGroupItem value="gaming" id="theme-gaming" className="text-brand border-brand" />
                     <Label htmlFor="theme-gaming" className="min-w-0 cursor-pointer flex-1 text-ui-control">
                       <span className="font-bold block">{t('header.gaming')}</span>
-                      <span className="text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.133')}</span>
+                      <span className="break-words text-ui-support text-muted-foreground">{t('settings.AudioSettingsModal.133')}</span>
                     </Label>
                     <ThemeSwatch theme="gaming" />
                   </div>
@@ -913,30 +975,30 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
           </TabsContent>
 
           <TabsContent value="shortcuts" className="space-y-4">
-            <ShortcutsPanel onCaptureChange={setCapturingShortcut} />
+            <ShortcutsPanel onDirtyChange={setShortcutsDirty} />
           </TabsContent>
           <SystemSettings model={system} engineStats={engineStats} loading={loading} setLoading={setLoading} showConfirm={showConfirm}
-            onClose={onClose} onOpenWizard={onOpenWizard} onOpenLicense={onOpenLicense} handleRestart={handleRestart}
+            onClose={leavePage} onOpenWizard={onOpenWizard} onOpenLicense={onOpenLicense} handleRestart={handleRestart}
             canRestart={inputReady && !!selectedOutputDevice && (!reviewRequired || migrationConfirmed)} knownStopped={connection.knownStopped} />
           </div>
-        </Tabs>
-        {(activeTab === 'audio' || changedFields.length > 0 || connectionRetry) && !loading && (
-          <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-2 flex flex-wrap items-center justify-end gap-3">
+        {activeTab === 'audio' && !loading && (
+          <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-2 flex flex-wrap items-center justify-between gap-3">
             {/* 稼働中の保存は再起動になり、音が途切れることを押す前に示す。 */}
-            <div className="min-w-0 space-y-1 text-ui-support text-muted-foreground" id="settings-connection-changes">
+            <div className="min-w-0 flex-1 space-y-1 text-left text-ui-support text-muted-foreground" id="settings-connection-changes">
               <p>{allowConnectionRetry || connectionRetry ? t('settings.connection.retry') : !savedConnection
                 ? inputReady && selectedOutputDevice ? t('settings.connection.firstStart', { host: displayAudioHost(selectedHost), input: processInput ? inputSource.source.kind === 'process_loopback' ? inputSource.source.config.appName : '' : selectedInput, output: selectedOutputDevice.name }) : t('settings.connection.firstStartHint')
                 : changedFields.length ? t('settings.connection.changes', { fields: changedFields.join('、') }) : t('settings.connection.unchanged')}</p>
               {streamRunning && <p id="settings-save-restart">{t('settings.saveRestartHint')}</p>}
             </div>
             <Button onClick={handleSave} disabled={loading || !inputReady || !selectedOutputDevice || !canSaveConnection || (reviewRequired && !migrationConfirmed)}
+              className="shrink-0"
               aria-describedby={`settings-connection-changes${streamRunning ? ' settings-save-restart' : ''}`}
               >
               {t(streamRunning ? 'settings.saveRestart' : 'settings.AudioSettingsModal.197')}
             </Button>
           </div>
         )}
-      </div>
+        </Tabs>
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
         title={renderNotice(t, confirmDialog.title)}
@@ -950,7 +1012,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
         }}
         onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
       />
-    </div>
-        </Modal>
+      </div>
+    </PagePortal>
   );
 };

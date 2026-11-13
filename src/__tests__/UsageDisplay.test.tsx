@@ -41,11 +41,12 @@ vi.mock('@/components/layout/ModalLayer', () => ({
 vi.mock('@/components/layout/AppShell', async () => {
     // 右パネルの開閉は共有の保存値（useVstPanel）で行う。本物の AppShell と同じく、開いている間だけラックを出す。
     const { useVstPanel, saveVstPanelOpen } = await import('@/hooks/useVstPanel');
-    return { AppShell: ({ children, vstPanel }: { children: React.ReactNode; vstPanel?: React.ReactNode }) => {
+    return { AppShell: ({ children, overlays, vstPanel }: { children: React.ReactNode; overlays?: React.ReactNode; vstPanel?: React.ReactNode }) => {
         const [open] = useVstPanel();
         return <>
             <button onClick={() => saveVstPanelOpen(true)}>VSTを編集</button>
             {open && vstPanel}
+            {overlays}
             {children}
         </>;
     } };

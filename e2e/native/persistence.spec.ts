@@ -45,7 +45,11 @@ test('実UI→Tauri→保存→Host再起動で言語を復元し、実エンジ
         const globalAvailable = await page.evaluate(() => typeof (window as any).__TAURI__?.core?.invoke === 'function');
         console.log(`native E2E専用設定: __TAURI__=${globalAvailable}`);
         expect(globalAvailable).toBe(true);
-        await expect(page.getByRole('dialog')).toBeVisible({ timeout: 15_000 });
+        const wizard = page.getByRole('dialog', { name: 'セットアップ' });
+        const settings = page.locator('[data-settings-page]');
+        await expect(wizard.or(settings)).toBeVisible({ timeout: 15_000 });
+        if (await wizard.isVisible()) await wizard.getByRole('button', { name: 'セットアップをスキップ' }).click();
+        if (await settings.count() === 0) await page.getByRole('navigation', { name: '行き先' }).getByRole('button', { name: '設定', exact: true }).click();
     }
     async function quit() {
         const exited = once(child!, 'exit');
@@ -72,7 +76,7 @@ test('実UI→Tauri→保存→Host再起動で言語を復元し、実エンジ
         // 保存操作を伴わない表示・開閉だけを実UIで確認する。
         await expect(page!.getByText('A light background with teal accents.')).toBeVisible();
         await page!.screenshot({ path: testInfo.outputPath('native-appearance.png') });
-        await page!.getByRole('tab', { name: 'Audio', exact: true }).click();
+        await page!.getByRole('navigation', { name: 'Destinations' }).getByRole('button', { name: 'Connection (audio settings)', exact: true }).click();
         await expect(page!.getByRole('combobox', { name: 'Connection method' })).toBeVisible({ timeout: 30_000 });
         const redetect = page!.getByRole('button', { name: 'Re-detect', exact: true });
         const size = await redetect.boundingBox();
@@ -81,12 +85,15 @@ test('実UI→Tauri→保存→Host再起動で言語を復元し、実エンジ
         expect(size!.height).toBeGreaterThanOrEqual(24);
         const tuning = page!.locator('details').filter({ has: page!.locator('summary').filter({ hasText: 'Connection and dropout settings' }) });
         await expect(tuning).not.toHaveAttribute('open', '');
-        await tuning.locator('summary').click();
+        await tuning.locator('summary').filter({ hasText: 'Connection and dropout settings' }).click();
         await expect(tuning).toHaveAttribute('open', '');
-        await tuning.locator('summary').click();
+        await tuning.locator('summary').filter({ hasText: 'Connection and dropout settings' }).click();
         await expect(tuning).not.toHaveAttribute('open', '');
         await page!.screenshot({ path: testInfo.outputPath('native-audio.png') });
 
+        await page!.getByRole('navigation', { name: 'Destinations' }).getByRole('button', { name: 'Settings', exact: true }).click();
+        const leave = page!.getByRole('alertdialog', { name: 'You have unsaved changes' });
+        if (await leave.isVisible()) await leave.getByRole('button', { name: 'Discard changes and leave', exact: true }).click();
         await page!.getByRole('tab', { name: 'OBS', exact: true }).click();
         const preview = page!.getByRole('button', { name: 'Review proposed changes' });
         await expect(preview).toBeDisabled();
@@ -119,7 +126,8 @@ test('実UI→Tauri→保存→Host再起動で言語を復元し、実エンジ
         // 外部OBSへ接続せず、旧平文の起動時移行とユーザー保護ファイルの再読込を確認する。
         await page!.evaluate(() => localStorage.setItem('vst_host_obs_config', JSON.stringify({ host: 'native-test', port: 4455, password: 'NATIVE_OBS_TEST_CANARY' })));
         await page!.reload();
-        await expect(page!.getByRole('dialog', { name: 'Settings', exact: true })).toBeVisible();
+        await page!.getByRole('navigation', { name: 'Destinations' }).getByRole('button', { name: 'Settings', exact: true }).click();
+        await expect(page!.locator('[data-settings-page]')).toBeVisible();
         await expect.poll(() => page!.evaluate(() => localStorage.getItem('vst_host_obs_config'))).toBe(JSON.stringify({ host: 'native-test', port: 4455 }));
         const encryptedCredentials = await readFile(join(root, 'config', 'obs-credentials.dpapi'));
         expect(encryptedCredentials.includes(Buffer.from('NATIVE_OBS_TEST_CANARY'))).toBe(false);

@@ -36,7 +36,7 @@ test('開始に失敗した接続から直前の接続へ戻し、理由と対�
     });
     await page.goto('/');
     await page.getByRole('button', { name: '接続（オーディオの設定）', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: '設定', exact: true });
+    const dialog = page.locator('[data-settings-page]');
     await dialog.getByRole('radio', { name: '入力チャンネル 3/4' }).check();
     await dialog.getByRole('button', { name: /保存して(開始|再起動)/ }).click();
     await expect(dialog.getByText(/直前の接続に戻しました。理由：.*sample clock/)).toBeVisible();

@@ -112,6 +112,7 @@ it('未保存で閉じて再表示してもキャッシュからホストとデ�
 });
 
 it('接続設定と即時反映の音づくりを分け、操作名を公開する', async () => {
+    localStorage.setItem('vst_host_audio_config', JSON.stringify({ host: 'Wasapi', input: 'USB mic', output: 'Headphones', sampleRate: 48000, bufferSize: 512 }));
     openSettings();
     const host = await screen.findByRole('combobox', { name: '接続方式' });
     const input = screen.getByRole('combobox', { name: 'マイク' });

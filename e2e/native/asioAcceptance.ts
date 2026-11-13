@@ -2,7 +2,7 @@ import { expect, type Page, type TestInfo } from '@playwright/test';
 
 /** 親が分離HostでASIOストリームを開始し、設定のオーディオ欄を開いた後に呼ぶ。 */
 export async function verifyAsioAcceptance(page: Page, _root: string, testInfo: TestInfo) {
-    const dialog = page.getByRole('dialog', { name: '設定', exact: true });
+    const dialog = page.locator('[data-settings-page]');
     await expect(dialog.getByRole('combobox', { name: '接続方式' })).toHaveValue('ASIO');
     await expect(dialog.getByRole('combobox', { name: 'マイク入力' })).toHaveValue('Voicemeeter Insert Virtual ASIO');
     await expect(dialog.getByText('信号を継続して監視しています。')).toBeVisible({ timeout: 15_000 });

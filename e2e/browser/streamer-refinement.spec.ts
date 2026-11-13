@@ -109,7 +109,7 @@ test('緊急ミュートの通信失敗では外部アプリでのミュート�
         failure.getByRole('button', { name: '設定を開く', exact: true }).click(),
     ]);
     expect(settingsModule.ok()).toBe(true);
-    await expect(page.getByRole('dialog', { name: '設定', exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-settings-page]')).toBeVisible({ timeout: 15_000 });
 });
 
 test('出力音量の失敗は右の列で再試行でき、確認できるまでは保存値を変えない', async ({ page }, testInfo) => {
@@ -153,7 +153,7 @@ test('登録したモードの違いが分かり、歌向けの調整へ直接�
     await page.getByRole('button', { name: '歌・雑談の設定', exact: true }).click();
     await page.getByRole('button', { name: '歌・雑談の登録を編集', exact: true }).click();
     // CIでは設定画面の遅延読込を待ってから、内容と移動を検証する。
-    const settings = page.getByRole('dialog', { name: '設定', exact: true });
+    const settings = page.locator('[data-settings-page]');
     await expect(settings).toBeVisible({ timeout: 15_000 });
     const modes = settings.locator('#live-mode-settings');
     await expect(modes).toContainText('歌唱と雑談に同じ設定');
