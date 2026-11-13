@@ -16,6 +16,11 @@ export function singingDraftIsDirty(snapshot: SingingDraft['snapshot'], draft: S
     return Boolean(snapshot && draft && JSON.stringify(snapshot.config) !== JSON.stringify(draft));
 }
 
+export function SingingGuideHelp() {
+    const t = useMessages();
+    return <InfoPopover label={t('singing.guideHelp')}><p>{t('settings.SingingControls.395')}</p><p className="mt-2">{t('settings.SingingControls.433')}</p></InfoPopover>;
+}
+
 export function SingingControls({ model, onPreview, onSaveProfile, compact = false, running, previewActive = false, showHeading = true, hideApplyButton = false, suspendActivation = false }: {
     model: SingingDraft; running?: boolean; previewActive?: boolean; onPreview?: () => void; onSaveProfile?: () => void; compact?: boolean; showHeading?: boolean;
     /** 適用ボタンをページ下の固定行へ出すとき、本文からは外す。 */
@@ -96,7 +101,8 @@ export function SingingControls({ model, onPreview, onSaveProfile, compact = fal
     return <section aria-label={t('settings.SingingControls.393')} className="space-y-4 text-ui-support">
         <div className="flex items-center gap-1">
             {showHeading && <h3 className={`${compact ? 'text-ui-control' : 'text-ui-heading'} font-semibold`}>{t('settings.SingingControls.394')}</h3>}
-            <InfoPopover label={t('singing.guideHelp')}><p>{t('settings.SingingControls.395')}</p><p className="mt-2">{t('settings.SingingControls.433')}</p></InfoPopover>
+            {/* 見出しを出さないときは、説明を音づくりの小区分の見出しの横に置く（SingingGuideHelp）。 */}
+            {showHeading && <SingingGuideHelp />}
             {!hideApplyButton && <p className="text-ui-support text-muted-foreground">{t('singing.draftSafety')}</p>}
         </div>
         <p role="status" className="text-ui-support text-muted-foreground">{!snapshot ? t('settings.SingingControls.396') : activeRunning === false ? t('settings.SingingControls.397') : snapshot.pending ? t('settings.SingingControls.398') : activeRunning === true && snapshot.appliedRevision === snapshot.revision ? t('settings.SingingControls.399') : t('settings.SingingControls.400')}{dirty && !hideApplyButton && t('settings.SingingControls.401')}</p>
